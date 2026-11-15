@@ -211,7 +211,7 @@ void main() {
     );
     await _openLanes(tester, _drawId);
     Rect rectNamed(String name) => tester.getRect(find.named(name));
-    final twirl = rectNamed('timeline-attach-twirl-cam');
+    final twirl = rectNamed('timeline-attach-twirl-below-cam');
     final graph = rectNamed('timeline-layer-graph-cam');
     final path = rectNamed('timeline-layer-camera-path-cam');
 

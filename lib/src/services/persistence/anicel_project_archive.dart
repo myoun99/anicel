@@ -66,6 +66,25 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v38 (2026-11-16, I-175 — 유저: 「레이어의 어태치 접기/펼치기버튼을
+/// 위아래로 나눠서 위 펼치기 아래 펼치기 이렇게 두개 두고싶음」): a base
+/// folds each side of its attach group on its own — `foldedAttaches`, the
+/// sides folded, written only where there is one, on a row and on a
+/// conte's head alike — and `collapsed` is a FOLDER's alone. A v37 build
+/// knows no such word: it drops the sides on open, and its next save writes
+/// the base back open — and nothing said. The bump turns that into a
+/// refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔A base's `"collapsed": true` — its whole group folded, as v37 said it —
+/// is not read (the save law), and the floor rose with it
+/// ([anicelOldestReadFormatVersion]): read as nothing, the group would open,
+/// and the next save would make that the truth. One that has to open is
+/// carried over by hand: on every row that is not a folder (`"kind"` not
+/// `"folder"`), and on every conte head whose row is not one,
+/// `"collapsed": true` goes and `"foldedAttaches": ["below", "above"]`
+/// takes its place — both sides, as the one fold folded both — and the
+/// file's `formatVersion` says 38.
+///
 /// v37 (2026-11-14, I-169 — 유저: 「타임라인 룰러에 북마크? 메모
 /// 넣는기능」 · 「마커로 명명할건데」): a ruler holds its MARKERS — a cut's
 /// own ruler (`CutMetadata.rulerMarkers`) and a timeline's
@@ -576,7 +595,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 37;
+const int anicelFormatVersion = 38;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -606,7 +625,8 @@ const int anicelFormatVersion = 37;
 /// 33: a project's tracks and trailing gap right under it, in no timeline,
 /// are no longer read (v33 above).
 /// 35: a label of 美術 is no longer read (v35 above).
-const int anicelOldestReadFormatVersion = 35;
+/// 38: a base's one fold is no longer read (v38 above).
+const int anicelOldestReadFormatVersion = 38;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

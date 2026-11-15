@@ -501,25 +501,22 @@ class _StoryboardRailRows {
   /// ([conteGroupOf], I-99).
   ///
   /// The host's verb is the one chevron (I-32) — a folder's fold or a
-  /// base's group — so both halves press it.
+  /// base's group, told the side (I-175).
   TimelineGroupFold _conteGroupFoldOf(LayerId rowId) {
     final inHand = trackIdOfConteRow(rowId) == null
         ? null
         : _rowInHand(rowId);
     if (inHand == null) {
-      return (has: false, expanded: true, onToggle: null);
+      return (face: noGroupFold, openOn: (_) => null, onToggle: null);
     }
     final layers = inHand.cut.layers;
-    final toggle = _state.widget.onToggleAttachGroup;
     return timelineGroupFoldFor(
       row: TimelineDisplayRow.layer(
         inHand.layer,
         layerIndex: layers.indexOf(inHand.layer),
       ),
       layers: layers,
-      collapsedAttachBaseIds: _in.collapsedAttachBaseIds,
-      onToggleLayerCollapsed: toggle,
-      onToggleAttachGroup: toggle,
+      onToggle: _state.widget.onToggleGroupFold,
     );
   }
 
@@ -662,10 +659,10 @@ class _StoryboardRailRows {
     return layerRowHiddenBy(
           head.row,
           folders: folders[head.cut] ??= LayerFolderIndex(layers),
-          attachBaseId: attachGroupBaseOf(head.row, layers),
+
           hiddenSections: rail.hiddenSections,
           rowFilter: rail.rowFilter,
-          collapsedAttachBaseIds: rail.collapsedAttachBaseIds,
+          attachFoldedRowIds: rail.attachFoldedRowIds,
           standingLayerId: rail.selectedRow == address ? head.row.id : null,
           fxEnabledOf: (id) =>
               fxEnabledFromState(rail.layerFxStateOf?.call(id)),

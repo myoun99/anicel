@@ -367,28 +367,35 @@ void main() {
   // had last changed (`carriedModified`). A v35 build drops the word and its
   // next save writes the carry back with no date, nothing said — so a file
   // this build writes says a number a v35 build refuses as newer. No older
-  // shape went for it: a v35 file's carries open undated.
+  // shape went for it, so a v35 file was read here, until format 38's floor.
   test('🚨a file that may hold a carry\'s date says a format a v35 build '
-      'refuses as newer — and a v35 file still opens', () {
+      'refuses as newer', () {
     expect(anicelFormatVersion, greaterThan(35));
-    expect(
-      decodeAnicelProjectDocument(documentSaying(35)).project,
-      isNotNull,
-    );
   });
 
   // I-169 (format 37): a ruler holds its markers — a cut's and a
   // timeline's. A v36 build drops the lists and its next save writes the
   // cut and the timeline back with no marker, nothing said — so a file this
   // build writes says a number a v36 build refuses as newer. No older shape
-  // went for it: a v36 file's rulers open with no marker on them.
+  // went for it, so a v36 file was read here, until format 38's floor.
   test('🚨a file that may hold a ruler marker says a format a v36 build '
-      'refuses as newer — and a v36 file still opens', () {
+      'refuses as newer', () {
     expect(anicelFormatVersion, greaterThan(36));
+  });
+
+  // I-175 (format 38): a base folds each side of its attach group on its
+  // own (`foldedAttaches`), and `collapsed` is a folder's alone. A v37
+  // base's `"collapsed": true` is not read — its group would open, and the
+  // next save would make that the truth — so a v37 file is refused by its
+  // number, to be carried over by hand; and a file this build writes says
+  // a number a v37 build refuses as newer.
+  test('🚨a v37 file is refused by its number — a base may say its whole '
+      'group is folded', () {
     expect(
-      decodeAnicelProjectDocument(documentSaying(36)).project,
-      isNotNull,
+      () => decodeAnicelProjectDocument(documentSaying(37)),
+      refusesNaming('format 37,'),
     );
+    expect(anicelFormatVersion, greaterThan(37));
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

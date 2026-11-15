@@ -129,7 +129,10 @@ class _StoryboardRailSweep {
         groupSwitch: _handsGroupSwitch,
       ),
       foldOf: _foldOf,
-      groupFoldOpenOf: _readHeld(widget.groupFoldOpenOf),
+      groupFoldOpenOf: switch (widget.groupFoldOpenOf) {
+        final read? => (rowId, side) => read(_held(rowId), side),
+        null => null,
+      },
       onToggleLaneGroup: groupToggle == null
           ? null
           : (layer, lane) =>
@@ -160,9 +163,11 @@ class _StoryboardRailSweep {
     final fold = _rows._conteGroupFoldOf(row.layer.id);
     final toggle = fold.onToggle;
     return (
-      has: fold.has,
-      expanded: fold.expanded,
-      onToggle: toggle == null ? null : (rowId) => toggle(_held(rowId)),
+      face: fold.face,
+      openOn: fold.openOn,
+      onToggle: toggle == null
+          ? null
+          : (rowId, side) => toggle(_held(rowId), side),
     );
   }
 

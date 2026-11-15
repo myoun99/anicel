@@ -237,7 +237,7 @@ void main() {
   ) async {
     await pumpPanel(tester);
 
-    await tester.tap(find.named('storyboard-attach-twirl-a-conte'));
+    await tester.tap(find.named('storyboard-attach-twirl-above-a-conte'));
     await tester.pumpAndSettle();
 
     expect(label('conte'), findsOneWidget);
@@ -300,7 +300,7 @@ void main() {
       start,
       kind: PointerDeviceKind.mouse,
     );
-    final to = find.named('storyboard-attach-twirl-a-conte');
+    final to = find.named('storyboard-attach-twirl-above-a-conte');
     var at = start;
     for (var step = 0; step < 400; step += 1) {
       final gap = tester.getCenter(to).dy - at.dy;
@@ -316,8 +316,16 @@ void main() {
 
     expect(row(session, 'a-proc').collapsed, isTrue);
     expect(
-      session.railView.collapsedAttachBaseIds.value,
-      containsAll(const [LayerId('a-conte'), LayerId('b-conte')]),
+      [
+        for (final conte in const ['a-conte', 'b-conte'])
+          row(session, conte).foldedAttaches,
+      ],
+      [
+        {AttachedPlacement.above},
+        {AttachedPlacement.above},
+      ],
+      reason: 'a sweep from a folder\'s twirl folds a base on every side it '
+          'has rows on (I-175-Q5) — in both cuts, the head is one',
     );
   });
 }

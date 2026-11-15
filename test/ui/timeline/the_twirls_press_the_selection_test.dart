@@ -30,9 +30,17 @@ void main() {
       'selected base', (tester) async {
     final (s, a, b) = await _app(tester, attachRows: true);
 
-    await _tapVisibleNamed(tester, 'timeline-attach-twirl-${a.value}');
+    await _tapVisibleNamed(tester, 'timeline-attach-twirl-above-${a.value}');
 
-    expect(s.railView.collapsedAttachBaseIds.value, containsAll([a, b]));
+    final riders = [
+      for (final layer in s.layers)
+        if ({a, b}.contains(layer.attachedToLayerId)) layer.id,
+    ];
+    expect(
+      s.railView.attachFoldedRowIds.value,
+      containsAll(riders),
+      reason: 'the riders of both bases (I-175: the half\'s side)',
+    );
   });
 
   testWidgets('the legend\'s 「all」 opens every row with a selection standing',

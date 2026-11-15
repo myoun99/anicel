@@ -129,8 +129,19 @@ AppIconButtonBox railSlotBox(
 /// shut` is what every other twirl in the app says, and pointing the glyph
 /// at where the lanes physically open would have made the sheet disagree
 /// with the timeline instead — one convention beats two geometries.
-IconData layerRailTwirlIcon({required bool expanded}) =>
-    expanded ? Icons.arrow_drop_down : Icons.arrow_right;
+///
+/// ↩️Save a half of a base's attach fold, open (🗣️I-175-Q4 (나) 「펼치면 제
+/// 쪽을 가리킨다」): [side] above points up, below down; shut is ▸ as
+/// every twirl's. Its sheet half is the rail's turned on its side
+/// (「엑스시트는 그냥 90도 회전시키면 되잖아」), glyph and all.
+IconData layerRailTwirlIcon({
+  required bool expanded,
+  AttachedPlacement? side,
+}) => switch ((expanded, side)) {
+  (false, _) => Icons.arrow_right,
+  (true, AttachedPlacement.above) => Icons.arrow_drop_up,
+  (true, _) => Icons.arrow_drop_down,
+};
 
 /// THE TWIRL — the app's one: what a row holds under it hangs open or folds
 /// by this. A folder's members and an attach base's attach rows (UI-R20 #9)
@@ -155,6 +166,9 @@ class LayerFoldTwirl extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.tooltip = '',
     this.across = 24,
+    this.iconSize = 16,
+    this.side,
+    this.lit = true,
   });
 
   /// What a finder calls the twirl — its [RailGlyphButton.name], or the
@@ -173,8 +187,21 @@ class LayerFoldTwirl extends StatelessWidget {
   final String tooltip;
 
   /// The box across the rail, where it is not the 24 a rail row's controls
-  /// stand in: a storyboard row's own height, a lane group header's glyph.
+  /// stand in: a storyboard row's own height, a lane group header's glyph,
+  /// a half of a base's attach fold.
   final double across;
+
+  /// The glyph's square — a half of a base's attach fold draws it smaller.
+  final double iconSize;
+
+  /// The side a half of a base's attach fold folds ([layerRailTwirlIcon]),
+  /// or null on every other twirl.
+  final AttachedPlacement? side;
+
+  /// Whether what the twirl folds shows anything — off-coloured
+  /// ([railGlyphOffInk]) where it does not (I-175: a group fold's twirl;
+  /// every other twirl stays lit).
+  final bool lit;
 
   /// The rail's button (I-57 ①), so it hovers in the shape every rail
   /// button hovers in — R26 #28's 「like every other」, which a hand-rolled
@@ -186,6 +213,8 @@ class LayerFoldTwirl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final toggle = onToggle;
+    final icon = layerRailTwirlIcon(expanded: expanded, side: side);
+    final ink = lit ? null : railGlyphOffInk(context);
     if (toggle == null) {
       return Named(
         name,
@@ -195,7 +224,7 @@ class LayerFoldTwirl extends StatelessWidget {
           child: acrossBox(
             axis,
             across,
-            child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
+            child: Icon(icon, size: iconSize, color: ink),
           ),
         ),
       );
@@ -203,13 +232,13 @@ class LayerFoldTwirl extends StatelessWidget {
     return RailGlyphButton(
       name: name,
       tooltip: tooltip,
-      glyph: RailIconGlyph(layerRailTwirlIcon(expanded: expanded)),
+      glyph: RailIconGlyph(icon, color: ink),
       onPressed: toggle,
       size: railSlotBox(
         axis,
         slot: layerLaneToggleSlotWidth,
         across: across,
-        iconSize: 16,
+        iconSize: iconSize,
       ),
     );
   }

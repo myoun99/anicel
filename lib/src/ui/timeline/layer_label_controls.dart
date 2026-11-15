@@ -845,16 +845,18 @@ class LayerVisibilityToggleButton extends StatelessWidget {
         //
         // F-185: a row a folder above has hidden keeps its own glyph and
         // wears that same off colour — 「on인채로 두되, 색만 비활성화색으로」.
-        color: isVisible && !hiddenAbove
-            ? null
-            : IconTheme.of(
-                context,
-              ).color?.withValues(alpha: AppColors.offAlpha),
+        color: isVisible && !hiddenAbove ? null : railGlyphOffInk(context),
       ),
       onPressed: onToggle,
     );
   }
 }
+
+/// The off colour a rail glyph wears — the eye's (F-58), and a fold twirl's
+/// over what shows nothing (I-175): the button's own ink at
+/// [AppColors.offAlpha], the app's ONE off language.
+Color? railGlyphOffInk(BuildContext context) =>
+    IconTheme.of(context).color?.withValues(alpha: AppColors.offAlpha);
 
 /// The ONE fx SWITCH: whether this row's FX apply or are bypassed.
 ///
@@ -1705,9 +1707,17 @@ enum RailSwipeColumn {
   graph,
   lanePin,
 
-  /// A folder's fold, or the attach group's riding a base — one twirl at
-  /// the end of a row's name (`timelineGroupFoldFor`).
+  /// A folder's fold — the twirl at the end of a row's name
+  /// (`timelineGroupFoldFor`). A sweep from it folds a base it crosses on
+  /// both sides (🗣️I-175-Q5 (가) 「양쪽 다 — 지금처럼」).
   groupFold,
+
+  /// The upper half of a base's attach fold — its rows above (I-175). A
+  /// sweep from it folds a folder it crosses too (🗣️I-175-Q3 (가)).
+  groupFoldAbove,
+
+  /// The lower half of a base's attach fold — its rows below (I-175).
+  groupFoldBelow,
 
   /// A lane group header's twirl — Transform, an effect.
   laneGroupToggle,

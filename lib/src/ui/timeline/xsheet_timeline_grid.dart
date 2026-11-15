@@ -501,9 +501,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       timelineGroupFoldFor(
         row: row,
         layers: widget.layers,
-        collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: widget.hooks.onToggleLayerCollapsed,
-        onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
+        onToggle: widget.hooks.onToggleGroupFold,
       );
 
   /// The display entries of the pass in flight, for the drag's row → slot

@@ -962,7 +962,9 @@ class _StoryboardRowsAndLabels {
   /// wearing [wears]' layer: the one its row has in hand NOW, which a kept
   /// head may have been built for another of ([BerthRow]). Its eye shows
   /// that layer's, as the folders of [wears]' stack gate it ([RailEyes]) —
-  /// the timeline rail's own answer for the layer (F-185).
+  /// the timeline rail's own answer for the layer (F-185) — and the sides
+  /// of its attach group that show anything, which the halves of its fold
+  /// say in colour (I-175).
   Widget _wearing(({Layer layer, List<Layer> stack}) wears, Widget row) =>
       RailEyes.forLayers(
         [wears.layer],
@@ -1029,8 +1031,7 @@ class _StoryboardRowsAndLabels {
         head.row,
         head.cut.layers,
       ),
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
+      groupFold: fold.face,
       onToggleGroupFold: fold.onToggle,
     );
   }

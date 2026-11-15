@@ -46,6 +46,7 @@ class Layer {
     List<AudioClip> audioClips = const [],
     this.isVisible = true,
     this.collapsed = false,
+    this.foldedAttaches = const {},
     this.lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
     this.muted = false,
@@ -112,17 +113,28 @@ class Layer {
   final List<AudioClip> audioClips;
   final bool isVisible;
 
-  /// The row's GROUP fold: a collapsed FOLDER swallows its member rows, a
-  /// collapsed BASE its attach group. One control — a row that holds other
-  /// rows, folding them (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
-  /// 어태치든」) — and a row is a folder or a base, never both
-  /// (`canCarryAttachedLayers`). Persisted, like CSP.
+  /// A FOLDER's fold: collapsed, it swallows its member rows. A row that
+  /// holds other rows folds them (유저 2026-08-29: 「접기도 마찬가지야.
+  /// 폴더든 어태치든」) — a folder by this, a base by [foldedAttaches] — and
+  /// a row is a folder or a base, never both (`canCarryAttachedLayers`).
+  /// Persisted, like CSP.
+  ///
+  /// ↩️It was a base's fold as well, its attach group's whole, until I-175
+  /// (유저 2026-11-15: 「어태치 접기/펼치기버튼을 위아래로 나눠서 위 펼치기 아래
+  /// 펼치기 이렇게 두개」) gave each side of a base a fold of its own.
+  final bool collapsed;
+
+  /// The sides of a BASE whose attach rows are folded away — the rows its
+  /// attach group stacks above it, below it, or both (I-175: a fold button
+  /// of each half). A side is the one the model stack puts a row on
+  /// (`attachGroupSideOf`). Empty on every other row. Persisted, like
+  /// [collapsed].
   ///
   /// ↩️The attach-group fold was session view state (`RailView`, UI-R20 #9,
   /// 07-18) and every reload opened it back up, until F-360 (유저
   /// 2026-10-14: 「어태치레이어 분명 접은채로 저장했는데 다시열면
   /// 펼쳐져있음 … 제대로 기록되도록」).
-  final bool collapsed;
+  final Set<AttachedPlacement> foldedAttaches;
 
   /// Whether the row's AE-style property-lane twirl-down is open — its
   /// Transform and fx lanes live under it. The row's own, as its fold is
@@ -322,6 +334,7 @@ class Layer {
     List<AudioClip>? audioClips,
     bool? isVisible,
     bool? collapsed,
+    Set<AttachedPlacement>? foldedAttaches,
     bool? lanesExpanded,
     Set<String>? expandedLaneGroups,
     bool? muted,
@@ -355,6 +368,7 @@ class Layer {
       audioClips: audioClips ?? ownFrozen(this.audioClips),
       isVisible: isVisible ?? this.isVisible,
       collapsed: collapsed ?? this.collapsed,
+      foldedAttaches: foldedAttaches ?? this.foldedAttaches,
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
       expandedLaneGroups:
           expandedLaneGroups ?? ownFrozen(this.expandedLaneGroups),
@@ -415,6 +429,11 @@ class Layer {
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
     if (collapsed) 'collapsed': true,
+    if (foldedAttaches.isNotEmpty)
+      'foldedAttaches': [
+        for (final side in AttachedPlacement.values)
+          if (foldedAttaches.contains(side)) side.toJson(),
+      ],
     if (lanesExpanded) 'lanesExpanded': true,
     if (expandedLaneGroups.isNotEmpty)
       'expandedLaneGroups': [...expandedLaneGroups]..sort(),
@@ -470,6 +489,10 @@ class Layer {
             ],
       isVisible: json['isVisible'] as bool,
       collapsed: json['collapsed'] as bool? ?? false,
+      foldedAttaches: {
+        for (final side in json['foldedAttaches'] as List<dynamic>? ?? [])
+          AttachedPlacement.fromJson(side),
+      },
       lanesExpanded: json['lanesExpanded'] as bool? ?? false,
       expandedLaneGroups: {
         for (final laneId
@@ -583,8 +606,8 @@ class Layer {
           other.conteKey == conteKey;
 
   /// Whether [other] folds and twirls as this layer does — [collapsed],
-  /// [lanesExpanded] and [expandedLaneGroups]: how the rail is laid out
-  /// around the row (F-360).
+  /// [foldedAttaches], [lanesExpanded] and [expandedLaneGroups]: how the
+  /// rail is laid out around the row (F-360).
   ///
   /// ⚠️Not in [sameBesideTimeline]: none of the row's cells reads them —
   /// the rows they show or hide are rows of their own — and in that list a
@@ -592,6 +615,7 @@ class Layer {
   /// for a step that did that on a heavy cut).
   bool foldsLike(Layer other) =>
       other.collapsed == collapsed &&
+      setEquals(other.foldedAttaches, foldedAttaches) &&
       other.lanesExpanded == lanesExpanded &&
       setEquals(other.expandedLaneGroups, expandedLaneGroups);
 
@@ -611,6 +635,7 @@ class Layer {
     Object.hash(
       isVisible,
       collapsed,
+      Object.hashAllUnordered(foldedAttaches),
       lanesExpanded,
       Object.hashAllUnordered(expandedLaneGroups),
     ),

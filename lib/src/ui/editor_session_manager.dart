@@ -13,6 +13,7 @@ import '../services/persistence/open_project_file.dart';
 import '../services/media/sheet_photo_edits.dart';
 import '../services/project_lookup.dart'
     show brushFrameKeyIn, cutPositionOf, cutWritingRow, rowPoseSpace;
+import '../models/attached_placement.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -1130,8 +1131,10 @@ class EditorSessionManager extends ChangeNotifier
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
       standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
-  void handOffCurrentRowOnAttachFold(LayerId baseId) =>
-      standing.handOffCurrentRowOnAttachFold(baseId);
+  void handOffCurrentRowOnAttachFold(
+    LayerId baseId,
+    Set<AttachedPlacement> sides,
+  ) => standing.handOffCurrentRowOnAttachFold(baseId, sides);
   void claimTimelineRow() => standing.claimTimelineRow();
 
   /// THE selected track — the storyboard's row selection, read by everything

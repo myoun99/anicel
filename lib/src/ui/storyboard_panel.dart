@@ -24,7 +24,7 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show EffectId, LayerEffect;
 import '../models/layer_folder.dart'
-    show LayerFolderIndex, attachFolderLevelsAbove, attachGroupBaseOf;
+    show LayerFolderIndex, attachFolderLevelsAbove;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -284,8 +284,10 @@ import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
     show
         ControlsRowFace,
+        GroupFoldFace,
         TimelineGroupFold,
         TimelineLayerControlsRow,
+        noGroupFold,
         timelineGroupFoldFor;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
@@ -673,7 +675,7 @@ typedef StoryboardRailInputs = ({
   LaneGraphsView laneGraphs,
   Set<TimelineSection> hiddenSections,
   TimelineRowFilter rowFilter,
-  Set<LayerId> collapsedAttachBaseIds,
+  Set<LayerId> attachFoldedRowIds,
   LayerFxState Function(LayerId layerId)? layerFxStateOf,
   LayerFxState Function(Track track)? trackFxStateOf,
   CanvasSize? poseDisplaySize,
@@ -759,8 +761,8 @@ class StoryboardPanel extends StatefulWidget {
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.onLayerBlendModeSelected,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    this.attachFoldedRowIds = const {},
+    this.onToggleGroupFold,
     this.groupFoldOpenOf,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
@@ -1440,14 +1442,17 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
 
-  /// The bases whose attach group is folded, and the fold's verb — the
-  /// timeline rail's own pair. A conte row's twirl folds the attach rows
-  /// riding it, in every cut at once: the head is one.
-  final Set<LayerId> collapsedAttachBaseIds;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rows the attach folds take off the screen, and the group fold's
+  /// verb told the side (I-175) — the timeline rail's own pair. A conte
+  /// row's twirl folds the attach rows riding it, in every cut at once: the
+  /// head is one.
+  final Set<LayerId> attachFoldedRowIds;
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// A LIVE read of a row's group fold — see [layerOnTimesheetOf].
-  final bool Function(LayerId layerId)? groupFoldOpenOf;
+  final bool Function(LayerId layerId, AttachedPlacement? side)?
+  groupFoldOpenOf;
 
   /// The rows whose property lanes are twirled down, and the twirl's verb —
   /// the timeline rail's own pair (I-73 ④ⓔ). A projection row's head is
@@ -1497,7 +1502,7 @@ class StoryboardPanel extends StatefulWidget {
     laneGraphs: laneGraphs,
     hiddenSections: hiddenSections,
     rowFilter: rowFilter,
-    collapsedAttachBaseIds: collapsedAttachBaseIds,
+    attachFoldedRowIds: attachFoldedRowIds,
     layerFxStateOf: layerFxStateOf,
     trackFxStateOf: trackFxStateOf,
     poseDisplaySize: poseDisplaySize,
@@ -3552,8 +3557,7 @@ class _StoryboardRailHead extends KeptPiece {
     this.onOpenCameraPath,
     this.attachArrowPlacement,
     this.wearsBaseComposite = false,
-    this.hasGroupFold = false,
-    this.groupFoldExpanded = true,
+    this.groupFold = noGroupFold,
     this.onToggleGroupFold,
     this.laneGraphVerbs,
     this.headsGraph = false,
@@ -3631,9 +3635,9 @@ class _StoryboardRailHead extends KeptPiece {
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
   final AttachedPlacement? attachArrowPlacement;
   final bool wearsBaseComposite;
-  final bool hasGroupFold;
-  final bool groupFoldExpanded;
-  final ValueChanged<LayerId>? onToggleGroupFold;
+  final GroupFoldFace groupFold;
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// The header graphs' verbs (I-89 ①) — the timeline's, as this rail
   /// hands them — and whether the row heads a graph and it stands open: the
@@ -3676,8 +3680,7 @@ class _StoryboardRailHead extends KeptPiece {
     onOpenCameraPath != null,
     attachArrowPlacement,
     wearsBaseComposite,
-    hasGroupFold,
-    groupFoldExpanded,
+    groupFold,
     onToggleGroupFold != null,
     laneGraphVerbs != null,
     headsGraph,
@@ -3738,11 +3741,10 @@ class _StoryboardRailHead extends KeptPiece {
       onOpenCameraPath: onOpenCameraPath,
       attachArrowPlacement: attachArrowPlacement,
       wearsBaseComposite: wearsBaseComposite,
-      hasGroupFold: hasGroupFold,
-      groupFoldExpanded: groupFoldExpanded,
+      groupFold: groupFold,
       onToggleGroupFold: toggleGroupFold == null
           ? null
-          : (_) => toggleGroupFold(rowId),
+          : (_, side) => toggleGroupFold(rowId, side),
       laneGraphVerbs: laneGraphVerbs,
       headsGraph: headsGraph,
       graphOpen: graphOpen,

@@ -59,8 +59,10 @@ void main() {
           onOpenLayerReference: onOpen,
           isReferenceSourceShort: isSourceShort,
           linkPartners: linkPartners,
-          hasGroupFold: folds,
-          onToggleGroupFold: folds ? (_) {} : null,
+          groupFold: folds
+              ? (folder: null, above: true, below: true)
+              : noGroupFold,
+          onToggleGroupFold: folds ? (_, _) {} : null,
         ),
       ),
     ),
@@ -121,7 +123,9 @@ void main() {
         folds: true,
       ),
     );
-    final twirl = tester.getRect(find.named('timeline-attach-twirl-ref'));
+    final twirl = tester.getRect(
+      find.named('timeline-attach-twirl-above-ref'),
+    );
     expect(
       twirl.right,
       closeTo(area().right, 0.01),

@@ -81,7 +81,7 @@ void main() {
     var told = 0;
     for (final set in <Listenable>[
       view.expandedLaneLayerIds,
-      view.collapsedAttachBaseIds,
+      view.attachFoldedRowIds,
       view.expandedLaneGroupKeys,
       view.laneGraphs,
     ]) {

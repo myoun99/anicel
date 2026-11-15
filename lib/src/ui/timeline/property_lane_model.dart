@@ -816,7 +816,8 @@ enum LayerRowHiddenBy {
   /// Its section is hidden (the toolbar's SE/CAMERA toggles).
   section,
 
-  /// Its attach group is twirled shut (UI-R20 #9).
+  /// Its base folded the side of its attach group it sits on (UI-R20 #9,
+  /// I-175).
   attachFold,
 
   /// The row filter refuses it (R2).
@@ -829,9 +830,9 @@ enum LayerRowHiddenBy {
 /// [layer]'s row: null when it is on screen, otherwise the FIRST of the
 /// rail's reasons that hides it, asked in [LayerRowHiddenBy]'s order.
 ///
-/// [folders] indexes the MODEL stack and [attachBaseId] is
-/// [attachGroupBaseOf] against it — the row builder needs that base again
-/// for the indent, so it is asked once, outside.
+/// [folders] indexes the MODEL stack. [attachFoldedRowIds] are the rows
+/// their base's fold takes off the screen, each on a side the base folded
+/// (`RailView.attachFoldedRowIds`, I-175).
 ///
 /// [standingLayerId] is the row the FILTER spares — a filter never hides
 /// the row you are editing ([TimelineRowFilter.allowsRow]). The folds and
@@ -842,17 +843,16 @@ enum LayerRowHiddenBy {
 LayerRowHiddenBy? layerRowHiddenBy(
   Layer layer, {
   required LayerFolderIndex folders,
-  required LayerId? attachBaseId,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
-  Set<LayerId> collapsedAttachBaseIds = const {},
+  Set<LayerId> attachFoldedRowIds = const {},
   LayerId? standingLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
     return LayerRowHiddenBy.section;
   }
-  if (attachBaseId != null && collapsedAttachBaseIds.contains(attachBaseId)) {
+  if (attachFoldedRowIds.contains(layer.id)) {
     return LayerRowHiddenBy.attachFold;
   }
   if (!rowFilter.allowsLayerRow(
@@ -884,7 +884,7 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
-  Set<LayerId> collapsedAttachBaseIds = const {},
+  Set<LayerId> attachFoldedRowIds = const {},
   LayerId? activeLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
 
@@ -925,10 +925,9 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (layerRowHiddenBy(
           layer,
           folders: folders,
-          attachBaseId: attachBaseId,
           hiddenSections: hiddenSections,
           rowFilter: rowFilter,
-          collapsedAttachBaseIds: collapsedAttachBaseIds,
+          attachFoldedRowIds: attachFoldedRowIds,
           standingLayerId: activeLayerId,
           fxEnabledOf: fxEnabledOf,
         ) !=

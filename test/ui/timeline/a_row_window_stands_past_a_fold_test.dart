@@ -102,7 +102,7 @@ void main() {
     (
       'an attach group',
       (tester) async {
-        await tester.tap(find.named('timeline-attach-twirl-${bg.value}'));
+        await tester.tap(find.named('timeline-attach-twirl-below-${bg.value}'));
         await tester.pumpAndSettle();
       },
     ),

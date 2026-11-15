@@ -60,9 +60,8 @@ void main() {
         onLayerMarkSelected: (_, _) {},
         hasLanes: true,
         onToggleLanes: onToggleLanes ?? (_) {},
-        hasGroupFold: true,
-        groupFoldExpanded: !value.collapsed,
-        onToggleGroupFold: onToggleFold ?? (_) {},
+        groupFold: (folder: !value.collapsed, above: null, below: null),
+        onToggleGroupFold: (id, _) => onToggleFold?.call(id),
         onToggleLayerFx: onToggleFx ?? (_) {},
         onLayerBlendModeSelected: onBlend,
 

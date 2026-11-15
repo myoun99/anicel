@@ -360,12 +360,12 @@ void main() {
     final made = drawingsOn(s, attached);
     await settle();
     s.selectLayer(base);
-    setRowFolds(s, base, collapsed: true);
+    setRowFolds(s, base, foldedAttaches: everySide);
 
     s.undo();
     expect(s.activeLayerId, attached, reason: '그 편집의 행에 섰다');
     expect(
-      s.railView.collapsedAttachBaseIds.value,
+      s.railView.attachFoldedRowIds.value,
       isEmpty,
       reason: '그러려고 그룹을 폈다',
     );

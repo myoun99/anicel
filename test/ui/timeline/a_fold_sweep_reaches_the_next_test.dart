@@ -29,6 +29,9 @@ void main() {
   const a = LayerId('a');
   const b = LayerId('b');
   const folder = LayerId('f');
+  // What each base's fold takes off the rail — its rider (I-175).
+  const a1 = LayerId('a1');
+  const b1 = LayerId('b1');
 
   Layer plain(String id, {LayerId? attachedTo, LayerId? folderId}) => Layer(
     id: LayerId(id),
@@ -119,7 +122,7 @@ void main() {
   }
 
   Set<LayerId> folded(EditorSessionManager session) =>
-      session.railView.collapsedAttachBaseIds.value;
+      session.railView.attachFoldedRowIds.value;
 
   bool folderShut(EditorSessionManager session) =>
       session.requireActiveCut.layers
@@ -141,11 +144,11 @@ void main() {
 
         await sweep(
           tester,
-          '$prefix-attach-twirl-$from',
-          '$prefix-attach-twirl-$to',
+          '$prefix-attach-twirl-above-$from',
+          '$prefix-attach-twirl-above-$to',
         );
 
-        expect(folded(session), {a, b});
+        expect(folded(session), {a1, b1});
       });
     }
   }
@@ -154,15 +157,15 @@ void main() {
     final session = await pump(tester, twoGroups());
     await sweep(
       tester,
-      'timeline-attach-twirl-a',
-      'timeline-attach-twirl-b',
+      'timeline-attach-twirl-above-a',
+      'timeline-attach-twirl-above-b',
     );
-    expect(folded(session), {a, b}, reason: '⛔전제');
+    expect(folded(session), {a1, b1}, reason: '⛔전제');
 
     await sweep(
       tester,
-      'timeline-attach-twirl-b',
-      'timeline-attach-twirl-a',
+      'timeline-attach-twirl-above-b',
+      'timeline-attach-twirl-above-a',
     );
 
     expect(folded(session), isEmpty);
@@ -200,18 +203,22 @@ void main() {
   testWidgets('🚨a row a fold lifted away from the cursor stays folded while '
       'the cursor stays', (tester) async {
     final session = await pump(tester, twoGroups());
-    final start = tester.getCenter(find.named('timeline-attach-twirl-a'));
-    final end = tester.getCenter(find.named('timeline-attach-twirl-b'));
-    final gesture = await press(tester, 'timeline-attach-twirl-a');
+    final start = tester.getCenter(
+      find.named('timeline-attach-twirl-above-a'),
+    );
+    final end = tester.getCenter(
+      find.named('timeline-attach-twirl-above-b'),
+    );
+    final gesture = await press(tester, 'timeline-attach-twirl-above-a');
     await moveTo(tester, gesture, start, end);
-    expect(folded(session), {a, b}, reason: '⛔전제');
+    expect(folded(session), {a1, b1}, reason: '⛔전제');
 
     // b's fold lifted a under the cursor: it stands on a now, and a row
     // asked where it stands would be let go and folded again each move.
     for (var nudge = 0; nudge < 6; nudge += 1) {
       await gesture.moveBy(Offset(0, nudge.isEven ? -1 : 1));
       await tester.pump(const Duration(milliseconds: 16));
-      expect(folded(session), {a, b}, reason: 'nudge $nudge');
+      expect(folded(session), {a1, b1}, reason: 'nudge $nudge');
     }
 
     await gesture.up();
@@ -221,27 +228,31 @@ void main() {
   testWidgets('back on the press, the row the sweep folded opens, and the '
       'press stays', (tester) async {
     final session = await pump(tester, twoGroups());
-    final start = tester.getCenter(find.named('timeline-attach-twirl-a'));
-    final end = tester.getCenter(find.named('timeline-attach-twirl-b'));
-    final gesture = await press(tester, 'timeline-attach-twirl-a');
+    final start = tester.getCenter(
+      find.named('timeline-attach-twirl-above-a'),
+    );
+    final end = tester.getCenter(
+      find.named('timeline-attach-twirl-above-b'),
+    );
+    final gesture = await press(tester, 'timeline-attach-twirl-above-a');
     await moveTo(tester, gesture, start, end);
-    expect(folded(session), {a, b}, reason: '⛔전제');
+    expect(folded(session), {a1, b1}, reason: '⛔전제');
 
     await moveTo(tester, gesture, end, start);
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(folded(session), {a});
+    expect(folded(session), {a1});
   });
 
   testWidgets('a fold sweep is one undo', (tester) async {
     final session = await pump(tester, twoGroups());
     await sweep(
       tester,
-      'timeline-attach-twirl-a',
-      'timeline-attach-twirl-b',
+      'timeline-attach-twirl-above-a',
+      'timeline-attach-twirl-above-b',
     );
-    expect(folded(session), {a, b}, reason: '⛔전제');
+    expect(folded(session), {a1, b1}, reason: '⛔전제');
 
     session.undo();
     await tester.pumpAndSettle();
@@ -252,8 +263,8 @@ void main() {
   testWidgets('⛔a tremble on the twirl leaves the row the fold slid under the '
       'cursor alone', (tester) async {
     final session = await pump(tester, aGroupOverAFolder());
-    final gesture = await press(tester, 'timeline-attach-twirl-b');
-    expect(folded(session), {b}, reason: '⛔전제');
+    final gesture = await press(tester, 'timeline-attach-twirl-above-b');
+    expect(folded(session), {b1}, reason: '⛔전제');
 
     await gesture.moveBy(const Offset(0, 1));
     await tester.pump(const Duration(milliseconds: 16));
@@ -269,8 +280,8 @@ void main() {
       'press alone', (tester) async {
     final session = await pump(tester, aGroupOverAFolder());
     final height = tester.getRect(find.named('timeline-layer-row-b')).height;
-    final gesture = await press(tester, 'timeline-attach-twirl-b');
-    expect(folded(session), {b}, reason: '⛔전제');
+    final gesture = await press(tester, 'timeline-attach-twirl-above-b');
+    expect(folded(session), {b1}, reason: '⛔전제');
 
     // One row up is where b stands now; the folder stands at the press.
     await gesture.moveBy(Offset(0, -height));
@@ -286,7 +297,7 @@ void main() {
   ) async {
     final session = await pump(tester, aGroupOverAFolder());
     final height = tester.getRect(find.named('timeline-layer-row-b')).height;
-    final gesture = await press(tester, 'timeline-attach-twirl-b');
+    final gesture = await press(tester, 'timeline-attach-twirl-above-b');
 
     await gesture.moveBy(Offset(0, height));
     await tester.pump(const Duration(milliseconds: 16));
@@ -313,11 +324,15 @@ void main() {
         plain('b1', attachedTo: b),
       ]),
     );
-    final start = tester.getCenter(find.named('timeline-attach-twirl-a'));
-    final gesture = await press(tester, 'timeline-attach-twirl-a');
-    final end = tester.getCenter(find.named('timeline-attach-twirl-b'));
+    final start = tester.getCenter(
+      find.named('timeline-attach-twirl-above-a'),
+    );
+    final gesture = await press(tester, 'timeline-attach-twirl-above-a');
+    final end = tester.getCenter(
+      find.named('timeline-attach-twirl-above-b'),
+    );
     await moveTo(tester, gesture, start, end);
-    expect(folded(session), {a, b}, reason: '⛔전제');
+    expect(folded(session), {a1, b1}, reason: '⛔전제');
 
     // Both folds lifted a, and f with it, up towards the cursor: a stretch
     // begun where a stood reaches past a now, down onto f.
@@ -333,14 +348,14 @@ void main() {
       'press', (tester) async {
     final session = await pump(tester, aGroupOverAFolder());
     final height = tester.getRect(find.named('timeline-layer-row-b')).height;
-    final gesture = await press(tester, 'timeline-attach-twirl-b');
+    final gesture = await press(tester, 'timeline-attach-twirl-above-b');
 
     await gesture.moveBy(Offset(0, height));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(folded(session), {b});
+    expect(folded(session), {b1});
     expect(folderShut(session), isTrue);
   });
 }

@@ -911,11 +911,7 @@ AttachedPlacement? attachArrowPlacement(Layer layer, List<Layer> layers) {
   if (_speakingOrganizerAbove(layer, layers)) {
     return null;
   }
-  final folderPlacement = _organizerFolderPlacement(layer, layers);
-  if (folderPlacement != null) {
-    return folderPlacement;
-  }
-  return layer.attachedToLayerId == null ? null : layer.attachedPlacement;
+  return attachGroupSideOf(layer, layers);
 }
 
 /// Whether an attach FOLDER above [layer] draws the group's arrow, in which
@@ -947,6 +943,106 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
     return null;
   }
   return _stackPlacement(layers, subject: layer.id, anchor: baseId);
+}
+
+/// The side of its base [layer] sits on in its attach group — what its
+/// ARROW says where it draws one ([attachArrowPlacement] is this, less the
+/// rows a folder above speaks for), and the half of the base's fold that
+/// takes it off the screen (I-175) — or null outside every attach group.
+/// An organizer folder's by the stack, against its base; an attach row's
+/// its own [Layer.attachedPlacement], as its seat counts (`_seatsOf`).
+///
+/// [layers] MUST be the model stack, bottom → top ([attachArrowPlacement]
+/// says why).
+AttachedPlacement? attachGroupSideOf(Layer layer, List<Layer> layers) =>
+    _organizerFolderPlacement(layer, layers) ??
+    (layer.attachedToLayerId == null ? null : layer.attachedPlacement);
+
+/// Every attach group of [stack] — a cut's layers, bottom → top — by its
+/// base, each row on its side ([attachGroupSideOf]): what a half of the
+/// base's fold takes off the screen, and whose eyes the half's colour asks
+/// (I-175). ONE walk for one base ([attachGroupRowsOn]) and for all
+/// ([attachRowsFoldedAway], the rail's eyes).
+Map<LayerId, Map<AttachedPlacement, List<Layer>>> attachGroupRowsBySide(
+  List<Layer> stack,
+) {
+  final groups = <LayerId, Map<AttachedPlacement, List<Layer>>>{};
+  for (final layer in stack) {
+    if (attachGroupBaseOf(layer, stack) case final baseId?
+        when baseId != layer.id) {
+      if (attachGroupSideOf(layer, stack) case final side?) {
+        ((groups[baseId] ??= {})[side] ??= []).add(layer);
+      }
+    }
+  }
+  return groups;
+}
+
+/// The rows of [baseId]'s attach group on [side] ([attachGroupRowsBySide]).
+/// [stack] is its cut's, bottom → top.
+List<Layer> attachGroupRowsOn(
+  LayerId baseId,
+  List<Layer> stack,
+  AttachedPlacement side,
+) => attachGroupRowsBySide(stack)[baseId]?[side] ?? const [];
+
+/// The sides [baseId]'s attach group has rows on ([attachGroupRowsOn]) —
+/// the halves its fold button shows (I-175; a half with none is an empty
+/// place). [stack] is its cut's, bottom → top.
+Set<AttachedPlacement> attachGroupSidesOf(LayerId baseId, List<Layer> stack) =>
+    {
+      for (final side in AttachedPlacement.values)
+        if (attachGroupRowsOn(baseId, stack, side).isNotEmpty) side,
+    };
+
+/// The sides of [baseId]'s attach group a press reaches: [side], or with
+/// none every side the group has rows on (🗣️I-175-Q5 (가) 「양쪽 다 —
+/// 지금처럼」: the folder button folds a selected base's both) — of the
+/// sides it has rows on.
+Set<AttachedPlacement> attachSidesReached(
+  LayerId baseId,
+  List<Layer> stack, {
+  AttachedPlacement? side,
+}) {
+  final sides = attachGroupSidesOf(baseId, stack);
+  return side == null ? sides : sides.intersection({side});
+}
+
+/// Whether [layer]'s fold a press reaches is open: a folder's own
+/// ([Layer.collapsed]) whichever half was pressed (🗣️I-175-Q3 (가) 「폴더도
+/// 접힌다」); a base's attach rows on the sides [attachSidesReached] names.
+/// Null where [layer] folds nothing there. [stack] is its cut's, bottom →
+/// top.
+bool? groupFoldOpen(
+  Layer layer,
+  List<Layer> stack, {
+  AttachedPlacement? side,
+}) {
+  if (layer.kind.groupsLayers) {
+    return !layer.collapsed;
+  }
+  final reached = attachSidesReached(layer.id, stack, side: side);
+  if (reached.isEmpty) {
+    return null;
+  }
+  return !layer.foldedAttaches.containsAll(reached);
+}
+
+/// The rows of [stack] — a cut's layers, bottom → top — that their base's
+/// fold takes off the screen: each on a side the base folded
+/// (`Layer.foldedAttaches`, I-175), on the side [attachGroupSideOf] puts it.
+Set<LayerId> attachRowsFoldedAway(List<Layer> stack) {
+  if (!stack.any((layer) => layer.foldedAttaches.isNotEmpty)) {
+    return const {};
+  }
+  final byId = {for (final layer in stack) layer.id: layer};
+  return {
+    for (final MapEntry(key: baseId, value: sides)
+        in attachGroupRowsBySide(stack).entries)
+      for (final MapEntry(key: side, value: rows) in sides.entries)
+        if (byId[baseId]?.foldedAttaches.contains(side) ?? false)
+          for (final row in rows) row.id,
+  };
 }
 
 /// Which side of [anchor] [subject] sits on in the model stack, or null

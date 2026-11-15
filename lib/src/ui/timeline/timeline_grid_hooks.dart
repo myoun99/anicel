@@ -119,7 +119,7 @@ class TimelineGridHooks {
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
-    this.onToggleLayerCollapsed,
+    this.onToggleGroupFold,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
@@ -158,8 +158,7 @@ class TimelineGridHooks {
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.legend = const TimelineGridLegend(),
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    this.attachFoldedRowIds = const {},
     this.dragPreview,
     this.opacityDragPreview,
     this.spillInLeadFrames = const {},
@@ -428,16 +427,18 @@ class TimelineGridHooks {
   /// other timelines, when the layer is a row they share. Null shows none.
   final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
-  /// The row twirl that folds a FOLDER's members (the attach fold has its
-  /// own hook because it is session state, not layer state).
+  /// The GROUP-FOLD twirl's press — a folder folding its members ([side]
+  /// null), a base folding its attach rows on [side] (I-175). One verb:
+  /// the host's was one already behind the two hooks this was (I-32 — a
+  /// folder's and a base's both pressed `toggleGroupFold`).
   ///
-  /// (x-sheet) The GROUP-FOLD twirl's two commits — a folder folding its members, an
-  /// attach base folding its rows. R5 #2: the sheet already HID what those
-  /// sets say (it reads [collapsedAttachBaseIds] and `subtreeCollapsed`
-  /// like the rail does), but it carried no control to say it with, so a
-  /// folder could only be folded from the other panel. One skeleton, one
-  /// row vocabulary — a column that shows a fold has to offer it.
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
+  /// (x-sheet) R5 #2: the sheet already HID what the folds say (it reads
+  /// [attachFoldedRowIds] and `subtreeCollapsed` like the rail does), but
+  /// it carried no control to say it with, so a folder could only be
+  /// folded from the other panel. One skeleton, one row vocabulary — a
+  /// column that shows a fold has to offer it.
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -558,10 +559,12 @@ class TimelineGridHooks {
   /// (`isLayerClipping`).
   final bool Function(LayerId layerId)? layerClipsOf;
 
-  /// A LIVE read of a row's group fold — a folder's, or a base's attach
-  /// group — for the same reason as [laneOpenOf]: [collapsedAttachBaseIds]
-  /// and the row's layer reach here a build late (`isGroupFoldOpen`).
-  final bool Function(LayerId layerId)? groupFoldOpenOf;
+  /// A LIVE read of a row's group fold as a press on [side] reaches it — a
+  /// folder's, or a base's attach rows — for the same reason as
+  /// [laneOpenOf]: the row's layer reaches here a build late
+  /// (`isGroupFoldOpen`).
+  final bool Function(LayerId layerId, AttachedPlacement? side)?
+  groupFoldOpenOf;
 
   /// A LIVE read of a lane GROUP's twirl, named by the group's header, for
   /// the same reason as [laneOpenOf] (`isLaneGroupOpen`).
@@ -614,16 +617,10 @@ class TimelineGridHooks {
   /// ([TimelineGridLegend], F-408 ②).
   final TimelineGridLegend legend;
 
-  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// rows contribute no display rows; the base row's chevron reflects it.
-  ///
-  /// (x-sheet) Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// columns drop — the shared view state; the fold toggle lives on the
-  /// horizontal rail.
-  final Set<LayerId> collapsedAttachBaseIds;
-
-  /// The base-row chevron's toggle; null hides the twirl UI.
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rows a base's attach fold takes off the screen (UI-R20 #9; by
+  /// side since I-175): they contribute no display rows — and, on the
+  /// sheet, no columns.
+  final Set<LayerId> attachFoldedRowIds;
 
   /// The session's edit-drag preview channel: a comma-drag step rebuilds
   /// only the dragged layer's row (its gate) and the cursor overlay —
@@ -719,7 +716,7 @@ class TimelineGridHooks {
         lanesForLayer: lanesForLayer,
         hiddenSections: hiddenSections,
         rowFilter: rowFilter,
-        collapsedAttachBaseIds: collapsedAttachBaseIds,
+        attachFoldedRowIds: attachFoldedRowIds,
         activeLayerId: activeLayerId,
         fxEnabledOf: isLayerFxEnabled,
       ),

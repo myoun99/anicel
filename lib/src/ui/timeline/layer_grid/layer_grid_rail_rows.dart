@@ -220,9 +220,7 @@ class _LayerGridRailRows {
       timelineGroupFoldFor(
         row: row,
         layers: _state.widget.layers,
-        collapsedAttachBaseIds: _state.widget.hooks.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: _state.widget.hooks.onToggleLayerCollapsed,
-        onToggleAttachGroup: _state.widget.hooks.onToggleAttachGroup,
+        onToggle: _state.widget.hooks.onToggleGroupFold,
       );
 
   /// The rail column: every layer row is its controls, inside the window

@@ -67,7 +67,7 @@ class _WorkspaceFlipHud {
       ),
       hiddenSections: session.railView.hiddenSections.value,
       rowFilter: session.railView.rowFilter.value,
-      collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
+      attachFoldedRowIds: session.railView.attachFoldedRowIds.value,
       activeLayerId: session.activeLayerId,
       fxEnabledOf: session.effectsAndFx.isLayerFxEnabled,
       stack: session.layers,

@@ -15,7 +15,8 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneRow;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowSubject, TimelineRowDragHooks;
-import 'package:anicel/src/ui/timeline/rail_eyes.dart' show RailEyeBuilder;
+import 'package:anicel/src/ui/timeline/rail_eyes.dart'
+    show RailEyeBuilder, RailSideBuilder;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -243,11 +244,12 @@ void main() {
         ),
         'the folder\'s twirl': (
           (tester) => tapNamed(tester, '$rail-folder-twirl-${_two.folder}'),
-          'fold ${_two.folder}',
+          'fold ${_two.folder} null',
         ),
-        'the attach base\'s twirl': (
-          (tester) => tapNamed(tester, '$rail-attach-twirl-${_two.base}'),
-          'attach ${_two.base}',
+        'the attach base\'s upper half': (
+          (tester) =>
+              tapNamed(tester, '$rail-attach-twirl-above-${_two.base}'),
+          'fold ${_two.base} above',
         ),
         'the lane twirl': (
           (tester) => tapNamed(tester, '$rail-lane-toggle-${_two.draw}'),
@@ -434,11 +436,17 @@ void main() {
             // Its plate asks which layer the row stands for now, as its eye
             // does (I-22-rest); a plate is one box, so nothing builds under
             // it — and the ground it says to its chips (Q12) tells none of
-            // them while it holds.
+            // them while it holds. A base's fold halves ask the rows on
+            // their side as its eye asks its own (I-175), kept as it is.
             expect(
               {
                 for (final type in types) '$type',
-              }.difference({'$RailEyeBuilder', '_StoodPlate', '$FaceGround'}),
+              }.difference({
+                '$RailEyeBuilder',
+                '$RailSideBuilder',
+                '_StoodPlate',
+                '$FaceGround',
+              }),
               isEmpty,
               reason: '$row shows what the row it was built for showed',
             );
@@ -643,8 +651,8 @@ Widget _panel(
           transformBox: (_) {},
           snap: (_) {},
         ),
-        onToggleLayerCollapsed: (id) => hear('fold', id),
-        onToggleAttachGroup: (id) => hear('attach', id),
+        onToggleGroupFold: (id, side) =>
+            heard.add('fold ${id.value} ${side?.name}'),
         // The drawing carries a lane in both cuts, so its row wears the
         // lane twirl and still comes back whole.
         lanesForLayer: (layer) => layer.name == 'Draw' ? _drawLanes : const [],

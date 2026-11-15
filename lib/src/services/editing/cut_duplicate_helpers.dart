@@ -214,6 +214,7 @@ Layer duplicateLayerAsIndependentCopy({
     ),
     isVisible: source.isVisible,
     collapsed: source.collapsed,
+    foldedAttaches: source.foldedAttaches,
     lanesExpanded: source.lanesExpanded,
     expandedLaneGroups: source.expandedLaneGroups,
     muted: source.muted,

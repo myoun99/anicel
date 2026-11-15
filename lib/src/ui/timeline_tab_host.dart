@@ -726,8 +726,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             layerSyncPartnersOf: _session.layerVerbs.syncPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
-            // already threaded above. Only the members' twirl lands here.
-            onToggleLayerCollapsed: _rowPresses.toggleGroupFold,
+            // already threaded above. Only the members' twirl lands here —
+            // the group fold's one verb, a base's halves told their side.
+            onToggleGroupFold: _rowPresses.toggleGroupFold,
             onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
@@ -918,8 +919,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleSection: widget.rail.toggleSection,
             rowFilter: widget.rail.rowFilter,
             onSetRowFilter: widget.rail.setRowFilter,
-            collapsedAttachBaseIds: widget.rail.collapsedAttachBaseIds,
-            onToggleAttachGroup: widget.rail.toggleAttachGroup,
+            attachFoldedRowIds: widget.rail.attachFoldedRowIds,
             visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
             // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
             // channel live; at rest the bar shows the last committed value.

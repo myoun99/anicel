@@ -1,4 +1,6 @@
 import '../../services/editing/default_layer_helpers.dart';
+import '../../models/attached_layer_resolve.dart' show groupFoldOpen;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -8,7 +10,11 @@ import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_clip_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart'
-    show layerAnywhereOrNull, requireLayerAnywhere, rowTwirlsOf;
+    show
+        layerAnywhereOrNull,
+        requireLayerAnywhere,
+        rowTwirlsOf,
+        stackWritingRow;
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
 import 'row_sweep.dart';
@@ -150,14 +156,24 @@ class LayerSwitchVerbs {
           ?.lanesExpanded ??
       false;
 
-  /// Whether [layerId]'s group fold is open right now — a folder's members
-  /// or the attach rows riding a base, the row's own `collapsed` (F-360);
-  /// open where no row is. A LIVE read, as [isLayerLanesOpen] is: the
-  /// column sweep spreads what its press just set (F-475).
-  bool isGroupFoldOpen(LayerId layerId) =>
-      !(layerAnywhereOrNull(_project.repository.requireProject(), layerId)
-              ?.collapsed ??
-          false);
+  /// Whether [layerId]'s fold a press on [side] reaches is open right now
+  /// ([groupFoldOpen]: a folder's members; a base's attach rows on [side],
+  /// or on every side it has with none — I-175) — the row's own (F-360);
+  /// open where it folds nothing. A LIVE read, as [isLayerLanesOpen] is:
+  /// the column sweep spreads what its press just set (F-475).
+  bool isGroupFoldOpen(LayerId layerId, AttachedPlacement? side) {
+    final project = _project.repository.requireProject();
+    final layer = layerAnywhereOrNull(project, layerId);
+    final stack = stackWritingRow(
+      project,
+      layerId,
+      standing: _project.activeCutId,
+    );
+    if (layer == null || stack == null) {
+      return true;
+    }
+    return groupFoldOpen(layer, stack, side: side) ?? true;
+  }
 
   /// Whether the lane group [headerLaneId] heads is twirled open inside
   /// [layerId]'s lanes right now — the row's own (F-360), a V row's its

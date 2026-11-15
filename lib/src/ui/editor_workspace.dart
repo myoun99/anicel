@@ -1697,7 +1697,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       direction: direction,
       hiddenSections: session.railView.hiddenSections.value,
       rowFilter: session.railView.rowFilter.value,
-      collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
+      attachFoldedRowIds: session.railView.attachFoldedRowIds.value,
       // R10 #19: property rows are stops now, so the walk needs the same
       // lane list the grids draw.
       expandedLayerIds: session.railView.expandedLaneLayerIds.value,

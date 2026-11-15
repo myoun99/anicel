@@ -56,8 +56,7 @@ typedef LayerControlsRowFacts = ({
   bool hasLanes,
   bool lanesExpanded,
   int depth,
-  bool hasGroupFold,
-  bool groupFoldExpanded,
+  GroupFoldFace groupFold,
   LayerFxState fxState,
   bool onionSkinEnabled,
   // The rows the pictures are shared with — a fresh list every build, so
@@ -132,8 +131,7 @@ LayerControlsRowFacts layerControlsRowFacts(
     hasLanes: hasLanes,
     lanesExpanded: hooks.expandedLaneLayerIds.contains(id),
     depth: row.depth,
-    hasGroupFold: fold.has,
-    groupFoldExpanded: fold.expanded,
+    groupFold: fold.face,
     fxState: hooks.layerFxStateOf?.call(id) ?? LayerFxState.on,
     onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(id) ?? false,
     linkPartners: ByList(hooks.layerLinkPartnersOf?.call(id) ?? const []),
@@ -197,9 +195,8 @@ Widget layerControlsRowFrom(
     onToggleLanes: hooks.onToggleLayerLanes,
     depth: facts.depth,
     // One fold twirl: a folder folds its members, an attach base folds
-    // its attach rows — the one answer both grids ask for.
-    hasGroupFold: facts.hasGroupFold,
-    groupFoldExpanded: facts.groupFoldExpanded,
+    // its attach rows by side — the one answer both grids ask for.
+    groupFold: facts.groupFold,
     onToggleGroupFold: fold.onToggle,
     opacityDragPreview: facts.opacityDragPreview.value,
     linkPartners: facts.linkPartners.value,

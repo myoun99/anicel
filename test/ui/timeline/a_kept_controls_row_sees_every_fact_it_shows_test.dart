@@ -14,7 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
-    show TimelineGroupFold;
+    show TimelineGroupFold, noGroupFold;
 
 /// 🚨F-244: A KEPT CONTROLS ROW SEES EVERY FACT IT SHOWS.
 ///
@@ -71,7 +71,11 @@ void main() {
     opacityDragPreview,
     TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
     int depth = 0,
-    TimelineGroupFold fold = (has: false, expanded: false, onToggle: null),
+    TimelineGroupFold fold = (
+      face: noGroupFold,
+      openOn: _openOnNothing,
+      onToggle: null,
+    ),
     bool hasLanes = false,
     double? mainExtent,
     void Function(LayerId)? onSelectLayer,
@@ -119,8 +123,20 @@ void main() {
           'the memo at every build',
     );
     expect(
-      facts(fold: (has: true, expanded: false, onToggle: (_) {})),
-      facts(fold: (has: true, expanded: false, onToggle: (_) {})),
+      facts(
+        fold: (
+          face: (folder: false, above: null, below: null),
+          openOn: (_) => false,
+          onToggle: (_, _) {},
+        ),
+      ),
+      facts(
+        fold: (
+          face: (folder: false, above: null, below: null),
+          openOn: (_) => false,
+          onToggle: (_, _) {},
+        ),
+      ),
     );
     expect(
       facts(opacityDragPreview: previewA),
@@ -163,10 +179,27 @@ void main() {
       ),
     ),
     'depth': () => facts(depth: 1),
-    'hasGroupFold': () =>
-        facts(fold: (has: true, expanded: false, onToggle: null)),
-    'groupFoldExpanded': () =>
-        facts(fold: (has: false, expanded: true, onToggle: null)),
+    'groupFold (a folder\'s)': () => facts(
+      fold: (
+        face: (folder: false, above: null, below: null),
+        openOn: _openOnNothing,
+        onToggle: null,
+      ),
+    ),
+    'groupFold (a half, I-175)': () => facts(
+      fold: (
+        face: (folder: null, above: true, below: null),
+        openOn: _openOnNothing,
+        onToggle: null,
+      ),
+    ),
+    'groupFold (a half shut)': () => facts(
+      fold: (
+        face: (folder: null, above: false, below: null),
+        openOn: _openOnNothing,
+        onToggle: null,
+      ),
+    ),
     'hasLanes': () => facts(hasLanes: true),
     'mainExtent': () => facts(mainExtent: 180),
   };
@@ -198,3 +231,6 @@ void main() {
     );
   });
 }
+
+/// A fold that folds nothing on any side.
+bool? _openOnNothing(AttachedPlacement? side) => null;

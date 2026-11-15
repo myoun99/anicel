@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../../models/attached_placement.dart';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/frame.dart';
@@ -49,9 +50,11 @@ class LayerCopyPayload {
     this.onTimesheet = true,
     this.clipsToBelow = false,
     this.collapsed = false,
+    Set<AttachedPlacement> foldedAttaches = const {},
     this.lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
   }) : frames = List.unmodifiable(frames),
+       foldedAttaches = Set.unmodifiable(foldedAttaches),
        expandedLaneGroups = Set.unmodifiable(expandedLaneGroups),
        timeline = UnmodifiableMapView(
          SplayTreeMap<int, TimelineExposure>.of(timeline),
@@ -120,6 +123,7 @@ class LayerCopyPayload {
   /// ↩️A pasted row came out open: the duplicated cut's rows kept all three
   /// (`duplicateLayerAsIndependentCopy`), and the payload carried none.
   final bool collapsed;
+  final Set<AttachedPlacement> foldedAttaches;
   final bool lanesExpanded;
   final Set<String> expandedLaneGroups;
 
@@ -149,6 +153,7 @@ class LayerCopyPayload {
     onTimesheet: onTimesheet,
     clipsToBelow: clipsToBelow,
     collapsed: collapsed,
+    foldedAttaches: foldedAttaches,
     lanesExpanded: lanesExpanded,
     expandedLaneGroups: expandedLaneGroups,
   );
@@ -174,6 +179,7 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     onTimesheet: source.onTimesheet,
     clipsToBelow: source.clipsToBelow,
     collapsed: source.collapsed,
+    foldedAttaches: source.foldedAttaches,
     lanesExpanded: source.lanesExpanded,
     expandedLaneGroups: source.expandedLaneGroups,
   );

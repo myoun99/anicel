@@ -34,8 +34,9 @@ import '../../helpers/a_folder_made_by_hand.dart';
 /// 제대로 기록되도록」.
 ///
 /// How a row is folded and twirled is the ROW'S, as a folder's fold always
-/// was: `Layer.collapsed` folds a folder's members and a base's attach
-/// group alike, `Layer.lanesExpanded` is its property-lane twirl and
+/// was: `Layer.collapsed` folds a folder's members, `Layer.foldedAttaches`
+/// a base's attach rows by side (I-175), `Layer.lanesExpanded` is its
+/// property-lane twirl and
 /// `Layer.expandedLaneGroups` the lane groups open inside it. The file
 /// keeps them, one command writes them on every row of the row's head, and
 /// the rail reads them off the document (`RailView.readFolds`).
@@ -78,10 +79,13 @@ void main() {
       final folder = s.requireActiveCut.layers.folderLayers.single.id;
       s.selectLayer(base);
       s.folders.addAttachedLayer(AttachedPlacement.below);
+      final rider = s.layers
+          .firstWhere((layer) => layer.attachedToLayerId == base)
+          .id;
 
       SessionRowButtonPresses(s)
-        ..toggleGroupFold(folder)
-        ..toggleGroupFold(base)
+        ..toggleGroupFold(folder, null)
+        ..toggleGroupFold(base, AttachedPlacement.below)
         ..toggleLanes(plain)
         ..toggleLaneGroup(laneGroupKey(plain, transform))
         ..toggleLanes(camera);
@@ -94,10 +98,15 @@ void main() {
 
       for (final (name, session) in [('saved', s), ('opened', opened)]) {
         expect(
-          session.railView.collapsedAttachBaseIds.value,
-          {base},
+          session.railView.attachFoldedRowIds.value,
+          {rider},
           reason: '$name: 「어태치레이어 분명 접은채로 저장했는데 다시열면 '
               '펼쳐져있음」',
+        );
+        expect(
+          rowOf(session, base).foldedAttaches,
+          {AttachedPlacement.below},
+          reason: '$name: the side it folded, and no other (I-175)',
         );
         expect(session.railView.expandedLaneLayerIds.value, {
           plain,
@@ -129,6 +138,10 @@ void main() {
 
       for (final (name, folded) in [
         ('folded', row.copyWith(collapsed: true)),
+        (
+          'folded aside',
+          row.copyWith(foldedAttaches: {AttachedPlacement.above}),
+        ),
         ('twirled', row.copyWith(lanesExpanded: true)),
         ('a group open', row.copyWith(expandedLaneGroups: {transform})),
       ]) {
@@ -198,7 +211,7 @@ void main() {
         String id, {
         required String name,
         String? ridesOn,
-        bool collapsed = false,
+        Set<AttachedPlacement> folded = const {},
         bool lanesExpanded = false,
         Set<String> groups = const {},
       }) => Layer(
@@ -208,7 +221,7 @@ void main() {
         timeline: const {},
         attachedToLayerId: ridesOn == null ? null : LayerId(ridesOn),
         attachedPlacement: AttachedPlacement.below,
-        collapsed: collapsed,
+        foldedAttaches: folded,
         lanesExpanded: lanesExpanded,
         expandedLaneGroups: groups,
       );
@@ -231,7 +244,11 @@ void main() {
               cuts: [
                 cut('o', [
                   drawing('o-b-1', name: 'B-1', ridesOn: 'o-b'),
-                  drawing('o-b', name: 'B', collapsed: true),
+                  drawing(
+                    'o-b',
+                    name: 'B',
+                    folded: {AttachedPlacement.below},
+                  ),
                   drawing(
                     'o-p',
                     name: 'P',
@@ -261,7 +278,9 @@ void main() {
         isTrue,
         reason: '⛔전제: the rows paired by name',
       );
-      expect(rowOf(s, const LayerId('t-b')).collapsed, isTrue);
+      expect(rowOf(s, const LayerId('t-b')).foldedAttaches, {
+        AttachedPlacement.below,
+      });
       expect(rowOf(s, const LayerId('t-p')).lanesExpanded, isTrue);
       expect(rowOf(s, const LayerId('t-p')).expandedLaneGroups, {transform});
     });
@@ -280,7 +299,7 @@ void main() {
       attachedToLayerId: ridesOn == null ? null : LayerId(ridesOn),
       attachedPlacement: AttachedPlacement.below,
       // The file folded the head: every conte of the track.
-      collapsed: ridesOn == null,
+      foldedAttaches: {if (ridesOn == null) AttachedPlacement.below},
       frames: [
         Frame(id: FrameId('$id-cel'), duration: 1, strokes: const []),
       ],
@@ -314,8 +333,8 @@ void main() {
     );
     const heads = [LayerId('a-conte'), LayerId('b-conte')];
     expect(
-      s.railView.collapsedAttachBaseIds.value,
-      heads.toSet(),
+      s.railView.attachFoldedRowIds.value,
+      {const LayerId('a-under'), const LayerId('b-under')},
       reason: '⛔전제: the file folded the head',
     );
 
@@ -324,10 +343,10 @@ void main() {
     );
 
     expect(s.activeLayerId, const LayerId('a-under'));
-    expect([for (final head in heads) rowOf(s, head).collapsed], [
-      false,
-      false,
+    expect([for (final head in heads) rowOf(s, head).foldedAttaches], [
+      isEmpty,
+      isEmpty,
     ], reason: 'one head: open in cut a, open in cut b');
-    expect(s.railView.collapsedAttachBaseIds.value, isEmpty);
+    expect(s.railView.attachFoldedRowIds.value, isEmpty);
   });
 }

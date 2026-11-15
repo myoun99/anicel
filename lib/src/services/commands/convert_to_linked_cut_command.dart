@@ -326,6 +326,7 @@ class ConvertToLinkedCutCommand implements Command {
     // rail's view made the twirls agree after a command
     // (`RailView.followLinks`) until F-360 put them on the rows.
     collapsed: origin.collapsed,
+    foldedAttaches: origin.foldedAttaches,
     lanesExpanded: origin.lanesExpanded,
     expandedLaneGroups: origin.expandedLaneGroups,
   );

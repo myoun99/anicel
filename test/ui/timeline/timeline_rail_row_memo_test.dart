@@ -58,6 +58,12 @@ void main() {
             : LayerBlendMode.normal,
       ),
       'collapsed': (layer) => layer.copyWith(collapsed: !layer.collapsed),
+      // I-175: a base's fold, by its sides.
+      'foldedAttaches': (layer) => layer.copyWith(
+        foldedAttaches: layer.foldedAttaches.isEmpty
+            ? {AttachedPlacement.below}
+            : const {},
+      ),
       'clipsToBelow': (layer) =>
           layer.copyWith(clipsToBelow: !layer.clipsToBelow),
       'an attach': (layer) =>

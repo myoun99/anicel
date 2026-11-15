@@ -227,6 +227,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     clipsToBelow: payload.clipsToBelow,
     // It folds and twirls as the row it came from (F-579).
     collapsed: payload.collapsed,
+    foldedAttaches: payload.foldedAttaches,
     lanesExpanded: payload.lanesExpanded,
     expandedLaneGroups: payload.expandedLaneGroups,
   );

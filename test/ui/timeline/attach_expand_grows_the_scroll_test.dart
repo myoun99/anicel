@@ -46,6 +46,12 @@ void main() {
     layer('A'),
   ];
 
+  /// What folding B takes off the rail — its riders (I-175: the fold says
+  /// the rows it hides, not the base).
+  final bRiders = {
+    for (final id in const ['B+1', 'B+2', 'B+3']) LayerId(id),
+  };
+
   Widget grid({required Set<LayerId> collapsed}) => MaterialApp(
     home: Scaffold(
       body: SizedBox(
@@ -64,8 +70,8 @@ onToggleLayerVisibility: (_) {},
 onLayerOpacityChanged: (_, _) {},
 onToggleLayerTimesheet: (_) {},
 onLayerMarkSelected: (_, _) {},
-collapsedAttachBaseIds: collapsed,
-onToggleAttachGroup: (_) {},
+attachFoldedRowIds: collapsed,
+onToggleGroupFold: (_, _) {},
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
             layers.firstWhere((l) => l.id == layerId),
             layers,
@@ -124,7 +130,7 @@ layers: layers,
   }
 
   testWidgets('접었다 펼치면 스크롤 범위가 어태치 세 행만큼 자란다', (tester) async {
-    await tester.pumpWidget(grid(collapsed: {const LayerId('B')}));
+    await tester.pumpWidget(grid(collapsed: bRiders));
     await tester.pumpAndSettle();
     final folded = verticalExtentOf(tester);
     final foldedRows = (await rowsAcrossTheScroll(tester)).length;
@@ -156,7 +162,7 @@ layers: layers,
     tester,
   ) async {
     // 접힌 상태에서 **바닥까지** 내린다 — 유저가 있던 자리다.
-    await tester.pumpWidget(grid(collapsed: {const LayerId('B')}));
+    await tester.pumpWidget(grid(collapsed: bRiders));
     await tester.pumpAndSettle();
     final viewport = find.byKey(
       const ValueKey<String>('timeline-vertical-scroll-viewport'),
@@ -196,7 +202,7 @@ layers: layers,
     // ⚠️앞의 두 테스트는 펼친 상태를 **새 위젯으로** 펌프했다. 그러면 스크롤
     // 상태가 새로 서고, 유저가 겪은 「바닥에 있던 채로 펼쳤다」가 아니게 된다.
     // 여기서는 twirl 을 눌러 **살아 있는 위젯**을 바꾼다.
-    var collapsed = {const LayerId('B')};
+    var collapsed = bRiders;
     await tester.pumpWidget(
       StatefulBuilder(
         builder: (context, setState) => MaterialApp(
@@ -216,9 +222,10 @@ onToggleLayerVisibility: (_) {},
 onLayerOpacityChanged: (_, _) {},
 onToggleLayerTimesheet: (_) {},
 onLayerMarkSelected: (_, _) {},
-collapsedAttachBaseIds: collapsed,
-onToggleAttachGroup: (id) =>
-                    setState(() => collapsed = collapsed.isEmpty ? {id} : {}),
+attachFoldedRowIds: collapsed,
+onToggleGroupFold: (_, _) => setState(
+                  () => collapsed = collapsed.isEmpty ? bRiders : {},
+                ),
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
                   layers.firstWhere((l) => l.id == layerId),
                   layers,
@@ -248,7 +255,7 @@ layers: layers,
     );
 
     await tester.tap(
-      find.named('timeline-attach-twirl-B'),
+      find.named('timeline-attach-twirl-above-B'),
     );
     await tester.pumpAndSettle();
 

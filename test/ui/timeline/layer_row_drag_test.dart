@@ -1001,8 +1001,8 @@ void main() {
       'the inside of a group nobody can see', (tester) async {
     await _pump(tester, project: _facingGroupsProject());
     final session = _sessionOf(tester);
-    setRowFolds(session, const LayerId('b1'), collapsed: true);
-    setRowFolds(session, const LayerId('b2'), collapsed: true);
+    setRowFolds(session, const LayerId('b1'), foldedAttaches: everySide);
+    setRowFolds(session, const LayerId('b2'), foldedAttaches: everySide);
     await tester.pumpAndSettle();
     expect(_railRow('b2down'), findsNothing, reason: '⛔전제: folded');
     expect(_railRow('b1up'), findsNothing, reason: '⛔전제: folded');

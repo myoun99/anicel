@@ -2,6 +2,7 @@ import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
 import '../core/frozen_collections.dart';
 import 'attached_mode.dart';
+import 'attached_placement.dart';
 import 'conte_key.dart';
 import 'fx_basis.dart';
 import 'layer.dart';
@@ -195,7 +196,8 @@ final class ConteEntry {
 /// 블렌드 · 불투명도 · 눈 · 어태치 구성 · fx 구성 — 트랙의 모든 컷이 하나」,
 /// with the fold and the twirls its rail turns (「어태치 접기펼치기버튼등
 /// 동일하게 할수있는거 다 넣는거 잊지말고」) — the row's own since F-360: its
-/// group's fold, its lanes' twirl and the lane groups open in them. The fx
+/// group's fold (a folder's [collapsed], a base's folded sides since I-175),
+/// its lanes' twirl and the lane groups open in them. The fx
 /// are worn as a SHAPE — which effects, in what order, each on or off
 /// ([effectChainWithSharedShape]); their numbers stay each row's own
 /// (「칸 — 칸의 자리와 길이, fx 의 값과 키 — 컷마다」). And whether the row
@@ -212,6 +214,7 @@ final class ConteHead {
     this.transformBasis = FxBasis.frame,
     this.effects = const [],
     this.collapsed = false,
+    this.foldedAttaches = const {},
     this.lanesExpanded = false,
     this.expandedLaneGroups = const {},
   });
@@ -228,6 +231,7 @@ final class ConteHead {
     transformBasis: layer.transformBasis,
     effects: layer.effects,
     collapsed: layer.collapsed,
+    foldedAttaches: layer.foldedAttaches,
     lanesExpanded: layer.lanesExpanded,
     expandedLaneGroups: layer.expandedLaneGroups,
   );
@@ -250,6 +254,7 @@ final class ConteHead {
   /// it, and a row that has numbers of its own keeps them.
   final List<LayerEffect> effects;
   final bool collapsed;
+  final Set<AttachedPlacement> foldedAttaches;
   final bool lanesExpanded;
   final Set<String> expandedLaneGroups;
 
@@ -264,6 +269,7 @@ final class ConteHead {
       row.transformEnabled == transformEnabled &&
       row.transformBasis == transformBasis &&
       row.collapsed == collapsed &&
+      setEquals(row.foldedAttaches, foldedAttaches) &&
       row.lanesExpanded == lanesExpanded &&
       setEquals(row.expandedLaneGroups, expandedLaneGroups) &&
       sameEffectChainShape(row.effects, effects);
@@ -283,6 +289,7 @@ final class ConteHead {
           transformBasis: transformBasis,
           effects: effectChainWithSharedShape(effects, onto: row.effects),
           collapsed: collapsed,
+          foldedAttaches: foldedAttaches,
           lanesExpanded: lanesExpanded,
           expandedLaneGroups: expandedLaneGroups,
         );
@@ -311,6 +318,9 @@ final class ConteHead {
           ? effects
           : after.effects,
       collapsed: changed((layer) => layer.collapsed, collapsed),
+      foldedAttaches: setEquals(after.foldedAttaches, before.foldedAttaches)
+          ? foldedAttaches
+          : after.foldedAttaches,
       lanesExpanded: changed((layer) => layer.lanesExpanded, lanesExpanded),
       expandedLaneGroups:
           setEquals(after.expandedLaneGroups, before.expandedLaneGroups)
@@ -333,6 +343,11 @@ final class ConteHead {
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     if (collapsed) 'collapsed': true,
+    if (foldedAttaches.isNotEmpty)
+      'foldedAttaches': [
+        for (final side in AttachedPlacement.values)
+          if (foldedAttaches.contains(side)) side.toJson(),
+      ],
     if (lanesExpanded) 'lanesExpanded': true,
     if (expandedLaneGroups.isNotEmpty)
       'expandedLaneGroups': [...expandedLaneGroups],
@@ -354,6 +369,10 @@ final class ConteHead {
         LayerEffect.fromJson(effect as Map<String, dynamic>),
     ],
     collapsed: json['collapsed'] as bool? ?? false,
+    foldedAttaches: {
+      for (final side in json['foldedAttaches'] as List<dynamic>? ?? const [])
+        AttachedPlacement.fromJson(side),
+    },
     lanesExpanded: json['lanesExpanded'] as bool? ?? false,
     expandedLaneGroups: {
       for (final laneId
@@ -376,6 +395,7 @@ final class ConteHead {
           other.transformBasis == transformBasis &&
           listEquals(other.effects, effects) &&
           other.collapsed == collapsed &&
+          setEquals(other.foldedAttaches, foldedAttaches) &&
           other.lanesExpanded == lanesExpanded &&
           setEquals(other.expandedLaneGroups, expandedLaneGroups);
 
@@ -391,6 +411,7 @@ final class ConteHead {
     transformBasis,
     Object.hashAll(effects),
     collapsed,
+    Object.hashAllUnordered(foldedAttaches),
     lanesExpanded,
     Object.hashAllUnordered(expandedLaneGroups),
   );

@@ -136,7 +136,7 @@ void main() {
         layers: attachStack,
         activeLayerId: const LayerId('base'),
         direction: -1,
-        collapsedAttachBaseIds: {const LayerId('base')},
+        attachFoldedRowIds: {const LayerId('up1')},
       ),
       const LayerRowAddress(LayerId('other')),
     );

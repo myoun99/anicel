@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
 import '../input/arena_tap_hold.dart';
@@ -32,7 +32,7 @@ import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
-import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
+import '../../models/attached_layer_resolve.dart' show groupFoldOpen;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
@@ -108,6 +108,7 @@ final class ControlsRowFace {
             a.onTimesheet == b.onTimesheet &&
             a.blendMode == b.blendMode &&
             a.collapsed == b.collapsed &&
+            setEquals(a.foldedAttaches, b.foldedAttaches) &&
             a.clipsToBelow == b.clipsToBelow &&
             isAttachedLayer(a) == isAttachedLayer(b) &&
             a.attachedPlacement == b.attachedPlacement &&
@@ -132,6 +133,7 @@ final class ControlsRowFace {
     layer.onTimesheet,
     layer.blendMode,
     layer.collapsed,
+    Object.hashAllUnordered(layer.foldedAttaches),
     layer.clipsToBelow,
     isAttachedLayer(layer),
     layer.attachedPlacement,
@@ -180,8 +182,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.lanesExpanded = false,
     this.onToggleLanes,
     this.depth = 0,
-    this.hasGroupFold = false,
-    this.groupFoldExpanded = true,
+    this.groupFold = noGroupFold,
     this.onToggleGroupFold,
     this.attachArrowPlacement,
     this.wearsBaseComposite = false,
@@ -307,14 +308,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final int depth;
 
   /// GROUP-FOLD twirl after the name: an attach base folding its attach
-  /// rows (UI-R20 #9) or a FOLDER folding its members (R28 #13 put the
-  /// folder's fold in exactly this slot — "일단은 통일해서 이름 오른쪽에").
-  /// They are one control: a row that holds other rows, folding them.
-  /// Null [onToggleGroupFold] hides the twirl entirely. Transposed (R5 #2),
-  /// the rail's "right of the name" is the column's "below the name".
-  final bool hasGroupFold;
-  final bool groupFoldExpanded;
-  final ValueChanged<LayerId>? onToggleGroupFold;
+  /// rows (UI-R20 #9) — by halves since I-175 ([GroupFoldFace]) — or a
+  /// FOLDER folding its members (R28 #13 put the folder's fold in exactly
+  /// this slot — "일단은 통일해서 이름 오른쪽에"). They are one control: a
+  /// row that holds other rows, folding them. Null [onToggleGroupFold]
+  /// hides the twirl entirely. Transposed (R5 #2), the rail's "right of the
+  /// name" is the column's "below the name".
+  final GroupFoldFace groupFold;
+
+  /// What a press on the group fold does: [side] null on a folder's twirl,
+  /// a half's side on a base's ([TimelineGroupFold.onToggle]).
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// Which way this row's attach ARROW points in the sheet column, null on
   /// rows that are not part of an attach group (R10 R3). Precomputed by
@@ -946,27 +951,59 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  /// The attach-group twirl (UI-R20 #9), shown only when the group exists —
-  /// same chevron pair as the lane twirl, the rail's ONE twirl glyph (this
-  /// arm used to spell the pair out by hand while the x-sheet read the
-  /// helper). Same key grammar on both surfaces so a folder and an attach
-  /// base read alike anywhere.
+  /// The group fold ([groupFold]), shown only when the group exists — the
+  /// rail's ONE twirl glyph ([layerRailTwirlIcon]; this arm used to spell
+  /// the pair out by hand while the x-sheet read the helper). Same key
+  /// grammar on both surfaces so a folder and an attach base read alike
+  /// anywhere.
+  ///
+  /// 🗣️I-175 (유저 2026-11-15): 「어태치 접기/펼치기버튼을 위아래로 나눠서
+  /// 위 펼치기 아래 펼치기 이렇게 두개 두고싶음. 위에만 어태치있으면 아래쪽은
+  /// 비어있고」 — a base's twirl is two halves in the folder twirl's box, the
+  /// upper its rows above and the lower its rows below, a side with none an
+  /// empty place (⛔없다가 생기는 UI 금지). The sheet's is the rail's turned
+  /// a quarter clockwise (I-175-Q4: 「엑스시트는 그냥 90도 회전시키면
+  /// 되잖아」), glyph and all — the upper half to the right, where the sheet
+  /// sets the rows above, open pointing there (▸), its lower half open
+  /// pointing left (◂), and either shut pointing down (▾).
   ///
   /// A drag from it sweeps the folds down the rail as the eye's does its
-  /// column (F-475).
+  /// column (F-475) — from a half, that half's side.
   Widget? _foldTwirl(BuildContext context) {
     final onToggle = onToggleGroupFold;
-    if (!hasGroupFold || onToggle == null) return null;
-    final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
-    return RailSwipeColumnPointer(
-      column: RailSwipeColumn.groupFold,
-      child: LayerFoldTwirl(
-        name: '$keyPrefix-$kind-twirl-${layer.id}',
+    if (!groupFold.has || onToggle == null) return null;
+    if (groupFold.folder case final expanded?) {
+      return _FoldTwirl(
+        name: '$keyPrefix-folder-twirl-${layer.id}',
+        layer: layer,
         axis: axis,
-        expanded: groupFoldExpanded,
-        onToggle: () => onToggle(layerIdNow(context, layer.id)),
+        expanded: expanded,
+        onToggle: (id) => onToggle(id, null),
+      );
+    }
+    Widget half(AttachedPlacement side, bool? expanded) => switch (expanded) {
+      null => const SizedBox(
+        width: layerLaneToggleSlotWidth,
+        height: _attachHalfAcross,
       ),
+      final expanded => _FoldTwirl(
+        name: '$keyPrefix-attach-twirl-${side.name}-${layer.id}',
+        layer: layer,
+        side: side,
+        expanded: expanded,
+        onToggle: (id) => onToggle(id, side),
+      ),
+    };
+    final halves = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        half(AttachedPlacement.above, groupFold.above),
+        half(AttachedPlacement.below, groupFold.below),
+      ],
     );
+    return axis == Axis.horizontal
+        ? halves
+        : RotatedBox(quarterTurns: 1, child: halves);
   }
 
   // ── the trailing run ──────────────────────────────────────────────────
@@ -1187,48 +1224,131 @@ class TimelineLayerControlsRow extends StatelessWidget {
   );
 }
 
+/// The box across the rail a half of a base's attach fold stands in — half
+/// the folder twirl's 24 — and the glyph it draws: smaller than the
+/// twirl's 16, as the half is (I-175-Q4).
+const double _attachHalfAcross = 12;
+const double _attachHalfIcon = 12;
+
+/// ONE fold twirl as the row shows it ([GroupFoldFace]): open or shut,
+/// pressed for the layer the row stands for at the press, and in the colour
+/// of what it folds.
+///
+/// 🗣️I-175 (유저 2026-11-15): 「펼치기버튼은 그걸 기본으로 하고싶으니까
+/// (fx펼치기는 제외) … 폴더 비지블off시키면 해당 버튼 비활성화색으로. 이렇게
+/// 통일되야 사용자입장에서 알기쉬움」 — lit while a row it folds is SHOWN,
+/// off-coloured once none is: a folder by its own eye (I-175-Q2 (나):
+/// 「눈이 꺼져있는데 안이 보이는상황이 문제인거임」), a half by the rows on its
+/// side ([RailEyes.sideShown]). ⛔The lanes' twirls keep their plain colour
+/// — the fx twirl is out by the user's word, not forgotten. Heard past the
+/// row memo and kept as the eye is ([RailEyesReader]): a flip of an eye
+/// rebuilds the twirl alone, and a cut crossed rebuilds it only where what
+/// it shows changed.
+class _FoldTwirl extends StatelessWidget {
+  const _FoldTwirl({
+    required this.name,
+    required this.layer,
+    required this.expanded,
+    required this.onToggle,
+    this.axis = Axis.horizontal,
+    this.side,
+  });
+
+  final String name;
+  final Layer layer;
+  final bool expanded;
+  final ValueChanged<LayerId> onToggle;
+  final Axis axis;
+
+  /// The half's side, or null on a folder's twirl.
+  final AttachedPlacement? side;
+
+  @override
+  Widget build(BuildContext context) {
+    final half = side;
+    Widget twirl(BuildContext context, bool lit) => LayerFoldTwirl(
+      name: name,
+      axis: axis,
+      expanded: expanded,
+      side: half,
+      across: half == null ? 24 : _attachHalfAcross,
+      iconSize: half == null ? 16 : _attachHalfIcon,
+      lit: lit,
+      onToggle: () => onToggle(layerIdNow(context, layer.id)),
+    );
+    return RailSwipeColumnPointer(
+      column: switch (half) {
+        null => RailSwipeColumn.groupFold,
+        AttachedPlacement.above => RailSwipeColumn.groupFoldAbove,
+        AttachedPlacement.below => RailSwipeColumn.groupFoldBelow,
+      },
+      child: half == null
+          ? RailEyeBuilder(
+              layer: layer,
+              builder: (context, eye) => twirl(context, eye.shown),
+            )
+          : RailSideBuilder(
+              layer: layer,
+              side: half,
+              builder: twirl,
+            ),
+    );
+  }
+}
+
+/// What a row's group fold SHOWS (I-175): a folder's one twirl ([folder]),
+/// or a base's two halves — [above] the upper, folding its rows above, and
+/// [below] the lower. Each says open or shut, and null where the row has
+/// no such twirl: a half whose side holds no row is an empty place. A
+/// value, so the row memo can compare it.
+typedef GroupFoldFace = ({bool? folder, bool? above, bool? below});
+
+/// The face of a row that folds nothing.
+const GroupFoldFace noGroupFold = (folder: null, above: null, below: null);
+
+/// Whether a [GroupFoldFace] shows a twirl at all.
+extension GroupFoldShown on GroupFoldFace {
+  bool get has => folder != null || above != null || below != null;
+}
+
 /// One fold twirl, answered ONCE (UI-R20 #9): a folder folds its members, an
-/// attach base folds its attach rows — the base-row twirl shows only when the
-/// layer carries attach rows.
+/// attach base folds its attach rows — by side since I-175 — and a twirl
+/// shows only where there are rows to fold.
 ///
 /// Three answers — is there a twirl, is it open, what does it toggle — and
 /// both grids' headers derived all three inline, each with its own
 /// `row.isFolder ? … : …`, until the x-sheet's copy was found with the
 /// comment "the rail's rule verbatim" on it. Verbatim is a copy; this is the
 /// rule. `one_fold_twirl_test` keeps it the only one.
+///
+/// [openOn] is the one predicate's answer for a press on a side — null for
+/// a folder's twirl ([groupFoldOpen]) — which the face reads and a sweep
+/// paints by; [onToggle] the host's one verb, told the side.
 typedef TimelineGroupFold = ({
-  bool has,
-  bool expanded,
-  ValueChanged<LayerId>? onToggle,
+  GroupFoldFace face,
+  bool? Function(AttachedPlacement? side) openOn,
+  void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 });
 
 TimelineGroupFold timelineGroupFoldFor({
   required TimelineDisplayRow row,
   required List<Layer> layers,
-  required Set<LayerId> collapsedAttachBaseIds,
-  required ValueChanged<LayerId>? onToggleLayerCollapsed,
-  required ValueChanged<LayerId>? onToggleAttachGroup,
+  required void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 }) {
-  final has = _rowFolds(row, layers);
-  if (row.isFolder) {
-    return (
-      has: has,
-      expanded: !row.layer.collapsed,
-      onToggle: onToggleLayerCollapsed,
-    );
-  }
+  bool? openOn(AttachedPlacement? side) =>
+      groupFoldOpen(row.layer, layers, side: side);
   return (
-    has: has,
-    expanded: !collapsedAttachBaseIds.contains(row.layer.id),
-    onToggle: onToggleAttachGroup,
+    face: row.isFolder
+        ? (folder: openOn(null), above: null, below: null)
+        : (
+            folder: null,
+            above: openOn(AttachedPlacement.above),
+            below: openOn(AttachedPlacement.below),
+          ),
+    openOn: openOn,
+    onToggle: onToggle,
   );
 }
-
-/// Whether [row] of [layers] folds rows of its own — a folder its members,
-/// an attach base the attach rows riding it: a twirl ends its name
-/// ([timelineGroupFoldFor]).
-bool _rowFolds(TimelineDisplayRow row, List<Layer> layers) =>
-    row.isFolder || attachedLayersOf(row.layer.id, layers).isNotEmpty;
 
 /// What a button at the end of a name looks like
 /// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart'
 import '../../services/editing/active_cut_helpers.dart';
 import '../../services/editing/layer_standing_after_change.dart'
     show conteRowAfterChange, conteRowHandedOff;
+import '../../models/attached_layer_resolve.dart' show attachGroupSideOf;
+import '../../models/attached_placement.dart';
 import '../../models/cut.dart' show Cut;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -32,8 +34,10 @@ import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
     show headMirrorTargets;
+import '../../services/commands/update_layer_attach_folds_command.dart';
 import '../../services/commands/update_layer_collapsed_command.dart';
-import '../../services/project_lookup.dart' show cutIdOfLayer;
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, layerAnywhereOrNull;
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -839,11 +843,19 @@ class Standing {
   /// `conte-attach-fold-leaves-the-conte-panel-standing-inside`). ↩️Only the
   /// timeline was handed on, and the conte panel went on standing in a row
   /// the fold had taken off its rail.
-  void handOffCurrentRowOnAttachFold(LayerId baseId) => _handOffOnGroupFold(
+  ///
+  /// Only the rows on the [sides] shutting leave (I-175): the other half
+  /// stays on the screen, and a row on it goes on standing.
+  void handOffCurrentRowOnAttachFold(
+    LayerId baseId,
+    Set<AttachedPlacement> sides,
+  ) => _handOffOnGroupFold(
     baseId,
     (cut) => {
       for (final layer in cut.layers)
-        if (attachGroupBaseOf(layer, cut.layers) == baseId) layer.id,
+        if (attachGroupBaseOf(layer, cut.layers) == baseId &&
+            sides.contains(attachGroupSideOf(layer, cut.layers)))
+          layer.id,
     },
   );
 
@@ -1399,10 +1411,11 @@ class Standing {
   /// reads it at once ([RailView.readFolds]).
   ///
   /// ONE write for the two folds the standing law opens: the folders above
-  /// a row an undo walks back to, and the attach group a row you went to
-  /// rides. ↩️The attach group's was a write of its own on the rail's view
-  /// until F-360, and the folders' reached the link group alone.
-  void _openFold(LayerId row) {
+  /// a row an undo walks back to, and the side of the attach group a row you
+  /// went to rides ([attachSide], I-175 — that side alone opens). ↩️The
+  /// attach group's was a write of its own on the rail's view until F-360,
+  /// and the folders' reached the link group alone.
+  void _openFold(LayerId row, {AttachedPlacement? attachSide}) {
     final repository = _project.repository;
     final project = repository.requireProject();
     // A folder and a base stand in a cut; a row no cut holds folds nothing.
@@ -1411,11 +1424,23 @@ class Standing {
       return;
     }
     for (final use in headMirrorTargets(project, cutId: cutId, layerId: row)) {
-      UpdateLayerCollapsedCommand.writeCollapsed(
+      if (attachSide == null) {
+        UpdateLayerCollapsedCommand.writeCollapsed(
+          repository,
+          cutId: use.cutId,
+          layerId: use.layerId,
+          value: false,
+        );
+        continue;
+      }
+      final folded =
+          layerAnywhereOrNull(project, use.layerId)?.foldedAttaches ??
+          const <AttachedPlacement>{};
+      UpdateLayerAttachFoldsCommand.writeFoldedAttaches(
         repository,
         cutId: use.cutId,
         layerId: use.layerId,
-        value: false,
+        value: folded.difference({attachSide}),
       );
     }
     _railView.readFolds(repository.currentProject);
@@ -1464,10 +1489,9 @@ class Standing {
         layerRowHiddenBy(
           layer,
           folders: folders,
-          attachBaseId: attachGroupBaseOf(layer, stack),
           hiddenSections: _railView.hiddenSections.value,
           rowFilter: _railView.rowFilter.value,
-          collapsedAttachBaseIds: _railView.collapsedAttachBaseIds.value,
+          attachFoldedRowIds: _railView.attachFoldedRowIds.value,
           standingLayerId: spared,
           fxEnabledOf: _fxEnabledOf,
         );
@@ -1544,8 +1568,8 @@ class Standing {
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and
-  /// the attach group it rides unfolds ([_openFold]). One write each, only
-  /// when shut.
+  /// the side of the attach group it rides unfolds ([_openFold]). One write
+  /// each, only when shut.
   void _openViewAround(Layer layer, List<Layer> stack) {
     final section = timelineSectionForLayerKind(layer.kind);
     final hidden = _railView.hiddenSections.value;
@@ -1553,11 +1577,13 @@ class Standing {
       _railView.hiddenSections.value = {...hidden}..remove(section);
     }
     final baseId = attachGroupBaseOf(layer, stack);
+    final side = attachGroupSideOf(layer, stack);
     if (baseId != null &&
-        _railView.collapsedAttachBaseIds.value.contains(baseId)) {
+        side != null &&
+        _railView.attachFoldedRowIds.value.contains(layer.id)) {
       // Every use of the base unfolds with it (F-302) — every row that
       // wears its head (I-73).
-      _openFold(baseId);
+      _openFold(baseId, attachSide: side);
     }
   }
 

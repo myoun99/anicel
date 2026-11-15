@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show immutable;
 
 import '../../core/set_toggle.dart';
+import '../../models/attached_placement.dart';
 import '../../models/layer_id.dart';
 import '../editor_session_manager.dart';
 import '../timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
@@ -31,8 +32,8 @@ class TabRailWiring {
       laneGraphs = _session.railView.laneGraphs.value,
       hiddenSections = _session.railView.hiddenSections.value,
       rowFilter = _session.railView.rowFilter.value,
-      collapsedAttachBaseIds =
-          _session.railView.collapsedAttachBaseIds.value;
+      attachFoldedRowIds =
+          _session.railView.attachFoldedRowIds.value;
 
   final EditorSessionManager _session;
 
@@ -71,8 +72,9 @@ class TabRailWiring {
     _session.standing.keepStandingShown(filterSparesStanding: false);
   }
 
-  /// The bases whose attach group is folded; the base row's chevron — one
-  /// chevron, a folder's fold or the attach group's (I-32).
-  final Set<LayerId> collapsedAttachBaseIds;
-  void toggleAttachGroup(LayerId pressed) => _presses.toggleGroupFold(pressed);
+  /// The rows the attach folds take off the screen; the group fold's press
+  /// — one chevron, a folder's fold or a half of a base's (I-32, I-175).
+  final Set<LayerId> attachFoldedRowIds;
+  void toggleGroupFold(LayerId pressed, AttachedPlacement? side) =>
+      _presses.toggleGroupFold(pressed, side);
 }

@@ -45,8 +45,8 @@ void main() {
   Widget grid({
     required List<Layer> layers,
     LayerId activeLayerId = const LayerId('base'),
-    Set<LayerId> collapsedAttachBaseIds = const {},
-    ValueChanged<LayerId>? onToggleAttachGroup,
+    Set<LayerId> attachFoldedRowIds = const {},
+    void Function(LayerId layerId, AttachedPlacement? side)? onToggleGroupFold,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -65,8 +65,8 @@ onToggleLayerVisibility: (_) {},
 onLayerOpacityChanged: (_, _) {},
 onToggleLayerTimesheet: (_) {},
 onLayerMarkSelected: (_, _) {},
-collapsedAttachBaseIds: collapsedAttachBaseIds,
-onToggleAttachGroup: onToggleAttachGroup,
+attachFoldedRowIds: attachFoldedRowIds,
+onToggleGroupFold: onToggleGroupFold,
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
               layers.firstWhere((layer) => layer.id == layerId),
               layers,
@@ -88,6 +88,9 @@ layers: layers,
     ),
     layer('plain'),
   ];
+
+  /// What folding both halves of the base takes off the rail.
+  final groupRows = {const LayerId('up1'), const LayerId('down1')};
 
   testWidgets('attach rows carry the placement arrow in the SHEET slot — '
       'up-attach bends up-right (flipped), down-attach down-right — and '
@@ -206,26 +209,32 @@ layers: layers,
   });
 
   testWidgets('the fold twirl shows ONLY on bases that carry attach rows; '
-      'tapping reports the base id (UI-R20 #9)', (tester) async {
-    final toggled = <LayerId>[];
+      'tapping a half reports the base id and its side (UI-R20 #9, '
+      'I-175)', (tester) async {
+    final toggled = <String>[];
     await tester.pumpWidget(
-      grid(layers: baseWithGroup, onToggleAttachGroup: toggled.add),
+      grid(
+        layers: baseWithGroup,
+        onToggleGroupFold: (id, side) =>
+            toggled.add('${id.value} ${side?.name}'),
+      ),
     );
 
-    expect(
-      find.named('timeline-attach-twirl-base'),
-      findsOneWidget,
-    );
-    expect(
-      find.named('timeline-attach-twirl-plain'),
-      findsNothing,
-      reason: 'no group, no twirl',
-    );
+    for (final side in const ['above', 'below']) {
+      expect(
+        find.named('timeline-attach-twirl-$side-base'),
+        findsOneWidget,
+      );
+      expect(
+        find.named('timeline-attach-twirl-$side-plain'),
+        findsNothing,
+        reason: 'no group, no twirl',
+      );
+    }
 
-    await tester.tap(
-      find.named('timeline-attach-twirl-base'),
-    );
-    expect(toggled, [const LayerId('base')]);
+    await tester.tap(find.named('timeline-attach-twirl-above-base'));
+    await tester.tap(find.named('timeline-attach-twirl-below-base'));
+    expect(toggled, ['base above', 'base below']);
   });
 
   testWidgets('a folded group renders no attach rows — the active one '
@@ -233,8 +242,8 @@ layers: layers,
     await tester.pumpWidget(
       grid(
         layers: baseWithGroup,
-        collapsedAttachBaseIds: {const LayerId('base')},
-        onToggleAttachGroup: (_) {},
+        attachFoldedRowIds: groupRows,
+        onToggleGroupFold: (_, _) {},
       ),
     );
     expect(
@@ -258,8 +267,8 @@ layers: layers,
       grid(
         layers: baseWithGroup,
         activeLayerId: const LayerId('up1'),
-        collapsedAttachBaseIds: {const LayerId('base')},
-        onToggleAttachGroup: (_) {},
+        attachFoldedRowIds: groupRows,
+        onToggleGroupFold: (_, _) {},
       ),
     );
     expect(
@@ -422,12 +431,16 @@ layers: layers,
     final twirls = find.namedWhere(
       (name) => name.startsWith('timeline-attach-twirl-'),
     );
-    expect(twirls, findsOneWidget);
+    expect(twirls, findsNWidgets(2), reason: 'a half each side (I-175)');
 
     // Folding while an attach row is ACTIVE hands the selection to the
     // BASE (UI-R24 #4), so the whole group actually disappears — no
     // "active row stays and blocks the fold" limbo.
-    await tester.tap(twirls);
+    await tester.tap(find.namedWhere((name) => name.contains('-below-')));
+    await tester.pumpAndSettle();
+    expect(attachNamed('-1'), findsNothing);
+    expect(attachNamed('+1'), findsWidgets, reason: 'the upper half\'s');
+    await tester.tap(find.namedWhere((name) => name.contains('-above-')));
     await tester.pumpAndSettle();
     expect(attachNamed('+1'), findsNothing);
     expect(attachNamed('-1'), findsNothing);

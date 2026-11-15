@@ -291,14 +291,14 @@ class FoldersAndAttachments {
     _changes.notifyChanged();
   }
 
-  /// A base's ATTACH GROUP folded or opened: the base's own `collapsed`,
-  /// written as a folder's is — one control, one field (F-360). The fold's
-  /// hand-off is the caller's, made before the group shuts
-  /// (`Standing.handOffCurrentRowOnAttachFold`). ⚠️No session notify: the
-  /// rails read the fold off the document ([RailView.readFolds]), which
+  /// The sides of a base's ATTACH GROUP folded away — [folded], every other
+  /// side open (`Layer.foldedAttaches`, I-175), written as a folder's fold
+  /// is (F-360). The fold's hand-off is the caller's, made before a side
+  /// shuts (`Standing.handOffCurrentRowOnAttachFold`). ⚠️No session notify:
+  /// the rails read the fold off the document ([RailView.readFolds]), which
   /// every history change re-reads.
-  void toggleAttachGroup(LayerId baseId) =>
-      _controllers.layerController.toggleLayerCollapsed(baseId);
+  void setAttachFolds(LayerId baseId, Set<AttachedPlacement> folded) =>
+      _controllers.layerController.setAttachFolds(baseId, folded);
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary

@@ -111,11 +111,17 @@ Future<EditorSessionManager> _open(WidgetTester tester, Project project) =>
 Finder _row(LayerId id) =>
     find.named('timeline-layer-row-${id.value}');
 
+/// Turns [base]'s whole group — each half of its fold it shows (I-175).
 Future<void> _twirl(WidgetTester tester, LayerId base) async {
-  await tester.tap(
-    find.named('timeline-attach-twirl-${base.value}'),
-  );
-  await tester.pumpAndSettle();
+  for (final side in AttachedPlacement.values) {
+    final half = find.named(
+      'timeline-attach-twirl-${side.name}-${base.value}',
+    );
+    if (half.evaluate().isNotEmpty) {
+      await tester.tap(half);
+      await tester.pumpAndSettle();
+    }
+  }
 }
 
 Future<void> _pick(WidgetTester tester, String flyout, String item) async {
@@ -149,7 +155,7 @@ void main() {
 
       expect(session.activeLayerId, _b);
       expect(_row(_bMinus1), findsNothing, reason: 'the group stays shut');
-      expect(session.railView.collapsedAttachBaseIds.value, {_b});
+      expect(session.railView.attachFoldedRowIds.value, {_bMinus1});
     });
 
     // ↩️The undo stood on B, the deletion law's shown row, until F-350 (유저
@@ -350,7 +356,7 @@ void main() {
         _drawing('x'),
       ]);
       s.selectLayer(plusOne);
-      setRowFolds(s, _b, collapsed: true);
+      setRowFolds(s, _b, foldedAttaches: everySide);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown();
@@ -371,13 +377,13 @@ void main() {
     test('③ a group opened for where you went asks for the scroll too', () {
       final s = session(_reported);
       s.selectLayer(_bMinus1);
-      setRowFolds(s, _b, collapsed: true);
+      setRowFolds(s, _b, foldedAttaches: everySide);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown(reveal: true);
 
       expect(s.activeLayerId, _bMinus1);
-      expect(s.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(s.railView.attachFoldedRowIds.value, isEmpty);
       expect(s.rangeSelections.revealSelectionTick.value, reveals + 1);
     });
 
@@ -397,7 +403,7 @@ void main() {
         _drawing('x', mark: red),
       ]);
       s.selectLayer(plusOne);
-      setRowFolds(s, _b, collapsed: true);
+      setRowFolds(s, _b, foldedAttaches: everySide);
       s.railView.rowFilter.value = TimelineRowFilter(markColors: {red});
 
       s.standing.keepStandingShown();
@@ -466,7 +472,7 @@ void main() {
       // this pins is the unfolding, so the group is folded the way the undo
       // stream does not hold — the base's fold, written outside history
       // (↩️the rail's view set, until F-360 put the fold on the base).
-      setRowFolds(session, _b, collapsed: true);
+      setRowFolds(session, _b, foldedAttaches: everySide);
       await tester.pumpAndSettle();
       expect(_row(_bMinus2), findsNothing);
 
@@ -474,7 +480,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(session.activeLayerId, _bMinus1);
-      expect(session.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(session.railView.attachFoldedRowIds.value, isEmpty);
       expect(_row(_bMinus1), findsOneWidget);
       expect(_row(_bMinus2), findsOneWidget);
     });
@@ -490,7 +496,7 @@ void main() {
       final made = session.activeLayerId!;
 
       expect(made, isNot(_b));
-      expect(session.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(session.railView.attachFoldedRowIds.value, isEmpty);
       expect(_row(made), findsOneWidget);
       expect(_row(_bMinus1), findsOneWidget);
     });
@@ -556,7 +562,7 @@ void main() {
         ),
       );
       addTearDown(s.dispose);
-      setRowFolds(s, base, collapsed: true);
+      setRowFolds(s, base, foldedAttaches: everySide);
       s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
       s.playbackRig.playback.seekToGlobalFrame(12);
       await tester.pump();

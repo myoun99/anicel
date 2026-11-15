@@ -114,7 +114,7 @@ class TimelinePanel extends StatefulWidget {
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
-    this.onToggleLayerCollapsed,
+    this.onToggleGroupFold,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -173,8 +173,7 @@ class TimelinePanel extends StatefulWidget {
     this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    this.attachFoldedRowIds = const {},
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
@@ -382,8 +381,10 @@ class TimelinePanel extends StatefulWidget {
   /// selection all arrive through the layer hooks above. R10 R3 took its
   /// last two of its own — rename went to the Layer ▾ menu it always
   /// shared, dissolve is waiting on the layer-label drag system — so only
-  /// the members' twirl is left.
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
+  /// the members' twirl is left: the group fold's, a folder's and a base's
+  /// one verb ([TimelineGridHooks.onToggleGroupFold]).
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -589,7 +590,8 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? layerClipsOf;
 
   /// Forwarded to the grids — see [TimelineGridHooks.groupFoldOpenOf].
-  final bool Function(LayerId layerId)? groupFoldOpenOf;
+  final bool Function(LayerId layerId, AttachedPlacement? side)?
+  groupFoldOpenOf;
 
   /// Forwarded to the grids — see [TimelineGridHooks.laneGroupOpenOf].
   final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
@@ -638,10 +640,9 @@ class TimelinePanel extends StatefulWidget {
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
-  /// The attach-group fold state (UI-R20 #9), shared by both orientations;
-  /// the toggle chevron renders on the horizontal rail's base rows.
-  final Set<LayerId> collapsedAttachBaseIds;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rows the attach folds take off the screen (UI-R20 #9), shared by
+  /// both orientations ([TimelineGridHooks.attachFoldedRowIds]).
+  final Set<LayerId> attachFoldedRowIds;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -782,7 +783,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
       layerSyncPartnersOf: widget.layerSyncPartnersOf,
-      onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
+      onToggleGroupFold: widget.onToggleGroupFold,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
@@ -823,8 +824,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
         displayedOpacity: widget.masterOpacityValue,
         displayedOnionSkinOn: widget.displayedOnionSkinOn,
       ),
-      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-      onToggleAttachGroup: widget.onToggleAttachGroup,
+      attachFoldedRowIds: widget.attachFoldedRowIds,
       opacityDragPreview: widget.opacityDragPreview,
       spillInLeadFrames: widget.spillInLeadFrames,
       cutId: widget.cutId,
