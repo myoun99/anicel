@@ -239,6 +239,34 @@ void main() {
     });
   });
 
+  // A crop keeps a hot cel's revision and stores it anew at the new size
+  // (the store's resizeBakedSurfaces): only the crossing it announces says
+  // the cel is drawn no more.
+  test('🚨a cel a crop leaves empty is read anew — its revision stands, '
+      'the content of the store moved', () {
+    final cut = aCut();
+    cels.restoreBaked({});
+    ink(cels, 'a', CanvasPoint(x: 2 * tileSize - 3, y: 2 * tileSize - 3));
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    final before = pictures.keyOf(at(cut, 0));
+    final revision = cels.sourceRevisionOf(keyOf('a'));
+    final moved = cels.revisionsMoved;
+
+    // Its pasteboard, a canvas wide on each edge, reaches no tile but the
+    // first.
+    cels.resizeBakedSurfaces(
+      const CanvasSize(width: 8, height: 8),
+      cutId: const CutId('c'),
+    );
+    expect(cels.celHasRenderableContent(keyOf('a')), isFalse);
+    expect(cels.sourceRevisionOf(keyOf('a')), revision, reason: '⛔premise');
+    expect(cels.revisionsMoved, moved, reason: '⛔premise');
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before), reason: 'a is drawn no more');
+  });
+
   test('LIVENESS — a stamp that is never the same stacks the frame at every '
       'asking, as the rig did before it said one', () {
     final cut = aCut();
