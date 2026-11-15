@@ -1940,7 +1940,17 @@ void main() {
   /// one over (master at 83): `QaNativeEngine` went under when the C brush
   /// left it (c-brush-goes, ABI 80). 🔬`clean_code_diff` against master
   /// (`8edb2a59d`) names it gone and no class added.
-  const longClasses = 82;
+  ///
+  /// ⚠️82 → 83 on 2026-11-15, ONE name: `PlaybackPrerenderScheduler`
+  /// crossed (600 → 601) when the walk came to tell its pictures it rests
+  /// (`pictures.rest()` in `_rest`, card
+  /// `one-cut-of-fnk02-holds-nine-gigabytes` Q1, 유저 2026-11-15 「굽고 나면
+  /// 놓는다」): the frames made ahead look at their cels and let go of them
+  /// there. 🔬`clean_code_diff` against the lane's master names this one and
+  /// no other class. ⛔Not split to fit: the walk rests in one place, and a
+  /// seam cut for it would put the word that it rests in a different place
+  /// from the rest.
+  const longClasses = 83;
 
   late CleanCodeScan scan;
   setUpAll(() {

@@ -156,6 +156,16 @@ Future<GpuShown> frameOnTheEngine(
   GpuShown? shown;
   GpuShown? laid;
   try {
+    // ⚠️What the frame read ahead is handed to its drawing, as the walk's
+    // is (`FramePictures.drawingNow`). NO PIN KEEPS THIS LINE (mutant m21
+    // of card `one-cut-of-fnk02-holds-nine-gigabytes`, 2026-11-15, lives):
+    // it differs only where shots of one run overlap and its [looks] go on
+    // twice between a cel landing and the drawing — the cel is then read
+    // again here, on this thread. A pin would hold one cel's look ahead
+    // landed and another's not, across two other shots of a session's
+    // renderer — a store a test can stand in for is not a session's, and a
+    // worker's turns cannot hold one cel of a frame back. 관제 11-15 22:26:
+    // a note, not a pin.
     final asItStands = picture == null
         ? await pictures
               .readInStack(nodes, frame, page: page, looks: looking)

@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/no_worker_free.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel still in the saved file was
@@ -379,15 +380,11 @@ class _ThawAsks extends BrushFrameStore {
   Completer<void> holdBack(BrushFrameKey key) =>
       _heldBack[key] = Completer<void>();
 
-  /// Completes once [key]'s look ahead has answered — and fails the test
-  /// where none comes: a frame that reads its cels some other way never
-  /// answers, and a pin waiting for it would hold the machine till the
-  /// line cut it.
+  /// Completes once [key]'s look ahead has answered — at the one ceiling: a
+  /// frame that reads its cels some other way never answers, and a pin
+  /// waiting for it fails there instead of holding the line.
   Future<void> landed(BrushFrameKey key) =>
-      (_landed[key] ??= Completer<void>()).future.timeout(
-        const Duration(seconds: 20),
-        onTimeout: () => fail('$key was never looked at ahead'),
-      );
+      patiently((_landed[key] ??= Completer<void>()).future);
 
   @override
   Future<void> thawAhead(
