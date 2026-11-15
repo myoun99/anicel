@@ -1,12 +1,12 @@
-// SHIFT PROBE (F-411) — does a modifier Windows let go of stay held in the
-// engine's record, on THIS runner?
+// SHIFT PROBE (F-411 · F-592) — does a modifier Windows let go of stay held
+// in the engine's record, on THIS runner?
 //
 //   flutter run -d windows -t tool/probe/shift_probe_main.dart \
 //     --dart-define=SHIFT_OUT=<dir>
 //
 // Writes `report.txt` into SHIFT_OUT — a line per case, `PASS` or `FAIL`
-// with the keys the framework's record held, by name and by physical key —
-// and exits.
+// with the keys the framework's record held, by name and by physical key,
+// or `SAYS` for what is only told — and exits, by whether any failed.
 //
 // It runs in the REAL app process, on the app's own Windows runner, because
 // the answer belongs to the engine and the runner the app ships with: what
@@ -26,6 +26,15 @@
 // letting go and pressing again. A case where the key left behind is that
 // last one is answered by the engine whatever the runner does — so each
 // stuck shape is also tried with the modifier's own key seen after it.
+//
+// 🗣️F-592 (유저 2026-11-15): 「쉬프트 누른채로 다음 선 그릴때 가까워야만?
+// 빨라야만? 같은스냅으로 선 그려지는데 … 이상한 규칙 만들지말고」. The
+// engine lets Shift and Ctrl go at every move that carries no keys — every
+// pen's and finger's — and hands the framework the held key's own repeat as
+// a key-down after it. The last lines SAY that of each modifier — let go or
+// kept, and how many times heard pressed — and judge nothing: the app asks
+// Windows which are held (`ModifierKeys`) and no runner puts the events
+// right (card a-held-modifiers-repeat-is-heard-as-a-press, 관제 2026-11-15).
 //
 // Measurement, not a feature: not wired into the app, no strings, no UI
 // conventions apply.
@@ -69,6 +78,7 @@ const _wmSysKeyDown = 0x0104;
 const _wmSysKeyUp = 0x0105;
 const _vkRight = 0x27;
 const _vkD = 0x44;
+const _wmMouseMove = 0x0200;
 
 /// A key message's shape: its scan code and its extended bit, which the
 /// engine names the physical key by.
@@ -111,6 +121,16 @@ final _rightShift = _Modifier(
   heldAs: {0x10, 0xA1},
   shape: (scancode: 0x36, extended: false),
   physical: PhysicalKeyboardKey.shiftRight,
+  named: {LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftRight},
+  otherShapes: const [],
+);
+
+final _leftShift = _Modifier(
+  'left Shift',
+  key: 0x10,
+  heldAs: {0x10, 0xA0},
+  shape: (scancode: 0x2A, extended: false),
+  physical: PhysicalKeyboardKey.shiftLeft,
   named: {LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftRight},
   otherShapes: const [],
 );
@@ -221,6 +241,9 @@ class _Keyboard {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyD) {
       _atD = _record();
     }
+    if (event is KeyDownEvent && !event.synthesized) {
+      _pressed[event.physicalKey] = pressesOf(event.physicalKey) + 1;
+    }
     if (event is KeyUpEvent) {
       (event.synthesized ? _syncedUp : _wentUp).add(event.physicalKey);
     }
@@ -228,6 +251,7 @@ class _Keyboard {
   }
 
   final _syncedUp = <PhysicalKeyboardKey>{};
+  final _pressed = <PhysicalKeyboardKey, int>{};
 
   /// Whether the engine let [key] go to sync itself since the last
   /// modifier went [down] — said in the report, not judged.
@@ -261,6 +285,7 @@ class _Keyboard {
   Future<void> down(_Modifier modifier) async {
     _wentUp.clear();
     _syncedUp.clear();
+    _pressed.clear();
     _windowsHolds(modifier.heldAs);
     await send(
       modifier.downMessage,
@@ -276,6 +301,14 @@ class _Keyboard {
     modifier.key,
     _lparam(modifier.shape, up: false, wasDown: true),
   );
+
+  /// How many key-downs of [key] the keyboard has heard since the last
+  /// modifier went [down] — not one the engine made up to sync itself.
+  int pressesOf(PhysicalKeyboardKey key) => _pressed[key] ?? 0;
+
+  /// A mouse's move that carries no keys, as every pen's and finger's move
+  /// is handed to the engine (F-592): the engine syncs Shift and Ctrl to it.
+  Future<void> moveCarryingNoKeys() => send(_wmMouseMove, 0, (40 << 16) | 40);
 
   /// A second key-down of [modifier] while it is held, in [shape].
   Future<void> downAs(_Modifier modifier, _Shape shape) =>
@@ -404,6 +437,25 @@ Future<List<String>> _cases(_Keyboard keys) async {
   await keys.down(shift);
   await keys.up(shift);
   expectHeld('a plain press lets go', shift, _record(), isHeld: false);
+
+  // What the engine makes of a held modifier under a move that carries no
+  // keys — every pen's and finger's (F-592, card
+  // a-held-modifiers-repeat-is-heard-as-a-press): said, not judged. No
+  // runner puts it right: the app asks Windows which are held instead
+  // (`ModifierKeys`), and reads no press or release off these events.
+  for (final modifier in [_leftShift, ..._modifiers]) {
+    await keys.down(modifier);
+    await keys.moveCarryingNoKeys();
+    final letGo = keys.syncedUp(modifier.physical);
+    await keys.repeat(modifier);
+    await keys.repeat(modifier);
+    lines.add(
+      'SAYS ${modifier.name} held over a move that carries no keys, then '
+      'repeating twice: ${letGo ? 'let go by the engine at the move' : 'kept'}'
+      ' · heard pressed ${keys.pressesOf(modifier.physical)} time(s)',
+    );
+    await keys.up(modifier);
+  }
   return lines;
 }
 
@@ -416,5 +468,5 @@ Future<void> main() async {
   _windowsHolds({});
   out.createSync(recursive: true);
   File('${out.path}/report.txt').writeAsStringSync('${lines.join('\n')}\n');
-  exit(lines.every((line) => line.startsWith('PASS')) ? 0 : 1);
+  exit(lines.any((line) => line.startsWith('FAIL')) ? 1 : 0);
 }

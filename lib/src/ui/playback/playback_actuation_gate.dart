@@ -9,8 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show BoxHitTestResult, RenderProxyBox, SemanticsConfiguration;
 import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyUpEvent;
+    show HardwareKeyboard, KeyDownEvent, KeyEvent;
 
+import '../../services/input/modifier_keys.dart';
 import '../debug/key_trace.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_activator_codec.dart' show isModifierKey;
@@ -215,6 +216,45 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
   /// (I-19-zoom-key-playback; the pointer half is [_onPointer]).
   bool _loneModifierDown = false;
 
+  /// The modifiers held when they were last asked ([_askTheModifiers]), a
+  /// bit each.
+  int _modifiersHeld = 0;
+
+  /// Asks which modifiers are held now and takes what moved since the last
+  /// ask: one that went down while something plays is alone till something
+  /// comes after it, and one let go while alone was a press after all — it
+  /// stops.
+  ///
+  /// 🚨ASKED OF [ModifierKeys], NOT READ OFF A KEY EVENT (card
+  /// a-held-modifiers-repeat-is-heard-as-a-press; 관제 2026-11-15 19:53:
+  /// 「러너는 만들지 않고 재생 정지 문이 `ModifierKeys` 에 묻게」). On
+  /// Windows a pen's or a finger's move lets go of Shift and Ctrl in the
+  /// engine's record with the key still down, the held key's repeat comes
+  /// next as a new key-down, and the release after a move is dropped
+  /// ([ModifierKeys]; counted on the app's own runner, F-592). ↩️Read as
+  /// edges — a modifier's key-down armed this and its key-up stopped — a
+  /// Shift held while the canvas played stopped it at the first move of a
+  /// hovering pen (read off the code, 2026-11-15; not tried by hand). So a
+  /// key event and a pointer event are only WHEN to ask, playing or not:
+  /// the release no event tells of is found at the next of either.
+  void _askTheModifiers() {
+    final held =
+        (ModifierKeys.isShiftPressed ? 1 : 0) |
+        (ModifierKeys.isControlPressed ? 2 : 0) |
+        (ModifierKeys.isAltPressed ? 4 : 0) |
+        (ModifierKeys.isMetaPressed ? 8 : 0);
+    final before = _modifiersHeld;
+    _modifiersHeld = held;
+    if (!widget.transports.value) {
+      _loneModifierDown = false;
+    } else if (held & ~before != 0) {
+      _loneModifierDown = true;
+    } else if (before & ~held != 0 && _loneModifierDown) {
+      _loneModifierDown = false;
+      widget.transports.stopAll();
+    }
+  }
+
   /// Registered for the gate's whole life, with the guard INSIDE.
   /// Subscribing and unsubscribing as playback comes and goes would make
   /// the handler's presence a second piece of state to keep true.
@@ -228,8 +268,8 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     // handles its own keys ends dispatch before [_eatConsumedKey], and a
     // note left there would outlive the event it describes.
     _consumedKey = null;
+    _askTheModifiers();
     if (!widget.transports.value) {
-      _loneModifierDown = false;
       return false;
     }
     if (isModifierKey(event.logicalKey)) {
@@ -245,14 +285,8 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       // does NOT stop yet — the tool tap layer takes it and samples, as it
       // did for the eyedropper TOOL before this (board:
       // `playback-tap-taken-by-tool-layer`). Let go with nothing after it,
-      // the modifier was a press after all, and its UP is where that one
-      // stops.
-      if (event is KeyDownEvent) {
-        _loneModifierDown = true;
-      } else if (event is KeyUpEvent && _loneModifierDown) {
-        _loneModifierDown = false;
-        widget.transports.stopAll();
-      }
+      // the modifier was a press after all, and its release is where that
+      // one stops — as [_askTheModifiers] finds it, above.
       return false;
     }
     if (event is! KeyDownEvent) {
@@ -278,9 +312,11 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     return true;
   }
 
-  /// Every pointer event, app-wide — only to hear that a held modifier was
-  /// NOT alone (I-19-zoom-key-playback): a press, a wheel notch or a pinch
-  /// after it — ✅1's pointer actuations — is the "something after".
+  /// Every pointer event, app-wide — to ask the modifiers again
+  /// ([_askTheModifiers]: the release a pen's move hides comes with no key
+  /// event), and to hear that a held modifier was NOT alone
+  /// (I-19-zoom-key-playback): a press, a wheel notch or a pinch after it —
+  /// ✅1's pointer actuations — is the "something after".
   ///
   /// ⚠️Not the [Listener] in [build], measured: an actuation the D13 hole
   /// passes never reaches it (the panel shell's `MouseRegion` returns
@@ -289,6 +325,7 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
   /// global route observes without joining hit testing — the way
   /// `home_page`'s activity clock already watches pointers.
   void _onPointer(PointerEvent event) {
+    _askTheModifiers();
     if (event is PointerDownEvent ||
         event is PointerSignalEvent ||
         event is PointerPanZoomStartEvent) {

@@ -4,6 +4,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/windows_key_state.dart'
+    show vkControl, vkShift;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -224,6 +227,100 @@ void main() {
     session.playbackRig.transports.stopAll();
     await tester.pumpAndSettle();
   });
+
+  // 🚨Card a-held-modifiers-repeat-is-heard-as-a-press (2026-11-15). On
+  // Windows a pen's or a finger's move lets go of Shift and Ctrl in the
+  // engine's record with the key still down — a key-up no hand made — the
+  // held key's auto-repeat comes next as a new key-down, and the release
+  // that comes after a move is dropped (`ModifierKeys`; counted with the
+  // shift probe on the app's own runner, F-592). The events below come in
+  // that order.
+  for (final (name, key, virtualKey) in [
+    ('Shift', LogicalKeyboardKey.shiftLeft, vkShift),
+    ('Ctrl', LogicalKeyboardKey.controlLeft, vkControl),
+  ]) {
+    Future<void> penMoves(WidgetTester tester, TestPointer pen, int step) =>
+        tester.sendEventToBinding(
+          pen.hover(onCanvas(tester) + Offset(4.0 * step, 0)),
+        );
+
+    testWidgets('🚨$name held under a hovering pen keeps the canvas playing '
+        '— the key-up the engine makes of a pen\'s move, and the repeat it '
+        'hears as a press, are not the key let go; let go, it stops at '
+        'the pen\'s next move', (tester) async {
+      final session = await playingCanvas(tester);
+      var held = true;
+      ModifierKeys.debugWindowsKeyDown = (asked) =>
+          held && asked == virtualKey;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final pen = TestPointer(1, PointerDeviceKind.stylus);
+
+      await tester.sendKeyDownEvent(key);
+      for (var step = 0; step < 2; step++) {
+        await penMoves(tester, pen, step);
+        // The engine's own key-up, made of the move.
+        await tester.sendKeyUpEvent(key);
+        await tester.pump();
+        expect(
+          session.playbackRig.playback.isPlaying,
+          isTrue,
+          reason: '$name is still down: no hand let go of it (move $step)',
+        );
+        // The held key's auto-repeat, heard as a press.
+        await tester.sendKeyDownEvent(key);
+        await tester.pump();
+        expect(session.playbackRig.playback.isPlaying, isTrue);
+      }
+
+      // The record lets go at one more move, and then the hand does — the
+      // release the engine drops.
+      await penMoves(tester, pen, 2);
+      await tester.sendKeyUpEvent(key);
+      held = false;
+      await penMoves(tester, pen, 3);
+      await tester.pump();
+      expect(
+        session.playbackRig.playback.isPlaying,
+        isFalse,
+        reason: 'a $name pressed and released alone was a press after all, '
+            'whatever the pointer under it',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('…and $name held through a canvas WHEEL notch is not alone '
+        'again for the repeat the engine hears as a press', (tester) async {
+      final session = await playingCanvas(tester);
+      var held = true;
+      ModifierKeys.debugWindowsKeyDown = (asked) =>
+          held && asked == virtualKey;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final wheel = TestPointer(1, PointerDeviceKind.mouse);
+      wheel.hover(onCanvas(tester));
+      final pen = TestPointer(2, PointerDeviceKind.stylus);
+
+      await tester.sendKeyDownEvent(key);
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+      await penMoves(tester, pen, 0);
+      await tester.sendKeyUpEvent(key);
+      await tester.sendKeyDownEvent(key);
+      await tester.pump();
+      expect(session.playbackRig.playback.isPlaying, isTrue, reason: 'premise');
+
+      held = false;
+      await tester.sendKeyUpEvent(key);
+      await tester.pump();
+      expect(
+        session.playbackRig.playback.isPlaying,
+        isTrue,
+        reason: 'the notch was the something after — a repeat is not the '
+            'key pressed anew',
+      );
+
+      session.playbackRig.transports.stopAll();
+      await tester.pumpAndSettle();
+    });
+  }
 
   testWidgets('Alt held while the canvas plays IS the eyedropper, and the '
       'canvas keeps playing — a modifier reaches the app like any other', (
