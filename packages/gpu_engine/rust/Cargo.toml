@@ -219,8 +219,11 @@ wgpu-hal = { path = "vendor/wgpu-hal" }
 # .gitignore, and cargo's .cargo-ok, left out — nothing is built from
 # them), put back what `grep -rn ANICEL vendor/zune-jpeg` finds in this
 # one, and run native/image_decode's tests — they end at the first place
-# left unmended. MIT OR Apache-2.0 OR Zlib: no source has to be offered,
-# and each altered place is marked.
+# left unmended. One of what the grep finds is not a mend: the line of
+# src/lib.rs that reads QA_CHECKOUT, which the engine asks of every crate
+# built here (src/kernels/shared/one_checkout.rs — its test names the
+# copy when the line is not put back). MIT OR Apache-2.0 OR Zlib: no source
+# has to be offered, and each altered place is marked.
 zune-jpeg = { path = "vendor/zune-jpeg" }
 
 # A DEPENDENCY'S DEBUG INFO IS ITS LINE TABLES (브러시/렌더링 23:09 · 관제
