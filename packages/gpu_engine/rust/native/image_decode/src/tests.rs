@@ -9,6 +9,73 @@ use super::{
     qa_image_decode_jpg_row, qa_image_decode_jpg_size,
 };
 
+/// 🚨The most one request of these tests asks the heap for: past it the
+/// request is refused — so a decoder that takes a buffer the size a file's
+/// header says, with no answer for 「no room」, ends the tests where it
+/// would end the app (`handle_alloc_error`), on any machine, however much
+/// memory it has. No test here asks for a gigabyte. The audio decoder's
+/// tests hold theirs the same way (`native/audio/src/tests.rs`): two, and
+/// a third crate that refuses is where they move into one.
+const ROOM: usize = 1 << 30;
+
+/// The system's allocator, refusing a request past [ROOM].
+struct Room;
+
+// SAFETY: the system's allocator, or null — which a caller must meet for
+// any request.
+unsafe impl std::alloc::GlobalAlloc for Room {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, at: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        if size > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.realloc(at, layout, size) }
+    }
+
+    unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.dealloc(at, layout) }
+    }
+}
+
+#[global_allocator]
+static ROOM_ONLY: Room = Room;
+
+/// `jpeg` with its frame header saying `width` × `height` — the two words
+/// written over, every other byte as it was: a file that says a size its
+/// data is not.
+fn saying(jpeg: &[u8], width: u16, height: u16) -> Vec<u8> {
+    let mut said = jpeg.to_vec();
+    let mut at = 2;
+    loop {
+        assert_eq!(said[at], 0xFF, "a marker at {at}");
+        let marker = said[at + 1];
+        if (0xC0..=0xC2).contains(&marker) {
+            // Marker, length, precision — then the height and the width.
+            said[at + 5..at + 7].copy_from_slice(&height.to_be_bytes());
+            said[at + 7..at + 9].copy_from_slice(&width.to_be_bytes());
+            return said;
+        }
+        at += 2 + usize::from(u16::from_be_bytes([said[at + 2], said[at + 3]]));
+    }
+}
+
 /// Every row of `decoded` as it shows, RGBA, one after the other.
 fn rows_of(decoded: &Decoded) -> Vec<u8> {
     let (width, height) = decoded.shown();
@@ -190,4 +257,34 @@ fn every_device_decodes_the_pinned_jpegs() {
         running.add(&rows_of(&Decoded::of(&jpeg).expect("it decodes")));
     }
     running.assert_pinned("image_decode/jpg-rows");
+}
+
+// 🚨The file that ended the app: a few hundred bytes saying 65,535 ×
+// 65,535 — 12.9 GB of pixels. Its room is refused here (ROOM), as it is
+// on a machine that has none, and the decoder answers; before it asked
+// with `try_reserve` these tests ended at this one.
+#[test]
+fn a_jpeg_saying_a_size_there_is_no_room_for_says_so() {
+    let honest = image_encode::encode(&gradient(64, 48), 64, 48, 90);
+    assert_eq!(Decoded::of(&saying(&honest, 64, 48)).expect("the premise: as it was, it decodes").shown(), (64, 48));
+    let why = Decoded::of(&saying(&honest, u16::MAX, u16::MAX)).err().expect("no room for it");
+    assert!(why.contains("out of memory for 65535x65535"), "{why}");
+}
+
+#[test]
+fn a_jpeg_there_is_no_room_for_says_why_through_its_handle() {
+    let lying = saying(&image_encode::encode(&gradient(64, 48), 64, 48, 90), u16::MAX, u16::MAX);
+    // SAFETY (each): the decoder's declarations — the bytes held, room for
+    // two and for the text given.
+    unsafe {
+        let opened = qa_image_decode_jpg_open(lying.as_ptr(), lying.len());
+        assert!(!opened.is_null(), "a handle, to say why");
+        let mut size = [0i32; 2];
+        assert_eq!(qa_image_decode_jpg_size(opened, size.as_mut_ptr()), 0);
+        let mut text = [0u8; 256];
+        let length = qa_image_decode_jpg_error(opened, text.as_mut_ptr(), 256);
+        let why = std::str::from_utf8(&text[..length.max(0) as usize]).expect("text");
+        assert!(why.contains("out of memory"), "{why}");
+        qa_image_decode_jpg_close(opened);
+    }
 }

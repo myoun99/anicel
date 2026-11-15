@@ -20,18 +20,38 @@ impl Decoded {
     /// `bytes`, a JPEG file, decoded — or why not. Any side a JPEG can
     /// say (65,535): ⚠️zune's own ceiling is 16,384, and a picture past
     /// that is what the app reads itself for (`cel_picture.dart`).
+    ///
+    /// 🚨THE PIXELS' ROOM IS ASKED FOR HERE, WHERE 「NO ROOM」 IS AN ANSWER
+    /// (유저 2026-11-15 「가드넣자」, card
+    /// a-jpeg-that-lies-about-its-size-can-end-the-app): the import fails
+    /// and says why. zune's own `decode` takes the room with `vec!`, and a
+    /// `vec!` that finds none ends the process — the app. A file of a few
+    /// hundred bytes whose header says 65,535 × 65,535 asks for 12.9 GB
+    /// (🔬the tests' allocator refuses it, as a machine without it does:
+    /// 「memory allocation of 12884508675 bytes failed」, and every test of
+    /// the crate went with that one). ⛔Not a rule about the file: nothing
+    /// here weighs its bytes against its header — the room is there or it
+    /// is not.
+    ///
+    /// ⚠️NOT ALL OF IT: a progressive JPEG's coefficients — and a baseline
+    /// one's whose components come in scans of their own — are taken
+    /// inside zune as it decodes, with `vec!` too, two bytes a sample
+    /// (zune-jpeg 0.5.15, `mcu_prog.rs` · `mcu.rs`). No call hands those
+    /// in; the card holds what is done of them.
     pub fn of(bytes: &[u8]) -> Result<Self, String> {
         let options = DecoderOptions::default()
             .jpeg_set_out_colorspace(ColorSpace::RGB)
             .set_max_width(usize::from(u16::MAX))
             .set_max_height(usize::from(u16::MAX));
         let mut decoder = JpegDecoder::new_with_options(ZCursor::new(bytes), options);
-        let rgb = decoder.decode().map_err(|why| format!("JPEG: {why:?}"))?;
+        decoder.decode_headers().map_err(|why| format!("JPEG: {why:?}"))?;
         let info = decoder.info().ok_or("JPEG: no header")?;
         let (width, height) = (usize::from(info.width), usize::from(info.height));
-        if rgb.len() != width * height * 3 {
-            return Err(format!("JPEG: {} bytes for {width}x{height} RGB", rgb.len()));
-        }
+        let room = decoder.output_buffer_size().ok_or("JPEG: a size past counting")?;
+        let mut rgb = Vec::new();
+        rgb.try_reserve_exact(room).map_err(|_| format!("JPEG: out of memory for {width}x{height}"))?;
+        rgb.resize(room, 0);
+        decoder.decode_into(&mut rgb).map_err(|why| format!("JPEG: {why:?}"))?;
         let orientation = decoder.exif().map_or(1, |exif| orientation_of(exif));
         Ok(Self { rgb, width, height, orientation })
     }
