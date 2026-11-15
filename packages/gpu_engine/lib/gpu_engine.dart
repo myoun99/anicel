@@ -451,13 +451,18 @@ class GpuEngine {
   ///
   /// ⛔No hold without its letting go (🗣️관제 2026-11-11 06:07: 「잡은 것은
   /// 모든 길에서 놓여야 한다」): a hold left on, no plan would ever run on a
-  /// pass of its own.
+  /// pass of its own. The last let go is what [compilesApartLetGo] waits
+  /// for.
   Future<T> whileCompilesApartWait<T>(Future<T> Function() ahead) async {
     rust.apartHold(_engine);
     try {
       return await ahead();
     } finally {
       rust.apartLet(_engine);
+      if (rust.apartHeld(_engine) == 0) {
+        _apartLetGo?.complete();
+        _apartLetGo = null;
+      }
     }
   }
 
@@ -466,6 +471,21 @@ class GpuEngine {
   /// it with no one waiting for it — the frame grids' kernels, each row
   /// drawing itself till they are there — stands before it asks for the
   /// compiler.
+  ///
+  /// 🚨★★★A WAIT FOR A HOLD IS MADE WHERE THE HOLD IS LET GO — on this
+  /// isolate, never on a worker. 🐞the-windows-app-stays-after-its-window-
+  /// closes (관제 2026-11-16 00:46, the build round's smoke): this waited on
+  /// a worker ([Isolate.run]) in the engine (`Apart::wait`), and the app
+  /// closed while it compiled ahead what a hand needs never ended — the
+  /// isolate that would let go went down first, and the VM waited for the
+  /// worker for good. 🔬A release with each worker named, closed 15 s into a
+  /// launch of a fresh profile: `waiting for isolate gpu_engine:477 to
+  /// check in` past 40 s; closed at 60 s, gone in 0.5 s (공통 2026-11-16).
+  /// ⛔So the engine has no verb that waits for a hold: a worker cannot
+  /// stand for what only the app's isolate does.
+  ///
+  /// ⚠️Holds made through this [GpuEngine] are the ones that wake it: the
+  /// app holds and waits on its own isolate (`compileAppKernelsAhead`).
   Future<void> compilesApartLetGo() async {
     // A turn of this isolate first: who holds as the engine is told open
     // holds within that turn, and is seen here.
@@ -473,9 +493,12 @@ class GpuEngine {
     if (rust.apartHeld(_engine) == 0) {
       return;
     }
-    final on = _engine.address;
-    await Isolate.run(() => rust.apartWait(Pointer.fromAddress(on)));
+    await (_apartLetGo ??= Completer<void>()).future;
   }
+
+  /// What [compilesApartLetGo] waits for while a hold is on: completed as
+  /// the last is let go ([whileCompilesApartWait]).
+  Completer<void>? _apartLetGo;
 
   /// Test seam: how many hold what the engine compiles apart
   /// ([whileCompilesApartWait]).

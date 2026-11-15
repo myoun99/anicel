@@ -28,7 +28,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 11] = [
+const ON_THEIR_CALLERS: [(&str, &str); 10] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     ("gpu_engine_video_memory", "asks the OS of the adapter's memory (DXGI), not the device"),
     ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
@@ -41,10 +41,6 @@ const ON_THEIR_CALLERS: [(&str, &str); 11] = [
     ("gpu_engine_done_failure", "takes the engine's own word of a wait (`Ended`)"),
     ("gpu_engine_apart_hold", "the engine's own count (`Apart`)"),
     ("gpu_engine_apart_let", "the engine's own count (`Apart`)"),
-    (
-        "gpu_engine_apart_wait",
-        "waits till the holds are let go: on the engine's thread every verb would stand behind it",
-    ),
     ("gpu_engine_apart_held", "the engine's own count (`Apart`)"),
     (
         "gpu_engine_pictures_idle_bytes",

@@ -265,6 +265,12 @@ impl Kernels {
 /// ⛔Not an order in the compiling thread's queue: who compiles ahead asks
 /// for one kernel at a time, and a pass asked for meanwhile would take the
 /// turn between two of them — a second that cannot be cut short.
+///
+/// ⛔Waited for here by the engine's own threads alone — no verb of the C
+/// ABI waits for a hold. The app lets go on its isolate, and a worker
+/// isolate waiting here outlived it: the app closed while it compiled ahead
+/// stayed till it was killed (the-windows-app-stays-after-its-window-closes,
+/// 2026-11-16 — `GpuEngine.compilesApartLetGo` has the measure).
 #[derive(Clone, Default)]
 pub(crate) struct Apart(Arc<(Mutex<ApartHolds>, Condvar)>);
 
@@ -2214,20 +2220,6 @@ pub unsafe extern "C" fn gpu_engine_apart_let(engine: *const Engine) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.apart.let_go();
-}
-
-/// Returns once no [`gpu_engine_apart_hold`] is on: where what the app
-/// compiles apart of its own — the frame grids' kernels, each row drawing
-/// itself till they are there — waits before it asks for the compiler.
-/// ⛔Not on the thread that lets go: it would wait for itself.
-///
-/// # Safety
-/// `engine` is live as this is called.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_apart_wait(engine: *const Engine) {
-    // SAFETY: see the function's contract.
-    let apart = unsafe { &*engine }.apart.clone();
-    apart.wait();
 }
 
 /// How many [`gpu_engine_apart_hold`]s are on: none once whoever held has

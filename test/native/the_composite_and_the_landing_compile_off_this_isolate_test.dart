@@ -130,4 +130,51 @@ void main() {
     expect(await engine.whileCompilesApartWait(() async => 7), 7);
     expect(engine.debugCompilesApartHeld, 0, reason: 'one that ended well');
   });
+
+  // 🐞the-windows-app-stays-after-its-window-closes (관제 2026-11-16 00:46):
+  // the wait for the holds stood on a worker in the engine, and an app
+  // closed while it compiled ahead what a hand needs never ended — the
+  // isolate that lets go went down first, and the VM waited for the worker.
+  // A widget test's clock lets no worker answer (`debugWorkersRunHere` has
+  // why): a wait made where the holds are let go goes on all the same.
+  testWidgets('what waits for the holds waits on this isolate: it goes on '
+      'as the last of them is let go, with no worker to answer', (
+    tester,
+  ) async {
+    final engine = appGpuEngine;
+    expect(engine.debugCompilesApartHeld, 0, reason: '⛔premise');
+    final first = Completer<void>();
+    final second = Completer<void>();
+    final holding = [
+      engine.whileCompilesApartWait(() => first.future),
+      engine.whileCompilesApartWait(() => second.future),
+    ];
+    var through = false;
+    unawaited(engine.compilesApartLetGo().then((_) => through = true));
+    // The wait takes a turn of this isolate first (`compilesApartLetGo`).
+    await tester.pump(Duration.zero);
+    expect(through, isFalse, reason: 'held twice');
+
+    first.complete();
+    await tester.pump(Duration.zero);
+    expect(through, isFalse, reason: 'one hold left');
+
+    second.complete();
+    await tester.pump(Duration.zero);
+    expect(through, isTrue);
+    await Future.wait(holding);
+    expect(engine.debugCompilesApartHeld, 0);
+
+    // Held again, it is waited for again.
+    final again = Completer<void>();
+    final holdingAgain = engine.whileCompilesApartWait(() => again.future);
+    var throughAgain = false;
+    unawaited(engine.compilesApartLetGo().then((_) => throughAgain = true));
+    await tester.pump(Duration.zero);
+    expect(throughAgain, isFalse, reason: 'held again');
+    again.complete();
+    await tester.pump(Duration.zero);
+    expect(throughAgain, isTrue);
+    await holdingAgain;
+  });
 }

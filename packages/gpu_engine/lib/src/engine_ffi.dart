@@ -2026,9 +2026,6 @@ external void apartHold(Pointer<Engine> engine);
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_let')
 external void apartLet(Pointer<Engine> engine);
 
-@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_wait')
-external void apartWait(Pointer<Engine> engine);
-
 @Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_held')
 external int apartHeld(Pointer<Engine> engine);
 
