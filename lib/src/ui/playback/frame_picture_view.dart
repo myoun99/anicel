@@ -1213,18 +1213,22 @@ class _FramePictureViewState extends State<FramePictureView> {
   );
 }
 
-/// How far past its box a view's screen holds, in device pixels, along an
-/// axis — half to either side ([EngineScreenTexture.windowOf]): what a pan
-/// uncovers of the box before the next frame is up is of the frame that
-/// is, moved with the view ([_RenderFrameScreen._standingFrom]), and not
-/// bare of any picture.
-const int _screenRoom = 256;
+/// How much of a screen is to spare on every side of its box, in device
+/// pixels, for the frame drawn last to serve a view panned since
+/// ([_RenderFrameScreen._servedByTheFrameDrawnLast]): nearer its edge the
+/// next is asked for, and this is how far the view may pan on before that
+/// one is up — a frame of the app's or more ([ScreenTexture.present]) —
+/// with the box still held whole by the frame that is, moved with it
+/// ([_RenderFrameScreen._standingFrom]). Past it, the edge the pan
+/// uncovers is bare of any picture till the next comes up.
+const int _screenMargin = 128;
 
-/// How much of that room is to spare on every side of the box for the
-/// frame drawn last to serve a view panned since
-/// ([_RenderFrameScreen._servedByTheFrameDrawnLast]): past it the next is
-/// asked for, while what is up still holds the box.
-const int _screenMargin = _screenRoom ~/ 4;
+/// How far past its box a view's screen holds, in device pixels, along an
+/// axis — half to either side ([EngineScreenTexture.windowOf]): the margin
+/// on each side, and half as much again that a pan crosses with nothing
+/// drawn. ⚠️The least it holds: a texture's sides are rounded up a step
+/// ([EngineScreenTexture]), and what that spares is room too.
+const int _screenRoom = 3 * _screenMargin;
 
 /// What a frame of a view's screen was drawn for: the view it was drawn
 /// through, as every painter under it snaps it ([renderSnappedViewport]),
