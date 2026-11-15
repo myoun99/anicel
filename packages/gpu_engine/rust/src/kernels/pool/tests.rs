@@ -8,7 +8,8 @@ use std::sync::{Condvar, Mutex};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
-use super::{Full, MOST_NAMED, Pictures, Pool};
+use super::{Ahead, Full, MOST_NAMED, Pictures, Pool};
+use crate::device::Engine;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
 use crate::kernels::composite::{
@@ -1032,6 +1033,233 @@ fn a_store_whose_copy_the_device_refuses_says_its_place_unwritten() {
         assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 2), 1);
         assert_eq!((pages[0], slots[0]), (page, slot));
         assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 2), 0, "taken once");
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+/// Stores `count` tiles of `bytes` each through the C ABI, as the app's
+/// ledger does, waiting for none of it: how many it gave a slot.
+///
+/// # Safety
+/// `pool` and `engine` are live, the pool made on `engine`; `bytes` is a
+/// tile's and stays alive till the engine's thread has read it — by the
+/// caller's next done.
+unsafe fn stored_now(pool: *mut Pool, engine: *const Engine, cel: u32, bytes: &[u8], count: usize) -> usize {
+    use super::gpu_engine_pool_store;
+    let tiles = vec![bytes.as_ptr(); count];
+    let (mut pages, mut slots) = (vec![u16::MAX; count], vec![u16::MAX; count]);
+    // SAFETY: see the function's contract; `tiles`, `pages` and `slots`
+    // hold `count` each.
+    unsafe {
+        gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), count, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0)
+    }
+}
+
+/// [`stored_now`], then a done: the engine's thread has run what the store
+/// handed it — its copy and a page made ahead.
+///
+/// # Safety
+/// As [`stored_now`]'s.
+unsafe fn stored_and_done(pool: *mut Pool, engine: *const Engine, cel: u32, bytes: &[u8], count: usize) -> usize {
+    use crate::testing::done_here;
+    // SAFETY: see the function's contract.
+    let (stored, engine) = unsafe { (stored_now(pool, engine, cel, bytes, count), &*engine) };
+    assert_eq!(done_here(engine), Ok(()));
+    stored
+}
+
+/// Where a pool's page made ahead stands, by name.
+///
+/// # Safety
+/// `pool` is live.
+unsafe fn ahead(pool: *const Pool) -> &'static str {
+    // SAFETY: see the function's contract.
+    let held = unsafe { &*pool }.ahead.held();
+    match &*held {
+        Ahead::Unasked => "unasked",
+        Ahead::Making => "making",
+        Ahead::Made(..) => "made",
+        Ahead::Refused(_) => "refused",
+    }
+}
+
+// A page is made ahead once less than half a page is free, and the store
+// that needs it takes it while the engine's thread stands still: no wait
+// for it there ([`Pool::make_a_page_ahead`]).
+#[test]
+fn a_store_takes_the_page_made_ahead_while_the_engines_thread_stands_still() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(9));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let slots = (*pool).slots();
+        let half = slots / 2;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
+        assert_eq!(ahead(pool), "unasked", "half a page free, none is made ahead");
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "made", "less than half free, one is");
+        let rest = slots - half - 1;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, rest), rest);
+        assert_eq!((*pool).pages().len(), 1, "premise: a page full");
+        gpu_engine_stand_still(engine, 2_000);
+        let asked = Instant::now();
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        let told = asked.elapsed();
+        assert!(told < Duration::from_millis(1_000), "stored after {told:?}, the thread standing 2 s");
+        assert_eq!((*pool).pages().len(), 2, "on the page made ahead");
+        assert_eq!(ahead(pool), "unasked", "taken, and a page free ahead of the next");
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// None is made ahead past the bytes a pool may make, and one made goes once
+// the pool may make no page more: at the next store, and at the store it is
+// full for.
+#[test]
+fn a_page_ahead_is_made_within_the_bytes_a_pool_may_make_and_goes_past_them() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_most_bytes, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(10));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let slots = (*pool).slots();
+        let page = slots as u64 * TILE_BYTES;
+        gpu_engine_pool_most_bytes(pool, page);
+        let past_half = slots / 2 + 1;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, past_half), past_half);
+        assert_eq!(ahead(pool), "unasked", "a page the most, none ahead of a second");
+        gpu_engine_pool_most_bytes(pool, 2 * page);
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "made", "room for a second, one made ahead");
+        gpu_engine_pool_most_bytes(pool, page);
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "unasked", "no room for it, the next store lets it go");
+        gpu_engine_pool_most_bytes(pool, 2 * page);
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "made", "premise: made again");
+        let rest = slots - past_half - 3;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, rest), rest);
+        gpu_engine_pool_most_bytes(pool, page);
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 0, "full at a page");
+        assert_eq!(ahead(pool), "unasked", "and the store it is full for lets it go");
+        assert_eq!((*pool).bytes(), page);
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A page made ahead against one budget is not taken where the pool keeps
+// to another: kept to none, it makes no page, and the one made ahead goes.
+#[test]
+fn a_page_made_ahead_against_another_budget_is_not_taken() {
+    use super::{gpu_engine_pool_budget_instead, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(11));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let slots = (*pool).slots();
+        let past_half = slots / 2 + 1;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, past_half), past_half);
+        assert_eq!(ahead(pool), "made", "premise");
+        gpu_engine_pool_budget_instead(pool, 0);
+        let rest = slots - past_half;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, rest), rest);
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 0, "kept to nothing, no page");
+        assert_eq!(ahead(pool), "unasked", "the page made ahead gone");
+        assert_eq!((*pool).pages().len(), 1);
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A page the budget refuses ahead is not asked for again till the pool's
+// bytes or the budget kept to move.
+#[test]
+fn a_page_refused_ahead_is_not_asked_again_till_the_budget_moves() {
+    use super::{gpu_engine_pool_budget_instead, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(12));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let half = (*pool).slots() / 2;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
+        gpu_engine_pool_budget_instead(pool, 0);
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "refused", "kept to nothing");
+        gpu_engine_stand_still(engine, 2_000);
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "refused", "not asked again as it stands");
+        gpu_engine_pool_budget_instead(pool, i64::MAX);
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "making", "asked again once the budget moved");
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(ahead(pool), "made");
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A store's give-back lets the page made ahead go first: where the pages
+// with it would pass the bytes asked for, and not where they keep within.
+#[test]
+fn a_give_back_lets_the_page_made_ahead_go_past_the_bytes_asked_for() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_give_back, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(13));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let slots = (*pool).slots();
+        let page = slots as u64 * TILE_BYTES;
+        let past_half = slots / 2 + 1;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, past_half), past_half);
+        assert_eq!(ahead(pool), "made", "premise");
+        gpu_engine_pool_give_back(pool, engine, 2 * page);
+        assert_eq!(ahead(pool), "made", "the pages with it keep within two");
+        gpu_engine_pool_give_back(pool, engine, 2 * page - 1);
+        assert_eq!(ahead(pool), "unasked", "past them, it goes");
+        assert_eq!((*pool).pages().len(), 1, "the page its tiles hold stays");
+        assert_eq!(done_here(&*engine), Ok(()));
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
     }
