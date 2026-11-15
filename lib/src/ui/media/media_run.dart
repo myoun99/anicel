@@ -698,7 +698,7 @@ class MediaRun {
       return false;
     }
     _putTheClockBackTo((_page + 1) / fps);
-    _surface.setState(() => buffering = _soundComing);
+    _surface.setState(() => buffering = false);
     return true;
   }
 

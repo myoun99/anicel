@@ -470,7 +470,7 @@ class AudioDeviceTransport {
     }
     if (controller.isWaiting) {
       controller.lookAgain();
-    } else if (_carrying && controller.isPlaying) {
+    } else if (_carrying) {
       _arm(controller.playlistFrame);
     }
   }

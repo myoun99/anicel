@@ -85,11 +85,7 @@ class AudioScrubber {
   /// The windows a gesture stood down for have landed: its next slice makes
   /// it ready again ([_prepare]) — in milliseconds, not the next gesture.
   /// ↩️They were read in the slice, on the thread that draws.
-  void _windowsLanded() {
-    if (!_armed) {
-      _stoodDown = false;
-    }
-  }
+  void _windowsLanded() => _stoodDown = false;
 
   /// Whether the current gesture is playing sound (test surface).
   bool get isArmed => _armed;
