@@ -12,10 +12,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🚨image-row-cut-paste (유저 2026-10-04): a picture row's picture leaves
 /// and comes back through the clipboard, and a row standing empty takes a
@@ -360,6 +362,36 @@ void main() {
       expect(landed, isNotNull);
       expect(shadeOf(s, other, landed!), 30, reason: "its own row's drawing");
     });
+
+    test('a link the band brings to a picture row lands nothing there, so '
+        'it asks nothing of the names that row holds', () {
+      final (:s, :cels, :picture, held: _) = celsAndAPictureRow();
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      final other = s.activeLayer!.id;
+      s.selectFrameIndex(0);
+      s.createDrawingAtCurrentFrame();
+      for (final (row, name) in [(other, 'N'), (cels, 'X'), (picture, 'X')]) {
+        s.selectLayer(row);
+        s.selectFrameIndex(0);
+        expect(s.frameVerbs.renameSelectedFrame(name), isNull, reason: '전제');
+      }
+      sweep(s, [other, cels], end: 1);
+      s.copyFrameAtCurrentFrame();
+
+      // The board's rows meet the band's in order: N on the cel row, which
+      // holds no N, and X on the picture row, which holds an X — and has no
+      // room for the block a link brings.
+      sweep(s, [cels, picture], start: 4, end: 5);
+      expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue, reason: '전제');
+
+      expect(
+        clipboardOf(s).pasteLinkedFrameAtCurrentFrame(),
+        isNull,
+        reason: 'pasted — no join to ask about',
+      );
+      final linked = rowOf(s, cels).timeline[4]!.frameId!;
+      expect(rowOf(s, cels).frameById(linked)?.name, 'N');
+    });
   });
 
   // 🗣️F-593 (유저 2026-11-15): 「이미지 레이어에도 다른 블록의 그림 복사한거
@@ -426,6 +458,16 @@ void main() {
       expect(shadeOf(s, picture, held), 10);
     });
 
+    test('the drawings a paste lays down count the one it hangs there — '
+        'what the wait window counts a paste by', () {
+      final (:s, :cels, :picture, held: _) = celsAndAPictureRow();
+      copyXOnto(s, cels: cels, picture: picture, frame: 0);
+
+      expect(s.clipboard.drawingsPastedAt(s.clipboard.timelinePlace), [
+        (picture, rowOf(s, cels).timeline[0]!.frameId!),
+      ]);
+    });
+
     test('a copy of two pictures hangs the FIRST — 「첫장만」', () {
       final (:s, :cels, :picture, :held) = celsAndAPictureRow();
       s.selectLayer(cels);
@@ -445,6 +487,37 @@ void main() {
       expect(shown(s, picture), held);
       expectItsOneHeldPicture(s, picture);
       expect(shadeOf(s, picture, held), 10, reason: 'X — Y stays on the board');
+    });
+
+    test("a band's keys land over the frames they span — none of the row's "
+        'own keys past them moves, as none of its cells does', () {
+      final (:s, :cels, :picture, held: _) = celsAndAPictureRow();
+      for (final (row, frame) in [(cels, 0), (picture, 5)]) {
+        s.laneVerbs.toggleLaneKeyAt(
+          row,
+          'position',
+          frame,
+          frameIsGlobal: false,
+          description: 'key',
+        );
+      }
+      s.standOnRow(LayerRowAddress(cels), frameIndex: 0);
+      s.updateFrameRangeSelectionDrag(
+        layerId: cels,
+        anchorIndex: 0,
+        headIndex: 1,
+        spanRows: [LayerRowAddress(cels), LaneRowAddress(cels, 'position')],
+      );
+      final pill = TimelineToolbarPanelContext(s)..copyFrame();
+      s.standOnRow(LayerRowAddress(picture), frameIndex: 0);
+      expect(s.frameRangeSelection.value, isNull, reason: '⛔전제: no band');
+
+      pill.pasteIndependentFrame();
+
+      expect(
+        rowOf(s, picture).transformTrack.position.keys.keys.toSet(),
+        {0, 5},
+      );
     });
   });
 }
