@@ -309,6 +309,38 @@ void main() {
       expect(rows, 0);
     });
 
+    // Every road holds a file to the size its header said — a PNG's, a
+    // JPEG's (the engine's decoder) and what the package reads: none
+    // hands a row of another size.
+    test('a file that reads to another size than it said is refused, '
+        'reading no row', () {
+      final picture = opaque();
+      for (final (kind, bytes) in [
+        ('PNG', img.encodePng(picture)),
+        ('JPEG', img.encodeJpg(picture)),
+        ('BMP', img.encodeBmp(picture)),
+      ]) {
+        var rows = 0;
+        expect(
+          () => readFileRows(
+            bytes,
+            width: picture.width + 1,
+            height: picture.height,
+            row: (_, _) => rows += 1,
+          ),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'why',
+              startsWith('A picture said '),
+            ),
+          ),
+          reason: kind,
+        );
+        expect(rows, 0, reason: kind);
+      }
+    });
+
     testWidgets('a GIF, every frame as long as it shows', (tester) async {
       final gif = opaque()..frameDuration = 40;
       for (final (shift, duration) in [(40, 80), (90, 120)]) {
