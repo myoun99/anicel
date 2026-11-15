@@ -141,6 +141,103 @@ void main() {
     controller.stop();
   });
 
+  group('🚨a run that plays, seeked past its window, waits for its sound '
+      'there in silence, and sounds from there once the window has landed '
+      '(long-sound-windows-are-read-on-the-ui-isolate)', () {
+    late CanvasPlaybackController controller;
+    late AudioDeviceTransport transport;
+    late QaAudioDevice device;
+
+    /// A run that sounds from the top of the long sound, wired as the app
+    /// wires it (`PlaybackRig`): its clock waits for its sound.
+    Future<void> sounding() async {
+      final store = await streamingStore();
+      controller = CanvasPlaybackController(
+        resolveProject: () => _project,
+        resolveActiveCutId: () => const CutId('cut'),
+        resolveActiveTrackId: () => const TrackId('track'),
+        resolveFrameRate: () => fps,
+      );
+      addTearDown(controller.dispose);
+      transport = AudioDeviceTransport(
+        controller: controller,
+        resolveFrameRate: () => fps,
+        resolveProject: () => _project,
+        conformStore: store,
+        resolveDevice: () => QaAudioDevice.instance,
+      )..attach();
+      addTearDown(transport.dispose);
+      controller.waitsOn = (_, {required placed}) => transport.soundIsComing;
+      device = QaAudioDevice.instance!;
+
+      controller.play(scope: PlaybackScope.activeCut);
+      await pumpEventQueue();
+      transport.clockStatus(); // the clock's first look starts the device
+      expect(device.isPlaying, isTrue, reason: 'fixture: the run sounds');
+    }
+
+    test('its clock not yet come to stand — the window landed within the '
+        'frame: the landing itself arms it, where the run stands', () async {
+      await sounding();
+
+      controller.seekToGlobalFrame(350); // 35 s — past its leading edge
+      expect(conform.windowsRead, 2, reason: 'fixture: read on a worker');
+      expect(controller.isWaiting, isFalse, reason: 'fixture: asked before');
+      expect(
+        transport.soundIsComing,
+        isTrue,
+        reason: 'the run waits for its sound where it was put',
+      );
+      expect(
+        device.isPlaying,
+        isFalse,
+        reason: 'in silence: what played at the top is not what is shown',
+      );
+      // The clock's looks until it comes to stand before the next frame.
+      expect(
+        transport.clockStatus(),
+        isNull,
+        reason: 'a silent device is not the run\'s clock: ↩️read as a pass '
+            'that ran out, a looping run started again from the top and one '
+            'that plays once ended there',
+      );
+      expect(device.isPlaying, isFalse, reason: 'and no look starts it');
+
+      await pumpEventQueue();
+      expect(transport.soundIsComing, isFalse, reason: 'it has come');
+      final says = transport.clockStatus();
+      expect(device.isPlaying, isTrue, reason: 'and it sounds again');
+      expect(
+        says?.globalFrame,
+        inInclusiveRange(350, 351),
+        reason: 'from where the run stands — its clock never stood, so '
+            'nothing but the landing says so',
+      );
+      expect(says?.ended, isFalse);
+      controller.stop();
+    });
+
+    test('its clock come to stand for it — a drag going on: the run goes '
+        'on from the frame it waits on, and is armed there', () async {
+      await sounding();
+
+      controller.seekToGlobalFrame(350);
+      controller.seekToGlobalFrame(351); // put again: its sound on its way
+      expect(controller.isWaiting, isTrue, reason: 'fixture: it stands');
+      expect(conform.windowsRead, 2, reason: 'read once: the one on its way');
+      expect(device.isPlaying, isFalse);
+      expect(transport.clockStatus(), isNull, reason: 'a run that waits');
+
+      await pumpEventQueue();
+      expect(controller.isWaiting, isFalse, reason: 'its sound came');
+      final says = transport.clockStatus();
+      expect(device.isPlaying, isTrue, reason: 'armed as it went on');
+      expect(says?.globalFrame, inInclusiveRange(351, 352));
+      expect(conform.windowsRead, 2, reason: 'out of the window that landed');
+      controller.stop();
+    });
+  });
+
   test('🚨the media viewer\'s sound, put back past its window\'s trailing '
       'edge, reads the window there — and picks up inside it reading '
       'nothing (F-364-every-picture-even-when-late-Q1 a)', () async {

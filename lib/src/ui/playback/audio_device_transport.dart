@@ -90,7 +90,8 @@ class AudioDeviceTransport {
 
   /// Whether THIS activation runs on the device — decided where the run
   /// starts ([_startsAt]), and again as what its sound waited on lands
-  /// ([_soundMayHaveCome]).
+  /// ([_soundMayHaveCome]) — and not while an arm waits for its windows
+  /// ([_arm]).
   bool _carrying = false;
 
   /// The run the latest arm put on the device — all this transport
@@ -455,14 +456,22 @@ class AudioDeviceTransport {
   /// Something the run's sound waited on landed: it is made ready again
   /// where the run stands — and once it has come, or will never come, the
   /// run looks again ([CanvasPlaybackController.lookAgain]) and goes on, with
-  /// it or without it.
+  /// it or without it. A run whose clock had not come to stand — a seek
+  /// whose windows landed within the frame it stands on — goes on from
+  /// nowhere, and nothing would arm its sound: it is armed here, where the
+  /// run stands.
   void _soundMayHaveCome() {
     if (!_coming.isComing) {
       return;
     }
     _activate(from: controller.playlistFrame);
-    if (!_coming.isComing) {
+    if (_coming.isComing) {
+      return;
+    }
+    if (controller.isWaiting) {
       controller.lookAgain();
+    } else if (_carrying && controller.isPlaying) {
+      _arm(controller.playlistFrame);
     }
   }
 
@@ -481,21 +490,27 @@ class AudioDeviceTransport {
     // re-centred, and a run going on from where its activation had just
     // centred the window read and copied it twice: 🔬66ms and a GC on the
     // AMMI OP press (play-press-first-frame-stall, 10-15).
-    if (!_window.cover(
+    if (_window.cover(
       startSample,
       device: device,
       conformStore: conformStore,
       deviceRate: _deviceRate,
     )) {
-      // Its windows there are on their way: the run waits for its sound
-      // where it stands, as a press does, and is made ready there once they
-      // land ([_soundMayHaveCome]) — a seek past the window, a picture that
-      // came far from where the run waited for it. ↩️They were read here.
-      _stopDevice();
-      _coming.waitOn(device);
+      _armDevice(device, startSample: startSample, looping: loop && frame == 0);
       return;
     }
-    _armDevice(device, startSample: startSample, looping: loop && frame == 0);
+    // Its windows there are on their way — a seek past the window, a picture
+    // that came far from where the run waited for it: the run waits for its
+    // sound where it stands, as at a press ([_activate]), and is made ready
+    // there once they land ([_soundMayHaveCome]). ↩️They were read here.
+    //
+    // 🚨NOT CARRIED MEANWHILE: a silent device read as the run's clock
+    // ([clockStatus]) is a pass that ran out — a run that plays once ended
+    // there, and one that loops was started again from the top (🧪the first
+    // look after a seek past the window, 11-15, before this landed).
+    _carrying = false;
+    _stopDevice();
+    _coming.waitOn(device);
   }
 
   /// Arms the device at [startSample], and the line that reads it — started
