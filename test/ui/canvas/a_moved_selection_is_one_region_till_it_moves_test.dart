@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 
 import '../../helpers/transform_tool_on_canvas.dart';
 
@@ -44,4 +45,41 @@ void main() {
     );
     expect(antsOnScreen(tester).committedRegion, same(moved));
   });
+
+  // The same of the 퍼스 quad and the mesh, whose points move the selection
+  // with no move of the box: each step of theirs is a region anew.
+  for (final (mode, from, to, further) in [
+    (
+      TransformMode.perspective,
+      const Offset(360, 260),
+      const Offset(366, 262),
+      const Offset(372, 266),
+    ),
+    (
+      TransformMode.mesh,
+      const Offset(320, 220),
+      const Offset(332, 215),
+      const Offset(340, 210),
+    ),
+  ]) {
+    testWidgets('${mode.name}: each step of a point is a region anew', (
+      tester,
+    ) async {
+      await pumpTransformTool(
+        tester,
+        options: TransformToolOptions(mode: mode),
+      );
+      await dragOnTransformLayer(tester, from, to);
+      final stepped = antsOnScreen(tester).committedRegion;
+      expect(
+        stepped,
+        isNot(same(transformToolSquare)),
+        reason: 'the premise: a session moved it',
+      );
+
+      await dragOnTransformLayer(tester, to, further);
+
+      expect(antsOnScreen(tester).committedRegion, isNot(same(stepped)));
+    });
+  }
 }
