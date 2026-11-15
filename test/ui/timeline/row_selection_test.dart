@@ -428,20 +428,26 @@ void main() {
       expect(s.activeLayerId, copies.last.id, reason: 'on the top copy');
     });
 
-    test('B: a block of TWO places — a drawing row and the direction row — '
-        'lands each copy right over its source, at its own place\'s end '
-        '(F-596)', () {
+    test('B: a block of TWO places — two drawing rows and the direction row '
+        '— lands each place\'s copies right over its sources there, in the '
+        'order they stand (F-596)', () {
       final s = session();
-      final drawing = s.layers.lastWhere(
-        (layer) => layer.kind == LayerKind.animation,
-      );
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer.id,
+      ];
+      expect(drawings.length, greaterThanOrEqualTo(2), reason: '⛔premise');
+      final lower = drawings[drawings.length - 2];
+      final upper = drawings.last;
       final direction = s.layers.lastWhere(
         (layer) => layer.kind == LayerKind.instruction,
       );
       final before = [for (final layer in s.layers) layer.id];
 
       s.rowSelection.value = [
-        LayerRowAddress(drawing.id),
+        LayerRowAddress(lower),
+        LayerRowAddress(upper),
         LayerRowAddress(direction.id),
       ];
       s.layerVerbs.duplicateActiveLayer();
@@ -451,18 +457,57 @@ void main() {
         for (final id in after)
           if (!before.contains(id)) id,
       ];
-      expect(copies, hasLength(2));
+      expect(copies, hasLength(3));
       expect(
         copies,
         [
-          after[after.indexOf(drawing.id) + 1],
+          after[after.indexOf(upper) + 1],
+          after[after.indexOf(upper) + 2],
           after[after.indexOf(direction.id) + 1],
         ],
-        reason: 'each right over its source — ↩️F-596 carried the direction '
-            'row\'s copy under it: it went over the drawing copy, which the '
-            'section order had carried away',
+        reason: 'each place\'s copies right over its sources — ↩️F-596 '
+            'carried the direction row\'s copy under it: it went over the '
+            'drawing copies, which the section order had carried away',
+      );
+      expect(
+        [for (final id in copies.take(2)) _nameOf(s, id)],
+        [_nameOf(s, lower), _nameOf(s, upper)],
+        reason: 'in the order the rows stand',
       );
       expect(s.activeLayerId, copies.last, reason: 'on the top copy');
+    });
+
+    test('B: the block goes over the topmost row PICKED, under a row of its '
+        'place not picked', () {
+      final s = session();
+      s.layerStack
+        ..addLayerOfKind(LayerKind.animation)
+        ..addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer.id,
+      ];
+      expect(drawings.length, greaterThanOrEqualTo(3), reason: '⛔premise');
+      final upper = drawings[drawings.length - 2];
+      final notPicked = drawings.last;
+      final before = [for (final layer in s.layers) layer.id];
+
+      s.rowSelection.value = [
+        LayerRowAddress(drawings[drawings.length - 3]),
+        LayerRowAddress(upper),
+      ];
+      s.layerVerbs.duplicateActiveLayer();
+
+      final after = [for (final layer in s.layers) layer.id];
+      final seat = after.indexOf(upper) + 1;
+      expect(
+        after.sublist(seat, seat + 3),
+        [
+          for (final id in after)
+            if (!before.contains(id)) id,
+          notPicked,
+        ],
+      );
     });
 
     testWidgets('B: the rename DIALOG renames the whole selection', (
