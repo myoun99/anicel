@@ -77,6 +77,8 @@ final class SelectionMasks extends Opaque {}
 
 final class SelectionRuns extends Opaque {}
 
+final class RunContours extends Opaque {}
+
 final class FloodPicture extends Opaque {}
 
 final class FloodFilled extends Opaque {}
@@ -751,6 +753,40 @@ external void selectionRunsRead(
   symbol: 'gpu_engine_selection_runs_free',
 )
 external void selectionRunsFree(Pointer<SelectionRuns> runs);
+
+@Native<
+  Pointer<RunContours> Function(
+    Pointer<Uint32>,
+    Size,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Pointer<UintPtr>,
+  )
+>(symbol: 'gpu_engine_run_contours', isLeaf: true)
+external Pointer<RunContours> runContours(
+  Pointer<Uint32> offsets,
+  int rows,
+  Pointer<Uint32> ends,
+  int endsLength,
+  int width,
+  Pointer<UintPtr> counts,
+);
+
+@Native<
+  Void Function(Pointer<RunContours>, Pointer<Uint32>, Pointer<Int32>)
+>(symbol: 'gpu_engine_run_contours_read', isLeaf: true)
+external void runContoursRead(
+  Pointer<RunContours> contours,
+  Pointer<Uint32> starts,
+  Pointer<Int32> points,
+);
+
+@Native<Void Function(Pointer<RunContours>)>(
+  symbol: 'gpu_engine_run_contours_free',
+  isLeaf: true,
+)
+external void runContoursFree(Pointer<RunContours> contours);
 
 @Native<Int32 Function(Pointer<Planned>, Pointer<MaskPlane>)>(
   symbol: 'gpu_engine_plan_mask',

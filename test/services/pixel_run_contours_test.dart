@@ -2,10 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/pixel_run_contours.dart';
 
-/// The outline walk the selection's ants and a held fill's mark share
-/// ([pixelRunContours]), pinned by the exact points it gives: the order is
-/// the law — a contour starts where the scan first met it, so the dashes
-/// stay put.
+/// The app's door to the outline walk the selection's ants and a held
+/// fill's mark share ([pixelRunContours]): the rows handed over as the
+/// engine reads runs, and its points brought back into canvas space.
+/// ⛔Where the walk goes — its order, its merges, its holes — is pinned once,
+/// on the walk itself (`rust/src/kernels/mask/contours_tests.rs`); these
+/// pin only what this side adds.
 void main() {
   List<List<(double, double)>> walk(
     List<List<int>> rows, {
@@ -22,20 +24,6 @@ void main() {
       [for (final point in contour) (point.x, point.y)],
   ];
 
-  List<List<int>> rowsOf(
-    bool Function(int x, int y) covered, {
-    required int width,
-    required int height,
-  }) => [
-    for (var y = 0; y < height; y += 1)
-      [
-        for (var x = 0; x <= width; x += 1)
-          if ((x < width && covered(x, y)) !=
-              (x > 0 && covered(x - 1, y)))
-            x,
-      ],
-  ];
-
   test('a block is its four corners, from its top-left going right, in '
       'canvas space', () {
     expect(walk([[0, 3], [0, 3]], width: 3, left: 10, top: 20), [
@@ -43,80 +31,29 @@ void main() {
     ]);
   });
 
-  test('two pixels that meet only at a corner are one walk through that '
-      'corner — its later edge first', () {
-    expect(walk([[0, 1], [1, 2]], width: 2), [
-      [
-        (0.0, 0.0),
-        (1.0, 0.0),
-        (1.0, 1.0),
-        (2.0, 1.0),
-        (2.0, 2.0),
-        (1.0, 2.0),
-        (1.0, 1.0),
-        (0.0, 1.0),
-      ],
-    ]);
-  });
-
-  test('two runs that meet only at a corner, each of its own length, are '
-      'walked through it a run each', () {
-    expect(walk([[0, 3], [3, 6]], width: 6), [
-      [
-        (0.0, 0.0),
-        (3.0, 0.0),
-        (3.0, 1.0),
-        (6.0, 1.0),
-        (6.0, 2.0),
-        (3.0, 2.0),
-        (3.0, 1.0),
-        (0.0, 1.0),
-      ],
-    ]);
-  });
-
-  test('a hole wider than a pixel starts at its top-left corner going down, '
-      'as the pixel scan met it', () {
-    bool hole(int x, int y) => x >= 2 && x < 5 && y >= 1 && y < 3;
+  test('rows of runs of their own lengths are each read as their own — a '
+      'hole between two runs of a row, a row of none below', () {
     expect(
-      walk(rowsOf((x, y) => !hole(x, y), width: 7, height: 5), width: 7),
+      walk(
+        [
+          [0, 5],
+          [0, 1, 3, 5],
+          [0, 5],
+          [],
+        ],
+        width: 5,
+        left: -2,
+        top: 7,
+      ),
       [
-        [(0.0, 0.0), (7.0, 0.0), (7.0, 5.0), (0.0, 5.0)],
-        [(2.0, 1.0), (2.0, 3.0), (5.0, 3.0), (5.0, 1.0)],
+        [(-2.0, 7.0), (3.0, 7.0), (3.0, 10.0), (-2.0, 10.0)],
+        [(-1.0, 8.0), (-1.0, 9.0), (1.0, 9.0), (1.0, 8.0)],
       ],
     );
   });
 
-  test('a straight side is laid as an edge or two, not a pixel\'s each', () {
-    // A 1000-pixel run three rows deep: its top one edge, its bottom two
-    // (its first pixel's own, then the rest), its sides one a row.
-    expect(
-      debugBoundaryEdgeCount([
-        for (var y = 0; y < 3; y += 1) [0, 1000],
-      ], 1000),
-      9,
-    );
-  });
-
-  test('holes come after the outline that holds them, in the order the scan '
-      'meets them — past the size the edge table starts at', () {
-    // 225 one-pixel holes: over a thousand vertices with an edge, so the
-    // table grows twice on the way.
-    bool hole(int x, int y) => x % 4 == 1 && y % 4 == 1 && x < 60 && y < 60;
-    final contours = walk(
-      rowsOf((x, y) => !hole(x, y), width: 64, height: 64),
-      width: 64,
-    );
-    expect(contours, [
-      [(0.0, 0.0), (64.0, 0.0), (64.0, 64.0), (0.0, 64.0)],
-      for (var y = 1; y < 60; y += 4)
-        for (var x = 1; x < 60; x += 4)
-          [
-            (x + 1.0, y.toDouble()),
-            (x.toDouble(), y.toDouble()),
-            (x.toDouble(), y + 1.0),
-            (x + 1.0, y + 1.0),
-          ],
-    ]);
+  test('nothing held is no contour', () {
+    expect(walk([[], []], width: 4), isEmpty);
+    expect(walk([], width: 4), isEmpty);
   });
 }

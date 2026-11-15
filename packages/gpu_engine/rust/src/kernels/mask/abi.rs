@@ -10,6 +10,7 @@
 #[path = "abi_tests.rs"]
 mod tests;
 
+use super::contours::{RunContours, runs_hold, walked};
 use super::region::{Combine, Operand, RegionMask, Step};
 use super::runs::{MaskRuns, SelectionRuns};
 use super::within::MaskWithin;
@@ -340,6 +341,71 @@ pub unsafe extern "C" fn gpu_engine_selection_runs_read(
 pub unsafe extern "C" fn gpu_engine_selection_runs_free(runs: *mut SelectionRuns) {
     // SAFETY: see the function's contract.
     unsafe { let_go_bytes(runs) };
+}
+
+/// The closed contours of the pixels the runs hold — row `r`'s
+/// `ends[offsets[r] .. offsets[r + 1]]`, a start and an end in turn,
+/// columns from the left of a box `width` wide — on the pixel grid
+/// ([`walked`]): what the app draws round a selection's pixels and a held
+/// fill's (`pixelRunContours`). Writes how many contours and points to
+/// `counts`. No device is asked: the runs are the caller's — a selection's
+/// read back ([`gpu_engine_selection_runs`]), a fill's its own. Null where
+/// the runs are none of a box `width` wide ([`runs_hold`]); see the last
+/// error.
+///
+/// # Safety
+/// `offsets` holds `rows` and one more words, `ends` `ends_length`; `counts`
+/// is a place for two.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_run_contours(
+    offsets: *const u32,
+    rows: usize,
+    ends: *const u32,
+    ends_length: usize,
+    width: u32,
+    counts: *mut usize,
+) -> *mut RunContours {
+    // SAFETY: see the function's contract.
+    let (offsets, ends) = unsafe {
+        (std::slice::from_raw_parts(offsets, rows + 1), std::slice::from_raw_parts(ends, ends_length))
+    };
+    if !runs_hold(offsets, ends, width) {
+        fail::<()>(format!("runs of {rows} rows that are none of a box {width} wide"));
+        return std::ptr::null_mut();
+    }
+    let contours = walked(offsets, ends, width);
+    // SAFETY: see the function's contract.
+    unsafe {
+        counts.write(contours.starts.len() - 1);
+        counts.add(1).write(contours.points.len() / 2);
+    }
+    hands_bytes(contours)
+}
+
+/// Writes `contours`' starts — its contours and one more — to `starts` and
+/// its points, a column and a line each, to `points`: contour c's are
+/// `points[2 * starts[c] .. 2 * starts[c + 1]]`.
+///
+/// # Safety
+/// `contours` is live; `starts` holds a word more than its contours and
+/// `points` two a point, as [`gpu_engine_run_contours`] counted them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_run_contours_read(contours: *const RunContours, starts: *mut u32, points: *mut i32) {
+    // SAFETY: see the function's contract.
+    let contours = unsafe { &*contours };
+    // SAFETY: see the function's contract.
+    unsafe {
+        starts.copy_from_nonoverlapping(contours.starts.as_ptr(), contours.starts.len());
+        points.copy_from_nonoverlapping(contours.points.as_ptr(), contours.points.len());
+    }
+}
+
+/// # Safety
+/// `contours` came from `gpu_engine_run_contours`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_run_contours_free(contours: *mut RunContours) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(contours) };
 }
 
 /// [`gpu_engine_selection_mask_new`]'s plane.

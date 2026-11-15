@@ -5,7 +5,7 @@
 //! row's crossings itself in f64 (`_pixelRuns`), the engine's mask in Q.8
 //! beside it: the ants could stand a pixel off what a lift moved.
 //! ⛔RUNS, NOT BYTES: a selection's inverse covers the whole pasteboard
-//! wall, ~35 MB at a byte a pixel (`pixel_run_contours.dart`, I-23) — the
+//! wall, ~35 MB at a byte a pixel (`contours.rs`, I-23) — the
 //! runs are as many as its outline has rows.
 
 #[cfg(test)]

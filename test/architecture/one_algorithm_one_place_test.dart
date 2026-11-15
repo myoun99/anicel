@@ -910,8 +910,19 @@ import '../../tool/refactor/clone_scan.dart';
 /// integrates a round tip's profile over each pixel's square. Not one
 /// algorithm, so nothing to share. 🔬`clones.dart` on the lane over master
 /// (`62254f54d`, at 80): this one added, none gone.
+/// 81 → 80 (2026-11-16, pixel-ants-cost-a-frame-while-moving — the
+/// outline's walk went to the engine). 🔬`clones.dart` on the lane over
+/// master (`464e7e38e`, at 81): one gone, none added —
+///
+///       lib/src/services/pixel_run_contours.dart  _EdgeTable._placeOf
+///       lib/src/ui/timeline/timeline_row_edges.dart
+///         TimelineRowEdges._startingBefore
+///
+/// the outline's hand-spelled lower bound, walked in Rust now
+/// (`kernels/mask/contours.rs`, `partition_point`): the 🔜 above has one
+/// spelling fewer to wait on.
 void main() {
-  const ceiling = 81;
+  const ceiling = 80;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

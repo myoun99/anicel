@@ -4716,6 +4716,50 @@ GpuTileInk _walkedAt(Int32List words, int at) {
   );
 }
 
+/// The closed contours of the pixels [ends] hold — row `r`'s
+/// `ends[offsets[r] .. offsets[r + 1]]`, a start and an end in turn,
+/// columns from the left of a box [width] wide — on the pixel grid, walked
+/// by the engine (rust/src/kernels/mask/contours.rs): contour `c`'s points
+/// are `points[2 * starts[c] .. 2 * starts[c + 1]]`, a column and a line in
+/// turn from the box's top-left corner, in the order the scan met them. No
+/// device is asked. Throws [GpuRefused] where the runs are none of such a
+/// box.
+({Uint32List starts, Int32List points}) contoursOfRuns({
+  required Uint32List offsets,
+  required Uint32List ends,
+  required int width,
+}) => using((arena) {
+  final rows = offsets.length - 1;
+  final counts = arena<UintPtr>(2);
+  final offsetsAt = arena<Uint32>(offsets.length)
+    ..asTypedList(offsets.length).setAll(0, offsets);
+  final endsAt = arena<Uint32>(_held(ends.length))
+    ..asTypedList(ends.length).setAll(0, ends);
+  final contours = rust.runContours(
+    offsetsAt,
+    rows,
+    endsAt,
+    ends.length,
+    width,
+    counts,
+  );
+  if (contours == nullptr) {
+    throw GpuRefused(_lastError());
+  }
+  try {
+    final (lines, points) = (counts[0], counts[1]);
+    final startsAt = arena<Uint32>(lines + 1);
+    final pointsAt = arena<Int32>(_held(2 * points));
+    rust.runContoursRead(contours, startsAt, pointsAt);
+    return (
+      starts: Uint32List.fromList(startsAt.asTypedList(lines + 1)),
+      points: Int32List.fromList(pointsAt.asTypedList(2 * points)),
+    );
+  } finally {
+    rust.runContoursFree(contours);
+  }
+}, malloc);
+
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off
 /// Flutter's screen, so they are compared as the GPU's are.
 int fingerprintBytes(Uint8List bytes) => using((arena) {

@@ -14,6 +14,7 @@
 //! layout.
 
 pub(crate) mod abi;
+pub(crate) mod contours;
 pub(crate) mod region;
 pub(crate) mod runs;
 pub(crate) mod within;
