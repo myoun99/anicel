@@ -6,11 +6,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart' show CustomPainter, RendererBinding;
 import 'package:flutter/scheduler.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuWord;
 
 import '../../core/bake_once_lru.dart';
 import '../../core/hashed_once.dart';
 import '../../core/lru.dart';
 import '../../models/rgba_image_bytes.dart';
+import '../../native/engine_faces.dart';
+import '../../native/engine_word.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import '../look_only_frames.dart';
 import '../quiet_turns.dart';
@@ -36,14 +39,19 @@ class BakedWordCoverage {
 }
 
 /// THE bake of a word: [painter] (laid out) narrowed by [fit] at [dpr],
-/// read back as coverage — what the timeline's tiles blit, and what a
-/// screen draws a narrowed word from ([paintBakedWord]).
+/// read back as coverage — what a screen draws a narrowed word from
+/// ([paintBakedWord]), and what a frame grid's tile blits for a word that
+/// is not the engine's to set ([bakeWordOnEngine], the tiles' bake).
 ///
 /// 🗣️A SCREEN'S WORD IS FLUTTER'S RASTER (connection-round-checklist-Q30,
 /// 유저 2026-11-09: 「프레임블록같은 ui적인 요소가 플러터고 출력될 것에
 /// 찍히는건 엔진」 · 「출력에보이는거만 동일하면되는데」). What is stamped into
 /// the output is the GPU engine's; a word on a screen is one raster with the
 /// words beside it.
+/// 🗣️BUT A FRAME GRID'S TILE WORD IS THE ENGINE'S, the person's choice on
+/// 2026-11-15 knowing it overturns this for the tiles alone
+/// ([bakeWordOnEngine]): this raster is read back, and a tile's paint
+/// waited frames for every word it had never seen.
 /// ↩️From 2026-11-08 to 11-09 the GPU engine set this word (word-bake-Q1,
 /// 유저 2026-11-05: 「엔진이 글자를 직접 그린다」). 🔬Beside the un-narrowed
 /// words Flutter draws it stood −1.5 to +0.8 px off the centre of this bake,
@@ -148,22 +156,47 @@ RecordedWord? recordWord(
   if (painter.width <= 0 || painter.height <= 0) {
     return null;
   }
-  // The raster is the word as it stands UN-narrowed with one final pixel of
-  // margin round it, [times] times over — one final pixel of margin is that
-  // many of its own.
-  final times = wordBakeScale(fontSize ?? legibleBakeSize).toInt();
+  final raster = _rasterOf(painter, dpr: dpr, fontSize: fontSize);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)
-    ..translate(times.toDouble(), times.toDouble())
-    ..scale(dpr * times);
+    ..translate(raster.margin, raster.margin)
+    ..scale(raster.scale);
   painter.paint(canvas, Offset.zero);
   return RecordedWord._(
     picture: recorder.endRecording(),
-    times: times,
+    raster: raster,
     width: painter.width,
     height: painter.height,
     fit: fit,
     dpr: dpr,
+  );
+}
+
+/// The raster a word is baked from, whoever rasters it: the word as it
+/// stands UN-narrowed with one final pixel of margin round it, [times]
+/// times over — [width] × [height] pixels, the word's layout laid [scale]
+/// pixels a px and [margin] pixels in, one final pixel of margin being
+/// that many of its own.
+typedef _WordRaster = ({
+  int width,
+  int height,
+  int times,
+  double scale,
+  double margin,
+});
+
+_WordRaster _rasterOf(
+  TextPainter painter, {
+  required double dpr,
+  required double? fontSize,
+}) {
+  final times = wordBakeScale(fontSize ?? legibleBakeSize).toInt();
+  return (
+    width: ((painter.width * dpr).ceil() + 2) * times,
+    height: ((painter.height * dpr).ceil() + 2) * times,
+    times: times,
+    scale: dpr * times,
+    margin: times.toDouble(),
   );
 }
 
@@ -172,15 +205,15 @@ RecordedWord? recordWord(
 final class RecordedWord {
   RecordedWord._({
     required this.picture,
-    required this.times,
+    required _WordRaster raster,
     required this.width,
     required this.height,
     required this.fit,
     required this.dpr,
-  });
+  }) : _raster = raster;
 
   final ui.Picture picture;
-  final int times;
+  final _WordRaster _raster;
   final double width;
   final double height;
   final ({double x, double y}) fit;
@@ -190,15 +223,13 @@ final class RecordedWord {
 /// [word]'s raster read back as its coverage ([bakeWordCoverage]); its
 /// picture is given back whatever comes of it.
 Future<BakedWordCoverage?> bakeRecordedWord(RecordedWord word) async {
-  final RecordedWord(:picture, :times, :fit, :dpr) = word;
-  final bigWidth = ((word.width * dpr).ceil() + 2) * times;
-  final bigHeight = ((word.height * dpr).ceil() + 2) * times;
+  final RecordedWord(:picture, _raster: raster, :fit, :dpr) = word;
   // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
   // survive a failed bake; and `toByteData` is awaited, so the image used to
   // survive a failed read. Both are given back by structure now.
   final ui.Image image;
   try {
-    image = picture.toImageSync(bigWidth, bigHeight);
+    image = picture.toImageSync(raster.width, raster.height);
   } finally {
     picture.dispose();
   }
@@ -211,30 +242,118 @@ Future<BakedWordCoverage?> bakeRecordedWord(RecordedWord word) async {
   if (data == null) {
     return null;
   }
-  final big = Uint8List(bigWidth * bigHeight);
+  final big = Uint8List(raster.width * raster.height);
   for (var i = 0; i < big.length; i += 1) {
     big[i] = data.getUint8(i * 4 + 3);
   }
-  // The box the word is blitted by: its narrowed ink, and a pixel round it.
-  final width = (word.width * fit.x * dpr).ceil() + 2;
-  final height = (word.height * fit.y * dpr).ceil() + 2;
+  return _narrowed(
+    big,
+    raster,
+    width: word.width,
+    height: word.height,
+    fit: fit,
+    dpr: dpr,
+  );
+}
+
+/// [big] — the raster ([_rasterOf]) of a word [width] × [height] px, its
+/// coverage a byte a pixel — averaged into the box the word is blitted by:
+/// its narrowed ink, and a pixel round it.
+BakedWordCoverage _narrowed(
+  Uint8List big,
+  _WordRaster raster, {
+  required double width,
+  required double height,
+  required ({double x, double y}) fit,
+  required double dpr,
+}) {
+  final boxWidth = (width * fit.x * dpr).ceil() + 2;
+  final boxHeight = (height * fit.y * dpr).ceil() + 2;
   return BakedWordCoverage(
-    width: width,
-    height: height,
-    logicalWidth: word.width * fit.x,
-    logicalHeight: word.height * fit.y,
+    width: boxWidth,
+    height: boxHeight,
+    logicalWidth: width * fit.x,
+    logicalHeight: height * fit.y,
     // ⛔No arm for the word that needs no average: the average of one pixel
     // IS that pixel ([boxFilterA8]), so the raster comes through it as it
     // is.
     alpha: boxFilterA8(
       big,
-      bigWidth,
-      bigHeight,
-      width,
-      height,
-      along: _narrowedSpan(times, fit.x),
-      down: _narrowedSpan(times, fit.y),
+      raster.width,
+      raster.height,
+      boxWidth,
+      boxHeight,
+      along: _narrowedSpan(raster.times, fit.x),
+      down: _narrowedSpan(raster.times, fit.y),
     ),
+  );
+}
+
+/// [bakeWordCoverage] of a word a FRAME GRID'S TILE sets, rastered by the
+/// GPU engine within the call ([GpuWord.raster]) and averaged as every
+/// bake is ([_narrowed]) — the bake a paint can make of a word it has
+/// never seen, where Flutter's raster is read back and waited for.
+///
+/// 🗣️A GRID TILE'S WORD IS THE ENGINE'S (a-grid-row-paints-its-cells-on-a-
+/// canvas-beside-its-tiles-Q3 · Q4, 유저 2026-11-15: 「(다) 글자도 엔진이 그
+/// 자리에서 굽는다」 — 「이게 가장 근본적해결같은데」 · 「그대로 간다 — 격자 칸
+/// 글자는 엔진이 굽는다」), asked knowing what it leaves: a tile's word is
+/// not Flutter's raster ([bakeWordCoverage]'s head has what the two
+/// differed by on 11-09), where every other word of a screen stays one
+/// (connection-round-checklist-Q30). The reason is the wait, not the look.
+///
+/// Each cluster goes where [painter]'s layout put it ([EngineWord]), set
+/// in the app's bundled faces in the order its style goes down them
+/// ([EngineFaces.inOrder]) — asked once those are read
+/// ([EngineFaces.areRead]).
+///
+/// Null for a word of no size and for a raster the engine refuses: a tile
+/// leaves either out. Throws [UnsupportedError] for a word that is not the
+/// engine's to set: one in a style it is not handed ([EngineWord.of]), and
+/// ⏳one with a letter none of the bundled faces has — Flutter sets that
+/// one in a face of the machine's, which the engine never sees, so the
+/// word stays Flutter's to raster ([bakeWordCoverage]) till the person
+/// says what it is to be (the same card's Q5).
+BakedWordCoverage? bakeWordOnEngine(
+  TextPainter painter, {
+  required ({double x, double y}) fit,
+  required double dpr,
+  required double? fontSize,
+}) {
+  if (painter.width <= 0 || painter.height <= 0) {
+    return null;
+  }
+  final word = EngineWord.of(painter);
+  final faces = EngineFaces.inOrder(word.families);
+  final raster = _rasterOf(painter, dpr: dpr, fontSize: fontSize);
+  final set = GpuWord();
+  final Uint8List? big;
+  try {
+    word.handTo(set);
+    if (!set.isWholeIn(faces)) {
+      throw UnsupportedError(
+        'a word with a letter none of the bundled faces has',
+      );
+    }
+    big = set.raster(
+      faces,
+      [raster.scale, 0, 0, raster.scale, raster.margin, raster.margin],
+      width: raster.width,
+      height: raster.height,
+    );
+  } finally {
+    set.free();
+  }
+  if (big == null) {
+    return null;
+  }
+  return _narrowed(
+    big,
+    raster,
+    width: painter.width,
+    height: painter.height,
+    fit: fit,
+    dpr: dpr,
   );
 }
 

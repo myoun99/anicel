@@ -189,9 +189,11 @@ const _ofNoEngine = <String, (int, String)>{
         '(`GpuDabTexture`): made with no engine',
   ),
   'faces._faces': (
-    1,
+    3,
     'the faces are font files in memory (`GpuFaces`, rust '
-        'kernels/letters `Faces`): made with no engine',
+        'kernels/letters `Faces`): made with no engine — a pass sets its '
+        'letters in them, and a word is checked against them and rastered '
+        'in them with no engine at all (`GpuWord`)',
   ),
 };
 

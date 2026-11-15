@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
     show timelineFrameWindowSpanFor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/grid_tile_drawn.dart';
 import '../../helpers/poll_until.dart';
@@ -103,20 +104,9 @@ void main() {
   // open here stays open.
   setUpAll(openAppGpuEngine);
 
-  // ⛔premise: the word a block of [blockLayer] sets, baked once at the
-  // ratio the tests ask for — the one wait left for a span nothing stands
-  // in for, which they would otherwise meet in whichever of them runs first.
-  setUpAll(() async {
-    final store = TimelineGridTileStore.instance;
-    store.tileFor(
-      painter: painterFor(blockLayer(), store: store),
-      spanStartIndex: 0,
-      spanEndIndexExclusive: 4,
-      devicePixelRatio: 2.0,
-    );
-    await tileStoreIdle(store);
-    store.clear();
-  });
+  // ⛔premise: a word is baked in the ask that sets it — once the engine's
+  // faces are read, which the first test to ask would otherwise wait for.
+  readTheEnginesFacesFirst();
 
   setUp(TimelineGridTileStore.instance.clear);
   tearDown(TimelineGridTileStore.instance.clear);
@@ -288,18 +278,8 @@ void main() {
     final layer = blockLayer();
     final painter = painterFor(layer, store: store);
 
-    var landings = 0;
-    store.revision.addListener(() => landings += 1);
-    expect(
-      store.tileFor(
-        painter: painter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
-    );
-    await pollUntil(() => landings > 0);
+    // A ratio no test before it baked the mark's word at: the engine bakes
+    // it in the ask.
     final image = store.tileFor(
       painter: painter,
       spanStartIndex: 0,
@@ -356,41 +336,37 @@ void main() {
       frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
       timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 40)},
     );
-    var drawn = 0;
-    store.debugBeforeDrawing = () async => drawn += 1;
-    addTearDown(() => store.debugBeforeDrawing = null);
-    Future<TimelineGridTilePicture?> tileAt(double dpr) async {
-      TimelineGridTilePicture? asked() => store.tileFor(
-        painter: TimelineRowCellsPainter(
-          layer: layer,
-          geometry: testFrameGeometry(
-            frameCellExtent: 24,
-            frameEndIndexExclusive: 40,
-          ),
-          crossAxisExtent: 28,
-          exposureStateForLayer: stateFor,
-          colorScheme: const ColorScheme.dark(),
-          baseTextStyle: const TextStyle(fontSize: 11),
-          frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 80 : null,
-          tileStore: store,
+    TimelineGridTilePicture? tileAt(double dpr) => store.tileFor(
+      painter: TimelineRowCellsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: 24,
+          frameEndIndexExclusive: 40,
         ),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: dpr,
-      );
-      expect(asked(), isNull, reason: 'a cold span at $dpr');
-      await tileStoreIdle(store);
-      return asked();
-    }
+        crossAxisExtent: 28,
+        exposureStateForLayer: stateFor,
+        colorScheme: const ColorScheme.dark(),
+        baseTextStyle: const TextStyle(fontSize: 11),
+        frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 80 : null,
+        tileStore: store,
+      ),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: dpr,
+    );
 
-    // Some 800 px, inside its block: on the atlas at 1, past it at 3. Its
-    // raster is the word un-narrowed and bigger still (recordWord), so the
-    // word is no longer than the test's raster takes.
-    expect(await tileAt(1), isNotNull, reason: 'premise: the word is set');
-    final before = drawn;
+    // Some 800 px, inside its block: on the atlas at 1, past it at 3.
+    expect(tileAt(1), isNotNull, reason: 'premise: the word is set');
+    final baked = store.debugWordsBakedOnTheEngine;
 
-    expect(await tileAt(3), isNull);
-    expect(drawn, greaterThan(before), reason: 'it was baked, and refused');
+    expect(tileAt(3), isNull);
+    expect(
+      store.debugWordsBakedOnTheEngine,
+      greaterThan(baked),
+      reason: 'it was baked, and refused',
+    );
+    await tileStoreIdle(store);
+    expect(tileAt(3), isNull, reason: 'off the paint as in the ask');
   });
 
   test('a cold span is baked in the ask as a physical-resolution image, and '
@@ -425,12 +401,16 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(landings, hits);
 
-    // A LOOK-only change (the base text style here) keeps showing the
-    // STALE tile while the fresh raster lands (UI-R20 #6: no
-    // classic-pass flicker) — a new type is a new word, every one of them
-    // (the X that opens the empty run too), and a word's first bake is the
-    // one wait an ask cannot make (F-314). The ACTIVE flag is no such
-    // lever anymore: it left the raster entirely (UI-R21 #2; the grid
+    // A LOOK-only change (the base text style here) is baked in the ask as
+    // well: a new type is a new word, every one of them (the X that opens
+    // the empty run too), and the engine bakes a word where it is asked
+    // (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4,
+    // 유저 2026-11-15). ↩️It kept showing the STALE tile while the fresh
+    // raster landed (UI-R20 #6: no classic-pass flicker) — a word's first
+    // bake was the one wait an ask could not make (F-314); the stale tile
+    // stands in now for a word that is not the engine's to set
+    // (an_edited_span_is_baked_in_its_paint_test). The ACTIVE flag is no
+    // such lever anymore: it left the raster entirely (UI-R21 #2; the grid
     // sheet paints the wash since I-44), so activation is a guaranteed
     // tile HIT by construction.
     final stylePainter = painterFor(
@@ -438,17 +418,6 @@ void main() {
       store: store,
       baseTextStyle: const TextStyle(fontSize: 12),
     );
-    expect(
-      store.tileFor(
-        painter: stylePainter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
-      ),
-      same(image),
-      reason: 'stale-while-revalidate while its words bake',
-    );
-    await pollUntil(() => landings != hits);
     final fresh = store.tileFor(
       painter: stylePainter,
       spanStartIndex: 0,
@@ -456,7 +425,8 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(fresh, isNotNull);
-    expect(identical(fresh, image), isFalse, reason: 'the re-raster landed');
+    expect(identical(fresh, image), isFalse, reason: 'the look moved');
+    expect(landings, hits + 1, reason: 'it landed in the ask');
 
     // A CONTENT change (new layer instance) over words already baked is
     // baked in the ask (F-314): the row's chrome follows the edit in this

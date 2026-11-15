@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -8,7 +8,11 @@ import '../ui/theme/app_theme.dart' show AppTypography;
 
 /// THE FACES THE GPU ENGINE SETS LETTERS IN: the app's bundled families
 /// ([AppTypography.canvasLetterFaces] — BIZ UDPGothic, 나눔고딕, Noto Sans
-/// SC) read from its bundle once, as one [GpuFaces] the process keeps.
+/// SC) read from its bundle once, as one [GpuFaces] the process keeps, and
+/// laid in whatever order of them a style goes down — the canvas letters'
+/// own, or the UI's, which a Chinese UI begins with Noto Sans SC
+/// ([AppTypography.fallbackFor]) — sharing those files
+/// ([GpuFaces.ordered]).
 ///
 /// ⚠️ONE COPY OF THE FILES: they are 35 MB (BIZ UDPGothic 9.3, 나눔고딕
 /// 4.1, Noto Sans SC 21.7), held from the first letters the engine sets to
@@ -40,4 +44,26 @@ abstract final class EngineFaces {
     }
     return handing.done();
   }
+
+  /// Whether the bundle's have been read ([bundled]): what a paint asks
+  /// before [inOrder], waiting for nothing.
+  static bool get areRead => _bundled != null;
+
+  /// The bundled families in the order [order] names them — each by its
+  /// place among [AppTypography.canvasLetterFaces] —, made the first time
+  /// that order is asked for and kept. Asked once they are read
+  /// ([areRead]).
+  static GpuFaces inOrder(List<int> order) {
+    final all = _bundled!;
+    if (listEquals(order, _bundledOrder)) {
+      return all;
+    }
+    return _ordered[order.join(',')] ??= all.ordered(order);
+  }
+
+  static final Map<String, GpuFaces> _ordered = {};
+
+  static final List<int> _bundledOrder = [
+    for (final (place, _) in AppTypography.canvasLetterFaces.indexed) place,
+  ];
 }

@@ -51,6 +51,8 @@ final class Lettering extends Opaque {}
 
 final class Lettered extends Opaque {}
 
+final class Wording extends Opaque {}
+
 final class Grid extends Opaque {}
 
 final class GridPicture extends Opaque {}
@@ -1750,8 +1752,72 @@ external void facesFile(
 )
 external Pointer<Faces> facesOf(Pointer<FacesHanded> handed);
 
+@Native<Pointer<Faces> Function(Pointer<Faces>, Pointer<Uint32>, Size)>(
+  symbol: 'gpu_engine_faces_ordered',
+)
+external Pointer<Faces> facesOrdered(
+  Pointer<Faces> faces,
+  Pointer<Uint32> order,
+  int count,
+);
+
 @Native<Void Function(Pointer<Faces>)>(symbol: 'gpu_engine_faces_free')
 external void facesFree(Pointer<Faces> faces);
+
+@Native<Pointer<Wording> Function()>(symbol: 'gpu_engine_word_new')
+external Pointer<Wording> wordNew();
+
+@Native<Void Function(Pointer<Wording>)>(symbol: 'gpu_engine_word_free')
+external void wordFree(Pointer<Wording> word);
+
+@Native<
+  Bool Function(
+    Pointer<Wording>,
+    Int32,
+    Uint32,
+    Bool,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_word_run')
+external bool wordRun(
+  Pointer<Wording> word,
+  int size,
+  int weight,
+  bool italic,
+  Pointer<Uint8> text,
+  int length,
+  Pointer<Uint32> ends,
+  Pointer<Int32> origins,
+  int count,
+);
+
+@Native<
+  Bool Function(
+    Pointer<Wording>,
+    Pointer<Faces>,
+    Pointer<Float>,
+    Uint32,
+    Uint32,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_word_raster')
+external bool wordRaster(
+  Pointer<Wording> word,
+  Pointer<Faces> faces,
+  Pointer<Float> toRaster,
+  int width,
+  int height,
+  Pointer<Uint8> bytes,
+);
+
+@Native<Bool Function(Pointer<Wording>, Pointer<Faces>)>(
+  symbol: 'gpu_engine_word_whole',
+)
+external bool wordWhole(Pointer<Wording> word, Pointer<Faces> faces);
 
 @Native<Pointer<Lettering> Function()>(symbol: 'gpu_engine_letters_new')
 external Pointer<Lettering> lettersNew();

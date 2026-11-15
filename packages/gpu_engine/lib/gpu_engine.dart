@@ -3790,6 +3790,21 @@ class GpuFaces {
 
   final Pointer<rust.Faces> _faces;
 
+  /// These families in the order [order] names them, each by where it
+  /// stands in this one — sharing their files, and freed on its own,
+  /// before these or after.
+  GpuFaces ordered(List<int> order) {
+    final faces = using((arena) {
+      final at = arena<Uint32>(_held(order.length));
+      at.asTypedList(order.length).setAll(0, order);
+      return rust.facesOrdered(_faces, at, order.length);
+    });
+    if (faces == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuFaces._(faces);
+  }
+
   void free() => rust.facesFree(_faces);
 }
 
@@ -3944,6 +3959,71 @@ _clustered(Arena arena, List<GpuCluster> clusters) {
   }
   final bytes = _bytes(arena, text);
   return (text: bytes, length: text.length, ends: ends, origins: origins);
+}
+
+/// A WORD OF A FRAME GRID'S TILE (rust/src/kernels/letters/words.rs): its
+/// runs as the app's layout set them, rastered into coverage over a box
+/// the app says — what the word's bake is averaged from. No GPU is asked:
+/// the raster is the engine's, on the CPU, made within the call.
+class GpuWord {
+  GpuWord() : _word = rust.wordNew();
+
+  final Pointer<rust.Wording> _word;
+
+  /// Adds a run of [clusters] in one style — [size] 64ths of a px,
+  /// [weight] a `FontWeight`'s value — where the word's layout set it.
+  void run({
+    required int size,
+    required int weight,
+    required bool italic,
+    required List<GpuCluster> clusters,
+  }) => using((arena) {
+    final (:text, :length, :ends, :origins) = _clustered(arena, clusters);
+    _done(
+      rust.wordRun(
+        _word,
+        size,
+        weight,
+        italic,
+        text,
+        length,
+        ends,
+        origins,
+        clusters.length,
+      ),
+    );
+  });
+
+  /// Whether every letter of the word is one some family of [faces] has:
+  /// false for a word a letter of which the engine would set as an empty
+  /// box, where Flutter sets it in a face of the machine's.
+  bool isWholeIn(GpuFaces faces) => rust.wordWhole(_word, faces._faces);
+
+  /// The word set in [faces] and laid by [toRaster] — its layout's space
+  /// to the raster's — as coverage over [width] × [height] pixels, a byte
+  /// each, row by row: ink past them cut off. Null where the engine
+  /// refuses the raster — one of no pixel, or past the longest side it
+  /// rasters over.
+  Uint8List? raster(
+    GpuFaces faces,
+    List<double> toRaster, {
+    required int width,
+    required int height,
+  }) => using((arena) {
+    final count = width > 0 && height > 0 ? width * height : 0;
+    final bytes = arena<Uint8>(_held(count));
+    final rastered = rust.wordRaster(
+      _word,
+      faces._faces,
+      _floats(arena, _six(toRaster)),
+      width,
+      height,
+      bytes,
+    );
+    return rastered ? Uint8List.fromList(bytes.asTypedList(count)) : null;
+  }, malloc);
+
+  void free() => rust.wordFree(_word);
 }
 
 /// A word's letters as a frame grid's tile reads them: A8 coverage,

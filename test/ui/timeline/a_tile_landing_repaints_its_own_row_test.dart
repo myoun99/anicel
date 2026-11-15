@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/exposure_of.dart';
 import '../../helpers/frame_name_of.dart';
 import '../../helpers/poll_until.dart';
@@ -46,17 +47,19 @@ import 'timeline_frame_geometry_probe.dart';
 /// here, before the store stopped asking twice).
 ///
 /// What a queue holds is what a paint cannot bake in its ask
-/// ([TimelineGridTileStore.tileFor]) — here, a span whose word no tile has
-/// baked yet: each row sets one of its own ([unbaked]).
+/// ([TimelineGridTileStore.tileFor]) — here, a span whose word is Flutter's
+/// to raster and has not been: each row sets one of its own ([unbaked]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
   final store = TimelineGridTileStore.instance;
 
-  /// A word no tile has baked yet, each time.
+  /// A word no tile has baked yet, each time — and one its tile waits for:
+  /// Flutter's to raster ([aLetterNoBundledFaceHas]).
   var words = 0;
-  String unbaked() => 'U${words++}';
+  String unbaked() => 'U${words++}$aLetterNoBundledFaceHas';
 
   /// A row [frames] long with a block of two at every fourth frame — four
   /// frames to a span at 128px (`timelineFrameWindowSpanFor`) — its cel

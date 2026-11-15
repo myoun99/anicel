@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../native/app_gpu_engine.dart';
+import '../../native/engine_faces.dart';
 import '../../native/screen_texture.dart';
 import '../engine_screen_texture.dart';
 import '../layout/device_grid.dart';
@@ -113,6 +114,10 @@ final class _GridScreen {
       if (appGpuGridKernels.compiled == null) {
         unawaited(appGpuGridKernels.warm().then((_) => _laysChanged()));
       }
+      // And the faces its tiles' words are set in, read while those
+      // compile: a word waits for them once a process, and by the first
+      // row that lays they are there (`TimelineGridTileStore._glyphNow`).
+      unawaited(EngineFaces.bundled());
       _laysChanged();
     },
     // No row lays here till the next engine's is open: each paints again,

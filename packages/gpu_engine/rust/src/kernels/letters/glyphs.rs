@@ -16,7 +16,7 @@
 //! the canvas's local space; the path is laid on the grid by zeno's
 //! transform.
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use harfrust::{Buffer, Font, ShapeOptions, ShaperFont, shape};
 use read_fonts::model::attribute::{Attributes, Style, Width};
@@ -218,24 +218,52 @@ impl Family {
 /// empty box (`_runsFor`; 🗣️engine-canvas-letters-Q2, 유저 2026-11-07:
 /// Noto Sans SC after the two).
 pub(crate) struct Faces {
-    families: Vec<Family>,
+    families: Vec<Arc<Family>>,
 }
 
 impl Faces {
     pub(crate) fn new(families: Vec<Family>) -> Option<Self> {
+        Self::of_shared(families.into_iter().map(Arc::new).collect())
+    }
+
+    fn of_shared(families: Vec<Arc<Family>>) -> Option<Self> {
         if families.is_empty() {
             return crate::fail("letters are set in a face — none was given");
         }
         Some(Self { families })
     }
 
+    /// These families in the order `order` names them, each by where it
+    /// stands in this one — the UI's order, which a Chinese UI begins with
+    /// Noto Sans SC (`fallbackFor`) — sharing their files and what each has
+    /// set: ⚠️the app's are 35 MB, read once.
+    pub(crate) fn ordered(&self, order: &[u32]) -> Option<Self> {
+        let mut families = Vec::with_capacity(order.len());
+        for &at in order {
+            let Some(family) = self.families.get(at as usize) else {
+                return crate::fail(format!(
+                    "an order of faces names family {at} — there are {}",
+                    self.families.len()
+                ));
+            };
+            families.push(Arc::clone(family));
+        }
+        Self::of_shared(families)
+    }
+
     /// The family that draws `letter` in a run of that weight and slant:
     /// the first whose face for it has it, or the first of all.
     fn of(&self, letter: char, weight: u16, italic: bool) -> usize {
+        self.having(letter, weight, italic).unwrap_or(0)
+    }
+
+    /// The first family whose face for a run of that weight and slant has
+    /// `letter` — None for one that none has, which is set as the first
+    /// family's empty box ([`Faces::of`]).
+    pub(super) fn having(&self, letter: char, weight: u16, italic: bool) -> Option<usize> {
         self.families
             .iter()
             .position(|family| family.at(weight, italic).font.charmap().map_unicode(letter).is_some())
-            .unwrap_or(0)
     }
 }
 

@@ -14,6 +14,7 @@ import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../native/app_gpu_engine.dart';
+import '../../native/engine_faces.dart';
 import '../../native/engine_wave_peaks.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
@@ -348,7 +349,7 @@ class TimelineGridTileStore {
   /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
   /// the one it holds where that shows the span, one baked in this call
   /// where the span's look or content moved or nothing stands in for it —
-  /// or a stand-in while a word it sets is baked the first time, scaled
+  /// or a stand-in while a word it sets is waited for ([_glyphNow]), scaled
   /// while a zoom is under way and until its raster lands, and null where
   /// nothing stands in and the engine cannot answer this frame (the
   /// classic paint covers it). What is not baked here is scheduled off the
@@ -412,8 +413,12 @@ class TimelineGridTileStore {
     // tiles. 🔬Q2 (라), 11-15: the 136 spans of a cut shaped as S5_BA's 352
     // baked in one frame at 1.4–2.1× the canvas pass's recording (debug) —
     // 15× while each tile took a trip and a submit of its own.
-    // A word never baked before is the one wait left: its bake reads the
-    // word back ([bakeWordCoverage]), which a paint cannot wait for.
+    // 🗣️Q3 · Q4 (유저 2026-11-15 「(다) 글자도 엔진이 그 자리에서 굽는다」): A WORD
+    // NEVER SEEN BEFORE IS BAKED THERE AS WELL, by the engine
+    // ([_bakedOnEngine]). ↩️It was the one wait left: Flutter rastered it and
+    // the bake read it back, which a paint cannot wait for. What is waited
+    // for now is the engine's faces, read once a process, and a word that is
+    // not the engine's to set ([bakeWordOnEngine]).
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
     final standIn = stale == null ? _standInFor(asked) : null;
     if (standIn == null) {
@@ -467,7 +472,7 @@ class TimelineGridTileStore {
     // within a frame or two, so content lags one beat at most.
     // ↩️F-314: that beat was the frame the user saw the block part from its
     // grips in — the span is baked above now, and the stale tile stands in
-    // only while a word it sets is baked the first time.
+    // only while a word it sets is waited for ([_glyphNow]).
     // ⛔Both stale arms demand the GENERATION even though the key already
     // carries it: stale-while-revalidate exists precisely for "same row,
     // new instance", and without this term it is also "same id, other
@@ -613,7 +618,7 @@ class TimelineGridTileStore {
   }
 
   /// Bakes [asked]'s span in this call and keeps it — the picture the paint
-  /// asking draws — or null while a word it sets has never been baked.
+  /// asking draws — or null while a word it sets is waited for ([_glyphNow]).
   /// What was asked for it before is answered by it, and a raster of it in
   /// flight lands nothing ([_overtaken]). It bakes what the ask [read].
   TimelineGridTilePicture? _landNow(_SpanRead read) {
@@ -1154,40 +1159,76 @@ class TimelineGridTileStore {
       '${style.fontFamily}|${style.letterSpacing}|${at.tightening}|'
       '${at.dpr}|${at.fit.x}|${at.fit.y}';
 
-  Future<BakedWordCoverage?> _glyphA8(
-    String text,
-    TextStyle style,
-    _GlyphBake at,
-  ) {
-    final key = _glyphKey(text, style, at);
-    return _glyphs.ensure(key, () => _bakeGlyph(text, style, at));
+  /// [cell]'s word as its bake is handed it: laid out white whatever the
+  /// cell's ink, so every ink shares one layout ([laidOutGlyph] keys on
+  /// the colour).
+  static TextPainter _laidOut(_TileGlyph cell) => laidOutGlyph(
+    cell.text,
+    cell.style.copyWith(color: const Color(0xFFFFFFFF)),
+    tightening: cell.bake.tightening,
+  );
+
+  // COVERAGE bake: the letters' ink alone — the GLYPH op multiplies the
+  // per-cell ink's alpha by it. Rasterised big and shrunk where it is
+  // small, by the engine ([bakeWordOnEngine]) or by Flutter
+  // ([bakeWordCoverage], the bake a screen draws a narrowed word from too,
+  // F-224) — one average either way.
+  //
+  // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
+  // parameter, so the shrink and the narrowing happen in the bake, before
+  // upload; the native ABI is untouched.
+
+  /// Bakes [cell]'s word on the engine and keeps it, within the call —
+  /// false for a word that is not the engine's to set
+  /// ([bakeWordOnEngine]): Flutter's, whose raster is waited for
+  /// ([_bakedByFlutter]). Asked once the engine's faces are read.
+  ///
+  /// 🗣️a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4
+  /// (유저 2026-11-15: 「(다) 글자도 엔진이 그 자리에서 굽는다」): the wait
+  /// for a word never seen before is what this takes away.
+  bool _bakedOnEngine(_TileGlyph cell) {
+    final BakedWordCoverage? baked;
+    try {
+      baked = bakeWordOnEngine(
+        _laidOut(cell),
+        fit: cell.bake.fit,
+        dpr: cell.bake.dpr,
+        fontSize: cell.style.fontSize,
+      );
+    } on UnsupportedError {
+      return false;
+    }
+    _glyphs.keep(cell.key, baked);
+    debugWordsBakedOnTheEngine += 1;
+    return true;
   }
 
-  Future<BakedWordCoverage?> _bakeGlyph(
-    String text,
-    TextStyle style,
-    _GlyphBake at,
-  ) {
-    final (:dpr, :fit, :tightening) = at;
-    // COVERAGE bake: the letters' ink alone — the GLYPH op multiplies the
-    // per-cell ink's alpha by it. Rasterised big and shrunk where it is
-    // small ([bakeWordCoverage], the bake a screen draws a narrowed word
-    // from too, F-224). Laid out white whatever the cell's ink, so every
-    // ink shares one layout ([laidOutGlyph] keys on the colour).
-    //
-    // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
-    // parameter, so the shrink and the narrowing happen in the bake, before
-    // upload; the native ABI is untouched.
-    return bakeWordCoverage(
-      laidOutGlyph(
-        text,
-        style.copyWith(color: const Color(0xFFFFFFFF)),
-        tightening: tightening,
-      ),
-      fit: fit,
-      dpr: dpr,
-      fontSize: style.fontSize,
-    );
+  /// Test seam: how many words the engine has baked ([_bakedOnEngine]).
+  @visibleForTesting
+  int debugWordsBakedOnTheEngine = 0;
+
+  /// [cell]'s word baked from Flutter's raster, read back — once, however
+  /// many ask while it is.
+  Future<BakedWordCoverage?> _bakedByFlutter(_TileGlyph cell) =>
+      _glyphs.ensure(
+        cell.key,
+        () => bakeWordCoverage(
+          _laidOut(cell),
+          fit: cell.bake.fit,
+          dpr: cell.bake.dpr,
+          fontSize: cell.style.fontSize,
+        ),
+      );
+
+  /// [cell]'s bake as it stands — made here where the engine can make it
+  /// — or null while it is waited for: the engine's faces not yet read, or
+  /// a word of Flutter's whose raster has not landed.
+  ({BakedWordCoverage? glyph})? _glyphNow(_TileGlyph cell) {
+    if (!_glyphs.isDone(cell.key) &&
+        !(EngineFaces.areRead && _bakedOnEngine(cell))) {
+      return null;
+    }
+    return (glyph: _glyphs.peek(cell.key));
   }
 
   /// Rasters the request and returns the picture TOGETHER WITH the content
@@ -1223,8 +1264,8 @@ class TimelineGridTileStore {
   @visibleForTesting
   Future<void> Function()? debugBeforeDrawing;
 
-  /// [_raster] within the call — or null while a word the span sets has
-  /// never been baked.
+  /// [_raster] within the call — or null while a word the span sets is
+  /// waited for ([_glyphNow]).
   _Rastered? _rasterNow(_SpanRead read) {
     final emitted = _emit(read);
     if (emitted == null) {
@@ -1471,17 +1512,22 @@ class TimelineGridTileStore {
   }
 
   /// The [glyphs] [_emitForeground] answered, baked into A8 coverage, each
-  /// once ([_glyphA8]) — by their keys, a word whose bake made nothing left
-  /// out.
+  /// once — by their keys, a word whose bake made nothing left out: by the
+  /// engine once its faces are read, and what is not the engine's to set
+  /// by Flutter ([_bakedByFlutter]).
   Future<Map<String, BakedWordCoverage>> _bakedWords(
     List<_TileGlyph> glyphs,
   ) async {
+    await EngineFaces.bundled();
     final baked = <String, BakedWordCoverage>{};
     for (final cell in glyphs) {
       if (baked.containsKey(cell.key)) {
         continue;
       }
-      final glyph = await _glyphA8(cell.text, cell.style, cell.bake);
+      final glyph = switch (_glyphNow(cell)) {
+        final now? => now.glyph,
+        null => await _bakedByFlutter(cell),
+      };
       if (glyph != null) {
         baked[cell.key] = glyph;
       }
@@ -1489,16 +1535,16 @@ class TimelineGridTileStore {
     return baked;
   }
 
-  /// [_bakedWords] as the words stand baked — null while any of them has
-  /// never been.
+  /// [_bakedWords] within the call ([_glyphNow]) — null while any of them
+  /// is waited for.
   Map<String, BakedWordCoverage>? _bakedWordsNow(List<_TileGlyph> glyphs) {
     final baked = <String, BakedWordCoverage>{};
     for (final cell in glyphs) {
-      if (!_glyphs.isDone(cell.key)) {
+      final now = _glyphNow(cell);
+      if (now == null) {
         return null;
       }
-      final glyph = _glyphs.peek(cell.key);
-      if (glyph != null) {
+      if (now.glyph case final glyph?) {
         baked[cell.key] = glyph;
       }
     }

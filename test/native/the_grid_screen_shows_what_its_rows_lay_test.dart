@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_faces.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/engine_screen_texture.dart';
@@ -214,6 +215,24 @@ void main() {
       ),
     ),
   );
+
+  // The faces a tile's words are set in are read as the first screen
+  // opens, beside the passes' compile: a word the engine sets waits for
+  // them once a process (`TimelineGridTileStore.tileFor`), and by the
+  // first row that lays they are there
+  // (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4).
+  // ⚠️The first test of the file: no row here sets a word, so nothing but
+  // a screen's opening has read them.
+  testWidgets('the first screen there is to lay on reads the faces its '
+      'tiles\' words are set in', (tester) async {
+    aSmallView(tester);
+    expect(EngineFaces.areRead, isFalse, reason: '⛔premise: none read yet');
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
+
+    expect(asked, [(512, 512)], reason: '⛔premise: its screen is open');
+    expect(await settleAsync(tester, () => EngineFaces.areRead), isTrue);
+  });
 
   testWidgets('a row lays its tile where it stands, in device pixels', (
     tester,

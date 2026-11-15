@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show filmSubstrateGeneration;
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -56,6 +57,10 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
+
+  /// [name] as a word its tile waits for: Flutter's to raster, never baked.
+  String waits(String name) => '$name$aLetterNoBundledFaceHas';
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -109,22 +114,23 @@ void main() {
     var landings = 0;
     store.revision.addListener(() => landings += 1);
 
-    // The gesture: cut A's row asks for a tile — queued, its word baked the
-    // first time (a paint bakes what it can in its ask, and a paint is the
-    // live state's)...
+    // The gesture: cut A's row asks for a tile — queued, its word one that
+    // is waited for (a paint bakes what it can in its ask, and a paint is
+    // the live state's)...
     expect(
       store.tileFor(
         painter: painterFor(
           blockLayer(),
           generation: 'p:cut-a',
           store: store,
+          celName: waits('cut-a'),
         ),
         spanStartIndex: 0,
         spanEndIndexExclusive: 4,
         devicePixelRatio: 1.0,
       ),
       isNull,
-      reason: '⛔premise: the first ask of this file, its word never baked',
+      reason: '⛔premise: its word is waited for, so the ask is queued',
     );
     // ...and the user switches cuts before the drain reaches it. The next
     // paint carries the new generation — that IS the liveness signal.
@@ -132,6 +138,7 @@ void main() {
       blockLayer(id: 'layer-b'),
       generation: 'p:cut-b',
       store: store,
+      celName: waits('cut-b'),
     );
     expect(
       store.tileFor(
@@ -283,9 +290,11 @@ void main() {
     // words are baked already (F-314; …beside-its-tiles-Q1 「(다)」). The
     // pins asked a span whose words the tests above had baked, so nothing
     // waited and nothing could die; and they read the answer with another
-    // ask, which bakes it. A name no test before it set is a word never
-    // baked — the one wait a paint has left — and what was kept is read
-    // without asking ([TimelineGridTileStore.standInFor]).
+    // ask, which bakes it. A name Flutter rasters ([waits]) that no test
+    // before it set is a word waited for — the one wait a paint has left,
+    // since the engine bakes every word it can set in the ask (Q3 · Q4,
+    // 11-15) — and what was kept is read without asking
+    // ([TimelineGridTileStore.standInFor]).
     TimelineRowCellsPainter conteRow(
       TimelineGridTileStore store, {
       required String celName,
@@ -308,7 +317,7 @@ void main() {
         devicePixelRatio: 1.0,
       ),
       isNull,
-      reason: '⛔premise: its word never baked, so the ask waits for the '
+      reason: '⛔premise: its word is waited for, so the ask waits for the '
           'drain — an ask baked in the call says nothing of the law',
     );
 
@@ -329,12 +338,12 @@ void main() {
       store.revision.addListener(() => landings += 1);
 
       // Both panels shown: the conte row asks, then a timeline row does.
-      final film = conteRow(store, celName: 'conte-first');
+      final film = conteRow(store, celName: waits('conte-first'));
       final timelineRow = painterFor(
         blockLayer(),
         generation: 'p:cut-a',
         store: store,
-        celName: 'timeline-second',
+        celName: waits('timeline-second'),
       );
       expectQueued(store, film);
       expectQueued(store, timelineRow);
@@ -361,9 +370,9 @@ void main() {
         blockLayer(),
         generation: 'p:cut-a',
         store: store,
-        celName: 'timeline-first',
+        celName: waits('timeline-first'),
       );
-      final film = conteRow(store, celName: 'conte-second');
+      final film = conteRow(store, celName: waits('conte-second'));
       expectQueued(store, timelineRow);
       expectQueued(store, film);
 

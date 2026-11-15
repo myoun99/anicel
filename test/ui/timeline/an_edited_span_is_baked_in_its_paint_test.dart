@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/exposure_of.dart';
 import '../../helpers/frame_name_of.dart';
 import '../../helpers/poll_until.dart';
@@ -37,13 +38,20 @@ import 'timeline_frame_geometry_probe.dart';
 /// the frame the edit lands in. The tile followed it a frame later: the
 /// store showed the tile from before the edit while the fresh one went up
 /// off-frame, and on the device every step of a drag did (8 of 8, Surface,
-/// 10-25). It is drawn on the engine inside the ask now; the one wait left
-/// is a word never baked before, whose bake reads its faces first.
+/// 10-25). It is drawn on the engine inside the ask now — a word never seen
+/// before with it, which the engine bakes there
+/// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4, 유저
+/// 2026-11-15); the one wait left is a word that is not the engine's to
+/// set, which Flutter rasters ([waits]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
   final store = TimelineGridTileStore.instance;
+
+  /// [name] as a word its tile waits for: Flutter's to raster.
+  String waits(String name) => '$name$aLetterNoBundledFaceHas';
 
   /// A row [frames] long with a block [length] long at every fourth frame,
   /// its cel named [name] (none: the block's head is a mark) — four frames
@@ -110,7 +118,7 @@ void main() {
   }
 
   /// The first span of [painter]'s row, cold: baked in the ask, as a span
-  /// nothing stands in for is — its words baked before ([setUpAll]).
+  /// nothing stands in for is.
   Future<TimelineGridTilePicture> landed(
     TimelineRowCellsPainter painter,
   ) async {
@@ -118,15 +126,6 @@ void main() {
     expect(tile, isNotNull, reason: 'premise: cold, baked in the ask');
     return tile!;
   }
-
-  // ⛔premise: the word the rows set but where a test renames them, baked
-  // once — the one wait left for a span nothing stands in for, which the
-  // tests below would otherwise meet in whichever of them runs first.
-  setUpAll(() async {
-    ask(painterFor(rowLayer('warm')));
-    await tileStoreIdle(store);
-    store.clear();
-  });
 
   var landings = 0;
   void countLanding() => landings += 1;
@@ -214,12 +213,53 @@ void main() {
     expect(bytesOf(baked), offThePaint);
   });
 
-  test('a word never baked before stands the tile before it in while it '
-      'bakes, and lands off-frame — once baked, the next edit is baked in '
-      'its ask', () async {
+  // 🗣️a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4
+  // (유저 2026-11-15: 「(다) 글자도 엔진이 그 자리에서 굽는다」 · 「그대로 간다
+  // — 격자 칸 글자는 엔진이 굽는다」). ↩️Such a word stood the tile before it
+  // in while Flutter rastered it and the bake read it back.
+  test('a word never seen before is baked in the ask that sets it, by the '
+      'engine — the fresh tile, nothing left for off-frame', () async {
     final before = await landed(painterFor(rowLayer('r')));
+    final drawnOff = countTilesDrawnOffThePaint(store);
+    final landingsBefore = landings;
+    final wordsBefore = store.debugWordsBakedOnTheEngine;
 
     final renamed = painterFor(rowLayer('r', name: 'Q7'));
+    final baked = ask(renamed);
+
+    expect(baked, isNotNull);
+    expect(
+      identical(baked, before),
+      isFalse,
+      reason: 'the tile before the rename stood in for a frame',
+    );
+    expect(landings, landingsBefore + 1, reason: 'it landed in the ask');
+    expect(
+      store.debugWordsBakedOnTheEngine,
+      wordsBefore + 1,
+      reason: 'the one word the rename set, baked once',
+    );
+    expect(store.debugBusy, isFalse, reason: 'nothing left for off-frame');
+    expect(ask(renamed), same(baked), reason: 'and it shows the rename');
+    expect(
+      store.debugWordsBakedOnTheEngine,
+      wordsBefore + 1,
+      reason: 'a word baked is kept',
+    );
+    await tileStoreIdle(store);
+    expect(drawnOff(), 0, reason: 'drawn in the ask, none off the paint');
+  });
+
+  // ⏳A word with a letter none of the bundled faces has is Flutter's to
+  // raster (`bakeWordOnEngine`), till the person says what it is to be
+  // (the same card's Q5): the wait every new word made till 11-15.
+  test('a word that is not the engine\'s to set stands the tile before it '
+      'in while Flutter\'s raster is read back, and lands off-frame — once '
+      'baked, the next edit is baked in its ask', () async {
+    final before = await landed(painterFor(rowLayer('r')));
+    final wordsBefore = store.debugWordsBakedOnTheEngine;
+
+    final renamed = painterFor(rowLayer('r', name: waits('Q7')));
     expect(
       ask(renamed),
       same(before),
@@ -227,12 +267,17 @@ void main() {
     );
     expect(store.debugBusy, isTrue, reason: 'the word and its tile go up');
     await tileStoreIdle(store);
+    expect(
+      store.debugWordsBakedOnTheEngine,
+      wordsBefore,
+      reason: 'the engine would have set its emoji as an empty box',
+    );
     final fresh = ask(renamed);
     expect(fresh, isNotNull);
     expect(identical(fresh, before), isFalse, reason: 'the fresh one landed');
 
     final landingsBefore = landings;
-    final again = painterFor(rowLayer('r', name: 'Q7', length: 3));
+    final again = painterFor(rowLayer('r', name: waits('Q7'), length: 3));
     final baked = ask(again);
     expect(identical(baked, fresh), isFalse);
     expect(landings, landingsBefore + 1, reason: 'the word is baked now');
@@ -244,9 +289,9 @@ void main() {
     await landed(painterFor(rowLayer('r')));
     final held = holdTilesDrawnOffThePaint(store);
 
-    // A new word: the ask stands the old tile in and a drain takes it up,
-    // its drawing held here.
-    ask(painterFor(rowLayer('r', name: 'Z9')));
+    // A word that waits: the ask stands the old tile in and a drain takes
+    // it up, its drawing held here.
+    ask(painterFor(rowLayer('r', name: waits('Z9'))));
     expect(await pollUntil(() => held.length == 1), isTrue, reason: 'premise');
 
     // A later edit back to words already baked: baked in its ask.
@@ -272,8 +317,8 @@ void main() {
   test('an ask that bakes the span takes it off the queue — the older ask '
       'queued for it lands nothing after', () async {
     await landed(painterFor(rowLayer('r')));
-    // A new word: stood in, and queued for a drain.
-    ask(painterFor(rowLayer('r', name: 'Y3')));
+    // A word that waits: stood in, and queued for a drain.
+    ask(painterFor(rowLayer('r', name: waits('Y3'))));
     expect(store.debugBusy, isTrue, reason: 'premise: queued');
 
     // In the same turn, an edit back to words already baked.
@@ -300,7 +345,7 @@ void main() {
 
   test('a row the queue turned away hears its tile when the store comes back '
       'to it and bakes it in that ask', () async {
-    // Two spans, landed; then renamed to a word no tile has baked yet, so
+    // Two spans, landed; then renamed to a word that waits ([waits]), so
     // both are stood in and queued — and thirty-two spans of a row that
     // sets the same word, queued after them, turn both away. The filler's
     // first raster bakes the word.
@@ -311,14 +356,14 @@ void main() {
     await tileStoreIdle(store);
 
     final renamed = painterFor(
-      rowLayer('r', frames: 8, name: 'W5'),
+      rowLayer('r', frames: 8, name: waits('W5')),
       frames: 8,
     );
     var heard = 0;
     row.removeListener(repaint);
     show(renamed, () => heard += 1);
     final filler = painterFor(
-      rowLayer('filler', frames: 128, name: 'W5'),
+      rowLayer('filler', frames: 128, name: waits('W5')),
       frames: 128,
     );
     final drawnOff = countTilesDrawnOffThePaint(store);
@@ -336,14 +381,17 @@ void main() {
 
   test('a row the store comes back to with nothing baked in that ask is not '
       'repainted for it — its landings repaint it, once each', () async {
-    // Two cold spans whose word no tile has baked yet, turned away by
+    // Two cold spans whose word waits, never baked, turned away by
     // thirty-two queued after them for a word of their own: the store comes
     // back to them with their word still unbaked, and queues them.
-    final row = painterFor(rowLayer('r', frames: 8, name: 'V1'), frames: 8);
+    final row = painterFor(
+      rowLayer('r', frames: 8, name: waits('V1')),
+      frames: 8,
+    );
     var repaints = 0;
     show(row, () => repaints += 1);
     final filler = painterFor(
-      rowLayer('filler', frames: 128, name: 'V2'),
+      rowLayer('filler', frames: 128, name: waits('V2')),
       frames: 128,
     );
     paintRow(row, 8);
@@ -356,17 +404,17 @@ void main() {
   });
 
   test('a stand-in is a tile of the span\'s own size — a taller row, or a '
-      'span the axis cut shorter, keeps the classic paint while its new word '
-      'bakes', () async {
+      'span the axis cut shorter, keeps the classic paint while its word is '
+      'waited for', () async {
     await landed(painterFor(rowLayer('tall')));
     final taller = painterFor(
-      rowLayer('tall', name: 'T1'),
+      rowLayer('tall', name: waits('T1')),
       crossAxisExtent: 40,
     );
     expect(ask(taller), isNull, reason: 'a 28px tile stretched over 40px');
 
     await landed(painterFor(rowLayer('short')));
-    final shorter = painterFor(rowLayer('short', name: 'T2'), frames: 3);
+    final shorter = painterFor(rowLayer('short', name: waits('T2')), frames: 3);
     expect(
       store.tileFor(
         painter: shorter,

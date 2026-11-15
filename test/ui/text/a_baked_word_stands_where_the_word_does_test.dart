@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/text/word_bake.dart';
 
+import '../../helpers/coverage_ink.dart';
+
 /// F-297 (유저 2026-10-05): 「3a로 글자가 폭이 부족해서 가로 짧아진다거나
 /// 할때, 글자의 세로길이나 세로 중앙정렬이 이상해짐. 3a만 이상하게 중앙에서
 /// 위에존재하고. 게다가 약간 흐려지는? 이런 문제 원천적으로 해결하고싶음」.
@@ -79,51 +81,14 @@ class _WatchedWord extends TextPainter {
   }
 }
 
-/// Where a box's ink is: its weight, the centre of that weight, and the
-/// rows that hold any — and the box.
-typedef _Ink = ({
-  double sum,
-  double cx,
-  double cy,
-  List<int> rows,
-  ({int width, int height}) box,
-});
-
-_Ink _inkOf(Uint8List alpha, int width, int height) {
-  var sum = 0.0;
-  var sumX = 0.0;
-  var sumY = 0.0;
-  final rows = <int>[];
-  for (var y = 0; y < height; y += 1) {
-    var inked = false;
-    for (var x = 0; x < width; x += 1) {
-      final a = alpha[y * width + x];
-      sum += a;
-      sumX += a * (x + 0.5);
-      sumY += a * (y + 0.5);
-      inked = inked || a > 0;
-    }
-    if (inked) {
-      rows.add(y);
-    }
-  }
-  return (
-    sum: sum,
-    cx: sumX / sum,
-    cy: sumY / sum,
-    rows: rows,
-    box: (width: width, height: height),
-  );
-}
-
-Future<_Ink> _baked(TextPainter word, double fx, double dpr) async {
+Future<CoverageInk> _baked(TextPainter word, double fx, double dpr) async {
   final baked = (await bakeWordCoverage(
     word,
     fit: (x: fx, y: 1.0),
     dpr: dpr,
     fontSize: word.text!.style!.fontSize,
   ))!;
-  return _inkOf(baked.alpha, baked.width, baked.height);
+  return coverageInkOf(baked.alpha, baked.width, baked.height);
 }
 
 /// The word drawn straight into the box its un-narrowed bake has: one pixel
@@ -214,7 +179,7 @@ void main() {
           ))!;
           final straight = await _drawnStraight(word, dpr);
           expect(
-            _inkOf(straight, whole.width, whole.height).sum,
+            coverageInkOf(straight, whole.width, whole.height).sum,
             greaterThan(0),
             reason: 'LIVENESS ${size}px at $dpr: there is a word to compare',
           );
@@ -245,7 +210,7 @@ void main() {
         hasLength(squat.width * squat.height),
         reason: 'the box it is blitted by, not the raster it came from',
       );
-      final ink = _inkOf(squat.alpha, squat.width, squat.height);
+      final ink = coverageInkOf(squat.alpha, squat.width, squat.height);
       expect(ink.cx, closeTo(whole.cx, 0.01), reason: 'along: left alone');
       expect(ink.cy - 1, closeTo((whole.cy - 1) * 0.5, 0.1));
       expect(ink.sum / (whole.sum * 0.5), closeTo(1, 0.02));

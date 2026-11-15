@@ -299,3 +299,188 @@ fn letters_that_cover_nothing_are_no_picture_and_no_failure() {
         gpu_engine_faces_free(faces);
     }
 }
+
+/// `text`'s letters as the ABI is handed a word's run: one cluster a
+/// letter, `step` 64ths apart from the box's left, on a baseline at `y`.
+fn word_run_of(word: *mut Wording, text: &str, size: i32, y: i32, step: i32) -> bool {
+    let set = run(text, size, (0, y), step);
+    let mut ends = Vec::new();
+    let mut origins = Vec::new();
+    let mut end = 0;
+    for cluster in &set.clusters {
+        end += cluster.text.len() as u32;
+        ends.push(end);
+        origins.extend(cluster.origin);
+    }
+    // SAFETY: each buffer holds what it is said to.
+    unsafe {
+        gpu_engine_word_run(
+            word,
+            set.size,
+            400,
+            false,
+            text.as_ptr(),
+            text.len(),
+            ends.as_ptr(),
+            origins.as_ptr(),
+            ends.len(),
+        )
+    }
+}
+
+/// Three pixels a px, the layout's origin two pixels in: a word rastered
+/// twice over at a ratio of 1.5.
+const TWICE_OVER: [f32; 6] = [3.0, 0.0, 0.0, 3.0, 2.0, 2.0];
+
+/// What the same runs built in Rust raster to, laid as [`TWICE_OVER`].
+fn rastered_in_rust(faces: &Faces, runs: Vec<Run>, [width, height]: [u32; 2]) -> Vec<u8> {
+    let to_raster = Affine { a: 3.0, b: 0.0, c: 0.0, d: 3.0, e: 2.0, f: 2.0 };
+    let mut bytes = vec![0; (width * height) as usize];
+    words::rastered(faces, &here(runs.into_iter().map(Shape::Letters).collect()), to_raster, width, &mut bytes);
+    bytes
+}
+
+#[test]
+fn a_word_built_call_by_call_rasters_as_the_one_built_in_rust() {
+    let handed_faces = handed();
+    let word = gpu_engine_word_new();
+    // Two runs, in two styles: a word set in more than one.
+    assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64), "{}", last_error());
+    assert!(word_run_of(word, "셀", 9 * 64, 12 * 64, 0), "{}", last_error());
+    let (width, height) = (76u32, 49u32);
+    let mut bytes = vec![7u8; (width * height) as usize];
+    // SAFETY: every pointer is live, and `bytes` holds the raster.
+    let rastered =
+        unsafe { gpu_engine_word_raster(word, handed_faces, TWICE_OVER.as_ptr(), width, height, bytes.as_mut_ptr()) };
+    assert!(rastered, "{}", last_error());
+
+    let runs = vec![run("3a", 12 * 64, (0, 12 * 64), 7 * 64), run("셀", 9 * 64, (0, 12 * 64), 0)];
+    assert!(bytes == rastered_in_rust(faces(), runs, [width, height]), "the coverage");
+    assert!(bytes.iter().any(|&alpha| alpha != 0), "LIVENESS: the word has ink");
+    // SAFETY: each came from its `_new`.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
+fn a_raster_the_engine_refuses_writes_nothing_and_says_why() {
+    let handed_faces = handed();
+    let word = gpu_engine_word_new();
+    assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64));
+    let mut bytes = vec![7u8; 70_000];
+    for (width, height, why) in [(0, 16, "pixels has none"), (65_537, 1, "a side is 65536 at most")] {
+        // SAFETY: every pointer is live; a refused raster is written to none.
+        let rastered =
+            unsafe { gpu_engine_word_raster(word, handed_faces, TWICE_OVER.as_ptr(), width, height, bytes.as_mut_ptr()) };
+        assert!(!rastered, "{width} × {height}");
+        assert!(last_error().contains(why), "{}", last_error());
+    }
+    // SAFETY: every pointer but the placement is live, which is asked first.
+    let unplaced = unsafe { gpu_engine_word_raster(word, handed_faces, std::ptr::null(), 14, 15, bytes.as_mut_ptr()) };
+    assert!(!unplaced);
+    assert!(last_error().contains("no placement was given"), "{}", last_error());
+    assert!(bytes.iter().all(|&byte| byte == 7), "a refused raster wrote");
+    // SAFETY: each came from its `_new`.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
+fn a_word_is_whole_where_every_letter_of_every_run_is_some_family_s() {
+    let handed_faces = handed();
+    // BIZ UDPGothic alone: no Hangul, which the app's second family draws.
+    let biz = faces_of(&[(file("BIZUDPGothic-Regular.ttf"), 0)]);
+    let whole_in = |runs: &[&str], faces: *mut Faces| {
+        let word = gpu_engine_word_new();
+        for text in runs {
+            assert!(word_run_of(word, text, 12 * 64, 12 * 64, 7 * 64), "{}", last_error());
+        }
+        // SAFETY: both are live.
+        let whole = unsafe { gpu_engine_word_whole(word, faces) };
+        // SAFETY: it came from its `_new`.
+        unsafe { gpu_engine_word_free(word) };
+        whole
+    };
+    // A letter each family draws: Latin, Hangul, a simplified character.
+    assert!(whole_in(&["3a셀们"], handed_faces));
+    assert!(whole_in(&["3a"], biz));
+    assert!(!whole_in(&["3a셀"], biz), "a letter the one family has not");
+    // None of the three has an emoji; in a later run it tells as well.
+    assert!(!whole_in(&["3😀"], handed_faces));
+    assert!(!whole_in(&["3a", "😀"], handed_faces));
+    assert!(whole_in(&[], handed_faces), "a word of no run lacks nothing");
+    // SAFETY: each came from `gpu_engine_faces_of`.
+    unsafe {
+        gpu_engine_faces_free(biz);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
+fn a_word_s_run_is_read_as_a_pass_s_is() {
+    let word = gpu_engine_word_new();
+    // A run's weight is `FontWeight`'s, 1 to 1000.
+    let origins = [0; 2];
+    for weight in [0, 1001] {
+        // SAFETY: each buffer holds what it is said to.
+        let heavy = unsafe { gpu_engine_word_run(word, 64, weight, false, "A".as_ptr(), 1, [1].as_ptr(), origins.as_ptr(), 1) };
+        assert!(!heavy, "{weight}");
+        assert!(last_error().contains(&format!("a weight of {weight}")), "{}", last_error());
+    }
+    for weight in [1, 1000] {
+        // SAFETY: each buffer holds what it is said to.
+        let set = unsafe { gpu_engine_word_run(word, 64, weight, false, "A".as_ptr(), 1, [1].as_ptr(), origins.as_ptr(), 1) };
+        assert!(set, "{weight}: {}", last_error());
+    }
+    // A run wrong twice over says the first: its weight.
+    // SAFETY: each buffer holds what it is said to.
+    let twice = unsafe { gpu_engine_word_run(word, 64, 0, false, "A셀".as_ptr(), 4, [1].as_ptr(), origins.as_ptr(), 1) };
+    assert!(!twice);
+    assert!(last_error().contains("a weight of 0"), "{}", last_error());
+    // A run's clusters are read as the letters' are: cut short is refused.
+    let text = "A셀";
+    // SAFETY: each buffer holds what it is said to.
+    let short = unsafe { gpu_engine_word_run(word, 64, 400, false, text.as_ptr(), text.len(), [1].as_ptr(), origins.as_ptr(), 1) };
+    assert!(!short);
+    assert!(last_error().contains("the letters at 4"), "{}", last_error());
+    // SAFETY: it came from its `_new`.
+    unsafe { gpu_engine_word_free(word) };
+}
+
+#[test]
+fn faces_in_another_order_outlive_the_faces_they_were_ordered_from() {
+    let handed_faces = handed();
+    let order = [2u32, 0, 1];
+    // SAFETY: `handed_faces` is live and `order` holds three.
+    let chinese = unsafe { gpu_engine_faces_ordered(handed_faces, order.as_ptr(), order.len()) };
+    assert!(!chinese.is_null(), "{}", last_error());
+    // SAFETY: it came from `gpu_engine_faces_of`; `chinese` shares, not borrows.
+    unsafe { gpu_engine_faces_free(handed_faces) };
+    let word = gpu_engine_word_new();
+    assert!(word_run_of(word, "日3", 12 * 64, 12 * 64, 12 * 64), "{}", last_error());
+    let (width, height) = (76u32, 49u32);
+    let mut bytes = vec![7u8; (width * height) as usize];
+    // SAFETY: every pointer is live, and `bytes` holds the raster.
+    let rastered = unsafe { gpu_engine_word_raster(word, chinese, TWICE_OVER.as_ptr(), width, height, bytes.as_mut_ptr()) };
+    assert!(rastered, "{}", last_error());
+
+    let ordered = faces().ordered(&order).expect("an order");
+    let runs = || vec![run("日3", 12 * 64, (0, 12 * 64), 12 * 64)];
+    assert!(bytes == rastered_in_rust(&ordered, runs(), [width, height]), "the coverage");
+    assert!(bytes != rastered_in_rust(faces(), runs(), [width, height]), "LIVENESS: the order tells");
+    // An order naming a family past them is refused, and says so.
+    let past = [3u32];
+    // SAFETY: `chinese` is live and `past` holds one.
+    let refused = unsafe { gpu_engine_faces_ordered(chinese, past.as_ptr(), past.len()) };
+    assert!(refused.is_null());
+    assert!(last_error().contains("names family 3"), "{}", last_error());
+    // SAFETY: each came from its `_new` or its order.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(chinese);
+    }
+}

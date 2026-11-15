@@ -61,16 +61,29 @@ typedef CanvasLetterCluster = ({String text, double left, double baseline});
 List<List<CanvasLetterCluster>> canvasLetterClustersOf(
   TextPainter painter,
   ui.Offset at,
+) => [
+  for (final line in canvasLetterClustersAt(painter, at))
+    [for (final (:cluster, start: _) in line) cluster],
+];
+
+/// [canvasLetterClustersOf], each cluster with where its text [start]s in
+/// [painter]'s — what tells the span, and so the style, it is set in.
+List<List<({CanvasLetterCluster cluster, int start})>> canvasLetterClustersAt(
+  TextPainter painter,
+  ui.Offset at,
 ) {
   final text = painter.plainText;
   final lines = painter.computeLineMetrics();
-  final clusters = [for (final _ in lines) <CanvasLetterCluster>[]];
+  final clusters = [
+    for (final _ in lines) <({CanvasLetterCluster cluster, int start})>[],
+  ];
   var start = 0;
   for (final cluster in text.characters) {
     final end = start + cluster.length;
     final boxes = painter.getBoxesForSelection(
       TextSelection(baseOffset: start, extentOffset: end),
     );
+    final from = start;
     start = end;
     if (boxes.isEmpty || cluster.contains('\n')) {
       continue;
@@ -78,9 +91,12 @@ List<List<CanvasLetterCluster>> canvasLetterClustersOf(
     final box = boxes.first;
     final line = _lineHolding(lines, (box.top + box.bottom) / 2);
     clusters[line].add((
-      text: cluster,
-      left: at.dx + box.left,
-      baseline: at.dy + lines[line].baseline,
+      cluster: (
+        text: cluster,
+        left: at.dx + box.left,
+        baseline: at.dy + lines[line].baseline,
+      ),
+      start: from,
     ));
   }
   return [

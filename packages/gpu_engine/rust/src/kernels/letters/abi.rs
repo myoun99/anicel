@@ -18,7 +18,7 @@ use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::write::Change;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
-use super::{Lettered, Pass, set};
+use super::{Lettered, Pass, set, words};
 
 /// A picture of letters as the app builds it: its passes, bottom to top.
 #[derive(Default)]
@@ -136,8 +136,23 @@ pub unsafe extern "C" fn gpu_engine_faces_of(handed: *mut FacesHanded) -> *mut F
     Faces::new(set_in).map_or(std::ptr::null_mut(), hands_bytes)
 }
 
+/// The families of `faces` in the order `order` names them — `count`
+/// places, each where a family stands in `faces` —, sharing their files:
+/// let go of on its own, before `faces` or after. Null on failure; see the
+/// last error.
+///
 /// # Safety
-/// `faces` came from `gpu_engine_faces_of`.
+/// `faces` came from [`gpu_engine_faces_of`] or this, and `order` holds
+/// `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_ordered(faces: *const Faces, order: *const u32, count: usize) -> *mut Faces {
+    // SAFETY: see the function's contract.
+    let (faces, order) = unsafe { (&*faces, std::slice::from_raw_parts(order, count)) };
+    faces.ordered(order).map_or(std::ptr::null_mut(), hands_bytes)
+}
+
+/// # Safety
+/// `faces` came from `gpu_engine_faces_of` or `gpu_engine_faces_ordered`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
     // SAFETY: see the function's contract.
@@ -218,11 +233,8 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
     let Some(at) = at else {
         return false;
     };
-    let Some(weight) = weight_of(weight) else {
-        return false;
-    };
     // SAFETY: see the function's contract.
-    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
+    let Some(run) = (unsafe { run_of(size, weight, italic, text, length, ends, origins, count) }) else {
         return false;
     };
     let Some(pass) = letters.last() else {
@@ -230,12 +242,7 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
     };
     pass.shapes.push(Placed {
         at,
-        shape: Shape::Letters(Run {
-            size,
-            weight,
-            italic,
-            clusters,
-        }),
+        shape: Shape::Letters(run),
     });
     true
 }
@@ -291,6 +298,133 @@ unsafe fn clusters_of(
         return fail(format!("the clusters end at {start}, the letters at {length}"));
     }
     Some(clusters)
+}
+
+/// A run of letters in one style as a verb is handed it: `size` 64ths of a
+/// px, `weight` — `FontWeight`'s, 1 to 1000 — and `italic`, its clusters
+/// read as [`clusters_of`] reads them. None on failure; see the last
+/// error.
+///
+/// # Safety
+/// `text` holds `length` bytes, `ends` `count` words and `origins`
+/// `2 × count`.
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_of(
+    size: i32,
+    weight: u32,
+    italic: bool,
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> Option<Run> {
+    let weight = weight_of(weight)?;
+    // SAFETY: see the function's contract.
+    let clusters = unsafe { clusters_of(text, length, ends, origins, count) }?;
+    Some(Run {
+        size,
+        weight,
+        italic,
+        clusters,
+    })
+}
+
+/// A word as the app builds it: its runs, each in one style, where the
+/// word's layout set them.
+#[derive(Default)]
+pub struct Wording {
+    shapes: Vec<Placed>,
+}
+
+/// A word of no run.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_word_new() -> *mut Wording {
+    hands_bytes(Wording::default())
+}
+
+/// # Safety
+/// `word` came from `gpu_engine_word_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_free(word: *mut Wording) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(word) };
+}
+
+/// Adds to `word` a run of letters in one style, handed as
+/// [`gpu_engine_letters_run`] is handed a pass's, standing where the
+/// word's layout set it. False on failure; see the last error.
+///
+/// # Safety
+/// `word` is live, `text` holds `length` bytes and `ends` `count` words,
+/// `origins` `2 × count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_word_run(
+    word: *mut Wording,
+    size: i32,
+    weight: u32,
+    italic: bool,
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let word = unsafe { &mut *word };
+    // SAFETY: see the function's contract.
+    let Some(run) = (unsafe { run_of(size, weight, italic, text, length, ends, origins, count) }) else {
+        return false;
+    };
+    word.shapes.push(Placed {
+        at: Affine { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
+        shape: Shape::Letters(run),
+    });
+    true
+}
+
+/// Whether every letter of `word` is one some family of `faces` has
+/// ([`words::whole`]): false for a word a letter of which the engine
+/// would set as an empty box.
+///
+/// # Safety
+/// `word` and `faces` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_whole(word: *const Wording, faces: *const Faces) -> bool {
+    // SAFETY: see the function's contract.
+    let (word, faces) = unsafe { (&*word, &*faces) };
+    words::whole(faces, &word.shapes)
+}
+
+/// Rasters `word`, set in `faces` and laid by `to_raster` — the layout's
+/// space to the raster's, six floats —, over `bytes`: the raster's
+/// `width` × `height` pixels row by row, a byte of coverage each
+/// ([`words::rastered`]). On the CPU, where it is called: no device is
+/// taken in hand. False on failure, `bytes` as they were; see the last
+/// error.
+///
+/// # Safety
+/// `word` and `faces` are live, `to_raster` holds six floats and `bytes`
+/// `width × height`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_raster(
+    word: *const Wording,
+    faces: *const Faces,
+    to_raster: *const f32,
+    width: u32,
+    height: u32,
+    bytes: *mut u8,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (word, faces, to_raster) = unsafe { (&*word, &*faces, affine(to_raster)) };
+    let (Some(to_raster), Some(count)) = (to_raster, words::pixels([width, height])) else {
+        return false;
+    };
+    // SAFETY: see the function's contract.
+    let bytes = unsafe { std::slice::from_raw_parts_mut(bytes, count) };
+    words::rastered(faces, &word.shapes, to_raster, width, bytes);
+    true
 }
 
 /// Adds to the pass begun last a box or a line — `rect`, [left, top,
