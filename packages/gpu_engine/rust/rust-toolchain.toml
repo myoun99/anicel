@@ -13,6 +13,9 @@
 # builds no target this file leaves out, and rustup downloads every target it
 # lists that a machine lacks on that machine's next cargo here — so a target
 # is fetched by hand, with the user's yes, before it is added.
+# Windows on ARM joined for the release round's ARM64 build, which the
+# engine's hook refused without it (유저 2026-11-16, round 1091 Q2 — fetched
+# on this PC by hand that day; the Surface fetches it on its next cargo).
 [toolchain]
 channel = "1.99.1"
 profile = "minimal"
@@ -21,6 +24,7 @@ targets = [
   "aarch64-apple-ios",
   "aarch64-apple-ios-sim",
   "aarch64-linux-android",
+  "aarch64-pc-windows-msvc",
   "armv7-linux-androideabi",
   "x86_64-apple-darwin",
   "x86_64-linux-android",
