@@ -25,6 +25,8 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 
+import '../helpers/tiles_on_the_engine.dart';
+
 /// 🚨A STROKE ON THE APP'S GRID IS THE ENGINE'S (flip lane ⓒ): its result is
 /// a tile the engine laid, the same call showing it and finishing it (유저
 /// 09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
@@ -289,7 +291,7 @@ void main() {
     final first = land();
     final filler = [
       for (var n = 1; n < ledger.pool.bytes ~/ gpuTileBytes; n++)
-        BitmapTile.blank(size: gpuTileSide),
+        aTileOfItsOwn(),
     ];
     ledger.held((held) => held.slotsOf(cel, filler));
     final past = land();
@@ -336,7 +338,7 @@ void main() {
     // tile stored longest ago that it can store again.
     final filler = [
       for (var n = 1; n < ledger.pool.bytes ~/ gpuTileBytes; n++)
-        BitmapTile.blank(size: gpuTileSide),
+        aTileOfItsOwn(),
     ];
     ledger.held((held) => held.slotsOf(cel, filler));
     final page = ledger.pool.bytes;
