@@ -16,10 +16,11 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// The row's blocks are its base's, so no block lands: every cel, name,
 /// exposure and link stays, and only what is hung in the cels changes — the
 /// law of the picture trade a rows' hop makes
-/// (`picturesTradedInAttachGroup`, F-330 · I-98), and of the picture row,
-/// which puts the clip's first in its one block
-/// (image-row-cut-paste-Q1: 「그림이 있어도 갈아끼운다」). A block dragged
-/// there picks by this too (`picturesTradedInBlocks`, F-546).
+/// (`picturesTradedInAttachGroup`, F-330 · I-98). A PICTURE row holding its
+/// picture takes a paste by this too, its one block taking the clip's first
+/// (F-593, 유저 2026-11-15: 「어태치 싱크레이어에 붙여넣기 작동시키듯이
+/// 그림교체방식으로」 — `pasteHangsPicturesIn`). A block dragged onto a
+/// synced row picks by this too (`picturesTradedInBlocks`, F-546).
 ///
 /// [shown] is the row as a cut shows it (`attachedRowAsShown`). A cursor on a
 /// hold's ghost stands on the drawing it shows, as a copy there does (F-140);
