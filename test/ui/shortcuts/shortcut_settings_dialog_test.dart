@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
+import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/brush/tool_library_panel.dart'
     show subToolTilesOf;
@@ -25,9 +26,11 @@ import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -39,6 +42,7 @@ void main() {
   Future<EditorShortcutBindings> pump(
     WidgetTester tester, {
     EditorShortcutBindings? bindings,
+    ScrollBehavior? scrollBehavior,
   }) async {
     final held = bindings ?? EditorShortcutBindings();
     addTearDown(held.dispose);
@@ -46,6 +50,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
+        scrollBehavior: scrollBehavior,
         home: Scaffold(body: ShortcutSettingsDialog(bindings: held)),
       ),
     );
@@ -1316,4 +1321,69 @@ void main() {
       });
     });
   });
+
+  // 🗣️F-590 (user, 2026-11-15): 「키보드 단축키 창, 스크롤바랑 내부
+  // 리셋버튼이랑 겹치니 스크롤바 확실하게 공간 주도록」.
+  testWidgets('the list keeps its scrollbar in a lane of its own: beside '
+      'the rows, and no bar over a row\'s reset button', (tester) async {
+    // The app root's behaviour, as in the app: it lays its own bar over a
+    // scrollable on a desktop, and that one must not come back here.
+    await pump(tester, scrollBehavior: const AppScrollBehavior());
+    // A shelf's name finds every row it holds, on the shelves under it too.
+    await tester.enterText(search, ShortcutShelf.pills.label);
+    await tester.pump();
+
+    final window = find.byKey(
+      const ValueKey<String>('shortcut-settings-dialog'),
+    );
+    final rows = tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey<String>('shortcut-action-list')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+    expect(
+      rows.maxScrollExtent,
+      greaterThan(0),
+      reason: '⛔premise: the rows overflow the list',
+    );
+
+    final bar = find.descendant(
+      of: window,
+      matching: find.byType(AppControllerScrollbar),
+    );
+    expect(
+      tester.widget<AppControllerScrollbar>(bar).controller.position,
+      same(rows),
+      reason: 'the lane is this list\'s',
+    );
+    final lane = tester.getRect(bar);
+    expect(lane.width, AppScrollbarLane.thin);
+
+    final resets = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'shortcut-reset-',
+          ),
+    );
+    expect(resets, findsWidgets, reason: '⛔premise: rows are on screen');
+    for (final reset in resets.evaluate()) {
+      final box = reset.renderObject! as RenderBox;
+      expect(
+        box.localToGlobal(box.size.bottomRight(Offset.zero)).dx,
+        lessThanOrEqualTo(lane.left),
+        reason: '${reset.widget.key}: clear of the lane',
+      );
+    }
+    expect(
+      find.descendant(of: window, matching: find.byType(PanelScrollbar)),
+      findsNothing,
+      reason: 'no second bar laid over the rows',
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

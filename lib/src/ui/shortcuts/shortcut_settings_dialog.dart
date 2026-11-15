@@ -32,6 +32,7 @@ import 'shortcut_shelf.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/content_scrollbar.dart';
 import '../theme/app_theme.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
@@ -614,12 +615,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                   ),
                 ),
               ),
-              Expanded(
-                child: ListView(
-                  key: const ValueKey<String>('shortcut-action-list'),
-                  children: rows,
-                ),
-              ),
+              Expanded(child: _ActionList(rows: rows)),
             ],
           ),
         ),
@@ -1002,6 +998,30 @@ class _KeySearch extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The window's rows, in a scrollbar lane of their own.
+///
+/// 🗣️F-590 (유저 2026-11-15): 「키보드 단축키 창, 스크롤바랑 내부
+/// 리셋버튼이랑 겹치니 스크롤바 확실하게 공간 주도록」 — H35's law
+/// ([ContentScrollbar]), as Preferences keeps its content's lane (F-440):
+/// reserved beside the rows, and there whether they overflow or not.
+/// ↩️The list scrolled under the app root's bar, laid OVER its end edge
+/// while it overflowed — and a row ends flush with that edge, in its reset
+/// button (measured: 0px between them, under an 8px bar).
+class _ActionList extends StatelessWidget {
+  const _ActionList({required this.rows});
+
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) => ContentScrollbar(
+    builder: (context, controller) => ListView(
+      key: const ValueKey<String>('shortcut-action-list'),
+      controller: controller,
+      children: rows,
+    ),
+  );
 }
 
 /// One action's row: its name, its keys and touch gesture, and its record ·
