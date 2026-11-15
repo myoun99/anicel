@@ -29,6 +29,7 @@ import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
 import 'persistence/scratch_file.dart';
 import 'persistence/thaw_in_worker.dart';
+import 'persistence/worker_file_reads.dart';
 import 'undo_surface_snapshot.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
@@ -302,10 +303,10 @@ class BrushFrameStore {
     if (!wallShrinksTo(reach)) {
       return;
     }
-    final jobs = <_KeptRead>[
-      for (final (from, read) in _keptSources)
+    final jobs = [
+      for (final from in [_coldCels, _fileCels])
         for (final MapEntry(:key, value: ref) in from.entries)
-          if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
+          if (!_wallPasses(key, ref, reach)) (key: key, ref: ref),
     ];
     final hotCels = {..._bakedSurfaces};
     var done = 0;
@@ -319,7 +320,7 @@ class BrushFrameStore {
         _cutHotAhead(key, surface, ahead).whenComplete(counted),
       for (final job in jobs)
         celThawTurns
-            .run(() => _cutKeptAhead(job, ahead))
+            .run(() => _cutKeptAhead(job.key, job.ref, ahead))
             .whenComplete(counted),
     ]);
   }
@@ -340,13 +341,17 @@ class BrushFrameStore {
     }
   }
 
-  /// A KEPT cel's bytes, read as [job] says, cut behind [ahead]'s wall on a
-  /// worker and parked under a name of their own, held in [ahead] by the
-  /// ref they were read off.
-  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead) async {
-    final (:key, :ref, :read) = job;
+  /// A KEPT cel's bytes — [key]'s, by [ref] — read
+  /// ([_keptBlobOffThisThread]) and cut behind [ahead]'s wall on workers,
+  /// parked under a name of their own and held in [ahead] by the ref they
+  /// were read off.
+  Future<void> _cutKeptAhead(
+    BrushFrameKey key,
+    AnicelCelFileRef ref,
+    _CutAhead ahead,
+  ) async {
     try {
-      final blob = read(ref);
+      final blob = await _keptBlobOffThisThread(key, ref);
       if (blob == null) {
         return;
       }
@@ -1147,9 +1152,9 @@ class BrushFrameStore {
   /// • it never throws: a read or a decode that fails leaves the kept bytes
   ///   as they are, and the next read tries again here, as it always did.
   ///
-  /// ⚠️The bytes are still READ here — the saved file's through the
-  /// session's one handle ([_readFileRefBytes]) — so a thaw reads exactly
-  /// what [bakedSurfaceOrNull] would.
+  /// The bytes are read on a worker too ([_keptBlobOffThisThread]) — the
+  /// very bytes [bakedSurfaceOrNull] would read here, by a handle of the
+  /// worker's own.
   Future<void> thawAhead(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
@@ -1279,11 +1284,12 @@ class BrushFrameStore {
     return null;
   }
 
-  /// [key]'s kept bytes — while they are what [keptNow] names — thawed on a
-  /// worker by [thaw] and, where the [read] is a use, kept hot here: the
-  /// surface thawed, or null when the cel moved on meanwhile (made hot, kept
-  /// anew, gone) and keeps what it has, or when the bytes would not read. A
-  /// look ([CelRead.look]) is handed its surface, and nothing of it is kept.
+  /// [key]'s kept bytes — while they are what [keptNow] names — read
+  /// ([_keptBlobOffThisThread]) and thawed by [thaw], both on workers, and,
+  /// where the [read] is a use, kept hot here: the surface thawed, or null
+  /// when the cel moved on meanwhile (made hot, kept anew, gone) and keeps
+  /// what it has, or when the bytes would not read. A look
+  /// ([CelRead.look]) is handed its surface, and nothing of it is kept.
   Future<BitmapSurface?> _thawOnAWorker(
     BrushFrameKey key,
     AnicelCelFileRef? Function() keptNow,
@@ -1295,14 +1301,17 @@ class BrushFrameStore {
     if (_bakedSurfaces.containsKey(key) || kept == null) {
       return null;
     }
+    bool movedOn() =>
+        _bakedSurfaces.containsKey(key) || !identical(_kept(key)?.ref, kept);
     try {
-      final blob = _keptBlobOrNull(key);
-      if (blob == null) {
+      final blob = await _keptBlobOffThisThread(key, kept);
+      // Asked with the bytes in hand too: a cel made hot while they were
+      // read is not thawed again for nothing.
+      if (blob == null || movedOn()) {
         return null;
       }
       final surface = await thaw(blob);
-      if (_bakedSurfaces.containsKey(key) ||
-          !identical(_kept(key)?.ref, kept)) {
+      if (movedOn()) {
         return null;
       }
       if (read == CelRead.use) {
@@ -1314,6 +1323,50 @@ class BrushFrameStore {
       return null;
     }
   });
+
+  /// The bytes [key] is kept as by [ref], read off this thread
+  /// ([WorkerFileReads.read]) — null where they would not read, or where
+  /// [key] no longer keeps [ref] once they are read.
+  ///
+  /// 🗣️Card a-thawed-cel-is-adopted-on-the-ui-thread: these were read HERE
+  /// — the saved file's through the session's one handle
+  /// ([_readFileRefBytes]) — before a worker was handed them, a cel a row
+  /// of a frame at once. 🔬The read alone, where the user keeps a project
+  /// (a Google Drive folder, FNK_02 v35, 2026-11-15): 4.3 ms a cel the
+  /// median and 112 the longest ([WorkerFileReads] holds the table).
+  ///
+  /// 🚨★★★A REF THE CEL NO LONGER KEEPS NAMES BYTES THAT MAY BE ANOTHER'S
+  /// BY NOW ([WorkerFileReads]): a save that moves a stretch of the file
+  /// moves the refs off it first and then writes over it, in another
+  /// isolate, while this read is on its way. So they are made a blob only
+  /// under the very ref they were read by — which every move re-issues
+  /// ([AnicelCelFileRef.movedTo]) — and otherwise never looked at.
+  ///
+  /// ⚠️A worker opens the file by its name, where [_readFileRefBytes] reads
+  /// through the handle the session holds — so a file whose NAME is gone
+  /// (POSIX: deleted or moved under the session) reads there and not here:
+  /// null, and the read that needs the cel reads it there, as after any
+  /// read that fails. A park let go while a worker still reads it is left
+  /// to the room's own ending, as a removal that fails is
+  /// ([ScratchFile.letGo]).
+  Future<AnicelCelBlob?> _keptBlobOffThisThread(
+    BrushFrameKey key,
+    AnicelCelFileRef ref,
+  ) async {
+    final Uint8List bytes;
+    try {
+      bytes = await WorkerFileReads.read(
+        ref.filePath,
+        ref.dataOffset,
+        ref.length,
+      );
+    } on Object {
+      return null;
+    }
+    final keepsIt =
+        identical(_coldCels[key], ref) || identical(_fileCels[key], ref);
+    return keepsIt ? AnicelCelBlob(bytes) : null;
+  }
 
   /// [blob] thawed on a worker as a read here would thaw it — behind the
   /// wall there too.
@@ -2883,14 +2936,6 @@ typedef _CutAhead = ({
 /// A hot cel made anew on a worker, with the picture it was made [from]:
 /// [made] null where the work left it as it is.
 typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
-
-/// A kept cel and how its bytes are [read] off its [ref], as
-/// [BrushFrameStore.cutCelsAhead] walks them.
-typedef _KeptRead = ({
-  BrushFrameKey key,
-  AnicelCelFileRef ref,
-  AnicelCelBlob? Function(AnicelCelFileRef ref) read,
-});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});
