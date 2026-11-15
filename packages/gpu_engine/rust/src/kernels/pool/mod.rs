@@ -604,6 +604,9 @@ impl Pool {
                 .on_thread(|| {
                     // The engine's thread runs what it is handed in turn: a
                     // page being made ahead is made by now.
+                    // ⚠️No test tells this from the page made again below
+                    // (mutant P14 lived, 11-15): the same page either way,
+                    // the engine's thread's 11 to 28 ms apart.
                     if let Some(page) = self.ahead.taken_as(asked) {
                         return Some(page);
                     }
