@@ -23,7 +23,8 @@ import '../helpers/engine_verbs.dart';
 /// Nor does one a verb handed over unwaited still reads and that counts
 /// nothing — a plan (B1-a, 2026-11-15; the test has why) —, nor one the
 /// app lets go of by the hundred and that counts nothing — a frame grid's
-/// tile picture (B1, 2026-11-15; the same).
+/// tile picture (B1, 2026-11-15; the same) —, nor a screen's, which counts
+/// and counts its part off first (「다음 문」, 2026-11-16; the same).
 ///
 /// What holds nothing of a device is no engine's (`hands_bytes` — 🗣️관제
 /// 2026-11-14 05:16, the same card): its free lets go of its bytes where it
@@ -98,11 +99,27 @@ void main() {
       containsAll(freedByTheHundred),
       reason: 'LIVENESS — a free of a thing counting nothing waits for nothing',
     );
+    // 🚨AND ONE THE UI CALLS BEHIND THE BODIES IT HANDED OVER, OF A THING
+    // THAT COUNTS (the-ui-thread-never-enters-the-driver, 「다음 문」,
+    // 2026-11-16): a screen, which its compose and show read on the
+    // engine's thread once handed over (`GpuScreen.compose`) — its free
+    // waiting there stood the UI 44.2 ms as a row's onion came on, 80.4 and
+    // 36.0 ms with every one on (🔬캔버스 베이스 패널, the Surface, profile,
+    // 11-15 18:17). What it counts is counted off in the verb before it
+    // hands the screen over (`ScreenAndBytes::counted_off`,
+    // kernels/composite/abi.rs). ⏳브러시/렌더링; the user's to overturn.
+    const standingBehindItsBodies = {'gpu_engine_screen_free'};
+    expect(
+      unwaited,
+      containsAll(standingBehindItsBodies),
+      reason: 'LIVENESS — a free the UI stood behind its bodies for',
+    );
     expect(
       unwaited
           .difference(collected)
           .difference(readByWhatWasHandedOver)
-          .difference(freedByTheHundred),
+          .difference(freedByTheHundred)
+          .difference(standingBehindItsBodies),
       isEmpty,
       reason: 'nothing collects these, and their thing is not gone as they '
           'return: let go of it with `let_go` (device.rs)',

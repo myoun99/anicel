@@ -1291,12 +1291,26 @@ pub unsafe extern "C" fn gpu_engine_screen_new(
     Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| engine.hands(ScreenAndBytes::new(screen)))
 }
 
+/// Lets go of `screen` on the engine's thread, its caller waiting for none
+/// of it — behind the bodies handed over ahead, which read it as they
+/// run —, its part of [`KEPT_BYTES`] counted off here first
+/// ([`ScreenAndBytes::counted_off`]; `device::let_go_unwaited` has why a
+/// free that counts does so). 🚨Waited for, the UI stood behind every
+/// compose handed over ahead of it: 44.2 ms as a row's onion came on, 80.4
+/// and 36.0 ms with every one on (🔬캔버스 베이스 패널, the Surface, profile,
+/// 2026-11-15 18:17 — the-ui-thread-never-enters-the-driver, 「다음 문」).
+/// ⏳브러시/렌더링 2026-11-16; the user's to overturn.
+///
 /// # Safety
-/// `screen` came from `gpu_engine_screen_new`.
+/// `screen` came from `gpu_engine_screen_new`, and is let go of once.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
     // SAFETY: see the function's contract.
-    unsafe { let_go(screen) };
+    if let Some(kept) = unsafe { screen.as_ref() } {
+        kept.counted_off();
+    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_unwaited(screen) };
 }
 
 /// The bytes `screen` keeps — its canvas's tiles and its halvings': what
@@ -1315,16 +1329,25 @@ pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const ScreenAndBytes) 
 /// verbs' bodies alone — each handed to the engine's thread unwaited
 /// ([`Engine::posted`]) — and the bytes it keeps, told there as they
 /// change: what the budgets and the census read on their own thread
-/// ([`gpu_engine_screen_bytes`]) while such a body is under way.
+/// ([`gpu_engine_screen_bytes`]) while such a body is under way, and its
+/// part of [`KEPT_BYTES`] till its free.
 pub(crate) struct ScreenAndBytes {
     screen: Mutex<Screen>,
     bytes: AtomicU64,
+    /// Whether [`KEPT_BYTES`] holds `bytes` still: till its free counts
+    /// them off ([`ScreenAndBytes::counted_off`]) on its caller's thread,
+    /// as a body handed over ahead may still run and tell. Told and
+    /// counted off under it alone: a body's tail holds it for two words,
+    /// and never the free for the body.
+    counted: Mutex<bool>,
 }
 
 impl ScreenAndBytes {
     fn new(screen: Screen) -> Self {
-        let bytes = AtomicU64::new(screen.bytes());
-        Self { screen: Mutex::new(screen), bytes }
+        let bytes = screen.bytes();
+        KEPT_BYTES.fetch_add(bytes, Ordering::Relaxed);
+        let (screen, bytes) = (Mutex::new(screen), AtomicU64::new(bytes));
+        Self { screen, bytes, counted: Mutex::new(true) }
     }
 
     fn kept(&self) -> MutexGuard<'_, Screen> {
@@ -1336,16 +1359,51 @@ impl ScreenAndBytes {
     fn with<T>(&self, work: impl FnOnce(&mut Screen) -> T) -> T {
         let mut screen = self.kept();
         let worked = work(&mut screen);
-        self.bytes.store(screen.bytes(), Ordering::Relaxed);
+        self.told(screen.bytes());
         worked
+    }
+
+    /// `bytes` told as what it keeps, and its part of [`KEPT_BYTES`] moved
+    /// by as many in one step — till its free has counted it off.
+    fn told(&self, bytes: u64) {
+        let counted = self.counted.lock().unwrap_or_else(PoisonError::into_inner);
+        let had = self.bytes.swap(bytes, Ordering::Relaxed);
+        if *counted {
+            // Up or down in one step: the difference, wrapped, takes where
+            // the bytes are fewer, as `fetch_add` wraps too.
+            KEPT_BYTES.fetch_add(bytes.wrapping_sub(had), Ordering::Relaxed);
+        }
+    }
+
+    /// Its part of [`KEPT_BYTES`] counted off, by its free's caller: the
+    /// bodies handed over ahead of the free may still run, and what they
+    /// tell from here counts nowhere.
+    fn counted_off(&self) {
+        let mut counted = self.counted.lock().unwrap_or_else(PoisonError::into_inner);
+        *counted = false;
+        KEPT_BYTES.fetch_sub(self.bytes.load(Ordering::Relaxed), Ordering::Relaxed);
     }
 }
 
+/// The bytes every screen keeps — its canvas's and its halvings'
+/// ([`Screen::bytes`]) —, each as its last body told them, till its free:
+/// what [`gpu_engine_kept_bytes`] reads, for the leak pins.
+///
+/// ↩️Counted where a picture's tiles were made and dropped (halvings.rs's
+/// `Kept`) till 2026-11-16, when a screen's free came to wait for none of
+/// the bodies ahead of it ([`gpu_engine_screen_free`]): counted off where
+/// it is dropped, it would read late; counted off ahead, by what its last
+/// body told, a body still under way would count the tiles it made and
+/// dropped past it — off twice, or below nothing. Counted where the screen
+/// tells its bytes, a screen's part moves in one step, and its free takes
+/// it whole.
+static KEPT_BYTES: AtomicU64 = AtomicU64::new(0);
+
 /// The bytes of every picture the engine keeps — every screen's canvas and
-/// halvings, made and not yet dropped.
+/// halvings ([`KEPT_BYTES`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
-    super::halvings::kept_bytes()
+    KEPT_BYTES.load(Ordering::Relaxed)
 }
 
 /// The bytes `engine` keeps for pictures that are no picture's: the slots

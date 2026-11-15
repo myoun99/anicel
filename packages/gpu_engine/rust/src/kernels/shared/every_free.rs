@@ -125,7 +125,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 39] {
         ("gpu_engine_screen_free", |name| {
             // SAFETY: the engine is live, and the extent holds four words.
             let made = unsafe { gpu_engine_screen_new(first_engine(), [0, 0, 4, 4].as_ptr(), 1.0) };
-            gives_back(name, made, gpu_engine_screen_free)
+            gives_back_unwaited(name, made, gpu_engine_screen_free)
         }),
         ("gpu_engine_mask_free", |name| {
             // SAFETY: the engine is live, and the bytes hold the mask's one.

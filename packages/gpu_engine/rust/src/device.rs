@@ -1939,7 +1939,8 @@ pub(crate) unsafe fn taken_bytes<T>(handed: *mut T) -> T {
 /// Lets go of what [`Engine::hands`] handed out as [`let_go`] does, but
 /// the caller waiting for none of it: the frees the GC calls of an
 /// engine's things — the ones the app binds a native finalizer to — and,
-/// past them, only frees of things that count nothing, each named with why
+/// past them, only frees each named with why: of things that count
+/// nothing, and a screen's, which counts its part off first
 /// (`test/architecture/a_free_the_gc_calls_waits_for_nothing_test.dart`
 /// reads both sides; a thing of bytes the GC lets go of is let go of where
 /// the GC is, [`let_go_bytes`]).
@@ -1955,11 +1956,13 @@ pub(crate) unsafe fn taken_bytes<T>(handed: *mut T) -> T {
 /// ⏳So what the GC lets go of is not waited for, and the rest is
 /// (브러시/렌더링 2026-11-14, the user asleep — theirs to overturn). ⛔Not
 /// every free unwaited before stage 2 of
-/// the-ui-thread-never-enters-the-driver: four of the counts are counted
-/// off where the thing is dropped (`KEPT_BYTES`, `HELD_BYTES`,
-/// `READOUT_BYTES`, `FLOOD_BYTES`) and would read late, to the app's tests
-/// and the leak pins alike. ⚠️A verb that lets go here counts off what its
-/// thing counted before it does, on its caller's thread.
+/// the-ui-thread-never-enters-the-driver: three of the counts are counted
+/// off where the thing is dropped (`HELD_BYTES`, `READOUT_BYTES`,
+/// `FLOOD_BYTES`; `KEPT_BYTES` was the fourth till a screen's free came
+/// here, 2026-11-16 — kernels/composite/abi.rs) and would read late, to
+/// the app's tests and the leak pins alike. ⚠️A verb that lets go here
+/// counts off what its thing counted before it does, on its caller's
+/// thread.
 ///
 /// # Safety
 /// `handed` came from [`Engine::hands`], and is let go of once.

@@ -32,8 +32,6 @@
 #[path = "halvings_tests.rs"]
 pub(crate) mod tests;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
@@ -95,17 +93,6 @@ fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
         return other;
     };
     [l.min(other[0]), t.min(other[1]), r.max(other[2]), b.max(other[3])]
-}
-
-/// The bytes of every picture the engine keeps ([`Kept`]) — a screen's
-/// canvas and its halvings —, counted where one is made and dropped: what
-/// the memory census is to read of them ([`kept_bytes`]; ⏳once the screen
-/// is the engine's, flip lane ⓑ).
-static KEPT_BYTES: AtomicU64 = AtomicU64::new(0);
-
-/// The bytes of every picture the engine keeps.
-pub(crate) fn kept_bytes() -> u64 {
-    KEPT_BYTES.load(Ordering::Relaxed)
 }
 
 /// A picture kept in the pictures' pool (`pool::Pictures`): its tiles over
@@ -223,7 +210,6 @@ impl Kept {
     /// `tile`, placed nowhere yet, held at `at`.
     fn take(&mut self, tile: (i32, i32), at: TileAt) {
         self.set.place(tile, at);
-        KEPT_BYTES.fetch_add(TILE_BYTES, Ordering::Relaxed);
     }
 
     /// The slots its tiles are held in.
@@ -282,7 +268,6 @@ impl Kept {
 
 impl Drop for Kept {
     fn drop(&mut self) {
-        KEPT_BYTES.fetch_sub(self.bytes(), Ordering::Relaxed);
         self.pictures.release(self.places());
     }
 }

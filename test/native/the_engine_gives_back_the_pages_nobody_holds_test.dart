@@ -125,8 +125,10 @@ void main() {
 
   group("the engine's pictures", () {
     /// A screen's canvas composed on the app's engine and let go: a
-    /// page of its pictures' pool made that no picture is on.
-    void aPictureLetGo() {
+    /// page of its pictures' pool made that no picture is on — by a done
+    /// asked behind the free, which lets go of it behind the compose and
+    /// waits for neither (GpuScreen.free).
+    Future<void> aPictureLetGo() async {
       final pool = GpuPool(appGpuEngine, 1 << 30);
       addTearDown(pool.free);
       final plan = GpuPlan(appGpuEngine);
@@ -136,6 +138,7 @@ void main() {
       final screen = GpuScreen(appGpuComposite, whole);
       unawaited(screen.compose(pool, plan, whole));
       screen.free();
+      await appGpuEngine.done();
       expect(
         EnginePictures.idlePictureBytes,
         isPositive,
@@ -143,8 +146,8 @@ void main() {
       );
     }
 
-    test('the memory warning gives back what no picture holds', () {
-      aPictureLetGo();
+    test('the memory warning gives back what no picture holds', () async {
+      await aPictureLetGo();
 
       DrawingEngines.respondToMemoryPressure();
 
@@ -161,7 +164,7 @@ void main() {
       ).items.firstWhere((item) => item.id == 'framePictures').bytes;
       expect(row(), 0, reason: 'the premise: no session, no picture');
 
-      aPictureLetGo();
+      await tester.runAsync(aPictureLetGo);
 
       expect(row(), EnginePictures.idlePictureBytes);
     });

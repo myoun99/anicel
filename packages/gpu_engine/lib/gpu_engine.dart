@@ -2574,11 +2574,15 @@ class GpuScreen implements _OfAnEngine {
   /// is counted by the time its done is told ([compose]).
   int get bytes => rust.screenBytes(_screen);
 
-  /// The bytes of every screen's canvas and halvings the engine keeps, counted
-  /// by the engine where it makes and drops them.
+  /// The bytes of every screen's canvas and halvings the engine keeps: each
+  /// screen's [bytes], counted off as its [free] returns.
   static int get liveBytes => rust.keptBytes();
 
-  /// Frees the screen; before its executor is.
+  /// Frees the screen; before its executor is. Waits for none of the verbs
+  /// handed over ahead of it, which still read it ([compose], [show]): the
+  /// engine lets go of it behind them, and its pictures' slots go back to
+  /// the pool there — [GpuEngine.idlePictureBytes] counts them by a
+  /// [GpuEngine.done] asked after this.
   void free() => rust.screenFree(_screen);
 }
 
