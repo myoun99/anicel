@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// device pixels short of its end. Reckoned afresh before it reaches half a
 /// device pixel, every view of the band stands where the frames do.
 void main() {
-  const rate = ProjectFrameRate.integer(24);
+  const rate = ProjectFrameRate.fps24;
   AudioPeaks soundOf(int seconds) =>
       AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(seconds * 80));
 

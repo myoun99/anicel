@@ -1,14 +1,15 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui show PictureRecorder;
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/audio/audio_slide.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/dialogs/se_offset_strip.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -20,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
+import '../../helpers/tiles_laid.dart';
 
 /// A placed sound's start offset is the BLOCK's — edited in the block's
 /// own edit window, where the waveform slides as it is dragged.
@@ -76,13 +78,13 @@ void main() {
       return heard;
     }
 
-    WaveformPainter plays(WidgetTester tester) =>
+    SeOffsetBandsPainter plays(WidgetTester tester) =>
         tester
                 .widget<CustomPaint>(
-                  find.byKey(const ValueKey<String>('se-offset-plays')),
+                  find.byKey(const ValueKey<String>('se-offset-bands')),
                 )
                 .painter!
-            as WaveformPainter;
+            as SeOffsetBandsPainter;
 
     testWidgets('🎯the waveform slides WHILE the finger moves, and the window '
         'hears the offset only when it lets go — nothing else is written '
@@ -117,6 +119,56 @@ void main() {
 
       expect(find.text('4f'), findsOneWidget);
       expect(heard, isEmpty);
+    });
+
+    /// 🗣️the-waveform-is-drawn-on-the-cpu-beside-its-kernel ③ (가) (관제
+    /// 2026-11-15 09:21): the strip's bands are the timeline's own wave,
+    /// baked on the engine and laid on the grid's screen over its paper.
+    group('on the engine', () {
+      setUpAll(() async {
+        await openAppGpuEngine();
+        await appGpuGridKernels.ready;
+      });
+
+      final loud = AudioPeaks(
+        bucketsPerSecond: 80,
+        peaks: Float32List.fromList(List.filled(160, 0.8)),
+      );
+
+      testWidgets('both bands are baked into one picture laid across the '
+          'strip — the block\'s ink over the faint where it plays', (
+        tester,
+      ) async {
+        await pumpStrip(tester, withPeaks: loud);
+        final bands = find.byKey(const ValueKey<String>('se-offset-bands'));
+        final size = tester.getSize(bands);
+        final recorder = ui.PictureRecorder();
+        final tile = rowSlot()
+            .paintThrough(
+              () => tester
+                  .widget<CustomPaint>(bands)
+                  .painter!
+                  .paint(Canvas(recorder), size),
+            )
+            .single;
+        recorder.endRecording().dispose();
+
+        expect(tile.onto, Offset.zero & size);
+        final width = tile.from.width.toInt();
+        final ratio = width / size.width;
+        final bytes = tile.picture.picture.read();
+        int alphaAt(double x) =>
+            bytes[((20 * ratio).round() * width + (x * ratio).round()) * 4 +
+                3];
+        // Twelve frames at 24px: the block plays the first 288.
+        final cutOff = alphaAt(300);
+        expect(cutOff, isPositive, reason: 'what the block cuts off');
+        expect(
+          alphaAt(100),
+          greaterThan(cutOff),
+          reason: 'the block\'s ink over the faint',
+        );
+      });
     });
   });
 

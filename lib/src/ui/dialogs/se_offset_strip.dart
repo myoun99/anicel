@@ -7,10 +7,15 @@ import 'package:flutter/material.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/audio_slide.dart';
+import '../audio/engine_wave_band.dart';
+import '../audio/engine_wave_views.dart';
 import '../audio/waveform_painter.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../repaint_props.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineFrameCellWidth;
+import '../timeline/timeline_grid_screen.dart';
 import '../timeline/timeline_se_row_visual.dart' show SePaperSpan;
 import '../widgets/owning_axis_grip.dart';
 
@@ -65,6 +70,14 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
 
   /// The frame scale the strip was last laid out at.
   double _pixelsPerFrame = timelineFrameCellWidth;
+
+  final EngineWaveBand _band = EngineWaveBand();
+
+  @override
+  void dispose() {
+    _band.letGo();
+    super.dispose();
+  }
 
   bool get _editable => widget.peaks != null;
 
@@ -123,15 +136,6 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
     }
   }
 
-  WaveformPainter _waveform(AudioPeaks peaks, Color color) => WaveformPainter(
-    peaks: peaks,
-    frameRate: widget.frameRate,
-    pixelsPerFrame: _pixelsPerFrame,
-    color: color,
-    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-    leadingFrames: _offset,
-  );
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -160,9 +164,8 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
     );
   }
 
-  /// The block's paper as long as the block, the sound across the strip —
-  /// faint where the block cuts it off, in the block's ink where it plays —
-  /// and the offset.
+  /// The block's paper as long as the block, the sound across the strip on
+  /// the grid's screen over it ([SeOffsetBandsPainter]), and the offset.
   List<Widget> _layers(ThemeData theme, {required double window}) {
     final peaks = widget.peaks;
     return [
@@ -177,32 +180,27 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
           startFrame: 0,
         ),
       ),
-      if (peaks != null) ...[
+      if (peaks != null)
         Positioned.fill(
-          child: CustomPaint(
-            key: const ValueKey<String>('se-offset-cut-off'),
-            painter: _waveform(
-              peaks,
-              theme.colorScheme.onSurface.withValues(alpha: 0.2),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: window,
-          child: ClipRect(
-            child: CustomPaint(
-              key: const ValueKey<String>('se-offset-plays'),
-              painter: _waveform(
-                peaks,
-                timelineDrawingInkColor.withValues(alpha: 0.7),
+          child: TimelineGridScreenHost(
+            child: TimelineGridScreenSlot(
+              child: CustomPaint(
+                key: const ValueKey<String>('se-offset-bands'),
+                painter: SeOffsetBandsPainter(
+                  band: _band,
+                  peaks: peaks,
+                  frameRate: widget.frameRate,
+                  pixelsPerFrame: _pixelsPerFrame,
+                  leadingFrames: _offset,
+                  blockFrames: widget.blockFrames,
+                  cutOff: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                  plays: timelineDrawingInkColor.withValues(alpha: 0.7),
+                  devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+                ),
               ),
             ),
           ),
         ),
-      ],
       Positioned(
         right: 4,
         top: 2,
@@ -214,4 +212,97 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
       ),
     ];
   }
+}
+
+/// The sound across the strip from [leadingFrames] into its file: faint
+/// where the block cuts it off, in the block's ink over that where it plays
+/// — the timeline's own band, baked on the engine and laid on the grid's
+/// screen ([EngineWaveBand]), or drawn here where no screen lays.
+class SeOffsetBandsPainter extends CustomPainter with RepaintOnProps {
+  const SeOffsetBandsPainter({
+    required this.band,
+    required this.peaks,
+    required this.frameRate,
+    required this.pixelsPerFrame,
+    required this.leadingFrames,
+    required this.blockFrames,
+    required this.cutOff,
+    required this.plays,
+    required this.devicePixelRatio,
+  });
+
+  final EngineWaveBand band;
+  final AudioPeaks peaks;
+  final ProjectFrameRate frameRate;
+  final double pixelsPerFrame;
+
+  /// Frames of the file before the strip's start — the offset it shows.
+  final int leadingFrames;
+  final int blockFrames;
+  final Color cutOff;
+  final Color plays;
+  final double devicePixelRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final heard = peaks.durationFrames(frameRate) - leadingFrames;
+    EngineWaveDrawing drawn(int audibleFrames, Color ink) => (
+      peaks: peaks,
+      views: engineWaveViewsOf(
+        (
+          peaks: peaks,
+          startFrame: 0,
+          audibleFrames: audibleFrames,
+          leadingFrames: leadingFrames,
+          gain: 1,
+        ),
+        on: (
+          along: (frame) => frame * pixelsPerFrame,
+          origin: 0,
+          from: 0,
+          to: (size.width / pixelsPerFrame).ceil(),
+          axis: Axis.horizontal,
+          across: size.height,
+          devicePixelRatio: devicePixelRatio,
+          frameRate: frameRate,
+        ),
+        ink: ink,
+      ),
+    );
+    if (band.layOn(Offset.zero & size, [
+      drawn(heard, cutOff),
+      drawn(math.min(blockFrames, heard), plays),
+    ], devicePixelRatio)) {
+      return;
+    }
+    _waveform(cutOff).paint(canvas, size);
+    canvas.save();
+    canvas.clipRect(
+      Offset.zero & Size(blockFrames * pixelsPerFrame, size.height),
+    );
+    _waveform(plays).paint(canvas, size);
+    canvas.restore();
+  }
+
+  WaveformPainter _waveform(Color color) => WaveformPainter(
+    peaks: peaks,
+    frameRate: frameRate,
+    pixelsPerFrame: pixelsPerFrame,
+    color: color,
+    devicePixelRatio: devicePixelRatio,
+    leadingFrames: leadingFrames,
+  );
+
+  @override
+  Object get props => (
+    ByIdentity(band),
+    ByIdentity(peaks),
+    frameRate,
+    pixelsPerFrame,
+    leadingFrames,
+    blockFrames,
+    cutOff,
+    plays,
+    devicePixelRatio,
+  );
 }
