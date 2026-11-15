@@ -235,7 +235,7 @@ void main() {
     });
 
     test('every cel let go as the store is laid anew with none', () {
-      countsTheMove(() => cels.restoreBaked({}));
+      countsTheMove(() => parkCold(cels, {}));
     });
   });
 
@@ -245,7 +245,7 @@ void main() {
   test('🚨a cel a crop leaves empty is read anew — its revision stands, '
       'the content of the store moved', () {
     final cut = aCut();
-    cels.restoreBaked({});
+    parkCold(cels, {});
     ink(cels, 'a', CanvasPoint(x: 2 * tileSize - 3, y: 2 * tileSize - 3));
     final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
     final before = pictures.keyOf(at(cut, 0));
