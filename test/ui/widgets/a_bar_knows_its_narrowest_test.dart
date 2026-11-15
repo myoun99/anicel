@@ -80,12 +80,19 @@ void main() {
     );
   });
 
-  testWidgets('a few pixels under it the name is cut — the measure is the '
-      'bar\'s, not a round number with room to spare', (tester) async {
+  // ↩️F-577-Q1 (유저 2026-11-16: 「여백까지 다 쓸수있게하도록. 모든막대
+  // 공용」): a few pixels under it the name was cut, the insets being walls.
+  // They give way first now, and the bar keeps the width it measures — the
+  // writing at rest (「막대 길이는 그대로」) — so the measure is still the
+  // bar's: a few pixels past its insets, the name is cut.
+  testWidgets('a few pixels under it the insets give way, and a few past '
+      'them the name is cut — the measure is the bar\'s', (tester) async {
     final narrowest = await narrowestOf(tester, sizeBar(2000));
 
     await pumpBar(tester, sizeBar(2000), narrowest - 6);
+    expect(wordsCutAcross(find.byType(FieldSlider)), isEmpty);
 
+    await pumpBar(tester, sizeBar(2000), narrowest - 2 * FieldSlider.inset - 6);
     expect(
       wordsCutAcross(find.byType(FieldSlider)),
       contains(contains('Size')),
@@ -119,7 +126,10 @@ void main() {
     expect(find.text('100'), findsOneWidget, reason: '⛔LIVENESS');
     expect(wordsCutAcross(find.byType(FieldSlider)), isEmpty);
 
+    // Under it its insets give way first (F-577-Q1); past them it is cut.
     await pumpBar(tester, microBar(), narrowest - 2);
+    expect(wordsCutAcross(find.byType(FieldSlider)), isEmpty);
+    await pumpBar(tester, microBar(), narrowest - 2 * FieldSlider.inset - 2);
     expect(
       wordsCutAcross(find.byType(FieldSlider)),
       contains(contains('100')),

@@ -530,9 +530,10 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   ///
   /// 🗣️top-strip-narrow-overflow-Q1 (유저 2026-10-01, the answer as
   /// corrected): 「막대 먼저 줄어들고 다음 목록으로」 — 「이름과 숫자가 막대
-  /// 안에 들어가는 최소 폭까지 줄어든다(최소 폭은 실측해서 정한다)」. Below
-  /// this the name gives way to an ellipsis, which is where a bar stops
-  /// saying what it is.
+  /// 안에 들어가는 최소 폭까지 줄어든다(최소 폭은 실측해서 정한다)」 — the
+  /// writing at rest, its insets whole. Below this its insets give way
+  /// first (F-577-Q1, [insetGivenWay]) and then the name to an ellipsis,
+  /// which is where a bar stops saying what it is.
   double narrowestIn(BuildContext context) {
     final hands = _carriesHands ? _handsReach : 0.0;
     if (readout != null) {

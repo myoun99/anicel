@@ -358,6 +358,8 @@ class _RenderWritingBox extends RenderShiftedBox {
     return distance == null ? null : distance + placed.childAt.dy;
   }
 
+  // The intrinsics answer for the writing at rest, its insets whole: what a
+  // host that sizes itself round the writing gives it.
   @override
   double computeMinIntrinsicWidth(double height) =>
       _inset * 2 + (child?.getMinIntrinsicWidth(height) ?? 0);
@@ -374,8 +376,7 @@ class _RenderWritingBox extends RenderShiftedBox {
   double computeMaxIntrinsicHeight(double width) =>
       child?.getMaxIntrinsicHeight(_innerWidth(width)) ?? 0;
 
-  double _innerWidth(double width) =>
-      math.max(0.0, width - _insetIn(width) * 2);
+  double _innerWidth(double width) => math.max(0.0, width - _inset * 2);
 
   @override
   void paint(PaintingContext context, Offset offset) {

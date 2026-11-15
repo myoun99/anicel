@@ -8,6 +8,7 @@ import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
@@ -135,9 +136,7 @@ void main() {
           home: Material(
             child: Align(
               alignment: Alignment.topLeft,
-              child: along == Axis.horizontal
-                  ? SizedBox(width: length, child: bar())
-                  : SizedBox(width: 24, height: length, child: bar()),
+              child: alongBox(along, length, child: bar()),
             ),
           ),
         );
@@ -192,8 +191,7 @@ void main() {
       testWidgets(family, (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 600));
         addTearDown(() => tester.binding.setSurfaceSize(null));
-        double extent(Rect rect) =>
-            along == Axis.horizontal ? rect.width : rect.height;
+        double extent(Rect rect) => extentAlong(along, rect.size);
         ({Rect track, Rect glyphs, bool whole, double widths}) laid() {
           final writing = find.byType(GroundInkWriting);
           final paragraphs = [
@@ -225,15 +223,9 @@ void main() {
         final tight = hands + need + 2 * FieldSlider.inset - 4;
         await tester.pumpWidget(host(bar, tight, along));
         final now = laid();
-        final (start, end) = along == Axis.horizontal
-            ? (
-                now.glyphs.left - now.track.left,
-                now.track.right - now.glyphs.right,
-              )
-            : (
-                now.glyphs.top - now.track.top,
-                now.track.bottom - now.glyphs.bottom,
-              );
+        final start =
+            startAlong(along, now.glyphs) - startAlong(along, now.track);
+        final end = endAlong(along, now.track) - endAlong(along, now.glyphs);
 
         expect(now.whole, isTrue, reason: 'not broken, not cut');
         expect(
