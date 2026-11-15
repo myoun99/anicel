@@ -170,6 +170,28 @@ void main() {
     );
   });
 
+  test('🚨given back unadopted, a text\'s plate goes with the drawing — both '
+      'their blocks park again', () {
+    final entry = AnicelCelEntry(
+      key: celTextTestKey,
+      canvasSize: const CanvasSize(width: side, height: side),
+      tileSize: side,
+      tiles: [(x: 0, y: 0, pixels: twoColours())],
+      texts: [
+        (
+          id: 1,
+          content: entryOf(picture()).texts.single.content,
+          plate: [(x: 0, y: 0, pixels: twoColours())],
+        ),
+      ],
+    );
+    final parked = twoParked();
+
+    freeLaidCel(layCelEntry(entry));
+
+    expect(nextTwoAsks().toSet(), parked.toSet());
+  });
+
   group('a tile of one colour (card '
       '`a-file-keeps-all-clear-tiles-in-its-cels`)', () {
     /// A tile's worth of a white with no alpha — what a destructive verb
