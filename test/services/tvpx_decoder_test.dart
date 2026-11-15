@@ -168,8 +168,9 @@ void main() {
     ]);
   });
 
-  test('what a brush sets and this reader does not carry is said, and a '
-      'button it cannot carry whole is left out', () async {
+  test('what a brush sets and this reader does not carry is said — a brush '
+      'that smears comes in by its tip, its smear said to be left — and a '
+      'button whose tip it cannot carry is left out', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'H',
@@ -177,6 +178,9 @@ void main() {
           _button('8', 'pencil', paper: _paper(name: '/Rough')),
           '1_cmd0=Tool:tv_wetbrush mode "color" size 20.000000',
           _button('origin', 'origin'),
+          _button('smear', 'smear'),
+          _button('source', 'source'),
+          _button('hue', 'hue'),
         ],
         tools: {
           'pencil': (
@@ -184,16 +188,33 @@ void main() {
             dip: _pencilDip,
           ),
           'origin': (tool: _tool(stamp: '0'), dip: _pencilDip),
+          'smear': (tool: _tool(stamp: '6'), dip: _pencilDip),
+          'source': (tool: _tool(stamp: '7'), dip: _pencilDip),
+          'hue': (tool: _tool(stamp: '5'), dip: _pencilDip),
         },
       ),
       sourceName: 'BRUSH',
     );
 
-    expect([for (final preset in result.presets) preset.name], ['H 8']);
-    expect(result.presets.single.settings.textureMaskSource, isNull);
+    expect(
+      [for (final preset in result.presets) preset.name],
+      ['H 8', 'H smear', 'H source'],
+    );
+    final [pencil, smear, source] = [
+      for (final preset in result.presets) preset.settings,
+    ];
+    expect(pencil.textureMaskSource, isNull);
+    for (final smears in [smear, source]) {
+      expect(smears.tips, hasLength(2), reason: 'its tip, as a pencil\'s');
+      expect([smears.size, smears.opacity], [pencil.size, pencil.opacity]);
+      expect(smears.mixesGroundColor, isFalse, reason: 'the smear is left');
+    }
     expect(result.warnings, [
       'Button "H" is not a custom brush; not imported.',
       'Button "H origin": stamp mode 0 is not Alpha; not imported.',
+      'Button "H smear": stamp mode 6 smears; its smear is not carried.',
+      'Button "H source": stamp mode 7 smears; its smear is not carried.',
+      'Button "H hue": stamp mode 5 is not Alpha; not imported.',
       'Button "H 8": paper "Rough" is TVPaint\'s own and not in the file; '
           'imported without it.',
       'Brush "H 8": angle 10.000000 is not carried.',

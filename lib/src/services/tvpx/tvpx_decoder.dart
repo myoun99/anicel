@@ -183,7 +183,7 @@ List<_PanelButton> _buttonsOf(String panel) {
 }
 
 /// [button]'s custom brush out of [archive] — or null, and a warning says
-/// why, where it picks none or one this reader cannot carry whole.
+/// why, where it picks none or one whose tip this reader cannot carry.
 _ButtonRead? _readButton(
   Archive archive,
   String data,
@@ -204,16 +204,33 @@ _ButtonRead? _readButton(
     return null;
   }
   final tool = _toolOf(_textOf(ini.content));
-  // ⏳The stamp menu's order as TVPaint's own page lists it (Origin, Alpha,
-  // Alpha Max, Luma, …) — 1 Alpha: the tip's alpha, coloured with the A
-  // colour, which is what a tip mask is (card I-86). The others colour the
-  // tip by its own pixels, which a mask cannot hold.
-  if (tool['stamp'] != '1') {
-    warnings.add(
-      'Button "$name": stamp mode ${tool['stamp']} is not Alpha; '
-      'not imported.',
-    );
-    return null;
+  // The stamp menu in the order TVPaint's own page lists it (doc.tvpaint.com,
+  // Custom brushes, read 2026-11-15): 0 Origin, 1 Alpha, 2 Alpha Max,
+  // 3 Luma, 4 Luma Invert, 5 Hue, 6 Smear, 7 Smear Source. Alpha is the
+  // tip's alpha coloured with the A colour, which is what a tip mask is
+  // (card I-86). Smear is, the page says, like Alpha but smearing the tip's
+  // pixels onto the picture, and Smear Source the same onto a source
+  // picture: the same mask, and a smear this reader does not carry —
+  // ⏳which of the app's mixing a `smear` of 0, 20 or 100 is is on no page
+  // (I-86-Q6), and the app has no source picture to smear.
+  // 🗣️유저 2026-11-15: 「누리용 Azi이런거 안들어왔는데 커스텀연필외
+  // 임포트는 아직인가?」 · 「브러시는 커스텀브러시만」 — the custom brushes
+  // come in, all a mask can hold. ↩️Only Alpha did.
+  // The others colour the tip by its own pixels, which a mask cannot hold.
+  switch (tool['stamp']) {
+    case '1':
+      break;
+    case '6' || '7':
+      warnings.add(
+        'Button "$name": stamp mode ${tool['stamp']} smears; its smear is '
+        'not carried.',
+      );
+    default:
+      warnings.add(
+        'Button "$name": stamp mode ${tool['stamp']} is not Alpha; '
+        'not imported.',
+      );
+      return null;
   }
   final _Tip tip;
   try {
@@ -511,8 +528,8 @@ const List<String> _notCarried = [
 /// keeps its own soft edge whatever TVPaint's own setting
 /// (유저 2026-11-14 「팁이 소재일때는 aa있어도되는거 … 괜히 aa없애는거 목표로
 /// 하란게 아니란거임」) — at none the engine would threshold the mask.
-/// `smear` is left unread: it is the Smear stamp mode's, and only Alpha
-/// comes in.
+/// `smear` is left unread: it is the Smear stamp modes', which come in
+/// without it ([_readButton]).
 BrushSettings _settingsOf(
   Map<String, String> tool, {
   required List<BrushTipMask> tips,
