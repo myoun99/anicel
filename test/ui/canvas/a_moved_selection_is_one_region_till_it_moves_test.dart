@@ -22,14 +22,22 @@ void main() {
       const Offset(330, 230),
       const Offset(347, 241),
     );
-    final painter = antsOnScreen(tester);
-    final moved = painter.committedRegion;
-    expect(moved, isNotNull, reason: 'the premise: a selection');
+    final first = antsOnScreen(tester).committedRegion;
+    expect(first, isNotNull, reason: 'the premise: a selection');
     expect(
-      moved,
+      first,
       isNot(same(transformToolSquare)),
       reason: 'the premise: a session moved it',
     );
+    // Moved again, by the box alone: a region anew.
+    await dragOnTransformLayer(
+      tester,
+      const Offset(347, 241),
+      const Offset(355, 249),
+    );
+    final painter = antsOnScreen(tester);
+    final moved = painter.committedRegion;
+    expect(moved, isNot(same(first)));
 
     final mouse = TestPointer(77, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(
