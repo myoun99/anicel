@@ -468,6 +468,23 @@ void main() {
       ]);
     });
 
+    test('a paste hangs a picture only where it lays no block: on a row it '
+        'lays one, the new cel takes the picture as it is carried, once', () {
+      final (:s, :cels, :picture, held: _) = celsAndAPictureRow();
+      copyXOnto(s, cels: cels, picture: picture, frame: 0);
+      s.pasteIndependentFrameAtCurrentFrame();
+      expect(clipboardOf(s).debugPicturesHung, 1, reason: '전제: hung there');
+
+      s.selectLayer(cels);
+      s.selectFrameIndex(6);
+      s.pasteIndependentFrameAtCurrentFrame();
+
+      final laid = rowOf(s, cels).timeline[6]?.frameId;
+      expect(laid, isNotNull, reason: '전제: a block laid');
+      expect(shadeOf(s, cels, laid!), 10);
+      expect(clipboardOf(s).debugPicturesHung, 1);
+    });
+
     test('a copy of two pictures hangs the FIRST — 「첫장만」', () {
       final (:s, :cels, :picture, :held) = celsAndAPictureRow();
       s.selectLayer(cels);

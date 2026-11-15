@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../controllers/timeline_controller.dart'
     show SpliceRider, SpliceRun;
 import '../../models/attach_picture_paste.dart';
@@ -1423,8 +1425,15 @@ class FrameClipboard implements BringsMedia {
           description: 'Paste frames',
         ),
       );
+      debugPicturesHung += 1;
     }
   }
+
+  /// Test seam: how many pictures pastes have hung in cels they found
+  /// ([_hangPicturesOn]) — none on a row a paste lays blocks on, whose new
+  /// cels take the pictures as they are carried ([carryBakedPictures]).
+  @visibleForTesting
+  int debugPicturesHung = 0;
 
   /// THE ONE SPLICE ([TimelineController.splicedLayers]) committed by the
   /// cut's law ([commitSpliceKeepingTheCutOnItsRow]): a conte row the splice
