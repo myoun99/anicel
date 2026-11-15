@@ -150,6 +150,16 @@ class FramePictures implements PlaybackPictures {
   /// of 20 rows at the automatic allowance: 63 MB a frame, 4.80 GB at 72
   /// frames under a ceiling of 6.83 GB — its pictures 0.67 GB.
   ///
+  /// 🔬After, the same harness (11-16): that cut's walk ran to its end at
+  /// 2.4 GB, where it was cut off past 8.2; another cut, its band full,
+  /// held 1303 MB where it held 1647 — its hot cels 211 MB, 813 before.
+  /// ⚠️The price (the card's Q3): a ghost turned on is thawed from the file
+  /// again and put on the engine again — that cut's band refilled in 5.0 s
+  /// once every row's onion came on, 1.0 before; in 1.1 s for one row's,
+  /// 0.15 before. ⏳The engine's tiles of a cel let go are kept for the
+  /// next look by `let-go-cels-keep-their-gpu-tiles` (유저 2026-11-16
+  /// 03:10: 「지금 착지하고, GPU 타일을 남기는 일을 바로 다음으로」).
+  ///
   /// ⚖️As many frames' cels as the walk makes at a time — its own and the
   /// ones it asks for ahead (`PlaybackPrerenderScheduler`), those only
   /// while there is room ([roomToAskAhead]) — and the frame before them, so
