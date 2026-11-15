@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/exposure_of.dart';
 import '../../helpers/frame_name_of.dart';
 import '../../helpers/poll_until.dart';
@@ -41,11 +42,13 @@ import 'timeline_frame_geometry_probe.dart';
 /// changes its film frame in, and its landings repaint nothing.
 ///
 /// A warm-up is a queue's, and a queue holds what a paint cannot bake in
-/// its ask ([TimelineGridTileStore.tileFor]) — here, a span whose word no
-/// tile has baked yet: each block sets one of its own ([rowLayer]).
+/// its ask ([TimelineGridTileStore.tileFor]) — here, a span whose word is
+/// Flutter's to raster and has not been: each block sets one of its own
+/// ([rowLayer]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
   final store = TimelineGridTileStore.instance;
 
@@ -58,9 +61,10 @@ void main() {
   var rows = 0;
 
   /// A row of a block every four frames, each block's cel named a word no
-  /// tile has baked yet.
+  /// tile has baked yet — and one its tile waits for: Flutter's to raster
+  /// ([aLetterNoBundledFaceHas]).
   Layer rowLayer(String id, {int length = 2}) {
-    final word = 'P${rows++}';
+    final word = 'P${rows++}$aLetterNoBundledFaceHas';
     return Layer(
       id: LayerId(id),
       name: id,

@@ -33,6 +33,8 @@ void main() {
   const ratio = 1.5;
   const cell = 29.9328;
 
+  // A drain reads the engine's faces from the asset bundle (`EngineFaces`).
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
   // The zoom's stop is what bakes a tile here.
   setUpAll(() => TimelineGridTileStore.instance.debugZoomTimer = Timer.new);

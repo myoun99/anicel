@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -50,6 +51,7 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
   const cell = 24.0;
   const crossExtent = 28.0;
@@ -84,6 +86,8 @@ void main() {
     ValueNotifier<int>? bucket,
     double viewport = 0,
     int start = 2,
+    TextStyle style = const TextStyle(fontSize: 11),
+    String name = longName,
   }) => TimelineRowCellsPainter(
     layer: blockFrom(start),
     geometry: testFrameGeometry(
@@ -94,9 +98,9 @@ void main() {
     crossAxisExtent: crossExtent,
     exposureStateForLayer: stateFor,
     frameNameForLayer: (_, frameIndex) =>
-        frameIndex == start ? longName : null,
+        frameIndex == start ? name : null,
     colorScheme: const ColorScheme.dark(),
-    baseTextStyle: const TextStyle(fontSize: 11),
+    baseTextStyle: style,
     tileStore: store,
     substrateGeneration: 'g1',
     windowBucket: bucket,
@@ -107,6 +111,41 @@ void main() {
     final model = painter.cellModelAt(start);
     return laidOutGlyph(model.glyph, painter.glyphStyleFor(model))
         .width;
+  }
+
+  /// The two roads a tile's word is baked by
+  /// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q5):
+  /// the engine's, in the paint that asks — and Flutter's, landing after
+  /// it, for a word the engine is not handed: a font feature is one such
+  /// (`EngineWord`), and leaves the letters as they are.
+  ///
+  /// Each sets its word in a letter of its own: the store keeps a word's
+  /// bake by what shapes it, not by the road it took, and for as long as the
+  /// process lives — one road would read the other's.
+  const roads = <_Road>[
+    (name: 'the engine, in its ask', inTheAsk: true, letter: 'A', style:
+        TextStyle(fontSize: 11)),
+    (name: 'Flutter, landing after it', inTheAsk: false, letter: 'H', style:
+        TextStyle(fontSize: 11, fontFeatures: [FontFeature.tabularFigures()])),
+  ];
+
+  /// [ask]'s tile once its word is baked by [road]: at the ask on the
+  /// engine's, and only after a landing on Flutter's.
+  Future<TimelineGridTilePicture> bakedBy(
+    _Road road,
+    TimelineGridTilePicture? Function() ask,
+  ) async {
+    if (road.inTheAsk) {
+      return ask() ?? fail('fixture: baked in its ask');
+    }
+    var landings = 0;
+    void count() => landings += 1;
+    final revision = TimelineGridTileStore.instance.revision
+      ..addListener(count);
+    addTearDown(() => revision.removeListener(count));
+    expect(ask(), isNull, reason: 'fixture: the store starts cold');
+    await pollUntil(() => landings > 0);
+    return ask() ?? fail('fixture: the tile landed');
   }
 
   test('a name wider than its cell starts at the cell and grows into its '
@@ -157,18 +196,18 @@ void main() {
     );
   });
 
-  test('a name that grows past its tile is baked into the next tile '
-      'too', () async {
+  Future<void> growsPastItsTile(_Road road) async {
     final store = TimelineGridTileStore.instance..clear();
     addTearDown(store.clear);
     // Two cells before a tile's end: the name lives in [0, span) and runs
     // on through [span, 2 * span).
     final start = span - 2;
-    final painter = cellsPainter(store: store, start: start);
-    var landings = 0;
-    void count() => landings += 1;
-    store.revision.addListener(count);
-    addTearDown(() => store.revision.removeListener(count));
+    final painter = cellsPainter(
+      store: store,
+      start: start,
+      style: road.style,
+      name: '${road.letter}${longName.substring(1)}',
+    );
 
     TimelineGridTilePicture? nextTile() => store.tileFor(
       painter: painter,
@@ -181,11 +220,8 @@ void main() {
       greaterThan(painter.cellRectFor(span).left + 22),
       reason: 'fixture: the name covers the first cell of the next tile',
     );
-    expect(nextTile(), isNull, reason: 'fixture: the store starts cold');
-    await pollUntil(() => landings > 0);
-    final image = nextTile();
-    expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = image!.picture.read();
+    final image = await bakedBy(road, nextTile);
+    final bytes = image.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
       return bytes[i] + bytes[i + 1] + bytes[i + 2];
@@ -210,19 +246,26 @@ void main() {
       reason: 'the part of the name past its own tile is baked into the '
           'next one instead of stopping at the tile edge',
     );
-  });
+  }
+
+  for (final road in roads) {
+    test(
+      'a name that grows past its tile is baked into the next tile too — '
+      'by ${road.name}',
+      () => growsPastItsTile(road),
+    );
+  }
 
   /// B (유저 2026-09-24): a name longer than its BLOCK narrows into it — and
   /// the baked tile must narrow it too, not bake it wide and let the glyph's
   /// own box cut it off (what the classic pass and the tile would then show
   /// is a whole name and half a name).
-  test('a name longer than its block is BAKED narrowed, every letter of it', (
-  ) async {
+  Future<void> narrowsEveryLetter(_Road road) async {
     final store = TimelineGridTileStore.instance..clear();
     addTearDown(store.clear);
     // Four letters with gaps between them, in a TWO-cell block: 7 em-wide
     // glyphs (the test face) at 11px against 48px of block.
-    const gapped = 'A A A A';
+    final gapped = List.filled(4, road.letter).join(' ');
     final short = Layer(
       id: const LayerId('layer-short'),
       name: 'S',
@@ -239,7 +282,7 @@ void main() {
       exposureStateForLayer: stateFor,
       frameNameForLayer: (_, frameIndex) => frameIndex == 0 ? gapped : null,
       colorScheme: const ColorScheme.dark(),
-      baseTextStyle: const TextStyle(fontSize: 11),
+      baseTextStyle: road.style,
       tileStore: store,
       substrateGeneration: 'g-short',
     );
@@ -249,21 +292,14 @@ void main() {
       painter.glyphStyleFor(model),
     ).size;
     expect(natural.width, greaterThan(2 * cell), reason: 'fixture');
-    var landings = 0;
-    void count() => landings += 1;
-    store.revision.addListener(count);
-    addTearDown(() => store.revision.removeListener(count));
     TimelineGridTilePicture? tile() => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
       devicePixelRatio: 1.0,
     );
-    expect(tile(), isNull, reason: 'fixture: the store starts cold');
-    await pollUntil(() => landings > 0);
-    final image = tile();
-    expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = image!.picture.read();
+    final image = await bakedBy(road, tile);
+    final bytes = image.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
       return bytes[i] + bytes[i + 1] + bytes[i + 2];
@@ -316,7 +352,15 @@ void main() {
       reason: 'narrowed as the classic pass narrows it — its gaps set '
           '(${layout.tightening}), then fit ${layout.fit.x}',
     );
-  });
+  }
+
+  for (final road in roads) {
+    test(
+      'a name longer than its block is BAKED narrowed, every letter of it '
+      '— by ${road.name}',
+      () => narrowsEveryLetter(road),
+    );
+  }
 
   test('a length wider than its last cell ends at that cell and grows back '
       'into the block', () {
@@ -408,3 +452,11 @@ class _Spy implements Canvas {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+/// A road a tile's word is baked by, and the type that sends it there.
+typedef _Road = ({
+  String name,
+  bool inTheAsk,
+  String letter,
+  TextStyle style,
+});
