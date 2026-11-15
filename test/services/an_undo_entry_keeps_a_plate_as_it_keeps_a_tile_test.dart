@@ -31,8 +31,12 @@ void main() {
   final c = TileCoord(x: 2, y: 0);
   final tileBytes = BitmapTile.bytesFor(celTextTestTileSize);
 
-  /// A tile of its own — another object every time, whatever it holds.
-  BitmapTile tile(int shade) => tileFilledWith([shade, shade, shade, 255]);
+  /// A tile of its own — another object every time, whatever it holds — of
+  /// two colours, so it holds a block for an entry to weigh: a tile of one
+  /// colour holds none (`BitmapTile.ownBytes`).
+  BitmapTile tile(int shade) => tileOf({
+    (0, 0): [shade, shade, shade, 255],
+  });
   final ink = tile(9);
 
   /// The cel's drawing with one text over it, said and plated as told.

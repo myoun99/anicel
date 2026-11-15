@@ -46,8 +46,11 @@ void main() {
       coord: coord,
       tile: BitmapTile(
         size: size,
+        // Of two colours: a tile of one holds no block of its own, and
+        // would weigh nothing whoever held it (`BitmapTile.ownBytes`).
         pixels: Uint8List(BitmapTile.bytesFor(size))
-          ..fillRange(0, BitmapTile.bytesFor(size), fill),
+          ..fillRange(0, BitmapTile.bytesFor(size), fill)
+          ..[1] = fill ^ 0xff,
       ),
     );
   }

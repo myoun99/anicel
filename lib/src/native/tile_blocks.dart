@@ -49,8 +49,9 @@ abstract final class TileBlocks {
   static void free(Pointer<Uint8> block) => _free(block.cast());
 
   /// Has [block] — [byteLength] bytes, told to the collector as [holder]'s
-  /// real weight — freed as [holder], the tile that holds it, is collected:
-  /// the lists' own free, called on the collector's thread.
+  /// real weight — freed as [holder] is collected, the tile that holds it
+  /// or the colour whose tiles share it (`BitmapTile`): the lists' own free,
+  /// called on the collector's thread.
   ///
   /// ⛔NO DETACH TOKEN, and the finalizer is this file's own so that none
   /// can be passed (card `a-thawed-cel-is-adopted-on-the-ui-thread`). A

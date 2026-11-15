@@ -41,6 +41,9 @@ void main() {
   late BrushFrameKey key;
   late BrushFrameStore store;
 
+  /// A picture told by its first byte, [value] — its last pixel another
+  /// colour, so its tile holds a block of its own for an undo entry to
+  /// weigh: a tile of one colour holds none (`BitmapTile.ownBytes`).
   BitmapSurface solid(int value) => BitmapSurface(
     canvasSize: cel,
     tileSize: 128,
@@ -48,7 +51,8 @@ void main() {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: 128,
         pixels: BitmapTile.blank(size: 128).pixels
-          ..fillRange(0, BitmapTile.bytesFor(128), value),
+          ..fillRange(0, BitmapTile.bytesFor(128), value)
+          ..[BitmapTile.bytesFor(128) - 1] = value ^ 0xff,
       ),
     },
   );

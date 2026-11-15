@@ -57,6 +57,135 @@ abstract interface class TilePixelsOnEngine {
   void readInto(BitmapTile tile, Pointer<Uint8> into);
 }
 
+/// The word every pixel of [pixels] — RGBA, four bytes each — is, or null
+/// where two differ (or there is none): a word as this machine reads four
+/// bytes, which is how [BitmapTile.ofOneColour] lays it back.
+///
+/// 🚨THE ONE ASKER OF 「IS THIS TILE ONE COLOUR」, on whichever isolate the
+/// bytes are: a tile made of bytes asks it of them, and a worker laying a
+/// cel asks it before it takes a block (`layCelEntry`). A tile a person
+/// drew on answers at the first pixel that differs, which is almost always
+/// near the start; only a tile that IS one colour is read whole, and that
+/// read is in place of the block it would have copied them into.
+///
+/// Through a [ByteData] because [pixels] may lie anywhere in a file's
+/// payload, not on a word's edge.
+int? oneWordOf(Uint8List pixels) {
+  if (pixels.length < BitmapTile.bytesPerPixel) {
+    return null;
+  }
+  final words = ByteData.sublistView(pixels);
+  final first = words.getUint32(0, Endian.host);
+  for (
+    var at = BitmapTile.bytesPerPixel;
+    at < pixels.length;
+    at += BitmapTile.bytesPerPixel
+  ) {
+    if (words.getUint32(at, Endian.host) != first) {
+      return null;
+    }
+  }
+  return first;
+}
+
+/// Where a tile's pixels lie on this side: a block the tile alone holds, or
+/// its colour's.
+///
+/// 🚨ONE FIELD OF THE TILE, TWO SHAPES (관제 2026-11-15, card
+/// `a-file-keeps-all-clear-tiles-in-its-cels`: 「블록을 쥔다 / 낱말 하나다를
+/// 한 필드의 두 꼴로」). A block pointer that may be null beside a word
+/// that may be unset would let a tile be written with both, or with
+/// neither — and every reader would have to know which pair means what.
+sealed class _PixelsHere {
+  /// The block the engine reads directly.
+  Pointer<Uint8> get block;
+
+  /// The same bytes, never written through.
+  Uint8List get view;
+}
+
+/// A block one tile holds alone, freed as that tile is collected
+/// ([TileBlocks.freeWith], asked by the tile).
+///
+/// Its address and not a [Pointer]: a pointer kept is one more object a
+/// tile for the collector to walk (card
+/// `a-thawed-cel-is-adopted-on-the-ui-thread` — the tiles alive are what
+/// its pauses are made of), and one made for a read is gone with the read.
+final class _OwnBlock implements _PixelsHere {
+  _OwnBlock(Pointer<Uint8> block, int byteLength)
+    : _address = block.address,
+      view = block.asTypedList(byteLength);
+
+  final int _address;
+
+  @override
+  final Uint8List view;
+
+  @override
+  Pointer<Uint8> get block => Pointer.fromAddress(_address);
+}
+
+/// The pixels of every tile of one colour and one size: a tile's worth of
+/// one word, ONE block however many tiles show it, freed when the last of
+/// them is collected.
+///
+/// Found by its size and word among those alive on this isolate ([of]) —
+/// held weakly there, so the tiles are all that keep it. A colour whose
+/// last tile went is laid again by the next tile of it.
+final class _ColourBlock implements _PixelsHere, Finalizable {
+  _ColourBlock._(this.block, int tileSize, int word)
+    : view = block.asTypedList(BitmapTile.bytesFor(tileSize)) {
+    block
+        .cast<Uint32>()
+        .asTypedList(tileSize * tileSize)
+        .fillRange(0, tileSize * tileSize, word);
+    TileBlocks.freeWith(this, block, view.length);
+  }
+
+  /// The block of [word] for tiles of [tileSize]: the one alive, or a new
+  /// one.
+  factory _ColourBlock.of(int tileSize, int word) {
+    final key = tileSize * _words + word;
+    final alive = _alive[key]?.target;
+    if (alive != null) {
+      return alive;
+    }
+    final laid = _ColourBlock._(
+      TileBlocks.alloc(BitmapTile.bytesFor(tileSize)),
+      tileSize,
+      word,
+    );
+    _alive[key] = WeakReference(laid);
+    _forgets.attach(laid, key);
+    return laid;
+  }
+
+  /// How many words there are: a key is a tile size and a word, side by
+  /// side.
+  static const int _words = 0x100000000;
+
+  static final Map<int, WeakReference<_ColourBlock>> _alive = {};
+
+  /// Takes a collected block's entry out of [_alive] — unless a new block
+  /// of the same colour took the key first.
+  static final Finalizer<int> _forgets = Finalizer((key) {
+    if (_alive[key]?.target == null) {
+      _alive.remove(key);
+    }
+  });
+
+  @override
+  final Pointer<Uint8> block;
+
+  @override
+  final Uint8List view;
+
+  /// Whether the colour has any alpha — what every tile of it answers
+  /// [BitmapTile.hasInk] with, unread. Alpha is a pixel's fourth byte,
+  /// whichever way the machine reads a word.
+  bool get hasInk => view[BitmapTile.bytesPerPixel - 1] != 0;
+}
+
 /// One immutable 4-byte-RGBA tile whose pixels live in NATIVE memory
 /// (R19-Z zero-copy tile storage).
 ///
@@ -74,6 +203,31 @@ abstract interface class TilePixelsOnEngine {
 /// Buffers come from the engine's lists ([TileBlocks], R20-E1) and the
 /// finalizer parks them there for reuse — tile churn (decode, the engine's
 /// tiles read back, undo drops) recycles instead of malloc/freeing.
+///
+/// 🚨A TILE OF ONE COLOUR HOLDS NO BLOCK OF ITS OWN (2026-11-15, card
+/// `a-file-keeps-all-clear-tiles-in-its-cels`). Where every pixel of it is
+/// one word its pixels are that colour's block, one for every tile of the
+/// colour alive ([_ColourBlock]). The tile says so as it is made — of
+/// bytes ([BitmapTile.new], [BitmapTile.written]: [oneWordOf]) or of the
+/// word a worker found in them ([BitmapTile.ofOneColour]) — and never
+/// after, so what it weighs ([ownBytes]) cannot change under a ledger that
+/// added it. Every reader reads it as any tile ([readPixels]).
+/// 🔬Why: a user's file (2026-11-15; 1,328 cels, 192,463 tiles) kept
+/// 37,756 tiles with no alpha at all — a picture brought in on its white,
+/// the white taken off by a destructive verb, the emptied tiles kept each
+/// in its place for the undo that walks them
+/// (`BitmapSurface.putMaterializedTiles`) — and 30,625 of those were one
+/// word, 30,536 a white with no alpha. In one cut 27,912 such tiles were
+/// 1.7 GiB of the 4.2 GiB its cels weighed hot, on a machine whose hot
+/// cels may weigh 4.3. Another 8,753 tiles were one OPAQUE colour.
+/// ⛔Not asked of its ink: whether a tile shows anything ([hasInk]) is
+/// another question, and a tile of one opaque colour is one colour too.
+/// ⛔The tile stays where it is, with its colour: the undo that walks a
+/// cel's tiles, and whatever reads a colour behind no alpha, find what
+/// they found.
+/// ⚠️A tile the engine made ([BitmapTile.onEngine]) is never one: its
+/// bytes come here after it was made, and after it was weighed.
+///
 /// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
@@ -83,23 +237,28 @@ class BitmapTile implements Finalizable {
   }) {
     _validateSize(size);
     _validatePixelLength(pixels.length, size);
+    final word = oneWordOf(pixels);
+    if (word != null) {
+      return BitmapTile.ofOneColour(size: size, word: word);
+    }
     final buffer = TileBlocks.alloc(pixels.length);
     buffer.asTypedList(pixels.length).setAll(0, pixels);
     return BitmapTile._adopt(size, buffer);
   }
 
-  factory BitmapTile.blank({required int size}) {
+  factory BitmapTile.blank({required int size}) =>
+      BitmapTile.ofOneColour(size: size, word: 0);
+
+  /// A tile every pixel of which is [word] ([oneWordOf]'s): it holds its
+  /// colour's block and none of its own.
+  factory BitmapTile.ofOneColour({required int size, required int word}) {
     _validateSize(size);
-    final length = bytesFor(size);
-    final buffer = TileBlocks.alloc(length);
-    buffer.asTypedList(length).fillRange(0, length, 0);
-    return BitmapTile._adopt(size, buffer);
+    return BitmapTile._ofColour(size, _ColourBlock.of(size, word));
   }
 
-  /// A tile whose pixels [write] lays into the tile's own fresh buffer,
-  /// before anything else can read them — so it is as immutable as any
-  /// tile once this returns. ⚠️[write] fills EVERY byte: the buffer is
-  /// not cleared first.
+  /// A tile whose pixels [write] lays into a fresh buffer, before anything
+  /// else can read them — so it is as immutable as any tile once this
+  /// returns. ⚠️[write] fills EVERY byte: the buffer is not cleared first.
   ///
   /// Bytes copied from elsewhere and rewritten land here with no copy on
   /// the Dart heap between: a live stroke's result shown as the cel will
@@ -109,9 +268,23 @@ class BitmapTile implements Finalizable {
     required void Function(Uint8List pixels) write,
   }) {
     _validateSize(size);
-    final tile = BitmapTile._adopt(size, TileBlocks.alloc(bytesFor(size)));
-    write(tile._view);
-    return tile;
+    final length = bytesFor(size);
+    final buffer = TileBlocks.alloc(length);
+    final int? word;
+    try {
+      final pixels = buffer.asTypedList(length);
+      write(pixels);
+      word = oneWordOf(pixels);
+    } on Object {
+      // No tile holds it yet, so nothing else would give it back.
+      TileBlocks.free(buffer);
+      rethrow;
+    }
+    if (word == null) {
+      return BitmapTile._adopt(size, buffer);
+    }
+    TileBlocks.free(buffer);
+    return BitmapTile.ofOneColour(size: size, word: word);
   }
 
   /// Adopts a NATIVE buffer as this tile's pixels WITHOUT copying —
@@ -121,6 +294,10 @@ class BitmapTile implements Finalizable {
   ///
   /// Allocation contract: the buffer comes from [TileBlocks.alloc],
   /// whichever isolate asked — the finalizer gives it back there.
+  ///
+  /// ⚠️Adopted unread: whether its pixels are one colour was the worker's
+  /// to ask before it took the block (`layCelEntry`), and asking here would
+  /// read on the thread the worker was there to spare.
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
@@ -132,6 +309,14 @@ class BitmapTile implements Finalizable {
   BitmapTile._adopt(this.size, Pointer<Uint8> pixels) : _onEngine = null {
     _hold(pixels);
   }
+
+  BitmapTile._ofColour(this.size, _ColourBlock colour)
+    : _onEngine = null,
+      _here = colour,
+      _hasInk = colour.hasInk,
+      _inkBounds = colour.hasInk
+          ? (left: 0, top: 0, rightExclusive: size, bottomExclusive: size)
+          : null;
 
   /// A tile whose pixels are the engine's alone: [on] reads them here only
   /// for a caller that asks for bytes. [hasInk] where its maker knows.
@@ -149,8 +334,7 @@ class BitmapTile implements Finalizable {
   }
 
   void _hold(Pointer<Uint8> pixels) {
-    _block = pixels;
-    _bytes = pixels.asTypedList(bytesFor(size));
+    _here = _OwnBlock(pixels, bytesFor(size));
     TileBlocks.freeWith(this, pixels, bytesFor(size));
   }
 
@@ -160,7 +344,7 @@ class BitmapTile implements Finalizable {
 
   /// Whether the engine holds the only copy of its pixels — none here to
   /// store again from, so its slot there is not one a full pool lets go.
-  bool get isOnlyOnEngine => _onEngine != null && _bytes == null;
+  bool get isOnlyOnEngine => _onEngine != null && _here == null;
 
   /// Holds [bytes] — the pixels of a tile the engine alone holds
   /// ([isOnlyOnEngine]), read back by whoever holds its slot — as a read of
@@ -183,31 +367,41 @@ class BitmapTile implements Finalizable {
   /// budget that lies about what it holds, so there is one place now.
   static int bytesFor(int size) => size * size * bytesPerPixel;
 
+  /// What this tile holds that no other does: a tile's bytes, and nothing
+  /// where its pixels are its colour's block — the one answer for whoever
+  /// weighs tiles (the hot cels, an undo entry, the memory census).
+  ///
+  /// A colour's block itself is in nobody's sum: one tile's bytes for each
+  /// colour alive.
+  /// ⚠️A tile the engine made weighs a tile's bytes wherever they lie, as
+  /// it did before this was asked.
+  int get ownBytes => _here is _ColourBlock ? 0 : bytesFor(size);
 
   final int size;
 
   /// Where a tile the engine made reads its pixels from; null for one made
   /// here, whose bytes are held from the start.
   final TilePixelsOnEngine? _onEngine;
-  Pointer<Uint8>? _block;
-  Uint8List? _bytes;
 
-  Pointer<Uint8> get _pixels {
-    _view;
-    return _block!;
-  }
+  /// Its pixels on this side; null while the engine holds the only copy
+  /// ([isOnlyOnEngine]).
+  _PixelsHere? _here;
 
-  Uint8List get _view => _bytes ?? _readBack();
+  _PixelsHere get _read => _here ?? _readBack();
 
-  Uint8List _readBack() {
+  Pointer<Uint8> get _pixels => _read.block;
+
+  Uint8List get _view => _read.view;
+
+  _PixelsHere _readBack() {
     _hold(TileBlocks.alloc(bytesFor(size)));
+    final read = _here!;
     try {
-      _onEngine!.readInto(this, _block!);
-      return _bytes!;
+      _onEngine!.readInto(this, read.block);
+      return read;
     } catch (_) {
       // The block stays with the tile's finalizer; a garbage view must not.
-      _block = null;
-      _bytes = null;
+      _here = null;
       rethrow;
     }
   }
@@ -441,8 +635,11 @@ class BitmapTile implements Finalizable {
       identical(this, other) ||
       other is BitmapTile && other.size == size && _samePixelsAs(other);
 
-  /// Whether [other], a tile of this one's size, holds this one's pixels.
-  bool _samePixelsAs(BitmapTile other) => holdsBytes(other._view);
+  /// Whether [other], a tile of this one's size, holds this one's pixels —
+  /// unread where the two are of one colour, and so hold one block.
+  bool _samePixelsAs(BitmapTile other) =>
+      (_here != null && identical(_here, other._here)) ||
+      holdsBytes(other._view);
 
   /// Whether [bytes], a tile's worth lying on a word's edge, are this
   /// tile's pixels.
@@ -465,6 +662,16 @@ class BitmapTile implements Finalizable {
   @override
   String toString() =>
       'BitmapTile(size: $size, pixelLength: ${_view.length})';
+}
+
+/// What [tiles] hold that no other tile does, in all — each as it says of
+/// itself ([BitmapTile.ownBytes]): THE sum for whoever weighs tiles.
+int ownBytesOf(Iterable<BitmapTile> tiles) {
+  var bytes = 0;
+  for (final tile in tiles) {
+    bytes += tile.ownBytes;
+  }
+  return bytes;
 }
 
 void _validateSize(int size) {

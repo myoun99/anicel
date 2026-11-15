@@ -62,6 +62,9 @@ void main() {
       pixels[i] = value;
       pixels[i + 3] = 0xFF;
     }
+    // Two colours: a tile of one holds no block, and a cel that weighs
+    // nothing is over no budget — it would never cool (`BitmapTile.ownBytes`).
+    pixels[1] = 1;
     return BitmapSurface(
       canvasSize: const CanvasSize(width: side, height: side),
       tileSize: side,

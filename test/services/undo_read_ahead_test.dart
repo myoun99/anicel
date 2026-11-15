@@ -57,7 +57,10 @@ void main() {
       tile: BitmapTile(
         size: size,
         pixels: BitmapTile.blank(size: size).pixels
-          ..fillRange(0, BitmapTile.bytesFor(size), fill),
+          ..fillRange(0, BitmapTile.bytesFor(size), fill)
+          // Of two colours: a tile of one holds no block of its own, and
+          // would weigh nothing whoever held it (`BitmapTile.ownBytes`).
+          ..[1] = fill ^ 0xff,
       ),
     );
 
@@ -375,7 +378,9 @@ void main() {
               TileCoord(x: 1, y: 1): BitmapTile(
                 size: 128,
                 pixels: BitmapTile.blank(size: 128).pixels
-                  ..fillRange(0, BitmapTile.bytesFor(128), 0x7F),
+                  ..fillRange(0, BitmapTile.bytesFor(128), 0x7F)
+                  // Of two colours, as the tiles above are.
+                  ..[1] = 0x80,
               ),
             },
           ),

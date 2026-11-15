@@ -164,8 +164,9 @@ const _notCensused = <String, String>{
   // — Per-OBJECT sizes, not holdings. These answer "how big is this one
   // thing" for the code that owns it; the holding is counted where the
   // things are kept.
-  'lib/src/models/bitmap_surface.dart → tileBytes':
-      'the size of ONE tile, for the code that allocates them',
+  'lib/src/models/bitmap_surface.dart → keptTileBytes':
+      'one picture weighing the tiles it keeps; the store sums its hot '
+      'cels in hotBakedBytes, which the census reads',
   'lib/src/native/qa_video_decoder.dart → frameBytes':
       'the size of ONE frame of a movie, RGBA or NV12, for the decoder\'s '
       'scratch and the caller\'s buffer it is copied into',

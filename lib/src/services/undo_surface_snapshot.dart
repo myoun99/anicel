@@ -277,8 +277,8 @@ class UndoSurfaceSnapshot {
   /// early ([_ahead]), and then they are RAM like any other until a step
   /// adopts them or the budget takes them back.
   int get residentBytes =>
-      ((_owned?.length ?? 0) + (_ahead?.owned.length ?? 0)) *
-      BitmapTile.bytesFor(_tileSize);
+      ownBytesOf(_owned?.values ?? const []) +
+      ownBytesOf(_ahead?.owned.values ?? const []);
 
   /// Every DRAWING tile this snapshot alone holds IN RAM, with its
   /// coordinate — of the tiles [residentBytes] counts: the owned half, and

@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -109,5 +110,36 @@ void main() {
       drawingsRow([session, other]),
       storesHold(session) + storesHold(other) + picture.bytesNotSharedWith(over),
     );
+  });
+
+  test('🚨a tile of one colour the copy alone holds adds nothing — it '
+      'holds no block of its own (`BitmapTile.ownBytes`)', () {
+    final store = session.renderCaches.brushFrameStore;
+    final free = [
+      for (var x = 0; x < 8; x += 1) TileCoord(x: x, y: 0),
+    ].firstWhere((coord) => !picture.tiles.containsKey(coord));
+    store.storeBakedSurface(
+      drawn,
+      picture.putTiles([
+        (
+          coord: free,
+          tile: BitmapTile.ofOneColour(
+            size: picture.tileSize,
+            word: 0x00ffffff,
+          ),
+        ),
+      ]),
+    );
+    picture = store.bakedSurfaceOrNull(drawn)!;
+    copyRowsWithThePill(session);
+    final over = drawOver();
+    final kept = picture.bytesNotSharedWith(over);
+    expect(
+      kept,
+      (picture.tiles.length - 1) * BitmapTile.bytesFor(picture.tileSize),
+      reason: 'fixture premise: every tile but the one of one colour',
+    );
+
+    expect(drawingsRow([session]), storesHold(session) + kept);
   });
 }

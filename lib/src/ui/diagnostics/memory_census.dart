@@ -437,7 +437,7 @@ int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
     for (final picture in session.appClipboard.heldPictures) {
       for (final tile in picture.tiles.values) {
         if (!hot.contains(tile) && counted.add(tile)) {
-          bytes += picture.tileBytes;
+          bytes += tile.ownBytes;
         }
       }
     }

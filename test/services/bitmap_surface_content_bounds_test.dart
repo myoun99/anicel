@@ -183,7 +183,12 @@ void main() {
     });
 
     test('an ink-free tile owes nothing once it has been scanned', () {
-      final blank = BitmapTile.blank(size: tileSize);
+      // A colour behind no alpha at one pixel: no ink, and two colours — a
+      // tile of one colour knows its ink unread (`BitmapTile.ofOneColour`).
+      final blank = BitmapTile(
+        size: tileSize,
+        pixels: Uint8List(BitmapTile.bytesFor(tileSize))..[0] = 9,
+      );
       expect(blank.inkBoundsKnown, isFalse);
 
       expect(

@@ -72,6 +72,23 @@ void main() {
     );
   }
 
+  /// [tile] of [value] but for the blue of its last pixel, so it holds a
+  /// block of its own. A tile of one colour holds none and weighs nothing
+  /// (`BitmapTile.ownBytes`): a cel of such tiles is over no budget, and an
+  /// undo that keeps only such tiles keeps no bytes. The drawn cel has two
+  /// of these, neither read by its rows — the one inside the paper, so the
+  /// cel weighs, and the one past the left wall, so what a cut takes off
+  /// it weighs.
+  BitmapTile tileOfItsOwn(int value) {
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    return BitmapTile(
+      size: tileSide,
+      pixels: pixels
+        ..fillRange(0, pixels.length, value)
+        ..[pixels.length - 2] = value ^ 0xff,
+    );
+  }
+
   /// Inside the paper (0, 0), inside the 1.5x pasteboard (-1, 0) and
   /// (4, 1), straddling its top (1, -1: two rows past it, two inside), and
   /// wholly past it (-2, 0) and (5, 0).
@@ -87,11 +104,11 @@ void main() {
     tileSize: tileSide,
     laidBounds: laid,
   ).putTiles([
-    (coord: inside, tile: tile(10)),
+    (coord: inside, tile: tileOfItsOwn(10)),
     (coord: onTheBoard, tile: tile(20)),
     (coord: onTheRight, tile: tile(30)),
     (coord: straddling, tile: tile(40)),
-    (coord: pastLeft, tile: tile(50)),
+    (coord: pastLeft, tile: tileOfItsOwn(50)),
     (coord: pastRight, tile: tile(60)),
   ]);
 
@@ -366,7 +383,7 @@ void main() {
     BitmapSurface inkInside() => BitmapSurface(
       canvasSize: canvas,
       tileSize: tileSide,
-    ).putTiles([(coord: inside, tile: tile(10))]);
+    ).putTiles([(coord: inside, tile: tileOfItsOwn(10))]);
 
     void expectCut(BitmapSurface? surface) {
       expect(surface, isNotNull);

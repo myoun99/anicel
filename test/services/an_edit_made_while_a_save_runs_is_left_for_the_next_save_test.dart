@@ -47,8 +47,11 @@ void main() {
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: tileSide,
+        // Of two colours: a tile of one holds no block, and a cel that
+        // weighs nothing is over no budget (`BitmapTile.ownBytes`).
         pixels: Uint8List(BitmapTile.bytesFor(tileSide))
-          ..fillRange(0, BitmapTile.bytesFor(tileSide), 7),
+          ..fillRange(0, BitmapTile.bytesFor(tileSide), 7)
+          ..[1] = 8,
       ),
     },
   );

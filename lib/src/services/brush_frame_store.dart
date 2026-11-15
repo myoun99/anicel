@@ -706,9 +706,10 @@ class BrushFrameStore {
 
   /// What [surface] holds in RAM — ONE measure for the hot drawings and the
   /// movie pictures, because the two are paid from one budget. The plates of
-  /// the texts a picture carries are tiles like its own, and counted.
-  static int _residentBytes(BitmapSurface surface) =>
-      surface.keptTileCount * surface.tileBytes;
+  /// the texts a picture carries are tiles like its own, and counted; a tile
+  /// of one colour holds no block of its own, and weighs nothing
+  /// (`BitmapTile.ownBytes`).
+  static int _residentBytes(BitmapSurface surface) => surface.keptTileBytes;
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.

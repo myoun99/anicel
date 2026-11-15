@@ -37,7 +37,11 @@ void main() {
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: 8,
-        pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, seed),
+        // Of two colours: a picture of one holds no block of its own, and
+        // would cost the budget nothing (`BitmapTile.ownBytes`).
+        pixels: Uint8List(8 * 8 * 4)
+          ..fillRange(0, 8 * 8 * 4, seed)
+          ..[1] = seed ^ 0xff,
       ),
     },
   );
@@ -195,7 +199,9 @@ void main() {
         for (var x = 0; x < 2; x += 1)
           TileCoord(x: x, y: 0): BitmapTile(
             size: 8,
-            pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, seed),
+            pixels: Uint8List(8 * 8 * 4)
+              ..fillRange(0, 8 * 8 * 4, seed)
+              ..[1] = seed ^ 0xff,
           ),
       },
     );

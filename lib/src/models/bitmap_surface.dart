@@ -269,6 +269,17 @@ class BitmapSurface {
     return count;
   }
 
+  /// What the tiles this picture keeps weigh — the drawing's, and every
+  /// text's plate ([ownBytesOf]): a tile of one colour holds no block of
+  /// its own, so a picture is not its tiles counted.
+  int get keptTileBytes {
+    var bytes = ownBytesOf(_tiles.values);
+    for (final text in texts) {
+      bytes += ownBytesOf(text.plate.values);
+    }
+    return bytes;
+  }
+
   /// The tiles, read-only.
   ///
   /// 🚨★★★**THIS COPIED THE WHOLE MAP ON EVERY READ, AND IT IS READ ON
@@ -287,10 +298,6 @@ class BitmapSurface {
   /// let go of). So the getter can hand the field over as it is, and every
   /// caller stops paying without any of them changing.
   Map<TileCoord, BitmapTile> get tiles => _tiles;
-
-  /// Bytes one of THIS surface's tiles occupies — the multiplier every
-  /// undo-weight answer needs, taken from the tile rather than re-derived.
-  int get tileBytes => BitmapTile.bytesFor(tileSize);
 
   /// The tiles THIS surface holds that [other] does not — what a snapshot
   /// of it is actually keeping alive while [other] is live.
@@ -357,7 +364,7 @@ class BitmapSurface {
   /// Bytes THIS surface holds that [other] does not —
   /// [keptTilesNotSharedWith] weighed.
   int bytesNotSharedWith(BitmapSurface? other) =>
-      keptTilesNotSharedWith(other).length * tileBytes;
+      ownBytesOf(keptTilesNotSharedWith(other).values);
 
   /// Every tile this picture keeps — the drawing's, then each text's plate
   /// — with where it keeps it: [keptTileCount] of them.
