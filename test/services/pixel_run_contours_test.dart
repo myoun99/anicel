@@ -52,6 +52,24 @@ void main() {
     );
   });
 
+  test('each contour is laid in the path closed, all the way round', () {
+    final metrics = pixelRunContours(
+      [
+        [0, 5],
+        [0, 1, 3, 5],
+        [0, 5],
+      ],
+      width: 5,
+      left: -2,
+      top: 7,
+    ).path.computeMetrics();
+    expect(
+      [for (final metric in metrics) (metric.isClosed, metric.length)],
+      [(true, 16.0), (true, 6.0)],
+      reason: 'the block five by three, and the hole two by one',
+    );
+  });
+
   test('nothing held is no contour', () {
     expect(walk([[], []], width: 4), isEmpty);
     expect(walk([], width: 4), isEmpty);

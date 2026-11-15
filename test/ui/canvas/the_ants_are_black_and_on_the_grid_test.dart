@@ -60,12 +60,15 @@ void main() {
     return bytes!;
   }
 
-  SelectionAntsPainter antsFor(CanvasSelectionRegion? region) =>
+  SelectionAntsPainter antsFor(
+    CanvasSelectionRegion? region, {
+    Offset screenOffset = Offset.zero,
+  }) =>
       SelectionAntsPainter(
         repaint: const AlwaysStoppedAnimation<double>(0),
         viewport: CanvasViewport(zoom: zoom),
         committedRegion: region,
-        screenOffset: Offset.zero,
+        screenOffset: screenOffset,
         marqueeShapes: const [],
         openTrails: const [],
       );
@@ -115,6 +118,25 @@ void main() {
     expect(ink.top, closeTo(336, 1));
     expect(ink.right, closeTo(480, 1));
     expect(ink.bottom, closeTo(640, 1));
+  });
+
+  testWidgets('a screen offset moves the committed outline by as much', (
+    tester,
+  ) async {
+    // The brush panel draws its ants off its own origin
+    // (`brush_canvas_panel.dart`): the whole outline goes with the offset.
+    const size = ui.Size(700, 700);
+    final bytes = await render(
+      tester,
+      antsFor(fractionalRect(), screenOffset: const Offset(40, 24)),
+      size,
+    );
+    final ink = inkBounds(bytes, 700, 700)!;
+
+    expect(ink.left, closeTo(200, 1));
+    expect(ink.top, closeTo(360, 1));
+    expect(ink.right, closeTo(520, 1));
+    expect(ink.bottom, closeTo(664, 1));
   });
 
   testWidgets('and the ants themselves are black', (tester) async {
