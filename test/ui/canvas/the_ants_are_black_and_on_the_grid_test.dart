@@ -63,9 +63,10 @@ void main() {
   SelectionAntsPainter antsFor(
     CanvasSelectionRegion? region, {
     Offset screenOffset = Offset.zero,
+    double turn = 0,
   }) =>
       SelectionAntsPainter(
-        repaint: const AlwaysStoppedAnimation<double>(0),
+        repaint: AlwaysStoppedAnimation<double>(turn),
         viewport: CanvasViewport(zoom: zoom),
         committedRegion: region,
         screenOffset: screenOffset,
@@ -137,6 +138,52 @@ void main() {
     expect(ink.top, closeTo(360, 1));
     expect(ink.right, closeTo(520, 1));
     expect(ink.bottom, closeTo(664, 1));
+  });
+
+  testWidgets('a dash is five pixels of the screen at any zoom, and the '
+      'march moves it by pixels of the screen', (tester) async {
+    // The dashes are cut on the canvas and moved to the screen with the
+    // outline (card pixel-ants-cost-a-frame-while-moving), so at ×16 they
+    // must be cut sixteen times shorter. The top side runs right from
+    // (160, 336); three tenths of a turn marches the pattern 2.7 pixels,
+    // so the first dash covers 166.3 to 171.3 and each next one starts
+    // nine on. ⛔Cut at the canvas's own lengths a dash would be eighty
+    // pixels long, and a march of 2.7 canvas pixels would land it at 161.8.
+    const size = ui.Size(700, 700);
+    final bytes = await render(
+      tester,
+      antsFor(fractionalRect(), turn: 0.3),
+      size,
+    );
+    // Both strokes half-cover row 336 (the line is on the boundary), so a
+    // dash reads as a third white and a gap as all white once
+    // un-premultiplied; a dash's end pixel sits between.
+    bool dark(int x) {
+      final at = (336 * 700 + x) * 4;
+      final a = bytes.getUint8(at + 3);
+      return a > 0 && bytes.getUint8(at) * 255 ~/ a < 128;
+    }
+
+    final runs = <(int, int)>[];
+    for (var x = 162; x < 230; x += 1) {
+      if (!dark(x)) {
+        continue;
+      }
+      if (runs.isNotEmpty && runs.last.$2 == x - 1) {
+        runs.last = (runs.last.$1, x);
+      } else {
+        runs.add((x, x));
+      }
+    }
+
+    expect(runs.length, greaterThanOrEqualTo(6), reason: '$runs');
+    expect(runs.first.$1, closeTo(167, 1), reason: '$runs');
+    for (final (start, end) in runs.take(runs.length - 1)) {
+      expect(end - start + 1, inInclusiveRange(3, 5), reason: '$runs');
+    }
+    for (var run = 1; run < runs.length; run += 1) {
+      expect(runs[run].$1 - runs[run - 1].$1, closeTo(9, 1), reason: '$runs');
+    }
   });
 
   testWidgets('and the ants themselves are black', (tester) async {
