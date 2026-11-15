@@ -327,6 +327,29 @@ void main() {
     );
   });
 
+  /// round-1091-builds-all-stop-at-their-checks (11-16): on the Mac's
+  /// runner a test's raster, its word still baking when the test ended,
+  /// reached the next test's held drawing — two of its rasters out where
+  /// there was one, and one held past every landing.
+  test('a raster a clear fences off while its word is baked draws nothing '
+      '— nor reaches the drawing of a drain asked after the clear', () async {
+    final a = painterFor(rowLayer('a', frames: 4), frames: 4);
+    paintRow(a, 4);
+    // Its drain runs before this goes on — as far as the bake of its word,
+    // which waits on a raster of Flutter's.
+    await null;
+    expect(store.debugBusy, isTrue, reason: 'premise: its raster is out');
+
+    // A test's tear-down, and the next test's count.
+    store.clear();
+    final drawn = countTilesDrawnOffThePaint(store);
+    // Asked for again, the span waits on the same bake of its word — and
+    // the fenced raster is past it first.
+    paintRow(a, 4);
+    await tileStoreIdle(store);
+    expect(drawn(), 1, reason: 'the one asked for after the clear alone');
+  });
+
   test('a row is come back to with its NEWEST painter — once a tile of its '
       'lands, its repaints ask for it and the store does not', () async {
     final before = painterFor(rowLayer('b', frames: 40), frames: 40);

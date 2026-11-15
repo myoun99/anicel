@@ -813,7 +813,7 @@ class TimelineGridTileStore {
     }
     final _Rastered? rastered;
     try {
-      rastered = await _raster(engine, request);
+      rastered = await _raster(engine, request, epoch);
     } finally {
       if (epoch == _epoch) {
         _inFlight.remove(key);
@@ -1256,16 +1256,29 @@ class TimelineGridTileStore {
   /// Rasters the request and returns the picture TOGETHER WITH the content
   /// revision the raster's answers described and the substrate it laid
   /// down — both sampled in the same synchronous block as the substrate
-  /// emit, so pixels, stamp and substrate can never disagree.
+  /// emit, so pixels, stamp and substrate can never disagree. Null when a
+  /// [clear] since its drain began ([epoch]) fenced it off while its words
+  /// were baked.
   Future<_Rastered?> _raster(
     GpuEngine engine,
     _TileRequest request,
+    int epoch,
   ) async {
     final emitted = _emit(_SpanRead(this, request));
     if (emitted == null) {
       return null;
     }
     final words = await _bakedWords(emitted.ink.glyphs);
+    // The fence a clear puts round a raster out (`_rasterAndLand`) is asked
+    // here too, where its one wait ends: a raster fenced off while a word
+    // was first baked drew a tile nobody keeps on the engine, and reached
+    // the hook of the drain asked after the clear — on a machine whose
+    // words bake slowly, a test's raster reached the next test's
+    // (round-1091-builds-all-stop-at-their-checks, 11-16: two of the Mac's
+    // engine tests).
+    if (epoch != _epoch) {
+      return null;
+    }
     if (debugBeforeDrawing case final wait?) {
       await wait();
     }
