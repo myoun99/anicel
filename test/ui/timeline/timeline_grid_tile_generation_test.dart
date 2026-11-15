@@ -79,6 +79,7 @@ void main() {
     required String generation,
     TimelineGridTileStore? store,
     bool followsTheLiveCut = true,
+    String? celName,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -88,6 +89,7 @@ void main() {
       ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
+      frameNameForLayer: celName == null ? null : (_, _) => celName,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
@@ -274,13 +276,51 @@ void main() {
 
   group('a row that follows no live cut — the storyboard\'s conte row, '
       'laid over the film (frame-panels-build-in-one-frame)', () {
-    TimelineRowCellsPainter conteRow(TimelineGridTileStore store) =>
-        painterFor(
-          blockLayer(id: 'conte'),
-          generation: filmSubstrateGeneration,
-          store: store,
-          followsTheLiveCut: false,
-        );
+    // 🚨EVERY ASK HERE WAITS IN THE QUEUE, AND SAYS SO (2026-11-15,
+    // 검증/서피스: both pins stood green with the law taken out of the
+    // store). The law is the DRAIN's — it rasters a request that waited or
+    // lets it go — and a span is baked in the paint that asks wherever its
+    // words are baked already (F-314; …beside-its-tiles-Q1 「(다)」). The
+    // pins asked a span whose words the tests above had baked, so nothing
+    // waited and nothing could die; and they read the answer with another
+    // ask, which bakes it. A name no test before it set is a word never
+    // baked — the one wait a paint has left — and what was kept is read
+    // without asking ([TimelineGridTileStore.standInFor]).
+    TimelineRowCellsPainter conteRow(
+      TimelineGridTileStore store, {
+      required String celName,
+    }) => painterFor(
+      blockLayer(id: 'conte'),
+      generation: filmSubstrateGeneration,
+      store: store,
+      followsTheLiveCut: false,
+      celName: celName,
+    );
+
+    void expectQueued(
+      TimelineGridTileStore store,
+      TimelineRowCellsPainter painter,
+    ) => expect(
+      store.tileFor(
+        painter: painter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+      reason: '⛔premise: its word never baked, so the ask waits for the '
+          'drain — an ask baked in the call says nothing of the law',
+    );
+
+    Object? keptOf(
+      TimelineGridTileStore store,
+      TimelineRowCellsPainter painter,
+    ) => store.standInFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
 
     test('keeps its request when a timeline row paints after it — its '
         'resolvers describe its rows whatever cut is live', () async {
@@ -289,34 +329,26 @@ void main() {
       store.revision.addListener(() => landings += 1);
 
       // Both panels shown: the conte row asks, then a timeline row does.
-      final film = conteRow(store);
-      store.tileFor(
-        painter: film,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
+      final film = conteRow(store, celName: 'conte-first');
+      final timelineRow = painterFor(
+        blockLayer(),
+        generation: 'p:cut-a',
+        store: store,
+        celName: 'timeline-second',
       );
-      store.tileFor(
-        painter: painterFor(blockLayer(), generation: 'p:cut-a', store: store),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
+      expectQueued(store, film);
+      expectQueued(store, timelineRow);
 
       // The drain is one serial walk: idle after a landing, it has done
       // with both requests.
       await pollUntil(() => landings > 0 && !store.debugBusy);
       expect(
-        store.tileFor(
-          painter: film,
-          spanStartIndex: 0,
-          spanEndIndexExclusive: 4,
-          devicePixelRatio: 1.0,
-        ),
+        keptOf(store, film),
         isNotNull,
         reason: '↩️the one live world was the timeline\'s, and the conte '
             'row\'s request died as a dead generation\'s',
       );
+      expect(keptOf(store, timelineRow), isNotNull);
     });
 
     test('never takes the live world from the timeline — a timeline row\'s '
@@ -329,34 +361,22 @@ void main() {
         blockLayer(),
         generation: 'p:cut-a',
         store: store,
+        celName: 'timeline-first',
       );
-      store.tileFor(
-        painter: timelineRow,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
-      store.tileFor(
-        painter: conteRow(store),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
+      final film = conteRow(store, celName: 'conte-second');
+      expectQueued(store, timelineRow);
+      expectQueued(store, film);
 
       // The drain is one serial walk: idle after a landing, it has done
       // with both requests.
       await pollUntil(() => landings > 0 && !store.debugBusy);
       expect(
-        store.tileFor(
-          painter: timelineRow,
-          spanStartIndex: 0,
-          spanEndIndexExclusive: 4,
-          devicePixelRatio: 1.0,
-        ),
+        keptOf(store, timelineRow),
         isNotNull,
         reason: 'the conte row\'s world is no cut\'s: had its paint made it '
             'the live one, every timeline row\'s request would die',
       );
+      expect(keptOf(store, film), isNotNull);
     });
   });
 }
