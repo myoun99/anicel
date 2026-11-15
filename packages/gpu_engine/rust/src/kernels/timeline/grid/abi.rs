@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, let_go, let_go_unwaited};
 use crate::fail;
 use crate::kernels::timeline::wave::{WavePeaks, WaveTile, WaveView, Waved};
 use crate::platform::surface_format;
@@ -58,12 +58,20 @@ pub unsafe extern "C" fn gpu_engine_grid_free(grid: *mut GridTile) {
     unsafe { let_go(grid) };
 }
 
+/// Lets go of `picture` on the engine's thread, its caller waiting for none
+/// of it: a picture is a texture and counts nothing to read as its free
+/// returns (`device::let_go_unwaited` has which do). 🚨Waited for, a whole
+/// cut's tiles baked again let go of theirs one trip at a time on the UI's
+/// thread — 39–44 µs each on an idle engine (🔬타임라인/콘티 2026-11-15
+/// 09:20, the main PC, debug), and behind every compose handed over where
+/// one is (the-ui-thread-never-enters-the-driver).
+///
 /// # Safety
 /// `picture` came from `gpu_engine_grid_pictures_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_grid_picture_free(picture: *mut GridPicture) {
     // SAFETY: see the function's contract.
-    unsafe { let_go(picture) };
+    unsafe { let_go_unwaited(picture) };
 }
 
 /// Copies `picture`'s pixels — straight RGBA8, row by row — into `bytes`

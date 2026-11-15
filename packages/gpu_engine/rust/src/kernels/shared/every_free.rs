@@ -308,7 +308,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
             let mut made = std::ptr::null_mut();
             // SAFETY: the engine is live, and `made` holds one.
             assert!(unsafe { gpu_engine_grid_pictures_new(first_engine(), [4, 4].as_ptr(), 1, &mut made) });
-            gives_back(name, made, gpu_engine_grid_picture_free)
+            gives_back_unwaited(name, made, gpu_engine_grid_picture_free)
         }),
         ("gpu_engine_wave_free", |name| {
             // SAFETY: the engine is live.

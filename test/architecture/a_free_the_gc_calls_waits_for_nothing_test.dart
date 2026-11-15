@@ -21,7 +21,9 @@ import '../helpers/engine_verbs.dart';
 /// 03:43, on the card: taken as it stands).
 ///
 /// Nor does one a verb handed over unwaited still reads and that counts
-/// nothing — a plan (B1-a, 2026-11-15; the test has why).
+/// nothing — a plan (B1-a, 2026-11-15; the test has why) —, nor one the
+/// app lets go of by the hundred and that counts nothing — a frame grid's
+/// tile picture (B1, 2026-11-15; the same).
 ///
 /// What holds nothing of a device is no engine's (`hands_bytes` — 🗣️관제
 /// 2026-11-14 05:16, the same card): its free lets go of its bytes where it
@@ -81,8 +83,26 @@ void main() {
       containsAll(readByWhatWasHandedOver),
       reason: 'LIVENESS — a free handed over as a verb still reads its thing',
     );
+    // 🚨AND ONE THE APP LETS GO OF BY THE HUNDRED, AND THAT COUNTS NOTHING
+    // (the-ui-thread-never-enters-the-driver B1, 2026-11-15): a frame grid's
+    // tile picture, a texture (grid/mod.rs) — a whole cut's tiles baked
+    // again let go of theirs on the UI's thread, each free a trip that
+    // waited 39–44 µs on an idle engine (🔬타임라인/콘티 09:20, the main PC,
+    // debug) and behind every compose handed over where one was. ↩️Not
+    // let go of in one trip at a flush, as the batch makes them: that trip
+    // still waits in the same line, and is a verb more. ⏳브러시/렌더링;
+    // the user's to overturn.
+    const freedByTheHundred = {'gpu_engine_grid_picture_free'};
     expect(
-      unwaited.difference(collected).difference(readByWhatWasHandedOver),
+      unwaited,
+      containsAll(freedByTheHundred),
+      reason: 'LIVENESS — a free of a thing counting nothing waits for nothing',
+    );
+    expect(
+      unwaited
+          .difference(collected)
+          .difference(readByWhatWasHandedOver)
+          .difference(freedByTheHundred),
       isEmpty,
       reason: 'nothing collects these, and their thing is not gone as they '
           'return: let go of it with `let_go` (device.rs)',

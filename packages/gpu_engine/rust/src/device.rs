@@ -1678,8 +1678,9 @@ pub(crate) unsafe fn taken_bytes<T>(handed: *mut T) -> T {
 
 /// Lets go of what [`Engine::hands`] handed out as [`let_go`] does, but
 /// the caller waiting for none of it: the frees the GC calls of an
-/// engine's things — the ones the app binds a native finalizer to, and no
-/// other (`test/architecture/a_free_the_gc_calls_waits_for_nothing_test.dart`
+/// engine's things — the ones the app binds a native finalizer to — and,
+/// past them, only frees of things that count nothing, each named with why
+/// (`test/architecture/a_free_the_gc_calls_waits_for_nothing_test.dart`
 /// reads both sides; a thing of bytes the GC lets go of is let go of where
 /// the GC is, [`let_go_bytes`]).
 ///
