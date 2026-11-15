@@ -668,6 +668,43 @@ external Pointer<MaskPlane> selectionMaskCut(
 );
 
 @Native<
+  Bool Function(
+    Pointer<SelectionMasks>,
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Double>,
+    Size,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Bool,
+    Pointer<Int32>,
+    Size,
+    Pointer<Pointer<MaskPlane>>,
+  )
+>(symbol: 'gpu_engine_area_masks_new')
+external bool areaMasksNew(
+  Pointer<SelectionMasks> masks,
+  Pointer<Engine> engine,
+  Pointer<Uint32> program,
+  int programLength,
+  Pointer<Double> points,
+  int pointsLength,
+  int x,
+  int y,
+  int width,
+  int height,
+  int expand,
+  bool antiAlias,
+  Pointer<Int32> parts,
+  int count,
+  Pointer<Pointer<MaskPlane>> planes,
+);
+
+@Native<
   Pointer<SelectionRuns> Function(
     Pointer<SelectionMasks>,
     Pointer<Engine>,

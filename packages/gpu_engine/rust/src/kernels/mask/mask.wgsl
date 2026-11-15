@@ -1,10 +1,11 @@
 // A coverage mask's finishing passes, by gpu-int-spec-canvas 1b S2: a
-// generation of the 4-neighbour grow or shrink (S2a — the app's
-// mask_morphology.dart — its grow), the boundary soften (S2c — the app's
-// softenMaskBoundary, unclamped), and the feather (S2b): the 3-4 chamfer
-// distance (the app's chamferDistance34 till 2026-11-14)
-// relaxed a generation at a time, then the ramp over it. The fill's gap
-// close measures by the same distances.
+// generation of the 4-neighbour grow or shrink (S2a), the boundary soften
+// (S2c), and the feather (S2b): the 3-4 chamfer distance relaxed a
+// generation at a time, then the ramp over it. The fill's gap close
+// measures by the same distances. ↩️The app spelled each in Dart beside
+// these: the distance (chamferDistance34) till 2026-11-14, the grow
+// (dilateMask4) and the fill's soften (softenMaskBoundary) till
+// 2026-11-15, when an area's finish came here as the bucket's had.
 //
 // A mask is a plane of bytes over its box, `width` × `height`, four to a
 // word with the leftmost in the low byte, each row `stride` words — the

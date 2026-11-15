@@ -31,23 +31,55 @@ abstract final class EngineSelectionMasks {
   @visibleForTesting
   static int debugMade = 0;
 
-  static final _masks = KeptOnTheAppsEngine<Expando<GpuMask>>();
+  static final _masks = KeptOnTheAppsEngine<Expando<Object>>();
 
-  static Expando<GpuMask> get _of => _masks.of(Expando.new);
+  static Expando<Object> get _of => _masks.of(Expando.new);
 
-  /// [clip]'s mask on the engine the app has — a selection's, or a fill
-  /// piece's coverage (`canvas_flood_fill.dart`): [make]'s the first time
-  /// it is asked there, and let go of with [clip] — what reads a selection
-  /// on the engine (a stroke's landings, a stamp's) asks its clip at each
-  /// landing,
+  /// [clip]'s mask on the engine the app has — a selection's, a fill
+  /// piece's coverage, or an area's pieces' coverages together
+  /// (`canvas_flood_fill.dart`): [make]'s the first time it is asked there,
+  /// and let go of with [clip] — what reads a selection on the engine (a
+  /// stroke's landings, a stamp's) asks its clip at each landing,
   /// and the clip holds what was made, as a stamp holds its picture
   /// (`EngineStampPictures`).
   ///
   /// ↩️Till 2026-11-14 the live stroke kept the one it made and freed it as
   /// it ended, and a stamp's landing made its own: two holders of one mask,
   /// and a fill's pieces would each have made it again.
-  static GpuMask keptFor(Object clip, GpuMask Function() make) =>
-      _of[clip] ??= make();
+  static T keptFor<T extends Object>(Object clip, T Function() make) =>
+      (_of[clip] ??= make()) as T;
+
+  /// Test seam: how many areas have been asked for ([area]).
+  @visibleForTesting
+  static int debugAreasAsked = 0;
+
+  /// The AREA [spelled] (`CanvasSelectionRegion.spelled`) over [box],
+  /// finished as a fill finishes what it flooded — grown [expand]
+  /// generations, softened past its outline where [antiAlias] — over
+  /// [parts] of the box alone, and cut into a mask for each, in their order
+  /// (`GpuSelectionMasks.area`): what an area's pieces are laid of, none of
+  /// them read back, and its range, read whole (`canvas_flood_fill.dart`).
+  /// Nothing waits.
+  static List<GpuMask> area(
+    ({Uint32List program, Float64List points}) spelled, {
+    required ({int left, int top, int width, int height}) box,
+    required int expand,
+    required bool antiAlias,
+    required List<({int left, int top, int width, int height})> parts,
+  }) {
+    debugAreasAsked += 1;
+    return kernels.area(
+      program: spelled.program,
+      points: spelled.points,
+      x: box.left,
+      y: box.top,
+      width: box.width,
+      height: box.height,
+      expand: expand,
+      antiAlias: antiAlias,
+      parts: parts,
+    );
+  }
 
   /// The selection [spelled] (`CanvasSelectionRegion.spelled`) over [box],
   /// finished by [grow], [feather] and [antiAlias], on the engine — the one

@@ -24,8 +24,6 @@ import 'canvas_selection_region.dart';
 import 'fill_gradient.dart';
 import 'guide_geometry.dart';
 import 'layer_pose_matrix.dart';
-import 'mask_morphology.dart';
-import 'mask_soft_edge.dart';
 import 'pixel_run_contours.dart';
 import 'selection_clip.dart';
 
@@ -168,9 +166,9 @@ class FloodFillRegion {
 
 /// How far past its coverage a fill's finish reaches: [FloodFillOptions.
 /// expandPx] generations of growth — and, with the anti-alias, one pixel
-/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge
-/// ([softenMaskBoundary], unclamped), so a box a fill is finished in holds
-/// that pixel on every side.
+/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge (the
+/// engine's soften, unclamped — mask.wgsl), so a box a fill is finished in
+/// holds that pixel on every side.
 ///
 /// 🗣️유저 답 the-fill-ramp-is-cut-at-its-box-Q1 (10-09): 「상자를 한 칸 넓혀
 /// 어디서나 번지게」. ↩️The box was the coverage grown by the expand alone,
@@ -180,7 +178,7 @@ class FloodFillRegion {
 int fillFinishReach(FloodFillOptions options) =>
     options.expandPx + (options.antiAlias ? 1 : 0);
 
-/// An AREA laid as stamp pieces ([_stampPieces]): every pixel [region]
+/// An AREA laid as stamp pieces ([_dabsOf]): every pixel [region]
 /// covers, painted [color] whatever is under it and whoever asked — the
 /// fill tool's shape fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든
 /// 채운다), and what the shape tool lays without the brush: its fill and
@@ -192,11 +190,13 @@ int fillFinishReach(FloodFillOptions options) =>
 /// anti-alias passes are the bucket's — which is why "AA follows the fill"
 /// (유저 확정) needed no new rasterizer: the bucket's AA has always been a
 /// post-pass over a binary mask, and a region's mask is binary too.
-/// ⚠️TWO SPELLINGS OF THOSE PASSES SINCE 2026-11-12: the bucket's run on
-/// the engine (rust/src/kernels/mask, `Flood::finish`), an area's here
-/// ([dilateMask4] · [softenMaskBoundary], [_finishedWindow]) — a change
-/// to one is a change to both, and `test/native/
-/// an_area_is_finished_as_the_bucket_is_test.dart` holds them shut (board
+/// ONE SPELLING OF THOSE PASSES: the engine's (rust/src/kernels/mask,
+/// `MaskPasses::fill`), which finishes the bucket's flood
+/// (`Flood::finish`) and an area ([EngineSelectionMasks.area]) alike.
+/// ↩️From 2026-11-12, when the bucket's finish moved to the engine, till
+/// 2026-11-15 an area was finished here by a second spelling in Dart
+/// (`dilateMask4` · `softenMaskBoundary`, a window a piece), which a test
+/// held to the kernel's (board
 /// `an-areas-finish-is-a-second-spelling-of-the-floods`).
 ///
 /// What it does NOT share is the front: no picture, no seed, no
@@ -212,17 +212,24 @@ int fillFinishReach(FloodFillOptions options) =>
 /// tile of the box, the same as filling the box solid (the VM on the
 /// desktop). Now the rows come as RUNS first
 /// ([CanvasSelectionRegion.pixelRunsFor] — no byte per pixel), the runs
-/// say which tiles the finished area can reach ([_tilesReached]), and only
-/// those are finished, each in a window of its own ([_finishedWindow]).
+/// say which tiles the finished area reaches ([_tilesReached]), and the
+/// engine finishes it over those alone, each piece's coverage cut for it
+/// there ([_AreaOnEngine]).
 ///
-/// ⛔WHAT LANDS IS THE SHEET'S BYTES, and that is what the window is for,
-/// not a hope. A finished byte reads the hard mask no farther than the
-/// passes reach — `expandPx` 4-neighbour generations, then one soften —
-/// and the sheet's edges were its box's. A window is its tile grown by
-/// that reach and cut at that same box, so every pixel of the tile reads
-/// exactly what the sheet read. The box itself holds all the finish reaches
-/// ([fillFinishReach]), the ramp past the expand included, so nothing of
-/// the area is cut at it.
+/// ⛔NO PIECE IS READ BACK (🗣️캔버스 베이스 2026-11-15 09:46, 관제's to
+/// overturn): a fill's pieces are the engine's mask stamps ([_pieceDab]),
+/// so coverage read down to be cut here and handed up again would be a
+/// trip from the GPU to the CPU and back. The engine cuts each piece's
+/// plane where it finished the sheet, and the piece is laid of that: no
+/// wait, no read.
+///
+/// ⛔WHAT LANDS IS THE SHEET'S BYTES. The finish reads the hard mask no
+/// farther than its passes reach — `expandPx` 4-neighbour generations,
+/// then one soften — so the tiles within that reach of the coverage hold
+/// every pixel it leaves any of, and finished over those alone each is
+/// what the whole sheet finished there (`MaskPasses::fill`). The sheet
+/// itself holds all the finish reaches ([fillFinishReach]), the ramp past
+/// the expand included, so nothing of the area is cut at it.
 List<BrushDab> buildRegionFillDabs({
   required CanvasSelectionRegion region,
   required int color,
@@ -235,10 +242,11 @@ List<BrushDab> buildRegionFillDabs({
   options: options,
 ).toList();
 
-/// [buildRegionFillDabs]'s pieces one at a time, each made as it is asked
-/// for — what lets a shape being dragged be laid a few pieces a frame and
-/// shown when it is whole (I-69-Q4ⓒ). Every pass over it makes its pieces
-/// afresh.
+/// [buildRegionFillDabs]'s pieces one at a time — what lets a shape being
+/// dragged be laid a few pieces a frame and shown when it is whole
+/// (I-69-Q4ⓒ). Every pass over it makes its pieces afresh; their coverage
+/// is the engine's, asked for all together the first time one is laid
+/// ([_AreaOnEngine]).
 Iterable<BrushDab> regionFillPieces({
   required CanvasSelectionRegion region,
   required int color,
@@ -250,25 +258,20 @@ Iterable<BrushDab> regionFillPieces({
     return;
   }
   final (:hard, :sheet, :reach) = area;
-  final reached = _tilesReached(hard, sheet: sheet, reach: reach);
-  yield* _stampPieces(
+  final runs = _runsOf(
     sheet,
-    paint: (color: color, gradient: null, opacity: opacity),
-    finishedAround: (piece) => reached(piece)
-        ? _finishedWindow(
-            hard,
-            around: (
-              left: piece.left,
-              top: piece.top,
-              rightExclusive: piece.rightExclusive,
-              bottomExclusive: piece.bottomExclusive,
-            ),
-            sheet: sheet,
-            reach: reach,
-            options: options,
-          )
-        : null,
+    covered: _tilesReached(hard, sheet: sheet, reach: reach),
+  ).toList();
+  final onEngine = _AreaOnEngine(
+    region: region,
+    sheet: _pixelsOf(sheet),
+    options: options,
+    parts: [for (final run in runs) run.box],
   );
+  yield* _dabsOf([
+    for (final (at, run) in runs.indexed)
+      _Piece(run, (_) => onEngine.masks[at]),
+  ], (color: color, gradient: null, opacity: opacity));
 }
 
 /// The RANGE a drawn outline covers (I-160: 「올가미같은것도 올가미로 범위고르고
@@ -277,10 +280,10 @@ Iterable<BrushDab> regionFillPieces({
 /// lays its gradient through the bucket's own code. Null when it covers no
 /// pixel.
 ///
-/// ⚠️Finished over its whole sheet at once, which [regionFillPieces] will
-/// not do (board `an-area-dab-costs-its-box`): a range is read whole — its
-/// mark, and a gradient over every pixel of it — as the bucket's flood is,
-/// which costs its box too.
+/// ⚠️Finished over its whole sheet at once and read back, which
+/// [regionFillPieces] will not do (board `an-area-dab-costs-its-box`): a
+/// range is read whole — its mark, and a gradient over every pixel of it —
+/// as the bucket's flood is, which costs its box too. Waits for the GPU.
 FillRange? regionFillRange({
   required CanvasSelectionRegion region,
   double opacity = 1.0,
@@ -291,26 +294,21 @@ FillRange? regionFillRange({
   if (area == null || area.hard.rows.every((runs) => runs.isEmpty)) {
     return null;
   }
-  final (:hard, :sheet, :reach) = area;
-  final whole = _finishedWindow(
-    hard,
-    around: (
-      left: sheet.left,
-      top: sheet.top,
-      rightExclusive: sheet.rightExclusive,
-      bottomExclusive: sheet.bottomExclusive,
-    ),
-    sheet: sheet,
-    reach: reach,
-    options: options,
-  );
+  final sheet = _pixelsOf(area.sheet);
+  final whole = _areaMasks(region, sheet, options, over: [sheet]).single;
+  final Uint8List mask;
+  try {
+    mask = whole.read();
+  } finally {
+    whole.free();
+  }
   return FillRange.over(
     FloodFillRegion(
-      left: whole.left,
-      top: whole.top,
-      width: whole.width,
-      height: whole.mask.length ~/ whole.width,
-      mask: whole.mask,
+      left: sheet.left,
+      top: sheet.top,
+      width: sheet.width,
+      height: sheet.height,
+      mask: mask,
     ),
     opacity: opacity,
   );
@@ -355,12 +353,56 @@ FillRange? regionFillRange({
 /// ([CanvasSelectionRegion.pixelRunsFor]).
 typedef _HardRuns = ({List<List<int>> rows, int left, int top});
 
-/// A box of canvas pixels, right and bottom exclusive.
-typedef _Box = ({int left, int top, int rightExclusive, int bottomExclusive});
+/// A box of canvas pixels.
+typedef _Pixels = ({int left, int top, int width, int height});
 
-/// A finished coverage mask and where it sits on the canvas, at least as
-/// large as the piece it was finished for.
-typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
+/// [box]'s pixels.
+_Pixels _pixelsOf(DirtyRegion box) => (
+  left: box.left,
+  top: box.top,
+  width: box.rightExclusive - box.left,
+  height: box.bottomExclusive - box.top,
+);
+
+/// [region] finished over [sheet] as [options] say — the expand's
+/// generations, then the anti-alias — [over] those parts of it alone, and
+/// cut into a mask for each, on the engine ([EngineSelectionMasks.area]).
+List<GpuMask> _areaMasks(
+  CanvasSelectionRegion region,
+  _Pixels sheet,
+  FloodFillOptions options, {
+  required List<_Pixels> over,
+}) => EngineSelectionMasks.area(
+  region.spelled,
+  box: sheet,
+  expand: options.expandPx,
+  antiAlias: options.antiAlias,
+  parts: over,
+);
+
+/// An area's pieces' coverage on the engine ([_areaMasks] over [parts]):
+/// asked for once, all together, the first time one is read on the engine
+/// the app has, and kept as long as this is — which every piece laid of it
+/// holds.
+final class _AreaOnEngine {
+  _AreaOnEngine({
+    required this.region,
+    required this.sheet,
+    required this.options,
+    required this.parts,
+  });
+
+  final CanvasSelectionRegion region;
+  final _Pixels sheet;
+  final FloodFillOptions options;
+  final List<_Pixels> parts;
+
+  /// A mask a part, in [parts]' order.
+  List<GpuMask> get masks => EngineSelectionMasks.keptFor(
+    this,
+    () => _areaMasks(region, sheet, options, over: parts),
+  );
+}
 
 /// The grid an area is cut on: the cel's own tiles. It decides only how
 /// the area is cut, never a byte of what lands — a piece lands 1:1 wherever
@@ -369,9 +411,20 @@ typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
 /// another grid lands the same bytes.
 const int _pieceSize = defaultCelTileSize;
 
-/// Which of [sheet]'s tiles the finished area can reach: a tile within
-/// [reach] of a covered pixel. The rest would finish to nothing, and are
-/// never finished.
+/// Which of [sheet]'s tiles the finished area reaches: a tile that holds a
+/// pixel within [reach] of a covered one, the steps along the rows and
+/// along the columns counted together. A generation of the expand takes in
+/// a pixel's four neighbours and the soften one more, so the finish leaves
+/// something of every pixel that near and of no other. The rest finish to
+/// nothing, and are never finished.
+///
+/// ⛔EXACT, and it has to be: no byte of a piece comes back to say the
+/// piece was empty ([buildRegionFillDabs]), so a tile named here that held
+/// nothing would be laid as a stamp of nothing — staged, and kept by the
+/// history — and one missed would be a hole. ↩️Till 2026-11-15 it named
+/// every tile within [reach] along the rows AND along the columns, a
+/// square's corners more than the finish reaches, and the bytes finished
+/// here said which of those were empty.
 bool Function(TileSpan piece) _tilesReached(
   _HardRuns hard, {
   required DirtyRegion sheet,
@@ -386,23 +439,22 @@ bool Function(TileSpan piece) _tilesReached(
       continue;
     }
     final y = hard.top + row;
-    final firstY =
-        floorDiv(math.max(y - reach, sheet.top), _pieceSize) - range.firstY;
-    final lastY =
-        floorDiv(math.min(y + reach, sheet.bottomExclusive - 1), _pieceSize) -
-        range.firstY;
-    for (var r = 0; r + 1 < runs.length; r += 2) {
-      final x0 = math.max(hard.left + runs[r] - reach, sheet.left);
-      final x1 = math.min(
-        hard.left + runs[r + 1] - 1 + reach,
-        sheet.rightExclusive - 1,
-      );
-      final firstX = floorDiv(x0, _pieceSize) - range.firstX;
-      final lastX = floorDiv(x1, _pieceSize) - range.firstX;
-      for (var tileRow = firstY; tileRow <= lastY; tileRow += 1) {
+    final firstY = floorDiv(y - reach, _pieceSize);
+    final lastY = floorDiv(y + reach, _pieceSize);
+    for (var tileY = firstY; tileY <= lastY; tileY += 1) {
+      // What is left of the reach along the row, once it has gone up or
+      // down to this row of tiles.
+      final top = tileY * _pieceSize;
+      final bottom = top + _pieceSize - 1;
+      final away = y < top ? top - y : (y > bottom ? y - bottom : 0);
+      final along = reach - away;
+      final tileRow = (tileY - range.firstY) * columns - range.firstX;
+      for (var r = 0; r + 1 < runs.length; r += 2) {
+        final x0 = hard.left + runs[r] - along;
+        final x1 = hard.left + runs[r + 1] - 1 + along;
         grid.fillRange(
-          tileRow * columns + firstX,
-          tileRow * columns + lastX + 1,
+          tileRow + floorDiv(x0, _pieceSize),
+          tileRow + floorDiv(x1, _pieceSize) + 1,
           1,
         );
       }
@@ -412,51 +464,6 @@ bool Function(TileSpan piece) _tilesReached(
       grid[(piece.coord.y - range.firstY) * columns +
           (piece.coord.x - range.firstX)] !=
       0;
-}
-
-/// The area finished over [around] — a piece, or the whole sheet — as the
-/// one sheet over [sheet] would have finished it: its hard mask over a
-/// window — [around] grown by [reach], cut at [sheet] — then the expand and
-/// the anti-alias pass, as the bucket's flood is finished
-/// (`Flood::finish`, rust/src/kernels/flood). Exact
-/// over [around], which is all a reader takes from it
-/// ([buildRegionFillDabs] says why).
-_FinishedMask _finishedWindow(
-  _HardRuns hard, {
-  required _Box around,
-  required DirtyRegion sheet,
-  required int reach,
-  required FloodFillOptions options,
-}) {
-  final left = math.max(around.left - reach, sheet.left);
-  final top = math.max(around.top - reach, sheet.top);
-  final width = math.min(around.rightExclusive + reach, sheet.rightExclusive) -
-      left;
-  final height =
-      math.min(around.bottomExclusive + reach, sheet.bottomExclusive) - top;
-  final mask = Uint8List(width * height);
-  final firstRow = math.max(top, hard.top);
-  final endRow = math.min(top + height, hard.top + hard.rows.length);
-  for (var y = firstRow; y < endRow; y += 1) {
-    final runs = hard.rows[y - hard.top];
-    final offset = (y - top) * width;
-    for (var r = 0; r + 1 < runs.length; r += 2) {
-      final start = math.max(hard.left + runs[r], left);
-      final end = math.min(hard.left + runs[r + 1], left + width);
-      if (start < end) {
-        mask.fillRange(offset + start - left, offset + end - left, 255);
-      }
-    }
-  }
-  dilateMask4(mask, width: width, height: height, passes: options.expandPx);
-  if (options.antiAlias) {
-    // ⛔UNCLAMPED, and that is the fill's meaning: paint that stops dead
-    // on the outline reads as a hard edge, so the fill's ramp is allowed
-    // one pixel past its own. The SELECTION's is not — see the engine's
-    // `mask_softened` (mask.wgsl).
-    softenMaskBoundary(mask, width: width, height: height);
-  }
-  return (mask: mask, left: left, top: top, width: width);
 }
 
 /// 🚨★★★WHAT A FILL HELD DOWN WILL COVER, BEFORE A COLOUR IS LAID (I-160 ·
@@ -498,7 +505,7 @@ final class FillRange {
   final List<_Piece> _made = [];
   Iterator<_Piece>? _making;
 
-  /// [region]'s pieces ([_piecesOf]), each made once — and its coverage
+  /// [region]'s pieces ([_runsOf]), each made once — and its coverage
   /// moved to the engine once — however often the range is laid: a
   /// gradient dragged over it lays it at every frame under new ends, and
   /// its commit lays it once more. An ask reads what the asks before made
@@ -507,15 +514,15 @@ final class FillRange {
   Iterable<_Piece> _pieces(FloodFillRegion finished) sync* {
     for (var at = 0; ; at += 1) {
       if (at == _made.length) {
-        final making = _making ??= _piecesOf(
-          _boxOf(finished),
-          finishedAround: (_) => (
-            mask: finished.mask,
-            left: finished.left,
-            top: finished.top,
-            width: finished.width,
-          ),
-        ).iterator;
+        final making = _making ??=
+            _runsOf(
+                  _boxOf(finished),
+                  covered: (tile) => _covers(finished, tile),
+                )
+                .map(
+                  (run) => _Piece.ofBytes(run, _bytesOver(finished, run.box)),
+                )
+                .iterator;
         if (!making.moveNext()) {
           return;
         }
@@ -563,7 +570,7 @@ final class FillRange {
     onOpenRegion: _onOpenRegion,
   );
 
-  /// The range laid in [color] as stamp pieces ([_stampPieces]) — empty for
+  /// The range laid in [color] as stamp pieces ([_dabsOf]) — empty for
   /// an [open] range, which says so ([fillRangeAt]'s `onOpenRegion`): it is
   /// where the fill would have landed that nothing does.
   List<BrushDab> dabsIn(int color) => _laid(color: color).toList();
@@ -954,18 +961,44 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 
 /// A run of a fill's cel tiles along one tile row that its finished mask
-/// covers at all ([_piecesOf]): the mask's bytes over `[left, left+width) ×
-/// [top, top+height)`, the run's first tile at ([column], [row]).
+/// covers at all ([_runsOf]): the pixels it covers, and its first tile's
+/// place on the grid.
+typedef _Run = ({_Pixels box, int column, int row});
+
+/// A piece of a fill — a [_Run] of its tiles: the mask over `[left,
+/// left+width) × [top, top+height)`, the run's first tile at ([column],
+/// [row]), and its coverage where the engine holds it ([onEngine]).
 final class _Piece {
-  _Piece({
-    required this.left,
-    required this.top,
-    required this.width,
-    required this.height,
-    required this.column,
-    required this.row,
-    required this.coverage,
-  });
+  /// [run], whose coverage on the engine [_coverage] answers each time it
+  /// is asked: an area's is the engine's from the start, cut where it was
+  /// finished ([_AreaOnEngine]).
+  _Piece(_Run run, this._coverage)
+    : left = run.box.left,
+      top = run.box.top,
+      width = run.box.width,
+      height = run.box.height,
+      column = run.column,
+      row = run.row;
+
+  /// [run] of a mask the CPU holds — a flood's range, read whole for its
+  /// mark ([FillRange]): [coverage], the mask's bytes over the run, moved
+  /// to the engine the first time the piece is asked there, however often
+  /// it is laid after ([EngineSelectionMasks.keptFor]).
+  _Piece.ofBytes(_Run run, Uint8List coverage)
+    : this(
+        run,
+        (piece) => EngineSelectionMasks.keptFor(
+          piece,
+          () => GpuMask(
+            appGpuComposite,
+            coverage,
+            x: piece.left,
+            y: piece.top,
+            width: piece.width,
+            height: piece.height,
+          ),
+        ),
+      );
 
   final int left;
   final int top;
@@ -973,29 +1006,16 @@ final class _Piece {
   final int height;
   final int column;
   final int row;
-  final Uint8List coverage;
+  final GpuMask Function(_Piece piece) _coverage;
 
-  /// [coverage] on the engine the app has: moved there the first time it
-  /// is asked, however often the piece is laid after
-  /// ([EngineSelectionMasks.keptFor]).
-  GpuMask onEngine() => EngineSelectionMasks.keptFor(
-    this,
-    () => GpuMask(
-      appGpuComposite,
-      coverage,
-      x: left,
-      y: top,
-      width: width,
-      height: height,
-    ),
-  );
+  /// Its coverage on the engine the app has.
+  GpuMask onEngine() => _coverage(this);
 }
 
 /// A finished coverage mask cut into STAMP PIECES: one for each run of cel
 /// tiles of [box] that the mask covers at all, along a tile row, in
-/// row-major order. [finishedAround] hands the finished mask over a tile,
-/// or null for a tile it knows is empty. Empty when no tile has a covered
-/// pixel.
+/// row-major order. [covered] says whether the mask covers any pixel of a
+/// tile. Empty when no tile has a covered pixel.
 ///
 /// 🚨★★★EVERY MASK A FILL LAYS IS CUT HERE — the bucket's flood and an
 /// area alike (board `an-area-dab-costs-its-box`, 2026-10-09). A piece lands
@@ -1017,51 +1037,41 @@ final class _Piece {
 /// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
 /// the desktop); a run of the row's covered tiles takes one call per run,
 /// and a thin line still carries only the tiles it crosses.
-Iterable<_Piece> _piecesOf(
+Iterable<_Run> _runsOf(
   DirtyRegion box, {
-  required _FinishedMask? Function(TileSpan tile) finishedAround,
+  required bool Function(TileSpan tile) covered,
 }) sync* {
-  final run = <({TileSpan tile, Uint8List coverage})>[];
-  _Piece cut() {
-    final first = run.first.tile;
-    final piece = _Piece(
-      left: first.left,
-      top: first.top,
-      width: run.last.tile.rightExclusive - first.left,
-      height: first.bottomExclusive - first.top,
+  final run = <TileSpan>[];
+  _Run cut() {
+    final first = run.first;
+    final piece = (
+      box: (
+        left: first.left,
+        top: first.top,
+        width: run.last.rightExclusive - first.left,
+        height: first.bottomExclusive - first.top,
+      ),
       column: first.coord.x,
       row: first.coord.y,
-      coverage: _joined(run),
     );
     run.clear();
     return piece;
   }
 
   for (final tile in tileSpansOf(box, tileSize: _pieceSize)) {
-    if (run.isNotEmpty && run.last.tile.coord.y != tile.coord.y) {
+    if (run.isNotEmpty && run.last.coord.y != tile.coord.y) {
       yield cut();
     }
-    final finished = finishedAround(tile);
-    final coverage = finished == null ? null : _coverageOf(tile, finished);
-    if (coverage == null) {
-      if (run.isNotEmpty) {
-        yield cut();
-      }
-      continue;
+    if (covered(tile)) {
+      run.add(tile);
+    } else if (run.isNotEmpty) {
+      yield cut();
     }
-    run.add((tile: tile, coverage: coverage));
   }
   if (run.isNotEmpty) {
     yield cut();
   }
 }
-
-/// [box]'s pieces ([_piecesOf]) laid as [paint] says ([_dabsOf]).
-Iterable<BrushDab> _stampPieces(
-  DirtyRegion box, {
-  required _Paint paint,
-  required _FinishedMask? Function(TileSpan tile) finishedAround,
-}) => _dabsOf(_piecesOf(box, finishedAround: finishedAround), paint);
 
 /// The box [region] lies in.
 DirtyRegion _boxOf(FloodFillRegion region) => DirtyRegion(
@@ -1150,51 +1160,29 @@ BrushDab _pieceDab(
   );
 }
 
-/// [finished]'s bytes over [tile], or null when not one of them is
-/// covered.
-Uint8List? _coverageOf(TileSpan tile, _FinishedMask finished) {
+/// Whether [finished] covers any pixel of [tile].
+bool _covers(FloodFillRegion finished, TileSpan tile) {
   final width = tile.rightExclusive - tile.left;
-  final height = tile.bottomExclusive - tile.top;
-  final coverage = Uint8List(width * height);
-  var covers = false;
-  for (var y = 0; y < height; y += 1) {
+  for (var y = tile.top; y < tile.bottomExclusive; y += 1) {
     final from =
-        (tile.top + y - finished.top) * finished.width +
-        (tile.left - finished.left);
-    coverage.setRange(y * width, y * width + width, finished.mask, from);
-    if (!covers) {
-      for (var x = y * width; x < y * width + width; x += 1) {
-        if (coverage[x] != 0) {
-          covers = true;
-          break;
-        }
+        (y - finished.top) * finished.width + (tile.left - finished.left);
+    for (var at = from; at < from + width; at += 1) {
+      if (finished.mask[at] != 0) {
+        return true;
       }
     }
   }
-  return covers ? coverage : null;
+  return false;
 }
 
-/// The coverages of a run of neighbouring tiles along one tile row, side by
-/// side as one mask.
-Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
-  if (run.length == 1) {
-    return run.single.coverage;
+/// [finished]'s bytes over [box], row after row.
+Uint8List _bytesOver(FloodFillRegion finished, _Pixels box) {
+  final bytes = Uint8List(box.width * box.height);
+  for (var y = 0; y < box.height; y += 1) {
+    final from =
+        (box.top + y - finished.top) * finished.width +
+        (box.left - finished.left);
+    bytes.setRange(y * box.width, (y + 1) * box.width, finished.mask, from);
   }
-  final first = run.first.tile;
-  final width = run.last.tile.rightExclusive - first.left;
-  final height = first.bottomExclusive - first.top;
-  final joined = Uint8List(width * height);
-  for (final (:tile, :coverage) in run) {
-    final tileWidth = tile.rightExclusive - tile.left;
-    final x = tile.left - first.left;
-    for (var y = 0; y < height; y += 1) {
-      joined.setRange(
-        y * width + x,
-        y * width + x + tileWidth,
-        coverage,
-        y * tileWidth,
-      );
-    }
-  }
-  return joined;
+  return bytes;
 }

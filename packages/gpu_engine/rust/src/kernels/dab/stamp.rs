@@ -13,7 +13,7 @@
 //!   the mesh's).
 //!
 //! The row is every tile the box meets. The app cuts a fill into pieces of
-//! the tiles it covers (`_stampPieces`) for its CPU's sake; here a tile it
+//! the tiles it covers (`_runsOf`) for its CPU's sake; here a tile it
 //! covers none of is laid as nothing, and the write path keeps the cel's
 //! tile there (`kernels/write`) — knowing which tiles those are before the
 //! plan is made would wait for the GPU to say. The app clips a landing to

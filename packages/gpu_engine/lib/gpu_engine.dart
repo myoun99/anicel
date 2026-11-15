@@ -3683,6 +3683,65 @@ final class GpuSelectionMasks {
     mask._length,
   );
 
+  /// The AREA [program] spells over [points] on the pixel box [width] ×
+  /// [height] whose top-left pixel is ([x], [y]), finished as a fill
+  /// finishes what it flooded — grown [expand] generations, softened past
+  /// its outline where [antiAlias] — over [parts] of the box alone, and cut
+  /// into a mask for each, in their order: a part its left, top, width and
+  /// height, canvas pixels. Kept on the GPU as [selection]'s masks are; the
+  /// work is submitted and nothing waits for it.
+  ///
+  /// ⚠️Exact where [parts] hold every pixel the finish leaves any of: what
+  /// lies past them is read as nothing (rust `MaskPasses::fill`).
+  List<GpuMask> area({
+    required Uint32List program,
+    required Float64List points,
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+    required int expand,
+    required bool antiAlias,
+    required List<({int left, int top, int width, int height})> parts,
+  }) => using((arena) {
+    final words = arena<Uint32>(_held(program.length))
+      ..asTypedList(program.length).setAll(0, program);
+    final boxes = arena<Int32>(_held(parts.length * 4));
+    final edges = boxes.asTypedList(parts.length * 4);
+    for (final (at, part) in parts.indexed) {
+      edges
+        ..[at * 4] = part.left
+        ..[at * 4 + 1] = part.top
+        ..[at * 4 + 2] = part.width
+        ..[at * 4 + 3] = part.height;
+    }
+    final planes = arena<Pointer<rust.MaskPlane>>(_held(parts.length));
+    final made = rust.areaMasksNew(
+      _masks,
+      _engine._engine,
+      words,
+      program.length,
+      _doubles(arena, points),
+      points.length,
+      x,
+      y,
+      width,
+      height,
+      expand,
+      antiAlias,
+      boxes,
+      parts.length,
+      planes,
+    );
+    if (!made) {
+      throw GpuRefused(_lastError());
+    }
+    return [
+      for (final (at, part) in parts.indexed)
+        GpuMask._kept(_engine, planes[at], part.width * part.height),
+    ];
+  });
+
   /// The hard mask of the selection [program] spells over [points] on the
   /// pixel box [width] × [height] whose top-left pixel is ([x], [y]), read
   /// back as its runs: a row each, top to bottom, its selected pixels'

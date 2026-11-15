@@ -14,6 +14,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_selection_masks.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
@@ -22,10 +24,9 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
-import 'package:anicel/src/services/mask_morphology.dart';
-import 'package:anicel/src/services/mask_soft_edge.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask, debugWaitsHere;
 
 import '../helpers/fill_pieces.dart';
 
@@ -37,9 +38,9 @@ import '../helpers/fill_pieces.dart';
 /// pieces cut on the cel's tiles.
 ///
 /// Nothing a user sees may move for it: the pieces are pinned here against
-/// the one sheet itself, restated below as the old code built it, and their
-/// landing against that sheet's one stamp, through every route a stamp
-/// lands by.
+/// the one sheet itself — the engine's finish over the whole box in one
+/// part, as the old code laid it — and their landing against that sheet's
+/// one stamp, through every route a stamp lands by.
 void main() {
   const color = 0xFF336699;
   const layerId = LayerId('l');
@@ -49,8 +50,8 @@ void main() {
 
   /// The area finished as ONE SHEET over its whole box — how it was laid
   /// before it was cut: the coverage box grown by all the finish reaches,
-  /// the hard mask in it, then the expand's generations and the soften over
-  /// all of it.
+  /// and the engine's finish — the expand's generations, then the soften —
+  /// over all of it, in one part.
   ({int left, int top, int width, int height, Uint8List mask}) sheetOf(
     CanvasSelectionRegion region,
     FloodFillOptions options,
@@ -65,30 +66,30 @@ void main() {
     // pixel past it (유저 답 the-fill-ramp-is-cut-at-its-box-Q1, 「상자를 한
     // 칸 넓혀 어디서나 번지게」).
     final reach = grow + (options.antiAlias ? 1 : 0);
-    final hard = region.maskFor(
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-    );
-    final sheetWidth = width + reach * 2;
-    final sheetHeight = height + reach * 2;
-    final mask = Uint8List(sheetWidth * sheetHeight);
-    for (var y = 0; y < height; y += 1) {
-      final at = (y + reach) * sheetWidth + reach;
-      mask.setRange(at, at + width, hard, y * width);
-    }
-    dilateMask4(mask, width: sheetWidth, height: sheetHeight, passes: grow);
-    if (options.antiAlias) {
-      softenMaskBoundary(mask, width: sheetWidth, height: sheetHeight);
-    }
-    return (
+    final sheet = (
       left: left - reach,
       top: top - reach,
-      width: sheetWidth,
-      height: sheetHeight,
-      mask: mask,
+      width: width + reach * 2,
+      height: height + reach * 2,
     );
+    final whole = EngineSelectionMasks.area(
+      region.spelled,
+      box: sheet,
+      expand: grow,
+      antiAlias: options.antiAlias,
+      parts: [sheet],
+    ).single;
+    try {
+      return (
+        left: sheet.left,
+        top: sheet.top,
+        width: sheet.width,
+        height: sheet.height,
+        mask: whole.read(),
+      );
+    } finally {
+      whole.free();
+    }
   }
 
   /// That sheet as the ONE stamp dab it used to land as.
@@ -329,6 +330,34 @@ void main() {
     }
     expect(tilesOfTheSheet(sheet).length * 4, lessThan(boxTiles));
     expect(laidPixels * 4, lessThan(sheet.width * sheet.height));
+  });
+
+  test('🚨no piece is read back: the pieces\' coverage is the engine\'s, '
+      'asked for once for them all — with no wait for the GPU — however '
+      'often they are laid', () {
+    final pieces = buildRegionFillDabs(
+      region: areas['a 4px diagonal across nine tiles']!,
+      color: color,
+      options: const FloodFillOptions(expandPx: 1, antiAlias: true),
+    );
+    expect(pieces.length, greaterThan(1), reason: '⛔premise: pieces');
+    final waits = debugWaitsHere;
+    final asked = EngineSelectionMasks.debugAreasAsked;
+    List<GpuMask> coverages() => [
+      for (final piece in pieces)
+        EngineStampPictures.madeOfMask(piece.stamp!)!.coverage(),
+    ];
+
+    final first = coverages();
+    final again = coverages();
+
+    expect(again, [for (final mask in first) same(mask)]);
+    expect(
+      EngineSelectionMasks.debugAreasAsked - asked,
+      1,
+      reason: 'one ask finishes the area and cuts every piece of it',
+    );
+    expect(debugWaitsHere, waits, reason: 'a wait for the GPU here');
   });
 
   test('an area that covers no pixel lays no piece', () {

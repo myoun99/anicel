@@ -159,7 +159,7 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
 /// 🚨★★★FINISHED ONLY WHERE IT REACHES (board `an-area-dab-costs-its-box`,
 /// and `an-areas-finish-is-a-second-spelling-of-the-floods` — 관제
 /// 2026-11-14 22:1x): the finish runs over the parts alone, so they hold
-/// every pixel it leaves any of, as the app's runs say exactly. ↩️The app
+/// every pixel it leaves any of, as the app's runs say exactly. ↩️Till 2026-11-15 the app
 /// finished each piece in a window of its own on the CPU
 /// (`_finishedWindow`), a second spelling of the bucket's finish.
 ///

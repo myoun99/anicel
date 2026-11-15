@@ -1,8 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/services/mask_soft_edge.dart';
 import '../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE RAMP, TWO MEANINGS.
@@ -16,69 +13,35 @@ import '../helpers/dart_sources.dart';
 /// ⛔THE FIX IS NOT ONE ANSWER. The card that opened this said so: 「억지로
 /// 하나로 만들면 안 된다 — 뜻이 둘이다」. A fill's ramp is allowed past its
 /// outline; a selection's is not, because a mask pixel travels whole. So the
-/// arithmetic is shared and the clamp is an argument — and these tests exist
-/// to prove the argument still changes something.
+/// arithmetic is shared and the clamp is an argument.
 ///
-/// ↩️Both meanings were spelled here, the clamp an argument of
-/// `softenMaskBoundary`, till 2026-11-14: the selection's went with the
-/// last of the CPU's selection masks (board
-/// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2d), and lives
-/// where a selection is finished now — the engine's `mask_softened`
-/// (mask.wgsl), pinned by `the_soften_keeps_inside_its_outline`. What is
-/// left here is the fill's: unclamped.
+/// Both meanings are the engine's now, one spelling with the clamp its
+/// argument (mask.wgsl's `mask_softened`), and each is pinned where it is
+/// spelled: the selection's by `the_soften_keeps_inside_its_outline`
+/// (`kernels/mask/tests.rs`), the fill's by
+/// `the_fill_s_ramp_spreads_a_pixel_past_its_outline`
+/// (`kernels/flood/tests.rs`) — and an area's through its own door by
+/// `a_fill_ramp_spreads_on_every_side_test.dart`.
 ///
-/// ⚠️Outside Dart the ramp is spelled once more: in the engine's mask
-/// kernel (WGSL), which finishes the bucket's flood since 2026-11-12.
-/// `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds it
-/// to this one byte for byte. ↩️The C kernel `qa_fill_finish_mask` was
-/// that copy till then, and went with the fill's C calls.
+/// ↩️Both were spelled here in Dart, the clamp an argument of
+/// `softenMaskBoundary`, till 2026-11-14, when the selection's went with
+/// the last of the CPU's selection masks (board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2d). The fill's
+/// stayed a day more as an area's finish, a second spelling beside the
+/// kernel's that `an_area_is_finished_as_the_bucket_is_test.dart` held
+/// shut, and went 2026-11-15 when an area's finish moved to the engine
+/// (board `an-areas-finish-is-a-second-spelling-of-the-floods`). ↩️The C
+/// kernel `qa_fill_finish_mask` was a copy before that, and went with the
+/// fill's C calls.
 void main() {
-  /// A hard 4x4 block inside an 8x8 field: 255 in, 0 out, nothing between.
-  Uint8List hardBlock() {
-    final mask = Uint8List(64);
-    for (var y = 2; y < 6; y += 1) {
-      for (var x = 2; x < 6; x += 1) {
-        mask[y * 8 + x] = 255;
-      }
-    }
-    return mask;
-  }
-
-  int at(Uint8List mask, int x, int y) => mask[y * 8 + x];
-
-  test('the ramp reaches one pixel PAST the outline', () {
-    final mask = hardBlock();
-    expect(at(mask, 1, 3), 0, reason: 'fixture: x=1 is outside the block');
-    softenMaskBoundary(mask, width: 8, height: 8);
-    expect(
-      at(mask, 1, 3),
-      greaterThan(0),
-      reason: 'a fill paints past its own outline — that is the soft edge',
-    );
-  });
-
-  test('an interior pixel is untouched', () {
-    final mask = hardBlock();
-    softenMaskBoundary(mask, width: 8, height: 8);
-    expect(
-      at(mask, 3, 3),
-      255,
-      reason: 'a uniform neighbourhood is skipped',
-    );
-  });
-
   test('nothing in lib/ writes the five-tap average by hand', () {
     // ⛔A SOURCE SCAN, because behaviour cannot see this. Two copies that
     // agree today pass every pixel comparison; what breaks is the third
     // written next year — which is exactly what happened here. The engine's
-    // kernel is not Dart: `an_area_is_finished_as_the_bucket_is_test` holds
-    // it byte for byte.
+    // kernel is not Dart, and holds the one spelling.
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
-      if (path.endsWith('lib/src/services/mask_soft_edge.dart')) {
-        continue;
-      }
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
         final line = lines[i];
@@ -93,7 +56,7 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason: 'the five-tap average lives in `softenMaskBoundary`; a '
+      reason: 'the five-tap average lives in the engine\'s mask kernel; a '
           'hand-written one is the copy that diverged last time',
     );
   });

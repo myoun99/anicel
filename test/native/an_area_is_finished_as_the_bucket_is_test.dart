@@ -12,23 +12,26 @@ import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/a_fill_on_the_engine.dart';
 import '../helpers/fill_pieces.dart';
 
-/// 🚨TWO SPELLINGS, HELD SHUT HERE (board
+/// 🚨ONE FINISH, TWO DOORS (board
 /// `an-areas-finish-is-a-second-spelling-of-the-floods`). A user has ONE
 /// 「Expand」 and ONE 「Anti-alias」 for the bucket and for an area — the
-/// shape tool's fill, its plain line — and since the bucket's flood runs on
-/// the engine (2026-11-12) the two are finished by two spellings of those
-/// passes: the bucket's by the engine's mask kernel (WGSL), an area's by
-/// `dilateMask4` · `softenMaskBoundary` (Dart).
+/// shape tool's fill, its plain line — and both are finished by the
+/// engine's mask kernel (`MaskPasses::fill`): the bucket's flood over its
+/// whole box (`Flood::finish`), an area over the tiles it reaches
+/// (`gpu_engine_area_masks_new`).
 ///
 /// Each is asked through its own door, of the SAME pixels: a shape drawn in
 /// one colour on clear ground and bucket-filled at tolerance 0 floods
 /// exactly the shape, and the same shape is laid as an area. What the two
 /// lay is the same bytes, pixel for pixel.
 ///
-/// ↩️Till then the two spellings were Dart's and the C kernel's
-/// (`qa_fill_finish_mask`), held mask for mask by `fill_gap_close_test`,
-/// which skipped without a built DLL. This one cannot skip: a file that
-/// cannot open the engine fails.
+/// ↩️From 2026-11-12 till 2026-11-15 these were two SPELLINGS — the
+/// kernel's (WGSL) for the bucket, `dilateMask4` · `softenMaskBoundary`
+/// (Dart) for an area — and this file was what held them shut. ↩️Before
+/// that the two were Dart's and the C kernel's (`qa_fill_finish_mask`),
+/// held mask for mask by `fill_gap_close_test`, which skipped without a
+/// built DLL. This one cannot skip: a file that cannot open the engine
+/// fails.
 void main() {
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 64, height: 48);
