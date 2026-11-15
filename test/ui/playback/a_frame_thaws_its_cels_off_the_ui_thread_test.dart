@@ -379,9 +379,15 @@ class _ThawAsks extends BrushFrameStore {
   Completer<void> holdBack(BrushFrameKey key) =>
       _heldBack[key] = Completer<void>();
 
-  /// Completes once [key]'s look ahead has answered.
+  /// Completes once [key]'s look ahead has answered — and fails the test
+  /// where none comes: a frame that reads its cels some other way never
+  /// answers, and a pin waiting for it would hold the machine till the
+  /// line cut it.
   Future<void> landed(BrushFrameKey key) =>
-      (_landed[key] ??= Completer<void>()).future;
+      (_landed[key] ??= Completer<void>()).future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => fail('$key was never looked at ahead'),
+      );
 
   @override
   Future<void> thawAhead(
