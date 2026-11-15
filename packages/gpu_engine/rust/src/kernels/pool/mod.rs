@@ -766,6 +766,20 @@ fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
 /// A pool that makes no page past `most_bytes` (1a ③ — its store gives
 /// the budget). Null on failure; see the last error.
 ///
+/// 🚨★A POOL IS ITS CALLER'S ALONE: its books — which slot holds what, and
+/// its pages — are read and written by its verbs with no lock: on the
+/// calling thread (`gpu_engine_pool_store`, `gpu_engine_pool_release`),
+/// and on the engine's while the caller stays in the call
+/// (`gpu_engine_pool_read`). So one thread calls a pool's verbs, one at a
+/// time: the isolate that has it (`GpuPool`, which nothing makes again
+/// from its address). What a body leans on it for
+/// (the-ui-thread-never-enters-the-driver, 2026-11-15): one that waits for
+/// the GPU leaves the engine's thread to the bodies behind it
+/// (`Engine::wait_within`), and comes back to books no body of another
+/// caller wrote meanwhile — a cel's pixels counted, read and then put
+/// (`CelPixels::passed`), a read of the pool itself. Each verb's
+/// `# Safety` says it by "its caller's alone".
+///
 /// # Safety
 /// `engine` is live; the pool is freed before it.
 #[unsafe(no_mangle)]
@@ -795,7 +809,7 @@ pub extern "C" fn gpu_engine_tile_side() -> u32 {
 /// A cel of its own, by the number the store names it with.
 ///
 /// # Safety
-/// `pool` is live.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
     // SAFETY: see the function's contract.
@@ -829,10 +843,11 @@ pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
 /// own, which the caller would then pay.
 ///
 /// # Safety
-/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
-/// holds `count` pointers to a tile's bytes each, alive till `told` is
-/// called — the engine's thread reads them then; `pages` and `slots` hold
-/// `count` each; and `told` is one any thread may call.
+/// `pool` and `engine` are live, the pool made on `engine` and its
+/// caller's alone (`gpu_engine_pool_new`); `tiles` holds `count` pointers
+/// to a tile's bytes each, alive till `told` is called — the engine's
+/// thread reads them then; `pages` and `slots` hold `count` each; and
+/// `told` is one any thread may call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_store(
     pool: *mut Pool,
@@ -883,7 +898,8 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
 /// to let go, whose tiles are not there ([`gpu_engine_pool_store`]).
 ///
 /// # Safety
-/// `pool` is live, and `pages` and `slots` hold `capacity` each.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`), and
+/// `pages` and `slots` hold `capacity` each.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_unwritten(
     pool: *mut Pool,
@@ -912,7 +928,7 @@ pub unsafe extern "C" fn gpu_engine_pool_unwritten(
 /// where none holds it; see the last error.
 ///
 /// # Safety
-/// `pool` is live.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_release(pool: *mut Pool, page: u16, slot: u16) -> bool {
     // SAFETY: see the function's contract.
@@ -925,8 +941,9 @@ pub unsafe extern "C" fn gpu_engine_pool_release(pool: *mut Pool, page: u16, slo
 /// ([`Pool::read`]). False where one is not held; see the last error.
 ///
 /// # Safety
-/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
-/// holds `count` words and `into` the bytes of `count` tiles.
+/// `pool` and `engine` are live, the pool made on `engine` and its
+/// caller's alone (`gpu_engine_pool_new`); `tiles` holds `count` words and
+/// `into` the bytes of `count` tiles.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_read(
     pool: *const Pool,
@@ -958,8 +975,8 @@ pub unsafe extern "C" fn gpu_engine_pool_read(
 /// or none is asked; see the last error.
 ///
 /// # Safety
-/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
-/// holds `count` words.
+/// `pool` and `engine` are live, the pool made on `engine` and its
+/// caller's alone (`gpu_engine_pool_new`); `tiles` holds `count` words.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_readout(
     pool: *const Pool,
@@ -994,7 +1011,7 @@ unsafe fn named(tiles: *const u32, count: usize) -> Option<Vec<TileAt>> {
 /// its calls holds.
 ///
 /// # Safety
-/// `pool` is live.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_most_bytes(pool: *mut Pool, most_bytes: u64) {
     // SAFETY: see the function's contract.
@@ -1006,7 +1023,7 @@ pub unsafe extern "C" fn gpu_engine_pool_most_bytes(pool: *mut Pool, most_bytes:
 /// ([`Pool::set_budget_instead`]); the OS's again where negative.
 ///
 /// # Safety
-/// `pool` is live.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_budget_instead(pool: *mut Pool, bytes: i64) {
     // SAFETY: see the function's contract.
@@ -1018,7 +1035,8 @@ pub unsafe extern "C" fn gpu_engine_pool_budget_instead(pool: *mut Pool, bytes: 
 /// ([`Pool::give_back`]).
 ///
 /// # Safety
-/// `pool` and `engine` are live and the pool was made on `engine`.
+/// `pool` and `engine` are live, the pool made on `engine` and its
+/// caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_give_back(pool: *mut Pool, engine: *const Engine, most_bytes: u64) {
     // SAFETY: see the function's contract.
@@ -1031,7 +1049,7 @@ pub unsafe extern "C" fn gpu_engine_pool_give_back(pool: *mut Pool, engine: *con
 /// The bytes of the pages a pool has made ([`Pool::bytes`]).
 ///
 /// # Safety
-/// `pool` is live.
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_bytes(pool: *const Pool) -> u64 {
     // SAFETY: see the function's contract.

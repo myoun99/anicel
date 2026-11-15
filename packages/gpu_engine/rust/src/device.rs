@@ -488,8 +488,14 @@ impl Engine {
         self.wait_within(WAIT_LIMIT)
     }
 
+    /// 🚨Every wait of a body's for the GPU passes here — a map's, a read's
+    /// ([`Self::map`], [`Self::read_buffer`], [`Self::read_texture`]) —
+    /// so it is here that a body leaves the engine's thread to the bodies
+    /// behind it ([`EngineThread::stands_aside`]), as where it waits for a
+    /// compile ([`Self::compiling`]).
     fn wait_within(&self, limit: Duration) -> Option<()> {
         WAITED_HERE.with(|waited| waited.set(waited.get() + 1));
+        self.thread.stands_aside();
         self.poll().within(limit, &self.refusals)
     }
 
@@ -840,10 +846,9 @@ thread_local! {
     /// ([`gpu_engine_device_entered_here`]) — on a thread of an engine's,
     /// a count no one asks for.
     static ENTERED_HERE: Cell<u64> = const { Cell::new(0) };
-    /// Whether this thread, an engine's, has left that engine's jobs to
-    /// one made in its place ([`EngineThread::stands_aside`]): it ends with
-    /// the job it is in.
-    static STOOD_ASIDE: Cell<bool> = const { Cell::new(false) };
+    /// Where this thread, an engine's, is with its turn at that engine's
+    /// jobs ([`Turn`]) — on a caller's thread, a word no one asks for.
+    static TURN: Cell<Turn> = const { Cell::new(Turn::Held) };
     /// Whether the job this thread, an engine's, is in was handed it
     /// unwaited ([`EngineThread::posts`]): it keeps its turn through a
     /// compile ([`EngineThread::stands_aside`]).
@@ -1216,10 +1221,13 @@ type Job = Box<dyn FnOnce() + Send>;
 /// what a hand needs side by side (🗣️유저 2026-11-13,
 /// the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「나란히
 /// 컴파일」 — `compileAppKernelsAhead`, seven verbs at once). So the thread
-/// a body waits for a compile on leaves the jobs to one made in its place
-/// and ends with its body: two bodies are under way at once only where
-/// one of them waits for a compile, as two callers' were on their own
-/// threads.
+/// a body waits for a compile on leaves its turn at the jobs for one
+/// handed behind it — taken by another of the engine's threads, made
+/// where none is there ([`Turns`]; ↩️it ended with its body, and one was
+/// made each time, till 2026-11-15) — and takes none till that body is
+/// done: two bodies are under way at once only where one of them waits —
+/// for a compile, or, lent, for the GPU (🚨NOR BEHIND A BODY'S OWN WAIT,
+/// below) — as two callers' were on their own threads.
 ///
 /// ⏳⛔Not the verbs that compile named one by one, each run on a thread
 /// made for it (↩️weighed 2026-11-14, 브러시/렌더링 — the user's to
@@ -1274,6 +1282,58 @@ type Job = Box<dyn FnOnce() + Send>;
 /// the body that asked, or, where no caller stays, by a thread kept to
 /// tell of it (`Engine::tells`) — and fails by name at its limit there
 /// (🗣️관제 2026-11-08: 「멈춘 화면보다 이름 있는 실패」).
+///
+/// 🚨★★NOR BEHIND A BODY'S OWN WAIT
+/// (the-ui-thread-never-enters-the-driver, 2026-11-15). ↩️「The body waits
+/// either way」, above, counted the body that waits and not the bodies
+/// behind it: lent, it kept this thread through its wait, and every verb
+/// asked meanwhile stood behind the GPU with it, where its caller's
+/// thread alone stood till the bodies ran here — what 🗣️관제 said of a
+/// compile on the 14th (01:21, above), and of this on the 15th (13:52):
+/// 「1c 가 폴을 폴 스레드로 옮긴 것의 남은 반쪽이다」. 🔬Main PC, S5_BA cut
+/// 352, a stroke of 120 moves drawn as the band fills (k850–k853,
+/// 2026-11-15): each `gpu_engine_stroke_land` of the UI's that waited
+/// 300 µs and more for its turn — 9 to 18 of 121, 5.8–36.5 ms a stroke —
+/// stood behind a `gpu_engine_stamp_picture_read` another thread had
+/// lent, in its wait of 1.3–5.8 ms; none behind a body handed over
+/// unwaited. So a body lent leaves the jobs at its wait as at a compile
+/// ([`Engine::wait_within`], [`Self::stands_aside`]); one handed over
+/// unwaited keeps its turn through it, as through a compile. 🔬With it,
+/// the same stroke, before · after · before · after in one sitting (k901
+/// – k904): what the UI's `gpu_engine_stroke_land` waited for its turn,
+/// 33.1 · 47.7 ms a stroke → 4.4 · 4.2 ms, and of 300 µs and more 8 · 20
+/// calls → none (0.3 ms the longest).
+///
+/// ⏳⛔Not the verbs that read named one by one, each cut into a body
+/// that stages, a wait on its caller's thread and a body that copies
+/// (↩️weighed 2026-11-15, 브러시/렌더링 — the user's to overturn): a copy
+/// of that cut in each of some eighteen, and none for a body that waits
+/// midway — `CelPixels::passed` between its count and its write, a
+/// flood between its rounds, a plug-in between its chunks.
+///
+/// What lets the bodies behind it pass (read 2026-11-15; 🗣️관제 13:52
+/// asked each written where the law is):
+/// - The bodies under way at once are of callers each in a call of its
+///   own. The caller of a body lent stays in its call till the body is
+///   back, and what it handed over unwaited before was handed before,
+///   and has run: nothing of its own passes it. What passes is other
+///   callers', as theirs ran beside it on their threads till 2026-11-14.
+/// - No lock of the engine's is held through a wait, so none is taken in
+///   two orders across one: each is taken and let go inside a call that
+///   asks the GPU nothing (`ChainRead`, `HeldChains`, `Work`,
+///   `Pictures::with`, the masks' `Kept`, the glyphs' styles,
+///   [`Kernels`], [`Refusals`], [`PostedRefused`]).
+/// - What a body writes before a wait and reads after it is its own:
+///   made in that call, or taken out of what its kernel keeps till it
+///   gives it back (the masks' `Kept`). ⚠️One body goes back, after a
+///   wait, to what others write — `CelPixels::passed`, to the pool's
+///   pages it counted. It is asked by the isolate whose pool that is, in
+///   the call still (`cel_pixel_overwrite.dart`): a pool's books are its
+///   caller's alone (`gpu_engine_pool_new` has the law), so no slot it
+///   counted is let go and given again under it.
+/// - A poll waits for what was submitted as it began (`polled`,
+///   `submission_index: None`): bodies that go on submitting behind a
+///   wait do not hold it.
 #[derive(Clone)]
 pub(crate) struct EngineThread {
     jobs: mpsc::Sender<Job>,
@@ -1291,6 +1351,154 @@ pub(crate) struct EngineThread {
     /// through with its own — kept here for the thread made where one
     /// stands aside ([`Self::stands_aside`]).
     asked: Arc<Mutex<mpsc::Receiver<Job>>>,
+    /// Which of its threads take them ([`Turns`]).
+    turns: Arc<(Mutex<Turns>, Condvar)>,
+}
+
+/// The turns at an [`EngineThread`]'s jobs — as many as the threads it was
+/// started with, which hold them from the first — and the jobs handed and
+/// not yet taken. A thread takes jobs by the turn it holds. Where its job
+/// is to wait it leaves the turn ([`EngineThread::stands_aside`]) for a
+/// job handed behind it: a thread that holds none takes the turn once
+/// there is such a job ([`Self::taken`]), and where none came the thread
+/// that left it has it again as its job ends ([`Self::back`]). So bodies
+/// that wait with none behind them run on one thread, woken by nothing
+/// more than they were; a thread is made where a turn is left and none is
+/// there to take it, and for no wait after — an engine has as many
+/// threads as it had bodies under way at once.
+///
+/// ↩️Till 2026-11-15 a thread that stood aside ended with its job and one
+/// was made in its place each time — a compile's price, by what was
+/// measured for it (🔬50–60 µs, 2026-11-09, [`EngineThread`]). At each wait
+/// of a body's for the GPU it was not that. 🔬S5_BA cut 352, main PC,
+/// 2026-11-15, the measuring test's 437 waits a run (k901 · k903 with no
+/// thread made, k902 · k904 with one made at each wait): a thread was made
+/// in 98–101 µs on average, 432–681 µs the longest, and the body that ran
+/// first on a thread just made took 0.21–0.27 ms the longer —
+/// `gpu_engine_stroke_pile`'s 120 bodies of a stroke on a full band
+/// 85.9–90.4 ms → 109.2–121.9 ms, the body after each
+/// (`gpu_engine_stroke_land`) as before, 100.7–106.4 → 102.7–109.3 ms.
+///
+/// ↩️Nor is the turn handed on at each wait, a job behind it or none
+/// (weighed the same day, never landed): two threads then took the jobs
+/// turn about, one woken at every wait. 🔬The same test so (k912): those
+/// 120 bodies 91.2–93.4 ms. And a save of twenty whole-canvas cels, its
+/// 6,440 reads one after another with none behind
+/// (`a_heavy_save_holds_the_screen_benchmark`, before · after twice each,
+/// k913–k920): written whole, 1,727 · 1,750 ms → 1,822 · 1,902 ms, its
+/// first report at 1,154 · 1,187 → 1,318 · 1,338 ms; appended, the same
+/// (1,501 · 1,596 → 1,518 · 1,523 ms). ⚠️That test's totals stand 100 ms
+/// apart on one build, and the engine's own lines say no more of it:
+/// the bodies' sum 2,040–2,192 ms either way.
+///
+/// 🔬With the turn had again where no job came (k922–k926): each of that
+/// save's 6,443 waits had its turn again, on one thread, the lock taken
+/// for it 0.4 µs a wait, the bodies' sum 2,052 · 2,199 ms; and of the
+/// measuring test's 437 waits 419 had it again and 18 found it taken by a
+/// job handed behind them — one thread made — the UI's
+/// `gpu_engine_stroke_land` waiting 2.7 ms a stroke as the band filled
+/// (33.1 · 47.7 ms with no turn left, [`EngineThread`]).
+#[derive(Default)]
+struct Turns {
+    /// The turns no thread holds.
+    free: usize,
+    /// The threads that hold none and are through with the job they left
+    /// theirs in ([`Self::back`]): waiting for a turn left, or on their
+    /// way to.
+    spare: usize,
+    /// The jobs handed and not yet taken ([`EngineThread::hands`]).
+    queued: usize,
+    /// Whether no job is handed here again: a thread that waits for a turn
+    /// ends.
+    over: bool,
+}
+
+impl Turns {
+    /// One more job is handed: where a turn is left free, a thread that
+    /// waits for one takes it.
+    fn handed(shared: &(Mutex<Self>, Condvar)) {
+        let (turns, left) = shared;
+        let mut turns = turns.lock().unwrap_or_else(PoisonError::into_inner);
+        turns.queued += 1;
+        if turns.free > 0 {
+            left.notify_one();
+        }
+    }
+
+    /// A thread that holds a turn has taken a job.
+    fn received(shared: &(Mutex<Self>, Condvar)) {
+        shared.0.lock().unwrap_or_else(PoisonError::into_inner).queued -= 1;
+    }
+
+    /// Waits for a turn left free with a job handed behind it, and takes
+    /// the turn — or for none to be taken again, and says so.
+    fn taken(shared: &(Mutex<Self>, Condvar)) -> bool {
+        let (turns, left) = shared;
+        let mut turns = turns.lock().unwrap_or_else(PoisonError::into_inner);
+        while (turns.free == 0 || turns.queued == 0) && !turns.over {
+            turns = left.wait(turns).unwrap_or_else(PoisonError::into_inner);
+        }
+        if turns.over {
+            return false;
+        }
+        turns.free -= 1;
+        turns.spare -= 1;
+        TURN.set(Turn::Held);
+        true
+    }
+
+    /// The calling thread is through with the job it left its turn in: it
+    /// has the turn again where no other took it, and is else one more
+    /// that waits for a turn — once for a job, whoever says it again.
+    ///
+    /// 🚨A job whose caller waits for it says so BEFORE its answer goes
+    /// ([`EngineThread::run_lent`]), not as its thread comes back for the
+    /// next: the caller's next body then finds the turn held, by the
+    /// thread its last ran on, and wakes no other for it — one caller, one
+    /// thread, by the order and not by which thread was ahead (🗣️관제
+    /// 2026-11-15 14:35, of the thread that took the turn at every wait:
+    /// 「빌린 본문의 답을 넘기기 전에 자리 장부를 돌려놓거나 … 그러면
+    /// 「한 부르는 쪽 = 스레드 둘」이 확률이 아니라 사실이 된다」). Said
+    /// after the answer, a caller that got ahead of this thread found the
+    /// turn free still and handed its body to another.
+    /// ⚠️No test turns red where the order is turned back: what it loses
+    /// is a race of the tens of microseconds a caller takes to wake, and
+    /// nothing here holds a thread in them.
+    fn back(shared: &(Mutex<Self>, Condvar)) {
+        if TURN.get() != Turn::Left {
+            return;
+        }
+        let mut turns = shared.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if turns.free > 0 {
+            turns.free -= 1;
+            TURN.set(Turn::Held);
+        } else {
+            turns.spare += 1;
+            TURN.set(Turn::Waits);
+        }
+    }
+
+    /// No job is handed again: the threads that wait for a turn end.
+    fn over(shared: &(Mutex<Self>, Condvar)) {
+        shared.0.lock().unwrap_or_else(PoisonError::into_inner).over = true;
+        shared.1.notify_all();
+    }
+}
+
+/// Where a thread of an [`EngineThread`]'s is with its turn at the jobs
+/// ([`Turns`]).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Turn {
+    /// It holds one, and takes the jobs.
+    Held,
+    /// It left its own in the job it is in, for a job handed behind it
+    /// ([`EngineThread::stands_aside`]).
+    Left,
+    /// It holds none, another having taken the one it left, and is
+    /// through with that job ([`Turns::back`]) — or was made to take one
+    /// left ([`EngineThread::works`]): counted among the threads that wait
+    /// for a turn.
+    Waits,
 }
 
 impl EngineThread {
@@ -1307,41 +1515,53 @@ impl EngineThread {
             number: THREAD_NUMBERS.fetch_add(1, Ordering::Relaxed),
             ended: Arc::default(),
             asked: Arc::new(Mutex::new(asked)),
+            turns: Arc::default(),
         };
         for _ in 0..count {
-            if let Err(error) = started.works() {
+            if let Err(error) = started.works(Turn::Held) {
                 return fail(format!("no thread for the engine: {error}"));
             }
         }
         Some(started)
     }
 
-    /// One more thread that takes this one's jobs in turn — till none is
-    /// left to hand it any, or to the end of the job it stands aside in
-    /// ([`Self::stands_aside`]).
-    fn works(&self) -> std::io::Result<()> {
-        let (asked, number) = (Arc::clone(&self.asked), self.number);
+    /// One more thread for this one's jobs, `turn` its own from the first
+    /// — held, or to be waited for ([`Turns`]): it takes the jobs by the
+    /// turn it holds, each the next once it is through with its own, till
+    /// none is left to hand it any — and where another took the turn it
+    /// left in a job ([`Self::stands_aside`]) it waits, that job done,
+    /// for the next left.
+    fn works(&self, turn: Turn) -> std::io::Result<()> {
+        let (asked, turns) = (Arc::clone(&self.asked), Arc::clone(&self.turns));
+        let number = self.number;
         let working = move || {
             WORKS_FOR.set(number);
-            while !STOOD_ASIDE.get() {
+            TURN.set(turn);
+            while TURN.get() == Turn::Held || Turns::taken(&turns) {
                 let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
                 let Ok(job) = next else {
-                    return;
+                    return Turns::over(&turns);
                 };
+                Turns::received(&turns);
                 job();
+                // Where the job did not say so itself: no caller waited
+                // for it.
+                Turns::back(&turns);
             }
         };
         std::thread::Builder::new().name("gpu_engine".into()).spawn(working).map(drop)
     }
 
-    /// Leaves this thread's jobs to a thread made in the calling one's
-    /// place, where the calling thread is this one: what its job waits for
-    /// from here on, no job behind it waits for ([`EngineThread`] has why
-    /// — a compile). The calling thread goes on with its job, this thread
-    /// to itself still ([`Self::is_here`]) — what the job hands here runs
-    /// where it is, as it did — and ends with it. Once in a job: it has no
-    /// jobs left to leave. 🔬A thread made took 50–60 µs on the main PC
-    /// (2026-11-09, above), against the compile it is made for.
+    /// Leaves this thread's turn at the jobs for one handed behind the
+    /// job it is in, where the calling thread is this one — to be taken by
+    /// a thread that left its own before and waits, or by one made here
+    /// where none does ([`Turns`]): what its job waits for from here on,
+    /// no job behind it waits for ([`EngineThread`] has why — a compile,
+    /// the GPU). The calling thread goes on with its job, this thread to
+    /// itself still ([`Self::is_here`]) — what the job hands here runs
+    /// where it is, as it did — and, the job done, has its turn again
+    /// where no job came for it, and else waits for one left
+    /// ([`Turns::back`]). Once in a job: it has no turn left to leave.
     ///
     /// With no thread to be had the job goes on where it is and those
     /// behind it wait, as they did: nothing fails that worked.
@@ -1357,9 +1577,30 @@ impl EngineThread {
     /// ([`Engine::posted`]), where the app's pin holds it at none — the
     /// app compiles ahead what such a body runs.
     fn stands_aside(&self) {
-        if self.is_here() && !STOOD_ASIDE.get() && !POSTED.get() {
-            STOOD_ASIDE.set(self.works().is_ok());
+        if !self.is_here() || TURN.get() != Turn::Held || POSTED.get() {
+            return;
         }
+        let (turns, left) = &*self.turns;
+        let mut turns = turns.lock().unwrap_or_else(PoisonError::into_inner);
+        if turns.spare == 0 {
+            if self.works(Turn::Waits).is_err() {
+                return;
+            }
+            turns.spare += 1;
+        }
+        turns.free += 1;
+        if turns.queued > 0 {
+            left.notify_one();
+        }
+        TURN.set(Turn::Left);
+    }
+
+    /// Hands `job` to this one's threads, behind every one handed before
+    /// it — and to the turn a job that waits left free, where one did
+    /// ([`Turns`]).
+    fn hands(&self, job: Job) {
+        Turns::handed(&self.turns);
+        let _ = self.jobs.send(job);
     }
 
     /// Whether the calling thread is this one — one of these, where they
@@ -1421,7 +1662,7 @@ impl EngineThread {
         if self.is_here() {
             job();
         } else {
-            let _ = self.jobs.send(Box::new(job));
+            self.hands(Box::new(job));
         }
         Some(answered)
     }
@@ -1447,14 +1688,14 @@ impl EngineThread {
                 ended.store(true, Ordering::Release);
             }
         };
-        let _ = self.jobs.send(Box::new(job));
+        self.hands(Box::new(job));
     }
 
     /// Hands `work` to this thread and returns, the caller waiting for
     /// none of it. Dropped unrun where the thread is gone.
     fn post(&self, work: impl FnOnce() + Send + 'static) {
         if !self.ended.load(Ordering::Acquire) {
-            let _ = self.jobs.send(Box::new(self.till_it_ends((), move |()| work())));
+            self.hands(Box::new(self.till_it_ends((), move |()| work())));
         }
     }
 
@@ -1480,6 +1721,8 @@ impl EngineThread {
                 callers.put();
                 let answer = catch_unwind(AssertUnwindSafe(work));
                 *worked = Some((answer, Callers::taken()));
+                // Before `_through` goes ([`Turns::back`] has why).
+                Turns::back(&self.turns);
             });
             // SAFETY: the job borrows from this call's frame and is `Send`
             // in name alone. The caller stays in this frame till the job
@@ -1487,7 +1730,7 @@ impl EngineThread {
             // — so what the job borrows outlives it, in one thread's hands
             // at a time, as what a call is handed.
             let job = unsafe { std::mem::transmute::<Box<dyn FnOnce() + '_>, Job>(job) };
-            let _ = self.jobs.send(job);
+            self.hands(job);
         }
         let _ = waited.recv();
         // Let go before the caller's own are put back, the heap the tests
@@ -1516,7 +1759,7 @@ impl EngineThread {
                 ended.store(true, Ordering::Release);
             }
         };
-        let _ = self.jobs.send(Box::new(job));
+        self.hands(Box::new(job));
     }
 }
 
@@ -2534,16 +2777,180 @@ mod tests {
             assert_eq!(engine.wait(), Some(()), "{}", last_error());
         });
         assert!(got_through, "a body waited behind one that waits for a compile");
-        // The thread made in its place is the engine's from there on.
+        // The thread that took the turn is the engine's from there on.
         assert_eq!(engine.on_thread(|| 7), 7);
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
-        // And the one that stood aside ended with its body: one body at a
-        // time again, the next behind one that waits for no compile.
+        // And the one that stood aside takes no job till a turn is left it
+        // (↩️it ended with its body, till 2026-11-15): one body at a time
+        // again, the next behind one that waits for no compile.
         let a_moment = std::time::Duration::from_millis(300);
         let got_through = a_body_gets_through_behind(engine, a_moment, |released| {
             let _ = released.recv_timeout(std::time::Duration::from_secs(60));
         });
         assert!(!got_through, "two threads took the engine's jobs at once");
+    }
+
+    // 🚨A body that waits for the GPU leaves the engine's thread to the
+    // bodies behind it, as one that waits for a compile (🗣️관제 2026-11-15
+    // 13:52, the-ui-thread-never-enters-the-driver: 「1c 가 폴을 폴 스레드로
+    // 옮긴 것의 남은 반쪽이다」; `EngineThread` has what stood behind one).
+    // Its poll stays in the driver's call, inside a map's answer — as
+    // `a_wait_no_caller_stays_for_holds_up_no_body`'s does — till the test
+    // has seen a body through.
+    #[test]
+    fn a_body_that_waits_for_the_gpu_holds_up_no_body_behind_it() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
+            let here = std::thread::current().id();
+            let buffer = engine.readback(4);
+            buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+                let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+            });
+            assert_eq!(engine.wait(), Some(()), "{}", last_error());
+            // What it hands the thread after its wait runs where it is.
+            assert_eq!(engine.on_thread(|| std::thread::current().id()), here);
+        });
+        assert!(got_through, "a body waited behind one that waits for the GPU");
+        // The thread that took the turn is the engine's from there on.
+        assert_eq!(engine.on_thread(|| 7), 7);
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+    }
+
+    // 🚨A body that waits with none handed behind it wakes no other
+    // thread: the turn it left is its own again as it ends (`Turns` has
+    // what a thread woken at every wait cost a save) — before its caller
+    // has the answer to hand the next body by (`Turns::back`). Bodies that
+    // each wait, one after another, run on one thread.
+    #[test]
+    fn a_body_that_waits_with_none_behind_it_keeps_the_engine_s_thread() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let ran_on: std::collections::HashSet<_> = (0..6)
+            .map(|_| {
+                engine.on_thread(|| {
+                    assert_eq!(engine.wait(), Some(()), "{}", last_error());
+                    std::thread::current().id()
+                })
+            })
+            .collect();
+        assert_eq!(ran_on.len(), 1, "threads that ran six bodies that each waited, none behind");
+    }
+
+    // 🚨Nor is a thread made for each body that gets through behind a
+    // wait: the one that left its turn and found it taken waits for a turn
+    // left, and takes the next (`Turns` has what a thread made at every
+    // wait cost a stroke). Three bodies through, each behind a wait: one
+    // thread more than the engine began with.
+    #[test]
+    fn a_thread_that_found_its_turn_taken_takes_the_next_one_left() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        for round in 0..3 {
+            let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
+                let buffer = engine.readback(4);
+                buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+                    let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                });
+                assert_eq!(engine.wait(), Some(()), "{}", last_error());
+            });
+            assert!(got_through, "a body waited behind one that waits for the GPU, round {round}");
+        }
+        // Every body is back: a thread holds the turn, and the rest wait.
+        assert_eq!(engine.on_thread(|| 7), 7);
+        let spare = engine.thread.turns.0.lock().unwrap().spare;
+        assert_eq!(spare, 1, "threads that wait for a turn, three bodies through behind a wait");
+    }
+
+    // 🚨Nor behind two that wait at once: where the thread a turn would be
+    // left to is in a wait of its own still, one is made — an engine has
+    // as many threads as bodies under way at once. Each body here is
+    // handed once the one ahead is in its wait: the turn left before it
+    // came is taken as it is handed (`Turns::handed`).
+    #[test]
+    fn a_body_gets_through_behind_two_that_wait_at_once() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        // A wait gone through first: a thread is there that waits for a
+        // turn.
+        engine.on_thread(|| assert_eq!(engine.wait(), Some(()), "{}", last_error()));
+        let (let_go, released) = std::sync::mpsc::channel::<()>();
+        let (began, begun) = std::sync::mpsc::channel();
+        let (through, went) = std::sync::mpsc::channel();
+        let got_through = std::thread::scope(|scope| {
+            let first = began.clone();
+            scope.spawn(move || {
+                engine.on_thread(|| {
+                    // Its poll stays in the driver's call — where it says
+                    // it began: in its wait, its turn left — till the test
+                    // has seen a body through, and the next body's wait
+                    // behind it.
+                    let buffer = engine.readback(4);
+                    buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+                        let _ = first.send(());
+                        let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                    });
+                    assert_eq!(engine.wait(), Some(()), "{}", last_error());
+                })
+            });
+            begun.recv_timeout(IN_TIME).expect("the first body that waits began");
+            scope.spawn(move || {
+                engine.on_thread(|| {
+                    let _ = began.send(());
+                    assert_eq!(engine.wait(), Some(()), "{}", last_error());
+                })
+            });
+            begun.recv_timeout(IN_TIME).expect("the second body that waits began");
+            scope.spawn(move || {
+                engine.on_thread(|| ());
+                let _ = through.send(());
+            });
+            let got_through = went.recv_timeout(IN_TIME).is_ok();
+            let _ = let_go.send(());
+            got_through
+        });
+        assert!(got_through, "a body waited behind two that wait for the GPU");
+    }
+
+    // 🚨And a body handed while the one ahead of it was not yet in its
+    // wait is taken as that one leaves its turn
+    // (`EngineThread::stands_aside`): no job handed after is there to wake
+    // a thread for it.
+    #[test]
+    fn a_body_handed_before_the_wait_ahead_of_it_gets_through_at_that_wait() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        // A wait gone through first: a thread is there that waits for a
+        // turn.
+        engine.on_thread(|| assert_eq!(engine.wait(), Some(()), "{}", last_error()));
+        let (let_go, released) = std::sync::mpsc::channel::<()>();
+        let (began, begun) = std::sync::mpsc::channel();
+        let (through, went) = std::sync::mpsc::channel();
+        let got_through = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                engine.on_thread(|| {
+                    let _ = began.send(());
+                    // In no wait till the next body is handed behind it.
+                    while engine.thread.turns.0.lock().unwrap().queued == 0 {
+                        std::thread::yield_now();
+                    }
+                    let buffer = engine.readback(4);
+                    buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+                        let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                    });
+                    assert_eq!(engine.wait(), Some(()), "{}", last_error());
+                })
+            });
+            begun.recv_timeout(IN_TIME).expect("the body that waits began");
+            scope.spawn(move || {
+                engine.on_thread(|| ());
+                let _ = through.send(());
+            });
+            let got_through = went.recv_timeout(IN_TIME).is_ok();
+            let _ = let_go.send(());
+            got_through
+        });
+        assert!(got_through, "a body handed before a wait stood behind it");
     }
 
     // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
