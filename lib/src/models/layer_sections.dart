@@ -1,6 +1,7 @@
 import '../core/frozen_collections.dart';
 import 'layer.dart';
 import 'layer_folder.dart';
+import 'layer_id.dart';
 import 'layer_kind.dart';
 
 /// Timesheet-style timeline sections, in raw (model) order: drawing cels
@@ -87,8 +88,10 @@ const int _cameraSectionTopRank = 2;
 /// seen — 🗣️F-596-Q1 (유저 2026-11-16): 「폴더 안에 두면 폴더 자리에서
 /// 그린다」.
 List<Layer> sectionedLayerOrder(List<Layer> layers) {
-  final placeOf = _placeOfIn(layers);
-  final places = [for (final layer in layers) placeOf(layer)];
+  final placeOf = sectionPlaceIn(layers);
+  final places = [
+    for (final layer in layers) placeOf(layer.kind, layer.folderId),
+  ];
   // A partition by place, which is stable by construction: rows of one
   // place keep the order they arrived in, and that is what lets several
   // Direction rows be re-ordered among themselves.
@@ -102,10 +105,10 @@ List<Layer> sectionedLayerOrder(List<Layer> layers) {
 /// Whether [layers] already stand in section order ([sectionedLayerOrder]):
 /// no row's place below the place of the row before it.
 bool isInSectionOrder(List<Layer> layers) {
-  final placeOf = _placeOfIn(layers);
+  final placeOf = sectionPlaceIn(layers);
   var last = 0;
   for (final layer in layers) {
-    final place = placeOf(layer);
+    final place = placeOf(layer.kind, layer.folderId);
     if (place < last) {
       return false;
     }
@@ -114,13 +117,17 @@ bool isInSectionOrder(List<Layer> layers) {
   return true;
 }
 
-/// Each of [layers]' rows' place in section order: its outermost folder's
-/// ([sectionedLayerOrder] has why), or its own outside every folder.
-int Function(Layer) _placeOfIn(List<Layer> layers) {
+/// The place in section order a row of `kind` in the folder `folderId`
+/// stands at among [layers]: its outermost folder's ([sectionedLayerOrder]
+/// has why), or its own outside every folder. Asked of a row not put down
+/// yet too — where a block lands its next row (`seatUnderBlock`).
+int Function(LayerKind kind, LayerId? folderId) sectionPlaceIn(
+  List<Layer> layers,
+) {
   final folders = LayerFolderIndex(layers);
-  return (layer) {
-    final ancestry = folders.ancestryOf(layer.folderId);
-    return _placeOf(ancestry.isEmpty ? layer.kind : ancestry.last.kind);
+  return (kind, folderId) {
+    final ancestry = folders.ancestryOf(folderId);
+    return _placeOf(ancestry.isEmpty ? kind : ancestry.last.kind);
   };
 }
 

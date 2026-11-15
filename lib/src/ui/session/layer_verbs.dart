@@ -293,9 +293,11 @@ class LayerVerbs {
   ///
   /// 🗣️F-455 (유저 2026-10-23): 「레이어는 지금 여러개 복제시 각자 선택한
   /// 레이어의 위에 생기는데, 그게아니라 선택한 레이어들 포함해서 그 위에
-  /// 생기도록. 사이사이에 생기지 않게」 — a paste's block ([seatAboveRow]),
-  /// each copy over the one before it. ↩️Each copy went right above its own
-  /// source, in the order the rows were picked.
+  /// 생기도록. 사이사이에 생기지 않게」 — a paste's block ([seatUnderBlock]):
+  /// the top copy first, each right under the copies before it in its
+  /// place. ↩️Each copy went right above its own source, in the order the
+  /// rows were picked; then each over the copy before it, which a copy of
+  /// another place carried past (F-596, to 2026-11-16).
   void duplicateSelectedLayers() {
     final ids = duplicatableSelectedLayerIds().toSet();
     final stack = [
@@ -305,27 +307,41 @@ class LayerVerbs {
     if (stack.isEmpty) {
       return;
     }
-    var over = stack.last;
-    _eachRowAsOneStep(
-      stack,
-      'Duplicate rows',
-      (cutId, layerId) => over = _duplicate(cutId, layerId, over: over),
-    );
+    final copies = <LayerId>[];
+    _eachRowAsOneStep(stack.reversed.toList(), 'Duplicate rows', (
+      cutId,
+      layerId,
+    ) {
+      copies.add(
+        _duplicate(cutId, layerId, over: (row: stack.last, block: copies)),
+      );
+      return copies.first;
+    });
   }
 
-  /// Duplicates [layerId] in [cutId] — right above it, or over the row
-  /// [over] names — and brings its pictures over: the copy mints every cel
-  /// afresh, and a picture lives under its cel's id (F-62's law at the
-  /// layer's scale). ↩️Nothing did until 2026-09-26 — a duplicated row came
-  /// out with no drawing at all (measured; card
-  /// `duplicates-lose-their-pictures`).
-  LayerId _duplicate(CutId cutId, LayerId layerId, {LayerId? over}) {
+  /// Duplicates [layerId] in [cutId] — right above it, or as the next row
+  /// of a block put down [over] a row ([seatUnderBlock]) — and brings its
+  /// pictures over: the copy mints every cel afresh, and a picture lives
+  /// under its cel's id (F-62's law at the layer's scale). ↩️Nothing did
+  /// until 2026-09-26 — a duplicated row came out with no drawing at all
+  /// (measured; card `duplicates-lose-their-pictures`).
+  LayerId _duplicate(
+    CutId cutId,
+    LayerId layerId, {
+    ({LayerId row, List<LayerId> block})? over,
+  }) {
+    final stack = _project.requireActiveCut.layers;
     final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
       insertionIndex: over == null
           ? null
-          : seatAboveRow(_project.requireActiveCut.layers, over),
+          : seatUnderBlock(
+              stack,
+              over: over.row,
+              down: over.block,
+              kind: stack.byId(layerId)!.kind,
+            ),
     );
     final cut = _project.requireActiveCut;
     copyBakedPictures(

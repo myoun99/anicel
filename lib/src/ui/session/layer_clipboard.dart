@@ -6,7 +6,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/new_row_placement.dart' show seatAboveRow;
+import '../../models/new_row_placement.dart' show seatUnderBlock;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
@@ -345,12 +345,20 @@ class LayerClipboard implements BringsMedia {
 
     _project.historyManager.runAsOneStep('Paste rows', () {
       landArrival(_project, arrival);
-      // The TOP row first, each one above the standing row: every row put
-      // down lifts the ones before it, so the block reads as it was copied
-      // — and a folder, standing right above what it holds, lands before it.
+      // The TOP row first, each right under the rows put down before it in
+      // its place ([seatUnderBlock]), so the block reads as it was copied —
+      // and a folder, standing right above what it holds, lands before it.
       for (final row in copy.rows.reversed) {
         if (_lands(row) && !rides(row)) {
-          land(row, _seatAbove(standing));
+          land(
+            row,
+            _seatInBlock(
+              standing,
+              down: [for (final one in pasted) one.landed.layerId],
+              kind: row.alone.kind,
+              folderId: landedAs[row.folderId]?.layerId,
+            ),
+          );
         }
       }
       // An attach row names the base it rides, so it comes after it: into
@@ -441,19 +449,25 @@ class LayerClipboard implements BringsMedia {
       // Top first, for [pasteRows]' reason.
       for (final row in rows.reversed) {
         final folder = landedAs[row.folderId];
+        final seat = _seatInBlock(
+          standing,
+          down: landedAs.values,
+          kind: row.payload.kind,
+          folderId: folder,
+        );
         landedAs[row.sourceId] = row.payload.kind.groupsLayers
             ? commands
                   .pasteLayer(
                     cutId: cut.id,
                     payload: row.payload,
-                    insertionIndex: _seatAbove(standing),
+                    insertionIndex: seat,
                     anchors: (folderId: folder, riding: null),
                   )
                   .layerId
             : commands.linkDuplicateLayer(
                 cutId: cut.id,
                 layerId: row.sourceId,
-                insertionIndex: _seatAbove(standing),
+                insertionIndex: seat,
                 intoFolder: folder,
               );
       }
@@ -499,10 +513,21 @@ class LayerClipboard implements BringsMedia {
     );
   }
 
-  /// Where a pasted row goes in the cut as it stands NOW ([seatAboveRow]):
-  /// over the row [standing] names.
-  int _seatAbove(LayerId? standing) =>
-      seatAboveRow(_project.requireActiveCut.layers, standing);
+  /// Where the next row of a pasted block goes in the cut as it stands NOW
+  /// ([seatUnderBlock]): right under the rows [down] before it in its
+  /// place, the first of its place over the row [standing] names.
+  int _seatInBlock(
+    LayerId? standing, {
+    required Iterable<LayerId> down,
+    required LayerKind kind,
+    LayerId? folderId,
+  }) => seatUnderBlock(
+    _project.requireActiveCut.layers,
+    over: standing,
+    down: down,
+    kind: kind,
+    folderId: folderId,
+  );
 
   /// [payload] with its terms spelled as [respell] says ([Arrival]).
   static LayerCopyPayload _respelled(

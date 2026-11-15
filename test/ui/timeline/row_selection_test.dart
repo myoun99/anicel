@@ -428,6 +428,43 @@ void main() {
       expect(s.activeLayerId, copies.last.id, reason: 'on the top copy');
     });
 
+    test('B: a block of TWO places — a drawing row and the direction row — '
+        'lands each copy right over its source, at its own place\'s end '
+        '(F-596)', () {
+      final s = session();
+      final drawing = s.layers.lastWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      final direction = s.layers.lastWhere(
+        (layer) => layer.kind == LayerKind.instruction,
+      );
+      final before = [for (final layer in s.layers) layer.id];
+
+      s.rowSelection.value = [
+        LayerRowAddress(drawing.id),
+        LayerRowAddress(direction.id),
+      ];
+      s.layerVerbs.duplicateActiveLayer();
+
+      final after = [for (final layer in s.layers) layer.id];
+      final copies = [
+        for (final id in after)
+          if (!before.contains(id)) id,
+      ];
+      expect(copies, hasLength(2));
+      expect(
+        copies,
+        [
+          after[after.indexOf(drawing.id) + 1],
+          after[after.indexOf(direction.id) + 1],
+        ],
+        reason: 'each right over its source — ↩️F-596 carried the direction '
+            'row\'s copy under it: it went over the drawing copy, which the '
+            'section order had carried away',
+      );
+      expect(s.activeLayerId, copies.last, reason: 'on the top copy');
+    });
+
     testWidgets('B: the rename DIALOG renames the whole selection', (
       tester,
     ) async {

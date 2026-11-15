@@ -387,6 +387,28 @@ void main() {
       expect(r.s.activeLayerId, rows[4].id, reason: 'the top one put down');
     });
 
+    test('standing on the DIRECTION row they keep that order too — at the '
+        'top of the ACTION rows, where the section order stands them', () {
+      final r = threeRows();
+      final direction = r.s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.instruction,
+      );
+      select(r.s, [r.a, r.b]);
+      pill(r.s).copyFrame();
+      r.s.clearRowSelection();
+      r.s.selectLayer(direction.id);
+      expect(r.s.activeLayerId, direction.id, reason: '⛔전제');
+
+      pill(r.s).pasteLinkedFrame();
+
+      expect(
+        names(r.s),
+        ['A', 'B', 'C', 'A', 'B'],
+        reason: '↩️F-596: each went over the direction row again and was '
+            'carried over the one before it — B, A',
+      );
+    });
+
     test('a row that is gone has nothing to share: the linked paste goes '
         'dark, and the independent one still lands it', () {
       final r = threeRows();

@@ -346,7 +346,12 @@ void main() {
     final layers = s.requireActiveCut.layers;
     final added = layers.indexWhere((layer) => !before.contains(layer.id));
     expect(added, layers.indexWhere((layer) => layer.id == row.id) + 1);
-    expect(layers.last.id, top.id, reason: 'the top stays the top');
+    expect(
+      layers.indexWhere((layer) => layer.id == top.id),
+      greaterThan(added),
+      reason: 'the top of the ACTION rows stays over it — ↩️it was the top '
+          'of the stack until a cut\'s rows stood in section order (F-596)',
+    );
     await tester.pumpAndSettle();
   });
 
