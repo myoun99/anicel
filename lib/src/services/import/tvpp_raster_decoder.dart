@@ -251,7 +251,7 @@ class _PackBits {
               out[i] = v;
             }
           }
-          _refuseStale(changed);
+          _refuseStale(changed, endsRow: got + 1 == count);
         }
         got += literal;
         at += 1 + literal * 4;
@@ -268,20 +268,31 @@ class _PackBits {
 
   /// A `DBAN`'s `0x80`: the count byte after it passes that many pixels
   /// from the [got]th of the row's [count] — kept as the frame before had
-  /// them where the count is positive, made clear where it is negative —
-  /// and answers how many.
+  /// them where the count is positive, all made the pixel above the first
+  /// of them where it is negative — and answers how many.
   ///
-  /// 🚨A POSITIVE COUNT KEEPS, A NEGATIVE ONE CLEARS (measured 2026-11-14
-  /// on the user's BRUSH.tvpx, card I-86). A count byte below `0x80` passes
-  /// `n`, one from it up `256 - n`, which ends every row of all 29 tips at
-  /// its width. Read so, the 23×23 pencil tips' frames hold 218 to 288
-  /// inked pixels about their first frame's 264, and of all the tips' writes
-  /// the fewest change nothing. ↩️Read as keeping too, as it was that
-  /// afternoon, the pencil's ink grew frame by frame from 264 to 373 — the
-  /// writes that would change nothing were none either way on those tips,
-  /// so they could not tell the two apart. Read as a whole frame, both
-  /// clearing, the other tips lost their ink after the first.
-  /// ⚠️Not yet held to TVPaint's own stamps (card I-86-Q1).
+  /// 🚨A POSITIVE COUNT KEEPS; A NEGATIVE ONE FILLS ITS PIXELS WITH THE ONE
+  /// ABOVE THEIR FIRST — the row above as this frame has it, and one pixel
+  /// of it for the whole span, not the span's own length of it (card I-86).
+  /// A count byte below `0x80` passes `n`, one from it up `256 - n`, which
+  /// ends every row of all 29 tips of the user's BRUSH.tvpx at its width.
+  /// 🔬Held to TVPaint's own stamps (2026-11-15): the user stamped the HB
+  /// pencil's fifteen frames with no paper (I-86-Q8 「팁 그림 종이질감 빼고 팁
+  /// 찍어서 출력한거임. 정확하게 팁 들여줬으면해서」), and laid over them at an
+  /// eighth of a pixel every frame read so stands as near as the first —
+  /// which no skip touches — does: 7.0–10.4 of ink off in all against its
+  /// 8.2, the worst pixel 0.10–0.19 against its 0.12. Each span solved by
+  /// itself against the picture is 0 or 255 whole — 255 where the pixel
+  /// above its first is, whatever stands above its others. And of the
+  /// 78,457 writes of their 150-frame 89×91 tip none changes nothing, nor
+  /// is any run one a skip would have filled.
+  /// ↩️It cleared (2026-11-14, by the pencil's ink staying about its first
+  /// frame's): seven of the fourteen frames then stood a pixel's 0.45–0.93
+  /// off, and that 89×91 tip made 185 writes that changed nothing. Copying
+  /// the row above pixel for pixel leaves five frames 0.27–0.60 off.
+  /// ⛔A frame's first row has no pixel above it. None of the user's tips
+  /// skips so there, so what TVPaint would mean by it is not known, and it
+  /// is refused, not guessed.
   int _takeSkip(
     Uint32List? out,
     int Function(int nth)? place,
@@ -297,25 +308,39 @@ class _PackBits {
       return n;
     }
     final passed = 256 - n;
-    for (var k = 0; out != null && k < passed && got + k < count; k++) {
-      final i = place!(got + k);
-      if (i >= 0) {
-        out[i] = 0;
+    if (out != null) {
+      // The rows are read whole and in order ([_readRows]), each [count]
+      // wide: the pixel above is that many back.
+      final first = place!(got);
+      if (first < count) {
+        throw const TvppRasterDecodeException(
+          'A skip that fills from the row above stands in the first row.',
+        );
+      }
+      final above = out[first - count];
+      for (var k = 0; k < passed && got + k < count; k++) {
+        out[first + k] = above;
       }
     }
     return passed;
   }
 
   /// Refuses a frame one of whose writes changed nothing, where [skips] —
-  /// an encoder that keeps with a skip writes only what differs.
+  /// an encoder that keeps with a skip writes only what differs — but the
+  /// one pixel that ends a row, written by itself ([endsRow]).
   ///
-  /// 🚨IT IS HOW A READING OTHER THAN TVPAINT'S SHOWS (card I-86): the
-  /// user's other tips — 93×84, 67×80, 89×91 and more — make such writes
-  /// from their second `DBAN` on under every reading tried, so how their
-  /// frames chain is not yet known, and a tip read wrong would not be the
-  /// tip («팁은 … 진짜 하나도 안틀리도록», 유저 2026-11-14).
-  void _refuseStale(bool changed) {
-    if (skips && !changed) {
+  /// 🚨IT IS HOW A READING OTHER THAN TVPAINT'S SHOWS (card I-86): a tip
+  /// read wrong would not be the tip («팁은 … 진짜 하나도 안틀리도록», 유저
+  /// 2026-11-14). 🔬Of the 125,225 writes of the seven animated tips in the
+  /// user's BRUSH.tvpx (2026-11-15), read as [_takeSkip] reads them, 25
+  /// change nothing, and every one is a lone literal of its row's last
+  /// pixel: TVPaint writes that pixel by itself where what came before it
+  /// stopped one short, changed or not (`K124 K18 N124 K124 L1`, a row of
+  /// 391).
+  /// ↩️It refused those too, and with the skip read as clearing nine of the
+  /// user's 29 custom brushes stayed out for it.
+  void _refuseStale(bool changed, {bool endsRow = false}) {
+    if (skips && !changed && !endsRow) {
       throw const TvppRasterDecodeException(
         'A frame wrote over pixels what they already held.',
       );
@@ -351,7 +376,8 @@ Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) =>
 /// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
 /// premultiplied BGRA words: a `DBOD` [body] read as a whole canvas, or a
 /// `DBAN` [body] read over [before], the frame it follows, whose pixels its
-/// positive skips keep and its negative ones clear ([_PackBits.skips]).
+/// positive skips keep and its negative ones fill from the row above
+/// ([_PackBits.skips]).
 ///
 /// The rows are a .tvpp `DBOD`'s, the same walker's — `DBAN` adds the skip.
 Uint32List decodeDeepFrameWords(

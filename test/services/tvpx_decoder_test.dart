@@ -17,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('a button under a heading is a brush of its tip\'s frames, a positive '
-      'skip keeping the frame before and a negative one clearing', () async {
+      'skip keeping the frame before and a negative one filling its pixels '
+      'with the one above their first', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'カスタム鉛筆  HB',
@@ -32,7 +33,7 @@ void main() {
     final settings = preset.settings;
     expect([for (final tip in settings.tips) tip.alpha.toList()], [
       [10, 20, 30, 40, 50, 60, 70, 80, 90],
-      [10, 20, 30, 99, 0, 0, 70, 0, 0],
+      [10, 20, 30, 99, 20, 20, 70, 0, 0],
     ]);
     expect(settings.tips.first.size, 3);
     expect(settings.size, 3 * 8 / 100);
@@ -156,8 +157,8 @@ void main() {
   });
 
   test('a tip not read as TVPaint wrote it — written over with what it '
-      'already held, or not 8-bit BGRA — is refused, and only its button is '
-      'left out', () async {
+      'already held, filled from above its first row, or not 8-bit BGRA — is '
+      'refused, and only its button is left out', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'H',
@@ -165,11 +166,13 @@ void main() {
           _button('8', 'pencil'),
           _button('9', 'stale'),
           _button('10', 'rgba'),
+          _button('11', 'top'),
         ],
         tools: {
           'pencil': (tool: _tool(), dip: _pencilDip),
           'stale': (tool: _tool(), dip: _staleDip),
           'rgba': (tool: _tool(), dip: _rgbaDip),
+          'top': (tool: _tool(), dip: _topFillDip),
         },
       ),
       sourceName: 'BRUSH',
@@ -180,6 +183,35 @@ void main() {
       'Button "H 9": its tip was not read '
           '(A frame wrote over pixels what they already held.).',
       'Button "H 10": its tip was not read (The tip is not 8-bit BGRA.).',
+      'Button "H 11": its tip was not read '
+          '(A skip that fills from the row above stands in the first row.).',
+    ]);
+  });
+
+  test('🎯the one pixel that ends a row may be written by itself over what '
+      'it already held — TVPaint writes it so — and no pixel before it',
+      () async {
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'H',
+        buttons: [_button('8', 'last'), _button('9', 'middle')],
+        tools: {
+          'last': (tool: _tool(), dip: _staleLastPixelDip),
+          'middle': (tool: _tool(), dip: _staleMiddlePixelDip),
+        },
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    final preset = result.presets.single;
+    expect(preset.name, 'H 8');
+    expect([for (final tip in preset.settings.tips) tip.alpha.toList()], [
+      [10, 20, 30, 40, 50, 60, 70, 80, 90],
+      [10, 20, 30, 41, 50, 60, 70, 80, 90],
+    ]);
+    expect(result.warnings, [
+      'Button "H 9": its tip was not read '
+          '(A frame wrote over pixels what they already held.).',
     ]);
   });
 
@@ -303,8 +335,8 @@ List<int> _skip(int count, {bool negative = false}) => [
 ];
 
 /// Frame 0 a literal row each; frame 1 keeps row 0 by a skip, writes 99 and
-/// clears the rest of row 1 by a negative skip, keeps one pixel of row 2 and
-/// writes the other two clear.
+/// fills the rest of row 1 by a negative skip with the 20 above the first of
+/// it, keeps one pixel of row 2 and writes the other two clear.
 final Uint8List _pencilDip = _dip([
   [
     ..._literal([10, 20, 30]),
@@ -328,6 +360,57 @@ final Uint8List _staleDip = _dip([
     ..._literal([70, 80, 90]),
   ],
   [..._literal([10, 20, 30]), ..._skip(3), ..._skip(3)],
+]);
+
+/// Frame 1 writes row 0's last pixel, by itself, as the 30 frame 0 has
+/// there, and changes row 1's first.
+final Uint8List _staleLastPixelDip = _dip([
+  [
+    ..._literal([10, 20, 30]),
+    ..._literal([40, 50, 60]),
+    ..._literal([70, 80, 90]),
+  ],
+  [
+    ..._skip(2),
+    ..._literal([30]),
+    ..._literal([41]),
+    ..._skip(2),
+    ..._skip(3),
+  ],
+]);
+
+/// Frame 1 writes row 0's middle pixel, by itself, as the 20 frame 0 has
+/// there.
+final Uint8List _staleMiddlePixelDip = _dip([
+  [
+    ..._literal([10, 20, 30]),
+    ..._literal([40, 50, 60]),
+    ..._literal([70, 80, 90]),
+  ],
+  [
+    ..._skip(1),
+    ..._literal([20]),
+    ..._skip(1),
+    ..._literal([41]),
+    ..._skip(2),
+    ..._skip(3),
+  ],
+]);
+
+/// Frame 1 fills two pixels of row 0, which has no row above it, by a
+/// negative skip.
+final Uint8List _topFillDip = _dip([
+  [
+    ..._literal([10, 20, 30]),
+    ..._literal([40, 50, 60]),
+    ..._literal([70, 80, 90]),
+  ],
+  [
+    ..._literal([11]),
+    ..._skip(2, negative: true),
+    ..._skip(3),
+    ..._skip(3),
+  ],
 ]);
 
 List<int> _u16(int value) => [value >> 8, value & 0xff];
