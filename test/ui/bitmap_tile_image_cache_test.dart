@@ -76,6 +76,17 @@ void main() {
       expect(cache.pictureFor(twin), isNot(same(cache.pictureFor(tile))));
     });
 
+    test("a colour's picture is let go through whichever tile of it", () {
+      final cache = BitmapTileImageCache();
+      final white = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+      final again = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+      cache.pictureFor(white);
+
+      cache.releasePicture(again);
+
+      expect(cache.heldFor(white), isNull);
+    });
+
     test("🚨a colour's picture stays while a tile of it is shown, whichever, "
         'and goes once none is', () {
       final cache = BitmapTileImageCache();

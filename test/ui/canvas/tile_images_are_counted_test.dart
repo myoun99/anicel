@@ -168,4 +168,43 @@ void main() {
       expect(BitmapTileImageCache.liveImageBytes, before);
     });
   });
+
+  // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): the tiles of a
+  // colour share one picture, their colour's block's — on the books once,
+  // and off with the last of them.
+  testWidgets("🚨a colour's one picture is on the books once, and off with "
+      'the last tile of it', (tester) async {
+    await tester.runAsync(() async {
+      final cache = BitmapTileImageCache();
+      // Settle what earlier tests let go of, so the baseline holds still.
+      await collectGarbage();
+      final before = BitmapTileImageCache.liveImageBytes;
+      // A colour no other tile of this file is.
+      const word = 0x7F00FF00;
+      BitmapTile? first = BitmapTile.ofOneColour(size: 4, word: word);
+      BitmapTile? second = BitmapTile.ofOneColour(size: 4, word: word);
+
+      cache.pictureFor(first);
+      cache.pictureFor(second);
+      expect(BitmapTileImageCache.liveImageBytes - before, oneImage);
+
+      first = null;
+      // Bounded: what is waited for must not come.
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+        rounds: 3,
+      );
+      expect(
+        BitmapTileImageCache.liveImageBytes - before,
+        oneImage,
+        reason: 'the other tile of it holds it',
+      );
+
+      second = null;
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+      );
+      expect(BitmapTileImageCache.liveImageBytes, before);
+    });
+  });
 }
