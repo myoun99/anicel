@@ -85,6 +85,10 @@ void main() {
     final ledger = EngineTileLedger(appGpuEngine);
     BitmapTile? tile = aTile();
     ledger.held((hold) => hold.slotsOf(a, [tile!]));
+    // Read by its copy, as a closed project's tiles long are: a store
+    // holds its tiles till then (GpuPool.store), and its copy is told of
+    // before a done asked behind it.
+    await appGpuEngine.done();
     tile = null;
 
     collectGarbageInThisTurn();

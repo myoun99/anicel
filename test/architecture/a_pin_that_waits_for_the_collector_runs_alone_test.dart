@@ -352,6 +352,10 @@ void main() {
         // the clip that asked for it by its finalizer alone, and only the
         // collector runs it.
         'test/native/a_selection_mask_goes_with_its_clip_test.dart',
+        // the-ui-thread-never-enters-the-driver B1-b (11-15): a store handed
+        // over holds its tiles till its copy has read them, and only the
+        // collector can say a pointer alone would not have.
+        'test/native/a_store_handed_over_holds_its_tiles_till_their_copy_reads_them_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '

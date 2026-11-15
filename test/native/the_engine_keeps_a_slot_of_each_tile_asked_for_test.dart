@@ -477,6 +477,32 @@ void main() {
     expect(ledger.slotCount, 0);
   });
 
+  // The-ui-thread-never-enters-the-driver B1-b (11-15): a slot is told at
+  // once, the books being the caller's, and its copy — the engine's
+  // thread's — says its place unwritten once it has failed
+  // (GpuPool.onUnwritten). Let go, its tile is stored again where it is
+  // next asked for; kept, a frame would lay a slot nothing was written to.
+  test('a slot whose copy the device refused is let go, its tile to be '
+      'stored again', () async {
+    final engine = GpuEngine.onFirstAdapter();
+    addTearDown(engine.close);
+    final ledger = EngineTileLedger(engine);
+    addTearDown(ledger.pool.free);
+    final kept = tileOf(12);
+    ledger.held((hold) => hold.slotsOf(a, [kept]));
+    await engine.done();
+    expect(ledger.slotCount, 1, reason: 'the premise: a slot written');
+
+    engine.debugLose();
+    final refused = tileOf(13);
+    ledger.held((hold) => hold.slotsOf(a, [refused]));
+    expect(ledger.slotCount, 2, reason: 'its slot told at once');
+    await expectLater(engine.done(), throwsA(isA<GpuRefused>()));
+
+    expect(ledger.slotOf(refused), isNull);
+    expect(ledger.slotOf(kept), isNotNull);
+  });
+
   test('a budget moved is the one a full pool keeps to, the pages made '
       'staying', () {
     final ledger = EngineTileLedger(appGpuEngine);
