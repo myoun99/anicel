@@ -125,12 +125,13 @@ pub fn open(job: &Job) -> bool {
         set_error("video export: the MP4 file could not be created");
         return false;
     };
+    // The size is named, not that the machine has no encoder: the main PC's
+    // H.265 encoder (NVIDIA) turned away 64×48 where `probe` — which asks
+    // no size — said it had one (관제 2026-11-15, board
+    // trimmed-movie-decodes-to-nv12). ↩️「no H.265 encoder on this machine」.
     let Ok(video_stream) = video_stream(&writer, job, width, height) else {
-        set_error(if hevc {
-            "video export: no H.265 encoder on this machine"
-        } else {
-            "video export: no H.264 encoder accepted the frames"
-        });
+        let name = if hevc { "H.265" } else { "H.264" };
+        set_error(&format!("video export: no {name} encoder accepted {width}x{height} frames"));
         return false;
     };
     let audio_stream = if job.channels > 0 {

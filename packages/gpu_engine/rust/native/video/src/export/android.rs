@@ -350,12 +350,14 @@ pub fn open(job: &Job) -> bool {
         writer.video_codec = writer.open_video_codec(mime, PLANAR, job.bitrate_bps);
         writer.semi_planar = false;
     }
+    // The size is named, not that the device has no encoder: one that
+    // exists turns a size away at configure, as the main PC's H.265 encoder
+    // did 64×48 on Windows where the probe said it had one (관제
+    // 2026-11-15, board trimmed-movie-decodes-to-nv12). ↩️「no H.265
+    // encoder on this device」.
     if writer.video_codec.is_null() {
-        set_error(if job.codec == CODEC_HEVC {
-            "video export: no H.265 encoder on this device"
-        } else {
-            "video export: no H.264 encoder accepted the frames"
-        });
+        let name = if job.codec == CODEC_HEVC { "H.265" } else { "H.264" };
+        set_error(&format!("video export: no {name} encoder accepted {width}x{height} frames"));
         return false;
     }
     if job.channels > 0 {

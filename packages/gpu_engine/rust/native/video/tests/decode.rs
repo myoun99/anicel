@@ -699,9 +699,14 @@ fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
 // writer of them has a sum of its own to make YCbCr of it (board
 // trimmed-movie-decodes-to-nv12-Q2, 2026-11-15). ↩️A piece's writer alone
 // refused it till then.
+//
+// 1280×720, the size the export's H.265 movies are written at
+// (`export/tests.rs`): the main PC's H.265 encoder (NVIDIA) turned 64×48
+// away at open, so the refusal was never reached there (관제 2026-11-15).
 #[test]
 fn h26x_takes_no_rgba_whoever_writes_it() {
     let _turn = one_at_a_time();
+    const SIDES: (i32, i32) = (1280, 720);
     for codec in [0, 1] {
         if qa_video_export_probe(0, codec) == 0 {
             continue;
@@ -713,9 +718,10 @@ fn h26x_takes_no_rgba_whoever_writes_it() {
             let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
             // SAFETY (each): the export's declarations; four colours or
             // none, and a whole frame of the size opened.
-            let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, codec, 0, 0, colours) };
+            let opened =
+                unsafe { qa_video_export_open(utf8.as_ptr(), SIDES.0, SIDES.1, 24, 1, 0, 0, 0, codec, 0, 0, colours) };
             assert_eq!(opened, 1, "{name}: {}", export_error());
-            let rgba = [128u8; 64 * 48 * 4];
+            let rgba = vec![128u8; (SIDES.0 * SIDES.1 * 4) as usize];
             let refused = unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
             let said = export_error();
             qa_video_export_abort();
@@ -724,4 +730,23 @@ fn h26x_takes_no_rgba_whoever_writes_it() {
             assert!(said.contains("written of NV12"), "{name}: {said}");
         }
     }
+}
+
+// A size the machine's encoder turns away is named when the open fails —
+// not that the machine has no encoder, which the main PC's said of H.265
+// at 64×48 where it had one (관제 2026-11-15). 32×32 is a size Windows'
+// own H.264 encoder turns away at open on any machine (`hardware_law`).
+#[cfg(windows)]
+#[test]
+fn a_size_no_encoder_takes_is_named() {
+    let _turn = one_at_a_time();
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-small.mp4", std::process::id()));
+    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    // SAFETY: the export's declarations; no colours named.
+    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 32, 32, 24, 1, 0, 0, 0, 0, 0, 0, std::ptr::null()) };
+    let said = export_error();
+    qa_video_export_abort();
+    std::fs::remove_file(path).ok();
+    assert_eq!(opened, 0, "32x32 is turned away");
+    assert_eq!(said, "video export: no H.264 encoder accepted 32x32 frames");
 }
