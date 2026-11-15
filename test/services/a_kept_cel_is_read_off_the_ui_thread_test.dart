@@ -122,47 +122,73 @@ void main() {
     );
   });
 
-  test('🚨a cel made hot while its bytes are read is not laid again: the '
-      'thaw asks for no tile block', () async {
-    // A tile side no other tile in this process wears, so the list of its
-    // size ([TileBlocks]) holds what this test parks there and nothing a
-    // collected tile's finalizer brings.
-    const side = 24;
-    const small = CanvasSize(width: 2 * side, height: side);
-    final length = BitmapTile.bytesFor(side);
-    BitmapSurface twoTiles(int salt) => BitmapSurface(
-      canvasSize: small,
-      tileSize: side,
-      tiles: {
-        TileCoord(x: 0, y: 0): tile(salt, side: side),
-        TileCoord(x: 1, y: 0): tile(salt + 4, side: side),
-      },
-    );
-    final store = BrushFrameStore();
-    final k = key('f');
-    // Read where they lie: the engine keeps no tile of this side.
-    keepInAFile(store, {k: twoTiles(3)}, bytesOf: readTilesInPlace);
-    final drawn = twoTiles(9);
-    // Two blocks parked on the list: the next two asks of that length are
-    // answered with them, the last freed first.
-    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-    blocks.forEach(TileBlocks.free);
+  // The two ways a cel is hot before its thaw ahead has its bytes: drawn
+  // on — the ref is let go with it — and read here by who could not wait,
+  // which keeps the very ref (the file still holds those bytes).
+  final everyWayHot =
+      <(String, BitmapSurface Function(BrushFrameStore, BrushFrameKey))>[
+        (
+          'drawn on',
+          (store, k) {
+            final drawn = BitmapSurface(
+              canvasSize: const CanvasSize(width: 48, height: 24),
+              tileSize: 24,
+              tiles: {TileCoord(x: 0, y: 0): tile(9, side: 24)},
+            );
+            store.storeBakedSurface(k, drawn);
+            return drawn;
+          },
+        ),
+        ('read here', (store, k) => store.bakedSurfaceOrNull(k)!),
+      ];
 
-    final thaw = store.thawAhead(k, canvasSize: small);
-    expect(WorkerFileReads.inFlight, 1, reason: 'premise: being read');
-    store.storeBakedSurface(k, drawn);
-    await thaw;
+  for (final (how, makeHot) in everyWayHot) {
+    test('🚨a cel $how while its bytes are read is not laid again: the thaw '
+        'asks for no tile block', () async {
+      // A tile side no other tile in this process wears, so the list of its
+      // size ([TileBlocks]) holds what this test parks there and nothing a
+      // collected tile's finalizer brings.
+      const side = 24;
+      const small = CanvasSize(width: 2 * side, height: side);
+      final length = BitmapTile.bytesFor(side);
+      final store = BrushFrameStore();
+      final k = key('f');
+      // Read where they lie: the engine keeps no tile of this side.
+      keepInAFile(
+        store,
+        {
+          k: BitmapSurface(
+            canvasSize: small,
+            tileSize: side,
+            tiles: {
+              TileCoord(x: 0, y: 0): tile(3, side: side),
+              TileCoord(x: 1, y: 0): tile(7, side: side),
+            },
+          ),
+        },
+        bytesOf: readTilesInPlace,
+      );
 
-    expect(store.hotBakedSurfaceOrNull(k), same(drawn), reason: 'premise');
-    final asked = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-    addTearDown(() => asked.forEach(TileBlocks.free));
-    expect(
-      [for (final block in asked) block.address],
-      [blocks[1].address, blocks[0].address],
-      reason: 'the parked blocks lie as they lay: a thaw that laid the '
-          "cel's two tiles took them",
-    );
-  });
+      final thaw = store.thawAhead(k, canvasSize: small);
+      expect(WorkerFileReads.inFlight, 1, reason: 'premise: being read');
+      final hot = makeHot(store, k);
+      // Two blocks parked on the list once the cel is hot: the next two
+      // asks of that length are answered with them, the last freed first.
+      final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
+      blocks.forEach(TileBlocks.free);
+      await thaw;
+
+      expect(store.hotBakedSurfaceOrNull(k), same(hot), reason: 'premise');
+      final asked = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
+      addTearDown(() => asked.forEach(TileBlocks.free));
+      expect(
+        [for (final block in asked) block.address],
+        [blocks[1].address, blocks[0].address],
+        reason: 'the parked blocks lie as they lay: a thaw that laid the '
+            "cel's two tiles took them",
+      );
+    });
+  }
 
   test('🚨a cel drawn on while it is LAID — its bytes read already — keeps '
       'the drawing: the thaw is let go, never written over it', () async {
