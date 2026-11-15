@@ -126,5 +126,5 @@ int _placeOf(LayerKind kind) {
       (section == TimelineSection.camera ? timelineCameraSectionRank(kind) : 0);
 }
 
-const int _lastPlace =
+final int _lastPlace =
     TimelineSection.values.length * (_cameraSectionTopRank + 1) - 1;
