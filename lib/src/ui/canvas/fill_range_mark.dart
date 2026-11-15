@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-import '../../models/canvas_point.dart';
 import '../../services/canvas_flood_fill.dart'
     show FillRangeCover, FloodFillRegion;
 import 'display_resample.dart';
@@ -30,8 +29,8 @@ final class FillRangeMark {
   /// of the row it lands on (`FillRange.coveredWithin`).
   FillRangeMark(FillRangeCover covered)
     : this._(
-        _outlineOf(covered.outline),
-        _boundsOf(covered.outline),
+        covered.outline.path,
+        covered.outline.path.getBounds(),
         covered.cover,
         Offset.zero,
       );
@@ -88,27 +87,6 @@ final class FillRangeMark {
       ..translate(shift.dx, shift.dy);
     drawShadedRect(canvas, bounds.shift(-shift), _checkerPaint);
     canvas.restore();
-  }
-
-  static ui.Path _outlineOf(List<List<CanvasPoint>> contours) {
-    final path = ui.Path();
-    for (final contour in contours) {
-      path.addPolygon([
-        for (final point in contour) Offset(point.x, point.y),
-      ], true);
-    }
-    return path;
-  }
-
-  static Rect _boundsOf(List<List<CanvasPoint>> contours) {
-    Rect? bounds;
-    for (final contour in contours) {
-      for (final point in contour) {
-        final at = Rect.fromLTWH(point.x, point.y, 0, 0);
-        bounds = bounds?.expandToInclude(at) ?? at;
-      }
-    }
-    return bounds ?? Rect.zero;
   }
 }
 

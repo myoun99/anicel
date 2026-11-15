@@ -371,7 +371,11 @@ void main() {
       final covered = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 6, height: 6, mask: mask),
       ).coveredWithin(null)!;
-      expect(covered.outline, hasLength(2), reason: 'the square and its hole');
+      expect(
+        covered.outline.points,
+        hasLength(2),
+        reason: 'the square and its hole',
+      );
       final path = FillRangeMark(covered).outline;
       expect(path.contains(const Offset(0.5, 0.5)), isTrue);
       expect(path.contains(const Offset(2.5, 2.5)), isFalse, reason: 'hole');
@@ -385,7 +389,7 @@ void main() {
       mask.fillRange(16 + 8, 16 + 12, 0);
       final contours = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 16, height: 3, mask: mask),
-      ).coveredWithin(null)!.outline;
+      ).coveredWithin(null)!.outline.points;
       expect(
         [
           for (final contour in contours)
@@ -528,7 +532,7 @@ void main() {
           square(0, 0, 6),
         ).coveredWithin(clip)!;
         expect(covered.cover.mask, everyElement(0));
-        expect(covered.outline, isEmpty);
+        expect(covered.outline.points, isEmpty);
       }
     });
   });

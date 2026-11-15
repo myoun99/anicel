@@ -20,7 +20,7 @@ void main() {
       left: left,
       top: top,
       width: width,
-    ))
+    ).points)
       [for (final point in contour) (point.x, point.y)],
   ];
 

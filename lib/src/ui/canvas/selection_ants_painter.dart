@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart' show GuideTransform;
+import '../../services/viewport_transform_matrix.dart';
 import '../dashed_path.dart';
 import '../theme/app_theme.dart';
 import '../repaint_props.dart';
@@ -166,16 +167,23 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
   Offset _map(CanvasPoint point) => viewport.canvasToViewportOffset(point);
 
-  /// The committed region's pixel-edge outline, in SCREEN space.
+  /// The committed region's pixel-edge outline, in SCREEN space: its
+  /// canvas-space path ([CanvasSelectionRegion.pixelOutline]) moved whole
+  /// through the view and [screenOffset], in one native transform.
   ///
-  /// ⚠️No cache HERE. The expensive half — the mask and the boundary walk —
-  /// is memoised on the region itself, which is immutable and therefore an
-  /// exact key; what is left is mapping the points, which is what tracing
-  /// the polygon cost all along. A cache in this class would either vanish
-  /// every tick (the painter is rebuilt per frame) or be a global that the
-  /// two painters on screen take turns evicting.
+  /// ⚠️No cache HERE. The expensive half — the mask and the boundary walk,
+  /// and the path laid from it — is memoised on the region itself, which is
+  /// immutable and therefore an exact key. A cache in this class would
+  /// either vanish every tick (the painter is rebuilt per frame) or be a
+  /// global that the two painters on screen take turns evicting.
+  /// ↩️Till 2026-11-16 each point was mapped here, every tick
+  /// (pixel-ants-cost-a-frame-while-moving).
   Path _committedOutline(CanvasSelectionRegion region) =>
-      region.pixelOutlineIn((point) => _map(point) + screenOffset);
+      region.pixelOutline.transform(
+        (Matrix4.translationValues(screenOffset.dx, screenOffset.dy, 0)
+              ..multiply(viewportTransformMatrix(viewport)))
+            .storage,
+      );
 
   @override
   void paint(Canvas canvas, Size size) {

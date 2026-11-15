@@ -730,7 +730,7 @@ final class _RowsCovered {
 /// ([pixelRunContours]) — the walk's — and their [cover], 255 on each and 0
 /// elsewhere over the range's box — the engine's (flip lane ⓐ-3).
 typedef FillRangeCover = ({
-  List<List<CanvasPoint>> outline,
+  PixelContours outline,
   FloodFillRegion cover,
 });
 

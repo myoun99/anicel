@@ -749,7 +749,7 @@ class CanvasSelectionRegion {
     return combined;
   }
 
-  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65).
+  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65), in CANVAS space.
   ///
   /// 유저: 「라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데,
   /// **선택 커밋될떈 픽셀에 제대로 안착한 상태로**. 지금은 **변형되는 픽셀
@@ -770,18 +770,19 @@ class CanvasSelectionRegion {
   /// of the selected box, so callers cache the result rather than asking
   /// per frame.
   ///
+  /// 🚨IN CANVAS SPACE, AND MOVED WHOLE (card
+  /// pixel-ants-cost-a-frame-while-moving, 2026-11-16): a painter draws it
+  /// through its canvas→screen matrix (`Path.transform`). ↩️It was laid
+  /// anew in screen space at every tick through a map a point at a time
+  /// (`pixelOutlineIn`) — twenty thousand points mapped and made objects
+  /// a tick for a 4K lasso, standing or moving.
+  ///
   /// The contours are CLOSED and walk consistently, so a dash phase runs
   /// around a whole component (and around a hole) exactly as it did around
   /// [pathIn]'s contours.
-  ui.Path pixelOutlineIn(ui.Offset Function(CanvasPoint) map) {
-    final path = ui.Path();
-    for (final contour in _pixelContours) {
-      path.addPolygon([for (final point in contour) map(point)], true);
-    }
-    return path;
-  }
+  ui.Path get pixelOutline => _pixelContours.path;
 
-  List<List<CanvasPoint>>? _pixelContoursCache;
+  PixelContours? _pixelContoursCache;
 
   /// What holding THIS region costs, for the history stack's byte budget.
   ///
@@ -793,24 +794,16 @@ class CanvasSelectionRegion {
   ///
   /// ⚠️Zero until something asks for the contours: a region nobody drew
   /// ants around holds only its steps.
-  int get estimatedRetainedBytes {
-    final contours = _pixelContoursCache;
-    if (contours == null) {
-      return 0;
-    }
-    var points = 0;
-    for (final contour in contours) {
-      points += contour.length;
-    }
-    return points * _bytesPerContourPoint;
-  }
+  int get estimatedRetainedBytes =>
+      (_pixelContoursCache?.pointCount ?? 0) * _bytesPerContourPoint;
 
-  /// Two doubles and the object header a [CanvasPoint] costs on the Dart
-  /// heap. An estimate by construction — the budget needs the ORDER of
-  /// the number, and zero was the wrong order.
-  static const int _bytesPerContourPoint = 32;
+  /// A point's two ints as the walk keeps them, and its point and verb in
+  /// the path laid from them. An estimate by construction — the budget
+  /// needs the ORDER of the number, and zero was the wrong order.
+  /// ↩️32 while each point was a [CanvasPoint] on the Dart heap.
+  static const int _bytesPerContourPoint = 8 + 8 + 1;
 
-  /// The closed contours of [pixelOutlineIn], in CANVAS space.
+  /// The closed contours of [pixelOutline], in CANVAS space.
   ///
   /// ⚠️Memoised, and that is not an optimisation but the condition of
   /// calling it from a painter at all: the walk folds every row of the
@@ -822,16 +815,16 @@ class CanvasSelectionRegion {
   /// tick and there is more than one of them on screen (the selection layer
   /// and the panel's idle outline), so a cache living there would either
   /// vanish every frame or be a global two painters take turns evicting.
-  List<List<CanvasPoint>> get _pixelContours =>
+  PixelContours get _pixelContours =>
       _pixelContoursCache ??= _walkPixelContours();
 
-  /// The contours [pixelOutlineIn] draws, for the test that pins how many
+  /// The contours [pixelOutline] draws, for the test that pins how many
   /// POINTS they hold — the straight-run merge is invisible in the shape
   /// and only shows up in the count, so nothing else can measure it.
   @visibleForTesting
-  List<List<CanvasPoint>> get pixelOutlineContours => _pixelContours;
+  List<List<CanvasPoint>> get pixelOutlineContours => _pixelContours.points;
 
-  List<List<CanvasPoint>> _walkPixelContours() {
+  PixelContours _walkPixelContours() {
     final bounds = selectedBounds;
     // The pixel box: every pixel whose CENTRE can be inside. A box smaller
     // than that would clip the outline; a bigger one only costs rows.
@@ -840,7 +833,7 @@ class CanvasSelectionRegion {
     final width = (bounds.right + 0.5).ceil() - left;
     final height = (bounds.bottom + 0.5).ceil() - top;
     if (width <= 0 || height <= 0) {
-      return <List<CanvasPoint>>[];
+      return PixelContours.none;
     }
     return pixelRunContours(
       pixelRunsFor(left: left, top: top, width: width, height: height),
@@ -883,7 +876,7 @@ class CanvasSelectionRegion {
   ///
   /// The answer without a byte per pixel of the box — for a reader that
   /// wants WHERE the pixels are rather than the pixels: the outline walk
-  /// ([pixelOutlineIn]), and an area laid in pieces (`buildRegionFillDabs`),
+  /// ([pixelOutline]), and an area laid in pieces (`buildRegionFillDabs`),
   /// which finds the tiles it reaches from these and fills only theirs.
   ///
   /// ↩️Till 2026-11-14 the CPU folded each row's crossings here in f64
