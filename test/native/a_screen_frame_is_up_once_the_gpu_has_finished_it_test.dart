@@ -325,12 +325,13 @@ void main() {
         );
 
     /// The canvas standing on [nodes] — the cel [key] keeps blue at the
-    /// corner — over [float], once its picture is made: answers how the
-    /// same canvas is seen through another view.
+    /// corner — over [float], in a box of [size], once its picture is
+    /// made: answers how the same canvas is seen through another view.
     Future<Future<void> Function(CanvasViewport view)> standOver(
       WidgetTester tester,
-      SelectionFloatOverlay float,
-    ) async {
+      SelectionFloatOverlay float, {
+      Size size = viewSize,
+    }) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
       final cels = BrushFrameStore();
@@ -352,7 +353,7 @@ void main() {
       );
       Widget seenThrough(CanvasViewport view) => onAScreen(
         screen,
-        size: viewSize,
+        size: size,
         under: const Color(0xFF00FF00),
         view: standingOn(
           run,
@@ -506,6 +507,27 @@ void main() {
       );
 
       expect(gates, hasLength(1));
+    });
+
+    // A texture's sides are rounded up a step (`EngineScreenTexture`):
+    // a box of 128 has room on one of 512 whether it asks for any or not.
+    testWidgets('the screen holds room about a box whose sides are a whole '
+        'step of its texture\'s', (tester) async {
+      const box = Size(512, 512);
+      final laid = layersLaid();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+
+      await standOver(tester, float, size: box);
+      await tester.pump();
+
+      final home = laid.last;
+      expect(home.left < 0 && home.top < 0, isTrue, reason: '$home');
+      expect(
+        home.right > box.width && home.bottom > box.height,
+        isTrue,
+        reason: '$home',
+      );
     });
 
     testWidgets('a zoom since the frame up was drawn moves it nowhere: it '
