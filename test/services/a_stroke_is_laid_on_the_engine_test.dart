@@ -318,20 +318,22 @@ void main() {
       ),
     ]);
     final cel = Object();
-    final landed = ledger.land(
+    BitmapTile land() => ledger.land(
       cel,
       [(column: 0, row: 0, under: null)],
       by: (pool, cel, asked) =>
           made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;
+    final landed = land();
     expect(ledger.slotOf(landed), isNotNull);
-    // The page full, the next store is past its budget, which lets go every
-    // tile no call holds.
+    // The page full, the next store is past its budget, which lets go the
+    // tile stored longest ago that it can store again.
     final filler = [
       for (var n = 1; n < ledger.pool.bytes ~/ gpuTileBytes; n++)
         BitmapTile.blank(size: gpuTileSide),
     ];
     ledger.held((held) => held.slotsOf(cel, filler));
+    final page = ledger.pool.bytes;
     final hold = solid([1, 2, 3, 255]);
     ledger.held((held) => held.slotsOf(cel, [hold]));
     expect(
@@ -340,7 +342,18 @@ void main() {
       reason: 'LIVENESS: the full pool did let go what it can store again',
     );
     expect(ledger.slotOf(landed), isNotNull);
+
+    // A landing the pool is full at is short as a store is: by the one
+    // slot it takes, of the tile stored longest ago that can be stored
+    // again, and no page.
+    final next = land();
+
+    expect(ledger.pool.bytes, page, reason: 'room made, not a page');
+    expect(ledger.slotOf(filler[1]), isNull);
+    expect(ledger.slotOf(filler[2]), isNotNull, reason: 'one, and no more');
+    expect(ledger.slotOf(landed), isNotNull);
     expect(at(landed.pixels, 12, 12), [200, 100, 50, 255]);
+    expect(at(next.pixels, 12, 12), [200, 100, 50, 255]);
   });
 
   test('🚨a stroke lands at the line the OS gives, on the slot of a tile '

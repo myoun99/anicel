@@ -580,6 +580,11 @@ final GpuEngine _engine;
   @visibleForTesting
   Object? recordOf(BitmapTile tile) => _slotNow(tile);
 
+  /// The place [tile] has, or null before its first store — a probe: a
+  /// tile stored again is in the one it had, its finalizer attached once.
+  @visibleForTesting
+  Object? placeOf(BitmapTile tile) => _places[tile];
+
   static void _refuseOtherGrids(List<BitmapTile> tiles) {
     for (final tile in tiles) {
       if (tile.size != gpuTileSide) {

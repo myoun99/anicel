@@ -119,6 +119,7 @@ void main() {
     final lives = aTile();
     ledger.held((hold) => hold.slotsOf(a, [lives]));
     final record = WeakReference(ledger.recordOf(lives)!);
+    final place = ledger.placeOf(lives);
     // The rest of its page, so the next cel finds the pool full.
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
     final rest = [for (var n = 1; n < slots; n++) aTile()];
@@ -129,8 +130,31 @@ void main() {
     await collectGarbage();
 
     expect(record.target, isNull, reason: 'nothing holds the record');
-    // Alive to the end, and stored again in a record of its own.
+    // Alive to the end, and stored again in a record of its own — in the
+    // place it had: its finalizer is the one attached at its first store.
     ledger.held((hold) => hold.slotsOf(a, [lives]));
     expect(ledger.recordOf(lives), isNotNull);
+    expect(ledger.placeOf(lives), same(place));
+  });
+
+  // Read off the heap: a walk that left it listed would keep every slot a
+  // tile ever took with it, and no count tells.
+  test('a slot let go with its tile is swept out by the next walk', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    // In a call of its own, so no tile is alive past it.
+    WeakReference<Object> recordOfATileDropped() {
+      final tile = aTile();
+      ledger.held((hold) => hold.slotsOf(a, [tile]));
+      return WeakReference(ledger.recordOf(tile)!);
+    }
+
+    final record = recordOfATileDropped();
+    await collectGarbageUntil(() => ledger.slotCount == 0);
+    expect(ledger.slotCount, 0, reason: 'the premise: let go with its tile');
+
+    ledger.respondToMemoryPressure();
+    await collectGarbage();
+
+    expect(record.target, isNull, reason: 'the walk swept it out');
   });
 }
