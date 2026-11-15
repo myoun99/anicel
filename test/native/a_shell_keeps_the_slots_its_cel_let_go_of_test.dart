@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -13,6 +15,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 
 import '../helpers/cels_parked_cold.dart';
@@ -180,6 +183,34 @@ void main() {
     expect(shell.tiles[left]!.pixels, first.pixels);
     expect(shell.tiles[right]!.pixels, second.pixels);
     expect(readsAgain, 1);
+  });
+
+  // A tile's block comes from the engine's lists, where a freed one parks
+  // by its size for the next ask (TileBlocks): what it held is still there.
+  test('a tile of a shell whose cel keeps no bytes of it reads as nothing, '
+      'whatever its block held before', () {
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 2,
+    );
+    final first = aTileOfItsOwn();
+    final second = aTileOfItsOwn();
+    ledger.held((hold) => hold.slotsOf(a, [first, second]));
+    final shell = ledger.shellOf(
+      aCelOf({left: first, right: second}),
+      readAgain: () => aCelOf({right: second}),
+    )!;
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = [for (var n = 2; n < slots; n++) aTileOfItsOwn()];
+    ledger.held((hold) => hold.slotsOf(a, rest));
+    ledger.held((hold) => hold.slotsOf(b, [aTileOfItsOwn()]));
+    expect(ledger.slotOf(shell.tiles[left]!), isNull, reason: '⛔premise');
+    final parked = TileBlocks.alloc(gpuTileBytes);
+    parked.asTypedList(gpuTileBytes).fillRange(0, gpuTileBytes, 0xFF);
+    TileBlocks.free(parked);
+
+    expect(shell.tiles[left]!.pixels.every((byte) => byte == 0), isTrue);
   });
 
   // One law for every store: one made with no keeper of its own keeps
