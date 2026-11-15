@@ -163,10 +163,12 @@ void main() {
         Axis.horizontal,
         [word],
       ),
+      // A name of two words: the writing's need is its width on ONE line,
+      // not the narrowest it would break to.
       'a name and its number': (
-        () => slider(label: 'Size'),
+        () => slider(label: 'Brush size'),
         Axis.horizontal,
-        ['Size', word],
+        ['Brush size', word],
       ),
       'a number along a stood bar': (
         () => slider(axis: Axis.vertical),
@@ -243,6 +245,7 @@ void main() {
       "and is cut where even the bar's ends cannot hold it", (tester) async {
     const said = '200';
     late double run;
+    late double slot;
     Future<RenderVerticalWriting> standing(double length) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -265,6 +268,9 @@ void main() {
                       upright: true,
                     );
                     run = bar.standingRunIn(context);
+                    slot =
+                        FieldSlider.valueStyleIn(context)!.fontSize! *
+                        verticalWritingLineHeight;
                     return bar;
                   },
                 ),
@@ -286,6 +292,16 @@ void main() {
     // each end ([FieldSlider.standingRunIn]).
     final within = await standing(run - 4);
     expect(within.tooltipMessage, isEmpty, reason: 'its insets given way');
+    // And it is PAINTED so: its first slot an inset less two from the top,
+    // the column filling the bar but for that at each end — not cut short
+    // in the room whole insets would leave it.
+    expect(
+      within,
+      paints..translate(
+        x: within.size.width / 2,
+        y: FieldSlider.inset - 2 + slot / 2,
+      ),
+    );
     final short = await standing(run - 2 * FieldSlider.inset - 4);
     expect(short.tooltipMessage, said, reason: 'past the ends, it is cut');
   });
