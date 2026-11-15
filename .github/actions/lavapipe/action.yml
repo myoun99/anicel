@@ -1,0 +1,52 @@
+name: Ready lavapipe for the GPU engine
+description: >
+  Mesa's Vulkan on the CPU, the adapter the GPU engine opens on a runner
+  with no GPU, ready to export the engine's shown surface as a dma-buf —
+  for every Linux job that opens the engine.
+
+# ⚖️ONE ACTION, NOT A STEP PER JOB. gpu-engine.yml's Linux job and ci.yml's
+# Linux shards each carried this as a copy of their own, and the rule of
+# three moved them here when linux-release.yml's engine tests became the
+# third (관제 2026-11-16, board round-1091-builds-all-stop-at-their-checks:
+# every one of them `Bad state: no adapter`, the release runner having no
+# Vulkan at all). test/architecture/every_job_that_runs_lavapipe_takes_it_from_one_action_test.dart
+# holds every workflow to this action: none installs mesa-vulkan-drivers
+# by hand.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+    # The engine's shown surface is exported as a dma-buf through
+    # VK_EXT_image_drm_format_modifier, and lavapipe offers it only when
+    # llvmpipe can open /dev/udmabuf — without it llvmpipe imports dma-bufs
+    # and exports none (Mesa 25.2.8: llvmpipe/lp_screen.c,
+    # lavapipe/lvp_device.c). gpu-engine.yml's bridge test stopped there
+    # (관제 2026-11-07, run 42274856506), and so did every test of ci.yml's
+    # Linux shards that opened a screen — RGBA for want of the extension,
+    # then BGRA, which Linux never shows: 150 red files on shard 1 of the
+    # bundle PR's run 43591634086 (관제 2026-11-15, board
+    # ci-linux-shards-cannot-make-a-shown-surface). So the runner's user is
+    # lent the device. A lend that fails is shown and stops nothing: the
+    # engine's refusal then says why.
+    # The module is loaded only when the device is missing: the runner's
+    # kernel (7.0.0-1017-azure) has udmabuf built in, root:kvm, so modprobe
+    # finds no module, and its exit 1 ended the step before the chown —
+    # the bridge test was red behind a green step (관제 2026-11-07, run
+    # 42324320792).
+    # Lent the device, a screen of more than 64 MiB was still refused —
+    # vkAllocateMemory, out of device memory: udmabuf makes no buffer past
+    # its size_limit_mb, 64 by default, and a test at 1600 × 1000 opens its
+    # screen at 5120 × 3584, 70 MiB (the bundle PR's run 43724112264 had 34
+    # and 48 red files on shards 0 and 1, every one of them that refusal;
+    # the sizes measured on the main PC, 2026-11-16). The limit is raised
+    # to 256 MiB, last, so a failure there takes nothing else with it.
+    - name: lend lavapipe /dev/udmabuf
+      shell: bash
+      continue-on-error: true
+      run: |
+        ls -l /dev/udmabuf || true
+        [ -e /dev/udmabuf ] || sudo modprobe udmabuf
+        sudo chown "$USER" /dev/udmabuf
+        ls -l /dev/udmabuf
+        echo 256 | sudo tee /sys/module/udmabuf/parameters/size_limit_mb
