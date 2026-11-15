@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart' show lowerBound;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuWaveView;
 import 'frame_window_semantics.dart';
 
 import '../../models/frame.dart'
@@ -16,6 +15,7 @@ import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/app_input_settings.dart' show AppInput;
+import '../audio/engine_wave_views.dart';
 import '../audio/waveform_painter.dart';
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
@@ -58,9 +58,8 @@ import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_screen.dart';
-import 'timeline_grid_tile_ops.dart' show timelineGridPackRgba;
 import 'timeline_grid_tile_store.dart';
-import 'timeline_se_row_visual.dart' show SeRowSound, TimelineRowSounds;
+import 'timeline_se_row_visual.dart' show TimelineRowSounds;
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -417,53 +416,32 @@ class TimelineRowCellsPainter extends CustomPainter
     if (row == null || to <= from || frameCellExtent <= 0) {
       return const [];
     }
+    double along(int frame) => startAlong(axis, cellRectFor(frame));
+    final on = (
+      along: along,
+      origin: along(from),
+      from: from,
+      to: to,
+      axis: axis,
+      across: crossAxisExtent,
+      devicePixelRatio: devicePixelRatio,
+      frameRate: row.frameRate,
+    );
     return [
       for (final sound in row.sounds)
-        if (frameRangesOverlap(
-          sound.startFrame,
-          sound.startFrame + sound.audibleFrames,
-          from,
-          to,
-        ))
+        for (final view in engineWaveViewsOf(
           (
             peaks: sound.peaks,
-            view: _waveViewOf(sound, row, from, devicePixelRatio),
+            startFrame: sound.startFrame,
+            audibleFrames: sound.audibleFrames,
+            leadingFrames: sound.leadingFrames,
+            gain: sound.gain,
           ),
+          on: on,
+          ink: row.ink,
+        ))
+          (peaks: sound.peaks, view: view),
     ];
-  }
-
-  /// [sound]'s wave as the tile of the span from frame [from] shows it
-  /// ([wavesIn]).
-  GpuWaveView _waveViewOf(
-    SeRowSound sound,
-    TimelineRowSounds row,
-    int from,
-    double devicePixelRatio,
-  ) {
-    double along(int frame) => startAlong(axis, cellRectFor(frame));
-    // A frame's pixels, q8: the distance between the span's first two
-    // edges.
-    final frameQ8 = ((along(from + 1) - along(from)) * devicePixelRatio * 256)
-        .round();
-    // Reckoned from the later of the span's first frame and the sound's, a
-    // whole frame into the file there: a column stands on a frame edge the
-    // tile holds, so a pixel's rounding never builds up along a sound
-    // longer than the span.
-    final base = math.max(from, sound.startFrame);
-    final end = sound.startFrame + sound.audibleFrames;
-    return (
-      along0: ((along(from) - along(base)) * devicePixelRatio).round(),
-      length: ((along(end) - along(base)) * devicePixelRatio).round(),
-      vertical: axis == Axis.vertical,
-      frameQ8: frameQ8,
-      fpsNumerator: row.frameRate.numerator,
-      fpsDenominator: row.frameRate.denominator,
-      bucketsPerSecond: sound.peaks.bucketsPerSecond,
-      leadingFrames: sound.leadingFrames + base - sound.startFrame,
-      acrossQ8: (crossAxisExtent * devicePixelRatio * 256).round(),
-      gainQ16: (sound.gain * 65536).round(),
-      rgba: timelineGridPackRgba(row.ink),
-    );
   }
 
   /// Camera rows are a SUMMARY column, not a sheet: their "coverage" is the

@@ -4,13 +4,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
+import '../../models/project_frame_rate.dart';
 import '../../native/app_gpu_engine.dart';
 import '../../native/engine_wave_peaks.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/straight_rgba_image.dart';
+import '../audio/engine_wave_views.dart';
 import '../theme/app_theme.dart';
-import '../timeline/timeline_grid_tile_ops.dart' show timelineGridPackRgba;
 
 /// A sound file, as the media viewer sees it: ONE page as wide as the sound
 /// is long — what its run counts and what its view's zoom is measured
@@ -120,19 +121,32 @@ class AudioViewerDocument implements ViewerDocument {
         ));
     try {
       if (peaks.durationSeconds > 0) {
-        batch.wave(picture, EngineWavePeaks.of(peaks), (
-          along0: 0,
-          length: width,
-          vertical: false,
-          frameQ8: (width / peaks.durationSeconds * 256).round(),
-          fpsNumerator: 1,
-          fpsDenominator: 1,
-          bucketsPerSecond: peaks.bucketsPerSecond,
-          leadingFrames: 0,
-          acrossQ8: height * 256,
-          gainQ16: 1 << 16,
-          rgba: timelineGridPackRgba(ink),
-        ));
+        const second = ProjectFrameRate.integer(1);
+        final seconds = peaks.durationFrames(second);
+        final perSecond = width / peaks.durationSeconds;
+        final views = engineWaveViewsOf(
+          (
+            peaks: peaks,
+            startFrame: 0,
+            audibleFrames: seconds,
+            leadingFrames: 0,
+            gain: 1,
+          ),
+          on: (
+            along: (frame) => frame * perSecond,
+            origin: 0,
+            from: 0,
+            to: seconds,
+            axis: Axis.horizontal,
+            across: height.toDouble(),
+            devicePixelRatio: 1,
+            frameRate: second,
+          ),
+          ink: ink,
+        );
+        for (final view in views) {
+          batch.wave(picture, EngineWavePeaks.of(peaks), view);
+        }
       }
       return await decodeStraightRgbaImageOnAWorker(
         rgba: picture.read(),
