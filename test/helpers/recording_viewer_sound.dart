@@ -110,8 +110,18 @@ class RecordingViewerSound extends ViewerSound {
   /// Each second a held sound was picked back up from.
   final List<double> resumedFrom = [];
 
+  /// Each second a resume found its sound on its way at ([answers]): nothing
+  /// started there, and the device stands silent where it was, as the
+  /// viewer's does while its window is read ([ViewerSound.resume]).
+  final List<double> foundComingAt = [];
+
   @override
   bool resume(double fromSeconds) {
+    if (answers is! OutputArmed) {
+      foundComingAt.add(fromSeconds);
+      _held = true;
+      return false;
+    }
     resumes += 1;
     resumedFrom.add(fromSeconds);
     _held = false;

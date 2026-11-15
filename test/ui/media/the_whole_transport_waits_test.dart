@@ -446,6 +446,62 @@ void main() {
     await pressPlay(tester);
   });
 
+  testWidgets('🚨a run put back to where its sound is on its way — a long '
+      'sound\'s window around there still read — stands there for it, and '
+      'goes on with it from there once it has come '
+      '(long-sound-windows-are-read-on-the-ui-isolate)', (tester) async {
+    await playEveryPageLanded(tester);
+    const look = Duration(microseconds: 16667);
+
+    // The device played on through a look the app was half a second late,
+    // and the sound around the page the run goes on onto is not held.
+    sound.playOn(const Duration(milliseconds: 500));
+    sound.answers = const OutputComing();
+    await tester.pump(look);
+    expect(slot.position.value, 1, reason: 'fixture: put back to page 1');
+    expect(
+      sound.foundComingAt,
+      [closeTo(1 / 24, 1e-12)],
+      reason: 'fixture: its sound there is on its way',
+    );
+    final prepares = sound.prepares;
+    final resumes = sound.resumes;
+
+    // A quarter second of looks: six pages of a clock that ran on.
+    for (var i = 0; i < 15; i += 1) {
+      await tester.pump(look);
+    }
+    expect(
+      slot.position.value,
+      1,
+      reason: 'it stands where it was put (유저 2026-10-16: 「소리가 준비될 '
+          '때까지 기다린다」) — a run that did not wait walks on with no sound, '
+          'and nothing asks for it again',
+    );
+    expect(playing(tester), isTrue, reason: 'a run that waits plays');
+    expect(
+      sound.prepares,
+      greaterThan(prepares),
+      reason: 'and asks for its sound again at its looks',
+    );
+    expect(sound.resumes, resumes, reason: 'nothing started meanwhile');
+
+    sound.answers = RecordingViewerSound.armed;
+    await tester.pump(look);
+    expect(sound.resumes, resumes + 1, reason: 'it has come');
+    expect(
+      sound.resumedFrom.last,
+      closeTo(1 / 24, 1e-12),
+      reason: 'the sound starts where the run stood',
+    );
+    for (var i = 0; i < 3; i += 1) {
+      sound.playOn(look);
+      await tester.pump(look);
+    }
+    expect(slot.position.value, 2, reason: 'and the picture plays on with it');
+    await pressPlay(tester);
+  });
+
   testWidgets('🚨a movie whose sound is heard pages ahead of its picture at '
       'every start is not put back at every look: the first look after its '
       'clock starts — a press, a clock put back — is the start, not '

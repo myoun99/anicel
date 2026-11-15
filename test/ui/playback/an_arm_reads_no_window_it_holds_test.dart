@@ -168,6 +168,9 @@ void main() {
     // A second back — a run going on, a short put-back.
     expect(sound.resume(59), isTrue);
     expect(conform.windowsRead, 1, reason: 'it holds a second back');
+    final device = QaAudioDevice.instance!;
+    sound.keepStreaming(frameTime: null); // the run's look starts it
+    expect(device.isPlaying, isTrue, reason: 'fixture: heard from there');
 
     // A run put back as far as the app was late.
     expect(sound.resume(50), isFalse, reason: 'its sound there on its way');
@@ -177,6 +180,14 @@ void main() {
       reason: 'ten seconds back is past its trailing two: ↩️it played out of '
           'the window as it stood — silence',
     );
+    expect(
+      device.isPlaying,
+      isFalse,
+      reason: 'and nothing is heard meanwhile: what played a second back '
+          'is not what the run waits for',
+    );
+    sound.keepStreaming(frameTime: null); // the waiting run's next look
+    expect(device.isPlaying, isFalse, reason: 'nor started by a look');
   });
 }
 
