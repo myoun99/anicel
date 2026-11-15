@@ -1,14 +1,21 @@
 //! The plugin's C ABI: what the app hands it reaches the plugin as the
-//! words prelude.wgsl names, and what the plugin draws comes back in the
-//! app's place. The device's run against the CPU's is tests.rs's.
+//! words prelude.wgsl names, and what the plugin draws over a chain's
+//! tiles comes back on them at the app's place. The device's run against
+//! the CPU's is tests.rs's.
 
 use super::Plugin;
 use super::abi::{
-    Asked, CHANNELS, FIXED, WHOLE, gpu_engine_plugin_free, gpu_engine_plugin_open, gpu_engine_plugin_reach,
-    gpu_engine_plugin_render,
+    Asked, CHANNELS, FIXED, WHOLE, gpu_engine_plugin_free, gpu_engine_plugin_made_free, gpu_engine_plugin_made_land,
+    gpu_engine_plugin_open, gpu_engine_plugin_reach, gpu_engine_plugin_render_read,
 };
 use super::tests::hashed;
-use crate::testing::{first_engine, last_error};
+use crate::kernels::chain::tests::put_over;
+use crate::kernels::chain::{ChainRead, Kept, each_pixel, picture_bytes};
+use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::pool::Pool;
+use crate::kernels::shared::{le_bytes, le_words};
+use crate::testing::{first_engine, last_error, read_buffer};
 
 const INVERT: &str = include_str!("../../../native/fx_wgsl/fixtures/invert.wgsl");
 const BLUR: &str = include_str!("../../../native/fx_wgsl/fixtures/blur.wgsl");
@@ -16,12 +23,14 @@ const LAYER: &str = include_str!("../../../native/fx_wgsl/fixtures/layer.wgsl");
 const ENDLESS: &str = include_str!("../../../native/fx_wgsl/fixtures/endless.wgsl");
 const FLOAT: &str = include_str!("../../../native/fx_wgsl/fixtures/float.wgsl");
 
-/// Writes what it is handed, a word a pixel along its row from its left:
-/// the moment's four, then each value's four words.
+/// Writes what it is handed along its row from its left, a word in two
+/// pixels — its low half, then its high, in red and green, opaque: a pixel
+/// no alpha shows is laid clear — the moment's four, then each value's
+/// four words.
 const PROBE: &str = r"
 @compute @workgroup_size(16, 1)
 fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {
-  let i = i32(at.x);
+  let i = i32(at.x) / 2;
   var word = 0;
   switch i {
     case 0: { word = anicel_frame(); }
@@ -30,7 +39,9 @@ fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {
     case 3: { word = anicel_scale(); }
     default: { word = anicel_value((i - 4) / 4, (i - 4) % 4); }
   }
-  anicel_out(bitcast<u32>(word));
+  let bits = bitcast<u32>(word);
+  let half = select(bits & 0xffffu, bits >> 16u, at.x % 2u == 1u);
+  anicel_out(half | 0xff000000u);
 }
 
 fn anicel_reach() -> u32 {
@@ -97,32 +108,63 @@ impl Opened {
     }
 
     /// The plugin's picture of `pictures`' first over the rest as its
-    /// layers, each its rect — its output started at a word no plugin
-    /// writes here, so a pixel left keeps none of it.
+    /// layers, each its rect — laid on the tiles under them all as a chain
+    /// keeps its read ([`ChainRead`]), the plug-in told the tiles' own
+    /// places — read back off the tiles it made at the first's place.
     fn render(&self, pictures: &[([i32; 4], Vec<u32>)], values: &[f64], kinds: &[u32], share: u32) -> Result<Vec<u32>, String> {
-        let rects: Vec<i32> = pictures.iter().flat_map(|(rect, _)| *rect).collect();
-        let pixels: Vec<u32> = pictures.iter().flat_map(|(_, pixels)| pixels.iter().copied()).collect();
-        let [_, _, width, height] = pictures[0].0;
-        let mut output = vec![0xDEAD_BEEF; (width.max(0) * height.max(0)) as usize];
+        let engine = first_engine();
+        let edges = |[left, top, width, height]: [i32; 4]| [left, top, left + width.max(0), top + height.max(0)];
+        let rect = tiles_under(pictures.iter().map(|(at, _)| edges(*at)));
+        let laid = |(at, pixels): &([i32; 4], Vec<u32>)| put_over(engine, rect, edges(*at), &le_bytes(pixels));
+        let Some(tiles) = laid(&pictures[0]) else {
+            return Err(last_error());
+        };
+        let rows = pictures[1..].iter().map(laid).collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
+        let read = ChainRead::kept_as(Kept { tiles, rect, rows });
+        let mut made_rect = [0; 4];
         // SAFETY: each holds what its count says, the engine is live and
         // the plugin was opened on it.
-        let drew = unsafe {
-            gpu_engine_plugin_render(
+        let made = unsafe {
+            gpu_engine_plugin_render_read(
                 self.0,
-                first_engine(),
-                pixels.as_ptr(),
-                rects.as_ptr(),
-                pictures.len() - 1,
+                engine,
+                &read,
+                pictures[0].0.as_ptr(),
+                [0, 0].as_ptr(),
                 values.as_ptr(),
                 kinds.as_ptr(),
                 kinds.len(),
                 MOMENT.as_ptr(),
                 share,
-                output.as_mut_ptr(),
+                made_rect.as_mut_ptr(),
             )
         };
-        if drew == 0 { Ok(output) } else { Err(last_error()) }
+        if made.is_null() {
+            return Err(last_error());
+        }
+        // SAFETY: made above, freed below.
+        let (bytes, at) = unsafe { (read_buffer(engine, &(*made).tiles), (*made).rect) };
+        // SAFETY: made above.
+        unsafe { gpu_engine_plugin_made_free(made) };
+        assert_eq!(made_rect, [at.x0, at.y0, at.columns as i32, at.rows as i32], "the rect it says is its own");
+        assert_eq!(at, rect, "it made the chain's rectangle of tiles");
+        let picture = edges(pictures[0].0);
+        let mut drawn = vec![0u8; picture_bytes(picture)];
+        each_pixel(picture, rect, |to, from| drawn[to..to + 4].copy_from_slice(&bytes[from..from + 4]));
+        Ok(le_words(&drawn))
     }
+}
+
+/// The fewest tiles under every one of `pictures`' edges — one at the
+/// origin's for none.
+fn tiles_under(pictures: impl Iterator<Item = [i32; 4]>) -> TileRect {
+    let side = TILE as i32;
+    let ([left, top], [right, bottom]) = pictures.fold(([0, 0], [1, 1]), |([l, t], [r, b]), [left, top, right, bottom]| {
+        ([l.min(left), t.min(top)], [r.max(right), b.max(bottom)])
+    });
+    let (x0, y0) = (left.div_euclid(side), top.div_euclid(side));
+    let (x1, y1) = ((right - 1).div_euclid(side) + 1, (bottom - 1).div_euclid(side) + 1);
+    TileRect { x0, y0, columns: (x1 - x0) as u32, rows: (y1 - y0) as u32 }
 }
 
 impl Drop for Opened {
@@ -135,6 +177,12 @@ impl Drop for Opened {
 /// The inverse of `pixel`'s colour, its alpha kept: invert.wgsl's.
 fn inverted(pixel: u32) -> u32 {
     pixel & 0xFF00_0000 | !pixel & 0x00FF_FFFF
+}
+
+/// `pixel` as the run lays what a plug-in drew on the tiles: nothing where
+/// no alpha shows it.
+fn as_laid(pixel: u32) -> u32 {
+    if pixel >> 24 == 0 { 0 } else { pixel }
 }
 
 #[test]
@@ -165,8 +213,10 @@ fn the_open_says_whether_the_device_cuts_the_plugin() {
 fn the_moment_and_every_kind_of_value_reach_the_plugin_as_its_words() {
     let values = [-1.0, 2.0, 0.0, 1.0, 1.5, -0.25, 0.0, 100.0, 1.0, 0.5, 0.0, 128.0 / 255.0];
     let kinds = [WHOLE, FIXED, CHANNELS];
-    let drawn = Opened::of(PROBE).render(&[([5, -3, 16, 1], vec![0; 16])], &values, &kinds, PLENTY);
-    let words: Vec<i32> = drawn.expect("it draws").iter().map(|&word| word as i32).collect();
+    let drawn = Opened::of(PROBE).render(&[([5, -3, 32, 1], vec![0; 32])], &values, &kinds, PLENTY);
+    // A word in two pixels: its low half, then its high.
+    let halves = drawn.expect("it draws");
+    let words: Vec<i32> = halves.chunks_exact(2).map(|half| (half[0] & 0xFFFF | half[1] << 16) as i32).collect();
     #[rustfmt::skip]
     let handed = [
         7, 5 << 14, 24 << 16, 1 << 15,
@@ -244,7 +294,7 @@ fn the_reach_spends_the_share_it_is_given() {
 fn a_render_lays_its_picture_and_layers_where_the_app_placed_them() {
     let (rect, input) = ([5, -3, 37, 23], hashed(37 * 23, 4));
     let drawn = Opened::of(INVERT).render(&[(rect, input.clone())], &[], &[], PLENTY);
-    assert_eq!(drawn, Ok(input.iter().map(|&pixel| inverted(pixel)).collect::<Vec<_>>()));
+    assert_eq!(drawn, Ok(input.iter().map(|&pixel| as_laid(inverted(pixel))).collect::<Vec<_>>()));
 
     // The input clear on every third pixel, a layer the value does not
     // name, and the one it names in slot 1: 4 by 4 at (5, 1), over part of
@@ -262,7 +312,7 @@ fn a_render_lays_its_picture_and_layers_where_the_app_placed_them() {
         let (x, y) = (2 + at as i32 % 6, 3 + at as i32 / 6);
         let (column, row) = (x - 5, y - 1);
         let behind = if (0..4).contains(&column) && (0..4).contains(&row) { shown.1[(row * 4 + column) as usize] } else { 0 };
-        assert_eq!(drew, if own >> 24 == 0 { behind } else { own }, "at ({x}, {y})");
+        assert_eq!(drew, if own >> 24 == 0 { as_laid(behind) } else { own }, "at ({x}, {y})");
     }
 }
 
@@ -282,9 +332,87 @@ fn an_endless_render_is_cut_and_says_so() {
 #[test]
 fn a_picture_of_a_negative_side_is_refused() {
     let invert = Opened::of(INVERT);
-    let pictures = [([0, 0, 4, 4], vec![0; 16]), ([0, 0, -1, 4], vec![])];
+    let pictures = [([0, 0, -1, 4], vec![])];
     assert_eq!(invert.render(&pictures, &[], &[], PLENTY), Err("a picture -1 by 4".into()));
     let pictures = [([0, 0, 4, -1], vec![])];
     assert_eq!(invert.render(&pictures, &[], &[], PLENTY), Err("a picture 4 by -1".into()));
     assert_eq!(invert.render(&[([0, 0, 0, 0], vec![])], &[], &[], PLENTY), Ok(vec![]));
+}
+
+/// What a plug-in made lands in the pool as it lies: each tile asked, in
+/// whatever order, in a fresh slot of the cel holding that tile's bytes —
+/// and a tile off its rectangle is refused, by its place.
+#[test]
+fn what_it_made_lands_tile_by_tile_where_it_lies() {
+    let engine = first_engine();
+    let side = TILE as i32;
+    // Across a seam of tiles both ways.
+    let (rect, picture) = (TileRect { x0: 0, y0: 0, columns: 2, rows: 2 }, [side - 5, side - 3, 9, 7]);
+    let [left, top, width, height] = picture;
+    let edges = [left, top, left + width, top + height];
+    let tiles = put_over(engine, rect, edges, &le_bytes(&hashed(63, 8))).expect("laid");
+    let read = ChainRead::kept_as(Kept { tiles, rect, rows: Vec::new() });
+    let invert = Opened::of(INVERT);
+    let mut at = [0; 4];
+    // SAFETY: each holds what its count says, the engine is live and the
+    // plugin was opened on it.
+    let made = unsafe {
+        gpu_engine_plugin_render_read(
+            invert.0,
+            engine,
+            &read,
+            picture.as_ptr(),
+            [0, 0].as_ptr(),
+            [].as_ptr(),
+            [].as_ptr(),
+            0,
+            MOMENT.as_ptr(),
+            PLENTY,
+            at.as_mut_ptr(),
+        )
+    };
+    assert!(!made.is_null(), "{}", last_error());
+    // SAFETY: made above, freed below.
+    let whole = read_buffer(engine, unsafe { &(*made).tiles });
+    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let land = |pool: &mut Pool, asks: &[i32]| {
+        let count = asks.len() / 2;
+        let (mut places, mut changes) = (vec![0; count], vec![0; count]);
+        // SAFETY: every pointer is live, `asks` holds `2 × count` and the
+        // rest `count`.
+        let landed = unsafe {
+            gpu_engine_plugin_made_land(
+                engine,
+                made,
+                pool,
+                cel.0,
+                asks.as_ptr(),
+                count,
+                places.as_mut_ptr(),
+                changes.as_mut_ptr(),
+            )
+        };
+        (landed, places, changes)
+    };
+
+    // Right to left, then up: a tile is found by its place, not its turn.
+    let asks = [1, 1, 0, 1, 1, 0, 0, 0];
+    let (landed, places, changes) = land(&mut pool, &asks);
+    assert_eq!(landed, 4, "{}", last_error());
+    assert!(changes.iter().all(|&change| change == 1), "each landed inked");
+    let places: Vec<TileAt> = places.into_iter().map(|word| TileAt::of_word(word).expect("a slot")).collect();
+    let tile = TILE_BYTES as usize;
+    let mut bytes = vec![0; places.len() * tile];
+    pool.read(engine, &places, &mut bytes).expect("read");
+    for (turn, ask) in asks.chunks_exact(2).enumerate() {
+        let index = rect.index_of(ask[0], ask[1]).expect("on the rectangle");
+        let (landed, made) = (&bytes[turn * tile..][..tile], &whole[index * tile..][..tile]);
+        assert!(landed == made, "tile {ask:?} landed as another");
+    }
+
+    assert_eq!(land(&mut pool, &[2, 0]).0, -1);
+    assert_eq!(last_error(), "tile (2, 0) is off the 2 × 2 tiles at (0, 0)");
+    // SAFETY: made above.
+    unsafe { gpu_engine_plugin_made_free(made) };
 }

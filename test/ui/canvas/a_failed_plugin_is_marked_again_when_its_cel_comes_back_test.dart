@@ -608,14 +608,16 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
     renders += 1;
-    final pixels = input.pixels;
+    final pixels = fxPluginInputPixels(input);
+    if (pixels == null) {
+      return null;
+    }
     var drawsIt = values.isNotEmpty && values[0] >= draws;
     final paper = this.paper;
     for (
@@ -631,7 +633,7 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
                     pixels[i + 1] != paper[1] ||
                     pixels[i + 2] != paper[2]);
     }
-    return drawsIt ? Uint8List.fromList(pixels) : null;
+    return drawsIt ? fxPluginTilesOf(input, pixels) : null;
   }
 
   @override

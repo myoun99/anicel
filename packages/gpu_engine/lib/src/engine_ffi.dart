@@ -23,8 +23,6 @@ final class HeldChains extends Opaque {}
 
 final class ChainRead extends Opaque {}
 
-final class PutPicture extends Opaque {}
-
 final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
@@ -163,6 +161,8 @@ final class DabSpec extends Struct {
 
 /// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs).
 final class Plugin extends Opaque {}
+
+final class PluginMade extends Opaque {}
 
 @Native<Void Function(Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_keep_shaders_in',
@@ -836,42 +836,27 @@ external int planChainHeld(
   int id,
 );
 
-@Native<Int32 Function(Pointer<Planned>, Uint32, Pointer<ChainRead>)>(
-  symbol: 'gpu_engine_plan_chain_read',
-)
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Pointer<ChainRead>,
+    Pointer<Uint32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_plan_chain_read')
 external int planChainRead(
   Pointer<Planned> plan,
   int chain,
   Pointer<ChainRead> read,
+  Pointer<Uint32> rows,
+  int count,
 );
 
-@Native<Pointer<PutPicture> Function(Pointer<Uint8>, Size)>(
-  symbol: 'gpu_engine_put_picture_new',
+@Native<Int32 Function(Pointer<Planned>, Uint32, Uint32)>(
+  symbol: 'gpu_engine_plan_chain_put',
 )
-external Pointer<PutPicture> putPictureNew(Pointer<Uint8> pixels, int length);
-
-@Native<Pointer<Uint8> Function(Pointer<PutPicture>)>(
-  symbol: 'gpu_engine_put_picture_pixels',
-)
-external Pointer<Uint8> putPicturePixels(Pointer<PutPicture> picture);
-
-@Native<Void Function(Pointer<PutPicture>)>(
-  symbol: 'gpu_engine_put_picture_free',
-)
-external void putPictureFree(Pointer<PutPicture> picture);
-
-@Native<Uint64 Function()>(symbol: 'gpu_engine_put_picture_bytes')
-external int putPictureBytes();
-
-@Native<
-  Int32 Function(Pointer<Planned>, Uint32, Pointer<Int32>, Pointer<PutPicture>)
->(symbol: 'gpu_engine_plan_chain_put')
-external int planChainPut(
-  Pointer<Planned> plan,
-  int chain,
-  Pointer<Int32> picture,
-  Pointer<PutPicture> made,
-);
+external int planChainPut(Pointer<Planned> plan, int chain, int set);
 
 @Native<Pointer<ChainRead> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_chain_read_new',
@@ -886,6 +871,7 @@ external void chainReadFree(Pointer<ChainRead> read);
     Pointer<Engine>,
     Pointer<ChainRead>,
     Pointer<Int32>,
+    Int32,
     Pointer<Uint8>,
     Size,
   )
@@ -894,6 +880,7 @@ external bool chainReadPixels(
   Pointer<Engine> engine,
   Pointer<ChainRead> read,
   Pointer<Int32> picture,
+  int row,
   Pointer<Uint8> out,
   int length,
 );
@@ -1893,33 +1880,61 @@ external int pluginReach(
 );
 
 @Native<
-  Int32 Function(
+  Pointer<PluginMade> Function(
     Pointer<Plugin>,
     Pointer<Engine>,
-    Pointer<Uint32>,
+    Pointer<ChainRead>,
     Pointer<Int32>,
-    Size,
+    Pointer<Int32>,
     Pointer<Double>,
     Pointer<Uint32>,
     Size,
     Pointer<Double>,
     Uint32,
-    Pointer<Uint32>,
+    Pointer<Int32>,
   )
->(symbol: 'gpu_engine_plugin_render')
-external int pluginRender(
+>(symbol: 'gpu_engine_plugin_render_read')
+external Pointer<PluginMade> pluginRenderRead(
   Pointer<Plugin> plugin,
   Pointer<Engine> engine,
-  Pointer<Uint32> pixels,
-  Pointer<Int32> rects,
-  int layers,
+  Pointer<ChainRead> read,
+  Pointer<Int32> picture,
+  Pointer<Int32> at,
   Pointer<Double> values,
   Pointer<Uint32> kinds,
   int count,
   Pointer<Double> moment,
   int share,
-  Pointer<Uint32> output,
+  Pointer<Int32> rect,
 );
+
+@Native<
+  IntPtr Function(
+    Pointer<Engine>,
+    Pointer<PluginMade>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_plugin_made_land')
+external int pluginMadeLand(
+  Pointer<Engine> engine,
+  Pointer<PluginMade> made,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  int count,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+);
+
+@Native<Void Function(Pointer<PluginMade>)>(
+  symbol: 'gpu_engine_plugin_made_free',
+)
+external void pluginMadeFree(Pointer<PluginMade> made);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

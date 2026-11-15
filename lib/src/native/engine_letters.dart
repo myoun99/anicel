@@ -134,6 +134,8 @@ class EngineLetters {
       }
       try {
         final (:x0, :y0, :columns, :rows) = lettered.rect;
+        // ⚠️What a plug-in's step made lands by the same steps
+        // (gpu_fx_plugin.dart's `_landed`) — a third makes the three one.
         final asks = <TileAsk>[
           for (var down = 0; down < rows; down++)
             for (var across = 0; across < columns; across++)

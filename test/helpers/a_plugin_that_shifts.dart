@@ -1,17 +1,22 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/plan_plugins.dart' show EngineFxPluginInput;
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 
 import 'a_canvas_standing_on_a_frame.dart' show theFramesPicture;
 import 'fx_plugin_file.dart';
@@ -113,6 +118,98 @@ bool theCanvasRowRunsAPlugin(WidgetTester tester) {
   return runs;
 }
 
+/// What a stand-in plug-in reads of [input] — its picture's pixels, or the
+/// pixels of its row in slot [row] there — straight RGBA row after row, as
+/// the chain kept them on the engine; null where it kept none (no plan ran
+/// through it, or no such row). ⚠️Waits for the GPU: the app's own run
+/// reads the tiles where they lie.
+Uint8List? fxPluginInputPixels(FxPluginInput input, {int? row}) {
+  final (:left, :top, :width, :height) = input.picture;
+  final (dx, dy) = input.paperOnTheGrid;
+  return (input as EngineFxPluginInput).read.reader.pixels((
+    left + dx,
+    top + dy,
+    left + dx + width,
+    top + dy + height,
+  ), row: row);
+}
+
+/// The pixels of each row [input] keeps, by slot ([fxPluginInputPixels]).
+List<Uint8List> fxPluginInputRows(FxPluginInput input) {
+  final rows = <Uint8List>[];
+  while (true) {
+    final row = fxPluginInputPixels(input, row: rows.length);
+    if (row == null) {
+      return rows;
+    }
+    rows.add(row);
+  }
+}
+
+/// [straight] — pixels over [input]'s picture, row after row — as tiles of
+/// the canvas's grid where it lies, clear past it: what a stand-in plug-in
+/// hands back, as the device's run lands its own.
+FxPluginTiles fxPluginTilesOf(FxPluginInput input, Uint8List straight) {
+  final side = gpuTileSide;
+  final buffers = <TileCoord, Uint8List>{};
+  _eachSpan(input, (coord, inTile, inPicture, span) {
+    buffers
+        .putIfAbsent(coord, () => Uint8List(BitmapTile.bytesFor(side)))
+        .setRange(inTile, inTile + span * 4, straight, inPicture);
+  });
+  return {
+    for (final MapEntry(key: coord, value: pixels) in buffers.entries)
+      coord: BitmapTile(size: side, pixels: pixels),
+  };
+}
+
+/// [tiles]' pixels over [input]'s picture, straight RGBA row after row —
+/// clear where they hold none: what a plug-in's run made, read back.
+/// ⚠️Waits for the GPU for a tile the engine alone holds.
+Uint8List fxPluginTilesPixels(FxPluginInput input, FxPluginTiles tiles) {
+  final (left: _, top: _, :width, :height) = input.picture;
+  final out = Uint8List(width * height * 4);
+  final read = <TileCoord, Uint8List?>{};
+  _eachSpan(input, (coord, inTile, inPicture, span) {
+    final pixels = read.putIfAbsent(
+      coord,
+      () => tiles[coord]?.readPixels((_, view) => Uint8List.fromList(view)),
+    );
+    if (pixels != null) {
+      out.setRange(inPicture, inPicture + span * 4, pixels, inTile);
+    }
+  });
+  return out;
+}
+
+/// Each run of [input]'s picture's pixels along a row that lies in one
+/// tile of the canvas's grid: that tile, the run's first byte in it and in
+/// the picture, and how many pixels it is.
+void _eachSpan(
+  FxPluginInput input,
+  void Function(TileCoord coord, int inTile, int inPicture, int span) span,
+) {
+  final (:left, :top, :width, :height) = input.picture;
+  final (dx, dy) = input.paperOnTheGrid;
+  final side = gpuTileSide;
+  for (var y = 0; y < height; y += 1) {
+    final down = top + dy + y;
+    final row = (down / side).floor();
+    for (var x = 0; x < width;) {
+      final across = left + dx + x;
+      final column = (across / side).floor();
+      final run = math.min(width - x, (column + 1) * side - across);
+      span(
+        TileCoord(x: column, y: row),
+        ((down - row * side) * side + across - column * side) * 4,
+        (y * width + x) * 4,
+        run,
+      );
+      x += run;
+    }
+  }
+}
+
 /// Moves every pixel right by its first value — reaching that far — or by
 /// [by] where it is told one.
 final class ShiftingFxPlugin implements FxPluginRunner {
@@ -125,7 +222,9 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   final List<({int left, int top, int width, int height})> inputs = [];
   late Uint8List lastInput;
   late Float64List lastValues;
-  late List<FxPluginPicture> lastLayers;
+
+  /// Each row its last run read, by slot: its pixels over the picture.
+  late List<Uint8List> lastLayers;
   late FxPluginMoment lastMoment;
 
   @override
@@ -136,36 +235,35 @@ final class ShiftingFxPlugin implements FxPluginRunner {
       reachFails ? null : by ?? values[0].toInt();
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
     renders += 1;
-    inputs.add((
-      left: input.left,
-      top: input.top,
-      width: input.width,
-      height: input.height,
-    ));
-    lastInput = input.pixels;
+    final (left: _, top: _, :width, :height) = input.picture;
+    inputs.add(input.picture);
+    final pixels = fxPluginInputPixels(input);
+    if (pixels == null) {
+      return null;
+    }
+    lastInput = pixels;
     lastValues = values;
-    lastLayers = layers;
+    lastLayers = fxPluginInputRows(input);
     lastMoment = moment;
     if (fails) {
       return null;
     }
     final shift = by ?? values[0].toInt();
-    final out = Uint8List(input.pixels.length);
-    for (var y = 0; y < input.height; y += 1) {
-      for (var x = shift; x < input.width; x += 1) {
-        final to = (y * input.width + x) * 4;
+    final out = Uint8List(pixels.length);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = shift; x < width; x += 1) {
+        final to = (y * width + x) * 4;
         final from = to - shift * 4;
-        out.setRange(to, to + 4, input.pixels, from);
+        out.setRange(to, to + 4, pixels, from);
       }
     }
-    return out;
+    return fxPluginTilesOf(input, out);
   }
 
   @override

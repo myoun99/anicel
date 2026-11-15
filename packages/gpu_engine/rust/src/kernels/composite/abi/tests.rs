@@ -861,44 +861,32 @@ fn what_a_mark_refuses_says_why() {
     }
 }
 
-/// What effect chain 0 of `plan` puts first, as its op holds it.
-fn put_of(plan: *const Planned) -> Arc<[u8]> {
-    // SAFETY: `plan` is live.
-    let plan = unsafe { &*plan };
-    match &plan.chains[0].ops[0].0 {
-        Op::Put { pixels, .. } => Arc::clone(pixels),
-        _ => panic!("chain 0's first op puts nothing"),
-    }
-}
-
-// A plug-in's picture is made once, and each plan that puts it shares its
-// bytes — the picture's own, not a copy, as the app reads them —, kept by
-// the plan past the picture's free.
+// A plug-in's step names the plan's tile sets: the rows its read keeps,
+// by slot, and what its put lays — a set the plan has not is refused, by
+// its number, and adds no op.
 #[test]
-fn a_picture_a_chain_puts_is_shared_with_each_plan_not_copied() {
-    let bytes: Vec<u8> = (0..4 * 3 * 4).map(|i| (i * 7) as u8).collect();
-    // SAFETY: `bytes` holds its length.
-    let made = unsafe { gpu_engine_put_picture_new(bytes.as_ptr(), bytes.len()) };
-    let plans = [planned(), planned()];
-    let picture = [0, 0, 4, 3];
-    for plan in plans {
-        // SAFETY: `plan` and `made` are live; `picture` holds four edges.
-        unsafe {
-            let chain = gpu_engine_plan_chain(plan, 0, 0, 1, 1);
-            assert_eq!(gpu_engine_plan_chain_put(plan, chain, picture.as_ptr(), made), 0);
-        }
-    }
-    // SAFETY: `made` is live until it is freed; each plan after.
+fn a_read_and_a_put_name_the_plans_tile_sets() {
+    let plan = planned();
+    // SAFETY: `plan` and `read` are live; each slice holds what its count
+    // says.
     unsafe {
-        for plan in plans {
-            assert!(Arc::ptr_eq(&put_of(plan), &(*made).pixels));
+        let set = gpu_engine_plan_set(plan, 0, 0, 1, 1, [NO_TILE].as_ptr());
+        let chain = gpu_engine_plan_chain(plan, 0, 0, 1, 1);
+        let read = gpu_engine_chain_read_new(first_engine());
+        assert_eq!(gpu_engine_plan_chain_read(plan, chain, read, [set, set].as_ptr(), 2), 0);
+        assert_eq!(gpu_engine_plan_chain_put(plan, chain, set), 0);
+        assert_eq!(gpu_engine_plan_chain_put(plan, chain, set + 1), -1);
+        assert_eq!(last_error(), "no tile set 1 of 1");
+        assert_eq!(gpu_engine_plan_chain_read(plan, chain, read, [set, set + 1].as_ptr(), 2), -1);
+        assert_eq!(last_error(), "no tile set 1 of 1");
+        match &(&(*plan).chains)[0].ops[..] {
+            [(Op::Read { rows, .. }, None), (Op::Put(put), None)] => {
+                assert_eq!(rows, &[set, set]);
+                assert_eq!(*put, set);
+            }
+            _ => panic!("chain 0 holds other than its read and its put"),
         }
-        let read = std::slice::from_raw_parts(gpu_engine_put_picture_pixels(made), bytes.len());
-        assert_eq!(read, &bytes[..]);
-        gpu_engine_put_picture_free(made);
-        for plan in plans {
-            assert_eq!(&*put_of(plan), &bytes[..]);
-            gpu_engine_plan_free(plan);
-        }
+        gpu_engine_chain_read_free(read);
+        gpu_engine_plan_free(plan);
     }
 }

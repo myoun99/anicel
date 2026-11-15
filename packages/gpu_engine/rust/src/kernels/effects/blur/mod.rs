@@ -61,6 +61,19 @@ impl TileRect {
         u64::from(self.columns) * u64::from(self.rows)
     }
 
+    /// The place among its tiles, row by row, of the tile at (`column`,
+    /// `row`) of the grid — none, the last error, off it: where a picture
+    /// laid over these tiles is landed from, tile by tile (the letters'
+    /// plate, a plug-in's picture).
+    pub(crate) fn index_of(&self, column: i32, row: i32) -> Option<usize> {
+        let TileRect { x0, y0, columns, rows } = *self;
+        let (across, down) = (column - x0, row - y0);
+        if !(0..columns as i32).contains(&across) || !(0..rows as i32).contains(&down) {
+            return crate::fail(format!("tile ({column}, {row}) is off the {columns} × {rows} tiles at ({x0}, {y0})"));
+        }
+        Some(down as usize * columns as usize + across as usize)
+    }
+
     /// Whether `inside`, [left, top, right, bottom), holds a pixel and lies
     /// within these tiles.
     fn holds(&self, inside: [i32; 4]) -> bool {

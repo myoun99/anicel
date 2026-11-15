@@ -1695,19 +1695,21 @@ final class _DrawsOverTheStroke implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
-    final pixels = input.pixels;
+    final pixels = fxPluginInputPixels(input);
+    if (pixels == null) {
+      return null;
+    }
     for (var at = 0; at < pixels.length; at += 4) {
       if (pixels[at] == colour[0] &&
           pixels[at + 1] == colour[1] &&
           pixels[at + 2] == colour[2] &&
           pixels[at + 3] == colour[3]) {
-        return Uint8List.fromList(pixels);
+        return fxPluginTilesOf(input, pixels);
       }
     }
     return null;
@@ -1731,16 +1733,15 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
       moment.frameIndex + 1;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) {
     renders += 1;
     return ShiftingFxPlugin(
       by: moment.frameIndex + 1,
-    ).render(input: input, values: values, layers: layers, moment: moment);
+    ).render(input: input, values: values, moment: moment);
   }
 
   @override

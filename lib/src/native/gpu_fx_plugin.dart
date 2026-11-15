@@ -8,7 +8,10 @@ import '../models/app_gpu_settings.dart';
 import '../models/effect_parameter_spec.dart';
 import '../models/fx_plugin_description.dart';
 import '../models/fx_plugin_run.dart';
+import '../models/tile_coord.dart';
 import 'app_gpu_engine.dart';
+import 'engine_tile_ledger.dart';
+import 'plan_plugins.dart' show EngineFxPluginInput;
 
 /// What opening a plugin's WGSL came to: the plugin, or the engine's words
 /// of why not.
@@ -119,30 +122,48 @@ final class GpuFxPlugin implements FxPluginRunner {
   /// 레인 안에서 그 통과를 UI 밖으로 내고」. 🔬Surface Pro 11, profile,
   /// S5_BA cut 352, a box dragged over a row under a device plugin, a step
   /// 4,061,184 pixels: this run 72–94 ms p50 on the UI thread each time
-  /// the box moved, and the read of its input 56–60 ms (`_ChainPicture`).
+  /// the box moved, and the read of its input 56–60 ms
+  /// (`EngineFxPluginInput`, which reads none since).
+  ///
+  /// What it made lands in the engine's pool here, as a stroke's does: on
+  /// the device, with no wait for the GPU ([GpuPluginMade.land]).
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
     final plugin = _plugin;
     if (plugin == null) {
       return null;
     }
+    // ⛔No input off the engine: the plan alone makes one, where the
+    // engine holds its tiles.
+    final EngineFxPluginInput(:read, :picture, :paperOnTheGrid) =
+        input as EngineFxPluginInput;
+    final engine = appGpuEngineOpen.value;
     _running += 1;
     try {
-      final drawn = await _renderedOnAWorker(plugin.renderer, (
-        input: _pictureOf(input),
-        layers: [for (final layer in layers) _pictureOf(layer)],
+      final run = await _renderedOnAWorker(plugin.renderer, (
+        read: read.reader,
+        picture: picture,
+        at: paperOnTheGrid,
         asked: _asked(values, moment),
         share: _share.share,
       ));
-      return drawn?.buffer.asUint8List(
-        drawn.offsetInBytes,
-        drawn.lengthInBytes,
-      );
+      if (run == null) {
+        return null;
+      }
+      final made = plugin.made(run);
+      // ⚠️Asked of the engine too, as the screen's texture is: what a run
+      // made on an engine the app let go meanwhile lands nowhere — the
+      // next one's pool is not its (a-lost-gpu-device-keeps-the-unsaved-
+      // tiles (C3) ④).
+      if (!identical(engine, appGpuEngineOpen.value)) {
+        made.free();
+        return null;
+      }
+      return _landed(made);
     } finally {
       _running -= 1;
       if (_running == 0 && _plugin == null) {
@@ -177,12 +198,14 @@ final class GpuFxPlugin implements FxPluginRunner {
   bool get debugLetGo => _letGo;
 }
 
-/// What a run of a plugin is asked with: its input over its layers, its
-/// values and moment, and each pixel's share — plain values, as a worker
-/// is handed them.
+/// What a run of a plugin is asked with: what the chain kept for it, its
+/// picture's place in the plug-in's pixels and theirs on the tiles' grid,
+/// its values and moment, and each pixel's share — plain values, as a
+/// worker is handed them.
 typedef _Run = ({
-  GpuPluginPicture input,
-  List<GpuPluginPicture> layers,
+  GpuChainReader read,
+  ({int left, int top, int width, int height}) picture,
+  (int, int) at,
   GpuPluginAsked asked,
   int share,
 });
@@ -190,16 +213,50 @@ typedef _Run = ({
 /// [renderer]'s picture of [run] on a worker ([onAWorker]) — null where
 /// it refused. Made here, of plain values, so the job crosses with them
 /// alone.
-Future<Uint32List?> _renderedOnAWorker(
+Future<GpuPluginRun?> _renderedOnAWorker(
   GpuPluginRenderer renderer,
   _Run run,
 ) => onAWorker(() {
   try {
-    return renderer.render(run.input, run.layers, run.asked, share: run.share);
+    return renderer.renderRead(
+      run.read,
+      run.picture,
+      run.at,
+      run.asked,
+      share: run.share,
+    );
   } on StateError {
     return null;
   }
 });
+
+/// Each tile of [made] in a slot of the engine's pool, by where it lies on
+/// the canvas's grid — [made] let go of once they are.
+///
+/// ⚠️`EngineLetters._plateOf` lands a plate's tiles by the same steps: the
+/// second picture landed whole over its rectangle — a third makes the
+/// three one (rule of three), as [GpuPluginMade.land] says of the engine's.
+FxPluginTiles _landed(GpuPluginMade made) {
+  try {
+    final (:x0, :y0, :columns, :rows) = made.rect;
+    final asks = <TileAsk>[
+      for (var down = 0; down < rows; down++)
+        for (var across = 0; across < columns; across++)
+          (column: x0 + across, row: y0 + down, under: null),
+    ];
+    final landed = EngineTileLedger.instance.land(
+      EngineTileLedger.landedCel,
+      asks,
+      by: made.land,
+    );
+    return {
+      for (final (at, (:column, :row, under: _)) in asks.indexed)
+        TileCoord(x: column, y: row): landed[at].tile!,
+    };
+  } finally {
+    made.free();
+  }
+}
 
 /// How a value of [unit] reaches the plugin — the doubles
 /// `fxPluginValuesOf` gives it, as the engine makes them its integers
@@ -214,20 +271,3 @@ GpuPluginValue _kindOf(EffectParameterUnit unit) => switch (unit) {
   EffectParameterUnit.flag ||
   EffectParameterUnit.layer => GpuPluginValue.whole,
 };
-
-/// [picture] as the engine reads it: a word a pixel, its bytes R, G, B, A
-/// in the word's order from its low end (every device the app runs on is
-/// little-endian) — a view where its bytes start on a word, else a copy.
-GpuPluginPicture _pictureOf(FxPluginPicture picture) {
-  final bytes = picture.pixels;
-  final words = bytes.offsetInBytes % 4 == 0
-      ? bytes.buffer.asUint32List(bytes.offsetInBytes, bytes.length ~/ 4)
-      : Uint8List.fromList(bytes).buffer.asUint32List();
-  return (
-    pixels: words,
-    left: picture.left,
-    top: picture.top,
-    width: picture.width,
-    height: picture.height,
-  );
-}

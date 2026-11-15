@@ -13,7 +13,7 @@ use super::held::HeldChains;
 use super::{Budget, NO_EDGE, Over, Plan, Step, TILE_BYTES, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
-use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
+use crate::kernels::chain::{Chain, Chained, MapTiles, Op, Stored, laid_as, tiles_of};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::Focus;
@@ -183,7 +183,8 @@ impl Laying {
     /// `tiles` — over `rect` — through `ops`, [`Laying::laid`].
     fn through(&mut self, tiles: wgpu::Buffer, rect: TileRect, ops: &[Op]) -> usize {
         let rig = rig();
-        let put = chain().run(rig.engine, &rig.composite, tiles, rect, ops).expect("chain");
+        let stored = Stored { pages: &self.pages, sets: &self.sets };
+        let put = chain().run(rig.engine, &rig.composite, stored, tiles, rect, ops).expect("chain");
         self.laid(put, rect)
     }
 

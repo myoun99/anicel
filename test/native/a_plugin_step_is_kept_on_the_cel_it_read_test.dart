@@ -8,7 +8,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/composite_tree_plan.dart';
 import 'package:anicel/src/native/engine_letters.dart';
-import 'package:anicel/src/ui/canvas/fx_plugin_stages.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -17,9 +17,10 @@ import '../helpers/a_row_laid_on_the_engine.dart';
 
 /// 🚨★A PLUG-IN'S STEP IS KEPT ON THE CEL IT READ, where the cel is all it
 /// read (float-warp-resamples-in-the-c-engine (2) ⓒ, 관제 2026-11-11):
-/// what it made is a picture the app holds — a census row of its own
-/// (`FxPluginStages.keptBytes`) — and what a hand holds over the cel goes
-/// into what it reads, so the cel alone is not that input.
+/// what it made lies in the engine's pool, counted with every tile there
+/// (the memory census's `tileImages`; ↩️a picture the app held till
+/// 2026-11-15, a census row of its own) — and what a hand holds over the
+/// cel goes into what it reads, so the cel alone is not that input.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -55,15 +56,20 @@ void main() {
     run: fxPluginRunOf(runner),
   );
 
-  test('what a step kept is counted: its picture\'s bytes', () async {
+  test("what a step kept lies in the engine's pool: a slot a tile it "
+      'made', () async {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
-    final before = FxPluginStages.keptBytes;
+    final before = EngineTileLedger.instance.slotCount;
 
     await aRowLaidOnTheEngine(composite, letters, cel, [
       through(ShiftingFxPlugin(by: 0)),
     ]);
 
-    expect(FxPluginStages.keptBytes - before, side * side * 4);
+    expect(
+      EngineTileLedger.instance.slotCount - before,
+      2,
+      reason: "the cel's one tile, and the one its step made",
+    );
     // Held to here: what its step kept goes when it does.
     expect(cel.tiles, hasLength(1));
   });

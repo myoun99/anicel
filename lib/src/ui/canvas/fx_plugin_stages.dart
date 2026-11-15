@@ -1,36 +1,32 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:gpu_engine/gpu_engine.dart' show GpuPutPicture;
 
-import '../../core/rgba_premultiply.dart';
 import '../../core/signed_memo.dart';
-import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
-import '../../models/dirty_region.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/layer_effect.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/plan_plugins.dart';
-import '../../services/brush_stroke_blend.dart' show engineSurfaceRegionPixels;
 import '../../services/fx_plugin_values.dart'
     show fxPluginRowsOf, fxPluginValuesOf;
 import '../../services/cel_text_laying.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「머문다 — 어디에 걸어도 돌고, 결과가
 /// 올 때까지 그 프레임의 직전 완성 그림에 머문다」 — a plugin anywhere in a
-/// chain runs over the picture the chain made before it, read back from
-/// the GPU (`PluginEffect`).
+/// chain runs over the picture the chain made before it, where the engine
+/// holds it (`PluginEffect`).
 ///
-/// 🚨THE READ CANNOT BE WAITED FOR WHERE A PICTURE IS RECORDED: recording is
-/// synchronous, and the engine's one read is a future (`toByteData` —
-/// 🔬on the Surface Pro 11, p50 24 ms at 1280×720, 45 at 1920×1080, 170 at
-/// 3840×2160, 2026-10-30). So a recording that meets a plugin's step here
-/// leaves the step's input with these stages and goes on as if the step
-/// were off; the route that asked for the picture sees it [_missed], waits
-/// for the read and the plugin ([_resolve]), and records the same picture
+/// 🚨THE RUN CANNOT BE WAITED FOR WHERE A PICTURE IS RECORDED: recording is
+/// synchronous, and a plug-in's run is a worker's wait for the GPU
+/// (`GpuFxPlugin.render`) — ↩️its input read back first till 2026-11-15,
+/// the engine's one read a future too (`toByteData` — 🔬on the Surface Pro
+/// 11, p50 24 ms at 1280×720, 45 at 1920×1080, 170 at 3840×2160,
+/// 2026-10-30). So a recording that meets a plugin's step here leaves the
+/// step's input with these stages and goes on as if the step were off; the
+/// route that asked for the picture sees it [_missed], waits for the
+/// plugin ([_resolve]), and records the same picture
 /// again — each step met then draws what its plugin made, in the order the
 /// steps were met ([_recording]).
 ///
@@ -69,11 +65,6 @@ final class FxPluginStages implements PluginSteps {
 
   static final Object _zoneKey = Object();
 
-  /// What the steps kept past their recordings weigh, made and not yet
-  /// collected — the memory census's `pluginSteps`.
-  static int get keptBytes => _keptBytes;
-  static int _keptBytes = 0;
-
   /// 🚨★ONE STEP KEPT A SOURCE, the newest (float-warp-resamples-in-the-c-
   /// engine (2) ⓒ, 관제 2026-11-11 「비키는 장치는 필요 없다(수명이 셀 표면에
   /// 묶인다)」): what a plug-in made of a cel's surface — or of what the
@@ -81,8 +72,10 @@ final class FxPluginStages implements PluginSteps {
   /// a chain keeps its plug-in's picture on the surface
   /// (`celPluginSurfaces`). It goes when the source does, or when the
   /// pen's frame asks the same source under another sample — a value
-  /// dragged makes a new one each step. A picture a canvas's size, each
-  /// ([keptBytes]).
+  /// dragged makes a new one each step. Its tiles lie in the engine's pool,
+  /// counted with every tile landed there (the memory census's
+  /// `tileImages`) — ↩️till 2026-11-15 a picture a canvas's size in the
+  /// app's memory, a census row of its own (`pluginSteps`).
   ///
   /// 🚨★THE PLACE IS THE PEN'S FRAME'S (card a-stroke-step-reads-back-and-
   /// pictures-each-tile-it-moved, 관제 2026-11-13 09:05; 🗣️유저 2026-10-27,
@@ -113,10 +106,6 @@ final class FxPluginStages implements PluginSteps {
     'pluginSteps',
     same: (kept, asked) =>
         kept.step == asked.step && listEquals(kept.before, asked.before),
-  );
-
-  static final Finalizer<int> _keptGone = Finalizer<int>(
-    (bytes) => _keptBytes -= bytes,
   );
 
   /// [record] recorded with every plugin's step met in it run — recorded
@@ -196,8 +185,8 @@ final class FxPluginStages implements PluginSteps {
   }
 
   /// Runs the step the last [_recording] missed first — every step before
-  /// it was met again and had run: its input read back, through its
-  /// plugin, and the picture it made held for the next.
+  /// it was met again and had run: its input through its plugin, and the
+  /// picture it made held for the next.
   Future<void> _resolve() async {
     for (final stage in _stages) {
       if (!stage.ran) {
@@ -215,7 +204,25 @@ final class FxPluginStages implements PluginSteps {
   }
 
   @override
-  ({bool ran, GpuPutPicture? made}) stepOf(
+  List<PluginStepRow> rowsOf(ResolvedLayerEffect effect) =>
+      switch (effect.run) {
+        null => const [],
+        final run => [
+          for (final row in fxPluginRowsOf(effect, run))
+            (
+              lineage: row,
+              tiles: switch (run.rows[row]) {
+                null => const {},
+                // The row's own picture, its texts laid as the cel shows
+                // them (🗣️I-132-Q32 b 「그 행의 자기 픽셀을 용지 그대로」).
+                final surface => celSurfaceWithTextsLaid(surface).tiles,
+              },
+            ),
+        ],
+      };
+
+  @override
+  ({bool ran, FxPluginTiles? made}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,
@@ -299,12 +306,6 @@ final class FxPluginStages implements PluginSteps {
     _missed = true;
     return null;
   }
-
-  /// [bytes] more kept on [step], until it is collected.
-  static void _count(_KeptStep step, int bytes) {
-    _keptBytes += bytes;
-    _keptGone.attach(step, bytes);
-  }
 }
 
 /// A plugin's step as it is asked for: the same sample of the same effect,
@@ -321,7 +322,7 @@ typedef _StepAsked = ({
 /// on the engine — null where it failed.
 final class _KeptStep {
   bool ran = false;
-  GpuPutPicture? output;
+  FxPluginTiles? output;
 }
 
 /// A plugin's step as a recording met it: its input, held until it is run.
@@ -335,17 +336,15 @@ final class _Stage {
 
   ResolvedLayerEffect get effect => step.effect;
   ui.Rect get paper => step.paper;
-  int get width => step.width;
-  int get height => step.height;
 
   PluginStepInput? _input;
 
   /// Where what it makes is kept past its recording, if anywhere.
   final _KeptStep? _kept;
 
-  /// What the plugin made, moved to the engine once: every plan that puts
-  /// it names it there ([GpuPutPicture]).
-  GpuPutPicture? output;
+  /// What the plugin made, its tiles in the engine's pool: every plan that
+  /// puts it names them there.
+  FxPluginTiles? output;
 
   /// Whether it has been run — [output] null after it is a plugin that
   /// failed.
@@ -358,19 +357,11 @@ final class _Stage {
     if (input == null || run == null) {
       return;
     }
-    final pixels = await input.straight();
-    if (pixels == null || _input == null) {
-      return;
-    }
-    final made = output = switch (await _ranThrough(run, pixels)) {
-      null => null,
-      final straight => GpuPutPicture(straight),
-    };
+    final made = output = await _ranThrough(run, input);
     if (_kept case final kept? when !kept.ran) {
       kept
         ..ran = true
         ..output = made;
-      FxPluginStages._count(kept, made?.straight.length ?? 0);
     }
     run.tell(failed: made == null);
   }
@@ -385,9 +376,10 @@ final class _Stage {
     effect.run?.tell(failed: output == null);
   }
 
-  /// [straight] — this step's input — through [run]'s plugin, which reads
-  /// and draws straight ([FxPluginPicture]); null where the plugin fails.
-  Future<Uint8List?> _ranThrough(FxPluginRun run, Uint8List straight) async {
+  /// [input] — this step's — through [run]'s plugin, over the rows its
+  /// layer values name as the plan kept them with it
+  /// ([FxPluginStages.rowsOf]); null where the plugin fails.
+  Future<FxPluginTiles?> _ranThrough(FxPluginRun run, FxPluginInput input) {
     final canvas = CanvasSize(
       width: paper.width.round(),
       height: paper.height.round(),
@@ -402,46 +394,8 @@ final class _Stage {
       // (composite_effect_paint.dart's `_paintPartOf`).
       scale: 1.0,
     );
-    // Where the picture's first pixel lies from the paper's, in its pixels.
-    final left = (-paper.left).round();
-    final top = (-paper.top).round();
-    FxPluginPicture handed(Uint8List pixels) =>
-        (pixels: pixels, width: width, height: height, left: left, top: top);
-    final output = await run.runner.render(
-      input: handed(straight),
-      values: values,
-      layers: [
-        for (final row in rows)
-          handed(_rowOnTheGrid(run.rows[row], left: left, top: top)),
-      ],
-      moment: moment,
-    );
-    // A pixel it leaves clear is clear, whatever colour it gave it — as
-    // premultiplying it made it.
-    if (output != null) {
-      zeroFullyClearPixels(output);
-    }
-    return output;
+    return run.runner.render(input: input, values: values, moment: moment);
   }
-
-  /// [row]'s own picture on this step's grid — its first pixel at ([left],
-  /// [top]) from the paper's, a canvas pixel a pixel — straight; clear where
-  /// no cel is.
-  Uint8List _rowOnTheGrid(
-    BitmapSurface? row, {
-    required int left,
-    required int top,
-  }) => row == null
-      ? Uint8List(width * height * 4)
-      : engineSurfaceRegionPixels(
-          celSurfaceWithTextsLaid(row),
-          DirtyRegion(
-            left: left,
-            top: top,
-            rightExclusive: left + width,
-            bottomExclusive: top + height,
-          ),
-        );
 
   void dispose() {
     _input?.free();

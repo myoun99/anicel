@@ -1,17 +1,24 @@
 //! The C ABI of a GPU fx plugin (fx spec 2 ㉯ ②, an-endless-plugin-
 //! stalls-the-app): opened from its WGSL source on the engine's device,
-//! asked its reach on the CPU and run over a picture — what the app's
-//! `FxPluginRunner` asks of it. A picture is straight RGBA8, a word a
-//! pixel as the engine's pool holds it, row by row; a place is canvas
-//! pixels. The doubles the app works out become the plugin's integers
-//! here, once (design ③): past this file the plugin sees integers alone.
+//! asked its reach on the CPU and run over a chain's tiles where they lie
+//! on the device — what the app's `FxPluginRunner` asks of it —, what it
+//! made landed in the pool as a stroke's is. A pixel is straight RGBA8, a
+//! word as the engine's pool holds it. The doubles the app works out become
+//! the plugin's integers here, once (design ③): past this file the plugin
+//! sees integers alone.
 
 use fx_wgsl::{Cut, Frame};
 
-use super::Plugin;
+use super::{Plugin, PluginMade, Tiled};
 use crate::device::{Engine, let_go};
 use crate::fail;
+use crate::kernels::chain::{ChainRead, Kept};
+use crate::kernels::dab::abi::reported;
+use crate::kernels::dab::landing::placed;
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{q, sixteen_bit};
+use crate::kernels::write::Change;
 
 /// A value's kind, which says how its four doubles become the four words
 /// the plugin reads (prelude.wgsl's `AnicelFrame`): a whole number — a
@@ -95,29 +102,6 @@ fn fixed(x: f64, k: u32, what: impl FnOnce() -> String) -> Option<i32> {
         Some(word) => Some(word as i32),
         None => fail(format!("{} is {x}, past an i32 in Q.{k}", what())),
     }
-}
-
-/// The pictures — each `rects`' (left, top, width, height), their pixels
-/// one after another in `pixels` — laid on `on`'s grid, a plane each, as
-/// `anicel_row` reads them: transparent where a picture has no pixel.
-pub(crate) fn planes(pixels: &[u32], rects: &[[i32; 4]], on: [i32; 4]) -> Vec<u32> {
-    let [left, top, width, height] = on;
-    let plane = width as usize * height as usize;
-    let mut planes = vec![0; plane * rects.len()];
-    let mut from = 0;
-    for (slot, &[x0, y0, columns, rows]) in rects.iter().enumerate() {
-        for y in 0..rows {
-            for x in 0..columns {
-                let (column, row) = (x0 + x - left, y0 + y - top);
-                if (0..width).contains(&column) && (0..height).contains(&row) {
-                    let at = (row * width + column) as usize;
-                    planes[slot * plane + at] = pixels[from + (y * columns + x) as usize];
-                }
-            }
-        }
-        from += columns as usize * rows as usize;
-    }
-    planes
 }
 
 /// The words a picture of `rect` holds, or none where a side is negative.
@@ -211,75 +195,135 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
     }
 }
 
-/// Runs the plugin over the first of `pictures` + 1 pictures — each
-/// `rects`' (left, top, width, height), four words a picture, their pixels
-/// one after another in `pixels` — into `output`, a word a pixel of the
-/// first's size and place, transparent where the render writes none. The
-/// pictures after the first are the layers its layer values name, by
-/// slot. The values and moment are as `gpu_engine_plugin_reach` takes
-/// them; each pixel's share is `share`, however many there are — for a
-/// plugin opened not to be cut, what its chunks are sized for alone. 0
-/// where it drew, -1 where a value does not fit, the run was cut or the
-/// device failed (the last error says).
+/// Runs the plugin over what `read` kept of a chain ([`Op::Read`]) — its
+/// tiles, and its rows' as the layers its layer values name, by slot — at
+/// `picture`'s (left, top, width, height), the input and the output alike,
+/// in the plug-in's pixels: the paper's, which lie `at` (two words) from
+/// the tiles' grid. Returns what it made on the device, the chain's
+/// rectangle of tiles — written to `rect` (column, row, columns, rows) —
+/// clear past the picture and wherever its alpha is 0, for the app to land
+/// ([`gpu_engine_plugin_made_land`]); null where a value does not fit, the
+/// picture has a negative side, no plan ran through `read`, the run was cut
+/// or the device failed (the last error says). The values and moment are
+/// as `gpu_engine_plugin_reach` takes them; each pixel's share is `share`,
+/// however many there are — for a plugin opened not to be cut, what its
+/// chunks are sized for alone. ⚠️Waits for the GPU a chunk at a time, the
+/// cut read after each: the app asks it on a worker.
 ///
 /// 🗣️an-endless-plugin-stalls-the-app-Q19 (유저 2026-11-10 16:36): 「화소
 /// 하나의 몫으로 고정하고, 그리기를 덩어리로 나눠 넘긴다」 — ↩️the share was
 /// the limit over the pixels (Q5) till then, so the same plugin was cut
 /// first on the biggest picture: a 3×3 blur was all a 4K frame allowed.
 ///
+/// ↩️Till 2026-11-15 the app read the chain back to the CPU, read each
+/// row's tiles there, handed both here and read what it made back again,
+/// to put it as bytes (a-plugin-step-goes-through-the-cpu-and-back).
+///
+/// [`Op::Read`]: crate::kernels::chain::Op::Read
+///
 /// # Safety
-/// `plugin` and `engine` are live, `plugin` opened on `engine`; `rects`
-/// holds `4 * (layers + 1)` words, `pixels` each rect's width × height one
-/// after another, `values` `4 * count` doubles, `kinds` `count`, `moment`
-/// four and `output` the first rect's width × height.
+/// `plugin`, `engine` and `read` are live, `plugin` opened on `engine`;
+/// `picture` holds four words, `at` two, `values` `4 * count` doubles,
+/// `kinds` `count`, `moment` four and `rect` four writable words.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_plugin_render(
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_plugin_render_read(
     plugin: *const Plugin,
     engine: *const Engine,
-    pixels: *const u32,
-    rects: *const i32,
-    layers: usize,
+    read: *const ChainRead,
+    picture: *const i32,
+    at: *const i32,
     values: *const f64,
     kinds: *const u32,
     count: usize,
     moment: *const f64,
     share: u32,
-    output: *mut u32,
-) -> i32 {
+    rect: *mut i32,
+) -> *mut PluginMade {
     // SAFETY: see the function's contract.
-    let (plugin, engine, rects, values, kinds, moment) = unsafe {
+    let (plugin, engine, read, picture, at, values, kinds, moment) = unsafe {
         (
             &*plugin,
             &*engine,
-            std::slice::from_raw_parts(rects.cast::<[i32; 4]>(), layers + 1),
+            &*read,
+            *picture.cast::<[i32; 4]>(),
+            *at.cast::<[i32; 2]>(),
             std::slice::from_raw_parts(values, 4 * count),
             std::slice::from_raw_parts(kinds, count),
             *moment.cast::<[f64; 4]>(),
         )
     };
     engine.on_thread(|| {
-        let Some(areas) = rects.iter().map(|&rect| area(rect)).collect::<Option<Vec<_>>>() else {
-            return -1;
+        let made = area(picture)
+            .and_then(|_| Asked::new(values, kinds, moment))
+            .and_then(|asked| {
+                let Kept { tiles, rect, rows } = read.kept()?;
+                let frame = asked.frame(picture, share, &[], &[]);
+                let rows: Vec<Tiled> = rows.iter().map(|tiles| Tiled { tiles, rect }).collect();
+                match plugin.render_tiled(engine, &frame, at, Tiled { tiles: &tiles, rect }, &rows)? {
+                    Ok(tiles) => Some(PluginMade { rect, tiles }),
+                    Err(Cut) => fail(format!("the plugin spent each pixel's share of {share} and was cut")),
+                }
+            });
+        let Some(made) = made else {
+            return std::ptr::null_mut();
         };
-        // SAFETY: see the function's contract — `pixels` and `output` hold
-        // what the rects say, each now known to be no negative area.
-        let (pixels, output) = unsafe {
-            (std::slice::from_raw_parts(pixels, areas.iter().sum()), std::slice::from_raw_parts_mut(output, areas[0]))
-        };
-        let Some(asked) = Asked::new(values, kinds, moment) else {
-            return -1;
-        };
-        let (input, layered) = pixels.split_at(areas[0]);
-        let rows = planes(layered, &rects[1..], rects[0]);
-        let frame = asked.frame(rects[0], share, input, &rows);
-        output.fill(0);
-        match plugin.render(engine, &frame, output) {
-            Some(Ok(())) => 0,
-            Some(Err(Cut)) => {
-                fail::<()>(format!("the plugin spent each pixel's share of {share} and was cut"));
-                -1
-            }
-            None => -1,
-        }
+        let TileRect { x0, y0, columns, rows } = made.rect;
+        // SAFETY: `rect` holds four writable words.
+        unsafe { *rect.cast::<[i32; 4]>() = [x0, y0, columns as i32, rows as i32] };
+        engine.hands(made)
     })
+}
+
+/// Puts each of `made`'s tiles that `asks` names — its column and row on
+/// the grid, `count` of them — in a fresh slot of `cel`, as a landing puts
+/// what it made ([`placed`]): the engine's alone, with no wait for the
+/// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
+///
+/// ⚠️The letters' plate lands so too (`gpu_engine_lettered_land`): the
+/// second picture landed as it lies on the device, its own entry over the
+/// one door. A third (a picture brought in, `EnginePicture`) makes the
+/// three one (rule of three).
+///
+/// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
+///
+/// # Safety
+/// `engine`, `made` and `pool` are live, the pool made on `engine`; `asks`
+/// holds `2 × count`, and `places` and `changes` hold `count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_plugin_made_land(
+    engine: *const Engine,
+    made: *const PluginMade,
+    pool: *mut Pool,
+    cel: u32,
+    asks: *const i32,
+    count: usize,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (engine, made, pool) = unsafe { (&*engine, &*made, &mut *pool) };
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
+        let landed = asks
+            .chunks_exact(2)
+            .map(|tile| made.rect.index_of(tile[0], tile[1]))
+            .collect::<Option<Vec<usize>>>()
+            .and_then(|indices| {
+                let inked = indices.into_iter().map(|index| (index, Change::Inked));
+                placed(engine, (pool, Cel(cel)), &made.tiles, inked)
+            });
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
+}
+
+/// # Safety
+/// `made` came from `gpu_engine_plugin_render_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plugin_made_free(made: *mut PluginMade) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go(made) };
 }

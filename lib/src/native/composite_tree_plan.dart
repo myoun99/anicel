@@ -1,15 +1,14 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
-import '../core/on_a_worker.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/composite_tree.dart';
 import '../models/dirty_region.dart';
+import '../models/fx_plugin_run.dart' show FxPluginTiles;
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
@@ -205,37 +204,6 @@ typedef ChainHolding = ({
   GpuHeldChains held,
   int? Function(CompositeNode<EngineRow> node) idOf,
 });
-
-/// [picture] as a chain had come to it, read back ([GpuChainRead]) on a
-/// worker ([onAWorker]): the wait for the plan that ran through it is that
-/// worker's, so the isolate that asks goes on meanwhile.
-///
-/// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine), with the
-/// plugin's run (`GpuFxPlugin.render`): 🔬Surface Pro 11, profile, S5_BA
-/// cut 352, a box dragged over a row under a device plugin — this read
-/// 56–60 ms p50 on the UI thread each time the box moved.
-///
-/// ⚠️Freed only once its read has ended: a recording's stages are let go
-/// of after their runs (`FxPluginStages._recordedOnce`).
-final class _ChainPicture implements PluginStepInput {
-  _ChainPicture(this._read, this._picture);
-
-  final GpuChainRead _read;
-  final (int, int, int, int) _picture;
-
-  @override
-  Future<Uint8List?> straight() => _readOnAWorker(_read.reader, _picture);
-
-  @override
-  void free() => _read.free();
-}
-
-/// [reader]'s pixels of [picture] on a worker ([onAWorker]). Made here, of
-/// plain values, so the job crosses with them alone.
-Future<Uint8List?> _readOnAWorker(
-  GpuChainReader reader,
-  (int, int, int, int) picture,
-) => onAWorker(() => reader.pixels(picture));
 
 class _TreePlan {
   _TreePlan(this._tiles, this.letters, this.holding, this.plugins);
@@ -747,8 +715,8 @@ class _TreePlan {
   /// made laid in place of what came before it once it has, and the chain
   /// read there until. As if off where no route waits for it. [from] says
   /// what the picture is made of, where the plan can say; `made` is what
-  /// it made, once it has — named by the plan, not copied.
-  ({List<void Function(int chain)> ops, GpuPutPicture? made}) _pluginStep(
+  /// it made, once it has — its tiles, laid where they lie.
+  ({List<void Function(int chain)> ops, FxPluginTiles? made}) _pluginStep(
     ResolvedLayerEffect effect,
     (int, int, int, int) picture, {
     PluginStepSource? from,
@@ -759,10 +727,25 @@ class _TreePlan {
       return (ops: const [], made: null);
     }
     final (left, top, right, bottom) = picture;
+    // Its first pixel from the paper's, on whole pixels as the plug-in
+    // runs over them.
+    final fromThePaper = (
+      left: (left - paper.left).round(),
+      top: (top - paper.top).round(),
+    );
     final read = GpuChainRead(plugins.engine);
     final step = plugins.steps.stepOf(
       effect,
-      _ChainPicture(read, picture),
+      EngineFxPluginInput(
+        read,
+        picture: (
+          left: fromThePaper.left,
+          top: fromThePaper.top,
+          width: right - left,
+          height: bottom - top,
+        ),
+        paperOnTheGrid: (left - fromThePaper.left, top - fromThePaper.top),
+      ),
       width: right - left,
       height: bottom - top,
       paper: paper.shift(ui.Offset(-left.toDouble(), -top.toDouble())),
@@ -771,12 +754,24 @@ class _TreePlan {
     );
     if (!step.ran) {
       _chainHasAStepOff = true;
-      return (ops: [(chain) => plan.chainRead(chain, read)], made: null);
+      final rows = [
+        for (final (:lineage, :tiles) in plugins.steps.rowsOf(effect))
+          _tiles.setOrNone(lineage, tiles),
+      ];
+      return (
+        ops: [(chain) => plan.chainRead(chain, read, rows: rows)],
+        made: null,
+      );
     }
     return switch (step.made) {
       null => (ops: const [], made: null),
       final made => (
-        ops: [(chain) => plan.chainPut(chain, picture, made)],
+        ops: [
+          (chain) => plan.chainPut(
+            chain,
+            _tiles.setOrNone(EngineTileLedger.landedCel, made),
+          ),
+        ],
         made: made,
       ),
     };
@@ -1039,6 +1034,13 @@ final class _TileLaying {
     final grid = hold.gridOf(lineage, tiles);
     return plan.set(grid.x0, grid.y0, grid.columns, grid.rows, grid.tiles);
   }
+
+  /// [setOf], or a set with no tile where [tiles] has none: what a plug-in's
+  /// step reads of a row with no cel, and puts where it drew nothing.
+  int setOrNone(Object lineage, Map<TileCoord, BitmapTile> tiles) =>
+      tiles.isEmpty
+      ? plan.set(0, 0, 1, 1, const [null])
+      : setOf(lineage, tiles);
 }
 
 /// Row id → the nodes that draw the row, as a node whose chain reads rows

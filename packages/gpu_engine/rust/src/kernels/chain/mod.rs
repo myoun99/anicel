@@ -14,8 +14,9 @@
 //! laying what it puts as a row ([`laid_as`]): a row's chain runs in the
 //! row's own space, before its pose, and a folder's on the canvas
 //! (`withLayerPlacement`, layer_stack_paint_pass.dart). A plug-in's step is
-//! the host's: a plan reads its chain there ([`Op::Read`]), and the plan
-//! that has what the plug-in made lays it ([`Op::Put`]).
+//! the host's: a plan keeps its chain there on the device, with the rows it
+//! reads ([`Op::Read`]), and the plan that has what the plug-in made —
+//! landed in the pool — lays it ([`Op::Put`]).
 //!
 //! A chain that is nothing but a key run is the row's own keys
 //! (`Step::Row`'s `keys`), and a final paint of colour alone the row's own
@@ -64,33 +65,93 @@ pub(crate) enum Op<'a> {
         lens: Lens,
         map: Option<BlurMap<MapTiles<'a>>>,
     },
-    /// What the op before it put, handed on as it is and kept for the host
-    /// to read: the picture a plug-in's step runs over.
-    Read(ChainRead),
-    /// What a plug-in made of `picture`, straight RGBA8 row after row, in
-    /// place of what the op before it put; nothing outside it.
-    Put { picture: [i32; 4], pixels: Arc<[u8]> },
+    /// What the op before it put, handed on as it is and kept on the device
+    /// for the host's plug-in to run over — with `rows`, the plan's tile
+    /// sets of the rows its layer values name, by slot, each kept as it is
+    /// stored over the chain's rectangle ([`Stored::copied`]).
+    Read { read: ChainRead, rows: Vec<u32> },
+    /// What a plug-in made — landed in the pool, named by the plan's tile
+    /// set of that number — in place of what the op before it put, as it
+    /// is stored over the chain's rectangle ([`Stored::copied`]): nothing
+    /// past its tiles.
+    Put(u32),
 }
 
-/// What [`Op::Read`] kept for the host, once the plan has run through it.
+/// What a plan stores beside its chains that an op reads ([`Op::Read`],
+/// [`Op::Put`]): its pool's pages and its tile sets.
+#[derive(Clone, Copy)]
+pub(crate) struct Stored<'a> {
+    pub(crate) pages: &'a [wgpu::Buffer],
+    pub(crate) sets: &'a [TileSet],
+}
+
+impl Stored<'_> {
+    /// Tile set `set`'s tiles over `rect`, as they are stored — the bytes a
+    /// chain's head reads of its row ([`Composite::copied`]): nothing for a
+    /// tile the set has none of, and no colour taken through anything. A
+    /// low alpha's colour is not rounded on the way, as a walk over nothing
+    /// would round it.
+    fn copied(&self, engine: &Engine, composite: &Composite, set: u32, rect: TileRect) -> Option<wgpu::Buffer> {
+        let Some(set) = self.sets.get(set as usize) else {
+            return fail(format!("no tile set {set} of {}", self.sets.len()));
+        };
+        let done = composite.copied(engine, self.pages, set, &tiles_of(rect), composite.widest())?;
+        Some(done.out)
+    }
+}
+
+/// What [`Op::Read`] kept for the host, once the plan has run through it:
+/// the chain's tiles over its rectangle, and each row's.
 #[derive(Clone, Default)]
 pub(crate) struct ChainRead {
-    kept: Arc<Mutex<Option<(wgpu::Buffer, TileRect)>>>,
+    kept: Arc<Mutex<Option<Kept>>>,
+}
+
+/// The tiles [`ChainRead`] keeps.
+#[derive(Clone)]
+pub(crate) struct Kept {
+    pub(crate) tiles: wgpu::Buffer,
+    pub(crate) rect: TileRect,
+    pub(crate) rows: Vec<wgpu::Buffer>,
 }
 
 impl ChainRead {
-    fn keep(&self, tiles: &wgpu::Buffer, rect: TileRect) {
-        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
-        *kept = Some((tiles.clone(), rect));
+    fn keep(&self, kept: Kept) {
+        *self.kept.lock().unwrap_or_else(PoisonError::into_inner) = Some(kept);
     }
 
-    /// The pixels of `picture` the chain had come to, straight RGBA8 row
-    /// after row, clear outside its tiles; none where no plan ran through
-    /// it — a chain that does not meet the tiles asked is not run.
-    pub(crate) fn pixels(&self, engine: &Engine, picture: [i32; 4]) -> Option<Vec<u8>> {
+    /// A read as a plan that ran through it keeps `kept`: what a test runs
+    /// a plug-in over without a plan (plugin/abi_tests.rs).
+    #[cfg(test)]
+    pub(crate) fn kept_as(kept: Kept) -> Self {
+        let read = Self::default();
+        read.keep(kept);
+        read
+    }
+
+    /// What it keeps; none where no plan ran through it — a chain that does
+    /// not meet the tiles asked is not run.
+    pub(crate) fn kept(&self) -> Option<Kept> {
         let kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let Some((tiles, rect)) = kept else {
+        if kept.is_none() {
             return fail("no plan ran through this read");
+        }
+        kept
+    }
+
+    /// The pixels of `picture` the chain had come to — or, of `row`, that
+    /// row's —, straight RGBA8 row after row, clear outside its tiles; none
+    /// where no plan ran through it or it keeps no such row. ⚠️Waits for
+    /// the GPU: a test's reading, and a test's stand-in plug-in's — the
+    /// app's run reads the tiles where they are.
+    pub(crate) fn pixels(&self, engine: &Engine, picture: [i32; 4], row: Option<usize>) -> Option<Vec<u8>> {
+        let Kept { tiles, rect, rows } = self.kept()?;
+        let tiles = match row {
+            None => tiles,
+            Some(row) => match rows.get(row) {
+                Some(tiles) => tiles.clone(),
+                None => return fail(format!("no row {row} of {}", rows.len())),
+            },
         };
         let bytes = engine.read_buffer(&tiles)?;
         let mut out = vec![0u8; picture_bytes(picture)];
@@ -102,13 +163,13 @@ impl ChainRead {
 }
 
 /// The bytes of `picture`, RGBA8.
-fn picture_bytes([left, top, right, bottom]: [i32; 4]) -> usize {
+pub(crate) fn picture_bytes([left, top, right, bottom]: [i32; 4]) -> usize {
     (right - left).max(0) as usize * (bottom - top).max(0) as usize * 4
 }
 
 /// For each pixel of `picture` in `rect`'s tiles: its byte in `picture`
 /// row after row, and in the tiles laid over `rect` ([`laid_as`]).
-fn each_pixel([left, top, right, bottom]: [i32; 4], rect: TileRect, mut pixel: impl FnMut(usize, usize)) {
+pub(crate) fn each_pixel([left, top, right, bottom]: [i32; 4], rect: TileRect, mut pixel: impl FnMut(usize, usize)) {
     let side = TILE as i32;
     let width = (right - left).max(0) as usize;
     for y in top..bottom {
@@ -128,9 +189,9 @@ fn each_pixel([left, top, right, bottom]: [i32; 4], rect: TileRect, mut pixel: i
 /// What a lens blur's map is read from: tiles laid over the chain's
 /// rectangle, or the steps that draw the rows the effect names, which the
 /// executor draws alone over that rectangle, where they show by
-/// themselves, before the chain runs (`CompositeReadsRows`; the app's
-/// `_rowOnTheGrid`, which keeps none). No steps is a row that draws
-/// nothing at this frame: a map with nothing on it.
+/// themselves, before the chain runs (`CompositeReadsRows`) — a plug-in's
+/// rows are kept as they are stored instead ([`Op::Read`]). No steps is a
+/// row that draws nothing at this frame: a map with nothing on it.
 #[derive(Clone, Copy)]
 pub(crate) enum MapTiles<'a> {
     Laid(&'a wgpu::Buffer),
@@ -207,12 +268,14 @@ impl Chain {
     }
 
     /// `tiles` — straight RGBA8 over `rect`, tile after tile row by row —
-    /// through `ops` in turn: the tiles the last put over the same
-    /// rectangle. Submits the work; the caller waits.
+    /// through `ops` in turn, what they read beside them of `stored`: the
+    /// tiles the last put over the same rectangle. Submits the work; the
+    /// caller waits.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         composite: &Composite,
+        stored: Stored,
         tiles: wgpu::Buffer,
         rect: TileRect,
         ops: &[Op],
@@ -222,7 +285,7 @@ impl Chain {
         }
         let mut put = tiles;
         for op in ops {
-            put = self.ran(engine, composite, &put, rect, op)?;
+            put = self.ran(engine, composite, stored, &put, rect, op)?;
         }
         Some(put)
     }
@@ -231,6 +294,7 @@ impl Chain {
         &self,
         engine: &Engine,
         composite: &Composite,
+        stored: Stored,
         tiles: &wgpu::Buffer,
         rect: TileRect,
         op: &Op,
@@ -266,29 +330,17 @@ impl Chain {
                 };
                 self.lens.run(engine, tiles, rect, *picture, lens, map)
             }
-            Op::Read(read) => {
-                read.keep(tiles, rect);
+            Op::Read { read, rows } => {
+                let rows = rows
+                    .iter()
+                    .map(|&set| stored.copied(engine, composite, set, rect))
+                    .collect::<Option<Vec<_>>>()?;
+                read.keep(Kept { tiles: tiles.clone(), rect, rows });
                 Some(tiles.clone())
             }
-            Op::Put { picture, pixels } => put_over(engine, rect, *picture, pixels),
+            Op::Put(set) => stored.copied(engine, composite, *set, rect),
         }
     }
-}
-
-/// The tiles over `rect` holding `pixels` at `picture`, clear elsewhere.
-pub(crate) fn put_over(engine: &Engine, rect: TileRect, picture: [i32; 4], pixels: &[u8]) -> Option<wgpu::Buffer> {
-    if pixels.len() != picture_bytes(picture) {
-        return fail(format!("{} bytes put over {picture:?}", pixels.len()));
-    }
-    let mut tiles = vec![0u8; (rect.columns * rect.rows) as usize * TILE_TEXELS as usize * 4];
-    each_pixel(picture, rect, |at, tile| {
-        tiles[tile..tile + 4].copy_from_slice(&pixels[at..at + 4]);
-    });
-    Some(engine.filled(
-        "chain put",
-        &tiles,
-        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-    ))
 }
 
 /// `rect`'s tiles, row by row: the order a chain's tiles lie in.

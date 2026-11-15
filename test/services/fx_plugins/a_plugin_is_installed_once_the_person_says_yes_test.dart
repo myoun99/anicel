@@ -336,10 +336,9 @@ final class _Kept implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async => null;
 

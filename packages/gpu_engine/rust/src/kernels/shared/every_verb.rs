@@ -91,7 +91,6 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
         "a count the crate keeps of the bytes of its things",
         &[
             "gpu_engine_mask_bytes",
-            "gpu_engine_put_picture_bytes",
             "gpu_engine_held_bytes",
             "gpu_engine_kept_bytes",
             "gpu_engine_stamp_picture_bytes",
@@ -107,7 +106,6 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
             "gpu_engine_cel_passed_tiles",
             "gpu_engine_cel_passed_run_count",
             "gpu_engine_cel_passed_runs",
-            "gpu_engine_put_picture_pixels",
             "gpu_engine_held_bytes_of",
             "gpu_engine_plan_steps",
             "gpu_engine_screen_bytes",

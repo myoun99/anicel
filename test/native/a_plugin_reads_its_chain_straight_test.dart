@@ -3,12 +3,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
-import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
@@ -21,11 +19,17 @@ import '../helpers/a_row_laid_on_the_engine.dart';
 /// WHEREVER IT STANDS (float-warp-resamples-in-the-c-engine (2) ⓐ, 관제
 /// 2026-11-11).
 ///
-/// A row's chain holds straight words and reads them back so
+/// A row's chain holds straight words and keeps them so for a plug-in
 /// (`GpuChainRead`), and a plug-in reads and draws straight
-/// (`FxPluginPicture`): the first plug-in of a cel's chain is handed the
+/// (`FxPluginInput`): the first plug-in of a cel's chain is handed the
 /// cel's own bytes, the next what the first made, and what the last made
 /// is what the row lays — a colour at alpha 3 the colour it is, each way.
+///
+/// A pixel a plug-in leaves clear is clear whatever colour it gave it, by
+/// the device's run (plugin/tests.rs, `a_run_over_a_chains_tiles_lays_on_
+/// them_what_the_cpu_draws`) — ↩️by the step here till 2026-11-15, which
+/// read it back to clear it. ↩️And the read of a step's chain went on a
+/// worker (관제 2026-11-12 08:5x) — a step reads none since.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -99,121 +103,4 @@ void main() {
     expect(next.lastInput, own, reason: 'what the first made');
     expect(shown, await laid(surface, const []), reason: 'what the last made');
   });
-
-  test('a pixel a plug-in leaves clear is clear, whatever colour it gave '
-      'it', () async {
-    final next = ShiftingFxPlugin(by: 0);
-    await laid(cel(), [
-      ResolvedLayerEffect(
-        kind: EffectKind.plugin,
-        plugin: shiftingFxPluginDescription,
-        values: const [],
-        run: fxPluginRunOf(_ClearsItsColours()),
-      ),
-      through(next),
-    ]);
-    expect(next.lastInput, Uint8List(side * side * 4));
-  });
-
-  /// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine): a box
-  /// dragged over a row under a device plugin held the UI thread for each
-  /// read of the step's input — 56–60 ms p50, 🔬Surface Pro 11. ⚠️The suite
-  /// runs every worker's job here (`debugWorkersRunHere`), so this turns it
-  /// off: the road the app takes.
-  group('🚨a step reads its chain on a worker (GpuChainReader)', () {
-    late bool corpus;
-    setUp(() => corpus = debugWorkersRunHere);
-    tearDown(() => debugWorkersRunHere = corpus);
-
-    test('the isolate that records the row waits for the GPU none of the '
-        'times it reads — from the round that met the step to its plug-in '
-        'asked', () async {
-      Future<int> waitedBeforeItsPlugin() async {
-        final heard = _HearsTheWaits();
-        int? met;
-        await aRowLaidOnTheEngine(
-          composite,
-          letters,
-          cel(),
-          [
-            ResolvedLayerEffect(
-              kind: EffectKind.plugin,
-              plugin: shiftingFxPluginDescription,
-              values: const [],
-              run: fxPluginRunOf(heard),
-            ),
-          ],
-          recorded: () => met ??= debugWaitsHere,
-        );
-        return heard.waited! - met!;
-      }
-
-      debugWorkersRunHere = true;
-      expect(
-        await waitedBeforeItsPlugin(),
-        greaterThan(0),
-        reason: '⛔CONTROL: read here',
-      );
-      debugWorkersRunHere = false;
-      expect(await waitedBeforeItsPlugin(), 0);
-    });
-  });
-}
-
-/// Hands its input on as it is, hearing how many waits for the GPU the
-/// isolate that asks it had made ([debugWaitsHere]).
-final class _HearsTheWaits implements FxPluginRunner {
-  int? waited;
-
-  @override
-  Future<void>? get toCome => null;
-
-  @override
-  int? reach(Float64List values, FxPluginMoment moment) => 0;
-
-  @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
-    required Float64List values,
-    required List<FxPluginPicture> layers,
-    required FxPluginMoment moment,
-  }) async {
-    waited ??= debugWaitsHere;
-    return Uint8List.fromList(input.pixels);
-  }
-
-  @override
-  void close() {}
-
-  @override
-  bool get closed => false;
-}
-
-/// Leaves every pixel clear, its colour as it was.
-final class _ClearsItsColours implements FxPluginRunner {
-  @override
-  Future<void>? get toCome => null;
-
-  @override
-  int? reach(Float64List values, FxPluginMoment moment) => 0;
-
-  @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
-    required Float64List values,
-    required List<FxPluginPicture> layers,
-    required FxPluginMoment moment,
-  }) async {
-    final out = Uint8List.fromList(input.pixels);
-    for (var at = 3; at < out.length; at += 4) {
-      out[at] = 0;
-    }
-    return out;
-  }
-
-  @override
-  void close() {}
-
-  @override
-  bool get closed => false;
 }

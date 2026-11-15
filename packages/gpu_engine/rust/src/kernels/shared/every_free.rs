@@ -30,7 +30,7 @@ use crate::kernels::composite::abi::{
     gpu_engine_chain_read_free, gpu_engine_chain_read_new, gpu_engine_composite_free, gpu_engine_composite_new,
     gpu_engine_composited_free, gpu_engine_held_free,
     gpu_engine_held_new, gpu_engine_mask_free, gpu_engine_mask_new, gpu_engine_plan_free, gpu_engine_plan_new,
-    gpu_engine_put_picture_free, gpu_engine_put_picture_new, gpu_engine_screen_free, gpu_engine_screen_new,
+    gpu_engine_screen_free, gpu_engine_screen_new,
 };
 use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
@@ -57,7 +57,8 @@ use crate::kernels::mask::abi::{
     gpu_engine_selection_masks_free, gpu_engine_selection_masks_new, gpu_engine_selection_runs_free,
 };
 use crate::kernels::mask::runs::SelectionRuns;
-use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_open};
+use crate::kernels::plugin::PluginMade;
+use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_made_free, gpu_engine_plugin_open};
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
     gpu_engine_grid_free, gpu_engine_grid_lay_free, gpu_engine_grid_lay_new, gpu_engine_grid_new,
@@ -130,11 +131,6 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
             // SAFETY: the engine is live, and the bytes hold the mask's one.
             let made = unsafe { gpu_engine_mask_new(first_engine(), [255].as_ptr(), 0, 0, 1, 1) };
             gives_back_unwaited(name, made, gpu_engine_mask_free)
-        }),
-        ("gpu_engine_put_picture_free", |name| {
-            // SAFETY: the bytes hold the picture's four.
-            let made = unsafe { gpu_engine_put_picture_new([255; 4].as_ptr(), 4) };
-            gives_back(name, made, gpu_engine_put_picture_free)
         }),
         ("gpu_engine_held_free", |name| {
             // SAFETY: the engine is live.
@@ -282,6 +278,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
             let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
             let made = first_engine().hands(Lettered { rect, tiles: composited().out });
             gives_back(name, made, gpu_engine_lettered_free)
+        }),
+        ("gpu_engine_plugin_made_free", |name| {
+            let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
+            let made = first_engine().hands(PluginMade { rect, tiles: composited().out });
+            gives_back(name, made, gpu_engine_plugin_made_free)
         }),
         ("gpu_engine_plugin_free", |name| {
             let source = include_str!("../../../native/fx_wgsl/fixtures/invert.wgsl");

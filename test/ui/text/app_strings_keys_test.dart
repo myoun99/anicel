@@ -354,7 +354,6 @@ void main() {
     'memoryItemTileImages': (s) => s.memoryItemTileImages,
     'memoryItemEnginePool': (s) => s.memoryItemEnginePool,
     'memoryItemEngineScratch': (s) => s.memoryItemEngineScratch,
-    'memoryItemPluginSteps': (s) => s.memoryItemPluginSteps,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,

@@ -17,7 +17,6 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/fx_plugin_stages.dart';
 import '../editor_session_manager.dart';
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
@@ -268,7 +267,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // c4): its pool's pages, each whole — what the pictures become, under
     // the same line. So do the masks a canvas verb keeps there — a
     // selection's, which its clip holds (2026-11-14), a held fill's — and
-    // the bit planes a selection is folded in, kept for the next fold.
+    // the bit planes a selection is folded in, kept for the next fold. So
+    // does what a plug-in's step made, kept on the cel it ran over
+    // (관제 2026-11-11, (2) ⓒ): its tiles are the pool's since 2026-11-15
+    // (a-plugin-step-goes-through-the-cpu-and-back) — ↩️a row of its own
+    // till then, `pluginSteps`, a picture in the app's memory.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
@@ -379,10 +382,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // words' atlas, the planes, the waves' unders.
             AppGpuGridBatch.keptGridBytes,
       ),
-    // What a plug-in in a chain made, kept on the cel it was run over —
-    // a picture a canvas's size a step (관제 2026-11-11, (2) ⓒ). Bytes in
-    // the app's own memory, as the drawings are, on every platform.
-    MemoryCensusItem(id: 'pluginSteps', bytes: FxPluginStages.keptBytes),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed

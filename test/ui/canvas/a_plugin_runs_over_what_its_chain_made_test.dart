@@ -26,9 +26,9 @@ import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고, 결과가 올 때까지
 /// 그 프레임의 직전 완성 그림에 머문다」 — a plugin past a cel's own pixels
-/// runs over the picture its chain made before it, read back from the GPU,
-/// where a route can wait for it ([FxPluginStages]); laid as if off where
-/// it cannot.
+/// runs over the picture its chain made before it, where the engine holds
+/// it, where a route can wait for it ([FxPluginStages]); laid as if off
+/// where it cannot.
 ///
 /// ↩️Laid through the Flutter chain (`applyEffectSteps`) until it went
 /// (the-flutter-fx-chain-is-a-second-chain): the rounds are the engine's
@@ -283,23 +283,27 @@ void main() {
 
     final picture = handedReaching(1);
     expect(runner.inputs.single, picture);
+    // The row's pixels over the picture's own rectangle, the same grid.
     final row = runner.lastLayers.single;
-    expect(
-      (row.left, row.top, row.width, row.height),
-      (picture.left, picture.top, picture.width, picture.height),
-    );
     bool isGreen(int at) =>
-        row.pixels.sublist(at * 4, at * 4 + 4).join(',') == green.join(',');
+        row.sublist(at * 4, at * 4 + 4).join(',') == green.join(',');
     expect(
       {
-        for (var at = 0; at < row.width * row.height; at += 1)
+        for (var at = 0; at < picture.width * picture.height; at += 1)
           if (isGreen(at))
-            (at % row.width + row.left, at ~/ row.width + row.top),
+            (
+              at % picture.width + picture.left,
+              at ~/ picture.width + picture.top,
+            ),
       },
       {(1, 0)},
       reason: 'the cel\'s (1, 0), where it lies on this grid',
     );
-    expect(reads, 1, reason: 'the row is read back from the engine');
+    expect(
+      reads,
+      0,
+      reason: 'the row stays on the engine: no tile of it is read back',
+    );
   });
 
   test('a row it names with no cel there is handed clear, at its place; one '
@@ -330,7 +334,7 @@ void main() {
     expect(noCel.lastValues[0], 0, reason: 'its place among the rows');
     final picture = noCel.inputs.single;
     expect(
-      noCel.lastLayers.single.pixels,
+      noCel.lastLayers.single,
       Uint8List(picture.width * picture.height * 4),
     );
 
@@ -519,19 +523,13 @@ final class _OpensLater implements FxPluginRunner {
   }
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) {
     _asked();
-    return _build.render(
-      input: input,
-      values: values,
-      layers: layers,
-      moment: moment,
-    );
+    return _build.render(input: input, values: values, moment: moment);
   }
 
   @override

@@ -85,7 +85,6 @@ void main() {
       'moviePictures',
       'enginePool',
       'engineScratch',
-      'pluginSteps',
     });
   });
 
@@ -117,7 +116,6 @@ void main() {
       'tileImages',
       'enginePool',
       'engineScratch',
-      'pluginSteps',
     });
   });
 

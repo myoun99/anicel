@@ -393,22 +393,13 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
       moment.frameIndex + 1;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) async {
-    final shift = moment.frameIndex + 1;
-    final out = Uint8List(input.pixels.length);
-    for (var y = 0; y < input.height; y += 1) {
-      for (var x = shift; x < input.width; x += 1) {
-        final to = (y * input.width + x) * 4;
-        out.setRange(to, to + 4, input.pixels, to - shift * 4);
-      }
-    }
-    return out;
-  }
+  }) => ShiftingFxPlugin(
+    by: moment.frameIndex + 1,
+  ).render(input: input, values: values, moment: moment);
 
   @override
   void close() {}

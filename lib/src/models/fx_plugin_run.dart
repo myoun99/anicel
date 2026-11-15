@@ -2,24 +2,38 @@ import 'dart:typed_data';
 
 import '../core/frozen_collections.dart';
 import 'bitmap_surface.dart';
+import 'bitmap_tile.dart';
 import 'layer_id.dart';
+import 'tile_coord.dart';
 
-/// A picture a plugin is handed or gives back: straight RGBA8, rows
-/// [width] × 4 bytes apart, its first pixel at ([left], [top]) on the
-/// canvas.
+/// What a plug-in's step runs over, where the engine holds it: the picture
+/// a chain had come to at the step — [picture], its first pixel from the
+/// paper's and its size, a canvas pixel a pixel — and the rows its layer
+/// parameters name, by slot ([FxPluginRun.rows]), each as its cel holds
+/// it over the chain's tiles.
 ///
 /// Straight, as the engine's pool holds a pixel and a GPU plugin reads one
 /// (fx spec 2, an-endless-plugin-stalls-the-app 19:27): ↩️spec 1's host
 /// took them premultiplied, so a cel's straight pixels were premultiplied
 /// on the way in and undone on the way out — a rounding each way, which at
 /// a low alpha would have told the seam's picture from the engine chain's.
-typedef FxPluginPicture = ({
-  Uint8List pixels,
-  int width,
-  int height,
-  int left,
-  int top,
-});
+///
+/// ↩️Till 2026-11-15 its pixels were read back to the CPU for the plug-in,
+/// each row's read there too, and what the plug-in made came back as bytes
+/// to be moved to the engine again (a-plugin-step-goes-through-the-cpu-and-
+/// back): its pixels stay where they lie (`EngineFxPluginInput`).
+abstract interface class FxPluginInput {
+  /// Its first pixel from the paper's, and its size, in its pixels.
+  ({int left, int top, int width, int height}) get picture;
+
+  /// Where the paper's first pixel lies on the canvas's tile grid: a pixel
+  /// of [picture] at (x, y) lies at (x + dx, y + dy) on the tiles.
+  (int, int) get paperOnTheGrid;
+}
+
+/// What a plug-in made of its step's input: tiles of the canvas's grid
+/// where the input lies, clear past what it drew.
+typedef FxPluginTiles = Map<TileCoord, BitmapTile>;
 
 /// When a plugin is asked: the frame's index from the cut's first, its
 /// time in seconds, the frames a second, and the output pixels a canvas
@@ -47,15 +61,14 @@ abstract interface class FxPluginRunner {
   /// where the plugin failed to say.
   int? reach(Float64List values, FxPluginMoment moment);
 
-  /// [input] as the effect draws it, its size and place — or null where the
-  /// plugin failed (the row is then drawn as if the effect were off).
-  /// [layers] are the rows its layer parameters name, in the places the
-  /// values give them. A future: a device's run is a worker's wait for the
-  /// GPU, not the asker's (`GpuFxPlugin.render`).
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  /// [input] as the effect draws it, over the rows its layer parameters
+  /// name in the places [values] give them — or null where the plugin
+  /// failed (the row is then drawn as if the effect were off). A future: a
+  /// device's run is a worker's wait for the GPU, not the asker's
+  /// (`GpuFxPlugin.render`).
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   });
 

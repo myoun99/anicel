@@ -1368,22 +1368,16 @@ final class _HeldAtTheGate implements FxPluginRunner {
       _shifting.reach(values, moment);
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
     asked += 1;
     if (_gate case final gate?) {
       await gate.future;
     }
-    return _shifting.render(
-      input: input,
-      values: values,
-      layers: layers,
-      moment: moment,
-    );
+    return _shifting.render(input: input, values: values, moment: moment);
   }
 
   @override

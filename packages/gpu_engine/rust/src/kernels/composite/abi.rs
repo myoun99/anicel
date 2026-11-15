@@ -17,9 +17,9 @@
 mod tests;
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
+use crate::device::{Engine, Sent, let_go, let_go_unwaited, on_thread_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -184,6 +184,15 @@ impl Planned {
         };
         planned.ops.push((op, map));
         0
+    }
+
+    /// Whether the plan has every tile set of `sets` — false, the last
+    /// error, where it has not.
+    fn names_sets(&self, sets: &[u32]) -> bool {
+        match sets.iter().find(|&&set| set as usize >= self.sets.len()) {
+            Some(set) => fail::<()>(format!("no tile set {set} of {}", self.sets.len())).is_some(),
+            None => true,
+        }
     }
 
     /// Adds the map of `tiles` read through `channel` at `focus` and
@@ -722,30 +731,39 @@ pub unsafe extern "C" fn gpu_engine_plan_chain_held(
 }
 
 /// Adds to effect chain `chain` a read of what the ops before it put
-/// ([`Op::Read`]). 0, or -1 where the plan has no such chain; see the last
-/// error.
+/// ([`Op::Read`]), kept on the device for a plug-in to run over, with
+/// `rows` — `count` of the plan's tile sets, the rows its layer values name
+/// by slot — kept as they are stored over the chain's rectangle. 0, or -1
+/// where the plan has no such chain or set; see the last error.
 ///
 /// # Safety
-/// `plan` and `read` are live.
+/// `plan` and `read` are live, and `rows` holds `count` words.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_plan_chain_read(
     plan: *mut Planned,
     chain: u32,
     read: *const ChainRead,
+    rows: *const u32,
+    count: usize,
 ) -> i32 {
     // SAFETY: see the function's contract.
     let (plan, read) = unsafe { (&mut *plan, &*read) };
-    plan.op(chain, Op::Read(read.clone()), None)
+    let rows = match count {
+        0 => Vec::new(),
+        // SAFETY: see the function's contract.
+        _ => unsafe { std::slice::from_raw_parts(rows, count) }.to_vec(),
+    };
+    if !plan.names_sets(&rows) {
+        return -1;
+    }
+    plan.op(chain, Op::Read { read: read.clone(), rows }, None)
 }
 
-/// The bytes of every picture the app keeps for the chains that put it —
-/// made ([`gpu_engine_put_picture_new`]) and not yet freed —, counted where
-/// they are made and let go.
-static PUT_BYTES: AtomicU64 = AtomicU64::new(0);
-
-/// What a plug-in made, straight RGBA8 row after row, kept for the plans
-/// that put it ([`Op::Put`]): made once, each plan's put its bytes shared,
-/// not copied.
+/// Adds to effect chain `chain` what a plug-in made ([`Op::Put`]): the
+/// plan's tile set `set`, its tiles as the plug-in's run landed them in the
+/// pool, laid over the chain's rectangle in place of what the ops before it
+/// put. 0, or -1 where the plan has no such chain or set; see the last
+/// error.
 ///
 /// 🚨★A KEPT STEP IS PUT BY EVERY PLAN (ink-trails-further-on-intel-since-
 /// the-screen-waits-for-the-gpu, 관제 2026-11-13 「한 번 만들고 계획마다
@@ -753,76 +771,18 @@ static PUT_BYTES: AtomicU64 = AtomicU64::new(0);
 /// plug-in's picture kept past its recording came as bytes each time —
 /// copied twice a plan. 🔬Surface Pro 11, 11-13: 25–40 ms of a write's 33
 /// planned, 29.7–44.5 MB of 2–3 pictures, while what the pen changed was
-/// some 50 × 43 pixels.
-pub(crate) struct PutPicture {
-    pixels: Arc<[u8]>,
-}
-
-/// `length` bytes at `pixels` kept for the plans that put them
-/// ([`gpu_engine_plan_chain_put`]), read by the app where it lets go of
-/// its own ([`gpu_engine_put_picture_pixels`]).
+/// some 50 × 43 pixels. Its tiles stay in the pool: a plan names them.
 ///
 /// # Safety
-/// `pixels` holds `length` readable bytes.
+/// `plan` is live.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_put_picture_new(pixels: *const u8, length: usize) -> *mut PutPicture {
-    let pixels: Arc<[u8]> = match length {
-        0 => Arc::from([]),
-        // SAFETY: see the function's contract.
-        _ => unsafe { std::slice::from_raw_parts(pixels, length) }.into(),
-    };
-    PUT_BYTES.fetch_add(length as u64, Ordering::Relaxed);
-    hands_bytes(PutPicture { pixels })
-}
-
-/// Its first byte: the app's to read, never to write, while `picture`
-/// lives.
-///
-/// # Safety
-/// `picture` is live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_put_picture_pixels(picture: *const PutPicture) -> *const u8 {
+pub unsafe extern "C" fn gpu_engine_plan_chain_put(plan: *mut Planned, chain: u32, set: u32) -> i32 {
     // SAFETY: see the function's contract.
-    unsafe { (*picture).pixels.as_ptr() }
-}
-
-/// # Safety
-/// `picture` came from `gpu_engine_put_picture_new`; a plan that puts it
-/// keeps its own hold.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_put_picture_free(picture: *mut PutPicture) {
-    // SAFETY: see the function's contract.
-    if let Some(picture) = unsafe { picture.as_ref() } {
-        PUT_BYTES.fetch_sub(picture.pixels.len() as u64, Ordering::Relaxed);
+    let plan = unsafe { &mut *plan };
+    if !plan.names_sets(&[set]) {
+        return -1;
     }
-    // SAFETY: see the function's contract.
-    unsafe { let_go_bytes(picture) };
-}
-
-/// The bytes of every picture the app keeps for the chains that put it,
-/// made and not yet freed.
-#[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_put_picture_bytes() -> u64 {
-    PUT_BYTES.load(Ordering::Relaxed)
-}
-
-/// Adds to effect chain `chain` `made`, what a plug-in made of the
-/// rectangle (`left`, `top`) to (`right`, `bottom`) ([`Op::Put`]) — its
-/// bytes shared with the plan, not copied. 0, or -1 where the plan has no
-/// such chain; see the last error.
-///
-/// # Safety
-/// `plan` and `made` are live, and `picture` holds the four edges.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_plan_chain_put(
-    plan: *mut Planned,
-    chain: u32,
-    picture: *const i32,
-    made: *const PutPicture,
-) -> i32 {
-    // SAFETY: see the function's contract.
-    let (plan, picture, made) = unsafe { (&mut *plan, *picture.cast::<[i32; 4]>(), &*made) };
-    plan.op(chain, Op::Put { picture, pixels: Arc::clone(&made.pixels) }, None)
+    plan.op(chain, Op::Put(set), None)
 }
 
 /// A read of a chain's picture for the host ([`ChainRead`]), empty,
@@ -848,8 +808,10 @@ pub unsafe extern "C" fn gpu_engine_chain_read_free(read: *mut ChainRead) {
 }
 
 /// Reads into `out`, `length` bytes, what `read` kept of the rectangle its
-/// four edges `picture` name. False where no plan ran through it, or the
-/// device failed; see the last error.
+/// four edges `picture` name — of its chain, or of its row `row` where that is
+/// not negative. False where no plan ran through it, it keeps no such row,
+/// or the device failed; see the last error. ⚠️Waits for the GPU: a test's
+/// read, and a test's stand-in plug-in's (`ChainRead::pixels`).
 ///
 /// # Safety
 /// `engine` and `read` are live, `picture` holds four edges and `out` holds
@@ -859,13 +821,15 @@ pub unsafe extern "C" fn gpu_engine_chain_read_pixels(
     engine: *const Engine,
     read: *const ChainRead,
     picture: *const i32,
+    row: i32,
     out: *mut u8,
     length: usize,
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, read, picture) = unsafe { (&*engine, &*read, *picture.cast::<[i32; 4]>()) };
+    let row = usize::try_from(row).ok();
     engine.on_thread(|| {
-        let Some(bytes) = read.pixels(engine, picture) else {
+        let Some(bytes) = read.pixels(engine, picture, row) else {
             return false;
         };
         if bytes.len() != length {

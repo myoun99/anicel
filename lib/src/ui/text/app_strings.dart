@@ -779,7 +779,6 @@ enum AppStrings {
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
-  String get memoryItemPluginSteps => _s('memoryItemPluginSteps');
 
   /// What sits outside the allowance — the rows named in [items] — as one
   /// sentence (유저 2026-09-16, memory-allowance-Q2).
@@ -2782,7 +2781,6 @@ enum AppStrings {
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
-    'memoryItemPluginSteps': 'FX plugin pictures',
     'memoryOutsideAllowanceTemplate':
         'Outside the allowance, because no ceiling can be set on it: '
         '{items}.',
@@ -4319,7 +4317,6 @@ enum AppStrings {
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
-    'memoryItemPluginSteps': 'FXプラグインの画像',
     'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
@@ -6235,7 +6232,6 @@ enum AppStrings {
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
-    'memoryItemPluginSteps': 'FX 플러그인 이미지',
     'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
@@ -8180,7 +8176,6 @@ enum AppStrings {
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
-    'memoryItemPluginSteps': 'Images des plug-ins FX',
     'memoryOutsideAllowanceTemplate':
         "Hors de l'allocation, faute de plafond possible : {items}.",
     'containerAreaSettings': 'Réglages',
@@ -10233,7 +10228,6 @@ enum AppStrings {
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
-    'memoryItemPluginSteps': 'FX 插件图像',
     'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',

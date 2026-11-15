@@ -138,18 +138,18 @@ final class _ClosedOnItsWay implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async {
     renders += 1;
+    final pixels = fxPluginInputPixels(input);
     await null;
     if (closes) {
       close();
     }
-    return fails ? null : Uint8List.fromList(input.pixels);
+    return fails || pixels == null ? null : fxPluginTilesOf(input, pixels);
   }
 
   @override

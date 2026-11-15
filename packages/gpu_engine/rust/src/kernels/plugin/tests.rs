@@ -7,7 +7,7 @@
 use fx_wgsl::{Cut, Frame, Kernel, open, open_uncut};
 
 use super::{Pace, Plugin, Tiled};
-use crate::kernels::chain::put_over;
+use crate::kernels::chain::tests::put_over;
 use crate::kernels::composite::TILE;
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::shared::le_bytes;
@@ -429,19 +429,21 @@ fn a_run_over_a_chains_tiles_lays_on_them_what_the_cpu_draws() {
     // inside the picture, and is two tiles high — a word past a row of
     // tiles' right edge is the next row's, so only the check makes it
     // clear (one row high, the word lay past the buffer, which this device
-    // reads as 0).
+    // reads as 0). The second tells the plug-in a place 6 right of and 4
+    // above where it lies on the tiles: the paper is not at the canvas's
+    // origin.
     let engine = first_engine();
     let rects = [
-        (TileRect { x0: -1, y0: 0, columns: 2, rows: 1 }, None),
-        (TileRect { x0: 0, y0: 0, columns: 1, rows: 2 }, Some([110, 20])),
+        (TileRect { x0: -1, y0: 0, columns: 2, rows: 1 }, None, [0, 0]),
+        (TileRect { x0: 0, y0: 0, columns: 1, rows: 2 }, Some([116, 16]), [-6, 4]),
     ];
-    for (rect, origin) in rects {
+    for (rect, origin, at) in rects {
         for (name, source, given) in &fixtures([37, 23]) {
             let base = given.frame();
             let [x, y] = origin.unwrap_or(base.in_origin);
             let reach = given.reach;
             let frame = Frame { in_origin: [x, y], out_origin: [x + reach, y + reach], ..base };
-            let read = [x, y, frame.in_size[0], frame.in_size[1]];
+            let read = [x + at[0], y + at[1], frame.in_size[0], frame.in_size[1]];
             let (input, input_words, whole) = chain_tiles(engine, rect, 7);
             let layers: Vec<_> = (0..2).map(|slot| chain_tiles(engine, rect, 11 + slot)).collect();
             let cpu_input = cropped(&input_words, whole, read);
@@ -456,12 +458,13 @@ fn a_run_over_a_chains_tiles_lays_on_them_what_the_cpu_draws() {
                 }
             }
             let [left, top] = frame.out_origin;
+            let [left, top] = [left + at[0], top + at[1]];
             let put = [left, top, left + given.size[0], top + given.size[1]];
             let expected = put_over(engine, rect, put, &le_bytes(&drawn)).expect("put");
             let plugin = Plugin::open(engine, kernel).unwrap_or_else(|why| panic!("the device refused: {why}"));
             let rows: Vec<_> = layers.iter().map(|(tiles, _, _)| Tiled { tiles, rect }).collect();
             let made = plugin
-                .render_tiled(engine, &frame, Tiled { tiles: &input, rect }, &rows)
+                .render_tiled(engine, &frame, at, Tiled { tiles: &input, rect }, &rows)
                 .expect("the device ran it")
                 .unwrap_or_else(|Cut| panic!("{name}: cut"));
             let (made, expected) = (engine.read_buffer(&made).expect("read"), engine.read_buffer(&expected).expect("read"));

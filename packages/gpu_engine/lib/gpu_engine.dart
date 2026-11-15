@@ -1758,28 +1758,42 @@ class GpuPlan implements _OfAnEngine {
   );
 
   /// Adds to effect chain [chain] a read of what the ops before it put:
-  /// the picture a plug-in's step runs over, [read]'s once this plan has
-  /// run. What it put goes on to the ops after it as it is.
-  void chainRead(int chain, GpuChainRead read) => _checked(
-    rust.planChainRead(_plan, chain, _engine._its(read)._read),
-  );
-
-  /// Adds to effect chain [chain] what a plug-in made of [picture] — left,
-  /// top, right, bottom, in the chain's pixels: [made], in place of what
-  /// the ops before it put; nothing outside it. Its bytes are named, not
-  /// copied ([GpuPutPicture]).
-  void chainPut(
+  /// the picture a plug-in's step runs over, kept on the device in [read]
+  /// once this plan has run — with [rows], this plan's tile sets ([set])
+  /// of the rows its layer values name, by slot, each kept as it is stored
+  /// over the chain's tiles. What it put goes on to the ops after it as it
+  /// is.
+  void chainRead(
     int chain,
-    (int, int, int, int) picture,
-    GpuPutPicture made,
-  ) => _checked(
+    GpuChainRead read, {
+    List<int> rows = const [],
+  }) => _checked(
     using((arena) {
-      final (left, top, right, bottom) = picture;
-      final edges = arena<Int32>(4);
-      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
-      return rust.planChainPut(_plan, chain, edges, made._made);
+      final sets = arena<Uint32>(_held(rows.length))
+        ..asTypedList(rows.length).setAll(0, rows);
+      return rust.planChainRead(
+        _plan,
+        chain,
+        _engine._its(read)._read,
+        sets,
+        rows.length,
+      );
     }),
   );
+
+  /// Adds to effect chain [chain] what a plug-in made — this plan's tile
+  /// set [made] ([set]), its tiles where the run landed them in the pool
+  /// ([GpuPluginMade.land]) — in place of what the ops before it put:
+  /// nothing past its tiles.
+  ///
+  /// 🚨★ONE MAKING, HOWEVER MANY PLANS (ink-trails-further-on-intel-since-
+  /// the-screen-waits-for-the-gpu, 관제 2026-11-13 「한 번 만들고 계획마다
+  /// 이름만」): a frame is planned again at each write a pen makes, and the
+  /// put took the plug-in's bytes each time — copied twice a plan, 25–40 ms
+  /// of a write's 33 planned on the Surface Pro 11. Its tiles stay in the
+  /// pool: a plan names them.
+  void chainPut(int chain, int made) =>
+      _checked(rust.planChainPut(_plan, chain, made));
 
   /// Adds to effect chain [chain] fx Gaussian Blur, the Gaussian itself a
   /// way a pass, [across] and [down]: reading [picture] — past it nothing,
@@ -2071,8 +2085,10 @@ class GpuPlan implements _OfAnEngine {
   void free() => rust.planFree(_plan);
 }
 
-/// The picture an effect chain had come to at a plug-in's step, for the
-/// host to read once the plan that names it ran ([GpuPlan.chainRead]).
+/// The picture an effect chain had come to at a plug-in's step, and the
+/// rows the step reads, kept on the device once the plan that names it ran
+/// ([GpuPlan.chainRead]) — what the plug-in runs over there
+/// ([GpuPluginRenderer.renderRead]).
 class GpuChainRead implements _OfAnEngine {
   GpuChainRead(this._engine) : _read = rust.chainReadNew(_engine._engine);
 
@@ -2099,24 +2115,29 @@ final class GpuChainReader {
   final int _engine;
   final int _read;
 
-  /// The pixels of [picture] — left, top, right, bottom — straight RGBA8
-  /// row after row; null where no plan ran through this read, a chain the
-  /// tiles asked for do not meet being no chain run. ⚠️Waits for the GPU.
-  Uint8List? pixels((int, int, int, int) picture) => using((arena) {
-    final (left, top, right, bottom) = picture;
-    final edges = arena<Int32>(4);
-    edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
-    final count = (right - left) * (bottom - top) * 4;
-    final bytes = arena<Uint8>(_held(count));
-    final read = rust.chainReadPixels(
-      Pointer.fromAddress(_engine),
-      Pointer.fromAddress(_read),
-      edges,
-      bytes,
-      count,
-    );
-    return read ? Uint8List.fromList(bytes.asTypedList(count)) : null;
-  });
+  /// The pixels of [picture] — left, top, right, bottom — of the chain, or
+  /// of its row in slot [row], straight RGBA8 row after row; null where no
+  /// plan ran through this read, a chain the tiles asked for do not meet
+  /// being no chain run, or it keeps no such row. ⚠️Waits for the GPU — a
+  /// test's read, and a test's stand-in plug-in's: the app's run reads the
+  /// tiles where they lie ([GpuPluginRenderer.renderRead]).
+  Uint8List? pixels((int, int, int, int) picture, {int? row}) =>
+      using((arena) {
+        final (left, top, right, bottom) = picture;
+        final edges = arena<Int32>(4);
+        edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
+        final count = (right - left) * (bottom - top) * 4;
+        final bytes = arena<Uint8>(_held(count));
+        final read = rust.chainReadPixels(
+          Pointer.fromAddress(_engine),
+          Pointer.fromAddress(_read),
+          edges,
+          row ?? -1,
+          bytes,
+          count,
+        );
+        return read ? Uint8List.fromList(bytes.asTypedList(count)) : null;
+      });
 }
 
 /// What effect chains put, held past the run that made them
@@ -2243,49 +2264,6 @@ class GpuMask implements _OfAnEngine, Finalizable {
     _freed.detach(this);
     rust.maskFree(_mask);
   }
-}
-
-/// What a plug-in made, straight RGBA8 row after row, moved to the engine
-/// once and named by each plan that puts it ([GpuPlan.chainPut]) — its
-/// bytes the engine's alone, read here through [straight]. Goes with the
-/// object; a plan that puts it keeps its own hold.
-///
-/// 🚨★ONE MOVE, HOWEVER MANY PLANS (ink-trails-further-on-intel-since-the-
-/// screen-waits-for-the-gpu, 관제 2026-11-13 「한 번 만들고 계획마다
-/// 이름만」): a frame is planned again at each write a pen makes, and the
-/// put took the plug-in's bytes each time — copied twice a plan, 25–40 ms
-/// of a write's 33 planned on the Surface Pro 11. ⛔Not kept beside a copy
-/// of its own here: a picture a canvas's size, twice.
-final class GpuPutPicture implements Finalizable {
-  /// [straight]'s bytes, moved to the engine.
-  factory GpuPutPicture(Uint8List straight) {
-    final length = straight.length;
-    final made = using(
-      (arena) => rust.putPictureNew(_bytes(arena, straight), length),
-    );
-    final read = rust
-        .putPicturePixels(made)
-        .asTypedList(length, finalizer: _freed, token: made.cast());
-    return GpuPutPicture._(made, read.asUnmodifiableView());
-  }
-
-  GpuPutPicture._(this._made, this.straight);
-
-  /// The engine's free, as the bytes [straight] reads are collected.
-  static final Pointer<NativeFinalizerFunction> _freed =
-      Native.addressOf<NativeFunction<Void Function(Pointer<rust.PutPicture>)>>(
-        rust.putPictureFree,
-      ).cast();
-
-  /// The bytes of every picture made and not yet collected, counted by
-  /// the engine where it makes and frees them.
-  static int get liveBytes => rust.putPictureBytes();
-
-  final Pointer<rust.PutPicture> _made;
-
-  /// Its pixels, the engine's bytes read in place: the engine's to free
-  /// once this view is collected, which this object holds.
-  final Uint8List straight;
 }
 
 /// The executor: plans of the pool's tiles composited on the GPU.
@@ -4754,17 +4732,6 @@ typedef GpuPluginAsked = ({
   double scale,
 });
 
-/// A picture a plugin reads: straight RGBA8 words as the engine's pool
-/// holds them, row by row, its first pixel at ([left], [top]) on the
-/// canvas.
-typedef GpuPluginPicture = ({
-  Uint32List pixels,
-  int left,
-  int top,
-  int width,
-  int height,
-});
-
 /// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs):
 /// asked its reach on the CPU, run over a picture on the device. Each
 /// invocation of a run is cut once it spends its share — a count of the
@@ -4816,6 +4783,10 @@ class GpuPlugin {
   /// is not freed.
   GpuPluginRenderer get renderer =>
       GpuPluginRenderer._(_plugin.address, _engine._engine.address);
+
+  /// What [run] of it made ([GpuPluginRenderer.renderRead]), taken in hand
+  /// on the isolate that lands it.
+  GpuPluginMade made(GpuPluginRun run) => GpuPluginMade._(_engine, run);
 
   /// How far past its input the plugin reaches, in output pixels, for
   /// [asked] — spending no more than [share] — or why not thrown: a value
@@ -4871,65 +4842,96 @@ final class GpuPluginRenderer {
   final int _plugin;
   final int _engine;
 
-  /// The plugin's picture of [input] over [layers] — the pictures its
-  /// layer values name, by slot — with [asked], each pixel spending no
-  /// more than [share]: a word a pixel of [input]'s size and place,
-  /// transparent where it writes none — or why not thrown: a value past
-  /// what the plugin reads, the run cut, or the device failed. A plugin
-  /// opened not to be cut runs whole, in chunks sized as [share]'s are.
-  /// ⚠️Waits for the GPU, a chunk at a time.
-  Uint32List render(
-    GpuPluginPicture input,
-    List<GpuPluginPicture> layers,
+  /// The plugin's picture over what [read] kept of a chain — its tiles,
+  /// and its rows' as the layers its layer values name, by slot — at
+  /// [picture], its place in the plug-in's pixels (the paper's), which lie
+  /// [at] from the tiles' grid; with [asked], each pixel spending no more
+  /// than [share]: the chain's rectangle of tiles on the device, clear
+  /// past the picture and wherever its alpha is 0 — for the isolate that
+  /// lands it ([GpuPlugin.made]) — or why not thrown: a value past what
+  /// the plugin reads, a side below 0, no plan ran through [read], the run
+  /// cut, or the device failed. A plugin opened not to be cut runs whole,
+  /// in chunks sized as [share]'s are. ⚠️Waits for the GPU, a chunk at a
+  /// time.
+  GpuPluginRun renderRead(
+    GpuChainReader read,
+    ({int left, int top, int width, int height}) picture,
+    (int, int) at,
     GpuPluginAsked asked, {
     required int share,
   }) => using((arena) {
     GpuPlugin._whole(asked);
-    final pictures = [input, ...layers];
-    for (final picture in pictures) {
-      if (picture.width < 0 ||
-          picture.height < 0 ||
-          picture.pixels.length != picture.width * picture.height) {
-        throw ArgumentError(
-          '${picture.pixels.length} pixels for a picture '
-          '${picture.width} by ${picture.height}',
-        );
-      }
-    }
-    final words = pictures.fold(
-      0,
-      (sum, picture) => sum + picture.pixels.length,
+    final (:left, :top, :width, :height) = picture;
+    final place = arena<Int32>(4)
+      ..asTypedList(4).setAll(0, [left, top, width, height]);
+    final (dx, dy) = at;
+    final shift = arena<Int32>(2)..asTypedList(2).setAll(0, [dx, dy]);
+    final rect = arena<Int32>(4);
+    final made = rust.pluginRenderRead(
+      Pointer.fromAddress(_plugin),
+      Pointer.fromAddress(_engine),
+      Pointer.fromAddress(read._read),
+      place,
+      shift,
+      _doubles(arena, asked.values),
+      GpuPlugin._kinds(arena, asked.kinds),
+      asked.kinds.length,
+      GpuPlugin._moment(arena, asked),
+      share,
+      rect,
     );
-    final pixels = arena<Uint32>(_held(words));
-    final rects = arena<Int32>(4 * pictures.length);
-    var at = 0;
-    for (final (index, picture) in pictures.indexed) {
-      pixels.asTypedList(words).setAll(at, picture.pixels);
-      at += picture.pixels.length;
-      rects.asTypedList(4 * pictures.length).setAll(4 * index, [
-        picture.left,
-        picture.top,
-        picture.width,
-        picture.height,
-      ]);
+    if (made == nullptr) {
+      throw GpuRefused(_lastError());
     }
-    final count = input.width * input.height;
-    final output = arena<Uint32>(_held(count));
-    _checked(
-      rust.pluginRender(
-        Pointer.fromAddress(_plugin),
-        Pointer.fromAddress(_engine),
-        pixels,
-        rects,
-        layers.length,
-        _doubles(arena, asked.values),
-        GpuPlugin._kinds(arena, asked.kinds),
-        asked.kinds.length,
-        GpuPlugin._moment(arena, asked),
-        share,
-        output,
-      ),
+    final [x0, y0, columns, rows] = rect.asTypedList(4);
+    return (
+      made: made.address,
+      rect: (x0: x0, y0: y0, columns: columns, rows: rows),
     );
-    return Uint32List.fromList(output.asTypedList(count));
   });
+}
+
+/// What a plug-in's run made ([GpuPluginRenderer.renderRead]) as plain
+/// numbers, so it crosses back from the worker: the address of what it
+/// made, and its rectangle of tiles.
+typedef GpuPluginRun = ({
+  int made,
+  ({int x0, int y0, int columns, int rows}) rect,
+});
+
+/// What a plug-in made over a chain's tiles: the straight RGBA8 tiles of
+/// [rect] — the chain's rectangle, its first tile's column and row, and how
+/// many columns and rows of tiles it spans — on the GPU.
+class GpuPluginMade {
+  GpuPluginMade._(this._engine, GpuPluginRun run)
+    : _made = Pointer.fromAddress(run.made),
+      rect = run.rect;
+
+  final GpuEngine _engine;
+  final Pointer<rust.PluginMade> _made;
+  final ({int x0, int y0, int columns, int rows}) rect;
+
+  /// Puts each of its tiles [asks] names — by their column and row on the
+  /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
+  /// puts what it made: the engine's alone, with no wait for the GPU. Each
+  /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
+  /// has room for. ⚠️[GpuLettered.land]'s like: the second picture landed
+  /// as it lies on the device — a third makes the three one (rule of
+  /// three).
+  List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
+      _landed(
+        asks,
+        (_, coordinates, _, places, changes) => rust.pluginMadeLand(
+          _engine._engine,
+          _made,
+          _engine._its(pool)._pool,
+          cel,
+          coordinates,
+          asks.length,
+          places,
+          changes,
+        ),
+      );
+
+  void free() => rust.pluginMadeFree(_made);
 }

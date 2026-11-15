@@ -188,12 +188,6 @@ const _ofNoEngine = <String, (int, String)>{
     'a stroke\'s paper is the same bitmap in memory a tip is '
         '(`GpuDabTexture`): made with no engine',
   ),
-  'made._made': (
-    1,
-    'what a plug-in made is bytes in memory (`GpuPutPicture`, rust '
-        '`PutPicture`: an `Arc<[u8]>`), which the run that names it '
-        'uploads',
-  ),
   'faces._faces': (
     1,
     'the faces are font files in memory (`GpuFaces`, rust '

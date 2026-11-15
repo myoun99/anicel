@@ -338,10 +338,9 @@ final class _Unopened implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => null;
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) async => null;
 
@@ -398,17 +397,11 @@ final class _Opening implements FxPluginRunner {
       _build.reach(values, moment);
 
   @override
-  Future<Uint8List?> render({
-    required FxPluginPicture input,
+  Future<FxPluginTiles?> render({
+    required FxPluginInput input,
     required Float64List values,
-    required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) => _build.render(
-    input: input,
-    values: values,
-    layers: layers,
-    moment: moment,
-  );
+  }) => _build.render(input: input, values: values, moment: moment);
 
   /// Lets its build go — one still to come as it comes.
   @override

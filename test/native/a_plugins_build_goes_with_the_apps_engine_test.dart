@@ -5,17 +5,27 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/app_gpu_settings.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/native/gpu_fx_plugin.dart';
+import 'package:anicel/src/native/plan_plugins.dart' show EngineFxPluginInput;
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuChainRead, GpuComposite, gpuTileSide;
 
+import '../helpers/a_plugin_steps_input.dart';
+import '../helpers/a_plugin_that_shifts.dart' show fxPluginTilesPixels;
 import '../helpers/fx_plugin_file.dart';
 import '../helpers/temp_dir.dart';
 import '../helpers/the_apps_engine_let_go.dart';
@@ -31,6 +41,8 @@ import '../helpers/the_apps_engine_let_go.dart';
 /// On the app's own engine, which each test loses: the one after it finds
 /// the next.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const moment = (frameIndex: 7, time: 1.25, frameRate: 24.0, scale: 1.0);
   final description = fxPluginDescriptionOf('a.invert');
   const inverted = [245, 55, 225, 255];
@@ -81,21 +93,59 @@ void main() {
     addTearDown(() => AppKernels.debugCompileHere = true);
   }
 
-  /// What [runner] makes of one pixel — null where it answers nothing.
-  Future<List<int>?> drawnBy(FxPluginRunner runner) async {
-    final drawn = await runner.render(
-      input: (
-        pixels: Uint8List.fromList(const [10, 200, 30, 255]),
-        width: 1,
-        height: 1,
-        left: 0,
-        top: 0,
-      ),
+  /// One pixel laid as a step's input on the engine the app has now.
+  Future<FxPluginInput> onePixel() async {
+    final composite = GpuComposite(appGpuEngine);
+    try {
+      final letters = await EngineLetters.open(composite);
+      return aPluginStepsInput(
+        composite,
+        letters,
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 1, height: 1),
+          tileSize: gpuTileSide,
+          tiles: {
+            TileCoord(x: 0, y: 0): BitmapTile(
+              size: gpuTileSide,
+              pixels: Uint8List(BitmapTile.bytesFor(gpuTileSide))
+                ..setAll(0, const [10, 200, 30, 255]),
+            ),
+          },
+        ),
+        picture: (left: 0, top: 0, width: 1, height: 1),
+      );
+    } finally {
+      composite.free();
+    }
+  }
+
+  /// What a step is handed where no plan can run, the device gone: a read
+  /// no plan ran through.
+  FxPluginInput unread() {
+    final read = GpuChainRead(appGpuEngine);
+    addTearDown(read.free);
+    return EngineFxPluginInput(
+      read,
+      picture: (left: 0, top: 0, width: 1, height: 1),
+      paperOnTheGrid: (0, 0),
+    );
+  }
+
+  /// What [runner] makes of [onePixel] — or of [input], handed it at once
+  /// — null where it answers nothing.
+  Future<List<int>?> drawnBy(
+    FxPluginRunner runner, [
+    FxPluginInput? input,
+  ]) async {
+    final over = input ?? await onePixel();
+    final made = await runner.render(
+      input: over,
       values: Float64List(0),
-      layers: const [],
       moment: moment,
     );
-    return drawn?.sublist(0, 4);
+    return made == null
+        ? null
+        : fxPluginTilesPixels(over, made).sublist(0, 4);
   }
 
   test('a build goes with the engine it was opened on: it is let go, the '
@@ -121,7 +171,11 @@ void main() {
     final plugins = await readAtLaunch();
     theAppsEngineLost();
     final asked = plugins.runnerFor(description)!;
-    expect(await drawnBy(asked), isNull, reason: '⛔premise: no device');
+    expect(
+      await drawnBy(asked, unread()),
+      isNull,
+      reason: '⛔premise: no device',
+    );
 
     letTheGoneAppGpuEngineGo();
 
@@ -133,13 +187,17 @@ void main() {
     final plugins = await installed();
     final build = plugins.runnerFor(description)! as GpuFxPlugin;
     expect(build.closed, isFalse, reason: '⛔premise: open');
-    final onItsWay = drawnBy(build);
+    final onItsWay = drawnBy(build, await onePixel());
 
     theAppsEngineLostAndLetGo();
 
     expect(build.closed, isTrue);
     expect(build.debugLetGo, isFalse, reason: 'LIVENESS: still on its way');
-    await onItsWay;
+    expect(
+      await onItsWay,
+      isNull,
+      reason: 'what it made is of the engine let go: it lands nowhere',
+    );
     expect(build.debugLetGo, isTrue, reason: 'freed once it ended');
   });
 

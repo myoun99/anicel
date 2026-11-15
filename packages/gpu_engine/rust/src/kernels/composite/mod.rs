@@ -88,7 +88,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::blend::mode::{NORMAL, PLUS};
-use crate::kernels::chain::{Chain, Chained, laid_as, tiles_of, with_drawn};
+use crate::kernels::chain::{Chain, Chained, Stored, laid_as, tiles_of, with_drawn};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
@@ -1218,7 +1218,8 @@ impl Composite {
         }
         let ops = with_drawn(&chained.ops, &drawn);
         // A chain reads its tiles and puts others: what it read stays.
-        self.chains(engine).run(engine, self, under, chained.rect, &ops)
+        let stored = Stored { pages: plan.pages, sets: plan.sets };
+        self.chains(engine).run(engine, self, stored, under, chained.rect, &ops)
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.

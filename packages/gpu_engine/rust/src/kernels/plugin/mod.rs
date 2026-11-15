@@ -29,6 +29,7 @@ use std::borrow::Cow;
 use fx_wgsl::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, INPUT, Kernel, OUTPUT, RENDER, ROWS};
 
 use crate::device::Engine;
+use crate::kernels::effects::blur::TileRect;
 use crate::kernels::shared::{
     Encoded, encode, fits, le_bytes, le_words, pipeline_or_why, plane, whole, words_buffer,
 };
@@ -48,6 +49,14 @@ pub(crate) struct Plugin {
     kernel: Kernel,
     pipeline: wgpu::ComputePipeline,
     tiles: Tiles,
+}
+
+/// What a plug-in made over a chain's tiles ([`Plugin::render_tiled`]):
+/// straight RGBA8 tiles over `rect`, the chain's rectangle, tile after tile
+/// row by row — kept for the app to land in the pool (abi.rs).
+pub(crate) struct PluginMade {
+    pub(crate) rect: TileRect,
+    pub(crate) tiles: wgpu::Buffer,
 }
 
 impl Plugin {
@@ -71,13 +80,17 @@ impl Plugin {
     /// the CPU's `Kernel::render` does, in chunks the device's pace sizes
     /// for `frame`'s share — for a kernel opened uncut, what the chunks are
     /// sized for alone; none where the device could not (the last error
-    /// says why). A run cut leaves `output` as it was.
+    /// says why). A run cut leaves `output` as it was. The tests' run from
+    /// words, beside the CPU's: the app's runs are over a chain's tiles
+    /// ([`Self::render_tiled`]), the chunks one loop for both ([`Self::chunked`]).
+    #[cfg(test)]
     pub(crate) fn render(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32]) -> Option<Result<(), Cut>> {
         let most = self.most(engine, frame)?;
         self.run(engine, frame, output, most)
     }
 
     /// [`Self::render`] in chunks of `most` workgroups at most.
+    #[cfg(test)]
     fn run(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32], most: u64) -> Option<Result<(), Cut>> {
         let bindings = self.kernel.bindings();
         let words: Vec<Cow<[u32]>> = bindings
@@ -105,24 +118,22 @@ impl Plugin {
     /// input place (its `in_origin` and `in_size`; its `input` and `rows`
     /// words are not read), the output started clear, and what the render
     /// made at its output place laid on tiles over `input`'s rectangle,
-    /// clear past it and wherever its alpha is 0 — as a chain puts what a
-    /// plug-in made (`Op::Put`). Submits the work; the caller waits for
-    /// what it reads of the tiles.
-    // ⏳The tests alone ask it until the app hands a plug-in its chain's
-    // tiles through the C ABI — over the door the letters plate's lane
-    // lands first (a-plugin-step-goes-through-the-cpu-and-back, 관제
-    // 2026-11-15 08:11).
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// clear past it and wherever its alpha is 0 — what a chain lays of a
+    /// plug-in's step (`Op::Put`). A place of `frame`'s lies `at` from its
+    /// place on the tiles' grid: the plug-in is told the paper's pixels,
+    /// the tiles lie on the canvas's. Submits the work; the caller waits
+    /// for what it reads of the tiles.
     pub(crate) fn render_tiled(
         &self,
         engine: &Engine,
         frame: &Frame<'_>,
+        at: [i32; 2],
         input: Tiled,
         rows: &[Tiled],
     ) -> Option<Result<wgpu::Buffer, Cut>> {
         let most = self.most(engine, frame)?;
         let place = |[left, top]: [i32; 2], [width, height]: [i32; 2]| {
-            ([left, top, width, height], width.max(0) as u64 * height.max(0) as u64)
+            ([left + at[0], top + at[1], width, height], width.max(0) as u64 * height.max(0) as u64)
         };
         let (read, area) = place(frame.in_origin, frame.in_size);
         let (drawn, drawn_area) = place(frame.out_origin, frame.out_size);

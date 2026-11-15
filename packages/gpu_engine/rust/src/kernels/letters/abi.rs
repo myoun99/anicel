@@ -381,7 +381,7 @@ pub unsafe extern "C" fn gpu_engine_lettered_land(
         let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
         let landed = asks
             .chunks_exact(2)
-            .map(|tile| lettered.index_of(tile[0], tile[1]))
+            .map(|tile| lettered.rect.index_of(tile[0], tile[1]))
             .collect::<Option<Vec<usize>>>()
             .and_then(|indices| {
                 let inked = indices.into_iter().map(|index| (index, Change::Inked));

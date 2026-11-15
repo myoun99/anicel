@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_letters.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -18,10 +19,12 @@ import '../helpers/a_row_laid_on_the_engine.dart';
 /// 관제 2026-11-13 「한 번 만들고 계획마다 이름만」): a frame is planned
 /// again at each write a pen makes, and each plan copied the kept picture
 /// to the engine twice — 🔬25–40 ms of a write's 33 planned on the Surface
-/// Pro 11. The plans name the one the step made ([GpuPutPicture]).
+/// Pro 11. The plans name the tiles the step made, in the engine's pool
+/// since 2026-11-15 (a-plugin-step-goes-through-the-cpu-and-back) — ↩️a
+/// picture moved there once till then (`GpuPutPicture`).
 ///
-/// ⚠️A file of its own: [GpuPutPicture.liveBytes] counts the process's
-/// pictures, and another test's would be collected under this one.
+/// ⚠️A file of its own: [EngineTileLedger.slotCount] counts the process's
+/// tiles, and another test's would be collected under this one.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -37,8 +40,8 @@ void main() {
     composite.free();
   });
 
-  test('plans that put a kept step name the picture it made: one moved to '
-      'the engine', () async {
+  test('plans that put a kept step name the tiles it made: stored in the '
+      'pool once', () async {
     final cel = BitmapSurface(
       canvasSize: const CanvasSize(width: side, height: side),
       tileSize: side,
@@ -61,14 +64,17 @@ void main() {
         run: fxPluginRunOf(runner),
       ),
     ];
-    final before = GpuPutPicture.liveBytes;
+    // The first plans store the cel's tiles and what its step made; the
+    // ones after name them.
+    await aRowLaidOnTheEngine(composite, letters, cel, effects);
+    final stored = EngineTileLedger.instance.slotCount;
 
-    for (var plans = 0; plans < 4; plans += 1) {
+    for (var plans = 1; plans < 4; plans += 1) {
       await aRowLaidOnTheEngine(composite, letters, cel, effects);
     }
 
     expect(runner.renders, 1, reason: '⛔premise: kept, not run again');
-    expect(GpuPutPicture.liveBytes - before, side * side * 4);
+    expect(EngineTileLedger.instance.slotCount, stored);
     // Held to here: what its step kept goes when it does.
     expect(cel.tiles, hasLength(1));
   });
