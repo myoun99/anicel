@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
+import '../helpers/tiles_on_the_engine.dart';
+
 void main() {
   group('BitmapSurfacePainter', () {
     test('repaints when surface or transparent background setting changes', () {
@@ -121,7 +123,7 @@ void main() {
       for (var y = 0; y < 8; y += 1) {
         for (var x = 0; x < 10; x += 1) {
           final coord = TileCoord(x: x, y: y);
-          tiles[coord] = BitmapTile.blank(size: 2);
+          tiles[coord] = aTileOfItsOwn(size: 2);
         }
       }
       return BitmapSurface(
