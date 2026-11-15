@@ -114,8 +114,20 @@ Iterable<Path> dashesAlong(Path source, DashPattern dashes) {
 /// 2.65 ms a tick on the Surface (profile), standing or dragged. Walked
 /// along the sides here and laid by `moveTo`/`lineTo`: 0.58. ⛔Not a
 /// second answer to where a dash is — both read [DashPattern.spansAlong].
-/// Only a line of straight sides can be cut this way; a curve (a rounded
-/// box) still goes by [dashesAlong].
+/// It cuts lines of straight sides; a curve (a rounded box) goes by
+/// [dashesAlong].
+///
+/// ⚖️WHY NOT THIS WAY FOR EVERY DASHED LINE (관제 11-16 05:23 asked for
+/// one cutter; measured 07:05 on the Surface, profile): a rounded box could
+/// come here — flattened once into chords a quarter pixel from its arcs
+/// (0 µs), it cuts in 7 µs where [dashesAlong] takes 63, its dashes moving
+/// less than a quarter pixel. ⛔The marquees' union cannot: it is laid by
+/// `Path.combine`, whose corners Dart cannot read, so it would be flattened
+/// by sampling its metrics on every frame of the drag that reshapes it —
+/// 0.30 to 0.70 ms where cutting it by its metrics takes 0.08 — and the
+/// sampled corners drift its dashes by up to a pixel. So the two cutters
+/// stay, both reading [DashPattern.spansAlong], and the parity test
+/// (`test/ui/dashed_path_test.dart`) holds them to the same dashes.
 Path dashedPolygons(Uint32List starts, Int32List xy, DashPattern dashes) {
   final dashed = Path();
   for (var polygon = 0; polygon + 1 < starts.length; polygon += 1) {
