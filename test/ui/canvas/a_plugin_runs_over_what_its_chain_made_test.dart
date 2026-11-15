@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -22,6 +22,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/a_row_laid_on_the_engine.dart';
+import '../../helpers/cel_text_fixture.dart';
 import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고, 결과가 올 때까지
@@ -41,6 +42,14 @@ void main() {
   const paper = Rect.fromLTWH(0, 0, width + 0.0, height + 0.0);
   const red = [200, 10, 20, 255];
   const clear = [0, 0, 0, 0];
+  // The stand-in with one layer value, `map`, and the row it names.
+  final reading = FxPluginDescription.fromJson({
+    ...shiftingFxPluginDescription.toJson(),
+    'params': [
+      {'id': 'map', 'kind': 'layer', 'label': 'Map'},
+    ],
+  })!;
+  const map = LayerId('map');
   late GpuComposite composite;
   late EngineLetters letters;
 
@@ -227,14 +236,7 @@ void main() {
 
   test('handed its picture where it lies on the paper, and each row it '
       'names on the same grid, as the row\'s own cel holds it', () async {
-    final reading = FxPluginDescription.fromJson({
-      ...shiftingFxPluginDescription.toJson(),
-      'params': [
-        {'id': 'map', 'kind': 'layer', 'label': 'Map'},
-      ],
-    })!;
     const green = [0, 200, 0, 255];
-    const map = LayerId('map');
     final runner = ShiftingFxPlugin(by: 1);
     final effect = ResolvedLayerEffect(
       kind: EffectKind.plugin,
@@ -308,13 +310,6 @@ void main() {
 
   test('a row it names with no cel there is handed clear, at its place; one '
       'not in its cut is none', () async {
-    final reading = FxPluginDescription.fromJson({
-      ...shiftingFxPluginDescription.toJson(),
-      'params': [
-        {'id': 'map', 'kind': 'layer', 'label': 'Map'},
-      ],
-    })!;
-    const map = LayerId('map');
     Future<ShiftingFxPlugin> ranWith(Map<LayerId, BitmapSurface?> rows) async {
       final runner = ShiftingFxPlugin(by: 0);
       await aRowLaidOnTheEngine(composite, letters, source(), [
@@ -341,6 +336,60 @@ void main() {
     final notInCut = await ranWith(const {});
     expect(notInCut.lastValues[0], -1);
     expect(notInCut.lastLayers, isEmpty);
+  });
+
+  test('a row it names is handed with its texts laid, as its cel shows '
+      'them', () async {
+    const blue = [0, 0, 200, 255];
+    final runner = ShiftingFxPlugin(by: 0);
+    // A cel with nothing drawn, and a text whose plate is blue at (2, 1).
+    final lettered = BitmapSurface(
+      canvasSize: const CanvasSize(width: width, height: height),
+    ).withTexts([
+      textOf(1, plate: {TileCoord(x: 0, y: 0): tileOf({(2, 1): blue})}),
+    ]);
+    expect(lettered.tiles, isEmpty, reason: '⛔premise: the text alone');
+
+    await aRowLaidOnTheEngine(composite, letters, source(), [
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: reading,
+        values: const [0],
+        layers: const {'map': map},
+        run: fxPluginRunOf(runner, rows: {map: lettered}),
+      ),
+    ]);
+
+    final picture = runner.inputs.single;
+    final at = ((1 - picture.top) * picture.width + (2 - picture.left)) * 4;
+    expect(
+      runner.lastLayers.single.sublist(at, at + 4),
+      blue,
+      reason: 'the letters, where the cel shows them (I-132-Q32 b)',
+    );
+  });
+
+  test('on a paper that begins past the grid\'s first pixel it is handed '
+      'the paper\'s pixels, read where they lie on the grid', () async {
+    final runner = ShiftingFxPlugin(by: 0);
+
+    // The cel's red lies on the grid's first pixel: two left of a paper
+    // that begins at the grid's (2, 0).
+    await aRowLaidOnTheEngine(
+      composite,
+      letters,
+      source(),
+      [plugin(runner)],
+      paper: paper.shift(const Offset(2, 0)),
+    );
+
+    expect(
+      runner.inputs.single.left,
+      -2,
+      reason: '⛔premise: its picture begins two left of the paper',
+    );
+    expect(handedAt(runner, -2, 0), red);
+    expect(handedAt(runner, 0, 0), clear);
   });
 
   for (final (what, rows, metAs)

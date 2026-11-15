@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -24,8 +25,9 @@ import 'package:gpu_engine/gpu_engine.dart';
 ///
 /// Laid as the frame a canvas stands on to draw is — what its steps make
 /// kept on the cel — or, [ofThePensFrame] false, as a frame made ahead is
-/// (`PlanPlugins`). Its tiles lie on the engine through
-/// [ledger], one of its own where it is given none.
+/// (`PlanPlugins`). Its tiles lie on the engine through [ledger], one of its
+/// own where it is given none; its paper is its canvas, or [paper] — what a
+/// test asks of a paper that begins elsewhere on the grid.
 ///
 /// The one way a test lays a row on the engine, a plug-in on it or not.
 /// ↩️`aRowLaidThroughItsPlugins` while a row without one was laid through
@@ -41,6 +43,7 @@ Future<Uint8List> aRowLaidOnTheEngine(
   void Function(bool waits)? waitsForKernels,
   bool ofThePensFrame = true,
   EngineTileLedger? ledger,
+  Rect? paper,
 }) async {
   final tiles = _ledgerOf(ledger);
   late Uint8List pixels;
@@ -60,6 +63,7 @@ Future<Uint8List> aRowLaidOnTheEngine(
             ofThePensFrame: ofThePensFrame,
           ),
           ledger: tiles,
+          paper: paper,
         );
       } finally {
         recorded?.call();
@@ -74,7 +78,8 @@ Future<Uint8List> aRowLaidOnTheEngine(
 /// One round of [aRowLaidOnTheEngine]: [surface]'s row through [effects]
 /// laid once, its plug-ins' steps those [plugins] hold — as if off where
 /// it names none, as a route that cannot wait lays them — its tiles on the
-/// engine through [ledger], one of its own where it is given none.
+/// engine through [ledger], one of its own where it is given none, on
+/// [paper], its canvas where it names none.
 Uint8List aRowLaidOnce(
   GpuComposite composite,
   EngineLetters letters,
@@ -84,6 +89,7 @@ Uint8List aRowLaidOnce(
   List<EngineHeld> held = const [],
   PlanPlugins? plugins,
   EngineTileLedger? ledger,
+  Rect? paper,
 }) {
   final canvas = surface.canvasSize;
   final tiles = _ledgerOf(ledger);
@@ -104,7 +110,7 @@ Uint8List aRowLaidOnce(
           ),
         ],
         hold: hold,
-        paper: canvas.canvasRect,
+        paper: paper ?? canvas.canvasRect,
         letters: letters,
         plugins: plugins,
       );
