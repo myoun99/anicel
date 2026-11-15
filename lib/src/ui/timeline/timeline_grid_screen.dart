@@ -115,8 +115,9 @@ final class _GridScreen {
         unawaited(appGpuGridKernels.warm().then((_) => _laysChanged()));
       }
       // And the faces its tiles' words are set in, read while those
-      // compile: a word waits for them once a process, and by the first
-      // row that lays they are there (`TimelineGridTileStore._glyphNow`).
+      // compile: a word waits for them once a process, and a tile asked
+      // for before they are read is drawn off the paint
+      // (`TimelineGridTileStore._glyphNow`).
       unawaited(EngineFaces.bundled());
       _laysChanged();
     },

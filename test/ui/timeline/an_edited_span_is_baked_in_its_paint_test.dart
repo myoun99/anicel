@@ -16,6 +16,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart'
+    show debugGlyphsLaidOut;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
@@ -223,11 +225,21 @@ void main() {
     final drawnOff = countTilesDrawnOffThePaint(store);
     final landingsBefore = landings;
     final wordsBefore = store.debugWordsBakedOnTheEngine;
+    final laidOutBefore = debugGlyphsLaidOut;
 
     final renamed = painterFor(rowLayer('r', name: 'Q7'));
     final baked = ask(renamed);
 
     expect(baked, isNotNull);
+    // 🔬A layout was 50–100 µs of what a new name cost its frame (the test
+    // VM, 11-15), and the bake laid the word out a second time.
+    expect(
+      debugGlyphsLaidOut,
+      laidOutBefore + 1,
+      reason:
+          'laid out once, where the span sets it: the bake on the engine '
+          'reads that painter',
+    );
     expect(
       identical(baked, before),
       isFalse,

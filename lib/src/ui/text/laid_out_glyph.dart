@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
 import '../../core/hashed_once.dart';
@@ -58,17 +59,22 @@ TextPainter laidOutGlyph(
   TextStyle style, {
   double? maxWidth,
   double tightening = 0,
-}) => _cache.resolve(
-  _GlyphKey((text, style, maxWidth, tightening)),
-  () => TextPainter(
+}) => _cache.resolve(_GlyphKey((text, style, maxWidth, tightening)), () {
+  debugGlyphsLaidOut += 1;
+  return TextPainter(
     text: tightening == 0
         ? TextSpan(text: text, style: style)
         : _tightSpan(text, style, tightening),
     textDirection: TextDirection.ltr,
     maxLines: maxWidth == null ? null : 1,
     ellipsis: maxWidth == null ? null : '…',
-  )..layout(maxWidth: maxWidth ?? double.infinity),
-);
+  )..layout(maxWidth: maxWidth ?? double.infinity);
+});
+
+/// How many glyphs [laidOutGlyph] has laid out — the ones its cache did
+/// not hold: what a test counts a paint's layouts by. ⚠️TEST ONLY.
+@visibleForTesting
+int debugGlyphsLaidOut = 0;
 
 TextSpan _tightSpan(String text, TextStyle style, double tightening) {
   final letters = text.runes.toList();

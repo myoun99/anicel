@@ -1,10 +1,13 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/engine_faces.dart';
 import 'package:anicel/src/native/engine_word.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+import 'package:anicel/src/ui/theme/app_theme.dart'
+    show AppTypography, buildAppTheme;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineBlockNameFontSize, timelineBlockWordStyle;
 
 import '../helpers/app_faces.dart';
 
@@ -232,10 +235,12 @@ void main() {
     expect(line.baseline, closeTo(10.56, 0.005), reason: 'fixture');
     expect(
       _textOf(
-        _word(_laid(TextSpan(text: 'こと', style: _ja))).runs.single,
+        _word(
+          _laid(TextSpan(text: 'こと', style: _ja), maxWidth: 400),
+        ).runs.single,
       ),
       'こと',
-      reason: 'a word laid whole ends in its letters',
+      reason: 'a word laid whole in its room ends in its letters',
     );
   });
 
@@ -325,6 +330,46 @@ void main() {
       ])
       ..layout();
     expect(() => _word(placeholder), throwsUnsupportedError);
+  });
+
+  // ⛔A style the engine is not handed sends its word to Flutter's raster,
+  // which a tile waits for (`bakeWordOnEngine`): were the app's own type
+  // one, every word of every tile would wait again and nothing would say
+  // so — each bake would still be made, a frame or more late.
+  testWidgets('the type the app sets a block\'s word in — its theme\'s, as '
+      'a row takes it — is the engine\'s to set', (tester) async {
+    late TextStyle ambient;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Material(
+          child: Builder(
+            builder: (context) {
+              ambient = DefaultTextStyle.of(context).style;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+    for (final bold in [false, true]) {
+      final style = timelineBlockWordStyle(
+        ambient,
+        ink: const Color(0xFF123456),
+        fontSize: timelineBlockNameFontSize(ambient),
+        bold: bold,
+      );
+      final word = _word(_laid(TextSpan(text: 'A1', style: style)));
+      expect(
+        word.families,
+        unorderedEquals([0, 1, 2]),
+        reason: 'the three bundled faces, in the UI\'s order',
+      );
+      expect(
+        word.runs.single.weight,
+        bold ? 700 : (ambient.fontWeight ?? FontWeight.normal).value,
+      );
+    }
   });
 
   test('the faces are there once the bundle\'s are read — an order of them '

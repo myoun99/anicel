@@ -1159,14 +1159,26 @@ class TimelineGridTileStore {
       '${style.fontFamily}|${style.letterSpacing}|${at.tightening}|'
       '${at.dpr}|${at.fit.x}|${at.fit.y}';
 
-  /// [cell]'s word as its bake is handed it: laid out white whatever the
-  /// cell's ink, so every ink shares one layout ([laidOutGlyph] keys on
-  /// the colour).
+  /// [cell]'s word as Flutter's raster is handed it: laid out white
+  /// whatever the cell's ink, so every ink shares one layout
+  /// ([laidOutGlyph] keys on the colour) and its coverage is its ink's
+  /// whole.
   static TextPainter _laidOut(_TileGlyph cell) => laidOutGlyph(
     cell.text,
     cell.style.copyWith(color: const Color(0xFFFFFFFF)),
     tightening: cell.bake.tightening,
   );
+
+  /// [cell]'s word as its span set it — the painter the span's own
+  /// emission laid it by ([TimelineTileRasterSource.cellWordSetFor]),
+  /// which the cache still holds: what the engine's bake reads, where each
+  /// letter stands and no ink, so a word never seen is laid out once in
+  /// the paint that shows it. ↩️It read [_laidOut]'s, which no emission
+  /// had laid — a second layout of every such word, in the paint (🔬a
+  /// layout 50–100 µs of the ~330–470 a new name cost a frame, the test
+  /// VM, 2026-11-15).
+  static TextPainter _asSet(_TileGlyph cell) =>
+      laidOutGlyph(cell.text, cell.style, tightening: cell.bake.tightening);
 
   // COVERAGE bake: the letters' ink alone — the GLYPH op multiplies the
   // per-cell ink's alpha by it. Rasterised big and shrunk where it is
@@ -1190,7 +1202,7 @@ class TimelineGridTileStore {
     final BakedWordCoverage? baked;
     try {
       baked = bakeWordOnEngine(
-        _laidOut(cell),
+        _asSet(cell),
         fit: cell.bake.fit,
         dpr: cell.bake.dpr,
         fontSize: cell.style.fontSize,
