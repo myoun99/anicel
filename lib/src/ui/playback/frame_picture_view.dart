@@ -1464,6 +1464,13 @@ class _RenderFrameScreen extends RenderBox {
         top + texture.height >= height + _screenMargin;
   }
 
+  /// What a frame drawn now, the view's corner on the texel [corner], is
+  /// drawn for.
+  _DrawnFor _drawnFor((int, int) corner) => (
+    viewport: renderSnappedViewport(_viewport, _devicePixelRatio),
+    corner: corner,
+  );
+
   /// Where the frame up on the screen stands, this box painting from
   /// [offset]: where it was drawn for ([_DrawnFor]) — its view's corner on
   /// the box's, and a pan away from there where the view has panned since.
@@ -1503,10 +1510,6 @@ class _RenderFrameScreen extends RenderBox {
   /// frame waits so.
   ({Layer? layer, bool refused}) _layerNow(Offset offset) {
     final corner = _cornerOn(_shownThrough.texture!);
-    final _DrawnFor drawnFor = (
-      viewport: renderSnappedViewport(_viewport, _devicePixelRatio),
-      corner: corner,
-    );
     try {
       return (
         layer: _shownThrough.presented(
@@ -1518,7 +1521,7 @@ class _RenderFrameScreen extends RenderBox {
             devicePixelRatio: _devicePixelRatio,
             corner: corner,
           ),
-          drawnFor: drawnFor,
+          drawnFor: _drawnFor(corner),
           from: (shownFor) => _standingFrom(offset, shownFor),
           devicePixelRatio: _devicePixelRatio,
         ),
