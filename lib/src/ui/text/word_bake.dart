@@ -323,10 +323,13 @@ BakedWordCoverage _narrowed(
 /// Null for a word of no size and for a raster the engine refuses: a tile
 /// leaves either out. Throws [UnsupportedError] for a word that is not the
 /// engine's to set: one in a style it is not handed ([EngineWord.of]), and
-/// ⏳one with a letter none of the bundled faces has — Flutter sets that
-/// one in a face of the machine's, which the engine never sees, so the
-/// word stays Flutter's to raster ([bakeWordCoverage]) till the person
-/// says what it is to be (the same card's Q5).
+/// one with a letter none of the bundled faces has — Flutter sets that one
+/// in a face of the machine's, which the engine never sees, so the word
+/// stays Flutter's to raster ([bakeWordCoverage]). 🗣️The same card's Q5
+/// (유저 2026-11-15: 「(가) 그런 단어만 지금처럼 Flutter 로 굽는다」), asked
+/// knowing what it leaves: such a word alone still waits the first time
+/// it is seen, and stands beside the engine's — which ink a little less
+/// (0.94 of Flutter's, the 🔬above).
 BakedWordCoverage? bakeWordOnEngine(
   TextPainter painter, {
   required ({double x, double y}) fit,

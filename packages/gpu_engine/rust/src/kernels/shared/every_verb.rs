@@ -58,7 +58,7 @@ const ON_THEIR_CALLERS: [(&str, &str); 11] = [
 /// hand on the device — each named, under why: its body was read for it
 /// (2026-11-14), and a verb that comes after is read for it before it is
 /// written here.
-const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
+const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
     (
         "opens an engine, on a thread made for it (`opened`)",
         &["gpu_engine_open", "gpu_engine_open_sole", "gpu_engine_open_first"],
@@ -126,8 +126,8 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
         ],
     ),
     (
-        "adds to a plan, or to a picture of letters, on its caller's heap: it takes a hold on \
-         what it names, and lets go of nothing",
+        "adds to a plan, to a picture of letters or to a word, on its caller's heap: it takes a \
+         hold on what it names, and lets go of nothing",
         &[
             "gpu_engine_plan_set",
             "gpu_engine_plan_matrix",
@@ -155,6 +155,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
             "gpu_engine_letters_pass",
             "gpu_engine_letters_run",
             "gpu_engine_letters_rect",
+            "gpu_engine_word_run",
         ],
     ),
     (
@@ -178,6 +179,14 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
         "copies a face's file into the faces being handed, on its caller's heap: no device \
          is asked till they are set up (`gpu_engine_faces_of`)",
         &["gpu_engine_faces_file"],
+    ),
+    (
+        "sets a word in the faces on the CPU, where it is called — which of its letters they have \
+         (`words::whole`), and its coverage (`words::rastered`): the faces are bytes \
+         (`hands_bytes`), their files and what each weight is set in — behind a lock under which \
+         nothing waits for the engine's thread — and no device is asked. The paint that asks for \
+         a tile's word bakes it (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3)",
+        &["gpu_engine_word_whole", "gpu_engine_word_raster"],
     ),
 ];
 

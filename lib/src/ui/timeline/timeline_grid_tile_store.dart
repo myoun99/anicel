@@ -1221,6 +1221,16 @@ class TimelineGridTileStore {
 
   /// [cell]'s word baked from Flutter's raster, read back — once, however
   /// many ask while it is.
+  ///
+  /// 🗣️THIS SECOND ROAD IS THE PERSON'S CHOICE
+  /// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q5, 유저
+  /// 2026-11-15: 「(가) 그런 단어만 지금처럼 Flutter 로 굽는다」): a word
+  /// with a letter no bundled face has — an emoji, a script the three
+  /// lack — shows as it did, set by Flutter in a face of the machine's,
+  /// where the engine would set that letter as an empty box. ⛔So it is
+  /// no leftover of the bake the engine took over ([_bakedOnEngine]) to
+  /// tidy away: a tile's word has two roads, and such a word alone still
+  /// waits the first time it is seen.
   Future<BakedWordCoverage?> _bakedByFlutter(_TileGlyph cell) =>
       _glyphs.ensure(
         cell.key,
