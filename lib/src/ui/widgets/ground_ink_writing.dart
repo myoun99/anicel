@@ -287,17 +287,36 @@ class _RenderWritingBox extends RenderShiftedBox {
   /// [layChild] laying the child out — a [Padding]'s answer round an
   /// [Align]'s, each as its own render object gives it, the padding being
   /// what the writing leaves of its inset ([_insetIn]).
+  ///
+  /// 🪶A writing that stands in its room is laid between whole insets
+  /// first, and asked what it needs only where it filled that room — a
+  /// text's width is its one-line width clamped to the room, so a text
+  /// that fits did not. 🔬Asked of every bar, the ask was about a ninth of
+  /// laying 240 rail bars out (debug, 2026-11-16: 40 → 45 ms, and 31 → 36
+  /// on a change of every value); asked so, they cost what they did before
+  /// the law (39–41 ms, 30–36). A writing that fills its room asks always:
+  /// it says nothing by its width.
   ({Size size, Offset childAt}) _place(
     BoxConstraints constraints,
     Size Function(RenderBox child, BoxConstraints constraints) layChild,
   ) {
-    final inset = _insetIn(constraints.maxWidth);
-    final inner = constraints.deflate(EdgeInsets.symmetric(horizontal: inset));
+    BoxConstraints within(double inset) =>
+        constraints.deflate(EdgeInsets.symmetric(horizontal: inset));
     final child = this.child;
+    var inset = _inset;
     var innerSize = Size.zero;
     var at = Offset.zero;
     if (_alignment case final alignment?) {
-      final laid = child == null ? null : layChild(child, inner.loosen());
+      var inner = within(inset);
+      var laid = child == null ? null : layChild(child, inner.loosen());
+      if (child != null && laid != null && laid.width >= inner.maxWidth) {
+        final given = _insetIn(constraints.maxWidth);
+        if (given != inset) {
+          inset = given;
+          inner = within(inset);
+          laid = layChild(child, inner.loosen());
+        }
+      }
       innerSize = inner.constrain(
         Size(
           inner.maxWidth == double.infinity
@@ -312,7 +331,8 @@ class _RenderWritingBox extends RenderShiftedBox {
         at = alignment.alongOffset(innerSize - laid as Offset);
       }
     } else if (child != null) {
-      innerSize = layChild(child, inner);
+      inset = _insetIn(constraints.maxWidth);
+      innerSize = layChild(child, within(inset));
     }
     return (
       size: constraints.constrain(
