@@ -12,9 +12,13 @@ import 'layer_kind.dart';
 /// cel columns, then CAMERA on the right).
 ///
 /// ★IT IS THE PICTURE'S ORDER TOO: a cut's rows stand in it ([Cut]), and
-/// every route that paints them walks them bottom-up as they stand — so the
-/// direction row, whose place on the timeline nothing stands above, draws
-/// over every ACTION row's picture (F-596).
+/// every route that paints them walks them bottom-up as they stand — so a
+/// row the timeline shows over another is painted over it: the direction
+/// row over every ACTION row's picture, as the timeline shows it (F-596).
+/// 🗣️F-596-Q1 (유저 2026-11-16): 「디렉션이 항상 위여야한다는건 아니고
+/// 다른 레이어 위치 로직이랑 동일하게 하란거엿음. 위에있으면 위에
+/// 보이게 … 보이는대로 위치관계만 지키면됨」 — ⛔no rule of the direction
+/// row's own.
 ///
 enum TimelineSection { drawing, se, camera }
 
@@ -79,8 +83,9 @@ const int _cameraSectionTopRank = 2;
 /// bottom-up gathers a folder's rows by the time it meets the folder row
 /// (`resolveCutFrameCompositeTree`), so a member standing past it would be
 /// painted by no one. A direction or camera row put in a drawing folder
-/// therefore stands in it, with the folder (F-596 — whether it should come
-/// out and over the pictures is asked on its card: F-596-Q1).
+/// therefore stands in it, with the folder, and is painted where it is
+/// seen — 🗣️F-596-Q1 (유저 2026-11-16): 「폴더 안에 두면 폴더 자리에서
+/// 그린다」.
 List<Layer> sectionedLayerOrder(List<Layer> layers) {
   final placeOf = _placeOfIn(layers);
   final places = [for (final layer in layers) placeOf(layer)];
