@@ -140,11 +140,6 @@ sealed class ScreenTexture {
   /// ([present]), at a paint, as every frame is.
   void Function({required bool behind})? putUp;
 
-  /// When a frame the GPU finished goes up, told the GPU's [done] — the
-  /// frame up as soon as it is, where none is named: what puts up the
-  /// pictures of one canvas together (`PicturesUpTogether`).
-  Future<void> Function(Future<void> done)? upTogether;
-
   bool _freed = false;
 
   /// [draw]s the next frame onto what Flutter is not showing — what it was
@@ -159,7 +154,15 @@ sealed class ScreenTexture {
   /// showing what it showed and is reported by name, and whatever is
   /// painting goes on. 🗣️관제 2026-11-08, after a pin stood 13 minutes in
   /// that wait: 「멈춘 화면보다 이름 있는 실패」.
-  void present(void Function(GpuTarget next) draw, {Object? drawnFor}) {
+  ///
+  /// When the frame finished goes up, [upTogether] says, told the GPU's
+  /// done — as soon as it is, where none is named: what puts up the
+  /// pictures of one canvas together (`PicturesUpTogether`).
+  void present(
+    void Function(GpuTarget next) draw, {
+    Object? drawnFor,
+    Future<void> Function(Future<void> done)? upTogether,
+  }) {
     _beginning = (draw: draw, drawnFor: drawnFor);
     final bool began;
     try {

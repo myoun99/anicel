@@ -238,6 +238,19 @@ void main() {
       expect(panSince(drawn, now, 2), (21.0, -13.0));
     });
 
+    test('a turned view panned away, by the whole device pixels nearest: '
+        'a turned view is snapped by none', () {
+      final drawn = CanvasViewport(rotationDegrees: 30);
+      expect(
+        viewStandingAt(
+          drawn,
+          CanvasViewport(rotationDegrees: 30, panX: 10.4, panY: -6.6),
+          1,
+        ),
+        CanvasViewport(rotationDegrees: 30, panX: 10, panY: -7),
+      );
+    });
+
     test('as drawn, through a zoom, a turn or a flip', () {
       final drawn = CanvasViewport(panX: 3, panY: 5);
       for (final now in [

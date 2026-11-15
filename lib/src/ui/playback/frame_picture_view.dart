@@ -1348,6 +1348,9 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// The view of the frame up the clock was last told of.
   CanvasViewport? _toldUp;
 
+  /// What its frames go up together with: the canvas's other pictures.
+  PicturesUpTogether? _together;
+
   /// The frame up is drawn through another view: what is drawn over the
   /// canvas is told — between the app's frames, as a frame goes up
   /// ([ScreenTexture.putUp]), so the frame that shows it draws them with
@@ -1433,7 +1436,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       }
       _overlays = screen.overlays;
     }
-    _shownThrough.upTogether = screen.together?.joined;
+    _together = screen.together;
     if (changed || (moved && !_servedByTheFrameDrawnLast)) {
       markNeedsPaint();
     } else if (moved) {
@@ -1603,6 +1606,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
           drawnFor: _drawnFor(corner),
           from: (shownFor) => _standingFrom(offset, shownFor),
           devicePixelRatio: _devicePixelRatio,
+          upTogether: _together?.joined,
         ),
         refused: false,
       );

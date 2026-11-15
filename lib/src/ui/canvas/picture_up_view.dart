@@ -70,6 +70,10 @@ abstract interface class StandingPicture {
 final class PictureUpView extends ChangeNotifier {
   StandingPicture? _picture;
 
+  /// The picture that carries the overlays, if one does.
+  @visibleForTesting
+  StandingPicture? get debugCarrier => _picture;
+
   /// The view what is drawn over the canvas is drawn through, the view
   /// being [now].
   CanvasViewport standing(CanvasViewport now) =>
@@ -112,7 +116,7 @@ final class PicturesUpTogether {
   final List<Completer<void>> _finished = [];
 
   /// [done] — a frame of one of the canvas's pictures, finishing on the
-  /// GPU — as the frame goes up ([ScreenTexture.upTogether]).
+  /// GPU — as the frame goes up ([ScreenTexture.present]).
   Future<void> joined(Future<void> done) {
     _drawing += 1;
     final up = Completer<void>();

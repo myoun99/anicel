@@ -21,6 +21,8 @@ import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/app_kernels_ahead.dart'
+    show debugLetTheAppGo, holdTheAppForItsEngine;
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -333,7 +335,8 @@ void main() {
     /// On a [canvas] — its clock and what its pictures go up together by —
     /// where one is named: the frame carrying its overlays where it
     /// [carries] them, and a second picture of it beside where [beside].
-    Future<Future<void> Function(CanvasViewport view)> standOver(
+    Future<Future<void> Function(CanvasViewport view, {bool? carry})>
+    standOver(
       WidgetTester tester,
       SelectionFloatOverlay float, {
       Size size = viewSize,
@@ -368,7 +371,7 @@ void main() {
               together: canvas.together,
               child: pictures,
             );
-      Widget seenThrough(CanvasViewport view) {
+      Widget seenThrough(CanvasViewport view, {bool? carry}) {
         final frame = standingOn(
           run,
           key: const ValueKey<String>('frame'),
@@ -377,7 +380,7 @@ void main() {
           viewport: view,
           live: live,
           cutAtCanvas: cutAtCanvas,
-          carriesTheOverlays: carries,
+          carriesTheOverlays: carry ?? carries,
         );
         return onAScreen(
           screen,
@@ -413,7 +416,8 @@ void main() {
         reason: 'LIVENESS: the frame\'s picture is made',
       );
       await lendBothClocks(tester, rounds: 2);
-      return (view) => tester.pumpWidget(seenThrough(view));
+      return (view, {carry}) =>
+          tester.pumpWidget(seenThrough(view, carry: carry));
     }
 
     SelectionFloatPaint redAt(double at) => SelectionFloatPaint(
@@ -732,6 +736,47 @@ void main() {
 
       expect(gates, hasLength(1), reason: '⛔premise: the step is on the GPU');
       expect(canvas.view.standing(zoomed), zoomed);
+    });
+
+    testWidgets('a picture drawing nothing — the app held for its engine — '
+        'keeps no clock: what is drawn over the canvas follows the view', (
+      tester,
+    ) async {
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final (:canvas, told: _) = aCanvas();
+      await standOver(tester, float, canvas: canvas);
+      final zoomed = CanvasViewport(zoom: 2, panX: 10, panY: 6);
+      expect(
+        canvas.view.standing(zoomed),
+        isNot(zoomed),
+        reason: '⛔premise: it stands at the view of its frame up',
+      );
+
+      holdTheAppForItsEngine();
+      addTearDown(debugLetTheAppGo);
+
+      expect(canvas.view.standing(zoomed), zoomed);
+    });
+
+    testWidgets('a picture made to carry the overlays carries them from then '
+        'on — and gone with its box, carries them no more', (tester) async {
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final (:canvas, told: _) = aCanvas();
+      final seenThrough = await standOver(
+        tester,
+        float,
+        canvas: canvas,
+        carries: false,
+      );
+      expect(canvas.view.debugCarrier, isNull, reason: '⛔premise');
+
+      await seenThrough(CanvasViewport(), carry: true);
+      expect(canvas.view.debugCarrier, isNotNull);
+
+      await tester.pumpWidget(const SizedBox());
+      expect(canvas.view.debugCarrier, isNull);
     });
 
     testWidgets("the frame's cut stands where the frame does: through a zoom, "
