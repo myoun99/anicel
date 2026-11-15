@@ -33,11 +33,17 @@ impl Decoded {
     /// here weighs its bytes against its header — the room is there or it
     /// is not.
     ///
-    /// ⚠️NOT ALL OF IT: a progressive JPEG's coefficients — and a baseline
-    /// one's whose components come in scans of their own — are taken
-    /// inside zune as it decodes, with `vec!` too, two bytes a sample
-    /// (zune-jpeg 0.5.15, `mcu_prog.rs` · `mcu.rs`). No call hands those
-    /// in; the card holds what is done of them.
+    /// The other half — a progressive JPEG's coefficients, and a baseline
+    /// one's whose components come in scans of their own — zune takes
+    /// itself as it decodes, where no call hands a buffer in: the copy of
+    /// zune-jpeg this workspace patches in answers an error there (Q1 of
+    /// that card; `Cargo.toml`, `[patch.crates-io]`).
+    ///
+    /// ⚠️Where asking is no answer (read of how those systems give memory
+    /// out, measured on none of them): an OS that hands out room it does
+    /// not have says yes to both and ends the process where the bytes are
+    /// written. A file that only SAYS it is big writes few and lives; a
+    /// picture honestly bigger than the memory does not.
     pub fn of(bytes: &[u8]) -> Result<Self, String> {
         let options = DecoderOptions::default()
             .jpeg_set_out_colorspace(ColorSpace::RGB)
@@ -48,9 +54,7 @@ impl Decoded {
         let info = decoder.info().ok_or("JPEG: no header")?;
         let (width, height) = (usize::from(info.width), usize::from(info.height));
         let room = decoder.output_buffer_size().ok_or("JPEG: a size past counting")?;
-        let mut rgb = Vec::new();
-        rgb.try_reserve_exact(room).map_err(|_| format!("JPEG: out of memory for {width}x{height}"))?;
-        rgb.resize(room, 0);
+        let mut rgb = zeroed(room).ok_or_else(|| format!("JPEG: out of memory for {width}x{height}"))?;
         decoder.decode_into(&mut rgb).map_err(|why| format!("JPEG: {why:?}"))?;
         let orientation = decoder.exif().map_or(1, |exif| orientation_of(exif));
         Ok(Self { rgb, width, height, orientation })
@@ -105,6 +109,30 @@ impl Decoded {
             _ => (x, y),
         }
     }
+}
+
+/// `len` zeroed bytes, or none where there is no room for them: taken as
+/// `vec![0; len]` takes them — the allocator's own zeroed pages — but for
+/// its answer when there are none, which `vec!` has not.
+///
+/// 🔬Not `try_reserve_exact` and `resize`, the way a movie's frame is
+/// taken (`native/video`): that fills every byte before the decoder writes
+/// it again, and taking and writing a 4000 × 3000 picture's 36 MB so was
+/// 12.8–13.8 ms against 9.6–9.9 this way and 8.6–9.1 with `vec!`
+/// (2026-11-15, the Surface, release, the best of thirty, twice).
+fn zeroed(len: usize) -> Option<Vec<u8>> {
+    if len == 0 {
+        return Some(Vec::new());
+    }
+    let layout = std::alloc::Layout::array::<u8>(len).ok()?;
+    // SAFETY: `layout` is of `len` bytes, more than none.
+    let block = unsafe { std::alloc::alloc_zeroed(layout) };
+    if block.is_null() {
+        return None;
+    }
+    // SAFETY: `block` is `len` bytes of the global allocator's, of that
+    // layout — a `u8` array's — and every one of them is written: zero.
+    Some(unsafe { Vec::from_raw_parts(block, len, len) })
 }
 
 /// The orientation EXIF `tiff` names — its first IFD's tag 0x0112 — or

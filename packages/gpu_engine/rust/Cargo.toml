@@ -205,6 +205,23 @@ symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }
 # `grep -rn ANICEL vendor/wgpu-hal` finds in this one, and run this crate's
 # tests on Windows. MIT/Apache-2.0: no source has to be offered.
 wgpu-hal = { path = "vendor/wgpu-hal" }
+# 🚨ZUNE-JPEG IS OURS TO PATCH TOO (유저 2026-11-15,
+# a-jpeg-that-lies-about-its-size-can-end-the-app-Q1: 「고친 사본을 묶는다」).
+# A progressive JPEG's coefficients — and a baseline one's whose components
+# come in scans of their own — are taken inside the decoder as it decodes,
+# the size the file's header says, and zune-jpeg 0.5.15 took them with
+# `vec!`: where there is no room for them a `vec!` ends the process, the
+# app with it. Those two places answer an error now (src/mcu_prog.rs ·
+# src/mcu.rs, through `anicel_zeroed_coefficients` in src/misc.rs), which
+# native/image_decode hands the import as why the file did not decode.
+# Every change of ours says ANICEL. ⚠️EVERY UPGRADE OF ZUNE-JPEG DOES IT
+# AGAIN: copy the new release here from the registry (its Cargo.lock and
+# .gitignore, and cargo's .cargo-ok, left out — nothing is built from
+# them), put back what `grep -rn ANICEL vendor/zune-jpeg` finds in this
+# one, and run native/image_decode's tests — they end at the first place
+# left unmended. MIT OR Apache-2.0 OR Zlib: no source has to be offered,
+# and each altered place is marked.
+zune-jpeg = { path = "vendor/zune-jpeg" }
 
 # A DEPENDENCY'S DEBUG INFO IS ITS LINE TABLES (브러시/렌더링 23:09 · 관제
 # 2026-11-07, connection-round-checklist): the shared target had grown to

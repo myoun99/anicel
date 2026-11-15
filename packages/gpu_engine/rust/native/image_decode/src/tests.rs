@@ -9,23 +9,38 @@ use super::{
     qa_image_decode_jpg_row, qa_image_decode_jpg_size,
 };
 
-/// 🚨The most one request of these tests asks the heap for: past it the
-/// request is refused — so a decoder that takes a buffer the size a file's
-/// header says, with no answer for 「no room」, ends the tests where it
-/// would end the app (`handle_alloc_error`), on any machine, however much
-/// memory it has. No test here asks for a gigabyte. The audio decoder's
-/// tests hold theirs the same way (`native/audio/src/tests.rs`): two, and
-/// a third crate that refuses is where they move into one.
+/// 🚨The most these tests hold of the heap at once: a request that would
+/// take them past it is refused — so a decoder that takes a buffer the size
+/// a file's header says, with no answer for 「no room」, ends the tests
+/// where it would end the app (`handle_alloc_error`), on any machine,
+/// however much memory it has. No test here holds a gigabyte.
+///
+/// Counted in all, where the audio decoder's tests refuse a request at a
+/// time (`native/audio/src/tests.rs`): a JPEG's coefficients are a buffer
+/// a component, each smaller than the pixels' that was let in before it.
 const ROOM: usize = 1 << 30;
 
-/// The system's allocator, refusing a request past [ROOM].
+/// The bytes these tests hold now.
+static HELD: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Whether `bytes` more are let in — counted, where they are.
+fn lets_in(bytes: usize) -> bool {
+    use std::sync::atomic::Ordering::SeqCst;
+    if HELD.fetch_add(bytes as isize, SeqCst) + bytes as isize > ROOM as isize {
+        HELD.fetch_sub(bytes as isize, SeqCst);
+        return false;
+    }
+    true
+}
+
+/// The system's allocator, refusing what would take the tests past [ROOM].
 struct Room;
 
 // SAFETY: the system's allocator, or null — which a caller must meet for
 // any request.
 unsafe impl std::alloc::GlobalAlloc for Room {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if layout.size() > ROOM {
+        if !lets_in(layout.size()) {
             return std::ptr::null_mut();
         }
         // SAFETY: the caller's contract.
@@ -33,7 +48,7 @@ unsafe impl std::alloc::GlobalAlloc for Room {
     }
 
     unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        if layout.size() > ROOM {
+        if !lets_in(layout.size()) {
             return std::ptr::null_mut();
         }
         // SAFETY: the caller's contract.
@@ -41,14 +56,24 @@ unsafe impl std::alloc::GlobalAlloc for Room {
     }
 
     unsafe fn realloc(&self, at: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
-        if size > ROOM {
+        if size > layout.size() && !lets_in(size - layout.size()) {
             return std::ptr::null_mut();
         }
         // SAFETY: the caller's contract.
-        unsafe { std::alloc::System.realloc(at, layout, size) }
+        let moved = unsafe { std::alloc::System.realloc(at, layout, size) };
+        if moved.is_null() {
+            // Refused by the system: what was let in for it is let go.
+            if size > layout.size() {
+                HELD.fetch_sub((size - layout.size()) as isize, std::sync::atomic::Ordering::SeqCst);
+            }
+        } else if size < layout.size() {
+            HELD.fetch_sub((layout.size() - size) as isize, std::sync::atomic::Ordering::SeqCst);
+        }
+        moved
     }
 
     unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
+        HELD.fetch_sub(layout.size() as isize, std::sync::atomic::Ordering::SeqCst);
         // SAFETY: the caller's contract.
         unsafe { std::alloc::System.dealloc(at, layout) }
     }
@@ -57,23 +82,52 @@ unsafe impl std::alloc::GlobalAlloc for Room {
 #[global_allocator]
 static ROOM_ONLY: Room = Room;
 
+/// Where the first segment of `jpeg` whose marker `is` one begins — its
+/// 0xFF. Every segment before it says its length.
+fn segment_at(jpeg: &[u8], is: impl Fn(u8) -> bool) -> usize {
+    let mut at = 2;
+    loop {
+        assert_eq!(jpeg[at], 0xFF, "a marker at {at}");
+        if is(jpeg[at + 1]) {
+            return at;
+        }
+        at += 2 + usize::from(u16::from_be_bytes([jpeg[at + 2], jpeg[at + 3]]));
+    }
+}
+
 /// `jpeg` with its frame header saying `width` × `height` — the two words
 /// written over, every other byte as it was: a file that says a size its
 /// data is not.
 fn saying(jpeg: &[u8], width: u16, height: u16) -> Vec<u8> {
     let mut said = jpeg.to_vec();
-    let mut at = 2;
-    loop {
-        assert_eq!(said[at], 0xFF, "a marker at {at}");
-        let marker = said[at + 1];
-        if (0xC0..=0xC2).contains(&marker) {
-            // Marker, length, precision — then the height and the width.
-            said[at + 5..at + 7].copy_from_slice(&height.to_be_bytes());
-            said[at + 7..at + 9].copy_from_slice(&width.to_be_bytes());
-            return said;
-        }
-        at += 2 + usize::from(u16::from_be_bytes([said[at + 2], said[at + 3]]));
-    }
+    let frame = segment_at(jpeg, |marker| (0xC0..=0xC2).contains(&marker));
+    // Marker, length, precision — then the height and the width.
+    said[frame + 5..frame + 7].copy_from_slice(&height.to_be_bytes());
+    said[frame + 7..frame + 9].copy_from_slice(&width.to_be_bytes());
+    said
+}
+
+/// `jpeg` saying it is progressive — its frame header's marker written
+/// over. Its data is not, and is not reached.
+fn progressive(jpeg: &[u8]) -> Vec<u8> {
+    let mut said = jpeg.to_vec();
+    said[segment_at(jpeg, |marker| (0xC0..=0xC2).contains(&marker)) + 1] = 0xC2;
+    said
+}
+
+/// `jpeg` — baseline, its three components in one scan — saying its first
+/// scan holds the first of them alone, as a file whose components come in
+/// scans of their own begins. Its data is not that, and is not reached.
+fn first_scan_of_one(jpeg: &[u8]) -> Vec<u8> {
+    let scan = segment_at(jpeg, |marker| marker == 0xDA);
+    assert_eq!(jpeg[scan + 2..scan + 5], [0, 12, 3], "the premise: a scan header of three components");
+    let mut said = jpeg[..scan + 2].to_vec();
+    // Its length and count for one component, that component's selector
+    // and tables, then the three bytes every scan header ends with.
+    said.extend([0, 8, 1]);
+    said.extend(&jpeg[scan + 5..scan + 7]);
+    said.extend(&jpeg[scan + 11..]);
+    said
 }
 
 /// Every row of `decoded` as it shows, RGBA, one after the other.
@@ -286,5 +340,23 @@ fn a_jpeg_there_is_no_room_for_says_why_through_its_handle() {
         let why = std::str::from_utf8(&text[..length.max(0) as usize]).expect("text");
         assert!(why.contains("out of memory"), "{why}");
         qa_image_decode_jpg_close(opened);
+    }
+}
+
+// 🚨The half `Decoded::of` cannot hand in: a JPEG's coefficients, taken
+// inside zune as it decodes — a progressive file's always, a baseline
+// one's where its components come in scans of their own. 17,000 × 17,000
+// is 867 MB of pixels, which the room lets in, and 578 MB of coefficients
+// a component, which it then does not: zune-jpeg 0.5.15 took them with
+// `vec!` and these tests ended here (「memory allocation of 578544128 bytes
+// failed」); the copy the workspace patches in answers (`Cargo.toml`,
+// `[patch.crates-io]`). One test, a file after the other — two at once
+// would be refused their pixels, and say so of the wrong buffer.
+#[test]
+fn a_jpeg_whose_coefficients_there_is_no_room_for_says_so() {
+    let lying = saying(&image_encode::encode(&gradient(64, 48), 64, 48, 90), 17_000, 17_000);
+    for (kind, file) in [("progressive", progressive(&lying)), ("scans of their own", first_scan_of_one(&lying))] {
+        let why = Decoded::of(&file).err().unwrap_or_else(|| panic!("{kind}: it decoded"));
+        assert!(why.contains("out of memory for the coefficients"), "{kind}: {why}");
     }
 }
