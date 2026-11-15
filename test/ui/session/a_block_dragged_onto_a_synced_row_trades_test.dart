@@ -356,25 +356,29 @@ void main() {
       expect(redAt(s, mirror, 0), kept);
     });
 
-    test('⛔a mirror onto a row whose block is pinned says to edit the owner',
-        () {
+    // 🗣️F-593-Q1 (유저 2026-11-15, 「(가) 맞바꾼다 — 싱크행과 같게」): a
+    // picture row holding its picture takes a block as its picture, as a
+    // synced row does. ↩️Its block was pinned, and a mirror dragged there
+    // said to edit the owner.
+    test('a mirror onto a picture row holding its picture trades with its '
+        'block, as onto another mirror', () {
       late LayerId mirror;
       late LayerId image;
       final s = sessionOf((s) {
         mirror = mirrorsOn(s, drawingRow(s, []), 1).single;
         s.layerStack.addLayerOfKind(LayerKind.image);
         image = s.activeLayer!.id;
-        s.createDrawingAtCurrentFrame();
       });
       expect(shownRow(s, image).timeline[0]?.frameId, isNotNull, reason: '전제');
+      final (a, b) = (redAt(s, mirror, 0), redAt(s, image, 0));
       sweep(s, mirror, from: 0, to: 0);
 
       drag(s, mirror, onto: image);
-
-      expect(shownMoves(s), isEmpty);
       s.rangeMove.endFrameRangeMoveDrag();
-      expect(cursorNotices.message, AppText.strings.noticeEditAttachOwner);
-      cursorNotices.clear();
+
+      expect(cursorNotices.message, isNull);
+      expect(redAt(s, image, 0), a);
+      expect(redAt(s, mirror, 0), b);
     });
 
     test('a mirror with nothing at the landing still says to edit the owner',
@@ -565,6 +569,108 @@ void main() {
       expect(shownMoves(s), isEmpty);
       s.rangeMove.endFrameRangeMoveDrag();
       expect(pictures(), before);
+    });
+  });
+
+  // 🗣️F-593-Q1 (유저 2026-11-15): 「(가) 맞바꾼다 — 싱크행과 같게」 — 「일반
+  // 행의 블록을 그림이 있는 이미지 레이어로 끌어다 놓으면, 어태치 싱크행처럼
+  // 그림을 맞바꿀까요?」. ↩️A picture row's block is pinned, and a block
+  // dragged onto it moved nothing.
+  group('🎯a block dragged onto a picture row holding its picture', () {
+    /// A plain row's cels on 0 and 2, and a picture row born with its picture.
+    ({EditorSessionManager s, LayerId plain, LayerId image}) rows() {
+      late LayerId plain;
+      late LayerId image;
+      final s = sessionOf((s) {
+        plain = drawingRow(s, [2]);
+        s.layerStack.addLayerOfKind(LayerKind.image);
+        image = s.activeLayer!.id;
+      });
+      expect(shownRow(s, image).timeline[0]?.frameId, isNotNull, reason: '전제');
+      return (s: s, plain: plain, image: image);
+    }
+
+    test('trades pictures with its block: no block, cel or name moves, and '
+        'one undo trades them back', () {
+      final (:s, :plain, :image) = rows();
+      final (a, b) = (redAt(s, plain, 0), redAt(s, image, 0));
+      final rowsBefore = s.requireActiveCut.layers;
+      final steps = s.historyManager.undoCount;
+      sweep(s, plain, from: 0, to: 0);
+
+      drag(s, plain, onto: image);
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(redAt(s, image, 0), a);
+      expect(redAt(s, plain, 0), b);
+      expect(s.requireActiveCut.layers, rowsBefore);
+      expect(s.historyManager.undoCount, steps + 1);
+
+      s.undo();
+      expect(redAt(s, plain, 0), a);
+      expect(redAt(s, image, 0), b);
+    });
+
+    test('anywhere along its hold: the block the hold shows, as a paste '
+        'there takes it (F-140)', () {
+      final (:s, :plain, :image) = rows();
+      final (a, b) = (redAt(s, plain, 2), redAt(s, image, 0));
+      sweep(s, plain, from: 2, to: 2);
+
+      drag(s, plain, onto: image, frames: 3);
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(redAt(s, image, 0), a);
+      expect(redAt(s, plain, 2), b);
+    });
+
+    test("and the picture row's block dragged onto a plain row's trades the "
+        'same way — either end, as a synced row on either end does', () {
+      final (:s, :plain, :image) = rows();
+      final (a, b) = (redAt(s, image, 0), redAt(s, plain, 0));
+      sweep(s, image, from: 0, to: 0);
+
+      drag(s, image, onto: plain);
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(redAt(s, plain, 0), a);
+      expect(redAt(s, image, 0), b);
+      expect(cursorNotices.message, isNull);
+    });
+
+    test("⛔the picture row's block slid along its own row moves nothing and "
+        'says nothing — its press began no drag, and said nothing', () {
+      final (:s, plain: _, :image) = rows();
+      final b = redAt(s, image, 0);
+      final rowsBefore = s.requireActiveCut.layers;
+      sweep(s, image, from: 0, to: 0);
+
+      drag(s, image, onto: image, frames: 2);
+
+      expect(shownMoves(s), isEmpty);
+      s.rangeMove.endFrameRangeMoveDrag();
+      expect(s.requireActiveCut.layers, rowsBefore);
+      expect(redAt(s, image, 0), b);
+      expect(cursorNotices.message, isNull);
+    });
+
+    test('⛔onto a picture row standing EMPTY nothing lands — its one block is '
+        'still a cel a drag does not make there', () {
+      final (:s, :plain, :image) = rows();
+      s.selectLayer(image);
+      s.selectFrameIndex(0);
+      s.deleteSelectionSubject();
+      expect(shownRow(s, image).timeline, isEmpty, reason: '전제: empty');
+      final a = redAt(s, plain, 0);
+      final rowsBefore = s.requireActiveCut.layers;
+      sweep(s, plain, from: 0, to: 0);
+
+      drag(s, plain, onto: image);
+
+      expect(shownMoves(s), isEmpty);
+      s.rangeMove.endFrameRangeMoveDrag();
+      expect(s.requireActiveCut.layers, rowsBefore);
+      expect(redAt(s, plain, 0), a);
     });
   });
 }

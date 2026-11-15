@@ -26,7 +26,7 @@ import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
-import 'frame_verbs.dart' show rowTakesNewCels;
+import 'frame_verbs.dart' show blocksLandAsPicturesOn, rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'lane_homes.dart' show KeyCopy, LanesAlone;
 import 'lane_verbs.dart';
@@ -901,7 +901,7 @@ class FrameClipboard implements BringsMedia {
   /// paste.
   bool _takesTheCopy(_PasteLanding landing) {
     // A row a paste makes no cel on takes the copy's pictures in the blocks
-    // it shows (F-545 · F-593, [pasteHangsPicturesIn]).
+    // it shows (F-545 · F-593, [blocksLandAsPicturesOn]).
     if (landing.hangsPictures) {
       return _picturesTakenOn(landing).isNotEmpty;
     }
@@ -1026,7 +1026,7 @@ class FrameClipboard implements BringsMedia {
       final lift = band == null
           ? null
           : (index: band.startOn(target.id), count: band.length);
-      final hangs = independent && pasteHangsPicturesIn(target);
+      final hangs = independent && blocksLandAsPicturesOn(target);
       if (!hangs && _holdsAPictureOnceLifted(target, lift)) {
         continue;
       }
@@ -1132,7 +1132,7 @@ class FrameClipboard implements BringsMedia {
   /// keys past them does (타임라인/콘티's call, 2026-10-28 — a paste that
   /// put them in would push its keys off the cells they key). The same goes
   /// for a row a paste hangs pictures in, whose cells it moves none of
-  /// ([pasteHangsPicturesIn]).
+  /// ([blocksLandAsPicturesOn]).
   List<_KeysLanding> _keysLaidBy(
     ClipboardPlace place,
     _CopiedFrameReference copied,
@@ -1199,7 +1199,7 @@ class FrameClipboard implements BringsMedia {
   /// 🗣️image-row-cut-paste-Q1 (유저 2026-10-07): 「밴드도 이미지 행을
   /// 다룬다 — 그림이 있어도 갈아끼운다」 — a PICTURE row takes its seat
   /// like any cel row: a copy takes its picture, a cut lifts it, a paste
-  /// hangs the clip's first in its block (F-593, [pasteHangsPicturesIn])
+  /// hangs the clip's first in its block (F-593, [blocksLandAsPicturesOn])
   /// and a link lifts it and takes its place ([_landingsOn]). ↩️Every
   /// picture row was passed over, held or empty.
   ///
@@ -1366,7 +1366,7 @@ class FrameClipboard implements BringsMedia {
 
   /// Which cels of [landing]'s row take which of the copy's drawings
   /// ([picturesHungInBlocks]) — none on a row a paste lays blocks on
-  /// ([pasteHangsPicturesIn]), and none of a copy of no drawings: an SE
+  /// ([blocksLandAsPicturesOn]), and none of a copy of no drawings: an SE
   /// row's blocks hold no picture.
   ///
   /// ⚠️Mine, not the user's: 「어태치 싱크 레이어의 프레임블록」 was what they
@@ -1750,7 +1750,7 @@ typedef _PasteLanding = ({
   Layer target,
   ({int index, int liftCount}) at,
   // Whether the paste hangs the clip's pictures in the blocks [target]
-  // shows ([pasteHangsPicturesIn]) — an independent one's, there — and
+  // shows ([blocksLandAsPicturesOn]) — an independent one's, there — and
   // moves none of its cells.
   bool hangsPictures,
   LayerId source,
@@ -1792,25 +1792,6 @@ typedef _KeysLanding = ({
 ///   돌아가는것」).
 bool rowHoldsLinks(Layer layer) =>
     layer.kind.isDrawingCel && !isSyncedAttachedLayer(layer);
-
-/// Whether an independent paste on [layer] HANGS the copy's pictures in the
-/// blocks it shows ([picturesHungInBlocks]) rather than laying blocks on it:
-/// a row of drawn cels a paste makes no cel on ([rowTakesNewCels]) — a
-/// SYNCED attach row, whose blocks are its base's (F-545), and a PICTURE
-/// row holding its picture, whose one block is all it holds. Not a row
-/// whose picture is a file's ([Layer.mediaReference]).
-///
-/// 🗣️F-593 (유저 2026-11-15): 「이미지 레이어에도 다른 블록의 그림 복사한거
-/// 붙여넣기 가능하게. 어태치 싱크레이어에 붙여넣기 작동시키듯이
-/// 그림교체방식으로. 규칙 최대한 어태치싱크때 규칙 따라서 통일」 — so the
-/// picture row takes the synced row's law whole: on its hold as on its
-/// block (F-140), with a selection or none, its cel, name, block and links
-/// kept. ↩️It took a paste only with a selection over its block, which
-/// lifted the block and laid the clip's first as a new cel.
-bool pasteHangsPicturesIn(Layer layer) =>
-    layer.kind.takesAuthoredCels &&
-    layer.mediaReference == null &&
-    !rowTakesNewCels(layer);
 
 /// WHERE a clipboard press acts: the row a panel's cursor stands on, where
 /// on that row's OWN axis, and THE selection.

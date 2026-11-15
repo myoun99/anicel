@@ -19,8 +19,8 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// (`picturesTradedInAttachGroup`, F-330 · I-98). A PICTURE row holding its
 /// picture takes a paste by this too, its one block taking the clip's first
 /// (F-593, 유저 2026-11-15: 「어태치 싱크레이어에 붙여넣기 작동시키듯이
-/// 그림교체방식으로」 — `pasteHangsPicturesIn`). A block dragged onto a
-/// synced row picks by this too (`picturesTradedInBlocks`, F-546).
+/// 그림교체방식으로」 — `blocksLandAsPicturesOn`). A block dragged onto
+/// either picks by this too (`picturesTradedInBlocks`, F-546 · F-593-Q1).
 ///
 /// [shown] is the row as a cut shows it (`attachedRowAsShown`). A cursor on a
 /// hold's ghost stands on the drawing it shows, as a copy there does (F-140);
