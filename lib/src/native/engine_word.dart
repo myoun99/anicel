@@ -15,11 +15,12 @@ typedef EngineWordRun = ({
 });
 
 /// A WORD AS THE GPU ENGINE SETS IT for its bake (`word_bake.dart`): each
-/// grapheme cluster where its painter's layout put it — the box's left and
-/// its line's baseline, the letter gaps it gave included —, in runs of one
-/// size, weight and slant, and the faces its style goes down
-/// ([families]). Read off the painter in the paint that asks for the bake
-/// and kept as plain values, the painter being that paint's.
+/// grapheme cluster where its painter would paint it — the box's left,
+/// the letter gaps its layout gave included, and the baseline Flutter
+/// paints its line on ([_paintedBaseline]) —, in runs of one size, weight
+/// and slant, and the faces its style goes down ([families]). Read off the
+/// painter in the paint that asks for the bake and kept as plain values,
+/// the painter being that paint's.
 final class EngineWord {
   const EngineWord._(this.runs, this.families);
 
@@ -30,12 +31,13 @@ final class EngineWord {
   /// ([EngineFaces.inOrder]).
   final List<int> families;
 
-  /// [painter]'s word, laid out. Throws [UnsupportedError] for what the
-  /// engine is not handed: a span that is no text, a face the app does not
-  /// bundle ([_familiesOf]), a paint past the letters' outlines
+  /// [painter]'s word, laid out, as a raster [pixelsAPx] pixels a px of
+  /// its layout takes it. Throws [UnsupportedError] for what the engine is
+  /// not handed: a span that is no text, a face the app does not bundle
+  /// ([_familiesOf]), a paint past the letters' outlines
   /// ([_refuseWhatIsNotHanded]), and a word whose spans go down two orders
   /// of faces — a bake sets one word in one.
-  static EngineWord of(TextPainter painter) {
+  static EngineWord of(TextPainter painter, {required double pixelsAPx}) {
     final leaves = _leavesOf(painter.text!);
     final families = _familiesOf(leaves.first.style);
     for (final (:style, end: _) in leaves) {
@@ -49,7 +51,11 @@ final class EngineWord {
         for (final (:cluster, :start) in line)
           (
             style: leaves.firstWhere((leaf) => leaf.end > start).style,
-            cluster: _placed(cluster.text, cluster.left, cluster.baseline),
+            cluster: _placed(
+              cluster.text,
+              cluster.left,
+              _paintedBaseline(cluster.baseline, pixelsAPx),
+            ),
           ),
     ];
     // 🔬A WORD LAID SHORT ends in its ellipsis where its kept letters end:
@@ -62,7 +68,11 @@ final class EngineWord {
       final line = painter.computeLineMetrics().last;
       set.add((
         style: set.last.style,
-        cluster: _placed(ellipsis, line.left + line.width, line.baseline),
+        cluster: _placed(
+          ellipsis,
+          line.left + line.width,
+          _paintedBaseline(line.baseline, pixelsAPx),
+        ),
       ));
     }
     final runs = <EngineWordRun>[];
@@ -169,6 +179,40 @@ final List<String> _bundled = [
 ];
 
 int _inSixtyFourths(double length) => (length * 64).round();
+
+/// THE BASELINE FLUTTER PAINTS A LINE ON, whose layout says [baseline], in
+/// a raster [pixelsAPx] pixels a px: a whole px of the layout — the
+/// paragraph sets a line's letters at `floor(baseline + 0.5)` — and then a
+/// whole pixel of the raster, the rasteriser setting an upright line's
+/// glyphs on whole rows whatever fraction of one its baseline falls on.
+/// The engine sets an outline where it is told to the 64th of a px, so a
+/// word told its layout's baseline stood off Flutter's by the fraction
+/// those two drop.
+///
+/// 🔬2026-11-15, the app's face on Impeller (`flutter test
+/// --enable-impeller`):
+/// - The foot of 「H」 · 「E」 · 「1」 in Flutter's bake, 12–24 px × ratio
+///   1–2 (90 bakes): its last inked row ends on this baseline in every
+///   bake of type 18 pixels and under, and one row under it in every one
+///   of 19.5 and more. The engine's own raster of those letters ends
+///   0.024 to 0.025 of the type's size under the baseline it is told —
+///   half a pixel from there up: the face draws them so, Flutter's
+///   hinting takes that to a whole row, and the engine draws it as it is.
+/// - Nine words × 9–20 px × ratio 1–2 (315 bakes) beside Flutter's bake
+///   of the same word, down the line: told the layout's baseline the
+///   engine's stood −0.93 to +0.91 px off it, the median 0.35 either way,
+///   and 73 inked the same rows; on this one −0.40 to +0.51, 0.07, and
+///   162. On a whole px alone −0.56 to +0.51, 0.09, 151 — the raster's
+///   pixel is what a ratio of 1.25 · 1.5 · 1.75 adds. (The tester's own
+///   renderer: each of those the same to 0.1 px.)
+///
+/// ⚠️A LINE BEGINS ON A WHOLE PX: the paragraph rounds a line's own
+/// baseline and adds it to where the line begins, and this rounds the sum.
+/// The two are one while every line above is a whole number of px tall,
+/// as lines of text alone are.
+double _paintedBaseline(double baseline, double pixelsAPx) =>
+    ((baseline + 0.5).floorToDouble() * pixelsAPx + 0.5).floorToDouble() /
+    pixelsAPx;
 
 /// [text] with its box's left at [left] and its line's baseline at
 /// [baseline], px of the layout, as the engine is handed a cluster.

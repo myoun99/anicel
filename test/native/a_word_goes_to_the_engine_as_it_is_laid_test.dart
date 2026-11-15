@@ -8,12 +8,16 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 
 import '../helpers/app_faces.dart';
 
-/// A word goes to the GPU engine for its raster as Flutter laid it
-/// (`engine_word.dart`): each grapheme cluster at its box's left and its
-/// line's baseline, in runs of one size, weight and slant, down the faces
-/// its style names — where its letters stand is the layout's, and which
-/// glyphs they take and how they raster the engine's
+/// A word goes to the GPU engine for its raster as Flutter would paint it
+/// (`engine_word.dart`): each grapheme cluster at its box's left, on the
+/// baseline Flutter paints its line on, in runs of one size, weight and
+/// slant, down the faces its style names — where its letters stand is
+/// Flutter's, and which glyphs they take and how they raster the engine's
 /// (`kernels/letters/words/tests.rs`).
+
+/// [painter]'s word as a raster [pixelsAPx] pixels a px takes it.
+EngineWord _word(TextPainter painter, {double pixelsAPx = 1}) =>
+    EngineWord.of(painter, pixelsAPx: pixelsAPx);
 
 TextPainter _laid(
   InlineSpan text, {
@@ -51,12 +55,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadTheAppFaces);
 
-  test('each cluster goes where the layout put it — its box\'s left and its '
-      'line\'s baseline, in 64ths of a px', () {
+  test('each cluster goes where the layout put it along the line — its '
+      'box\'s left, in 64ths of a px', () {
     final painter = _laid(
       TextSpan(text: 'カ3셀', style: _ja.copyWith(fontSize: 12)),
     );
-    final baseline = painter.computeLineMetrics().single.baseline;
     final lefts = [
       for (final at in [0, 1, 2])
         painter
@@ -66,7 +69,7 @@ void main() {
             .first
             .left,
     ];
-    final run = EngineWord.of(painter).runs.single;
+    final run = _word(painter).runs.single;
     expect((run.size, run.weight, run.italic), (12 * 64, 400, false));
     expect(
       [for (final cluster in run.clusters) cluster.text],
@@ -76,9 +79,65 @@ void main() {
       for (final left in lefts) (left * 64).round(),
     ]);
     expect(lefts.toSet(), hasLength(3), reason: 'fixture: three places');
-    expect({for (final cluster in run.clusters) cluster.y}, {
-      (baseline * 64).round(),
-    });
+  });
+
+  // 🔬Where Flutter's raster sets a line is measured at `_paintedBaseline`
+  // (2026-11-15): told the layout's own baseline, the engine's word stood
+  // up to 0.9 px off Flutter's down the line.
+  test('a line\'s letters stand on the baseline Flutter paints it on — a '
+      'whole px of the layout, then a whole pixel of the raster', () {
+    /// The 64ths of a px the letters of a word in [size] px type are set
+    /// down by, in a raster [pixelsAPx] pixels a px.
+    int setAt(double size, double pixelsAPx) {
+      final painter = _laid(
+        TextSpan(text: 'A1', style: _ja.copyWith(fontSize: size)),
+      );
+      return {
+        for (final cluster
+            in _word(painter, pixelsAPx: pixelsAPx).runs.single.clusters)
+          cluster.y,
+      }.single;
+    }
+
+    double laidAt(double size) => _laid(
+      TextSpan(text: 'A1', style: _ja.copyWith(fontSize: size)),
+    ).computeLineMetrics().single.baseline;
+
+    expect(laidAt(12), closeTo(10.56, 0.005), reason: 'fixture: past a half');
+    expect(laidAt(13), closeTo(11.44, 0.005), reason: 'fixture: under one');
+    // The 11th px either way, which is a whole pixel at 1, 2 and 3 a px.
+    for (final pixelsAPx in [1.0, 2.0, 3.0]) {
+      expect(setAt(12, pixelsAPx), 11 * 64, reason: '12 px at $pixelsAPx');
+      expect(setAt(13, pixelsAPx), 11 * 64, reason: '13 px at $pixelsAPx');
+    }
+    // 11 px is 13.75 pixels at 1.25 a px — the 14th, 11.2 px.
+    expect(setAt(12, 1.25), 717);
+    // 16.5 at 1.5: a half goes down the line, to the 17th — 11.33 px.
+    expect(setAt(12, 1.5), 725);
+    // 19.25 at 1.75: the 19th, 10.86 px.
+    expect(setAt(12, 1.75), 695);
+    // A raster whole times over a ratio (`wordBakeScale`), 2.5 a px: 27.5
+    // pixels, the 28th — 11.2 px.
+    expect(setAt(12, 2.5), 717);
+  });
+
+  test('a later line\'s letters stand on its own painted baseline', () {
+    final painter = _laid(
+      TextSpan(text: 'A\n1', style: _ja.copyWith(fontSize: 12)),
+    );
+    final lines = painter.computeLineMetrics();
+    expect(lines, hasLength(2), reason: 'fixture');
+    expect(
+      [for (final cluster in _word(painter).runs.single.clusters) cluster.y],
+      [
+        for (final line in lines) (line.baseline + 0.5).floor() * 64,
+      ],
+    );
+    expect(
+      lines[1].baseline,
+      greaterThan(lines[0].baseline + 6),
+      reason: 'LIVENESS: two baselines',
+    );
   });
 
   test('a run is a stretch of one size, weight and slant — a span\'s own '
@@ -102,7 +161,7 @@ void main() {
     );
     expect(
       [
-        for (final run in EngineWord.of(painter).runs)
+        for (final run in _word(painter).runs)
           (run.size, run.weight, run.italic, _textOf(run)),
       ],
       [
@@ -131,7 +190,7 @@ void main() {
       ),
     );
     final painter = laid(-1.5);
-    final tight = EngineWord.of(painter).runs.single;
+    final tight = _word(painter).runs.single;
     expect(_textOf(tight), 'カット');
     expect(
       [for (final cluster in tight.clusters) cluster.x],
@@ -149,7 +208,7 @@ void main() {
     );
     expect(
       tight.clusters.last.x,
-      lessThan(EngineWord.of(laid(0)).runs.single.clusters.last.x - 64),
+      lessThan(_word(laid(0)).runs.single.clusters.last.x - 64),
       reason: 'LIVENESS: its last letter stands over a px nearer',
     );
   });
@@ -161,14 +220,19 @@ void main() {
       maxWidth: 40,
     );
     expect(painter.didExceedMaxLines, isTrue, reason: 'fixture: laid short');
-    final run = EngineWord.of(painter).runs.single;
+    final run = _word(painter).runs.single;
     final line = painter.computeLineMetrics().single;
     expect(_textOf(run), 'こと…');
     expect(run.clusters.last.x, ((line.left + line.width) * 64).round());
-    expect(run.clusters.last.y, (line.baseline * 64).round());
+    expect(
+      {for (final cluster in run.clusters) cluster.y},
+      {11 * 64},
+      reason: 'on the baseline its letters are painted on',
+    );
+    expect(line.baseline, closeTo(10.56, 0.005), reason: 'fixture');
     expect(
       _textOf(
-        EngineWord.of(_laid(TextSpan(text: 'こと', style: _ja))).runs.single,
+        _word(_laid(TextSpan(text: 'こと', style: _ja))).runs.single,
       ),
       'こと',
       reason: 'a word laid whole ends in its letters',
@@ -179,7 +243,7 @@ void main() {
       'each once and by its place among them — and the app\'s, where it '
       'names none, as a cel number does', () {
     List<int> facesOf(TextStyle style) =>
-        EngineWord.of(_laid(TextSpan(text: 'a', style: style))).families;
+        _word(_laid(TextSpan(text: 'a', style: style))).families;
     expect(facesOf(_ja), [0, 1, 2], reason: 'the Japanese UI: theirs (Q21)');
     expect(
       facesOf(_zh),
@@ -216,13 +280,13 @@ void main() {
       _ja.copyWith(backgroundColor: const Color(0xFFFFFFFF)),
     ]) {
       expect(
-        () => EngineWord.of(_laid(TextSpan(text: 'a', style: style))),
+        () => _word(_laid(TextSpan(text: 'a', style: style))),
         throwsUnsupportedError,
         reason: '$style',
       );
     }
     expect(
-      EngineWord.of(
+      _word(
         _laid(
           TextSpan(
             text: 'a',
@@ -242,7 +306,7 @@ void main() {
         ],
       ),
     );
-    expect(() => EngineWord.of(twoOrders), throwsUnsupportedError);
+    expect(() => _word(twoOrders), throwsUnsupportedError);
     final placeholder = TextPainter(
       text: TextSpan(
         style: _ja,
@@ -260,7 +324,7 @@ void main() {
         ),
       ])
       ..layout();
-    expect(() => EngineWord.of(placeholder), throwsUnsupportedError);
+    expect(() => _word(placeholder), throwsUnsupportedError);
   });
 
   test('the faces are there once the bundle\'s are read — an order of them '

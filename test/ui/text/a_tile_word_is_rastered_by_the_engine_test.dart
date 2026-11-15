@@ -55,7 +55,7 @@ Uint8List _rastered(
   required int height,
   List<int>? order,
 }) {
-  final word = EngineWord.of(painter);
+  final word = EngineWord.of(painter, pixelsAPx: scale);
   final set = GpuWord();
   try {
     word.handTo(set);
@@ -233,7 +233,11 @@ void main() {
       height: baked.height,
       order: order,
     );
-    expect(EngineWord.of(painter).families, [2, 0, 1], reason: 'fixture');
+    expect(
+      EngineWord.of(painter, pixelsAPx: 1).families,
+      [2, 0, 1],
+      reason: 'fixture',
+    );
     expect(baked.alpha, inOrder([2, 0, 1]));
     expect(baked.alpha, isNot(inOrder([0, 1, 2])), reason: 'LIVENESS');
   });

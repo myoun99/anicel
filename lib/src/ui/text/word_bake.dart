@@ -298,14 +298,27 @@ BakedWordCoverage _narrowed(
 /// canvas-beside-its-tiles-Q3 · Q4, 유저 2026-11-15: 「(다) 글자도 엔진이 그
 /// 자리에서 굽는다」 — 「이게 가장 근본적해결같은데」 · 「그대로 간다 — 격자 칸
 /// 글자는 엔진이 굽는다」), asked knowing what it leaves: a tile's word is
-/// not Flutter's raster ([bakeWordCoverage]'s head has what the two
-/// differed by on 11-09), where every other word of a screen stays one
+/// not Flutter's raster, where every other word of a screen stays one
 /// (connection-round-checklist-Q30). The reason is the wait, not the look.
 ///
-/// Each cluster goes where [painter]'s layout put it ([EngineWord]), set
-/// in the app's bundled faces in the order its style goes down them
-/// ([EngineFaces.inOrder]) — asked once those are read
+/// Each cluster goes where [painter] would paint it in this raster
+/// ([EngineWord.of] — on the whole pixel Flutter sets its line's baseline
+/// on), set in the app's bundled faces in the order its style goes down
+/// them ([EngineFaces.inOrder]) — asked once those are read
 /// ([EngineFaces.areRead]).
+///
+/// 🔬WHAT THE TWO RASTERS DIFFER BY, 2026-11-15 — this bake beside
+/// [bakeWordCoverage]'s of the same word, on Impeller (`flutter test
+/// --enable-impeller`; seven words × 9–20 px × ratio 1–2 × three
+/// narrowings, 315 bakes): the engine's stands −0.49 to +0.83 px off
+/// along the line and −0.27 to +0.49 down it (the medians −0.01 and
+/// −0.04), inks 0.81 to 1.03 times as much (0.94), and 177 of them ink
+/// the same rows. Flutter hints the outline — its stems and feet go to
+/// whole pixels — and the engine draws it as it is. (The tester's own
+/// renderer: −0.58 to +0.76 · −0.29 to +0.42 · 0.72 to 0.95 · 177.)
+/// ↩️Set on the baseline the layout says, as the 11-08 bake was, it stood
+/// −0.93 to +0.91 px off down the line and 69 inked the same rows
+/// ([EngineWord.of] has why).
 ///
 /// Null for a word of no size and for a raster the engine refuses: a tile
 /// leaves either out. Throws [UnsupportedError] for a word that is not the
@@ -323,9 +336,9 @@ BakedWordCoverage? bakeWordOnEngine(
   if (painter.width <= 0 || painter.height <= 0) {
     return null;
   }
-  final word = EngineWord.of(painter);
-  final faces = EngineFaces.inOrder(word.families);
   final raster = _rasterOf(painter, dpr: dpr, fontSize: fontSize);
+  final word = EngineWord.of(painter, pixelsAPx: raster.scale);
+  final faces = EngineFaces.inOrder(word.families);
   final set = GpuWord();
   final Uint8List? big;
   try {
