@@ -75,15 +75,16 @@ class TilePictureBudget {
     _lastPaintOf[scope] = _paintSerial;
   }
 
-  /// The paint in progress for [scope] has [tile] under its visible rect.
+  /// The paint in progress for [scope] has [tile] under its visible rect —
+  /// its colour, for a tile of one colour ([BitmapTile.pixelsKey]).
   void shown(Object? scope, BitmapTile tile) {
-    _shownAt[tile] = _Shown(scope, _paintSerial);
+    _shownAt[tile.pixelsKey] = _Shown(scope, _paintSerial);
   }
 
-  /// Whether [tile] was under the visible rect of its canvas's latest
-  /// paint, and that paint is recent.
-  bool _current(BitmapTile tile) {
-    final shown = _shownAt[tile];
+  /// Whether a tile of [key] ([BitmapTile.pixelsKey]) was under the visible
+  /// rect of its canvas's latest paint, and that paint is recent.
+  bool _current(Object key) {
+    final shown = _shownAt[key];
     return shown != null &&
         shown.serial == _lastPaintOf[shown.scope] &&
         _paintSerial - shown.serial < recentPaints;
@@ -115,12 +116,12 @@ class TilePictureBudget {
     if (!overBudget) {
       return 0;
     }
-    final candidates = <({int serial, BitmapTile tile})>[];
-    for (final tile in _cache.pictured.alive()) {
-      if (_cache.heldFor(tile) == null || _current(tile)) {
+    final candidates = <({int serial, Object key})>[];
+    for (final key in _cache.pictured.alive()) {
+      if (_cache.heldUnder(key) == null || _current(key)) {
         continue;
       }
-      candidates.add((serial: _shownAt[tile]?.serial ?? -1, tile: tile));
+      candidates.add((serial: _shownAt[key]?.serial ?? -1, key: key));
     }
     candidates.sort((a, b) => a.serial.compareTo(b.serial));
     var went = 0;
@@ -128,7 +129,7 @@ class TilePictureBudget {
       if (!overBudget) {
         break;
       }
-      _cache.releasePicture(candidate.tile);
+      _cache.releasePictureUnder(candidate.key);
       went += 1;
     }
     _lastPaintOf.removeWhere(

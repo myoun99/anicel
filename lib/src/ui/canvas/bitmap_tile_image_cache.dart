@@ -21,6 +21,20 @@ import 'tile_pages.dart';
 /// keeps its picture across surface updates, and a changed tile is a new
 /// object whose picture is made once.
 ///
+/// 🚨THE TILES OF ONE COLOUR ARE ONE PICTURE (card
+/// uniform-tiles-take-a-pool-slot-each, 관제 2026-11-16 — the engine's
+/// tile ledger keys its slots the same way, and its note pairs the two). A
+/// tile of one colour holds its colour's block, one object for every tile
+/// of the colour alive, and the block is the key ([BitmapTile.pixelsKey]):
+/// found, rolled, stamped shown and let go with it. Still no pixel is
+/// compared — two tiles alike of bytes of their own are two pictures.
+/// ↩️The law of 2026-09-09 (8ccce8cdb, 「The picture belongs to the
+/// pixels, not to the tile object」) keyed pictures by the tile whose
+/// buffer a renamed tile shared; it went the same day with the sharing
+/// (09c58cae5). A colour's block is that buffer again, held by every tile
+/// of the colour — and the entry and its finalizer are both the block's,
+/// the asymmetry that commit ended not spelled again.
+///
 /// 🚨★★★A TILE'S PICTURE IS MADE THE MOMENT IT IS NEEDED, FROM ITS OWN
 /// BYTES, INSIDE THE CALL ([pictureFor] — the one door, [pictureOf],
 /// synchronous on every engine since 2026-09-17). There is no decode in
@@ -101,7 +115,11 @@ class BitmapTileImageCache {
 
   /// The picture [tile] already has, or `null` — nothing is made here.
   /// Callers deciding what to DRAW want [pictureFor].
-  TilePicture? heldFor(BitmapTile tile) => _pictures[tile];
+  TilePicture? heldFor(BitmapTile tile) => heldUnder(tile.pixelsKey);
+
+  /// The picture held under [key] ([BitmapTile.pixelsKey]), or `null` —
+  /// what the budget's walk of the roll ([pictured]) asks.
+  TilePicture? heldUnder(Object key) => _pictures[key];
 
   /// [tile]'s picture: the one it has, or the one made now from its own
   /// bytes through the door and kept — the ONE way a committed tile gets a
@@ -112,7 +130,7 @@ class BitmapTileImageCache {
   /// coordinate fallback's bucket. Nothing is looked up by coordinate any
   /// more, so the cache does not ask where a tile is.
   TilePicture pictureFor(BitmapTile tile) {
-    final existing = _pictures[tile];
+    final existing = heldFor(tile);
     if (existing != null) {
       return existing;
     }
@@ -129,7 +147,7 @@ class BitmapTileImageCache {
   /// A page carries no chain, so a tile in a slot drawn reduced leaves its
   /// slot for a picture of its own.
   ui.Image chainedPictureFor(BitmapTile tile) {
-    final held = _pictures[tile];
+    final held = heldFor(tile);
     if (held is OwnTilePicture && carriesChain(held.image)) {
       return held.image;
     }
@@ -165,7 +183,7 @@ class BitmapTileImageCache {
   /// A tile that somehow already has a picture keeps it and the incoming
   /// one is retired — never two owners for one image.
   void adoptDecoded(BitmapTile tile, ui.Image image) {
-    if (_pictures[tile] != null) {
+    if (heldFor(tile) != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
@@ -173,10 +191,11 @@ class BitmapTileImageCache {
   }
 
   void _own(BitmapTile tile, TilePicture picture) {
-    _pictures[tile] = picture;
-    _pictureFinalizer.attach(tile, picture, detach: tile);
+    final key = tile.pixelsKey;
+    _pictures[key] = picture;
+    _pictureFinalizer.attach(key, picture, detach: key);
     _hold(picture);
-    pictured.hold(tile);
+    pictured.hold(key);
   }
 
   /// Lets [tile]'s picture go while the tile itself lives on — the door
@@ -187,13 +206,17 @@ class BitmapTileImageCache {
   /// Detached first: without it the finalizer lets the same picture go a
   /// second time when the tile is eventually collected. An image is retired
   /// through the deferred disposer like every picture here.
-  void releasePicture(BitmapTile tile) {
-    final picture = _pictures[tile];
+  void releasePicture(BitmapTile tile) => releasePictureUnder(tile.pixelsKey);
+
+  /// [releasePicture] of the picture held under [key]
+  /// ([BitmapTile.pixelsKey]) — what the budget's walk of the roll lets go.
+  void releasePictureUnder(Object key) {
+    final picture = _pictures[key];
     if (picture == null) {
       return;
     }
-    _pictures[tile] = null;
-    _pictureFinalizer.detach(tile);
+    _pictures[key] = null;
+    _pictureFinalizer.detach(key);
     _release(picture);
   }
 

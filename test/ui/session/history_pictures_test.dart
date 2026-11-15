@@ -265,6 +265,36 @@ void main() {
     expect(pictured(held[1]), isFalse, reason: '⛔premise: deep, let go');
     expect(pictured(held[0]), isTrue, reason: 'the cel holds it');
   });
+
+  // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): a tile of one
+  // colour shares its colour's picture, which a cel may be showing through
+  // another tile of it.
+  testWidgets("🚨a deep entry's tile of one colour keeps its colour's "
+      'picture — a tile of its own beside it lets its own go', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final colour = BitmapTile.ofOneColour(size: _tile, word: 0xFF0A0B0C);
+    final own = _surfaceOf([31]).tiles.values.single;
+    final deep = BitmapSurface(
+      canvasSize: const CanvasSize(width: 2 * _tile, height: _tile),
+      tileSize: _tile,
+      tiles: {TileCoord(x: 0, y: 0): colour, TileCoord(x: 1, y: 0): own},
+    );
+    for (final surface in [deep, _surfaceOf([32]), _surfaceOf([33])]) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    await tester.pump();
+
+    final cache = BitmapTileImageCache.instance;
+    expect(cache.heldFor(own), isNull, reason: '⛔premise: deep, let go');
+    expect(cache.heldFor(colour), isNotNull, reason: "its colour's");
+  });
 }
 
 const _key = BrushFrameKey(
@@ -277,6 +307,9 @@ const _key = BrushFrameKey(
 
 const _tile = 8;
 
+/// A tile a fill, each of bytes of its own — its first byte one past the
+/// fill: no tile of one colour, whose picture is its colour's
+/// (`BitmapTile.pixelsKey`).
 BitmapSurface _surfaceOf(List<int> fills) => BitmapSurface(
   canvasSize: CanvasSize(width: _tile * fills.length, height: _tile),
   tileSize: _tile,
@@ -285,7 +318,8 @@ BitmapSurface _surfaceOf(List<int> fills) => BitmapSurface(
       TileCoord(x: i, y: 0): BitmapTile(
         size: _tile,
         pixels: BitmapTile.blank(size: _tile).pixels
-          ..fillRange(0, BitmapTile.bytesFor(_tile), fills[i]),
+          ..fillRange(0, BitmapTile.bytesFor(_tile), fills[i])
+          ..[0] = fills[i] + 1,
       ),
   },
 );

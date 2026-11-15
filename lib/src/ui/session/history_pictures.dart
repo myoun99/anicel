@@ -119,8 +119,16 @@ class HistoryPictures {
   /// holds [tile]. ↩️And its keyed copy's, on a row drawn through colour
   /// keys, until the engine keyed a row's stored bytes and no copy was
   /// pictured (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+  ///
+  /// ⛔A TILE OF ONE COLOUR LETS NOTHING GO: its picture is its colour's
+  /// (`BitmapTile.pixelsKey`), which a cel's tile of the colour may be
+  /// showing — the reason a tile a cel holds keeps its own, one key over.
+  /// The budget lets it go once nothing shows it
+  /// (uniform-tiles-take-a-pool-slot-each, 2026-11-16).
   void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
-    if (_cache.heldFor(tile) == null || store.holdsTile(coord, tile)) {
+    if (!identical(tile.pixelsKey, tile) ||
+        _cache.heldFor(tile) == null ||
+        store.holdsTile(coord, tile)) {
       return;
     }
     _cache.releasePicture(tile);

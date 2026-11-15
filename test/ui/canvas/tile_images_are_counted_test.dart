@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/collect_garbage.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🚨C-ipad-crash (2026-09-11): on a phone every decoded tile is a GPU
 /// texture, alive as long as its tile — the picture on screen and, through
@@ -24,7 +25,6 @@ import '../../helpers/collect_garbage.dart';
 /// so the share read as engine overhead; the drawing engine's own parked
 /// tile blocks and grow-only scratch had none either.
 void main() {
-  BitmapTile aTile() => BitmapTile.blank(size: 4);
 
   Future<ui.Image> anImage() {
     final recorder = ui.PictureRecorder();
@@ -48,8 +48,8 @@ void main() {
       await collectGarbage();
       final before = BitmapTileImageCache.liveImageBytes;
 
-      BitmapTile? adopted = aTile();
-      BitmapTile? made = aTile();
+      BitmapTile? adopted = aTileOfItsOwn(size: 4);
+      BitmapTile? made = aTileOfItsOwn(size: 4);
       cache.adoptDecoded(
         adopted,
         await anImage(),
@@ -88,7 +88,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      BitmapTile? held = aTile();
+      BitmapTile? held = aTileOfItsOwn(size: 4);
       BitmapTileImageCache.instance.adoptDecoded(
         held,
         await anImage(),

@@ -1,12 +1,13 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/tile_roll.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
+
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🚨THE PICTURES NOBODY SHOWS ARE LET GO WHEN THEY ADD UP TO MORE THAN THE
 /// DEVICE ALLOWS (render round, 2026-09-16): the never-shown first, then
@@ -33,7 +34,7 @@ void main() {
 
   PlacedTile tileAt(int x) => (
     coord: TileCoord(x: x, y: 0),
-    tile: BitmapTile.blank(size: 4),
+    tile: aTileOfItsOwn(size: 4),
   );
 
   late BitmapTileImageCache cache;
