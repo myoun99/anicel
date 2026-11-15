@@ -71,6 +71,25 @@ jobs:
         run: |
           bash tool/release_build.sh windows "$BUILD_NUMBER"
 
+      # What a build hook said, when the build failed: Flutter's build
+      # prints only that a hook failed (`Building native assets failed. See
+      # the logs for more details.`) and keeps the hook's own words beside
+      # its input — round 1091's ARM64 build stopped there with no cause on
+      # screen (run 43724334174), the first build of the GPU engine's hook
+      # on this runner since the app began to ship it (2026-11-07).
+      - name: The build hooks' logs
+        if: failure()
+        run: |
+          shown=0
+          for log in .dart_tool/hooks_runner/*/*/stdout.txt .dart_tool/hooks_runner/*/*/stderr.txt; do
+            [ -s "$log" ] || continue
+            echo "::group::$log"
+            tail -n 300 "$log"
+            echo "::endgroup::"
+            shown=$((shown + 1))
+          done
+          echo "$shown hook log(s) under .dart_tool/hooks_runner"
+
       - name: The bundle's own check
         run: bash tool/windows_bundle_check.sh build/windows/arm64/runner/Release
 

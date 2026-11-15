@@ -41,7 +41,15 @@ jobs:
     # hook builds Wasmtime with it, for the Mac the parity runs on and for
     # the iPad, from cold (apple.yml says how long). ↩️It was C's prebuilt
     # engine and an iPad build from source until 2026-11-08.
-    timeout-minutes: 50
+    # 90 since the C engine went (2026-11-13): the tests below open the GPU
+    # engine on this Mac's virtual GPU, and round 1091 was cancelled at 50
+    # minutes inside them (run 43724266096 — 221 files at 10 suites, still
+    # running after 46; seven files held the batch for 10 to 36 minutes
+    # each while the other two thousand tests were done in four). The Mac
+    # build runs the same tests under 90 and took 43 minutes over them
+    # (run 43724290076); the iPad build and the upload come after, 13
+    # minutes on 2026-11-05.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 
