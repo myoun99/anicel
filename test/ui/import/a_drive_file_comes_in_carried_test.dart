@@ -129,9 +129,7 @@ void main() {
   }
 
   /// Presses Import and waits for the window to close — it closes once
-  /// every file has landed. It waits out the wait window, so it ends by
-  /// stopping [s]'s playback warmer (`pumpPastTheWaitWindow`) — for every
-  /// test that imports through it.
+  /// every file has landed.
   Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
@@ -147,7 +145,6 @@ void main() {
     );
     expect(closed, isTrue, reason: 'the window closes once the files landed');
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   }
 
   Finder fileCell(String path) =>

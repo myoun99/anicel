@@ -159,7 +159,6 @@ void main() {
       greaterThan(before.x + 1),
       reason: '⛔CONTROL: the box took the drag',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the camera size\'s handles take their drag and say nothing; '
@@ -220,7 +219,6 @@ void main() {
     );
     await press.up();
     await tester.pumpAndSettle();
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // R27 #15: only a press that would DRAW is told why the row takes none —
@@ -286,7 +284,6 @@ void main() {
     );
     await press.up();
     await tester.pumpAndSettle();
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the brush wears no cursor of its own on a row that is no '
@@ -324,6 +321,5 @@ void main() {
     session.standOnRow(const LaneRowAddress(row, 'position'));
     await pumpFrames(tester);
     expect(cursors(), isFalse, reason: '「트랜스폼fx든 뭐 그런거 전부」');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

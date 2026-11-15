@@ -101,8 +101,6 @@ void main() {
     }
     // The walk really did cross: the last frame has no cel.
     expect(hasCel(tester), isFalse);
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on an empty frame the mounted view stands down — no cel '
@@ -166,8 +164,6 @@ void main() {
       findsNothing,
       reason: 'and paints no cel',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a paint press on an empty frame is still REFUSED, and lands '
@@ -233,8 +229,6 @@ void main() {
       drawnBefore,
       reason: 'the empty frame took no ink — the view refused the pointer',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🚨I-10's SECOND HALF, and the report that reopened it (F-61, 유저:
@@ -296,8 +290,6 @@ void main() {
       isNotNull,
       reason: '「그대로 스트로크 그려지기시작」 — the half that was missing',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨F-171: on a row no cel was ever drawn on, the FIRST press '
@@ -365,8 +357,6 @@ void main() {
       standingOn,
       reason: 'and the stack is the session\'s once it stands on a cel',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 「답은 추천대로」 = merged: one press on an empty cel is ONE undo, and
@@ -417,8 +407,6 @@ void main() {
       drawnBefore,
       reason: '⛔ONE undo takes the ink AND the block it was drawn into',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고 클릭하면 이거는
@@ -507,8 +495,6 @@ void main() {
       before + 1,
       reason: 'LIVENESS — a press that would draw does make one',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on an empty frame a barrel held with the tip makes no block — '
@@ -543,8 +529,6 @@ void main() {
 
     expect(layer().timeline.length, blocksBefore, reason: 'a pick makes none');
     expect(session.renderCaches.layerContentBoundsAt(layer(), 4), isNull);
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a view standing down asks for a block only for a press the '

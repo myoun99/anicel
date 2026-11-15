@@ -416,7 +416,6 @@ void main() {
 
     s.undo();
     expect(s.requireActiveCut.layers, before);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯read by the block, the fx is one picture to a block: the '
@@ -435,7 +434,6 @@ void main() {
     expect(row.timeline[0]!.length, 3);
     expect(row.effects.single.basis, FxBasis.block, reason: 'its switch stays');
     expect(await shownAt(tester, s, 2, 36, 5), seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯the transform rasterized moves the pictures where they '
@@ -469,7 +467,6 @@ void main() {
       await shownAt(tester, s, 0, 52, 5),
       await shownAt(tester, s, 0, 36, 5),
     ], seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯what stays on the row — its opacity, a transform that '
@@ -515,7 +512,6 @@ void main() {
       (0.5, moving, brighter),
     );
     expect(await seenNow(), seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a bundle read by the block goes on reading the head it '
@@ -543,7 +539,6 @@ void main() {
 
     expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
     expect(await seenNow(), seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   final repeatedHold = {
@@ -572,7 +567,6 @@ void main() {
     expect(a(s).frames, hasLength(1));
     expect(runs(), before);
     expect(await shownAt(tester, s, 2, 36, 5), seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨Q21 — a press asks nothing first: an fx on that runs before '
@@ -599,7 +593,6 @@ void main() {
       for (var frame = 0; frame < 3; frame += 1)
         await shownAt(tester, s, frame, 36, 5),
     ], seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a hidden row is baked as it would show, its eye kept shut', (
@@ -619,8 +612,6 @@ void main() {
     expect(ink, isNot(green), reason: '⛔전제: brightened');
     expect(celAt(hidden, a(hidden).frames.single.id, 36, 5), ink);
     expect(a(hidden).isVisible, isFalse);
-    shown.playbackRig.prerenderScheduler.cancel();
-    hidden.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯what the row lays over the rows under it — its blend, its '
@@ -668,7 +659,6 @@ void main() {
       (true, LayerBlendMode.difference),
     );
     expect(await seenNow(), seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a hold repeated past its run is made of blocks of its own '
@@ -692,7 +682,6 @@ void main() {
       for (var frame = 0; frame < 3; frame += 1)
         await shownAt(tester, s, frame, 36, 5),
     ], seen);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   group('the plan', () {
@@ -903,7 +892,6 @@ void main() {
 
       s.undo();
       expect(s.requireActiveCut.layers, before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a free rider parts where its own picture does, into blocks '
@@ -921,7 +909,6 @@ void main() {
       );
       expect(rider.opacity, 0.5);
       expect(await seenOfR(tester, s), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯the row\'s transform rasterized moves its rider\'s '
@@ -947,7 +934,6 @@ void main() {
 
       expect(a(s).transformTrack.isEmpty, isTrue);
       expect(await seenNow(), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     /// `r` as a reference row: its cel holds its file laid where the
@@ -1021,7 +1007,6 @@ void main() {
       expect(await edgesOfR(tester, s, 0), seen);
       s.undo();
       expect(s.requireActiveCut.layers, before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a row and its rider in a folder are each drawn as they '
@@ -1046,7 +1031,6 @@ void main() {
 
       expect(rOf(s).folderId, const LayerId('f'));
       expect(await seenNow(), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a free rider parts where its own cels do too: each cel its '
@@ -1089,7 +1073,6 @@ void main() {
         {0: 2, 2: 1},
       );
       expect(await seenNow(), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯over a band (Q3), a synced rider keeps its cel where its '
@@ -1119,7 +1102,6 @@ void main() {
         seen[1],
         reason: 'the band\'s picture baked in its cel',
       );
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('over a band, a free rider parts there alone', (tester) async {
@@ -1136,7 +1118,6 @@ void main() {
         {0: 1, 1: 1, 2: 1},
       );
       expect(await seenOfR(tester, s), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test('a folder riding the row lays no picture, so it is no rider', () {
@@ -1273,7 +1254,6 @@ void main() {
 
       s.undo();
       expect(s.requireActiveCut.layers, before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯read by the block, the fx is at rest over the band, and '
@@ -1308,7 +1288,6 @@ void main() {
 
       expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
       expect(await seenOf(tester, s), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯a bundle it leaves, read by the block, shows what its '
@@ -1329,7 +1308,6 @@ void main() {
 
       expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
       expect(await seenOf(tester, s, [36, 52]), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a band over a repeat bakes its frame alone, a transform read '
@@ -1356,7 +1334,6 @@ void main() {
 
       expect(a(s).frames.first.id, const FrameId('a-1'));
       expect(await seenOf(tester, s, [36, 52]), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯the transform rasterized over a band moves the band\'s '
@@ -1389,7 +1366,6 @@ void main() {
         2: CanvasPoint(x: 48, y: 24),
       });
       expect(await seenOf(tester, s, [36, 44, 52]), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🚨Q14 — over a band, an fx that draws at its defaults is '
@@ -1423,8 +1399,6 @@ void main() {
       expect(await walls(s), [off[0], seen[1], off[2]]);
       s.undo();
       expect(a(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
-      bare.playbackRig.prerenderScheduler.cancel();
     });
 
     test('🚨Q15 — a named key the cut paces anew keeps its name, and the name '
@@ -1810,7 +1784,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯a keyed fx the uses read alike, pressed in its own cut: '
@@ -1846,7 +1819,6 @@ void main() {
         reason: 'its last key held',
       );
       expect(await seenIn(tester, s), seen);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯the uses reading the fx otherwise, a cel shown as other '
@@ -1886,7 +1858,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test('🚨a use showing the cel over fewer frames shows the pictures the '
@@ -2012,7 +1983,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test('🚨Q14 — a band over every frame of the pressed cut leaves every '
@@ -2167,7 +2137,6 @@ void main() {
 
         s.undo();
         expect(rowsOf(s), before);
-        s.playbackRig.prerenderScheduler.cancel();
       });
 
       testWidgets('🎯a keyed fx: a free rider parts its cel in both cuts '
@@ -2188,7 +2157,6 @@ void main() {
         expect(celsOf(twin), celsOf(original));
         expect(celsOf(original).toSet(), hasLength(3));
         expect(await seenIn(tester, s), seen);
-        s.playbackRig.prerenderScheduler.cancel();
       });
 
       testWidgets('🚨a cel of the row only the linked cut shows: the synced '
@@ -2249,7 +2217,6 @@ void main() {
             cel.id: original.frames[index].id,
         });
         expect(await seenIn(tester, s), seen);
-        s.playbackRig.prerenderScheduler.cancel();
       });
 
       testWidgets('a band over the pressed cut bakes its riders there alone — '
@@ -2269,7 +2236,6 @@ void main() {
         expect(celsOf(rIn(s)).first, const FrameId('r-1'));
         expect(celsOf(rIn(s)).toSet(), hasLength(3));
         expect(await seenIn(tester, s), seen);
-        s.playbackRig.prerenderScheduler.cancel();
       });
 
       testWidgets("🚨a rider's cel shown as other pictures in each cut — the "
@@ -2298,7 +2264,6 @@ void main() {
         ]);
         expect(celsOf(twin).toSet(), {original.frames.last.id});
         expect(await seenIn(tester, s), seen);
-        s.playbackRig.prerenderScheduler.cancel();
       });
 
       test('a row riding it in one of its cuts alone is baked there', () {
@@ -2517,7 +2482,6 @@ void main() {
 
           s.undo();
           expect(rowsOf(s), before);
-          s.playbackRig.prerenderScheduler.cancel();
         });
 
         testWidgets('🎯synced, alike: the other row keeps its links to the '
@@ -2545,7 +2509,6 @@ void main() {
 
           s.undo();
           expect(rowsOf(s), before);
-          s.playbackRig.prerenderScheduler.cancel();
         });
 
         test('one not linked to it is none of its: the bake leaves its cut '
@@ -2741,7 +2704,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🚨Q17 — a keyed fx read by the frame shows a panel as two '
@@ -2789,7 +2751,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test('🚨a band whose edge falls inside a panel parts it there (Q17): the '
@@ -2874,7 +2835,6 @@ void main() {
         expect(rowIn(s, cut, base), before[index].byId(LayerId(base)));
       }
       expect(await seen(tester, s), looks);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets("🚨Q18 — keyed, two pictures over one of the conte's panels: "
@@ -2921,7 +2881,6 @@ void main() {
 
       s.undo();
       expect(rowsOf(s), before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test("🚨Q18 — the timing is the link group's: a 겸용 cut's row goes free "
@@ -2995,7 +2954,6 @@ void main() {
         });
       }
       expect(await seen(tester, s), looks);
-      s.playbackRig.prerenderScheduler.cancel();
     });
   });
 

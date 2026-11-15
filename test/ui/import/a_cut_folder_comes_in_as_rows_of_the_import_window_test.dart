@@ -111,7 +111,6 @@ void main() {
   ) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
   }
 
   Cut cutNamed(EditorSessionManager session, String name) => session
@@ -550,7 +549,6 @@ void main() {
     final told = watchTheBar(tester);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
 
     // Two cels and one file: the cels hold two thirds of the bar.
     expectOneBar(told, [1 / 3, 2 / 3, 1]);

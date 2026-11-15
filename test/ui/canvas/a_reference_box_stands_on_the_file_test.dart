@@ -162,11 +162,9 @@ void main() {
     );
   }
 
-  /// The test's own epilogue: the edit's timers run out, the warmer they
-  /// woke stopped after them.
+  /// The test's own epilogue: the edit's timers run out.
   Future<void> wrapUp(WidgetTester tester, EditorSessionManager s) async {
     await tester.pump(const Duration(minutes: 1));
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   }

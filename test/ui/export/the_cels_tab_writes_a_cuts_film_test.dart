@@ -195,7 +195,6 @@ void main() {
 
     await press(tester, 'export-cels-kind-video');
     expect(listed(tester), ['A1.png', 'A2.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨ONE run writes the cels and the cut\'s film — the film as '
@@ -245,7 +244,6 @@ void main() {
       tester.widget<Text>(keyed('export-status')).data,
       'Exported 3 files.',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a run stopped inside the film is a stopped run: the film '
@@ -283,7 +281,6 @@ void main() {
       tester.widget<Text>(keyed('export-status')).data,
       AppText.strings.exCancelledAfter(AppText.strings.exFileCount(3)),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a film is written as its format asks it of a GIF — how '
@@ -347,7 +344,6 @@ void main() {
       isFalse,
       reason: 'RGB: the white ground of every movie',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the film is as large as the tab\'s size says: through the '
@@ -374,7 +370,6 @@ void main() {
       File('${temp.path}/_CUT301.gif').readAsBytesSync(),
     )!;
     expect((movie.width, movie.height), (32, 18));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️under the project scope too, a film a CUT: 「셀은 컷마다 '
@@ -409,7 +404,6 @@ void main() {
       [for (final name in filesWrittenUnder(temp)) if (name.endsWith('.gif')) name],
       hasLength(2),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️standing on the film, the preview RUNS it: 「누르면 '
@@ -444,7 +438,6 @@ void main() {
       1,
       reason: 'a hand on its transport moves the film, not the list',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the film\'s sound is asked where its format has room for it: '
@@ -481,7 +474,6 @@ void main() {
       reason: 'one way of packing: no codec to pick',
     );
     expect(keyed('export-film-format-bitrate'), findsNothing);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️the Sequence tab offers the same movies, GIF among them '
@@ -534,6 +526,5 @@ void main() {
     expect(name, endsWith('.gif'));
     final movie = img.decodeGif(File('${temp.path}/$name').readAsBytesSync())!;
     expect((movie.width, movie.height), (32, 18), reason: 'the camera\'s');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

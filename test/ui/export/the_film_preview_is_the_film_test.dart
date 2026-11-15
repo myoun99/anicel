@@ -418,7 +418,6 @@ void main() {
             await previewPixel(tester, 6 * eighth, 4 * eighth),
             creamPixel,
           );
-          session.playbackRig.prerenderScheduler.cancel();
         });
       }
     }
@@ -439,7 +438,6 @@ void main() {
         greaterThan(heldBefore),
         reason: 'LIVENESS: the preview holds its frame as a run does',
       );
-      session.playbackRig.prerenderScheduler.cancel();
 
       await tester.pumpWidget(const SizedBox.shrink());
       expect(HeldPictures.debugHeld, heldBefore);
@@ -468,7 +466,6 @@ void main() {
         await previewPixel(tester, 6 * eighth, 4 * eighth),
         (0, 0, 0, 0),
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('an opaque film\'s preview stands on the white its file '
@@ -488,7 +485,6 @@ void main() {
         await previewPixel(tester, 4 * eighth, 4 * eighth),
         (255, 255, 255, 255),
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 }

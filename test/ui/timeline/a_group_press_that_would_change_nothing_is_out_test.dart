@@ -237,7 +237,6 @@ void main() {
       isNull,
       reason: 'at rest at every frame, though keyed',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the Transform\'s Rasterize is out while its switch is off — '
@@ -262,7 +261,6 @@ void main() {
     expect(_rowOf(session, row).transformEnabled, isFalse, reason: 'premise');
     expect(pressOf(tester, rasterize), isNull);
     expect(pressOf(tester, reset), isNotNull);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the Reset is asked again as the playhead moves — out where '
@@ -299,7 +297,6 @@ void main() {
       isNotNull,
       reason: 'the key it covers stands the row at 45°',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the X-sheet\'s Reset is asked again as a lane span is laid '
@@ -336,7 +333,6 @@ void main() {
       isNotNull,
       reason: 'the key it covers stands the row at 45°',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('an fx header\'s Reset is out at its defaults and lit off '
@@ -359,7 +355,6 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(pressOf(tester, reset), isNotNull);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯an fx header\'s Rasterize is out where the fx changes no '
@@ -404,7 +399,6 @@ void main() {
       isNull,
       reason: 'the blur still off: the letters are not its',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('an fx header\'s Rasterize is asked over the band that scopes '
@@ -445,7 +439,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(pressOf(tester, rasterize), isNull, reason: 'held at 0 there');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('an fx stepped on its row\'s blocks is asked where it reads '
@@ -496,7 +489,6 @@ void main() {
       isNotNull,
       reason: 'each frame there reads its block\'s start, 12',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the Transform\'s Rasterize is asked over the band that scopes '
@@ -525,7 +517,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(pressOf(tester, rasterize), isNull, reason: 'held at 0° there');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }
 

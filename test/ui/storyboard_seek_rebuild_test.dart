@@ -73,11 +73,6 @@ void main() {
       .getTopLeft(find.byKey(const ValueKey<String>('storyboard-playhead')))
       .dx;
 
-  /// Every test here ends on a bare `pump` — settling would hand the panel
-  /// a second chance to rebuild and hide the very thing being asserted — so
-  /// the warm loop's idle timers are stood down by hand instead.
-  void quiesce(EditorSessionManager manager) =>
-      manager.playbackRig.prerenderScheduler.cancel();
 
   testWidgets('a committed seek moves the playhead and leaves the panel\'s '
       'painted rows untouched', (tester) async {
@@ -104,7 +99,6 @@ void main() {
       isTrue,
       reason: 'and the panel never rebuilt to do it',
     );
-    quiesce(manager);
   });
 
   testWidgets('a V lane\'s value cell follows a committed seek WITHOUT a '
@@ -170,7 +164,6 @@ void main() {
       isTrue,
       reason: 'through the cursor channel, not a panel rebuild',
     );
-    quiesce(manager);
   });
 
   testWidgets('the push/pull pair re-gates on a committed seek with no '
@@ -218,7 +211,6 @@ void main() {
       isTrue,
       reason: 'the seek alone re-derived the gating — no parent rebuilt',
     );
-    quiesce(manager);
   });
 
   testWidgets('through the REAL workspace: a committed seek does not rebuild '
@@ -251,6 +243,5 @@ void main() {
       isTrue,
       reason: 'an arrow press must not rebuild this tab',
     );
-    quiesce(session);
   });
 }

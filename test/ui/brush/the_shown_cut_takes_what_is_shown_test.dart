@@ -207,7 +207,6 @@ void main() {
       reason: 'the shown picture is work ahead of the step',
     );
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
   }
 
   testWidgets('「실행」 under 「표시」 takes what is shown off every shown row, '

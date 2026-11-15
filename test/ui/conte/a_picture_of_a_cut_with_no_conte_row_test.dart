@@ -321,7 +321,6 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(await showsInk(), isTrue, reason: 'the pen-up changes nothing');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 

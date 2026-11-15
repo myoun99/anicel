@@ -83,7 +83,6 @@ void main() {
     s.playbackRig.playback.play(scope: scope);
     final result = read();
     s.playbackRig.playback.stop();
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
     return result;
   }

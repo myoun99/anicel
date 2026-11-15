@@ -184,7 +184,6 @@ void main() {
     ]);
     expect(session.timelineVerbs.currentTimelineId, timelines[1].id);
     expect(headingWords(tester), '예고');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with two, a row\'s delete takes that one away', (tester) async {

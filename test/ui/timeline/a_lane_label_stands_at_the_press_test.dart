@@ -88,7 +88,6 @@ void main() {
       contains(header),
       reason: 'the sweep selected from where it stood',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on the conte panel\'s rail too: the V row\'s fx header stands '
@@ -135,7 +134,6 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(session.rowSelectionVerbs.rowSelection.value, isEmpty);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a tap on it inside the selection holds it on the press and '
@@ -164,6 +162,5 @@ void main() {
       isEmpty,
       reason: '「클릭하고 떼면 뭐든 비우게」',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

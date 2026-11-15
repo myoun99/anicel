@@ -353,8 +353,6 @@ void main() {
     expect(verdict.value, isTrue);
     await gesture.up();
     await tester.pumpAndSettle();
-    // The warm scheduler arms an idle timer whenever the playhead moves.
-    s.playbackRig.prerenderScheduler.cancel();
 
     expect(placed, [const NewCutSpot(index: 1, leadingGapFrames: 4)]);
     expect(
@@ -445,7 +443,6 @@ void main() {
     expect(verdict.value, isTrue);
     await gesture.up();
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
 
     expect(placed, [
       const SeCellSpot(layerId: seId, trackFrame: 8, shownCell: 8),
@@ -580,6 +577,5 @@ void main() {
       expect(verdict.value, isNull, reason: '$name: nor the chip\'s answer');
       await tester.pumpAndSettle();
     }
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

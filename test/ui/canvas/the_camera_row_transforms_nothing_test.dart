@@ -92,6 +92,5 @@ void main() {
       reason: 'the borrowed cel\'s picture did not move',
     );
     expect(session.camera.cameraPoseAtCurrentFrame.center, cameraBefore);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

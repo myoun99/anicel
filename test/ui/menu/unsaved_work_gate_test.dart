@@ -395,10 +395,6 @@ void main() {
     );
     // A window still up would swallow the next tap.
     await pumpPastTheWaitWindow(tester);
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-    session.playbackRig.prerenderScheduler.cancel();
     await tester.pumpAndSettle();
   }
 

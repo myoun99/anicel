@@ -108,7 +108,6 @@ void main() {
     await settleBehindTheWaitWindow(tester, () => merged(s));
 
     expect(animationRowsOf(s), [top]);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the key is the button: it makes them one too', (tester) async {
@@ -119,7 +118,6 @@ void main() {
     await settleBehindTheWaitWindow(tester, () => merged(s));
 
     expect(animationRowsOf(s), [top]);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// The row the app stands on.
@@ -160,7 +158,6 @@ void main() {
 
     expect(standing(s).timeline, hasLength(1), reason: 'one block');
     expect(animationRowsOf(s), hasLength(2), reason: 'no row went');
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the key is the button on a band too', (tester) async {
@@ -171,6 +168,5 @@ void main() {
 
     expect(standing(s).timeline, hasLength(1));
     expect(animationRowsOf(s), hasLength(2));
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

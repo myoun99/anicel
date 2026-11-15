@@ -137,9 +137,5 @@ void main() {
       findsOneWidget,
       reason: 'the reason said once, not once a name',
     );
-
-    for (final session in projects.sessions) {
-      session.playbackRig.prerenderScheduler.cancel();
-    }
   });
 }

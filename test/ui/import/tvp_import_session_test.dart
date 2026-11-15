@@ -290,10 +290,6 @@ void main() {
       isNull,
       reason: 'a stop is not a kill',
     );
-
-    for (final session in projects.sessions) {
-      session.playbackRig.prerenderScheduler.cancel();
-    }
   });
 
   test('F-124: the warnings an import raises speak the program language', () async {

@@ -389,7 +389,7 @@ void main() {
     // 유저 2026-10-08: 「파일 수와 각 파일의 진행(동영상 굽기의 프레임 등)으로
     // %를 센다. 동영상 굽기의 창은 따로 뜨지 않고 이 창 하나로 합친다」.
     final movie = await writeMovie(tester, 'take.mp4');
-    final s = await open(
+    await open(
       tester,
       [movie],
       // Four frames: a count with a middle is all the % is asked for — 24
@@ -426,7 +426,6 @@ void main() {
       AppText.strings.imStepRasterizing,
       '',
     ]);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('its transport counts PROJECT frames on the sound\'s clock — '
@@ -485,7 +484,6 @@ void main() {
       isTrue,
       reason: 'its sound came with it',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// Answers [value] in [column] of [path]'s row, as a press on its cell
@@ -570,7 +568,6 @@ void main() {
       reason: 'the pool points at the MOVIE — a file pointed at is taken '
           'whole, and the placement takes its sound',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('let go on an SE row\'s cell the row reads 「소리만」, locked — '
@@ -621,7 +618,6 @@ void main() {
       reason: 'no picture came',
     );
     expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('let go on a picture row\'s frames, 「소리만」 is there and '
@@ -701,7 +697,6 @@ void main() {
       // The cut the first half of the file's share, its three frames
       // each a third of it; the holding the rest.
       expectOneBar(counted, [1 / 6, 1 / 3, 0.5, 1]);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯placed, the window names the encode and counts its frames '
@@ -733,7 +728,6 @@ void main() {
       ]);
       // The cut the first of a placed file's three stretches.
       expectOneBar(counted, [1 / 9, 2 / 9, 1 / 3, 1]);
-      s.playbackRig.prerenderScheduler.cancel();
     });
   });
 
@@ -767,7 +761,6 @@ void main() {
       await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
       await pumpPastTheWaitWindow(tester);
       await tester.pumpAndSettle();
-      s.playbackRig.prerenderScheduler.cancel();
       return s.mediaPool.mediaAssets.single;
     }
 

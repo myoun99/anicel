@@ -395,6 +395,5 @@ void main() {
     expect(preview.verb, isNull);
     expect((storedAlpha(session, a), storedAlpha(session, b)), (0, 0));
     expect(alphaOf(live(tester).activeSurfacePainter!.surface), 0);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

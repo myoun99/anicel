@@ -60,6 +60,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

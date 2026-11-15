@@ -107,7 +107,6 @@ void main() {
 
   Future<void> standDown(WidgetTester tester, EditorSessionManager s) async {
     s.playbackRig.playback.stop();
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   }
 

@@ -80,7 +80,6 @@ void main() {
     });
 
     expect(shown(s).mediaReference!.pose, itsOwnSize);
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 
@@ -107,7 +106,6 @@ void main() {
     });
 
     expect(shown(s).mediaReference!.pose, itsOwnSize);
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 
@@ -164,7 +162,6 @@ void main() {
       (4, 4, 12, 12),
       reason: 'the 8×8 document in the middle of the 16×16 canvas, 1:1',
     );
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 }

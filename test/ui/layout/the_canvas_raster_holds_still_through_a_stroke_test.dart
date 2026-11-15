@@ -241,8 +241,6 @@ void main() {
         );
       }
     }
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }
 

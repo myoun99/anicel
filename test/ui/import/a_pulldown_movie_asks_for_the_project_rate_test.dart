@@ -146,7 +146,6 @@ void main() {
     s.undo();
     expect(placedFrom(s, movie), isNull);
     expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('taken, a trimmed movie\'s IN and OUT move to the frames that '
@@ -176,7 +175,6 @@ void main() {
     );
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('kept, the project stays at 24 and a trimmed movie\'s IN and '
@@ -196,7 +194,6 @@ void main() {
     expect((range(tester).inFrame, range(tester).outFrame), (500, 1600));
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('backing out places nothing and leaves the rate — and Import '
@@ -233,7 +230,6 @@ void main() {
 
     expect(rateDialog, findsNothing);
     expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('an OUT left at the movie\'s end stays at its end — the end '
@@ -273,7 +269,6 @@ void main() {
     );
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a movie that only registers is not asked about — it is asked '
@@ -301,7 +296,6 @@ void main() {
     expect(rateDialog, findsNothing);
     expect(s.repository.requireProject().mediaAssetByPath(movie), isNotNull);
     expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a sound alone is not asked about — a sound has no frames to '
@@ -315,7 +309,6 @@ void main() {
 
     expect(rateDialog, findsNothing);
     expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a sound beside it keeps its moments — its IN and OUT move to '
@@ -352,7 +345,6 @@ void main() {
     );
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️F-588 (유저 2026-11-14: 「이 영상만」 — the movie carried in is
@@ -423,7 +415,6 @@ void main() {
       bool isAMovie(MediaAsset asset) => asset.kind == MediaAssetKind.video;
       await settleAsync(tester, () => s.mediaPool.mediaAssets.any(isAMovie));
       await tester.pumpAndSettle();
-      s.playbackRig.prerenderScheduler.cancel();
 
       expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
       final entry = s.mediaPool.mediaAssets.singleWhere(isAMovie);

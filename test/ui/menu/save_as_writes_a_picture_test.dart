@@ -44,10 +44,6 @@ import '../../helpers/settle_async.dart';
 /// here is the road to it: where it is chosen, what it is asked, what it
 /// writes, what the windows say on the way — and that the project stays
 /// the file it was.
-///
-/// ⚠️Every test that lets the real clock run ends by stopping playback's
-/// warmer, as 88 others do: it starts after 400ms of REAL quiet, and one
-/// left between two pictures holds a timer past the body.
 void main() {
   late Directory folder;
 
@@ -330,7 +326,6 @@ void main() {
       pathBefore,
       reason: 'a picture is a copy — never where the project saves from now',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨F-371: the PNG stands on the paper the canvas shows — its '
@@ -358,7 +353,6 @@ void main() {
       0x80,
       reason: 'a thinned paper keeps its alpha in the file',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨I-117-Q1: BMP, TGA, TIFF and WEBP are written as their rows '
@@ -415,7 +409,6 @@ void main() {
         reason: '$format: 「캔버스색이 없으면 투명」',
       );
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨F-371: the JPG stands on the paper too — its colour, and '
@@ -448,7 +441,6 @@ void main() {
       near([0x80, 0x80, 0x80]),
       reason: 'a thinned paper lets the white through as much as it is thin',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('JPG writes a JPEG of the same frame at the canvas\'s size', (
@@ -489,7 +481,6 @@ void main() {
       everyElement(lessThan(200)),
       reason: 'and the dab is in it',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('⛔a picture with no bytes to write fails — the window goes, '
@@ -523,7 +514,6 @@ void main() {
       reason: 'the window goes',
     );
     expect(File(target).existsSync(), isFalse);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   group('a row that cannot write is dim — nothing fails only once it is '
@@ -586,7 +576,6 @@ void main() {
     expect(watched.labels, [
       AppText.strings.saveProgressRunning,
     ], reason: 'no picker after it to back out of: SAVING, never READY');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨where the picker PLACES it (iPad), the write says it is '
@@ -638,6 +627,5 @@ void main() {
       reason: '🗣️no window follows the picker to say 「Saved」: no wait '
           'window says its work is over (11-05)',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

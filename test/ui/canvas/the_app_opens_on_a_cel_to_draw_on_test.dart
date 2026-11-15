@@ -71,7 +71,5 @@ void main() {
       [for (final frame in opened.frames) frame.id],
       reason: 'it went into the cel the app opened with: no block was made',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

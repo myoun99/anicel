@@ -202,7 +202,6 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.runAsync(state.export);
     await tester.pump();
-    s.playbackRig.prerenderScheduler.cancel();
     return run;
   }
 

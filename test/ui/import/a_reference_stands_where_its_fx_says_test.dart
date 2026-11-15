@@ -115,11 +115,6 @@ List<int> rgbaOf(ui.Color colour) {
   return [(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, argb >>> 24];
 }
 
-/// The warmer the session woke, stopped — or it waits on past the test.
-Future<void> stopTheWarmer(WidgetTester tester, EditorSessionManager s) async {
-  s.playbackRig.prerenderScheduler.cancel();
-  await tester.pump();
-}
 
 /// Where [surface]'s ink lies on the canvas, or null when it holds none.
 ui.Rect? inkOf(BitmapSurface? surface) {
@@ -395,7 +390,6 @@ void main() {
       expect(rowOf(s, row).mediaReference, isNotNull);
       expect(rowOf(s, row).transformTrack.isEmpty, isTrue);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     /// [row]'s own transform written as [track], its reference fx as [fx].
@@ -494,7 +488,6 @@ void main() {
       expect(baked.mediaReference, isNull);
       expect(baked.transformTrack.position.keys[0]!.name, 'up');
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯① a row whose transform is switched off: rasterizing '
@@ -541,7 +534,6 @@ void main() {
       expect(back.transformEnabled, isFalse);
       expect(back.transformTrack.rotation.keys.keys, [0]);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯③ a row scaled unevenly under a paper turned 30° would '
@@ -585,7 +577,6 @@ void main() {
       expect(rowOf(s, row).mediaReference, isNotNull);
       expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a row changed while its cels are drawn is left as it is now '
@@ -611,7 +602,6 @@ void main() {
       expect(now.mediaReference!.fx, turnedTwice);
       expect(shown(s, now), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('② an attach row wears none of its own reference fx: it '
@@ -639,7 +629,6 @@ void main() {
       expect(isAttachedLayer(baked), isTrue);
       expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯an attach row twirls down its reference fx\'s header '
@@ -674,7 +663,6 @@ void main() {
         ], reason: open ? 'open' : 'shut');
         expect(lanes.single.keyMarks, isEmpty);
       }
-      await stopTheWarmer(tester, s);
     });
 
     group('🗣️I-120-Q24 「참조 행의 겸용 복사본은 같은 파일 그림의 셀로 '
@@ -767,7 +755,6 @@ void main() {
           linked: linked,
         );
         expectOneUndoEmpties(s, source: source, row: row, panel: panel);
-        await stopTheWarmer(tester, s);
       });
 
       testWidgets('🎯a cut linked to its cut as a 겸용 — the row only one '
@@ -791,7 +778,6 @@ void main() {
           linked: target,
         );
         expectOneUndoEmpties(s, source: source, row: row, panel: panel);
-        await stopTheWarmer(tester, s);
       });
 
       // 🗣️I-120-Q29 (유저 2026-11-07 「서피스 저장 레인에 넘긴다」): a row
@@ -881,7 +867,6 @@ void main() {
           reason: 'a walk, not a step',
         );
         expectOneUndoTakesItOut(s, before, row: row);
-        await stopTheWarmer(tester, s);
       });
 
       testWidgets('🎯a PDF placed in a cut that has a 겸용 — its page, the '
@@ -915,7 +900,6 @@ void main() {
           row: row,
           linked: sibling,
         );
-        await stopTheWarmer(tester, s);
       });
 
       for (final (how, copied) in [
@@ -965,7 +949,6 @@ void main() {
             linked: sibling,
           );
           expectOneUndoTakesItOut(s, before, row: row);
-          await stopTheWarmer(tester, s);
         });
       }
     });
@@ -992,7 +975,6 @@ void main() {
       expect(baked.mediaReference, isNull);
       expect(shown(s, baked), const ui.Rect.fromLTRB(570, 402, 1770, 1252));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     // F-374-Q8 (유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지 통째로」):
@@ -1004,7 +986,6 @@ void main() {
 
       expect(shown(s, row), const ui.Rect.fromLTRB(-2430, 797, 4770, 857));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🚨halved by its fx and baked as it shows, a paper wider than '
@@ -1027,7 +1008,6 @@ void main() {
         const ui.Rect.fromLTRB(-630, 812, 2970, 842),
       );
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     // 🗣️유저 2026-10-18 (a-picture-past-the-texture-limit-is-decoded
@@ -1064,7 +1044,6 @@ void main() {
         255,
       ]);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     // No brush reaches a reference row, so its file's picture is all its
@@ -1100,7 +1079,6 @@ void main() {
       expect(shown(s, baked), where);
       expect(celOf(s, baked, 0)!.laidBounds!.rect, where);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     // 🗣️I-120-Q26 · Q28 (유저 2026-11-07): 「굽기를 화면에 맞춘다 — 확대된
@@ -1231,7 +1209,6 @@ void main() {
         );
         expect(await tester.runAsync(() => frame(s)), before);
         await tester.pump(const Duration(minutes: 1));
-        await stopTheWarmer(tester, s);
       }
 
       for (final MapEntry(key: how, value: fx) in poses.entries) {
@@ -1295,7 +1272,6 @@ void main() {
             return frame(s);
           });
           await tester.pump(const Duration(minutes: 1));
-          await stopTheWarmer(tester, s);
           return shows!;
         }
 
@@ -1348,7 +1324,6 @@ void main() {
       // halved about the middle (1170), 2953 — laid whole it reaches 2970.
       expect(inkOf(baked), const ui.Rect.fromLTRB(-630, 812, 2953, 842));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     /// The fx turn a quarter over frames 0 to 2 — on [squashed], a move no
@@ -1435,7 +1410,6 @@ void main() {
       s.undo();
       expect(rowOf(s, row), before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('each cel\'s pictures are its own — a cel showing a picture '
@@ -1491,7 +1465,6 @@ void main() {
       );
       expect(inkOf(celOf(s, baked, 3)), inkOf(celOf(s, baked, 2)));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('neither the keyed rasterize nor the bake in place takes a '
@@ -1520,7 +1493,6 @@ void main() {
       expect(await rasterizeFrames(tester, s, row), isFalse);
       expect(rowOf(s, row), standing);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('each door lets go of its own rows alone — the keyed '
@@ -1555,7 +1527,6 @@ void main() {
       );
       expect(rowOf(s, row), keyed);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a 겸용 copy: rasterizing one use rasterizes every use of '
@@ -1622,7 +1593,6 @@ void main() {
       s.undo();
       expect([rowOf(s, row), s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a 겸용 copy its transform cannot carry the move of: the '
@@ -1662,7 +1632,6 @@ void main() {
       expect(rowOf(s, row).mediaReference, isNotNull);
       expect(s.layerById(copy)!.mediaReference, isNotNull);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a 겸용 copy that moves the paper as the row does is taken '
@@ -1698,7 +1667,6 @@ void main() {
       s.undo();
       expect([rowOf(s, row), s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a 겸용 copy that shows the still apart from the row: each '
@@ -1750,7 +1718,6 @@ void main() {
       s.undo();
       expect([rowOf(s, row), s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a 겸용 copy riding a drawing wears none of its own '
@@ -1793,7 +1760,6 @@ void main() {
       expect(turned.left, closeTo(1111.7, 1.5));
       expect(turned.bottom, closeTo(878, 1.5));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🗣️F-572-Q2 — a 겸용 copy whose move takes the still a '
@@ -1835,7 +1801,6 @@ void main() {
         LayerKind.animation,
       ]);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a 겸용 copy that shows no file shows its cel as it is: the '
@@ -1870,7 +1835,6 @@ void main() {
       expect(turned.left, closeTo(1111.7, 1.5));
       expect(turned.bottom, closeTo(878, 1.5));
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('no door rasterizes from a row that shows no file — not '
@@ -1900,7 +1864,6 @@ void main() {
 
       expect(rowOf(s, row), before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
   });
 
@@ -2179,7 +2142,6 @@ void main() {
       expect(s.layerById(row.id)!.mediaReference, isNotNull);
       expect(s.layerById(row.id)!.transformTrack.isEmpty, isTrue);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯③ a movie its row\'s transform cannot carry the move of '
@@ -2207,7 +2169,6 @@ void main() {
       expect(inkAt(s, baked, 0), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
       expect(inkAt(s, baked, 12), turnedAQuarter);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a movie trimmed at its head, slower than the cut: each '
@@ -2240,7 +2201,6 @@ void main() {
       );
       expect(inkAt(s, baked, 12), turnedAQuarter);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯a movie whose cel another use shows is rasterized with it '
@@ -2282,7 +2242,6 @@ void main() {
       s.undo();
       expect([s.layerById(row.id)!, s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a movie\'s uses each take their own way: the copy its '
@@ -2314,7 +2273,6 @@ void main() {
       expect(inkAt(s, baked, 12), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
       expect(bakedCopy.transformTrack, squashed);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a movie a use of which exposes it in two blocks — what no '
@@ -2342,7 +2300,6 @@ void main() {
 
       expect([s.layerById(row.id)!, s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('a movie row changed while its file is opened is left as it '
@@ -2373,7 +2330,6 @@ void main() {
       expect(now.mediaReference!.fx, moved);
       expect(now.frames, row.frames);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
   });
 
@@ -2464,7 +2420,6 @@ void main() {
         reason: 'the reference\'s pose over a 200×100 page — twice its own '
             'size, not fitted to the canvas again',
       );
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯placing renders EACH page from its own page of the file — '
@@ -2503,7 +2458,6 @@ void main() {
         isEmpty,
         reason: 'a page rendered for the placing is let go of once laid',
       );
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('one page kept from the middle is a still that says WHICH '
@@ -2519,7 +2473,6 @@ void main() {
         colourAt(celOf(s, row, 0), 100, 50),
         rgbaOf(FakePdfDocument.pageColor(2)),
       );
-      await stopTheWarmer(tester, s);
     });
   });
 
@@ -2589,7 +2542,6 @@ void main() {
         ).first.laneId,
         referenceGroupLaneId,
       );
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('one frame kept is a still that says WHICH frame it is — '
@@ -2600,7 +2552,6 @@ void main() {
       final cel = celOf(s, row, 0);
       expect(inkOf(cel), const ui.Rect.fromLTRB(50, 50, 51, 51));
       expect(colourAt(cel, 50, 50), white);
-      await stopTheWarmer(tester, s);
     });
 
     // ⓐ (유저 2026-10-10 「추천대로가자」): a swap keeps the picture's number
@@ -2649,7 +2600,6 @@ void main() {
         reason: 'its 2nd frame, blue — not its 1st, red',
       );
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
 
     testWidgets('rasterizing lets go of which picture each cel was, with the '
@@ -2672,7 +2622,6 @@ void main() {
       s.redo();
       expect(pictures(), [null, null]);
       await tester.pump(const Duration(minutes: 1));
-      await stopTheWarmer(tester, s);
     });
   });
 }

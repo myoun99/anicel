@@ -81,6 +81,7 @@ class PlaybackPrerenderScheduler {
     this.room,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
+    this.yieldsToTheEventLoop = true,
     this.onionPlacement = _onTop,
   });
 
@@ -105,6 +106,10 @@ class PlaybackPrerenderScheduler {
   final Future<void> Function(Cut cut, int frameIndex)? beforeCompose;
 
   final Duration idleDelay;
+
+  /// How the walk lets other work in between two steps: by a turn of the
+  /// event loop — a zero timer — or, false, by a microtask.
+  final bool yieldsToTheEventLoop;
 
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
@@ -246,6 +251,23 @@ class PlaybackPrerenderScheduler {
     // The release opens a fresh quiet window: warming resumes idleDelay
     // after the pen lifts, not the instant it lifts.
     notifyEditActivity();
+    if (_inputHolds == 0) {
+      _holdsClosed();
+    }
+  }
+
+  /// Completes once the last open hold closes — or [cancel], [follow] or
+  /// [dispose] flushes the waits ([_flushPendingWaits]). No timer, as a
+  /// rest has none ([_resting]): a hold lasts as long as the hand does.
+  Completer<void>? _holdsClose;
+
+  Future<void> _untilHoldsClose() =>
+      (_holdsClose ??= Completer<void>()).future;
+
+  void _holdsClosed() {
+    final close = _holdsClose;
+    _holdsClose = null;
+    close?.complete();
   }
 
   /// True when warming may touch the UI thread right now.
@@ -281,6 +303,11 @@ class PlaybackPrerenderScheduler {
     return completer.future;
   }
 
+  /// The walk's step aside between two of its steps ([yieldsToTheEventLoop]).
+  Future<void> _yield() => yieldsToTheEventLoop
+      ? _wait(Duration.zero)
+      : Future<void>.microtask(() {});
+
   void _flushPendingWaits() {
     final waits = Map.of(_pendingWaits);
     _pendingWaits.clear();
@@ -288,6 +315,7 @@ class PlaybackPrerenderScheduler {
       entry.key.cancel();
       entry.value.complete();
     }
+    _holdsClosed();
   }
 
   /// A walk that rests — it has nothing to make, or no room to make it in —
@@ -425,7 +453,7 @@ class PlaybackPrerenderScheduler {
       }
       if (missing == null && !ended) {
         // A burst's worth walked over: let interactive work in, walk on.
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       if (missing == null) {
@@ -449,7 +477,7 @@ class PlaybackPrerenderScheduler {
         if (_isStale(generation)) {
           return;
         }
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       // 🚨THE ROOM IS ASKED FOR WHAT THE PICTURE WILL BE MADE AS (card
@@ -511,13 +539,13 @@ class PlaybackPrerenderScheduler {
         // yield keeps a compose that keeps coming back empty from spinning.
         // A picture that threw will not come: a run waiting for it goes on.
         _changes.value += 1;
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       _landed(step);
       _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
-      await _wait(Duration.zero);
+      await _yield();
     }
   }
 
@@ -643,15 +671,18 @@ class PlaybackPrerenderScheduler {
       if (_isQuietNow()) {
         return;
       }
-      final remaining = idleDelay - DateTime.now().difference(_lastActivity);
-      // With a hold open (or the window already elapsed but held) poll on
-      // the 50ms heartbeat; otherwise sleep out the remaining window.
-      await _wait(
-        remaining > Duration.zero &&
-                remaining < const Duration(milliseconds: 50)
-            ? remaining
-            : const Duration(milliseconds: 50),
-      );
+      // With a hold open, until it closes; else the rest of the window
+      // since the last edit, asked again where an edit came meanwhile.
+      // ↩️A hold was polled on a 50ms heartbeat, and a widget test that
+      // holds the warmer to its end — so what a file decodes is the
+      // test's own asking — left that timer pending once the tree was
+      // gone: every one stopped the warmer by hand (card a-test-lending-
+      // the-real-clock-leaves-the-warmer-running, 11-16).
+      if (_inputHolds > 0) {
+        await _untilHoldsClose();
+        continue;
+      }
+      await _wait(idleDelay - DateTime.now().difference(_lastActivity));
     }
   }
 }

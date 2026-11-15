@@ -684,7 +684,6 @@ void main() {
       isFalse,
       reason: 'drawn on the picture only: the cell\'s ink got nothing',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // ↩️It told the pen's overlay the keys, while a plugin at the head of a

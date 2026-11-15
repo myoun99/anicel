@@ -333,7 +333,6 @@ void main() {
       isEmpty,
       reason: 'the pixels are the layer\'s own — ↩️「구워도 풀에 남음」',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯one window places one file and registers another — each row '
@@ -373,6 +372,5 @@ void main() {
       containsAll(['kept.png']),
       reason: 'the other only registered',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

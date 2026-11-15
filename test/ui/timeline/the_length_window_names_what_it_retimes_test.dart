@@ -87,7 +87,6 @@ void main() {
     expect(shown(tester, 'set-comma-n-seconds-field'), '1');
     expect(shown(tester, 'set-comma-n-koma-field'), '2');
     await cancel(tester);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on the storyboard\'s V row: the cut\'s length', (tester) async {
@@ -104,7 +103,6 @@ void main() {
       '${s.requireActiveCut.duration}',
     );
     await cancel(tester);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on a transition span: a transition\'s length', (
@@ -120,7 +118,6 @@ void main() {
     expect(titledFor(AppText.strings.tlKindTransition), findsOneWidget);
     expect(shown(tester, 'set-comma-n-field'), '1');
     await cancel(tester);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a band over a cel and a sound names both, and opens on no '
@@ -155,6 +152,5 @@ void main() {
       WindowNumber.noAgreedNumber,
     );
     await cancel(tester);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

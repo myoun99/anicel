@@ -229,7 +229,6 @@ void main() {
       ['A2.png', 'B1.png'],
       reason: 'A 1 was written with its block turned off',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('every ticked cel is a file — the same film with nothing '
@@ -245,7 +244,6 @@ void main() {
     await tester.pump();
 
     expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', 'B1.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-117 (유저 2026-10-21): 「셀은 출력될 셀 등 소재 하나당 해당
@@ -280,7 +278,6 @@ void main() {
       [('A', 1, 1)],
     );
     expect(read.layers.single.pixels, [0, 0, 0, 255]);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️the direction kind writes the picture DRAWN on the row, '
@@ -311,7 +308,6 @@ void main() {
       reason: '↩️the file was a picture of the block\'s writing — its text, '
           'its arrow and its length — and never the drawing',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a direction laid over ONE drawing is in that drawing\'s '
@@ -356,7 +352,6 @@ void main() {
     final (own, laid) = await dotsOf('A2.png');
     expect(own, black);
     expect(laid, isNot(red), reason: 'nothing was laid over A 2');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   String? status(WidgetTester tester) => tester
@@ -444,7 +439,6 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
     expect(folders.last, second.path);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('backing out of the window that asks again runs NOTHING and '
@@ -486,7 +480,6 @@ void main() {
 
     expect(asked, 3, reason: 'still queued, and still owed a place');
     expect(filesWrittenUnder(later), ['A1.png', 'B1.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a queued job whose place still fits is asked nothing when '
@@ -517,7 +510,6 @@ void main() {
 
     expect(asked, 1);
     expect(filesWrittenUnder(temp), ['B1.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a queued job that has come to write NOTHING is not asked '
@@ -557,7 +549,6 @@ void main() {
       status(tester),
       strings.exQueueRest(strings.exJobCount(1), failed: 0, kept: false),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('ONE cel behind folders of its rule\'s making is a FOLDER to '
@@ -605,7 +596,6 @@ void main() {
 
     expect(savesAsked, isEmpty);
     expect(filesWrittenUnder(temp), ['CUT1/B1.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('⛔a file\'s place takes ONE file: a run that finds it writes '
@@ -642,7 +632,6 @@ void main() {
       reason: '↩️three cels written to one name, each over the last',
     );
     expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('two queued jobs that each made a FOLDER of one name hand '
@@ -699,6 +688,5 @@ void main() {
       'C.1_2/A2.png',
       'C.1_2/B1.png',
     ]);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

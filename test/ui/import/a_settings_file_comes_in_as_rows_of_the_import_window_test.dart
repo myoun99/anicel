@@ -134,7 +134,6 @@ void main() {
   ) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
     // The window's own way out, where the run closed it.
     await tester.pump(const Duration(milliseconds: 400));
   }
@@ -229,7 +228,7 @@ void main() {
   testWidgets('every row left out, nothing goes in place — and nothing is '
       'warned of', (tester) async {
     final path = aSettingsFile({'accent_settings.json': accent});
-    final session = await openOn(tester, [path]);
+    await openOn(tester, [path]);
     final row = '$path#accent_settings.json';
 
     await leaveOut(tester, row);
@@ -239,7 +238,6 @@ void main() {
     await leaveOut(tester, row);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await tester.pump();
-    session.playbackRig.prerenderScheduler.cancel();
 
     expect(put, isEmpty);
     expect(table(tester).rows, hasLength(1), reason: 'no run happened');

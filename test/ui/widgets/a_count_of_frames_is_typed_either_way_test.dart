@@ -253,7 +253,6 @@ void main() {
 
     final block = s.activeLayer!.timeline.entries.first;
     expect((block.key, block.value.length), (0, fps + 2));
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('Enter applies the N window — the keyboard opens on Apply', (
@@ -288,7 +287,6 @@ void main() {
     );
     final block = s.activeLayer!.timeline.entries.first;
     expect((block.key, block.value.length), (0, 2));
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」.
@@ -341,6 +339,5 @@ void main() {
     await openAndClose(() {
       expect(seconds, findsOneWidget, reason: 'it opens where it was left');
     });
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

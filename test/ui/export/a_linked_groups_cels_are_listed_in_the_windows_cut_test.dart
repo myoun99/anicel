@@ -211,7 +211,6 @@ void main() {
       expect(transportLine(tester), 'A1.png · 1 / 2');
       await tapRow(tester, '$standingOn-b');
       expect(transportLine(tester), 'B1.png · 1 / 2');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
@@ -234,7 +233,6 @@ void main() {
       isNull,
       reason: 'the group exports once, as one cut: nothing to pick between',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a film a cut of the pair, as a timesheet is (I-151: 「셀은 '
@@ -257,7 +255,6 @@ void main() {
       ],
       ['_CUTC1.mp4', '_CUTC2.mp4'],
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   /// F-337: the window takes its share of the screen, and never less than
@@ -326,7 +323,6 @@ void main() {
       );
       expect(picker(tester).label, 'C1-C2');
       expect(tester.takeException(), isNull);
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 }

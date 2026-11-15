@@ -472,7 +472,6 @@ void main() {
 
     expect(window, findsNothing);
     expect(marksAt(session, idA, 0), [1, 4, 7]);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   Finder markPick(InbetweenMark mark) =>
@@ -529,7 +528,6 @@ void main() {
       (true, false),
       reason: '지난번 고른 것 기억',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️F-518 (유저 2026-10-31): 「숫자 초기값이 -임 … 기본값은 0말고 3으로하자.
@@ -558,7 +556,6 @@ void main() {
       2,
       reason: 'cancelled is not applied',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️F-489-Q1 「둘 다 따라간다」: never picked, the window opens on '
@@ -590,7 +587,6 @@ void main() {
       (false, true),
       reason: '지난번 고른 것 기억 — the pick, not the unnamed drawing\'s',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('「간격 숫자 옆에」: the pick stands beside the number, either '
@@ -627,7 +623,6 @@ void main() {
       ),
       reason: 'switching the entry keeps the mark picked, and the other way',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a pick wears its button\'s face and name', (tester) async {
@@ -665,7 +660,6 @@ void main() {
         reason: 'its tooltip follows its own action\'s live key (I-19)',
       );
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // ⚠️The pill is memoized on what its buttons read and baked into a
@@ -682,7 +676,6 @@ void main() {
     standOn(session, idA, 0);
     await tester.pumpAndSettle();
     expect(lit(), isTrue, reason: 'ten frames');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a key recorded for it opens the same window', (tester) async {
@@ -701,7 +694,6 @@ void main() {
     await typeAndApply(tester, '2');
 
     expect(marksAt(session, idA, 0), [7, 9]);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️I-130: a key recorded for the ○ or the ● presses that '
@@ -727,6 +719,5 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
     await tester.pumpAndSettle();
     expect(worn(), {3: InbetweenMark.two});
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

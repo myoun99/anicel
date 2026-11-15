@@ -94,7 +94,6 @@ void main() {
       0xFF123456,
       reason: 'the pill shows this colour, so the memo may not serve it stale',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a flip that changes the frame label keeps the view bars', (
@@ -143,7 +142,5 @@ void main() {
           'the view bars show viewport geometry, not the playhead — a '
           'frame step must not rebuild them',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

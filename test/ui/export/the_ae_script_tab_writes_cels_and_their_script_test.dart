@@ -226,7 +226,6 @@ void main() {
     // file that is not there (2026-10-30).
     expect(script, isNot(contains('_Camera_PAN.png')));
     expect(script, contains('comp("CUT1", 32, 18, 2, bin)'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a cel is the drawing alone — no paper under it, its ground '
@@ -254,7 +253,6 @@ void main() {
     expect(dotAlpha, 255);
     expect(paperAlpha, 0, reason: 'the paper was laid into the cel');
     expect(groundAlpha, 0);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the tab offers the Cels list\'s picking without what a '
@@ -282,7 +280,6 @@ void main() {
     ]) {
       expect(byKey(absent), findsNothing, reason: absent);
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('its picking is its own: a kind turned off here leaves the '
@@ -307,7 +304,6 @@ void main() {
       const CelsExportSpec().kinds,
       reason: 'the AE Script tab wrote the Cels tab\'s picking',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a cut that sounds is heard in AE as the app plays it: its '
@@ -368,7 +364,6 @@ void main() {
     expect(at(perFrame + perFrame ~/ 2), isNot(0), reason: 'frame 1 sounds');
     final script = File('${temp.path}/CUT1.jsx').readAsStringSync();
     expect(script, contains('footage("CUT1.wav")'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a cut whose camera moves gets its path beside its cels, '
@@ -417,6 +412,5 @@ void main() {
       File('${off.path}/CUT1.jsx').readAsStringSync(),
       isNot(contains('CUT1_camera.png')),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

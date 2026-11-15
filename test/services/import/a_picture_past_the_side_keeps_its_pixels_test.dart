@@ -745,7 +745,6 @@ void main() {
         rgba,
       );
       await tester.pump(const Duration(minutes: 1));
-      s.playbackRig.prerenderScheduler.cancel();
       await tester.pump();
     });
   });

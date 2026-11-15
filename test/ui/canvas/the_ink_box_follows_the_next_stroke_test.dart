@@ -69,7 +69,5 @@ void main() {
       reason: 'the box takes in the ink the second stroke laid down',
     );
     expect(second.left, first.left, reason: 'and keeps what was there');
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

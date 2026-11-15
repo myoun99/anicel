@@ -287,7 +287,6 @@ void main() {
       [at(mergedCel(s), 160, 40), at(mergedCel(s), 288, 40)],
       [red, green],
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯an attach row the merge does not take rides the result, its '
@@ -336,7 +335,6 @@ void main() {
     expect(s.requireActiveCut.layers, before);
     s.redo();
     expect(at(mergedCel(s, 'r'), 160, 160), blue);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a row\'s blocks a band holds become one block over a cel '
@@ -373,7 +371,6 @@ void main() {
       [at(mergedCel(s), 288, 40), at(mergedCel(s), 40, 160)],
       [green, blue],
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// A cel of straight [shade]s in each tile at [coords] — clear wherever
@@ -498,8 +495,6 @@ void main() {
       }
     }
     expect(apart, 0, reason: first);
-    byRows.playbackRig.prerenderScheduler.cancel();
-    byBlocks.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a row\'s blocks merged lay its cels as they are — its keys '
@@ -574,7 +569,6 @@ void main() {
     );
     final ridden = mergedCel(s, 'r');
     expect([at(ridden, 160, 160), at(ridden, 416, 288)], [red, blue]);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a merge that changes how the rows look asks first, and the '
@@ -596,7 +590,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers, before);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// A synced attach row [id] riding `base` on its [placement] side.
@@ -657,7 +650,6 @@ void main() {
       find.byKey(const ValueKey<String>('layer-merge-changes-cancel-button')),
     );
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a bake\'s window names its changes in their order, whatever '
@@ -696,7 +688,6 @@ void main() {
       find.byKey(const ValueKey<String>('bake-changes-cancel-button')),
     );
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   test('the wall it warns at is the project\'s pasteboard (Q15)', () {
@@ -891,7 +882,6 @@ void main() {
       s.redo();
       expect(at(shown(other, 'a2'), 288, 40), green);
       expect(s.repository.requireProject().linkRegistry, after);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     test('…and a picture another cut shows past the wall is warned of, as '
@@ -1038,7 +1028,6 @@ void main() {
       expect({
         for (final id in [cutId, other]) id: s.cutById(id)!.layers,
       }, before);
-      s.playbackRig.prerenderScheduler.cancel();
     });
   });
 

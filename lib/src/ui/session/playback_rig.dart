@@ -179,6 +179,18 @@ class PlaybackRig implements PlaybackRun {
         idleDelay: underFlutterTest
             ? Duration.zero
             : const Duration(milliseconds: 1200),
+        // Widget tests: the walk steps aside by a microtask, for the same
+        // teardown (card a-test-lending-the-real-clock-leaves-the-warmer-
+        // running, 11-16). A test that lends the real clock — a screen's
+        // pixels read, a file waited out — lets the engine make a picture
+        // there, and the walk lands it in the pump after the body, which
+        // runs no time: the zero timer it stepped aside on was found
+        // pending once the tree was gone, 「A Timer is still pending」, the
+        // busier the machine the likelier — and every such test had to stop
+        // the warmer by hand (`a_warmer_handed_the_real_clock_ends_with_the_
+        // test_test`). That pump runs a microtask. How a step lets the
+        // event loop in is the scheduler's own tests', which keep the timer.
+        yieldsToTheEventLoop: !underFlutterTest,
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
         onionPlacement: () => _appSettings.onionSkinSettings.value.placement,

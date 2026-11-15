@@ -485,10 +485,6 @@ void main() {
       isNull,
       reason: 'a stop is not a kill',
     );
-
-    for (final session in projects.sessions) {
-      session.playbackRig.prerenderScheduler.cancel();
-    }
   });
 
   test('a picture lands where it stands on the canvas', () async {

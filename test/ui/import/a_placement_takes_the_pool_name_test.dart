@@ -159,7 +159,6 @@ void main() {
         tester,
         () => importWarningsButton.evaluate().isNotEmpty,
       );
-      s.playbackRig.prerenderScheduler.cancel();
       final notice = await openImportWarnings(tester);
 
       expect(

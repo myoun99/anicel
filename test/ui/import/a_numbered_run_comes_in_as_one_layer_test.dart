@@ -110,9 +110,7 @@ void main() {
   }
 
   /// Places what the window holds, and answers the layers that brought —
-  /// by id: the default project has an `A` of its own. It waits out the
-  /// wait window, so it ends by stopping playback's warmer
-  /// (`pumpPastTheWaitWindow`) — for every test that places through it.
+  /// by id: the default project has an `A` of its own.
   Future<List<Layer>> place(WidgetTester tester, EditorSessionManager s) async {
     final before = {for (final layer in s.requireActiveCut.layers) layer.id};
     List<Layer> added() => [
@@ -123,7 +121,6 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     await settleAsync(tester, () => added().isNotEmpty);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
     return added();
   }
 
@@ -576,7 +573,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(brought(), hasLength(2), reason: 'each row brings its own');
-      s.playbackRig.prerenderScheduler.cancel();
     });
   }
 }

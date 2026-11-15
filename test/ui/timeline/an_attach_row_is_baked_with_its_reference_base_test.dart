@@ -312,7 +312,6 @@ void main() {
       s.undo();
       expect([current(s, paper), current(s, sheet)], rows);
       await tester.pumpAndSettle();
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🎯a turn of its fx that moves under the squash bakes a cel a '
@@ -351,7 +350,6 @@ void main() {
         orphansDropped(current(s, sheet), paperBack),
       ], rows);
       await tester.pumpAndSettle();
-      s.playbackRig.prerenderScheduler.cancel();
     });
   }
 
@@ -377,7 +375,6 @@ void main() {
 
     expect(await shown(tester, s, frames), standsAsIt(before));
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a 겸용 copy that shows the paper elsewhere parts its cel — '
@@ -401,7 +398,6 @@ void main() {
 
     expect(await shown(tester, s, [0]), standsAsIt(before));
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a sheet of its own file holding keys of its own reference '
@@ -435,7 +431,6 @@ void main() {
     expect(baked.attachedMode, AttachedMode.synced);
     expect(baked.mediaReference, isNull);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️F-374-Q10 · I-120-Q5: where the head's switch would come on over keys
@@ -487,6 +482,5 @@ void main() {
       reason: 'the keys the other conte keeps stay unshown',
     );
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

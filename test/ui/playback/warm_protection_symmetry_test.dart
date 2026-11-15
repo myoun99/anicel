@@ -252,10 +252,6 @@ void main() {
     );
     expect(s.playbackRig.demand!.length, cutWarmFrameCount(activeCut));
 
-    // Stand the run down INSIDE the test: its zero-length yield timer
-    // otherwise trips the binding's timer invariant, which runs before
-    // the teardown dispose (the scheduler's own documented hazard).
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 

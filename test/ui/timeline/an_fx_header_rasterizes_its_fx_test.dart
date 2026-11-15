@@ -97,7 +97,6 @@ void main() {
       LayerEffect(id: blur, kind: EffectKind.blur),
       reason: 'it stays, at its defaults',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a band over the fx header scopes the press to its frames '
@@ -157,7 +156,6 @@ void main() {
 
     await press('transform-group');
     expect(blurriness(), [0, 0, 0, 0, 0, 0], reason: 'not this group: all');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a folder\'s fx header holds the button lit off (Q8)', (

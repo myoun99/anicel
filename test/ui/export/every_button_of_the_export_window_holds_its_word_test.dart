@@ -163,7 +163,6 @@ void main() {
           );
         }
       }
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
@@ -232,7 +231,6 @@ void main() {
           reason: 'its padding and its widest strip, every word whole',
         );
       }
-      session.playbackRig.prerenderScheduler.cancel();
       await tester.pumpWidget(const SizedBox.shrink());
     }
     expect(

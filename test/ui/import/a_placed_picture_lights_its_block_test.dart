@@ -55,9 +55,7 @@ void main() {
 
   /// The app with a picture in its pool, that picture dragged from the pool
   /// onto [cell] of the first animation row and placed through the window.
-  /// Returns once the picture is baked into the cel. It waits out the wait
-  /// window, so it ends by stopping playback's warmer
-  /// (`pumpPastTheWaitWindow`) — for every test that places through it.
+  /// Returns once the picture is baked into the cel.
   Future<(EditorSessionManager, Layer)> placeByDrag(WidgetTester tester) async {
     // In the pool's spelling: the pool row is keyed by it.
     final png = normalizedMediaPath(
@@ -136,7 +134,6 @@ void main() {
       isTrue,
       reason: 'premise: the picture is there — 「그림 존재하는데」',
     );
-    session.playbackRig.prerenderScheduler.cancel();
     return (session, row);
   }
 
@@ -185,7 +182,5 @@ void main() {
       reason: '「유령블록이 ui로 남아있는듯」 — the row on screen is the row '
           'the project holds',
     );
-    // The undo pumped on after the placing stopped the warmer: once more.
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }
