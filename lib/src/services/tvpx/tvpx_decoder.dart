@@ -422,7 +422,10 @@ const List<int> _bgra = [
 ];
 
 /// The frames of the DEEP animation [dip]: its `DBOD` the first, each
-/// `DBAN` over the one before, as many as `NIMA` says.
+/// `DBAN` over the one before, as many as `NIMA` says — one where the file
+/// has no `NIMA`: a still writes none, its `DBOD` its one frame (the user's
+/// BRUSH.tvpx, 2026-11-15: 塗り用 粗 and 柔らか, with no `FRAT` or `BK64`
+/// either).
 _Tip _tipOf(Uint8List dip) {
   final data = ByteData.sublistView(dip);
   if (dip.length < 12 ||
@@ -432,7 +435,7 @@ _Tip _tipOf(Uint8List dip) {
   }
   var width = 0;
   var height = 0;
-  var count = 0;
+  int? count;
   var layout = const <int>[];
   final bodies = <Uint8List>[];
   var at = 12;
@@ -460,7 +463,10 @@ _Tip _tipOf(Uint8List dip) {
   if (!listEquals(layout, _bgra)) {
     throw const TvppRasterDecodeException('The tip is not 8-bit BGRA.');
   }
-  if (width == 0 || height == 0 || bodies.isEmpty || bodies.length != count) {
+  if (width == 0 ||
+      height == 0 ||
+      bodies.isEmpty ||
+      bodies.length != (count ?? 1)) {
     throw const TvppRasterDecodeException('The tip has no frames to read.');
   }
   final frames = <Uint8List>[];
