@@ -160,11 +160,12 @@ Future<GpuShown> frameOnTheEngine(
         ? await pictures
               .readInStack(nodes, frame, page: page, looks: looking)
               .then(
-                (_) => pictures.drawingNow(
+                (ahead) => pictures.drawingNow(
                   nodes,
                   frame,
                   page: page,
                   looks: looking,
+                  ahead: ahead,
                 ),
               )
         : null;

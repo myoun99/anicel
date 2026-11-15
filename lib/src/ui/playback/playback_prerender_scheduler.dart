@@ -320,6 +320,7 @@ class PlaybackPrerenderScheduler {
     if (_isStale(generation)) {
       return Future<void>.value();
     }
+    pictures.rest();
     _settle();
     final resting = _resting = Completer<void>();
     // Told once it rests in every sense: whoever hears it may wake it.

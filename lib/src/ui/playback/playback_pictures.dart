@@ -40,6 +40,11 @@ abstract interface class PlaybackPictures {
   /// [make].
   Future<void> readIn(DemandedPicture picture);
 
+  /// The walk rests — everything wanted is there, or no more fits — and
+  /// asks for nothing until it goes on: what was read in for a picture it
+  /// then did not make ([readIn]) is let go.
+  void rest();
+
   /// The bytes [picture] holds that [seen] has not counted, which it adds to
   /// [seen]: a walk weighs the window it has passed over by this, each
   /// picture's parts counted once however many frames show them.

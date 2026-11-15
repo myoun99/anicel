@@ -16,6 +16,9 @@ final class _HeldPictures implements PlaybackPictures {
   final Map<int, Completer<bool>> _landings = {};
   final Map<int, bool Function()> dueOf = {};
 
+  /// How many times the walk told these it rests.
+  int rests = 0;
+
   void land(int frame) {
     made.add(frame);
     _landings.remove(frame)!.complete(true);
@@ -42,6 +45,9 @@ final class _HeldPictures implements PlaybackPictures {
 
   @override
   Future<void> readIn(DemandedPicture picture) async {}
+
+  @override
+  void rest() => rests += 1;
 
   @override
   int weighNew(DemandedPicture picture, Set<Object> seen) => 0;
@@ -115,5 +121,48 @@ void main() {
 
     playhead = 1;
     expect(pictures.dueOf[2]!(), isTrue, reason: 'the run shows it next');
+  });
+
+  test('🚨a walk that rests tells its pictures — what they read in for a '
+      'picture not made is theirs to let go then, and not before', () async {
+    final cut = Cut(
+      id: const CutId('c'),
+      name: 'c',
+      duration: 3,
+      canvasSize: const CanvasSize(width: 4, height: 4),
+      layers: const [],
+    );
+    final pictures = _HeldPictures();
+    final scheduler = PlaybackPrerenderScheduler(
+      pictures: pictures,
+      resolveCut: (_) => cut,
+    );
+    addTearDown(scheduler.dispose);
+
+    scheduler.follow(
+      PlayingDemand(
+        totalFrames: 3,
+        loops: () => true,
+        playhead: () => 0,
+        picturesOf: (frame) => [(
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: true,
+          ghosts: FrameGhosts.none,
+        )],
+        playlistFrameOf: (_, frame) => frame,
+      ),
+    );
+    await pumpEventQueue();
+    pictures.land(0);
+    await pumpEventQueue();
+    pictures.land(1);
+    await pumpEventQueue();
+    expect(pictures.rests, 0, reason: 'a frame is still to come');
+
+    pictures.land(2);
+    await pumpEventQueue();
+
+    expect(pictures.rests, 1);
   });
 }

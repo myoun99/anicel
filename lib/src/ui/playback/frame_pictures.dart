@@ -135,6 +135,40 @@ class FramePictures implements PlaybackPictures {
     layerImages.frameStore,
   );
 
+  /// 🚨★★★A FRAME MADE AHEAD LOOKS AT ITS CELS AND LETS GO (card
+  /// `one-cut-of-fnk02-holds-nine-gigabytes`, Q1 — the render's law
+  /// ([CelLooks], `gpu-canonical-store-Q10`) reaching the walk): what the
+  /// walk reads to make a frame's picture ahead of a screen leaves the cel
+  /// store as it stood, and is held here outside its budgets. The cels of
+  /// the frame a canvas stands on are that canvas's, read as a use
+  /// (`FramePictureView`).
+  ///
+  /// ↩️Read as a use ([LayerFrameImageCache.readIn]), every frame's cels
+  /// stood hot once its picture was made, until the hot budget's ceiling —
+  /// that tier's one way out. 🔬11-15, main PC, windowless, a 78-frame cut
+  /// of 20 rows at the automatic allowance: 63 MB a frame, 4.80 GB at 72
+  /// frames under a ceiling of 6.83 GB — its pictures 0.67 GB.
+  ///
+  /// ⚖️As many frames' cels as the walk makes at a time — its own and the
+  /// ones it asks for ahead (`PlaybackPrerenderScheduler`) — and the frame
+  /// before them, so a drawing held over the next frame is read once; none
+  /// once the walk rests ([rest]). Weighed with the drawings
+  /// ([celsLookedAtAhead], `collectMemoryCensus`).
+  late final CelLooks _aheadLooks = CelLooks(layerImages.frameStore);
+
+  /// What the frames in the making read ahead of their drawing ([_make]):
+  /// theirs until they are laid, whatever frames the looks have gone on to.
+  final Set<LooksAhead> _inTheMaking = Set.identity();
+
+  /// The cels' pixels the frames made ahead hold now — the looks'
+  /// ([_aheadLooks]) and what each frame in the making read
+  /// ([_inTheMaking]) — for whoever weighs them; one may come more than
+  /// once.
+  Iterable<BitmapSurface> get celsLookedAtAhead => [
+    ..._aheadLooks.surfaces,
+    for (final ahead in _inTheMaking) ...ahead.surfaces,
+  ];
+
   /// Frames whose making threw past their cels at the content they hold now
   /// — noted by the key of that content, so a walk does not make them
   /// again and a run is not held for a frame that will not come. A new
@@ -484,10 +518,13 @@ class FramePictures implements PlaybackPictures {
   @override
   int bytesToMake(DemandedPicture picture) {
     final nodes = stackOf(picture);
+    final canvasSize = pageOf(picture).canvasSize;
     return EngineStackScreen.bytesOver(
-      allInHand(nodes, picture)
-          ? drawingNow(nodes, picture).frame.extent
-          : pageOf(picture).canvasSize.canvasRect,
+      stackedCelsOf(_drawnOf(nodes)).every(
+            (cel) => _aheadLooks.holds(cel, canvasSize: canvasSize),
+          )
+          ? drawingNow(nodes, picture, looks: _aheadLooks).frame.extent
+          : canvasSize.canvasRect,
     );
   }
 
@@ -507,33 +544,41 @@ class FramePictures implements PlaybackPictures {
         canvasSize: (page ?? pageOf(picture)).canvasSize,
       );
 
-  /// Thaws every cel [picture] draws that is not in hand already, at once,
-  /// off the UI thread ([LayerFrameImageCache.readIn]) — none another frame
-  /// has read.
+  /// Reads every cel [picture] draws ahead of its making, at once, off the
+  /// UI thread — as the looks of a frame made ahead ([_aheadLooks]): none
+  /// another frame holds is read again.
   @override
   Future<void> readIn(DemandedPicture picture) =>
-      readInStack(stackOf(picture), picture);
+      readInStack(stackOf(picture), picture, looks: _aheadLooks);
 
-  /// [readIn] for the cels [nodes] — a screen's own stack — draw, on
-  /// [picture]'s page or [page] ([keyOfStack]).
-  ///
-  /// A render's [looks] read nothing ahead: a look thaws nothing, and its
-  /// cels are read as the frame is drawn ([drawingNow]).
-  Future<void> readInStack(
+  /// The walk rests: what it read for a picture it then did not make, and
+  /// the last frames' cels, are let go.
+  @override
+  void rest() => _aheadLooks.letGo();
+
+  /// Reads the cels [nodes] — a screen's own stack, or a frame's as it is
+  /// made — draw, at once, off the UI thread, on [picture]'s page or [page]
+  /// ([keyOfStack]): thawed hot where a screen stands on them, each not in
+  /// hand already ([LayerFrameImageCache.readIn]) — or through [looks],
+  /// where a render or the walk makes the picture ([CelLooks.ahead]), and
+  /// what was read handed back for the drawing ([drawingNow]).
+  Future<LooksAhead?> readInStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     FramePage? page,
     CelLooks? looks,
-  }) {
-    if (looks != null) {
-      return Future<void>.value();
-    }
+  }) async {
     final canvasSize = (page ?? pageOf(picture)).canvasSize;
-    return Future.wait([
-      for (final cel in stackedCelsOf(_drawnOf(nodes)))
+    final cels = stackedCelsOf(_drawnOf(nodes));
+    if (looks != null) {
+      return looks.ahead(cels, canvasSize: canvasSize);
+    }
+    await Future.wait([
+      for (final cel in cels)
         if (!inHand(cel, picture, page: page))
           layerImages.readIn(cel, canvasSize: canvasSize),
     ]);
+    return null;
   }
 
   /// A frame's picture is one part however many frames show it.
@@ -567,7 +612,8 @@ class FramePictures implements PlaybackPictures {
     due: due,
     shownNow: false,
     keepsNodes: false,
-  );
+    looks: _aheadLooks,
+  ).whenComplete(_aheadLooks.nextFrame);
 
   /// Makes the frame a screen stands on — stacked as that screen stacks it
   /// ([nodes]: a drag in flight, the row a pen is on) — at once, at the
@@ -678,7 +724,8 @@ class FramePictures implements PlaybackPictures {
   /// 691–816 ms.
   ///
   /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
-  /// [looks] says ([drawingNow]).
+  /// [looks] says ([drawingNow]) — ahead of the drawing ([readInStack]),
+  /// and weighed while the frame is in the making ([celsLookedAtAhead]).
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,
     DemandedPicture picture, {
@@ -692,7 +739,45 @@ class FramePictures implements PlaybackPictures {
     if (shouldAbort()) {
       return false;
     }
-    await readInStack(nodesOf(), picture, page: page, looks: looks);
+    final ahead = await readInStack(
+      nodesOf(),
+      picture,
+      page: page,
+      looks: looks,
+    );
+    if (ahead != null) {
+      _inTheMaking.add(ahead);
+    }
+    try {
+      return await _drawAndLay(
+        nodesOf,
+        picture,
+        shouldAbort: shouldAbort,
+        due: due,
+        shownNow: shownNow,
+        keepsNodes: keepsNodes,
+        page: page,
+        looks: looks,
+        ahead: ahead,
+      );
+    } finally {
+      _inTheMaking.remove(ahead);
+    }
+  }
+
+  /// [_make] once the frame's cels are read: drawn as they stand now and
+  /// laid in its turn.
+  Future<bool> _drawAndLay(
+    List<CompositeNode<CanvasStackRow>> Function() nodesOf,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+    required bool Function() due,
+    required bool shownNow,
+    required bool keepsNodes,
+    required FramePage? page,
+    required CelLooks? looks,
+    required LooksAhead? ahead,
+  }) async {
     if (shouldAbort()) {
       return false;
     }
@@ -700,7 +785,13 @@ class FramePictures implements PlaybackPictures {
     final film = picture.ghosts == FrameGhosts.inPlace
         ? keyOfStack(stackWithoutGhosts(nodes), picture, page: page)
         : null;
-    final made = drawingNow(nodes, picture, page: page, looks: looks);
+    final made = drawingNow(
+      nodes,
+      picture,
+      page: page,
+      looks: looks,
+      ahead: ahead,
+    );
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture, page: page);
     final ghosts = film != null && store.holds(film)
@@ -785,9 +876,11 @@ class FramePictures implements PlaybackPictures {
   ///
   /// 🚨★★★A RENDER'S CELS ARE LOOKS (`gpu-canonical-store-Q10`, 유저
   /// 2026-11-10 「추천대로 법 지키도록」): a picture made for a file or a panel
-  /// reads each cel through its [looks] ([CelLooks]) — the store left as it
-  /// stood — and the app's own screens read them as a use, in hand from
-  /// then on ([LayerFrameImageCache.storedSurfaceOrNull]).
+  /// — and one the walk makes ahead of a screen ([_aheadLooks]) — reads
+  /// each cel through its [looks] ([CelLooks]), what its frame read [ahead]
+  /// in hand — the store left as it stood — and a screen that stands on the
+  /// frame reads them as a use, in hand from then on
+  /// ([LayerFrameImageCache.storedSurfaceOrNull]).
   ///
   /// On [picture]'s page, or [page] ([keyOfStack]).
   FrameDrawingNow drawingNow(
@@ -795,6 +888,7 @@ class FramePictures implements PlaybackPictures {
     DemandedPicture picture, {
     FramePage? page,
     CelLooks? looks,
+    LooksAhead? ahead,
   }) {
     final on = page ?? pageOf(picture);
     (Object, StackTrace)? thrown;
@@ -807,6 +901,7 @@ class FramePictures implements PlaybackPictures {
               on,
               (error, stack) => thrown ??= (error, stack),
               looks: looks,
+              ahead: ahead,
             )
           : null,
       revisionOf: _revisionOf,
@@ -836,14 +931,15 @@ class FramePictures implements PlaybackPictures {
   }
 
   /// [cel]'s stored pixels on [page], read on this thread — through
-  /// [looks] where a render reads them ([drawingNow]) — or null, the cel
-  /// noted, where they are held at another canvas size or [thrown] says why
-  /// they cannot be read.
+  /// [looks] where a render reads them ([drawingNow]), what its frame read
+  /// [ahead] read by no one again — or null, the cel noted, where they are
+  /// held at another canvas size or [thrown] says why they cannot be read.
   BitmapSurface? _readNow(
     BrushFrameKey cel,
     FramePage page,
     void Function(Object error, StackTrace stack) thrown, {
     CelLooks? looks,
+    LooksAhead? ahead,
   }) {
     final canvasSize = page.canvasSize;
     final BitmapSurface? stored;
@@ -852,7 +948,11 @@ class FramePictures implements PlaybackPictures {
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: canvasSize)
           : layerImages.unreadable.notingNow(
               cel,
-              () => looks.surfaceOf(cel, canvasSize: canvasSize),
+              () => looks.surfaceOf(
+                cel,
+                canvasSize: canvasSize,
+                ahead: ahead,
+              ),
             );
     } on Object catch (error, stack) {
       thrown(error, stack);

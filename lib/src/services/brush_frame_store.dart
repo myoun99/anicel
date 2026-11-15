@@ -1082,7 +1082,7 @@ class BrushFrameStore {
     required CanvasSize canvasSize,
   }) {
     key = _canonicalize(key);
-    if (_bakedSurfaces.containsKey(key) || _keptAt(key, canvasSize) == null) {
+    if (!_thawsAt(key, canvasSize)) {
       return Future<void>.value();
     }
     return _thawing.join(
@@ -1093,15 +1093,55 @@ class BrushFrameStore {
 
   final InFlight<BrushFrameKey, void> _thawing = InFlight();
 
+  /// Whether reading [key] at [canvasSize] thaws its kept bytes here
+  /// ([currentSurfaceWithoutReplay]) — the work a thaw made ahead takes off
+  /// the UI thread.
+  bool _thawsAt(BrushFrameKey key, CanvasSize canvasSize) =>
+      !_bakedSurfaces.containsKey(key) && _keptAt(key, canvasSize) != null;
+
+  /// [key]'s pixels at [canvasSize] as a look reads them
+  /// ([currentSurfaceWithoutReplay], [CelRead.look]) — what that read would
+  /// thaw here thawed AHEAD, on a worker, as [thawAhead] thaws it, and
+  /// handed over where [thawAhead] keeps it: no hot tier, no place in line,
+  /// no display cache, the kept bytes where they were. What the asker holds
+  /// is outside every budget of this store (`CelLooks` holds it, and says
+  /// for how long).
+  ///
+  /// Where the worker gave nothing — the cel moved on meanwhile, its bytes
+  /// would not read — it is read here as a look always was, and that read
+  /// says why: this throws what it throws.
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) async {
+    key = _canonicalize(key);
+    final thawed = _thawsAt(key, canvasSize)
+        ? await _thawOnAWorker(
+            key,
+            () => _keptAt(key, canvasSize),
+            _layThawed,
+            read: CelRead.look,
+          )
+        : null;
+    return thawed ??
+        currentSurfaceWithoutReplay(
+          key,
+          canvasSize: canvasSize,
+          read: CelRead.look,
+        );
+  }
+
   /// [key]'s kept bytes — while they are what [keptNow] names — thawed on a
-  /// worker by [thaw] and kept hot here: the surface kept, or null when the
-  /// cel moved on meanwhile (made hot, kept anew, gone) and keeps what it
-  /// has, or when the bytes would not read.
+  /// worker by [thaw] and, where the [read] is a use, kept hot here: the
+  /// surface thawed, or null when the cel moved on meanwhile (made hot, kept
+  /// anew, gone) and keeps what it has, or when the bytes would not read. A
+  /// look ([CelRead.look]) is handed its surface, and nothing of it is kept.
   Future<BitmapSurface?> _thawOnAWorker(
     BrushFrameKey key,
     AnicelCelFileRef? Function() keptNow,
-    Future<BitmapSurface> Function(AnicelCelBlob blob) thaw,
-  ) => celThawTurns.run(() async {
+    Future<BitmapSurface> Function(AnicelCelBlob blob) thaw, {
+    CelRead read = CelRead.use,
+  }) => celThawTurns.run(() async {
     // Asked again in its turn: the cel may have moved on in the line.
     final kept = keptNow();
     if (_bakedSurfaces.containsKey(key) || kept == null) {
@@ -1117,7 +1157,9 @@ class BrushFrameStore {
           !identical(_kept(key)?.ref, kept)) {
         return null;
       }
-      _keepThawed(key, surface);
+      if (read == CelRead.use) {
+        _keepThawed(key, surface);
+      }
       return surface;
     } on Object {
       // The kept bytes stay as they are; the next read tries again.

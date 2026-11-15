@@ -201,7 +201,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // moment the tool lets go, and a row of its own would need a
             // fifth string in five languages to say "usually nothing".
             session.renderCaches.brushFrameStore.reclaimableViewBytes,
-      ) + _clipboardOnlyBytes(sessions),
+      ) + _heldBesideTheStoresBytes(sessions),
     ),
     MemoryCensusItem(
       id: 'sheetInk',
@@ -422,7 +422,16 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
 /// into `drawings`, the lifted pixels' reason: the same user's artwork, and
 /// a row of its own would be a string in five languages for what is
 /// usually nothing.
-int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
+///
+/// 🚨AND THE CELS THE FRAMES MADE AHEAD LOOK AT (card
+/// `one-cut-of-fnk02-holds-nine-gigabytes`, 저장 11-15 19:25: 「그 동안의
+/// 무게를 누가 세는가」): a look thaws a cel beside the store and holds it for
+/// the frames being made (`FramePictures.celsLookedAtAhead`) — a few
+/// frames' cels while a cut's pictures fill, none once the walk rests. Not
+/// counted, the drawings row fell as those cels stopped standing hot and the
+/// process held this much more than every row said. The same tiles, the
+/// same rule: one a store holds hot is that store's.
+int _heldBesideTheStoresBytes(Iterable<EditorSessionManager> sessions) {
   final hot = Set<Object>.identity();
   for (final session in sessions) {
     session.renderCaches.brushFrameStore.addHotTilesTo(hot);
@@ -435,7 +444,10 @@ int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
     if (counted.add(session.appClipboard)) {
       bytes += session.appClipboard.pixels.heldBytes;
     }
-    for (final picture in session.appClipboard.heldPictures) {
+    for (final picture in [
+      ...session.appClipboard.heldPictures,
+      ...session.playbackRig.framePictures.celsLookedAtAhead,
+    ]) {
       for (final tile in picture.tiles.values) {
         if (!hot.contains(tile) && counted.add(tile)) {
           bytes += tile.ownBytes;

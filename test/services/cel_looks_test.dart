@@ -57,8 +57,12 @@ void main() {
     looks = CelLooks(store);
   });
 
-  BitmapSurface? look(String frame) =>
-      looks.surfaceOf(key(frame), canvasSize: canvasSize);
+  BitmapSurface? look(String frame, {LooksAhead? ahead}) =>
+      looks.surfaceOf(key(frame), canvasSize: canvasSize, ahead: ahead);
+
+  Future<LooksAhead> readAhead(List<String> frames) => looks.ahead([
+    for (final frame in frames) key(frame),
+  ], canvasSize: canvasSize);
 
   test('🎯a look gets a cold cel\'s pixels and the store keeps it as it '
       'was — cold, nothing hot, no picture seeded', () {
@@ -128,5 +132,94 @@ void main() {
     look('a');
 
     expect(looks.reads, 2);
+  });
+
+  group('read ahead of a frame\'s drawing (card '
+      'one-cut-of-fnk02-holds-nine-gigabytes, Q1)', () {
+    test('🎯a cold cel read ahead is in hand for the drawing — read once, '
+        'its pixels, and the store as it was', () async {
+      await readAhead(['a']);
+      expect(looks.reads, 1);
+
+      final surface = look('a');
+
+      expect(surface!.tiles[origin]!.pixels, ink(1).tiles[origin]!.pixels);
+      expect(looks.reads, 1, reason: 'the drawing read nothing');
+      expect(looks.holds(key('a'), canvasSize: canvasSize), isTrue);
+      expect(store.isCelCold(key('a')), isTrue);
+      expect(store.hotBakedBytes, 0);
+      expect(store.displayCacheOrNull(key('a')), isNull);
+    });
+
+    test('🚨two frames that read one cel ahead at once read it once', () async {
+      final both = await Future.wait([
+        readAhead(['a']),
+        readAhead(['a', 'b']),
+      ]);
+
+      expect(looks.reads, 2, reason: 'a once, b once');
+      expect(
+        identical(both[0].surfaces.single, look('a', ahead: both[1])),
+        isTrue,
+      );
+    });
+
+    test('🚨what a frame read ahead is its own until it draws — the looks '
+        'two frames on, its drawing reads nothing', () async {
+      final mine = await readAhead(['a']);
+      looks
+        ..nextFrame()
+        ..nextFrame();
+      expect(
+        looks.holds(key('a'), canvasSize: canvasSize),
+        isFalse,
+        reason: '⛔premise: the looks themselves let it go',
+      );
+
+      final surface = look('a', ahead: mine);
+
+      expect(surface!.tiles[origin]!.pixels, ink(1).tiles[origin]!.pixels);
+      expect(looks.reads, 1);
+    });
+
+    test('a frame that did not read it reads it, the looks two frames '
+        'on', () async {
+      await readAhead(['a']);
+      looks
+        ..nextFrame()
+        ..nextFrame();
+
+      look('a');
+
+      expect(looks.reads, 2);
+    });
+
+    test('🚨a cel edited while it is read ahead is not held by what was '
+        'read — the drawing reads its new pixels', () async {
+      final reading = readAhead(['a']);
+      // An edit, as the app makes one: its revision, then its pixels.
+      store
+        ..markCelEdited(key('a'))
+        ..storeBakedSurface(key('a'), ink(3));
+      final mine = await reading;
+
+      expect(mine.surfaces, isEmpty, reason: 'what was read is of neither');
+      expect(
+        look('a', ahead: mine)!.tiles[origin]!.pixels,
+        ink(3).tiles[origin]!.pixels,
+      );
+    });
+
+    test('what the looks hold is theirs to tell, for whoever weighs '
+        'it', () async {
+      final mine = await readAhead(['a', 'b']);
+
+      expect(looks.surfaces, unorderedEquals(mine.surfaces));
+      expect(mine.surfaces, hasLength(2));
+
+      looks.letGo();
+      expect(looks.surfaces, isEmpty);
+      expect(mine.surfaces, hasLength(2), reason: 'the frame still holds it');
+    });
   });
 }

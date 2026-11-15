@@ -1,3 +1,4 @@
+import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
@@ -25,6 +26,16 @@ import 'brush_frame_store.dart';
 /// (`HeldPictures`). Apart while they are two — a picture is made in turns
 /// and let go by hand, a cel's pixels are read at once and left to the
 /// collector. A third is where they share a law.
+///
+/// 🚨WHAT A FRAME READS AHEAD IS ITS OWN UNTIL IT IS DRAWN ([ahead]): a
+/// kept cel is thawed off the UI thread ([BrushFrameStore.lookAhead]) before
+/// the frame draws, and frames are made several at a time — a walk asks for
+/// the next ones before it waits — so the looks have gone on a frame or two
+/// by the time the last cel of one is in. ⛔Not held by the looks alone: a
+/// cel read for the third frame of three is let go by the first two as
+/// they are drawn, and its frame would read it again as it draws, on the UI
+/// thread. So each frame holds what it read ([LooksAhead]), and the looks
+/// hold it beside that for the frame after.
 class CelLooks {
   CelLooks(this.store);
 
@@ -33,6 +44,10 @@ class CelLooks {
 
   var _thisFrame = <_Looked, BitmapSurface?>{};
   var _frameBefore = <_Looked, BitmapSurface?>{};
+
+  /// What [ahead] is reading now: a frame that looks at a cel another frame
+  /// is reading waits for that reading.
+  final InFlight<_Looked, BitmapSurface?> _reading = InFlight();
 
   /// How many cels have been read from [store] (test hook) — a cel held
   /// from the frame before reads none.
@@ -46,27 +61,109 @@ class CelLooks {
     ..._frameBefore.values,
   ].nonNulls.length;
 
+  /// Every surface held now — this frame's and the frame before's — for
+  /// whoever weighs what a look keeps outside the store's budgets
+  /// (`collectMemoryCensus`); what a frame read ahead and still holds is
+  /// that frame's to tell ([LooksAhead.surfaces]).
+  Iterable<BitmapSurface> get surfaces => [
+    ..._thisFrame.values.nonNulls,
+    ..._frameBefore.values.nonNulls,
+  ];
+
   /// [cel]'s pixels at [canvasSize] as a look reads them
   /// ([BrushFrameStore.currentSurfaceWithoutReplay]) — this frame's, or the
-  /// frame before's, else read now — or null where the store keeps none at
-  /// that size.
+  /// frame before's, or what its frame read [ahead], else read now — or
+  /// null where the store keeps none at that size.
   ///
   /// A movie's picture is read and never held: the movie tier keeps it,
   /// and its budget says for how long.
   BitmapSurface? surfaceOf(
     BrushFrameKey cel, {
     required CanvasSize canvasSize,
+    LooksAhead? ahead,
   }) {
     if (store.hasMovieCel(cel, canvasSize)) {
       return _read(cel, canvasSize);
     }
     final looked = _lookedAt(cel, canvasSize);
-    if (_thisFrame.containsKey(looked)) {
-      return _thisFrame[looked];
+    if (!_takes(looked)) {
+      final read = ahead?._read;
+      _thisFrame[looked] = read != null && read.containsKey(looked)
+          ? read[looked]
+          : _read(cel, canvasSize);
     }
-    return _thisFrame[looked] = _frameBefore.containsKey(looked)
-        ? _frameBefore.remove(looked)
-        : _read(cel, canvasSize);
+    return _thisFrame[looked];
+  }
+
+  /// Whether [cel] at [canvasSize] is in hand — held, or a movie's, which
+  /// the movie tier holds: [surfaceOf] would read nothing.
+  bool holds(BrushFrameKey cel, {required CanvasSize canvasSize}) {
+    if (store.hasMovieCel(cel, canvasSize)) {
+      return true;
+    }
+    final looked = _lookedAt(cel, canvasSize);
+    return _thisFrame.containsKey(looked) || _frameBefore.containsKey(looked);
+  }
+
+  /// Reads [cels] at [canvasSize] AHEAD of a frame's drawing, off the UI
+  /// thread ([BrushFrameStore.lookAhead]): each held as [surfaceOf] holds
+  /// it, one held already or being read for another frame read by no one
+  /// again — and all of them in hand for that frame's drawing, whatever
+  /// frames the looks go on to before it ([LooksAhead]).
+  ///
+  /// Never throws: a cel that will not read is left to the drawing, which
+  /// reads it and says why ([surfaceOf]). A movie's is the movie tier's.
+  Future<LooksAhead> ahead(
+    Iterable<BrushFrameKey> cels, {
+    required CanvasSize canvasSize,
+  }) async {
+    final read = <_Looked, BitmapSurface?>{};
+    await Future.wait([
+      for (final cel in cels)
+        if (!store.hasMovieCel(cel, canvasSize))
+          _readAheadInto(read, cel, canvasSize),
+    ]);
+    return LooksAhead._(read);
+  }
+
+  Future<void> _readAheadInto(
+    Map<_Looked, BitmapSurface?> read,
+    BrushFrameKey cel,
+    CanvasSize canvasSize,
+  ) async {
+    final asked = _lookedAt(cel, canvasSize);
+    if (!_takes(asked)) {
+      final BitmapSurface? surface;
+      try {
+        surface = await _reading.join(asked, () {
+          _reads += 1;
+          return store.lookAhead(asked.cel, canvasSize: canvasSize);
+        });
+      } on Object {
+        return;
+      }
+      // An edit that landed while it was read gave the cel another
+      // revision, and what was read is not known to be of either: the
+      // drawing reads it.
+      if (_lookedAt(cel, canvasSize) != asked) {
+        return;
+      }
+      _thisFrame[asked] = surface;
+    }
+    read[asked] = _thisFrame[asked];
+  }
+
+  /// Whether [looked] is held — this frame's, or the frame before's, which
+  /// this frame takes.
+  bool _takes(_Looked looked) {
+    if (_thisFrame.containsKey(looked)) {
+      return true;
+    }
+    if (!_frameBefore.containsKey(looked)) {
+      return false;
+    }
+    _thisFrame[looked] = _frameBefore.remove(looked);
+    return true;
   }
 
   /// Keeps what [cels] were looked at as at [canvasSize] for one more
@@ -75,10 +172,7 @@ class CelLooks {
   /// would read every row again.
   void carry(Iterable<BrushFrameKey> cels, {required CanvasSize canvasSize}) {
     for (final cel in cels) {
-      final looked = _lookedAt(cel, canvasSize);
-      if (!_thisFrame.containsKey(looked) && _frameBefore.containsKey(looked)) {
-        _thisFrame[looked] = _frameBefore.remove(looked);
-      }
+      _takes(_lookedAt(cel, canvasSize));
     }
   }
 
@@ -116,3 +210,16 @@ class CelLooks {
 }
 
 typedef _Looked = ({BrushFrameKey cel, int revision, CanvasSize canvasSize});
+
+/// What one frame read ahead of its drawing ([CelLooks.ahead]): in hand for
+/// that drawing ([CelLooks.surfaceOf]) whatever frames the looks went on to
+/// meanwhile, and let go with the frame that holds it — nobody is told, so
+/// nobody can forget to.
+final class LooksAhead {
+  LooksAhead._(this._read);
+
+  final Map<_Looked, BitmapSurface?> _read;
+
+  /// The surfaces read, for whoever weighs them while the frame holds this.
+  Iterable<BitmapSurface> get surfaces => _read.values.nonNulls;
+}
