@@ -72,12 +72,14 @@ void main() {
         key: celTextTestKey,
         canvasSize: const CanvasSize(width: tileSize, height: tileSize),
         tileSize: tileSize,
-        tiles: [(x: 0, y: 0, pixels: Uint8List(length))],
+        // Of two colours: a tile of one is laid as its word, in no block
+        // (`LaidPixels`).
+        tiles: [(x: 0, y: 0, pixels: Uint8List(length)..[3] = 255)],
       ).toSurface(),
     );
 
     final laid = await layCelInWorker(blob, reach: PasteboardReach.whole);
-    final address = laid.tiles.single.pixels;
+    final address = (laid.tiles.single.pixels as LaidBlock).address;
     TileBlocks.free(Pointer<Uint8>.fromAddress(address));
     final again = TileBlocks.alloc(length);
     addTearDown(() => TileBlocks.free(again));

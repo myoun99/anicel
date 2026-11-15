@@ -117,10 +117,107 @@ typedef CelParts<P> = ({
   DirtyRegion? laidBounds,
 });
 
+/// A laid tile's pixels as they cross to the isolate that adopts them: the
+/// ADDRESS of the native block holding them ([LaidBlock]), or — where every
+/// pixel is one word — that word and no block ([LaidWord]).
+///
+/// 🚨WHOEVER LAYS A TILE FOR ANOTHER ISOLATE ASKS WHETHER IT IS ONE COLOUR
+/// ([oneWordOf], through [LaidPixels.copyOf] or [LaidPixels.keeping]): the
+/// adoption reads nothing (`BitmapTile.adoptNative`), and a block of one
+/// colour adopted is the weight the tile was to be without (`BitmapTile`,
+/// card `a-file-keeps-all-clear-tiles-in-its-cels`).
+///
+/// One value of two shapes, as the tile it becomes holds its pixels: an
+/// address beside a word would let a record carry both, or neither.
+sealed class LaidPixels {
+  const LaidPixels();
+
+  /// [pixels] laid: copied into a block of the lists' ([TileBlocks]), or —
+  /// one colour — their word, and no block asked for.
+  factory LaidPixels.copyOf(Uint8List pixels) {
+    final word = oneWordOf(pixels);
+    if (word != null) {
+      return LaidWord(word);
+    }
+    final block = TileBlocks.alloc(pixels.length);
+    block.asTypedList(pixels.length).setAll(0, pixels);
+    return LaidBlock(block.address);
+  }
+
+  /// [block], whose bytes [pixels] are, laid: itself, or — one colour —
+  /// their word, and the block given back.
+  factory LaidPixels.keeping(Pointer<Uint8> block, Uint8List pixels) {
+    final word = oneWordOf(pixels);
+    if (word == null) {
+      return LaidBlock(block.address);
+    }
+    TileBlocks.free(block);
+    return LaidWord(word);
+  }
+
+  /// The tile of [tileSize] they are, made on the isolate that keeps it: no
+  /// pixel is copied.
+  BitmapTile adopted(int tileSize);
+
+  /// A block of the lists' holding them, the caller's to free or to lay
+  /// again ([LaidPixels.keeping]) — for whoever writes into a laid tile
+  /// before it is adopted. These are not used after.
+  Pointer<Uint8> inABlock(int tileSize);
+
+  /// Gives back what they hold of the lists — for pixels nothing will
+  /// adopt.
+  void giveBack();
+}
+
+/// A block of the lists' ([TileBlocks]) at [address], the adopting tile's
+/// to free.
+final class LaidBlock extends LaidPixels {
+  const LaidBlock(this.address);
+
+  final int address;
+
+  Pointer<Uint8> get _block => Pointer.fromAddress(address);
+
+  @override
+  BitmapTile adopted(int tileSize) =>
+      BitmapTile.adoptNative(size: tileSize, pixels: _block);
+
+  @override
+  Pointer<Uint8> inABlock(int tileSize) => _block;
+
+  @override
+  void giveBack() => TileBlocks.free(_block);
+}
+
+/// Every pixel is [word] ([oneWordOf]): nothing was laid, and nothing is
+/// there to free.
+final class LaidWord extends LaidPixels {
+  const LaidWord(this.word);
+
+  final int word;
+
+  @override
+  BitmapTile adopted(int tileSize) =>
+      BitmapTile.ofOneColour(size: tileSize, word: word);
+
+  @override
+  Pointer<Uint8> inABlock(int tileSize) {
+    final block = TileBlocks.alloc(BitmapTile.bytesFor(tileSize));
+    block
+        .cast<Uint32>()
+        .asTypedList(tileSize * tileSize)
+        .fillRange(0, tileSize * tileSize, word);
+    return block;
+  }
+
+  @override
+  void giveBack() {}
+}
+
 /// A cel laid on a worker ([layCelEntry]): each tile's `pixels` is the
-/// ADDRESS of the native block holding them, which the main isolate adopts
-/// ([laidCelSurface]).
-typedef AnicelLaidCel = CelParts<int>;
+/// native block holding them, or their one word ([LaidPixels]), which the
+/// main isolate adopts ([laidCelSurface]).
+typedef AnicelLaidCel = CelParts<LaidPixels>;
 
 /// [surface] in plain parts, each tile's pixels as [pixelsOf] gives them:
 /// the copy [AnicelCelEntry.fromSurface] makes, or the tiles' places
@@ -316,21 +413,25 @@ CelPhoto _photoOf(AnicelPhotoRecord record) => CelPhoto(
 /// `cel-thaw-holds-the-ui-thread`: ~40 ms of a first playback's late frames
 /// were these copies on the UI thread).
 ///
+/// A tile of one colour takes no block ([LaidPixels.copyOf]): its word
+/// crosses instead, and the main isolate has that much less to adopt.
+///
 /// 🚨A block it could not get frees every block it got — nothing else knows
 /// they exist. ⚠️The tile size is asked BEFORE the first block: the main
 /// isolate's adoption asks it again, and must never be the first to refuse,
 /// for it would refuse with blocks not adopted yet.
 AnicelLaidCel layCelEntry(AnicelCelEntry entry) {
   BitmapTile.checkSize(entry.tileSize);
-  final got = <Pointer<Uint8>>[];
-  int laid(Uint8List pixels) {
-    final block = TileBlocks.alloc(pixels.length);
-    got.add(block);
-    block.asTypedList(pixels.length).setAll(0, pixels);
-    return block.address;
+  final got = <LaidPixels>[];
+  LaidPixels laid(Uint8List pixels) {
+    final one = LaidPixels.copyOf(pixels);
+    got.add(one);
+    return one;
   }
 
-  List<({int x, int y, int pixels})> lay(List<AnicelTileRecord> records) => [
+  List<({int x, int y, LaidPixels pixels})> lay(
+    List<AnicelTileRecord> records,
+  ) => [
     for (final tile in records)
       (x: tile.x, y: tile.y, pixels: laid(tile.pixels)),
   ];
@@ -347,7 +448,9 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry) {
       laidBounds: entry.laidBounds,
     );
   } on Object {
-    got.forEach(TileBlocks.free);
+    for (final one in got) {
+      one.giveBack();
+    }
     rethrow;
   }
 }
@@ -359,22 +462,20 @@ void freeLaidCel(AnicelLaidCel laid) {
     ...laid.tiles,
     for (final text in laid.texts) ...text.plate,
   ]) {
-    TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
+    tile.pixels.giveBack();
   }
 }
 
-/// [laid]'s blocks adopted as its tiles — no pixel is copied here — behind
-/// the wall the worker that laid them made the picture [standsBehind]:
-/// none, for one laid as its bytes were.
+/// [laid]'s blocks adopted as its tiles — no pixel is copied here, and a
+/// tile of one colour is made of its word — behind the wall the worker that
+/// laid them made the picture [standsBehind]: none, for one laid as its
+/// bytes were.
 BitmapSurface laidCelSurface(
   AnicelLaidCel laid, {
   PasteboardReach standsBehind = PasteboardReach.whole,
 }) => _surfaceOf(
   laid,
-  (address) => BitmapTile.adoptNative(
-    size: laid.tileSize,
-    pixels: Pointer<Uint8>.fromAddress(address),
-  ),
+  (pixels) => pixels.adopted(laid.tileSize),
   standsBehind: standsBehind,
 );
 

@@ -15,7 +15,8 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
 import '../../native/tile_blocks.dart';
-import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
+import '../persistence/brush_drawing_binary_codec.dart'
+    show AnicelLaidCel, LaidPixels;
 
 /// Where a lay puts a picture on a [canvas]-sized cel of [tileSize] tiles:
 /// over the [tiles] the placed picture covers inside the pasteboard wall
@@ -39,9 +40,10 @@ typedef PictureCut = ({int left, int top, CelLayout layout});
 /// nothing else.
 typedef TileCut = ({int left, int top, int tileSize, TileRange tiles});
 
-/// The tile blocks a cut made: each tile's place and the ADDRESS of the
-/// native block that holds its pixels, which the asking isolate adopts.
-typedef CutTiles = List<({int x, int y, int pixels})>;
+/// The tiles a cut made: each one's place and its pixels as they cross to
+/// the asking isolate, which adopts them — the native block that holds
+/// them, or their one word ([LaidPixels]).
+typedef CutTiles = List<({int x, int y, LaidPixels pixels})>;
 
 /// What [cut] hands a [TileCutter].
 TileCut tileCutOf(PictureCut cut) => (
@@ -90,7 +92,8 @@ CutTiles cutRgbaRows(
 
 /// Rows of a picture laid 1:1 ([TileCut]) written into tile blocks
 /// ([TileBlocks]) as they arrive: the tiles of one tile row are open at a
-/// time, and a tile the picture left clear goes back as it closes.
+/// time, a tile the picture left clear goes back as it closes, and a tile
+/// of one colour closes as its word ([LaidPixels.keeping]).
 final class TileCutter {
   TileCutter(this.cut, this.width);
 
@@ -110,7 +113,7 @@ final class TileCutter {
   final TileCut cut;
   final int width;
 
-  final _done = <({int x, int y, int pixels})>[];
+  final CutTiles _done = [];
   final _open = <int, ({Pointer<Uint8> block, Uint8List view})>{};
   int? _openRow;
 
@@ -156,7 +159,11 @@ final class TileCutter {
     final tileY = _openRow;
     for (final MapEntry(key: tileX, value: open) in _open.entries) {
       if (tileY != null && _anyInk(open.view)) {
-        _done.add((x: tileX, y: tileY, pixels: open.block.address));
+        _done.add((
+          x: tileX,
+          y: tileY,
+          pixels: LaidPixels.keeping(open.block, open.view),
+        ));
       } else {
         TileBlocks.free(open.block);
       }
@@ -193,6 +200,6 @@ final class TileCutter {
 /// Every block of [tiles] given back — a cut nobody will adopt.
 void giveBackCut(CutTiles tiles) {
   for (final tile in tiles) {
-    TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
+    tile.pixels.giveBack();
   }
 }

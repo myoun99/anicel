@@ -30,7 +30,7 @@ import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
 import '../media/colour_profile.dart' show readsTheColoursOf;
 import '../persistence/brush_drawing_binary_codec.dart'
-    show AnicelLaidCel, laidCelSurface;
+    show AnicelLaidCel, LaidPixels, laidCelSurface;
 import '../photoshop/psd_image.dart';
 import '../photoshop/psd_reader.dart';
 import '../straight_rgba_image.dart';
@@ -450,7 +450,7 @@ Future<AnicelLaidCel> _cutEngineImage(ui.Image image, PictureCut cut) async {
     width: image.width,
     height: image.height,
   );
-  final tiles = <({int x, int y, int pixels})>[];
+  final tiles = <({int x, int y, LaidPixels pixels})>[];
   try {
     for (final block in _layBlocks(cut.layout.tiles, side)) {
       final over = _areaOf(block, side).intersection(picture);
@@ -575,7 +575,7 @@ Future<BitmapSurface> _laidOnEngine(
   if (back == null) {
     return laidCelSurface(laidCelOf(layout, const []));
   }
-  final tiles = <({int x, int y, int pixels})>[];
+  final tiles = <({int x, int y, LaidPixels pixels})>[];
   try {
     for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
       for (final part in _partsFitting(block, source.size, back, layout)) {
@@ -632,7 +632,7 @@ Future<CutTiles> _laidArea(
       giveBackCut(one);
       rethrow;
     }
-    return _together(one, other);
+    return laidTogether(one, other);
   }
   final held = await source.tilesOver(reached);
   if (held.tiles.isEmpty) {
@@ -680,7 +680,12 @@ Future<CutTiles> _laidArea(
 /// The tiles two runs over apart areas of them laid, as one: each byte is
 /// one run's, the other's nothing there — a tile both laid is [one]'s
 /// block, the [other]'s bytes put into it and its own block given back.
-CutTiles _together(CutTiles one, CutTiles other) {
+///
+/// The tile the two made is asked its colour again ([LaidPixels.keeping]):
+/// two halves of one opaque colour are a tile of one colour, which neither
+/// half was.
+@visibleForTesting
+CutTiles laidTogether(CutTiles one, CutTiles other) {
   final together = {for (final tile in one) (tile.x, tile.y): tile};
   for (final tile in other) {
     final laid = together[(tile.x, tile.y)];
@@ -688,14 +693,19 @@ CutTiles _together(CutTiles one, CutTiles other) {
       together[(tile.x, tile.y)] = tile;
       continue;
     }
-    final into = Pointer<Uint8>.fromAddress(laid.pixels);
-    final from = Pointer<Uint8>.fromAddress(tile.pixels);
+    final into = laid.pixels.inABlock(gpuTileSide);
+    final from = tile.pixels.inABlock(gpuTileSide);
     final bytes = into.asTypedList(gpuTileBytes);
     final rgba = from.asTypedList(gpuTileBytes);
     for (var at = 0; at < bytes.length; at += 1) {
       bytes[at] |= rgba[at];
     }
     TileBlocks.free(from);
+    together[(tile.x, tile.y)] = (
+      x: tile.x,
+      y: tile.y,
+      pixels: LaidPixels.keeping(into, bytes),
+    );
   }
   return [...together.values];
 }
@@ -789,7 +799,7 @@ CutTiles _cutInked(
 ) {
   final bytes = reader.read();
   final side = gpuTileSide;
-  final tiles = <({int x, int y, int pixels})>[];
+  final tiles = <({int x, int y, LaidPixels pixels})>[];
   try {
     for (final (at, (:x, :y)) in coords.indexed) {
       tiles.addAll(

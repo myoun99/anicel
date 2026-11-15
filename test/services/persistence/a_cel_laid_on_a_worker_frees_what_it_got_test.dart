@@ -90,6 +90,10 @@ void main() {
     return [for (final block in blocks) block.address];
   }
 
+  /// A tile's worth of two colours — one that takes a block: a tile of one
+  /// colour is laid as its word ([LaidPixels]).
+  Uint8List twoColours() => Uint8List(length)..[3] = 255;
+
   /// A cel of two whole tiles of [side], then [last].
   AnicelCelEntry twoTilesThen(
     List<AnicelTileRecord> last, {
@@ -99,8 +103,8 @@ void main() {
     canvasSize: const CanvasSize(width: side * 3, height: side),
     tileSize: tileSize,
     tiles: [
-      (x: 0, y: 0, pixels: Uint8List(length)),
-      (x: 1, y: 0, pixels: Uint8List(length)),
+      (x: 0, y: 0, pixels: twoColours()),
+      (x: 1, y: 0, pixels: twoColours()),
       ...last,
     ],
   );
@@ -164,5 +168,81 @@ void main() {
       reason: 'the parked blocks lie as they lay: taken and given back, '
           'they would lie the other way round',
     );
+  });
+
+  group('a tile of one colour (card '
+      '`a-file-keeps-all-clear-tiles-in-its-cels`)', () {
+    /// A tile's worth of a white with no alpha — what a destructive verb
+    /// leaves of a picture's paper.
+    Uint8List clearWhite() {
+      final bytes = Uint8List(length)..fillRange(0, length, 255);
+      for (var at = 3; at < length; at += 4) {
+        bytes[at] = 0;
+      }
+      return bytes;
+    }
+
+    /// A clear white tile, one of two colours, and a clear white one again.
+    AnicelCelEntry whiteInkWhite() => AnicelCelEntry(
+      key: celTextTestKey,
+      canvasSize: const CanvasSize(width: side * 3, height: side),
+      tileSize: side,
+      tiles: [
+        (x: 0, y: 0, pixels: clearWhite()),
+        (x: 1, y: 0, pixels: twoColours()),
+        (x: 2, y: 0, pixels: clearWhite()),
+      ],
+    );
+
+    test('🚨takes no block: its word crosses, and one block is asked for '
+        'the cel\'s one tile of two colours', () {
+      final parked = twoParked();
+
+      final laid = layCelEntry(whiteInkWhite());
+      addTearDown(() => freeLaidCel(laid));
+
+      expect(laid.tiles[0].pixels, isA<LaidWord>());
+      expect(laid.tiles[2].pixels, isA<LaidWord>());
+      expect(
+        laid.tiles[1].pixels,
+        isA<LaidBlock>().having((b) => b.address, 'address', parked[0]),
+      );
+      final next = TileBlocks.alloc(length);
+      TileBlocks.free(next);
+      expect(
+        next.address,
+        parked[1],
+        reason: 'the second parked block lies as it lay: a block taken for '
+            'a tile of one colour would have been this one',
+      );
+    });
+
+    test('🚨adopted, the cel is the cel the main isolate\'s copy makes — '
+        'every tile in its place with its bytes, its colour behind no '
+        'alpha too — and weighs its one tile of two colours', () {
+      final entry = whiteInkWhite();
+      final copied = entry.toSurface();
+
+      final laid = laidCelSurface(layCelEntry(entry));
+
+      expect(bytesByCoord(laid.tiles), bytesByCoord(copied.tiles));
+      expect(laid.tiles.keys, [
+        TileCoord(x: 0, y: 0),
+        TileCoord(x: 1, y: 0),
+        TileCoord(x: 2, y: 0),
+      ]);
+      expect(laid.tiles[TileCoord(x: 0, y: 0)]!.pixels, clearWhite());
+      expect(laid.keptTileBytes, length);
+      expect(copied.keptTileBytes, length);
+    });
+
+    test('given back unadopted, the one block it took parks again and '
+        'nothing else is freed', () {
+      final parked = twoParked();
+
+      freeLaidCel(layCelEntry(whiteInkWhite()));
+
+      expect(nextTwoAsks(), parked);
+    });
   });
 }
