@@ -6,6 +6,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
@@ -232,7 +233,7 @@ void main() {
         ],
         tools: {
           'pencil': (
-            tool: _tool(angle: '10.000000', sizeCurve: '10;3 0 0 0 1 1 1'),
+            tool: _tool(angle: '10.000000', sizeCurve: '5;2 0 1 0 0 1 1 '),
             dip: _pencilDip,
           ),
           'origin': (tool: _tool(stamp: '0'), dip: _pencilDip),
@@ -274,6 +275,180 @@ void main() {
           'imported without it.',
       'Brush "H 8": angle 10.000000 is not carried.',
       'Brush "H 8": curve c_size2 is not carried.',
+    ]);
+  });
+
+  test('🎯the pen\'s pressure on the size and on the opacity comes in as a '
+      'curve of ours through the profile\'s points, its lowest share the '
+      'floor — about each point between the ends a pair of control points, '
+      'a third of the nearer gap to either side, kept in the square',
+      () async {
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'H',
+        buttons: [_button('8', 'floor'), _button('9', 'bends')],
+        tools: {
+          'floor': (
+            tool: _tool(
+              sizeCurve: '10;3 1 0 0 0.25 0.5 0.4 1 1 ',
+              opacityCurve: '10;2 0 1 0 0 1 1 ',
+            ),
+            dip: _pencilDip,
+          ),
+          'bends': (
+            tool: _tool(
+              sizeCurve: '10;4 2 0 0 0 0.2 0.3 0.8 0.6 1 1 ',
+              opacityCurve: '10;3 1 2 0 0 0.5 0.95 1 1 ',
+            ),
+            dip: _pencilDip,
+          ),
+        },
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    final [floor, bends] = [
+      for (final preset in result.presets) preset.settings,
+    ];
+    final raised = floor.sizePressureCurve!;
+    expect(raised.minimum, 0.25);
+    expect(
+      [for (final x in [0.0, 0.5, 1.0]) raised.evaluate(x)],
+      _near([0.25, 0.4, 1]),
+      reason: 'the share the profile gives at each of its points',
+    );
+    expect(_flat(raised), _near([0, 0, 1 / 3, 1 / 30, 2 / 3, 11 / 30, 1, 1]));
+    expect(floor.opacityPressureCurve, BrushPressureCurve.identity());
+
+    final uneven = bends.sizePressureCurve!;
+    expect(uneven.minimum, 0);
+    expect(
+      [for (final x in [0.2, 0.8]) uneven.evaluate(x)],
+      _near([0.3, 0.6]),
+    );
+    expect(
+      _flat(uneven),
+      _near([
+        ...[0, 0],
+        ...[2 / 15, 0.25, 4 / 15, 0.35],
+        ...[11 / 15, 13 / 24, 13 / 15, 79 / 120],
+        ...[1, 1],
+      ]),
+      reason: 'the nearer gap of each is 0.2, and its lean the line from '
+          'the point before it to the one after',
+    );
+    final pressed = bends.opacityPressureCurve!;
+    expect(pressed.evaluate(0.5), closeTo(0.95, 1e-12));
+    expect(
+      _flat(pressed),
+      _near([0, 0, 1 / 3, 0.9, 2 / 3, 1, 1, 1]),
+      reason: 'the pair would rise a sixth and has a twentieth of room',
+    );
+    expect(result.warnings, isEmpty);
+  });
+
+  test('a curve the pressure drives on a setting this reader does not carry '
+      'is said; one it cannot read — too short, a word no number, its '
+      'points not rising — is said and left; one flat at the whole is no '
+      'curve', () async {
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'H',
+        buttons: [
+          _button('8', 'angle'),
+          _button('9', 'short'),
+          _button('10', 'word'),
+          _button('11', 'back'),
+          _button('12', 'whole'),
+        ],
+        tools: {
+          'angle': (
+            tool: _tool(angleCurve: '10;2 0 1 0 0 1 1 '),
+            dip: _pencilDip,
+          ),
+          'short': (
+            tool: _tool(sizeCurve: '10;3 0 0 0 1 1 1 '),
+            dip: _pencilDip,
+          ),
+          'word': (
+            tool: _tool(sizeCurve: '10;2 0 1 0 0 1 x '),
+            dip: _pencilDip,
+          ),
+          'back': (
+            tool: _tool(opacityCurve: '10;4 1 0 0 0 0.7 0.5 0.6 0.6 1 1 '),
+            dip: _pencilDip,
+          ),
+          'whole': (
+            tool: _tool(sizeCurve: '10;2 0 1 0 1 1 1 '),
+            dip: _pencilDip,
+          ),
+        },
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    expect(result.presets, hasLength(5));
+    for (final preset in result.presets) {
+      expect(
+        [
+          preset.settings.sizePressureCurve,
+          preset.settings.opacityPressureCurve,
+        ],
+        [null, null],
+        reason: preset.name,
+      );
+    }
+    expect(result.warnings, [
+      'Brush "H 8": curve c_angle2 is not carried.',
+      'Brush "H 9": curve c_size2 is not read.',
+      'Brush "H 10": curve c_size2 is not read.',
+      'Brush "H 11": curve c_opacity2 is not read.',
+    ]);
+  });
+
+  test('🎯anim picks the tips by the table the user read off TVPaint: 0 its '
+      'one current image, 3 each in turn, 7 by the stroke\'s speed — which '
+      'is said, as a number off the table is, and takes turns', () async {
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'H',
+        buttons: [
+          for (final guid in _animTools.keys) _button(guid, guid),
+        ],
+        tools: _animTools,
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    const first = [10, 20, 30, 40, 50, 60, 70, 80, 90];
+    const second = [10, 20, 30, 99, 20, 20, 70, 0, 0];
+    expect(
+      {
+        for (final preset in result.presets)
+          preset.name: [
+            for (final tip in preset.settings.tips) tip.alpha.toList(),
+          ],
+      },
+      {
+        'H none': [first],
+        'H second': [second],
+        'H past': [first],
+        'H before': [first],
+        'H loop': [first, second],
+        'H speed': [first, second],
+        'H other': [first, second],
+        'H still speed': [first],
+        'H still other': [first],
+      },
+    );
+    expect(
+      [for (final preset in result.presets) preset.settings.tipOrder],
+      everyElement(BrushTipOrder.repeat),
+    );
+    expect(result.warnings, [
+      'Brush "H speed": anim 7 picks a tip by the stroke\'s speed, which is '
+          'not carried; tips take turns.',
+      'Brush "H other": anim 4 is not read; tips take turns.',
     ]);
   });
 
@@ -482,17 +657,51 @@ Uint8List _dip(
   ]);
 }
 
+/// A curve nothing drives, as TVPaint writes one left alone.
+const _noCurve = '0;2 0 1 0 0 1 1 ';
+
+/// The pencil's two frames, or a still's one, under each `anim` — with the
+/// current image TVPaint would write where one is named.
+final Map<String, ({String tool, Uint8List dip})> _animTools = {
+  'none': (tool: _tool(anim: '0'), dip: _pencilDip),
+  'second': (tool: _tool(anim: '0', currentImage: '1'), dip: _pencilDip),
+  'past': (tool: _tool(anim: '0', currentImage: '2'), dip: _pencilDip),
+  'before': (tool: _tool(anim: '0', currentImage: '-1'), dip: _pencilDip),
+  'loop': (tool: _tool(anim: '3'), dip: _pencilDip),
+  'speed': (tool: _tool(anim: '7'), dip: _pencilDip),
+  'other': (tool: _tool(anim: '4'), dip: _pencilDip),
+  'still speed': (tool: _tool(anim: '7'), dip: _stillDip),
+  'still other': (tool: _tool(anim: '4'), dip: _stillDip),
+};
+
+/// [curve]'s control points as x, y, x, y, ….
+List<double> _flat(BrushPressureCurve curve) => [
+  for (final point in curve.points) ...[point.x, point.y],
+];
+
+/// [values], each to within a rounding.
+List<Matcher> _near(List<num> values) => [
+  for (final value in values) closeTo(value, 1e-12),
+];
+
 String _tool({
   String size = '8.000000',
   String stamp = '1',
   String angle = '0.000000',
-  String sizeCurve = '0;2 0 1 0 0 1 1 ',
+  String anim = '5',
+  String? currentImage,
+  String sizeCurve = _noCurve,
+  String opacityCurve = _noCurve,
+  String angleCurve = _noCurve,
   String smear = '50.0000',
 }) => [
   '﻿[tvp tool]',
   'angle=$angle',
-  'anim=5',
+  'anim=$anim',
+  'c_angle2=$angleCurve',
+  'c_opacity2=$opacityCurve',
   'c_size2=$sizeCurve',
+  if (currentImage != null) 'currentimage=$currentImage',
   'opacity=60.000000',
   'size=$size',
   'smear=$smear',

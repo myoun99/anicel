@@ -8,6 +8,7 @@ import 'package:archive/archive.dart';
 import '../../core/collection_equality.dart' show listEquals;
 import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/brush_preset.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_texture_mode.dart';
@@ -547,7 +548,9 @@ const List<String> _notCarried = [
 /// (유저 2026-11-14 「팁이 소재일때는 aa있어도되는거 … 괜히 aa없애는거 목표로
 /// 하란게 아니란거임」) — at none the engine would threshold the mask.
 /// `smear` is a smearing stamp mode's alone ([_smears]); an Alpha brush's
-/// is left unread.
+/// is left unread. The pen's pressure on its size and on its opacity comes
+/// in as their curves ([_pressureCurveOf]); what drives any other setting
+/// is a warning.
 BrushSettings _settingsOf(
   Map<String, String> tool, {
   required List<BrushTipMask> tips,
@@ -565,24 +568,39 @@ BrushSettings _settingsOf(
     }
   }
   for (final entry in tool.entries) {
-    if (entry.key.startsWith('c_') && !entry.value.startsWith('0;')) {
+    if (entry.key.startsWith('c_') &&
+        !entry.value.startsWith('0;') &&
+        !_isPressureCarried(entry.key, entry.value)) {
       warnings.add('Brush "$name": curve ${entry.key} is not carried.');
     }
   }
   final percent = double.tryParse(tool['size'] ?? '') ?? 0;
   final opacity = double.tryParse(tool['opacity'] ?? '') ?? 100;
+  final drawn = _tipsDrawn(tool, tips);
   final settings = BrushSettings(
     size: tipSide * (percent > 0 ? percent : 100) / 100,
     opacity: (opacity / 100).clamp(0.0, 1.0),
     spacing: BrushShape.generalSpacing,
-    tips: tips,
+    tips: drawn,
+    sizePressureCurve: _pressureCurveOf(
+      tool,
+      _sizeCurve,
+      name: name,
+      warnings: warnings,
+    ),
+    opacityPressureCurve: _pressureCurveOf(
+      tool,
+      _opacityCurve,
+      name: name,
+      warnings: warnings,
+    ),
     mixesGroundColor: _smears(tool),
     colorStretch: _smears(tool)
         ? ((double.tryParse(tool['smear'] ?? '') ?? 0) / 100).clamp(0.0, 1.0)
         : 0,
     tipOrder: _tipOrderOf(
       tool['anim'],
-      tips: tips,
+      tips: drawn,
       name: name,
       warnings: warnings,
     ),
@@ -601,9 +619,159 @@ BrushSettings _settingsOf(
   );
 }
 
-/// ⏳`anim` 5 is read as random (card I-86): TVPaint's page lists no order
-/// for its menu, and a pencil's grain frames thrown afresh each dab is the
-/// look they were cut for. Any other number is not read yet.
+/// The curves this reader carries: what drives the size, and the opacity.
+const _sizeCurve = 'c_size2';
+const _opacityCurve = 'c_opacity2';
+
+/// The number a curve's connection is where the pen's pressure — 筆圧 —
+/// drives it.
+///
+/// 🗣️유저 2026-11-15 (I-86-Q7): 「3번 왕복반복 말고 그냥 반복. 그 외는
+/// 가설대로」 — the table put to them, the names read off TVPaint's own
+/// panel where its file holds numbers only: connection 10 筆圧, and `anim`
+/// 0 なし · 3 くり返し · 5 ランダム · 7 スピード ([_tipOrderOf]).
+const _pressure = '10';
+
+/// Whether [curve], the setting [key]'s, is one this reader brings in: the
+/// pen's pressure on the size or on the opacity.
+bool _isPressureCarried(String key, String curve) =>
+    (key == _sizeCurve || key == _opacityCurve) &&
+    curve.startsWith('$_pressure;');
+
+/// [tool]'s curve [key] as the curve of ours the pen's pressure draws, or
+/// null where the pressure does not drive it — or drives it flat at the
+/// whole of it, which is no curve.
+///
+/// A curve is `<connection>;<points> <current> <kind> x0 y0 x1 y1 …`: the
+/// profile's points in the unit square — the connection's input across, the
+/// setting's share up — the first at x 0 and the last at x 1 (the user's
+/// BRUSH.tvpx, 2026-11-15: 2 to 6 points). `<current>` is the point picked
+/// in TVPaint's editor. `<kind>` is 1 on every two-point line there, 0 on
+/// 25 of the 26 longer and 2 on the other; no page says what it draws, and
+/// it is not read.
+///
+/// 🚨TVPaint's profile runs THROUGH its points and the app's curve is
+/// PULLED by its own ([BrushPressureCurve]), so the points are not copied:
+/// each between the ends becomes a pair about it ([_pulledThrough]). The
+/// profile's lowest share is the curve's floor
+/// ([BrushPressureCurve.minimum]) and its shape is laid from there up — as
+/// a Photoshop brush's minimum diameter comes in (`abr_decoder`).
+/// ⏳Between its points TVPaint's own bend is not measured — no picture of
+/// a profile of theirs has been matched; at the points the two agree.
+BrushPressureCurve? _pressureCurveOf(
+  Map<String, String> tool,
+  String key, {
+  required String name,
+  required List<String> warnings,
+}) {
+  final curve = tool[key];
+  if (curve == null || !_isPressureCarried(key, curve)) {
+    return null;
+  }
+  final through = _profilePointsOf(curve.substring(_pressure.length + 1));
+  if (through == null) {
+    warnings.add('Brush "$name": curve $key is not read.');
+    return null;
+  }
+  final floor = through.map((point) => point.y).reduce(math.min);
+  if (floor == 1) {
+    return null;
+  }
+  return BrushPressureCurve(
+    _pulledThrough([
+      for (final point in through)
+        BrushCurvePoint(point.x, (point.y - floor) / (1 - floor)),
+    ]),
+    minimum: floor,
+  );
+}
+
+/// The points of [profile] — a curve after its connection — or null where
+/// it is not `<points> <current> <kind>` and that many pairs a curve of
+/// ours could stand on: in the unit square, from x 0 to x 1, each further
+/// across than the one before ([BrushPressureCurve]'s own checks).
+List<BrushCurvePoint>? _profilePointsOf(String profile) {
+  final numbers = [
+    for (final word in profile.trim().split(_spaces)) double.tryParse(word),
+  ];
+  final count = numbers.first?.toInt() ?? 0;
+  if (numbers.length != 3 + count * 2 || numbers.contains(null)) {
+    return null;
+  }
+  final points = [
+    for (var at = 3; at < numbers.length; at += 2)
+      BrushCurvePoint(numbers[at]!, numbers[at + 1]!),
+  ];
+  try {
+    BrushPressureCurve(points);
+  } on ArgumentError {
+    return null;
+  }
+  return points;
+}
+
+/// The control points whose curve of ours ([BrushPressureCurve]) runs
+/// through [through]: its ends, and for each point between them the pair
+/// about it ([_pairAbout]) — the curve touches the middle of the edge
+/// between two of its control points, and the pair's middle is the point.
+List<BrushCurvePoint> _pulledThrough(List<BrushCurvePoint> through) => [
+  through.first,
+  for (var at = 1; at + 1 < through.length; at += 1)
+    ..._pairAbout(
+      through[at],
+      before: through[at - 1],
+      after: through[at + 1],
+    ),
+  through.last,
+];
+
+/// Two control points with [point] in their middle: a third of the way to
+/// the nearer of its neighbours to either side — so the pairs of two
+/// neighbours never meet — along the line from [before] to [after], the
+/// curve's lean as it passes, flattened where it would leave the unit
+/// square.
+List<BrushCurvePoint> _pairAbout(
+  BrushCurvePoint point, {
+  required BrushCurvePoint before,
+  required BrushCurvePoint after,
+}) {
+  final reach = math.min(point.x - before.x, after.x - point.x) / 3;
+  final room = math.min(point.y, 1 - point.y);
+  final rise = ((after.y - before.y) / (after.x - before.x) * reach).clamp(
+    -room,
+    room,
+  );
+  return [
+    BrushCurvePoint(point.x - reach, point.y - rise),
+    BrushCurvePoint(point.x + reach, point.y + rise),
+  ];
+}
+
+/// The tips a dab takes: every frame — or, with `anim` 0, TVPaint's なし,
+/// the one frame that is the brush's current image (`currentimage`), the
+/// first where that names none of them.
+///
+/// ⏳That なし draws the current image is read off the key's name and
+/// TVPaint's page for anim brushes, which shows «the number of the image
+/// currently used by your Anim Brush» (doc.tvpaint.com, read 2026-11-15) —
+/// no page says what なし draws, and it is not held to a stamp of theirs.
+List<BrushTipMask> _tipsDrawn(
+  Map<String, String> tool,
+  List<BrushTipMask> tips,
+) {
+  if (tool['anim'] != '0') {
+    return tips;
+  }
+  final current = int.tryParse(tool['currentimage'] ?? '') ?? 0;
+  return [tips[current >= 0 && current < tips.length ? current : 0]];
+}
+
+/// The order `anim` names, by the table the user read off TVPaint
+/// ([_pressure]): 5 ランダム, any tip afresh each dab; 3 くり返し, each in
+/// turn — as the one tip of 0 なし is ([_tipsDrawn]). 7 スピード picks a tip
+/// by how fast the stroke runs, which nothing of the app's does: it is said,
+/// as a number the table does not hold is, and the tips take turns.
+/// ↩️Only 5 was read (2026-11-14), every other number a warning.
 BrushTipOrder _tipOrderOf(
   String? anim, {
   required List<BrushTipMask> tips,
@@ -613,7 +781,12 @@ BrushTipOrder _tipOrderOf(
   if (anim == '5') {
     return BrushTipOrder.random;
   }
-  if (tips.length > 1) {
+  if (anim == '7' && tips.length > 1) {
+    warnings.add(
+      'Brush "$name": anim 7 picks a tip by the stroke\'s speed, which is '
+      'not carried; tips take turns.',
+    );
+  } else if (anim != '3' && tips.length > 1) {
     warnings.add('Brush "$name": anim $anim is not read; tips take turns.');
   }
   return BrushTipOrder.repeat;
