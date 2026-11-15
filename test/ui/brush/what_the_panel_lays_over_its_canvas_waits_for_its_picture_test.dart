@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -14,6 +15,10 @@ import 'package:anicel/src/ui/canvas/picture_up_view.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// A picture that stands at [at] — where it is named — whatever the view;
 /// asked last with the view [asked].
@@ -193,6 +198,22 @@ void main() {
     stand(picture, clock);
     await tester.pump();
     expect(layer(), picture.asked, reason: 'laid again');
+  });
+
+  testWidgets("on the editing canvas the frame's picture carries them", (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<FramePictureView>(theFramesPicture()).carriesTheOverlays,
+      isTrue,
+    );
   });
 
   test('with no picture carrying them, the view as it is', () {
