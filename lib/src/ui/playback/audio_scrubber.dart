@@ -77,9 +77,19 @@ class AudioScrubber {
   /// window can re-center when a drag leaves it. The same object the
   /// transport owns — one upload, and one law for when a window moves —
   /// over the reach a scrub needs ([AudioStreamingWindow.scrubbing]).
-  final AudioStreamingWindow _window = AudioStreamingWindow(
+  late final AudioStreamingWindow _window = AudioStreamingWindow(
     reach: AudioStreamingWindow.scrubbing,
+    onLanded: _windowsLanded,
   );
+
+  /// The windows a gesture stood down for have landed: its next slice makes
+  /// it ready again ([_prepare]) — in milliseconds, not the next gesture.
+  /// ↩️They were read in the slice, on the thread that draws.
+  void _windowsLanded() {
+    if (!_armed) {
+      _stoodDown = false;
+    }
+  }
 
   /// Whether the current gesture is playing sound (test surface).
   bool get isArmed => _armed;
@@ -122,7 +132,9 @@ class AudioScrubber {
     }
     final startSample = _rate.frameToSample(frame, _deviceRate);
     // A drag the window wants centred on again — by its own law — moves it
-    // there before the slice plays: a small read where the drag stands.
+    // there: a small read where the drag stands, on a worker. A slice
+    // before it lands plays out of the window as it stands — a drag is the
+    // hand's, and a scrub does not wait for its sound as a run does.
     _window.cover(
       startSample,
       device: _device,

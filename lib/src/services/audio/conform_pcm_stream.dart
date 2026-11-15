@@ -63,10 +63,11 @@ bool conformStaysOnDisk({
 /// each one. The cost is tens of microseconds against a read measured in
 /// megabytes, and there is nothing left to close.
 ///
-/// Reads are synchronous and run on the CONTROL side (the schedule
-/// refresh and the scrubber's re-centre, and a worker's for a playing
-/// stream's advance), never the audio callback — the realtime thread only
-/// ever touches memory the C side already owns.
+/// Reads are synchronous and run on the CONTROL side — a worker's, for
+/// every move of a streaming window (long-sound-windows-are-read-on-the-
+/// ui-isolate, 11-15) — never the audio callback: the realtime thread only
+/// ever touches memory the C side already owns. ↩️The schedule refresh and
+/// the scrubber's re-centre read on the thread that draws.
 ///
 /// 🚨**WHICH IS WHAT MAKES COMPRESSION SAFE HERE** (유저 2026-08-30:
 /// 「재생시 압축해제때문에 오디오가 싱크 안맞으면 절대 안되니 그부분만

@@ -123,14 +123,18 @@ void main() {
     addTearDown(transport.dispose);
 
     controller.play(scope: PlaybackScope.activeCut);
-    expect(transport.carryingPlayback, isTrue, reason: 'fixture');
     expect(conform.windowsRead, 1, reason: 'the press centres it, once');
+    expect(transport.soundIsComing, isTrue, reason: 'read on a worker');
+    await pumpEventQueue();
+    expect(transport.carryingPlayback, isTrue, reason: 'it landed');
+    expect(conform.windowsRead, 1, reason: 'made ready from what landed');
 
     controller.seekToGlobalFrame(100); // 10 s — inside its near half
     expect(conform.windowsRead, 1, reason: 'it holds ten seconds in');
 
     controller.seekToGlobalFrame(300); // 30 s — past its near half
     expect(conform.windowsRead, 2, reason: 'thirty seconds in, it reads there');
+    await pumpEventQueue();
 
     controller.seekToGlobalFrame(290); // a second behind the new centre
     expect(conform.windowsRead, 2, reason: 'a step back inside reads nothing');
@@ -149,15 +153,24 @@ void main() {
 
     expect(
       sound.play('long.wav', fromSeconds: 60),
-      isA<OutputArmed>(),
-      reason: 'fixture',
+      isA<OutputComing>(),
+      reason: 'its window read on a worker',
     );
     expect(conform.windowsRead, 1, reason: 'the press centres it, once');
+    await pumpEventQueue();
+    expect(
+      sound.play('long.wav', fromSeconds: 60),
+      isA<OutputArmed>(),
+      reason: 'asked again once it landed (MediaRun asks at every look)',
+    );
+    expect(conform.windowsRead, 1, reason: 'made ready from what landed');
 
-    sound.resume(59); // a second back — a run going on, a short put-back
+    // A second back — a run going on, a short put-back.
+    expect(sound.resume(59), isTrue);
     expect(conform.windowsRead, 1, reason: 'it holds a second back');
 
-    sound.resume(50); // a run put back as far as the app was late
+    // A run put back as far as the app was late.
+    expect(sound.resume(50), isFalse, reason: 'its sound there on its way');
     expect(
       conform.windowsRead,
       2,

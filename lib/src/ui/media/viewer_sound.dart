@@ -235,18 +235,25 @@ class ViewerSound {
   /// does not hold it ([AudioStreamingWindow.cover]): a run behind its clock
   /// puts its sound back as far as the app was late (`MediaRun`).
   /// ↩️It was 「not a seek」, picking up only where the window already was.
-  void resume(double fromSeconds) {
+  ///
+  /// False — nothing started — while the window's sound there is on its
+  /// way, read on a worker: the run waits for it, asking [prepare] again
+  /// until it has come, as after a press (`MediaRun`).
+  bool resume(double fromSeconds) {
     final device = _device;
     if (device == null) {
-      return;
+      return true;
     }
     final startSample = _startSample = (fromSeconds * _deviceRate).round();
-    _window.cover(
+    if (!_window.cover(
       startSample,
       device: device,
       conformStore: conformStore,
       deviceRate: _deviceRate,
-    );
+    )) {
+      _silence();
+      return false;
+    }
     _start.arm((frameTime) {
       _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
       _run = device.play(
@@ -262,6 +269,7 @@ class ViewerSound {
         ),
       );
     });
+    return true;
   }
 
   /// Silence — and a sound started but not looked at yet never starts.

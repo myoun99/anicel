@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
+import '../../helpers/stream_windows_read_here.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A STREAMING WINDOW MOVES WITHOUT THE THREAD THAT DRAWS**
@@ -278,136 +279,215 @@ void main() {
     });
   });
 
-  test('🎯a window that plays reads on a worker unless a test holds the '
-      'read', () {
+  test('🎯a window reads on a worker unless a test holds the read', () {
     expect(
       AudioStreamingWindow().readWindows,
       same(readStreamWindowsOnAWorker),
-      reason: 'the advance read on the thread that draws again',
+      reason: 'a move read on the thread that draws again',
     );
   });
 
-  group('an advance that lands', () {
+  /// 🚨EVERY MOVE takes the advance's road
+  /// (long-sound-windows-are-read-on-the-ui-isolate, 11-15): planned here,
+  /// read on a worker, put here. ↩️An arm, a seek, an edit, a scrub and the
+  /// viewer's sound read their windows on the thread that draws.
+  group('a move whose windows are read on a worker', () {
     late QaAudioDevice device;
     late AudioConformStore store;
     late AudioStreamingWindow window;
-    late Completer<List<AudioMixSource>?> reading;
-    late List<StreamWindowRead> asked;
-    late int readsAsked;
+    late List<Completer<List<AudioMixSource>?>> readings;
+    late List<List<StreamWindowRead>> asked;
+    late int landings;
     ({QaAudioDevice device, int deviceRate})? carrying;
 
     setUp(() async {
       device = openNull();
       (store, _) = await streamingStore();
-      reading = Completer();
+      readings = [];
       asked = [];
-      readsAsked = 0;
+      landings = 0;
       window = AudioStreamingWindow(
         readWindows: (reads, _) {
-          readsAsked += 1;
-          asked = reads;
-          return reading.future;
+          asked.add(reads);
+          return (readings..add(Completer())).last.future;
         },
+        onLanded: () => landings += 1,
       )..mix = mixOf(['a']);
-      expect(
-        window.upload(
-          device: device,
-          conformStore: store,
-          deviceRate: sampleRate,
-          centerSample: 0,
-        ),
-        isA<OutputArmed>(),
-      );
       carrying = (device: device, deviceRate: sampleRate);
     });
 
-    /// Moves the device to [at] and asks the window to follow it there;
-    /// the read is out once this returns.
-    Future<void> followTo(int at) async {
+    OutputArm uploadAt(int centerSample) => window.upload(
+      device: device,
+      conformStore: store,
+      deviceRate: sampleRate,
+      centerSample: centerSample,
+    );
+
+    /// The [index]th read asked lands, whole: each window read as a worker
+    /// reads it.
+    Future<void> land(int index) async {
+      readings[index].complete([
+        for (final read in asked[index]) streamWindowReadHere(read),
+      ]);
+      await pumpEventQueue();
+    }
+
+    /// The device at [at], and the tick that follows it there.
+    void tickAt(int at) {
       device.seek(at);
-      expect(device.positionSamples, at);
       window.followPlayback(
         positionSamples: at,
         deviceRate: sampleRate,
         conformStore: store,
         current: () => carrying,
       );
-      await pumpEventQueue();
-      expect(asked, isNotEmpty, reason: 'the advance never read');
     }
 
-    Future<void> land() async {
-      reading.complete([for (final read in asked) streamWindowReadHere(read)]);
-      await pumpEventQueue();
+    /// The window armed around 0, its windows landed.
+    Future<void> armedAtZero() async {
+      expect(uploadAt(0), isA<OutputComing>());
+      await land(0);
+      expect(uploadAt(0), isA<OutputArmed>());
+      expect(window.centerSample, 0);
     }
 
-    test('🎯nothing changed meanwhile: it moves the window there', () async {
-      await followTo(5000);
+    test('🎯an upload says its windows are coming, tells its owner once they '
+        'land, and asked again puts them — reading nothing', () async {
+      expect(uploadAt(5000), isA<OutputComing>());
+      expect(asked, hasLength(1));
+      expect(window.centerSample, 0, reason: 'nothing moved before it lands');
+      expect(landings, 0);
+
+      await land(0);
+      expect(landings, 1);
+
+      expect(uploadAt(5000), isA<OutputArmed>());
+      expect(window.centerSample, 5000);
+      expect(window.hasStreaming, isTrue);
+      expect(asked, hasLength(1), reason: 'the windows that landed, put');
+    });
+
+    test('asked again while they are on their way, for where they hold, it '
+        'reads no second time', () async {
+      expect(uploadAt(5000), isA<OutputComing>());
+      expect(uploadAt(5100), isA<OutputComing>());
+      expect(asked, hasLength(1));
+
+      await land(0);
+      expect(uploadAt(5100), isA<OutputArmed>());
+      expect(window.centerSample, 5000, reason: 'where they were read');
+    });
+
+    test('🚨asked somewhere they do not hold meanwhile, the later ask '
+        'stands: what lands for the earlier is not kept', () async {
+      expect(uploadAt(5000), isA<OutputComing>());
+      expect(uploadAt(9000), isA<OutputComing>());
+      expect(asked, hasLength(2));
+
+      await land(0);
+      expect(landings, 0, reason: 'nobody waits for those');
+      expect(uploadAt(9000), isA<OutputComing>());
+      expect(asked, hasLength(2), reason: 'the later read is still out');
+
+      await land(1);
+      expect(uploadAt(9000), isA<OutputArmed>());
+      expect(window.centerSample, 9000);
+    });
+
+    test('🎯an advance: the tick after its windows land moves the window '
+        'there', () async {
+      await armedAtZero();
+      tickAt(5000);
+      expect(asked, hasLength(2));
       expect(window.centerSample, 0, reason: 'moved before it landed');
-      await land();
+
+      await land(1);
+      expect(window.centerSample, 0, reason: 'put by a tick, not the landing');
+      tickAt(5010);
       expect(window.centerSample, 5000);
     });
 
-    test('🚨the player stopped meanwhile: it uploads nothing', () async {
-      await followTo(5000);
+    test('🚨the player stopped meanwhile: it moves nothing', () async {
+      await armedAtZero();
+      tickAt(5000);
       carrying = null;
-      await land();
+      await land(1);
+      tickAt(5010);
       expect(window.centerSample, 0);
     });
 
     test('🚨another mix was put in meanwhile: its windows are not of it, and '
-        'it uploads nothing', () async {
-      await followTo(5000);
+        'it reads that mix\'s', () async {
+      await armedAtZero();
+      tickAt(5000);
       window.mix = mixOf(['a', 'b']);
-      await land();
+      await land(1);
+      tickAt(5010);
       expect(window.centerSample, 0);
+      expect(asked, hasLength(3));
+      expect(asked.last, hasLength(2), reason: 'the new mix\'s two windows');
     });
 
-    test('🚨the window was uploaded anew meanwhile (a seek, an edit): the '
-        'newer upload stands', () async {
-      await followTo(5000);
-      expect(
-        window.upload(
-          device: device,
-          conformStore: store,
-          deviceRate: sampleRate,
-          centerSample: 9000,
-        ),
-        isA<OutputArmed>(),
-      );
-      await land();
-      expect(window.centerSample, 9000);
-    });
-
-    test('🚨windows that did not land whole upload nothing — the old window '
-        'still has fifteen seconds to play', () async {
-      await followTo(5000);
-      reading.complete(null);
+    test('🚨windows that did not land whole are not put by a tick — the old '
+        'window still has fifteen seconds to play — and the next reads '
+        'again', () async {
+      await armedAtZero();
+      tickAt(5000);
+      readings[1].complete(null);
       await pumpEventQueue();
+      tickAt(5010);
+      expect(window.centerSample, 0);
+      expect(asked, hasLength(3));
+    });
+
+    test('a read the memory was not there for is the same: nothing is put, '
+        'and nothing is thrown at the tick', () async {
+      await armedAtZero();
+      tickAt(5000);
+      readings[1].completeError(StateError('no memory for a window'));
+      await pumpEventQueue();
+      tickAt(5010);
       expect(window.centerSample, 0);
     });
 
-    test('a read the memory was not there for uploads nothing — the old '
-        'schedule plays on, and nothing is thrown at the tick', () async {
-      await followTo(5000);
-      reading.completeError(StateError('no memory for a window'));
+    test('but an arm has no window where it starts to keep: it puts what '
+        'came back', () async {
+      expect(uploadAt(5000), isA<OutputComing>());
+      readings[0].complete(null);
       await pumpEventQueue();
-      expect(window.centerSample, 0);
+      expect(landings, 1, reason: 'its owner waits for it');
+
+      expect(uploadAt(5000), isA<OutputArmed>());
+      expect(window.centerSample, 5000);
     });
 
     test('one read at a time: ticks while it is out ask for no second '
         'one', () async {
-      await followTo(5000);
-      window.followPlayback(
-        positionSamples: 6000,
-        deviceRate: sampleRate,
-        conformStore: store,
-        current: () => carrying,
-      );
-      await pumpEventQueue();
-      expect(readsAsked, 1);
-      await land();
+      await armedAtZero();
+      tickAt(5000);
+      tickAt(5100);
+      expect(asked, hasLength(2));
+      await land(1);
+      tickAt(5200);
       expect(window.centerSample, 5000);
+    });
+
+    test('🚨a start the window as it stands plays is played now — its move '
+        'read meanwhile; one outside its edges waits for the move', () async {
+      expect(uploadAt(5000), isA<OutputComing>());
+      await land(0);
+      expect(uploadAt(5000), isA<OutputArmed>());
+
+      bool covers(int at) => window.cover(
+        at,
+        device: device,
+        conformStore: store,
+        deviceRate: sampleRate,
+      );
+      // At 100 Hz the window trails 200 samples, and moves 100 behind.
+      expect(covers(4850), isTrue, reason: 'inside its trailing edge');
+      expect(asked, hasLength(2), reason: 'moved there all the same');
+      expect(covers(4700), isFalse, reason: 'past it: silence till it lands');
     });
   });
 }

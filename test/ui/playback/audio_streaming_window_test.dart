@@ -13,6 +13,7 @@ import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
+import '../../helpers/stream_windows_read_here.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The shared windowed upload (AUDIO-PRO R6): what the transport AND the
@@ -28,14 +29,17 @@ windowedUpload({
   required AudioConformStore conformStore,
   required int deviceRate,
   required int centerSample,
-}) => planWindowedMixUpload(
-  mix: mix,
-  conformStore: conformStore,
-  deviceRate: deviceRate,
-  centerSample: centerSample,
-  backSeconds: AudioStreamingWindow.playing.backSeconds,
-  aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
-)?.readHere();
+}) {
+  final plan = planWindowedMixUpload(
+    mix: mix,
+    conformStore: conformStore,
+    deviceRate: deviceRate,
+    centerSample: centerSample,
+    backSeconds: AudioStreamingWindow.playing.backSeconds,
+    aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
+  );
+  return plan == null ? null : readHere(plan);
+}
 
 void main() {
   late Directory directory;

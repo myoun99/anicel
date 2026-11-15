@@ -406,8 +406,7 @@ _residentSources({
 }
 
 /// One streamed clip's window: [count] samples per channel from [start] of
-/// [reader]'s conform — what an upload reads for that clip, here or on a
-/// worker.
+/// [reader]'s conform — what an upload reads for that clip, on a worker.
 typedef StreamWindowRead = ({
   ConformPcmStreamReader reader,
   int start,
@@ -436,20 +435,6 @@ StreamWindowRead _streamWindowRead(
   return (reader: reader, start: windowStart, count: windowEnd - windowStart);
 }
 
-/// [read]'s window, read here — into the list [place] makes for it when it
-/// makes one ([ConformPcmStreamReader.readWindow]).
-AudioMixSource streamWindowReadHere(
-  StreamWindowRead read, {
-  Float32List? Function(int floats)? place,
-}) {
-  final window = read.reader.readWindow(read.start, read.count, place: place);
-  return AudioMixSource(
-    samples: window.samples,
-    channels: read.reader.channels,
-    sourceStart: window.startSample,
-  );
-}
-
 /// A device upload: the clips, pointed at their sources, and whether any of
 /// those streams ([AudioStreamingWindow.hasStreaming]).
 typedef WindowedUpload = ({
@@ -462,10 +447,11 @@ typedef WindowedUpload = ({
 /// ([planWindowedMixUpload]): the clips, pointed at their sources — the
 /// [resident] ones first, then one window for each of [reads], in order.
 ///
-/// 🚨PLANNED APART FROM THE READING, so an advance can read on a worker
-/// (streaming-advance-reads-on-the-ui-thread, 10-15): what to read is
-/// decided on the thread that holds the store, and only the reading goes
-/// elsewhere.
+/// 🚨PLANNED APART FROM THE READING, so the reading is a worker's
+/// (streaming-advance-reads-on-the-ui-thread, 10-15 — an advance; every
+/// move since long-sound-windows-are-read-on-the-ui-isolate, 11-15): what
+/// to read is decided on the thread that holds the store, and only the
+/// reading goes elsewhere.
 final class WindowedUploadPlan {
   const WindowedUploadPlan._({
     required this.clips,
@@ -499,13 +485,6 @@ final class WindowedUploadPlan {
       hasStreaming: hasStreaming,
     );
   }
-
-  /// The upload with every window read here ([streamWindowReadHere]) —
-  /// into what [place] makes for each, when it makes one.
-  WindowedUpload readHere({Float32List? Function(int floats)? place}) =>
-      withWindows([
-        for (final read in reads) streamWindowReadHere(read, place: place),
-      ]);
 }
 
 /// Plans the device upload for [mix] — resident PCM for ordinary clips, a

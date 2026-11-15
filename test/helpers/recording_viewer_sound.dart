@@ -111,11 +111,12 @@ class RecordingViewerSound extends ViewerSound {
   final List<double> resumedFrom = [];
 
   @override
-  void resume(double fromSeconds) {
+  bool resume(double fromSeconds) {
     resumes += 1;
     resumedFrom.add(fromSeconds);
     _held = false;
     at = fromSeconds;
+    return true;
   }
 
   /// The frame time each look that kept the sound streaming was told.
