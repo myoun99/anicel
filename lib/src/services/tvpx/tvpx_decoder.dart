@@ -323,14 +323,14 @@ _Paper? _paperOf(
 /// One of the app's papers made to stand for a TVPaint one at one
 /// [hardness] of it: its [mask], [scale] canvas pixels a texel, the levels
 /// ([contrast], [brightness]) that bring its values where the TVPaint
-/// paper's are, and how it meets a dab ([mode], [density]).
+/// paper's are, and how it meets a dab ([mode]) — at the texture's full
+/// density, which a brush has unless told otherwise.
 typedef _NearestPaper = ({
   BrushTipMask mask,
   double scale,
   double contrast,
   double brightness,
   BrushTextureMode mode,
-  double density,
   double hardness,
 });
 
@@ -372,7 +372,6 @@ _NearestPaper? _nearestPaperTo(String paper) => switch (paper) {
     contrast: -0.54,
     brightness: 0.2,
     mode: BrushTextureMode.height,
-    density: 1,
     hardness: 70,
   ),
   _ => null,
@@ -559,7 +558,6 @@ BrushSettings _settingsOf(
     textureContrast: nearest.contrast,
     textureBrightness: nearest.brightness,
     textureScale: nearest.scale * laid.size,
-    textureDensity: nearest.density,
     textureMode: nearest.mode,
   );
 }
