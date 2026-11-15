@@ -272,6 +272,43 @@ void main() {
       );
     });
 
+    // A JPEG whose colour is coded at half size (4:2:0) has it upsampled
+    // as the engine's codec does, not stretched a pixel to two: 🔬11-15
+    // Surface, this picture — the engine's decoder (zune-jpeg) 10 off the
+    // engine, the image package's, which read every still JPEG till then,
+    // 82 (a-raster-import-goes-gpu-cpu-gpu-cpu-Q2).
+    testWidgets('a JPEG of half-sized colour, upsampled as the engine does', (
+      tester,
+    ) async {
+      await tester.runAsync(
+        () => readAsTheEngine(
+          img.encodeJpg(opaque(), quality: 95, chroma: img.JpegChroma.yuv420),
+          colourSlack: 10,
+        ),
+      );
+    });
+
+    test('a JPEG that does not decode says why, reading no row', () {
+      final broken = Uint8List.fromList([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+      var rows = 0;
+      expect(
+        () => readFileRows(
+          broken,
+          width: 4,
+          height: 4,
+          row: (_, _) => rows += 1,
+        ),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'why',
+            startsWith('JPEG: '),
+          ),
+        ),
+      );
+      expect(rows, 0);
+    });
+
     testWidgets('a GIF, every frame as long as it shows', (tester) async {
       final gif = opaque()..frameDuration = 40;
       for (final (shift, duration) in [(40, 80), (90, 120)]) {

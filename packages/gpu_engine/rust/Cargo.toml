@@ -32,6 +32,9 @@ fx_plugin = { path = "native/fx_plugin" }
 # A GPU fx plugin (fx spec 2): checked and counted there, run here on the
 # engine's device (kernels/plugin).
 fx_wgsl = { path = "native/fx_wgsl" }
+# A still JPEG's pixels, decoded on the worker that lays them (board
+# a-raster-import-goes-gpu-cpu-gpu-cpu-Q2, 2026-11-15) — zune-jpeg, pure Rust.
+image_decode = { path = "native/image_decode" }
 image_encode = { path = "native/image_encode" }
 media = { path = "native/media" }
 memory = { path = "native/memory" }

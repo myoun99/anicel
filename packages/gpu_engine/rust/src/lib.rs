@@ -50,6 +50,10 @@ pub use audio_mix;
 pub use compress;
 pub use display;
 pub use fx_plugin;
+// The still decoder (a-raster-import-goes-gpu-cpu-gpu-cpu-Q2, 2026-11-15):
+// `qa_image_decode_jpg_*` are answered here — a JPEG read on the worker
+// that lays it (qa_image_decoder.dart).
+pub use image_decode;
 pub use image_encode;
 // The span reader and the movie writer and reader (H, 관제 2026-11-08 06:56
 // ③④): `qa_media_span_*` · `qa_video_export_*` · `qa_video_decode_*` are

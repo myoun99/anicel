@@ -1,0 +1,21 @@
+[package]
+name = "image_decode"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# A still JPEG's pixels, decoded where an import lays them (board
+# a-raster-import-goes-gpu-cpu-gpu-cpu, 유저 2026-11-15 Q2 「빠른 JPEG 디코더를
+# 들인다」). Pure Rust, MIT OR Apache-2.0 OR Zlib; brought in on the user's
+# own word in chat (Q3, 2026-11-15) — exactly these two, pinned: zune-jpeg's
+# default features turn on none of zune-core's optional crates.
+[dependencies]
+zune-core = "=0.5.3"
+zune-jpeg = "=0.5.15"
+
+# The repo's own encoder makes the JPEGs the tests read, and the app's
+# ledger (native/ledger) pins a decode's bytes, so a device whose SIMD
+# reads a picture otherwise goes red.
+[dev-dependencies]
+image_encode = { path = "../image_encode" }
+ledger = { path = "../ledger" }

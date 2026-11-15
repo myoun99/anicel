@@ -29,6 +29,7 @@ import 'package:image/image.dart' as img;
 import '../../core/on_a_worker.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/canvas_size.dart';
+import '../../native/qa_image_decoder.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../media/colour_profile.dart';
 import '../media/png_reading.dart';
@@ -308,10 +309,16 @@ AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) => laidCelOf(
 
 /// Every row of the picture file [bytes] — [width] × [height], as its
 /// header said — as straight RGBA8, top to bottom: a PNG's as they are
-/// inflated ([readPngRows]); any other picture's through the image package,
-/// which turns a JPEG by its EXIF as the engine does (measured 10-20) —
-/// each row turned to sRGB's colours by what the file says of its own
-/// ([toSrgbOf]), as the engine's decoder turns them.
+/// inflated ([readPngRows]); a JPEG's by the engine's own decoder
+/// ([QaImageDecoder.readJpegRows]), turned by its EXIF as the engine turns
+/// it; any other picture's through the image package — each row turned to
+/// sRGB's colours by what the file says of its own ([toSrgbOf]), as the
+/// engine's decoder turns them.
+///
+/// 🗣️유저 2026-11-15 (a-raster-import-goes-gpu-cpu-gpu-cpu-Q2) 「빠른 JPEG
+/// 디코더를 들인다」. ↩️A JPEG went through the image package too, which
+/// turned it by its EXIF as the engine does (measured 10-20) — 0.80–0.83 s
+/// for 4000×3000 on the Surface.
 ///
 /// Throws when the file reads to another size than it said.
 void readFileRows(
@@ -331,6 +338,15 @@ void readFileRows(
   if (png != null && !png.interlaced) {
     _expectSize(png.width, png.height, width, height);
     readPngRows(bytes, turned);
+    return;
+  }
+  if (startsLikeJpeg(bytes)) {
+    QaImageDecoder.readJpegRows(
+      bytes,
+      sized: (shownWidth, shownHeight) =>
+          _expectSize(shownWidth, shownHeight, width, height),
+      row: turned,
+    );
     return;
   }
   final frame = _decodedByPackage(bytes, frame: 0);
@@ -357,7 +373,7 @@ img.Image _decodedByPackage(Uint8List bytes, {int? frame}) {
 }
 
 /// [frame]'s rows as straight RGBA8, top to bottom. An eight-bit RGB or
-/// RGBA picture — a JPEG, a BMP — is read a row at a time where the package
+/// RGBA picture — a BMP — is read a row at a time where the package
 /// decoded it, so it is held once; any other is converted whole first.
 void _rowsOf(img.Image frame, void Function(int y, Uint8List rgba) row) {
   if (frame.format != img.Format.uint8 ||

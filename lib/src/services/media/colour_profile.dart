@@ -77,7 +77,7 @@ bool readsTheColoursOf(Uint8List bytes) {
   final Uint8List? profile;
   if (readPngColour(bytes) case final png?) {
     profile = png.profile;
-  } else if (_startsLikeJpeg(bytes)) {
+  } else if (startsLikeJpeg(bytes)) {
     profile = _jpegProfile(bytes);
   } else {
     return false;
@@ -318,7 +318,7 @@ List<double> _parametricOf(int type, List<double> p) => switch (type) {
 /// order they are numbered — or null where it carries none, or [bytes] are
 /// no JPEG.
 Uint8List? _jpegProfile(Uint8List bytes) {
-  if (!_startsLikeJpeg(bytes)) {
+  if (!startsLikeJpeg(bytes)) {
     return null;
   }
   final pieces = <int, Uint8List>{};
@@ -360,8 +360,9 @@ Uint8List? _jpegProfile(Uint8List bytes) {
   return profile.toBytes();
 }
 
-/// Whether [bytes] begin as a JPEG does: its start of image.
-bool _startsLikeJpeg(Uint8List bytes) =>
+/// Whether [bytes] begin as a JPEG does: its start of image — what picks
+/// the JPEG road both here and where the file is read (`readFileRows`).
+bool startsLikeJpeg(Uint8List bytes) =>
     bytes.length >= 4 && bytes[0] == 0xff && bytes[1] == 0xd8;
 
 /// Whether the `APP2` payload at [start] begins `ICC_PROFILE\0`.
