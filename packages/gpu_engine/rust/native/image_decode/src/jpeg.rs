@@ -87,11 +87,11 @@ impl Decoded {
     }
 }
 
-/// The orientation EXIF `exif` names — its first IFD's tag 0x0112 — or
-/// 1 (as coded) where it names none it can be read as. The TIFF header
-/// first, `Exif\0\0` before it or not.
-pub(crate) fn orientation_of(exif: &[u8]) -> u16 {
-    let tiff = exif.strip_prefix(b"Exif\0\0").unwrap_or(exif);
+/// The orientation EXIF `tiff` names — its first IFD's tag 0x0112 — or
+/// 1 (as coded) where it names none it can be read as. `tiff` begins at
+/// the TIFF header, as zune hands it: zune takes the `Exif\0\0` off the
+/// APP1 segment itself (zune-jpeg 0.5.15, `headers.rs`).
+pub(crate) fn orientation_of(tiff: &[u8]) -> u16 {
     let big = match tiff.get(..4) {
         Some(b"MM\0*") => true,
         Some(b"II*\0") => false,
