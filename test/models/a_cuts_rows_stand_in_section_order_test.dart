@@ -64,6 +64,53 @@ void main() {
     );
   });
 
+  // A folder's rows are one run with the folder row right above them, and
+  // the picture is gathered so (`sectionedLayerOrder` has why).
+  test('a row in a folder stands where its outermost folder stands — a '
+      'direction row put in a drawing folder stays in it, the folder '
+      'whole', () {
+    const folderId = LayerId('F');
+    Layer inF(String name, LayerKind kind) => Layer(
+      id: LayerId(name),
+      name: name,
+      kind: kind,
+      folderId: folderId,
+      frames: const [],
+      timeline: const {},
+    );
+    final folder = Layer(
+      id: folderId,
+      name: 'F',
+      kind: LayerKind.folder,
+      frames: const [],
+      timeline: const {},
+    );
+
+    final cut = Cut(
+      id: cutId,
+      name: 'C1',
+      layers: [
+        direction,
+        inF('A', LayerKind.animation),
+        inF('memo', LayerKind.instruction),
+        folder,
+        camera,
+        drawing('B'),
+      ],
+      duration: 24,
+      canvasSize: const CanvasSize(width: 100, height: 100),
+    );
+
+    expect(namesOf(cut.layers), [
+      'A',
+      'memo',
+      'F',
+      'B',
+      direction.name,
+      camera.name,
+    ]);
+  });
+
   test('a row made with ＋ in a NEW cut — its direction row and camera, '
       'nothing else — stands under the direction row', () {
     final session = EditorSessionManager(initialProject: newUntitledProject());

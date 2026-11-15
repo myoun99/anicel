@@ -29,10 +29,12 @@ import '../../helpers/timeline_host.dart';
 /// 올리는것도 불가. 액션란 양 끝? 해당 란 양 끝에 옮기는게 불가능한듯」.
 ///
 /// The scene: two pictures ALONE in ACTION, the track's SE rows over them,
-/// and in the STACK they stand across the camera section — a row is made
-/// over the row stood on, whichever section that is. Every surface sorts
-/// that out, so nothing on screen tells it; the drop policy read the stack
-/// as it stood.
+/// handed to the cut across the camera section — where a row made over the
+/// row stood on used to stand, whichever section that was — and the drop
+/// policy read the stack as it stood. ↩️F-596 (2026-11-16): a cut stands
+/// what it is handed in section order ([Cut]), so on a cut the two scenes
+/// are one stack; the policy's own functions read them as handed
+/// (`newRowInsertionForSlot`, the last test).
 Layer _picture(String id, {LayerMark mark = LayerMark.none}) => Layer(
   id: LayerId(id),
   name: id,
@@ -160,27 +162,8 @@ void main() {
     await tester.pump();
   }
 
-  test('⛔전제: a row made standing on the camera row stands over it in the '
-      'stack, and the rail shows it under it', () {
-    final session = EditorSessionManager(
-      initialProject: _project([_direction, _camera]),
-    );
-    addTearDown(session.dispose);
-    session.selectLayer(_camera.id);
-
-    session.layerStack.addLayerOfKind(LayerKind.image);
-
-    final stack = session.requireActiveCut.layers;
-    expect([for (final layer in stack) layer.kind], [
-      LayerKind.instruction,
-      LayerKind.camera,
-      LayerKind.image,
-    ]);
-    expect(horizontalLayerDisplayOrder(stack).last.kind, LayerKind.image);
-  });
-
   for (final MapEntry(key: where, value: scene) in _scenes.entries) {
-    group('pictures $where in the stack', () {
+    group('pictures handed $where', () {
       final stack = scene(_two);
 
       Future<EditorSessionManager> pump(WidgetTester tester) =>
@@ -233,6 +216,7 @@ void main() {
           tester,
         ) async {
           final session = await pump(tester);
+          final before = session.requireActiveCut.layers;
           final held = await lift(tester, 'csm');
 
           await pointInto(tester, held, 'csm', fraction: 0.85);
@@ -242,7 +226,7 @@ void main() {
 
           expect(
             session.requireActiveCut.layers,
-            stack,
+            before,
             reason: 'no landing, so nothing is written',
           );
         });

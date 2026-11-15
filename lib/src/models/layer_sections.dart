@@ -1,4 +1,6 @@
+import '../core/frozen_collections.dart';
 import 'layer.dart';
+import 'layer_folder.dart';
 import 'layer_kind.dart';
 
 /// Timesheet-style timeline sections, in raw (model) order: drawing cels
@@ -70,40 +72,35 @@ const int _cameraSectionTopRank = 2;
 /// ⚠️That exception is what repairs a project already saved with a Direction
 /// row above the camera. Refusing the drag stops it happening again; a cut
 /// built from such a file stands its rows back in this order ([Cut]).
+///
+/// 🚨A ROW IN A FOLDER STANDS WHERE ITS OUTERMOST FOLDER STANDS — a
+/// folder's rows are one run with the folder row right above them
+/// (`folderStructureProblem`), and the picture is built on that: one pass
+/// bottom-up gathers a folder's rows by the time it meets the folder row
+/// (`resolveCutFrameCompositeTree`), so a member standing past it would be
+/// painted by no one. A direction or camera row put in a drawing folder
+/// therefore stands in it, with the folder (F-596 — whether it should come
+/// out and over the pictures is asked on its card: F-596-Q1).
 List<Layer> sectionedLayerOrder(List<Layer> layers) {
-  final buckets = <TimelineSection, List<Layer>>{
-    for (final section in TimelineSection.values) section: <Layer>[],
-  };
-  for (final layer in layers) {
-    buckets[timelineSectionForLayerKind(layer.kind)]!.add(layer);
-  }
-  // A partition by rank, which is stable by construction: same-rank rows
-  // keep the order they arrived in, and that is what lets several Direction
-  // rows be re-ordered among themselves.
-  final camera = buckets[TimelineSection.camera]!;
-  final ranked = <Layer>[
-    for (var rank = 0; rank <= _cameraSectionTopRank; rank += 1)
-      for (final layer in camera)
-        if (timelineCameraSectionRank(layer.kind) == rank) layer,
-  ];
-  return List<Layer>.unmodifiable([
-    for (final section in TimelineSection.values)
-      ...(section == TimelineSection.camera ? ranked : buckets[section]!),
+  final placeOf = _placeOfIn(layers);
+  final places = [for (final layer in layers) placeOf(layer)];
+  // A partition by place, which is stable by construction: rows of one
+  // place keep the order they arrived in, and that is what lets several
+  // Direction rows be re-ordered among themselves.
+  return frozenList<Layer>([
+    for (var place = 0; place <= _lastPlace; place += 1)
+      for (var i = 0; i < layers.length; i += 1)
+        if (places[i] == place) layers[i],
   ]);
 }
 
 /// Whether [layers] already stand in section order ([sectionedLayerOrder]):
-/// every row's section, and inside the camera section its rank, no lower
-/// than the row's before it.
+/// no row's place below the place of the row before it.
 bool isInSectionOrder(List<Layer> layers) {
+  final placeOf = _placeOfIn(layers);
   var last = 0;
   for (final layer in layers) {
-    final section = timelineSectionForLayerKind(layer.kind);
-    final place =
-        section.index * (_cameraSectionTopRank + 1) +
-        (section == TimelineSection.camera
-            ? timelineCameraSectionRank(layer.kind)
-            : 0);
+    final place = placeOf(layer);
     if (place < last) {
       return false;
     }
@@ -111,3 +108,23 @@ bool isInSectionOrder(List<Layer> layers) {
   }
   return true;
 }
+
+/// Each of [layers]' rows' place in section order: its outermost folder's
+/// ([sectionedLayerOrder] has why), or its own outside every folder.
+int Function(Layer) _placeOfIn(List<Layer> layers) {
+  final folders = LayerFolderIndex(layers);
+  return (layer) {
+    final ancestry = folders.ancestryOf(layer.folderId);
+    return _placeOf(ancestry.isEmpty ? layer.kind : ancestry.last.kind);
+  };
+}
+
+/// [kind]'s place: its section, and inside the camera section its rank.
+int _placeOf(LayerKind kind) {
+  final section = timelineSectionForLayerKind(kind);
+  return section.index * (_cameraSectionTopRank + 1) +
+      (section == TimelineSection.camera ? timelineCameraSectionRank(kind) : 0);
+}
+
+const int _lastPlace =
+    TimelineSection.values.length * (_cameraSectionTopRank + 1) - 1;

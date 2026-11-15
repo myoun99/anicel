@@ -276,10 +276,12 @@ void main() {
 
       pill(s).cutRun();
 
-      expect(stack(s), ['note', 'over'], reason: 'the last instruction row');
+      // Let out of the folder, it stands in its own section again: over the
+      // pictures (F-596).
+      expect(stack(s), ['over', 'note'], reason: 'the last instruction row');
       s.selectLayer(const LayerId('over'));
       pill(s).pasteIndependentFrame();
-      expect(stack(s), ['note', 'over', 'a<F', 'F']);
+      expect(stack(s), ['over', 'a<F', 'F', 'note']);
     });
 
     test('🗣️F-532-Q1: a folder holding an attach row goes with it, and the '
@@ -321,7 +323,9 @@ void main() {
 
       pill(s).cutRun();
 
-      expect(stack(s), ['cam', 'over']);
+      // Let out of the folder, it stands in its own section: over the
+      // pictures (F-596).
+      expect(stack(s), ['over', 'cam']);
     });
   });
 
