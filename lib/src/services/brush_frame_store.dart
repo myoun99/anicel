@@ -2070,7 +2070,6 @@ class BrushFrameStore {
       final state = _frames.remove(from);
       final revision = state == null ? null : _nextRevision();
       if (state != null) {
-        _revisionsMoved += 1;
         _leave(state.sourceRevision);
         _put(to, state.copyWithKey(to).copyWith(sourceRevision: revision));
       }

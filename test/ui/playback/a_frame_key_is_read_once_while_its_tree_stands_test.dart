@@ -201,6 +201,44 @@ void main() {
     expect(after, isNot(before));
   });
 
+  group("every move of a cel's revision moves the store's count — what a "
+      "kept key's cels are read again under", () {
+    /// [move] moves a revision of cel a, b or c — and the count with it.
+    void countsTheMove(void Function() move) {
+      final keys = [keyOf('a'), keyOf('b'), keyOf('c')];
+      final revisions = [for (final key in keys) cels.sourceRevisionOf(key)];
+      final counted = cels.revisionsMoved;
+
+      move();
+
+      final now = [for (final key in keys) cels.sourceRevisionOf(key)];
+      expect(now, isNot(revisions), reason: '⛔premise: a revision moved');
+      expect(cels.revisionsMoved, isNot(counted));
+    }
+
+    test('an edit', () {
+      countsTheMove(() => ink(cels, 'b', CanvasPoint(x: 5, y: 5)));
+    });
+
+    test('a cel moved to another key', () {
+      countsTheMove(() => cels.rekeyFrames([(keyOf('a'), keyOf('c'))]));
+    });
+
+    test('a cel another was copied onto', () {
+      ink(cels, 'b', CanvasPoint(x: 5, y: 5));
+      parkCold(cels, {
+        keyOf('a'): cels.bakedSurfaceOrNull(keyOf('a'))!,
+        keyOf('b'): cels.bakedSurfaceOrNull(keyOf('b'))!,
+      });
+
+      countsTheMove(() => cels.copyCel(keyOf('b'), keyOf('a')));
+    });
+
+    test('every cel let go as the store is laid anew with none', () {
+      countsTheMove(() => cels.restoreBaked({}));
+    });
+  });
+
   test('LIVENESS — a stamp that is never the same stacks the frame at every '
       'asking, as the rig did before it said one', () {
     final cut = aCut();
