@@ -31,11 +31,26 @@ void main() {
 
   BitmapTile aTile() => BitmapTile.blank(size: gpuTileSide);
 
+  /// [tile] stored in [ledger] and read by its copy, as a closed project's
+  /// tiles long are: a store holds its tiles till then (GpuPool.store), and
+  /// its copy is told of before a done asked behind it.
+  ///
+  /// ⛔NOT LEFT TO THE COLLECTIONS THAT FOLLOW: where the copy is slower
+  /// than they are, a tile dropped is held still, and a give-back that
+  /// finds its slot held gives nothing back. 🔬The Surface Pro 11
+  /// (2026-11-15): the closed project's pin below, its tile dropped with no
+  /// wait, was red 7 runs of 7 — 134217728 bytes of page kept — and green
+  /// 3 of 3 with this one; the trunk's machine was green either way.
+  Future<void> storedAndRead(EngineTileLedger ledger, BitmapTile tile) async {
+    ledger.held((hold) => hold.slotsOf(a, [tile]));
+    await appGpuEngine.done();
+  }
+
   /// A ledger whose one tile was stored and collected, its slot let go: a
   /// page made that nobody holds.
   Future<EngineTileLedger> aPageNobodyHolds(EngineTileLedger ledger) async {
     BitmapTile? tile = aTile();
-    ledger.held((hold) => hold.slotsOf(a, [tile!]));
+    await storedAndRead(ledger, tile);
     tile = null;
     await collectGarbageUntil(() => ledger.slotCount == 0);
     expect(ledger.slotCount, 0, reason: 'the premise: its slot let go');
@@ -84,11 +99,7 @@ void main() {
       'the finalizer lets nothing go again', () async {
     final ledger = EngineTileLedger(appGpuEngine);
     BitmapTile? tile = aTile();
-    ledger.held((hold) => hold.slotsOf(a, [tile!]));
-    // Read by its copy, as a closed project's tiles long are: a store
-    // holds its tiles till then (GpuPool.store), and its copy is told of
-    // before a done asked behind it.
-    await appGpuEngine.done();
+    await storedAndRead(ledger, tile);
     tile = null;
 
     collectGarbageInThisTurn();
@@ -178,7 +189,7 @@ void main() {
       Object? project = Object();
       DrawingEngines.giveBackOnceCollected(project);
       BitmapTile? tile = aTile();
-      EngineTileLedger.instance.held((hold) => hold.slotsOf(a, [tile!]));
+      await storedAndRead(EngineTileLedger.instance, tile);
       expect(EngineTileLedger.appPoolBytes, isPositive, reason: 'premise');
       // Both through collections first, as a closed project's surfaces and
       // their tiles are: a holder still young goes in a scavenge before a
