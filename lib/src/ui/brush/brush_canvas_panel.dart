@@ -84,6 +84,7 @@ import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../canvas/picture_up_view.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
@@ -1156,6 +1157,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The viewport (Round 6): own, owner's, published, and the editor size.
   late final _CanvasPanelViewport _viewportState = _CanvasPanelViewport(this);
 
+  /// The view the canvas's picture stands at — what is drawn over it is
+  /// drawn through it ([PictureUpView]).
+  final PictureUpView _pictureUp = PictureUpView();
+
+  /// What the canvas's pictures go up together by ([PicturesUpTogether]).
+  final PicturesUpTogether _picturesUp = PicturesUpTogether();
+
+  /// The view what stands on the canvas's coordinates is drawn through:
+  /// the view its picture stands at, the view being as it is
+  /// ([PictureUpView.standing]).
+  CanvasViewport get _viewShown =>
+      _pictureUp.standing(_viewportState._viewport);
+
   // The book (F-201): the page its reader is on, kept true to the view.
   late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
@@ -1726,6 +1740,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.lastStroke?.reinputHandler = null;
     }
     _line.unbind();
+    _pictureUp.dispose();
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
@@ -2081,13 +2096,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // on anyone who has selected
         // something and walked away.
         child: RepaintBoundary(
-          child: CustomPaint(
+          child: ListenableBuilder(
+          listenable: _pictureUp,
+          builder: (context, _) => CustomPaint(
             painter:
                 SelectionAntsPainter(
                   repaint:
                       _idleAnts,
-                  viewport:
-                      _viewportState._viewport,
+                  viewport: _viewShown,
                   committedRegion:
                       idleSelection,
                   screenOffset:
@@ -2107,6 +2123,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             child:
                 const SizedBox.expand(),
           ),
+          ),
         ),
       ),
     );
@@ -2124,7 +2141,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // What a lift takes up is heard here as well as at the panel's
         // build ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
         child: _asideForTheContent(ListenableBuilder(
-        listenable: Listenable.merge([widget.transformCelsUnderfootChanges]),
+        listenable: Listenable.merge([
+          widget.transformCelsUnderfootChanges,
+          _pictureUp,
+        ]),
         builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
             widget
@@ -2198,7 +2218,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // coordinates.
               guides: widget.guides,
               shiftLine: _shiftLine,
-              viewport: _viewportState._viewport,
+              viewport: _viewShown,
               pasteboard: _stagePasteboard,
               frameToken: _whatALiftTakesUp,
               selectionCommands:

@@ -25,6 +25,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiveSurfaceTokens,
         StackedFrame,
         waitsForItsPlugins;
+import '../canvas/picture_up_view.dart';
 import '../canvas/viewport_canvas_transform.dart' show renderSnappedViewport;
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
@@ -100,6 +101,7 @@ class FramePictureView extends StatefulWidget {
     this.drawnLive = const {},
     this.ground,
     this.cutAtCanvas,
+    this.carriesTheOverlays = false,
   });
 
   final StackRun run;
@@ -181,6 +183,16 @@ class FramePictureView extends StatefulWidget {
   /// print a live picture takes over from showed past the canvas (🔬F-215's
   /// switch pin, 10-31). Null: nothing is cut.
   final CanvasSize? cutAtCanvas;
+
+  /// Whether what is drawn over the canvas stands on this view's frame up
+  /// ([PictureUpView]): the canvas's frame, seen through the panel's view.
+  ///
+  /// ⛔Not a picture seen through another view — a run seen through the
+  /// camera — nor one of a texture beside the frame's — the ghosts over it,
+  /// the track stack's cuts: one clock is one picture's, and whether
+  /// pictures on textures of their own are put up together is asked
+  /// (a-pan-moves-the-overlays-before-the-canvas, 11-16 (ㄱ)).
+  final bool carriesTheOverlays;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -1210,6 +1222,10 @@ class _FramePictureViewState extends State<FramePictureView> {
     viewport: widget.viewport,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
     repaint: Listenable.merge([_repaint, _liveChanges]),
+    overlays: widget.carriesTheOverlays
+        ? PictureUpViewScope.maybeOf(context)
+        : null,
+    together: PictureUpViewScope.togetherOf(context),
   );
 }
 
@@ -1246,6 +1262,8 @@ class _FrameScreen extends LeafRenderObjectWidget {
     required this.viewport,
     required this.devicePixelRatio,
     required this.repaint,
+    required this.overlays,
+    required this.together,
   });
 
   final _FramePictureViewState view;
@@ -1256,6 +1274,13 @@ class _FrameScreen extends LeafRenderObjectWidget {
   final CanvasViewport viewport;
   final double devicePixelRatio;
   final Listenable repaint;
+
+  /// The clock of what is drawn over the canvas, where this box carries it
+  /// ([FramePictureView.carriesTheOverlays]).
+  final PictureUpView? overlays;
+
+  /// What its frames go up together with: the canvas's other pictures.
+  final PicturesUpTogether? together;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
@@ -1296,18 +1321,65 @@ class _FrameScreen extends LeafRenderObjectWidget {
 /// (「어긋나는거 ok」): that is a picture made again under a box that
 /// follows the hand. A pan makes nothing again — the same picture, seen
 /// from another place (관제 2026-11-15).
-class _RenderFrameScreen extends RenderBox {
+class _RenderFrameScreen extends RenderBox implements StandingPicture {
   _RenderFrameScreen(this._view);
 
   final _FramePictureViewState _view;
 
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => attached,
-    opened: (_) => markNeedsPaint(),
-    letGo: markNeedsPaint,
-    putUp: ({required behind}) =>
-        behind ? markNeedsPaint() : _showWhatIsUp(),
+    opened: (_) {
+      markNeedsPaint();
+      _tellTheOverlays();
+    },
+    letGo: () {
+      markNeedsPaint();
+      _tellTheOverlays();
+    },
+    putUp: ({required behind}) {
+      behind ? markNeedsPaint() : _showWhatIsUp();
+      _tellTheOverlays();
+    },
   );
+
+  /// The clock of what is drawn over the canvas, where this box carries it.
+  PictureUpView? _overlays;
+
+  /// The view of the frame up the clock was last told of.
+  CanvasViewport? _toldUp;
+
+  /// The frame up is drawn through another view: what is drawn over the
+  /// canvas is told — between the app's frames, as a frame goes up
+  /// ([ScreenTexture.putUp]), so the frame that shows it draws them with
+  /// it. ⛔Not at each frame up: a stroke puts one up a frame, all of one
+  /// view, and its overlays would be built again with nothing moved.
+  void _tellTheOverlays() {
+    final up = _shownFor()?.viewport;
+    if (up == _toldUp) {
+      return;
+    }
+    _toldUp = up;
+    _overlays?.moved();
+  }
+
+  /// What the frame up was drawn for — null where none is up.
+  _DrawnFor? _shownFor() {
+    final texture = _shownThrough.texture;
+    final shownFor = texture?.shownFor;
+    return texture != null && texture.showsAFrame && shownFor is _DrawnFor
+        ? shownFor
+        : null;
+  }
+
+  /// The view the frame up stands at, the view being [now] — the view as it
+  /// is where this box shows none ([viewStandingAt]).
+  @override
+  CanvasViewport standingFor(CanvasViewport now) {
+    final shownFor = _drawsAnything ? _shownFor() : null;
+    return shownFor == null
+        ? now
+        : viewStandingAt(shownFor.viewport, now, _devicePixelRatio);
+  }
 
   /// Whether this box was asked to paint for anything but a frame put up:
   /// a paint for that alone shows it and draws nothing — or every frame
@@ -1354,6 +1426,14 @@ class _RenderFrameScreen extends RenderBox {
     _viewportOrNull = screen.viewport;
     _viewport = screen.viewport;
     _devicePixelRatio = screen.devicePixelRatio;
+    if (!identical(screen.overlays, _overlays)) {
+      if (attached) {
+        _overlays?.letGoOf(this);
+        screen.overlays?.carriedBy(this);
+      }
+      _overlays = screen.overlays;
+    }
+    _shownThrough.upTogether = screen.together?.joined;
     if (changed || (moved && !_servedByTheFrameDrawnLast)) {
       markNeedsPaint();
     } else if (moved) {
@@ -1386,12 +1466,14 @@ class _RenderFrameScreen extends RenderBox {
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _repaint?.addListener(markNeedsPaint);
+    _overlays?.carriedBy(this);
     _shownThrough.start();
   }
 
   @override
   void detach() {
     _repaint?.removeListener(markNeedsPaint);
+    _overlays?.letGoOf(this);
     _shownThrough.stop();
     super.detach();
   }
@@ -1488,15 +1570,8 @@ class _RenderFrameScreen extends RenderBox {
     }
     final (:viewport, corner: (cornerX, cornerY)) = shownFor;
     final ratio = _devicePixelRatio;
-    final now = renderSnappedViewport(_viewport, ratio);
-    final panned = viewport.copyWith(panX: now.panX, panY: now.panY) == now;
-    // On whole device pixels: a texel stays a device pixel.
-    final (movedX, movedY) = panned
-        ? (
-            ((now.panX - viewport.panX) * ratio).roundToDouble(),
-            ((now.panY - viewport.panY) * ratio).roundToDouble(),
-          )
-        : (0.0, 0.0);
+    final (movedX, movedY) =
+        panSince(viewport, _viewport, ratio) ?? (0.0, 0.0);
     return offset + Offset(movedX - cornerX, movedY - cornerY) / ratio;
   }
 
@@ -1580,9 +1655,10 @@ class _RenderFrameScreen extends RenderBox {
           context.addLayer(layer);
           return;
         }
+        // Where the picture stands: through a zoom, as it was drawn.
         final cut = canvasCutOnScreen(
           canvasSize,
-          _viewport,
+          standingFor(_viewport),
           _devicePixelRatio,
         );
         context.pushClipPath(

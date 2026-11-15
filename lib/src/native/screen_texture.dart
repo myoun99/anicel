@@ -140,6 +140,11 @@ sealed class ScreenTexture {
   /// ([present]), at a paint, as every frame is.
   void Function({required bool behind})? putUp;
 
+  /// When a frame the GPU finished goes up, told the GPU's [done] — the
+  /// frame up as soon as it is, where none is named: what puts up the
+  /// pictures of one canvas together (`PicturesUpTogether`).
+  Future<void> Function(Future<void> done)? upTogether;
+
   bool _freed = false;
 
   /// [draw]s the next frame onto what Flutter is not showing — what it was
@@ -174,8 +179,9 @@ sealed class ScreenTexture {
       _putUp();
       return;
     }
+    final finished = done();
     unawaited(
-      done().then(
+      (upTogether?.call(finished) ?? finished).then(
         (_) {
           if (_freed) {
             return;

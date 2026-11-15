@@ -298,19 +298,22 @@ class _CanvasPanelText implements CelTextToolHost {
   ({Object of, BitmapSurfacePainter painter})? _above;
 
   Widget layer() => Positioned.fill(
-    child: CelTextToolLayer(
-      tool: tool,
-      stage: CelTextStage(
-        viewport: _state._viewportState._viewport,
-        pasteboard: _state._stagePasteboard,
-        placement: _state.widget.interactiveContentPose,
+    child: ListenableBuilder(
+      listenable: _state._pictureUp,
+      builder: (context, _) => CelTextToolLayer(
+        tool: tool,
+        stage: CelTextStage(
+          viewport: _state._viewShown,
+          pasteboard: _state._stagePasteboard,
+          placement: _state.widget.interactiveContentPose,
+        ),
+        cel: cel,
+        onPressNeedsCel: _state._markDoorOverTheView,
+        markMakesItsOwnCel: _state.widget.markMakesItsOwnCel,
+        onDragActive: (active) => _state._textDragActive = active,
+        wearsItsCursor: _state.widget.toolCursorsEnabled,
+        oneFingerAction: _state.widget.oneFingerAction,
       ),
-      cel: cel,
-      onPressNeedsCel: _state._markDoorOverTheView,
-      markMakesItsOwnCel: _state.widget.markMakesItsOwnCel,
-      onDragActive: (active) => _state._textDragActive = active,
-      wearsItsCursor: _state.widget.toolCursorsEnabled,
-      oneFingerAction: _state.widget.oneFingerAction,
     ),
   );
 }

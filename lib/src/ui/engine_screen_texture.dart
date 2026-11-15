@@ -70,6 +70,16 @@ final class EngineScreenTexture {
   ScreenTexture? get texture => _texture;
   ScreenTexture? _texture;
 
+  /// When a frame the GPU finished goes up on the texture open, and on
+  /// each opened after ([ScreenTexture.upTogether]).
+  Future<void> Function(Future<void> done)? get upTogether => _upTogether;
+  set upTogether(Future<void> Function(Future<void> done)? value) {
+    _upTogether = value;
+    _texture?.upTogether = value;
+  }
+
+  Future<void> Function(Future<void> done)? _upTogether;
+
   /// What the texture has to hold, in device pixels.
   /// The size the texture is to hold, in device pixels.
   (int, int) wanted = (0, 0);
@@ -214,7 +224,9 @@ final class EngineScreenTexture {
       return;
     }
     _opening = null;
-    _texture = opened..putUp = _putUp;
+    _texture = opened
+      ..putUp = _putUp
+      ..upTogether = _upTogether;
     _opened(engine);
     await held?.free();
   }

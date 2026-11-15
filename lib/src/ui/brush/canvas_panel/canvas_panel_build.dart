@@ -94,7 +94,11 @@ class _PanelBuild {
       // Pan/zoom input lives on the panel — not the interactive
       // canvas — so navigation keeps working when the viewport
       // shows the blank paper or playback instead of a frame.
-      child: _gestureLayer(context),
+      child: PictureUpViewScope(
+        view: _state._pictureUp,
+        together: _state._picturesUp,
+        child: _gestureLayer(context),
+      ),
     );
   }
 
@@ -237,10 +241,7 @@ class _PanelBuild {
               Listener(
                 behavior: HitTestBehavior.deferToChild,
                 onPointerDown: _state._controlHolds.hold,
-                child: controlsBuilder(
-                  context,
-                  _state._viewportState._viewport,
-                ),
+                child: _onThePicture(controlsBuilder),
               ),
             ),
           ),
@@ -349,12 +350,7 @@ class _PanelBuild {
           ),
         Positioned.fill(child: _canvasView),
         if (overlayBuilder != null)
-          Positioned.fill(
-            child: overlayBuilder(
-              context,
-              _state._viewportState._viewport,
-            ),
-          ),
+          Positioned.fill(child: _onThePicture(overlayBuilder)),
         // Non-painting tools (P5 eyedropper / P6
         // fill): one tap layer ABOVE the canvas
         // absorbs the pointer so no stroke starts.
@@ -387,6 +383,16 @@ class _PanelBuild {
       ],
     );
   }
+
+  /// What [build] gives for the view the canvas's picture stands at, built
+  /// again as it stands at another ([PictureUpView]) — the controls and the
+  /// overlay a host lays on the canvas.
+  Widget _onThePicture(
+    Widget Function(BuildContext context, CanvasViewport viewport) build,
+  ) => ListenableBuilder(
+    listenable: _state._pictureUp,
+    builder: (context, _) => build(context, _state._viewShown),
+  );
 
   Widget _gestureLayer(BuildContext context) {
     final hud = _state.widget.flipHud;
@@ -544,18 +550,22 @@ class _PanelBuild {
                 // export. An ABSENT plane is the checkerboard where
                 // it would be (F-114). ↩️An alpha-preview toggle
                 // swapped both for it, and went (F-146).
-                child: _StagePlanes(
-                  backdropArgb: _state._stageBackdropArgb,
-                  pasteboardArgb: _state._stagePasteboardArgb,
-                  // F-114: an absent plane shows the checkerboard where
-                  // it would be.
-                  backdropNone: _state._stageBackdropNone,
-                  pasteboardNone: _state._stagePasteboardNone,
-                  pasteboardReach: _state._stagePasteboardReach,
-                  hasPasteboard: !_state.widget.canvasBase,
-                  paperNone: _state.widget.paperNone,
-                  canvasSize: _state.widget.canvasSize,
-                  viewport: _state._viewportState._viewport,
+                child: ListenableBuilder(
+                  listenable: _state._pictureUp,
+                  builder: (context, deck) => _StagePlanes(
+                    backdropArgb: _state._stageBackdropArgb,
+                    pasteboardArgb: _state._stagePasteboardArgb,
+                    // F-114: an absent plane shows the checkerboard where
+                    // it would be.
+                    backdropNone: _state._stageBackdropNone,
+                    pasteboardNone: _state._stagePasteboardNone,
+                    pasteboardReach: _state._stagePasteboardReach,
+                    hasPasteboard: !_state.widget.canvasBase,
+                    paperNone: _state.widget.paperNone,
+                    canvasSize: _state.widget.canvasSize,
+                    viewport: _state._viewShown,
+                    child: deck!,
+                  ),
                   child: _cursorDeck(context),
                 ),
               ),

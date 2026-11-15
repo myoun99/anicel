@@ -96,6 +96,8 @@ FramePictureView standingOn(
   required List<CompositeNode<CanvasStackRow>> nodes,
   required CanvasViewport viewport,
   required LiveRows live,
+  CanvasSize? cutAtCanvas,
+  bool carriesTheOverlays = false,
 }) => FramePictureView(
   key: key,
   run: run,
@@ -105,6 +107,8 @@ FramePictureView standingOn(
   live: live,
   laysWhatItMisses: true,
   wholeFrames: false,
+  cutAtCanvas: cutAtCanvas,
+  carriesTheOverlays: carriesTheOverlays,
 );
 
 /// The frame's own picture where a canvas stands on it or plays it — under

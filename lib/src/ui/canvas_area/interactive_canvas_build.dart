@@ -766,6 +766,7 @@ class _InteractiveCanvasBuild {
         activeSurfacePainter,
         floats,
         frame,
+        throughThePanelsView: shot == null,
       ),
     );
   });
@@ -807,8 +808,9 @@ class _InteractiveCanvasBuild {
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
     CanvasFloats floats,
-    _HostFrame frame,
-  ) {
+    _HostFrame frame, {
+    required bool throughThePanelsView,
+  }) {
     final session = frame.session;
     final cut = session.activeCutOrNull;
     if (cut == null) {
@@ -879,6 +881,7 @@ class _InteractiveCanvasBuild {
       // The cel you were drawing is a ghost in this picture on the frame you
       // step to, where the ghosts lie in place.
       drawnLive: drawnLive,
+      carriesTheOverlays: throughThePanelsView,
     );
     final over = shown.over;
     return DeviceGridProbe(
