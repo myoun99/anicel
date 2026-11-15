@@ -48,9 +48,37 @@ abstract final class TileBlocks {
   /// Gives [block] back to the lists — one [alloc] answered.
   static void free(Pointer<Uint8> block) => _free(block.cast());
 
-  /// Frees a block as the tile that holds it is collected: the lists' own
-  /// free, called on the collector's thread.
-  static final NativeFinalizer finalizer = NativeFinalizer(
+  /// Has [block] — [byteLength] bytes, told to the collector as [holder]'s
+  /// real weight — freed as [holder], the tile that holds it, is collected:
+  /// the lists' own free, called on the collector's thread.
+  ///
+  /// ⛔NO DETACH TOKEN, and the finalizer is this file's own so that none
+  /// can be passed (card `a-thawed-cel-is-adopted-on-the-ui-thread`). A
+  /// block is freed when its tile is collected and never sooner: nothing
+  /// ever detached one. A token costs EVERY tile a slot of the finalizer's
+  /// Expando and a set of one entry beside it (the VM's
+  /// `NativeFinalizer.attach`) — more for the collector to walk, and a table
+  /// rebuilt whole each time the tiles that came and went fill it, a weak
+  /// reference made anew for every tile alive: on the thread that was
+  /// adopting a thawed cel's tiles.
+  /// 🔬A script of the same attach (2026-11-15; 150,000 alive, 700 made and
+  /// 700 let go, 300 times, each told 64 KB; JIT, not the app): with the
+  /// token the bursts took 16.5–17.0 s in all, a tenth of them over 164 ms;
+  /// without it 4.2–5.6 s, a tenth over 41–60 ms — the collector's work in
+  /// both. Told no weight, so that the tables alone are timed: 5 bursts of
+  /// 300 over 8 ms, the longest 23–59 ms, against 1 of 17–20 ms.
+  /// ↩️A tile passed itself as the token from R19-Z (2026-07-14) on.
+  static void freeWith(
+    Finalizable holder,
+    Pointer<Uint8> block,
+    int byteLength,
+  ) => _freesWhenCollected.attach(
+    holder,
+    block.cast(),
+    externalSize: byteLength,
+  );
+
+  static final NativeFinalizer _freesWhenCollected = NativeFinalizer(
     Native.addressOf<NativeFinalizerFunction>(_free),
   );
 

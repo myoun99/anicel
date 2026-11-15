@@ -69,8 +69,8 @@ abstract interface class TilePixelsOnEngine {
 /// kernels needed staging copies to get stable pointers, and a commit
 /// adopted its scratch buffer as the finished tile.
 ///
-/// Lifetime: a [NativeFinalizer] frees the buffer when the tile is
-/// collected; [externalSize] keeps the GC honest about the real weight.
+/// Lifetime: the buffer is freed when the tile is collected, and its real
+/// weight told to the GC ([TileBlocks.freeWith]).
 /// Buffers come from the engine's lists ([TileBlocks], R20-E1) and the
 /// finalizer parks them there for reuse — tile churn (decode, the engine's
 /// tiles read back, undo drops) recycles instead of malloc/freeing.
@@ -151,12 +151,7 @@ class BitmapTile implements Finalizable {
   void _hold(Pointer<Uint8> pixels) {
     _block = pixels;
     _bytes = pixels.asTypedList(bytesFor(size));
-    TileBlocks.finalizer.attach(
-      this,
-      pixels.cast(),
-      detach: this,
-      externalSize: bytesFor(size),
-    );
+    TileBlocks.freeWith(this, pixels, bytesFor(size));
   }
 
   /// Whether the engine made it: its pixels are there, and read here only
