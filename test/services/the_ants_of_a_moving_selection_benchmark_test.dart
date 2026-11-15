@@ -2,7 +2,6 @@
 library;
 
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
@@ -47,7 +46,8 @@ void main() {
   CanvasPoint Function(CanvasPoint) step(int frame, double cx, double cy) {
     final angle = frame * 0.7 * math.pi / 180;
     final scale = 1 + frame * 0.003;
-    final c = math.cos(angle) * scale, s = math.sin(angle) * scale;
+    final c = math.cos(angle) * scale;
+    final s = math.sin(angle) * scale;
     return (p) => CanvasPoint(
       x: cx + (p.x - cx) * c - (p.y - cy) * s + frame * 0.37,
       y: cy + (p.x - cx) * s + (p.y - cy) * c + frame * 0.21,
