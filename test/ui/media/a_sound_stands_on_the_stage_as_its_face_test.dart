@@ -316,6 +316,21 @@ void main() {
         expect(identical(after.last.picture, before.last.picture), isFalse);
       });
 
+      testWidgets('a face that goes lets go of what its bands keep', (
+        tester,
+      ) async {
+        await pumpFace(tester);
+        final tiles = laidThrough(tester, rowSlot()).tiles;
+        List<int> holds() => [
+          for (final tile in tiles) tile.picture.debugHolds,
+        ];
+        expect(holds(), [2, 2], reason: '⛔전제: each band, and the slot');
+
+        await tester.pumpWidget(const SizedBox());
+
+        expect(holds(), [1, 1], reason: 'the slot\'s alone');
+      });
+
       testWidgets('the row round the playhead lays the sound from where the '
           'file starts, and nothing before it', (tester) async {
         // At frame 0 the file starts under the playhead, the row's middle:

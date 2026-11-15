@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/dialogs/se_offset_strip.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart'
+    show TimelineGridScreenTile;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SePaperSpan;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -135,23 +137,31 @@ void main() {
         peaks: Float32List.fromList(List.filled(160, 0.8)),
       );
 
-      testWidgets('both bands are baked into one picture laid across the '
-          'strip — the block\'s ink over the faint where it plays', (
-        tester,
-      ) async {
-        await pumpStrip(tester, withPeaks: loud);
-        final bands = find.byKey(const ValueKey<String>('se-offset-bands'));
-        final size = tester.getSize(bands);
+      final bands = find.byKey(const ValueKey<String>('se-offset-bands'));
+
+      /// The one tile the strip's bands lay, painted through a slot of
+      /// their own as a screen would paint them.
+      TimelineGridScreenTile laid(WidgetTester tester) {
         final recorder = ui.PictureRecorder();
         final tile = rowSlot()
             .paintThrough(
               () => tester
                   .widget<CustomPaint>(bands)
                   .painter!
-                  .paint(Canvas(recorder), size),
+                  .paint(Canvas(recorder), tester.getSize(bands)),
             )
             .single;
         recorder.endRecording().dispose();
+        return tile;
+      }
+
+      testWidgets('both bands are baked into one picture laid across the '
+          'strip — the block\'s ink over the faint where it plays', (
+        tester,
+      ) async {
+        await pumpStrip(tester, withPeaks: loud);
+        final size = tester.getSize(bands);
+        final tile = laid(tester);
 
         expect(tile.onto, Offset.zero & size);
         final width = tile.from.width.toInt();
@@ -168,6 +178,18 @@ void main() {
           greaterThan(cutOff),
           reason: 'the block\'s ink over the faint',
         );
+      });
+
+      testWidgets('a strip that goes lets go of what its bands keep', (
+        tester,
+      ) async {
+        await pumpStrip(tester, withPeaks: loud);
+        final tile = laid(tester);
+        expect(tile.picture.debugHolds, 2, reason: '⛔전제: the band, the slot');
+
+        await tester.pumpWidget(const SizedBox());
+
+        expect(tile.picture.debugHolds, 1, reason: 'the slot\'s alone');
       });
     });
   });
