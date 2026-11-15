@@ -8,8 +8,10 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
+import '../services/cel_shells.dart';
 import 'app_gpu_engine.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
@@ -89,7 +91,7 @@ import 'app_gpu_engine.dart';
 /// bytes today, and nothing at all once the engine's are the only ones
 /// (저장's review of the flip lane, 11-09; ⓗ had let a worker open its own).
 // ⏳The screen asks after its view is swapped (screen-on-the-engine c6).
-class EngineTileLedger implements TilePixelsOnEngine {
+class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
   /// null —, a full pool letting go [roomBatch] slots at the least: a
@@ -217,7 +219,8 @@ final GpuEngine _engine;
   int get slotCount => _slotCount;
   int _slotCount = 0;
 
-  /// How many slots [retire] has let go that [_stored] still lists.
+  /// How many slots [retire] has let go, and [shellOf] moved, that
+  /// [_stored] still lists.
   int _retired = 0;
 
   /// Retired slots [_stored] may list before they are swept out.
@@ -239,11 +242,105 @@ final GpuEngine _engine;
       return;
     }
     _letGo(slot);
+    _countedOut();
+  }
+
+  /// One more slot [_stored] lists that is out — all of them swept out once
+  /// they are [_retiredSwept].
+  void _countedOut() {
     _retired += 1;
     if (_retired > _retiredSwept) {
       _stored.removeWhere((slot) => slot.out);
       _retired = 0;
     }
+  }
+
+  /// 🚨A CEL A LOOK LETS GO KEEPS WHAT THE ENGINE HOLDS OF IT (card
+  /// let-go-cels-keep-their-gpu-tiles, 유저 2026-11-16 03:10 on Q3: 「지금
+  /// 착지하고, GPU 타일을 남기는 일을 바로 다음으로」): each tile of
+  /// [surface] with bytes of its own and a slot here gives that slot to a
+  /// tile of the same pixels that holds none here, a shell's — and the
+  /// tile with the bytes goes with the look, its slot no longer its. 🔬What
+  /// it was for: a ghost turned on read every cel from the file again and
+  /// put every tile back on the engine once the walk let go of its cels
+  /// (FNK_02 copy, main PC, 11-16).
+  ///
+  /// A tile of a colour, one with no slot here and one the engine made stay
+  /// as they are: the first two hold their bytes already, and the last is
+  /// a hot cel's, which keeps no shell. None where no tile is a shell's.
+  ///
+  /// A shell's slots go as freely as any whose bytes are here
+  /// ([TilePixelsKeptBesides]): a tile whose slot went reads the cel's kept
+  /// bytes again ([readAgain]) — once for every tile a turn reads so
+  /// ([_KeptCel]) — as the cel's next thaw would. ⚠️A shell's tile weighs a
+  /// tile's bytes ([BitmapTile.ownBytes]), as any the engine made does: the
+  /// looks weigh what the engine keeps for them, as before.
+  @override
+  BitmapSurface? shellOf(
+    BitmapSurface surface, {
+    required BitmapSurface Function() readAgain,
+  }) {
+    if (surface.tileSize != gpuTileSide) {
+      return null;
+    }
+    final kept = _KeptCel(readAgain);
+    var shelled = 0;
+    var already = 0;
+    final tiles = <TileCoord, BitmapTile>{};
+    for (final MapEntry(key: at, value: tile) in surface.tiles.entries) {
+      final slot = _slotNow(tile);
+      if (slot == null || !identical(tile.pixelsKey, tile)) {
+        tiles[at] = tile;
+      } else if (tile.isOnEngine) {
+        tiles[at] = tile;
+        already += 1;
+      } else {
+        tiles[at] = _shellOf(tile, slot, _ShellPixels(this, kept, at));
+        shelled += 1;
+      }
+    }
+    if (shelled == 0) {
+      return already == 0 ? null : surface;
+    }
+    return surface.copyWith(tiles: tiles);
+  }
+
+  /// Whether every tile of [shell] the engine holds has its slot here: a
+  /// full pool lets a shell's go, and a shell kept from the ledger of an
+  /// engine the app let go has none here.
+  @override
+  bool isWhole(BitmapSurface shell) => shell.tiles.values.every(
+    (tile) => !tile.isOnEngine || _slotNow(tile) != null,
+  );
+
+  /// A shell's tile of [tile]'s pixels, read through [pixels], given
+  /// [slot] — [tile]'s till now, which has none from here on.
+  BitmapTile _shellOf(BitmapTile tile, _Slot slot, _ShellPixels pixels) {
+    final shell = BitmapTile.onEngine(
+      size: tile.size,
+      on: pixels,
+      hasInk: tile.hasInk,
+    );
+    if (tile.inkBoundsKnown) {
+      shell.rememberInkBounds(tile.inkBounds);
+    }
+    slot.out = true;
+    slot.place.slot = null;
+    _slotCount -= 1;
+    _give(shell, slot.at);
+    _countedOut();
+    return shell;
+  }
+
+  /// Whether [tile]'s slot here read into [into] — not where it has none,
+  /// or the device went with it.
+  bool _readsItsSlot(BitmapTile tile, Pointer<Uint8> into) {
+    final slot = _slotNow(tile);
+    if (slot == null) {
+      return false;
+    }
+    debugTileReads += 1;
+    return _reads(() => pool.read([slot.at], into));
   }
 
   /// The tiles the engine made that were read back: what a landing must not
@@ -1029,6 +1126,49 @@ final class _Slot {
   /// (`EngineTileLedger.copyHereABatch`): not one the next batch asks for
   /// again.
   bool onItsWay = false;
+}
+
+/// What reads a shell's tile ([EngineTileLedger.shellOf]): its slot where
+/// the ledger still has one, else the tile [at] of its cel's kept bytes,
+/// read again.
+final class _ShellPixels implements TilePixelsKeptBesides {
+  _ShellPixels(this._ledger, this._cel, this.at);
+
+  final EngineTileLedger _ledger;
+  final _KeptCel _cel;
+  final TileCoord at;
+
+  @override
+  void readInto(BitmapTile tile, Pointer<Uint8> into) {
+    if (_ledger._readsItsSlot(tile, into)) {
+      return;
+    }
+    final bytes = into.asTypedList(gpuTileBytes);
+    final kept = _cel.read().tiles[at];
+    if (kept == null) {
+      bytes.fillRange(0, gpuTileBytes, 0);
+    } else {
+      kept.readPixels((_, view) => bytes.setAll(0, view));
+    }
+  }
+}
+
+/// A shell's cel as its kept bytes hold it, read again where the engine
+/// let a slot of it go: once for every tile a turn reads so, then let go.
+final class _KeptCel {
+  _KeptCel(this._readAgain);
+
+  final BitmapSurface Function() _readAgain;
+  BitmapSurface? _read;
+
+  BitmapSurface read() {
+    final read = _read;
+    if (read != null) {
+      return read;
+    }
+    scheduleMicrotask(() => _read = null);
+    return _read = _readAgain();
+  }
 }
 
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for

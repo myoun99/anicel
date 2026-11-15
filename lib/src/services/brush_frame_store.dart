@@ -75,10 +75,12 @@ enum CelRead {
 
 class BrushFrameStore {
   /// [shells] keeps what the engine holds of a cel a look let go of
-  /// ([keepShellOf]); none keeps nothing, and every look thaws.
-  BrushFrameStore({CelShells? shells}) : _celShells = shells;
+  /// ([keepShellOf]) — the app's engine's where none is given
+  /// ([DrawingEngines.celShells]): every store's looks keep the same.
+  BrushFrameStore({CelShells? shells})
+    : _celShells = shells ?? DrawingEngines.celShells;
 
-  final CelShells? _celShells;
+  final CelShells _celShells;
 
   /// The shell of each cel a look let go of ([keepShellOf]), under the kept
   /// bytes it was read from: what the next look at those bytes is handed
@@ -1193,20 +1195,40 @@ class BrushFrameStore {
     required int revision,
   }) {
     key = _canonicalize(key);
-    final shells = _celShells;
     final ref = _keptAt(key, canvasSize);
-    if (shells == null ||
-        ref == null ||
+    if (ref == null ||
         _bakedSurfaces.containsKey(key) ||
         sourceRevisionOf(key) != revision) {
       return;
     }
-    final shell = shells.shellOf(looked);
+    final shell = _celShells.shellOf(
+      looked,
+      readAgain: () => _readAgain(key, canvasSize, revision),
+    );
     if (shell == null) {
       _shells.remove(key);
       return;
     }
     _shells[key] = (ref: ref, shell: shell);
+  }
+
+  /// [key]'s pixels at [canvasSize] as they stood at [revision], read
+  /// again for a shell's tile whose slot the engine let go ([CelShells]) —
+  /// decoded for that read alone ([CelRead.look]). Refused where the cel
+  /// has moved on since: a picture made of that shell is of a content
+  /// nothing asks for.
+  BitmapSurface _readAgain(
+    BrushFrameKey key,
+    CanvasSize canvasSize,
+    int revision,
+  ) {
+    final surface = sourceRevisionOf(key) == revision
+        ? bakedSurfaceOrNull(key, read: CelRead.look)
+        : null;
+    if (surface == null || surface.canvasSize != canvasSize) {
+      throw StateError('a shell of a cel that has moved on was read');
+    }
+    return surface;
   }
 
   /// [key]'s shell ([keepShellOf]) where its kept bytes at [canvasSize] are
@@ -1219,7 +1241,7 @@ class BrushFrameStore {
     }
     if (identical(kept.ref, _keptAt(key, canvasSize)) &&
         !_bakedSurfaces.containsKey(key) &&
-        _celShells!.isWhole(kept.shell)) {
+        _celShells.isWhole(kept.shell)) {
       return kept.shell;
     }
     _shells.remove(key);

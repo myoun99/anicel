@@ -104,6 +104,46 @@ void main() {
       expect(again, isNot(same(shells.made.single)), reason: 'let go');
     });
 
+    test('🚨a shell whose slots the engine let go reads the cel\'s kept '
+        'bytes again — the pixels the look read, and nothing kept hot',
+        () async {
+      await lookedAndLetGo('a');
+
+      final read = shells.readsAgain.single();
+
+      expect(read.tiles[origin]!.pixels, ink(1).tiles[origin]!.pixels);
+      expect(store.isCelCold(key('a')), isTrue, reason: 'decoded, not kept');
+    });
+
+    test('🚨a shell of a cel edited since is not read again — a picture of '
+        'it is of a content nothing asks for', () async {
+      await lookedAndLetGo('a');
+
+      store.copyCel(key('b'), key('a'));
+
+      expect(shells.readsAgain.single, throwsStateError);
+    });
+
+    test('🚨nor a shell of a cel kept at another size since', () async {
+      await lookedAndLetGo('a');
+      final revision = store.sourceRevisionOf(key('a'));
+
+      store.resizeBakedSurfaces(
+        const CanvasSize(
+          width: 2 * defaultCelTileSize,
+          height: defaultCelTileSize,
+        ),
+        cutId: const CutId('c'),
+      );
+      expect(
+        store.sourceRevisionOf(key('a')),
+        revision,
+        reason: '⛔premise: a resize moves no revision',
+      );
+
+      expect(shells.readsAgain.single, throwsStateError);
+    });
+
     test('🚨hot wins — a cel made hot lets its shell go, and is read hot',
         () async {
       await lookedAndLetGo('a');
@@ -256,11 +296,18 @@ void main() {
 final class _Shells implements CelShells {
   final handed = <BitmapSurface>[];
   final made = <BitmapSurface>[];
+
+  /// What each shell made reads where the engine let a slot of it go.
+  final readsAgain = <BitmapSurface Function()>[];
   bool whole = true;
 
   @override
-  BitmapSurface? shellOf(BitmapSurface surface) {
+  BitmapSurface? shellOf(
+    BitmapSurface surface, {
+    required BitmapSurface Function() readAgain,
+  }) {
     handed.add(surface);
+    readsAgain.add(readAgain);
     final shell = BitmapSurface(
       canvasSize: surface.canvasSize,
       tileSize: surface.tileSize,

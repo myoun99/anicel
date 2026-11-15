@@ -1,3 +1,5 @@
+import '../models/bitmap_surface.dart';
+import '../services/cel_shells.dart';
 import 'app_gpu_engine.dart';
 import 'engine_selection_masks.dart';
 import 'engine_strokes.dart';
@@ -46,10 +48,31 @@ abstract final class DrawingEngines {
   /// would be one a test's clock holds. The ledger's slots go by a
   /// finalizer's message of their own, which may land after it: the ledger
   /// lets go a collected tile's slot itself first.
+  /// What keeps a cel's tiles on the engine once a look lets go of its
+  /// pixels here ([CelShells]) — the app's ledger, whichever its engine has
+  /// now ([EngineTileLedger.opened]), and none where nothing opened one:
+  /// no tile then has a slot to keep.
+  static const CelShells celShells = _TheAppsLedger();
+
   static void giveBackOnceCollected(Object holder) =>
       _givesBackOnceCollected.attach(holder, 0);
 
   static final Finalizer<int> _givesBackOnceCollected = Finalizer<int>(
     (_) => respondToMemoryPressure(),
   );
+}
+
+/// [DrawingEngines.celShells]: the app ledger's, asked anew each time.
+final class _TheAppsLedger implements CelShells {
+  const _TheAppsLedger();
+
+  @override
+  BitmapSurface? shellOf(
+    BitmapSurface surface, {
+    required BitmapSurface Function() readAgain,
+  }) => EngineTileLedger.opened?.shellOf(surface, readAgain: readAgain);
+
+  @override
+  bool isWhole(BitmapSurface shell) =>
+      EngineTileLedger.opened?.isWhole(shell) ?? false;
 }
