@@ -28,14 +28,15 @@ import 'app_gpu_engine.dart';
 ///
 /// ⛔THE SLOTS A CALL IS HANDED STAY TILL IT RETURNS ([held], ⓓ). Only a
 /// store the pool is full at lets slots go, only the ones no open hold
-/// has, and only as many as it is short — the ones stored longest ago
-/// first ([_shortAsRoomIsMade]): a tile whose bytes are here is stored
-/// again when asked, never read back (screen-on-the-engine c4, 관제
-/// 2026-11-07). The tiles a hold has are then stored past [byteBudget], as
-/// the pictures' budget lets go what nobody shows and never what a paint
-/// did (`TilePictureBudget`): a budget refusing what a call holds would be
-/// a failure with no fallback — a cel of 5800² inked whole is past the
-/// 128 MB it gives a device of 2 GB.
+/// has, and the ones stored longest ago first — as many as it is short, a
+/// page's worth at the least ([_shortAsRoomIsMade]): a tile whose bytes
+/// are here is stored again when asked, never read back
+/// (screen-on-the-engine c4, 관제 2026-11-07). The tiles a hold has are
+/// then stored past [byteBudget], as the pictures' budget lets go what
+/// nobody shows and never what a paint did (`TilePictureBudget`): a
+/// budget refusing what a call holds would be a failure with no fallback
+/// — a cel of 5800² inked whole is past the 128 MB it gives a device of
+/// 2 GB.
 ///
 /// 🚨A TILE THE ENGINE ALONE HOLDS GIVES ITS SLOT ONLY ONCE ITS BYTES ARE
 /// HERE ([BitmapTile.isOnlyOnEngine]), and a pool still full reads them
@@ -80,11 +81,13 @@ import 'app_gpu_engine.dart';
 class EngineTileLedger implements TilePixelsOnEngine {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
-  /// null.
-  EngineTileLedger(GpuEngine engine, {int? byteBudget})
+  /// null —, a full pool letting go [roomBatch] slots at the least: a
+  /// page's worth where null.
+  EngineTileLedger(GpuEngine engine, {int? byteBudget, int? roomBatch})
     : _engine = engine,
       pool = GpuPool(engine, byteBudget ?? _unbounded),
-      _byteBudget = byteBudget {
+      _byteBudget = byteBudget,
+      _roomBatch = roomBatch ?? EngineTileLedger.roomBatch {
     pool.onUnwritten = _letGoUnwritten;
   }
 
@@ -571,6 +574,12 @@ final GpuEngine _engine;
   /// The tiles a read of [readEach] reads at once.
   static const int readBatch = 64;
 
+  /// The slots a full pool lets go at the least ([_shortAsRoomIsMade]): a
+  /// page's worth of the pool's, 128 MiB of tiles.
+  static const int roomBatch = 2048;
+
+  final int _roomBatch;
+
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
   GpuTile? slotOf(BitmapTile tile) => _slotNow(tile)?.at;
@@ -632,21 +641,29 @@ final GpuEngine _engine;
   /// How many of the [short] tiles a store had no slot for are still
   /// without one once room is made for them: [placeRest] places what is
   /// left and answers how many still are, asked again after each step —
-  /// the slots no hold has, of tiles whose bytes are here, let go, as many
-  /// as the store is short and the ones stored longest ago first, and
-  /// [byteBudget] lifted; the bytes of tiles the engine alone holds moved
-  /// here ([_moveBytesHere]); a page past the OS's budget.
+  /// the slots no hold has, of tiles whose bytes are here, let go, the
+  /// ones stored longest ago first, as many as the store is short and
+  /// [roomBatch] at the least, and [byteBudget] lifted; the bytes of tiles
+  /// the engine alone holds moved here ([_moveBytesHere]); a page past the
+  /// OS's budget.
   ///
   /// ↩️Till 2026-11-15 the first step let go EVERY slot no hold had (캔버스
   /// 베이스's own, 11-08 — nobody's order): the pictures' budget, which it
   /// was written after, lets go the least recently shown till the rest fit
   /// (`TilePictureBudget.letGo`), not all of them. 🔬The Surface, FNK_02
-  /// cut 59 as the onion's ghosts were laid (2026-11-15, card
-  /// a-picture-lay-holds-the-raster-thread): the pool was let go whole four
-  /// times a pass, some 21,000 slots each and 10.9 to 22.8 ms of the UI
-  /// thread a time.
+  /// cut 59 as the onion's ghosts were laid, the pool's 22,000 slots
+  /// turning over 3.7 times a pass whatever the law (2026-11-15, card
+  /// a-picture-lay-holds-the-raster-thread, a quiet run each): let go
+  /// whole, 4 times a pass, 15.2 to 22.0 ms of the UI thread a time and 40
+  /// to 50 ms a pass; as many as each store was short and no more, some
+  /// 600 times a pass, 0.17 ms a time and 92 to 123 ms a pass — a walk's
+  /// own cost at every store; a page's worth at the least, 35 times a
+  /// pass, 1.2 ms a time (6.6 once) and 18 to 29 ms a pass.
   int _shortAsRoomIsMade(int short, int Function() placeRest) {
-    _letGoWhere((tile, _) => _noHoldHas(tile), most: short);
+    _letGoWhere(
+      (tile, _) => _noHoldHas(tile),
+      most: math.max(short, _roomBatch),
+    );
     pool.makeNoPagePast(_unbounded);
     try {
       short = placeRest();

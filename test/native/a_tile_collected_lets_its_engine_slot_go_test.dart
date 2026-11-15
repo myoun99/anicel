@@ -85,7 +85,13 @@ void main() {
 
   test('a tile let go by a full pool takes no slot with it when collected',
       () async {
-    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
+    // A batch of one: the one slot the next cel is short of goes, the rest
+    // of the page standing to be read below.
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 1,
+    );
     BitmapTile? gone = aTile();
     final [first] = ledger.held((hold) => hold.slotsOf(a, [gone!]));
     // The rest of its page, so the next cel finds the pool full.

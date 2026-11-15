@@ -193,10 +193,16 @@ void main() {
   // 🔬What it is for: the Surface, FNK_02 cut 59 as the onion's ghosts were
   // laid (캔버스 베이스 2026-11-15, card
   // a-picture-lay-holds-the-raster-thread) — a full pool let go every slot
-  // no hold had, some 21,000 a time and 10.9 to 22.8 ms of the UI thread.
+  // no hold had, some 21,000 a time and 15.2 to 22.0 ms of the UI thread.
+  // With a batch of one, so the count is the store's own: the page's worth
+  // a full pool lets go at the least is pinned where a budget moves, below.
   test('🚨a full pool lets go as many slots as the store is short — the ones '
       'stored longest ago that no hold has, and no more', () {
-    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 1,
+    );
     final first = tileOf(12);
     ledger.held((hold) => hold.slotsOf(a, [first]));
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
@@ -548,14 +554,20 @@ void main() {
     expect(ledger.slotOf(kept), isNotNull);
   });
 
+  // 🚨The page's worth a full pool lets go at the least
+  // ([EngineTileLedger.roomBatch]), by a ledger made as the app's is: of
+  // two pages, the one stored first goes whole for a store one slot short,
+  // and the tile stored after it stays.
   test('a budget moved is the one a full pool keeps to, the pages made '
-      'staying', () {
+      'staying — 🚨and one slot short, it lets go a page\'s worth of the '
+      'slots stored longest ago, and no more', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final one = tileOf(8);
     final two = tileOf(9);
 
     ledger.held((hold) => hold.slotsOf(a, [one]));
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    expect(slots, EngineTileLedger.roomBatch, reason: 'the premise: a page');
     final rest = blanks(slots - 1);
     ledger.held((hold) => hold.slotsOf(a, rest));
     ledger.held((hold) => hold.slotsOf(b, [two]));
@@ -565,11 +577,18 @@ void main() {
 
     ledger.byteBudget = 0;
     // One more than the second page has room for.
-    ledger.held((hold) => hold.slotsOf(c, blanks(slots)));
+    final last = blanks(slots);
+    ledger.held((hold) => hold.slotsOf(c, last));
 
     expect(ledger.byteBudget, 0);
-    expect(ledger.slotOf(one), isNull, reason: 'room made, not a page');
-    expect(ledger.pool.bytes, made);
+    expect(ledger.pool.bytes, made, reason: 'room made, not a page');
+    expect(
+      [one, ...rest].map(ledger.slotOf),
+      everyElement(isNull),
+      reason: "a page's worth: the page stored first",
+    );
+    expect(ledger.slotOf(two), isNotNull, reason: 'stored after them');
+    expect(last.map(ledger.slotOf), everyElement(isNotNull));
   });
 
   testWidgets("the app's ledger takes the session's line, before it opens "

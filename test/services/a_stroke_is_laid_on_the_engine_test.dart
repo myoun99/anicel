@@ -300,7 +300,13 @@ void main() {
 
   test('🚨a full pool lets go what it can store again, not what the engine '
       'alone holds', () {
-    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 1);
+    // A batch of one, so what a store or a landing is short of is told
+    // from the page's worth a full pool lets go at the least.
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 1,
+      roomBatch: 1,
+    );
     final made = GpuStroke(appGpuEngine);
     addTearDown(made.free);
     made.pile([
