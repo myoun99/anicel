@@ -146,7 +146,7 @@ jobs:
       # kernel (7.0.0-1017-azure) has udmabuf built in, root:kvm, so
       # modprobe finds no module, and its exit 1 ended the step before the
       # chown — the bridge test was red behind a green step (관제 2026-11-07,
-      # run 42324320792).
+      # run 42324320792). ci.yml's Linux shards lend it with the same step.
       - name: lend lavapipe /dev/udmabuf
         continue-on-error: true
         run: |

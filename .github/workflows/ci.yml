@@ -197,6 +197,26 @@ jobs:
       # engine runs here — the Windows shards leave them to these three
       # (유저 gpu-engine-skeleton-Q16, below).
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+      # A screen a test opens is the engine's shown surface, exported as a
+      # dma-buf, and lavapipe offers the export only when llvmpipe can open
+      # /dev/udmabuf: the runner's user is lent the device, as gpu-engine.yml's
+      # Linux job lends it (why the module is loaded only when it is missing
+      # is beside that step). Without it every test that opened a screen was
+      # refused — RGBA for want of VK_EXT_image_drm_format_modifier, then
+      # BGRA, which Linux never shows — and shard 1 of the bundle PR's run
+      # 43591634086 had 150 red files whose second run passed the 45 minutes
+      # (관제 2026-11-15, board ci-linux-shards-cannot-make-a-shown-surface).
+      # ⚖️Two copies of one step, not an action: the rule of three moves them
+      # into one when a third job runs the engine on lavapipe, and until then
+      # test/architecture/every_job_that_runs_lavapipe_lends_it_udmabuf_test.dart
+      # holds each such job to the lend.
+      - name: lend lavapipe /dev/udmabuf
+        continue-on-error: true
+        run: |
+          ls -l /dev/udmabuf || true
+          [ -e /dev/udmabuf ] || sudo modprobe udmabuf
+          sudo chown "$USER" /dev/udmabuf
+          ls -l /dev/udmabuf
       - uses: ./.github/actions/rust-engine
       # The project's green rule: the exit code decides, never the tail.
       - name: Run tests against the engine this run built
