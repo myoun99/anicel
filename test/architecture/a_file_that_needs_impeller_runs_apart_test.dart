@@ -256,13 +256,44 @@ void main() {
       final shard = _read('.github/actions/test-shard/action.yml');
       expect(
         shard,
-        contains('        half=\$(( cores / 2 ))\n'
-            '        [ "\$half" -ge 1 ] || half=1\n'
-            '        dart tool/affected_tests.dart \\\n'
-            '          --files-from "\$RUNNER_TEMP/shard_tests.txt" \\\n'
-            '          --outside-the-line --concurrency "\$half"\n'),
+        contains('        bash tool/runner_tests.sh '
+            '"\$RUNNER_TEMP/shard_tests.txt"\n'),
       );
       expect(shard, isNot(contains('xargs -0 -s')));
+      expect(
+        _read('tool/runner_tests.sh'),
+        contains('half=\$(( cores / 2 ))\n'
+            '[ "\$half" -ge 1 ] || half=1\n'
+            'echo "runner_tests: \$(wc -l < "\$list") file(s) at \$half of '
+            '\$cores cores"\n'
+            'dart tool/affected_tests.dart \\\n'
+            '  --files-from "\$list" \\\n'
+            '  --outside-the-line --concurrency "\$half"\n'),
+      );
+    });
+
+    test('🚨every workflow runs a list one way — on the runner as the one '
+        'job it holds, at half its cores', () {
+      // ↩️The release workflows ran theirs in the machine's line till
+      // 2026-11-16, and a runner has no machine file: ten suites on the
+      // Windows ARM64 runner's four cores and its software GPU (round 1091,
+      // run 43755979454 — the GPU did not finish within 30s, 57 times).
+      final direct = <String>[];
+      for (final file in filesUnder('.github')) {
+        final text = file.readAsStringSync().replaceAll('\r\n', '\n');
+        for (final line in text.split('\n')) {
+          final code = line.trimLeft();
+          if (code.startsWith('#')) continue;
+          if (code.contains('affected_tests.dart')) {
+            direct.add('${file.path}: $code');
+          }
+        }
+      }
+      expect(
+        direct,
+        isEmpty,
+        reason: 'run a list through tool/runner_tests.sh',
+      );
     });
 
     test('⛔no step runs `flutter test` itself — every run goes by the '

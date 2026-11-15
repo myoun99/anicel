@@ -95,9 +95,9 @@ jobs:
           set -euo pipefail
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
           echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
-          # Run by the run plan, as every list run goes: the pins that wait
-          # for the collector alone and last (tool/affected_tests.dart).
-          dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
+          # Run as every workflow runs a list: by the plan, on the runner as
+          # the one job it holds, at half its cores (tool/runner_tests.sh).
+          bash tool/runner_tests.sh "$RUNNER_TEMP/parity.txt" || {
             status=$?
             python3 tool/print_mac_crash_reports.py
             exit $status

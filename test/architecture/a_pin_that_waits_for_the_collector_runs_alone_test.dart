@@ -225,7 +225,14 @@ void main() {
     test('🚨every place that runs the parity list runs it by the plan', () {
       // ↩️`lane.sh` was the fifth, naming the runner beside itself through
       // tool/run.sh, till its native gate went with the C (2026-11-13).
+      // ↩️Each named the plan itself till 2026-11-16; now each runs the list
+      // as every workflow does, and the script runs it by the plan.
       final byThePlan = RegExp(r'affected_tests(\.dart"?)?[\s\\]+--files-from');
+      expect(
+        File('tool/runner_tests.sh').readAsStringSync(),
+        matches(byThePlan),
+        reason: 'tool/runner_tests.sh runs a list — through the plan',
+      );
       final places = <String>[];
       for (final dir in ['tool', '.github', '.githooks']) {
         for (final file in filesUnder(dir)) {
@@ -236,8 +243,9 @@ void main() {
           places.add(path);
           expect(
             text,
-            matches(byThePlan),
-            reason: '$path runs the parity list — through the plan',
+            contains('bash tool/runner_tests.sh "\$RUNNER_TEMP/parity.txt"'),
+            reason: '$path runs the parity list — as every workflow runs a '
+                'list',
           );
           expect(
             text,

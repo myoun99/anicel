@@ -111,36 +111,15 @@ runs:
           echo "shard selected no test files"
           exit 1
         fi
-        # The slice runs by the run plan, as every list run goes
-        # (tool/affected_tests.dart, ci-shards-crowd-the-collector-pins):
-        # the pins that wait for the collector alone and last, the files
-        # that need Impeller on their own engine (dart_test.yaml, the gpu
-        # and impeller tags), each batch no longer than the command line
-        # Windows takes. One `flutter test` for the whole slice put the
-        # collector's pins in the crowd and every file on Skia; the
-        # command-line limit this step carried was the plan's own, copied.
-        # In this step, not a job of their own — a job is CI usage (the
-        # 2026-08-31 suspension).
-        #
-        # --outside-the-line: the runner holds this one job, so there is no
-        # machine's line to share, and on Windows the line would wait for
-        # room it measures through PowerShell. --concurrency: what this
-        # step's `flutter test` ran a shard at before — package:test's own
-        # default, half the cores — so the move changes where files run,
-        # not how many run at once.
-        #
-        # ⛔`dart tool/…`, not `dart run tool/…`: `dart run` runs every
-        # package's build hook for the Dart VM first — the GPU engine's
-        # Rust among them — for a tool that imports none of them
-        # (tool/session_hooks/guard_dart_run.sh; 관제 2026-11-08,
-        # ci-dart-run-tools-build-the-engine-again). The release
-        # workflows' parity runs are the same.
-        cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)
-        half=$(( cores / 2 ))
-        [ "$half" -ge 1 ] || half=1
-        dart tool/affected_tests.dart \
-          --files-from "$RUNNER_TEMP/shard_tests.txt" \
-          --outside-the-line --concurrency "$half"
+        # The slice runs by the run plan, as every list run goes, on the
+        # runner as the one job it holds — tool/runner_tests.sh, the one way
+        # every workflow runs a list, says how and why
+        # (ci-shards-crowd-the-collector-pins). One `flutter test` for the
+        # whole slice put the collector's pins in the crowd and every file
+        # on Skia; the command-line limit this step carried was the plan's
+        # own, copied. In this step, not a job of their own — a job is CI
+        # usage (the 2026-08-31 suspension).
+        bash tool/runner_tests.sh "$RUNNER_TEMP/shard_tests.txt"
     # One writer per run per OS, and only from master: thirteen shards
     # racing to save the same key would leave twelve "cache already exists"
     # warnings, and a pull request has no business seeding the cache every
