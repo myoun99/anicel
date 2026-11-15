@@ -15,6 +15,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/cel_looks.dart';
 import 'package:anicel/src/services/cel_shells.dart';
 
+import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
 
 /// 🚨Card `let-go-cels-keep-their-gpu-tiles` (유저 2026-11-16 03:10: 「지금
@@ -115,20 +116,34 @@ void main() {
       expect(await lookAhead('a'), same(hot));
     });
 
+    // A cel kept in the saved file keeps its ref as it is made hot — the
+    // file still holds those bytes —, so only its being hot says no.
     test('a look at a hot cel keeps no shell — the store holds its tiles '
         'already', () async {
-      await store.thawAhead(key('a'), canvasSize: canvasSize);
-      final hot = store.hotBakedSurfaceOrNull(key('a'));
+      keepInAFile(store, {key('f'): ink(4)});
+      await store.thawAhead(key('f'), canvasSize: canvasSize);
+      final hot = store.hotBakedSurfaceOrNull(key('f'));
       expect(hot, isNotNull, reason: '⛔premise: made hot');
 
       store.keepShellOf(
-        key('a'),
+        key('f'),
         hot!,
         canvasSize: canvasSize,
-        revision: store.sourceRevisionOf(key('a')),
+        revision: store.sourceRevisionOf(key('f')),
       );
 
       expect(shells.made, isEmpty);
+    });
+
+    test('a cel another was copied onto is thawed as the copy — the shell is '
+        'of the bytes it was read from', () async {
+      await lookedAndLetGo('a');
+
+      store.copyCel(key('b'), key('a'));
+      final again = await lookAhead('a');
+
+      expect(again, isNot(same(shells.made.single)));
+      expect(again!.tiles[origin]!.pixels, ink(2).tiles[origin]!.pixels);
     });
 
     test('a closed project keeps no shell', () async {
