@@ -133,7 +133,7 @@ void main() {
     ledger.held((hold) => hold.slotsOf(b, [aTile()]));
     expect(ledger.slotOf(lives), isNull, reason: 'the premise: let go');
 
-    await collectGarbage();
+    await collectGarbageUntil(() => record.target == null);
 
     expect(record.target, isNull, reason: 'nothing holds the record');
     // Alive to the end, and stored again in a record of its own — in the
@@ -159,7 +159,7 @@ void main() {
     expect(ledger.slotCount, 0, reason: 'the premise: let go with its tile');
 
     ledger.respondToMemoryPressure();
-    await collectGarbage();
+    await collectGarbageUntil(() => record.target == null);
 
     expect(record.target, isNull, reason: 'the walk swept it out');
   });
