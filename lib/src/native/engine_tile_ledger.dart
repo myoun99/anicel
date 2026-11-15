@@ -394,13 +394,7 @@ final GpuEngine _engine;
   /// copy came here ([copyHereABatch]), tile by tile; never the picture it
   /// landed on.
   void _layThePictureUnder(BitmapTile tile, _Slot slot, Pointer<Uint8> into) {
-    final bytes = into.asTypedList(gpuTileBytes);
-    final under = slot.under;
-    if (under == null) {
-      bytes.fillRange(0, gpuTileBytes, 0);
-    } else {
-      under.readPixels((_, view) => bytes.setAll(0, view));
-    }
+    _layBytesOf(slot.under, into);
     tile.forgetInk();
   }
 
@@ -1140,16 +1134,20 @@ final class _ShellPixels implements TilePixelsKeptBesides {
 
   @override
   void readInto(BitmapTile tile, Pointer<Uint8> into) {
-    if (_ledger._readsItsSlot(tile, into)) {
-      return;
+    if (!_ledger._readsItsSlot(tile, into)) {
+      _layBytesOf(_cel.read().tiles[at], into);
     }
-    final bytes = into.asTypedList(gpuTileBytes);
-    final kept = _cel.read().tiles[at];
-    if (kept == null) {
-      bytes.fillRange(0, gpuTileBytes, 0);
-    } else {
-      kept.readPixels((_, view) => bytes.setAll(0, view));
-    }
+  }
+}
+
+/// Lays [tile]'s bytes in [into], a tile's worth — none, where there is no
+/// tile: what a tile reads as where its slot cannot be read.
+void _layBytesOf(BitmapTile? tile, Pointer<Uint8> into) {
+  final bytes = into.asTypedList(gpuTileBytes);
+  if (tile == null) {
+    bytes.fillRange(0, gpuTileBytes, 0);
+  } else {
+    tile.readPixels((_, view) => bytes.setAll(0, view));
   }
 }
 
