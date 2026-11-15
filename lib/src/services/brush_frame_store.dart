@@ -19,6 +19,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/drawing_engines.dart';
 import 'bitmap_surface_geometry.dart';
+import 'cel_shells.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -73,7 +74,24 @@ enum CelRead {
 }
 
 class BrushFrameStore {
-  BrushFrameStore();
+  /// [shells] keeps what the engine holds of a cel a look let go of
+  /// ([keepShellOf]); none keeps nothing, and every look thaws.
+  BrushFrameStore({CelShells? shells}) : _celShells = shells;
+
+  final CelShells? _celShells;
+
+  /// The shell of each cel a look let go of ([keepShellOf]), under the kept
+  /// bytes it was read from: what the next look at those bytes is handed
+  /// ([lookAhead]). Hot wins — a cel made hot lets its shell go
+  /// ([_storeHot]) —, and a shell whose bytes are kept no more, or some of
+  /// whose slots the engine let go, is let go where it is asked for.
+  final Map<BrushFrameKey, ({AnicelCelFileRef ref, BitmapSurface shell})>
+  _shells = {};
+
+  /// The shells kept now ([keepShellOf]), for whoever weighs what the
+  /// engine holds of cels that are not hot.
+  Iterable<BitmapSurface> get shells =>
+      _shells.values.map((kept) => kept.shell);
 
   /// Link resolution (L1): every SINGLE-CEL public operation resolves its
   /// key through this first, so linked layers address ONE physical cel —
@@ -1141,6 +1159,10 @@ class BrushFrameStore {
     // cel is read hot once that lands, where both at once thawed it twice
     // and let one go (저장 2026-11-15 20:12). That thaw never throws.
     await _thawing.runOf(key);
+    final shell = _shellAt(key, canvasSize);
+    if (shell != null) {
+      return shell;
+    }
     final thawed = _thawsAt(key, canvasSize)
         ? await _thawOnAWorker(
             key,
@@ -1155,6 +1177,53 @@ class BrushFrameStore {
           canvasSize: canvasSize,
           read: CelRead.look,
         );
+  }
+
+  /// Keeps what the engine holds of [looked] — [key]'s pixels at
+  /// [canvasSize] as a look read them at [revision] and lets them go — for
+  /// the next look at the same kept bytes ([lookAhead]), which is handed
+  /// them where it would thaw the file again and put every tile back on the
+  /// engine (card `let-go-cels-keep-their-gpu-tiles`; 유저 2026-11-16
+  /// 03:10). Nothing where the cel is hot, edited since, or kept at another
+  /// size: those pixels are not what its kept bytes hold.
+  void keepShellOf(
+    BrushFrameKey key,
+    BitmapSurface looked, {
+    required CanvasSize canvasSize,
+    required int revision,
+  }) {
+    key = _canonicalize(key);
+    final shells = _celShells;
+    final ref = _keptAt(key, canvasSize);
+    if (shells == null ||
+        ref == null ||
+        _bakedSurfaces.containsKey(key) ||
+        sourceRevisionOf(key) != revision) {
+      return;
+    }
+    final shell = shells.shellOf(looked);
+    if (shell == null) {
+      _shells.remove(key);
+      return;
+    }
+    _shells[key] = (ref: ref, shell: shell);
+  }
+
+  /// [key]'s shell ([keepShellOf]) where its kept bytes at [canvasSize] are
+  /// still those it was read from and the engine holds every tile of it;
+  /// else none, and a shell that is not so let go.
+  BitmapSurface? _shellAt(BrushFrameKey key, CanvasSize canvasSize) {
+    final kept = _shells[key];
+    if (kept == null) {
+      return null;
+    }
+    if (identical(kept.ref, _keptAt(key, canvasSize)) &&
+        !_bakedSurfaces.containsKey(key) &&
+        _celShells!.isWhole(kept.shell)) {
+      return kept.shell;
+    }
+    _shells.remove(key);
+    return null;
   }
 
   /// [key]'s kept bytes — while they are what [keptNow] names — thawed on a
@@ -1323,6 +1392,7 @@ class BrushFrameStore {
     // Behind this store's wall, whatever it came from ([pasteboardReach]).
     final kept = _behind(surface);
     final estimate = _residentBytes(kept);
+    _shells.remove(key);
     _bakedSurfaces.remove(key);
     _bakedSurfaces[key] = kept;
     _hotByteEstimates[key] = estimate;
@@ -1481,6 +1551,7 @@ class BrushFrameStore {
     _revisionsMoved += 1;
     clearDisplayCaches();
     _bakedSurfaces.clear();
+    _shells.clear();
     _coldCels.clear();
     _fileCels.clear();
     _hotByteEstimates.clear();

@@ -207,17 +207,39 @@ class CelLooks {
   }
 
   /// Starts the next frame: what the frame before the last one looked at,
-  /// and the last one did not, is let go; what the last one looked at is
-  /// kept for one more.
+  /// and the last one did not, is let go ([_letGoOf]); what the last one
+  /// looked at is kept for one more.
   void nextFrame() {
+    _letGoOf(_frameBefore);
     _frameBefore = _thisFrame;
     _thisFrame = {};
   }
 
-  /// Lets go of everything held — the run is over.
+  /// Lets go of everything held ([_letGoOf]) — the run is over.
   void letGo() {
+    _letGoOf(_frameBefore);
+    _letGoOf(_thisFrame);
     _thisFrame = {};
     _frameBefore = {};
+  }
+
+  /// Lets go of what [held] read, its pixels here and nothing the engine
+  /// holds of it: that is kept for the next look at the same kept bytes
+  /// ([BrushFrameStore.keepShellOf]; card
+  /// `let-go-cels-keep-their-gpu-tiles`, 유저 2026-11-16 03:10 — a ghost
+  /// turned on read every cel again from the file and put every tile back
+  /// on the engine once the walk let go of its cels).
+  void _letGoOf(Map<_Looked, BitmapSurface?> held) {
+    for (final MapEntry(key: looked, value: surface) in held.entries) {
+      if (surface != null) {
+        store.keepShellOf(
+          looked.cel,
+          surface,
+          canvasSize: looked.canvasSize,
+          revision: looked.revision,
+        );
+      }
+    }
   }
 
   _Looked _lookedAt(BrushFrameKey cel, CanvasSize canvasSize) {

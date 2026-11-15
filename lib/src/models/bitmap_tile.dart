@@ -57,6 +57,15 @@ abstract interface class TilePixelsOnEngine {
   void readInto(BitmapTile tile, Pointer<Uint8> into);
 }
 
+/// What reads the pixels of a tile the engine holds and its cel's kept
+/// bytes hold besides — a shell of a cel a look let go of
+/// (`BrushFrameStore.keepShellOf`, card `let-go-cels-keep-their-gpu-tiles`):
+/// where the engine let its slot go, it reads them where the cel is kept.
+/// So the tiles it reads are never the engine's alone
+/// ([BitmapTile.isOnlyOnEngine]): a full pool lets their slots go as
+/// freely as those of a tile whose bytes are here.
+abstract interface class TilePixelsKeptBesides implements TilePixelsOnEngine {}
+
 /// The word every pixel of [pixels] — RGBA, four bytes each — is, or null
 /// where two differ (or there is none): a word as this machine reads four
 /// bytes, which is how [BitmapTile.ofOneColour] lays it back.
@@ -353,8 +362,10 @@ class BitmapTile implements Finalizable {
   bool get isOnEngine => _onEngine != null;
 
   /// Whether the engine holds the only copy of its pixels — none here to
-  /// store again from, so its slot there is not one a full pool lets go.
-  bool get isOnlyOnEngine => _onEngine != null && _here == null;
+  /// store again from, so its slot there is not one a full pool lets go. A
+  /// shell's are kept besides ([TilePixelsKeptBesides]).
+  bool get isOnlyOnEngine =>
+      _onEngine != null && _onEngine is! TilePixelsKeptBesides && _here == null;
 
   /// Holds [bytes] — the pixels of a tile the engine alone holds
   /// ([isOnlyOnEngine]), read back by whoever holds its slot — as a read of
