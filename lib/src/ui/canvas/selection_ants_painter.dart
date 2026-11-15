@@ -37,7 +37,6 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     this.transformChrome,
     this.handlesInHand = const [],
     this.sessionHasChanges = false,
-    this.outlineIsLive = false,
   }) : _phase = repaint,
        super(
          repaint: cursor == null
@@ -135,22 +134,6 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// unconfirmed changes, GREEN when confirmed/untouched.
   final bool sessionHasChanges;
 
-  /// Whether [committedRegion] is still MOVING — an open transform, warp or
-  /// mesh session remaps it into a new region on every frame.
-  ///
-  /// 유저 (F-65): 「**라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도
-  /// 상관없는데**, 선택 커밋될떈 픽셀에 제대로 안착한 상태로」 — so a live
-  /// outline traces the polygon and a settled one walks the pixels.
-  ///
-  /// ⚠️It is also what keeps the walk affordable. The pixel outline is
-  /// memoised on the region, which is an exact key precisely because a
-  /// region is immutable — and a session that builds a NEW region per frame
-  /// would therefore miss that memo every frame and rasterise a mask over
-  /// the whole selection to draw one line. ⛔The two reasons agree here, but
-  /// the USER'S rule is the one this flag is named for: if they ever ask for
-  /// pixel-exact ants mid-drag, the cost is the thing to solve, not this.
-  final bool outlineIsLive;
-
   /// The colour the SESSION CHROME is drawn in — transform box, handles,
   /// handles. ⛔Three separate constants lived here, and the box's was
   /// a fixed blue that never answered the question the other two did.
@@ -203,10 +186,9 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     // the live outline is being compared against, so the live one is what
     // sits on top when they cross.
     //
-    // ⚠️`pathIn`, like every other live outline here: it is on screen only
-    // while a session is open, and 유저 already ruled that a live line need
-    // not be settled onto pixels (F-65). Walking the pixels would rasterise
-    // a whole-selection mask for one line that is about to move anyway.
+    // ⚠️`pathIn`: this is the transform tool's BOX where the session began
+    // (F-231 ①), chrome as the box itself is — not a selection, so it has no
+    // pixels of its own to sit on.
     final start = startShape;
     if (start != null) {
       canvas.drawPath(
@@ -220,9 +202,12 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
     final committed = committedRegion;
     if (committed != null) {
-      // 🚨THE COMMITTED OUTLINE WALKS THE PIXELS, not the polygon (F-65,
+      // 🚨THE SELECTION'S OUTLINE WALKS THE PIXELS, not the polygon (F-65,
       // 유저: 「선택 커밋될떈 픽셀에 제대로 안착한 상태로. 지금은 **변형되는
-      // 픽셀 범위와 개미행렬 위치가 다르다**」).
+      // 픽셀 범위와 개미행렬 위치가 다르다**」) — and so it does while a
+      // transform, warp or mesh session moves it (F-591, 유저 2026-11-15:
+      // 「변형중에 선택도구 개미행렬 형태가 벡터로 돌아감. 비트맵이니까 픽셀
+      // 따라서 격자여야하는데」). One law, standing or moving.
       //
       // ⛔`pathIn` traces where the DRAG went; membership is decided by
       // pixel CENTRE. Both were right about which pixels are in, and only
@@ -230,14 +215,12 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
       // everything — unions merge and subtractions cut holes — the line has
       // simply moved onto the edges of the pixels that will actually move.
       //
-      // ⚠️The LIVE outlines below keep `pathIn` on purpose — 「라이브로
-      // 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데」 — and that
-      // is also what keeps a drag cheap: nothing rasterises while the
-      // finger is down.
-      final path = outlineIsLive
-          ? committed.pathIn((point) => _map(point) + screenOffset)
-          : _committedOutline(committed);
-      _paintAnts(canvas, path, phase);
+      // ↩️Till 2026-11-15 a selection a session was moving traced its
+      // polygon (`outlineIsLive`): F-65's 「라이브로 선택중일땐 … 벡터로 보여도
+      // 상관없는데」 was read as covering it. That sentence is about a
+      // selection still being DRAWN — the marquee and the open trails below,
+      // which keep `pathIn`.
+      _paintAnts(canvas, _committedOutline(committed), phase);
     }
     if (marqueeShapes.isNotEmpty) {
       // Copies UNION, the same way the committed fold does — two copies
@@ -334,7 +317,6 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (
-    outlineIsLive,
     viewport,
     committedRegion,
     startShape,

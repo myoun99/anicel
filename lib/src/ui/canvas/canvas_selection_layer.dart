@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase;
 
+import '../../core/identity_memo.dart';
 import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
@@ -37,6 +38,7 @@ import '../dialogs/behind_the_wait_window.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart' show AppText;
+import '../timeline/memo_token.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/flip_glyph.dart';
 import 'box_chrome.dart' show SelectionTransformChrome;
@@ -3947,16 +3949,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 _onScreen(box).startSilhouette(box),
               ),
             },
-            // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
-            // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
-            //
-            // ★`identical` says exactly that, and says it without a
-            // second opinion to keep in sync: every session that is
-            // still moving the selection (transform, warp, mesh) hands
-            // `displayShape` a NEW region above, and nothing else
-            // does. When the outline has settled the two ARE the same
-            // object.
-            outlineIsLive: !identical(displayShape, region),
             // TP5: the ants step with the PIXELS, not with the
             // pointer — the outline has to be around the thing that
             // will land, or the confirm looks like it moved.
@@ -4053,18 +4045,44 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
+  /// The selection as a session shows it, by the selection and what moves
+  /// it — the SAME region for the same of them (F-591). The ants walk its
+  /// pixels, once a region ([CanvasSelectionRegion.pixelOutlineIn]), and a
+  /// build that moves nothing — a pan, a hover — would walk them again for
+  /// a region made anew.
+  final _shown = IdentityMemo<CanvasSelectionRegion?>();
+
   CanvasSelectionRegion? _displayShape(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners) {
+    final base = floatWarp.baseCorners();
+    final meshPoints = floatWarp.meshPoints;
+    CanvasSelectionRegion? shown() =>
+        _shownBy(transform, region, warpCorners, base, meshPoints);
+    const none = <CanvasPoint>[];
+    return region == null
+        ? shown()
+        : _shown.resolve(
+            identity: region,
+            key: (
+              transform?.pivot,
+              transform?.values,
+              ByList(warpCorners ?? none),
+              ByList(base ?? none),
+              ByList(meshPoints ?? none),
+            ),
+            build: shown,
+          );
+  }
+
+  CanvasSelectionRegion? _shownBy(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners, List<CanvasPoint>? base, List<CanvasPoint>? meshPoints) {
     var displayShape = transform != null && region != null
         ? region.mapped(transform.apply)
         : region;
     if (warpCorners != null && region != null) {
-      final base = floatWarp.baseCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       displayShape = h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
           : region.mapped((point) => applyHomography(h, point));
     }
-    final meshPoints = floatWarp.meshPoints;
     if (meshPoints != null) {
       // Mesh session: the ants trace the grid's warped boundary.
       displayShape = CanvasSelectionRegion.shape(

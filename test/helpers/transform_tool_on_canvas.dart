@@ -114,7 +114,9 @@ Future<TransformToolOnCanvas> pumpTransformTool(
   return (commands: commands, options: transform, tool: brush);
 }
 
-SelectionAntsPainter _antsOnScreen(WidgetTester tester) => tester
+/// The layer's ants as it draws them — the region they go round, the box,
+/// its handles.
+SelectionAntsPainter antsOnScreen(WidgetTester tester) => tester
     .widgetList<CustomPaint>(
       find.descendant(
         of: find.byKey(transformToolLayerKey),
@@ -127,12 +129,12 @@ SelectionAntsPainter _antsOnScreen(WidgetTester tester) => tester
 
 /// The box as the layer draws it.
 SelectionTransformChrome? transformChromeOnScreen(WidgetTester tester) =>
-    _antsOnScreen(tester).transformChrome;
+    antsOnScreen(tester).transformChrome;
 
 /// Which of the box's handles the layer draws as in hand, by their place
 /// among [transformChromeOnScreen]'s.
 List<int> handlesInHandOnScreen(WidgetTester tester) =>
-    _antsOnScreen(tester).handlesInHand;
+    antsOnScreen(tester).handlesInHand;
 
 /// A press on the layer at [from], carried to [to] and let go.
 Future<void> dragOnTransformLayer(
