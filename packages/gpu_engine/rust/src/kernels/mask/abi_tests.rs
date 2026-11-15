@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use super::super::region::Combine::{Add, Replace, Subtract};
 use super::super::region::{Operand, Step};
-use super::super::{Finish, MaskBox};
+use super::super::{Finish, MaskBox, Part};
 use super::{
     SelectionMasks, gpu_engine_area_masks_new, gpu_engine_selection_mask_new, gpu_engine_selection_masks_new,
 };
@@ -275,15 +275,18 @@ fn area_asked(words: &[u32], points: &[f64], (expand, anti_alias): (u32, bool), 
 /// [`steps`]' whole box finished as a fill finishes what it flooded —
 /// grown `expand` generations, softened where `anti_alias` — in one part,
 /// and `part` of it cut out here.
-fn area_made((expand, anti_alias): (u32, bool), [left, top, width, height]: Asked) -> Vec<u8> {
+fn area_made((expand, anti_alias): (u32, bool), part: Asked) -> Vec<u8> {
     let Rig { engine, masks } = rig();
     let hard = masks.region.selection(engine, &steps(), AT, SIZE).expect("a hard mask");
-    let whole = if expand == 0 && !anti_alias {
-        bytes_of(engine, &hard)
-    } else {
-        let finished = masks.passes.fill(engine, &hard, SIZE, expand, anti_alias, &[SIZE.whole()]);
-        bytes_of(engine, &finished.expect("a finish"))
-    };
+    if expand == 0 && !anti_alias {
+        return cut(&bytes_of(engine, &hard), part);
+    }
+    let finished = masks.passes.fill(engine, &hard, SIZE, expand, anti_alias, &[SIZE.whole()]);
+    cut(&bytes_of(engine, &finished.expect("a finish")), part)
+}
+
+/// `part` of `whole`, bytes over [`SIZE`] at [`AT`].
+fn cut(whole: &[u8], [left, top, width, height]: Asked) -> Vec<u8> {
     let (x, y) = ((left - AT.0) as usize, (top - AT.1) as usize);
     let rows = whole.chunks(SIZE.width as usize).skip(y).take(height as usize);
     rows.flat_map(|row| row[x..x + width as usize].to_vec()).collect()
@@ -310,6 +313,27 @@ fn an_area_is_finished_and_cut_a_plane_a_part() {
         }
         assert_eq!(finished, finish != AS_IT_IS, "{finish:?}: and it is finished");
     }
+}
+
+/// 🚨The finish runs over the parts asked and no farther (board
+/// `an-area-dab-costs-its-box`): a part that holds less than the finish
+/// reaches from is finished as the passes finish that part alone — which
+/// is not what the whole box's finish leaves there.
+#[test]
+fn an_area_is_finished_over_its_parts_alone() {
+    let Rig { engine, masks } = rig();
+    let (words, points) = program();
+    let (finish, part) = ((3, true), PARTS[1]);
+    let planes = area_asked(&words, &points, finish, &[part]).expect("a plane");
+
+    let [left, top, width, height] = part;
+    let (left, top) = ((left - AT.0) as u32, (top - AT.1) as u32);
+    let over = Part { left, top, right: left + width as u32, bottom: top + height as u32 };
+    let hard = masks.region.selection(engine, &steps(), AT, SIZE).expect("a hard mask");
+    let alone = masks.passes.fill(engine, &hard, SIZE, finish.0, finish.1, &[over]).expect("a finish");
+    assert!(planes[0].0 == cut(&bytes_of(engine, &alone), part), "not the part's own finish");
+    // Liveness: the whole box's finish reaches into the part from past it.
+    assert!(planes[0].0 != area_made(finish, part), "fixture: nothing reaches the part from past it");
 }
 
 /// A part that is no part of the box — before it, past it, or holding no
