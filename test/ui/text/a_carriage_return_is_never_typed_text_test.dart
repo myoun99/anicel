@@ -96,6 +96,18 @@ void main() {
     );
   });
 
+  test('a value with no CR is handed back as it came — the law does no work '
+      'where it has nothing to drop', () {
+    const typed = TextEditingValue(
+      text: 'ab',
+      selection: TextSelection.collapsed(offset: 2),
+    );
+    expect(
+      typedText().single.formatEditUpdate(TextEditingValue.empty, typed),
+      same(typed),
+    );
+  });
+
   test("a field's own formatters come after the law", () {
     final own = FilteringTextInputFormatter.digitsOnly;
     expect(typedText([own]), [isA<NoCarriageReturnFormatter>(), same(own)]);
