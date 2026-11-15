@@ -127,7 +127,8 @@ void main() {
   });
 
   group("every bar's writing takes its insets by the one law", () {
-    const word = '12345';
+    // A number with its unit, as the brush's size bar writes it.
+    const word = '2000 px';
 
     /// A bar or a number box [length] along, in the app's theme.
     Widget host(Widget Function() bar, double length, Axis along) =>
@@ -163,8 +164,7 @@ void main() {
         Axis.horizontal,
         [word],
       ),
-      // A name of two words: the writing's need is its width on ONE line,
-      // not the narrowest it would break to.
+      // A name of two words, as the brush's is.
       'a name and its number': (
         () => slider(label: 'Brush size'),
         Axis.horizontal,
