@@ -242,6 +242,11 @@ void main() {
       // Off the canvas: a notch turned with Alt zooms a sheet's frames
       // (I-155 — After Effects' and Premiere Pro's zoom of time).
       'lib/src/ui/input/wheel_law.dart',
+      // Off the canvas: the playback gate asks which modifiers are held,
+      // Alt among them — one gone down while something plays is no input
+      // till something comes after it (I-19, card
+      // a-held-modifiers-repeat-is-heard-as-a-press). It keeps no tool's Alt.
+      'lib/src/ui/playback/playback_actuation_gate.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
       // Off the canvas: a header graph's Alt-click on a line, which picks
