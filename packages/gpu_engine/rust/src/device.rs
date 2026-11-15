@@ -1426,8 +1426,14 @@ impl Turns {
     }
 
     /// A thread that holds a turn has taken a job.
+    ///
+    /// ⚠️A count that ran short stays at none and is not a panic: here a
+    /// panic ends a thread that takes the engine's jobs, and every caller
+    /// after it waits for good. Short, the count leaves a turn left to its
+    /// leaver alone, which the pins of a body behind a wait say by name.
     fn received(shared: &(Mutex<Self>, Condvar)) {
-        shared.0.lock().unwrap_or_else(PoisonError::into_inner).queued -= 1;
+        let mut turns = shared.0.lock().unwrap_or_else(PoisonError::into_inner);
+        turns.queued = turns.queued.saturating_sub(1);
     }
 
     /// Waits for a turn left free with a job handed behind it, and takes
@@ -1460,7 +1466,12 @@ impl Turns {
     /// 「빌린 본문의 답을 넘기기 전에 자리 장부를 돌려놓거나 … 그러면
     /// 「한 부르는 쪽 = 스레드 둘」이 확률이 아니라 사실이 된다」). Said
     /// after the answer, a caller that got ahead of this thread found the
-    /// turn free still and handed its body to another.
+    /// turn free still and handed its body to another. A job run for the
+    /// driver's own work ([`EngineThread::run`]) says so after its answer,
+    /// as its thread comes back — none such waits: the bodies' thread is
+    /// handed a submit that way and no more ([`Queue::submit`]; the
+    /// compiles, the polls and the tells run on threads of their own,
+    /// read 2026-11-15, 🗣️관제 15:30).
     /// ⚠️No test turns red where the order is turned back: what it loses
     /// is a race of the tens of microseconds a caller takes to wake, and
     /// nothing here holds a thread in them.
@@ -2821,14 +2832,20 @@ mod tests {
     // thread: the turn it left is its own again as it ends (`Turns` has
     // what a thread woken at every wait cost a save) — before its caller
     // has the answer to hand the next body by (`Turns::back`). Bodies that
-    // each wait, one after another, run on one thread.
+    // each wait, one after another, run on one thread — the first of them
+    // through a wait long enough for the thread made at it to be up: that
+    // one takes no turn with no job behind the wait (`Turns::taken`).
     #[test]
     fn a_body_that_waits_with_none_behind_it_keeps_the_engine_s_thread() {
         let turn = a_device_of_its_own();
         let engine = &turn.engine();
+        let long = std::time::Duration::from_millis(300);
         let ran_on: std::collections::HashSet<_> = (0..6)
-            .map(|_| {
+            .map(|nth| {
                 engine.on_thread(|| {
+                    if nth == 0 {
+                        engine.compiling(move |_| std::thread::sleep(long));
+                    }
                     assert_eq!(engine.wait(), Some(()), "{}", last_error());
                     std::thread::current().id()
                 })
@@ -2930,8 +2947,12 @@ mod tests {
             scope.spawn(move || {
                 engine.on_thread(|| {
                     let _ = began.send(());
-                    // In no wait till the next body is handed behind it.
+                    // In no wait till the next body is handed behind it —
+                    // a failure by name where none is counted handed.
+                    let asked = std::time::Instant::now();
                     while engine.thread.turns.0.lock().unwrap().queued == 0 {
+                        let in_time = asked.elapsed() < IN_TIME;
+                        assert!(in_time, "no body was counted handed behind this one");
                         std::thread::yield_now();
                     }
                     let buffer = engine.readback(4);
