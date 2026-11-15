@@ -212,7 +212,7 @@ Future<List<BrushDab>> _line(
   final results = <List<BrushDab>>[];
   final cel = BitmapSurface(
     canvasSize: const CanvasSize(width: 160, height: 32),
-    tileSize: 16,
+    tileSize: 128,
   );
   await tester.pumpWidget(
     MaterialApp(
