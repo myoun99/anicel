@@ -398,7 +398,7 @@ impl Flood {
         let mask = if expand == 0 && !anti_alias {
             cropped
         } else {
-            masks.fill(engine, &cropped, size, expand, anti_alias)?
+            masks.fill(engine, &cropped, size, expand, anti_alias, &[size.whole()])?
         };
         Some(Finished { mask, crop })
     }

@@ -4,7 +4,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Finish, MOST_FEATHER, Mask, MaskBox, MaskPasses};
+use super::{Finish, MOST_FEATHER, Mask, MaskBox, MaskPasses, Part};
 use crate::device::Engine;
 use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -413,4 +413,129 @@ fn every_device_finishes_the_pinned_masks() {
         .flat_map(|finish| finished(size, finish, pattern).expect("finish").bytes)
         .collect();
     assert_pinned("mask/selection-finish", &bytes);
+}
+
+// ---- A fill over parts, and a crop ----
+
+/// `plane`'s bytes over `size`, row after row, padding gone.
+fn bytes_over(plane: &wgpu::Buffer, size: MaskBox) -> Vec<u8> {
+    let stride = (size.width.div_ceil(4) * 4) as usize;
+    read_buffer(rig().engine, plane)
+        .chunks(stride)
+        .take(size.height as usize)
+        .flat_map(|row| row[..size.width as usize].to_vec())
+        .collect()
+}
+
+/// A hard mask over `size` — a disc, a hair of a line, a lone pixel near a
+/// corner — and that mask filled `over` those parts, read back.
+fn filled_over(size: MaskBox, expand: u32, anti_alias: bool, over: &[Part]) -> Option<Vec<u8>> {
+    let Rig { engine, passes } = rig();
+    let hard = |x: u32, y: u32| {
+        let (x, y) = (x as i32, y as i32);
+        let disc = (x - 21).pow(2) + (y - 17).pow(2) < 81;
+        u8::from(disc || (y == 33 && (40..58).contains(&x)) || (x, y) == (66, 41)) * 255
+    };
+    let mask = words_buffer(engine, "mask in", &laid(size, hard), wgpu::BufferUsages::STORAGE);
+    let out = passes.fill(engine, &mask, size, expand, anti_alias, over)?;
+    Some(bytes_over(&out, size))
+}
+
+/// The cells of a 13 × 11 grid over `size` — their edges inside words, as
+/// an area's tiles' are in its box — that hold a byte of `bytes`.
+fn cells_holding(size: MaskBox, bytes: &[u8]) -> (Vec<Part>, usize) {
+    let (across, down) = (size.width.div_ceil(13), size.height.div_ceil(11));
+    let cells = (0..down).flat_map(|row| (0..across).map(move |column| (column, row)));
+    let parts: Vec<Part> = cells
+        .map(|(column, row)| Part {
+            left: column * 13,
+            top: row * 11,
+            right: ((column + 1) * 13).min(size.width),
+            bottom: ((row + 1) * 11).min(size.height),
+        })
+        .filter(|part| {
+            (part.top..part.bottom).any(|y| {
+                (part.left..part.right).any(|x| bytes[(y * size.width + x) as usize] != 0)
+            })
+        })
+        .collect();
+    (parts, (across * down) as usize)
+}
+
+const AREA: MaskBox = MaskBox { width: 70, height: 45 };
+
+/// 🚨An area is finished only over the tiles it reaches (an-area-dab-costs-
+/// its-box): over the parts that hold every byte it leaves, the fill is
+/// the fill of the whole box, byte for byte — the grow, the soften past
+/// the outline, the edges of the parts inside words.
+#[test]
+fn a_fill_over_the_parts_it_reaches_is_the_fill_of_its_whole_box() {
+    for (expand, anti_alias) in [(0, true), (1, false), (2, true), (3, true)] {
+        let why = format!("expand {expand}, anti-alias {anti_alias}");
+        let whole = filled_over(AREA, expand, anti_alias, &[AREA.whole()]).expect("whole");
+        let (parts, cells) = cells_holding(AREA, &whole);
+
+        assert_eq!(filled_over(AREA, expand, anti_alias, &parts).as_ref(), Some(&whole), "{why}");
+        // Liveness: the parts leave cells out, and it reached past its hard
+        // mask.
+        assert!(parts.len() < cells, "{why}: {} of {cells}", parts.len());
+        assert!(whole.iter().any(|&byte| byte != 0 && byte != 255) || !anti_alias, "{why}");
+    }
+}
+
+/// What a fill puts is put over its parts alone: past them — whole words
+/// past the part's edge, rows past its bottom — a plane holds the 0 it was
+/// made with, however far the fill reaches.
+#[test]
+fn a_fill_puts_nothing_past_its_parts() {
+    let part = Part { left: 0, top: 0, right: 32, bottom: 30 };
+    let whole = filled_over(AREA, 2, true, &[AREA.whole()]).expect("whole");
+    let over = filled_over(AREA, 2, true, &[part]).expect("over a part");
+
+    for y in 0..AREA.height {
+        for x in 0..AREA.width {
+            if !(x < part.right && y < part.bottom) {
+                assert_eq!(over[(y * AREA.width + x) as usize], 0, "({x}, {y})");
+            }
+        }
+    }
+    // Liveness: the whole box's fill reaches past the part.
+    assert!((0..AREA.height).any(|y| (32..AREA.width).any(|x| whole[(y * AREA.width + x) as usize] != 0)));
+}
+
+/// A crop is its part of the box as a plane of its own, laid as every mask
+/// is: from a corner inside a word, of a width no word divides, a pixel,
+/// the whole box.
+#[test]
+fn a_crop_is_its_part_of_the_box_as_a_plane_of_its_own() {
+    let Rig { engine, passes } = rig();
+    let size = MaskBox { width: 37, height: 23 };
+    let byte = |x: u32, y: u32| ((x * 7 + y * 13) % 251 + 1) as u8;
+    let mask = words_buffer(engine, "mask in", &laid(size, byte), wgpu::BufferUsages::STORAGE);
+    let parts = [
+        Part { left: 3, top: 2, right: 13, bottom: 9 },
+        Part { left: 36, top: 22, right: 37, bottom: 23 },
+        size.whole(),
+    ];
+    let cut = passes.crop(engine, &mask, size, &parts).expect("a crop");
+
+    assert_eq!(cut.len(), parts.len());
+    for (part, plane) in parts.iter().zip(&cut) {
+        let want: Vec<u8> = (part.top..part.bottom)
+            .flat_map(|y| (part.left..part.right).map(move |x| byte(x, y)))
+            .collect();
+        assert_eq!(bytes_over(plane, part.size()), want, "{part:?}");
+    }
+}
+
+#[test]
+fn a_part_past_the_box_or_of_no_pixel_is_refused() {
+    let Rig { engine, passes } = rig();
+    let mask = words_buffer(engine, "mask in", &laid(AREA, |_, _| 255), wgpu::BufferUsages::STORAGE);
+    let past = Part { right: AREA.width + 1, ..AREA.whole() };
+    let empty = Part { left: 5, right: 5, ..AREA.whole() };
+    for parts in [&[past][..], &[empty][..], &[][..]] {
+        assert!(passes.fill(engine, &mask, AREA, 1, true, parts).is_none(), "{parts:?}");
+        assert!(passes.crop(engine, &mask, AREA, parts).is_none(), "{parts:?}");
+    }
 }

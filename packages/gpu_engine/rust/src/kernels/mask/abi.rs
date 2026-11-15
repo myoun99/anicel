@@ -13,7 +13,7 @@ mod tests;
 use super::region::{Combine, Operand, RegionMask, Step};
 use super::runs::{MaskRuns, SelectionRuns};
 use super::within::MaskWithin;
-use super::{Finish, MaskBox, MaskPasses};
+use super::{Finish, MaskBox, MaskPasses, Part};
 use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, on_thread_of};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
@@ -140,6 +140,123 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
         Some(plane) => MaskPlane::kept(engine, plane, mask.at, mask.size),
         None => std::ptr::null_mut(),
     })
+}
+
+/// The AREA `program` spells over `points` ([`steps_of`]) on the pixel box
+/// `width` × `height` whose top-left pixel is (`x`, `y`) — its hard mask,
+/// finished as a fill finishes what it flooded ([`MaskPasses::fill`]:
+/// grown `expand` generations, softened past its outline where
+/// `anti_alias`) — over the `count` parts of the box `parts` names, and cut
+/// into a plane for each, kept for the app, written in their order to
+/// `planes`. A part is its left, top, width and height, canvas pixels: a
+/// run of the tiles the area reaches, which the app lays as a stamp's
+/// coverage (`regionFillPieces`), or the box whole, which it reads
+/// (`regionFillRange`). The work is submitted, and what reads a plane after
+/// it reads it done: no one waits. False where the program does not spell
+/// a selection, a box or point lies past the reach, or a part holds no
+/// pixel or lies past the box; see the last error.
+///
+/// 🚨★★★FINISHED ONLY WHERE IT REACHES (board `an-area-dab-costs-its-box`,
+/// and `an-areas-finish-is-a-second-spelling-of-the-floods` — 관제
+/// 2026-11-14 22:1x): the finish runs over the parts alone, so they hold
+/// every pixel it leaves any of, as the app's runs say exactly. ↩️The app
+/// finished each piece in a window of its own on the CPU
+/// (`_finishedWindow`), a second spelling of the bucket's finish.
+///
+/// # Safety
+/// `masks` and `engine` are live, the masks compiled on `engine`;
+/// `program` holds `program_length` words, `points` `points_length`,
+/// `parts` `count` × 4 and `planes` room for `count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_area_masks_new(
+    masks: *const SelectionMasks,
+    engine: *const Engine,
+    program: *const u32,
+    program_length: usize,
+    points: *const f64,
+    points_length: usize,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    expand: u32,
+    anti_alias: bool,
+    parts: *const i32,
+    count: usize,
+    planes: *mut *mut MaskPlane,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (masks, engine, program, points, parts) = unsafe {
+        (
+            &*masks,
+            &*engine,
+            std::slice::from_raw_parts(program, program_length),
+            std::slice::from_raw_parts(points, points_length),
+            std::slice::from_raw_parts(parts, count * 4),
+        )
+    };
+    let size = MaskBox { width, height };
+    engine.on_thread(|| {
+        let Some(parts) = parts_of(parts, (x, y)) else {
+            return false;
+        };
+        let Some(made) = area(masks, engine, program, points, (x, y), size, expand, anti_alias, &parts)
+        else {
+            return false;
+        };
+        for (at, (plane, part)) in made.into_iter().zip(&parts).enumerate() {
+            let corner = (x + part.left as i32, y + part.top as i32);
+            let kept = MaskPlane::kept(engine, plane, corner, part.size());
+            // SAFETY: see the function's contract — room for `count`.
+            unsafe { *planes.add(at) = kept };
+        }
+        true
+    })
+}
+
+/// `parts` — left, top, width and height each, canvas pixels — as parts
+/// of the box whose top-left pixel is `at`; none where one lies before it
+/// or holds no pixel (see the last error), as `MaskPasses` refuses one past
+/// it.
+fn parts_of(parts: &[i32], (x, y): (i32, i32)) -> Option<Vec<Part>> {
+    parts
+        .chunks_exact(4)
+        .map(|part| {
+            let &[left, top, width, height] = part else { unreachable!() };
+            let from = |at: i32, corner: i32| u32::try_from(i64::from(at) - i64::from(corner)).ok();
+            let (Some(left), Some(top)) = (from(left, x), from(top, y)) else {
+                return fail(format!("the part {part:?} lies before the box at ({x}, {y})"));
+            };
+            let (Ok(width), Ok(height)) = (u32::try_from(width), u32::try_from(height)) else {
+                return fail(format!("the part {part:?} holds no pixel"));
+            };
+            Some(Part { left, top, right: left + width, bottom: top + height })
+        })
+        .collect()
+}
+
+/// [`gpu_engine_area_masks_new`]'s planes.
+#[allow(clippy::too_many_arguments)]
+fn area(
+    masks: &SelectionMasks,
+    engine: &Engine,
+    program: &[u32],
+    points: &[f64],
+    at: (i32, i32),
+    size: MaskBox,
+    expand: u32,
+    anti_alias: bool,
+    parts: &[Part],
+) -> Option<Vec<wgpu::Buffer>> {
+    let steps = steps_of(program, points)?;
+    let hard = masks.region.selection(engine, &steps, at, size)?;
+    let finished = if expand == 0 && !anti_alias {
+        hard
+    } else {
+        masks.passes.fill(engine, &hard, size, expand, anti_alias, parts)?
+    };
+    masks.passes.crop(engine, &finished, size, parts)
 }
 
 /// The hard mask of the selection `program` spells over `points`
