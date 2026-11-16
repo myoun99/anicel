@@ -83,6 +83,41 @@ void main() {
     }
   });
 
+  test('🚨a tile row after the first takes blocks of its own — the row '
+      'before keeps its pixels, and this one is clear past the picture', () {
+    // Each pixel its own colour, so no tile closes as one word.
+    const height = side + 5;
+    final rgba = Uint8List(side * height * 4);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < side; x += 1) {
+        rgba.setAll((y * side + x) * 4, [x * 10, y * 5, 7, 255]);
+      }
+    }
+    final tiles = cutRgbaRows(
+      rgba,
+      width: side,
+      height: height,
+      cut: (
+        left: 0,
+        top: 0,
+        tileSize: side,
+        tiles: (firstX: 0, lastX: 0, firstY: 0, lastY: 1),
+      ),
+    );
+    addTearDown(() => giveBackCut(tiles));
+
+    expect([for (final tile in tiles) (tile.x, tile.y)], [(0, 0), (0, 1)]);
+    final (first, second) = (tiles[0].pixels, tiles[1].pixels);
+    expect(
+      (first as LaidBlock).address,
+      isNot((second as LaidBlock).address),
+      reason: 'a block of the first row is that row\'s',
+    );
+    expect(pixelOf(first, 3, 20), [30, 100, 7, 255], reason: 'row 20');
+    expect(pixelOf(second, 3, 4), [30, 135, 7, 255], reason: 'row 27');
+    expect(pixelOf(second, 3, 5), [0, 0, 0, 0], reason: 'past the picture');
+  });
+
   test('a picture past the first column and row keeps its tiles where it '
       'lies', () {
     final tiles = cutRed(side + 4, side * 2 + 3, side + 2, 5);
