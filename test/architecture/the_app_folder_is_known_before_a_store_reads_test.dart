@@ -47,7 +47,7 @@ void main() {
 
     expect(
       RegExp(
-        r"platformAppSupportBase\s*=\s*await\s+channel\s*"
+        r'platformAppSupportBase\s*=\s*await\s+channel\s*'
         r"\.invokeMethod<String>\(\s*'appSupportPath'",
       ).hasMatch(dart),
       isTrue,
