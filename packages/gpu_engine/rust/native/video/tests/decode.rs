@@ -727,11 +727,11 @@ fn a_frame_shown_is_its_nv12_through_the_law() {
     ] {
         let frames: Vec<_> = (0..3).map(|k| picture(size.0, size.1, size.0, k)).collect();
         let movie = write_named(name, size, named, &frames);
-        let (codes, decoded) = read_nv12(&movie);
+        let (codes, decoded) = read_nv12(movie.path());
         let [primaries, transfer, matrix, range] = codes.map(|code| code as u8);
         let colours = colour::Colours { primaries, transfer, matrix, range };
         assert_eq!(colour::Sums::of(colours, size), sums, "{name}: what its names and its size say ({codes:?})");
-        let handle = open(movie.to_str().expect("UTF-8"));
+        let handle = open(movie.path().to_str().expect("UTF-8"));
         assert!(handle > 0, "{name}: {}", error());
         for (k, nv12) in decoded.iter().enumerate() {
             let rgba = size.0 * size.1 * 4;
@@ -741,7 +741,6 @@ fn a_frame_shown_is_its_nv12_through_the_law() {
             assert!(shown == law, "{name} frame {k}: the frame shown is its NV12 through the law");
         }
         qa_video_decode_close(handle);
-        std::fs::remove_file(movie).ok();
     }
 }
 
