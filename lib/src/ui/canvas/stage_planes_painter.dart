@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../repaint_props.dart';
 import 'display_resample.dart' show displayEdgeAntiAliased, displayEdgeRect;
 import 'paper_background.dart' show paintAbsentPlane;
@@ -30,8 +31,16 @@ Color stageColorOnScreen(int argb) => Color(argb);
 /// The ground a canvas panel's shell lays under its stage — the one surface
 /// with no panel behind it, so it states its own colour — and so what a
 /// translucent backdrop shows through it on screen ([backdropOnScreen]).
-Color stageGroundOf(BuildContext context) =>
-    Theme.of(context).colorScheme.surfaceContainerLowest;
+///
+/// 🗣️F-598-Q1 (유저 2026-11-16, 「비치는 바탕도 모드와 상관없이 고정」):
+/// the dark floor a backdrop starts at, whichever palette the app wears —
+/// so a translucent backdrop shows the same on screen in either mode, as
+/// its setting does ([stageColorOnScreen]).
+///
+/// ↩️It was the palette's lowest surface (`surfaceContainerLowest`): a
+/// translucent backdrop went light with the light palette though its
+/// setting stayed.
+const Color stageGround = Color(defaultProjectBackdropArgb);
 
 /// The [backdrop] as the screen shows it: over the panel's [ground], once.
 ///

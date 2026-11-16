@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/pasteboard_bounds.dart'
     show PasteboardBounds, PasteboardSize;
+import 'package:anicel/src/models/project.dart' show defaultProjectBackdropArgb;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart'
     show CanvasStageColors;
@@ -17,6 +19,8 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart'
+    show AppColors, buildAppTheme;
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨WHAT THE FILM LAYS UNDER ITS CUTS IS WHAT THE EDITING CANVAS SHOWS:
@@ -47,6 +51,7 @@ void main() {
     int? backdropArgb,
     bool backdropNone = false,
     required bool inTheFade,
+    ThemeData? theme,
   }) async {
     // One device pixel a logical one, the grid the shot is taken on.
     tester.view.devicePixelRatio = 1;
@@ -80,6 +85,7 @@ void main() {
     final project = session.repository.requireProject();
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           body: RepaintBoundary(
             key: screen,
@@ -316,6 +322,68 @@ void main() {
     );
     await drain(tester);
   });
+
+  /// 🗣️F-598-Q1 (유저 2026-11-16, 「비치는 바탕도 모드와 상관없이 고정」):
+  /// what a translucent backdrop shows through is the dark floor a backdrop
+  /// starts at, whichever palette the app wears.
+  for (final mode in AppColorMode.values) {
+    testWidgets('🚨in the ${mode.name} palette, a translucent backdrop shows '
+        'the dark floor through it, standing and played', (tester) async {
+      addTearDown(
+        () => AppColors.accentSettings.value = const AppAccentSettings(),
+      );
+      AppColors.accentSettings.value = AppColors.accentSettings.value
+          .copyWith(mode: mode);
+      final theme = buildAppTheme();
+      if (mode == AppColorMode.light) {
+        expect(
+          theme.colorScheme.surfaceContainerLowest,
+          isNot(const Color(defaultProjectBackdropArgb)),
+          reason: '⛔premise: else a ground that followed the palette would '
+              'pass here',
+        );
+      }
+      final session = await standing(
+        tester,
+        backdropArgb: translucent,
+        inTheFade: false,
+        theme: theme,
+      );
+      final strip = pastTheWall(stageOnScreen(tester));
+      final x = strip.center.dx.floor();
+      final y = strip.center.dy.floor();
+      final seen = Color.alphaBlend(
+        const Color(translucent),
+        const Color(defaultProjectBackdropArgb),
+      );
+      int byte(double channel) => (channel * 255).round();
+      final through = [
+        byte(seen.r),
+        byte(seen.g),
+        byte(seen.b),
+        byte(seen.a),
+      ];
+
+      final still = pixelAt(await onScreen(tester), x, y);
+      expect(
+        near(still, through),
+        isTrue,
+        reason: 'standing: $still, over the dark floor $through',
+      );
+      expect(
+        overTheGround(tester, translucent),
+        through,
+        reason: 'the panel\'s shell lays the dark floor',
+      );
+      final film = pixelAt(await parkedWhereItStands(tester, session), x, y);
+      expect(
+        near(film, through),
+        isTrue,
+        reason: 'played: $film, over the dark floor $through',
+      );
+      await drain(tester);
+    });
+  }
 
   testWidgets('🚨a frame with no cut lays one floor over the editing cut\'s '
       'planes', (tester) async {

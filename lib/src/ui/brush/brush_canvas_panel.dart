@@ -3694,9 +3694,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         // ([backdropOnScreen], F-114) — but the floor is the one surface
         // with no panel behind it, so it states its own floor colour rather
         // than borrowing whatever the route happens to be sitting on. One
-        // answer for it ([stageGroundOf]): the film and the fade's wash lay
+        // answer for it ([stageGround]): the film and the fade's wash lay
         // the backdrop over the same ground.
-        Positioned.fill(child: ColoredBox(color: stageGroundOf(context))),
+        const Positioned.fill(child: ColoredBox(color: stageGround)),
         // ★THE CANVAS IS ITS OWN LAYER, and the shell's furniture is
         // another. This is where a cursor move's repaint stops.
         //
@@ -4822,7 +4822,7 @@ class _StagePlanes extends StatelessWidget {
         backdrop: backdropOnScreen((
           color: stageColorOnScreen(backdropArgb),
           none: backdropNone,
-        ), stageGroundOf(context)),
+        ), stageGround),
         pasteboard: hasPasteboard
             ? (color: stageColorOnScreen(pasteboardArgb), none: pasteboardNone)
             : null,

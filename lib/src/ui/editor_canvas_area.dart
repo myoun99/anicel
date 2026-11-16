@@ -53,7 +53,7 @@ import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/paper_background.dart' show paintAbsentPlane;
 import 'canvas/stage_planes_painter.dart'
-    show StagePlane, backdropOnScreen, stageColorOnScreen, stageGroundOf;
+    show StagePlane, backdropOnScreen, stageColorOnScreen, stageGround;
 import 'canvas/viewport_canvas_transform.dart';
 import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
@@ -2027,7 +2027,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 backdrop: backdropOnScreen((
                   color: stageColorOnScreen(project.backdropArgb),
                   none: project.backdropNone,
-                ), stageGroundOf(context)),
+                ), stageGround),
                 share: backdropShareUnder(cutFadeOpacity, [
                   for (final partner in partners) partner.opacity,
                 ]),

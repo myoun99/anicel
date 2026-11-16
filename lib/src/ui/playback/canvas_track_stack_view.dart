@@ -194,7 +194,7 @@ class CanvasTrackStackView extends StatelessWidget {
               backdrop: backdropOnScreen((
                 color: stageColorOnScreen(backdropArgb),
                 none: backdropNone,
-              ), stageGroundOf(context)),
+              ), stageGround),
               camera: cameraViewEnabled
                   ? (frameSize: cameraFrameSize, viewport: viewport)
                   : null,
