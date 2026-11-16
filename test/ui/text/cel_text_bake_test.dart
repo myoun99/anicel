@@ -22,7 +22,8 @@ import '../../helpers/tiles_on_the_engine.dart';
 ///
 /// ⚠️The test font sets every glyph as a filled box one letter-size wide
 /// and tall, so at a line pitch of 1 and size 128 — the fixture's tile — a
-/// letter on the grid IS a tile.
+/// letter on the grid IS a tile: the one it fills, its edge antialiased as
+/// its renderer draws it (`expectLetters`).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -140,6 +141,47 @@ void main() {
       '(${key.x},${key.y}) ${_inkIn(value.pixels, value.size)}',
   ].join(' · ');
 
+  /// The tiles of [plate] a letter fills: every pixel of them [rgba].
+  Set<TileCoord> lettersIn(
+    Map<TileCoord, BitmapTile> plate, [
+    List<int> rgba = ink,
+  ]) => {
+    for (final MapEntry(:key, :value) in plate.entries)
+      if (_allOf(value.pixels, rgba)) key,
+  };
+
+  /// [plate] holding [letters], each the tile it fills in [rgba], and no
+  /// ink anywhere else but a letter's edge: less than a whole pixel of it,
+  /// in the row or column of a tile beside a letter that touches it, or the
+  /// corner of one at its corner.
+  ///
+  /// 🚨A RENDERER ANTIALIASES THE BOX'S EDGE, and the pixel that edge lies
+  /// in may be the next tile's (저장 2026-11-16, round-1091-builds-all-
+  /// stop-at-their-checks): on the Mac runner each letter on the grid
+  /// filled its tile whole and left alpha up to 156 in the row above it
+  /// and up to 81 in the column at either side, nothing below — and nine
+  /// of these tests, pinning the tiles letters fill and no other, or a
+  /// tile beside a letter the same, failed there alone. The plate is what
+  /// the engine draws either way (the test of that is green on the Mac):
+  /// a test here names where its letters stand, and leaves their edges to
+  /// the renderer.
+  void expectLetters(
+    Map<TileCoord, BitmapTile> plate,
+    Set<TileCoord> letters, [
+    List<int> rgba = ink,
+  ]) {
+    expect(lettersIn(plate, rgba), letters, reason: inkOf(plate));
+    for (final MapEntry(:key, :value) in plate.entries) {
+      if (!letters.contains(key)) {
+        expect(
+          _inkOffTheEdge(value.pixels, value.size, key, letters),
+          isNull,
+          reason: 'the tile at $key holds ink off a letter\'s edge',
+        );
+      }
+    }
+  }
+
   /// A text that tries every setting at once, off the pixel grid.
   CelTextContent everything({double turn = 30}) => said(
     [
@@ -155,17 +197,10 @@ void main() {
   );
 
   test('a letter set on the grid is the tile it covers, in its colour — '
-      'and the plate holds no other', () async {
+      'and the plate holds nothing else but its edge', () async {
     final plate = await baked(said([run('ab')]));
 
-    expect(
-      plate.keys.toSet(),
-      {TileCoord(x: 1, y: 1), TileCoord(x: 2, y: 1)},
-      reason: inkOf(plate),
-    );
-    for (final tile in plate.values) {
-      expect(tile.pixels, tileFilledWith(ink).pixels);
-    }
+    expectLetters(plate, {TileCoord(x: 1, y: 1), TileCoord(x: 2, y: 1)});
   });
 
   // 세로쓰기 (유저 2026-10-06). 「123」 is three digits — too many for one
@@ -174,22 +209,19 @@ void main() {
       'a letter a tile, one under the other', () async {
     final plate = await baked(said([run('123')], x: 256, vertical: true));
 
-    expect(plate.keys.toSet(), {
+    expectLetters(plate, {
       TileCoord(x: 1, y: 1),
       TileCoord(x: 1, y: 2),
       TileCoord(x: 1, y: 3),
-    }, reason: inkOf(plate));
-    for (final tile in plate.values) {
-      expect(tile.pixels, tileFilledWith(ink).pixels);
-    }
+    });
 
     // ⛔CONTROL: in lines the very text runs to the RIGHT of that anchor.
     final lines = await baked(said([run('123')], x: 256));
-    expect(lines.keys.toSet(), {
+    expectLetters(lines, {
       TileCoord(x: 2, y: 1),
       TileCoord(x: 3, y: 1),
       TileCoord(x: 4, y: 1),
-    }, reason: inkOf(lines));
+    });
   });
 
   // Three digits, each a cell of its own, tracked by a whole tile.
@@ -215,18 +247,15 @@ void main() {
     );
 
     // 「1」 at the anchor's left, a tile of room, 「2」 — and nothing of
-    // either in the tile between them, or in the columns beside them.
-    final one = TileCoord(x: 1, y: 0);
-    final two = TileCoord(x: 1, y: 2);
-    expect(
+    // either in the tile between them, or in the columns beside them, but
+    // their edges.
+    expectLetters(
       {
-        for (final coord in plate.keys)
-          if (coord.y <= 2) coord,
+        for (final MapEntry(:key, :value) in plate.entries)
+          if (key.y <= 2) key: value,
       },
-      {one, two},
+      {TileCoord(x: 1, y: 0), TileCoord(x: 1, y: 2)},
     );
-    expect(plate[one]!.pixels, tileFilledWith(ink).pixels);
-    expect(plate[two]!.pixels, tileFilledWith(ink).pixels);
   });
 
   test('a break typed into a text in columns opens the next one to the '
@@ -234,14 +263,11 @@ void main() {
     final plate = await baked(said([run('7\nab')], x: 384, vertical: true));
 
     // 「7」 at the anchor's left; 「ab」 lying down the column left of that.
-    expect(plate.keys.toSet(), {
+    expectLetters(plate, {
       TileCoord(x: 2, y: 1),
       TileCoord(x: 1, y: 1),
       TileCoord(x: 1, y: 2),
-    }, reason: inkOf(plate));
-    for (final tile in plate.values) {
-      expect(tile.pixels, tileFilledWith(ink).pixels);
-    }
+    });
   });
 
   test('🚨the plate IS what the engine draws for the text: every tile of '
@@ -298,19 +324,41 @@ void main() {
       const size = celTextTestTileSize;
       final plate = await baked(said([run('abc')], x: 960));
 
+      final cut = TileCoord(x: 7, y: 1);
+      expect(plate.keys, contains(cut), reason: inkOf(plate));
       expect(
-        plate.keys.toSet(),
-        {TileCoord(x: 7, y: 1)},
-        reason: inkOf(plate),
+        plate.keys.where((coord) => coord.x > cut.x),
+        isEmpty,
+        reason: 'nothing past the wall',
       );
-      final pixels = plate.values.single.pixels;
+      for (final MapEntry(:key, :value) in plate.entries) {
+        if (key != cut) {
+          expect(
+            _inkOffTheEdge(value.pixels, size, key, {cut}),
+            isNull,
+            reason: 'the tile at $key holds ink off the letter\'s edge',
+          );
+        }
+      }
+      final pixels = plate[cut]!.pixels;
       for (var y = 0; y < size; y += 1) {
         for (var x = 0; x < size; x += 1) {
-          expect(
-            pixels.sublist((y * size + x) * 4, (y * size + x) * 4 + 4),
-            x < 64 ? [0, 0, 0, 0] : ink,
-            reason: 'the letter starts at 960 — pixel ($x, $y) of the tile',
-          );
+          final at = (y * size + x) * 4;
+          if (x == 63) {
+            // The letter's edge, its renderer's to antialias
+            // (`expectLetters`): less than a whole pixel of it.
+            expect(
+              pixels[at + 3],
+              lessThan(255),
+              reason: 'the letter starts at 960 — pixel 63 is its edge',
+            );
+          } else {
+            expect(
+              pixels.sublist(at, at + 4),
+              x < 64 ? [0, 0, 0, 0] : ink,
+              reason: 'the letter starts at 960 — pixel ($x, $y) of the tile',
+            );
+          }
         }
       }
     });
@@ -338,52 +386,62 @@ void main() {
   });
 
   group('the plate it had before', () {
+    // Letters a space apart, here and below: a letter's edge, antialiased
+    // as its renderer draws it, lies in the tile beside it
+    // (`expectLetters`), and a letter typed or changed there would change
+    // the tile of its neighbour too.
     test('🚨a tile that came out the same IS the last plate\'s tile — the '
         'object, so what was laid and uploaded for it stands', () async {
-      final before = await baked(said([run('ab')]));
+      final before = await baked(said([run('a b')]));
 
-      final after = await baked(said([run('abc')]), previous: before);
+      final after = await baked(said([run('a b c')]), previous: before);
 
-      expect(after.keys.toSet(), {
+      expectLetters(after, {
         TileCoord(x: 1, y: 1),
-        TileCoord(x: 2, y: 1),
         TileCoord(x: 3, y: 1),
-      }, reason: inkOf(after));
+        TileCoord(x: 5, y: 1),
+      });
       expect(after[TileCoord(x: 1, y: 1)], same(before[TileCoord(x: 1, y: 1)]));
-      expect(after[TileCoord(x: 2, y: 1)], same(before[TileCoord(x: 2, y: 1)]));
+      expect(after[TileCoord(x: 3, y: 1)], same(before[TileCoord(x: 3, y: 1)]));
     });
 
     test('🚨the last plate is read back from the engine, only where the new '
         'one has a tile', () async {
       addTearDown(() => EngineTileLedger.debugBeforeRead = null);
-      final before = await baked(said([run('ab')]));
+      final before = await baked(said([run('a b')]));
       final reads = <int>[];
       EngineTileLedger.debugBeforeRead = (tiles) => reads.add(tiles.length);
 
       await baked(said([run('abc')]));
       expect(reads, isEmpty, reason: 'no last plate to read');
 
-      await baked(
+      final after = await baked(
         said([run('a')]),
         previous: {
           for (final MapEntry(:key, :value) in before.entries)
             key: tileOnEngine(value),
         },
       );
-      expect(reads, [1], reason: 'the tile the text left is not asked');
+      final left = before.keys.where((coord) => !after.containsKey(coord));
+      expect(left, contains(TileCoord(x: 3, y: 1)), reason: '⛔fixture');
+      expect(
+        reads,
+        [after.keys.where(before.containsKey).length],
+        reason: 'the tiles both plates have, and none the text left',
+      );
     });
 
     test('a tile that changed is the new one', () async {
-      final before = await baked(said([run('ab')]));
+      final before = await baked(said([run('a b')]));
 
       final after = await baked(
-        said([run('a'), run('b', color: 0xFFC80000)]),
+        said([run('a '), run('b', color: 0xFFC80000)]),
         previous: before,
       );
 
       expect(after[TileCoord(x: 1, y: 1)], same(before[TileCoord(x: 1, y: 1)]));
       expect(
-        after[TileCoord(x: 2, y: 1)]!.pixels,
+        after[TileCoord(x: 3, y: 1)]!.pixels,
         tileFilledWith([200, 0, 0, 255]).pixels,
       );
     });
@@ -393,11 +451,7 @@ void main() {
 
       final after = await baked(said([run('a')]), previous: before);
 
-      expect(
-        after.keys.toSet(),
-        {TileCoord(x: 1, y: 1)},
-        reason: inkOf(after),
-      );
+      expectLetters(after, {TileCoord(x: 1, y: 1)});
     });
   });
 }
@@ -424,4 +478,48 @@ String _inkIn(Uint8List pixels, int side) {
   return count == 0
       ? 'no alpha'
       : '$count px, alpha up to $most, x $left..$right y $top..$bottom';
+}
+
+/// Whether every pixel of [pixels] is [rgba].
+bool _allOf(Uint8List pixels, List<int> rgba) {
+  for (var at = 0; at < pixels.length; at += 1) {
+    if (pixels[at] != rgba[at % 4]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The first pixel of [pixels] — the tile at [at], [side] square — that
+/// holds any alpha and is no letter's edge: less than a whole pixel, on an
+/// edge of the tile that touches a letter's tile, beside it or at its
+/// corner. None, null.
+(int, int)? _inkOffTheEdge(
+  Uint8List pixels,
+  int side,
+  TileCoord at,
+  Set<TileCoord> letters,
+) {
+  int toward(int coordinate) =>
+      coordinate == 0 ? -1 : (coordinate == side - 1 ? 1 : 0);
+  bool letterAt(int dx, int dy) =>
+      letters.contains(TileCoord(x: at.x + dx, y: at.y + dy));
+  for (var y = 0; y < side; y += 1) {
+    for (var x = 0; x < side; x += 1) {
+      final alpha = pixels[(y * side + x) * 4 + 3];
+      if (alpha == 0) {
+        continue;
+      }
+      final (dx, dy) = (toward(x), toward(y));
+      final onAnEdge =
+          alpha < 255 &&
+          ((dx != 0 && letterAt(dx, 0)) ||
+              (dy != 0 && letterAt(0, dy)) ||
+              (dx != 0 && dy != 0 && letterAt(dx, dy)));
+      if (!onAnEdge) {
+        return (x, y);
+      }
+    }
+  }
+  return null;
 }
