@@ -1132,7 +1132,7 @@ fn a_store_takes_the_page_made_ahead_while_the_engines_thread_stands_still() {
 #[test]
 fn a_page_ahead_is_made_while_the_engines_thread_stands_still() {
     use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
-    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::device::{gpu_engine_close, gpu_engine_device_entered_here, gpu_engine_open_first, gpu_engine_stand_still};
     use crate::testing::{a_device_of_its_own, done_here, last_error};
     let _turn = a_device_of_its_own();
     let bytes = le_bytes(&tile(11));
@@ -1147,12 +1147,13 @@ fn a_page_ahead_is_made_while_the_engines_thread_stands_still() {
         assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
         assert_eq!(ahead(pool), "unasked", "premise: half a page free, none asked");
         gpu_engine_stand_still(engine, 2_000);
-        let asked = Instant::now();
+        let (asked, entered) = (Instant::now(), gpu_engine_device_entered_here());
         assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
         (*engine).on_pages_thread(|| ());
         let made = asked.elapsed();
         assert_eq!(ahead(pool), "made", "made with the engine's thread standing");
         assert!(made < Duration::from_millis(1_000), "made after {made:?}, the engine's thread standing 2 s");
+        assert_eq!(gpu_engine_device_entered_here(), entered, "nor on the store's thread (B1-b)");
         assert_eq!(done_here(&*engine), Ok(()));
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
@@ -1280,7 +1281,7 @@ fn a_page_is_made_apart_from_wgpus_allocator() {
 #[test]
 fn a_page_a_store_waits_for_is_made_while_the_engines_thread_stands_still() {
     use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
-    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::device::{gpu_engine_close, gpu_engine_device_entered_here, gpu_engine_open_first, gpu_engine_stand_still};
     use crate::testing::{a_device_of_its_own, done_here, last_error};
     let _turn = a_device_of_its_own();
     let bytes = le_bytes(&tile(12));
@@ -1293,11 +1294,12 @@ fn a_page_a_store_waits_for_is_made_while_the_engines_thread_stands_still() {
         let cel = gpu_engine_pool_cel(pool);
         assert!((*pool).pages().is_empty(), "premise: no page made, none ahead");
         gpu_engine_stand_still(engine, 2_000);
-        let asked = Instant::now();
+        let (asked, entered) = (Instant::now(), gpu_engine_device_entered_here());
         assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
         let told = asked.elapsed();
         assert!(told < Duration::from_millis(1_000), "stored after {told:?}, the engine's thread standing 2 s");
         assert_eq!((*pool).pages().len(), 1, "on a page made for it");
+        assert_eq!(gpu_engine_device_entered_here(), entered, "made off the store's thread (B1-b)");
         assert_eq!(done_here(&*engine), Ok(()));
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
