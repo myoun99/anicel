@@ -1962,7 +1962,20 @@ void main() {
   /// no other class. ⛔Not split to fit: the walk rests in one place, and a
   /// seam cut for it would put the word that it rests in a different place
   /// from the rest.
-  const longClasses = 83;
+  ///
+  /// ⚠️83 → 85 on 2026-11-17, THREE names, one law: a reset is pressable
+  /// only where it would change something (F-583) and wears its family's
+  /// accent while it is (I-176, 🗣️「리셋버튼은 값이 바뀌어서 리셋이
+  /// 작동가능하면 … 강조색」). Each class that holds a reset came to answer
+  /// whether it would: `_BottomBarBuild` (600 → 615 — the straighten and the
+  /// 1:1, and the rotate buttons' sign accent taken out with the ↩️ that
+  /// says why), `CanvasSelectionCommands` (600 → 603 — `canResetTransform`
+  /// beside `canApplyTransform`, bound and let go with the others) and
+  /// `_WorkspaceBrushPresets` (600 → 602 — `libraryResetChanges` beside
+  /// `resetLibrary`). 🔬`clean_code_diff` against the lane's base
+  /// (`55fcd0e8b`) names these three and no other class. ⛔Not split to
+  /// fit: each answer stands beside the reset it answers for.
+  const longClasses = 85;
 
   late CleanCodeScan scan;
   setUpAll(() {
