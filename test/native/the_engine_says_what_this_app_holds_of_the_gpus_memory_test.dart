@@ -20,7 +20,11 @@ void main() {
     if (Platform.isWindows) {
       expect(memory.used, greaterThan(0));
       expect(memory.budget, greaterThan(0));
-      expect(memory.inSystem, isNotNull);
+      expect(
+        memory.inSystem,
+        allOf(isNotNull, isNot(memory.used)),
+        reason: 'what lies in the RAM is not the local use again',
+      );
       expect(
         memory.budget,
         isNot(memory.used),

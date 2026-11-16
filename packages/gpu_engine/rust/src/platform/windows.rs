@@ -439,7 +439,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let engine = first_engine();
         let memory = super::video_memory(&engine.adapter).expect("a memory report");
         assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
-        assert!(memory.in_system.is_some(), "{memory:?}");
+        // The non-local segments' use, not the local's again.
+        assert!(memory.in_system.is_some_and(|bytes| bytes != memory.used), "{memory:?}");
         let mut report = crate::device::VideoMemoryReport::default();
         // SAFETY: the test process's engine lives as long as the process,
         // and the report is a local.
@@ -449,6 +450,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             | crate::device::IN_SYSTEM_SAID;
         assert_eq!(report.flags & said, said, "{report:?}");
         assert!(report.used > 0 && report.budget > 0, "{report:?}");
+        let integrated = engine.adapter.get_info().device_type == wgpu::DeviceType::IntegratedGpu;
+        assert_eq!(report.flags & crate::device::INTEGRATED != 0, integrated, "{report:?}");
     }
 
     // Each reason D3D12 gives for a device removed is the cause the app
