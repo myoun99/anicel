@@ -25,6 +25,9 @@ import '../../helpers/named_finders.dart';
 /// between them. 🔬The case that asked: the S rows' Total at 200 % read
 /// 「20」 — 「200」 is 25.07 px in the app's face, 1.07 more than its 40 px
 /// bar left between its 8s, and it broke a glyph to a line.
+/// ↩️F-606 (2026-11-16) stood the Total half again as long, and 「200」 fits
+/// between its insets now: the Total still says it whole, and the law is
+/// every bar's (the second group).
 ///
 /// ⚠️Measured in the glyphs DRAWN, in the app's face.
 void main() {
@@ -105,11 +108,6 @@ void main() {
         final paragraph = tester.renderObject<RenderParagraph>(word);
         final glyphs = drawn(paragraph);
 
-        expect(
-          glyphs.width,
-          greaterThan(track.width - 2 * FieldSlider.inset),
-          reason: 'premise: 「200」 is wider than the room between the insets',
-        );
         expect(
           paragraph.didExceedMaxLines,
           isFalse,

@@ -55,6 +55,7 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow, TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
@@ -910,7 +911,13 @@ void main() {
     final lastMember = tester
         .getBottomLeft(labelOf(carrier, effectLaneId(blur, 'blurDimensions')))
         .dy;
-    final from = tester.getCenter(first);
+    // Taken by its name, where a hand takes a row to move it: the row's
+    // middle is the name's end or a button after it, by how much room the
+    // columns after the name leave it (F-606) — and a press on a button is
+    // the button's.
+    final from = tester.getCenter(
+      find.descendant(of: first, matching: find.byType(EllipsisText)).first,
+    );
 
     // Into the middle of the room: the gap before the next header, where
     // the chain already is.
