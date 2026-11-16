@@ -334,6 +334,11 @@ final class _Unopened implements FxPluginRunner {
   @override
   Future<void>? get toCome => null;
 
+  /// Signs its runs with all of the moment, as a build not known to read
+  /// none of it does ([FxPluginRun]).
+  @override
+  bool get readsTheMoment => true;
+
   @override
   int? reach(Float64List values, FxPluginMoment moment) => null;
 
@@ -391,6 +396,10 @@ final class _Opening implements FxPluginRunner {
 
   @override
   Future<void>? get toCome => _toCome;
+
+  /// Its build's: all of the moment till that has come ([_Unopened]).
+  @override
+  bool get readsTheMoment => _build.readsTheMoment;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) =>

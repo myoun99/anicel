@@ -4996,7 +4996,8 @@ typedef GpuPluginAsked = ({
 /// plugin's instructions, the same on every device, each pixel's its own
 /// (🗣️an-endless-plugin-stalls-the-app-Q19).
 class GpuPlugin {
-  GpuPlugin._(this._engine, this._plugin);
+  GpuPlugin._(this._engine, this._plugin)
+    : readsTheMoment = rust.pluginReadsTheMoment(_plugin);
 
   /// [source], the plugin's WGSL, checked, counted and compiled on
   /// [engine] — or the refusal's words thrown. Where [cut] is false the
@@ -5036,6 +5037,11 @@ class GpuPlugin {
 
   final GpuEngine _engine;
   final Pointer<rust.Plugin> _plugin;
+
+  /// Whether the plugin reads the moment — the frame's number or its time
+  /// (fx_wgsl's `Kernel::reads_the_moment`): one that does not draws the
+  /// same picture of the same values at every frame. Read as it opens.
+  final bool readsTheMoment;
 
   /// It as any isolate runs it over [read] ([GpuPluginRenderer]) — for as
   /// long as neither is freed. Refused where another engine made [read]

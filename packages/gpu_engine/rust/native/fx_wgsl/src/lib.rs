@@ -45,6 +45,7 @@ mod group;
 mod run;
 mod scan;
 mod uniform;
+mod walk;
 
 #[cfg(test)]
 mod tests;
@@ -61,6 +62,11 @@ pub const RENDER: &str = "anicel_render";
 
 /// The function a plugin answers its reach with.
 pub const REACH: &str = "anicel_reach";
+
+/// The prelude's words for the moment a frame is at: its number and its
+/// time. The rate and the scale are the cut's and the canvas's, alike at
+/// every frame of it.
+const MOMENT: [&str; 2] = ["anicel_frame", "anicel_time"];
 
 /// The most invocations one workgroup may have (WebGPU's default limit,
 /// the one every device the app runs on gives).
@@ -109,6 +115,7 @@ pub struct Kernel {
     info: ModuleInfo,
     turns: Vec<u64>,
     cut: bool,
+    moment: bool,
 }
 
 impl Kernel {
@@ -129,6 +136,14 @@ impl Kernel {
     /// invocation's share, in the order the loops are written.
     pub fn turns(&self) -> &[u64] {
         &self.turns
+    }
+
+    /// Whether the plugin reads the moment — the frame's number or its
+    /// time. One that does not draws the same picture of the same values
+    /// at every frame, so the host keeps one step of it for them all
+    /// (card a-plugin-step-is-keyed-by-a-moment-it-may-not-read).
+    pub fn reads_the_moment(&self) -> bool {
+        self.moment
     }
 
     /// The counted module, validated.
@@ -183,7 +198,24 @@ fn opened(plugin: &str, cut: bool) -> Result<Kernel, Refusal> {
     let (counted, turns) = count::count(&module, plugin, true);
     let (counted, counted_module, counted_info) = reread(counted)?;
     let source = if cut { counted } else { reread(count::count(&module, plugin, false).0)?.0 };
-    Ok(Kernel { source, module: counted_module, info: counted_info, turns, cut })
+    let moment = reads_the_moment(&module);
+    Ok(Kernel { source, module: counted_module, info: counted_info, turns, cut, moment })
+}
+
+/// Whether a function of `module` calls for the moment ([`MOMENT`]) — the
+/// one way it is reached: a plugin names none of the host's bindings
+/// (check.rs). A call no invocation comes to counts, and so would one of
+/// the prelude's own: every plugin would read the moment then.
+fn reads_the_moment(module: &naga::Module) -> bool {
+    let asks = |statement: &naga::Statement| match statement {
+        naga::Statement::Call { function, .. } => {
+            module.functions[*function].name.as_deref().is_some_and(|name| MOMENT.contains(&name))
+        }
+        _ => false,
+    };
+    let entries = module.entry_points.iter().map(|entry| &entry.function);
+    let mut functions = module.functions.iter().map(|(_, function)| function).chain(entries);
+    functions.any(|function| walk::holds(&function.body, &asks))
 }
 
 /// Parses and validates `whole`, placing an error in `plugin` (its first

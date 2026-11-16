@@ -389,6 +389,9 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
   Future<void>? get toCome => null;
 
   @override
+  bool get readsTheMoment => true;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       moment.frameIndex + 1;
 

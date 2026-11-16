@@ -433,6 +433,9 @@ final class _FailsPast implements FxPluginRunner {
   Future<void>? get toCome => null;
 
   @override
+  bool get readsTheMoment => true;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       _drawing.reach(values, moment);
 

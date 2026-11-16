@@ -126,6 +126,20 @@ void main() {
     expect(refusalOf('not WGSL'), isNotEmpty);
   });
 
+  // card a-plugin-step-is-keyed-by-a-moment-it-may-not-read: what its runs
+  // are signed with (`FxPluginRun`).
+  test('it says whether it reads the moment: the frame or the time', () {
+    expect(
+      opened(fxPluginFixture('invert'), fxPluginDescriptionOf('a.invert'))
+          .readsTheMoment,
+      isFalse,
+    );
+    expect(
+      opened(_probe, fxPluginDescriptionOf('a.probe')).readsTheMoment,
+      isTrue,
+    );
+  });
+
   test('it draws the straight picture handed it, in its place', () async {
     final invert = opened(
       fxPluginFixture('invert'),
@@ -482,8 +496,18 @@ void main() {
       final runner = plugins.runnerFor(description)!;
       final toCome = runner.toCome;
       expect(toCome, isNotNull, reason: 'its build is still to come');
+      expect(
+        runner.readsTheMoment,
+        isTrue,
+        reason: 'all of the moment signs its runs till its build has come',
+      );
       await toCome;
       expect(runner.toCome, isNull);
+      expect(
+        runner.readsTheMoment,
+        isFalse,
+        reason: 'its build\'s: the invert reads none',
+      );
       expect(debugKernelsCompiledHere, compiledHere);
       expect(await firstPixel(runner), inverted(0));
     });

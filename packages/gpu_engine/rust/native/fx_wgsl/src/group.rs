@@ -34,17 +34,12 @@ use naga::{
     TypeInner,
 };
 
-use crate::{Refusal, uniform};
+use crate::{Refusal, uniform, walk};
 
 /// Whether `block` waits at a barrier anywhere in it.
 pub(crate) fn holds_barrier(block: &Block) -> bool {
-    block.iter().any(|statement| match statement {
-        Statement::ControlBarrier(_) | Statement::WorkGroupUniformLoad { .. } => true,
-        Statement::Block(inner) => holds_barrier(inner),
-        Statement::If { accept, reject, .. } => holds_barrier(accept) || holds_barrier(reject),
-        Statement::Switch { cases, .. } => cases.iter().any(|case| holds_barrier(&case.body)),
-        Statement::Loop { body, continuing, .. } => holds_barrier(body) || holds_barrier(continuing),
-        _ => false,
+    walk::holds(block, &|statement| {
+        matches!(statement, Statement::ControlBarrier(_) | Statement::WorkGroupUniformLoad { .. })
     })
 }
 

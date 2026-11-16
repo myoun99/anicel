@@ -28,7 +28,7 @@ import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
-    show FrameGhosts;
+    show DemandedPicture, FrameGhosts;
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
     show PromotedStrokeTile;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -942,6 +942,52 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // 🚨A PLUG-IN THAT READS NO MOMENT IS ONE STEP AT EVERY FRAME (card
+  // a-plugin-step-is-keyed-by-a-moment-it-may-not-read): its runs are
+  // signed alike at every frame (`FxPluginRun`), so a frame the pen goes
+  // to and back from reads what the pen's frame kept, and a frame asked
+  // ahead IS the pen's frame's picture — one key, nothing to make.
+  testWidgets('a plugin that reads no moment runs once for every frame '
+      'its cel stands at alike', (tester) async {
+    final runner = ShiftingFxPlugin(by: 3, readsTheMoment: false);
+    List<CompositeNode<CanvasStackRow>> at(int frame) =>
+        beside([aPluginAt(runner, frame)]);
+    final (:store, :overlay, :handAnew) = await standingBeside(tester, [
+      aPluginAt(runner, 0),
+    ]);
+    expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+    await handAnew(at(1));
+    await lendBothClocks(tester, rounds: 4);
+    await handAnew(at(0));
+    await lendBothClocks(tester, rounds: 4);
+
+    await stepsOf(tester, overlay);
+    expect(
+      await settleAsync(tester, () => store.went.length == store.asked.length),
+      isTrue,
+      reason: 'LIVENESS: every write asked went',
+    );
+    expect(store.went, contains(true), reason: 'LIVENESS: the steps went in');
+
+    final pictures = tester
+        .widget<FramePictureView>(theFramesPicture())
+        .run
+        .pictures;
+    DemandedPicture frame(int index) => (
+      cut: cut,
+      frameIndex: index,
+      paintPaper: false,
+      ghosts: FrameGhosts.none,
+    );
+    expect(
+      pictures.keyOfStack(at(2), frame(2)),
+      pictures.keyOfStack(at(0), frame(0)),
+      reason: 'the frame two on is the pen\'s frame\'s picture',
+    );
+    expect(runner.renders, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// What [screen] shows once [nodes]' frame stands there, its picture
   /// made.
   Future<Shot> shownOnceMade(
@@ -1692,6 +1738,9 @@ final class _DrawsOverTheStroke implements FxPluginRunner {
   Future<void>? get toCome => null;
 
   @override
+  bool get readsTheMoment => true;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
@@ -1727,6 +1776,9 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
 
   @override
   Future<void>? get toCome => null;
+
+  @override
+  bool get readsTheMoment => true;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) =>

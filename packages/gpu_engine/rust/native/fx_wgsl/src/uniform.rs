@@ -356,12 +356,5 @@ fn leaves(block: &Block) -> bool {
 
 /// Whether a loop's `block` leaves more than the loop — a return.
 fn leaves_but_by_breaking(block: &Block) -> bool {
-    block.iter().any(|statement| match statement {
-        Statement::Return { .. } => true,
-        Statement::Block(inner) => leaves_but_by_breaking(inner),
-        Statement::If { accept, reject, .. } => leaves_but_by_breaking(accept) || leaves_but_by_breaking(reject),
-        Statement::Switch { cases, .. } => cases.iter().any(|case| leaves_but_by_breaking(&case.body)),
-        Statement::Loop { body, continuing, .. } => leaves_but_by_breaking(body) || leaves_but_by_breaking(continuing),
-        _ => false,
-    })
+    crate::walk::holds(block, &|statement| matches!(statement, Statement::Return { .. }))
 }

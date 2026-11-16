@@ -24,7 +24,9 @@ typedef GpuFxPluginOpened = ({GpuFxPlugin? plugin, String? refusal});
 /// ⚠️Asked by one isolate at a time — its runs go on a worker each
 /// ([render]); [close] lets it go once none is on its way.
 final class GpuFxPlugin implements FxPluginRunner {
-  GpuFxPlugin._(this._plugin, this._kinds);
+  GpuFxPlugin._(GpuPlugin plugin, this._kinds)
+    : _plugin = plugin,
+      readsTheMoment = plugin.readsTheMoment;
 
   /// [source] checked, counted and compiled on the app's engine — with no
   /// count for the device where [cut] is false — its values read as
@@ -83,6 +85,10 @@ final class GpuFxPlugin implements FxPluginRunner {
   /// None: it is open as it is made ([open], [opening]).
   @override
   Future<void>? get toCome => null;
+
+  /// Its plugin's, read as it opened ([GpuPlugin.readsTheMoment]).
+  @override
+  final bool readsTheMoment;
 
   GpuPluginAsked _asked(Float64List values, FxPluginMoment moment) => (
     values: values,

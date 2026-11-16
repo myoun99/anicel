@@ -774,6 +774,67 @@ fn what_the_group_check_refuses_and_why() {
 }
 
 #[test]
+fn a_plugin_reads_the_moment_only_where_a_call_of_it_asks_for_it() {
+    // card a-plugin-step-is-keyed-by-a-moment-it-may-not-read: a plugin that
+    // asks neither the frame's number nor its time draws alike at every frame.
+    let alike = [
+        ("the invert", INVERT.to_owned()),
+        ("the blur, of its value", BLUR.to_owned()),
+        (
+            "the rate and the scale",
+            plugin("", "anicel_out(u32(anicel_rate() + anicel_scale()));", "return 0u;"),
+        ),
+    ];
+    for (what, source) in alike {
+        assert!(!opened(&source).reads_the_moment(), "{what}:\n{source}");
+    }
+    let asked = |helper: &str, render: &str, reach: &str| plugin(helper, render, reach);
+    let reading = [
+        ("the frame, in the render", asked("", "anicel_out(u32(anicel_frame()));", "return 0u;")),
+        ("the time, in the reach", asked("", "anicel_out(0u);", "return u32(anicel_time());")),
+        (
+            "in a helper",
+            asked(
+                "fn shade() -> u32 { return u32(anicel_frame()); }",
+                "anicel_out(shade());",
+                "return 0u;",
+            ),
+        ),
+        (
+            "in a block",
+            asked("", "{ anicel_out(u32(anicel_frame())); }", "return 0u;"),
+        ),
+        (
+            "under a branch",
+            asked("", "if (at.x == 0u) { anicel_out(u32(anicel_time())); }", "return 0u;"),
+        ),
+        (
+            "in a case",
+            asked(
+                "",
+                "switch (at.y) { case 0u: { anicel_out(u32(anicel_frame())); } default: {} }",
+                "return 0u;",
+            ),
+        ),
+        (
+            "in a loop",
+            asked(
+                "",
+                "for (var i = 0; i < 2; i++) { anicel_out(u32(anicel_frame() + i)); }",
+                "return 0u;",
+            ),
+        ),
+        (
+            "in a helper no one calls",
+            asked("fn unused() -> i32 { return anicel_time(); }", "anicel_out(0u);", "return 0u;"),
+        ),
+    ];
+    for (what, source) in reading {
+        assert!(opened(&source).reads_the_moment(), "{what}:\n{source}");
+    }
+}
+
+#[test]
 fn a_plugin_opened_uncut_gives_the_device_no_charge_and_the_cpu_its_count() {
     // 🗣️-Q18: 「끊지 않음」 — the device runs it as written; the reach, on
     // the CPU, still ends at the share it is given.

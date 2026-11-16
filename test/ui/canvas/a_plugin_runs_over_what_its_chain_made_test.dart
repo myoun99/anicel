@@ -566,6 +566,9 @@ final class _OpensLater implements FxPluginRunner {
   Future<void>? get toCome => _opened.isCompleted ? null : _opened.future;
 
   @override
+  bool get readsTheMoment => _build.readsTheMoment;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) {
     _asked();
     return _build.reach(values, moment);

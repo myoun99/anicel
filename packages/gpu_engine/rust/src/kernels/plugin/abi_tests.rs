@@ -6,7 +6,8 @@
 use super::Plugin;
 use super::abi::{
     Asked, CHANNELS, FIXED, WHOLE, gpu_engine_plugin_free, gpu_engine_plugin_made_free, gpu_engine_plugin_made_land,
-    gpu_engine_plugin_open, gpu_engine_plugin_reach, gpu_engine_plugin_render_read,
+    gpu_engine_plugin_open, gpu_engine_plugin_reach, gpu_engine_plugin_reads_the_moment,
+    gpu_engine_plugin_render_read,
 };
 use super::tests::hashed;
 use crate::kernels::chain::tests::put_over;
@@ -221,6 +222,22 @@ fn the_open_says_whether_the_device_cuts_the_plugin() {
         let plugin_part = kernel.source().split(fx_wgsl::PRELUDE).next().expect("the plugin comes first");
         assert_eq!(plugin_part.contains("anicel_host_spend("), cut, "{plugin_part}");
         assert!(opened.reach(&[], &[], 1_000).is_err(), "cut: {cut}");
+    }
+}
+
+#[test]
+fn the_open_says_whether_the_plugin_reads_the_moment() {
+    // card a-plugin-step-is-keyed-by-a-moment-it-may-not-read: the app
+    // signs a run of one that does not alike at every frame.
+    let fixtures = [
+        ("the invert", INVERT, false),
+        ("the blur", BLUR, false),
+        ("the probe", PROBE, true),
+    ];
+    for (what, source, reads) in fixtures {
+        let opened = Opened::of(source);
+        // SAFETY: opened just now, freed as `opened` drops.
+        assert_eq!(unsafe { gpu_engine_plugin_reads_the_moment(opened.0) }, reads, "{what}");
     }
 }
 

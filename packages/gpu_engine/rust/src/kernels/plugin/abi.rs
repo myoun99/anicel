@@ -154,6 +154,18 @@ pub unsafe extern "C" fn gpu_engine_plugin_free(plugin: *mut Plugin) {
     unsafe { let_go(plugin) };
 }
 
+/// Whether the plugin reads the moment — the frame's number or its time
+/// (fx_wgsl's `Kernel::reads_the_moment`): what the app signs a run of
+/// it with (`FxPluginRun`).
+///
+/// # Safety
+/// `plugin` came from `gpu_engine_plugin_open`, and is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plugin_reads_the_moment(plugin: *const Plugin) -> bool {
+    // SAFETY: see the function's contract.
+    unsafe { &*plugin }.kernel.reads_the_moment()
+}
+
 /// How far past its input the plugin reaches, in output pixels, for its
 /// `count` values — four doubles each in `values`, its kind in `kinds`
 /// ([`WHOLE`], [`FIXED`] or [`CHANNELS`]) — at `moment`'s four (the

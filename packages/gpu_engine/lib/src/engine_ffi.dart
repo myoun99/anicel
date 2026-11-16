@@ -2011,6 +2011,11 @@ external Pointer<Plugin> pluginOpen(
 @Native<Void Function(Pointer<Plugin>)>(symbol: 'gpu_engine_plugin_free')
 external void pluginFree(Pointer<Plugin> plugin);
 
+@Native<Bool Function(Pointer<Plugin>)>(
+  symbol: 'gpu_engine_plugin_reads_the_moment',
+)
+external bool pluginReadsTheMoment(Pointer<Plugin> plugin);
+
 @Native<
   Int64 Function(
     Pointer<Plugin>,

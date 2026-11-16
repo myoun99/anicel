@@ -56,6 +56,12 @@ abstract interface class FxPluginRunner {
   /// how far it reaches is not known (`resolveCompositeEffectPlan`).
   Future<void>? get toCome;
 
+  /// Whether its picture may be another at another frame of the same
+  /// values — its plugin reads the moment's frame or time (fx_wgsl's
+  /// `Kernel::reads_the_moment`). A run of one that does not is signed
+  /// alike at every frame ([FxPluginRun.==]).
+  bool get readsTheMoment;
+
   /// How far past its input the effect reaches for [values] (four doubles
   /// a parameter, anicel_fx_value) at [moment], in output pixels — or null
   /// where the plugin failed to say.
@@ -107,10 +113,31 @@ final class FxPluginRun {
     required this.moment,
     required Map<LayerId, BitmapSurface?> rows,
     this.told,
-  }) : rows = frozenMap(rows);
+  }) : rows = frozenMap(rows),
+       _signedMoment = runner.readsTheMoment
+           ? moment
+           : (frameRate: moment.frameRate, scale: moment.scale);
 
   final FxPluginRunner runner;
   final FxPluginMoment moment;
+
+  /// 🚨WHAT OF [moment] A RUN IS SIGNED WITH IS WHAT ITS PLUGIN READS (card
+  /// a-plugin-step-is-keyed-by-a-moment-it-may-not-read, 브러시/렌더링
+  /// 2026-11-13, a card of its own after the round — 관제 09:05): all of
+  /// it where the plugin reads the frame or the time
+  /// ([FxPluginRunner.readsTheMoment]), else the rate and the scale alone,
+  /// alike at every frame of a cut. So the step a canvas keeps at the
+  /// pen's frame is the step of every frame its cel stands at with those
+  /// values (`FxPluginStages`), and a frame made ahead reads it rather
+  /// than run its own. Asked of the runner as the run is made — a build
+  /// still to come signs with all of it ([FxPluginRunner.toCome]) — so
+  /// what a run is equal to never changes under a key that holds it.
+  /// ↩️Signed with the moment whatever the plugin read, a frame made
+  /// ahead ran every plug-in of its frame again: 🔬main PC, profile,
+  /// S5_BA cut 352, three steps — about 0.4 s a frame; the Surface Pro 11
+  /// came quiet after a file opened at 40–42 s with the plug-in row on,
+  /// 20 s with it off (검증/서피스, 11-13).
+  final Object _signedMoment;
 
   /// The rows the effect's layer parameters name that are in its cut.
   final Map<LayerId, BitmapSurface?> rows;
@@ -164,7 +191,7 @@ final class FxPluginRun {
       identical(this, other) ||
       other is FxPluginRun &&
           identical(other.runner, runner) &&
-          other.moment == moment &&
+          other._signedMoment == _signedMoment &&
           other.rows.length == rows.length &&
           rows.entries.every(
             (row) =>
@@ -175,7 +202,7 @@ final class FxPluginRun {
   @override
   int get hashCode => Object.hash(
     identityHashCode(runner),
-    moment,
+    _signedMoment,
     Object.hashAllUnordered([
       for (final row in rows.entries)
         Object.hash(row.key, identityHashCode(row.value)),

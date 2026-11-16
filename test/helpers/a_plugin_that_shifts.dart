@@ -211,9 +211,15 @@ void _eachSpan(
 }
 
 /// Moves every pixel right by its first value — reaching that far — or by
-/// [by] where it is told one.
+/// [by] where it is told one. It reads no moment, but says it may
+/// ([readsTheMoment]) where it is not told otherwise.
 final class ShiftingFxPlugin implements FxPluginRunner {
-  ShiftingFxPlugin({this.by, this.fails = false, this.reachFails = false});
+  ShiftingFxPlugin({
+    this.by,
+    this.fails = false,
+    this.reachFails = false,
+    this.readsTheMoment = true,
+  });
 
   final int? by;
   final bool fails;
@@ -229,6 +235,9 @@ final class ShiftingFxPlugin implements FxPluginRunner {
 
   @override
   Future<void>? get toCome => null;
+
+  @override
+  final bool readsTheMoment;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) =>

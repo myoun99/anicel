@@ -333,6 +333,9 @@ final class _Kept implements FxPluginRunner {
   Future<void>? get toCome => null;
 
   @override
+  bool get readsTheMoment => true;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
