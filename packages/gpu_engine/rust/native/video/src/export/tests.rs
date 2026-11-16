@@ -305,7 +305,7 @@ fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
         assert_eq!((pictures.len(), sounds, formats.len()), (1, sounding, 1 + sounding), "{name}: its tracks, {formats:?}");
         assert_eq!(pictures[0].count, frames as usize, "{name}: a sample for every frame");
         if cfg!(windows) {
-            let written = (frames * shape.sample_rate * shape.fps.1 / shape.fps.0) as u32;
+            let written = (i64::from(frames) * i64::from(shape.sample_rate) * i64::from(shape.fps.1) / i64::from(shape.fps.0)) as u32;
             let mut list = vec![0, 0, 0, 0, 0, 0, 0, 1];
             list.extend_from_slice(&written.to_be_bytes());
             list.extend_from_slice(&[0, 0, 4, 0, 0, 1, 0, 0]);
