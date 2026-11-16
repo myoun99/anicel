@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
@@ -275,6 +276,12 @@ void main() {
         reason: '⛔premise: made ahead',
       );
       await patiently(playbackRigOf(s).prerenderScheduler.idle);
+      // What a device takes with it is what landed since the last copy came
+      // here: the cels copied, they are drawn on the next engine still.
+      // ↩️Not copied till 2026-11-16, the ink went with the device and
+      // nothing said so — this read the frames as still drawn, until a
+      // frame's key kept said otherwise.
+      while (await EngineTileLedger.instance.copyHereABatch()) {}
 
       theAppsEngineLostAndLetGo();
 

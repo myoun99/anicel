@@ -51,6 +51,11 @@ typedef _Stood = ({
 /// What a frame's key read of its cels moves with ([FramePictures._celsNow]):
 /// any cel's revision, any crossing empty ↔ drawn, any cel noted as one
 /// that will not read or holds pixels of another size, or let go as one.
+///
+/// ⚠️A device gone moves it as the cels' crossings it made are recorded
+/// (`BrushFrameStore.recordWhatWentWithTheDevice`). ⛔Not by the engine
+/// itself: a cel's drawn-ness flips as a tile it lost is read, which may be
+/// after the engine moved (11-16, tried).
 typedef _CelsStamp = (int, int, int, int);
 
 /// Whether every frame's key kept is checked against its tree stacked anew

@@ -564,6 +564,37 @@ class BrushFrameStore {
     celContentRevision.value += 1;
   }
 
+  /// Records every cel's content anew as the app lets go of an engine whose
+  /// device is gone — told by the session's caches (`RenderCaches`), for
+  /// each of its cel stores.
+  ///
+  /// 🚨A DEVICE GONE EMPTIES CELS NO EDIT DID. A tile whose only copy was
+  /// there reads as the picture it landed on (`EngineTileLedger`), and
+  /// what its maker said of its ink was said of the pixels that went
+  /// ([BitmapTile.forgetInk]): a cel that held nothing but what landed
+  /// since the last copy came here is empty now, and one cleared since may
+  /// be drawn again. Its crossing is told as every other is
+  /// ([celContentRevision]) — the block's tint, a frame's key
+  /// (`FramePictures`). ↩️Told by none till 2026-11-16: a frame's key was
+  /// kept over a row its cel no longer drew
+  /// (the_rig_is_wired_the_moment_the_session_is_test.dart).
+  ///
+  /// ⚠️EVERY CEL, not only one holding such a tile: a read between the loss
+  /// and this has laid some already, telling no crossing.
+  void recordWhatWentWithTheDevice() {
+    for (final surface in _bakedSurfaces.values) {
+      for (final tile in surface.tiles.values) {
+        if (tile.isOnlyOnEngine) {
+          tile.forgetInk();
+        }
+      }
+    }
+    for (final key in _bakedSurfaces.keys) {
+      _recordCelContent(key);
+    }
+    _announceCrossings();
+  }
+
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
   /// baked-seeded entry ALIASES the cel's [_bakedSurfaces] truth (the same
   /// immutable surface object), so evicting one freed nothing — the old

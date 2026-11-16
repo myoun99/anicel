@@ -44,6 +44,7 @@ import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/engine_frame_tools.dart';
 import '../playback/engine_frame_picture_store.dart';
 import '../playback/layer_frame_image_cache.dart';
@@ -405,15 +406,30 @@ class RenderCaches {
     });
   }
 
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — what a gone device took of the
+  /// cels is recorded by each cel store as the app lets it go
+  /// ([BrushFrameStore.recordWhatWentWithTheDevice]).
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      for (final store in celStores) {
+        store.recordWhatWentWithTheDevice();
+      }
+    },
+  );
+
   /// Listening starts with the session: a command that lands before this
   /// leaves a stale composite servable.
-  void attach() =>
-      cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+  void attach() {
+    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    _onTheEngine.start();
+  }
 
   /// ⚠️The ORDER is the one the session's `dispose` used to spell: the
   /// listener comes off the hub and the pending restart is cancelled
   /// BEFORE the caches it would have refilled go down.
   void dispose() {
+    _onTheEngine.stop();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     layerFrameImageCache.dispose();
