@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/build_stamp.dart' show buildNumber;
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
@@ -94,6 +95,14 @@ void main() {
     test('carries no what\'s-new — a round\'s build does', () {
       expect(_content(number: '').showsWhatsNew, isFalse);
       expect(_content(number: '1091').showsWhatsNew, isTrue);
+    });
+
+    test('the notice the app opens asks the build\'s own stamp', () async {
+      // `flutter test` stamps nothing: the suite runs as a debug build.
+      expect(buildNumber, isEmpty, reason: '⛔premise');
+      final bundled = await LaunchNoticeContent.bundled();
+      expect(bundled.number, buildNumber);
+      expect(bundled.showsWhatsNew, isFalse);
     });
 
     test('opens its notice with the debug words, and says the rest as the '
