@@ -284,8 +284,10 @@ impl Sums {
 ///
 /// 🔬A row at a time, the row's chroma spread a pixel apiece first and every
 /// pixel written whole: 3.1 ms a 1080p frame on the Surface, where reading
-/// each pixel's three through [`Decoded`] took 11.6 and Media Foundation's
-/// own conversion about 5 (2026-11-16, release, 72 frames) — the same bytes.
+/// each pixel's three through [`Decoded`] took 11.6 (2026-11-16, release,
+/// 72 frames) — the same bytes. A document of RGBA, decode and colour, then
+/// read as fast as Media Foundation's conversion had made it: 5.2 ms a frame
+/// against 5.3 (two runs of three each, the same 1080p movie).
 ///
 /// 🚨★★★**IT LIVES IN THE LAW BECAUSE IT IS ARITHMETIC, AND BECAUSE IT WAS
 /// NEVER RUN.** It was inside the Android backend, where it compiled on
