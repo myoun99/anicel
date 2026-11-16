@@ -8,8 +8,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock, mpsc};
+use std::sync::{RwLock, mpsc};
 use std::time::Duration;
 
 use super::source_scan::files_where;
@@ -122,16 +121,32 @@ fn the_shared_device_submits_nothing_while_a_tests_own_is_up() {
 }
 
 // A test's own device comes up once the shared one is through with what it
-// was handed: none of that work runs beside it.
+// was handed: none of that work runs beside it. Its queue is empty as the
+// turn is given — and no submit of its goes in under the turn, so a poll
+// that waits for nothing reads it so.
 #[test]
 fn the_turn_is_given_once_the_shared_device_is_through_with_its_work() {
     let engine = first_engine();
-    engine.queue.submit([]);
-    let through = Arc::new(AtomicBool::new(false));
-    let told = Arc::clone(&through);
-    engine.queue.on_submitted_work_done(move || told.store(true, Ordering::Release));
+    // Work to be under way still as the turn is asked for: 64 MiB copied
+    // sixteen times.
+    let size = 64 << 20;
+    let buffer = |usage| {
+        engine.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("the shared device's work"),
+            size,
+            usage,
+            mapped_at_creation: false,
+        })
+    };
+    let (from, to) = (buffer(wgpu::BufferUsages::COPY_SRC), buffer(wgpu::BufferUsages::COPY_DST));
+    let mut encoder = engine.device().create_command_encoder(&Default::default());
+    for _ in 0..16 {
+        encoder.copy_buffer_to_buffer(&from, 0, &to, 0, size);
+    }
+    engine.queue.submit([encoder.finish()]);
     let _turn = a_device_of_its_own();
-    assert!(through.load(Ordering::Acquire), "the turn was given with the shared device at work");
+    let status = engine.device().poll(wgpu::PollType::Poll).expect("poll");
+    assert!(status.is_queue_empty(), "the turn was given with the shared device at work");
 }
 
 #[test]

@@ -28,11 +28,18 @@ const NO_WAIT: &str = concat!("Poll", "Type::Poll)");
 
 /// The files that poll a device and are not the engine's wait, each with
 /// why.
-const LEDGER: [(&str, &str); 1] = [(
-    "kernels/composite/screen_tests.rs",
-    "a test that asks, once it was told the GPU is done, whether the queue is empty: a poll \
-     that waits for nothing, and so names wgpu no submission to hold the queue against",
-)];
+const LEDGER: [(&str, &str); 2] = [
+    (
+        "kernels/composite/screen_tests.rs",
+        "a test that asks, once it was told the GPU is done, whether the queue is empty: a poll \
+         that waits for nothing, and so names wgpu no submission to hold the queue against",
+    ),
+    (
+        "kernels/shared/one_device_turn.rs",
+        "a test that asks, once a test's own device was given its turn, whether the shared \
+         device's queue is empty: a poll that waits for nothing, as the one above",
+    ),
+];
 
 const FIX: &str = "a device is polled by `polled` in device.rs alone, on the engine's thread \
                    for polls, till the GPU is done and with no limit of wgpu's own — one that \
