@@ -1276,6 +1276,30 @@ fn a_page_is_made_apart_from_wgpus_allocator() {
     drop(premise);
 }
 
+// A buffer made apart is described as wgpu describes one of its own made of
+// the same descriptor — its size, its layout, its flags — so a pass binds
+// it as it binds wgpu's (브러시/렌더링 2026-11-16 08:32 ②). ⚠️No test sees
+// the flag a pass writes through go missing: 🧪without it the passes wrote
+// all the same on the Surface's driver, release and debug alike (mutant,
+// 2026-11-16) — so it is read off the resource.
+#[cfg(windows)]
+#[test]
+fn a_buffer_made_apart_is_described_as_wgpu_describes_its_own() {
+    use wgpu::hal::api::Dx12;
+    let engine = rig().engine;
+    let described = |buffer: &wgpu::Buffer| {
+        // SAFETY: only reads the buffer's resource's description.
+        unsafe { buffer.as_hal::<Dx12>() }.map(|made| unsafe { made.raw_resource().GetDesc() }).expect("a D3D12 buffer")
+    };
+    let page = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC;
+    for usage in [page, wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC] {
+        let desc = wgpu::BufferDescriptor { label: Some("a buffer described"), size: 4 * TILE_BYTES, usage, mapped_at_creation: false };
+        let apart = crate::platform::committed_buffer(engine.device(), &desc).expect("made apart");
+        let wgpu_s = engine.device().create_buffer(&desc);
+        assert_eq!(described(&apart), described(&wgpu_s), "{usage:?}");
+    }
+}
+
 // A page a store waits for — none made ahead — is made on the pages'
 // thread too: the store is answered while the engine's thread stands still.
 #[test]
