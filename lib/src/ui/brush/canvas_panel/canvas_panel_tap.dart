@@ -326,12 +326,11 @@ class _CanvasPanelTap {
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
       // layer. The CUT variants ride that same layer (canvasToolSelects),
-      // the STAMP variant paints and the WHOLE runs from its settings
-      // (I-163), so none of them want a tap handler here either.
+      // and the STAMP variant paints, so none of them want a tap handler
+      // here either.
       case CanvasTool.select:
       case CanvasTool.move:
       case CanvasTool.cut:
-      case CanvasTool.cutWhole:
       // The shape fill rides the same drag layer as select and cut — one
       // outline, three things to do with it.
       case CanvasTool.fillShape:
@@ -341,6 +340,13 @@ class _CanvasPanelTap {
       // too — the text tool mounts a layer of its own for both.
       case CanvasTool.text:
         return null;
+      case CanvasTool.cutWhole:
+        // The whole cut runs from its settings (I-163): a press on the
+        // canvas does nothing with it, and the layer this mounts takes the
+        // press so that the drawing view under it starts no stroke.
+        // ↩️It had no layer, and a drag under it painted the brush
+        // (found 2026-11-17, I-110's eyedropper sweep).
+        return (_) {};
       case CanvasTool.cutStamp:
         // Click = drop the held piece, centred here, committed at once.
         // Photoshop, Clip Studio and TVPaint agree on the immediate part:
