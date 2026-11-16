@@ -730,6 +730,30 @@ void main() {
       expect(canvas.view.standing(zoomed), zoomed, reason: 'up, the zoom\'s');
     });
 
+    testWidgets('a frame that comes up through a zoom stands as it was drawn '
+        '— not moved by the pan the frame before it stood at', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final seenThrough = await standOver(tester, float);
+      final laid = layersLaid();
+      await seenThrough(CanvasViewport());
+      await tester.pump();
+      final home = laid.last;
+      hold();
+
+      await seenThrough(CanvasViewport(panX: 10, panY: 6));
+      await seenThrough(CanvasViewport(zoom: 2, panX: 30, panY: 12));
+      expect(gates, hasLength(1), reason: '⛔premise: the zoom is on the GPU');
+      // Zoomed on again before the zoom's frame is up.
+      await seenThrough(CanvasViewport(zoom: 3, panX: 40, panY: 12));
+
+      gates.first.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(laid.last, home, reason: 'the frame up of the zoom stood moved');
+    });
+
     testWidgets('⛔a frame up of the view what is drawn over the canvas '
         'stands at already tells it nothing — a stroke puts one up a frame', (
       tester,
