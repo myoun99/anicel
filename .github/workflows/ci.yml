@@ -121,6 +121,18 @@ jobs:
   # deadline while still passing tests — the real job this rule exists not
   # to kill. So the Linux shards' deadline is 45: just over 2x the 20-21
   # minutes a shard now takes, the same rule as before with today's numbers.
+  #
+  # Re-measured 2026-11-17 (card ci-linux-shards-cannot-make-a-shown-surface),
+  # after the canvas went to the GPU engine (11-09) and these shards drew it
+  # on lavapipe — on the CPU: the shards were 26-29 min on 11-06 (run
+  # 42274839761) and every run of the bundle PR since has been killed at 45
+  # while still passing tests. Run 43891668921: shard 2's first pass took
+  # 41.7 min to the end, and shards 0 and 1 were cut at 44 min with 78% and
+  # 93% of a shard's tests behind them — 56 and 47 min to the end of the
+  # pass, about 59 for the slowest job. The files that grew most are the
+  # ones that open the workspace and draw it (the top strip's widths 24 s →
+  # 436 s, a float on a keyed row 75 → 467 s). So the deadline is 120: just
+  # over 2x the slowest, the same rule again.
 
   # Sharded by FILE LIST, and the distinction is the whole point.
   #
@@ -146,7 +158,7 @@ jobs:
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     strategy:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
