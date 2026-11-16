@@ -755,6 +755,11 @@ final class TimelineRulerScale {
   /// or every second, third … one, as their width asks. ↩️The ladder doubled
   /// on past 24, and 96 frames went under marks four seconds apart where the
   /// seconds were five apart.
+  ///
+  /// Where the pages count again, the numbers' rung fits the page as the
+  /// seconds' does ([_fittedToThePage]) — 🔬F-539 ④ (서피스 2026-11-16):
+  /// four seconds on a page of six wrote `1 97 49 1`, the 「0 5 4 3」 the
+  /// seconds had been kept from, one line down.
   int get labelEveryFrames =>
       _labelEveryFramesOf[this] ??= _measuredLabelEveryFrames();
 
@@ -782,8 +787,12 @@ final class TimelineRulerScale {
         return stride;
       }
     }
-    final marks = second * secondsLabelEverySeconds;
-    return marks * math.max(1, (overlay / (marks * cell)).ceil());
+    final everySeconds = secondsLabelEverySeconds;
+    final marks = second * everySeconds;
+    return second *
+        _fittedToThePage(
+          everySeconds * math.max(1, (overlay / (marks * cell)).ceil()),
+        );
   }
 
   /// A strip's window, both passes — the ruler's across and the rail's
@@ -1106,18 +1115,28 @@ final class TimelineRulerScale {
   /// layer of its own ([TimelineRulerCursorOverlayPainter], F-212). ↩️The
   /// strip was handed one and tinted its cell 12% — every mount handed it
   /// -1 once the overlay took the tint, so only the tests ever saw it.
+  ///
+  /// A number a second or more from the next stands under a second the
+  /// seconds line WRITES (I-102 「위 숫자(초)를 기준으로」): where a page's
+  /// mark keeps the seconds after it clear (I-22's 「겹칠때 생략」), the
+  /// numbers under them go with them. 🔬F-539 ④ (서피스 2026-11-16): `73`
+  /// stood alone under the seconds `0 p1` had cleared, and the two lines
+  /// could not be read as one scale.
   TimelineRulerHeaderModel modelAt(int frameIndex) {
     final outside = frameIndex >= playbackFrameCount;
-    final labeled = frameIndex % labelEveryFrames == 0;
+    final secondsLabel = timelineRulerSecondsLabel(
+      everySeconds: secondsLabelEverySeconds,
+      frameIndex: frameIndex,
+      framesPerSecond: framesPerSecond,
+      pages: _pageMarks,
+    );
+    final labeled =
+        frameIndex % labelEveryFrames == 0 &&
+        (labelEveryFrames < _secondFrames || secondsLabel.isNotEmpty);
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
       label: labeled ? frameNumberLabel(frameIndex) : '',
-      secondsLabel: timelineRulerSecondsLabel(
-        everySeconds: secondsLabelEverySeconds,
-        frameIndex: frameIndex,
-        framesPerSecond: framesPerSecond,
-        pages: _pageMarks,
-      ),
+      secondsLabel: secondsLabel,
       outsidePlaybackRange: outside,
       background: outside
           ? (pastPlaybackWash ?? colorScheme.surface)
