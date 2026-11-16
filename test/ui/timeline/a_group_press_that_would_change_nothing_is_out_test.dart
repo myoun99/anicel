@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/timeline/se_sound_lane_editing.dart'
     show seSoundWithGroupReset;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
     show laneResetAt, transformTrackWithGroupReset;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
@@ -188,6 +189,12 @@ void main() {
   VoidCallback? pressOf(WidgetTester tester, String name) =>
       tester.widget<RailGlyphButton>(find.named(name)).onPressed;
 
+  /// The colour [name]'s glyph is painted in now — a lit Reset in the
+  /// accent, an out one not (🗣️I-176: 「fx의 fx리셋버튼도 동일하게 무언가
+  /// 값이 기본값이 아니게되면 강조색으로」).
+  Color? inkOf(WidgetTester tester, String name) =>
+      tester.renderObject<RenderRailGlyphFace>(find.named(name)).debugGlyphInk;
+
   /// [row]'s lanes twirled open, where they are not yet.
   Future<void> openLanes(
     WidgetTester tester,
@@ -226,12 +233,14 @@ void main() {
     rotated(session, PropertyTrack<double>().withKey(0, 45));
     await tester.pumpAndSettle();
     expect(pressOf(tester, reset), isNotNull);
+    expect(inkOf(tester, reset), AppColors.accent);
     expect(pressOf(tester, rasterize), isNotNull);
 
     pressOf(tester, reset)!();
     await tester.pumpAndSettle();
     expect(_rowOf(session, row).transformTrack.rotation.keyAt(0)!.value, 0);
     expect(pressOf(tester, reset), isNull);
+    expect(inkOf(tester, reset), isNot(AppColors.accent));
     expect(
       pressOf(tester, rasterize),
       isNull,
@@ -345,6 +354,7 @@ void main() {
     final blur = _rowOf(session, row).effects.single.id;
     final reset = resetOf(row, effectGroupLaneId(blur));
     expect(pressOf(tester, reset), isNull);
+    expect(inkOf(tester, reset), isNot(AppColors.accent));
 
     session.effectsAndFx.updateLayerEffects(row, [
       LayerEffect(
@@ -355,6 +365,7 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(pressOf(tester, reset), isNotNull);
+    expect(inkOf(tester, reset), AppColors.accent);
   });
 
   testWidgets('🎯an fx header\'s Rasterize is out where the fx changes no '

@@ -658,10 +658,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         AppWindowAction(
           label: AppText.strings.shortcutResetPreset,
           actionKey: const ValueKey<String>('shortcut-preset-reset-button'),
-          emphasis: AppWindowActionEmphasis.danger,
+          // 🗣️I-176-Q1 (유저 2026-11-16): a 「강조색 — 리셋 법 하나」 — the
+          // accent of every reset, and the window it opens says the danger.
+          // ↩️It wore the danger red, live whether or not a key was recorded.
           onPressed: widget.bindings.resetAllChanges
               ? () => unawaited(_presets.reset(context))
               : null,
+          resets: true,
         ),
         AppWindowAction(
           label: AppText.strings.commonClose,

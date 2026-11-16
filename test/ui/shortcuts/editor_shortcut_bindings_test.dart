@@ -176,8 +176,18 @@ void main() {
       containsAll({EditorActionIds.frameNext, EditorActionIds.toolEraser}),
     );
 
+    expect(
+      bindings.resetAllChanges,
+      isTrue,
+      reason: 'a key recorded over the preset is something to reset',
+    );
     bindings.resetAll();
     expect(bindings.conflictedActionIds, isEmpty);
+    expect(
+      bindings.resetAllChanges,
+      isFalse,
+      reason: 'the preset as it ships has nothing to reset (F-583)',
+    );
   });
 
   // 🗣️I-158 (유저 2026-11-04): 「펜(Y)이런식으로 이 텍스트를 버튼으로

@@ -4218,12 +4218,22 @@ void main() {
       ),
     );
     await tester.pump();
+    expect(
+      env.commands.canResetTransform,
+      isTrue,
+      reason: 'the box is moved: the reset has something to put back',
+    );
     env.commands.resetTransform();
     await tester.pump();
     final values = env.commands.transformValues;
     expect(values?.tx, 0);
     expect(values?.rotationDegrees, 0);
     expect(values?.sx, 1);
+    expect(
+      env.commands.canResetTransform,
+      isFalse,
+      reason: 'the box stands as it opened: its reset is out (F-583)',
+    );
   });
 
   testWidgets('리셋 flattens the WARP in 퍼스 and 메쉬 alike, and keeps nothing '

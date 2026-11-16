@@ -9,10 +9,12 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart' show PanelFlyoutItem;
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/text_finders.dart';
+import '../flyout_test_helpers.dart' show dismissFlyout;
 
 /// 100% means one artwork pixel per DEVICE pixel (유저 확정 2026-08-21), and
 /// the same division keeps the UI scale off the document views.
@@ -450,17 +452,35 @@ void main() {
       // An uncontrolled panel already OPENS at the identity, so frame it
       // somewhere else first or the button has nothing to prove.
       expect(readout(tester), '100.00%');
+      // …and at the identity it has nothing to do (F-583) — out, and so
+      // not in the accent either (I-176).
+      expect(await oneToOneLive(tester), isFalse);
       await tester.tap(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
       );
       await tester.pump();
       expect(readout(tester), isNot('100.00%'));
+      expect(await oneToOneLive(tester), isTrue);
 
       // 1:1 folds into the gear on any pill that is not the floor's.
       await tapInViewSettings(tester, 'canvas-viewport-reset');
       expect(readout(tester), '100.00%');
+      expect(await oneToOneLive(tester), isFalse);
     });
   });
+}
+
+/// Whether the gear's 1:1 row can be chosen — read with the list open, and
+/// the list shut again.
+Future<bool> oneToOneLive(WidgetTester tester) async {
+  await openViewSettings(tester);
+  final live = tester
+      .widget<PopupMenuItem<PanelFlyoutItem>>(
+        find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+      )
+      .enabled;
+  await dismissFlyout(tester);
+  return live;
 }
 
 /// A host that answers `onViewportChanged` the way the real one does — with

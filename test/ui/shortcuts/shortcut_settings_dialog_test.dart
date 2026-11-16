@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -920,6 +921,21 @@ void main() {
           ),
           findsOneWidget,
         );
+        // Out while nothing is recorded over the preset (F-583): a key
+        // recorded is what gives it something to put back.
+        // And in the accent while it is live, as every reset is
+        // (🗣️I-176-Q1: 「강조색 — 리셋 법 하나」 — the red went).
+        Color? ink() => tester
+            .widget<TextButton>(resetButton)
+            .style
+            ?.foregroundColor
+            ?.resolve(const <WidgetState>{});
+        expect(tester.widget<TextButton>(resetButton).onPressed, isNull);
+        expect(ink(), isNot(AppColors.accent));
+        bindings.setActivators(bindings.definitions.first.id, const [spare]);
+        await tester.pump();
+        expect(tester.widget<TextButton>(resetButton).onPressed, isNotNull);
+        expect(ink(), AppColors.accent);
 
         await press(tester, resetButton);
 

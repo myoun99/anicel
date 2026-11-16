@@ -459,5 +459,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(received, BrushPressureCurve.identity());
+    // The shape is straight now: the reset has nothing left to do (F-583).
+    expect(
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey<String>('curve-reset-pressure')),
+          )
+          .onTap,
+      isNull,
+    );
   });
 }

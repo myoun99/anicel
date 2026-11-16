@@ -5,6 +5,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:anicel/src/ui/widgets/setting_source_button.dart';
@@ -112,14 +113,25 @@ void main() {
     await pumpInputTab(tester);
     expect(lit(tester), isFalse);
     await openTheGraph(tester);
+    // The reset at the graph's head says the same (I-176): out while the
+    // line is straight (F-583), in the accent once it bends.
+    final reset = find.byKey(const ValueKey<String>('pen-response-reset'));
+    Color? resetInk() => tester
+        .widget<Text>(find.descendant(of: reset, matching: find.byType(Text)))
+        .style
+        ?.color;
+    expect(resetInk(), isNot(AppColors.accent));
+    expect(tester.widget<InkWell>(reset).onTap, isNull);
     await pullTheMiddleUp(tester, 0.3);
     expect(lit(tester), isTrue);
+    expect(resetInk(), AppColors.accent);
 
-    await tester.tap(find.byKey(const ValueKey<String>('pen-response-reset')));
+    await tester.tap(reset);
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.pressureCurve, BrushPressureCurve.linear);
     expect(tester.widget<PressureCurveGraph>(graph).points, hasLength(2));
     expect(lit(tester), isFalse);
+    expect(resetInk(), isNot(AppColors.accent));
   });
 
   testWidgets('a reset under a hand that holds a point lets the point go', (

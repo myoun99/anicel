@@ -505,6 +505,19 @@ void main() {
       expect(library.presets, defaultBrushPresets);
       expect(library.groups, defaultBrushGroups);
     });
+
+    test('atDefaults says whether the reset would change the library '
+        '(F-583)', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      expect(library.atDefaults, isFalse, reason: 'seeded off the built-ins');
+
+      library.resetToDefaults();
+      expect(library.atDefaults, isTrue);
+
+      library.rename(defaultBrushPresets.first.id, 'Mine');
+      expect(library.atDefaults, isFalse, reason: 'a built-in renamed');
+    });
   });
 
   group('saveCurrent', () {

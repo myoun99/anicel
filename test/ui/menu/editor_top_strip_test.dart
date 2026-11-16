@@ -214,6 +214,28 @@ void main() {
     );
   });
 
+  testWidgets('Settings: Reset Workspace Layout is out as the factory laid '
+      'the workspace, live once something moved, and out again after it '
+      '(F-583, I-176)', (tester) async {
+    await pumpHome(tester);
+    bool resetLive() => tester
+        .widget<EditorTopStrip>(find.byType(EditorTopStrip))
+        .menuRows(tester.element(find.byType(EditorTopStrip)))
+        .singleWhere((row) => row.keyValue == 'menu-window-reset-layout')
+        .enabled;
+    expect(resetLive(), isFalse, reason: 'nothing to put back yet');
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
+    await tapEntry(tester, 'panels-menu-item-brushes');
+    expect(resetLive(), isTrue, reason: 'a panel closed');
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
+    await tapEntry(tester, 'menu-window-reset-layout');
+    expect(resetLive(), isFalse, reason: 'the factory arrangement again');
+  });
+
   testWidgets('Settings: Reset Workspace Layout restores EVERY remembered '
       'thing, not only the docks', (tester) async {
     // It used to reset the docks, the extents and the locks — most of a
