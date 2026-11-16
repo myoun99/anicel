@@ -1593,34 +1593,33 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   ({Layer? layer, bool refused}) _layerNow(Offset offset) {
     final corner = _cornerOn(_shownThrough.texture!);
     try {
-      return (
-        layer: _shownThrough.presented(
-          (next, size) => _view._show(
-            _asItStands,
-            next,
-            size,
-            viewport: _viewport,
-            devicePixelRatio: _devicePixelRatio,
-            corner: corner,
-          ),
-          drawnFor: _drawnFor(corner),
-          from: (shownFor) => _standingFrom(offset, shownFor),
+      final layer = _shownThrough.presented(
+        (next, size) => _view._show(
+          _asItStands,
+          next,
+          size,
+          viewport: _viewport,
           devicePixelRatio: _devicePixelRatio,
-          upTogether: _together?.joined,
+          corner: corner,
         ),
-        refused: false,
+        drawnFor: _drawnFor(corner),
+        place: _placeAt(offset),
+        upTogether: _together?.joined,
       );
+      // Up already, on a screen that shows a frame as soon as it is drawn.
+      _tellTheOverlays();
+      return (layer: layer, refused: false);
     } on FrameKernelsToCome catch (wait) {
       _view._paintOnceCompiled(wait.compiled);
-      return (
-        layer: _shownThrough.standing(
-          from: (shownFor) => _standingFrom(offset, shownFor),
-          devicePixelRatio: _devicePixelRatio,
-        ),
-        refused: true,
-      );
+      return (layer: _shownThrough.standing(_placeAt(offset)), refused: true);
     }
   }
+
+  /// Where this box, painted at [offset], lays the frame up on its texture.
+  FramePlace _placeAt(Offset offset) => (
+    from: (shownFor) => _standingFrom(offset, shownFor),
+    devicePixelRatio: _devicePixelRatio,
+  );
 
   @override
   void paint(PaintingContext context, Offset offset) {
@@ -1633,13 +1632,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
         ? (layer: null, refused: false)
         : drawAsked
         ? _layerNow(offset)
-        : (
-            layer: _shownThrough.standing(
-              from: (shownFor) => _standingFrom(offset, shownFor),
-              devicePixelRatio: _devicePixelRatio,
-            ),
-            refused: false,
-          );
+        : (layer: _shownThrough.standing(_placeAt(offset)), refused: false);
     _view._waitsAtPaint(refused: refused);
     if (layer == null) {
       return;

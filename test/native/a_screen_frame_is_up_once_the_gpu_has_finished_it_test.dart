@@ -760,10 +760,11 @@ void main() {
     });
 
     testWidgets('a picture made to carry the overlays carries them from then '
-        'on — and gone with its box, carries them no more', (tester) async {
+        'on — and gone with its box, carries them no more: told the '
+        'overlays each time, once its frame is done', (tester) async {
       final float = SelectionFloatOverlay(null);
       addTearDown(float.dispose);
-      final (:canvas, told: _) = aCanvas();
+      final (:canvas, :told) = aCanvas();
       final seenThrough = await standOver(
         tester,
         float,
@@ -771,12 +772,16 @@ void main() {
         carries: false,
       );
       expect(canvas.view.debugCarrier, isNull, reason: '⛔premise');
+      final before = told();
 
       await seenThrough(CanvasViewport(), carry: true);
       expect(canvas.view.debugCarrier, isNotNull);
+      expect(told(), greaterThan(before), reason: 'told as it came');
+      final carried = told();
 
       await tester.pumpWidget(const SizedBox());
       expect(canvas.view.debugCarrier, isNull);
+      expect(told(), greaterThan(carried), reason: 'told as it went');
     });
 
     testWidgets("the frame's cut stands where the frame does: through a zoom, "

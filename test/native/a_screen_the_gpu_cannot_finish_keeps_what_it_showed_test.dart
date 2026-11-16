@@ -55,8 +55,7 @@ void main() {
       screen.presented(
             (_, _) => draw(),
             drawnFor: const Object(),
-            from: (_) => Offset.zero,
-            devicePixelRatio: 1,
+            place: (from: (_) => Offset.zero, devicePixelRatio: 1),
           )
           as TextureLayer;
 

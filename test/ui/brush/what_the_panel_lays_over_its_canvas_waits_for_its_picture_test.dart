@@ -216,7 +216,9 @@ void main() {
     );
   });
 
-  test('with no picture carrying them, the view as it is', () {
+  testWidgets('with no picture carrying them, the view as it is', (
+    tester,
+  ) async {
     final clock = PictureUpView();
     addTearDown(clock.dispose);
     final picture = _APicture()..at = drawnFor;
@@ -228,6 +230,27 @@ void main() {
     expect(clock.standing(zoomed), drawnFor, reason: 'another let go of it');
     clock.letGoOf(picture);
     expect(clock.standing(zoomed), zoomed);
+  });
+
+  testWidgets('a carrier gone once the overlays have gone tells no one', (
+    tester,
+  ) async {
+    final clock = PictureUpView();
+    final picture = _APicture()..at = drawnFor;
+    clock.carriedBy(picture);
+
+    // Let go of as a box is, in a frame being built — and the overlays gone
+    // in it too.
+    await tester.pumpWidget(
+      Builder(
+        builder: (context) {
+          clock
+            ..letGoOf(picture)
+            ..dispose();
+          return const SizedBox();
+        },
+      ),
+    );
   });
 
   group('a picture stands', () {

@@ -31,6 +31,16 @@ debugLayerOfScreen = TextureLayer.new;
 /// pixel.
 const int _screenSideStep = 512;
 
+/// Where a box lays the frame up on its texture
+/// ([EngineScreenTexture.presented], [EngineScreenTexture.standing]): its
+/// corner [from] what that frame was drawn for
+/// ([ScreenTexture.shownFor]; null where none is up), one texel a device
+/// pixel of [devicePixelRatio].
+typedef FramePlace = ({
+  Offset Function(Object? shownFor) from,
+  double devicePixelRatio,
+});
+
 /// THE TEXTURE A BOX OF THE ENGINE'S PIXELS IS SHOWN THROUGH: opened once
 /// the app's engine is open ([appGpuEngineOpen]) and the box [asks] for one,
 /// its sides rounded up from what is [want]ed, and opened again where that
@@ -88,16 +98,13 @@ final class EngineScreenTexture {
   }
 
   /// [draw] presented on the texture open, [draw] told its size, as drawn
-  /// for [drawnFor] — and the layer of the frame up on it, one texel a
-  /// device pixel, its corner where [from] says for what THAT frame was
-  /// drawn for ([ScreenTexture.shownFor]; null where none is up): the one
-  /// drawn, once the GPU has finished it — put up as [upTogether] says
-  /// ([ScreenTexture.present]).
+  /// for [drawnFor] — and the layer of the frame up on it, laid at [place]:
+  /// the one drawn, once the GPU has finished it — put up as [upTogether]
+  /// says ([ScreenTexture.present]).
   Layer presented(
     void Function(GpuTarget next, (int, int) size) draw, {
     required Object drawnFor,
-    required Offset Function(Object? shownFor) from,
-    required double devicePixelRatio,
+    required FramePlace place,
     Future<void> Function(Future<void> done)? upTogether,
   }) {
     final texture = _texture!;
@@ -108,19 +115,16 @@ final class EngineScreenTexture {
     );
     // After it is presented: a frame that failed, or is still being drawn,
     // stands as it stood.
-    return _layerOf(texture, from(texture.shownFor), devicePixelRatio);
+    return _layerOf(texture, place);
   }
 
   /// The frame the texture open shows already, nothing drawn, by a layer
   /// as [presented]'s: null where none has been presented on it.
-  Layer? standing({
-    required Offset Function(Object? shownFor) from,
-    required double devicePixelRatio,
-  }) {
+  Layer? standing(FramePlace place) {
     final texture = _texture;
     return texture == null || !texture.showsAFrame
         ? null
-        : _layerOf(texture, from(texture.shownFor), devicePixelRatio);
+        : _layerOf(texture, place);
   }
 
   /// A rect as big as [texture] around [shown], on device pixels: what it
@@ -138,17 +142,16 @@ final class EngineScreenTexture {
     );
   }
 
-  /// What [texture] shows now, from [offset], one texel a device pixel.
+  /// What [texture] shows now, laid at [place].
   static Layer _layerOf(
     ScreenTexture texture,
-    Offset offset,
-    double devicePixelRatio,
+    FramePlace place,
   ) => debugLayerOfScreen(
     rect:
-        offset &
+        place.from(texture.shownFor) &
         Size(
-          texture.width / devicePixelRatio,
-          texture.height / devicePixelRatio,
+          texture.width / place.devicePixelRatio,
+          texture.height / place.devicePixelRatio,
         ),
     textureId: texture.textureId.value,
     filterQuality: FilterQuality.none,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
@@ -79,18 +80,56 @@ final class PictureUpView extends ChangeNotifier {
   CanvasViewport standing(CanvasViewport now) =>
       _picture?.standingFor(now) ?? now;
 
-  /// [picture] carries the overlays from now on.
-  void carriedBy(StandingPicture picture) => _picture = picture;
+  /// [picture] carries the overlays from now on ([_told]).
+  void carriedBy(StandingPicture picture) {
+    _picture = picture;
+    _told();
+  }
 
-  /// [picture] carries them no more.
+  /// [picture] carries them no more ([_told]).
   void letGoOf(StandingPicture picture) {
     if (identical(_picture, picture)) {
       _picture = null;
+      _told();
     }
   }
 
-  /// The picture stands at another view, the view as it was: a frame up.
-  void moved() => notifyListeners();
+  /// The picture stands at another view, the view as it was: a frame up
+  /// ([_told]).
+  void moved() => _told();
+
+  /// Tells what is drawn over the canvas that the view it stands at moved —
+  /// at once, but where the app's frame is being built, laid out or
+  /// painted: once that frame is done.
+  ///
+  /// 🚨A CARRIER COMES OR GOES as a picture's box is built or let go, and a
+  /// frame goes up in the paint that drew it on a screen that shows it as
+  /// soon as it is drawn (`ScreenTexture.debugOnSurface`): where nothing
+  /// may be built again. ↩️Told none till 2026-11-16: a run seen through
+  /// the camera let the frame's picture go of them, and they stood on at
+  /// the view it was last up at
+  /// (a_cut_played_alone_plays_on_the_canvas_test.dart).
+  void _told() {
+    final binding = SchedulerBinding.instance;
+    if (binding.schedulerPhase != SchedulerPhase.persistentCallbacks) {
+      notifyListeners();
+      return;
+    }
+    binding.addPostFrameCallback((_) {
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
 }
 
 /// 🚨★★★THE PICTURES OF ONE CANVAS GO UP TOGETHER: a frame the GPU has
