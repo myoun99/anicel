@@ -6,6 +6,8 @@ library;
 
 import 'dart:ffi';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'gpu_engine_asset.dart';
 
 @Native<Pointer<Void> Function(Int64)>(symbol: 'qa_tile_alloc')
@@ -48,10 +50,11 @@ abstract final class TileBlocks {
   /// Gives [block] back to the lists — one [alloc] answered.
   static void free(Pointer<Uint8> block) => _free(block.cast());
 
-  /// Has [block] — [byteLength] bytes, told to the collector as [holder]'s
-  /// real weight — freed as [holder] is collected, the tile that holds it
-  /// or the colour whose tiles share it (`BitmapTile`): the lists' own free,
-  /// called on the collector's thread.
+  /// Has [block] — [byteLength] bytes — freed as [holder] is collected, the
+  /// tile that holds it or the colour whose tiles share it (`BitmapTile`):
+  /// the lists' own free, called on the collector's thread. Its weight is
+  /// told to the collector as [holder]'s, or — [weighedBy] — as a part of
+  /// the one weight of the tiles made together with it ([TileWeight]).
   ///
   /// ⛔NO DETACH TOKEN, and the finalizer is this file's own so that none
   /// can be passed (card `a-thawed-cel-is-adopted-on-the-ui-thread`). A
@@ -70,20 +73,28 @@ abstract final class TileBlocks {
   /// samples inside that 76 ms, 8 stood in `Expando._rehash` under this
   /// attach. The collector's pauses 504–1495 ms a run → 171–283 ms, and
   /// the Dart heap 108–114 MB → 92–95 MB: a set and a weak property a tile.
-  /// ⚠️Not settled by it: whether the collector runs less often for the
-  /// weight told here — once for every 110 tiles or so (7 MB) with the
-  /// token; without it as often in one pair of runs, a third to a half
-  /// less often in the other.
+  /// ⚠️What the weight told here costs the collector is [TileWeight]'s to
+  /// say: the pauses left after this were made of it.
   /// ↩️A tile passed itself as the token from R19-Z (2026-07-14) on.
   static void freeWith(
     Finalizable holder,
     Pointer<Uint8> block,
-    int byteLength,
-  ) => _freesWhenCollected.attach(
-    holder,
-    block.cast(),
-    externalSize: byteLength,
-  );
+    int byteLength, {
+    TileWeight? weighedBy,
+  }) {
+    if (weighedBy == null) {
+      _freesWhenCollected.attach(
+        holder,
+        block.cast(),
+        externalSize: byteLength,
+      );
+      return;
+    }
+    // Attached first: a weight told already refuses the tile, and its
+    // block goes with the tile.
+    _freesWhenCollected.attach(holder, block.cast());
+    weighedBy._add(byteLength);
+  }
 
   static final NativeFinalizer _freesWhenCollected = NativeFinalizer(
     Native.addressOf<NativeFinalizerFunction>(_free),
@@ -101,4 +112,68 @@ abstract final class TileBlocks {
   /// Frees every parked block: the OS says memory is tight
   /// (`DrawingEngines.respondToMemoryPressure`).
   static void trim() => _trim();
+}
+
+/// The weight of the blocks of tiles made together — a cel's, made a
+/// surface at once (`brush_drawing_binary_codec.dart`'s one assembly) —
+/// told to the collector ONCE, by the one object each of those tiles holds:
+/// told after the last of them is made, and let go with the last of them
+/// collected. Each block is still freed as its own tile is
+/// ([TileBlocks.freeWith]).
+///
+/// 🚨ONE WEIGHT A CEL, NOT ONE A TILE (card
+/// `a-thawed-cel-is-adopted-on-the-ui-thread`). A weight told for an object
+/// in new space is new space's, and the VM scavenges each time what new
+/// space was told passes four times its room — to free that weight, it
+/// hopes. A thawed cel's tiles stay (hot), so each such scavenge freed
+/// nothing and promoted them.
+/// 🔬Surface Pro 11, profile build, a copy of a user's 78-frame cut, the
+/// onion turned on (캔버스 베이스's harness, 11-16 13:1x): of 470
+/// scavenges in one row's step 457 were the VM's `external` ones, 462 ms
+/// in all, and a stop of 54.5 ms was nine of them in a row. The bare VM
+/// (`--verbose_gc`, 134 cels of 90 tiles held, 저장 11-16): 395 such
+/// scavenges with a weight a tile, 134 with one a cel — one a cel, its
+/// weight past new space's room by itself — and the cels made in half the
+/// time.
+/// ⚠️The price: the weight stays told till the LAST of the tiles goes,
+/// though a block whose tile went first is freed then — the collector is
+/// told more than there is, never less.
+final class TileWeight implements Finalizable {
+  TileWeight._();
+
+  int _bytes = 0;
+  bool _told = false;
+
+  /// Test seam: how many weights have been told, and of how many bytes in
+  /// all — a cel made at once is one.
+  @visibleForTesting
+  static int debugTold = 0;
+  @visibleForTesting
+  static int debugToldBytes = 0;
+
+  /// [make]'s answer, every tile it makes with the weight it is handed
+  /// weighed as one ([TileBlocks.freeWith]'s `weighedBy`).
+  static T together<T>(T Function(TileWeight weight) make) {
+    final weight = TileWeight._();
+    final made = make(weight);
+    weight._told = true;
+    if (weight._bytes > 0) {
+      // The lists' free of no block: this entry is there for the weight.
+      TileBlocks._freesWhenCollected.attach(
+        weight,
+        nullptr,
+        externalSize: weight._bytes,
+      );
+      debugTold += 1;
+      debugToldBytes += weight._bytes;
+    }
+    return made;
+  }
+
+  void _add(int bytes) {
+    if (_told) {
+      throw StateError('a weight is told once, after the last of its tiles');
+    }
+    _bytes += bytes;
+  }
 }

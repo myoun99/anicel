@@ -131,11 +131,25 @@ sealed class _PixelsHere {
 /// `a-thawed-cel-is-adopted-on-the-ui-thread` — the tiles alive are what
 /// its pauses are made of), and one made for a read is gone with the read.
 final class _OwnBlock implements _PixelsHere {
-  _OwnBlock(Pointer<Uint8> block, int byteLength)
+  _OwnBlock(Pointer<Uint8> block, int byteLength, this.weighedBy)
     : _address = block.address,
       view = block.asTypedList(byteLength);
 
   final int _address;
+
+  /// The weight this block is a part of, where its tile was made with
+  /// others at once ([TileWeight]): held so that it goes with the last of
+  /// them.
+  ///
+  /// 🚨READ BY NOTHING, AND SO AN ENTRY POINT: the AOT compiler takes away
+  /// a field nothing reads, and the weight with it — told, then let go at
+  /// the next collection while its tiles stood. 🔬`dart compile exe` (저장
+  /// 2026-11-16): of 100 values held by such a field alone, none lived
+  /// through a churn of collections — 100 under the JIT, and 100 in the exe
+  /// with this pragma. Tests run on the JIT, so only a pin on the source
+  /// sees it (`a_tile_weight_is_held_in_aot_test.dart`).
+  @pragma('vm:entry-point')
+  final TileWeight? weighedBy;
 
   @override
   final Uint8List view;
@@ -253,6 +267,7 @@ class BitmapTile implements Finalizable {
   factory BitmapTile({
     required int size,
     required Uint8List pixels,
+    TileWeight? weighedBy,
   }) {
     _validateSize(size);
     _validatePixelLength(pixels.length, size);
@@ -262,7 +277,7 @@ class BitmapTile implements Finalizable {
     }
     final buffer = TileBlocks.alloc(pixels.length);
     buffer.asTypedList(pixels.length).setAll(0, pixels);
-    return BitmapTile._adopt(size, buffer);
+    return BitmapTile._adopt(size, buffer, weighedBy);
   }
 
   factory BitmapTile.blank({required int size}) =>
@@ -310,6 +325,8 @@ class BitmapTile implements Finalizable {
   /// ownership transfers to the tile (freed by its finalizer). A cel laid
   /// on a worker comes home through this (`laidCelSurface`): its tiles
   /// stand with zero pixel copies on this isolate.
+  /// Made with the rest of its cel at once, it is weighed with them
+  /// ([TileWeight]); alone, by itself.
   ///
   /// Allocation contract: the buffer comes from [TileBlocks.alloc],
   /// whichever isolate asked — the finalizer gives it back there.
@@ -320,13 +337,18 @@ class BitmapTile implements Finalizable {
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
+    TileWeight? weighedBy,
   }) {
     _validateSize(size);
-    return BitmapTile._adopt(size, pixels);
+    return BitmapTile._adopt(size, pixels, weighedBy);
   }
 
-  BitmapTile._adopt(this.size, Pointer<Uint8> pixels) : _onEngine = null {
-    _hold(pixels);
+  BitmapTile._adopt(
+    this.size,
+    Pointer<Uint8> pixels, [
+    TileWeight? weighedBy,
+  ]) : _onEngine = null {
+    _hold(pixels, weighedBy);
   }
 
   BitmapTile._ofColour(this.size, _ColourBlock colour)
@@ -352,9 +374,10 @@ class BitmapTile implements Finalizable {
     _validateSize(size);
   }
 
-  void _hold(Pointer<Uint8> pixels) {
-    _here = _OwnBlock(pixels, bytesFor(size));
-    TileBlocks.freeWith(this, pixels, bytesFor(size));
+  void _hold(Pointer<Uint8> pixels, [TileWeight? weighedBy]) {
+    final bytes = bytesFor(size);
+    _here = _OwnBlock(pixels, bytes, weighedBy);
+    TileBlocks.freeWith(this, pixels, bytes, weighedBy: weighedBy);
   }
 
   /// Whether the engine made it: its pixels are there, and read here only

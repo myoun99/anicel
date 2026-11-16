@@ -91,7 +91,8 @@ class AnicelCelEntry {
       photos: photos,
       laidBounds: laidBounds,
     ),
-    (pixels) => BitmapTile(size: tileSize, pixels: pixels),
+    (pixels, weight) =>
+        BitmapTile(size: tileSize, pixels: pixels, weighedBy: weight),
   );
 }
 
@@ -156,8 +157,9 @@ sealed class LaidPixels {
   }
 
   /// The tile of [tileSize] they are, made on the isolate that keeps it: no
-  /// pixel is copied.
-  BitmapTile adopted(int tileSize);
+  /// pixel is copied. Weighed with the tiles made with it ([weighedBy]), or
+  /// by itself.
+  BitmapTile adopted(int tileSize, [TileWeight? weighedBy]);
 
   /// A block of the lists' holding them, the caller's to free or to lay
   /// again ([LaidPixels.keeping]) — for whoever writes into a laid tile
@@ -179,8 +181,12 @@ final class LaidBlock extends LaidPixels {
   Pointer<Uint8> get _block => Pointer.fromAddress(address);
 
   @override
-  BitmapTile adopted(int tileSize) =>
-      BitmapTile.adoptNative(size: tileSize, pixels: _block);
+  BitmapTile adopted(int tileSize, [TileWeight? weighedBy]) =>
+      BitmapTile.adoptNative(
+        size: tileSize,
+        pixels: _block,
+        weighedBy: weighedBy,
+      );
 
   @override
   Pointer<Uint8> inABlock(int tileSize) => _block;
@@ -197,7 +203,7 @@ final class LaidWord extends LaidPixels {
   final int word;
 
   @override
-  BitmapTile adopted(int tileSize) =>
+  BitmapTile adopted(int tileSize, [TileWeight? weighedBy]) =>
       BitmapTile.ofOneColour(size: tileSize, word: word);
 
   @override
@@ -346,35 +352,40 @@ FutureOr<T> Function(Future<int> Function(int first) ask) _onACopyOf<T>(
     }
   }
   return job(
-    _surfaceOf(parts, (index) => tiles[index], standsBehind: standsBehind),
+    _surfaceOf(parts, (index, _) => tiles[index], standsBehind: standsBehind),
   );
 };
 
-/// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
-/// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's
-/// blocks take ([laidCelSurface]) — one assembly for both.
+/// [parts] made a surface, each tile's pixels made a tile by [tileOf] and
+/// weighed with the rest, a cel at once ([TileWeight]): the copy
+/// [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's blocks
+/// take ([laidCelSurface]) — one assembly for both.
 ///
 /// ⚠️Every tile is made BEFORE what can refuse a damaged record — a text's
 /// or a photo's JSON, the surface's own checks: a laid block not adopted
 /// yet is one nothing would ever free.
 BitmapSurface _surfaceOf<P>(
   CelParts<P> parts,
-  BitmapTile Function(P pixels) tileOf, {
+  BitmapTile Function(P pixels, TileWeight weight) tileOf, {
   PasteboardReach standsBehind = PasteboardReach.whole,
 }) {
-  Map<TileCoord, BitmapTile> tilesOf(
-    List<({int x, int y, P pixels})> records,
-  ) => {
-    for (final tile in records)
-      // 🎯The coordinate has ALWAYS lived beside the pixels here —
-      // Finalizable tiles cannot cross the save/open isolate boundary, so
-      // the durable shape never had one on the tile. It used to build the
-      // TileCoord twice per tile, once as the key and once for a field that
-      // no longer exists.
-      TileCoord(x: tile.x, y: tile.y): tileOf(tile.pixels),
-  };
-  final tiles = tilesOf(parts.tiles);
-  final plates = [for (final text in parts.texts) tilesOf(text.plate)];
+  final (tiles, plates) = TileWeight.together((weight) {
+    Map<TileCoord, BitmapTile> tilesOf(
+      List<({int x, int y, P pixels})> records,
+    ) => {
+      for (final tile in records)
+        // 🎯The coordinate has ALWAYS lived beside the pixels here —
+        // Finalizable tiles cannot cross the save/open isolate boundary, so
+        // the durable shape never had one on the tile. It used to build the
+        // TileCoord twice per tile, once as the key and once for a field
+        // that no longer exists.
+        TileCoord(x: tile.x, y: tile.y): tileOf(tile.pixels, weight),
+    };
+    return (
+      tilesOf(parts.tiles),
+      [for (final text in parts.texts) tilesOf(text.plate)],
+    );
+  });
   return BitmapSurface(
     canvasSize: parts.canvasSize,
     pasteboardReach: standsBehind,
@@ -473,7 +484,7 @@ BitmapSurface laidCelSurface(
   PasteboardReach standsBehind = PasteboardReach.whole,
 }) => _surfaceOf(
   laid,
-  (pixels) => pixels.adopted(laid.tileSize),
+  (pixels, weight) => pixels.adopted(laid.tileSize, weight),
   standsBehind: standsBehind,
 );
 
