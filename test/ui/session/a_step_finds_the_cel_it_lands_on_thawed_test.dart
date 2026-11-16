@@ -19,6 +19,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/poll_until.dart';
 
 /// 🚨A STEP FINDS THE CEL IT LANDS ON THAWED
 /// (stepping-into-another-cut-stalls-the-ui-a-third-of-a-second-Q1, 유저
@@ -115,15 +116,9 @@ void main() {
   Future<bool> hotOnceSettled(
     EditorSessionManager session,
     BrushFrameKey key,
-  ) async {
+  ) {
     final store = session.renderCaches.brushFrameStore;
-    for (var turn = 0; turn < 200; turn += 1) {
-      if (store.hotBakedSurfaceOrNull(key) != null) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 25));
-    }
-    return false;
+    return pollUntil(() => store.hotBakedSurfaceOrNull(key) != null);
   }
 
   test('🚨on the cut after, the cel a step back lands on — the row it was '
