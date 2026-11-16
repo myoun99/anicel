@@ -67,6 +67,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     this.standing,
     this.axis = Axis.horizontal,
     this.geometry,
+    this.windowBucket,
   });
 
   final List<TimelineDisplayRow> rows;
@@ -85,6 +86,9 @@ class TimelineRowsGridSheet extends StatelessWidget {
   /// The window the rows are laid in ([TimelineGridSheet.geometry]).
   final TimelineFrameGeometryHandle? geometry;
 
+  /// See [TimelineGridSheetPainter.windowBucket].
+  final ValueListenable<int>? windowBucket;
+
   @override
   Widget build(BuildContext context) {
     final standing = this.standing;
@@ -100,6 +104,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
       frameCellExtent: frameCellExtent,
       axis: axis,
       geometry: geometry,
+      windowBucket: windowBucket,
       // No ground = rows lying on the artwork: nothing to paint under them
       // and, by the same law, no seam between them.
       rows: hostGround == null

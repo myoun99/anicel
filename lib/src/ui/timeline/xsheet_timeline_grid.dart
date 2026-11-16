@@ -548,6 +548,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
       geometry: _windowedFrameGeometry,
+      windowBucket: _frameWindowBucket,
     );
   }
 

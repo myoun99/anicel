@@ -2416,6 +2416,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         frameCellExtent: frame.scale.pixelsPerFrame,
         rows: rows,
         geometry: _windowedFrameGeometry,
+        windowBucket: _horizontalWindowBucket,
       ),
     );
   }

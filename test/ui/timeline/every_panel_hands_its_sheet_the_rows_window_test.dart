@@ -171,6 +171,11 @@ void main() {
       2,
       reason: '⛔premise: scrolled two spans',
     );
+    expect(
+      sheetIn(tester, sheet).windowBucket?.value,
+      2,
+      reason: 'the sheet rules by a bucket other than its rows\'',
+    );
     final frames = window!.value;
     expect(frames.isWindowed, isTrue, reason: 'the sheet drew the whole axis');
     expect(

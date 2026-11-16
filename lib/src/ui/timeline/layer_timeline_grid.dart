@@ -760,6 +760,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
       geometry: _windowedFrameGeometry,
+      windowBucket: _frameWindowBucket,
     );
   }
 

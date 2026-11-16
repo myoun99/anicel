@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -44,7 +45,16 @@ void main() {
     return handle;
   }
 
-  TimelineGridSheetPainter sheetOf({TimelineFrameGeometryHandle? geometry}) =>
+  ValueNotifier<int> bucketAt(int bucket) {
+    final notifier = ValueNotifier<int>(bucket);
+    addTearDown(notifier.dispose);
+    return notifier;
+  }
+
+  TimelineGridSheetPainter sheetOf({
+    TimelineFrameGeometryHandle? geometry,
+    ValueListenable<int>? bucket,
+  }) =>
       TimelineGridSheetPainter(
         frameCellExtent: cell,
         framesPerSecond: 24,
@@ -61,6 +71,7 @@ void main() {
           dashes: const [(frame: 300, from: 0, to: 40)],
         ),
         geometry: geometry,
+        windowBucket: bucket,
       );
 
   /// [sheet] as its box lays it: its window long under a [geometry], else
@@ -169,6 +180,72 @@ void main() {
         if (inked(x)) x,
     ];
     expect(past, isNotEmpty, reason: 'the sheet stopped where the axis did');
+  });
+
+  // Its rows' window, not its box's: the box keeps a margin of 1024 px
+  // before and past the view that no row draws in, and a sheet ruling it
+  // all ruled two thousand pixels more at every crossing (11-16).
+  test('under its rows\' bucket it rules what its rows draw, not its whole '
+      'box', () async {
+    const length = 22130.0;
+    const bucket = 7;
+    final window = windowOf(length, bucket);
+    final drawn = window.value.rowDrawnFrames(bucketAt(bucket));
+    final origin = window.value.windowOriginPx;
+    final extent = window.value.windowExtentPx;
+    const inBox = '⛔premise: a box wider than what its rows draw';
+    expect(drawn.startIndex * cell, greaterThan(origin + cell), reason: inBox);
+    expect(
+      drawn.endIndexExclusive * cell,
+      lessThan(origin + extent - cell),
+      reason: inBox,
+    );
+    final picture = recorded(
+      sheetOf(geometry: window, bucket: bucketAt(bucket)),
+      length,
+    );
+    final image = await picture.toImage(extent.toInt(), across.toInt());
+    picture.dispose();
+    final bytes = (await image.toByteData())!.buffer.asUint8List();
+    image.dispose();
+    // The first row's pixels, by where along the box they are inked.
+    bool inked(int x) => bytes[(10 * extent.toInt() + x) * 4 + 3] != 0;
+    final lines = [
+      for (var x = 0; x < extent.toInt(); x += 1)
+        if (inked(x)) x + origin,
+    ];
+    expect(lines, isNotEmpty, reason: '⛔premise: lines');
+    // Half a cell for where a boundary's line stands against its edge.
+    expect(lines.first, greaterThanOrEqualTo((drawn.startIndex - .5) * cell));
+    expect(
+      lines.last,
+      lessThanOrEqualTo((drawn.endIndexExclusive + .5) * cell),
+    );
+  });
+
+  test('a crossing that leaves its box where it stood repaints it', () {
+    const length = 22130.0;
+    final window = windowOf(length, 0);
+    final bucket = bucketAt(0);
+    final sheet = sheetOf(geometry: window, bucket: bucket);
+    var repaints = 0;
+    void heard() => repaints += 1;
+    sheet.addListener(heard);
+    addTearDown(() => sheet.removeListener(heard));
+    window.value = framesOf(length, 1);
+    expect(
+      window.value.drawsAs(framesOf(length, 0)),
+      isTrue,
+      reason: '⛔premise: the box stood where it was (its margin holds both)',
+    );
+    expect(repaints, 0, reason: '⛔premise: the box alone says nothing');
+    bucket.value = 1;
+    expect(repaints, 1, reason: 'what its rows draw moved, and it did not');
+    expect(
+      sheet.shouldRepaint(sheetOf(geometry: window, bucket: bucketAt(1))),
+      isTrue,
+      reason: 'another bucket, alike or not, is another sheet',
+    );
   });
 
   test('a window move repaints it, and the axis growing in its window does '
