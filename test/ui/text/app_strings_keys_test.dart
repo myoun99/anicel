@@ -475,6 +475,7 @@ void main() {
     'gpuPreferenceNotOnMacOS': (s) => s.gpuPreferenceNotOnMacOS,
     'gpuPreferenceDriverPicks': (s) => s.gpuPreferenceDriverPicks,
     'gpuPreferenceOneGpu': (s) => s.gpuPreferenceOneGpu,
+    'gpuInUseLabel': (s) => s.gpuInUseLabel,
     'fxPluginShareLabel': (s) => s.fxPluginShareLabel,
     'fxPluginShareHelp': (s) => s.fxPluginShareHelp,
     'fxPluginShareTenThousand': (s) => s.fxPluginShareTenThousand,
