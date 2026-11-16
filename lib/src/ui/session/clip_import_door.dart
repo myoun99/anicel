@@ -37,7 +37,7 @@ import '../../services/import/clip_import_planner.dart';
 import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
-    show bakeCelSurface, celTilesOf;
+    show bakeCelSurface, bakeCelTiles, celTilesOf;
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart'
@@ -647,10 +647,11 @@ final class ClipImportDoor {
     if (tiles.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    bakeCelTiles(
       _renderCaches.brushFrameStore,
       _keyOf(item),
-      BitmapSurface(canvasSize: item.cut.canvasSize, tiles: tiles),
+      item.cut.canvasSize,
+      tiles,
     );
   }
 

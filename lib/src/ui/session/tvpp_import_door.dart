@@ -172,7 +172,7 @@ class TvppImportDoor {
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       cut.canvasSize,
-      tiles,
+      celTilesOf(tiles),
     );
   }
 

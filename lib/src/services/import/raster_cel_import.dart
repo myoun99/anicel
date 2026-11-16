@@ -1094,23 +1094,25 @@ bool _copiesPixels(LayerPlacement placement) =>
     placement.tx == placement.tx.truncateToDouble() &&
     placement.ty == placement.ty.truncateToDouble();
 
-/// Bakes [tiles] — a decoded picture already cut into cel tiles of
-/// [defaultCelTileSize], straight RGBA, by their place in tiles — as [key]'s
+/// Bakes [tiles] — a decoded picture as a cel's own tiles, by their place on
+/// the grid ([celTilesOf] makes them of tiles cut on a worker) — as [key]'s
 /// cel on a [canvas]-size picture. The picture they begin as: the doors
-/// that decode a file's own cels (a .tvpp, a .clip) hand theirs here.
+/// that decode a file's own cels (a .tvpp, a .clip — a vector layer's
+/// tiles already the engine's) hand theirs here.
 void bakeCelTiles(
   BrushFrameStore store,
   BrushFrameKey key,
   CanvasSize canvas,
-  List<({int x, int y, Uint8List pixels})> tiles,
+  Map<TileCoord, BitmapTile> tiles,
 ) => bakeCelSurface(
   store,
   key,
-  BitmapSurface(canvasSize: canvas, tiles: celTilesOf(tiles)),
+  BitmapSurface(canvasSize: canvas, tiles: tiles),
 );
 
-/// [tiles] — cut as [bakeCelTiles] takes them — as a cel's own tiles: the
-/// picture of a cel, or a text's plate (`CelText.plate`) that a file drew.
+/// [tiles] — cut on a worker, straight RGBA of [defaultCelTileSize] by
+/// their place in tiles — as a cel's own tiles: the picture of a cel
+/// ([bakeCelTiles]), or a text's plate (`CelText.plate`) that a file drew.
 Map<TileCoord, BitmapTile> celTilesOf(
   List<({int x, int y, Uint8List pixels})> tiles,
 ) => {
