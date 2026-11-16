@@ -72,6 +72,13 @@ pub struct Engine {
     /// engine's thread 48 to 55 ms, 156 to 195 ms as memory filled, and the
     /// UI's waits handed over behind it — a screen let go, a composite's
     /// done — stood as long (64.5 ms, 93.2 ms).
+    ///
+    /// ⚖️LET GO AS THE ENGINE IS, NOT JOINED (브러시/렌더링 2026-11-16 08:32
+    /// ⑤ asked a page's last free here before the device): a page holds the
+    /// device it was made on by wgpu's own hold, so it is freed before the
+    /// device wherever its last hold goes. A making holds the engine by a
+    /// clone of its own: the engine let go meanwhile, the device goes here
+    /// once that making ends — as a poll's goes on `polls`.
     pages: EngineThread,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
