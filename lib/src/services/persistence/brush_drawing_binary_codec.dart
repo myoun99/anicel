@@ -342,14 +342,22 @@ FutureOr<T> Function(Future<int> Function(int first) ask) _onACopyOf<T>(
     final read = Pointer<Uint8>.fromAddress(
       await ask(tiles.length),
     ).asTypedList(count * bytes);
-    for (var at = 0; at < read.length; at += bytes) {
-      tiles.add(
-        BitmapTile(
-          size: parts.tileSize,
-          pixels: Uint8List.sublistView(read, at, at + bytes),
-        ),
-      );
-    }
+    // 🚨A batch's tiles weighed as one, as a cel's are ([TileWeight]): this
+    // worker shares the app's heap, and its scavenges are the app's —
+    // the bare VM (`--verbose_gc`, 저장 2026-11-16) logged a worker's
+    // as the group's own, 337 for 200 batches of 64 a tile weighed alone,
+    // 198 a batch weighed once.
+    TileWeight.together((weight) {
+      for (var at = 0; at < read.length; at += bytes) {
+        tiles.add(
+          BitmapTile(
+            size: parts.tileSize,
+            pixels: Uint8List.sublistView(read, at, at + bytes),
+            weighedBy: weight,
+          ),
+        );
+      }
+    });
   }
   return job(
     _surfaceOf(parts, (index, _) => tiles[index], standsBehind: standsBehind),

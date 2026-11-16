@@ -15,6 +15,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 import 'package:ffi/ffi.dart';
@@ -113,6 +114,31 @@ void main() {
     await onAWorkerWithCelCopy(key.cel, surfaceOf(seeded(64)), _pixelsAcross);
 
     expect(reads, [64]);
+  });
+
+  test("🚨each batch's copies are weighed once (TileWeight) — the worker "
+      "shares the app's heap, and a weight a tile was the app's scavenge "
+      'every few tiles', () async {
+    final inked = [
+      for (var at = 0; at < 130; at++)
+        tileOnEngine(
+          BitmapTile(
+            size: defaultCelTileSize,
+            // Of two colours: a tile of one is no block of its own.
+            pixels: Uint8List(bytes)
+              ..fillRange(0, bytes, at % 250 + 1)
+              ..[0] = 0,
+          ),
+        ),
+    ];
+    final told = TileWeight.debugTold;
+    final toldBytes = TileWeight.debugToldBytes;
+
+    await onAWorkerWithCelCopy(key.cel, surfaceOf(inked), _pixelsAcross);
+
+    expect(reads, [64, 64, 2], reason: 'fixture: three batches');
+    expect(TileWeight.debugTold - told, 3);
+    expect(TileWeight.debugToldBytes - toldBytes, 130 * bytes);
   });
 
   test('one tile at two places is read once, and is one tile there too',
