@@ -494,8 +494,9 @@ class MediaPool {
   /// one repaint became one disk hit per asset.
   ///
   /// Nothing polls. This is refreshed when the project opens, after
-  /// anything that moves files, and when the user asks — the three moments
-  /// where the answer can actually have changed.
+  /// anything that moves files, when the user asks, and when the pool is
+  /// another list ([sweepWhereThePoolMoved]) — the moments where the
+  /// answer can actually have changed.
   Set<String> get missingMediaPaths => _missingMediaPaths;
   Set<String> _missingMediaPaths = const <String>{};
 
@@ -516,9 +517,31 @@ class MediaPool {
   Map<String, DateTime> get mediaModifiedTimes => _mediaModifiedTimes;
   Map<String, DateTime> _mediaModifiedTimes = const <String, DateTime>{};
 
+  /// The pool the last sweep walked — the list itself, which every change
+  /// of the pool replaces.
+  List<MediaAsset>? _sweptPool;
+
+  /// [refreshMediaExistence], where the pool is another list than the one
+  /// the last sweep walked: a file came in by any door — the pool's own
+  /// import, a placement, a paste from another project — or an undo took
+  /// one out or brought one back. Heard on every step of the history; a
+  /// step that left the pool as it was asks the disk nothing.
+  ///
+  /// 🚨A FILE LINKED IN SHOWED NO DATE TILL THE PROJECT WAS OPENED AGAIN
+  /// (검증 2026-11-15, F-589): the sweep ran on opening, on a relink and on
+  /// a .tvpp's import, and none of the doors that put a file in the pool
+  /// asked for it — the pool's own import, the placements, the cut folder,
+  /// a paste — each a call every new door would have had to remember.
+  void sweepWhereThePoolMoved() {
+    if (!identical(mediaAssets, _sweptPool)) {
+      refreshMediaExistence();
+    }
+  }
+
   /// Re-probes the pool. Notifies only when the answer changed, so calling
   /// it after an import that touched nothing missing is free.
   void refreshMediaExistence() {
+    _sweptPool = mediaAssets;
     final probe =
         debugMediaFileExists ?? (String path) => File(path).existsSync();
     final missing = <String>{};

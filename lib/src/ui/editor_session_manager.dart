@@ -286,6 +286,10 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.addListener(refreshLiveAudioSchedule);
     historyManager.addListener(_railFollowsTheDocument);
     historyManager.addListener(renderCaches.framesMoved);
+    // A file that comes into the pool by any door, or that an undo takes
+    // out or brings back, is swept for whether it is there and its date
+    // (F-589).
+    historyManager.addListener(mediaPool.sweepWhereThePoolMoved);
     // A slider in flight is an edit: its every step is a frame of its own to
     // lay, and the walk stands back from it as from a stroke (F-529).
     opacityVerbs.dragPreview.addListener(
@@ -1767,6 +1771,7 @@ class EditorSessionManager extends ChangeNotifier
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(_railFollowsTheDocument),
     () => historyManager.removeListener(renderCaches.framesMoved),
+    () => historyManager.removeListener(mediaPool.sweepWhereThePoolMoved),
     // Off the history it listens to, and its view off the stores, before
     // either goes.
     pixelVerbPreview.dispose,
