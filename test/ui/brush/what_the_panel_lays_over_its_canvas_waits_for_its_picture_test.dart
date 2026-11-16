@@ -257,24 +257,25 @@ void main() {
     test('a pan away, by the whole device pixels nearest', () {
       final drawn = CanvasViewport();
       final now = CanvasViewport(panX: 10.4, panY: -6.6);
-      expect(viewStandingAt(drawn, now, 1), CanvasViewport(panX: 10, panY: -7));
+      expect(
+        viewMovedBy(drawn, panSince(drawn, now, 1)!, 1),
+        CanvasViewport(panX: 10, panY: -7),
+      );
       expect(panSince(drawn, now, 2), (21.0, -13.0));
     });
 
     test('a turned view panned away, by the whole device pixels nearest: '
         'a turned view is snapped by none', () {
       final drawn = CanvasViewport(rotationDegrees: 30);
+      final now = CanvasViewport(rotationDegrees: 30, panX: 10.4, panY: -6.6);
       expect(
-        viewStandingAt(
-          drawn,
-          CanvasViewport(rotationDegrees: 30, panX: 10.4, panY: -6.6),
-          1,
-        ),
+        viewMovedBy(drawn, panSince(drawn, now, 1)!, 1),
         CanvasViewport(rotationDegrees: 30, panX: 10, panY: -7),
       );
     });
 
-    test('as drawn, through a zoom, a turn or a flip', () {
+    // Where it stands then is its screen's: where it stood last (F-601).
+    test('no pan since, through a zoom, a turn or a flip', () {
       final drawn = CanvasViewport(panX: 3, panY: 5);
       for (final now in [
         CanvasViewport(zoom: 2, panX: 30, panY: 5),
@@ -282,7 +283,6 @@ void main() {
         drawn.copyWith(flipHorizontal: true),
       ]) {
         expect(panSince(drawn, now, 1), isNull, reason: '$now');
-        expect(viewStandingAt(drawn, now, 1), drawn, reason: '$now');
       }
     });
   });

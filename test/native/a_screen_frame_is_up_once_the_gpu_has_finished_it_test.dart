@@ -690,6 +690,46 @@ void main() {
       expect(laid.last, home.shift(const Offset(10, 6)));
     });
 
+    // 🗣️F-601 (유저 2026-11-16): 「팬으로 한번 이동한 다음 확대/축소시 캔버스
+    // 화면이 1프레임 다른곳으로 이동했다가 돌아옴. 줌 상관없이」.
+    testWidgets('🚨a zoom after a pan the frame up served moves it no '
+        'further: it stands where the pan left it — and what is drawn over '
+        'the canvas with it — till the next is up', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final (:canvas, told: _) = aCanvas();
+      final seenThrough = await standOver(tester, float, canvas: canvas);
+      final laid = layersLaid();
+      await seenThrough(CanvasViewport());
+      await tester.pump();
+      final home = laid.last;
+      hold();
+
+      final panned = CanvasViewport(panX: 10, panY: 6);
+      await seenThrough(panned);
+      expect(gates, isEmpty, reason: '⛔premise: the frame up serves the pan');
+      expect(laid.last, home.shift(const Offset(10, 6)), reason: '⛔premise');
+
+      final zoomed = CanvasViewport(zoom: 2, panX: 30, panY: 12);
+      await seenThrough(zoomed);
+      expect(gates, hasLength(1), reason: '⛔premise: the zoom is on the GPU');
+      expect(
+        laid.last,
+        home.shift(const Offset(10, 6)),
+        reason: 'the frame up went back to where the pan began',
+      );
+      expect(
+        canvas.view.standing(zoomed),
+        panned,
+        reason: 'what is drawn over the canvas left where the pan left it',
+      );
+
+      gates.last.complete();
+      await tester.pump();
+      expect(canvas.view.standing(zoomed), zoomed, reason: 'up, the zoom\'s');
+    });
+
     testWidgets('⛔a frame up of the view what is drawn over the canvas '
         'stands at already tells it nothing — a stroke puts one up a frame', (
       tester,

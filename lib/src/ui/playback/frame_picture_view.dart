@@ -1451,14 +1451,44 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
         : null;
   }
 
-  /// The view the frame up stands at, the view being [now] — the view as it
-  /// is where this box shows none ([viewStandingAt]).
+  /// The view the frame up stands at, the view being [now] — the view it
+  /// was drawn through, moved by the pan it stands at ([_panStood]) — or
+  /// the view as it is where this box shows none.
   @override
   CanvasViewport standingFor(CanvasViewport now) {
     final shownFor = _drawsAnything || _standIn != null ? _shownFor() : null;
-    return shownFor == null
-        ? now
-        : viewStandingAt(shownFor.viewport, now, _devicePixelRatio);
+    if (shownFor == null) {
+      return now;
+    }
+    return viewMovedBy(
+      shownFor.viewport,
+      _panStood(shownFor, now),
+      _devicePixelRatio,
+    );
+  }
+
+  /// The frame up and the pan it stood at last ([_panStood]).
+  ({_DrawnFor frame, (double, double) pan})? _stoodLast;
+
+  /// The whole device pixels the frame up, drawn for [shownFor], stands
+  /// moved by, the view being [now]: the pan since it was drawn
+  /// ([panSince]) — and through a zoom, a turn or a flip since, the pan it
+  /// stood at last, till the next is up.
+  ///
+  /// 🗣️F-601 (유저 2026-11-16: 「팬으로 한번 이동한 다음 확대/축소시 캔버스
+  /// 화면이 1프레임 다른곳으로 이동했다가 돌아옴」). ↩️Through a zoom it
+  /// stood where it was drawn: a pan the frame drawn last served draws
+  /// nothing ([_servedByTheFrameDrawnLast]), so the frame up after a pan
+  /// was drawn before it, and the zoom's first frame showed the picture —
+  /// and everything drawn over it — back where the pan began.
+  (double, double) _panStood(_DrawnFor shownFor, CanvasViewport now) {
+    final pan = panSince(shownFor.viewport, now, _devicePixelRatio);
+    if (pan != null) {
+      _stoodLast = (frame: shownFor, pan: pan);
+      return pan;
+    }
+    final last = _stoodLast;
+    return last != null && last.frame == shownFor ? last.pan : (0.0, 0.0);
   }
 
   /// Whether this box was asked to paint for anything but a frame put up:
@@ -1646,20 +1676,19 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
 
   /// Where the frame up on the screen stands, this box painting from
   /// [offset]: where it was drawn for ([_DrawnFor]) — its view's corner on
-  /// the box's, and a pan away from there where the view has panned since.
+  /// the box's, and the pan it stands at away from there ([_panStood]).
   ///
-  /// ⚠️A zoom, a turn or a flip since it was drawn moves it nowhere: it
-  /// stands as drawn till the next is up. Moved with the view there, it
-  /// would be shown stretched or turned by Flutter meanwhile.
+  /// ⚠️A zoom, a turn or a flip since it was drawn moves it no further: it
+  /// stands where it stood till the next is up. Moved with the view there,
+  /// it would be shown stretched or turned by Flutter meanwhile.
   Offset _standingFrom(Offset offset, Object? shownFor) {
     if (shownFor is! _DrawnFor) {
       return offset;
     }
-    final (:viewport, corner: (cornerX, cornerY)) = shownFor;
-    final ratio = _devicePixelRatio;
-    final (movedX, movedY) =
-        panSince(viewport, _viewport, ratio) ?? (0.0, 0.0);
-    return offset + Offset(movedX - cornerX, movedY - cornerY) / ratio;
+    final (cornerX, cornerY) = shownFor.corner;
+    final (movedX, movedY) = _panStood(shownFor, _viewport);
+    return offset +
+        Offset(movedX - cornerX, movedY - cornerY) / _devicePixelRatio;
   }
 
   bool get _drawsAnything =>

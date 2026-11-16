@@ -30,16 +30,13 @@ import 'viewport_canvas_transform.dart';
 }
 
 /// The view a picture drawn through [drawnFor] stands at on the screen,
-/// the view being [now] ([panSince]).
-CanvasViewport viewStandingAt(
+/// moved by [pan] — whole device pixels on a screen of [devicePixelRatio]
+/// ([panSince]).
+CanvasViewport viewMovedBy(
   CanvasViewport drawnFor,
-  CanvasViewport now,
+  (double, double) pan,
   double devicePixelRatio,
 ) {
-  final pan = panSince(drawnFor, now, devicePixelRatio);
-  if (pan == null) {
-    return drawnFor;
-  }
   final (x, y) = pan;
   return drawnFor.copyWith(
     panX: drawnFor.panX + x / devicePixelRatio,
@@ -48,7 +45,7 @@ CanvasViewport viewStandingAt(
 }
 
 /// A picture on the canvas: the view it stands at, the view being [now]
-/// ([viewStandingAt] — the view as it is, where it shows none).
+/// ([viewMovedBy] — the view as it is, where it shows none).
 abstract interface class StandingPicture {
   CanvasViewport standingFor(CanvasViewport now);
 }
