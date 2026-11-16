@@ -146,6 +146,20 @@ void main() {
       );
     });
 
+    test('🚨a 16:9 canvas\'s thumbnail is 96 × 54, and its tiles are read '
+        'where it ends — in both tile modes (card F-608)', () {
+      final px = testPixels();
+      for (final uniformMode in [false, true]) {
+        expectDecodes(
+          fileWith(
+            srawRecord(px, w, h, uniformMode: uniformMode, thumbnail: (96, 54)),
+          ),
+          px,
+          compressed: true,
+        );
+      }
+    });
+
     test('tiled SRAW, uniform mode: 12-byte records with data chains', () {
       final px = testPixels();
       expectDecodes(

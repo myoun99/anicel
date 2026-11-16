@@ -322,6 +322,10 @@ Uint8List srawRecord(
   /// Writes a tile-0 size the record does not actually hold, so the
   /// decoder's "the cursor has drifted" check can be driven.
   bool corruptFirstTileSize = false,
+
+  /// The thumbnail's size as the head gives it — TVPaint's 96 wide and as
+  /// tall as the canvas's shape makes it.
+  (int, int) thumbnail = (96, 67),
 }) {
   const tile = 64;
   final cols = (width + tile - 1) ~/ tile;
@@ -345,9 +349,11 @@ Uint8List srawRecord(
   bool tileEmpty(int t) => tileRows(t).every((row) => row.every((v) => v == 0));
 
   final body = <int>[];
-  // Thumbnail: 96×67 of transparent — content correctness of the
-  // thumbnail is TVPaint's problem, the decoder only skips it.
-  body.addAll(encodeRows([for (var y = 0; y < 67; y++) List.filled(96, 0)]));
+  // Thumbnail: transparent, its runs crossing its rows as TVPaint writes
+  // them (124 pixels a run) — what it shows is TVPaint's problem, the
+  // decoder only skips it.
+  final (thumbWidth, thumbHeight) = thumbnail;
+  body.addAll(encodeRows([List.filled(thumbWidth * thumbHeight, 0)]));
 
   List<int> u32(int v) => [
     (v >> 24) & 0xff,
@@ -430,8 +436,8 @@ Uint8List srawRecord(
   v.setUint32(4, 16 + body.length); // total-8, matching the ZCHK field
   v.setUint32(8, 64);
   v.setUint32(12, 0); // N — unused by the decoder
-  v.setUint32(16, 96);
-  v.setUint32(20, 67);
+  v.setUint32(16, thumbWidth);
+  v.setUint32(20, thumbHeight);
   record.setAll(24, body);
   return record;
 }

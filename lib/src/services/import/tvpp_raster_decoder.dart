@@ -425,6 +425,10 @@ class _TileGrid {
 
   int get total => cols * rows;
 
+  /// The thumbnail's pixels, as many as the head says it is wide and tall
+  /// — 96 × 67 near 3:2, 96 × 54 at 16:9.
+  int get thumbnailPixels => _uint32At(16) * _uint32At(20);
+
   int _uint32At(int offset) =>
       ByteData.sublistView(record, offset, offset + 4).getUint32(0);
 
@@ -568,9 +572,13 @@ class _TileGrid {
   }
 }
 
+/// ↩️The thumbnail was skipped as 96 × 67 till 2026-11-16 — the size of
+/// every canvas measured (near 3:2), and wrong for any other: a 16:9
+/// file's pictures after each layer's first keyframe all failed, the tile
+/// table looked for 1,248 pixels late (card F-608 — 240 in one file).
 Uint32List _decodeTiled(Uint8List record, int width, int height) {
-  final grid = _TileGrid(record, width: width, height: height)
-    ..pb.take(96 * 67, null, null); // thumbnail
+  final grid = _TileGrid(record, width: width, height: height);
+  grid.pb.take(grid.thumbnailPixels, null, null);
   final x = grid.readTileTable();
   if (x > 0) {
     grid.readSizedTiles(x);
