@@ -206,10 +206,14 @@ void main() {
       expect(
         await settleAsync(
           tester,
-          () => road.pictures.allInHand(rowsOf(cut), frameOf(cut)),
+          () =>
+              road.pictures.store.bytesOf(
+                road.pictures.keyOfStack(rowsOf(cut), frameOf(cut)),
+              ) !=
+              null,
         ),
         isTrue,
-        reason: 'LIVENESS: ${cut.name}\'s cel is read',
+        reason: 'LIVENESS: ${cut.name}\'s picture is made',
       );
       await lendBothClocks(tester, rounds: 2);
     }
