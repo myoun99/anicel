@@ -19,9 +19,10 @@ import 'tile_cutter.dart' show RowSink, TileCutter;
 ///    `257 - c` times, `c < 0x80` copies `c + 1` literal pixels. A run
 ///    never crosses a row boundary.
 ///  * `DBOD` records are the whole canvas, row by row.
-///  * `SRAW` type-64 records are a 96×67 thumbnail, a table of
-///    `(totalTiles, X)` pairs, then 64×64 tiles in row-major order (edge
-///    tiles truncated). Two tile encodings exist, selected by X:
+///  * `SRAW` type-64 records are a thumbnail as wide and as tall as the
+///    head's u32s at 16 and 20 say, a table of `(totalTiles, X)` pairs,
+///    then 64×64 tiles in row-major order (edge tiles truncated). Two tile
+///    encodings exist, selected by X:
 ///      X > 0: tile 0 is X bytes of bare rows; after that each tile is a
 ///        12-byte copy marker `(0, 0, srcTile)` or `u32 size` + rows.
 ///      X == 0: every tile is a 12-byte record `(a, anchor, c)`; `c == 0`
@@ -442,7 +443,9 @@ class _TileGrid {
   int? _againOf;
 
   /// The thumbnail's pixels, as many as the head says it is wide and tall
-  /// — 96 × 67 near 3:2, 96 × 54 at 16:9.
+  /// — 96 × 54 in every tiled record of the user's 7751 × 4396 file (240 of
+  /// them, 2026-11-17). ↩️Till 2026-11-16 it was 96 × 67 for every canvas,
+  /// and past the first picture a 16:9 file read noise (card F-608 ②).
   int get thumbnailPixels => _uint32At(16) * _uint32At(20);
 
   int _uint32At(int offset) =>

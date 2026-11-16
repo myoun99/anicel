@@ -222,17 +222,28 @@ void main() {
       );
     });
 
-    test('🚨a 16:9 canvas\'s thumbnail is 96 × 54, and its tiles are read '
-        'where it ends — in both tile modes (card F-608)', () {
+    test('🚨a thumbnail is skipped by the size its head gives, whatever '
+        'the canvas\'s shape — its tiles are read where it ends, in both '
+        'tile modes (card F-608)', () {
       final px = testPixels();
-      for (final uniformMode in [false, true]) {
-        expectDecodes(
-          fileWith(
-            srawRecord(px, w, h, uniformMode: uniformMode, thumbnail: (96, 54)),
-          ),
-          px,
-          compressed: true,
-        );
+      // 16:9 as the user's file gives it (96 × 54, every tiled record); a
+      // 21:9 one and a tall one: no shape is assumed.
+      for (final thumbnail in [(96, 54), (96, 41), (54, 96)]) {
+        for (final uniformMode in [false, true]) {
+          expectDecodes(
+            fileWith(
+              srawRecord(
+                px,
+                w,
+                h,
+                uniformMode: uniformMode,
+                thumbnail: thumbnail,
+              ),
+            ),
+            px,
+            compressed: true,
+          );
+        }
       }
     });
 
