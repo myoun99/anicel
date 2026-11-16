@@ -96,47 +96,55 @@ Uint8List _recordOf(Uint8List recordBytes, TvppSlot slot) {
 // v12 ZCHK reassembly
 // ---------------------------------------------------------------------------
 
-/// A ZCHK payload is `'SRAW' u32 total-8 | 'czmp' u32 | u32 blocks |
-/// u32 100 | u32 blockRaw | u32 blockComp | zlib × blocks` — the streams
-/// simply follow one another. Dart's ZLibDecoder stops at each stream's
-/// end but does not report how many bytes it consumed, so the next
-/// stream is found by scanning for the next valid zlib header and
-/// letting a failed inflate reject false positives.
+/// A ZCHK payload is `'SRAW' u32 total-8 | 'czmp' u32 | u32 blocks`, then
+/// block after block `u32 100 | u32 raw | u32 packed | zlib × packed`:
+/// every block says how long its stream is, so each is inflated from
+/// exactly its own bytes, straight into its place in the record.
+///
+/// 🚨WALKED BY THE BLOCKS' OWN HEADS (card F-608 ③). ↩️Till 2026-11-17
+/// the head was read as the whole payload's, and the next stream was
+/// FOUND — a scan for a zlib header from inside the stream before, each
+/// candidate inflated with the whole rest of the payload as its input.
+/// On the user's 7751 × 4396 file that was 48 s for its 754 records
+/// (10.9 s for one) against 1.5 s walked, the same bytes for all 754 —
+/// two-thirds of every cel's decode.
 Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
-  final end = offset + length;
   if (length < 32) {
     throw const TvppRasterDecodeException('The ZCHK payload is too short.');
   }
-  final expected =
-      ByteData.sublistView(bytes, offset + 4, offset + 8).getUint32(0) + 8;
-  final out = BytesBuilder(copy: false);
-  var p = offset + 32;
-  while (out.length < expected && p < end - 1) {
-    var found = false;
-    for (var q = p; q < end - 1; q++) {
-      if (bytes[q] != 0x78 || (bytes[q] * 256 + bytes[q + 1]) % 31 != 0) {
-        continue;
-      }
-      try {
-        out.add(ZLibDecoder().convert(Uint8List.sublistView(bytes, q, end)));
-        p = q + 8;
-        found = true;
-        break;
-      } on Object {
-        continue;
-      }
-    }
-    if (!found) {
+  final payload = ByteData.sublistView(bytes, offset, offset + length);
+  final expected = payload.getUint32(4) + 8;
+  final record = Uint8List(expected);
+  var filled = 0;
+  var at = 20;
+  while (filled < expected && at + 12 <= length) {
+    final stream = at + 12;
+    final end = stream + payload.getUint32(at + 8);
+    if (end > length) {
       break;
     }
+    final block = _inflated(bytes, offset + stream, offset + end);
+    final taken = math.min(block.length, expected - filled);
+    record.setRange(filled, filled + taken, block);
+    filled += taken;
+    at = end;
   }
-  final data = out.toBytes();
-  if (data.length < expected) {
+  if (filled < expected) {
     throw TvppRasterDecodeException(
-      'ZCHK reassembly failed: ${data.length}/$expected bytes.',
+      'ZCHK reassembly failed: $filled/$expected bytes.',
     );
   }
-  return Uint8List.sublistView(data, 0, expected);
+  return record;
+}
+
+/// The zlib stream between [from] and [to] inflated — nothing, when it
+/// is not one, which the record's count then reports.
+List<int> _inflated(Uint8List bytes, int from, int to) {
+  try {
+    return ZLibDecoder().convert(Uint8List.sublistView(bytes, from, to));
+  } on FormatException {
+    return const [];
+  }
 }
 
 // ---------------------------------------------------------------------------

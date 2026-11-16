@@ -694,10 +694,10 @@ TvppClip _parseClip(
         final text = _printable(bytes, payload, length);
         instanceNames = _imagesNameTable(text);
       case 'ZCHK':
-        // v12: [SRAW u32 rawLen-8]['czmp' u32][blocks][100][blockRaw]
-        // [blockComp][zlib...]. The block-raw field (offset 24) is 20
-        // exactly for the type-6 "no image" record — classification
-        // without touching zlib.
+        // v12: [SRAW u32 rawLen-8]['czmp' u32][blocks], then per block
+        // [100][raw][packed][zlib × packed]. The FIRST block's raw field
+        // (offset 24) is 20 exactly for the type-6 "no image" record —
+        // classification without touching zlib.
         final blockRaw = length >= 28 ? _u32(bytes, payload + 24) : 0;
         addSlot(
           TvppSlot(

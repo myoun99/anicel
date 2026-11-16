@@ -138,25 +138,32 @@ class TvppBuilder {
   }
 
   /// A v12 image slot: the record zlib-wrapped in a ZCHK. [blocks] > 1
-  /// splits the record into that many separately-deflated streams laid
-  /// back to back — how real files store anything past 64KB.
-  void zchkSlot(Uint8List record, {int blocks = 1}) {
-    final streams = <int>[];
+  /// splits the record into that many separately-deflated streams, each
+  /// behind its own `100 · raw · packed` head — how real files store
+  /// anything past 64KB (every one of the 754 records of a 7751 × 4396
+  /// TVPaint 12 file walked so, 2026-11-17). [level] 0 stores a block's
+  /// bytes as they are.
+  void zchkSlot(Uint8List record, {int blocks = 1, int level = 6}) {
+    final body = <int>[];
     final per = (record.length / blocks).ceil();
+    var count = 0;
     for (var i = 0; i < record.length; i += per) {
+      count += 1;
       final end = (i + per) > record.length ? record.length : i + per;
-      streams.addAll(ZLibEncoder().convert(record.sublist(i, end)));
+      final stream = ZLibEncoder(level: level).convert(record.sublist(i, end));
+      body
+        ..addAll(_u32(100))
+        ..addAll(_u32(end - i))
+        ..addAll(_u32(stream.length))
+        ..addAll(stream);
     }
     chunk('ZCHK', [
       ...record.sublist(0, 4), // the record's own magic heads the header
       ..._u32(record.length - 8),
       ...ascii.encode('czmp'),
-      ..._u32(streams.length),
-      ..._u32(blocks),
-      ..._u32(100),
-      ..._u32(per),
-      ..._u32(streams.length),
-      ...streams,
+      ..._u32(12 + body.length), // czmp's own size, its head counted
+      ..._u32(count),
+      ...body,
     ]);
   }
 

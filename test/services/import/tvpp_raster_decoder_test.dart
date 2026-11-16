@@ -1,3 +1,4 @@
+import 'dart:io' show ZLibEncoder;
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -59,7 +60,12 @@ void main() {
     return parsed.clips.single.layers.single.slots.single;
   }
 
-  Uint8List fileWith(Uint8List record, {bool raw = false, int blocks = 1}) {
+  Uint8List fileWith(
+    Uint8List record, {
+    bool raw = false,
+    int blocks = 1,
+    int level = 6,
+  }) {
     final b = TvppBuilder();
     b.clipProperties('t');
     b.clipHeader(width: w, height: h);
@@ -67,7 +73,7 @@ void main() {
     if (raw) {
       b.rawSlot(record);
     } else {
-      b.zchkSlot(record, blocks: blocks);
+      b.zchkSlot(record, blocks: blocks, level: level);
     }
     b.clipConfig();
     return b.bytes;
@@ -101,6 +107,74 @@ void main() {
         px,
         compressed: true,
       );
+    });
+
+    test('🚨a block is inflated from its own bytes — a zlib stream lying '
+        'inside the block before is not the next one', () {
+      // A row whose pixels spell out a whole zlib stream, kept as it is by
+      // STORED blocks: a reader that FOUND the next block by its zlib
+      // header (till 2026-11-17) took this one for it.
+      final hidden = ZLibEncoder().convert([for (var i = 0; i < 40; i++) i]);
+      final px = List<int>.filled(w * h, 0);
+      var x = 0;
+      for (var at = 0; at < hidden.length; at += 4, x += 1) {
+        var word = 0;
+        for (var k = at; k < at + 4; k += 1) {
+          word = (word << 8) | (k < hidden.length ? hidden[k] : 0);
+        }
+        px[5 * w + x] = word;
+      }
+      // Ink after it, so the stream's last word stays in the same literal.
+      px[5 * w + x] = 0xFFFFFFFF;
+      final record = dbodRecord(px, w, h);
+
+      Uint8List? picture(Uint8List file) => tvppSlotRgba(
+        recordBytes: file,
+        slot: slotFor(file, compressed: false),
+        width: w,
+        height: h,
+      );
+      expect(
+        picture(fileWith(record, blocks: 2, level: 0)),
+        equals(picture(fileWith(record, raw: true))),
+      );
+    });
+
+    test('🚨a ZCHK that does not hold together is a decode error, never a '
+        'crash — a worker answers only that one', () {
+      final file = fileWith(dbodRecord(testPixels(), w, h), blocks: 2);
+      final payload = slotFor(file, compressed: true).chunkOffset;
+      Uint8List broken(void Function(ByteData head, Uint8List bytes) how) {
+        final copy = Uint8List.fromList(file);
+        how(ByteData.sublistView(copy, payload), copy);
+        return copy;
+      }
+
+      for (final (what, bytes) in [
+        (
+          'a block that is not a zlib stream',
+          broken((_, b) => b.fillRange(payload + 34, payload + 40, 0xFF)),
+        ),
+        (
+          'a block longer than what is left',
+          broken((head, _) => head.setUint32(28, 0x7FFFFFFF)),
+        ),
+        (
+          'blocks holding more than the head\'s total',
+          broken((head, _) => head.setUint32(4, head.getUint32(4) - 16)),
+        ),
+      ]) {
+        expect(
+          () => tvppSlotRgba(
+            recordBytes: bytes,
+            slot: slotFor(bytes, compressed: true),
+            width: w,
+            height: h,
+          ),
+          throwsA(isA<TvppRasterDecodeException>()),
+          reason: what,
+        );
+      }
     });
 
     test('tiled SRAW, X > 0 mode: bare tile 0, copy markers, edges', () {
