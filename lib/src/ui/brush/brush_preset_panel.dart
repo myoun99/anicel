@@ -112,6 +112,7 @@ class BrushPresetPanel extends StatefulWidget {
     this.look,
     this.onGroupsReordered,
     this.onLibraryReset,
+    this.canResetLibrary,
     this.onPresetExported,
     this.onGroupExported,
     this.viewOptions = const BrushPresetViewOptions(),
@@ -179,6 +180,11 @@ class BrushPresetPanel extends StatefulWidget {
 
   /// Throws the library away and re-seeds the built-ins (confirmed first).
   final VoidCallback? onLibraryReset;
+
+  /// Whether [onLibraryReset] would change anything, asked as the menu
+  /// opens: its row is out where it would not (F-583) and lit where it
+  /// would (I-176).
+  final bool Function()? canResetLibrary;
 
   /// 🚨유저 (`H25-Q1`, 답 both-by-selection): 「점선 버튼통해 브러시
   /// 내보내기, 브러시 그룹 내보내기」 — one brush, or the group it sits in.
@@ -741,11 +747,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       _BrushPresetMenuAction action, {
       bool enabled = true,
       bool? checked,
+      bool resets = false,
     }) => PanelFlyoutItem(
       keyValue: keyValue,
       label: label,
       enabled: enabled,
       checked: checked,
+      resets: resets,
       onSelected: () => _onMenuSelected(action),
     );
 
@@ -812,6 +820,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           'brush-preset-menu-reset',
           AppText.strings.brResetLibrary,
           _BrushPresetMenuAction.reset,
+          enabled: widget.canResetLibrary?.call() ?? true,
+          resets: true,
         ),
       ],
     ];

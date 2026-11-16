@@ -324,12 +324,24 @@ class BrushPresetLibrary extends ChangeNotifier {
     _persist();
   }
 
+  /// The built-ins, named in the program's language — what
+  /// [resetToDefaults] re-seeds and [atDefaults] compares with.
+  BrushPresetLibraryData get _builtIns => (
+    groups: namedDefaultBrushGroups(_nameInProgramLanguage),
+    presets: namedDefaultBrushPresets(_nameInProgramLanguage),
+  );
+
+  /// Whether the library is the built-ins as they are seeded — so
+  /// [resetToDefaults] would change nothing of it.
+  bool get atDefaults {
+    final builtIns = _builtIns;
+    return listEquals(_groups, builtIns.groups) &&
+        listEquals(_presets, builtIns.presets);
+  }
+
   /// Throws the whole library away and re-seeds the built-ins.
   void resetToDefaults() {
-    _hold((
-      groups: namedDefaultBrushGroups(_nameInProgramLanguage),
-      presets: namedDefaultBrushPresets(_nameInProgramLanguage),
-    ));
+    _hold(_builtIns);
     _persist();
   }
 

@@ -222,6 +222,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
                       const AppMemorySettings(),
                     )
                   : null,
+              resets: true,
             ),
           ),
           usedLabel: strings.memoryProcessTotal,

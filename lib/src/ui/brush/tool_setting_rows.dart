@@ -9,6 +9,7 @@ import '../theme/text_on_ground.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/flip_glyph.dart';
+import '../widgets/icon_button_box.dart' show resetWearsAccent;
 import '../widgets/pill_strip.dart';
 import 'tool_settings_section.dart' show ToolSettingsSection;
 
@@ -359,6 +360,7 @@ class ToolSettingAction extends StatefulWidget {
     required this.onPressed,
     this.shortcuts = const [],
     this.decides = false,
+    this.resets = false,
   }) : glyph = null,
        isSelected = false;
 
@@ -371,7 +373,8 @@ class ToolSettingAction extends StatefulWidget {
     required this.onPressed,
     this.shortcuts = const [],
   }) : decides = false,
-       isSelected = false;
+       isSelected = false,
+       resets = false;
 
   /// The flip, in the view pill's own glyphs: the one button every panel
   /// flips by, [horizontal] or up and down, [isSelected] where the flip stays
@@ -391,7 +394,8 @@ class ToolSettingAction extends StatefulWidget {
            ? AppText.strings.trFlipHorizontal
            : AppText.strings.trFlipVertical,
        glyph = flipGlyph(horizontal: horizontal),
-       decides = false;
+       decides = false,
+       resets = false;
 
   final String keyValue;
   final String label;
@@ -401,6 +405,11 @@ class ToolSettingAction extends StatefulWidget {
 
   /// Whether what it switches is on — shown by the accent alone.
   final bool isSelected;
+
+  /// It puts what the panel poses back to its default — the accent ground
+  /// while it can be pressed ([resetWearsAccent], I-176), so it can be
+  /// pressed only where that would change something (F-583).
+  final bool resets;
 
   /// The actions it is the button of (I-40) — its panel binds them to the
   /// same press (`PanelKeysBinding`), and their live keys join its tooltip
@@ -418,7 +427,10 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
   @override
   Widget build(BuildContext context) {
     final live = widget.onPressed != null;
-    final ground = widget.decides || widget.isSelected
+    final ground =
+        widget.decides ||
+            widget.isSelected ||
+            resetWearsAccent(resets: widget.resets, live: live)
         ? AppColors.accent
         : AppColors.surface;
     final hovered = live && _hovering;

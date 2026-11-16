@@ -95,6 +95,7 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
     required this.size,
     this.isSelected = false,
     this.danger = false,
+    this.resets = false,
     this.semanticLabel,
   }) : outlined = false,
        focus = null;
@@ -111,6 +112,7 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
     required this.size,
     required this.isSelected,
     required this.danger,
+    required this.resets,
     required this.outlined,
     required IconButtonFocus this.focus,
   }) : name = null,
@@ -148,6 +150,10 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
   /// danger]).
   final bool danger;
 
+  /// The button puts something back to its default ([AppIconButton.
+  /// resets]) — lit in the accent while it can be pressed.
+  final bool resets;
+
   /// The box's edge is drawn ([AppIconButton.outlined]).
   final bool outlined;
 
@@ -184,7 +190,12 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
       onPressed: onPressed,
       semanticLabel: semanticLabel,
       isSelected: isSelected,
-      ink: IconButtonInk.of(context, isSelected: isSelected, danger: danger),
+      ink: IconButtonInk.of(
+        context,
+        isSelected: isSelected,
+        danger: danger,
+        litReset: resetWearsAccent(resets: resets, live: enabled),
+      ),
       focus: focus,
       shape: appIconButtonShape(
         size.height,

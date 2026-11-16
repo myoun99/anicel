@@ -1316,6 +1316,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         (underFlutterTest
             ? null
             : WorkspaceLayoutStore());
+    _layoutPersistence.rememberFactoryLayout();
     unawaited(_layoutPersistence.restoreLayout());
     _cutPieceSlot.addListener(_brushPresets.armStampOnFreshCut);
     _layout.addListener(_layoutPersistence.scheduleLayoutSave);
@@ -1347,6 +1348,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         _laidFloorTab,
       ]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
+      canResetLayout: _layoutPersistence.layoutResetChanges,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
       toolRailMover: _rail.setToolRailOnRight,

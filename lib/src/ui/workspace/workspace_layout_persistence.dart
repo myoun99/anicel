@@ -38,6 +38,25 @@ class _WorkspaceLayoutPersistence {
   /// Layout persistence: null in tests (see [EditorWorkspace.layoutStore]).
   WorkspaceLayoutStore? _layoutStore;
 
+  /// The layout file as the factory arrangement writes it — taken as the
+  /// workspace stands up, before a saved arrangement is put in place: no
+  /// arrangement saved IS the factory one (🗣️I-142-Q3).
+  String? _factoryPayload;
+
+  /// Takes [_factoryPayload]. Called once, before [restoreLayout].
+  void rememberFactoryLayout() =>
+      _factoryPayload = jsonEncode(_layoutPayload());
+
+  /// Whether [resetWorkspaceLayout] would change anything: the file this
+  /// arrangement writes is not the one the factory arrangement writes. Its
+  /// menu row is out where it would not (F-583) and lit where it would
+  /// (I-176).
+  ///
+  /// ⚠️Asked of the SAVE rather than of a list of its own: a third list of
+  /// the fields beside the save and the reset would fall behind them, and
+  /// every field the reset puts back is one the save writes.
+  bool layoutResetChanges() => jsonEncode(_layoutPayload()) != _factoryPayload;
+
   Timer? _layoutSaveTimer;
 
   /// 워크스페이스 초기화: EVERYTHING the workspace remembers, back to the
@@ -224,7 +243,9 @@ class _WorkspaceLayoutPersistence {
   /// Everything the layout file keeps, as it stands now.
   Map<String, Object?> _layoutPayload() => {
     'layout': _state._layout.toJson(),
-    'lockedTabs': _state._lockedTabIds.toList(),
+    // Sets, written sorted: the same arrangement writes the same file
+    // whatever order its members came in ([layoutResetChanges]).
+    'lockedTabs': _state._lockedTabIds.toList()..sort(),
     // Closed panels stay closed across restarts (restore only
     // returns tabs missing WITHOUT this marker to their docks —
     // i.e. panels added by an update).
@@ -255,7 +276,7 @@ class _WorkspaceLayoutPersistence {
         StoryboardPanel.defaultTrackLaneHeight)
       _storyboardTrackLaneHeightKey:
           _state._storyboardTrackLaneHeight.value,
-    'openRails': _state._openRails.toList(),
+    'openRails': _state._openRails.toList()..sort(),
     'regionOnTop': _state._regionOnTop,
     'brushValuesOnStrip': _state._brushValuesOnStrip.value,
     'railToolsOnly': _state._railToolsOnly.value,

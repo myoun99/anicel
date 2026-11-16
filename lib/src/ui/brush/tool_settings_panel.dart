@@ -802,6 +802,7 @@ class _CutStampSettings extends StatelessWidget {
                     label: AppText.strings.commonReset,
                     shortcuts: const [EditorActionIds.cutStampReset],
                     onPressed: reset,
+                    resets: true,
                   ),
                   ToolSettingAction(
                     keyValue: 'cut-register-tip-button',
@@ -1487,7 +1488,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final flipVertical = canEdit
         ? () => commands?.flipTransform(horizontal: false)
         : null;
-    final reset = canEdit ? () => commands?.resetTransform() : null;
+    final reset = commands?.canResetTransform ?? false
+        ? () => commands?.resetTransform()
+        : null;
     final section = ToolSettingsFolds.listen(
       'move',
       (foldOf) => ToolSettingsSection(
@@ -1700,6 +1703,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
                   label: strings.commonReset,
                   shortcuts: const [EditorActionIds.transformReset],
                   onPressed: reset,
+                  resets: true,
                 ),
                 // 적용 is 확정's transform half (confirm-button) — grey when it
                 // has nothing to do, like the rail's ↵ and the box's ✓,

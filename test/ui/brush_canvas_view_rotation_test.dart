@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/app_icon_button.dart'
+    show AppIconButtonFace;
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/brush_canvas_fixture.dart';
@@ -108,9 +110,9 @@ void main() {
     );
   });
 
-  testWidgets('the rotate/flip buttons carry the STATE ACCENT ink '
-      '(UI-R21 #1): rotated left accents the left button, right the '
-      'right, flips accent while active', (tester) async {
+  testWidgets('the view row carries the STATE ACCENT ink (UI-R21 #1): '
+      'straighten while the view is turned, flips while active — and the '
+      'rotate buttons never (I-176)', (tester) async {
     await pumpPanel(tester);
     // Rotate and flip live in the settings list now, and a knob does not
     // close it — so the whole accent sequence runs with it open, which is
@@ -136,14 +138,31 @@ void main() {
       expect(inkOf(key)!.a, 1.0, reason: '$key is at full strength in the flyout row');
     }
 
+    // 🗣️I-176 (유저 2026-11-16): 「지금 왼쪽회전하면 왼쪽회전버튼 강조색인데
+    // 없애고 그냥 일반색 유지하고, 값이 바뀌면 리셋버튼을 강조색」.
+    const straighten = 'canvas-viewport-rotate-reset';
+    expect(inkOf(straighten), isNot(AppColors.accent), reason: 'straight');
+    expect(
+      tester.widget<AppIconButtonFace>(find.byKey(const ValueKey(straighten)))
+          .onPressed,
+      isNull,
+      reason: 'straightening a straight view changes nothing (F-583)',
+    );
+
     await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
-    expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
+    expect(inkOf(straighten), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
     expect(inkOf('canvas-viewport-rotate-ccw'), isNot(AppColors.accent));
 
     await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
     await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
-    expect(inkOf('canvas-viewport-rotate-ccw'), AppColors.accent);
+    expect(inkOf(straighten), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-ccw'), isNot(AppColors.accent));
     expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
+
+    await tapToolbarButton(tester, straighten);
+    expect(viewportOf(tester).rotationDegrees, 0);
+    expect(inkOf(straighten), isNot(AppColors.accent), reason: 'straight again');
 
     await tapToolbarButton(tester, 'canvas-viewport-flip');
     expect(inkOf('canvas-viewport-flip'), AppColors.accent);
@@ -206,14 +225,14 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-viewport-settings')),
       findsNothing,
     );
-    expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
+    expect(inkOf('canvas-viewport-rotate-reset'), isNot(AppColors.accent));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-viewport-rotate-cw')),
     );
     await tester.pumpAndSettle();
-    expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
-    expect(inkOf('canvas-viewport-rotate-ccw'), isNot(AppColors.accent));
+    expect(inkOf('canvas-viewport-rotate-reset'), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-viewport-flip')),

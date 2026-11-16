@@ -341,6 +341,12 @@ class _WorkspaceBrushPresets {
     );
   }
 
+  /// Whether [resetLibrary] would change anything — the library off its
+  /// built-ins, or a hand off its preset: its menu row is out where it
+  /// would not (F-583) and lit where it would (I-176).
+  bool libraryResetChanges() =>
+      !_state._presetLibrary.atDefaults || _brushHandSettings.isNotEmpty;
+
   /// A preset dragged to a new place or into another group — one undo step
   /// (F-250).
   void arrangePresets(List<BrushPreset> presets) => _arrange(

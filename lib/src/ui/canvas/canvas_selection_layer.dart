@@ -1289,6 +1289,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       canEditTransform: _canEditTransform,
       flipTransform: _flipTransform,
       resetTransform: _resetTransform,
+      canResetTransform: () => _box?.resetChanges ?? false,
       applyTransform: _applyTransform,
       canApplyTransform: () => _applyAction() != null,
     );
@@ -1342,18 +1343,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         : affine.copyWith(sy: -affine.sy),
   );
 
-  /// 리셋: every value (유저 확정 08-13 "리셋은 전부") — the affine AND the
-  /// warp. Resetting only the numbers would leave a box that reads 100%,
-  /// 0° and still looks bent.
+  /// 리셋 ([TransformBox.reset]).
   void _resetTransform() {
     final box = _box;
     if (box == null) {
       return;
     }
-    setState(() {
-      box.affine = SelectionAffine(pivot: box.affine.pivot);
-      box.warp.reset();
-    });
+    setState(box.reset);
     _scheduleResamples();
     _syncAnts();
   }

@@ -592,10 +592,16 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
   }
 
+  /// Whether [resetAll] would change anything — a key or a touch gesture
+  /// recorded over the preset in use. The button that presses it is out
+  /// where it would not (F-583).
+  bool get resetAllChanges =>
+      _overrides.isNotEmpty || _touchOverrides.isNotEmpty;
+
   /// Back to the keys the preset in use ships with, and the registry's touch
   /// gestures. What was recorded under another preset stays with it.
   void resetAll() {
-    if (_overrides.isEmpty && _touchOverrides.isEmpty) {
+    if (!resetAllChanges) {
       return;
     }
     _overrides.clear();

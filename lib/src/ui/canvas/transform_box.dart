@@ -80,6 +80,23 @@ class TransformBox {
   /// Whether the box would change any pixel.
   bool get isTransformed => !affine.isIdentity || !warp.isFlat;
 
+  /// What 리셋 puts the affine back to: every value at rest, about the same
+  /// pivot.
+  SelectionAffine get _atRest => SelectionAffine(pivot: affine.pivot);
+
+  /// Whether [reset] would change anything — any value it puts back, the
+  /// anchor too (which moves no pixel, so [isTransformed] does not see it),
+  /// or a bent warp. A reset that would not is out (F-583).
+  bool get resetChanges => affine.values != _atRest.values || !warp.isFlat;
+
+  /// 리셋: every value (유저 확정 08-13 "리셋은 전부") — the affine AND the
+  /// warp. Resetting only the numbers would leave a box that reads 100%,
+  /// 0° and still looks bent.
+  void reset() {
+    affine = _atRest;
+    warp.reset();
+  }
+
   /// Remembers where the box stands, just before an operation moves it.
   ///
   /// ⚠️Called at the START of an operation rather than its end, so the

@@ -159,6 +159,7 @@ class EditorTopStrip extends StatelessWidget {
     bool? checked,
     List<PanelFlyoutEntry> Function()? submenuBuilder,
     List<String> shortcuts = const [],
+    bool resets = false,
   }) => PanelFlyoutItem(
     keyValue: 'menu-$id',
     // Every entry localizes HERE, by the id it is already keyed with, with
@@ -166,6 +167,7 @@ class EditorTopStrip extends StatelessWidget {
     label: AppText.strings.menuLabel(id, label),
     icon: icon,
     checked: checked,
+    resets: resets,
     shortcuts: shortcuts,
     // A row that opens a SECOND level takes no tap of its own, so it has no
     // `onPressed` — and it must still be live (F-146).
@@ -665,6 +667,7 @@ class EditorTopStrip extends StatelessWidget {
           shortcuts: const [EditorActionIds.resetLayout],
           icon: Icons.restart_alt,
           onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
+          resets: true,
         ),
       ],
     ),

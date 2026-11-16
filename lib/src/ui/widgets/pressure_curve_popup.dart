@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
 import 'ellipsis_text.dart';
 import 'field_slider.dart';
+import 'icon_button_box.dart' show resetWearsAccent;
 import 'kept_tail_row.dart';
 import 'setting_source_button.dart';
 import 'owning_axis_grip.dart';
@@ -456,7 +457,12 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       points: draft.points,
       enabled: draft.enabled,
       onChanged: (points) {
+        final flips =
+            _bent(points, BrushPressureCurve.identity()) !=
+            _bent(draft.points, BrushPressureCurve.identity());
         draft.points = points;
+        // The reset at the head turns lit or out — drawn again then only.
+        if (flips) setState(() {});
         _commit();
       },
     );
@@ -476,7 +482,11 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
               ),
               _CurveReset(
                 keyValue: 'curve-reset-${source.name}',
-                onReset: draft.enabled ? () => _reset(source) : null,
+                onReset:
+                    draft.enabled &&
+                        _bent(draft.points, BrushPressureCurve.identity())
+                    ? () => _reset(source)
+                    : null,
               ),
             ],
           ),
@@ -516,8 +526,16 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   }
 }
 
+/// Whether [points] stand anywhere but on [straight] — what a reset at a
+/// graph's head would put them back to, so it is out where they do not
+/// (F-583).
+bool _bent(List<BrushCurvePoint> points, BrushPressureCurve straight) =>
+    !listEquals(points, straight.points);
+
 /// The reset at a graph's head: the shape back to the straight line. A null
-/// [onReset] dims it and takes no press — the graph of a source that is off.
+/// [onReset] dims it and takes no press — the graph of a source that is off,
+/// or a shape already straight — and a live one wears the accent
+/// ([resetWearsAccent], I-176).
 class _CurveReset extends StatelessWidget {
   const _CurveReset({required this.keyValue, required this.onReset});
 
@@ -536,8 +554,8 @@ class _CurveReset extends StatelessWidget {
         AppText.strings.commonReset,
         style: TextStyle(
           fontSize: 10,
-          color: onReset != null
-              ? AppColors.text
+          color: resetWearsAccent(resets: true, live: onReset != null)
+              ? AppColors.accent
               : AppColors.textDim.withValues(alpha: 0.5),
         ),
       ),
@@ -976,7 +994,7 @@ class _PenResponseEditorState extends State<_PenResponseEditor> {
             title: AppText.strings.inputPressureCurve,
             trailing: _CurveReset(
               keyValue: 'pen-response-reset',
-              onReset: _reset,
+              onReset: _bent(_points, BrushPressureCurve.linear) ? _reset : null,
             ),
           ),
         ),
@@ -987,7 +1005,11 @@ class _PenResponseEditorState extends State<_PenResponseEditor> {
             key: const ValueKey<String>('pen-response-graph'),
             points: _points,
             onChanged: (points) {
+              final flips =
+                  _bent(points, BrushPressureCurve.linear) !=
+                  _bent(_points, BrushPressureCurve.linear);
               _points = points;
+              if (flips) setState(() {});
               widget.onChanged(BrushPressureCurve(points));
             },
             onChangeEnd: () => widget.onChangeEnd(BrushPressureCurve(_points)),

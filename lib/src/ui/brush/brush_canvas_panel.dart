@@ -4641,6 +4641,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required Widget icon,
     required VoidCallback? onPressed,
     bool isSelected = false,
+    bool resets = false,
     List<String> shortcuts = const [],
   }) {
     return AppIconButton(
@@ -4649,6 +4650,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
+      resets: resets,
       shortcuts: _viewKeys(shortcuts),
     );
   }

@@ -231,6 +231,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.checked,
     this.selected = false,
     this.danger = false,
+    this.resets = false,
     this.enabled = true,
     this.onSelected,
     this.submenuBuilder,
@@ -318,6 +319,11 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
   /// Destructive styling (delete commands).
   final bool danger;
+
+  /// The row puts something back to its default — lit in the accent while
+  /// [enabled] ([resetWearsAccent], I-176), so it is [enabled] only where
+  /// choosing it would change something (F-583).
+  final bool resets;
 
   final bool enabled;
 
@@ -1428,8 +1434,9 @@ List<Widget> _leadingMark(PanelFlyoutItem entry) => [
 ];
 
 /// One row's ink. Disabled dims, destructive reddens, CURRENT accents —
-/// and the last of those is the whole way a flyout says "this one", because
-/// selection is colour and never a glyph (see [PanelFlyoutItem.selected]).
+/// and that is the whole way a flyout says "this one", because selection
+/// is colour and never a glyph (see [PanelFlyoutItem.selected]) — and a
+/// reset that would change something accents too.
 Color _inkFor(PanelFlyoutItem entry) {
   if (!entry.enabled) {
     return AppColors.textDim.withValues(alpha: 0.5);
@@ -1437,7 +1444,10 @@ Color _inkFor(PanelFlyoutItem entry) {
   if (entry.danger) {
     return AppColors.danger;
   }
-  return entry.selected ? AppColors.accent : AppColors.text;
+  return entry.selected ||
+          resetWearsAccent(resets: entry.resets, live: entry.enabled)
+      ? AppColors.accent
+      : AppColors.text;
 }
 
 /// A flyout trigger that is NOT a chip: a `⋮`, a glyph, a composed label —

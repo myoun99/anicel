@@ -18,6 +18,7 @@ import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/icon_button_box.dart' show resetWearsAccent;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
@@ -129,19 +130,29 @@ class ExportAccordion extends StatelessWidget {
   }
 }
 
-/// 「초기화」 at the head of a module, and of the Cels list's rules: off —
-/// dim, taking no press — while there is nothing to put back.
+/// 「초기화」 at the head of a module, and of the Cels list's rules — and
+/// the cut grid's 「전부」, which puts every cut back in: off — dim, taking
+/// no press — while there is nothing to put back, and lit in the accent
+/// while there is ([resetWearsAccent], I-176).
 class ExportResetChip extends StatelessWidget {
-  const ExportResetChip({super.key, required this.enabled, this.onPressed});
+  const ExportResetChip({
+    super.key,
+    required this.enabled,
+    this.onPressed,
+    this.label,
+  });
 
   final bool enabled;
   final VoidCallback? onPressed;
 
+  /// The chip's word — 「초기화」 when null.
+  final String? label;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = enabled
-        ? theme.colorScheme.onSurface
+    final color = resetWearsAccent(resets: true, live: enabled)
+        ? AppColors.accent
         : theme.disabledColor.withValues(alpha: 0.4);
     return ControlPressClaim(
       onPressed: enabled ? onPressed : null,
@@ -160,7 +171,7 @@ class ExportResetChip extends StatelessWidget {
             ),
           ),
           child: Text(
-            AppText.strings.commonReset,
+            label ?? AppText.strings.commonReset,
             style: theme.textTheme.labelSmall?.copyWith(color: color),
           ),
         ),

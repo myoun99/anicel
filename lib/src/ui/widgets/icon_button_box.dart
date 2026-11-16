@@ -150,6 +150,24 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
   );
 }
 
+/// 🗣️I-176 (유저 2026-11-16): 「앞으로 리셋버튼은 값이 바뀌어서 리셋이
+/// 작동가능하면? 유효하면 강조색되도록 … fx의 fx리셋버튼도 동일하게 무언가
+/// 값이 기본값이 아니게되면 강조색으로」 — A RESET WEARS ITS FAMILY'S ACCENT
+/// EXACTLY WHILE IT CAN BE PRESSED, and it can be pressed exactly while
+/// pressing it would change something (🗣️F-583, 유저 2026-11-11
+/// 「리셋버튼도 값 안바뀌었으면 동일하게 통일해서 비활성화」). So the accent asks
+/// nothing of its own: a reset whose press is out where nothing would change
+/// is lit where something would.
+///
+/// Every family says its accent its own way — an icon button's glyph
+/// ([IconButtonInk]), a tool setting's ground, a flyout row's word, a
+/// chip's word and edge — and every one of them asks this.
+///
+/// ⛔Not `isSelected`: that says a thing is ON, which a reset never is — one
+/// flag answering both would tell a screen reader a lit reset is selected.
+bool resetWearsAccent({required bool resets, required bool live}) =>
+    resets && live;
+
 /// An icon button's box: the app's control corner for its OWN height — a
 /// bar button and a strip button are different sizes, and the corner is a
 /// RATIO of the short axis, so each asks for its own — with the edge drawn
@@ -186,13 +204,16 @@ ShapeBorder appIconButtonShape(
 /// `RailGlyphButton`) asks it again at paint without the context — the two
 /// faces cannot come to wear different ink.
 final class IconButtonInk {
+  /// [litReset]: a reset that can be pressed, which wears the accent
+  /// ([resetWearsAccent] — the face asks it, as every reset's family does).
   IconButtonInk.of(
     BuildContext context, {
     required bool isSelected,
     required bool danger,
+    bool litReset = false,
   }) : _own = danger
            ? _dangerInk
-           : isSelected
+           : isSelected || litReset
            ? _accentInk
            : null,
        _theme = IconButtonTheme.of(context).style,

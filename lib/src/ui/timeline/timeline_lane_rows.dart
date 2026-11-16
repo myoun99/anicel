@@ -1082,7 +1082,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         axis: widget.axis,
         columns: widget.metrics.railColumns,
         visibility: _groupRasterize(colorScheme),
-        clip: _groupReset(colorScheme),
+        clip: _groupReset(),
         fx: _groupFx(context),
         blend: _groupBasis(),
         optionalColumns: widget.optionalColumns,
@@ -1108,7 +1108,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
   /// clip toggle owns on layer rows, and the two never appear on
   /// the same row.
-  Widget? _groupReset(ColorScheme colorScheme) => _groupPress(
+  ///
+  /// Lit in the accent where it would change something (I-176), out where
+  /// it would not (F-583). ↩️Its glyph wore a fixed `onSurfaceVariant`,
+  /// which outranked the ink, so an out reset looked as live as a lit one.
+  Widget? _groupReset() => _groupPress(
     widget.onResetLaneGroup,
     atThePlayhead: true,
     (press) => RailGlyphButton(
@@ -1116,10 +1120,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
       onPressed: press,
-      glyph: RailIconGlyph(
-        Icons.settings_backup_restore,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      resets: true,
+      glyph: const RailIconGlyph(Icons.settings_backup_restore),
     ),
   );
 

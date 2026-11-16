@@ -54,6 +54,7 @@ void main() {
         toggler: toggled.add,
         relay: relay,
         layoutReset: () => resets += 1,
+        canResetLayout: () => true,
         toolRailOnRight: () => true,
         toolRailMover: railMoves.add,
         floorTabId: () => 'canvas',
@@ -112,6 +113,7 @@ void main() {
       toggler: (_) {},
       relay: relay,
       layoutReset: () {},
+      canResetLayout: () => true,
     );
     await Future<void>.delayed(Duration.zero);
     final afterAttach = notifies;

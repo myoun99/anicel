@@ -118,6 +118,7 @@ class AppIconButton extends StatelessWidget {
     this.size = AppIconButtonSize.bar,
     this.outlined = false,
     this.danger = false,
+    this.resets = false,
     this.shortcuts = const [],
   });
 
@@ -167,6 +168,11 @@ class AppIconButton extends StatelessWidget {
   /// colour for a different question.
   final bool danger;
 
+  /// The button puts something back to its default: lit in the accent
+  /// whenever [onPressed] is live ([resetWearsAccent] — I-176), so its
+  /// [onPressed] is null where pressing would change nothing (F-583).
+  final bool resets;
+
   @override
   Widget build(BuildContext context) {
     // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
@@ -210,6 +216,7 @@ class AppIconButton extends StatelessWidget {
       onPressed: onPressed,
       isSelected: isSelected,
       danger: danger,
+      resets: resets,
       outlined: outlined,
       size: size,
       icon: icon,
@@ -234,6 +241,7 @@ class AppIconButtonFace extends StatefulWidget {
     required this.onPressed,
     required this.isSelected,
     required this.danger,
+    required this.resets,
     required this.outlined,
     required this.size,
     required this.icon,
@@ -246,6 +254,9 @@ class AppIconButtonFace extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool isSelected;
   final bool danger;
+
+  /// [AppIconButton.resets].
+  final bool resets;
   final bool outlined;
   final AppIconButtonMetrics size;
   final Widget icon;
@@ -278,6 +289,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace>
         size: widget.size,
         isSelected: widget.isSelected,
         danger: widget.danger,
+        resets: widget.resets,
         outlined: widget.outlined,
         focus: focus,
       ),
@@ -338,6 +350,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace>
       context,
       isSelected: widget.isSelected,
       danger: widget.danger,
+      litReset: resetWearsAccent(resets: widget.resets, live: _enabled),
     );
     // The glyph's ink, for every state this widget knows. The hover and the
     // press live in the face's render object and are not asked: no step of

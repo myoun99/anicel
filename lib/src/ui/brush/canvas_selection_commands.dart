@@ -341,6 +341,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _beginTransformStep;
   void Function({required bool horizontal})? _flipTransform;
   VoidCallback? _resetTransform;
+  bool Function()? _canResetTransform;
   VoidCallback? _applyTransform;
   bool Function()? _canApplyTransform;
   bool Function()? _canEditTransform;
@@ -370,6 +371,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     VoidCallback? beginTransformStep,
     void Function({required bool horizontal})? flipTransform,
     VoidCallback? resetTransform,
+    bool Function()? canResetTransform,
     VoidCallback? applyTransform,
     bool Function()? canApplyTransform,
     bool Function()? canEditTransform,
@@ -377,6 +379,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _owner = owner;
     _flipTransform = flipTransform;
     _resetTransform = resetTransform;
+    _canResetTransform = canResetTransform;
     _applyTransform = applyTransform;
     _canApplyTransform = canApplyTransform;
     _canEditTransform = canEditTransform;
@@ -422,6 +425,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _beginTransformStep = null;
     _flipTransform = null;
     _resetTransform = null;
+    _canResetTransform = null;
     _applyTransform = null;
     _canApplyTransform = null;
     _canEditTransform = null;
@@ -691,6 +695,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// 리셋: every value, not just the numbers — the affine AND the
   /// perspective/mesh offsets (유저 확정 08-13: "리셋은 전부").
   void resetTransform() => _resetTransform?.call();
+
+  /// Whether [resetTransform] would change anything — a button that asks is
+  /// out where it would not (F-583) and lit where it would (I-176), as
+  /// [canApplyTransform] is to 적용.
+  bool get canResetTransform => _canResetTransform?.call() ?? false;
 
   /// 적용 — 확정 while a transform is in play (`ConfirmVerb`), so the tool
   /// settings button, the box's ✓ and Enter are one verb (유저 확정 08-13,

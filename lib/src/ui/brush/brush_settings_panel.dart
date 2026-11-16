@@ -373,6 +373,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               icon: const Icon(Icons.restart_alt),
               outlined: true,
               onPressed: widget.onResetBrush,
+              resets: true,
             ),
             const SizedBox(width: ToolSettingColumns.gap),
             FloatingAppWindow(

@@ -286,6 +286,53 @@ void main() {
     expect(picked, 1);
   });
 
+  testWidgets('a RESET row accents while it would change something and '
+      'dims while it would not (I-176, F-583)', (tester) async {
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutButton(
+          key: const ValueKey<String>('flyout-under-test'),
+          label: 'Test',
+          entriesBuilder: () => const [
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-lit',
+              label: 'Lit',
+              icon: Icons.restart_alt,
+              resets: true,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-out',
+              label: 'Out',
+              icon: Icons.restart_alt,
+              resets: true,
+              enabled: false,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-plain',
+              label: 'Plain',
+              icon: Icons.restart_alt,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-under-test')));
+    await tester.pumpAndSettle();
+
+    Color? inkOf(String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.anyText(),
+          ),
+        )
+        .style
+        ?.color;
+    expect(inkOf('flyout-item-lit'), AppColors.accent);
+    expect(inkOf('flyout-item-out'), isNot(AppColors.accent));
+    expect(inkOf('flyout-item-plain'), AppColors.text);
+  });
+
   testWidgets('a SELECTED row accents and grows no glyph — 유저 R11-①: '
       '어차피 선택하면 ui적으로 색 바뀌니까 그거로 충분해', (tester) async {
     // The overflow tab list tinted its active glyph and had to keep doing

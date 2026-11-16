@@ -659,7 +659,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           label: AppText.strings.shortcutResetPreset,
           actionKey: const ValueKey<String>('shortcut-preset-reset-button'),
           emphasis: AppWindowActionEmphasis.danger,
-          onPressed: () => unawaited(_presets.reset(context)),
+          onPressed: widget.bindings.resetAllChanges
+              ? () => unawaited(_presets.reset(context))
+              : null,
         ),
         AppWindowAction(
           label: AppText.strings.commonClose,
@@ -1028,6 +1030,7 @@ class _KeySearch extends StatelessWidget {
           tooltip: AppText.strings.shortcutSearchByKeyClear,
           icon: const Icon(Icons.restart_alt),
           onPressed: onClear,
+          resets: true,
         ),
       ],
     );
@@ -1238,6 +1241,7 @@ class _ActionRow extends StatelessWidget {
                         bindings.isTouchOverridden(definition.id)
                     ? () => bindings.resetAction(definition.id)
                     : null,
+                resets: true,
               ),
             ],
           );
