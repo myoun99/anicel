@@ -892,7 +892,7 @@ class StoryboardPanel extends StatefulWidget {
   //
   // 2026-11-16 (F-606): it took 20 more for the Total half again as long.
   // The number stays with the timeline's again, and the name gives them
-  // (⚠️the same reading — `timelineLayerControlsWidth`).
+  // (F-606-Q1, 유저: 「이름 칸에서 낸다」).
   static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every

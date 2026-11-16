@@ -122,9 +122,8 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// name (I-89 Q1, above). ⚠️The user asked for the cell; that its 4 come
 /// out of the name by that rule is this lane's reading, not their word.
 /// And through F-606 (2026-11-16): the column took 20 more for the Total
-/// half again as long, and every row's name gave them by the same reading
-/// — ⚠️the user asked for the column (「블렌드 열이 늘어나도록」), not
-/// where its room comes from.
+/// half again as long, and every row's name gave them — 🗣️F-606-Q1 (유저
+/// 2026-11-16): 「이름 칸에서 낸다」, asked against the rail growing by 20.
 const double timelineLayerControlsWidth = 385 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
