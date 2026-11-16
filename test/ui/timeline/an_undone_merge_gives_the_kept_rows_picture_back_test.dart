@@ -217,6 +217,5 @@ void main() {
       reason: "k2 shows its own picture alone — not k1's laid with it",
     );
     expect(at(picture('k1'), 160, 40), red);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }
