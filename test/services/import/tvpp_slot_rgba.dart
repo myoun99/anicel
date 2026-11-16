@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
 
@@ -20,8 +21,7 @@ Uint8List? tvppSlotRgba({
   tvppSlotRows(
     recordBytes: recordBytes,
     slot: slot,
-    width: width,
-    height: height,
+    size: CanvasSize(width: width, height: height),
     row: (y, row) => rgba.setRange(y * stride, (y + 1) * stride, row),
   );
   return rgba;

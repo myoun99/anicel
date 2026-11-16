@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -190,8 +191,7 @@ void main() {
       tvppSlotRows(
         recordBytes: file,
         slot: slotFor(file, compressed: false),
-        width: w,
-        height: h,
+        size: const CanvasSize(width: w, height: h),
         row: (y, _) => handed.add(y),
       );
       expect(handed, isEmpty);
@@ -239,8 +239,7 @@ void main() {
         tvppSlotRows(
           recordBytes: file,
           slot: slotFor(file, compressed: true),
-          width: w,
-          height: h,
+          size: const CanvasSize(width: w, height: h),
           row: (y, rgba) {
             handed.add(y);
             expect(rgba[100 * 4 + 3], 255, reason: 'row $y holds its ink');
@@ -383,8 +382,7 @@ void main() {
         tvppSlotRows(
           recordBytes: bytes,
           slot: slot,
-          width: w,
-          height: h,
+          size: const CanvasSize(width: w, height: h),
           row: (y, rgba) => rows.add([y, ...rgba]),
         );
         return rows;

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../models/canvas_size.dart';
 import '../../models/import/tvpp_parse.dart';
 import 'tile_cutter.dart' show RowSink, TileCutter;
 
@@ -55,13 +56,13 @@ class TvppRasterDecodeException implements Exception {
 void tvppSlotRows({
   required Uint8List recordBytes,
   required TvppSlot slot,
-  required int width,
-  required int height,
+  required CanvasSize size,
   required RowSink row,
 }) {
   if (slot.kind == TvppSlotKind.hold) {
     return;
   }
+  final CanvasSize(:width, :height) = size;
   final rgba = Uint8List(width * 4);
   _recordRows(_recordOf(recordBytes, slot), width, height, (y, words, from) {
     if (_straightRow(words, from, rgba)) {

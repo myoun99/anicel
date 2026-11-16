@@ -153,8 +153,8 @@ class TvppImportDoor {
       compressed: slot.compressed,
       v10WholeCanvas: slot.v10WholeCanvas,
     );
-    final width = lay.picture.width;
-    final height = lay.picture.height;
+    final size = lay.picture;
+    final width = size.width;
     final layout = lay.layout;
     final cut = tileCutOf(lay.cut);
     return onAWorker<Object>(() {
@@ -167,8 +167,7 @@ class TvppImportDoor {
             (row) => tvppSlotRows(
               recordBytes: window,
               slot: windowSlot,
-              width: width,
-              height: height,
+              size: size,
               row: row,
             ),
           ),
@@ -179,37 +178,34 @@ class TvppImportDoor {
     });
   }
 
-  /// Lands one decoded cel, or says why it could not be landed.
+  /// Lands one decoded cel — or answers why it could not be landed.
   ///
   /// A blank instance (빈 셀) decodes to zero tiles: the cel stays, its
   /// pixels stay absent — the same shape the drawing store gives an empty
   /// cel.
-  Future<void> _landCel(
+  Future<ImportWarning?> _landCel(
     Object decoded, {
     required CelLay lay,
     required Cut cut,
     required PlannedCelBake bake,
-    required List<ImportWarning> warnings,
   }) async {
     if (decoded is TvppRasterDecodeException) {
-      warnings.add(
-        ImportWarning(
-          'celUnreadable',
-          '{file}: the picture could not be read — {detail}',
-          {'file': bake.sourceFile, 'detail': '$decoded'},
-        ),
+      return ImportWarning(
+        'celUnreadable',
+        '{file}: the picture could not be read — {detail}',
+        {'file': bake.sourceFile, 'detail': '$decoded'},
       );
-      return;
     }
     final laid = decoded as AnicelLaidCel;
     if (laid.tiles.isEmpty) {
-      return;
+      return null;
     }
     bakeCelSurface(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       await layCut(lay, laid),
     );
+    return null;
   }
 
   /// Every cel this import has to bake, paired with the cut it landed in
@@ -328,13 +324,15 @@ class TvppImportDoor {
         }),
         landed: (index, lay, decoded) async {
           final (_, bakedCut, bake, _) = work[index];
-          await _landCel(
+          final unread = await _landCel(
             decoded,
             lay: lay,
             cut: bakedCut,
             bake: bake,
-            warnings: warnings,
           );
+          if (unread != null) {
+            warnings.add(unread);
+          }
           bakedSoFar += 1;
           onProgress?.call(bakedSoFar / work.length);
         },
