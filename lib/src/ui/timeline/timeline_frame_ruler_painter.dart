@@ -656,6 +656,13 @@ final class TimelineRulerScale {
     );
   }
 
+  /// [cellRectFor] on the strip's own canvas: moved back by its window
+  /// where its window box laid it ([geometry]) — where a strip's semantics
+  /// stand, and what a press on the strip lands on.
+  Rect cellRectOnItsCanvas(int frameIndex) => cellRectFor(
+    frameIndex,
+  ).shift(-timelineFrameWindowShift(geometry, axis));
+
   /// What a strip writes at [frameIndex] — its number and its second — or,
   /// [current], the playhead's pair there (I-16): the number whatever the
   /// cadence says, the second whatever the boundary says. WHERE each goes
@@ -1026,9 +1033,7 @@ final class TimelineRulerScale {
   List<CustomPainterSemantics> windowSemantics() => frameWindowSemantics(
     window: visibleWindow(),
     step: writingStep,
-    rectFor: (frameIndex) => cellRectFor(
-      frameIndex,
-    ).shift(-timelineFrameWindowShift(geometry, axis)),
+    rectFor: cellRectOnItsCanvas,
     labelFor: (frameIndex) =>
         modelAt(frameIndex).label.isEmpty ? null : 'frame ${frameIndex + 1}',
   );

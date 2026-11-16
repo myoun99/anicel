@@ -1407,9 +1407,14 @@ void main() {
           'F-174 「엔드라인+1콤마」: the one comma past the end line is '
           'part of the resting extent, so the scrollbar shows the line',
     );
+    // Where the axis ends, not where the strip's paint stops: a strip laid
+    // in its rows' window box draws its window whole, past the end too, as
+    // a row does (Q8; card conte-sideways-scroll-build-spikes, 11-16).
+    int axisEnd() =>
+        timelineRulerPainter(tester).scale.frameEndIndexExclusive;
     expect(
-      timelineHeaderInWindow(tester, 25),
-      isFalse,
+      axisEnd(),
+      25,
       reason:
           'past the allowance, cells exist only while visible/materialized '
           '(UI-R12 #16) — scrolling never creates them',
@@ -1421,8 +1426,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      timelineHeaderInWindow(tester, 47),
-      isFalse,
+      axisEnd(),
+      25,
       reason: 'the scroll walls at the built extent',
     );
   });

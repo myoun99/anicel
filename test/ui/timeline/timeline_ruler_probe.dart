@@ -58,10 +58,9 @@ Rect timelineHeaderGlobalRect(
   final box = tester
       .renderObjectList<RenderBox>(timelineRulerPaintFinder())
       .elementAt(index);
-  return timelineRulerPainter(
-    tester,
-    index: index,
-  ).scale.cellRectFor(frameIndex).shift(box.localToGlobal(Offset.zero));
+  return timelineRulerPainter(tester, index: index).scale
+      .cellRectOnItsCanvas(frameIndex)
+      .shift(box.localToGlobal(Offset.zero));
 }
 
 // --- The X-sheet frame rail's painter probe (UI-R14 #1) ------------------
@@ -90,9 +89,9 @@ TimelineRulerHeaderModel xsheetFrameRowModel(
 /// The rail row's GLOBAL rect.
 Rect xsheetFrameRowGlobalRect(WidgetTester tester, int frameIndex) {
   final box = tester.renderObject<RenderBox>(xsheetRailPaintFinder());
-  return xsheetRailPainter(
-    tester,
-  ).scale.cellRectFor(frameIndex).shift(box.localToGlobal(Offset.zero));
+  return xsheetRailPainter(tester).scale
+      .cellRectOnItsCanvas(frameIndex)
+      .shift(box.localToGlobal(Offset.zero));
 }
 
 // --- The rulers' CURSOR OVERLAY (the split, scoped-notify audit) ----------
