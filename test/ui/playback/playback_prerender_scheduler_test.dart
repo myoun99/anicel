@@ -559,6 +559,29 @@ void main() {
     });
   });
 
+  testWidgets('untilQuiet answers once the scheduler goes, a hold still '
+      'open: no asker waits on a gate nobody will open', (tester) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      final scheduler = PlaybackPrerenderScheduler(
+        pictures: f.pictures,
+        resolveCut: (_) => cut(),
+        idleDelay: Duration.zero,
+      );
+      var answered = false;
+
+      scheduler.beginInputHold();
+      unawaited(scheduler.untilQuiet().then((_) => answered = true));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(answered, isFalse, reason: '⛔premise: shut, the hold open');
+
+      scheduler.dispose();
+
+      expect(await pollUntil(() => answered), isTrue);
+      f.layerImages.dispose();
+    });
+  });
+
   testWidgets('an invalidated frame re-warms with fresh content', (
     tester,
   ) async {
