@@ -864,7 +864,17 @@ void main() {
 
       // Ticks that each read the time of the frame they run in: the gap
       // between that time and the device's clock is followed.
-      Duration frameNow() => Duration(microseconds: device.clockNowMicros);
+      //
+      // On the FRAME clock, as the engine hands a tick its frame's time and
+      // as [shownIn] reads it below (HeardOnTheDevice's `frameClockNow`).
+      // ↩️It was the device's own clock (`clockNowMicros`): the same clock
+      // on Windows, where both read the performance counter, and another on
+      // macOS, where the device reads CLOCK_MONOTONIC — the gap between the
+      // two clocks rode every reading at a frame's time and none read
+      // without one, and the Mac runner read the late tick 2 and then 1
+      // frame on where 3 were handed (card
+      // a-late-tick-pin-red-on-the-mac-runner, 1091 TestFlight 11-17).
+      Duration frameNow() => Duration(microseconds: Timeline.now);
       for (var tick = 0; tick < 24; tick += 1) {
         transport.clockStatus(frameTime: frameNow());
         await Future<void>.delayed(const Duration(milliseconds: 4));
