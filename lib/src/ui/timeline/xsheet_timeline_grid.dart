@@ -700,27 +700,28 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                     // while the rail drew ONE band
                     // per contiguous run. Same
                     // widget, turned on its side.
-                    Stack(
-                      children: [
-                        // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
-                        // widget, same columns; the x-sheet is the rail
-                        // transposed, so the sweep runs ACROSS the layer
-                        // columns instead of down the rows.
-                        RailColumnSwipe<TimelineDisplayRow>(
-                          axis: Axis.horizontal,
-                          columns: _columns.swipeColumns(),
-                          rowsIn: (from, to) => _columns.columnsIn(
-                            from,
-                            to,
-                            entries,
-                            geometry.columnEdges,
-                          ),
-                          // The lines a carry draws over every column
-                          // ([RailRowLines]): a line's word is wider than
-                          // a column, and the columns after it painted
-                          // over it (F-393 ②).
-                          child: RailRowLines(
-                            drag: widget.hooks.rowDragHooks?.drag,
+                    //
+                    // The lines a carry draws over ALL of the strip
+                    // ([RailRowLines]): a line's word is wider than a
+                    // column, and the columns after it painted over it
+                    // (F-393 ②).
+                    RailRowLines(
+                      drag: widget.hooks.rowDragHooks?.drag,
+                      child: Stack(
+                        children: [
+                          // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
+                          // widget, same columns; the x-sheet is the rail
+                          // transposed, so the sweep runs ACROSS the layer
+                          // columns instead of down the rows.
+                          RailColumnSwipe<TimelineDisplayRow>(
+                            axis: Axis.horizontal,
+                            columns: _columns.swipeColumns(),
+                            rowsIn: (from, to) => _columns.columnsIn(
+                              from,
+                              to,
+                              entries,
+                              geometry.columnEdges,
+                            ),
                             child: _rowBerths.counting(
                               Row(
                                 children: _headers.headers(
@@ -730,41 +731,41 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                               ),
                             ),
                           ),
-                        ),
-                        if (widget.hooks.rowSelection case final selection?)
-                          Positioned.fill(
-                            child: TimelineRowSelectionBands(
-                              axis: Axis.vertical,
-                              selection: selection,
-                              rows: [
-                                for (final entry in entries) entry.address,
-                              ],
-                              edges: geometry.columnEdges,
-                              crossExtent: _headers.naturalHeaderExtent,
-                            ),
-                          ),
-                        // The sheet's header strip is the rail turned on its
-                        // side, so it is the same place entrance, along x.
-                        if (widget.hooks.onDropMediaAssetBetweenLayers
-                            case final onDrop?)
-                          Positioned.fill(
-                            child: LayerPlacementEntrance(
-                              key: const ValueKey<String>(
-                                'xsheet-layer-placement-entrance',
+                          if (widget.hooks.rowSelection case final selection?)
+                            Positioned.fill(
+                              child: TimelineRowSelectionBands(
+                                axis: Axis.vertical,
+                                selection: selection,
+                                rows: [
+                                  for (final entry in entries) entry.address,
+                                ],
+                                edges: geometry.columnEdges,
+                                crossExtent: _headers.naturalHeaderExtent,
                               ),
-                              rowAxis: Axis.horizontal,
-                              rows: () =>
-                                  (rows: _dragRows, edges: _dragEdges),
-                              onHover:
-                                  widget.hooks.rowDragHooks?.onPlacementHover,
-                              onLeave:
-                                  widget.hooks.rowDragHooks?.onPlacementLeave,
-                              accepts:
-                                  widget.hooks.rowDragHooks?.acceptsPlacement,
-                              onDrop: onDrop,
                             ),
-                          ),
-                      ],
+                          // The sheet's header strip is the rail turned on its
+                          // side, so it is the same place entrance, along x.
+                          if (widget.hooks.onDropMediaAssetBetweenLayers
+                              case final onDrop?)
+                            Positioned.fill(
+                              child: LayerPlacementEntrance(
+                                key: const ValueKey<String>(
+                                  'xsheet-layer-placement-entrance',
+                                ),
+                                rowAxis: Axis.horizontal,
+                                rows: () =>
+                                    (rows: _dragRows, edges: _dragEdges),
+                                onHover:
+                                    widget.hooks.rowDragHooks?.onPlacementHover,
+                                onLeave:
+                                    widget.hooks.rowDragHooks?.onPlacementLeave,
+                                accepts:
+                                    widget.hooks.rowDragHooks?.acceptsPlacement,
+                                onDrop: onDrop,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

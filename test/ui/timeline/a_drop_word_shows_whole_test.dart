@@ -74,10 +74,12 @@ void main() {
       row.bottom + 8,
     );
     final shown = await _wordOnScreen(tester, word, Axis.horizontal);
+    final hidden = await _glyphSlicesHidden(tester, Axis.horizontal);
     final at = tester.getRect(word);
     await _letGo(tester, gesture);
 
     expect(shown, greaterThan(0.95));
+    expect(hidden, 0);
     expect(
       at.bottom,
       row.bottom,
@@ -85,8 +87,11 @@ void main() {
     );
   });
 
+  // 🔬F-393 ① (검증 2026-11-17, 서피스): this line stands at the top of the
+  // carried row, which is selected — and the selection's band ran its edge
+  // through the middle of the word.
   testWidgets('CONTROL: a line between two rows says its word centred '
-      'across it', (tester) async {
+      'across it, over the carried row\'s selection', (tester) async {
     await pumpTimelineHost(
       tester,
       _film([_layer('base'), _rider('over', AttachedPlacement.above)]),
@@ -102,6 +107,7 @@ void main() {
       above.top + above.height * 0.8,
     );
     final shown = await _wordOnScreen(tester, word, Axis.horizontal);
+    final hidden = await _glyphSlicesHidden(tester, Axis.horizontal);
     final at = tester.getRect(word);
     final line = tester.getRect(
       find.byKey(const ValueKey<String>('timeline-row-caret-before-over')),
@@ -109,6 +115,7 @@ void main() {
     await _letGo(tester, gesture);
 
     expect(shown, greaterThan(0.95));
+    expect(hidden, 0);
     expect(at.center.dy, line.center.dy);
   });
 
@@ -131,9 +138,11 @@ void main() {
       column.left - 8,
     );
     final shown = await _wordOnScreen(tester, word, Axis.vertical);
+    final hidden = await _glyphSlicesHidden(tester, Axis.vertical);
     await _letGo(tester, gesture);
 
     expect(shown, greaterThan(0.95));
+    expect(hidden, 0);
   });
 }
 
@@ -258,4 +267,53 @@ Future<double> _wordOnScreen(
     }
   }
   return shown / (to - from);
+}
+
+/// How many pixel slices across the rows' [axis] through the drop word's
+/// glyphs show none of them — every pixel the theme's primary, a line's
+/// colour drawn over the word. ⚠️[_wordOnScreen] cannot tell: it counts
+/// that colour, the badge's and a line's alike (F-393 ①, 11-17).
+///
+/// The slices are the text's own box a pixel in from its edges across,
+/// clear of its leading; along, the whole text, where the test font's
+/// glyphs are solid.
+Future<int> _glyphSlicesHidden(WidgetTester tester, Axis axis) async {
+  final text = find.text(AppText.strings.tlDropDetachAttach);
+  expect(text, findsOneWidget, reason: '⛔전제: the drop says its word');
+  final view = tester.binding.renderViews.first;
+  final scale = view.configuration.devicePixelRatio;
+  final colour = Theme.of(
+    tester.element(text),
+  ).colorScheme.primary.toARGB32();
+  final at = tester.getRect(text);
+  final width = (view.size.width * scale).round();
+  final pixels = await screenPixels(tester);
+  bool isLine(int along, int across) {
+    final (x, y) = axis == Axis.horizontal
+        ? (along, across)
+        : (across, along);
+    final byte = (y * width + x) * 4;
+    return (pixels.getUint8(byte + 3) << 24 |
+            pixels.getUint8(byte) << 16 |
+            pixels.getUint8(byte + 1) << 8 |
+            pixels.getUint8(byte + 2)) ==
+        colour;
+  }
+
+  final alongFrom = (startAlong(axis, at) * scale).ceil();
+  final alongTo = (endAlong(axis, at) * scale).floor();
+  final from = ((startAcross(axis, at) + 1) * scale).ceil();
+  final to = ((endAcross(axis, at) - 1) * scale).floor();
+  expect(to - from, greaterThan(4), reason: '⛔전제: slices to look at');
+  var hidden = 0;
+  for (var across = from; across < to; across += 1) {
+    var all = true;
+    for (var along = alongFrom; along < alongTo && all; along += 1) {
+      all = isLine(along, across);
+    }
+    if (all) {
+      hidden += 1;
+    }
+  }
+  return hidden;
 }

@@ -2490,14 +2490,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             // the reason for that was measured and
                             // found invented — see
                             // [RailSwipeColumnPointer].
-                            child: Stack(
-                              children: [
-                                RailColumnSwipe<TimelineDisplayRow>(
-                                  axis: Axis.vertical,
-                                  columns: _sweep.columns(),
-                                  rowsIn: _sweep.rowsIn,
-                                  child: RailRowLines(
-                                    drag: widget.rowDragHooks?.drag,
+                            //
+                            // The lines a carry draws over ALL of the
+                            // rail, the selection's bands too
+                            // ([RailRowLines]).
+                            child: RailRowLines(
+                              drag: widget.rowDragHooks?.drag,
+                              child: Stack(
+                                children: [
+                                  RailColumnSwipe<TimelineDisplayRow>(
+                                    axis: Axis.vertical,
+                                    columns: _sweep.columns(),
+                                    rowsIn: _sweep.rowsIn,
                                     // Laid by the rows' window, as the
                                     // strips.
                                     child: _rowsWindow.laidColumn(
@@ -2524,42 +2528,42 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       newPass: _rows.railPass,
                                     ),
                                   ),
-                                ),
-                                // The row selection, over the LAYER area
-                                // as the timeline's rail lays it (A2) —
-                                // heard by the bands, since a span grows
-                                // per pointer move inside a gesture.
-                                if (widget.rowSelection case final selection?)
-                                  Positioned(
-                                    left: layerSectionLabelSlotWidth,
-                                    top: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: _railRows.rowSelectionBands(
-                                      selection,
-                                    ),
-                                  ),
-                                // A pool file let go on the rail: the layer
-                                // area's law — a sound by the SE rows' rule, a
-                                // picture nowhere (no row of the cut's stack is
-                                // on this rail). Last, a permanent slot that
-                                // takes no pointer until a drag is in flight.
-                                if (widget.onDropMediaAssetOnRail
-                                    case final onDrop?)
-                                  Positioned.fill(
-                                    child: MediaAssetDropTarget(
-                                      key: const ValueKey<String>(
-                                        'storyboard-rail-placement-entrance',
+                                  // The row selection, over the LAYER area
+                                  // as the timeline's rail lays it (A2) —
+                                  // heard by the bands, since a span grows
+                                  // per pointer move inside a gesture.
+                                  if (widget.rowSelection case final selection?)
+                                    Positioned(
+                                      left: layerSectionLabelSlotWidth,
+                                      top: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      child: _railRows.rowSelectionBands(
+                                        selection,
                                       ),
-                                      accepts: (data, _) =>
-                                          widget.acceptsMediaAssetOnRail?.call(
-                                            data.path,
-                                          ) ??
-                                          true,
-                                      onDrop: (data, _) => onDrop(data.path),
                                     ),
-                                  ),
-                              ],
+                                  // A pool file let go on the rail: the
+                                  // layer area's law — a sound by the SE
+                                  // rows' rule, a picture nowhere (no row
+                                  // of the cut's stack is on this rail).
+                                  // Last, a permanent slot that takes no
+                                  // pointer until a drag is in flight.
+                                  if (widget.onDropMediaAssetOnRail
+                                      case final onDrop?)
+                                    Positioned.fill(
+                                      child: MediaAssetDropTarget(
+                                        key: const ValueKey<String>(
+                                          'storyboard-rail-placement-entrance',
+                                        ),
+                                        accepts: (data, _) =>
+                                            widget.acceptsMediaAssetOnRail
+                                                ?.call(data.path) ??
+                                            true,
+                                        onDrop: (data, _) => onDrop(data.path),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

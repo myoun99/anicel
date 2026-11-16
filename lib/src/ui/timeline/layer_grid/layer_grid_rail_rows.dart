@@ -255,70 +255,70 @@ class _LayerGridRailRows {
             axis: Axis.vertical,
             columns: swipeColumns,
             rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window.now),
-            child: Stack(
-              children: [
-                RailRowLines(
-                  drag: _state.widget.hooks.rowDragHooks?.drag,
-                  child: window.laid(
-                    (window) => _windowedRailRows(rows, window),
-                  ),
-                ),
-                // The section ZONES over the
-                // rows' reserved band slots
-                // (UI-R7 #2): the old gutter
-                // bracket inside the rows.
-                // Full rows, not the window
-                // (A3) — labels anchor to the
-                // section's true extent.
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  child: _state._sectionBandOverlay(rows, window.edges),
-                ),
-                // T1's one band
-                // per contiguous
-                // run — but only
-                // over the LAYER
-                // area (A2
-                // 2026-08-17
-                // reversed T1's
-                // full-width
-                // call): the
-                // section zone
-                // is the
-                // sections' own
-                // plate, not
-                // part of the
-                // selection.
-                if (_state.widget.hooks.rowSelection case final selection?)
+            // The lines a carry draws over ALL of the rail, the selection's
+            // bands too ([RailRowLines]).
+            child: RailRowLines(
+              drag: _state.widget.hooks.rowDragHooks?.drag,
+              child: Stack(
+                children: [
+                  window.laid((window) => _windowedRailRows(rows, window)),
+                  // The section ZONES over the
+                  // rows' reserved band slots
+                  // (UI-R7 #2): the old gutter
+                  // bracket inside the rows.
+                  // Full rows, not the window
+                  // (A3) — labels anchor to the
+                  // section's true extent.
                   Positioned(
-                    left: layerSectionLabelSlotWidth,
+                    left: 0,
                     top: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: window.laid(
-                      (window) => TimelineRowSelectionBands(
-                        selection: selection,
-                        rows: [for (final row in window.rows) row.address],
-                        edges: window.edges,
-                        firstRow: window.range.startIndex,
-                        crossExtent:
-                            _state._metrics.layerControlsWidth -
-                            layerSectionLabelSlotWidth,
+                    child: _state._sectionBandOverlay(rows, window.edges),
+                  ),
+                  // T1's one band
+                  // per contiguous
+                  // run — but only
+                  // over the LAYER
+                  // area (A2
+                  // 2026-08-17
+                  // reversed T1's
+                  // full-width
+                  // call): the
+                  // section zone
+                  // is the
+                  // sections' own
+                  // plate, not
+                  // part of the
+                  // selection.
+                  if (_state.widget.hooks.rowSelection case final selection?)
+                    Positioned(
+                      left: layerSectionLabelSlotWidth,
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: window.laid(
+                        (window) => TimelineRowSelectionBands(
+                          selection: selection,
+                          rows: [for (final row in window.rows) row.address],
+                          edges: window.edges,
+                          firstRow: window.range.startIndex,
+                          crossExtent:
+                              _state._metrics.layerControlsWidth -
+                              layerSectionLabelSlotWidth,
+                        ),
                       ),
                     ),
-                  ),
-                // The layer area as a place entrance, on top so a file let
-                // go anywhere on the rail finds it — an empty box the rest
-                // of the time, so every row keeps its own pointer.
-                if (placementEntrance(
-                      key: const ValueKey<String>(
-                        'timeline-layer-placement-entrance',
-                      ),
-                    )
-                    case final entrance?)
-                  Positioned.fill(child: entrance),
-              ],
+                  // The layer area as a place entrance, on top so a file let
+                  // go anywhere on the rail finds it — an empty box the rest
+                  // of the time, so every row keeps its own pointer.
+                  if (placementEntrance(
+                        key: const ValueKey<String>(
+                          'timeline-layer-placement-entrance',
+                        ),
+                      )
+                      case final entrance?)
+                    Positioned.fill(child: entrance),
+                ],
+              ),
             ),
           ),
         ),

@@ -1297,6 +1297,14 @@ class _DropWordPlace extends SingleChildLayoutDelegate {
 /// sheet's columns are narrower than a word: the columns after it painted
 /// over 60% of 「アタッチを解除」. Both lines are painted here, on the
 /// sheet's header strip as on the two rails.
+///
+/// 🔬F-393 ① (검증 2026-11-17, 서피스): over ALL of a rail, not only its
+/// rows. The carried row is a selected one, and the selection's band —
+/// painted after the rows — ran its edge, the line's own colour, through
+/// the middle of 「アタッチを解除」 where the line stands at that row's top.
+/// A rail wears this around everything it stacks, and the lines take no
+/// pointer: what stands under them (the rows, a file's place entrance)
+/// keeps its own.
 class RailRowLines extends StatefulWidget {
   const RailRowLines({super.key, required this.drag, required this.child});
 
@@ -1323,18 +1331,20 @@ class _RailRowLinesState extends State<RailRowLines> {
           widget.child,
           if (drag != null)
             Positioned.fill(
-              child: ValueListenableBuilder<LayerRowDragState?>(
-                valueListenable: drag,
-                builder: (context, carried, _) {
-                  final colorScheme = Theme.of(context).colorScheme;
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      for (final row in _rows)
-                        ...row._linesOverRows(carried, colorScheme),
-                    ],
-                  );
-                },
+              child: IgnorePointer(
+                child: ValueListenableBuilder<LayerRowDragState?>(
+                  valueListenable: drag,
+                  builder: (context, carried, _) {
+                    final colorScheme = Theme.of(context).colorScheme;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final row in _rows)
+                          ...row._linesOverRows(carried, colorScheme),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
         ],
