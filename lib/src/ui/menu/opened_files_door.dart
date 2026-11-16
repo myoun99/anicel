@@ -265,16 +265,11 @@ final class OpenedFilesDoor {
     if (path != null) {
       return File(path).readAsBytes();
     }
-    final source = await FolderPicker.materializeOpenedFile(
-      grant.document!.uri,
-    );
-    try {
-      return await File(source.path).readAsBytes();
-    } finally {
-      ProviderDocuments.letGo(source.path);
-      if (source.staged) {
-        await File(source.path).delete().then<void>((_) {}, onError: (_) {});
-      }
+    final read = await FolderPicker.readOpenedFile(grant.document!.uri);
+    ProviderDocuments.letGo(read.path);
+    if (read.staged) {
+      await File(read.path).delete().then<void>((_) {}, onError: (_) {});
     }
+    return read.bytes;
   }
 }

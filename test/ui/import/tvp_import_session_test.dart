@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -266,11 +267,40 @@ void main() {
       ),
     );
     final told = watchTheBar(tester);
+    // ↩️「A local file has no wait to stop」 till 2026-11-17: the read of the
+    // file is the wait's too now (F-608 ①), so a stop pressed while it is
+    // in hand stops it there. The bake is what is pinned here, so the stop
+    // is pressed while the read is in hand and the read is let finish — a
+    // stop said as the bytes land still stands, and the bake hears it. The
+    // wait's clock only ends a beat when the read does, so no beat can
+    // check the stop first.
+    addTearDown(() {
+      FolderPicker.debugWaitClock = null;
+      FolderPicker.debugReadPiece = null;
+    });
+    FolderPicker.debugWaitClock = () => (
+      elapsed: () => Duration.zero,
+      sleep: (slice, sooner) => sooner ?? Completer<void>().future,
+    );
+    final reading = Completer<void>();
+    final held = Completer<void>();
+    FolderPicker.debugReadPiece = (file, into, from, to) async {
+      if (!reading.isCompleted) {
+        reading.complete();
+      }
+      await held.future;
+      return file.readInto(into, from, to);
+    };
 
     await tester.tap(find.text('open'));
     await tester.pump();
-    // A local file has no wait to stop, so the first to hear it is the bake.
+    await settleBehindTheWaitWindow(
+      tester,
+      () => reading.isCompleted,
+      reason: 'the read is in hand',
+    );
     await tester.tap(find.byKey(const ValueKey<String>('app-progress-cancel')));
+    held.complete();
     await pumpPastTheWaitWindow(tester);
 
     expect(told, hasLength(1), reason: 'one cel, then the stop');
@@ -291,6 +321,34 @@ void main() {
       reason: 'a stop is not a kill',
     );
   });
+
+  /// F-608 ① (유저 2026-11-16): the user's file came down from Google Drive
+  /// inside this door's read with the window saying only 「여는 중」.
+  test('🚨the door\'s read is the wait\'s: while the file is coming in, the '
+      'window is told so', () async {
+    final path = writeTvpp();
+    final held = Completer<void>();
+    FolderPicker.debugReadPiece = (file, into, from, to) async {
+      await held.future;
+      return file.readInto(into, from, to);
+    };
+    addTearDown(() => FolderPicker.debugReadPiece = null);
+    final told = Completer<void>();
+
+    final read = readTvppProject(
+      tvppPath: path,
+      onWaiting: (_, _) {
+        if (!told.isCompleted) {
+          told.complete();
+        }
+      },
+      isCancelled: () => false,
+    );
+    await told.future;
+    held.complete();
+
+    expect(await read, isNotNull, reason: 'and then it opens');
+  }, timeout: const Timeout(Duration(seconds: 20)));
 
   test('F-124: the warnings an import raises speak the program language', () async {
     // 🚨THE THREE THAT WERE KOREAN. The planner's muted-track warning and

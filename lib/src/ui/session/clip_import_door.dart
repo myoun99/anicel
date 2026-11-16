@@ -39,7 +39,7 @@ import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
     show bakeCelSurface, bakeCelTiles, celTilesOf;
 import '../../services/persistence/folder_grant.dart'
-    show FileArrival, FolderPicker, MaterializeCancelled;
+    show FolderPicker, MaterializeCancelled, WaitReport;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
@@ -95,7 +95,7 @@ final class ClipProjectRead {
 /// and goes the moment it is read.
 Future<ClipProjectRead?> readClipProject({
   required String clipPath,
-  void Function(Duration waited, FileArrival arrival)? onWaiting,
+  WaitReport? onWaiting,
   bool Function()? isCancelled,
 }) async {
   final source = await FolderPicker.materializeOpenedFile(

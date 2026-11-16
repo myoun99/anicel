@@ -147,6 +147,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugDownloadRequester = null;
   FolderPicker.debugArrival = null;
   FolderPicker.debugWaitClock = null;
+  FolderPicker.debugReadPiece = null;
   FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
   FolderPicker.debugCoordinatedToucher = (_) async => true;
   // PICK-7: the provider seam and the documents a run has been handed — a

@@ -1,8 +1,6 @@
-import '../../services/persistence/folder_grant.dart' show FileArrival;
-
 import 'app_strings.dart';
 
-/// After this long with NOTHING of the file arrived, the line stops
+/// After this long with NOTHING more of the file arrived, the line stops
 /// counting quietly and says that nothing has come — which is when a
 /// person starts deciding.
 ///
@@ -21,14 +19,22 @@ const Duration cloudWaitSaysNothingAfter = Duration(seconds: 10);
 /// of one law drift, and the one that drifts is the one nobody is
 /// looking at.
 ///
-/// [arrival] is what the wait has actually seen, so the words can be
-/// true: only 「nothing」 may say nothing arrived. A file coming down
-/// slowly keeps counting, because that is what is happening.
-String cloudWaitLine(Duration waited, FileArrival arrival) {
+/// [waited] is how long the wait has gone on, and [quiet] how long since a
+/// byte of the file last came: only a quiet of [cloudWaitSaysNothingAfter]
+/// may say nothing has arrived, and the seconds it says are the quiet ones.
+/// A file coming down slowly keeps counting, because that is what is
+/// happening. ↩️It was 「has anything at all arrived」 till 2026-11-17, and
+/// a download that stopped halfway counted on as if it were moving (F-608
+/// ①, 유저: the stalled words only when the bytes truly stop changing).
+String cloudWaitLine(Duration waited, Duration quiet) {
   final strings = AppText.strings;
-  final template =
-      arrival == FileArrival.nothing && waited >= cloudWaitSaysNothingAfter
-      ? strings.openWaitingStalledTemplate
-      : strings.openWaitingCloudTemplate;
-  return template.replaceAll('{sec}', '${waited.inSeconds}');
+  return quiet >= cloudWaitSaysNothingAfter
+      ? strings.openWaitingStalledTemplate.replaceAll(
+          '{sec}',
+          '${quiet.inSeconds}',
+        )
+      : strings.openWaitingCloudTemplate.replaceAll(
+          '{sec}',
+          '${waited.inSeconds}',
+        );
 }

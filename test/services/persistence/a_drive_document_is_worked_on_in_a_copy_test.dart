@@ -133,16 +133,16 @@ void main() {
         'come, and a Cancel stops the copy and registers nothing', () async {
       final uri = await projectDocument('Slow.anicel');
       provider.holdCopy = Completer<void>();
-      final arrivals = <FileArrival>[];
+      final told = <({Duration waited, Duration quiet})>[];
       var cancelled = false;
 
       final opening = FolderPicker.materializeOpenedFile(
         uri,
         within: null,
         step: const Duration(milliseconds: 5),
-        onWaiting: (_, arrival) {
-          arrivals.add(arrival);
-          if (arrivals.length == 3) {
+        onWaiting: (waited, quiet) {
+          told.add((waited: waited, quiet: quiet));
+          if (told.length == 3) {
             cancelled = true;
           }
         },
@@ -150,7 +150,12 @@ void main() {
       );
 
       await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
-      expect(arrivals, contains(FileArrival.partway));
+      expect(
+        [for (final beat in told) beat.quiet < beat.waited],
+        contains(true),
+        reason: 'the bytes the copy moved were counted as arriving, so the '
+            'quiet runs from them and not from the start (F-608 ①)',
+      );
       expect(provider.calls, contains('cancelDocumentCopy'));
       provider.holdCopy!.complete();
       await Future<void>.delayed(const Duration(milliseconds: 20));

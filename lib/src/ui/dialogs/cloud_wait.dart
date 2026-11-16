@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../services/persistence/folder_grant.dart' show FileArrival;
 import '../text/cloud_wait_line.dart';
 
 /// What a door says while a file it did not write is on its way.
@@ -31,11 +30,11 @@ class CloudWait {
 
   bool _cancelled = false;
 
-  /// The provider's word on the file: how long it has been waited for, and
-  /// how much of it is here.
-  void report(Duration waited, FileArrival arrival) {
+  /// The wait's word on the file: how long it has gone on, and how long
+  /// since a byte of it last came.
+  void report(Duration waited, Duration quiet) {
     // The sentence is [cloudWaitLine]'s, for every door (F-141).
-    status.value = cloudWaitLine(waited, arrival);
+    status.value = cloudWaitLine(waited, quiet);
     waiting.value = true;
   }
 

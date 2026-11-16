@@ -36,7 +36,7 @@ import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel;
 import '../../services/persistence/folder_grant.dart'
-    show FileArrival, FolderPicker, MaterializeCancelled;
+    show FolderPicker, MaterializeCancelled, WaitReport;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import 'media_pool.dart';
@@ -413,7 +413,7 @@ class TvppProjectRead {
 /// it opens as — or null when it is not readable as one ([TvppProjectRead]).
 Future<TvppProjectRead?> readTvppProject({
   required String tvppPath,
-  void Function(Duration waited, FileArrival arrival)? onWaiting,
+  WaitReport? onWaiting,
   bool Function()? isCancelled,
 }) async {
   // A read failure THROWS (FileSystemException, out of the
@@ -422,15 +422,11 @@ Future<TvppProjectRead?> readTvppProject({
   // chasing a format problem when the real one was access (실측
   // 08-26: Drive on iPhone). Same materializer as the .anicel open;
   // the staged copy is read-and-discard here.
-  final source = await FolderPicker.materializeOpenedFile(
+  final (:source, :parsed) = await _readTvppStructure(
     tvppPath,
-    // A door that can be cancelled waits as long as the file takes;
-    // one that cannot keeps the default backstop.
-    within: isCancelled == null ? const Duration(minutes: 10) : null,
     onWaiting: onWaiting,
     isCancelled: isCancelled,
   );
-  final parsed = await _readTvppStructure(source);
   if (parsed == null) {
     return null;
   }
@@ -518,7 +514,13 @@ Project _projectOf(
   );
 }
 
-/// The structure of the .tvpp at [source], or null when it is not one.
+/// The structure of the .tvpp at [tvppPath] — null when it is not one — and
+/// where its bytes stand for the bake.
+///
+/// The bytes come in under the wait for the file
+/// ([FolderPicker.readOpenedFile]): a file still in the cloud comes down
+/// INSIDE this read, so this read is what the wait's line has to watch
+/// (F-608 ①).
 ///
 /// ⛔SCOPED, so the whole-file bytes are collectable the moment the
 /// structure is out of them. Everything after this reads the file by
@@ -527,19 +529,27 @@ Project _projectOf(
 /// this the bytes stayed reachable for the entire import, which on a
 /// 200MB project is 200MB held for minutes next to everything the
 /// decode is building.
-Future<TvppParseResult?> _readTvppStructure(
-  ({String path, bool staged}) source,
-) async {
+Future<({({String path, bool staged}) source, TvppParseResult? parsed})>
+_readTvppStructure(
+  String tvppPath, {
+  WaitReport? onWaiting,
+  bool Function()? isCancelled,
+}) async {
+  final read = await FolderPicker.readOpenedFile(
+    tvppPath,
+    onWaiting: onWaiting,
+    isCancelled: isCancelled,
+  );
+  final source = (path: read.path, staged: read.staged);
   try {
-    final bytes = await File(source.path).readAsBytes();
-    return parseTvppStructure(bytes);
+    return (source: source, parsed: parseTvppStructure(read.bytes));
   } on TvppParseException {
     if (source.staged) {
       unawaited(
         File(source.path).delete().then<void>((_) {}, onError: (_) {}),
       );
     }
-    return null;
+    return (source: source, parsed: null);
   }
 }
 
