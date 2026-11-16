@@ -64,6 +64,7 @@ class EditingCanvas {
       Cut cut,
       int frameIndex,
       TimelineDragPreview? dragPreview,
+      ({Set<LayerId> layerIds, double opacity})? opacityPreview,
     )
     nameTagsAt,
   }) : _ghostsAt = ghostsAt,
@@ -89,12 +90,14 @@ class EditingCanvas {
   /// (`EditorSessionManager.fxPluginsIn`).
   final FxPluginBinding Function(Cut cut) _pluginsIn;
 
-  /// The SE rows' name tags at a cut's frame, a drag in flight showing
-  /// (`SeEntries.seNameTagsForCutFrame`).
+  /// The SE rows' name tags at a cut's frame, a drag in flight showing, and
+  /// an opacity drag ([layersShowingOpacityPreview], F-605) —
+  /// `SeEntries.seNameTagsForCutFrame`.
   final List<ResolvedSeNameTag> Function(
     Cut cut,
     int frameIndex,
     TimelineDragPreview? dragPreview,
+    ({Set<LayerId> layerIds, double opacity})? opacityPreview,
   )
   _nameTagsAt;
 
@@ -259,17 +262,26 @@ class EditingCanvas {
             dragPreview: null,
             preview: null,
           ),
-        ..._nameTagNodes(cut, frameIndex, dragPreview: null),
+        ..._nameTagNodes(
+          cut,
+          frameIndex,
+          dragPreview: null,
+          opacityPreview: null,
+        ),
       ];
 
-  /// [cut]'s SE rows' name tags at its frame [frameIndex], [dragPreview]
-  /// showing — each a row of the frame's own picture over every other
-  /// ([nameTagRows]), outside the V row's fx as a film burns them in.
+  /// [cut]'s SE rows' name tags at its frame [frameIndex], [dragPreview] and
+  /// [opacityPreview] showing — each a row of the frame's own picture over
+  /// every other ([nameTagRows]), outside the V row's fx as a film burns
+  /// them in.
   List<CompositeNode<CanvasStackRow>> _nameTagNodes(
     Cut cut,
     int frameIndex, {
     required TimelineDragPreview? dragPreview,
-  }) => nameTagRows(_nameTagsAt(cut, frameIndex, dragPreview));
+    required ({Set<LayerId> layerIds, double opacity})? opacityPreview,
+  }) => nameTagRows(
+    _nameTagsAt(cut, frameIndex, dragPreview, opacityPreview),
+  );
 
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
@@ -301,7 +313,7 @@ class EditingCanvas {
     final stackCut = preview == null
         ? shownCut
         : shownCut.copyWith(
-            layers: _withOpacityPreview(shownCut.layers, preview),
+            layers: layersShowingOpacityPreview(shownCut.layers, preview),
           );
 
     final drawn = stackAt(
@@ -327,7 +339,12 @@ class EditingCanvas {
       ),
       // A tag follows a drag on its row while it moves — a lane edit
       // (F-195), its lines moved or stretched.
-      ..._nameTagNodes(cut, frameIndex, dragPreview: dragPreview),
+      ..._nameTagNodes(
+        cut,
+        frameIndex,
+        dragPreview: dragPreview,
+        opacityPreview: preview,
+      ),
     ];
     return (
       nodes: List.unmodifiable(nodes),
@@ -416,20 +433,6 @@ class EditingCanvas {
     ),
   );
 
-  /// [source] with the DRAGGED rows' opacity substituted in — display
-  /// only, so the canvas follows an opacity drag without a repo write per
-  /// move.
-  static List<Layer> _withOpacityPreview(
-    List<Layer> source,
-    ({Set<LayerId> layerIds, double opacity}) preview,
-  ) => [
-    for (final layer in source)
-      if (preview.layerIds.contains(layer.id) && layer.kind.hasPictureOpacity)
-        layer.copyWith(opacity: preview.opacity)
-      else
-        layer,
-  ];
-
   /// The track's SE rows as cut-local display clones, read-only — a dragged
   /// one as the drag in flight shows it.
   Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
@@ -442,9 +445,7 @@ class EditingCanvas {
       _trackSe.trackSeDisplayLayers,
       dragPreview,
     );
-    final rows = preview == null
-        ? shown
-        : _withOpacityPreview(shown, preview);
+    final rows = layersShowingOpacityPreview(shown, preview);
     for (final layer in rows) {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
