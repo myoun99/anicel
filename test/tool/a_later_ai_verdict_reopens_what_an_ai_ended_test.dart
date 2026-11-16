@@ -64,6 +64,22 @@ void main() {
     expect(onTheShelf(card), isTrue);
   });
 
+  test('🚨as the board held it: other 정정 lines between the 검증완료 and the '
+      '유저 확인 필요 do not stop the reading', () {
+    // pen-up-dock-tail, 11-15: the verdict's time corrected, then the
+    // verdict voided in words, then 유저 확인 필요.
+    final card = read([
+      born,
+      landed,
+      aiDone,
+      line('정정: 시각은 14:5x', '2026-11-15T02:55:00Z', at: '정정'),
+      line('↩️되돌림: 그 줄은 무효', '2026-11-15T03:05:00Z', at: '정정'),
+      handed,
+    ]);
+    expect(statusOf(card), BoardStatus.verify);
+    expect(onTheShelf(card), isTrue);
+  });
+
   test('🚨a failure after it sends the card to its owner\'s 할 일, and tells '
       'the owner', () {
     final card = read([born, landed, aiDone, failed]);
