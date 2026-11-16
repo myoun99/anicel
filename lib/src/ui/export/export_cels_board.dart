@@ -6,7 +6,6 @@ import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/export_cel_kind.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_mark.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
@@ -48,9 +47,6 @@ sealed class ExportCelsBoardRow {
 
   /// The files that stand on this row, in the order the plan lists them.
   List<ExportListSheet> get sheets;
-
-  /// The label its blocks are papered in.
-  LayerMark get mark;
 }
 
 /// A STACK of the cut: a base and the attach rows riding it, which its
@@ -81,9 +77,6 @@ final class ExportCelsLayerRow extends ExportCelsBoardRow {
 
   @override
   String get name => layer.name;
-
-  @override
-  LayerMark get mark => layer.mark;
 }
 
 /// One of the cut's DOCUMENTS the tab writes beside its cels — its
@@ -108,10 +101,6 @@ final class ExportCelsDocumentRow extends ExportCelsBoardRow {
   /// No row of a cut wears this: a layer's id is never spelled so.
   @override
   String get idValue => 'document-${kind.jsonValue}';
-
-  /// A document wears no label: its blocks are plain paper.
-  @override
-  LayerMark get mark => LayerMark.none;
 }
 
 /// One folder a folder column lists ([ExportCelsFolderColumn]): the name it
@@ -676,7 +665,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ..._leading(row, ink: ink, lit: on),
+          ..._leading(row, ink: ink),
           Expanded(child: _name(context, row, ink)),
         ],
       ),
@@ -689,7 +678,6 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   List<Widget> _leading(
     ExportCelsBoardRow row, {
     required Color ink,
-    required bool lit,
   }) {
     final idValue = row.idValue;
     Widget kindCell(LayerTypeButton button) =>
@@ -697,7 +685,13 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     return switch (row) {
       ExportCelsLayerRow(:final layer) => layerRailLeadingCells(
         sectionBand: _switch(row),
-        mark: LayerMarkPlates(mark: layer.mark, isVisible: lit),
+        // 🗣️NO LABEL OR TAKE PLATE ON A FILE ROW (I-167, 유저 2026-11-08:
+        // 「출력될 파일 표시쪽은 색/테이크 라벨 필요없을듯? 왜냐면 그건 왼쪽
+        // 레이어구성쪽에서 보일것이라서」) — the attach column wears them,
+        // each row's own ([ExportCelsStack]). The slot stands empty as a
+        // document row's does: the rail's cells keep their seats
+        // ([layerRailLeadingCells]). ↩️The plates were the axis row's, so
+        // a 원화 file riding an LO base read as LO.
         timesheet: isAttachedLayer(layer)
             ? LayerAttachArrowCell(
                 keyPrefix: 'export-cels',
@@ -801,7 +795,6 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       ExportCelBlock(
         sheet: sheet,
         rowId: row.idValue,
-        mark: row.mark,
         // The hairline under the row is the row's, not the block's.
         height: height - 1,
         shown: row.idValue == widget.standing && sheet.idValue == widget.shown,
@@ -818,7 +811,7 @@ IconData exportDocumentIcon(ExportCelKind kind) => switch (kind) {
 };
 
 /// ONE FILE in the list — a drawing, a page of a document: the timeline's
-/// frame block — its row's label colour for paper, the block's own corner,
+/// frame block — white for paper, the block's own corner,
 /// its word in the block's print — at one cell's width whatever its length
 /// on the timeline.
 ///
@@ -831,7 +824,6 @@ class ExportCelBlock extends StatelessWidget {
     super.key,
     required this.sheet,
     required this.rowId,
-    required this.mark,
     required this.height,
     required this.shown,
     required this.onPressed,
@@ -839,10 +831,9 @@ class ExportCelBlock extends StatelessWidget {
 
   final ExportListSheet sheet;
 
-  /// The row it stands on ([ExportCelsBoardRow.idValue]), and the label
+  /// The row it stands on ([ExportCelsBoardRow.idValue]).
   /// that row papers its blocks in.
   final String rowId;
-  final LayerMark mark;
 
   /// The block's height — its row's, which its corner is cut against.
   final double height;
@@ -890,7 +881,7 @@ class ExportCelBlock extends StatelessWidget {
     );
   }
 
-  /// The block's paper: its row's label colour while its file is written —
+  /// The block's paper: white while its file is written —
   /// and none while it is not, the block's outline alone (the accent's on
   /// the one the preview shows).
   ///
@@ -920,9 +911,14 @@ class ExportCelBlock extends StatelessWidget {
   /// The block as the timeline draws a frame block ([timelineBlockLook]):
   /// a written one shown, one not written HOLLOW — the empty block's look,
   /// which the timeline's empty blocks took from this one (I-129).
+  ///
+  /// 🗣️ONE WHITE, WHATEVER THE ROW WEARS (I-167, 유저 2026-11-08: 「그에따라
+  /// 셀 출력 리스트쪽 블록 색도 공정색말고 그냥 흰색고정?」) — the paper an
+  /// unlabelled block wears on the timeline. ↩️Its row's label colour, the
+  /// axis row's: a 원화 file riding an LO base was papered LO.
   TimelineBlockLook _look(bool written) => timelineBlockLook(
     written ? TimelineBlockState.shown : TimelineBlockState.empty,
-    paper: layerMarkColor(mark),
+    paper: timelineDrawingHeldColor,
     ink: timelineInBlockInk(),
   );
 

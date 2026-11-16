@@ -267,7 +267,9 @@ void main() {
       );
       expect(
         find.descendant(of: rail, matching: find.byType(LayerMarkPlates)),
-        findsOneWidget,
+        findsNothing,
+        reason: '$id: 🗣️I-167 「출력될 파일 표시쪽은 색/테이크 라벨 '
+            '필요없을듯」 — the attach column wears them',
       );
       expect(
         find.descendant(of: rail, matching: find.byType(LayerTypeButton)),
@@ -325,21 +327,13 @@ void main() {
     expect(pressed, ['switch a false', 'switch b true', 'switch l true']);
   });
 
-  testWidgets('a row that is off dims its plate and its name by COLOUR — no '
-      'layer over the row', (tester) async {
+  testWidgets('a row that is off dims its name by COLOUR — no layer over the '
+      'row', (tester) async {
     await pumpBoard(tester);
     Color? inkOf(String id) =>
         tester.widget<Text>(keyed('export-cels-name-$id')).style?.color;
     expect(inkOf('a'), AppColors.text);
     expect(inkOf('l'), AppColors.text.withValues(alpha: AppColors.offAlpha));
-    LayerMarkPlates plates(String id) => tester.widget<LayerMarkPlates>(
-      find.descendant(
-        of: keyed('export-cels-row-$id'),
-        matching: find.byType(LayerMarkPlates),
-      ),
-    );
-    expect(plates('a').isVisible, isTrue);
-    expect(plates('l').isVisible, isFalse);
     expect(
       find.descendant(
         of: find.byType(ExportCelsBoard),
@@ -354,8 +348,8 @@ void main() {
     );
   });
 
-  testWidgets('one block a DRAWING, a cell wide, in its row\'s label colour '
-      'with the block\'s own corner and print', (tester) async {
+  testWidgets('one block a DRAWING, a cell wide, on ONE WHITE whatever its row '
+      'wears (I-167) with the block\'s own corner and print', (tester) async {
     await pumpBoard(tester);
     expect(tester.celsBoardBlocksOf('b'), [
       ('1', true),
@@ -374,7 +368,16 @@ void main() {
       reason: 'the blocks stand cell against cell',
     );
     final paper = paperOf(tester, 'b', 'b-2');
-    expect(paper.color, layerMarkColor(key));
+    expect(
+      layerMarkColor(key),
+      isNot(timelineDrawingHeldColor),
+      reason: 'fixture: B wears 원화, a colour of its own',
+    );
+    expect(
+      paper.color,
+      timelineDrawingHeldColor,
+      reason: '🗣️I-167 「셀 출력 리스트쪽 블록 색도 공정색말고 그냥 흰색고정」',
+    );
     expect(paper.border, isNull, reason: 'a written block is its paper alone');
     expect(
       paper.borderRadius,

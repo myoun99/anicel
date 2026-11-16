@@ -31,6 +31,8 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -238,15 +240,26 @@ void main() {
         reason: 'a document wears no label',
       );
       expect(tester.celsBoardSwitchState(id), BooleanMix.on);
-      final block = tester.widget<ExportCelBlock>(
-        find.descendant(
-          of: keyed('export-cels-board'),
-          matching: find.byWidgetPredicate(
-            (widget) => widget is ExportCelBlock && widget.rowId == id,
-          ),
-        ),
+      final paper =
+          tester
+                  .widget<Container>(
+                    find
+                        .descendant(
+                          of: find.byWidgetPredicate(
+                            (widget) =>
+                                widget is ExportCelBlock && widget.rowId == id,
+                          ),
+                          matching: find.byType(Container),
+                        )
+                        .first,
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(
+        paper.color,
+        timelineDrawingHeldColor,
+        reason: '$id: plain paper, as every file\'s block is (I-167)',
       );
-      expect(block.mark, LayerMark.none);
     }
   });
 
