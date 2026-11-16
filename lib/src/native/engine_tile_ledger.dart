@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/zero_bytes.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
@@ -1145,7 +1146,7 @@ final class _ShellPixels implements TilePixelsKeptBesides {
 void _layBytesOf(BitmapTile? tile, Pointer<Uint8> into) {
   final bytes = into.asTypedList(gpuTileBytes);
   if (tile == null) {
-    bytes.fillRange(0, gpuTileBytes, 0);
+    zeroBytes(bytes);
   } else {
     tile.readPixels((_, view) => bytes.setAll(0, view));
   }

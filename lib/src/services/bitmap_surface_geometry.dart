@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../core/floor_math.dart';
+import '../core/zero_bytes.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_frame_key.dart';
@@ -837,7 +838,7 @@ Map<TileCoord, BitmapTile> tilesOfRegion(
   BitmapTile tileAt(int x, int y) => BitmapTile.written(
     size: tileSize,
     write: (pixels) {
-      pixels.fillRange(0, pixels.length, 0);
+      zeroBytes(pixels);
       final (x0, y0) = (x * tileSize, y * tileSize);
       final from = left < x0 ? x0 : left;
       final to = rightExclusive < x0 + tileSize

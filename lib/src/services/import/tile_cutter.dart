@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/floor_math.dart';
+import '../../core/zero_bytes.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
@@ -95,7 +96,8 @@ CutTiles cutRgbaRows(
 /// time, a tile the picture left clear goes back as it closes, and a tile
 /// of one colour closes as its word ([LaidPixels.keeping]).
 final class TileCutter {
-  TileCutter(this.cut, this.width);
+  TileCutter(this.cut, this.width)
+    : _open = List.filled(cut.tiles.lastX - cut.tiles.firstX + 1, null);
 
   /// The tiles [feed] makes, handing its rows to a cutter of [cut] — every
   /// block it took given back when it throws.
@@ -114,7 +116,11 @@ final class TileCutter {
   final int width;
 
   final CutTiles _done = [];
-  final _open = <int, ({Pointer<Uint8> block, Uint8List view})>{};
+
+  /// The blocks of the tile row under way, by column from the first —
+  /// 🔬a map asked through a fresh closure for every row and tile was a
+  /// fifth of an 8K picture's cut (2026-11-16).
+  final List<({Pointer<Uint8> block, Uint8List view})?> _open;
   int? _openRow;
 
   int get _side => cut.tileSize;
@@ -148,19 +154,29 @@ final class TileCutter {
   }
 
   ({Pointer<Uint8> block, Uint8List view}) _blockAt(int tileX) =>
-      _open.putIfAbsent(tileX, () {
-        final length = BitmapTile.bytesFor(_side);
-        final block = TileBlocks.alloc(length);
-        final view = block.asTypedList(length)..fillRange(0, length, 0);
-        return (block: block, view: view);
-      });
+      _open[tileX - _tiles.firstX] ??= _taken();
+
+  /// A block of the lists, zeroed: a tile the rows leave part of is clear
+  /// there, whatever the block held before.
+  ({Pointer<Uint8> block, Uint8List view}) _taken() {
+    final length = BitmapTile.bytesFor(_side);
+    final block = TileBlocks.alloc(length);
+    final view = block.asTypedList(length);
+    zeroBytes(view);
+    return (block: block, view: view);
+  }
 
   void _close() {
     final tileY = _openRow;
-    for (final MapEntry(key: tileX, value: open) in _open.entries) {
+    for (var column = 0; column < _open.length; column += 1) {
+      final open = _open[column];
+      if (open == null) {
+        continue;
+      }
+      _open[column] = null;
       if (tileY != null && _anyInk(open.view)) {
         _done.add((
-          x: tileX,
+          x: _tiles.firstX + column,
           y: tileY,
           pixels: LaidPixels.keeping(open.block, open.view),
         ));
@@ -168,7 +184,6 @@ final class TileCutter {
         TileBlocks.free(open.block);
       }
     }
-    _open.clear();
   }
 
   static bool _anyInk(Uint8List pixels) {
@@ -188,10 +203,12 @@ final class TileCutter {
 
   /// Every block taken, given back — a cut that failed part-way.
   void giveBack() {
-    for (final open in _open.values) {
-      TileBlocks.free(open.block);
+    for (var column = 0; column < _open.length; column += 1) {
+      if (_open[column] case final open?) {
+        TileBlocks.free(open.block);
+      }
+      _open[column] = null;
     }
-    _open.clear();
     giveBackCut(_done);
     _done.clear();
   }
