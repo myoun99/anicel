@@ -805,18 +805,15 @@ void main() {
       final c = await tester.runAsync(() => writePng('c.png'));
       await pump(tester, [a!, b!, c!]);
 
-      // The NAME, not the row's centre: the centre is a cell, and pressing
-      // a cell answers its question instead of selecting the row.
-      Future<void> selectRow(String name) async {
-        final rect = tester.getRect(
-          find.byKey(ValueKey<String>('import-row-$name')),
-        );
-        await tester.tapAt(Offset(rect.left + 20, rect.center.dy));
+      // The NAME: the row's centre is a cell, and pressing a cell answers
+      // its question; the row's left end is its switch (F-595 ②).
+      Future<void> selectRow(String path) async {
+        await tester.tap(find.byKey(ValueKey<String>('import-name-$path')));
         await tester.pump();
       }
 
-      await selectRow('a.png');
-      await selectRow('b.png');
+      await selectRow(a);
+      await selectRow(b);
       await pickCell(tester, column: 'file', path: a, option: 'reference');
 
       expect(cellText(tester, 'file', a), 'Link');

@@ -51,7 +51,8 @@ import '../timeline/layer_label_controls.dart'
         LayerMarkChip,
         LayerMarkEdit,
         layerKindDisplayName,
-        layerKindIcon;
+        layerKindIcon,
+        railGlyphOffInk;
 import '../timeline/layer_rail_columns.dart'
     show
         LayerRailLeadingSlot,
@@ -2936,11 +2937,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 탭에서 재사용한것처럼」). The label opens the timeline's own picker, the
   /// kind 이미지 · 애니메이션, each for every selected row when the pressed
   /// one is among them (F-429-Q1). Null for what the folder leaves out.
+  ///
+  /// A row switched off (F-595 ②) wears the rail's off on them as a hidden
+  /// layer does — each dims its own ink, which a layer over them would not
+  /// be allowed to (`disabled_ink.dart`).
   Widget? _folderLead(String key, _FolderRow row) {
     final layer = _folderLayerOf(row);
     if (layer == null) {
       return null;
     }
+    final on = _folderEdits.comesIn(layer.key);
     final attached =
         row is _FolderLayerRow &&
         _folderEdits.ridesItsBase(_parsed!, row.layer);
@@ -2952,6 +2958,7 @@ class _ImportDialogState extends State<ImportDialog> {
           keyPrefix: 'import',
           layerId: LayerId(key),
           mark: layer.mark,
+          isVisible: on,
           onMarkSelected: (_, edit) => _editFolderMarks(key, edit),
         ),
         timesheet: attached
@@ -2962,15 +2969,18 @@ class _ImportDialogState extends State<ImportDialog> {
               )
             : null,
         typeButton: LayoutBuilder(
-          builder: (context, room) => LayerTypeButton(
-            keyPrefix: 'import',
-            idValue: key,
-            kind: layer.kind,
-            height: room.maxHeight,
-            // A correction is its symbol's kind, as an attach row made in
-            // the timeline is ([CutFolderEdits.kindOfLayer]) — the glyph
-            // alone, nothing to press.
-            onTap: attached ? null : () => _pickFolderKind(context, key),
+          builder: (context, room) => IconTheme.merge(
+            data: IconThemeData(color: on ? null : railGlyphOffInk(context)),
+            child: LayerTypeButton(
+              keyPrefix: 'import',
+              idValue: key,
+              kind: layer.kind,
+              height: room.maxHeight,
+              // A correction is its symbol's kind, as an attach row made in
+              // the timeline is ([CutFolderEdits.kindOfLayer]) — the glyph
+              // alone, nothing to press.
+              onTap: attached ? null : () => _pickFolderKind(context, key),
+            ),
           ),
         ),
       ),

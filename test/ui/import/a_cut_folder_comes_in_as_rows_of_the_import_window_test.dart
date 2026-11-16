@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -17,6 +18,8 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkChip;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -667,6 +670,20 @@ void main() {
       findsNothing,
       reason: 'its symbol does not come in',
     );
+    bool labelLit(String row) => tester
+        .widget<LayerMarkChip>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is LayerMarkChip && widget.layerId == LayerId(row),
+          ),
+        )
+        .isVisible;
+    expect(
+      labelLit('folder:A'),
+      isFalse,
+      reason: 'drawn off, as a hidden layer',
+    );
+    expect(labelLit('folder:B'), isTrue);
     List<Cut> cuts() => session.repository.requireProject().tracks.first.cuts;
     final before = {for (final cut in cuts()) cut.id};
     await importAll(tester, session);

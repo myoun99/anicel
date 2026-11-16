@@ -438,10 +438,10 @@ void main() {
       [movie],
       backend: FakeVideoBackend(frameCount: 12, fpsNumerator: 12),
     );
-    final row = find.byKey(const ValueKey<String>('import-row-twelve.mp4'));
+    // Stood on by its name — the row's left end is its switch (F-595 ②).
+    final row = find.byKey(ValueKey<String>('import-name-$movie'));
     if (tester.any(row)) {
-      final rect = tester.getRect(row);
-      await tester.tapAt(Offset(rect.left + 20, rect.center.dy));
+      await tester.tap(row);
       await tester.pump();
     }
     int? frames() => tester.any(find.byType(TransportBar))

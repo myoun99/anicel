@@ -193,11 +193,12 @@ class ImportFileTable extends StatefulWidget {
   final bool enabled;
 
   /// The switch before a row's name — null for a row with nothing to
-  /// switch — and a row switched off is DRAWN off, its lead
-  /// ([ImportFileRow.lead]) with it (🗣️F-595 ②, 유저 2026-11-16: 「임포트시
-  /// 이름왼쪽행으로 불리언버튼 만들어서 해제되있으면 임포트버튼 눌렀을때
-  /// 임포트안하도록. 해제하면 물론 해당 행 비활성화표시도 같이」). Its slot
-  /// is kept on every row and over the header, switch or none.
+  /// switch — and a row switched off is DRAWN off: the words the table
+  /// draws, and the [ImportFileRow.lead] its owner dims (🗣️F-595 ②, 유저
+  /// 2026-11-16: 「임포트시 이름왼쪽행으로 불리언버튼 만들어서 해제되있으면
+  /// 임포트버튼 눌렀을때 임포트안하도록. 해제하면 물론 해당 행 비활성화표시도
+  /// 같이」). Its slot is kept on every row and over the header, switch or
+  /// none.
   ///
   /// ⛔Its questions stay answerable: 「비활성화표시」 asked for a look, and a
   /// settings row is switched off by its own 넣을 곳 (「제외」) — locked,
@@ -585,10 +586,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
           child: _tableLine(
             metrics,
             toggle: switched == null ? null : _switch(row, switched, metrics),
-            lead: Opacity(
-              opacity: on ? 1 : AppColors.offAlpha,
-              child: row.lead,
-            ),
+            lead: row.lead,
             name: Row(
               children: [
                 Flexible(
