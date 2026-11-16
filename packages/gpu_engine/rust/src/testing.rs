@@ -87,6 +87,11 @@ static SHARED_SUBMITS: AtomicU64 = AtomicU64::new(0);
 /// 2026-11-16 13:57–14:25, the two run in turn). So the turn is the GPU's:
 /// taken once the shared device is through with what it was handed, and
 /// held, the shared device's submits wait for it (`Queue::submit`).
+/// So taken, the crate run whole on the Surface 12 of 12 green — chance
+/// gives that about one time in thirty at the rate before —, each run
+/// about a quarter longer (median ~95 s against ~76 s): a test's own
+/// device no longer runs beside the shared one (🔬캔버스 베이스, 2026-11-16
+/// 14:31–15:0x).
 /// ⚠️A test that holds it works no other device — the shared one's submit
 /// would wait for the test that waits for it. ⏳Why the driver mixes two
 /// devices' work is not known; the app opens one (`openAppGpuEngine`), and

@@ -894,6 +894,12 @@ impl Composite {
     /// red). Walked here, 6/6 green under the same load (09:49). ⏳Why the
     /// device parts them is not known — wgpu's or the driver's — and not
     /// the app's to know while nothing of it records on two threads at once.
+    ///
+    /// ⚠️The red went on after this (posed-row-composite-tests-flicker-in-full-runs,
+    /// 2026-11-16): what it keeps to is a device of a test's own at work
+    /// beside the shared one — `testing::a_device_of_its_own` has the
+    /// numbers —, and 6/6 at the rate it kept is what chance gives about one
+    /// time in eleven. The walk stays here: the app's is.
     fn walk(
         &self,
         engine: &Engine,
