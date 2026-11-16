@@ -409,7 +409,8 @@ void main() {
     expect(
       bindings.presses(EditorActionIds.undo, down(LogicalKeyboardKey.altLeft)),
       isFalse,
-      reason: 'F-603-Q1: a pressed action takes none till it is answered',
+      reason: 'F-603-Q1: a pressed one is pressed as they are let go — not '
+          'yet',
     );
     expect(
       bindings.shortcuts.keys.whereType<ModifiersDownActivator>(),

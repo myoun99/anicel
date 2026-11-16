@@ -671,13 +671,12 @@ final Map<String, ProgramRow> _clipStudioRows = {
 /// the program gives to one of OUR actions leaves another ([ProgramKeys]).
 /// ⚠️`Space` plays (「再生 / 一時停止」). The program pans on Alt and turns
 /// the view on Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」
-/// page) — modifiers alone. 🗣️F-603 (유저 2026-11-16): 「tvp의 캔버스
-/// 누르는동안 이동 단축키는 alt인데 비어있음」 — the pan holds on Alt here.
-/// ↩️It had no key till then: none could be modifiers alone. Alt held is
-/// Clip Studio's eyedropper too, which the program's pan leaves with no key
-/// here (F-417-Q2). The turn takes CLIP STUDIO PAINT's Shift+Space (F-417),
-/// anicel's too (I-88) — ⚠️whether it turns on the program's own Ctrl+Alt
-/// now that a key can be modifiers alone is asked (F-603-Q2).
+/// page) — modifiers alone, and so here. 🗣️F-603 (유저 2026-11-16): 「tvp의
+/// 캔버스 누르는동안 이동 단축키는 alt인데 비어있음」 — and F-603-Q2: 「Ctrl+Alt
+/// 로 — TVPaint 그대로」. ↩️Neither had the program's key till then: none
+/// could be modifiers alone, and the turn kept CLIP STUDIO PAINT's
+/// Shift+Space (F-417). Alt held is Clip Studio's eyedropper too, which the
+/// program's pan leaves with no key here (F-417-Q2).
 /// ⚠️MY READINGS, each the nearest command, not one the user named: `Del`
 /// is the program's second Cut (「選択範囲をカット (設定で定義した)」, the
 /// timeline's, as Ctrl+X is), so it cuts here rather than clearing pixels;
@@ -694,11 +693,15 @@ final Map<String, ProgramRow> _tvpaintRows = {
     [],
     [SingleActivator(LogicalKeyboardKey.keyZ)],
   ),
-  // Rotate, pan, zoom: the view pans with Alt held (F-603). No keymap file
-  // holds it.
+  // Rotate, pan, zoom: the view pans with Alt held, and turns with Ctrl+Alt
+  // (F-603, F-603-Q2). No keymap file holds them.
   EditorActionIds.canvasPanHold: const ProgramRow(
     [],
     [SingleActivator(modifiersAlone, alt: true)],
+  ),
+  EditorActionIds.canvasRotateHold: const ProgramRow(
+    [],
+    [SingleActivator(modifiersAlone, control: true, alt: true)],
   ),
   // レイヤー: 左に移動 / 右に移動.
   EditorActionIds.framePrevious: const ProgramRow(

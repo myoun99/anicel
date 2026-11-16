@@ -1,8 +1,9 @@
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
+import 'package:anicel/src/native/windows_key_state.dart'
+    show vkControl, vkMenu, vkShift;
 import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
@@ -12,8 +13,6 @@ import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
-import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
-    show modifiersAloneActivator;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 
 /// 🗣️I-15 (유저 2026-09-11): 「단축키에 이동? 추가 … 기본값을 … 스페이스바로
@@ -29,6 +28,16 @@ void main() {
   late ValueNotifier<bool> strokeLive;
   late EditorShortcutBindings bindings;
   late EditorKeyHolds holds;
+
+  /// Whether the test took the shell away itself ([shellGoesAway]) — the
+  /// holds are disposed once.
+  var shellGone = false;
+
+  /// The shell goes away: its holds are disposed.
+  void shellGoesAway() {
+    shellGone = true;
+    holds.dispose();
+  }
 
   Widget road(Widget focused) => MaterialApp(
     home: Shortcuts.manager(
@@ -61,7 +70,12 @@ void main() {
       ),
       strokeLive: strokeLive,
     );
-    addTearDown(holds.dispose);
+    shellGone = false;
+    addTearDown(() {
+      if (!shellGone) {
+        holds.dispose();
+      }
+    });
     await tester.pumpWidget(
       road(
         focused?.call() ??
@@ -485,7 +499,7 @@ void main() {
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyL);
     expect(CanvasLineHold.held.value, isTrue);
-    holds.dispose();
+    shellGoesAway();
     expect(CanvasLineHold.held.value, isFalse);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyL);
   });
@@ -495,7 +509,7 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
     expect(CanvasViewHold.held.value, ViewHold.pan);
 
-    holds.dispose();
+    shellGoesAway();
     expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(CanvasViewHold.held.value, isNull);
@@ -529,19 +543,11 @@ void main() {
   // 🗣️F-603 (유저 2026-11-16): 「tvp의 캔버스 누르는동안 이동 단축키는
   // alt인데 비어있음. … 이미 쓰는거있으면 옮기거나」.
   group("under TVPaint's keys, the view is held on modifiers alone", () {
-    /// The road under TVPaint's keys — the turn, where [turnOnCtrlAlt]
-    /// says, on the program's own Ctrl+Alt (asked: F-603-Q2).
-    Future<void> pumpTvpaint(
-      WidgetTester tester, {
-      bool turnOnCtrlAlt = false,
-    }) async {
+    /// The road under TVPaint's keys — the turn on the program's own
+    /// Ctrl+Alt (F-603-Q2).
+    Future<void> pumpTvpaint(WidgetTester tester) async {
       await pumpRoad(tester);
       bindings.setPreset(ShortcutPreset.tvpaint);
-      if (turnOnCtrlAlt) {
-        bindings.setActivators(EditorActionIds.canvasRotateHold, [
-          modifiersAloneActivator(control: true, alt: true),
-        ]);
-      }
       await tester.pumpWidget(
         road(const Focus(autofocus: true, child: SizedBox.expand())),
       );
@@ -567,7 +573,7 @@ void main() {
 
     testWidgets('a turn held on Ctrl+Alt is a STATE of the keys, whichever '
         'went down first — and Ctrl let go pans again', (tester) async {
-      await pumpTvpaint(tester, turnOnCtrlAlt: true);
+      await pumpTvpaint(tester);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       expect(CanvasViewHold.held.value, isNull, reason: 'Ctrl alone is not');
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
@@ -595,7 +601,7 @@ void main() {
     testWidgets('🚨the tools whose own drag reads Alt keep it from whatever '
         'Alt holds — the pan, and a turn on Ctrl+Alt in either order '
         '(F-299-Q1)', (tester) async {
-      await pumpTvpaint(tester, turnOnCtrlAlt: true);
+      await pumpTvpaint(tester);
       for (final own in _whereAltIsTheToolsOwn) {
         tool.value = tool.value.copyWith(tool: own);
         await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
@@ -608,6 +614,40 @@ void main() {
         await tester.sendKeyUpEvent(LogicalKeyboardKey.altRight);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       }
+    });
+
+    // Card a-held-modifiers-repeat-is-heard-as-a-press: on Windows a pen's
+    // move lets go of Ctrl in the engine's record with the key still down,
+    // and the release that comes after is dropped (`ModifierKeys`).
+    testWidgets('🚨a turn held on Ctrl+Alt stays when the engine lets go of '
+        'Ctrl under a pen — and Ctrl let go unheard is found at the pen\'s '
+        'next move, which pans again', (tester) async {
+      var windowsHolds = {vkMenu, vkControl};
+      ModifierKeys.debugWindowsKeyDown = (key) => windowsHolds.contains(key);
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      await pumpTvpaint(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      expect(CanvasViewHold.held.value, ViewHold.turn);
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(
+        CanvasViewHold.held.value,
+        ViewHold.turn,
+        reason: 'the key-up the engine made up',
+      );
+
+      windowsHolds = {vkMenu};
+      expect(CanvasViewHold.held.value, ViewHold.turn, reason: 'premise');
+      final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+      await pen.addPointer(location: const Offset(5, 5));
+      await pen.moveTo(const Offset(6, 6));
+      expect(CanvasViewHold.held.value, ViewHold.pan);
+
+      windowsHolds = {};
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      expect(CanvasViewHold.held.value, isNull);
+      await pen.removePointer();
     });
   });
 

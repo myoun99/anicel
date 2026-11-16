@@ -358,15 +358,16 @@ void main() {
       expect(keysOn(ShortcutPreset.clipStudio), ('', 'Ctrl+Shift+N'));
     });
 
-    test('the view\'s turn is held on Shift+Space under every preset — Clip '
-        'Studio\'s own key, which anicel took (I-88-Q1 「Anicel 배치도 '
-        'Shift+Space」), and Clip Studio\'s under TVPaint, whose turn is '
-        'Ctrl+Alt held, no key (F-417)', () {
+    test('the view\'s turn is held on Shift+Space — Clip Studio\'s own key, '
+        'which anicel took (I-88-Q1 「Anicel 배치도 Shift+Space」) — and on '
+        'TVPaint\'s own Ctrl+Alt held under TVPaint (F-603-Q2 「Ctrl+Alt 로 '
+        '— TVPaint 그대로」)', () {
       String turn(ShortcutPreset preset) =>
           keysOf(preset, EditorActionIds.canvasRotateHold).join(' ');
       expect(turn(ShortcutPreset.anicel), 'Shift+Space');
       expect(turn(ShortcutPreset.clipStudio), 'Shift+Space');
-      expect(turn(ShortcutPreset.tvpaint), 'Shift+Space');
+      // ↩️Clip Studio's Shift+Space till a key could be modifiers alone.
+      expect(turn(ShortcutPreset.tvpaint), 'Ctrl+Alt');
     });
 
     test('🗣️I-119-Q5 「그냥 z로 다 두자」: the line is held on Z under every '

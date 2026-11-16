@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/input/modifier_keys.dart';
+
 /// (De)serialization + display labels for [SingleActivator] — the shape
 /// the shortcut override store persists ({key: logical key id, ctrl/shift/
 /// alt/meta flags, false omitted}).
@@ -77,6 +79,55 @@ bool isModifiersAlone(SingleActivator activator) =>
 
 bool _holdsAModifier(SingleActivator activator) =>
     activator.control || activator.shift || activator.alt || activator.meta;
+
+/// The keys of [alone]'s modifiers, either side of each — the keys whose
+/// going down presses it (`ModifiersDownActivator`).
+List<LogicalKeyboardKey> modifierKeysOf(SingleActivator alone) => [
+  if (alone.control) ...const [
+    LogicalKeyboardKey.controlLeft,
+    LogicalKeyboardKey.controlRight,
+  ],
+  if (alone.shift) ...const [
+    LogicalKeyboardKey.shiftLeft,
+    LogicalKeyboardKey.shiftRight,
+  ],
+  if (alone.alt) ...const [
+    LogicalKeyboardKey.altLeft,
+    LogicalKeyboardKey.altRight,
+  ],
+  if (alone.meta) ...const [
+    LogicalKeyboardKey.metaLeft,
+    LogicalKeyboardKey.metaRight,
+  ],
+];
+
+/// Whether the modifier [key] is — on either side — held now, as
+/// [ModifierKeys] says; false for a key that is none.
+///
+/// 🚨A MODIFIER'S OWN KEY-UP IS NOT ITS RELEASE (card
+/// a-held-modifiers-repeat-is-heard-as-a-press): under a pen's or a
+/// finger's move Windows' engine lets go of Shift and Ctrl with the key
+/// still down, and drops the real release that comes after. So what a
+/// modifier's key-up — or any event — asks is this.
+bool modifierHeld(LogicalKeyboardKey key) {
+  if (key == LogicalKeyboardKey.controlLeft ||
+      key == LogicalKeyboardKey.controlRight) {
+    return ModifierKeys.isControlPressed;
+  }
+  if (key == LogicalKeyboardKey.shiftLeft ||
+      key == LogicalKeyboardKey.shiftRight) {
+    return ModifierKeys.isShiftPressed;
+  }
+  if (key == LogicalKeyboardKey.altLeft ||
+      key == LogicalKeyboardKey.altRight) {
+    return ModifierKeys.isAltPressed;
+  }
+  if (key == LogicalKeyboardKey.metaLeft ||
+      key == LogicalKeyboardKey.metaRight) {
+    return ModifierKeys.isMetaPressed;
+  }
+  return false;
+}
 
 /// Shift, Ctrl, Alt and ⌘ — a key that modifies another rather than being
 /// one. ★One question, two readers: the settings dialog waits past these for

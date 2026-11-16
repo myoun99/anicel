@@ -197,16 +197,44 @@ const _ownKeyReaders = <(String, String), String>{
       '(`_askTheModifiers`)',
   (
     'lib/src/ui/shortcuts/editor_key_holds.dart',
-    'if (isModifierKey(event.logicalKey)) {',
+    'if (event is KeyUpEvent && !isModifierKey(key)) {',
+  ): 'that a key-up lets go of what its key held — every key BUT a '
+      'modifier, whose release is asked of `ModifierKeys` '
+      '(`_letGoOfModifiersNoLongerHeld`)',
+  (
+    'lib/src/ui/shortcuts/editor_key_holds.dart',
+    'if (isModifierKey(key) && !modifierHeld(key)) key,',
+  ): 'that a modifier holding or waiting lets go once `modifierHeld` — '
+      '`ModifierKeys` — says none of its kind is held, asked at every key '
+      'and pointer event: the release a pen\'s move drops is found at the '
+      'next of either (F-603)',
+  (
+    'lib/src/ui/shortcuts/editor_key_holds.dart',
+    'if (isModifierKey(key)) {',
   ): 'when to ask the held view key\'s press again, a down and an up '
       'alike — the modifiers it is asked with are `ModifierKeys`\'',
   (
     'lib/src/ui/shortcuts/editor_key_holds.dart',
+    'isModifierKey(key) &&',
+  ): 'that a modifier going down under a held Alt, under a tool whose own '
+      'drag reads Alt, holds nothing (F-299-Q1) — whether Alt is held is '
+      'asked of `ModifierKeys`; a repeat heard as a key-down only asks again',
+  (
+    'lib/src/ui/shortcuts/editor_key_holds.dart',
+    'isModifierKey(key) ? KeyEventResult.ignored : KeyEventResult.handled;',
+  ): 'that a modifier a hold took passes on still, to modify what it is '
+      'held with — no press or release is read off it',
+  (
+    'lib/src/ui/shortcuts/editor_key_holds.dart',
     'key == LogicalKeyboardKey.altLeft || key == LogicalKeyboardKey.altRight;',
-  ): 'the eyedropper\'s hold, taken on Alt\'s press and let go at its '
-      'release — the engine lets go of Shift and Ctrl under a pen\'s move, '
-      'not Alt (shift probe, the Surface, 2026-11-15: 「left Alt held over a '
-      'move that carries no keys … kept · heard pressed 1 time(s)」)',
+  ): 'whether a hold already taken is on Alt — a second Alt joins it '
+      'rather than being the tool\'s (F-299-Q1) — its release is asked of '
+      '`ModifierKeys` with the rest',
+  (
+    'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
+    'if (event is KeyUpEvent && isModifierKey(key)) {',
+  ): 'when to ask whether the modifiers being recorded alone are let go — '
+      'asked of `modifierHeld`, not read off the key-up (F-603)',
   (
     'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
     'if (isModifierKey(key)) {',

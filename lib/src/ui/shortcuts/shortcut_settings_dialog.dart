@@ -132,8 +132,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     if (recording == null) {
       return KeyEventResult.ignored;
     }
+    // A modifier's key-up is asked, not trusted: a pen's move lets go of
+    // Ctrl and Shift in the engine's record with the key still down
+    // ([modifierHeld]).
     if (event is KeyUpEvent && isModifierKey(key)) {
-      _letGoOf(recording);
+      if (!modifierHeld(key)) {
+        _letGoOf(recording);
+      }
       return KeyEventResult.handled;
     }
     if (event is! KeyDownEvent) {
@@ -173,9 +178,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// pressed among them, are the key [recording] waited for — for a row
   /// whose action is held.
   ///
-  /// ⚠️F-603-Q1: what modifiers alone do for an action that is pressed
-  /// rather than held is asked on the board (Ctrl+Z would go through Ctrl
-  /// alone on its way); till then such a row waits on for another key.
+  /// ⚠️F-603-Q1 (유저 2026-11-16): a pressed action takes modifiers alone
+  /// too, pressed as they are let go with nothing between — not yet
+  /// (`EditorShortcutBindings._formsOf`); till then such a row waits on
+  /// for another key.
   void _letGoOf(_Recording recording) {
     final alone = _modifiersSoFar;
     _modifiersSoFar = null;

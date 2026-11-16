@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkControl;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
@@ -775,6 +777,28 @@ void main() {
       );
     });
 
+    // Card a-held-modifiers-repeat-is-heard-as-a-press: on Windows a pen's
+    // move lets go of Ctrl in the engine's record with the key still down.
+    testWidgets('🚨a Ctrl the engine lets go of under a pen, the key still '
+        'down, is not let go: the key pressed after it is the chord', (
+      tester,
+    ) async {
+      ModifierKeys.debugWindowsKeyDown = (key) => key == vkControl;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(hint(), findsOneWidget, reason: 'Ctrl is still down');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pump();
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Ctrl+F9'],
+      );
+    });
+
     testWidgets('a modifier that went down with a key is that chord, not the '
         'modifier alone', (tester) async {
       final bindings = await recording(tester, pan);
@@ -790,7 +814,7 @@ void main() {
     });
 
     testWidgets('⚠️F-603-Q1: a pressed row waits on past modifiers alone — '
-        'what they would do there is asked', (tester) async {
+        'till they press it as they are let go', (tester) async {
       const undo = EditorActionIds.undo;
       final bindings = await recording(tester, undo);
       final before = bindings.activatorsFor(undo);

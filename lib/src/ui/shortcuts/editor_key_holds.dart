@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -11,7 +12,7 @@ import '../canvas/canvas_line_hold.dart';
 import '../canvas/canvas_view_hold.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
-import 'shortcut_activator_codec.dart' show isModifierKey;
+import 'shortcut_activator_codec.dart' show isModifierKey, modifierHeld;
 
 /// The keys that are HELD rather than pressed (I-15).
 ///
@@ -42,6 +43,7 @@ final class EditorKeyHolds {
     required ValueListenable<bool> strokeLive,
   }) : _strokeLive = strokeLive {
     HardwareKeyboard.instance.addHandler(_onKey);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
     CanvasViewHold.reask = _reaskTheView;
     strokeLive.addListener(_onStrokeLive);
   }
@@ -191,27 +193,63 @@ final class EditorKeyHolds {
   /// under a held view key, which asks that key's press again. Never
   /// consumes.
   bool _onKey(KeyEvent event) {
-    if (event is KeyUpEvent) {
-      final key = event.logicalKey;
-      _waiting.remove(key);
-      _viewPresses.remove(key);
-      final hold = _held.remove(key);
-      if (hold != null) {
-        _end(hold);
-      }
+    final key = event.logicalKey;
+    if (event is KeyUpEvent && !isModifierKey(key)) {
+      _letGoOf(key);
     }
-    if (isModifierKey(event.logicalKey)) {
+    _letGoOfModifiersNoLongerHeld();
+    if (isModifierKey(key)) {
       _reaskTheView();
     }
     return false;
   }
 
-  /// The held view press asked again, with the modifiers as they are held
-  /// now: when one goes down or up, and when a press reads the hold
-  /// ([CanvasViewHold.atThePress]). A modifier that turns the press into
-  /// neither keeps the hold as it is: Alt under Space is not a reason to
-  /// let the view go.
+  /// Every pointer event, app-wide — where a modifier let go with no key
+  /// event is found ([_letGoOfModifiersNoLongerHeld]), and the view press
+  /// asked again for it, as at a key's.
+  void _onPointer(PointerEvent event) {
+    if (_letGoOfModifiersNoLongerHeld()) {
+      _reaskTheView();
+    }
+  }
+
+  /// [key] lets go of what it holds or waits to.
+  void _letGoOf(LogicalKeyboardKey key) {
+    _waiting.remove(key);
+    _viewPresses.remove(key);
+    final hold = _held.remove(key);
+    if (hold != null) {
+      _end(hold);
+    }
+  }
+
+  /// Every modifier that holds or waits lets go once none of its kind is
+  /// held — as [modifierHeld] says, asked at every key and pointer event,
+  /// not read off its own key-up — whether any did.
+  ///
+  /// 🚨Card a-held-modifiers-repeat-is-heard-as-a-press: under a pen's or a
+  /// finger's move Windows' engine lets go of Shift and Ctrl with the key
+  /// still down, and drops the real release that comes after — a hold
+  /// taken on Ctrl (F-603: modifiers alone hold too) let go at the first,
+  /// and outlived the second. Both Alt keys, or both Ctrl keys, are one
+  /// modifier: neither lets go while the other is held.
+  bool _letGoOfModifiersNoLongerHeld() {
+    final modifiers = [
+      for (final key in {..._held.keys, ..._waiting})
+        if (isModifierKey(key) && !modifierHeld(key)) key,
+    ];
+    modifiers.forEach(_letGoOf);
+    return modifiers.isNotEmpty;
+  }
+
+  /// The held keys asked again, with the modifiers as they are held now:
+  /// when one goes down or up, and when a press reads the hold
+  /// ([CanvasViewHold.atThePress]) — a modifier let go unheard lets go of
+  /// what it held, and the view press is asked again. A modifier that
+  /// turns the press into neither keeps the hold as it is: Alt under Space
+  /// is not a reason to let the view go.
   void _reaskTheView() {
+    _letGoOfModifiersNoLongerHeld();
     if (_viewPresses.isEmpty) {
       return;
     }
@@ -252,6 +290,7 @@ final class EditorKeyHolds {
   /// it back would rebuild a tree that is being taken down.
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
     if (CanvasViewHold.reask == _reaskTheView) {
       CanvasViewHold.reask = null;
     }

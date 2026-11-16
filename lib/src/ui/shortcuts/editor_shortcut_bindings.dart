@@ -258,10 +258,13 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// and a key that is modifiers alone is a HELD action's as they go down
   /// ([ModifiersDownActivator]).
   ///
-  /// ⚠️F-603-Q1: what a key that is modifiers alone does for an action that
-  /// is pressed rather than held is asked on the board — Ctrl+Z would go
-  /// through Ctrl alone on its way. Till it is answered it presses none,
-  /// and the settings window records none for one.
+  /// ⚠️F-603-Q1 (유저 2026-11-16): an action that is pressed rather than
+  /// held is pressed by modifiers alone as they are let go — 「뗐을 때 — 그
+  /// 사이에 다른 키나 클릭이 없었으면 발동」 (Ctrl+Z goes through Ctrl alone
+  /// on its way). The release is the playback gate's lone modifier
+  /// (I-19-zoom-key-playback) — one reading of it, not a second — and is not
+  /// here yet: till it is, a pressed action has no form for one, and the
+  /// settings window records none for it.
   Iterable<ShortcutActivator> _formsOf(
     String actionId,
     SingleActivator activator,
@@ -833,25 +836,12 @@ class ModifiersDownActivator extends ShortcutActivator {
   final SingleActivator alone;
 
   @override
-  Iterable<LogicalKeyboardKey> get triggers => [
-    if (alone.control) ...const [
-      LogicalKeyboardKey.controlLeft,
-      LogicalKeyboardKey.controlRight,
-    ],
-    if (alone.shift) ...const [
-      LogicalKeyboardKey.shiftLeft,
-      LogicalKeyboardKey.shiftRight,
-    ],
-    if (alone.alt) ...const [
-      LogicalKeyboardKey.altLeft,
-      LogicalKeyboardKey.altRight,
-    ],
-    if (alone.meta) ...const [
-      LogicalKeyboardKey.metaLeft,
-      LogicalKeyboardKey.metaRight,
-    ],
-  ];
+  Iterable<LogicalKeyboardKey> get triggers => modifierKeysOf(alone);
 
+  /// ⚠️A modifier's key-down may be one the engine made up — a held key's
+  /// repeat, after a pen's move let go of it (`modifierHeld`): the
+  /// modifiers it is matched with are the held ones, so it presses what is
+  /// held all the same.
   @override
   bool accepts(KeyEvent event, HardwareKeyboard state) =>
       event is KeyDownEvent &&

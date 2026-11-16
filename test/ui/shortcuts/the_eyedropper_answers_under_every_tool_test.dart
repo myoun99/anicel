@@ -254,6 +254,9 @@ void main() {
       // A key that is modifiers alone, pressed with just its own held
       // (F-603) — a key, no tool's.
       'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
+      // Whether a modifier's key is held, asked for every reader of one as
+      // the engine may have let go of it (F-603) — no tool's.
+      'lib/src/ui/shortcuts/shortcut_activator_codec.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
       // Off the canvas: a header graph's Alt-click on a line, which picks
