@@ -70,12 +70,14 @@ class _CanvasPanelMappedButtons {
       _state.widget.toolInputEnabled &&
       event.kind != PointerDeviceKind.touch;
 
-  /// A stroke or a drag is in flight on this canvas. Nothing here takes the
-  /// tool from under one.
-  bool get _busy =>
-      _state._strokeActive ||
-      _state._selectionDragActive ||
-      _state._modifierTouchDragActive;
+  /// A stroke on this canvas, or a drag on any canvas's layer, is in
+  /// flight ([CanvasDragInFlight] — the window's held keys read the same
+  /// answer). Nothing here takes the tool from under one.
+  ///
+  /// ↩️It read this canvas's selection drag and its finger modifier (a part
+  /// of that drag), not the text's, the stamp's or a guide handle's — and a
+  /// held key read none of them (I-110).
+  bool get _busy => _state._strokeActive || CanvasDragInFlight.live.value;
 
   bool get _penTail => _state._toolHolds.penTail;
 

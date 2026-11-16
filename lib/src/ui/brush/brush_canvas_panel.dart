@@ -1722,8 +1722,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
-      CanvasDragInFlight.report(this, active: false);
     }
+    // A stamp's drag in flight as the canvas goes ends with it: nothing
+    // waits for it any more ([_CanvasPanelTap._stampDrag]).
+    _tap._stampDrag = null;
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     _stopAskingTheGhost();
@@ -2244,10 +2246,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                         active,
                       );
                   _selectionDragActive = active;
-                  CanvasDragInFlight.report(
-                    this,
-                    active: active,
-                  );
                 }
               },
               // R14-④: the Move tool lifts the

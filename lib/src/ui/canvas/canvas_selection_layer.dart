@@ -43,6 +43,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/flip_glyph.dart';
 import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
+import 'canvas_drag_in_flight.dart';
 import 'canvas_touch_contacts.dart';
 import 'float_warp.dart';
 import 'interactive_brush_edit_canvas_view.dart'
@@ -2181,7 +2182,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// The one door both drag-active signals leave by.
+  /// The one door the drag-active signals leave by.
   ///
   /// The touch-lock half is DERIVED from [_drag] rather than raised by
   /// hand at each site, so a future drag kind cannot forget to lower it —
@@ -2189,6 +2190,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// canvas stopped panning" an hour later.
   void _notifyDragActive(bool active) {
     widget.onDragActiveChanged?.call(active);
+    // The window's held keys and every canvas's mapped buttons wait it out.
+    CanvasDragInFlight.report(this, active: active);
     // ⚠️Said at the press and not again. A finger's shape drag takes no
     // modifier touch yet at its press ([_dragTakesAModifierTouch]) and is
     // not reported when it starts to: a finger landing late beside a

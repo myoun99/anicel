@@ -406,7 +406,18 @@ class _CanvasPanelTap {
   /// 법 통일」): Shift's eight ways and the line a hold kept while it is held,
   /// the snapping perspectives' rays where it is not. On the CANVAS, where a
   /// press is read; the row's own artwork is where the spacing is measured.
-  ({StrokeLock lock, CanvasPoint lastCenter})? _stampDrag;
+  ({StrokeLock lock, CanvasPoint lastCenter})? get _stampDrag =>
+      _stampDragHeld;
+
+  /// ⛔The one door [_stampDrag] is written by: a stamp's drag in flight is
+  /// waited out by the window's held keys and the mapped buttons
+  /// ([CanvasDragInFlight]), and they hear of it here.
+  set _stampDrag(({StrokeLock lock, CanvasPoint lastCenter})? drag) {
+    _stampDragHeld = drag;
+    CanvasDragInFlight.report(this, active: drag != null);
+  }
+
+  ({StrokeLock lock, CanvasPoint lastCenter})? _stampDragHeld;
 
   /// A press of the stamp at [point]: [piece] lands there, and the drag it
   /// may begin is armed. Pressed under the hold that kept a line, it lands

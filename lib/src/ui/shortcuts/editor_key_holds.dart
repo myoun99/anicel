@@ -63,7 +63,7 @@ final class EditorKeyHolds {
 
   /// Whether the canvas is in the middle of a press a tool switch would
   /// take the tool from under: a stroke ([strokeLive]), or a drag on a
-  /// selection layer ([CanvasDragInFlight]) — what a canvas's mapped
+  /// canvas's layer ([CanvasDragInFlight]) — what a canvas's mapped
   /// buttons wait out too (`_busy`).
   ///
   /// 🔎I-110 (검증/서피스 11-17, 실기): Alt pressed while a lasso fill was

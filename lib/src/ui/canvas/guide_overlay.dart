@@ -16,6 +16,7 @@ import '../../services/transform_box_law.dart';
 import '../../models/app_input_settings.dart';
 import '../export/offscreen_raster.dart' show rasterizeOffscreen;
 import '../repaint_props.dart';
+import 'canvas_drag_in_flight.dart';
 import 'canvas_touch_contacts.dart';
 import 'canvas_viewport_offset.dart';
 
@@ -954,6 +955,25 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
       _pointer = null;
       _live = null;
     });
+    CanvasDragInFlight.report(this, active: false);
+  }
+
+  @override
+  void dispose() {
+    // A handle dragged as the layer goes — another tool came under the
+    // hand — lands where it was, as a selection's drag does: after the
+    // frame, this tree being taken down. The moves still on their way find
+    // no handle, and nothing waits for it any more.
+    final live = _live;
+    final commit = widget.onGuidesCommitted;
+    if (_dragging != null && live != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => commit(live));
+    }
+    _dragging = null;
+    _pointer = null;
+    _live = null;
+    CanvasDragInFlight.report(this, active: false);
+    super.dispose();
   }
 
   @override
@@ -997,6 +1017,7 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
           _pressAt = point;
           _byTouch = event.kind == PointerDeviceKind.touch;
         });
+        CanvasDragInFlight.report(this, active: true);
         widget.onGuideSelected?.call(handle.guideId);
       },
       onPointerMove: (event) {

@@ -145,13 +145,16 @@ void main() {
   testWidgets('🚨Alt pressed in the middle of a drag takes the tool only as '
       'the hand comes up, under every tool', (tester) async {
     // ⛔Spelled here, not asked of the code: the tools whose press is a
-    // drag the canvas is in the middle of — a stroke, or a selection
-    // layer's outline.
+    // drag the canvas is in the middle of — a stroke, a selection layer's
+    // outline, a text box traced, the stamp's trail (the cut before it put
+    // a piece in the hand).
     const dragged = {
       CanvasTool.brush,
       CanvasTool.eraser,
       CanvasTool.fillShape,
       CanvasTool.cut,
+      CanvasTool.cutStamp,
+      CanvasTool.text,
       CanvasTool.shape,
     };
     const keepsItsAlt = {CanvasTool.select, CanvasTool.move};
@@ -220,6 +223,36 @@ void main() {
 
     brush = await pumpShell(tester);
     await take(tester, brush, CanvasTool.brush);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(brush.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+  });
+
+  // ⚠️Another hand can still take the tool mid drag (the rail, a tool's
+  // key): the text layer, taken away under its press, hears the hand no
+  // more and leaves nothing waiting for it.
+  testWidgets('a tool taken from under a text drag leaves the text layer '
+      'deaf to the hand and no key waiting', (tester) async {
+    final brush = await pumpShell(tester);
+    await take(tester, brush, CanvasTool.text);
+    final at = visibleCanvasPoint(tester);
+    final hand = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 1; step <= 4; step += 1) {
+      await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+      await tester.pump();
+    }
+    await take(tester, brush, CanvasTool.brush);
+    await hand.moveTo(at + const Offset(20, 60));
+    await tester.pump();
+    await hand.up();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();
     expect(brush.value.tool, CanvasTool.eyedropper);
