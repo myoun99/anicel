@@ -203,6 +203,8 @@ final class VideoMemoryReport extends Struct {
   external int budget;
   @Uint64()
   external int inSystem;
+  @Uint64()
+  external int total;
   @Uint32()
   external int flags;
 }
@@ -212,6 +214,7 @@ const videoMemoryUsedSaid = 1;
 const videoMemoryBudgetSaid = 2;
 const videoMemoryInSystemSaid = 4;
 const videoMemoryIntegrated = 8;
+const videoMemoryTotalSaid = 16;
 
 @Native<Void Function(Pointer<Engine>, Pointer<VideoMemoryReport>)>(
   symbol: 'gpu_engine_video_memory',

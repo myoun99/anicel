@@ -290,6 +290,7 @@ class GpuEngine {
       used: where(rust.videoMemoryUsedSaid, said.used),
       budget: where(rust.videoMemoryBudgetSaid, said.budget),
       inSystem: where(rust.videoMemoryInSystemSaid, said.inSystem),
+      total: where(rust.videoMemoryTotalSaid, said.total),
     );
   });
 
@@ -631,15 +632,17 @@ typedef GpuTile = ({int page, int slot});
 
 /// What the OS says of this process's use of an engine's adapter, in
 /// bytes: of its local video memory (`used`), the budget it gives the
-/// process there (`budget`) and what of its video memory lies in the
-/// system's RAM (`inSystem`) — each null where the OS says none (Android
-/// and Linux say nothing; Apple, no budget and no RAM apart) — and whether
+/// process there (`budget`), what of its video memory lies in the
+/// system's RAM (`inSystem`) and all the adapter's own memory (`total`)
+/// — each null where the OS says none (Android and Linux say nothing;
+/// Apple, no budget, no RAM apart and no memory of its own) — and whether
 /// the adapter is one that shares the system's RAM (`integrated`).
 typedef GpuVideoMemory = ({
   bool integrated,
   int? used,
   int? budget,
   int? inSystem,
+  int? total,
 });
 
 /// A tile with nothing on it, as a tile set names one.

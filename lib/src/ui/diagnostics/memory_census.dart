@@ -78,6 +78,7 @@ class MemoryCensus {
     required this.items,
     required this.gpuMemoryIsRam,
     required this.videoMemory,
+    this.videoItems = const [],
     this.availableBytes,
     this.deviceBytes,
   });
@@ -120,20 +121,46 @@ class MemoryCensus {
 
   /// Whether what the GPU holds for this process is part of
   /// [footprintBytes] ([texturesAreInTheRamFigure]): its pictures among the
-  /// [items], and the memory tab's VRAM line reading 「RAM 에 포함」.
+  /// [items], and the memory tab one column — the RAM, the GPU's too.
   final bool gpuMemoryIsRam;
 
-  /// What this process holds in the GPU's local memory and the budget the
-  /// OS gives it there, where the OS says them (`GpuEngine.videoMemory`) —
-  /// null where it says none, or the app has opened no engine.
+  /// The holdings in the GPU's own memory, largest first: the pictures
+  /// [items] leaves out where [gpuMemoryIsRam] is false — the memory tab's
+  /// VRAM column. None where the GPU shares the RAM.
+  ///
+  /// 🗣️유저 2026-11-16 (vram-in-use-shown-in-the-memory-tab-Q3): 「칸마다
+  /// 내역」 — and still never in [footprintBytes] or [items] (F-226-Q1).
+  final List<MemoryCensusItem> videoItems;
+
+  /// What this process holds in the GPU's local memory, the budget the OS
+  /// gives it there and all the adapter's own memory, where the OS says
+  /// them (`GpuEngine.videoMemory`) — null where it says no use, or the app
+  /// has opened no engine.
   ///
   /// 🗣️유저 2026-11-12 (vram-in-use-shown-in-the-memory-tab-Q1): 「RAM 과
   /// 따로, VRAM 한 줄 — 쓰는 양 / 예산」. ⛔BESIDE [footprintBytes], never
   /// added to it or to [items] (F-226-Q1).
-  final ({int used, int? budget})? videoMemory;
+  final ({int used, int? budget, int? total})? videoMemory;
 
   /// The sum of what we can account for. Always less than [footprintBytes].
-  int get trackedBytes {
+  int get trackedBytes => _sum(items);
+
+  /// The sum of [videoItems].
+  int get videoTrackedBytes => _sum(videoItems);
+
+  /// What of [videoMemory]'s use no row of [videoItems] names — the
+  /// framework's own pictures, the driver's, the engine's work buffers —
+  /// null where the OS says no use.
+  int? get videoUntrackedBytes {
+    final used = videoMemory?.used;
+    if (used == null) {
+      return null;
+    }
+    final rest = used - videoTrackedBytes;
+    return rest < 0 ? 0 : rest;
+  }
+
+  static int _sum(List<MemoryCensusItem> items) {
     var total = 0;
     for (final item in items) {
       total += item.bytes;
@@ -186,6 +213,11 @@ class MemoryCensus {
 ///
 /// ⛔The CEILINGS stay whatever this answers (`CacheBudgetLine`): a GPU's
 /// memory runs out too, and the allowance still moves them.
+///
+/// 🗣️Where they are not RAM they are the memory tab's VRAM column
+/// ([MemoryCensus.videoItems]; 유저 2026-11-16, vram-in-use-shown-in-the-
+/// memory-tab-Q3) — Android's and Linux's too, whose OS says nothing of the
+/// GPU's memory: the column stands with its OS figures 「—」 (Q4).
 bool texturesAreInTheRamFigure(GpuVideoMemory? gpu) =>
     switch (defaultTargetPlatform) {
       TargetPlatform.iOS || TargetPlatform.macOS => true,
@@ -209,7 +241,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       sessions.fold(0, (total, session) => total + bytesOf(session));
   final gpu = appGpuVideoMemory;
   final textures = texturesAreInTheRamFigure(gpu);
-  final items = <MemoryCensusItem>[
+  final ram = <MemoryCensusItem>[
     MemoryCensusItem(
       id: 'drawings',
       bytes: sum(
@@ -254,27 +286,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // so once ([CutPieceSlot.allPieceBytes]).
           LastStrokeSlot.allStrokeBytes,
     ),
-    if (textures)
-      // The frames' pictures every screen shows (one-picture-per-frame),
-      // the ones on screen in its detail — and the pictures of the nodes
-      // they are drawn of, held for a stroke's patches and a walk's next frame.
-      // And what the engine keeps made for the next one: its pictures lie
-      // in slots of a pool's pages, and the slots a picture let go stay
-      // on the GPU till the pages are given back
-      // (engine-pictures-keep-to-pool-pages) — the app's, so once.
-      MemoryCensusItem(
-        id: 'framePictures',
-        bytes:
-            sum(
-              (session) =>
-                  session.renderCaches.framePictureStore.estimatedBytes +
-                  session.playbackRig.framePictures.heldBytes,
-            ) +
-            EnginePictures.idlePictureBytes,
-        detail: sum(
-          (session) => session.renderCaches.framePictureStore.pinnedBytes,
-        ),
-      ),
     MemoryCensusItem(
       id: 'brushTips',
       bytes:
@@ -285,35 +296,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // viewer holds its source at full size.
           CutPieceSlot.allPieceBytes,
     ),
-    // 🚨THE CANVAS'S OWN PICTURES, which a phone keeps as GPU textures:
-    // every decoded tile, alive as long as its tile is — the picture on
-    // screen and, through the tiles it keeps, the undo history's. The
-    // share had no row and read as engine overhead (C-ipad-crash,
-    // 2026-09-11). A picture a screen draws reduced carries its mip chain,
-    // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
-    // (2026-09-16) the row also held the LEVEL TILES — the same pictures
-    // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
-    // The engine's slots of the same tiles ride it (screen-on-the-engine
-    // c4): its pool's pages, each whole, and the page it made ahead of the
-    // store that needs it (2026-11-15) — what the pictures become, under
-    // the same line. So do the masks a canvas verb keeps there — a
-    // selection's, which its clip holds (2026-11-14), a held fill's — and
-    // the bit planes a selection is folded in, kept for the next fold. So
-    // does what a plug-in's step made, kept on the cel it ran over
-    // (관제 2026-11-11, (2) ⓒ): its tiles are the pool's since 2026-11-15
-    // (a-plugin-step-goes-through-the-cpu-and-back) — ↩️a row of its own
-    // till then, `pluginSteps`, a picture in the app's memory.
-    if (textures)
-      MemoryCensusItem(
-        id: 'tileImages',
-        bytes:
-            BitmapTileImageCache.liveImageBytes +
-            EngineTileLedger.appPoolBytes +
-            EngineStrokes.idleBytes +
-            GpuStampPicture.liveBytes +
-            GpuMask.liveBytes +
-            EngineSelectionMasks.keptPlaneBytes,
-      ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
     // call so far. Both resident, both read as engine overhead until
@@ -339,93 +321,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // working set 1.3 → 3.8GB) is not measured to land in this use.
     if (!textures)
       MemoryCensusItem(id: 'gpuInSystem', bytes: gpu?.inSystem ?? 0),
-    // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
-    // is allowed 100 MiB and 1000 entries by default and nothing in this
-    // app ever set either — so the readout could not say whether it held
-    // nothing or a tenth of a gigabyte. It answers now, and
-    // [AnicelBinding] gives it a ceiling that suits an app which decodes
-    // its own pixels.
-    //
-    // ⚠️A source scan cannot find this one: the ratchet reads `lib/`, and
-    // this counter lives in the framework. It is here because someone
-    // looked, which is the argument for looking.
-    if (textures)
-      MemoryCensusItem(
-        id: 'imageCache',
-        bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
-      ),
-    if (textures)
-      MemoryCensusItem(
-        id: 'panelRasters',
-        bytes:
-            StaticRaster.censusBytes +
-            // A dock region's still image (2026-09-25) is the same kind of
-            // holding: a panel region kept as a raster while nothing changes.
-            //
-            // ↩️So was a layer stack view's display buffer, PUSHED here from
-            // its widget State (2026-09-10) — the whole chain a derived
-            // buffer pinned, not one image: counting one until 2026-09-12
-            // left the canvases it missed in 「엔진·폰트·프레임워크」 as 10GB
-            // nothing would own. Nothing keeps one since a frame became one
-            // picture (one-picture-per-frame ②-5a, 2026-10-25).
-            StillRaster.censusBytes,
-      ),
-    // Pushed by the mounted viewers rather than read off a holder the
-    // session owns — see [RenderCaches.viewerRasterBytesByViewer].
-    if (textures)
-      MemoryCensusItem(
-        id: 'viewerPages',
-        bytes: sum((session) => session.renderCaches.viewerRasterBytes),
-      ),
-    // Pushed by the workspace, whose State owns the store — see
-    // [RenderCaches.storyboardThumbnailBytes].
-    if (textures)
-      MemoryCensusItem(
-        id: 'storyboardThumbnails',
-        bytes: sum(
-          (session) => session.renderCaches.storyboardThumbnailBytes,
-        ),
-      ),
-    // Pushed by the workspace too — see [RenderCaches.sheetImageBytes].
-    if (textures)
-      MemoryCensusItem(
-        id: 'sheetImages',
-        bytes: sum((session) => session.renderCaches.sheetImageBytes),
-      ),
-    // 🚨THE PICTURES A SCREEN BAKES ONCE AND DRAWS FROM AFTER, the app's
-    // and so counted once: a word narrowed under the legible size, a
-    // preset's stroke in the brush list, a span of a timeline row — each
-    // store bounded by how many, up to 512, 512 and 768 of them. They read
-    // as engine overhead until 2026-10-17 (card
-    // census-misses-bake-once-images): no field of theirs had the shape the
-    // census ratchet looked for. ↩️And the plates of the letters a picture
-    // holds — a cel number's, a name tag's — while the app rastered them
-    // (cel-number-letters-drawn-as-vectors, 2026-11-07), until the engine's
-    // letters made them, in its tiles (the-flutter-fx-chain-is-a-second-chain).
-    if (textures)
-      MemoryCensusItem(
-        id: 'textImages',
-        bytes: BakedWords.instance.imageBytes,
-      ),
-    if (textures)
-      MemoryCensusItem(
-        id: 'strokePreviews',
-        bytes: BrushStrokePreviewCache.instance.sampleBytes,
-      ),
-    if (textures)
-      MemoryCensusItem(
-        id: 'timelineTiles',
-        bytes:
-            TimelineGridTileStore.instance.tileImageBytes +
-            // What the frame grids show those tiles through, a texture a
-            // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
-            // in for the reason `drawings` gives above; the canvas's own
-            // view, when it takes one, is no timeline's and needs a row.
-            ScreenTexture.liveBytes +
-            // And what the batch that draws them keeps between frames: the
-            // words' atlas, the planes, the waves' unders.
-            AppGpuGridBatch.keptGridBytes,
-      ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed
@@ -436,7 +331,137 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
         (session) => session.renderCaches.brushFrameStore.movieCelBytes,
       ),
     ),
-  ]..sort((a, b) => b.bytes.compareTo(a.bytes));
+  ];
+  // THE PICTURES — what the GPU holds for the app: the RAM's rows where its
+  // memory is the RAM's ([texturesAreInTheRamFigure]), the VRAM's where it
+  // is apart (🗣️유저 2026-11-16, vram-in-use-shown-in-the-memory-tab-Q3:
+  // 「칸마다 내역」).
+  final pictures = <MemoryCensusItem>[
+    // The frames' pictures every screen shows (one-picture-per-frame),
+    // the ones on screen in its detail — and the pictures of the nodes
+    // they are drawn of, held for a stroke's patches and a walk's next frame.
+    // And what the engine keeps made for the next one: its pictures lie
+    // in slots of a pool's pages, and the slots a picture let go stay
+    // on the GPU till the pages are given back
+    // (engine-pictures-keep-to-pool-pages) — the app's, so once.
+    MemoryCensusItem(
+      id: 'framePictures',
+      bytes:
+          sum(
+            (session) =>
+                session.renderCaches.framePictureStore.estimatedBytes +
+                session.playbackRig.framePictures.heldBytes,
+          ) +
+          EnginePictures.idlePictureBytes,
+      detail: sum(
+        (session) => session.renderCaches.framePictureStore.pinnedBytes,
+      ),
+    ),
+    // 🚨THE CANVAS'S OWN PICTURES, which a phone keeps as GPU textures:
+    // every decoded tile, alive as long as its tile is — the picture on
+    // screen and, through the tiles it keeps, the undo history's. The
+    // share had no row and read as engine overhead (C-ipad-crash,
+    // 2026-09-11). A picture a screen draws reduced carries its mip chain,
+    // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
+    // (2026-09-16) the row also held the LEVEL TILES — the same pictures
+    // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
+    // The engine's slots of the same tiles ride it (screen-on-the-engine
+    // c4): its pool's pages, each whole, and the page it made ahead of the
+    // store that needs it (2026-11-15) — what the pictures become, under
+    // the same line. So do the masks a canvas verb keeps there — a
+    // selection's, which its clip holds (2026-11-14), a held fill's — and
+    // the bit planes a selection is folded in, kept for the next fold. So
+    // does what a plug-in's step made, kept on the cel it ran over
+    // (관제 2026-11-11, (2) ⓒ): its tiles are the pool's since 2026-11-15
+    // (a-plugin-step-goes-through-the-cpu-and-back) — ↩️a row of its own
+    // till then, `pluginSteps`, a picture in the app's memory.
+    MemoryCensusItem(
+      id: 'tileImages',
+      bytes:
+          BitmapTileImageCache.liveImageBytes +
+          EngineTileLedger.appPoolBytes +
+          EngineStrokes.idleBytes +
+          GpuStampPicture.liveBytes +
+          GpuMask.liveBytes +
+          EngineSelectionMasks.keptPlaneBytes,
+    ),
+    // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
+    // is allowed 100 MiB and 1000 entries by default and nothing in this
+    // app ever set either — so the readout could not say whether it held
+    // nothing or a tenth of a gigabyte. It answers now, and
+    // [AnicelBinding] gives it a ceiling that suits an app which decodes
+    // its own pixels.
+    //
+    // ⚠️A source scan cannot find this one: the ratchet reads `lib/`, and
+    // this counter lives in the framework. It is here because someone
+    // looked, which is the argument for looking.
+    MemoryCensusItem(
+      id: 'imageCache',
+      bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
+    ),
+    MemoryCensusItem(
+      id: 'panelRasters',
+      bytes:
+          StaticRaster.censusBytes +
+          // A dock region's still image (2026-09-25) is the same kind of
+          // holding: a panel region kept as a raster while nothing changes.
+          //
+          // ↩️So was a layer stack view's display buffer, PUSHED here from
+          // its widget State (2026-09-10) — the whole chain a derived
+          // buffer pinned, not one image: counting one until 2026-09-12
+          // left the canvases it missed in 「엔진·폰트·프레임워크」 as 10GB
+          // nothing would own. Nothing keeps one since a frame became one
+          // picture (one-picture-per-frame ②-5a, 2026-10-25).
+          StillRaster.censusBytes,
+    ),
+    // Pushed by the mounted viewers rather than read off a holder the
+    // session owns — see [RenderCaches.viewerRasterBytesByViewer].
+    MemoryCensusItem(
+      id: 'viewerPages',
+      bytes: sum((session) => session.renderCaches.viewerRasterBytes),
+    ),
+    // Pushed by the workspace, whose State owns the store — see
+    // [RenderCaches.storyboardThumbnailBytes].
+    MemoryCensusItem(
+      id: 'storyboardThumbnails',
+      bytes: sum((session) => session.renderCaches.storyboardThumbnailBytes),
+    ),
+    // Pushed by the workspace too — see [RenderCaches.sheetImageBytes].
+    MemoryCensusItem(
+      id: 'sheetImages',
+      bytes: sum((session) => session.renderCaches.sheetImageBytes),
+    ),
+    // 🚨THE PICTURES A SCREEN BAKES ONCE AND DRAWS FROM AFTER, the app's
+    // and so counted once: a word narrowed under the legible size, a
+    // preset's stroke in the brush list, a span of a timeline row — each
+    // store bounded by how many, up to 512, 512 and 768 of them. They read
+    // as engine overhead until 2026-10-17 (card
+    // census-misses-bake-once-images): no field of theirs had the shape the
+    // census ratchet looked for. ↩️And the plates of the letters a picture
+    // holds — a cel number's, a name tag's — while the app rastered them
+    // (cel-number-letters-drawn-as-vectors, 2026-11-07), until the engine's
+    // letters made them, in its tiles (the-flutter-fx-chain-is-a-second-chain).
+    MemoryCensusItem(id: 'textImages', bytes: BakedWords.instance.imageBytes),
+    MemoryCensusItem(
+      id: 'strokePreviews',
+      bytes: BrushStrokePreviewCache.instance.sampleBytes,
+    ),
+    MemoryCensusItem(
+      id: 'timelineTiles',
+      bytes:
+          TimelineGridTileStore.instance.tileImageBytes +
+          // What the frame grids show those tiles through, a texture a
+          // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
+          // in for the reason `drawings` gives above; the canvas's own
+          // view, when it takes one, is no timeline's and needs a row.
+          ScreenTexture.liveBytes +
+          // And what the batch that draws them keeps between frames: the
+          // words' atlas, the planes, the waves' unders.
+          AppGpuGridBatch.keptGridBytes,
+    ),
+  ];
+  int largestFirst(MemoryCensusItem a, MemoryCensusItem b) =>
+      b.bytes.compareTo(a.bytes);
 
   return MemoryCensus(
     // ⛔The PLATFORM's own answer, not the Dart VM's RSS — see
@@ -446,10 +471,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     footprintBytes: QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
     availableBytes: QaMemory.availableMemoryBytes,
     deviceBytes: QaMemory.physicalMemoryBytes,
-    items: items,
+    items: [...ram, if (textures) ...pictures]..sort(largestFirst),
+    videoItems: textures ? const [] : (pictures..sort(largestFirst)),
     gpuMemoryIsRam: textures,
     videoMemory: switch (gpu?.used) {
-      final used? => (used: used, budget: gpu?.budget),
+      final used? => (used: used, budget: gpu?.budget, total: gpu?.total),
       null => null,
     },
   );

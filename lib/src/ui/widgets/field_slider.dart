@@ -108,6 +108,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.stepsRun,
   }) : levels = null,
        floor = null,
+       setElsewhere = false,
        assert(max > min, 'max must exceed min'),
        assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
@@ -165,6 +166,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        stops = null,
        levels = null,
        floor = null,
+       setElsewhere = false,
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
@@ -241,6 +243,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        stops = null,
        levels = null,
        floor = null,
+       setElsewhere = false,
        scale = FieldSliderScale.linear,
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
@@ -271,6 +274,13 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// bar under it — 「두번째 슬라이더랑 내용적으로 같아지니 내용 서로
   /// 합쳐서 통합」 — are one bar, the allowance outlined over the use
   /// (F-480-Q2 a: 「사용량 채움 위에 허용치 손잡이」).
+  ///
+  /// A ceiling something else sets — the OS's budget for the app's VRAM —
+  /// is [setElsewhere]: drawn as the one the hand sets beside it is, and
+  /// set by none (유저 2026-11-16, vram-in-use-shown-in-the-memory-tab:
+  /// 「ram의 앱 허용치랑 vram의 os 예산 중 … 막대의 ui라던가 너무
+  /// 다르잖아 … 최대한 통일감」, Q5 「C-1」). Where nothing says it, the
+  /// bar reads [restingText] instead of a number.
   const FieldSlider.ceiling({
     super.key,
     this.name,
@@ -282,10 +292,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.onChangeEnd,
     this.unit = '',
     this.color,
+    this.restingText,
+    this.setElsewhere = false,
   }) : min = 0,
        displayScale = 1,
        valueTextBuilder = null,
-       restingText = null,
        restingAccent = null,
        label = null,
        scale = FieldSliderScale.linear,
@@ -299,7 +310,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        readout = null,
        stepsRun = null,
        assert(max > 0, 'max must exceed min'),
-       assert(floor <= max, 'the floor stands on the scale');
+       assert(floor <= max, 'the floor stands on the scale'),
+       assert(
+         !setElsewhere || onChanged == null,
+         'a value set elsewhere takes no hand',
+       );
 
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
@@ -364,6 +379,16 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// number at all: the legend's master bar reads `OPAC` at rest and its per
   /// cent while it is being dragged (R4 #6). Null = the number, always.
   final String? restingText;
+
+  /// Whether the value is one something else sets ([FieldSlider.ceiling]):
+  /// drawn at full strength as a bar the hand sets is, and taking no hand
+  /// — [onChanged] is null. ⛔Not [onChanged] null alone: that is a bar
+  /// that could be set and is not now, and it dims
+  /// ([_FieldSliderState._asDrawn]).
+  final bool setElsewhere;
+
+  /// Whether the bar is drawn at full strength.
+  bool get _lit => onChanged != null || setElsewhere;
 
   final FieldSliderScale scale;
 
@@ -895,7 +920,8 @@ class _FieldSliderState extends State<FieldSlider> {
   /// widget's: the pressure-curve well dims to the same figure on purpose
   /// (「a disabled group reads as one thing rather than as three different
   /// greys」), and two widgets spelling one rule is how the two drift.
-  Color _asDrawn(Color color) => dimmedIfDisabled(color, enabled: _enabled);
+  Color _asDrawn(Color color) =>
+      dimmedIfDisabled(color, enabled: widget._lit);
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
@@ -1190,7 +1216,7 @@ class _FieldSliderState extends State<FieldSlider> {
       onExtent: _takeTrackExtent,
       frame: FieldSlider.frameOf(
         widget.height,
-        enabled: _enabled,
+        enabled: widget._lit,
         typed: _typing,
       ),
       shape: AppShapes.container(_radius),
@@ -1636,7 +1662,7 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
     // On its host's ground — the pill's, the surface ([AppColors.surface]).
     final ink = dimmedIfDisabled(
       textOnColor(AppColors.surface),
-      enabled: _enabled,
+      enabled: widget.bar._lit,
     );
     final style =
         FieldSliderValueReadout.styleIn(context) ?? const TextStyle();

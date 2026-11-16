@@ -755,7 +755,6 @@ enum AppStrings {
   String get prefsMemory => _s('prefsMemory');
   String get memoryProcessTotal => _s('memoryProcessTotal');
   String get memoryGpuTotal => _s('memoryGpuTotal');
-  String get memoryGpuInRam => _s('memoryGpuInRam');
   String get memoryTracked => _s('memoryTracked');
   String get memoryUntracked => _s('memoryUntracked');
   String get memoryAvailable => _s('memoryAvailable');
@@ -763,6 +762,14 @@ enum AppStrings {
   String get memoryDeviceTotal => _s('memoryDeviceTotal');
   String get memoryAllowance => _s('memoryAllowance');
   String get memoryAllowanceAutomatic => _s('memoryAllowanceAutomatic');
+  String get memoryRam => _s('memoryRam');
+  String get memoryVram => _s('memoryVram');
+  String get memoryRamSharedWithGpu => _s('memoryRamSharedWithGpu');
+  String get memoryDeviceVram => _s('memoryDeviceVram');
+  String get memoryBudget => _s('memoryBudget');
+  String get memoryVramUntracked => _s('memoryVramUntracked');
+  String get memoryUnderAllowance => _s('memoryUnderAllowance');
+  String get memoryOutsideAllowance => _s('memoryOutsideAllowance');
   String get memoryItemDrawings => _s('memoryItemDrawings');
   String get memoryItemSheetInk => _s('memoryItemSheetInk');
   String get memoryItemUndo => _s('memoryItemUndo');
@@ -782,11 +789,6 @@ enum AppStrings {
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
   String get memoryItemGpuInSystem => _s('memoryItemGpuInSystem');
-
-  /// What sits outside the allowance — the rows named in [items] — as one
-  /// sentence (유저 2026-09-16, memory-allowance-Q2).
-  String memoryOutsideAllowance(String items) =>
-      _s('memoryOutsideAllowanceTemplate').replaceAll('{items}', items);
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaDiagnostics => _s('containerAreaDiagnostics');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
@@ -2761,7 +2763,6 @@ enum AppStrings {
     'prefsMemory': 'Memory',
     'memoryProcessTotal': 'This app, in RAM',
     'memoryGpuTotal': 'This app, in VRAM',
-    'memoryGpuInRam': 'Part of RAM',
     'memoryTracked': 'Accounted for',
     'memoryUntracked': 'Engine, fonts and framework',
     'memoryAvailable': 'Still available',
@@ -2769,6 +2770,13 @@ enum AppStrings {
     'memoryDeviceTotal': 'Device memory',
     'memoryAllowance': 'App allowance',
     'memoryAllowanceAutomatic': 'Back to the automatic allowance',
+    'memoryRam': 'RAM',
+    'memoryVram': 'VRAM',
+    'memoryRamSharedWithGpu': 'Shared with the GPU',
+    'memoryDeviceVram': 'Device VRAM',
+    'memoryBudget': 'OS budget',
+    'memoryVramUntracked': 'Engine, driver and framework',
+    'memoryUnderAllowance': 'Under the app allowance',
     'memoryItemDrawings': 'Drawings',
     'memoryItemSheetInk': 'Sheet handwriting',
     'memoryItemUndo': 'Undo history',
@@ -2787,9 +2795,7 @@ enum AppStrings {
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
     'memoryItemGpuInSystem': 'GPU memory in RAM',
-    'memoryOutsideAllowanceTemplate':
-        'Outside the allowance, because no ceiling can be set on it: '
-        '{items}.',
+    'memoryOutsideAllowance': 'Outside the app allowance',
     'containerAreaSettings': 'Settings',
     'containerAreaDiagnostics': 'Diagnostics log',
     'containerAreaSessionScratch': 'Session scratch',
@@ -4304,7 +4310,6 @@ enum AppStrings {
     'prefsMemory': 'メモリ',
     'memoryProcessTotal': 'このアプリのRAM使用量',
     'memoryGpuTotal': 'このアプリのVRAM使用量',
-    'memoryGpuInRam': 'RAMに含む',
     'memoryTracked': '内訳がわかる分',
     'memoryUntracked': 'エンジン・フォント・フレームワーク',
     'memoryAvailable': 'まだ使える分',
@@ -4312,6 +4317,13 @@ enum AppStrings {
     'memoryDeviceTotal': 'デバイスのメモリ',
     'memoryAllowance': 'アプリの割り当て',
     'memoryAllowanceAutomatic': '自動の割り当てに戻す',
+    'memoryRam': 'RAM',
+    'memoryVram': 'VRAM',
+    'memoryRamSharedWithGpu': 'GPUと共用',
+    'memoryDeviceVram': 'デバイスのVRAM',
+    'memoryBudget': 'OSの予算',
+    'memoryVramUntracked': 'エンジン・ドライバ・フレームワーク',
+    'memoryUnderAllowance': 'アプリの割り当てが上限を掛けるもの',
     'memoryItemDrawings': '作画',
     'memoryItemSheetInk': '用紙の手書き',
     'memoryItemUndo': '取り消し履歴',
@@ -4330,7 +4342,7 @@ enum AppStrings {
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
     'memoryItemGpuInSystem': 'RAM上のGPUメモリ',
-    'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
+    'memoryOutsideAllowance': 'アプリの割り当ての外',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
     'containerAreaSessionScratch': 'セッション作業領域',
@@ -6222,7 +6234,6 @@ enum AppStrings {
     'prefsMemory': '메모리',
     'memoryProcessTotal': '이 앱이 쓰는 RAM',
     'memoryGpuTotal': '이 앱이 쓰는 VRAM',
-    'memoryGpuInRam': 'RAM에 포함',
     'memoryTracked': '내역을 아는 만큼',
     'memoryUntracked': '엔진·폰트·프레임워크',
     'memoryAvailable': '아직 쓸 수 있는 양',
@@ -6230,6 +6241,13 @@ enum AppStrings {
     'memoryDeviceTotal': '기기 메모리',
     'memoryAllowance': '앱 허용치',
     'memoryAllowanceAutomatic': '자동 허용치로 되돌리기',
+    'memoryRam': 'RAM',
+    'memoryVram': 'VRAM',
+    'memoryRamSharedWithGpu': 'GPU와 같이 씀',
+    'memoryDeviceVram': '기기 VRAM',
+    'memoryBudget': 'OS 예산',
+    'memoryVramUntracked': '엔진·드라이버·프레임워크',
+    'memoryUnderAllowance': '앱 허용치가 천장을 거는 것',
     'memoryItemDrawings': '그림',
     'memoryItemSheetInk': '용지 손글씨',
     'memoryItemUndo': '실행취소 기록',
@@ -6248,7 +6266,7 @@ enum AppStrings {
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
     'memoryItemGpuInSystem': 'RAM에 있는 GPU 메모리',
-    'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
+    'memoryOutsideAllowance': '앱 허용치 밖',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
     'containerAreaSessionScratch': '세션 작업 공간',
@@ -8169,7 +8187,6 @@ enum AppStrings {
     'prefsMemory': 'Mémoire',
     'memoryProcessTotal': 'Cette application, en RAM',
     'memoryGpuTotal': 'Cette application, en VRAM',
-    'memoryGpuInRam': 'Comprise dans la RAM',
     'memoryTracked': 'Détail connu',
     'memoryUntracked': 'Moteur, polices et framework',
     'memoryAvailable': 'Encore disponible',
@@ -8177,6 +8194,13 @@ enum AppStrings {
     'memoryDeviceTotal': "Mémoire de l'appareil",
     'memoryAllowance': "Allocation de l'app",
     'memoryAllowanceAutomatic': "Revenir à l'allocation automatique",
+    'memoryRam': 'RAM',
+    'memoryVram': 'VRAM',
+    'memoryRamSharedWithGpu': 'Partagée avec le GPU',
+    'memoryDeviceVram': "VRAM de l'appareil",
+    'memoryBudget': "Budget de l'OS",
+    'memoryVramUntracked': 'Moteur, pilote et framework',
+    'memoryUnderAllowance': "Plafonné par l'allocation de l'app",
     'memoryItemDrawings': 'Dessins',
     'memoryItemSheetInk': 'Écriture sur feuille',
     'memoryItemUndo': "Historique d'annulation",
@@ -8195,8 +8219,7 @@ enum AppStrings {
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
     'memoryItemGpuInSystem': 'Mémoire GPU en RAM',
-    'memoryOutsideAllowanceTemplate':
-        "Hors de l'allocation, faute de plafond possible : {items}.",
+    'memoryOutsideAllowance': "Hors de l'allocation de l'app",
     'containerAreaSettings': 'Réglages',
     'containerAreaDiagnostics': 'Journal de diagnostic',
     'containerAreaSessionScratch': 'Espace de session',
@@ -10224,7 +10247,6 @@ enum AppStrings {
     'prefsMemory': '内存',
     'memoryProcessTotal': '本应用占用的内存',
     'memoryGpuTotal': '本应用占用的显存',
-    'memoryGpuInRam': '计入内存',
     'memoryTracked': '已知明细',
     'memoryUntracked': '引擎、字体与框架',
     'memoryAvailable': '尚可使用',
@@ -10232,6 +10254,13 @@ enum AppStrings {
     'memoryDeviceTotal': '设备内存',
     'memoryAllowance': '应用配额',
     'memoryAllowanceAutomatic': '恢复自动配额',
+    'memoryRam': '内存',
+    'memoryVram': '显存',
+    'memoryRamSharedWithGpu': '与 GPU 共用',
+    'memoryDeviceVram': '设备显存',
+    'memoryBudget': '系统预算',
+    'memoryVramUntracked': '引擎、驱动与框架',
+    'memoryUnderAllowance': '受应用配额限制',
     'memoryItemDrawings': '画稿',
     'memoryItemSheetInk': '纸面手写',
     'memoryItemUndo': '撤销记录',
@@ -10250,7 +10279,7 @@ enum AppStrings {
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
     'memoryItemGpuInSystem': '位于内存的显存',
-    'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
+    'memoryOutsideAllowance': '应用配额之外',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
     'containerAreaSessionScratch': '会话暂存区',

@@ -10,7 +10,9 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 /// none it does not.
 ///
 /// 🗣️관제 2026-11-12 (vram-in-use-shown-in-the-memory-tab): ONE EXPORT —
-/// the local use, the budget, the use in the RAM and the GPU's kind.
+/// the local use, the budget, the use in the RAM and the GPU's kind — and
+/// all the adapter's own memory, the VRAM column's 「기기 VRAM」 (유저
+/// 2026-11-16, Q5).
 void main() {
   test('the engine says what this app holds of its adapter\'s memory, '
       'where the OS says it', () {
@@ -30,14 +32,24 @@ void main() {
         isNot(memory.used),
         reason: 'the budget the OS gives is not what the app uses of it',
       );
+      expect(memory.total, isNotNull);
+      if (!memory.integrated) {
+        expect(
+          memory.total,
+          greaterThan(memory.used!),
+          reason: 'a GPU of its own holds more than this app uses of it',
+        );
+      }
     } else if (Platform.isMacOS || Platform.isIOS) {
       expect(memory.used, greaterThan(0));
       expect(memory.budget, isNull);
       expect(memory.inSystem, isNull);
+      expect(memory.total, isNull);
     } else {
       expect(memory.used, isNull);
       expect(memory.budget, isNull);
       expect(memory.inSystem, isNull);
+      expect(memory.total, isNull);
     }
   });
 }

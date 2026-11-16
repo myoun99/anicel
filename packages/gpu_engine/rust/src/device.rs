@@ -2096,6 +2096,7 @@ pub struct VideoMemoryReport {
     pub used: u64,
     pub budget: u64,
     pub in_system: u64,
+    pub total: u64,
     pub flags: u32,
 }
 
@@ -2105,11 +2106,13 @@ pub const BUDGET_SAID: u32 = 2;
 pub const IN_SYSTEM_SAID: u32 = 4;
 /// The adapter shares the system's RAM (wgpu's `DeviceType::IntegratedGpu`).
 pub const INTEGRATED: u32 = 8;
+pub const TOTAL_SAID: u32 = 16;
 
 /// Writes into `report` this process's use of the adapter's local video
-/// memory, the budget the OS gives it there and what of its video memory
-/// lies in the system's RAM, where the OS says those — and whether the
-/// adapter is one that shares the system's RAM.
+/// memory, the budget the OS gives it there, what of its video memory
+/// lies in the system's RAM and all the adapter's own memory, where the
+/// OS says those — and whether the adapter is one that shares the
+/// system's RAM.
 ///
 /// 🗣️관제 11-12 (vram-in-use-shown-in-the-memory-tab): ONE EXPORT for all a
 /// memory census reads of the GPU — the memory tab's VRAM line and whether
@@ -2139,6 +2142,10 @@ pub unsafe extern "C" fn gpu_engine_video_memory(
         if let Some(in_system) = memory.in_system {
             said.in_system = in_system;
             said.flags |= IN_SYSTEM_SAID;
+        }
+        if let Some(total) = memory.total {
+            said.total = total;
+            said.flags |= TOTAL_SAID;
         }
     }
     // SAFETY: see the function's contract.

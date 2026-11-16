@@ -238,6 +238,10 @@ pub fn adapter_luid(adapter: &wgpu::Adapter) -> Option<u64> {
 ///
 /// What of its video memory the OS keeps in the system's RAM is its use of
 /// the non-local segments.
+///
+/// All the adapter's own memory is its dedicated video memory — the memory
+/// tab's 「기기 VRAM」, the whole of the VRAM column's budget bar (유저
+/// 2026-11-16, vram-in-use-shown-in-the-memory-tab-Q5).
 pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the adapter's memory report.
     let hal = unsafe { adapter.as_hal::<Dx12>() }?;
@@ -247,7 +251,14 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
         .query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL)
         .ok()
         .map(|info| info.CurrentUsage);
-    Some(super::VideoMemory { used: local.CurrentUsage, budget: Some(local.Budget), in_system })
+    // SAFETY: only reads the adapter's description.
+    let total = unsafe { raw.GetDesc2() }.ok().map(|desc| desc.DedicatedVideoMemory as u64);
+    Some(super::VideoMemory {
+        used: local.CurrentUsage,
+        budget: Some(local.Budget),
+        in_system,
+        total,
+    })
 }
 
 /// Why the device went, as D3D12 says it was removed
@@ -441,17 +452,22 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
         // The non-local segments' use, not the local's again.
         assert!(memory.in_system.is_some_and(|bytes| bytes != memory.used), "{memory:?}");
+        // And the adapter's own memory, all of it — none, it may be, where
+        // the adapter shares the RAM.
+        assert!(memory.total.is_some(), "{memory:?}");
         let mut report = crate::device::VideoMemoryReport::default();
         // SAFETY: the test process's engine lives as long as the process,
         // and the report is a local.
         unsafe { crate::device::gpu_engine_video_memory(engine, &mut report) };
         let said = crate::device::USED_SAID
             | crate::device::BUDGET_SAID
-            | crate::device::IN_SYSTEM_SAID;
+            | crate::device::IN_SYSTEM_SAID
+            | crate::device::TOTAL_SAID;
         assert_eq!(report.flags & said, said, "{report:?}");
         assert!(report.used > 0 && report.budget > 0, "{report:?}");
         let integrated = engine.adapter.get_info().device_type == wgpu::DeviceType::IntegratedGpu;
         assert_eq!(report.flags & crate::device::INTEGRATED != 0, integrated, "{report:?}");
+        assert!(integrated || report.total > 0, "{report:?}");
     }
 
     // Each reason D3D12 gives for a device removed is the cause the app

@@ -201,7 +201,8 @@ fn a_pool_s_bytes_move_and_the_pages_it_made_stay() {
 fn a_page_past_the_budget_the_os_gives_is_not_made() {
     let page = 2 * TILE_BYTES;
     let pool = Pool::sized(2, MOST_NAMED, page).expect("pool");
-    let said = |used, budget| Some(VideoMemory { used, budget, in_system: None });
+    let said =
+        |used, budget| Some(VideoMemory { used, budget, in_system: None, total: None });
     assert!(pool.fits(said(10, Some(10 + page)), page));
     assert!(!pool.fits(said(11, Some(10 + page)), page));
     assert!(!pool.fits(said(u64::MAX, Some(u64::MAX)), page), "a sum past a u64 is past any budget");
@@ -218,7 +219,8 @@ fn a_page_past_the_budget_the_os_gives_is_not_made() {
 fn a_budget_kept_to_instead_stands_in_the_os_s_place() {
     let page = 2 * TILE_BYTES;
     let mut kept = Pool::sized(2, MOST_NAMED, page).expect("pool");
-    let said = |used, budget| Some(VideoMemory { used, budget, in_system: None });
+    let said =
+        |used, budget| Some(VideoMemory { used, budget, in_system: None, total: None });
     kept.set_budget_instead(Some(page - 1));
     assert!(!kept.fits(None, page), "where the OS says nothing");
     assert!(!kept.fits(said(0, Some(u64::MAX)), page), "where the OS gives more");
@@ -910,7 +912,8 @@ fn a_page_of_the_engines_pictures_holds_a_4k_canvass_tiles() {
 #[test]
 fn the_engines_pictures_pool_makes_a_page_past_the_oss_budget() {
     let engine = rig().engine;
-    let said = Some(VideoMemory { used: 11, budget: Some(10), in_system: None });
+    let said =
+        Some(VideoMemory { used: 11, budget: Some(10), in_system: None, total: None });
     let fits = engine.pictures.with(engine, |pool| Some(pool.fits(said, pool.page_bytes())));
     assert_eq!(fits, Some(true));
 }
