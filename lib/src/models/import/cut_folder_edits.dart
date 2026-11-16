@@ -22,6 +22,7 @@ class CutFolderEdits {
     this.fits = const {},
     this.custom = false,
     this.into = const {},
+    this.switchedOff = const {},
   });
 
   /// The name typed for the cut; null keeps the one the folder gives
@@ -42,6 +43,16 @@ class CutFolderEdits {
   /// every file the import window lists starts ([intoOf]) — a correction,
   /// with its symbol ([ridesItsBase]).
   final Map<String, ImportDestination> into;
+
+  /// The rows switched off, by key — they do not come in ([comesIn]).
+  /// 🗣️F-595 ②, 유저 2026-11-16: 「임포트시 이름왼쪽행으로 불리언버튼
+  /// 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록」. A
+  /// correction whose symbol is off has no layer to ride, and comes in as
+  /// one of its own.
+  final Set<String> switchedOff;
+
+  /// Whether the row keyed [rowKey] comes in.
+  bool comesIn(String rowKey) => !switchedOff.contains(rowKey);
 
   /// The cut's name: as typed, or the folder's cut number, or the folder's
   /// own name when it holds none.
@@ -76,9 +87,13 @@ class CutFolderEdits {
   /// Whether [layer] comes in as its symbol's attach row: a correction
   /// does, wherever its symbol goes, until 「커스텀」 sends it somewhere of
   /// its own (🗣️F-429-Q5: 「기본값 따라가고 넣을곳 컷일때도 기본값대로
-  /// 따라가게. 물론 넣을곳 변경가능」).
+  /// 따라가게. 물론 넣을곳 변경가능」) — or its symbol is switched off
+  /// ([switchedOff]), which leaves it nothing to ride.
   bool ridesItsBase(CutFolderParseResult parsed, ParsedCelLayer layer) =>
-      parsed.baseOf(layer) != null &&
+      switch (parsed.baseOf(layer)) {
+        final base? => comesIn(base.rowKey),
+        null => false,
+      } &&
       !(custom && into.containsKey(layer.rowKey));
 
   /// Where 「커스텀」 sends the row keyed [rowKey] when it goes on its own:
@@ -114,6 +129,7 @@ class CutFolderEdits {
     Map<String, MediaFitMode>? fits,
     bool? custom,
     Map<String, ImportDestination>? into,
+    Set<String>? switchedOff,
   }) => CutFolderEdits(
     cutName: identical(cutName, copyWithSentinel)
         ? this.cutName
@@ -123,5 +139,6 @@ class CutFolderEdits {
     fits: fits ?? this.fits,
     custom: custom ?? this.custom,
     into: into ?? this.into,
+    switchedOff: switchedOff ?? this.switchedOff,
   );
 }

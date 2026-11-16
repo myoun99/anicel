@@ -348,6 +348,11 @@ void main() {
     testWidgets('🚨no word is cut — a column, a row and a popup are each '
         'measured in the words they show, at the size those words are '
         'read', (tester) async {
+      // Room for the narrowest table at ×2: the row switch's slot (F-595 ②)
+      // took it past the test's own 800px screen.
+      tester.view.physicalSize = const Size(1200, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final long = ImportColumn<Object?>(
         id: 'long',
         label: 'A long question',

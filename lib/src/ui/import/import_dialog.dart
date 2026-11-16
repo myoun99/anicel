@@ -1312,9 +1312,76 @@ class _ImportDialogState extends State<ImportDialog> {
 
   bool get _canImport =>
       !_busy &&
-      (_files.isNotEmpty ||
-          _folderToLand != null ||
+      (_comingIn.isNotEmpty ||
+          (_folderToLand != null && _folderComesIn) ||
           _settingsRows.inPlace.isNotEmpty);
+
+  /// The listed rows the press brings in: every one not switched off
+  /// ([_fileComesIn]).
+  Iterable<String> get _comingIn => _listedFiles.where(_fileComesIn);
+
+  /// Whether the file row at [path] comes in — its own answer
+  /// ([ImportFileSettings.imports]), given for the pictures it brings too
+  /// ([_setSettings]).
+  bool _fileComesIn(String path) => (_settings[path] ?? _seed).imports;
+
+  /// Whether the folder's cut lands on the press — unless every row of it
+  /// that brings something is switched off, which leaves nothing of it to
+  /// land.
+  bool get _folderComesIn {
+    final layers = [
+      for (final row in _folderRows.values) ?_folderLayerOf(row),
+    ];
+    return layers.isEmpty ||
+        layers.any((layer) => _folderEdits.comesIn(layer.key));
+  }
+
+  /// [key]'s switch ([ImportFileTable.switchOf]) — by the answer each kind
+  /// of row already keeps of whether it comes in: a file's own
+  /// ([_fileComesIn]), a folder row's the folder's ([CutFolderEdits.comesIn]),
+  /// a settings row's its 「제외」 ([_SettingsRowsOfTheWindow.switchOf]),
+  /// which its switch and its 넣을 곳 both say. None for what a folder
+  /// leaves out: nothing of it comes in to switch.
+  ImportRowSwitch? _rowSwitch(String key) => switch (_folderRowAt(key)) {
+    final row? => switch (_folderLayerOf(row)) {
+      final layer? => (on: _folderEdits.comesIn(layer.key), locked: false),
+      null => null,
+    },
+    null when _settingsRows.holds(key) => _settingsRows.switchOf(key),
+    null => (on: _fileComesIn(key), locked: false),
+  };
+
+  /// The rows [keys] switched [on], each in the answer its kind keeps
+  /// ([_rowSwitch]).
+  void _switchRows(Iterable<String> keys, bool on) {
+    final files = <String>[];
+    final settings = <String>[];
+    final folderKeys = <String>{};
+    for (final key in keys) {
+      switch (_folderRowAt(key)) {
+        case final row?:
+          if (_folderLayerOf(row) case final layer?) {
+            folderKeys.add(layer.key);
+          }
+        case _ when _settingsRows.holds(key):
+          settings.add(key);
+        default:
+          files.add(key);
+      }
+    }
+    if (files.isNotEmpty) {
+      _setSettings(files, (settings) => settings.copyWith(imports: on));
+    }
+    _settingsRows.switchRows(settings, on);
+    if (folderKeys.isNotEmpty) {
+      final off = _folderEdits.switchedOff;
+      setState(
+        () => _folderEdits = _folderEdits.copyWith(
+          switchedOff: on ? off.difference(folderKeys) : off.union(folderKeys),
+        ),
+      );
+    }
+  }
 
   /// The folder whose cut the press lands — null when there is none, it
   /// could not be read, or its cut has landed already ([_folderLanded]).
@@ -1722,13 +1789,13 @@ class _ImportDialogState extends State<ImportDialog> {
       // rows place lands in it, the cut its landing opens — then the files
       // that only register, then the ones that are placed. One count over
       // all of it: a folder's scans, and a file each.
-      final folder = _folderToLand;
-      final registering = _listedFiles.where(_registersOnly).toList();
+      final folder = _folderComesIn ? _folderToLand : null;
+      final registering = _comingIn.where(_registersOnly).toList();
       // Every file placed: which of them are rows is known once their runs
       // are measured ([_placeFiles]).
       final placing = _files.where(_placing).toList();
       final scans = folder == null ? 0 : _folderScanCount;
-      final total = scans + _listedFiles.length;
+      final total = scans + _comingIn.length;
       final landed = doneShare(scans, total);
       final registered = doneShare(scans + registering.length, total);
       void Function(double) stretch(double from, double to) =>
@@ -1767,7 +1834,7 @@ class _ImportDialogState extends State<ImportDialog> {
   Future<void> _carryAnew(_ImportTally tally) async {
     final session = widget.session;
     final anew = await session.mediaPool.carryAnew(
-      _listedFiles.where(_takesAnew),
+      _comingIn.where(_takesAnew),
     );
     final undrawn = await session.importDoors.drawAgainFrom(anew);
     final project = session.repository.requireProject();
@@ -1809,10 +1876,14 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// How many files the folder's cut bakes — its share of the run's %, as
-  /// its door counts them going ([CutFolderImportDoor.importCutFolder]).
+  /// its door counts them going ([CutFolderImportDoor.importCutFolder]):
+  /// none of a row switched off.
   int get _folderScanCount => _folderRows.values.fold(
     0,
-    (count, row) => count + _folderFilesOf(row).length,
+    (count, row) => switch (_folderLayerOf(row)) {
+      final layer? when !_folderEdits.comesIn(layer.key) => count,
+      _ => count + _folderFilesOf(row).length,
+    },
   );
 
   /// Whether the file at [path] reads for a placement — said in [tally],
@@ -1864,7 +1935,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final rows = _fileRows;
     final paths = [
       for (final path in placing)
-        if (rows.containsKey(path)) path,
+        if (rows.containsKey(path) && _fileComesIn(path)) path,
     ];
     final count = paths.length;
     for (final (index, path) in paths.indexed) {
@@ -2979,6 +3050,8 @@ class _ImportDialogState extends State<ImportDialog> {
     enabled: !_running,
     leadWidth: leadWidth,
     selected: _selected,
+    switchOf: _rowSwitch,
+    onSwitched: _switchRows,
     onRowTap: (path) => setState(() {
       if (!_selected.remove(path)) {
         _selected.add(path);

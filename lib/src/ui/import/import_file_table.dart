@@ -7,10 +7,13 @@ import '../text/app_strings.dart';
 import '../text/pixel_size_label.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
+import '../timeline/layer_label_controls.dart'
+    show layerRowNameStyleFor, layerSectionLabelSlotWidth;
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/icon_button_box.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 import '../input/control_press_claim.dart';
@@ -166,6 +169,10 @@ class ImportFileRow {
   final String resolution;
 }
 
+/// What a row's switch says: whether the row comes in when Import is
+/// pressed ([on]), and whether that is the row's to change at all.
+typedef ImportRowSwitch = ({bool on, bool locked});
+
 class ImportFileTable extends StatefulWidget {
   const ImportFileTable({
     super.key,
@@ -175,6 +182,8 @@ class ImportFileTable extends StatefulWidget {
     required this.onRowTap,
     this.enabled = true,
     this.leadWidth = 0,
+    this.switchOf,
+    this.onSwitched,
   });
 
   final List<ImportFileRow> rows;
@@ -182,6 +191,26 @@ class ImportFileTable extends StatefulWidget {
   final Set<String> selected;
   final ValueChanged<String> onRowTap;
   final bool enabled;
+
+  /// The switch before a row's name — null for a row with nothing to
+  /// switch — and a row switched off is DRAWN off, its lead
+  /// ([ImportFileRow.lead]) with it (🗣️F-595 ②, 유저 2026-11-16: 「임포트시
+  /// 이름왼쪽행으로 불리언버튼 만들어서 해제되있으면 임포트버튼 눌렀을때
+  /// 임포트안하도록. 해제하면 물론 해당 행 비활성화표시도 같이」). Its slot
+  /// is kept on every row and over the header, switch or none.
+  ///
+  /// ⛔Its questions stay answerable: 「비활성화표시」 asked for a look, and a
+  /// settings row is switched off by its own 넣을 곳 (「제외」) — locked,
+  /// that row could not be answered back on where it was answered off.
+  final ImportRowSwitch? Function(String path)? switchOf;
+
+  /// [paths] switched [on] — the rows a press on one speaks for
+  /// ([importRowsPressedWith]).
+  final void Function(Iterable<String> paths, bool on)? onSwitched;
+
+  /// The switch's slot: the timeline rail's section band, where the export
+  /// window's cels list wears its own row switch.
+  static const double switchWidth = layerSectionLabelSlotWidth;
 
   /// The room before every row's name for its [ImportFileRow.lead] —
   /// kept on every row and over the header alike, so the names stand in
@@ -336,6 +365,7 @@ class _ImportTableMetrics {
   double get lineHeight => rowHeight - 2 * rowPadV;
 
   double get _fixedWidth =>
+      ImportFileTable.switchWidth +
       leadWidth +
       modifiedWidth +
       sizeWidth +
@@ -444,6 +474,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
   /// only the rows stood beside the scrollbar lane.
   Widget _tableLine(
     _ImportTableMetrics metrics, {
+    Widget? toggle,
     Widget? lead,
     required Widget name,
     required Widget modified,
@@ -452,6 +483,11 @@ class _ImportFileTableState extends State<ImportFileTable> {
     required Widget Function(ImportColumn<Object?> column) cell,
   }) => Row(
     children: [
+      SizedBox(
+        width: ImportFileTable.switchWidth,
+        height: metrics.lineHeight,
+        child: toggle,
+      ),
       SizedBox(
         width: metrics.leadWidth,
         height: metrics.lineHeight,
@@ -522,7 +558,14 @@ class _ImportFileTableState extends State<ImportFileTable> {
     _ImportTableMetrics metrics,
     ImportFileRow row,
   ) {
-    final dim = _dimStyle(theme);
+    final switched = widget.switchOf?.call(row.path);
+    final on = switched?.on ?? true;
+    // A row switched off reads as off in the rail's one language — its
+    // name's ink at [AppColors.offAlpha], as a hidden layer's name wears it
+    // ([layerRowNameStyleFor]) — and every word of the row with it.
+    TextStyle? ink(TextStyle? style) =>
+        style == null ? null : layerRowNameStyleFor(style, shown: on);
+    final dim = ink(_dimStyle(theme));
     final isSelected = widget.selected.contains(row.path);
     final tap = widget.enabled ? () => widget.onRowTap(row.path) : null;
     return ControlPressClaim(
@@ -541,7 +584,11 @@ class _ImportFileTableState extends State<ImportFileTable> {
           ),
           child: _tableLine(
             metrics,
-            lead: row.lead,
+            toggle: switched == null ? null : _switch(row, switched, metrics),
+            lead: Opacity(
+              opacity: on ? 1 : AppColors.offAlpha,
+              child: row.lead,
+            ),
             name: Row(
               children: [
                 Flexible(
@@ -549,8 +596,10 @@ class _ImportFileTableState extends State<ImportFileTable> {
                     row.name,
                     key: ValueKey<String>('import-name-${row.path}'),
                     maxLines: 1,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: isSelected ? AppColors.accent : null,
+                    style: ink(
+                      theme.textTheme.labelSmall?.copyWith(
+                        color: isSelected ? AppColors.accent : AppColors.text,
+                      ),
                     ),
                   ),
                 ),
@@ -580,6 +629,32 @@ class _ImportFileTableState extends State<ImportFileTable> {
           ),
         ),
       ),
+    );
+  }
+
+  /// [row]'s switch: the app's boolean, in the box its slot promises, for
+  /// every row a press on it speaks for.
+  Widget _switch(
+    ImportFileRow row,
+    ImportRowSwitch switched,
+    _ImportTableMetrics metrics,
+  ) {
+    final switchRows = widget.onSwitched;
+    return BooleanDotButton(
+      keyValue: 'import-switch-${row.path}',
+      tooltip: AppText.strings.imImport,
+      value: switched.on,
+      size: AppIconButtonBox(
+        width: ImportFileTable.switchWidth,
+        height: metrics.lineHeight,
+        iconSize: 14,
+      ),
+      onChanged: widget.enabled && !switched.locked && switchRows != null
+          ? (bool on) => switchRows(
+              importRowsPressedWith(widget.selected, row.path),
+              on,
+            )
+          : null,
     );
   }
 

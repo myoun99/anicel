@@ -87,6 +87,7 @@ class ImportFileSettings {
     this.runIn = 0,
     this.runOut,
     this.intoPool = false,
+    this.imports = true,
   });
 
   final ImportFileMode mode;
@@ -101,6 +102,12 @@ class ImportFileSettings {
   /// above the table, so one window could not place one file and register
   /// another.
   final bool intoPool;
+
+  /// Whether the file's row comes in at all when Import is pressed — the
+  /// switch before its name (🗣️F-595 ②, 유저 2026-11-16: 「해제되있으면
+  /// 임포트버튼 눌렀을때 임포트안하도록」). A row answers it for the pictures
+  /// it brings, as it answers every question for them.
+  final bool imports;
 
   /// Whether the placed layer is BAKED into cels instead of drawing from the
   /// file — the layer's question, asked only where something is placed.
@@ -159,6 +166,7 @@ class ImportFileSettings {
     int? runOut,
     bool clearRunOut = false,
     bool? intoPool,
+    bool? imports,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -171,6 +179,7 @@ class ImportFileSettings {
     runIn: runIn ?? this.runIn,
     runOut: clearRunOut ? null : (runOut ?? this.runOut),
     intoPool: intoPool ?? this.intoPool,
+    imports: imports ?? this.imports,
   );
 
   @override
@@ -186,7 +195,8 @@ class ImportFileSettings {
       other.movieParts == movieParts &&
       other.runIn == runIn &&
       other.runOut == runOut &&
-      other.intoPool == intoPool;
+      other.intoPool == intoPool &&
+      other.imports == imports;
 
   @override
   int get hashCode => Object.hash(
@@ -201,6 +211,7 @@ class ImportFileSettings {
     runIn,
     runOut,
     intoPool,
+    imports,
   );
 }
 

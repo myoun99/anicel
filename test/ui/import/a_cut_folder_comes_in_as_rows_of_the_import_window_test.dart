@@ -625,4 +625,61 @@ void main() {
     expect(cuts().where((cut) => cut.name == 'A'), isEmpty);
     expect(openLayers(), isNot(contains('B')));
   });
+
+  // 🗣️F-595 ② (유저 2026-11-16): 「임포트시 이름왼쪽행으로 불리언버튼
+  // 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록」.
+  testWidgets('a layer row switched off does not come in — its correction, '
+      'left nothing to ride, comes in as a layer of its own — and every row '
+      'off leaves Import nothing to do', (tester) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      'A2.png',
+      'A1s.png',
+      'B1.png',
+    ]);
+    final session = aSession();
+    await openOn(tester, session, folder);
+    const correction = 'folder:A animation-director';
+    Future<void> press(String row) async {
+      await tester.tap(find.byKey(ValueKey<String>('import-switch-$row')));
+      await tester.pumpAndSettle();
+    }
+
+    VoidCallback? importPress() => tester
+        .widget<ButtonStyleButton>(
+          find.byKey(const ValueKey<String>('import-run-button')),
+        )
+        .onPressed;
+
+    expect(
+      find.named('import-layer-attach-arrow-$correction'),
+      findsOneWidget,
+    );
+    for (final row in ['folder:A', 'folder:B', correction]) {
+      await press(row);
+    }
+    expect(importPress(), isNull);
+    for (final row in ['folder:B', correction]) {
+      await press(row);
+    }
+    expect(
+      find.named('import-layer-attach-arrow-$correction'),
+      findsNothing,
+      reason: 'its symbol does not come in',
+    );
+    List<Cut> cuts() => session.repository.requireProject().tracks.first.cuts;
+    final before = {for (final cut in cuts()) cut.id};
+    await importAll(tester, session);
+
+    final [landed] = [
+      for (final cut in cuts())
+        if (!before.contains(cut.id)) cut,
+    ];
+    Iterable<Layer> named(String name) =>
+        landed.layers.where((layer) => layer.name == name);
+    expect(named('B'), hasLength(1));
+    final [a] = named('A').toList();
+    expect(a.attachedToLayerId, isNull);
+    expect(a.frames, hasLength(1), reason: 'A1s alone — no A1, no A2');
+  });
 }

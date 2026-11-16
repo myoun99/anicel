@@ -502,10 +502,16 @@ class _FolderPlan {
     final landings = <String, _FolderLanding>{};
     _FolderLanding at(String rowKey, String name) =>
         landings.putIfAbsent(_landingOf(rowKey), () => _FolderLanding(name));
+    // A row switched off comes in nowhere ([CutFolderEdits.comesIn]).
     for (final picture in parsed.pictures) {
-      at(picture.rowKey, picture.name).pictures.add(picture);
+      if (edits.comesIn(picture.rowKey)) {
+        at(picture.rowKey, picture.name).pictures.add(picture);
+      }
     }
     for (final layer in parsed.layers) {
+      if (!edits.comesIn(layer.rowKey)) {
+        continue;
+      }
       // A correction riding its symbol goes where the symbol goes.
       final row = edits.ridesItsBase(parsed, layer)
           ? parsed.baseOf(layer)!

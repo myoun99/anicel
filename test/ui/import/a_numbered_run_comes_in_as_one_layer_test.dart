@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
@@ -574,5 +575,77 @@ void main() {
       find.descendant(of: notice, matching: find.text('A2.png')),
       findsOneWidget,
     );
+  });
+
+  // 🗣️F-595 ② (유저 2026-11-16): 「임포트시 이름왼쪽행으로 불리언버튼
+  // 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록. 해제하면 물론
+  // 해당 행 비활성화표시도 같이」.
+  group('the switch before a row\'s name (F-595 ②)', () {
+    Finder switchOf(String path) =>
+        find.byKey(ValueKey<String>('import-switch-$path'));
+
+    Color? nameInk(WidgetTester tester, String path) => tester
+        .widget<Text>(find.byKey(ValueKey<String>('import-name-$path')))
+        .style
+        ?.color;
+
+    VoidCallback? importPress(WidgetTester tester) => tester
+        .widget<ButtonStyleButton>(
+          find.byKey(const ValueKey<String>('import-run-button')),
+        )
+        .onPressed;
+
+    testWidgets('🚨a row switched off does not come in — not one picture its '
+        'run brings — and stands in the window drawn off', (tester) async {
+      final files = await writeFolder(tester);
+      final s = await open(
+        tester,
+        [files['A1']!, files['B1']!],
+        runs: [files['A1']!],
+      );
+
+      await tester.tap(switchOf(files['A1']!));
+      await tester.pump();
+
+      expect(
+        nameInk(tester, files['A1']!),
+        AppColors.text.withValues(alpha: AppColors.offAlpha),
+      );
+      expect(nameInk(tester, files['B1']!), AppColors.text);
+
+      final added = await place(tester, s);
+
+      expect([for (final layer in added) layer.name], ['B1']);
+    });
+
+    testWidgets('a press on a selected row\'s switch speaks for the '
+        'selection — every row off, and Import has nothing to do', (
+      tester,
+    ) async {
+      final files = await writeFolder(tester);
+      await open(
+        tester,
+        [files['A1']!, files['B1']!],
+        runs: [files['A1']!],
+      );
+      for (final path in [files['A1']!, files['B1']!]) {
+        await tester.tap(find.byKey(ValueKey<String>('import-name-$path')));
+        await tester.pump();
+      }
+      // A selected row's name wears the accent.
+      final off = AppColors.accent.withValues(alpha: AppColors.offAlpha);
+
+      await tester.tap(switchOf(files['B1']!));
+      await tester.pump();
+
+      expect(nameInk(tester, files['A1']!), off);
+      expect(importPress(tester), isNull);
+
+      await tester.tap(switchOf(files['A1']!));
+      await tester.pump();
+
+      expect(nameInk(tester, files['B1']!), AppColors.accent);
+      expect(importPress(tester), isNotNull);
+    });
   });
 }
