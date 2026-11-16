@@ -2325,6 +2325,47 @@ external int strokeLand(
   Pointer<Uint8> changes,
 );
 
+@Native<
+  IntPtr Function(
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_tiles_land')
+external int tilesLand(
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+);
+
 final class Blurs extends Opaque {}
 
 @Native<Pointer<Blurs> Function(Pointer<Engine>)>(

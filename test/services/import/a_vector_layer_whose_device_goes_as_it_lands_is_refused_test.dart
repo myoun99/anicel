@@ -6,14 +6,12 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/import/clip_vector_raster.dart';
 
 import 'clip_test_builder.dart';
 
-/// 🚨A vector layer whose device goes as its picture is cut fails the
+/// 🚨A vector layer whose device goes as its picture lands fails the
 /// import whole, told as the device's refusal ([clipVectorTiles]) — the end
 /// a layer refused at its first stroke has, which the app answers by
 /// opening another engine (`EngineRefusals`).
@@ -22,11 +20,11 @@ import 'clip_test_builder.dart';
 /// `a-vector-layer-read-as-its-device-goes-opens-blank`): a tile one stroke
 /// painted read back as nothing, and the layer opened empty with no word;
 /// one a stroke had lain over threw a bare [StateError], which is no
-/// refusal.
-///
-/// The device goes where the cut reads the picture back
-/// ([EngineTileLedger.debugBeforeRead]), where those two were measured. On
-/// the app's own engine, which each scene loses: the next opens another.
+/// refusal. Those two were measured where the picture was read back to be
+/// cut; it lands where it lies now (card
+/// a-clip-vector-layer-is-read-back-to-be-tiled-again, 2026-11-16), and the
+/// device goes as it is about to ([debugBeforeTheLayerLands]). On the app's
+/// own engine, which each scene loses: the next opens another.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -40,16 +38,16 @@ void main() {
     tileSize: 128,
   );
 
-  late List<BitmapTile> readBack;
+  late int lost;
 
   setUp(() {
-    readBack = [];
-    EngineTileLedger.debugBeforeRead = (tiles) {
-      readBack.addAll(tiles);
+    lost = 0;
+    debugBeforeTheLayerLands = () {
+      lost += 1;
       appGpuEngine.debugLose();
     };
     addTearDown(() {
-      EngineTileLedger.debugBeforeRead = null;
+      debugBeforeTheLayerLands = null;
       // No test leaves the app on a device that is gone.
       letTheGoneAppGpuEngineGo();
     });
@@ -67,7 +65,7 @@ void main() {
       ),
       throwsA(isA<GpuRefused>()),
     );
-    expect(readBack, hasLength(1), reason: '⛔premise: the cut read it');
+    expect(lost, 1, reason: '⛔premise: it went as the picture landed');
   });
 
   test('a layer with a tile one stroke lay over another\'s is refused — '
@@ -83,6 +81,6 @@ void main() {
       ),
       throwsA(isA<GpuRefused>()),
     );
-    expect(readBack, hasLength(1), reason: '⛔premise: the cut read it');
+    expect(lost, 1, reason: '⛔premise: it went as the picture landed');
   });
 }

@@ -200,6 +200,79 @@ void main() {
       );
     });
 
+    group('as the engine lays a picture under it (clipMaskPlaneOver) — a '
+        'vector layer\'s, which lands where it lies', () {
+      const within = (left: 0, top: 0, right: 128, bottom: 128);
+
+      /// The byte at canvas pixel (x, y) of [plane], or none past it.
+      int? byteAt(ClipMaskPlane plane, int x, int y) {
+        final (dx, dy) = (x - plane.left, y - plane.top);
+        if (dx < 0 || dy < 0 || dx >= plane.width || dy >= plane.height) {
+          return null;
+        }
+        return plane.bytes[dy * plane.width + dx];
+      }
+
+      test('one that hides what lies past it is its own box, as it is', () {
+        final plane = clipMaskPlaneOver(
+          mask(left: 10, top: 20, fill: 0, coverage: (x, y) => x),
+          within,
+        )!;
+
+        expect(
+          (plane.left, plane.top, plane.width, plane.height),
+          (10, 20, 64, 64),
+        );
+        expect(byteAt(plane, 15, 21), 5);
+        expect(byteAt(plane, 9, 21), isNull, reason: 'read as nothing');
+      });
+
+      test('one that shows what lies past it spans where the picture '
+          'stands: its bytes where they lie, the rest whole', () {
+        final plane = clipMaskPlaneOver(
+          mask(left: 10, top: 20, coverage: (x, y) => x < 32 ? 0 : 128),
+          within,
+        )!;
+
+        expect(
+          (plane.left, plane.top, plane.width, plane.height),
+          (0, 0, 128, 128),
+        );
+        expect(byteAt(plane, 12, 25), 0, reason: 'the mask\'s (2, 5)');
+        expect(byteAt(plane, 50, 30), 128, reason: 'the mask\'s (40, 10)');
+        expect(byteAt(plane, 8, 8), 255, reason: 'left of the mask');
+        expect(byteAt(plane, 80, 30), 255, reason: 'right of it');
+        expect(byteAt(plane, 40, 100), 255, reason: 'below it');
+      });
+
+      test('of a mask that stands partly past where the picture does, the '
+          'part where it does; of one that stands wholly past, none', () {
+        final part = clipMaskPlaneOver(
+          mask(left: -20, top: -10, coverage: (x, y) => x + y),
+          within,
+        )!;
+        expect(byteAt(part, 0, 0), 30, reason: 'the mask\'s (20, 10)');
+        expect(byteAt(part, 43, 53), 126, reason: 'the mask\'s (63, 63)');
+        expect(byteAt(part, 44, 20), 255, reason: 'right of it');
+
+        final past = clipMaskPlaneOver(
+          mask(left: 200, top: 0, coverage: (x, y) => 0),
+          within,
+        )!;
+        expect(past.bytes.every((byte) => byte == 255), isTrue);
+      });
+
+      test('none of one that is not one byte a pixel', () {
+        expect(
+          clipMaskPlaneOver(
+            mask(left: 0, top: 0, colourChannels: 4),
+            within,
+          ),
+          isNull,
+        );
+      });
+    });
+
     group('which mask a layer\'s picture is baked through', () {
       final oneByte = ClipPictureSource(
         attribute: offscreenAttributeBytes(

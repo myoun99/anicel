@@ -354,7 +354,7 @@ impl StampLanding {
         }
         let Stamped { pages, set } = self.stamps.stamp(engine, source, pool.pages().len() as u16)?;
         let over = Over { pages: &pages, set };
-        landing::land(engine, (composite, &self.write, pool, cel), over, asked, laid, true)
+        landing::land(engine, (composite, pool, cel), over, asked, laid, Some(&self.write))
     }
 }
 

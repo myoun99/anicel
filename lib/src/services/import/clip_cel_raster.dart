@@ -143,7 +143,7 @@ List<ClipCelTile>? clipCelTiles(
   if (rgba == null) {
     return null;
   }
-  return clipCelTilesOf(
+  return _celTilesOf(
     (rgba: rgba, width: shape.width, height: shape.height),
     target,
     mask: mask,
@@ -152,11 +152,11 @@ List<ClipCelTile>? clipCelTiles(
 
 /// [picture] — straight RGBA, its own to change — as cel tiles on
 /// [target], baked through [mask] when there is one: a stored picture once
-/// decoded ([clipCelTiles]), and a vector layer once drawn.
+/// decoded ([clipCelTiles]).
 ///
 /// What falls off the canvas is dropped, and a tile with no ink is not
 /// there at all — the shape the drawing store gives an empty tile.
-List<ClipCelTile> clipCelTilesOf(
+List<ClipCelTile> _celTilesOf(
   ({Uint8List rgba, int width, int height}) picture,
   ClipCelTarget target, {
   ClipStoredMask? mask,
@@ -214,6 +214,77 @@ void _bakeMask(
     maskWidth: shape.width,
     maskHeight: shape.height,
     defaultColor: shape.maskOutside,
+  );
+}
+
+/// A layer mask's coverage as the engine lays a picture under one: a byte a
+/// pixel over [width] × [height] canvas pixels from ([left], [top]), past
+/// which it reads as nothing.
+typedef ClipMaskPlane = ({
+  Uint8List bytes,
+  int left,
+  int top,
+  int width,
+  int height,
+});
+
+/// [mask] as the engine lays a picture under it ([ClipMaskPlane]) wherever
+/// that picture stands — [within], canvas pixels [left, top, right, bottom)
+/// — or null for a mask that is not one byte a pixel, which
+/// [clipBakedMaskOf] never hands on: what [_bakeMask] multiplies a stored
+/// picture's alpha by, for a vector layer's picture the engine drew.
+///
+/// Pure, so it runs on a worker: the byte lists are all it is given.
+///
+/// ⚠️ITS OWN BOX, OR [within]: past its box a mask reads as the file says
+/// ([ClipOffscreenShape.maskOutside]), and past a plane the engine reads
+/// nothing — so a mask that shows what lies past it is spread over
+/// [within], the rest of that read as it says, and one that hides it is
+/// its box as it is.
+ClipMaskPlane? clipMaskPlaneOver(
+  ClipStoredMask mask,
+  ({int left, int top, int right, int bottom}) within,
+) {
+  final shape = parseClipOffscreenAttribute(mask.attribute);
+  final plane = clipMaskPlane(shape, clipBlocksOf(mask.blocks));
+  if (plane == null) {
+    return null;
+  }
+  final own = (
+    bytes: plane,
+    left: mask.left,
+    top: mask.top,
+    width: shape.width,
+    height: shape.height,
+  );
+  if (shape.maskOutside == 0) {
+    return own;
+  }
+  final width = within.right - within.left;
+  final height = within.bottom - within.top;
+  final bytes = Uint8List(width * height)
+    ..fillRange(0, width * height, shape.maskOutside);
+  final left = math.max(within.left, own.left);
+  final right = math.min(within.right, own.left + own.width);
+  final bottom = math.min(within.bottom, own.top + own.height);
+  for (var y = math.max(within.top, own.top); y < bottom; y += 1) {
+    if (left >= right) {
+      break;
+    }
+    final from = (y - own.top) * own.width + left - own.left;
+    bytes.setRange(
+      (y - within.top) * width + left - within.left,
+      (y - within.top) * width + right - within.left,
+      plane,
+      from,
+    );
+  }
+  return (
+    bytes: bytes,
+    left: within.left,
+    top: within.top,
+    width: width,
+    height: height,
   );
 }
 

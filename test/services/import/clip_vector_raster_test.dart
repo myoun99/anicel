@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
@@ -189,17 +190,16 @@ void main() {
 
     /// The pixel (x, y) of [tiles] — the one tile a 64 × 64 canvas has, or
     /// none.
-    (int, int, int, int) pixel(List<ClipCelTile> tiles, int x, int y) {
+    (int, int, int, int) pixel(Map<TileCoord, BitmapTile> tiles, int x, int y) {
       if (tiles.isEmpty) {
         return (0, 0, 0, 0);
       }
       final at = (y * side + x) * 4;
-      final bytes = tiles.single.pixels;
+      final bytes = tiles.values.single.pixels;
       return (bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
     }
-
-    /// The tiles the cut reads back from the engine while [draw] runs: what
-    /// the strokes landed in.
+    /// The tiles read back from the engine while [draw] runs: none, where
+    /// the picture is handed on as the strokes landed it.
     Future<List<BitmapTile>> readBackWhile(Future<void> Function() draw) async {
       final asked = <BitmapTile>[];
       EngineTileLedger.debugBeforeRead = asked.addAll;
@@ -300,6 +300,34 @@ void main() {
       );
     });
 
+    test('a mask that hides what lies past its box hides it there — what is '
+        'left of where it stands is not drawn in', () async {
+      final block = Uint8List(256 * 256)..fillRange(0, 256 * 256, 255);
+      final drawn = await clipVectorTiles(
+        [
+          vectorStrokeBytes([(10, 20, 1), (50, 20, 1)], radius: 3),
+        ],
+        (x: 0, y: 0),
+        canvas(),
+        mask: (
+          attribute: offscreenAttributeBytes(
+            width: 64,
+            height: 64,
+            columns: 1,
+            rows: 1,
+            colourChannels: 0,
+            fill: 0,
+          ),
+          blocks: blockRecordsBytes({0: block}),
+          left: 20,
+          top: 0,
+        ),
+      );
+
+      expect(pixel(drawn.tiles, 30, 20).$4, closeTo(255, 1));
+      expect(pixel(drawn.tiles, 15, 20).$4, 0, reason: 'left of the mask');
+    });
+
     test('a line narrows toward a thin point as a pressed pen\'s does — and '
         'a point with no width, or less, lays nothing', () async {
       final drawn = await clipVectorTiles(
@@ -367,7 +395,7 @@ void main() {
 
     test('a stroke off the canvas lands nothing, takes no tile of the '
         'engine\'s — and the strokes it cannot read are counted', () async {
-      late final ({List<ClipCelTile> tiles, int unread}) drawn;
+      late final ({Map<TileCoord, BitmapTile> tiles, int unread}) drawn;
       final readBack = await readBackWhile(() async {
         drawn = await clipVectorTiles(
           [
@@ -386,10 +414,12 @@ void main() {
       expect(readBack, isEmpty, reason: 'the picture is the canvas\'s alone');
     });
 
-    // 🗣️clip-vector-import-draws-with-the-c-brush-Q1 (유저 2026-11-11).
-    test('🚨the strokes land on the engine — the picture handed on to be '
-        'cut is tiles the engine made, none blended here', () async {
-      late final ({List<ClipCelTile> tiles, int unread}) drawn;
+    // 🗣️clip-vector-import-draws-with-the-c-brush-Q1 (유저 2026-11-11), and
+    // card a-clip-vector-layer-is-read-back-to-be-tiled-again (관제
+    // 2026-11-15: 「리드백은 그때까지 쌓인 GPU 일 전부를 기다린다」).
+    test('🚨the strokes land on the engine, and the picture is not read '
+        'back: the cel\'s tiles are the engine\'s alone', () async {
+      late final ({Map<TileCoord, BitmapTile> tiles, int unread}) drawn;
       final readBack = await readBackWhile(() async {
         drawn = await clipVectorTiles(
           [
@@ -399,9 +429,9 @@ void main() {
           canvas(),
         );
       });
+      expect(readBack, isEmpty, reason: 'read back to be cut again');
+      expect(drawn.tiles.values.single.isOnEngine, isTrue);
       expect(pixel(drawn.tiles, 30, 20).$4, closeTo(255, 1));
-      expect(readBack, hasLength(1));
-      expect(readBack.single.isOnEngine, isTrue);
     });
 
     test('a later stroke lies over the ones before it, in the file\'s '
@@ -438,9 +468,6 @@ void main() {
       // What earlier tests left goes first: the slots counted are this
       // layer's.
       await collectGarbageUntil(() => ledger.slotCount == 0);
-      int? held;
-      EngineTileLedger.debugBeforeRead = (_) => held = ledger.slotCount;
-      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
 
       final drawn = await clipVectorTiles(
         [
@@ -458,7 +485,11 @@ void main() {
       );
 
       expect(drawn.tiles, hasLength(1), reason: 'premise: one tile, drawn');
-      expect(held, 1, reason: 'the slots held as the picture is read out');
+      expect(
+        ledger.slotCount,
+        1,
+        reason: 'the slots the layer holds once its picture has landed',
+      );
     });
 
     group('🚨on the road the app takes — planned on a worker of its own, '
@@ -479,24 +510,22 @@ void main() {
       ];
 
       test('the picture is the one drawn here', () async {
-        Future<List<ClipCelTile>> drawn() async => (await clipVectorTiles(
-          twelve(),
-          (x: 0, y: 0),
-          canvas(across: 4 * side),
-        )).tiles;
+        Future<Map<TileCoord, BitmapTile>> drawn() async =>
+            (await clipVectorTiles(
+              twelve(),
+              (x: 0, y: 0),
+              canvas(across: 4 * side),
+            )).tiles;
 
         final there = await drawn();
         debugWorkersRunHere = true;
         final here = await drawn();
 
         expect(there, hasLength(4), reason: 'premise: every tile is drawn in');
+        expect(there.keys, here.keys);
         expect(
-          [for (final tile in there) (tile.x, tile.y)],
-          [for (final tile in here) (tile.x, tile.y)],
-        );
-        expect(
-          [for (final tile in there) tile.pixels],
-          [for (final tile in here) tile.pixels],
+          [for (final tile in there.values) tile.pixels],
+          [for (final tile in here.values) tile.pixels],
         );
       });
 

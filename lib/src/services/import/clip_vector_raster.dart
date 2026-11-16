@@ -1,10 +1,13 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:gpu_engine/gpu_engine.dart' show GpuEngine, GpuRefused;
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuBlend, GpuComposite, GpuEngine, GpuMask, GpuRefused;
 
 import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
 import '../../models/brush_frame_key.dart';
@@ -14,15 +17,13 @@ import '../../models/brush_shape.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../native/app_gpu_engine.dart' show appGpuEngine;
+import '../../models/tile_coord.dart';
+import '../../native/app_gpu_engine.dart' show appGpuComposite, appGpuEngine;
 import '../../native/engine_tile_ledger.dart';
 import '../brush_dab_interpolator.dart';
 import '../brush_stroke_landing.dart';
 import '../brush_pressure_dynamics.dart' show applyBrushInputDynamics;
-import '../brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../brush_tip_stamp_cache.dart';
-import '../persistence/brush_drawing_binary_codec.dart'
-    show onAWorkerWithCelCopy;
 import 'clip_cel_raster.dart';
 import 'clip_container.dart' show ClipFormatException;
 
@@ -184,8 +185,8 @@ final _pen = const BrushShape().withCurve(
 
 /// [bodies] — a vector layer's data — drawn on [target]'s canvas with the
 /// layer's strokes moved by [offset] (its `LayerOffset`: the strokes are
-/// stored in the layer's own pixels), as cel tiles; and how many records
-/// were of a kind this reader does not draw.
+/// stored in the layer's own pixels), as the cel's tiles; and how many
+/// records were of a kind this reader does not draw.
 ///
 /// 🚨THE STROKES ARE PLANNED ON A WORKER AND LAID HERE, ON THE ENGINE
 /// (🗣️clip-vector-import-draws-with-the-c-brush-Q1, 유저 2026-11-11; 관제:
@@ -200,24 +201,36 @@ final _pen = const BrushShape().withCurve(
 ///
 /// Each stroke lands as the brush lays a stroke ([_withStroke]: piled up,
 /// then laid once at its opacity) on the canvas and no further, and the
-/// picture is cut and baked as a stored one is ([clipCelTilesOf]) — through
-/// [mask] as well — on a worker handed a copy of it
-/// ([onAWorkerWithCelCopy]).
+/// picture lands where it lies through the layer's alpha and [mask]
+/// ([_throughTheLayer]): its tiles the engine's alone.
+///
+/// 🚨THE PICTURE IS NOT READ BACK (card
+/// a-clip-vector-layer-is-read-back-to-be-tiled-again, 관제 2026-11-15:
+/// 「리드백은 그때까지 쌓인 GPU 일 전부를 기다린다」 — 351–425 ms on the
+/// Surface Pro 11, 5–7 on the main PC). ↩️Till 2026-11-16 it was read back
+/// whole (`onAWorkerWithCelCopy`), made a canvas of RGBA on a worker, baked
+/// through the mask there and cut into tiles again as a stored picture is
+/// ([clipCelTiles]) — a canvas's work for each vector layer — which the
+/// door stored again.
 ///
 /// Throws [ClipFormatException] for strokes that would not read, and the
 /// device's refusal ([GpuRefused]) where the engine the picture was drawn
-/// on lost its device before the cut had read it all.
+/// on lost its device before the GPU had made it.
 ///
 /// 🚨A LAYER WHOSE DEVICE WENT AS IT WAS DRAWN FAILS THE IMPORT WHOLE, as
 /// one refused at its first stroke does, and is told as the device's (card
 /// `a-vector-layer-read-as-its-device-goes-opens-blank`, 관제 2026-11-13).
 /// ↩️브러시 measured it otherwise (main PC, 2026-11-13): a device gone as
-/// the picture was cut read back no tile — the layer opened empty and
+/// the picture was read back read no tile — the layer opened empty and
 /// nothing said so — or, where a stroke had lain over a tile, threw a bare
-/// [StateError], which is no refusal. Whether it went is asked of the
-/// engine the first stroke landed on ([GpuEngine.isGone]) once the cut is
-/// done: the app's may be the next by then (`appGpuEngineIsGone`'s ⛔).
-Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
+/// [StateError], which is no refusal. The word that a device went comes
+/// inside a wait, and nothing reads the picture back now: so the import
+/// waits for the GPU to have made it — off this isolate, on the engine's
+/// thread for waits ([GpuEngine.done]) — of the engine the first stroke
+/// landed on, as the app's may be the next by then (the ⛔ of
+/// `appGpuEngineIsGone`). ↩️Till 2026-11-16 it asked [GpuEngine.isGone]
+/// after the read back, which was that wait.
+Future<({Map<TileCoord, BitmapTile> tiles, int unread})> clipVectorTiles(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
   ClipCelTarget target, {
@@ -237,28 +250,110 @@ Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
     surface = _withStroke(surface, stroke);
     return true;
   }, _strokesLaid(bodies, offset));
-  final List<ClipCelTile> tiles;
-  try {
-    tiles = await onAWorkerWithCelCopy(
-      BrushFrameKey.noCel,
-      surface,
-      _cutOnto(target, mask),
-    );
-  } on StateError {
-    _refusedWhereGone(drawnOn);
-    rethrow;
+  final drawn = surface.tiles;
+  final engine = drawnOn;
+  if (drawn.isEmpty || engine == null) {
+    return (tiles: const <TileCoord, BitmapTile>{}, unread: unread);
   }
-  _refusedWhereGone(drawnOn);
+  final tiles = await _throughTheLayer(drawn, target, mask);
+  await engine.done();
   return (tiles: tiles, unread: unread);
 }
 
-/// The device's refusal, thrown where [drawnOn] — the engine a picture was
-/// drawn on, or none where no stroke landed — lost its device.
-void _refusedWhereGone(GpuEngine? drawnOn) {
-  if (drawnOn != null && drawnOn.isGone) {
-    throw GpuRefused('the graphics device went as a vector layer was drawn');
+/// Test seam: called as a drawn layer's picture is about to land through
+/// its alpha and mask ([_throughTheLayer]) — where a device that goes is
+/// one that went as the layer was drawn.
+@visibleForTesting
+void Function()? debugBeforeTheLayerLands;
+
+/// [drawn] — a layer's strokes as the engine laid them — landed where they
+/// lie through [target]'s alpha and [mask] ([GpuComposite.land]): a tile of
+/// the cel's for each, inked and the engine's alone, with no wait for the
+/// GPU; [drawn]'s tiles let go then ([EngineTileLedger.retire]), as
+/// [_withStroke] lets go of what a stroke lay over.
+///
+/// The mask is read on a worker ([clipMaskPlaneOver]) — over what [drawn]
+/// reaches of the canvas, where it shows what lies past its box.
+///
+/// ⚠️ONE ROAD, WHATEVER THE ALPHA AND THE MASK: a layer at its whole alpha
+/// with no mask lands as any other does — laid once more, at whole.
+Future<Map<TileCoord, BitmapTile>> _throughTheLayer(
+  Map<TileCoord, BitmapTile> drawn,
+  ClipCelTarget target,
+  ClipStoredMask? mask,
+) async {
+  final ledger = EngineTileLedger.instance;
+  final plane = mask == null
+      ? null
+      : await onAWorker(_planeOf(mask, _reachOf(drawn.keys, target)));
+  debugBeforeTheLayerLands?.call();
+  if (plane != null && plane.bytes.isEmpty) {
+    // A box of no pixel that hides what lies past it: nothing shows.
+    drawn.values.forEach(ledger.retire);
+    return const {};
+  }
+  final composite = appGpuComposite;
+  final under = plane == null
+      ? null
+      : GpuMask(
+          composite,
+          plane.bytes,
+          x: plane.left,
+          y: plane.top,
+          width: plane.width,
+          height: plane.height,
+        );
+  final coords = drawn.keys.toList();
+  try {
+    final landed = ledger.held((hold) {
+      final picture = hold.gridOf(BrushFrameKey.noCel, drawn);
+      return ledger.land(
+        EngineTileLedger.landedCel,
+        [for (final at in coords) (column: at.x, row: at.y, under: null)],
+        by: (pool, cel, asked) => composite.land(
+          pool,
+          cel,
+          picture,
+          asked,
+          opacity: (target.alpha * 65535).round(),
+          mode: GpuBlend.normal,
+          mask: under,
+        ),
+      );
+    });
+    drawn.values.forEach(ledger.retire);
+    return {
+      for (final (at, coord) in coords.indexed) coord: landed[at].tile!,
+    };
+  } finally {
+    under?.free();
   }
 }
+
+/// The canvas pixels [tiles] — of [target]'s grid — reach, the canvas's
+/// alone: [left, top, right, bottom).
+({int left, int top, int right, int bottom}) _reachOf(
+  Iterable<TileCoord> tiles,
+  ClipCelTarget target,
+) {
+  final side = target.tileSize;
+  final xs = [for (final tile in tiles) tile.x];
+  final ys = [for (final tile in tiles) tile.y];
+  return (
+    left: math.max(0, xs.reduce(math.min) * side),
+    top: math.max(0, ys.reduce(math.min) * side),
+    right: math.min(target.canvasWidth, (xs.reduce(math.max) + 1) * side),
+    bottom: math.min(target.canvasHeight, (ys.reduce(math.max) + 1) * side),
+  );
+}
+
+/// The worker's half of [_throughTheLayer]: [mask] read as the engine lays
+/// a picture under it, over [within]. ⚠️Made HERE for the reason
+/// [_strokesLaid] is.
+ClipMaskPlane? Function() _planeOf(
+  ClipStoredMask mask,
+  ({int left, int top, int right, int bottom}) within,
+) => () => clipMaskPlaneOver(mask, within);
 
 /// [picture] with [stroke] laid on it as the brush lays a stroke
 /// ([strokeLandedOn]), the tiles it lay over let go now
@@ -307,32 +402,6 @@ _strokesLaid(List<Uint8List> bodies, ({int x, int y}) offset) => (land) async {
     }
   }
   return unread;
-};
-
-/// The worker's half of [clipVectorTiles] that cuts: the canvas read out of
-/// the picture's copy, as cel tiles on [target]'s canvas through [mask].
-/// ⚠️Made HERE for the reason [_strokesLaid] is.
-List<ClipCelTile> Function(BitmapSurface copy) _cutOnto(
-  ClipCelTarget target,
-  ClipStoredMask? mask,
-) => (copy) {
-  final canvas = copy.canvasSize;
-  return clipCelTilesOf(
-    (
-      rgba: bitmapSurfaceRegionPixels(copy, canvas.canvasRegion),
-      width: canvas.width,
-      height: canvas.height,
-    ),
-    (
-      left: 0,
-      top: 0,
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      alpha: target.alpha,
-      tileSize: target.tileSize,
-    ),
-    mask: mask,
-  );
 };
 
 /// [stroke]'s dabs, moved by [offset] and laid along it the way the pen

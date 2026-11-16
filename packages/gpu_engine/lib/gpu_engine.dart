@@ -2454,6 +2454,45 @@ class GpuComposite implements _OfAnEngine {
     ),
   );
 
+  /// Lays [picture] — [pool]'s tiles over a box of canvas tiles as
+  /// [GpuPlan.set] takes a set: its top-left column [x0] and row [y0], how
+  /// many [columns] and [rows], its [tiles] row by row, null for one with
+  /// nothing on it — on the tiles [asks] at [opacity] (65535 whole) in
+  /// [mode], under [mask] if any, each result in a fresh slot of [cel] of
+  /// [pool], inked: a picture the engine drew landed as a cel's own, with
+  /// no wait for the GPU — what nothing compares ([GpuStroke.land]
+  /// unasked). As many of [asks], the first, as [pool] has room for.
+  List<GpuLanded> land(
+    GpuPool pool,
+    int cel,
+    ({int x0, int y0, int columns, int rows, List<GpuTile?> tiles}) picture,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => _landed(
+    asks,
+    (arena, coordinates, under, places, changes) => rust.tilesLand(
+      _engine._engine,
+      _composite,
+      _engine._its(pool)._pool,
+      cel,
+      picture.x0,
+      picture.y0,
+      picture.columns,
+      picture.rows,
+      _tileWords(arena, picture.columns, picture.rows, picture.tiles),
+      coordinates,
+      under,
+      asks.length,
+      opacity,
+      mode,
+      mask == null ? nullptr : _engine._its(mask)._mask,
+      places,
+      changes,
+    ),
+  );
+
   /// Frees the executor; before its engine is closed.
   void free() => rust.compositeFree(_composite);
 }

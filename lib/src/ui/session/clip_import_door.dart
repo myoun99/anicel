@@ -37,7 +37,7 @@ import '../../services/import/clip_import_planner.dart';
 import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
-    show bakeCelSurface, bakeCelTiles, celTilesOf;
+    show bakeCelSurface, celTilesOf;
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart'
@@ -606,7 +606,7 @@ final class ClipImportDoor {
       return;
     }
     if (decoded case (
-      tiles: final List<ClipCelTile> tiles,
+      tiles: final Map<TileCoord, BitmapTile> tiles,
       unread: final int unread,
     )) {
       if (unread > 0) {
@@ -636,18 +636,21 @@ final class ClipImportDoor {
       warnings.add(_unreadable(item.bake, '$decoded'));
       return;
     }
-    _bakeTiles(decoded, item);
+    _bakeTiles(celTilesOf(decoded), item);
   }
 
-  void _bakeTiles(List<ClipCelTile> tiles, _ClipWork item) {
+  /// [tiles] — the cel's own, as a picture lies in tiles on the canvas's
+  /// grid — as [item]'s cel: a stored picture once cut, a vector layer once
+  /// landed (the engine's alone). None is a picture with no ink: the cel
+  /// stays, empty.
+  void _bakeTiles(Map<TileCoord, BitmapTile> tiles, _ClipWork item) {
     if (tiles.isEmpty) {
       return;
     }
-    bakeCelTiles(
+    bakeCelSurface(
       _renderCaches.brushFrameStore,
       _keyOf(item),
-      item.cut.canvasSize,
-      tiles,
+      BitmapSurface(canvasSize: item.cut.canvasSize, tiles: tiles),
     );
   }
 

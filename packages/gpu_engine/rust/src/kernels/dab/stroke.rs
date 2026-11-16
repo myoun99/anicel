@@ -201,7 +201,7 @@ impl Stroke {
         let cel_tiles = under_of(asked)?;
         let cells = (pool.pages(), &cel_tiles);
         let out = blurs.finish(engine, composite, cells, (&tiles, &self.planes), cover)?;
-        landing::put(engine, (&self.write, pool, cel), &out, asked, compared)
+        landing::put(engine, (pool, cel), &out, asked, compared.then_some(&self.write))
     }
 
     /// The stroke's tiles at the coordinates `asked`, in their box, on a
@@ -233,7 +233,8 @@ impl Stroke {
         }
         let set = self.view_of(asked, pool.pages().len() as u16)?;
         let over = Over { pages: &self.view, set };
-        landing::land(engine, (composite, &self.write, pool, cel), over, asked, laid, compared)
+        let compared = compared.then_some(&self.write);
+        landing::land(engine, (composite, pool, cel), over, asked, laid, compared)
     }
 
     /// Clears what the stroke wrote and lets its tiles go; the pages stay

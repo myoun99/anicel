@@ -259,9 +259,7 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
 ///
 /// A worker has no engine ([EngineTileLedger.instance]), so it asks this
 /// isolate for the tiles ([onAWorkerAsking]) — read as [cel]'s, the name
-/// its painters give the cel ([BrushFrameKey.cel]), or
-/// [BrushFrameKey.noCel] for a picture that is nobody's yet: a vector
-/// layer an import has drawn (`clipVectorTiles`).
+/// its painters give the cel ([BrushFrameKey.cel]).
 ///
 /// 🚨A BATCH AT A TIME, THROUGH ONE BLOCK [blocks] GIVES, NEVER THE CEL
 /// WHOLE: a block of every tile was 132 MiB on this isolate for a cel of

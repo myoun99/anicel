@@ -86,33 +86,39 @@ fn made(
 /// `cel`: [`put`].
 pub(crate) fn land(
     engine: &Engine,
-    (composite, write, pool, cel): (&Composite, &Write, &mut Pool, Cel),
+    (composite, pool, cel): (&Composite, &mut Pool, Cel),
     over: Over,
     asked: &[Asked],
     laid: &Laid,
-    compared: bool,
+    compared: Option<&Write>,
 ) -> Option<Vec<(Change, Option<TileAt>)>> {
     let out = made(engine, composite, pool.pages(), over, asked, laid)?.out;
-    put(engine, (write, pool, cel), &out, asked, compared)
+    put(engine, (pool, cel), &out, asked, compared)
 }
 
 /// Puts `out`'s tiles — one for each of `asked`, tile after tile in their
 /// order, as the executor's output is — each in a fresh slot of `cel`. Where
-/// `compared`, a tile compares with the one under it first — waiting for the
-/// GPU — and takes no slot where it is that tile (`Change::Same`) or has no
-/// ink left (`Change::Cleared`): a finished landing's question. Unasked,
-/// every tile is `Change::Inked` and a slot — a stroke on its way, whose
-/// frame does not wait.
+/// `compared` — the write that compares —, a tile compares with the one
+/// under it first — waiting for the GPU — and takes no slot where it is that
+/// tile (`Change::Same`) or has no ink left (`Change::Cleared`): a finished
+/// landing's question. Unasked, every tile is `Change::Inked` and a slot —
+/// a stroke on its way, whose frame does not wait, and a picture the engine
+/// drew landed as a cel's own (`gpu_engine_tiles_land`), which nothing
+/// waits for.
+///
+/// ↩️Till 2026-11-16 `compared` was a bool beside a write every caller
+/// handed, read only where it was true: the picture's landing has no write
+/// to hand (card a-clip-vector-layer-is-read-back-to-be-tiled-again).
 ///
 /// As many of `asked`, the first, as the pool has room for.
 pub(crate) fn put(
     engine: &Engine,
-    (write, pool, cel): (&Write, &mut Pool, Cel),
+    (pool, cel): (&mut Pool, Cel),
     out: &wgpu::Buffer,
     asked: &[Asked],
-    compared: bool,
+    compared: Option<&Write>,
 ) -> Option<Vec<(Change, Option<TileAt>)>> {
-    let changes = if compared {
+    let changes = if let Some(write) = compared {
         let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
         write.changed(engine, pool.pages(), out, &under)?
     } else {

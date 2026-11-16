@@ -5,17 +5,21 @@
 #[path = "abi_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "tiles_land_tests.rs"]
+mod tiles_land_tests;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
-use super::landing::{Asked, Laid};
+use super::landing::{self, Asked, Laid, Over};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::fail;
 use crate::kernels::composite::abi::{MaskPlane, sampling};
-use crate::kernels::composite::{Composite, NO_TILE, TileAt};
+use crate::kernels::composite::{Composite, NO_TILE, TileAt, TileSet};
 use crate::kernels::mesh::MeshGrid;
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::ResampleMap;
@@ -510,6 +514,71 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         unsafe { reported(landed, places, changes) }
     })
 }
+
+/// Lays the pool's tile set of `columns` × `rows` canvas tiles whose
+/// top-left is column `x0`, row `y0` — `tiles` row by row, as
+/// `gpu_engine_plan_set` takes them — on the `count` tiles asked as
+/// [`gpu_engine_stroke_land`] says, at `opacity` in `mode`, under `mask` if
+/// not null, each result in a fresh slot of `cel`, inked: a picture the
+/// engine drew landed as a cel's own, with no wait for the GPU
+/// (`landing::put` unasked). Returns as [`gpu_engine_stroke_land`] does.
+///
+/// 🚨A .CLIP VECTOR LAYER'S PICTURE IS NOT READ BACK (card
+/// a-clip-vector-layer-is-read-back-to-be-tiled-again, 관제 2026-11-15:
+/// 「리드백은 그때까지 쌓인 GPU 일 전부를 기다린다」 — 351–425 ms on the
+/// Surface Pro 11, 5–7 on the main PC): its strokes' tiles go through the
+/// layer's alpha and mask here, where they lie. ↩️Till 2026-11-16 they were
+/// read back whole, cut into a canvas of RGBA on a worker, masked there and
+/// cut into tiles again to be stored.
+///
+/// # Safety
+/// As [`gpu_engine_stroke_land`]'s; `tiles` holds `columns × rows` words,
+/// each naming a slot of `pool`'s or none.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_tiles_land(
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *mut Pool,
+    cel: u32,
+    x0: i32,
+    y0: i32,
+    columns: u32,
+    rows: u32,
+    tiles: *const u32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (engine, composite, pool, words) = unsafe {
+        let words = std::slice::from_raw_parts(tiles, columns as usize * rows as usize);
+        (&*engine, &*composite, &mut *pool, words)
+    };
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asked = unsafe { asked_of(asks, under, count) };
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        // The set names the pool's own slots: the plan's pages are the
+        // pool's, and none come after them.
+        let over = Over { pages: &[], set: TileSet::from_words(x0, y0, columns, rows, words) };
+        let landed = if asked.is_empty() {
+            Some(Vec::new())
+        } else {
+            landing::land(engine, (composite, pool, Cel(cel)), over, &asked, &laid, None)
+        };
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
+}
+
 
 /// The tiles a landing is asked: `asks` their column and row, `under` the
 /// cel's tile at each as a tile set names one.
