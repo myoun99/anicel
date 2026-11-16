@@ -1316,7 +1316,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         (underFlutterTest
             ? null
             : WorkspaceLayoutStore());
-    _layoutPersistence.rememberFactoryLayout();
     unawaited(_layoutPersistence.restoreLayout());
     _cutPieceSlot.addListener(_brushPresets.armStampOnFreshCut);
     _layout.addListener(_layoutPersistence.scheduleLayoutSave);
@@ -1411,6 +1410,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       slot.request.addListener(_writeViewerBookmarks);
     }
     _bindSession(widget.session);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _layoutPersistence.rememberFactoryLayout();
   }
 
   @override

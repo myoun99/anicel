@@ -43,9 +43,13 @@ class _WorkspaceLayoutPersistence {
   /// arrangement saved IS the factory one (🗣️I-142-Q3).
   String? _factoryPayload;
 
-  /// Takes [_factoryPayload]. Called once, before [restoreLayout].
+  /// Takes [_factoryPayload], the first time it is called — as the
+  /// workspace's dependencies first arrive, right after its `initState`:
+  /// not in it, where the save's tabs cannot read the theme, and before
+  /// [restoreLayout] puts a saved arrangement in place, which waits for
+  /// its file first.
   void rememberFactoryLayout() =>
-      _factoryPayload = jsonEncode(_layoutPayload());
+      _factoryPayload ??= jsonEncode(_layoutPayload());
 
   /// Whether [resetWorkspaceLayout] would change anything: the file this
   /// arrangement writes is not the one the factory arrangement writes. Its
