@@ -6,8 +6,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/import/tvpp_parse.dart';
-import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'tvpp_slot_rgba.dart';
 
 void main() {
   const klm =
@@ -78,7 +79,7 @@ void main() {
         .toList();
     expect(imageSlots, hasLength(7)); // keyframe + 6
     for (var i = 0; i < 6; i++) {
-      final rgba = decodeTvppSlotRgba(
+      final rgba = tvppSlotRgba(
         recordBytes: bytes,
         slot: imageSlots[i + 1],
         width: clip.width,
@@ -115,7 +116,7 @@ void main() {
     final slot = withImages.slots.firstWhere(
       (s) => s.kind == TvppSlotKind.image,
     );
-    final rgba = decodeTvppSlotRgba(
+    final rgba = tvppSlotRgba(
       recordBytes: bytes,
       slot: slot,
       width: clip.width,
@@ -155,7 +156,7 @@ void main() {
         }
         expect(slot.compressed, isTrue, reason: 'v11 wraps in ZCHK');
         expect(
-          decodeTvppSlotRgba(
+          tvppSlotRgba(
             recordBytes: bytes,
             slot: slot,
             width: clip.width,

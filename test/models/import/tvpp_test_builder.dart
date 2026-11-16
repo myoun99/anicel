@@ -326,6 +326,11 @@ Uint8List srawRecord(
   /// The thumbnail's size as the head gives it — TVPaint's 96 wide and as
   /// tall as the canvas's shape makes it.
   (int, int) thumbnail = (96, 67),
+
+  /// Tiles written as a copy of another — `{tile: source}` — whatever the
+  /// two hold, in the X > 0 layout: how a copy between tiles of two sizes
+  /// is driven, which no picture deduped by equality makes.
+  Map<int, int> copies = const {},
 }) {
   const tile = 64;
   final cols = (width + tile - 1) ~/ tile;
@@ -371,6 +376,10 @@ Uint8List srawRecord(
     ]);
     body.addAll(tile0);
     for (var t = 1; t < total; t++) {
+      if (copies[t] case final source?) {
+        body.addAll([...u32(0), ...u32(0), ...u32(source)]);
+        continue;
+      }
       // TVPaint dedupes identical tiles into copy markers — solid fills
       // arrive this way, so the encoder must produce them for the
       // decoder's copy path to be tested at all.

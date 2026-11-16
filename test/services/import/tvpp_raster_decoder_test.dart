@@ -5,6 +5,7 @@ import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
+import 'tvpp_slot_rgba.dart';
 
 /// Pixel decoding round-trips: the test builder encodes premultiplied
 /// BGRA into real record layouts (both tile modes, both wrappers) and
@@ -76,7 +77,7 @@ void main() {
     List<int> premul, {
     required bool compressed,
   }) {
-    final rgba = decodeTvppSlotRgba(
+    final rgba = tvppSlotRgba(
       recordBytes: file,
       slot: slotFor(file, compressed: compressed),
       width: w,
@@ -86,7 +87,7 @@ void main() {
     expect(rgba, equals(expectedRgba(premul)));
   }
 
-  group('decodeTvppSlotRgba', () {
+  group('tvppSlotRows', () {
     test('DBOD whole-canvas record (v12 zlib wrapper)', () {
       final px = testPixels();
       expectDecodes(fileWith(dbodRecord(px, w, h)), px, compressed: true);
@@ -125,7 +126,7 @@ void main() {
       final px = testPixels();
 
       expect(
-        () => decodeTvppSlotRgba(
+        () => tvppSlotRgba(
           recordBytes: fileWith(
             srawRecord(px, w, h, corruptFirstTileSize: true),
           ),
@@ -183,21 +184,23 @@ void main() {
       );
     });
 
-    test('a hold slot returns null', () {
+    test('a hold slot hands on no row', () {
       final file = fileWith(holdRecord(), raw: true);
-      final rgba = decodeTvppSlotRgba(
+      final handed = <int>[];
+      tvppSlotRows(
         recordBytes: file,
         slot: slotFor(file, compressed: false),
         width: w,
         height: h,
+        row: (y, _) => handed.add(y),
       );
-      expect(rgba, isNull);
+      expect(handed, isEmpty);
     });
 
     test('a blank instance decodes to fully transparent pixels', () {
       final px = List<int>.filled(w * h, 0);
       final file = fileWith(srawRecord(px, w, h));
-      final rgba = decodeTvppSlotRgba(
+      final rgba = tvppSlotRgba(
         recordBytes: file,
         slot: slotFor(file, compressed: true),
         width: w,
@@ -211,7 +214,7 @@ void main() {
       // 288 runs blank cels on 2s this way; reading it as a tiled image
       // walked off the record ("리터럴 레코드가 잘렸다" ×13 layers).
       final file = fileWith(blankInstanceRecord());
-      final rgba = decodeTvppSlotRgba(
+      final rgba = tvppSlotRgba(
         recordBytes: file,
         slot: slotFor(file, compressed: true),
         width: w,
@@ -221,53 +224,135 @@ void main() {
       expect(rgba.every((b) => b == 0), isTrue);
     });
 
-    test('the tile path is the RGBA path cut into sparse 256px tiles', () {
-      // 300px wide = two tile columns; ink only in the right half, so
-      // tile (0,0) must be omitted, (1,0) must carry the pixels at the
-      // right offsets, and the region past the 300×70 canvas must stay
-      // zero-padded. This is the parity that lets the import skip the
-      // full-canvas ui.Image detour.
-      const tw = 300;
-      const th = 70;
-      final px = List<int>.filled(tw * th, 0);
+    test('only rows with ink are handed on, each where it lies', () {
+      final px = List<int>.filled(w * h, 0);
       for (var y = 10; y < 20; y++) {
-        for (var x = 280; x < 295; x++) {
-          px[y * tw + x] = 0xff2080ff; // premultiplied BGRA word
+        px[y * w + 100] = premulBgra(255, 0, 0, 255);
+      }
+      for (final record in [
+        dbodRecord(px, w, h),
+        srawRecord(px, w, h),
+        srawRecord(px, w, h, uniformMode: true),
+      ]) {
+        final file = fileWith(record);
+        final handed = <int>[];
+        tvppSlotRows(
+          recordBytes: file,
+          slot: slotFor(file, compressed: true),
+          width: w,
+          height: h,
+          row: (y, rgba) {
+            handed.add(y);
+            expect(rgba[100 * 4 + 3], 255, reason: 'row $y holds its ink');
+          },
+        );
+        expect(handed, [for (var y = 10; y < 20; y++) y]);
+      }
+    });
+
+    /// A [width] × [height] canvas's record — tiles of every size, rows of
+    /// them past the first band — read through [tvppSlotRgba].
+    Uint8List? decodedAt(Uint8List record, int width, int height) {
+      final b = TvppBuilder()
+        ..clipProperties('t')
+        ..clipHeader(width: width, height: height)
+        ..layerHead('L', end: 0, count: 1)
+        ..zchkSlot(record)
+        ..clipConfig();
+      final file = b.bytes;
+      return tvppSlotRgba(
+        recordBytes: file,
+        slot: slotFor(file, compressed: true),
+        width: width,
+        height: height,
+      );
+    }
+
+    test('🚨a tile that copies one of a band already handed on shows its '
+        'pixels — the band is read again from its bytes (card F-608 ③)', () {
+      // 194 × 128: four columns of tiles (the last two pixels wide), two
+      // rows. Tiles (1,0), (2,0) and (1,1) are one solid fill, so the
+      // builder writes the last two as copies of (1,0) — (1,1) from the
+      // band before its own. (2,1) holds a block of its own.
+      const width = 194;
+      const height = 128;
+      final px = List<int>.filled(width * height, 0);
+      final blue = premulBgra(20, 40, 200, 255);
+      for (var y = 0; y < 64; y++) {
+        for (var x = 64; x < 192; x++) {
+          px[y * width + x] = blue;
         }
       }
-      final file = fileWith(srawRecord(px, tw, th));
-      final slot = slotFor(file, compressed: true);
-      final rgba = decodeTvppSlotRgba(
-        recordBytes: file,
-        slot: slot,
-        width: tw,
-        height: th,
-      )!;
-      final tiles = decodeTvppSlotTiles(
-        recordBytes: file,
-        slot: slot,
-        width: tw,
-        height: th,
-        // ⚠️STATED, not the default: this case is about the 256px grid it
-        // names in its own title, and the arithmetic below counts in 256s.
-        tileSize: 256,
-      )!;
-      expect(tiles, hasLength(1));
-      final tile = tiles.single;
-      expect((tile.x, tile.y), (1, 0));
-      for (var y = 0; y < th; y++) {
-        for (var x = 256; x < tw; x++) {
-          final src = (y * tw + x) * 4;
-          final dst = (y * 256 + (x - 256)) * 4;
-          for (var c = 0; c < 4; c++) {
-            expect(
-              tile.pixels[dst + c],
-              rgba[src + c],
-              reason: 'pixel ($x, $y) channel $c',
-            );
-          }
+      for (var y = 64; y < 128; y++) {
+        for (var x = 64; x < 128; x++) {
+          px[y * width + x] = blue;
         }
       }
+      for (var y = 74; y < 94; y++) {
+        for (var x = 138; x < 158; x++) {
+          px[y * width + x] = premulBgra(255, 0, 0, 128);
+        }
+      }
+      expect(
+        decodedAt(srawRecord(px, width, height), width, height),
+        expectedRgba(px),
+      );
+    });
+
+    test('🚨a band is cleared where it was written before the next is read '
+        '— a tile the next leaves empty is not the one above it', () {
+      // Uniform mode writes nothing for an empty tile: (1,1) is left as the
+      // band holds it, and the band held (1,0)'s solid fill.
+      const width = 194;
+      const height = 128;
+      final px = List<int>.filled(width * height, 0);
+      for (var y = 0; y < 64; y++) {
+        for (var x = 64; x < 128; x++) {
+          px[y * width + x] = premulBgra(20, 40, 200, 255);
+        }
+      }
+      for (var y = 74; y < 94; y++) {
+        for (var x = 138; x < 158; x++) {
+          px[y * width + x] = premulBgra(255, 0, 0, 255);
+        }
+      }
+      expect(
+        decodedAt(
+          srawRecord(px, width, height, uniformMode: true),
+          width,
+          height,
+        ),
+        expectedRgba(px),
+      );
+    });
+
+    test('a copy between tiles of two sizes keeps what both of them cover, '
+        'from the top-left, and nothing past it', () {
+      // 130 × 70: three columns (the last 2 wide), two rows (the last 6
+      // tall). Tile 2 — the narrow one — copies tile 1, and tile 4 — a
+      // short one — copies tile 2: two columns of tile 1's first six rows.
+      final px = List<int>.filled(w * h, 0);
+      for (var y = 0; y < 64; y++) {
+        for (var x = 64; x < 128; x++) {
+          px[y * w + x] = premulBgra(x, y, 90, 255);
+        }
+      }
+      final record = srawRecord(px, w, h, copies: {2: 1, 4: 2});
+      final expected = [...px];
+      for (var y = 0; y < 64; y++) {
+        for (var x = 0; x < 2; x++) {
+          expected[y * w + 128 + x] = px[y * w + 64 + x];
+        }
+      }
+      for (var y = 0; y < 6; y++) {
+        for (var x = 0; x < 2; x++) {
+          expected[(64 + y) * w + 64 + x] = px[y * w + 64 + x];
+        }
+      }
+      expect(decodedAt(record, w, h), expectedRgba(expected));
+    });
+
+    test('a window of the file reads to the same rows as the file', () {
       // 🚨A WINDOW decodes to the same pixels as the whole file, which is
       // what lets the import send one slot's bytes to a worker instead of
       // the entire .tvpp.
@@ -283,6 +368,8 @@ void main() {
       // right here saying not to pass a file. It is `recordBytes` now: a
       // name that contradicts its own contract is not something a comment
       // can hold, because the next caller reads the signature.
+      final file = fileWith(srawRecord(testPixels(), w, h));
+      final slot = slotFor(file, compressed: true);
       final window = Uint8List.fromList(
         Uint8List.sublistView(
           file,
@@ -290,29 +377,35 @@ void main() {
           slot.chunkOffset + slot.chunkLength,
         ),
       );
-      final windowed = decodeTvppSlotTiles(
-        recordBytes: window,
-        slot: TvppSlot(
-          kind: slot.kind,
-          chunkOffset: 0,
-          chunkLength: slot.chunkLength,
-          compressed: slot.compressed,
-          v10WholeCanvas: slot.v10WholeCanvas,
-        ),
-        width: tw,
-        height: th,
-        tileSize: 256,
-      )!;
-      expect(windowed, hasLength(tiles.length));
+      /// Each row handed on, its y first.
+      List<List<int>> rowsOf(Uint8List bytes, TvppSlot slot) {
+        final rows = <List<int>>[];
+        tvppSlotRows(
+          recordBytes: bytes,
+          slot: slot,
+          width: w,
+          height: h,
+          row: (y, rgba) => rows.add([y, ...rgba]),
+        );
+        return rows;
+      }
+
+      final whole = rowsOf(file, slot);
+      expect(whole, isNotEmpty);
       expect(
-        windowed.single.pixels,
-        tile.pixels,
+        rowsOf(
+          window,
+          TvppSlot(
+            kind: slot.kind,
+            chunkOffset: 0,
+            chunkLength: slot.chunkLength,
+            compressed: slot.compressed,
+            v10WholeCanvas: slot.v10WholeCanvas,
+          ),
+        ),
+        whole,
         reason: 'the slot window is the same input by a different name',
       );
-
-      // Padding beyond the canvas stays transparent.
-      expect(tile.pixels[(69 * 256 + 200) * 4 + 3], 0);
-      expect(tile.pixels[(0 * 256 + 45) * 4 + 3], 0);
     });
   });
 }

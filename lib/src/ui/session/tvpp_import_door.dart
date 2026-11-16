@@ -10,11 +10,11 @@
 
 import 'dart:async' show unawaited;
 import 'dart:io';
-import 'dart:isolate';
 
-import 'package:collection/collection.dart' show ListExtensions;
 import 'package:flutter/foundation.dart';
 
+import '../../core/on_a_worker.dart';
+import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/canvas_size.dart';
@@ -30,7 +30,11 @@ import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/import/tvp_import_planner.dart';
+import '../../services/import/tile_cutter.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/persistence/brush_drawing_binary_codec.dart'
+    show AnicelLaidCel, freeLaidCel;
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart'
@@ -65,43 +69,65 @@ class TvppImportDoor {
   final ProjectFileDoor _projectDoor;
   final MediaPool _mediaPool;
 
-  /// The bytes of every slot in [wave], read by OFFSET one at a time.
+  /// Every cel of [work] decoded on workers, [atOnce] at a time, and
+  /// handed to [landed] as its worker answers: its record cut into the
+  /// tiles its [CelLay] lays it on, or the exception that says why it
+  /// would not decode. The import's whole cost (zlib + PackBits per cel;
+  /// on 288 about 30s single-threaded), and it is pure, so it fans out.
   ///
-  /// 🚨A slot knows where its record is, so the decode never needs the
-  /// file resident: the alternative is holding the whole .tvpp AND the
-  /// buffers the decode builds, and both scale with the FILE rather than
-  /// with the work — which on a phone is the allocation that gets the app
-  /// killed.
-  static Future<List<Uint8List>> _readWaveWindows(
-    RandomAccessFile reader,
-    List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> wave,
-  ) async {
-    final windows = <Uint8List>[];
-    for (final (_, _, _, slot) in wave) {
-      await reader.setPosition(slot.chunkOffset);
-      windows.add(await reader.read(slot.chunkLength));
-    }
-    return windows;
+  /// 🚨A CEL LANDS AS ITS WORKER ANSWERS (card F-608 ③). ↩️Till 2026-11-16
+  /// the work went in WAVES the size of the pool, and a wave landed when
+  /// its slowest cel was done: the open showed no percent till the first
+  /// wave was. A worker free now takes the next cel ([Turns]).
+  ///
+  /// A cel's record comes from [windowOf] as its turn begins, so no more
+  /// records are held than there are turns. [stopped] is asked as a cel
+  /// lands — a stop is honoured after the cel in hand — and once it says
+  /// so no more is read, and what a worker still hands back is given back
+  /// unlaid.
+  @visibleForTesting
+  static Future<void> decodeEach(
+    List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> work, {
+    required int atOnce,
+    required Future<Uint8List> Function(TvppSlot slot) windowOf,
+    required Future<void> Function(int index, CelLay lay, Object decoded)
+    landed,
+    required bool Function() stopped,
+  }) async {
+    final turns = Turns(atOnce);
+    var halted = false;
+    await Future.wait([
+      for (var i = 0; i < work.length; i += 1)
+        turns.run(() async {
+          final (_, cut, _, slot) = work[i];
+          final lay = celLayOf(
+            picture: cut.canvasSize,
+            canvas: cut.canvasSize,
+            placement: const LayerPlacement.identity(),
+          );
+          if (lay == null || halted) {
+            return;
+          }
+          final decoded = await _decodeOnWorker(
+            await windowOf(slot),
+            slot: slot,
+            lay: lay,
+          );
+          if (halted) {
+            if (decoded is AnicelLaidCel) {
+              freeLaidCel(decoded);
+            }
+            return;
+          }
+          await landed(i, lay, decoded);
+          halted = stopped();
+        }),
+    ]);
   }
 
-  /// One wave decoded across worker isolates — the import's whole cost
-  /// (zlib + PackBits per cel; on 288 about 30s single-threaded), and it
-  /// is pure, so it fans out. A cel that will not decode comes back as
-  /// its exception rather than throwing the wave away.
-  @visibleForTesting
-  static Future<List<Object?>> decodeWave(
-    List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> wave,
-    List<Uint8List> windows,
-  ) => Future.wait([
-    for (var w = 0; w < wave.length; w++)
-      _decodeOnWorker(
-        windows[w],
-        slot: wave[w].$4,
-        canvasSize: wave[w].$1.cut.canvasSize,
-      ),
-  ]);
-
-  /// One record decoded on a worker isolate of its own.
+  /// One record decoded on a worker isolate of its own, and cut there into
+  /// the tiles [lay] lays it on — the road every picture a file holds is
+  /// cut by (`cutFileInWorker`).
   ///
   /// 🚨ITS OWN FUNCTION, so the worker is built where nothing but its
   /// inputs is in scope. `Isolate.run` copies the closure's whole context
@@ -113,10 +139,10 @@ class TvppImportDoor {
   /// worker read: the send refused, JIT and AOT alike. The arguments are
   /// the only way in, and `a_cel_worker_is_sent_only_its_own_record_test`
   /// fails the moment anything else rides along.
-  static Future<Object?> _decodeOnWorker(
+  static Future<Object> _decodeOnWorker(
     Uint8List window, {
     required TvppSlot slot,
-    required CanvasSize canvasSize,
+    required CelLay lay,
   }) {
     // The record's offsets count from the record, so a window rebased to
     // zero is the same input by a different name.
@@ -127,15 +153,25 @@ class TvppImportDoor {
       compressed: slot.compressed,
       v10WholeCanvas: slot.v10WholeCanvas,
     );
-    final width = canvasSize.width;
-    final height = canvasSize.height;
-    return Isolate.run(() {
+    final width = lay.picture.width;
+    final height = lay.picture.height;
+    final layout = lay.layout;
+    final cut = tileCutOf(lay.cut);
+    return onAWorker<Object>(() {
       try {
-        return decodeTvppSlotTiles(
-          recordBytes: window,
-          slot: windowSlot,
-          width: width,
-          height: height,
+        return laidCelOf(
+          layout,
+          TileCutter.cutting(
+            cut,
+            width,
+            (row) => tvppSlotRows(
+              recordBytes: window,
+              slot: windowSlot,
+              width: width,
+              height: height,
+              row: row,
+            ),
+          ),
         );
       } on TvppRasterDecodeException catch (error) {
         return error;
@@ -148,12 +184,13 @@ class TvppImportDoor {
   /// A blank instance (빈 셀) decodes to zero tiles: the cel stays, its
   /// pixels stay absent — the same shape the drawing store gives an empty
   /// cel.
-  void _bakeDecodedCel(
-    Object? decoded, {
+  Future<void> _landCel(
+    Object decoded, {
+    required CelLay lay,
     required Cut cut,
     required PlannedCelBake bake,
     required List<ImportWarning> warnings,
-  }) {
+  }) async {
     if (decoded is TvppRasterDecodeException) {
       warnings.add(
         ImportWarning(
@@ -164,15 +201,14 @@ class TvppImportDoor {
       );
       return;
     }
-    final tiles = decoded as List<TvppCelTile>?;
-    if (tiles == null || tiles.isEmpty) {
+    final laid = decoded as AnicelLaidCel;
+    if (laid.tiles.isEmpty) {
       return;
     }
-    bakeCelTiles(
+    bakeCelSurface(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
-      cut.canvasSize,
-      celTilesOf(tiles),
+      await layCut(lay, laid),
     );
   }
 
@@ -249,12 +285,9 @@ class TvppImportDoor {
   /// Every cel [read] planned, decoded out of its file and baked into the
   /// drawings' store; what would not decode joins [warnings].
   ///
-  /// Decoding is the import's whole cost (zlib + PackBits per cel, on 288:
-  /// ~30s of it, single-threaded) and it is pure — so it fans out over
-  /// worker isolates, in WAVES the size of the pool so at most that many
-  /// full-canvas RGBA buffers are ever alive at once. The GPU bake stays
-  /// here: it needs the UI thread and is cheap next to the decode.
-  /// Isolate.run moves its result out (no copy back).
+  /// Decoding is the import's whole cost and it is pure, so it fans out
+  /// over worker isolates ([decodeEach]); the bake stays here — it needs
+  /// the UI thread and is cheap next to the decode.
   Future<void> _bakeEveryCel(
     TvppProjectRead read, {
     required List<ImportWarning> warnings,
@@ -262,7 +295,6 @@ class TvppImportDoor {
     bool Function()? isCancelled,
   }) async {
     final work = _tvppBakeWork(read._plans);
-    final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
     var bakedSoFar = 0;
     // 🚨READ BY OFFSET, ONE SLOT AT A TIME.
     //
@@ -283,25 +315,32 @@ class TvppImportDoor {
     // phone is the allocation that gets the app killed.
     final source = read._source;
     final reader = await File(source.path).open();
+    // One read at a time: a seek and a read are two steps, and a turn that
+    // came between them would read another cel's record.
+    final reading = Turns(1);
     try {
-      for (final wave in work.slices(pool)) {
-        final decoded = await decodeWave(
-          wave,
-          await _readWaveWindows(reader, wave),
-        );
-        for (var i = 0; i < wave.length; i++) {
-          final (_, bakedCut, bake, _) = wave[i];
-          bakedSoFar += 1;
-          onProgress?.call(bakedSoFar / work.length);
-          _bakeDecodedCel(
-            decoded[i],
+      await decodeEach(
+        work,
+        atOnce: workersFor(Platform.numberOfProcessors, ceiling: 8),
+        windowOf: (slot) => reading.run(() async {
+          await reader.setPosition(slot.chunkOffset);
+          return reader.read(slot.chunkLength);
+        }),
+        landed: (index, lay, decoded) async {
+          final (_, bakedCut, bake, _) = work[index];
+          await _landCel(
+            decoded,
+            lay: lay,
             cut: bakedCut,
             bake: bake,
             warnings: warnings,
           );
-          MaterializeCancelled.throwIf(isCancelled);
-        }
-      }
+          bakedSoFar += 1;
+          onProgress?.call(bakedSoFar / work.length);
+        },
+        stopped: () => isCancelled?.call() ?? false,
+      );
+      MaterializeCancelled.throwIf(isCancelled);
     } finally {
       await reader.close();
       // The staged copy outlives the decode now, because the decode

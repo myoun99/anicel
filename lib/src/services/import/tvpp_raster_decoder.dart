@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/import/tvpp_parse.dart';
+import 'tile_cutter.dart' show RowSink, TileCutter;
 
-/// Decodes one .tvpp image slot to straight (un-premultiplied) RGBA.
+/// Reads one .tvpp image slot as rows of straight (un-premultiplied) RGBA.
 ///
 /// The pixel side of the format, verified pixel-perfect against
 /// TVPaint's own PNG export of the same clip (376/376 images, spec in
@@ -27,7 +27,7 @@ import '../../models/import/tvpp_parse.dart';
 ///        is empty, `c > 0` starts a chain — the c bytes belong to the
 ///        NEXT tile, then `u32 size` continues tile-by-tile until a zero.
 ///  * v11 and later wrap records in a zlib chain (64KB blocks); v10 stores them
-///    raw. [decodeTvppSlotRgba] handles both via [TvppSlot.compressed].
+///    raw. [tvppSlotRows] reads both, by [TvppSlot.compressed].
 class TvppRasterDecodeException implements Exception {
   const TvppRasterDecodeException(this.message);
 
@@ -37,110 +37,58 @@ class TvppRasterDecodeException implements Exception {
   String toString() => 'TvppRasterDecodeException: $message';
 }
 
-/// One non-empty 256×256 tile of a decoded cel, in straight RGBA — the
-/// byte shape `BitmapTile` wants, without naming that type here (this
-/// service stays importable from a worker isolate with nothing but the
-/// parser).
-typedef TvppCelTile = ({int x, int y, Uint8List pixels});
-
-/// Decodes [slot] straight into sparse surface tiles.
+/// [slot]'s picture as rows of straight RGBA, handed to [row] from the top
+/// — the rows a [TileCutter] cuts, as every picture a file holds is cut.
+/// A row with no ink is not handed on, which a cut reads as clear; a hold
+/// slot hands on none. A row's bytes are the next one's once [row] returns.
 ///
-/// The import's cels are placed 1:1 at the canvas origin, so the
-/// full-canvas `ui.Image` → `PictureRecorder` → `toImage` → readback
-/// detour the generic media path takes is pure overhead here — on 288
-/// it was 4× the decode itself, all of it on the UI thread. Slicing the
-/// decoded buffer is plain CPU work, so the whole thing can run on a
-/// worker isolate; only tiles with any opaque pixel come back (a cel
-/// covers a handful of the canvas grid). Null for a hold slot.
-List<TvppCelTile>? decodeTvppSlotTiles({
+/// [recordBytes] need hold no more than the slot's own record: a window of
+/// it, sent to a worker, is the same input by a different name.
+///
+/// 🚨NEVER THE WHOLE CANVAS AT ONCE (card F-608 ③). ↩️Till 2026-11-16 a
+/// cel was decoded whole — its words, then its straight bytes: two
+/// canvases, 136 MB each at the user's 7751 × 4396 — and sliced into tiles
+/// by a cut of its own beside the [TileCutter]. Eight workers held over
+/// 2 GB at once, and the open showed no percent till all eight were done.
+/// A tiled record is read a band of its 64-pixel tiles at a time now, a
+/// whole-canvas one a row at a time.
+void tvppSlotRows({
   required Uint8List recordBytes,
   required TvppSlot slot,
   required int width,
   required int height,
-  int tileSize = defaultCelTileSize,
-}) {
-  final rgba = decodeTvppSlotRgba(
-    recordBytes: recordBytes,
-    slot: slot,
-    width: width,
-    height: height,
-  );
-  if (rgba == null) {
-    return null;
-  }
-  final cols = (width + tileSize - 1) ~/ tileSize;
-  final rows = (height + tileSize - 1) ~/ tileSize;
-  final tiles = <TvppCelTile>[];
-  final rowStride = width * 4;
-  for (var ty = 0; ty < rows; ty++) {
-    final y0 = ty * tileSize;
-    final copyRows = math.min(tileSize, height - y0);
-    for (var tx = 0; tx < cols; tx++) {
-      final x0 = tx * tileSize;
-      final copyCols = math.min(tileSize, width - x0);
-      var any = false;
-      scan:
-      for (var row = 0; row < copyRows; row++) {
-        final src = (y0 + row) * rowStride + x0 * 4;
-        for (var i = src + 3; i < src + copyCols * 4; i += 4) {
-          if (rgba[i] != 0) {
-            any = true;
-            break scan;
-          }
-        }
-      }
-      if (!any) {
-        continue;
-      }
-      // Edge tiles zero-pad past the canvas — the fresh buffer already
-      // is zeros.
-      final pixels = Uint8List(tileSize * tileSize * 4);
-      for (var row = 0; row < copyRows; row++) {
-        final src = (y0 + row) * rowStride + x0 * 4;
-        pixels.setRange(
-          row * tileSize * 4,
-          row * tileSize * 4 + copyCols * 4,
-          rgba,
-          src,
-        );
-      }
-      tiles.add((x: tx, y: ty, pixels: pixels));
-    }
-  }
-  return tiles;
-}
-
-/// Straight RGBA bytes (width × height × 4) for [slot], or null for a
-/// hold slot (no image there by definition).
-Uint8List? decodeTvppSlotRgba({
-  required Uint8List recordBytes,
-  required TvppSlot slot,
-  required int width,
-  required int height,
+  required RowSink row,
 }) {
   if (slot.kind == TvppSlotKind.hold) {
-    return null;
+    return;
   }
-  final Uint8List record;
+  final rgba = Uint8List(width * 4);
+  _recordRows(_recordOf(recordBytes, slot), width, height, (y, words, from) {
+    if (_straightRow(words, from, rgba)) {
+      row(y, rgba);
+    }
+  });
+}
+
+/// The record [slot] holds, its magic first.
+Uint8List _recordOf(Uint8List recordBytes, TvppSlot slot) {
   if (slot.compressed) {
-    record = _reassembleZchk(recordBytes, slot.chunkOffset, slot.chunkLength);
-  } else {
-    // v10 stores the record body as a bare chunk payload — its magic and
-    // length live in the CHUNK header the parser already consumed.
-    // Re-synthesize them so both wrappers hand the decoder the same
-    // record shape (offsets in the tiled reader count from the magic).
-    final body = Uint8List.sublistView(
-      recordBytes,
-      slot.chunkOffset,
-      slot.chunkOffset + slot.chunkLength,
-    );
-    record = Uint8List(8 + body.length);
-    record.setAll(0, (slot.v10WholeCanvas ? 'DBOD' : 'SRAW').codeUnits);
-    ByteData.sublistView(record, 4, 8).setUint32(0, body.length);
-    record.setAll(8, body);
+    return _reassembleZchk(recordBytes, slot.chunkOffset, slot.chunkLength);
   }
-  final premul = _decodeRecord(record, width, height);
-  return _straightRgba(premul, width, height);
+  // v10 stores the record body as a bare chunk payload — its magic and
+  // length live in the CHUNK header the parser already consumed.
+  // Re-synthesize them so both wrappers hand the decoder the same
+  // record shape (offsets in the tiled reader count from the magic).
+  final body = Uint8List.sublistView(
+    recordBytes,
+    slot.chunkOffset,
+    slot.chunkOffset + slot.chunkLength,
+  );
+  final record = Uint8List(8 + body.length);
+  record.setAll(0, (slot.v10WholeCanvas ? 'DBOD' : 'SRAW').codeUnits);
+  ByteData.sublistView(record, 4, 8).setUint32(0, body.length);
+  record.setAll(8, body);
+  return record;
 }
 
 // ---------------------------------------------------------------------------
@@ -348,7 +296,14 @@ class _PackBits {
   }
 }
 
-Uint32List _decodeRecord(Uint8List record, int width, int height) {
+/// Where a record's rows go: row [y] of the picture, premultiplied BGRA
+/// words, the picture's width of them from [from] in [words] — which hold
+/// the next row once this returns.
+typedef _WordRows = void Function(int y, Uint32List words, int from);
+
+/// [record]'s rows, handed to [rows] from the top — but rows of tiles it
+/// left empty, which hold no ink.
+void _recordRows(Uint8List record, int width, int height, _WordRows rows) {
   if (record.length < 8) {
     throw const TvppRasterDecodeException('The record is too short.');
   }
@@ -359,19 +314,35 @@ Uint32List _decodeRecord(Uint8List record, int width, int height) {
     // Type 5 (28 bytes, zero payload): a BLANK instance — 12.0.6 writes
     // these where 12.1 writes a contentless type-64 (288's A_KAKI runs
     // blank cels on 2s this way). An instance boundary with no pixels.
-    return Uint32List(width * height);
+    return;
   }
   if (magic == 'DBOD') {
-    return _decodeWholeCanvas(record, width, height);
+    _wholeCanvasRows(record, width, height, rows);
+    return;
   }
   if (magic == 'SRAW') {
-    return _decodeTiled(record, width, height);
+    _tiledRows(record, width, height, rows);
+    return;
   }
   throw TvppRasterDecodeException('Unknown raster magic «$magic».');
 }
 
-Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) =>
-    _readRows(_PackBits(record, 8), Uint32List(width * height), width);
+/// A `DBOD`'s rows, the whole canvas's, read one at a time.
+void _wholeCanvasRows(
+  Uint8List record,
+  int width,
+  int height,
+  _WordRows rows,
+) {
+  final pb = _PackBits(record, 8);
+  final words = Uint32List(width);
+  for (var y = 0; y < height; y++) {
+    pb.take(width, words, _itself);
+    rows(y, words, 0);
+  }
+}
+
+int _itself(int nth) => nth;
 
 /// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
 /// premultiplied BGRA words: a `DBOD` [body] read as a whole canvas, or a
@@ -399,31 +370,66 @@ Uint32List _readRows(_PackBits pb, Uint32List img, int width) {
   return img;
 }
 
-/// One tiled raster being decoded: the 64×64 grid the picture is cut
-/// into, the PackBits cursor walking the record, and the image being
-/// filled in place.
+/// One tiled raster being read: the 64×64 grid the picture is cut into,
+/// the PackBits cursor walking the record, and the grid's row of tiles
+/// under way — its [band] — handed on to [rowsOut] as the walk leaves it.
 ///
 /// ⛔The record's shape is measured, not documented — see
 /// `tvpp-format-notes.md`. Nothing here may change what bytes are read
 /// or in what order.
+///
+/// 🚨NO TILE IS HELD PAST ITS BAND (card F-608 ③): the walk meets the
+/// tiles in order, a row of the grid after another, so the band is all of
+/// the picture there is at once. A tile that copies one of a band already
+/// handed on reads that one's bytes again ([_readAgain]).
 class _TileGrid {
-  _TileGrid(this.record, {required this.width, required this.height})
-    : cols = (width + tile - 1) ~/ tile,
-      rows = (height + tile - 1) ~/ tile,
-      img = Uint32List(width * height),
-      pb = _PackBits(record, 24);
+  _TileGrid(
+    this.record, {
+    required this.width,
+    required this.height,
+    required this.rowsOut,
+  }) : cols = (width + tile - 1) ~/ tile,
+       rows = (height + tile - 1) ~/ tile,
+       band = Uint32List(width * tile),
+       pb = _PackBits(record, 24);
 
   static const tile = 64;
 
   final Uint8List record;
   final int width;
   final int height;
+  final _WordRows rowsOut;
   final int cols;
   final int rows;
-  final Uint32List img;
   final _PackBits pb;
 
+  /// The grid's row of tiles under way: its [tile] rows of pixels, [width]
+  /// words each, zero where no tile was written.
+  final Uint32List band;
+  int _bandRow = 0;
+
+  /// The tiles written into [band] — to clear once it is handed on.
+  final List<int> _written = [];
+
   int get total => cols * rows;
+
+  /// The tile whose bytes tile t shows — itself where it was read — or null
+  /// where it shows none: never written, or a copy of one that showed none.
+  late final List<int?> _roots = List.filled(total, null);
+
+  /// Where a read tile's rows begin in [record].
+  late final Int32List _starts = Int32List(total);
+
+  /// How much of its root's pixels tile t shows, from the top-left: a copy
+  /// keeps no more than the smaller of the two tiles (an edge tile is cut
+  /// short by the canvas).
+  late final Uint8List _keptWidths = Uint8List(total);
+  late final Uint8List _keptHeights = Uint8List(total);
+
+  /// A tile's pixels read again ([_readAgain]), rows of its own width, and
+  /// which tile they are.
+  final Uint32List _again = Uint32List(tile * tile);
+  int? _againOf;
 
   /// The thumbnail's pixels, as many as the head says it is wide and tall
   /// — 96 × 67 near 3:2, 96 × 54 at 16:9.
@@ -454,25 +460,29 @@ class _TileGrid {
     return x;
   }
 
-  /// Decodes tile [t]'s pixels straight into [img], and checks that it
+  /// Decodes tile [t]'s pixels straight into [band], and checks that it
   /// consumed exactly the bytes the record said it would — a mismatch
   /// means the cursor has drifted and everything after it is noise.
   void readTile(int t, int declaredSize) {
-    final tr = t ~/ cols;
     final tc = t % cols;
     final tw = _tileWidth(tc);
-    final th = _tileHeight(tr);
+    final th = _tileHeight(t ~/ cols);
+    _enterBandOf(t);
     final from = pb.at;
     for (var y = 0; y < th; y++) {
-      final gy = tr * tile + y;
-      final gx0 = tc * tile;
-      pb.take(tw, img, (nth) => gy * width + gx0 + nth);
+      final at = y * width + tc * tile;
+      pb.take(tw, band, (nth) => at + nth);
     }
     if (pb.at - from != declaredSize) {
       throw TvppRasterDecodeException(
         'Tile $t size mismatch: ${pb.at - from} ≠ $declaredSize.',
       );
     }
+    _starts[t] = from;
+    _roots[t] = t;
+    _keptWidths[t] = tw;
+    _keptHeights[t] = th;
+    _written.add(t);
   }
 
   /// Copies an already-decoded tile onto another — how the format says
@@ -487,26 +497,72 @@ class _TileGrid {
     if (dst == src || src < 0 || src >= total) {
       return;
     }
-    final dr = dst ~/ cols;
+    // A source the walk has not written yet — later in it, or left empty —
+    // shows nothing, and so does its copy.
+    final root = _roots[src];
+    if (root == null) {
+      return;
+    }
     final dc = dst % cols;
-    final sr = src ~/ cols;
-    final sc = src % cols;
-    final tw = _tileWidth(dc);
-    final th = _tileHeight(dr);
-    for (var y = 0; y < th; y++) {
-      final gy = dr * tile + y;
-      final sy = sr * tile + y;
-      if (sy >= height) {
-        continue;
-      }
-      for (var xx = 0; xx < tw; xx++) {
-        final gx = dc * tile + xx;
-        final sx = sc * tile + xx;
-        if (gx < width && sx < width) {
-          img[gy * width + gx] = img[sy * width + sx];
-        }
+    final keptWidth = math.min(_keptWidths[src], _tileWidth(dc));
+    final keptHeight = math.min(_keptHeights[src], _tileHeight(dst ~/ cols));
+    _enterBandOf(dst);
+    final pixels = _readAgain(root);
+    final rootWidth = _tileWidth(root % cols);
+    for (var y = 0; y < keptHeight; y++) {
+      final at = y * width + dc * tile;
+      band.setRange(at, at + keptWidth, pixels, y * rootWidth);
+    }
+    _roots[dst] = root;
+    _keptWidths[dst] = keptWidth;
+    _keptHeights[dst] = keptHeight;
+    _written.add(dst);
+  }
+
+  /// Read tile [t]'s pixels, read again from its bytes — rows of its own
+  /// width, in a buffer the next tile read again reuses.
+  Uint32List _readAgain(int t) {
+    if (_againOf == t) {
+      return _again;
+    }
+    final again = _PackBits(record, _starts[t]);
+    final tw = _tileWidth(t % cols);
+    for (var y = 0; y < _tileHeight(t ~/ cols); y++) {
+      final at = y * tw;
+      again.take(tw, _again, (nth) => at + nth);
+    }
+    _againOf = t;
+    return _again;
+  }
+
+  /// [band] moved on to tile [t]'s row of the grid — the rows before it
+  /// handed on first.
+  void _enterBandOf(int t) {
+    final row = t ~/ cols;
+    if (row != _bandRow) {
+      handOn();
+      _bandRow = row;
+    }
+  }
+
+  /// [band]'s rows handed on, and the band cleared where it was written —
+  /// a band no tile was written in hands on nothing.
+  void handOn() {
+    if (_written.isEmpty) {
+      return;
+    }
+    final bandHeight = _tileHeight(_bandRow);
+    for (var y = 0; y < bandHeight; y++) {
+      rowsOut(_bandRow * tile + y, band, y * width);
+    }
+    for (final t in _written) {
+      final at = (t % cols) * tile;
+      final tw = _tileWidth(t % cols);
+      for (var y = 0; y < bandHeight; y++) {
+        band.fillRange(y * width + at, y * width + at + tw, 0);
       }
     }
+    _written.clear();
   }
 
   /// Layout A (X > 0): tile 0 is [firstTileSize] bytes long, and every
@@ -576,8 +632,8 @@ class _TileGrid {
 /// every canvas measured (near 3:2), and wrong for any other: a 16:9
 /// file's pictures after each layer's first keyframe all failed, the tile
 /// table looked for 1,248 pixels late (card F-608 — 240 in one file).
-Uint32List _decodeTiled(Uint8List record, int width, int height) {
-  final grid = _TileGrid(record, width: width, height: height);
+void _tiledRows(Uint8List record, int width, int height, _WordRows rows) {
+  final grid = _TileGrid(record, width: width, height: height, rowsOut: rows);
   grid.pb.take(grid.thumbnailPixels, null, null);
   final x = grid.readTileTable();
   if (x > 0) {
@@ -585,7 +641,7 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
   } else {
     grid.readTileRuns();
   }
-  return grid.img;
+  grid.handOn();
 }
 
 // ---------------------------------------------------------------------------
@@ -595,27 +651,38 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
 /// TVPaint's own PNG export computes `v = ⌊p·255 / a⌋` (the inverse of
 /// its ceiling premultiply) — matching it exactly is what made the
 /// 376-image comparison land on zero differences.
-Uint8List _straightRgba(Uint32List premul, int width, int height) {
-  final out = Uint8List(width * height * 4);
-  for (var i = 0; i < premul.length; i++) {
-    final v = premul[i];
+///
+/// [words]' pixels from [from], as many as [rgba] holds, written into
+/// [rgba] — or false, and [rgba] as it was, where none of them has ink.
+bool _straightRow(Uint32List words, int from, Uint8List rgba) {
+  final width = rgba.length ~/ 4;
+  var x = 0;
+  while (x < width && (words[from + x] & 0xff) == 0) {
+    x += 1;
+  }
+  if (x == width) {
+    return false;
+  }
+  for (var i = 0; i < width; i++) {
+    final v = words[from + i];
     final a = v & 0xff;
+    final o = i * 4;
     if (a == 0) {
+      rgba[o] = 0;
+      rgba[o + 1] = 0;
+      rgba[o + 2] = 0;
+      rgba[o + 3] = 0;
       continue;
     }
-    final b = (v >>> 24) & 0xff;
-    final g = (v >>> 16) & 0xff;
-    final r = (v >>> 8) & 0xff;
-    int un(int p) {
-      final s = (p * 255) ~/ a;
-      return s > 255 ? 255 : s;
-    }
-
-    final o = i * 4;
-    out[o] = un(r);
-    out[o + 1] = un(g);
-    out[o + 2] = un(b);
-    out[o + 3] = a;
+    rgba[o] = _straight((v >>> 8) & 0xff, a);
+    rgba[o + 1] = _straight((v >>> 16) & 0xff, a);
+    rgba[o + 2] = _straight((v >>> 24) & 0xff, a);
+    rgba[o + 3] = a;
   }
-  return out;
+  return true;
+}
+
+int _straight(int premultiplied, int alpha) {
+  final s = (premultiplied * 255) ~/ alpha;
+  return s > 255 ? 255 : s;
 }
