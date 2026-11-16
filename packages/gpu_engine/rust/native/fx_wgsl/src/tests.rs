@@ -809,6 +809,14 @@ fn a_plugin_reads_the_moment_only_where_a_call_of_it_asks_for_it() {
             asked("", "if (at.x == 0u) { anicel_out(u32(anicel_time())); }", "return 0u;"),
         ),
         (
+            "under the other branch",
+            asked(
+                "",
+                "if (at.x == 0u) { anicel_out(0u); } else { anicel_out(u32(anicel_time())); }",
+                "return 0u;",
+            ),
+        ),
+        (
             "in a case",
             asked(
                 "",
