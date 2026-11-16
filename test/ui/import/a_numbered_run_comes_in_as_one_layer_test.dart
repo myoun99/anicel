@@ -478,15 +478,78 @@ void main() {
     expect([for (final frame in added.single.frames) frame.name], ['1', '3']);
   });
 
-  testWidgets('two pictures of one run picked together bring it once',
-      (tester) async {
+  // 🗣️F-595 ① (유저 2026-11-15: 「A1부터 A8까지 … 8개 선택해서 드롭해서
+  // 스샷과 같은 동일한것이 생기는 상황이 발생. 그러니 이 경우 하나로
+  // 합쳐지도록. 여러개 중복으로 안생기고」).
+  testWidgets('🚨pictures of one run handed in together stand as ONE row — '
+      'the run\'s, as its first handed in alone does — and bring it once '
+      '(F-595 ①)', (tester) async {
     final files = await writeFolder(tester);
-    final s = await open(tester, [files['A1']!, files['A3']!]);
+    final s = await open(
+      tester,
+      [files['A1']!, files['A2']!, files['A3']!],
+      runs: [files['A1']!],
+    );
+
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      AppText.strings.imRunSpan('A1', 'A3', 3),
+    );
+    for (final brought in ['A2', 'A3']) {
+      expect(
+        find.byKey(ValueKey<String>('import-cell-option-${files[brought]}')),
+        findsNothing,
+        reason: '$brought is A1\'s row\'s — no row of its own',
+      );
+    }
 
     final added = await place(tester, s);
 
     expect(added, hasLength(1));
     expect(added.single.frames, hasLength(2));
+  });
+
+  testWidgets('the row answers for the pictures it brings: sent to the pool, '
+      'each is a file of the pool\'s again, a row of its own', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!, files['A3']!], runs: [files['A1']!]);
+    expect(
+      find.byKey(ValueKey<String>('import-cell-option-${files['A3']}')),
+      findsNothing,
+      reason: 'fixture: A3 is A1\'s row\'s',
+    );
+
+    // Answered by hand: the rows the pool takes read their files again, and
+    // the window does not settle while they are read.
+    final cell = find.byKey(
+      ValueKey<String>('import-cell-into-${files['A1']}'),
+    );
+    await tester.ensureVisible(cell);
+    await settleLoadedPages(tester);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-pool')),
+    );
+    expect(
+      await settleAsync(
+        tester,
+        () => find
+            .byKey(ValueKey<String>('import-cell-into-${files['A3']}'))
+            .evaluate()
+            .isNotEmpty,
+      ),
+      isTrue,
+      reason: 'A3 stands as a row again',
+    );
+
+    for (final file in ['A1', 'A3']) {
+      expect(
+        cellText(tester, 'into', files[file]!),
+        cellText(tester, 'into', files['A1']!),
+        reason: '$file stands as a row of its own, bound for the pool',
+      );
+    }
   });
 
   testWidgets('a picture of the run gone by the time Import is pressed is '
@@ -512,67 +575,4 @@ void main() {
       findsOneWidget,
     );
   });
-
-  /// Answers [option] in [column] for [path]'s row alone.
-  Future<void> answer(
-    WidgetTester tester,
-    String column,
-    String path,
-    String option,
-  ) async {
-    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
-    await tester.ensureVisible(cell);
-    await settleLoadedPages(tester);
-    await tester.tap(cell);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(ValueKey<String>('import-option-$column-$option')),
-    );
-    await tester.pumpAndSettle();
-  }
-
-  // A row brings what its cells say: two rows of one run bring one layer
-  // only when they would hand the run's door the same — the span, where it
-  // goes, how it fits (`importPictureRun` reads those two answers).
-  for (final (differs, answerOtherwise) in <(
-    String,
-    Future<void> Function(WidgetTester, Map<String, String> files),
-  )>[
-    ('span\'s start', (tester, _) => keepImportSpan(tester, 2, 3)),
-    ('span\'s end', (tester, _) => keepImportSpan(tester, 1, 2)),
-    (
-      'place',
-      // A new cut takes its picture 1:1 (`importFitLocked`) and the other
-      // row starts 1:1 ([MediaFitMode.born]): the rows differ in where they
-      // go alone.
-      (tester, files) => answer(tester, 'into', files['A1']!, 'newCut'),
-    ),
-    ('fit', (tester, files) => answer(tester, 'fit', files['A1']!, 'stretch')),
-  ]) {
-    testWidgets('two pictures of one run whose rows answer otherwise — '
-        'another $differs — bring a layer each', (tester) async {
-      final files = await writeFolder(tester);
-      final s = await open(tester, [files['A1']!, files['A3']!]);
-      List<Object> runLayers() => [
-        for (final track in s.repository.requireProject().tracks)
-          for (final cut in track.cuts)
-            for (final layer in cut.layers)
-              if (layer.name == 'A') layer.id,
-      ];
-      final before = runLayers().toSet();
-      // The preview shows the first row while none is picked: A1's.
-      await answerOtherwise(tester, files);
-
-      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-      await pumpPastTheWaitWindow(tester);
-      List<Object> brought() => [
-        for (final id in runLayers())
-          if (!before.contains(id)) id,
-      ];
-      await settleAsync(tester, () => brought().length >= 2);
-      await tester.pumpAndSettle();
-
-      expect(brought(), hasLength(2), reason: 'each row brings its own');
-    });
-  }
 }

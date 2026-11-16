@@ -369,18 +369,6 @@ final class _RunSpan {
   String toString() => 'run';
 }
 
-/// The layer a row brings of its numbered run, as the run's door is handed
-/// it (`ProjectImportDoors.importPictureRun`): the run, the span of it the
-/// row's IN/OUT keep, and the two answers the door reads — where the layer
-/// goes and how it fits. Rows that hand it the same bring one layer.
-typedef _RunLayer = ({
-  PictureRun run,
-  int first,
-  int last,
-  ImportDestination into,
-  MediaFitMode fit,
-});
-
 /// The Into answer of a file that only registers: the media pool, placed
 /// nowhere ([ImportFileSettings.intoPool]).
 final class _IntoThePool {
@@ -692,8 +680,14 @@ class _ImportDialogState extends State<ImportDialog> {
     Iterable<String> paths,
     ImportFileSettings Function(ImportFileSettings) change,
   ) {
+    // A row answers for the files it brings ([_fileRows]): sent to the
+    // pool, each of them is a file of the pool's again, and a row of its
+    // own — as it was handed in.
+    final rows = _fileRows;
     final readItself = {
-      for (final path in paths) path: _readsTheFileItself(path),
+      for (final path in paths)
+        for (final each in [path, ...?rows[path]])
+          each: _readsTheFileItself(each),
     };
     setState(() {
       for (final path in readItself.keys) {
@@ -806,24 +800,6 @@ class _ImportDialogState extends State<ImportDialog> {
   /// one layer's frames. One comes in alone ([_placeRun]).
   PictureRun? _togetherRunOf(String path) =>
       (_runKeptOf(path)?.length ?? 0) > 1 ? _runOf(path) : null;
-
-  /// The layer [path]'s row brings of its run ([_RunLayer]) — null for a
-  /// row that brings no run of two pictures or more ([_togetherRunOf]).
-  _RunLayer? _runLayerOf(String path) {
-    final run = _togetherRunOf(path);
-    if (run == null) {
-      return null;
-    }
-    final settings = _settingsFor(path);
-    final span = importRunSpan(settings, run.pictures.length);
-    return (
-      run: run,
-      first: span.first,
-      last: span.last,
-      into: settings.into,
-      fit: settings.fit,
-    );
-  }
 
   /// Every picture of [path]'s run, in order — what the preview pages
   /// through — or null for a file in none.
@@ -986,10 +962,63 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the files, the settings, and what the folder leaves out.
   List<String> get _rowKeys => [
     ..._folderRows.keys,
-    ..._files,
+    ..._listedFiles,
     ..._settingsRows.keys,
     if (_leftOut != null) _leftOutKey,
   ];
+
+  /// The files handed in that stand as rows ([_fileRows]), in their order.
+  List<String> get _listedFiles => [..._fileRows.keys];
+
+  /// The files handed in as the table lists them: a row each — and, by
+  /// each row, the files handed in that it brings: the other pictures of
+  /// the numbered run it is placed with ([_broughtRunOf]), which stand as
+  /// no row of their own.
+  ///
+  /// 🗣️F-595 ① (유저 2026-11-15: 「A1부터 A8까지 … 8개 선택해서 드롭해서
+  /// 스샷과 같은 동일한것이 생기는 상황이 발생. 그러니 이 경우 하나로
+  /// 합쳐지도록. 여러개 중복으로 안생기고」) — a row is its run: A1–A8
+  /// handed in together are A1's row, as A1 handed in alone is. A file that
+  /// only registers is a file of the pool's, a row of its own whatever run
+  /// it is in. ↩️A row each file, and two rows of one run brought one layer
+  /// where their cells agreed (`4687d94cb`, 10-10 — a run's rows could
+  /// answer apart then).
+  Map<String, List<String>> get _fileRows {
+    final rows = <String, List<String>>{};
+    final bringer = <String, String>{};
+    for (final path in _files) {
+      if (bringer[normalizedMediaPath(path)] case final row?
+          when _placing(path)) {
+        rows[row]!.add(path);
+        continue;
+      }
+      rows[path] = [];
+      final folder = File(path).parent.path;
+      for (final picture
+          in _broughtRunOf(path)?.pictures ?? const <RunPicture>[]) {
+        bringer.putIfAbsent(
+          normalizedMediaPath('$folder/${picture.file}'),
+          () => path,
+        );
+      }
+    }
+    return rows;
+  }
+
+  /// The run [path]'s row is placed with: as its sizes say once they are
+  /// read ([_runOf]), and by its names till then ([_namedRunOf]) — so eight
+  /// pictures of one run handed in stand as one row from the first frame,
+  /// and a picture of another size among them stands as its own once read.
+  PictureRun? _broughtRunOf(String path) {
+    if (!_placing(path)) {
+      return null;
+    }
+    final measured = _runOf(path);
+    return measured != null ||
+            _measuredRuns.containsKey(normalizedMediaPath(path))
+        ? measured
+        : _namedRunOf(path);
+  }
   bool _running = false;
   _Said _status = const _Sentence('');
 
@@ -1417,8 +1446,13 @@ class _ImportDialogState extends State<ImportDialog> {
     setState(() {
       _running = false;
       // What SUCCEEDED leaves the list — pressing Import again after
-      // fixing a problem must never duplicate what already landed.
-      _files.removeWhere(tally.done.contains);
+      // fixing a problem must never duplicate what already landed — a row
+      // with the files it brought ([_fileRows]).
+      final landed = {
+        for (final MapEntry(key: row, value: brought) in _fileRows.entries)
+          if (tally.done.contains(row)) ...[row, ...brought],
+      };
+      _files.removeWhere(landed.contains);
       final settingsDone = tally.done.where(_settingsRows.holds).toList();
       _selected.removeAll(settingsDone);
       _settingsRows.landed(settingsDone);
@@ -1549,7 +1583,7 @@ class _ImportDialogState extends State<ImportDialog> {
   _pulldownPartnersAmongPlaced(ProjectFrameRate project) async {
     final found =
         <({String path, QaVideoInfo movie, ProjectFrameRate partner})>[];
-    for (final path in _files.where(
+    for (final path in _listedFiles.where(
       (path) => _placing(path) && !_landsInANewProject(path),
     )) {
       if (mediaAssetKindForPath(path) != MediaAssetKind.video) {
@@ -1583,7 +1617,7 @@ class _ImportDialogState extends State<ImportDialog> {
     required ProjectFrameRate to,
   }) async {
     final speed = _projectAudioSpeed;
-    for (final path in [..._files]) {
+    for (final path in _listedFiles) {
       final settings = _settings[path];
       if (settings == null || !settings.isTrimmed) {
         continue;
@@ -1689,10 +1723,12 @@ class _ImportDialogState extends State<ImportDialog> {
       // that only register, then the ones that are placed. One count over
       // all of it: a folder's scans, and a file each.
       final folder = _folderToLand;
-      final registering = _files.where(_registersOnly).toList();
+      final registering = _listedFiles.where(_registersOnly).toList();
+      // Every file placed: which of them are rows is known once their runs
+      // are measured ([_placeFiles]).
       final placing = _files.where(_placing).toList();
       final scans = folder == null ? 0 : _folderScanCount;
-      final total = scans + _files.length;
+      final total = scans + _listedFiles.length;
       final landed = doneShare(scans, total);
       final registered = doneShare(scans + registering.length, total);
       void Function(double) stretch(double from, double to) =>
@@ -1730,7 +1766,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 놓인 것도 새 데이터를 쓴다」): the press is one undo step ([_runImport]).
   Future<void> _carryAnew(_ImportTally tally) async {
     final session = widget.session;
-    final anew = await session.mediaPool.carryAnew(_files.where(_takesAnew));
+    final anew = await session.mediaPool.carryAnew(
+      _listedFiles.where(_takesAnew),
+    );
     final undrawn = await session.importDoors.drawAgainFrom(anew);
     final project = session.repository.requireProject();
     for (final MapEntry(key: path, value: answer) in undrawn.entries) {
@@ -1802,41 +1840,37 @@ class _ImportDialogState extends State<ImportDialog> {
     return false;
   }
 
-  /// Places every picked file — a picture where the window says, a sound on
-  /// the track's SE rows — telling [report] the files before the one being
-  /// placed and that one as far as it says. Answers FALSE when the dialog
-  /// went away part-way — the caller must not touch its state after that.
+  /// Places the rows of [placing] — every file handed in that is placed:
+  /// a picture where the window says, a sound on the track's SE rows —
+  /// telling [report] the rows before the one being placed and that one as
+  /// far as it says. Answers FALSE when the dialog went away part-way — the
+  /// caller must not touch its state after that.
   Future<bool> _placeFiles(
-    List<String> paths,
+    List<String> placing,
     _ImportTally tally,
     void Function(double) report,
   ) async {
-    final count = paths.length;
     // The window counts from its first frame (F-282-Q1) — the wait below
     // included, for nothing is placed until it is over.
     report(0);
     // A run is what its measured pictures say ([_runOf]), so the press
-    // waits out the reads the rows asked for ([_probeRun]).
+    // waits out the reads the rows asked for ([_probeRun]) — and places the
+    // rows those runs make: a picture another row brings is that row's
+    // ([_fileRows]).
     await _pixelSizeReads;
     if (!mounted) {
       return false;
     }
-    // A run two of its own pictures were picked from comes in once when
-    // their rows would bring the same layer of it ([_RunLayer]) — the
-    // second row is already in. A row that keeps another span, or puts it
-    // elsewhere, brings what its own cells say.
-    final runsPlaced = <_RunLayer>{};
+    final rows = _fileRows;
+    final paths = [
+      for (final path in placing)
+        if (rows.containsKey(path)) path,
+    ];
+    final count = paths.length;
     for (final (index, path) in paths.indexed) {
       void within(double fraction) =>
           report(pieceShare(fraction, index: index, count: count));
       within(0);
-      final run = _runLayerOf(path);
-      if (run != null && runsPlaced.contains(run)) {
-        tally
-          ..imported += 1
-          ..done.add(path);
-        continue;
-      }
       final kind = mediaAssetKindForPath(path);
       if (!await _readsForPlacement(path, tally)) {
         continue;
@@ -1845,9 +1879,6 @@ class _ImportDialogState extends State<ImportDialog> {
         return false;
       }
       await _placeOneFile(path, kind, tally, within);
-      if (run != null) {
-        runsPlaced.add(run);
-      }
     }
     report(1);
     return true;
@@ -2984,7 +3015,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// bake, a pooled file's carry in a mixed batch — shows locked
   /// (「1:1로 고정시켜서 노출시키도록. 비활성화된상태로」).
   List<ImportColumn<Object?>> _tableColumns() {
-    bool any(bool Function(String path) test) => _files.any(test);
+    bool any(bool Function(String path) test) => _listedFiles.any(test);
     final placementAsked = !widget.poolOnly;
     return [
       // The one question a setting's row is asked: the settings, or nowhere.
