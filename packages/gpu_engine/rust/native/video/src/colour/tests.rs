@@ -156,7 +156,7 @@ fn every_row_is_its_matrixs_two_weights() {
 fn a_movie_that_names_no_matrix_is_read_by_its_size() {
     let named = |matrix, range| Colours { matrix, range, ..Colours::NONE };
     let none = Colours::NONE;
-    assert_eq!(Sums::of(none, (1280, 720)), BT709[0], "1280 wide is HD");
+    assert_eq!(Sums::of(none, (1280, 576)), BT709[0], "1280 wide is HD, however tall");
     assert_eq!(Sums::of(none, (1279, 576)), BT601[0], "narrower, and 576 tall, is not");
     assert_eq!(Sums::of(none, (720, 577)), BT709[0], "more than 576 tall is HD");
     assert_eq!(Sums::of(none, (720, 480)), BT601[0], "NTSC's SD");
