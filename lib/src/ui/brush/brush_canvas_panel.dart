@@ -3876,10 +3876,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// stands: over what covers that edge, and over the transport when there
   /// is one.
   double get _floorBarBottom =>
-      cover.bottom +
-      bottomOverlaySpan +
-      _capsuleMargin +
+      _floorBarBottomOnTheCanvas +
       (transport == null ? 0 : transport!.height + _capsuleMargin);
+
+  /// [_floorBarBottom] as the canvas has it: no transport, which only a
+  /// panel laid on the floor brings ([_LeftEdgeSeat.centreBottom], F-607).
+  double get _floorBarBottomOnTheCanvas =>
+      cover.bottom + bottomOverlaySpan + _capsuleMargin;
 
   /// The floor's transport, in a capsule under the horizontal bar — as wide
   /// as what the side panels leave.
@@ -3913,6 +3916,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         nameBottom: onFloor
             ? _floorBarBottom + lane + _capsuleMargin
             : _transportCover + lane + _capsuleMargin,
+        // Only a floor has a left pill ([CanvasFloorInsets.leftPill]).
+        centreBottom: _floorBarBottomOnTheCanvas + lane + _capsuleMargin,
         nameRight: (onFloor ? cover.right : lane) + _capsuleMargin,
         railBand: leftRailBand,
         onPillLaidOut: onLeftPillLaidOut,
@@ -4074,8 +4079,9 @@ enum _LeftEdgeSlot { name, pill }
 /// Seats what stands on the LEFT edge: the file's name at the artwork's
 /// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
 /// and inside what the side panels leave — and the left pill
-/// ([CanvasFloorInsets.leftPill]) in the middle of the room between the
-/// pill's band and the name.
+/// ([CanvasFloorInsets.leftPill]) in the middle of the canvas's room — from
+/// the pill's band to the bar, as the canvas has it — and never down on the
+/// name or a transport (`centreBottom`, F-607).
 ///
 /// The axis law the two bars follow (유저, R4): ALONG the edge it rides the
 /// left pill holds the room's centre, and ACROSS that edge it sits on the
@@ -4094,6 +4100,7 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
     required this.onFloor,
     required this.top,
     required this.nameBottom,
+    required this.centreBottom,
     required this.nameRight,
     required this.railBand,
     required this.onPillLaidOut,
@@ -4110,6 +4117,18 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
 
   /// How far up the box the name stands.
   final double nameBottom;
+
+  /// How far up the box the room the pill is CENTRED in ends: over the bar
+  /// as the canvas has it, with no file name and no transport under it.
+  ///
+  /// 🗣️F-607 (유저 2026-11-16): 「캔버스랑 타임시트패널이랑 서로 브러시 알약
+  /// 위치가 다름. 타임시트가 좀 더 위쪽인느낌 … 캔버스쪽에 맞춰서 법 통일」 —
+  /// a panel laid on the floor stands the canvas's pill where the canvas
+  /// does, whatever it lays under its bar: a timesheet its page turner, a
+  /// viewer its name. Those only keep the pill from standing on them
+  /// ([nameBottom]). ↩️It was centred over what the panel laid, so a page
+  /// turner stood it higher by half the turner.
+  final double centreBottom;
 
   /// How far in from the right edge the name may run.
   final double nameRight;
@@ -4146,7 +4165,9 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
       _LeftEdgeSlot.pill,
       BoxConstraints(maxHeight: room),
     );
-    final pillTop = top + (room - pill.height) / 2;
+    final centred =
+        top + (size.height - centreBottom - top - pill.height) / 2;
+    final pillTop = math.min(centred, roomBottom - pill.height);
     final beside = canvasFloorBandIntrudes(
       railBand,
       top: pillTop,
@@ -4165,6 +4186,7 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
       oldDelegate.onFloor != onFloor ||
       oldDelegate.top != top ||
       oldDelegate.nameBottom != nameBottom ||
+      oldDelegate.centreBottom != centreBottom ||
       oldDelegate.nameRight != nameRight ||
       oldDelegate.railBand != railBand;
 }

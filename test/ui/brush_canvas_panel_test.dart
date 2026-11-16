@@ -82,6 +82,7 @@ Widget floorPillHarness({
   EdgeInsets floorCover = EdgeInsets.zero,
   CanvasFloorBand? floorLeftRailBand,
   String? documentName,
+  CanvasTransportBand? transport,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
@@ -89,6 +90,7 @@ Widget floorPillHarness({
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
     documentName: documentName,
+    transport: transport,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
     unframedFit: unframedFit,
@@ -583,6 +585,78 @@ void main() {
         tester.getRect(leftCapsule).bottom,
         lessThanOrEqualTo(name.top - 6 + 0.01),
       );
+    });
+
+    // 🗣️F-607 (유저 2026-11-16): 「바닥 도킹으로 타임시트패널깔고
+    // 확인해봣는데, 캔버스랑 타임시트패널이랑 서로 브러시 알약 위치가 다름.
+    // 타임시트가 좀 더 위쪽인느낌. 사본만든거같은데 캔버스쪽에 맞춰서 법
+    // 통일」. The canvas lays nothing under its bar; a timesheet lays its
+    // page turner there, a viewer its file's name.
+    const turner = CanvasTransportBand(
+      height: 30,
+      child: SizedBox(height: 30),
+    );
+
+    Future<Rect> pillOver(
+      WidgetTester tester, {
+      String? name,
+      CanvasTransportBand? transport,
+      CanvasEdgePill pill = testLeftPill,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          documentName: name,
+          transport: transport,
+          leftPill: pill,
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getRect(leftCapsule);
+    }
+
+    testWidgets('🗣️F-607: the left pill stands where the canvas stands it, '
+        'whatever a panel lays under its bar', (tester) async {
+      final canvas = await pillOver(tester);
+      expect(
+        await pillOver(tester, transport: turner),
+        canvas,
+        reason: 'a timesheet\'s page turner',
+      );
+      expect(
+        await pillOver(tester, name: 'cut_012.tvpp'),
+        canvas,
+        reason: 'a viewer\'s file name',
+      );
+      expect(
+        await pillOver(tester, name: 'cut_012.tvpp', transport: turner),
+        canvas,
+      );
+    });
+
+    testWidgets('a left pill too tall for the canvas\'s room stands on '
+        'neither the name nor the transport under it', (tester) async {
+      const tall = CanvasEdgePill(
+        width: 28,
+        child: SizedBox(width: 28, height: 600),
+      );
+      final pill = await pillOver(
+        tester,
+        name: 'cut_012.tvpp',
+        transport: turner,
+        pill: tall,
+      );
+      final name = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-document-name')),
+      );
+      final transport = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-transport')),
+      );
+      expect(name.bottom, lessThanOrEqualTo(transport.top));
+      expect(pill.bottom, lessThanOrEqualTo(name.top - 6 + 0.01));
     });
 
     testWidgets('🗣️F-530: a file name cut on its plate says itself whole, and '
