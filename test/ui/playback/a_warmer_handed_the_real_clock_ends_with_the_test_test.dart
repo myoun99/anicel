@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -124,6 +126,26 @@ void main() {
       warmer.isResting,
       isFalse,
       reason: '⛔premise: the walk stands at the gate, the hold open',
+    );
+  });
+
+  // A step whose landing a test cannot end on at will — a picture asked
+  // ahead coming in, a making given up — steps aside as every other does:
+  // through the one door the rig sets, or it takes the zero timer back.
+  test('🚨every step of the walk steps aside through the one door the rig '
+      'sets', () {
+    final source = File(
+      'lib/src/ui/playback/playback_prerender_scheduler.dart',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+    expect(
+      RegExp(r'_wait\(Duration\.zero\)').allMatches(source).length,
+      1,
+      reason: 'no step takes a zero timer of its own',
+    );
+    expect(
+      source,
+      contains('yieldsToTheEventLoop\n      ? _wait(Duration.zero)'),
+      reason: 'the one there is is the door\'s',
     );
   });
 }
