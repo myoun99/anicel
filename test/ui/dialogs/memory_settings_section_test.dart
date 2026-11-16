@@ -339,7 +339,7 @@ void main() {
         ),
       );
       final texts = [
-        for (final text in tester.widgetList<Text>(find.byType(Text)))
+        for (final text in tester.widgetList<Text>(find.anyText()))
           text.data,
       ];
       final ram = texts.indexOf(AppText.strings.memoryProcessTotal);
