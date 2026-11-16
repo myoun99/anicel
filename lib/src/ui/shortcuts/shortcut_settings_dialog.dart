@@ -24,6 +24,7 @@ import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
+import 'lone_modifiers.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_clash_names.dart';
 import 'shortcut_presets.dart';
@@ -90,7 +91,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   void _startRecording(_Recording recording) {
-    _modifiersSoFar = null;
+    _lone = LoneModifiers();
     setState(() => _recording = recording);
     _recordFocus.requestFocus();
   }
@@ -116,15 +117,18 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     widget.bindings.setActivators(actionId, const []);
   }
 
-  /// The modifiers held as the last of them went down, with no other key
-  /// pressed since: a key that is modifiers alone, taken as the first of
-  /// them is let go ([_letGoOf]) — all of them held then. Null while none
-  /// waits.
+  /// Modifiers pressed alone while a key is recorded ([LoneModifiers]): a
+  /// key that is modifiers alone, taken as the first of them is let go —
+  /// all of them held as the last went down. A fresh one for each
+  /// recording: the window hears no key between.
   ///
   /// 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
   /// 단축키등록안됨. 다 가능하게」. ↩️A modifier pressed alone only ever
   /// waited for the key it modifies till then: a key could not be one.
-  SingleActivator? _modifiersSoFar;
+  /// 🗣️F-603-Q1, the same day: a pressed action takes one too, pressed as
+  /// its modifiers are let go with nothing between (「뗐을 때」). ↩️Only a
+  /// held row took one till that answer.
+  LoneModifiers _lone = LoneModifiers();
 
   KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
     final recording = _recording;
@@ -132,67 +136,35 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     if (recording == null) {
       return KeyEventResult.ignored;
     }
-    // A modifier's key-up is asked, not trusted: a pen's move lets go of
-    // Ctrl and Shift in the engine's record with the key still down
-    // ([modifierHeld]).
-    if (event is KeyUpEvent && isModifierKey(key)) {
-      if (!modifierHeld(key)) {
-        _letGoOf(recording);
-      }
+    final alone = _lone.hearKey(event);
+    if (alone != null) {
+      _take(recording, alone);
       return KeyEventResult.handled;
     }
     if (event is! KeyDownEvent) {
-      return KeyEventResult.ignored;
+      return event is KeyUpEvent && isModifierKey(key)
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
     }
     if (key == LogicalKeyboardKey.escape) {
-      _modifiersSoFar = null;
       setState(() => _recording = null);
       return KeyEventResult.handled;
     }
-    final held = modifiersAloneActivator(
-      control: ModifierKeys.isControlPressed,
-      shift: ModifierKeys.isShiftPressed,
-      alt: ModifierKeys.isAltPressed,
-      meta: ModifierKeys.isMetaPressed,
-    );
     // A modifier waits — for the key it modifies, or to be let go alone.
     if (isModifierKey(key)) {
-      _modifiersSoFar = held;
       return KeyEventResult.handled;
     }
-    _modifiersSoFar = null;
     _take(
       recording,
       SingleActivator(
         key,
-        control: held.control,
-        shift: held.shift,
-        alt: held.alt,
-        meta: held.meta,
+        control: ModifierKeys.isControlPressed,
+        shift: ModifierKeys.isShiftPressed,
+        alt: ModifierKeys.isAltPressed,
+        meta: ModifierKeys.isMetaPressed,
       ),
     );
     return KeyEventResult.handled;
-  }
-
-  /// A modifier let go: the modifiers held with it, with no other key
-  /// pressed among them, are the key [recording] waited for — for a row
-  /// whose action is held.
-  ///
-  /// ⚠️F-603-Q1 (유저 2026-11-16): a pressed action takes modifiers alone
-  /// too, pressed as they are let go with nothing between — not yet
-  /// (`EditorShortcutBindings._formsOf`); till then such a row waits on
-  /// for another key.
-  void _letGoOf(_Recording recording) {
-    final alone = _modifiersSoFar;
-    _modifiersSoFar = null;
-    if (alone == null) {
-      return;
-    }
-    if (recording case _ForAction(:final actionId)
-        when !(widget.bindings.definitionFor(actionId)?.hold ?? false)) {
-      return;
-    }
-    _take(recording, alone);
   }
 
   /// [pressed] is the key [recording] waited for.

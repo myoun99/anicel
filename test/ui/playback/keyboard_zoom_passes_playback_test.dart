@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show modifiersAloneActivator;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/app_shortcuts.dart';
@@ -412,6 +414,35 @@ void main() {
       reason: 'and an Alt let go with nothing after it stops, like any '
           'modifier',
     );
+  });
+
+  // 🗣️F-603-Q1 (유저 2026-11-16): 「뗐을 때 — 그 사이에 다른 키나 클릭이
+  // 없었으면 발동」 — and T28-c: while something plays, the first actuation
+  // is the stop, and only the stop.
+  testWidgets('🚨a key that is Ctrl alone, let go alone while the canvas '
+      'plays, stops it and runs nothing — and stopped, it runs', (
+    tester,
+  ) async {
+    final session = await pumpEditor(tester);
+    CanvasTool toolOf() =>
+        tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
+    appShortcuts(tester).setActivators(EditorActionIds.toolEraser, [
+      modifiersAloneActivator(control: true),
+    ]);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pumpAndSettle();
+    await playCanvas(tester, session);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(session.playbackRig.playback.isPlaying, isFalse);
+    expect(toolOf(), CanvasTool.brush, reason: 'the stop, and only the stop');
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.eraser);
   });
 
   testWidgets('a modifier chord that is NOT a zoom stops like any key, and '

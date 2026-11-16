@@ -813,24 +813,45 @@ void main() {
       );
     });
 
-    testWidgets('⚠️F-603-Q1: a pressed row waits on past modifiers alone — '
-        'till they press it as they are let go', (tester) async {
+    testWidgets('🗣️F-603-Q1 「뗐을 때」: a pressed row takes modifiers alone '
+        'too — and one recorded after a chord hears that chord\'s Ctrl no '
+        'more', (tester) async {
       const undo = EditorActionIds.undo;
       final bindings = await recording(tester, undo);
-      final before = bindings.activatorsFor(undo);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pump();
 
-      expect(hint(), findsOneWidget, reason: 'still recording');
-      expect(bindings.activatorsFor(undo), before);
+      expect(hint(), findsNothing);
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl',
+      ]);
+      expect(isModifiersAlone(bindings.activatorsFor(undo).single), isTrue);
+
+      // A chord recorded, its Ctrl let go once the row has its key — and the
+      // row recorded again: Ctrl alone is a press of its own all the same.
+      Future<void> record() async {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('shortcut-record-$undo')),
+        );
+        await tester.pump();
+      }
+
+      await record();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pump();
-      expect(
-        bindings.activatorsFor(undo).map(singleActivatorLabel),
-        ['F9'],
-        reason: 'the Ctrl let go is gone from what comes after it',
-      );
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl+F9',
+      ]);
+      await record();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl',
+      ]);
     });
   });
   testWidgets('record captures the next key, and the reset restores', (

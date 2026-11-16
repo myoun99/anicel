@@ -7,6 +7,7 @@ import '../debug/key_trace.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
+import 'lone_modifiers.dart';
 import 'panel_actions.dart';
 import 'sheet_arrow.dart';
 import 'shortcut_activator_codec.dart';
@@ -32,6 +33,13 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Null disables persistence (tests, and FLUTTER_TEST runs).
   final ShortcutSettingsStore? store;
+
+  /// Modifiers pressed alone on the shell's road ([LoneModifiers]): heard
+  /// at every key and pointer event, app-wide, by the held keys' listener
+  /// (`EditorKeyHolds`) — that runs before any key reaches a focus — and
+  /// read by a pressed action's key that is modifiers alone, at the key-up
+  /// it was found at ([ModifiersLetGoActivator]).
+  final LoneModifiers lone = LoneModifiers();
 
   /// Every action a key can be put on: the registry's, then the workspace's
   /// panels ([setPanelActions]) and the brush library's ([setBrushActions])
@@ -256,15 +264,12 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// [activator]'s pressable forms for [actionId]: a DIRECTION key of a move
   /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned,
   /// and a key that is modifiers alone is a HELD action's as they go down
-  /// ([ModifiersDownActivator]).
+  /// ([ModifiersDownActivator]) and a pressed one's as they are let go
+  /// alone ([ModifiersLetGoActivator]).
   ///
-  /// ⚠️F-603-Q1 (유저 2026-11-16): an action that is pressed rather than
-  /// held is pressed by modifiers alone as they are let go — 「뗐을 때 — 그
-  /// 사이에 다른 키나 클릭이 없었으면 발동」 (Ctrl+Z goes through Ctrl alone
-  /// on its way). The release is the playback gate's lone modifier
-  /// (I-19-zoom-key-playback) — one reading of it, not a second — and is not
-  /// here yet: till it is, a pressed action has no form for one, and the
-  /// settings window records none for it.
+  /// 🗣️F-603-Q1 (유저 2026-11-16): 「뗐을 때 — 그 사이에 다른 키나 클릭이
+  /// 없었으면 발동」 — Ctrl+Z goes through Ctrl alone on its way, and only
+  /// a Ctrl let go with nothing after it presses what Ctrl alone is.
   Iterable<ShortcutActivator> _formsOf(
     String actionId,
     SingleActivator activator,
@@ -272,7 +277,9 @@ class EditorShortcutBindings extends ChangeNotifier {
     if (isModifiersAlone(activator)) {
       return [
         if (definitionFor(actionId)?.hold ?? false)
-          ModifiersDownActivator(activator),
+          ModifiersDownActivator(activator)
+        else
+          ModifiersLetGoActivator(activator, lone),
       ];
     }
     final place = _turnOf(actionId, activator);
@@ -853,6 +860,35 @@ class ModifiersDownActivator extends ShortcutActivator {
 
   @override
   String debugDescribeKeys() => 'held alone ${alone.debugDescribeKeys()}';
+}
+
+/// [alone] — a key that is modifiers alone ([modifiersAlone]) — pressed: its
+/// modifiers pressed alone and let go, at the key-up [lone] found that at
+/// (🗣️F-603-Q1: 「뗐을 때 — 그 사이에 다른 키나 클릭이 없었으면 발동」).
+///
+/// ⚠️A release found at no key-up — dropped under a pen's move, and found
+/// at the pen's next event — presses nothing: a pointer's event reaches no
+/// shortcut. While something plays, the gate eats the key-up it stopped at
+/// (`PlaybackActuationGate`), and this is never asked.
+class ModifiersLetGoActivator extends ShortcutActivator {
+  const ModifiersLetGoActivator(this.alone, this.lone);
+
+  final SingleActivator alone;
+  final LoneModifiers lone;
+
+  @override
+  Iterable<LogicalKeyboardKey> get triggers => modifierKeysOf(alone);
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) {
+    final pressed = lone.pressedAt(event);
+    return event is KeyUpEvent &&
+        pressed != null &&
+        activatorsEqual(pressed, alone);
+  }
+
+  @override
+  String debugDescribeKeys() => 'let go alone ${alone.debugDescribeKeys()}';
 }
 
 /// The app-level ShortcutManager, and what it leaves to a text field.

@@ -242,11 +242,6 @@ void main() {
       // Off the canvas: a notch turned with Alt zooms a sheet's frames
       // (I-155 — After Effects' and Premiere Pro's zoom of time).
       'lib/src/ui/input/wheel_law.dart',
-      // Off the canvas: the playback gate asks which modifiers are held,
-      // Alt among them — one gone down while something plays is no input
-      // till something comes after it (I-19, card
-      // a-held-modifiers-repeat-is-heard-as-a-press). It keeps no tool's Alt.
-      'lib/src/ui/playback/playback_actuation_gate.dart',
       // The held keys: a modifier going down with Alt held, under a tool
       // that keeps its Alt by the predicate above, holds nothing — whatever
       // Alt holds (F-299-Q1, F-603). It reads the predicate; it keeps none.
@@ -254,6 +249,10 @@ void main() {
       // A key that is modifiers alone, pressed with just its own held
       // (F-603) — a key, no tool's.
       'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
+      // Modifiers pressed alone — Alt among them, held or not: one gone down
+      // with nothing after it is a press of its own (I-19, F-603-Q1, card
+      // a-held-modifiers-repeat-is-heard-as-a-press). It keeps no tool's Alt.
+      'lib/src/ui/shortcuts/lone_modifiers.dart',
       // Whether a modifier's key is held, asked for every reader of one as
       // the engine may have let go of it (F-603) — no tool's.
       'lib/src/ui/shortcuts/shortcut_activator_codec.dart',

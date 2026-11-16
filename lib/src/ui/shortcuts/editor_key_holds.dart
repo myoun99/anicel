@@ -190,9 +190,11 @@ final class EditorKeyHolds {
   }
 
   /// Every key let go, app-wide — and every modifier that goes down or up
-  /// under a held view key, which asks that key's press again. Never
-  /// consumes.
+  /// under a held view key, which asks that key's press again. Heard for
+  /// the road's modifiers pressed alone too ([EditorShortcutBindings.lone]),
+  /// before the key reaches a focus. Never consumes.
   bool _onKey(KeyEvent event) {
+    bindings.lone.hearKey(event);
     final key = event.logicalKey;
     if (event is KeyUpEvent && !isModifierKey(key)) {
       _letGoOf(key);
@@ -206,8 +208,10 @@ final class EditorKeyHolds {
 
   /// Every pointer event, app-wide — where a modifier let go with no key
   /// event is found ([_letGoOfModifiersNoLongerHeld]), and the view press
-  /// asked again for it, as at a key's.
+  /// asked again for it, as at a key's; and heard for the road's modifiers
+  /// pressed alone, which a press comes after.
   void _onPointer(PointerEvent event) {
+    bindings.lone.hearPointer(event);
     if (_letGoOfModifiersNoLongerHeld()) {
       _reaskTheView();
     }

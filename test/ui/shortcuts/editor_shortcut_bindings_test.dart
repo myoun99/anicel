@@ -378,9 +378,8 @@ void main() {
   });
 
   testWidgets('🚨a key that is modifiers alone presses a HELD action as they '
-      'go down — every one held and no other — and no pressed one', (
-    tester,
-  ) async {
+      'go down — every one held and no other — and a pressed one as they '
+      'are let go alone (F-603-Q1)', (tester) async {
     final bindings = EditorShortcutBindings()
       ..setPreset(ShortcutPreset.anicel);
     final alt = modifiersAloneActivator(alt: true);
@@ -399,23 +398,35 @@ void main() {
         ModifierKeys.debugWindowsKeyDown = virtualKeys.contains;
 
     hold({vkMenu});
+    final press = down(LogicalKeyboardKey.altRight);
+    bindings.lone.hearKey(press);
+    expect(bindings.presses(EditorActionIds.canvasPanHold, press), isTrue);
     expect(
-      bindings.presses(
-        EditorActionIds.canvasPanHold,
-        down(LogicalKeyboardKey.altRight),
-      ),
-      isTrue,
-    );
-    expect(
-      bindings.presses(EditorActionIds.undo, down(LogicalKeyboardKey.altLeft)),
+      bindings.presses(EditorActionIds.undo, press),
       isFalse,
-      reason: 'F-603-Q1: a pressed one is pressed as they are let go — not '
-          'yet',
+      reason: 'a pressed one is not pressed as they go down',
     );
     expect(
       bindings.shortcuts.keys.whereType<ModifiersDownActivator>(),
       isEmpty,
-      reason: 'nor is one in the map the pressed actions run through',
+      reason: 'nor is a held one in the map the pressed actions run through',
+    );
+    expect(bindings.shortcuts.keys.whereType<ModifiersLetGoActivator>(), [
+      isA<ModifiersLetGoActivator>(),
+    ]);
+
+    hold({});
+    const release = KeyUpEvent(
+      physicalKey: PhysicalKeyboardKey.altRight,
+      logicalKey: LogicalKeyboardKey.altRight,
+      timeStamp: Duration.zero,
+    );
+    bindings.lone.hearKey(release);
+    expect(bindings.presses(EditorActionIds.undo, release), isTrue);
+    expect(
+      bindings.presses(EditorActionIds.canvasPanHold, release),
+      isFalse,
+      reason: 'a held one let go is let go',
     );
 
     hold({vkMenu, vkControl});

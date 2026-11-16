@@ -11,8 +11,11 @@ import 'package:anicel/src/ui/canvas/canvas_line_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_key_funnel.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show modifiersAloneActivator;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 
 /// 🗣️I-15 (유저 2026-09-11): 「단축키에 이동? 추가 … 기본값을 … 스페이스바로
@@ -651,6 +654,87 @@ void main() {
     });
   });
 
+
+  // 🗣️F-603-Q1 (유저 2026-11-16): 「뗐을 때 — 그 사이에 다른 키나 클릭이
+  // 없었으면 발동」. The shell's road whole: the funnel a bound key runs
+  // into, the holds hearing every key and pointer before it.
+  group('a pressed action on modifiers alone runs as they are let go', () {
+    late List<String> ran;
+
+    Future<void> pumpFunnel(
+      WidgetTester tester,
+      Map<String, SingleActivator> keys,
+    ) async {
+      await pumpRoad(tester);
+      keys.forEach((id, key) => bindings.setActivators(id, [key]));
+      ran = [];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EditorKeyFunnel(
+            road: (
+              bindings: bindings,
+              onHoldKey: holds.engage,
+              invoke: ran.add,
+            ),
+            child: const Material(
+              child: Focus(autofocus: true, child: SizedBox.expand()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    const undo = EditorActionIds.undo;
+    const redo = EditorActionIds.redo;
+
+    testWidgets('🚨Ctrl let go with nothing after it runs Ctrl alone\'s — at '
+        'the release, not the press', (tester) async {
+      await pumpFunnel(tester, {undo: modifiersAloneActivator(control: true)});
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, isEmpty, reason: 'Ctrl+Z goes through Ctrl on its way');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, [undo]);
+    });
+
+    testWidgets('a key after it, or a click, and Ctrl alone runs nothing', (
+      tester,
+    ) async {
+      await pumpFunnel(tester, {undo: modifiersAloneActivator(control: true)});
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, isEmpty, reason: 'Ctrl+F9');
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, isEmpty, reason: 'a Ctrl+click');
+    });
+
+    testWidgets('Ctrl+Alt let go runs Ctrl+Alt\'s — not Ctrl\'s, nor Alt\'s '
+        'as the other comes up after', (tester) async {
+      await pumpFunnel(tester, {
+        undo: modifiersAloneActivator(control: true),
+        redo: modifiersAloneActivator(control: true, alt: true),
+      });
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, [redo]);
+    });
+
+    testWidgets('🚨a Ctrl key-up the engine makes up under a pen, the key '
+        'still down, runs nothing', (tester) async {
+      ModifierKeys.debugWindowsKeyDown = (key) => key == vkControl;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      await pumpFunnel(tester, {undo: modifiersAloneActivator(control: true)});
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(ran, isEmpty);
+    });
+  });
   testWidgets('the eyedropper follows its binding: moved off Alt, Alt holds '
       'nothing and its key holds it', (tester) async {
     await pumpRoad(tester);

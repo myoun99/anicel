@@ -194,7 +194,7 @@ const _ownKeyReaders = <(String, String), String>{
     'if (isModifierKey(event.logicalKey)) {',
   ): 'that a modifier\'s own event is no input and is not eaten (I-19) — '
       'neither a press nor a release is read off it: both are asked '
-      '(`_askTheModifiers`)',
+      '(`LoneModifiers`)',
   (
     'lib/src/ui/shortcuts/editor_key_holds.dart',
     'if (event is KeyUpEvent && !isModifierKey(key)) {',
@@ -231,10 +231,17 @@ const _ownKeyReaders = <(String, String), String>{
       'rather than being the tool\'s (F-299-Q1) — its release is asked of '
       '`ModifierKeys` with the rest',
   (
+    'lib/src/ui/shortcuts/lone_modifiers.dart',
+    'after: event is KeyDownEvent && !isModifierKey(event.logicalKey),',
+  ): 'that a key\'s down that is no modifier comes after the modifiers '
+      'held — which are held, and when one is let go, is asked of '
+      '`ModifierKeys` at every event',
+  (
     'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
-    'if (event is KeyUpEvent && isModifierKey(key)) {',
-  ): 'when to ask whether the modifiers being recorded alone are let go — '
-      'asked of `modifierHeld`, not read off the key-up (F-603)',
+    'return event is KeyUpEvent && isModifierKey(key)',
+  ): 'that a modifier\'s key-up is the window\'s while a key is recorded — '
+      'whether it let go of the modifiers recorded alone is asked of '
+      '`LoneModifiers` (F-603)',
   (
     'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
     'if (isModifierKey(key)) {',
