@@ -15,9 +15,9 @@
 //! and the crate's export tests hold that job for themselves.
 
 use std::ffi::{CStr, CString};
-use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
+use oracle::TempFile;
 use video::decode::{
     qa_video_decode_close, qa_video_decode_close_all, qa_video_decode_colours, qa_video_decode_frame,
     qa_video_decode_info, qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_nv12,
@@ -150,10 +150,23 @@ const SILENT: Asked =
     Asked { width: WIDTH, height: HEIGHT, fps: (24, 1), sound: None, container: 0, codec: 0, alpha: 0, bitrate_bps: 0 };
 
 /// A movie of [`FRAMES`] such pictures at 24, written once by this build's
-/// export — None where it has none — and the file it is in.
-fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
-    static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
-    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0, Feed::Nv12, picture)).as_ref()
+/// export — None where it has none: its bytes. The file the export wrote
+/// them into goes as soon as they are read; a test that opens the movie by
+/// its path lays one of its own ([`laid_movie`]).
+///
+/// ↩️Till 2026-11-16 that file stayed for every test to share, and nothing
+/// deleted it: Temp kept one of every run (card
+/// a-cargo-decode-test-leaves-its-movie-in-temp).
+fn movie() -> Option<&'static [u8]> {
+    static MOVIE: OnceLock<Option<Vec<u8>>> = OnceLock::new();
+    MOVIE
+        .get_or_init(|| write_movie("silent", SILENT, FRAMES, 0, Feed::Nv12, picture).map(|(_written, bytes)| bytes))
+        .as_deref()
+}
+
+/// [`movie`] in a file of the test's own, and its bytes.
+fn laid_movie() -> Option<(TempFile, &'static [u8])> {
+    movie().map(|bytes| (TempFile::new("silent.mp4", bytes), bytes))
 }
 
 /// How a frame is handed to the export: as the NV12 an H.26x writer takes
@@ -197,9 +210,9 @@ fn hand(feed: Feed, paint: &impl Fn(usize, usize, usize, usize) -> Vec<u8>, widt
 
 /// `frames` pictures `paint` makes (`width`, `height`, `stride`, frame) as the movie
 /// `asked` this build's export writes, each handed as `feed` says, and the
-/// file — None where it does not write it. Under silence of the sound's
-/// rate, if it has one, that runs `sound_past` samples past the last
-/// picture.
+/// file, gone when it drops — None where it does not write it. Under
+/// silence of the sound's rate, if it has one, that runs `sound_past`
+/// samples past the last picture.
 fn write_movie(
     name: &str,
     asked: Asked,
@@ -207,10 +220,10 @@ fn write_movie(
     sound_past: usize,
     feed: Feed,
     paint: impl Fn(usize, usize, usize, usize) -> Vec<u8>,
-) -> Option<(PathBuf, Vec<u8>)> {
+) -> Option<(TempFile, Vec<u8>)> {
     let extension = if asked.container == 1 { "mov" } else { "mp4" };
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.{extension}", std::process::id()));
-    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let path = TempFile::at(&format!("{name}.{extension}"));
+    let utf8 = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
     let (rate, channels) = asked.sound.unwrap_or((0, 0));
     let Asked { width, height, fps, container, codec, alpha, bitrate_bps, .. } = asked;
     // SAFETY (each): the export's declarations; a whole frame of the size
@@ -249,7 +262,7 @@ fn write_movie(
         sound(sound_past);
     }
     assert_eq!(qa_video_export_finish(), 1, "finish: {}", export_error());
-    let bytes = std::fs::read(&path).expect("the movie written");
+    let bytes = std::fs::read(path.path()).expect("the movie written");
     Some((path, bytes))
 }
 
@@ -262,14 +275,12 @@ fn export_error() -> String {
 
 /// `body` between junk, in a file of its own: the archive a span sits in,
 /// and the body's offset in it.
-fn between_junk(name: &str, body: &[u8]) -> (PathBuf, i64) {
+fn between_junk(name: &str, body: &[u8]) -> (TempFile, i64) {
     let mut bytes: Vec<u8> = (0..4096u32).map(|k| (k * 31 + 5) as u8).collect();
     let offset = bytes.len() as i64;
     bytes.extend_from_slice(body);
     bytes.extend((0..777u32).map(|k| (k * 29 + 3) as u8));
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.bin", std::process::id()));
-    std::fs::write(&path, bytes).expect("write the archive");
-    (path, offset)
+    (TempFile::new(&format!("{name}.bin"), &bytes), offset)
 }
 
 /// Everything the decoder reads of the movie `open` gives it: its info, then
@@ -312,12 +323,24 @@ fn where_there_is_no_decoder_it_says_so() {
 #[test]
 fn a_movie_on_disk_refuses_only_past_its_end_and_too_small_a_buffer() {
     let _turn = one_at_a_time();
-    let Some((path, _)) = movie() else { return };
-    let path = path.to_str().expect("UTF-8");
+    let Some((path, _)) = laid_movie() else { return };
+    let path = path.path().to_str().expect("UTF-8");
     let (info, read) = read_all(|| open(path));
     assert_eq!(info, (WIDTH as i32, HEIGHT as i32, FRAMES as i64, (24, 1)), "LIVENESS: the movie written");
     let refusals: Vec<_> = read.iter().filter_map(|read| read.as_ref().err()).collect();
     assert_eq!(refusals, ["past the end of the stream", "frame buffer too small"], "LIVENESS: both refusals asked");
+}
+
+// 🚨The movie the tests share is held as its bytes: the file the export
+// wrote them into goes once they are read, and one a test lays goes with
+// the test ([`TempFile`]). ↩️Till 2026-11-16 Temp kept one of every run
+// (card a-cargo-decode-test-leaves-its-movie-in-temp).
+#[test]
+fn the_movie_the_tests_share_leaves_no_file_in_temp() {
+    let _turn = one_at_a_time();
+    let Some(bytes) = movie() else { return };
+    assert!(!bytes.is_empty(), "LIVENESS: the movie written");
+    assert_eq!(TempFile::left("silent.mp4"), Vec::<std::path::PathBuf>::new(), "none of the shared movie's");
 }
 
 // Every movie the export writes reads back through this crate's reader as
@@ -362,7 +385,7 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
         let name = &format!("{name} as {feed:?}");
         let (path, _) = write_movie(&format!("asked-{}", name.replace(' ', "-")), asked, frames, 0, feed, picture)
             .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
-        let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
+        let (info, read) = read_all(|| open(path.path().to_str().expect("UTF-8")));
         let even = |side: usize| (side + (side & 1)) as i32;
         let shape = (even(asked.width), even(asked.height), frames as i64);
         assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
@@ -380,7 +403,6 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
             let shown = shows(frame, info.0 as usize, info.1 as usize);
             assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
         }
-        std::fs::remove_file(path).ok();
     }
 }
 
@@ -423,8 +445,7 @@ fn a_flat_colour_comes_back_within_three() {
             let flat = |width: usize, height: usize, stride: usize, _| flat_nv12(width, height, stride, ycc);
             let name = format!("flat-{width}-{}", rgb[0]);
             let (path, _) = write_movie(&name, asked, 3, 0, Feed::Nv12, flat).expect("it writes an MP4 of H.264");
-            let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
-            std::fs::remove_file(path).ok();
+            let (info, read) = read_all(|| open(path.path().to_str().expect("UTF-8")));
             let frame = read[1].as_ref().expect("the second frame");
             let middle = &frame[((info.1 as usize / 2) * info.0 as usize + info.0 as usize / 2) * 4..][..3];
             let off = middle.iter().zip(rgb).map(|(back, was)| back.abs_diff(was)).max();
@@ -440,8 +461,8 @@ fn a_flat_colour_comes_back_within_three() {
 #[test]
 fn an_nv12_frame_of_another_shape_is_refused_and_said() {
     let _turn = one_at_a_time();
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-shape.mp4", std::process::id()));
-    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let path = TempFile::at("shape.mp4");
+    let utf8 = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY (each): the export's declarations; room for the two the shape
     // says, and a frame of the stride handed.
     let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0, std::ptr::null()) };
@@ -453,7 +474,6 @@ fn an_nv12_frame_of_another_shape_is_refused_and_said() {
     let written = unsafe { qa_video_export_write_nv12(nv12.as_ptr(), short as i64) };
     let said = export_error();
     qa_video_export_abort();
-    std::fs::remove_file(path).ok();
     assert_eq!(written, 0, "a stride short of the width is refused");
     assert!(said.contains("an NV12 frame of another shape"), "{said}");
 }
@@ -464,27 +484,25 @@ fn an_nv12_frame_of_another_shape_is_refused_and_said() {
 #[test]
 fn a_span_reads_as_the_movie_it_holds_plain_or_framed() {
     let _turn = one_at_a_time();
-    let Some((path, bytes)) = movie() else { return };
-    let whole = read_all(|| open(path.to_str().expect("UTF-8")));
+    let Some((path, bytes)) = laid_movie() else { return };
+    let whole = read_all(|| open(path.path().to_str().expect("UTF-8")));
     let (plain, offset) = between_junk("plain", bytes);
     let framed_blob = oracle::framed(bytes, 4096);
     let (framed, framed_offset) = between_junk("framed", &framed_blob);
     for (archive, offset, length, is_framed) in
         [(&plain, offset, bytes.len(), false), (&framed, framed_offset, framed_blob.len(), true)]
     {
-        let archive = archive.to_str().expect("UTF-8");
+        let archive = archive.path().to_str().expect("UTF-8");
         let ours = read_all(|| open_span(archive, offset, length as i64, is_framed));
         assert!(ours == whole, "framed {is_framed}: the span reads as the file on disk reads");
     }
-    std::fs::remove_file(plain).ok();
-    std::fs::remove_file(framed).ok();
 }
 
 #[test]
 fn a_failure_says_why() {
     let _turn = one_at_a_time();
-    let Some((path, bytes)) = movie() else { return };
-    let path = path.to_str().expect("UTF-8");
+    let Some((path, bytes)) = laid_movie() else { return };
+    let path = path.path().to_str().expect("UTF-8");
     let missing = format!("{path}.not-there");
     let length = bytes.len() as i64;
     // A span that is not one is refused by this crate before the OS sees a
@@ -539,20 +557,19 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // kernels/shared/one_checkout.rs).
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
     let fixture = format!("{crate_dir}/../../../../../test/fixtures/tone_with_video.mp4");
-    for movie in [longer.to_str().expect("UTF-8"), &fixture] {
+    for movie in [longer.path().to_str().expect("UTF-8"), &fixture] {
         let handle = open(movie);
         let answer = info(handle);
         qa_video_decode_close(handle);
         assert_eq!(answer.map(|info| info.2), Some(12), "{movie}: LIVENESS — twelve pictures");
     }
-    std::fs::remove_file(longer).ok();
 }
 
 #[test]
 fn eight_movies_open_at_once_and_a_ninth_is_refused() {
     let _turn = one_at_a_time();
-    let Some((path, _)) = movie() else { return };
-    let path = path.to_str().expect("UTF-8");
+    let Some((path, _)) = laid_movie() else { return };
+    let path = path.path().to_str().expect("UTF-8");
     let handles: Vec<i32> = (0..8).map(|_| open(path)).collect();
     assert_eq!(handles, (1..=8).collect::<Vec<_>>(), "handles count from one");
     assert_eq!(open(path), 0, "a ninth");
@@ -572,9 +589,9 @@ fn open_nv12(path: &std::path::Path) -> i32 {
 
 /// A movie at 24 of `frames` NV12, `width` × `height` (even), written as a
 /// piece's are: named `colours`, its frames laid as they are. Its path.
-fn write_named(name: &str, (width, height): (usize, usize), colours: [i32; 4], frames: &[Vec<u8>]) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
-    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+fn write_named(name: &str, (width, height): (usize, usize), colours: [i32; 4], frames: &[Vec<u8>]) -> TempFile {
+    let path = TempFile::at(&format!("{name}.mp4"));
+    let utf8 = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
     let (width, height) = (width as i32, height as i32);
     // SAFETY (each): the export's declarations; four colours, and a whole
     // frame of rows `width` apart.
@@ -653,7 +670,7 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
     let written = [[120, 90, 170], [60, 160, 100], [200, 128, 128]];
     let frames: Vec<_> = written.iter().map(|&ycc| flat_nv12(size.0, size.1, size.0, ycc)).collect();
     let movie = write_named("bt709", size, bt709, &frames);
-    let (named, decoded) = read_nv12(&movie);
+    let (named, decoded) = read_nv12(movie.path());
     assert_eq!(named, bt709, "the movie says what it was named");
     assert_eq!(decoded.len(), written.len(), "every frame");
     for (k, frame) in decoded.iter().enumerate() {
@@ -662,19 +679,17 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
         }
     }
     let piece = write_named("bt709-piece", size, named, &decoded);
-    let (piece_named, pieced) = read_nv12(&piece);
+    let (piece_named, pieced) = read_nv12(piece.path());
     assert_eq!(piece_named, bt709, "the piece says what its movie says");
     for (k, (frame, was)) in pieced.iter().zip(&decoded).enumerate() {
         for (point, was) in points_of(frame, size.0, size.1).into_iter().zip(points_of(was, size.0, size.1)) {
             assert!(near(point, was, 2), "piece frame {k}: {was:?} came back {point:?}");
         }
     }
-    let (movie_shown, piece_shown) = (shown(&movie, size, written.len()), shown(&piece, size, written.len()));
+    let (movie_shown, piece_shown) = (shown(movie.path(), size, written.len()), shown(piece.path(), size, written.len()));
     for (k, (piece, movie)) in piece_shown.into_iter().zip(movie_shown).enumerate() {
         assert!(near(piece, movie, 3), "frame {k} shown: the movie {movie:?}, its piece {piece:?}");
     }
-    std::fs::remove_file(movie).ok();
-    std::fs::remove_file(piece).ok();
 }
 
 // A movie that names nothing makes a piece that names nothing — the reader
@@ -688,8 +703,7 @@ fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
     let unnamed = [2, 2, 2, 2];
     let frames = vec![flat_nv12(64, 48, 64, [120, 90, 170]); 3];
     let movie = write_named("unnamed", (64, 48), unnamed, &frames);
-    let (named, _) = read_nv12(&movie);
-    std::fs::remove_file(movie).ok();
+    let (named, _) = read_nv12(movie.path());
     assert_eq!(named, unnamed, "nothing named, nothing said");
 }
 
@@ -714,8 +728,8 @@ fn h26x_takes_no_rgba_whoever_writes_it() {
         let bt709 = [1, 1, 1, 0];
         for (who, colours) in [("an export", std::ptr::null()), ("a piece", bt709.as_ptr())] {
             let name = format!("{}-{codec}-rgba", who.replace(' ', "-"));
-            let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
-            let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+            let path = TempFile::at(&format!("{name}.mp4"));
+            let utf8 = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
             // SAFETY (each): the export's declarations; four colours or
             // none, and a whole frame of the size opened.
             let opened =
@@ -725,7 +739,6 @@ fn h26x_takes_no_rgba_whoever_writes_it() {
             let refused = unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
             let said = export_error();
             qa_video_export_abort();
-            std::fs::remove_file(path).ok();
             assert_eq!(refused, 0, "{name}: RGBA is refused");
             assert!(said.contains("written of NV12"), "{name}: {said}");
         }
@@ -740,13 +753,12 @@ fn h26x_takes_no_rgba_whoever_writes_it() {
 #[test]
 fn a_size_no_encoder_takes_is_named() {
     let _turn = one_at_a_time();
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-small.mp4", std::process::id()));
-    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let path = TempFile::at("small.mp4");
+    let utf8 = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY: the export's declarations; no colours named.
     let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 32, 32, 24, 1, 0, 0, 0, 0, 0, 0, std::ptr::null()) };
     let said = export_error();
     qa_video_export_abort();
-    std::fs::remove_file(path).ok();
     assert_eq!(opened, 0, "32x32 is turned away");
     assert_eq!(said, "video export: no H.264 encoder accepted 32x32 frames");
 }

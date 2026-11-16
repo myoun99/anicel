@@ -11,6 +11,7 @@
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
+pub(crate) use oracle::TempFile;
 use oracle::framed;
 
 mod movies;
@@ -183,32 +184,6 @@ pub(crate) fn expect_stream_of(what: &str, (sound, answers, misuses): &(Decoded,
     reads.push(0);
     assert_eq!(answers, &reads, "{what}: each read");
     assert_eq!(misuses, &[-1, -1, 0], "{what}: what a misuse answers");
-}
-
-/// A file of its own in the temporary folder — named in Hangul, so every
-/// test also walks the path through its one widening — deleted on drop.
-/// Numbered too: the tests run at once, and two of one name would write
-/// over each other's.
-pub(crate) struct TempFile(PathBuf);
-
-impl TempFile {
-    pub(crate) fn new(name: &str, bytes: &[u8]) -> TempFile {
-        static MADE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let number = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("오디오-{}-{number}-{name}", std::process::id()));
-        std::fs::write(&path, bytes).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        TempFile(path)
-    }
-
-    pub(crate) fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
 }
 
 /// `body` between junk — the shape a carried sound has, and the shape that

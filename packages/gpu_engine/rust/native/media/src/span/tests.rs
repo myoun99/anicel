@@ -8,18 +8,17 @@
 //! every answer, window and cost held to the C's.
 
 use std::ffi::CString;
-use std::path::PathBuf;
 
-use oracle::framed;
+use oracle::{TempFile, framed};
 
 use super::Span;
 
-/// A file of this test's own, under a Korean name: what the one widening
-/// of a path is for.
-fn file(name: &str, bytes: &[u8]) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("미디어-스팬-{}-{name}.bin", std::process::id()));
-    std::fs::write(&path, bytes).expect("write the fixture");
-    path
+/// A file of this test's own ([`TempFile`]), its name in Hangul: what the
+/// one widening of a path is for. A test still deletes it once its span is
+/// closed — `expect`ed, which a span that kept its file open would refuse;
+/// the guard is for a test that fails first.
+fn file(name: &str, bytes: &[u8]) -> TempFile {
+    TempFile::new(&format!("{name}.bin"), bytes)
 }
 
 /// Byte `at` of a medium: derived from where it is, so a window that is
@@ -111,7 +110,7 @@ fn a_plain_span_reads_as_the_c_reads_it() {
     let bytes = medium(5000);
     let (archive, offset) = archive(&bytes);
     let path = file("plain", &archive);
-    let path = path.to_str().expect("UTF-8");
+    let path = path.path().to_str().expect("UTF-8");
     let length = bytes.len() as i64;
     let mut costs = Costs::default();
     let mut span = opened(&mut costs, path, offset, length, false).expect("opens");
@@ -168,7 +167,7 @@ fn a_framed_span_reads_as_the_c_reads_it() {
             let medium = medium(size);
             let (archive, offset) = archive(&framed(&medium, block));
             let path = file(&format!("framed-{block}-{size}"), &archive);
-            let path = path.to_str().expect("UTF-8");
+            let path = path.path().to_str().expect("UTF-8");
             let what = format!("blocks of {block}, {size} bytes");
             let mut span = opened(&mut costs, path, offset, archive.len() as i64 - offset - 77, true).expect("opens");
             for (position, want) in windows(size as i64, block as i64) {
@@ -255,7 +254,7 @@ fn a_framed_span_that_does_not_hold_together_is_refused_as_the_c_refuses_it() {
     for (what, blob, verdict) in broken {
         let (archive, offset) = archive(&blob);
         let path = file(&what.replace(' ', "-"), &archive);
-        let path = path.to_str().expect("UTF-8");
+        let path = path.path().to_str().expect("UTF-8");
         let mut answered = None;
         if let Some(mut span) = opened(&mut costs, path, offset, blob.len() as i64, true) {
             let size = span.size();
@@ -287,7 +286,7 @@ fn nothing_is_read_from_nothing() {
     }
     let bytes = medium(64);
     let path = file("null-out", &bytes);
-    let name = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let name = CString::new(path.path().to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY: a span of ours, read into nothing, closed once.
     unsafe {
         let span = super::qa_media_span_open(name.as_ptr(), 0, 64, 0);
@@ -295,5 +294,5 @@ fn nothing_is_read_from_nothing() {
         assert_eq!(super::qa_media_span_read(span, 0, std::ptr::null_mut(), 4), 0);
         super::qa_media_span_close(span);
     }
-    std::fs::remove_file(path).expect("cleanup");
+    std::fs::remove_file(path.path()).expect("cleanup");
 }

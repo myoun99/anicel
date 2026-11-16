@@ -17,14 +17,13 @@
 #![cfg(windows)]
 
 use std::ffi::{CString, c_void};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use media::media_foundation::{span_stream, up};
 use media::span::Span;
-use oracle::framed;
+use oracle::{TempFile, framed};
 use windows::Win32::Foundation::E_NOTIMPL;
 use windows::Win32::Media::MediaFoundation::{
     IMFAsyncCallback, IMFAsyncCallback_Impl, IMFAsyncResult, IMFByteStream, MFBYTESTREAM_IS_READABLE,
@@ -42,15 +41,13 @@ const FIXTURE_BYTES: i64 = 8192;
 const SPAN_BASE: i64 = 1000;
 const SPAN_LEN: i64 = 500;
 
-/// A file of this test's own, under a Korean name — every path that crosses
-/// into the library is UTF-8, widened once inside — deleted on drop.
-struct Fixture(PathBuf);
+/// A file of this test's own ([`TempFile`]) — every path that crosses into
+/// the library is UTF-8, widened once inside.
+struct Fixture(TempFile);
 
 impl Fixture {
     fn new(name: &str, bytes: &[u8]) -> Fixture {
-        let path = std::env::temp_dir().join(format!("미디어-스트림-{}-{name}.bin", std::process::id()));
-        std::fs::write(&path, bytes).expect("write the fixture");
-        Fixture(path)
+        Fixture(TempFile::new(&format!("{name}.bin"), bytes))
     }
 
     fn patterned(name: &str) -> Fixture {
@@ -58,17 +55,11 @@ impl Fixture {
     }
 
     fn span(&self, offset: i64, length: i64, framed: bool) -> Option<Span> {
-        Span::open(&CString::new(self.0.to_str().expect("UTF-8")).expect("no NUL"), offset, length, framed)
+        Span::open(&CString::new(self.0.path().to_str().expect("UTF-8")).expect("no NUL"), offset, length, framed)
     }
 
     fn stream(&self, offset: i64, length: i64, framed: bool) -> IMFByteStream {
         span_stream::open(self.span(offset, length, framed).expect("the span opens"))
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
     }
 }
 

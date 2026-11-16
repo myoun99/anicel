@@ -11,10 +11,11 @@
 //! as it was asked in `tests/decode.rs`.
 
 use std::ffi::CString;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use media::iso_box::{self, Atom};
+use oracle::TempFile;
 
 use super::{
     qa_video_export_abort, qa_video_export_audio_lead, qa_video_export_error, qa_video_export_finish,
@@ -102,14 +103,14 @@ fn tried(path: Option<&str>, shape: Shape) -> i32 {
 
 /// The movie `shape` makes of `frames` moving frames (and their sound),
 /// read back whole; panics where a step is refused.
-fn movie(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
+fn movie(file: &Path, shape: Shape, frames: i32) -> Vec<u8> {
     assert_eq!(open(Some(file.to_str().unwrap()), shape), 1, "open {shape:?}: {}", last_error());
     written(file, shape, frames)
 }
 
 /// The open job's movie: `frames` moving frames (and their sound) written,
 /// the job finished, the file read back whole and taken away.
-fn written(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
+fn written(file: &Path, shape: Shape, frames: i32) -> Vec<u8> {
     let per_frame = if shape.channels > 0 { shape.sample_rate * shape.fps.1 / shape.fps.0 } else { 0 };
     for frame in 0..frames {
         let wrote = hand(shape, frame as usize);
@@ -163,10 +164,11 @@ fn saw(frames: usize, channels: usize, frame: usize) -> Vec<i16> {
         .collect()
 }
 
-/// A file for `name` named as `container` names its files.
-fn temp(name: &str, container: i32) -> PathBuf {
+/// A file of the test's own for `name` ([`TempFile`]), named as `container`
+/// names its files.
+fn temp(name: &str, container: i32) -> TempFile {
     let extension = if container == 1 { "mov" } else { "mp4" };
-    std::env::temp_dir().join(format!("video-export-{}-{name}.{extension}", std::process::id()))
+    TempFile::at(&format!("{name}.{extension}"))
 }
 
 fn be32(movie: &[u8], at: usize) -> usize {
@@ -296,7 +298,7 @@ fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
             continue;
         }
         let file = temp(&format!("streams-{name}"), shape.container);
-        let laid = tracks(&movie(&file, shape, frames)).unwrap_or_else(|why| panic!("{name}: it reads — {why}"));
+        let laid = tracks(&movie(file.path(), shape, frames)).unwrap_or_else(|why| panic!("{name}: it reads — {why}"));
         let entries: &[&str] = if shape.codec == 1 { &["hvc1", "hev1"] } else { &["avc1", "avc3"] };
         let formats: Vec<&str> = laid.iter().map(|track| track.format.as_str()).collect();
         let pictures: Vec<&Track> = laid.iter().filter(|track| entries.contains(&track.format.as_str())).collect();
@@ -344,13 +346,13 @@ fn the_frame_before_the_mix_is_the_caller_s_to_fill() {
         return;
     }
     let file = temp("lead", MOVIE.container);
-    assert_eq!(open(Some(file.to_str().unwrap()), MOVIE), 1, "open: {}", last_error());
+    assert_eq!(open(Some(file.path().to_str().unwrap()), MOVIE), 1, "open: {}", last_error());
     for frames in [1023, 1025, 0, -1] {
         assert_eq!(hand(frames), (0, NOT_THE_LEAD.to_owned()), "a lead of {frames} frames");
     }
     assert_eq!(hand(lead).0, 1, "the frame itself: {}", last_error());
     assert_eq!(hand(lead), (0, NOT_THE_LEAD.to_owned()), "a second lead");
-    let laid = tracks(&written(&file, MOVIE, 24)).unwrap_or_else(|why| panic!("it reads — {why}"));
+    let laid = tracks(&written(file.path(), MOVIE, 24)).unwrap_or_else(|why| panic!("it reads — {why}"));
     let mut list = vec![0, 0, 0, 0, 0, 0, 0, 1];
     list.extend_from_slice(&48000u32.to_be_bytes());
     list.extend_from_slice(&[0, 0, 4, 0, 0, 1, 0, 0]);
@@ -457,7 +459,7 @@ const NO_CODEC: Shape = Shape { codec: 7, ..MOVIE };
 /// leave anew.
 fn turn_away_a_job() {
     let file = temp("turned-away", NO_CODEC.container);
-    assert_eq!(tried(Some(file.to_str().unwrap()), NO_CODEC), 0, "{NO_CODEC:?} is a job no platform writes");
+    assert_eq!(tried(Some(file.path().to_str().unwrap()), NO_CODEC), 0, "{NO_CODEC:?} is a job no platform writes");
 }
 
 /// `step`'s answer and what the export said after it, from the same last
@@ -490,7 +492,7 @@ fn expect_own(what: &str, said: &(i32, String), windows: (i32, &str), linux: (i3
 fn an_open_is_refused_in_the_platform_s_words() {
     let _one = one_at_a_time();
     let file = temp("refused", 0);
-    let path = file.to_str().unwrap();
+    let path = file.path().to_str().unwrap();
     for (what, shape) in [
         ("a MOV", Shape { container: 1, ..MOVIE }),
         ("ProRes in an MP4", Shape { codec: 2, ..MOVIE }),
@@ -515,7 +517,6 @@ fn an_open_is_refused_in_the_platform_s_words() {
         second
     });
     expect_own("a second job while one runs", &said, (0, super::BAD_OPEN), (-1, NO_OS));
-    std::fs::remove_file(&file).ok();
 }
 
 // A job that is no job — bad numbers, a container outside the lineup, sound
@@ -530,7 +531,7 @@ fn an_open_is_refused_in_the_platform_s_words() {
 fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
     let _one = one_at_a_time();
     let file = temp("no-job", 0);
-    let path = Some(file.to_str().unwrap());
+    let path = Some(file.path().to_str().unwrap());
     for (what, path, shape) in [
         ("no width", path, Shape { width: 0, ..MOVIE }),
         ("no height", path, Shape { height: 0, ..MOVIE }),
@@ -545,7 +546,6 @@ fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
     ] {
         assert_eq!(say(|| tried(path, shape)), (0, super::BAD_OPEN.to_owned()), "{what}");
     }
-    std::fs::remove_file(&file).ok();
 }
 
 // Nothing open: nothing written, as RGBA or as NV12, nothing finished, an
@@ -558,7 +558,7 @@ fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
 fn a_call_out_of_turn_is_answered_in_the_platform_s_words() {
     let _one = one_at_a_time();
     let file = temp("out-of-turn", 0);
-    let path = file.to_str().unwrap();
+    let path = file.path().to_str().unwrap();
     let frame = moving(64, 48, 0);
     let nv12 = vec![0u8; 64 * 48 * 3 / 2];
     let pcm = saw(10, 2, 0);
@@ -586,7 +586,6 @@ fn a_call_out_of_turn_is_answered_in_the_platform_s_words() {
         answers + again
     });
     expect_own("an open job", &said, (11, NOT_ON_WINDOWS), (-1, NO_OS));
-    std::fs::remove_file(&file).ok();
 }
 
 // The message is handed out cut to the room given — a byte short of it, for
@@ -645,7 +644,7 @@ fn every_h26x_movie_names_the_laws_colour_in_its_sample_entry() {
         if qa_video_export_probe(shape.container, shape.codec) == 0 {
             continue;
         }
-        let bytes = movie(&temp(name, 0), shape, 3);
+        let bytes = movie(temp(name, 0).path(), shape, 3);
         let colr = colour_box(&bytes).unwrap_or_else(|why| panic!("{name}: {why}"));
         assert_eq!(colr.as_deref().map(hex), Some(hex(law)), "{name}");
     }

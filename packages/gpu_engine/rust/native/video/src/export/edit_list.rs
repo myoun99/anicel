@@ -192,6 +192,8 @@ fn edit(played: u64, lead: u64) -> Vec<u8> {
 mod tests {
     use std::path::PathBuf;
 
+    use oracle::TempFile;
+
     use super::*;
 
     /// A file of this checkout's own test fixtures.
@@ -307,9 +309,8 @@ mod tests {
     #[test]
     fn the_file_grows_by_the_list_and_nothing_before_the_movie_box_moves() {
         let movie = fixture("tone_with_video.mp4");
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("anicel-edit-list-{}.mp4", std::process::id()));
-        std::fs::write(&path, &movie).unwrap();
+        let laid = TempFile::new("edit-list.mp4", &movie);
+        let path = laid.path();
         assert_eq!(mark_the_lead(&path, 44100, 1024, 21000), Some(()));
         let written = std::fs::read(&path).unwrap();
         let moov = iso_box::find(&movie, 0, movie.len(), &[b"moov"]).unwrap();
