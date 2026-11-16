@@ -80,7 +80,7 @@ class Standing {
     required RangeSelections rangeSelections,
     required RailView railView,
     required bool Function(LayerId layerId) fxEnabledOf,
-    required bool Function(LayerId? layerId) activeCutHasLayer,
+    required bool Function(Cut cut, LayerId? layerId) cutHasLayer,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -96,7 +96,7 @@ class Standing {
        _rangeSelections = rangeSelections,
        _railView = railView,
        _fxEnabledOf = fxEnabledOf,
-       _activeCutHasLayer = activeCutHasLayer;
+       _cutHasLayer = cutHasLayer;
 
   final RangeSelections _rangeSelections;
 
@@ -105,9 +105,10 @@ class Standing {
   final RailView _railView;
   final bool Function(LayerId layerId) _fxEnabledOf;
 
-  /// Whether the active cut SHOWS a row (`ActiveCutSpan.activeCutHasLayer`),
-  /// asked through the session for the construction cycle that note names.
-  final bool Function(LayerId? layerId) _activeCutHasLayer;
+  /// Whether a cut SHOWS a row (`ActiveCutSpan.cutHasLayer`) — a cut of the
+  /// selected track — asked through the session for the construction cycle
+  /// that note names.
+  final bool Function(Cut cut, LayerId? layerId) _cutHasLayer;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -1009,27 +1010,33 @@ class Standing {
   /// A flip, a ruler seek and playback that cross a cut give the same answer
   /// ([layerACutSwitchSeats]).
   void _seatTimelineOnStoryboardStand({required LayerId? before}) {
-    final seat = _layerTheStoryboardStandSeats(before: before);
+    final cut = _project.activeCutOrNull;
+    final seat = cut == null
+        ? null
+        : _layerTheStoryboardStandSeats(cut, before: before);
     if (seat != null) {
       _seatLayer(seat);
     }
   }
 
-  LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
-      switch (storyboardStandingRow) {
-        // A projection row's lane seats the row's layer, as an S row's lane
-        // seats the S row's (I-73 ④ⓔ).
-        final row when projectionRowUnder(row) != null =>
-          layerAProjectionStandSeats(
-            before: before,
-            row: projectionRowUnder(row)!,
-          ),
-        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
-            when _activeCutHasLayer(layerId) =>
-          layerId,
-        TrackRowAddress() => _activeCutHasLayer(before) ? before : null,
-        _ => null,
-      };
+  LayerId? _layerTheStoryboardStandSeats(
+    Cut cut, {
+    required LayerId? before,
+  }) => switch (storyboardStandingRow) {
+    // A projection row's lane seats the row's layer, as an S row's lane
+    // seats the S row's (I-73 ④ⓔ).
+    final row when projectionRowUnder(row) != null =>
+      layerAProjectionStandSeats(
+        before: before,
+        row: projectionRowUnder(row)!,
+        cut: cut,
+      ),
+    LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+        when _cutHasLayer(cut, layerId) =>
+      layerId,
+    TrackRowAddress() => _cutHasLayer(cut, before) ? before : null,
+    _ => null,
+  };
 
   /// 🚨The layer a CUT SWITCH lands the timeline on — every door that
   /// switches the cut asks this: [selectCut] (a flip, a ruler seek, a
@@ -1041,10 +1048,16 @@ class Standing {
   /// [_layerTheStoryboardStandSeats]). Anywhere else — or when that has no
   /// answer — the cut comes back on the row it was left on.
   ///
-  /// ⚠️Asked AFTER the new cut is active: both halves ask what it shows.
+  /// Both halves ask what [cutId] shows — so a cut not stood on yet is
+  /// asked as the one switched to is: the warm that thaws the cel a step
+  /// lands on ahead asks it of the cuts beside the active one
+  /// (stepping-into-another-cut-stalls-the-ui-a-third-of-a-second-Q1).
+  /// ↩️It was asked only after the new cut was active, and asked that.
   LayerId? layerACutSwitchSeats(CutId cutId, {required LayerId? before}) {
-    final storyboard = _working.value == WorkingPanel.storyboard
-        ? _layerTheStoryboardStandSeats(before: before)
+    final cut = _project.cutById(cutId);
+    final storyboard =
+        cut != null && _working.value == WorkingPanel.storyboard
+        ? _layerTheStoryboardStandSeats(cut, before: before)
         : null;
     return storyboard ?? _lastLayerByCut[cutId];
   }
@@ -1075,16 +1088,22 @@ class Standing {
   /// its conte group, or its camera layer (I-73 ④: 「타임라인의 자리 = 카메라
   /// 행」); else [before] when the cut shows it; else null, and the cut's own
   /// landing stands ([layerAConteStandSeats]'s rule, one body for both).
+  /// Of [cut] where one is named — a cut a switch is asked of
+  /// ([layerACutSwitchSeats]) — and of the active cut where none is.
   LayerId? layerAProjectionStandSeats({
     required LayerId? before,
     required TimelineRowAddress row,
+    Cut? cut,
   }) {
-    final cut = _project.activeCutOrNull;
-    final seated = cut == null ? null : projectedRowOf(cut, row);
+    final shown = cut ?? _project.activeCutOrNull;
+    if (shown == null) {
+      return null;
+    }
+    final seated = projectedRowOf(shown, row);
     if (seated != null) {
       return seated.id;
     }
-    return _activeCutHasLayer(before) ? before : null;
+    return _cutHasLayer(shown, before) ? before : null;
   }
 
   /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and

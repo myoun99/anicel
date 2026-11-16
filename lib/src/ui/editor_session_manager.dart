@@ -61,6 +61,7 @@ import '../models/pill_subject.dart';
 import '../models/pixel_verb_settings.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
+import '../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
@@ -854,7 +855,10 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     editingFrameCursor: editingFrameCursor,
     playbackFrameCount: () => activeCutSpan.activeCutPlaybackFrameCount,
-    activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId),
+    rowTheActiveCutLandsOn: (seat) => switch (activeCutOrNull) {
+      null => null,
+      final cut => activeCutSpan.rowACutSwitchLandsOn(cut, seat)?.id,
+    },
     trackSeDisplayLayers: () => trackSe.trackSeDisplayLayers,
     trackTransitionDisplayLayer: () => transitions.trackTransitionDisplayLayer,
     onRebuilt: () {
@@ -1080,7 +1084,7 @@ class EditorSessionManager extends ChangeNotifier
   );
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), cutHasLayer: (cut, layerId) => activeCutSpan.cutHasLayer(cut, layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
   // the frame, the gap — first walks off ([HistoryPlaces.leave]): the last
@@ -1684,6 +1688,59 @@ class EditorSessionManager extends ChangeNotifier
           activeCutControllers.timelineController.currentFrameIndex,
       followedByCutId: storyboardRows.nextCutIdInStoryboardOrder(cut.id),
     );
+    unawaited(_thawTheCelsAStepLandsOn(cut));
+  }
+
+  /// The cels a step off either end of [cut] stands the canvas on — thawed
+  /// AHEAD, on a worker, once the hand is quiet, so the step does not thaw
+  /// them on this thread as the canvas seeds its stroke session.
+  ///
+  /// 🗣️stepping-into-another-cut-stalls-the-ui-a-third-of-a-second-Q1 (유저
+  /// 2026-11-16: 「이웃 컷을 미리 녹여 둔다」 — 「애초에 이방식아니엇나?
+  /// 러스트/gpu이전까지 이방식이었을텐데」): it was, through the composites
+  /// the warm made of the next cut, which read their cels hot. A picture
+  /// once made is not made again, so on the engine the cel a step seeds
+  /// was cold whenever it was there — 17–19 ms of the Surface Pro 11's
+  /// 53 ms step — and the cut before was never warmed at all.
+  ///
+  /// Asked as the step is: the frame beside the cut on the track's axis
+  /// ([TrackFrameAxis.localOf], as [selectGlobalFrame] lands it), the row a
+  /// switch there lands on ([Standing.layerACutSwitchSeats],
+  /// [ActiveCutSpan.rowACutSwitchLandsOn]) and that row's cel there.
+  Future<void> _thawTheCelsAStepLandsOn(Cut cut) async {
+    await playbackRig.prerenderScheduler.untilQuiet();
+    if (disposed || activeCutOrNull?.id != cut.id) {
+      return;
+    }
+    final axis = trackFrameAxis();
+    final first = axis.globalOf(cut.id, 0);
+    if (first == null) {
+      return;
+    }
+    final last = first + activeCutSpan.activeCutPlaybackFrameCount - 1;
+    for (final beside in [first - 1, last + 1]) {
+      final landing = axis.isGap(beside) ? null : axis.localOf(beside);
+      final into = landing == null ? null : cutById(landing.cutId);
+      if (landing == null || into == null || into.id == cut.id) {
+        continue;
+      }
+      final row = activeCutSpan.rowACutSwitchLandsOn(
+        into,
+        standing.layerACutSwitchSeats(into.id, before: activeLayerId),
+      );
+      final frameId = row == null
+          ? null
+          : coveringDrawingBlockAt(row.timeline, landing.localFrame)?.frameId;
+      if (row == null || frameId == null) {
+        continue;
+      }
+      unawaited(
+        renderCaches.brushFrameStore.thawAhead(
+          brushFrameKeyForCut(into, row.id, frameId),
+          canvasSize: into.canvasSize,
+        ),
+      );
+    }
   }
 
   @override

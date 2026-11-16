@@ -33,7 +33,7 @@ class ActiveCutControllers {
     required TimelineAccess timeline,
     required ValueNotifier<int> editingFrameCursor,
     required int Function() playbackFrameCount,
-    required bool Function(LayerId? layerId) activeCutHasLayer,
+    required LayerId? Function(LayerId? seat) rowTheActiveCutLandsOn,
     required List<Layer> Function() trackSeDisplayLayers,
     required Layer Function() trackTransitionDisplayLayer,
     required void Function() onRebuilt,
@@ -42,7 +42,7 @@ class ActiveCutControllers {
        _timeline = timeline,
        _editingFrameCursor = editingFrameCursor,
        _playbackFrameCount = playbackFrameCount,
-       _activeCutHasLayer = activeCutHasLayer,
+       _rowTheActiveCutLandsOn = rowTheActiveCutLandsOn,
        _trackSeDisplayLayers = trackSeDisplayLayers,
        _trackTransitionDisplayLayer = trackTransitionDisplayLayer,
        _onRebuilt = onRebuilt;
@@ -53,9 +53,10 @@ class ActiveCutControllers {
   final ValueNotifier<int> _editingFrameCursor;
   final int Function() _playbackFrameCount;
 
-  /// `ActiveCutSpan.activeCutHasLayer`, asked LAZILY for the reason the
-  /// display rows below are: the span reads the controllers built here.
-  final bool Function(LayerId? layerId) _activeCutHasLayer;
+  /// `ActiveCutSpan.rowACutSwitchLandsOn` of the active cut, asked LAZILY for
+  /// the reason the display rows below are: the span reads the controllers
+  /// built here.
+  final LayerId? Function(LayerId? seat) _rowTheActiveCutLandsOn;
 
   /// Read LAZILY, not held: the display rows are another collaborator's,
   /// and that collaborator reads the controllers built here.
@@ -78,10 +79,9 @@ class ActiveCutControllers {
 
   void rebuild({LayerId? preferredActiveLayerId, int preferredFrameIndex = 0}) {
     final activeCutId = _timeline.editingSession.activeCutId;
-    final initialActiveLayerId =
-        _activeCutHasLayer(preferredActiveLayerId)
-        ? preferredActiveLayerId
-        : null;
+    final initialActiveLayerId = _rowTheActiveCutLandsOn(
+      preferredActiveLayerId,
+    );
 
     layerController = LayerController(
       repository: _project.repository,

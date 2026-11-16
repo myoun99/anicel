@@ -92,14 +92,22 @@ class LayerController {
     return _layers.resolve(
       identity: cut,
       key: (trackSe, transition),
-      build: () => _composed(cut, trackSe, transition),
+      build: () => rowsTheTimelineShows(cut, trackSe, transition),
     );
   }
 
   final _cut = IdentityMemo<({Cut? found})>();
   final _layers = IdentityMemo<List<Layer>>();
 
-  List<Layer> _composed(Cut cut, List<Layer> trackSe, Layer? transition) {
+  /// [cut]'s rows as the timeline shows them, in its order: the cut's own
+  /// (an attached row as shown), the track's SE rows, its transition row
+  /// over the camera — what [layers] is, and what a cut switch lands on the
+  /// first of where it names none (`ActiveCutSpan.rowACutSwitchLandsOn`).
+  static List<Layer> rowsTheTimelineShows(
+    Cut cut,
+    List<Layer> trackSe,
+    Layer? transition,
+  ) {
     final cutLayers = cut.layers;
     // SYNCED attach rows join as DISPLAY clones whose timeline mirrors
     // the base through the cell links (W5) — the same read-clone pattern
