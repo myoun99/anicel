@@ -144,6 +144,7 @@ void main() {
     double viewport = 100,
     double content = 400,
     double left = 20,
+    double top = 20,
     Axis axis = Axis.horizontal,
   }) {
     final slotted = TimelineGridScreenSlot(
@@ -174,7 +175,7 @@ void main() {
                       if (row != null)
                         Positioned(
                           left: 10,
-                          top: 20,
+                          top: top,
                           width: 60,
                           height: 10,
                           child: padded
@@ -282,6 +283,34 @@ void main() {
     // stand 30 further left on it.
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
     expect(tester.layers.whereType<TextureLayer>().single.rect, at);
+  });
+
+  testWidgets('🚨F-602: a row that moves without painting is laid again '
+      'where it went', (tester) async {
+    // 유저 11-16: two rows swapped by a drag each showed the other's
+    // blocks. A row that only moves keeps its picture — its slot is a
+    // repaint boundary — and paints nothing, and the screen kept laying
+    // its tiles where it had stood.
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf(laidWhole)),
+      reason: '⛔전제: laid where it stood',
+    );
+    final paints = row.paints;
+
+    await tester.pumpWidget(aGrid(row, top: 30));
+    await tester.pump();
+
+    expect(row.paints, paints, reason: '⛔전제: it moved and did not paint');
+    // Ten logical pixels down: twenty of the screen's.
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf(laidWhole, top: 216, bottom: 236)),
+    );
   });
 
   testWidgets('a scroll past what the screen holds lays it again where the '

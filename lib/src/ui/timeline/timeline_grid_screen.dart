@@ -344,10 +344,11 @@ class _RenderGridScreen extends RenderBox {
   }
 
   /// What this frame shows of the screen — laid first where a row changed
-  /// or what the view shows has left it — asked as the frame's scene is
-  /// built: nothing is told of a move of any scrollable around this box, or
-  /// of the growing of a panel it stands in, and a frame built is the one
-  /// moment all of them are known to have come to rest.
+  /// or moved ([_aRowMoved]), or what the view shows has left it — asked
+  /// as the frame's scene is built: nothing is told of a move of any
+  /// scrollable around this box, or of the growing of a panel it stands
+  /// in, and a frame built is the one moment all of them are known to have
+  /// come to rest.
   ({Rect at, int id})? _composited() {
     final screen = _screen;
     final (:toView, :shown) = _measured();
@@ -357,7 +358,8 @@ class _RenderGridScreen extends RenderBox {
     final texture = screen._texture!;
     final laid = screen._laid;
     if (laid == null ||
-        !_covers(MatrixUtils.transformRect(toView, laid), shown)) {
+        !_covers(MatrixUtils.transformRect(toView, laid), shown) ||
+        _aRowMoved()) {
       final window = EngineScreenTexture.windowOf(texture, shown);
       final at = MatrixUtils.inverseTransformRect(toView, window);
       _layAt(
@@ -376,6 +378,27 @@ class _RenderGridScreen extends RenderBox {
       ),
       _ => null,
     };
+  }
+
+  /// Whether a row that lays here stands elsewhere on this box than where
+  /// the screen last laid it ([_RenderGridScreenSlot._standing]).
+  ///
+  /// 🗣️F-602 (유저 2026-11-16): 「레이어 위치관계 드래그로 바꾸면 … 프레임
+  /// 블록쪽이 갱신이 이상하게되있음. 비슷한 문제 가끔 나오는 것 같은데
+  /// 근본·구조적으로」 — two rows swapped by a drag each showed the other's
+  /// blocks. A row that only moves keeps its picture (its slot is a repaint
+  /// boundary) and paints nothing, so its paint never told the screen; the
+  /// screen asks where its rows stand instead, as it asks what the view
+  /// shows. Against the BOX, not the view: a scroll moves the box and its
+  /// rows together, and lays nothing.
+  bool _aRowMoved() {
+    for (final slot in _screen._slots) {
+      if (slot._laid.isNotEmpty &&
+          slot._standing != slot.getTransformTo(this)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Whether the screen, standing at [laid], still has [shown] on it —
@@ -403,6 +426,7 @@ class _RenderGridScreen extends RenderBox {
       if (slot._laid.isEmpty) {
         continue;
       }
+      slot._standing = slot.getTransformTo(this);
       final slotToView = slot.getTransformTo(view);
       for (final (:picture, :from, :onto) in slot._laid) {
         final at = MatrixUtils.transformRect(slotToView, onto).shift(-origin);
@@ -614,6 +638,11 @@ class _RenderGridScreenSlot extends RenderProxyBox
 
   /// What the row laid in its last paint.
   final List<TimelineGridScreenTile> _laid = [];
+
+  /// Where the row stood on the screen's box when the screen last laid its
+  /// tiles ([_RenderGridScreen._layAt]), asked of it as every frame's scene
+  /// is built ([_RenderGridScreen._aRowMoved]).
+  Matrix4? _standing;
 
   @override
   bool get isRepaintBoundary => true;
