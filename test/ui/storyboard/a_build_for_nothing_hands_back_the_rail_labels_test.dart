@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show FxToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
+import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
+    show PointerInRow, PointerPastTheRows, RowPointer;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowDragTarget, TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
@@ -928,6 +930,48 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('🚨F-393: a conte row hands the hooks the row the pointer is '
+      'in, and past the rail\'s rows says so', (tester) async {
+    // The timeline's rail answers the same three ways
+    // (`drag_counts_only_visible_rows_test.dart`). ↩️Past the conte rail's
+    // rows it handed no pointer — a menu move's answer, which keeps a row
+    // in the group it was carried out of.
+    final heard = <RowPointer?>[];
+    final drag = ValueNotifier<LayerRowDragState?>(null);
+    addTearDown(drag.dispose);
+    final hooks = TimelineRowDragHooks(
+      drag: drag,
+      onBegin: (_) {},
+      onRowTarget: (_, _, _) {},
+      onUpdate: (_, _, {pointer}) => heard.add(pointer),
+      onTrackUpdate: (_) {},
+      onEffectUpdate: (_, _, _) {},
+      onEnd: () {},
+      onCancel: () {},
+    );
+    final host = ValueNotifier<_BareHost>(
+      (film: film(attachRows: 1), hooks: hooks, span: false, resize: false),
+    );
+    addTearDown(host.dispose);
+    await pumpBare(tester, host);
+
+    final onCrossed = wrapper(tester, conteLabel).onCrossed;
+    for (final inRow in [0, -40, 40]) {
+      onCrossed(0, null, inRow);
+    }
+    expect(
+      [
+        for (final pointer in heard)
+          switch (pointer) {
+            PointerInRow() => 'in a row',
+            PointerPastTheRows() => 'past the rows',
+            null => 'no pointer',
+          },
+      ],
+      ['in a row', 'past the rows', 'past the rows'],
+    );
+  });
 
   testWidgets('🚨a row\'s wrapper is built again for the hooks its host hands '
       'it now, and for a span it no longer wires', (tester) async {
