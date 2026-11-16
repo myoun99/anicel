@@ -125,7 +125,9 @@ version = "0.0.1"
 dependencies = [
  "audio_mix",
  "cpal",
+ "jni-sys 0.3.1",
  "libc",
+ "ndk-context",
  "objc2-avf-audio",
 ]
 

@@ -29,3 +29,12 @@ libc = "0.2"
 version = "0.3"
 default-features = false
 features = ["std", "AVAudioSession", "AVAudioSessionTypes"]
+
+# The Android context cpal's AAudio host asks the JVM through, handed by
+# the plugin as it attaches (src/android.rs; board
+# android-dies-opening-the-sound-output, 2026-11-16) — with no crate cpal
+# does not bring: the context its host reads (ndk-context) and the JNI
+# table ndk reads (jni-sys 0.3).
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+jni-sys = "0.3"

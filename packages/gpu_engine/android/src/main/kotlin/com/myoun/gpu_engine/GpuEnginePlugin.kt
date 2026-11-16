@@ -1,5 +1,6 @@
 package com.myoun.gpu_engine
 
+import android.content.Context
 import android.view.Surface
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -23,6 +24,10 @@ class GpuEnginePlugin :
     private val producers = HashMap<Long, TextureRegistry.SurfaceProducer>()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        // Before Dart's main can open a sound device: cpal's AAudio host
+        // asks the JVM through this context, and died without it (board
+        // android-dies-opening-the-sound-output).
+        handAndroidContext(binding.applicationContext)
         textures = binding.textureRegistry
         channel = MethodChannel(binding.binaryMessenger, "gpu_engine")
         channel.setMethodCallHandler(this)
@@ -65,6 +70,12 @@ class GpuEnginePlugin :
      * (rust/src/platform/android.rs).
      */
     private external fun nativeWindow(surface: Surface): Long
+
+    /**
+     * Hands the engine the application's context, once for the process
+     * (rust/native/audio_device/src/android.rs).
+     */
+    private external fun handAndroidContext(context: Context)
 
     companion object {
         init {
