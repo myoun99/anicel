@@ -1374,8 +1374,18 @@ bool ownsTheLane(TimelineRowAddress head, TimelineRowAddress? address) {
 
 /// Where a row's two lines stand: [lead] before it, to where its unit begins,
 /// and [trail] after it, to where the unit ends — both none while its lanes
-/// are shut — and [end], where that end stands along the rail.
-typedef RowLinesBeyond = ({double lead, double trail, double end});
+/// are shut — and [start] and [end], where those two stand along the rail,
+/// whose rows end at [rail].
+///
+/// [rail] is what a line's word stands inside (F-393 ②): past the rail's
+/// rows a word is drawn on nothing, and is cut off there.
+typedef RowLinesBeyond = ({
+  double lead,
+  double trail,
+  double start,
+  double end,
+  double rail,
+});
 
 /// How far past the row at [at] its two lines stand where [edges] lay the
 /// rows, its [unit] being what it stands for.
@@ -1392,7 +1402,9 @@ RowLinesBeyond linesBeyondRow(
 ) => (
   lead: edges.startOf(at) - edges.startOf(unit.first),
   trail: edges.startOf(unit.last + 1) - edges.endOf(at),
+  start: edges.startOf(unit.first),
   end: edges.startOf(unit.last + 1),
+  rail: edges.total,
 );
 
 /// The row a file held over the layer area would make, and the gap it

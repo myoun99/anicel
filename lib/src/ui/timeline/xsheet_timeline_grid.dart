@@ -715,11 +715,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             entries,
                             geometry.columnEdges,
                           ),
-                          child: _rowBerths.counting(
-                            Row(
-                              children: _headers.headers(
-                                entries,
-                                geometry.columnEdges,
+                          // The lines a carry draws over every column
+                          // ([RailRowLines]): a line's word is wider than
+                          // a column, and the columns after it painted
+                          // over it (F-393 ②).
+                          child: RailRowLines(
+                            drag: widget.hooks.rowDragHooks?.drag,
+                            child: _rowBerths.counting(
+                              Row(
+                                children: _headers.headers(
+                                  entries,
+                                  geometry.columnEdges,
+                                ),
                               ),
                             ),
                           ),
