@@ -37,6 +37,8 @@ use self::unsupported as native;
 use self::windows as native;
 
 pub(crate) use native::{adapter_luid, device_went_by, video_memory};
+#[cfg(windows)]
+pub(crate) use native::committed_buffer;
 
 use std::ffi::c_void;
 use std::path::PathBuf;

@@ -50,6 +50,14 @@ fn kept_in(pictures: &Pictures, plan: &Plan) -> Kept {
     Kept::made_in(engine, composite, plan, PAGE, None, pictures, composite.widest()).expect("kept")
 }
 
+/// What `pictures` keeps and no picture holds ([`Pictures::idle_bytes`]),
+/// once the pages' thread has made the page its pictures asked for ahead —
+/// where less than half a page was left free (`Pool::make_a_page_ahead`).
+fn idle_of(pictures: &Pictures) -> u64 {
+    rig().engine.on_pages_thread(|| ());
+    pictures.idle_bytes()
+}
+
 // A canvas of 5 × 3 tiles kept in a pool of a tile a page, two, four — the
 // last page part full — and all on one is the canvas composited in one
 // run, on as many pages as its tiles take.
@@ -95,9 +103,9 @@ fn a_picture_let_go_leaves_its_pages_to_the_next() {
     let first = kept_in(&pictures, &laid(&pages, &set));
     let made = pictures.pages();
     assert_eq!(made.len(), 4);
-    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "15 tiles on pages of 16");
+    assert_eq!(idle_of(&pictures), 5 * TILE_BYTES, "15 tiles on pages of 16, and the page made ahead");
     drop(first);
-    assert_eq!(pictures.idle_bytes(), 16 * TILE_BYTES);
+    assert_eq!(idle_of(&pictures), 20 * TILE_BYTES);
     let (pages, set, _) = composite_of(noise(53), CANVAS);
     let next = kept_in(&pictures, &laid(&pages, &set));
     assert!(pictures.pages() == made, "a page is made for it");
@@ -123,11 +131,11 @@ fn a_page_no_picture_is_on_is_given_back_and_no_picture_keeps_it_made() {
     assert!(second.as_tiles().pages.iter().all(|page| *page == made[1]), "and none it is not on");
     drop(first);
     pictures.give_back(engine, 0);
-    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the page given back's stand-in");
+    assert_eq!(idle_of(&pictures), TILE_BYTES, "the page given back's stand-in");
     assert!(kept_bytes(&second) == want);
     let third = kept_in(&pictures, &plan);
     assert_eq!(pictures.pages().len(), 2, "made again in the place given back");
-    assert_eq!(pictures.idle_bytes(), 0);
+    assert_eq!(idle_of(&pictures), 15 * TILE_BYTES, "the page made ahead of the next");
     assert!(kept_bytes(&third) == want && kept_bytes(&second) == want);
     drop(second);
     pictures.give_back(engine, 0);
@@ -149,10 +157,10 @@ fn the_pictures_pool_gives_back_till_what_is_idle_is_what_may_stay() {
     drop((kept_in(&pictures, &plan), kept_in(&pictures, &plan)));
     let page = 15 * TILE_BYTES;
     assert_eq!(pictures.pages().len(), 3, "the premise: a page a picture");
-    assert_eq!(pictures.idle_bytes(), 2 * page);
+    assert_eq!(idle_of(&pictures), 3 * page, "two pages no picture is on, and the page made ahead");
     pictures.give_back(engine, page);
     assert_eq!(pictures.pages().len(), 2);
-    assert_eq!(pictures.idle_bytes(), page);
+    assert_eq!(idle_of(&pictures), page);
     assert!(kept_bytes(&kept) == composited_whole(noise(31)));
 }
 
@@ -255,7 +263,7 @@ fn a_picture_over_a_film_holds_the_films_slots_and_neither_writes_over_them() {
     let fresh = |tile| tile == (0, 0);
     let over: Film = (&film, &fresh);
     let mut kept = Kept::made_in(engine, composite, &frame, PAGE, Some(over), &pictures, budget).expect("over");
-    let idle = || pictures.idle_bytes() / TILE_BYTES;
+    let idle = || idle_of(&pictures) / TILE_BYTES;
     assert_eq!((pictures.pages().len(), idle()), (2, 14), "16 slots held of 30");
     assert_eq!(kept.bytes(), 15 * TILE_BYTES, "a tile shared counts in both");
     let (theirs, its) = (kept_bytes(&film), kept_bytes(&kept));
@@ -276,7 +284,7 @@ fn a_picture_over_a_film_holds_the_films_slots_and_neither_writes_over_them() {
     drop(film);
     assert_eq!(idle(), 15, "the film's own three are free");
     let next = kept_in(&pictures, &other);
-    assert_eq!((pictures.pages().len(), idle()), (2, 0));
+    assert_eq!((pictures.pages().len(), idle()), (2, 15), "and the page made ahead of the next");
     assert!(kept_bytes(&next) == composited_whole(noise(31)));
     assert!(kept_bytes(&kept) == want, "the next picture took a slot the picture holds");
 }

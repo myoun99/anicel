@@ -62,6 +62,17 @@ pub struct Engine {
     /// 2026-11-10; 1.2 to 2.5 s each by strips) — as many as the device
     /// has cores ([`CompilerTurn`]).
     compiling: EngineThread,
+    /// Where a pool's page is made and let go ([`Engine::pages_posted`],
+    /// [`Engine::on_pages_thread`]): a thread of its own, so that no body
+    /// stands behind a page being made on `thread` — as `compiling` is for
+    /// a compile.
+    ///
+    /// 🔬WHY (card a-picture-lay-holds-the-raster-thread, the Surface,
+    /// FNK_02 cut 59 with the onion on, 2026-11-16 02:4x): a page took the
+    /// engine's thread 48 to 55 ms, 156 to 195 ms as memory filled, and the
+    /// UI's waits handed over behind it — a screen let go, a composite's
+    /// done — stood as long (64.5 ms, 93.2 ms).
+    pages: EngineThread,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
     /// When what is compiled apart may take the compiler ([`Apart`]).
@@ -451,6 +462,7 @@ impl Engine {
                 let polls = EngineThread::start()?;
                 let tells = EngineThread::start()?;
                 let compiling = EngineThread::start_many(compiling_threads())?;
+                let pages = EngineThread::start()?;
                 let refusals = Refusals::default();
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
@@ -468,6 +480,7 @@ impl Engine {
                     polls,
                     tells,
                     compiling,
+                    pages,
                     kernels: Kernels::default(),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
@@ -560,6 +573,20 @@ impl Engine {
     /// runs on ([`Self::on_thread`]).
     pub(crate) fn is_its_thread(&self) -> bool {
         self.thread.is_here()
+    }
+
+    /// `work`, run on the thread a pool's pages are made on ([`Engine`]'s
+    /// `pages`) in its turn, its caller waiting for none of it — dropped
+    /// unrun where that thread is gone ([`EngineThread::post`]).
+    pub(crate) fn pages_posted(&self, work: impl FnOnce() + Send + 'static) {
+        self.pages.post(work);
+    }
+
+    /// What `work` answers, run on the thread a pool's pages are made on
+    /// while the caller waits ([`EngineThread::run_lent`]): behind what was
+    /// posted there before it ([`Self::pages_posted`]).
+    pub(crate) fn on_pages_thread<T>(&self, work: impl FnOnce() -> T) -> T {
+        self.pages.run_lent(work)
     }
 
     /// `body`, run on the engine's thread in its turn, its caller waiting

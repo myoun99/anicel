@@ -1056,8 +1056,9 @@ unsafe fn stored_now(pool: *mut Pool, engine: *const Engine, cel: u32, bytes: &[
     }
 }
 
-/// [`stored_now`], then a done: the engine's thread has run what the store
-/// handed it — its copy and a page made ahead.
+/// [`stored_now`], then a done and a turn of the pages' thread: the
+/// engine's thread has run the copy the store handed it, and the pages'
+/// thread a page it asked for ahead.
 ///
 /// # Safety
 /// As [`stored_now`]'s.
@@ -1066,6 +1067,7 @@ unsafe fn stored_and_done(pool: *mut Pool, engine: *const Engine, cel: u32, byte
     // SAFETY: see the function's contract.
     let (stored, engine) = unsafe { (stored_now(pool, engine, cel, bytes, count), &*engine) };
     assert_eq!(done_here(engine), Ok(()));
+    engine.on_pages_thread(|| ());
     stored
 }
 
@@ -1120,6 +1122,198 @@ fn a_store_takes_the_page_made_ahead_while_the_engines_thread_stands_still() {
         assert_eq!(done_here(&*engine), Ok(()));
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
+    }
+}
+
+// A page asked for ahead is made on the pages' thread, not the engine's:
+// made while the engine's thread stands still. 🔬Made on the engine's
+// thread, it held the UI's waits handed over behind it 48 to 195 ms (card
+// a-picture-lay-holds-the-raster-thread, the Surface, 2026-11-16).
+#[test]
+fn a_page_ahead_is_made_while_the_engines_thread_stands_still() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(11));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let half = (*pool).slots() / 2;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
+        assert_eq!(ahead(pool), "unasked", "premise: half a page free, none asked");
+        gpu_engine_stand_still(engine, 2_000);
+        let asked = Instant::now();
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        (*engine).on_pages_thread(|| ());
+        let made = asked.elapsed();
+        assert_eq!(ahead(pool), "made", "made with the engine's thread standing");
+        assert!(made < Duration::from_millis(1_000), "made after {made:?}, the engine's thread standing 2 s");
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+/// Where the page made ahead of `pictures`' pool stands ([`ahead`]).
+fn picture_ahead(pictures: &Pictures) -> &'static str {
+    let kept = pictures.kept();
+    let pool = kept.as_ref().expect("made by its first picture");
+    // SAFETY: the pool is live while it is kept.
+    unsafe { ahead(pool) }
+}
+
+// The pictures' pool asks for its next page ahead as the cels' does, at the
+// one place both ask — [`Pool::fresh`] (관제 2026-11-16 02:58): its pages
+// were made where a picture needed one, 48 to 188 ms of the engine's thread
+// (the Surface, FNK_02 cut 59 with the onion on).
+#[test]
+fn the_pictures_pool_makes_its_next_page_ahead_too() {
+    let engine = rig().engine;
+    let pictures = Pictures::sized(4).expect("pictures");
+    let cel = pictures.cel(engine).expect("a picture");
+    let (first, _) = pictures.fresh(engine, cel, 2).expect("two slots");
+    engine.on_pages_thread(|| ());
+    assert_eq!(picture_ahead(&pictures), "unasked", "half a page free, none asked");
+    let (second, _) = pictures.fresh(engine, cel, 1).expect("a third");
+    engine.on_pages_thread(|| ());
+    assert_eq!(picture_ahead(&pictures), "made", "less than half free, one made");
+    let (third, pages) = pictures.fresh(engine, cel, 2).expect("past the page");
+    assert_eq!(pages.len(), 2, "premise: on a second page");
+    assert_eq!(picture_ahead(&pictures), "unasked", "taken: the one made ahead");
+    pictures.release(first.into_iter().chain(second).chain(third));
+}
+
+// A picture's page made ahead is no picture's: the memory census counts it
+// among the pictures' idle bytes, and a give-back lets it go first (관제
+// 2026-11-16 08:28 ①).
+#[test]
+fn a_picture_s_page_made_ahead_is_counted_idle_and_given_back_first() {
+    let engine = rig().engine;
+    let pictures = Pictures::sized(4).expect("pictures");
+    let cel = pictures.cel(engine).expect("a picture");
+    let (places, _) = pictures.fresh(engine, cel, 3).expect("three slots");
+    engine.on_pages_thread(|| ());
+    assert_eq!(picture_ahead(&pictures), "made", "premise: one made ahead");
+    assert_eq!(pictures.idle_bytes(), (1 + 4) * TILE_BYTES, "the slot free, and the page made ahead");
+    pictures.give_back(engine, TILE_BYTES);
+    assert_eq!(picture_ahead(&pictures), "unasked", "let go first");
+    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the slot free on the page a picture is on");
+    pictures.release(places.into_iter());
+}
+
+// A page still being made ahead when the pool is given back is called off,
+// not left to come: made on a thread of its own, it would land after the
+// give-back and stay, no picture's, past what may stay idle.
+#[test]
+fn a_page_being_made_ahead_is_called_off_by_a_give_back() {
+    let turn = crate::testing::a_device_of_its_own();
+    let engine = turn.engine();
+    let pictures = Pictures::sized(4).expect("pictures");
+    let cel = pictures.cel(&engine).expect("a picture");
+    let (first, _) = pictures.fresh(&engine, cel, 1).expect("a slot, on a page made for it");
+    let (open, shut) = std::sync::mpsc::channel::<()>();
+    engine.pages_posted(move || shut.recv().unwrap_or_default());
+    let (rest, _) = pictures.fresh(&engine, cel, 2).expect("two slots more");
+    assert_eq!(picture_ahead(&pictures), "making", "premise: asked for, the pages' thread held");
+    pictures.give_back(&engine, TILE_BYTES);
+    assert_eq!(picture_ahead(&pictures), "unasked", "called off");
+    open.send(()).expect("the pages' thread waits");
+    engine.on_pages_thread(|| ());
+    assert_eq!(picture_ahead(&pictures), "unasked", "made, and let go where it was made");
+    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the slot free on the page a picture is on");
+    pictures.release(first.into_iter().chain(rest));
+}
+
+// A page made apart from wgpu's allocator ([`crate::platform::committed_buffer`])
+// is let go with its buffer: once the pool that holds it goes, no hold of
+// its resource is left but this test's — no allocator keeps a ledger of it
+// (관제 2026-11-16 08:28 ①).
+#[cfg(windows)]
+#[test]
+fn a_page_made_apart_is_let_go_with_its_pool() {
+    use wgpu::hal::api::Dx12;
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    pool.fresh(engine, cel).expect("a slot");
+    // SAFETY: only reads the buffer's resource, holding it once more.
+    let resource = unsafe { pool.pages()[0].as_hal::<Dx12>() }
+        .map(|page| unsafe { page.raw_resource() }.clone())
+        .expect("a D3D12 buffer");
+    assert_eq!(holds(&resource), 2, "premise: the page's and this test's");
+    drop(pool);
+    assert_eq!(engine.wait(), Some(()), "the GPU done, and what was dropped let go");
+    assert_eq!(holds(&resource), 1, "this test's alone");
+}
+
+// A page is made apart from wgpu's allocator: none of the allocations its
+// report names is a pool's page — so its lock, held as a new block of the
+// device's memory is made, holds no body of the engine's thread for one
+// ([`crate::platform::committed_buffer`] has the Surface's numbers).
+#[cfg(windows)]
+#[test]
+fn a_page_is_made_apart_from_wgpus_allocator() {
+    let engine = rig().engine;
+    let premise = engine.device().create_buffer(&wgpu::BufferDescriptor {
+        label: Some("premise: a buffer of wgpu's own"),
+        size: TILE_BYTES,
+        usage: wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    pool.fresh(engine, cel).expect("a slot");
+    let report = engine.device().generate_allocator_report().expect("a D3D12 allocator");
+    let named = |name: &str| report.allocations.iter().filter(|made| made.name == name).count();
+    assert_eq!(named("premise: a buffer of wgpu's own"), 1, "premise: the report names what it made");
+    assert_eq!(named("pool page"), 0, "a page in wgpu's allocator");
+    drop(premise);
+}
+
+// A page a store waits for — none made ahead — is made on the pages'
+// thread too: the store is answered while the engine's thread stands still.
+#[test]
+fn a_page_a_store_waits_for_is_made_while_the_engines_thread_stands_still() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(12));
+    // SAFETY: the engine is this test's own, live till its close; the
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        assert!((*pool).pages().is_empty(), "premise: no page made, none ahead");
+        gpu_engine_stand_still(engine, 2_000);
+        let asked = Instant::now();
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
+        let told = asked.elapsed();
+        assert!(told < Duration::from_millis(1_000), "stored after {told:?}, the engine's thread standing 2 s");
+        assert_eq!((*pool).pages().len(), 1, "on a page made for it");
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+/// How many hold `resource`, read by one more hold let go.
+#[cfg(windows)]
+fn holds(resource: &windows::Win32::Graphics::Direct3D12::ID3D12Resource) -> u32 {
+    use windows::core::Interface;
+    let raw = resource.as_raw();
+    // SAFETY: a live COM object, held once more and let go of once.
+    unsafe {
+        let vtable = *(raw as *const *const windows::core::IUnknown_Vtbl);
+        ((*vtable).AddRef)(raw);
+        ((*vtable).Release)(raw)
     }
 }
 

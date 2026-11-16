@@ -21,13 +21,15 @@ use std::path::PathBuf;
 
 use windows::Win32::Foundation::{CloseHandle, E_OUTOFMEMORY, GENERIC_ALL, HANDLE, HMODULE};
 use windows::Win32::Graphics::Direct3D12::{
-    D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_DESC,
-    D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
-    D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-    D3D12_RESOURCE_STATE_COMMON, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Resource,
+    D3D12_HEAP_FLAG_NONE, D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT,
+    D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+    D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
+    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON,
+    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Resource,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
+    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN,
+    DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
@@ -152,6 +154,71 @@ pub fn create(
         )
     };
     Ok((texture, shared))
+}
+
+/// A buffer of `desc` that the GPU alone reads and writes — no map —, made
+/// as a D3D12 committed resource of its own, apart from wgpu's allocator;
+/// none where the driver refuses it, or `desc` asks a map.
+///
+/// 🔬WHY APART (card a-picture-lay-holds-the-raster-thread, the Surface,
+/// 2026-11-16, a probe of the crate's — six pool pages of 128 MiB a run,
+/// three runs each, beside an engine thread's bodies every 2 ms): wgpu
+/// makes a buffer within the one lock of its allocator (gpu-allocator —
+/// wgpu-hal 30.0.1 dx12/suballocation.rs, `create_placed_buffer`), held
+/// while it makes a new block of the device's memory. A page made so took
+/// 36 to 52 ms, and made on a thread of its own it held each body of the
+/// engine thread's that made a buffer meanwhile as long — 37.5 to 39.1 ms,
+/// where a body that only submitted waited 1.0 to 3.1. Made apart, a page
+/// took 18.6 to 21.9 ms and held no body: 0.9 to 1.7 ms the longest.
+///
+/// What wgpu would have done for it is none of a page's: its bytes are
+/// zero as D3D12 makes a committed resource, and it starts COMMON, the
+/// state wgpu takes a buffer it is handed to be in.
+pub fn committed_buffer(device: &wgpu::Device, desc: &wgpu::BufferDescriptor) -> Option<wgpu::Buffer> {
+    if desc.usage.intersects(wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::MAP_WRITE) {
+        return None;
+    }
+    // SAFETY: the raw device is only used to make a resource, never to
+    // change wgpu's own state.
+    let raw = unsafe { device.as_hal::<Dx12>() }?.raw_device().clone();
+    let flags = match desc.usage.contains(wgpu::BufferUsages::STORAGE) {
+        true => D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        false => Default::default(),
+    };
+    let resource_desc = D3D12_RESOURCE_DESC {
+        Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+        Alignment: 0,
+        Width: desc.size,
+        Height: 1,
+        DepthOrArraySize: 1,
+        MipLevels: 1,
+        Format: DXGI_FORMAT_UNKNOWN,
+        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+        Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        Flags: flags,
+    };
+    let heap = D3D12_HEAP_PROPERTIES {
+        Type: D3D12_HEAP_TYPE_DEFAULT,
+        ..Default::default()
+    };
+    let mut resource: Option<ID3D12Resource> = None;
+    // SAFETY: every pointer is to a local that outlives the call.
+    unsafe {
+        raw.CreateCommittedResource(
+            &heap,
+            D3D12_HEAP_FLAG_NONE,
+            &resource_desc,
+            D3D12_RESOURCE_STATE_COMMON,
+            None,
+            &mut resource,
+        )
+    }
+    .ok()?;
+    // SAFETY: the resource is a buffer of exactly `desc.size` bytes.
+    let hal_buffer = unsafe { wgpu::hal::dx12::Device::buffer_from_raw(resource?, desc.size) };
+    // SAFETY: the buffer matches the descriptor, it starts in COMMON — the
+    // state wgpu takes it to be in —, and the descriptor asks no map.
+    Some(unsafe { device.create_buffer_from_hal::<Dx12>(hal_buffer, desc) })
 }
 
 /// The adapter's LUID, high part in the upper 32 bits.

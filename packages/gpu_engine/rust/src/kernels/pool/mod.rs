@@ -36,9 +36,9 @@
 //! store cools a cel — reads its tiles back, releases them — and asks again
 //! (gpu-canonical-store 11-07 09:00, 관제 09:04: 「한 증상에 법 하나」).
 //!
-//! The next page is made ahead of the store that needs it — on the
-//! engine's thread, waited for by none — once less than half a page is
-//! free, and the store takes it with no wait ([`Pool::make_a_page_ahead`]).
+//! The next page is made ahead of the tile that needs it — on a thread of
+//! its own, waited for by none — once less than half a page is free, and
+//! the store takes it with no wait ([`Pool::make_a_page_ahead`]).
 //!
 //! The app stores through the C ABI below (connection-round-checklist B,
 //! screen-on-the-engine): tiles it holds on the CPU, each in a fresh slot
@@ -140,7 +140,7 @@ impl Unwritten {
 
 /// What a page is made within: the pool's bytes, the most it may make and
 /// the budget kept to in place of the OS's — as the pool stood, for the
-/// engine's thread to ask of a page made ahead ([`Pool::make_a_page_ahead`])
+/// pages' thread to ask of a page made ahead ([`Pool::make_a_page_ahead`])
 /// as it is asked of one a store waits for.
 #[derive(Clone, Copy)]
 struct Bounds {
@@ -184,7 +184,7 @@ struct Asked {
 enum Ahead {
     #[default]
     Unasked,
-    /// Handed to the engine's thread, not made yet.
+    /// Handed to the pages' thread, not made yet.
     Making,
     Made(wgpu::Buffer, Asked),
     /// Refused by the budget or the driver, and not asked again as they
@@ -192,7 +192,7 @@ enum Ahead {
     Refused(Asked),
 }
 
-/// [`Ahead`], where the engine's thread makes the page and the store's
+/// [`Ahead`], where the pages' thread makes the page and the store's
 /// caller takes it.
 #[derive(Clone, Default)]
 struct Spare(Arc<Mutex<Ahead>>);
@@ -221,6 +221,38 @@ impl Spare {
         }
         let Ahead::Made(page, _) = std::mem::take(&mut *ahead) else { unreachable!("matched above") };
         Some(page)
+    }
+
+    /// The page made ahead, taken — and one being made called off: its
+    /// making lets it go where it is made ([`Spare::made`]). A refusal
+    /// stands.
+    ///
+    /// 🚨A PAGE BEING MADE IS CALLED OFF, NOT LEFT TO COME: made on a thread
+    /// of its own, it can be made after a give-back that let go what was
+    /// made — 🧪a pool given back to its stand-in held a page more once
+    /// the making ended (`screen_tests.rs`, 2026-11-16). On the engine's
+    /// thread a page asked for before the give-back was made before it.
+    fn called_off(&self) -> Option<wgpu::Buffer> {
+        let mut ahead = self.held();
+        match std::mem::take(&mut *ahead) {
+            Ahead::Made(page, _) => Some(page),
+            Ahead::Unasked | Ahead::Making => None,
+            refused @ Ahead::Refused(_) => {
+                *ahead = refused;
+                None
+            }
+        }
+    }
+
+    /// What the making of a page asked against `asked` ended in — the page,
+    /// or none where it was refused —, kept where it is still asked for;
+    /// where it was called off meanwhile ([`Spare::called_off`]), the page
+    /// goes here.
+    fn made(&self, page: Option<wgpu::Buffer>, asked: Asked) {
+        let mut ahead = self.held();
+        if matches!(&*ahead, Ahead::Making) {
+            *ahead = page.map_or(Ahead::Refused(asked), |page| Ahead::Made(page, asked));
+        }
     }
 }
 
@@ -363,7 +395,7 @@ impl Pool {
     pub(crate) fn give_back(&mut self, engine: &Engine, most_bytes: u64) {
         // The page made ahead first: no tile's, and the last one made.
         if self.bytes() + self.page_bytes() > most_bytes {
-            drop(self.ahead.taken());
+            self.let_the_page_ahead_go(engine);
         }
         while let Some(last) = self.pages.last() {
             let gone = match last {
@@ -406,7 +438,16 @@ impl Pool {
 
     /// A free slot for a tile of `cel`, held once: on the first of its
     /// pages with one free, else on a page of nobody's — its then —, else
-    /// on the first page with one free, else on a new page, its.
+    /// on the first page with one free, else on a new page, its. And the
+    /// next page asked for ahead of the tile that will need it
+    /// ([`Pool::make_a_page_ahead`]).
+    ///
+    /// ⛔ONE PLACE FOR BOTH POOLS (관제 2026-11-16 02:58, card
+    /// a-picture-lay-holds-the-raster-thread): the cels' pool asked ahead
+    /// at its store alone, and the pictures' ([`Pictures`]) never — its
+    /// pages made where a picture needed one, 10 of them 48 to 188 ms of
+    /// the engine's thread on the Surface (FNK_02 cut 59, the onion on,
+    /// 2026-11-16 02:4x).
     pub(crate) fn fresh(&mut self, engine: &Engine, cel: Cel) -> Result<TileAt, Full> {
         let own = |page: &Option<Page>| {
             page.as_ref().is_some_and(|page| page.cel == Some(cel) && !page.free.is_empty())
@@ -418,6 +459,7 @@ impl Pool {
         let book = self.pages[page].as_mut().expect("a page found or made is made");
         let slot = book.free.pop().expect("a page found or made has a slot free");
         book.holds[usize::from(slot)] = 1;
+        self.make_a_page_ahead(engine);
         Ok(TileAt { page: page as u16, slot })
     }
 
@@ -600,33 +642,35 @@ impl Pool {
             self.let_the_page_ahead_go(engine);
             return Err(Full);
         }
-        // A page made ahead is taken here, the engine's thread not asked
+        // A page made ahead is taken here, no thread of the engine's asked
         // ([`Pool::make_a_page_ahead`]) — where it was asked against the
         // budget kept to now: one asked against another is a page the
         // budget this pool keeps to never allowed.
         let asked = self.bounds().asked();
         let buffer = match self.ahead.taken_as(asked) {
             Some(page) => page,
-            // 🚨The budget is asked and the page made on the engine's
-            // thread, where a store's books are kept on its caller's (B1-b
-            // of the-ui-thread-never-enters-the-driver, 2026-11-15): the
-            // OS's count and the driver's allocator are the device's.
+            // 🚨The budget is asked and the page made on the pages' thread
+            // ([`Engine::on_pages_thread`]), where a store's books are kept
+            // on its caller's (B1-b of the-ui-thread-never-enters-the-driver,
+            // 2026-11-15): the OS's count and the driver are the device's.
+            // ↩️Till 2026-11-16 on the engine's thread, where the bodies
+            // handed over behind it waited for it (`Engine`'s `pages`).
             // 🔬Six stores of 371 made a page, S5_BA cut 352 filling its
             // band — 11 to 28 ms each for a page of 128 MiB, the store's
             // caller waiting (k884): the wait a page made ahead spares.
             None => engine
-                .on_thread(|| {
-                    // The engine's thread runs what it is handed in turn: a
+                .on_pages_thread(|| {
+                    // The pages' thread runs what it is handed in turn: a
                     // page being made ahead is made by now.
                     // ⚠️No test tells this from the page made again below
                     // (mutant P14 lived, 11-15): the same page either way,
-                    // the engine's thread's 11 to 28 ms apart.
+                    // the pages' thread's milliseconds apart.
                     if let Some(page) = self.ahead.taken_as(asked) {
                         return Some(page);
                     }
                     // One made against another budget goes, here where the
-                    // driver's allocator is, and the page is asked for as
-                    // the pool stands.
+                    // pages are let go, and the page is asked for as the
+                    // pool stands.
                     drop(self.ahead.taken());
                     // ⚠️No test lowers the budget the OS gives: `fits` is
                     // tried on the numbers, and a page here against a
@@ -696,11 +740,12 @@ impl Pool {
         Ok((given_back, self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size())))
     }
 
-    /// Has the engine's thread make the pool's next page ahead of the store
-    /// that will need it, waiting for none of it: where less than half a
-    /// page is free on the pages made, none is made or being made, and the
-    /// pool may make one — within its bytes, asked here; within the budget
-    /// and as the driver allows, asked there ([`Bounds::fits`], [`made`]),
+    /// Has the pages' thread ([`Engine::pages_posted`]) make the pool's next
+    /// page ahead of the tile that will need it, waiting for none of it:
+    /// where less than half a page is free on the pages made, none is made
+    /// or being made, and the pool may make one — within its bytes, asked
+    /// here; within the budget and as the driver allows, asked there
+    /// ([`Bounds::fits`], [`made`]),
     /// and not again till the pool's bytes or the budget kept to instead
     /// move. [`Pool::claimed`] takes it. Where the pool may make no page
     /// more, one made goes.
@@ -719,9 +764,18 @@ impl Pool {
     /// none past the bytes it may make — a pool at its line keeps none.
     /// ⏳Half a page is my number, not measured against how fast a pass
     /// fills one. ⛔Not counted in [`Pool::bytes`]: the books count a page
-    /// once a store takes it, and the engine's thread makes this one in its
+    /// once a store takes it, and the pages' thread makes this one in its
     /// own time — a count that moved with it would answer two reads of a
     /// pool no store touched between them differently.
+    ///
+    /// 🔬NOT ON THE ENGINE'S THREAD (↩️till 2026-11-16 — the Surface, FNK_02
+    /// cut 59 with the onion on, 02:4x): a page made ahead was made there,
+    /// 48 to 55 ms, 156 to 195 ms as memory filled, and the UI's waits
+    /// handed over behind it stood as long — a screen let go 61.5 ms, a
+    /// composite's done 98.7 ms. A store asked for it once its copy was
+    /// handed over, which would have waited 11 to 28 ms behind the page;
+    /// on a thread of its own it is asked where a slot is taken
+    /// ([`Pool::fresh`]).
     fn make_a_page_ahead(&mut self, engine: &Engine) {
         let grows = self.next_page().ok().map(|(_, grows)| grows).filter(|&grows| self.within_its_bytes(grows));
         let Some(grows) = grows else {
@@ -743,28 +797,25 @@ impl Pool {
         *ahead = Ahead::Making;
         drop(ahead);
         let (size, handed) = (self.page_bytes(), Sent((engine.clone(), self.ahead.clone())));
-        engine.posted(move || {
+        engine.pages_posted(move || {
             let (engine, ahead) = handed.taken();
             let page = match bounds.fits(platform::video_memory(&engine.adapter), grows) {
                 true => made(&engine, "pool page", size),
                 false => None,
             };
-            *ahead.held() = page.map_or(Ahead::Refused(asked), |page| Ahead::Made(page, asked));
             // A refusal fails nothing: the pool is full where a store next
             // needs a page, as it is told there.
-            Some(())
+            ahead.made(page, asked);
         });
     }
 
-    /// Lets the page made ahead go, on the engine's thread — where the
-    /// driver's allocator is let go to — and waits for none of it.
+    /// Lets the page made ahead go, on the pages' thread — where pages are
+    /// made — and waits for none of it; calls off one being made
+    /// ([`Spare::called_off`]).
     fn let_the_page_ahead_go(&self, engine: &Engine) {
-        if let Some(page) = self.ahead.taken() {
+        if let Some(page) = self.ahead.called_off() {
             let handed = Sent(page);
-            engine.posted(move || {
-                drop(handed.taken());
-                Some(())
-            });
+            engine.pages_posted(move || drop(handed.taken()));
         }
     }
 
@@ -927,11 +978,12 @@ impl Pictures {
         self.kept().as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
     }
 
-    /// Gives back the pages no picture is on, the last first, till the
-    /// slots no picture holds are `most_idle` bytes or no such page is left
-    /// ([`Pool::give_back`]). ⛔Not till the pages are that many: a page a
-    /// picture is on is none of what is idle, and a line that moved under
-    /// the pictures leaves them their pages (`gpu_engine_pictures_give_back`).
+    /// Gives back the pages no picture is on, the last first — the page made
+    /// ahead first of all —, till the slots no picture holds are `most_idle`
+    /// bytes or no such page is left ([`Pool::give_back`]). ⛔Not till the
+    /// pages are that many: a page a picture is on is none of what is idle,
+    /// and a line that moved under the pictures leaves them their pages
+    /// (`gpu_engine_pictures_give_back`).
     pub(crate) fn give_back(&self, engine: &Engine, most_idle: u64) {
         if let Some(pool) = self.kept().as_mut() {
             let held = pool.bytes() - pool.idle_bytes();
@@ -940,9 +992,16 @@ impl Pictures {
     }
 
     /// The bytes of the slots no picture holds on the pages made
-    /// ([`Pool::idle_bytes`]).
+    /// ([`Pool::idle_bytes`]), and of the page made ahead of the picture
+    /// that will need it ([`Pool::ahead_bytes`]): made, and no picture's.
+    ///
+    /// ★The page made ahead counted (관제 2026-11-16 08:28 ①, card
+    /// a-picture-lay-holds-the-raster-thread): the memory census reads this
+    /// line, and the give-back weighs it (`gpu_engine_pictures_give_back`)
+    /// — off it, the page would be a share of the GPU's memory no row names
+    /// and no warning lets go.
     pub(crate) fn idle_bytes(&self) -> u64 {
-        self.kept().as_ref().map_or(0, Pool::idle_bytes)
+        self.kept().as_ref().map_or(0, |pool| pool.idle_bytes() + pool.ahead_bytes())
     }
 }
 
@@ -973,9 +1032,25 @@ fn nobody_s(page: &Option<Page>) -> bool {
 
 /// A page's buffer of `size` bytes — a page or a page given back's stand-in
 /// —, or none where the device refuses it for want of memory.
+///
+/// ⚠️No test reaches a driver's refusal: a 0% threshold opens no device,
+/// wgpu's own zero buffer refused first
+/// (wgpu-core-30.0.1/src/device/resource.rs:464), and wgpu makes no D3D12
+/// buffer past 2 GiB (wgpu-hal-30.0.1/src/dx12/adapter.rs:916), too few
+/// bytes for a driver to refuse.
+///
+/// ⚖️APART FROM wgpu's ALLOCATOR, ON WINDOWS ALONE
+/// ([`platform::committed_buffer`] has the Surface's numbers): wgpu makes a
+/// buffer within the one lock of its allocator, held as long as a new
+/// block of the device's memory takes, and a page made on the pages'
+/// thread so held each body of the engine's thread that made a buffer
+/// meanwhile. ⏳Whether the Vulkan and Metal backends' allocators hold
+/// their bodies so is not measured: Android's — the old devices', the
+/// weakest — is to be (관제 2026-11-16 08:28, card
+/// a-picture-lay-holds-the-raster-thread), and its pages made apart too
+/// where they do.
 fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
-    let made = engine.device().push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-    let buffer = engine.device().create_buffer(&wgpu::BufferDescriptor {
+    let desc = wgpu::BufferDescriptor {
         label: Some(label),
         size,
         // Bound by the passes, copied to by the write path and copied
@@ -983,12 +1058,19 @@ fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
         // B: saving, cooling, an undo record parked).
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
-    });
-    // ⚠️No test reaches a driver's refusal: a 0% threshold opens no
-    // device, wgpu's own zero buffer refused first
-    // (wgpu-core-30.0.1/src/device/resource.rs:464), and wgpu makes no
-    // D3D12 buffer past 2 GiB (wgpu-hal-30.0.1/src/dx12/adapter.rs:916),
-    // too few bytes for a driver to refuse.
+    };
+    #[cfg(windows)]
+    return platform::committed_buffer(engine.device(), &desc);
+    #[cfg(not(windows))]
+    return made_by_wgpu(engine, &desc);
+}
+
+/// [`made`] by wgpu's own allocator: none where the device refuses it for
+/// want of memory.
+#[cfg(not(windows))]
+fn made_by_wgpu(engine: &Engine, desc: &wgpu::BufferDescriptor) -> Option<wgpu::Buffer> {
+    let made = engine.device().push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+    let buffer = engine.device().create_buffer(desc);
     match pollster::block_on(made.pop()) {
         Some(_) => None,
         None => Some(buffer),
@@ -1058,8 +1140,8 @@ pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
 /// — from the engine's thread — with `number` and whether it was written;
 /// one that was not is told by the caller's next done too, and its places
 /// by [`gpu_engine_pool_unwritten`]. None stored, nothing is handed over
-/// and `told` is not called. Its copy handed over, it has the next page made
-/// ahead where one is near ([`Pool::make_a_page_ahead`]).
+/// and `told` is not called. Each slot it gives has the next page made
+/// ahead where one is near ([`Pool::fresh`]).
 ///
 /// ⛔Told by a call of its own, not the caller's done: a done is told of
 /// the first body handed over that failed since the last, whoever asks it
@@ -1122,9 +1204,6 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
         told(number, written.is_some());
         written
     });
-    // ⛔Not before the copy is handed over: the engine's thread would make
-    // the page ahead first and the tiles' copy wait 11 to 28 ms behind it.
-    pool.make_a_page_ahead(engine);
     stored
 }
 
