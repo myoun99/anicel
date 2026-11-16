@@ -41,27 +41,30 @@ void main() {
   setUp(TimelineGridTileStore.instance.clear);
   tearDown(TimelineGridTileStore.instance.clear);
 
-  TimelineRowCellsPainter aBlockRow(Axis axis) => TimelineRowCellsPainter(
-    axis: axis,
-    layer: Layer(
-      id: const LayerId('block'),
-      name: 'block',
-      frames: const [],
-      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 60)},
-    ),
-    geometry: testFrameGeometry(
-      frameCellExtent: cell,
-      frameEndIndexExclusive: 60,
-    ),
-    crossAxisExtent: 28,
-    exposureStateForLayer: (_, frame) => frame == 0
-        ? TimelineCellExposureState.drawingStart
-        : TimelineCellExposureState.held,
-    colorScheme: const ColorScheme.dark(),
-    baseTextStyle: const TextStyle(fontSize: 11),
-    tileStore: TimelineGridTileStore.instance,
-    devicePixelRatio: ratio,
-  );
+  TimelineRowCellsPainter aBlockRow(Axis axis, {double at = ratio}) =>
+      TimelineRowCellsPainter(
+        axis: axis,
+        layer: Layer(
+          id: const LayerId('block'),
+          name: 'block',
+          frames: const [],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('f1'), length: 60),
+          },
+        ),
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 60,
+        ),
+        crossAxisExtent: 28,
+        exposureStateForLayer: (_, frame) => frame == 0
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.held,
+        colorScheme: const ColorScheme.dark(),
+        baseTextStyle: const TextStyle(fontSize: 11),
+        tileStore: TimelineGridTileStore.instance,
+        devicePixelRatio: at,
+      );
 
   Future<GpuGridPicture> tile(
     TimelineRowCellsPainter row,
@@ -72,7 +75,7 @@ void main() {
       painter: row,
       spanStartIndex: from,
       spanEndIndexExclusive: to,
-      devicePixelRatio: ratio,
+      devicePixelRatio: row.devicePixelRatio,
     );
     expect(await pollUntil(() => asked() != null), isTrue, reason: 'never landed');
     // Held: asking a tile over the same cells lets the others go.
@@ -138,17 +141,37 @@ void main() {
   }
 
   // What the row itself says of its tiles: the same `from` and `onto`.
-  test('a row lays a tile over its cells, from the whole of its picture', () async {
-    final row = aBlockRow(Axis.horizontal);
-    await tile(row, 0, 18);
-    await tile(row, 18, 36);
-    final laid = tilesLaidBy(
-      () => row.paint(_noCanvas(), const Size(60 * cell, 28)),
-    );
+  //
+  // 🔬F-604 (유저 2026-11-16 「엣지랑 블록이랑 안맞는 문제는 행 off로하면
+  // 또 이번엔 왼쪽아래 엣지가 밖으로 나간다거나」): one of the tile's pixels to
+  // a device pixel, what its cells were drawn on and not the whole pixels
+  // around them. ↩️The whole of its picture was laid over the cells: a row
+  // 28 across at 0.9 is 25.2 device pixels and its tile 26, so the paper's
+  // foot rose ¾ of a pixel above its grip's, which stands where it is drawn.
+  for (final (at, across) in const [(ratio, 42.0), (0.9, 25.2)]) {
+    test('at $at, a row lays a tile over its cells one of its pixels to a '
+        'device pixel', () async {
+      final row = aBlockRow(Axis.horizontal, at: at);
+      await tile(row, 0, 18);
+      await tile(row, 18, 36);
+      final laid = tilesLaidBy(
+        () => row.paint(_noCanvas(), const Size(60 * cell, 28)),
+      );
+      final first = laid.first;
 
-    expect(laid.first.onto.right * ratio, 808.5);
-    expect(laid.first.from.right, laid.first.picture.width.toDouble());
-  });
+      expect(
+        first.from.width,
+        moreOrLessEquals(first.onto.width * at, epsilon: 1e-9),
+      );
+      expect(first.from.height, moreOrLessEquals(across, epsilon: 1e-9));
+      expect(first.onto.height * at, moreOrLessEquals(across, epsilon: 1e-9));
+      expect(
+        first.picture.height,
+        across.ceil(),
+        reason: '⛔premise: the tile is whole pixels around its cells',
+      );
+    });
+  }
 }
 
 Canvas _noCanvas() => Canvas(PictureRecorder());

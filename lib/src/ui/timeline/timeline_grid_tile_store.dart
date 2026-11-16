@@ -19,7 +19,7 @@ import '../../native/engine_wave_peaks.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
-import 'axis_turn.dart' show endAlong, offsetAlong, startAlong;
+import 'axis_turn.dart' show endAlong, offsetAlong, sizeAlong, startAlong;
 import 'inbetween_mark_painter.dart' show inbetweenMarkRingWidth;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
@@ -1365,6 +1365,11 @@ class TimelineGridTileStore {
       writer: writer,
       tileWidth: tileWidth,
       tileHeight: tileHeight,
+      drawn: sizeAlong(
+        painter.axis,
+        along: spanExtent * dpr,
+        across: painter.crossAxisExtent * dpr,
+      ),
       celContentRevision: sampledCelContentRevision,
       substrate: substrate,
       ink: ink,
@@ -1411,7 +1416,7 @@ class TimelineGridTileStore {
     for (final (:peaks, :view) in emitted.waves) {
       batch.wave(picture, EngineWavePeaks.of(peaks), view);
     }
-    return TimelineGridTilePicture(picture);
+    return TimelineGridTilePicture(picture, drawn: emitted.drawn);
   }
 
   /// The ink [request]'s span bakes over its substrate: the ops of its
@@ -1703,6 +1708,7 @@ typedef _Emitted = ({
   TimelineGridTileOpWriter writer,
   int tileWidth,
   int tileHeight,
+  Size drawn,
   int celContentRevision,
   TimelineRowSubstrate substrate,
   _TileInk ink,

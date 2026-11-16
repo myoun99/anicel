@@ -946,18 +946,17 @@ class TimelineRowCellsPainter extends CustomPainter
     final first = math.max(from, tile.spanStartIndex);
     final last = math.min(to, tile.spanEndIndexExclusive);
     final frames = tile.spanEndIndexExclusive - tile.spanStartIndex;
-    final size = Size(
-      tile.picture.width.toDouble(),
-      tile.picture.height.toDouble(),
-    );
-    final main = extentAlong(axis, size);
+    // What its cells were drawn on, not the whole pixels around them: one
+    // of its pixels to a device pixel (F-604, [TimelineGridTilePicture]).
+    final drawn = tile.picture.drawn;
+    final main = extentAlong(axis, drawn);
     final src = rectAlong(
       axis,
       along: (
         from: main * (first - tile.spanStartIndex) / frames,
         to: main * (last - tile.spanStartIndex) / frames,
       ),
-      across: (from: 0, to: extentAcross(axis, size)),
+      across: (from: 0, to: extentAcross(axis, drawn)),
     );
     final dst = rectAlong(
       axis,
