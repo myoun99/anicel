@@ -27,6 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
 import '../helpers/files_written_under.dart';
+import '../helpers/poll_until.dart';
 
 /// 🚨Card a-thawed-cel-is-adopted-on-the-ui-thread, what was left of it: a
 /// kept cel worked out ahead on a worker ([BrushFrameStore.thawAhead],
@@ -199,10 +200,15 @@ void main() {
 
     final thaw = store.thawAhead(k, canvasSize: paper);
     // The read has ended once it is in flight no more, and the turn that
-    // ended it handed the bytes to the worker that lays them.
-    while (WorkerFileReads.inFlight > 0) {
-      await Future<void>.delayed(Duration.zero);
-    }
+    // ended it handed the bytes to the worker that lays them — looked at a
+    // turn at a time, before the worker can have laid them.
+    expect(
+      await pollUntil(
+        () => WorkerFileReads.inFlight == 0,
+        beat: Duration.zero,
+      ),
+      isTrue,
+    );
     expect(store.hotBakedSurfaceOrNull(k), isNull, reason: 'premise: not yet');
     store.storeBakedSurface(k, drawn);
     await thaw;
