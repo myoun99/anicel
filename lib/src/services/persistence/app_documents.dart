@@ -77,7 +77,10 @@ abstract final class AppStorage {
   /// Test hook: stands in for the OS's microphone ask.
   static Future<bool> Function()? debugMicrophoneAccess;
 
-  /// Resolves the mobile documents home once at startup (main()).
+  /// Resolves the mobile platform's folders once at startup (main()): the
+  /// documents home, and the app's own folder where the platform hands one
+  /// ([platformAppSupportBase] — AWAITED before any store reads, or a store
+  /// would read the settings from where the environment fell to).
   static Future<void> ensureInitialized() async {
     if (!Platform.isAndroid && !Platform.isIOS) {
       return;
@@ -88,6 +91,13 @@ abstract final class AppStorage {
       );
     } on Object {
       channelDocumentsPath = null;
+    }
+    try {
+      platformAppSupportBase = await channel.invokeMethod<String>(
+        'appSupportPath',
+      );
+    } on Object {
+      platformAppSupportBase = null;
     }
   }
 

@@ -52,6 +52,12 @@ Future<void> main(List<String> handedAtLaunch) async {
   // [AnicelBinding] rather than [WidgetsFlutterBinding]: it is the same
   // binding plus the UI scale in the root device matrix.
   AnicelBinding.ensureInitialized();
+  // 🚨WHERE THE APP'S OWN FOLDER IS, before anything below asks it: on
+  // Android the platform says it (`filesDir`) — the environment names none,
+  // and the fallback was `code_cache`, which every update of the app empties
+  // (board android-settings-live-in-the-code-cache, 2026-11-16). ↩️It was
+  // left unawaited further down, when it only answered the documents home.
+  await AppStorage.ensureInitialized();
   // 🚨★★★**BEFORE ANY STORE READS ANYTHING.** The settings moved into a
   // room of their own (`<container>/Settings/`), and a store that resolved
   // its path first would find nothing, write a default, and hand the user
@@ -166,7 +172,6 @@ Future<void> main(List<String> handedAtLaunch) async {
       await rootBundle.loadString('assets/licenses/rust_crates.json'),
     ));
   });
-  unawaited(AppStorage.ensureInitialized());
   // Probe PDFium once at startup (loads the bundled library, ~ms): the
   // import window and Preferences > System then have a settled answer
   // instead of probing mid-flow. Absence is a reported state, not an

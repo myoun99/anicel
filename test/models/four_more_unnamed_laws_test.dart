@@ -102,6 +102,18 @@ void main() {
         endsWith('/anicel/Sessions/snap.anicel'),
       );
     });
+
+    test('🚨the app\'s own folder, where the platform hands one, is the '
+        'base — Android names none in the environment, and the temp '
+        'directory it fell to is emptied by every update of the app', () {
+      addTearDown(() => platformAppSupportBase = null);
+      platformAppSupportBase = '/data/user/0/com.myoun.anicel/files';
+
+      expect(
+        appSupportFilePath('Settings/ui_scale.json'),
+        '/data/user/0/com.myoun.anicel/files/anicel/Settings/ui_scale.json',
+      );
+    });
   });
 
   group('a committed stroke bills only what it still HOLDS', () {

@@ -139,6 +139,11 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "appDocumentsPath" -> result.success(appDocumentsPath())
+                // The app's own folder (app_support_path.dart): filesDir,
+                // which an update keeps - not the code_cache Dart's temp
+                // directory is, which every update empties (board
+                // android-settings-live-in-the-code-cache).
+                "appSupportPath" -> result.success(filesDir.absolutePath)
                 "requestMicrophone" -> requestMicrophone(result)
                 "pickProjectFolder" ->
                     pickProjectFolder(call.argument<String>("initialDirectory"), result)
