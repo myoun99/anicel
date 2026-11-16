@@ -399,7 +399,8 @@ void main() {
 
   // What a file's writer turns its frame into bytes by
   // (`still_frame_bytes.dart`, `video_export_service.dart`,
-  // `conte_pdf_writer.dart`), each handed a frame as a file's is made
+  // `conte_pdf_writer.dart`; `animated_png_writer.dart`, handed its frames
+  // as straight bytes), each handed a frame as a file's is made
   // (`frameOnTheEngine`) and a frame shown on a screen of this
   // platform's: the app hands them the first alone today, and the
   // bindings take the second.
@@ -429,6 +430,8 @@ void main() {
       export.pngRgb(rgb, 2, 2).free();
       rgb.free();
     },
+    'an animated PNG\'s frame filtered straight': (export, frame) =>
+        export.pngStraight(Uint8List(2 * 2 * 4), 2, 2).free(),
   };
   for (final MapEntry(key: kind, value: convert) in conversions.entries) {
     test('$kind builds none', () {

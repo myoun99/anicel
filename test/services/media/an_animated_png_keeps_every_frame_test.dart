@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/services/media/animated_png_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadout;
 
 import '../../helpers/png_chunks.dart';
 
@@ -59,7 +60,11 @@ void main() {
       ),
     ];
 
-    final png = encodeAnimatedPng(width: width, height: height, frames: frames);
+    final png = await encodeAnimatedPng(
+      width: width,
+      height: height,
+      frames: frames,
+    );
     final back = await decoded(png);
 
     expect(pngColourTypeOf(png), 3, reason: 'four colours fit a palette');
@@ -90,14 +95,70 @@ void main() {
         ),
     ];
 
-    final png = encodeAnimatedPng(width: width, height: height, frames: frames);
+    final png = await encodeAnimatedPng(
+      width: width,
+      height: height,
+      frames: frames,
+    );
     final back = await decoded(png);
 
     expect(pngColourTypeOf(png), 6, reason: 'the frames use more than 256');
+    expect(
+      pngRowFiltersOf(png, stride: width * 4),
+      contains(isNot(0)),
+      reason: 'its rows under the filters the engine picks',
+    );
     expect(back, hasLength(frames.length));
     for (var i = 0; i < frames.length; i += 1) {
       expect(back[i].rgba, frames[i].rgba, reason: 'frame $i pixels');
     }
+  });
+
+  /// Twenty frames of 300 colours among them — past a palette —, each pixel
+  /// its own: an alpha from 1 up, red whole or none, a colour the codec's
+  /// premultiplied round trip hands back exact.
+  List<AnimatedPngFrame> pastAPalette() => [
+    for (var f = 0; f < 20; f += 1)
+      (
+        rgba: frameOf((x, y) {
+          final index = (f * height + y) * width + x;
+          final red = index < 255 ? 0xFF000000 : 0;
+          return red | (1 + index % 255);
+        }),
+        duration: const Duration(milliseconds: 50),
+      ),
+  ];
+
+  test('🚨an RGBA frame keeps an alpha that is not whole — straight, as it '
+      'was handed in, not a frame\'s premultiplied colour', () async {
+    final frames = pastAPalette();
+
+    final png = await encodeAnimatedPng(
+      width: width,
+      height: height,
+      frames: frames,
+    );
+    final back = await decoded(png);
+
+    expect(pngColourTypeOf(png), 6, reason: '⛔premise: past 256 colours');
+    for (var i = 0; i < frames.length; i += 1) {
+      expect(back[i].rgba, frames[i].rgba, reason: 'frame $i pixels');
+    }
+  });
+
+  test('🚨an RGBA frame\'s rows are waited for on the engine\'s thread, '
+      'frame by frame — the isolate that asked goes on meanwhile', () async {
+    var waits = 0;
+    GpuReadout.debugBeforeMapping = () => waits += 1;
+    addTearDown(() => GpuReadout.debugBeforeMapping = null);
+
+    await encodeAnimatedPng(
+      width: width,
+      height: height,
+      frames: pastAPalette(),
+    );
+
+    expect(waits, 20);
   });
 
   test('🚨a delay longer than sixteen bits of milliseconds is still that '
@@ -114,7 +175,7 @@ void main() {
     ];
 
     final back = await decoded(
-      encodeAnimatedPng(width: width, height: height, frames: frames),
+      await encodeAnimatedPng(width: width, height: height, frames: frames),
     );
 
     expect(back[0].duration, const Duration(seconds: 90));

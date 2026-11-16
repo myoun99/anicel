@@ -1,9 +1,8 @@
-import 'dart:io' show ZLibEncoder;
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuExport, GpuReadout, GpuShown, gpuColourOf;
+    show GpuReadout, GpuShown, gpuColourOf;
 
 import '../../native/app_gpu_engine.dart' show appGpuExport;
 import '../../services/media/png_writing.dart';
@@ -38,19 +37,16 @@ Uint8List rgbOverGroundOf(GpuShown frame, int groundArgb) =>
 /// window's cancel.
 Future<Uint8List> rgbaPngOf(GpuShown frame) async {
   final (width, height) = (frame.width, frame.height);
-  final rows = _filteredRows(
-    appGpuExport.pngRgba(frame, width, height),
-    width,
-    height,
-    4,
-  );
+  final rows = appGpuExport
+      .pngRgba(frame, width, height)
+      .takePngRows(width, height, 4);
   return tagPngAsSrgb(
     await Isolate.run(
       () => encodeStillPng(
         width: width,
         height: height,
         colourType: pngRgba,
-        imageData: _deflated(rows),
+        imageData: pngDeflated(rows),
       ),
     ),
   );
@@ -77,20 +73,17 @@ Future<Uint8List> rgbPngOf(GpuShown frame, int groundArgb) async {
   final Uint8List filtered;
   final Uint8List pixels;
   try {
-    filtered = _filteredRows(
-      appGpuExport.pngRgb(rgb, width, height),
-      width,
-      height,
-      3,
-    );
+    filtered = appGpuExport
+        .pngRgb(rgb, width, height)
+        .takePngRows(width, height, 3);
     pixels = rgb.copy();
   } finally {
     rgb.free();
   }
   return tagPngAsSrgb(
     await Isolate.run(() {
-      final underFilters = _deflated(filtered);
-      final asTheyAre = _deflated(_unfiltered(pixels, width * 3));
+      final underFilters = pngDeflated(filtered);
+      final asTheyAre = pngDeflated(pngUnfiltered(pixels, width * 3));
       return encodeStillPng(
         width: width,
         height: height,
@@ -112,44 +105,3 @@ GpuReadout _overGround(GpuShown frame, int groundArgb) =>
       frame.height,
       gpuColourOf(groundArgb) & 0xFFFFFF,
     );
-
-/// The rows [filtered] put, each its filter's byte and [pixelBytes] a
-/// pixel of [width], one after another — without the filling that starts
-/// each on a word ([GpuExport.pngRowBytes]) — and [filtered] freed.
-Uint8List _filteredRows(
-  GpuReadout filtered,
-  int width,
-  int height,
-  int pixelBytes,
-) {
-  try {
-    return filtered.copyRows(
-      stride: GpuExport.pngRowBytes(width, pixelBytes),
-      rowBytes: 1 + width * pixelBytes,
-      rows: height,
-    );
-  } finally {
-    filtered.free();
-  }
-}
-
-/// [pixels]' rows of [rowBytes], each under filter 0 — none.
-Uint8List _unfiltered(Uint8List pixels, int rowBytes) {
-  final height = pixels.length ~/ rowBytes;
-  final rows = Uint8List(height * (rowBytes + 1));
-  for (var y = 0; y < height; y += 1) {
-    rows.setRange(
-      y * (rowBytes + 1) + 1,
-      (y + 1) * (rowBytes + 1),
-      pixels,
-      y * rowBytes,
-    );
-  }
-  return rows;
-}
-
-/// [rows] deflated: the body of a PNG's IDAT.
-Uint8List _deflated(Uint8List rows) => switch (ZLibEncoder().convert(rows)) {
-  final Uint8List bytes => bytes,
-  final bytes => Uint8List.fromList(bytes),
-};

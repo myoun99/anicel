@@ -80,7 +80,7 @@ fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
         read(rig.clear.run(engine, frame, picture, 128)),
         read(rig.opaque.run(engine, frame, picture)),
         read(rig.png.rgba(engine, frame, picture)),
-        read(rig.png.rgb(engine, &rgb, picture)),
+        read(rig.png.packed(engine, &rgb, picture, 3)),
         read(rig.straight.run(engine, frame, picture)),
     ]
 }

@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use super::{Clear, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Straight};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{assert_pinned, first_engine, last_error, read_buffer};
 
 pub(super) struct Rig {
     pub(super) engine: &'static Engine,
@@ -618,7 +618,7 @@ fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Ve
     let rgb = over_ground
         .run(engine, Frame::Tiles(frame), picture, ground, None)
         .expect("over ground");
-    let out = png.rgb(engine, &rgb, picture).expect("png rgb");
+    let out = png.packed(engine, &rgb, picture, 3).expect("png rgb");
     read_buffer(engine, &out)
 }
 
@@ -629,7 +629,7 @@ fn reds(rows: &'static [&'static [u32]], alpha: u32) -> wgpu::Buffer {
     frame(width, rows.len() as u32, move |x, y| alpha << 24 | rows[y as usize][x as usize])
 }
 
-// ---- By hand, from the law (`PngImageData`) ----
+// ---- By hand, from the law (png.wgsl's head) ----
 
 // One colour, (10, 200, 30, 255), three pixels by two. A pixel costs 10 +
 // 56 + 30 + 1 = 97 as it is. The top row: None 3·97; Sub 97, the first
@@ -777,7 +777,58 @@ fn png_refuses_an_empty_picture_or_a_short_source() {
         Picture { width: 0, height: 4 },
         Picture { width: 4, height: 5 },
     ] {
-        assert!(png.rgb(engine, &rgb, bad).is_none(), "{bad:?}");
+        assert!(png.packed(engine, &rgb, bad, 3).is_none(), "{bad:?}");
+    }
+}
+
+// ---- Bytes that lie packed: straight RGBA, an animated PNG's frame ----
+
+/// `pixel`'s words over `width` x `height`, row after row, as the bytes the
+/// app hands over: four a pixel, red first.
+fn packed_rgba(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> Vec<u8> {
+    (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .flat_map(|(x, y)| pixel(x, y).to_le_bytes())
+        .collect()
+}
+
+/// The rows of a PNG of four channels from `bytes`, packed.
+fn packed_rows(bytes: &[u8], picture: Picture) -> Vec<Vec<u8>> {
+    let Rig { engine, png, .. } = rig();
+    let source = engine.filled("packed rgba", bytes, wgpu::BufferUsages::STORAGE);
+    let out = png.packed(engine, &source, picture, 4).expect("png packed");
+    png_rows(&read_buffer(engine, &out), picture, 4)
+}
+
+// The law reads a picture's bytes wherever they lie: straight RGBA handed
+// over packed is filtered as the same picture in a run's tiles is — any
+// colours, any alphas, a side no tile's or word's.
+#[test]
+fn packed_rgba_is_filtered_as_the_same_picture_in_a_frame() {
+    let (width, height) = (37, 21);
+    let picture = Picture { width, height };
+    let bytes = packed_rgba(width, height, mixed(5));
+    assert_eq!(packed_rows(&bytes, picture), png_rgba_rows(&frame(width, height, mixed(5)), width, height));
+}
+
+// A pixel whose alpha is not whole keeps it: (10, 20, 30, 128) alone is
+// under None — on a top row of one pixel every filter leaves its bytes as
+// they are, 10 + 20 + 30 + 128 each, and a tie goes to the lowest.
+#[test]
+fn a_packed_pixel_keeps_an_alpha_that_is_not_whole() {
+    let picture = Picture { width: 1, height: 1 };
+    assert_eq!(packed_rows(&[10, 20, 30, 128], picture), [vec![0, 10, 20, 30, 128]]);
+}
+
+// A count of bytes a pixel it has no pass of is refused, and says so.
+#[test]
+fn a_packed_png_of_a_count_it_reads_none_of_is_refused() {
+    let Rig { engine, png, .. } = rig();
+    let source = engine.filled("packed", &[0; 64], wgpu::BufferUsages::STORAGE);
+    for pixel_bytes in [0, 1, 2, 5] {
+        let picture = Picture { width: 2, height: 2 };
+        assert!(png.packed(engine, &source, picture, pixel_bytes).is_none(), "{pixel_bytes}");
+        assert!(last_error().contains("bytes a pixel"), "{}", last_error());
     }
 }
 

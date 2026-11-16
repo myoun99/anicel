@@ -3008,6 +3008,24 @@ class GpuExport implements _OfAnEngine {
     ),
   );
 
+  /// [pngRgba] for a PNG of four bytes a pixel, from [rgba] — the picture
+  /// of [width] × [height] straight, red first, row after row with nothing
+  /// between — copied to the GPU as it is: an animated PNG's frame, whose
+  /// alpha a frame's premultiplied colour would not carry back as it was.
+  GpuReadout pngStraight(Uint8List rgba, int width, int height) =>
+      _readout(
+        using(
+          (arena) => rust.exportPngStraight(
+            _export,
+            _engine._engine,
+            _bytes(arena, rgba),
+            rgba.length,
+            width,
+            height,
+          ),
+        ),
+      );
+
   /// Where each of a PNG's filtered rows starts from the last's, for a
   /// picture [width] wide of [pixelBytes] a pixel.
   static int pngRowBytes(int width, int pixelBytes) =>
@@ -3110,6 +3128,24 @@ class GpuReadout implements _OfAnEngine {
   Uint8List take() {
     try {
       return copy();
+    } finally {
+      free();
+    }
+  }
+
+  /// The rows of a PNG [width] × [height] of [pixelBytes] a pixel that a
+  /// filter pass put ([GpuExport.pngRgba], [GpuExport.pngRgb],
+  /// [GpuExport.pngStraight]) — each its filter's byte and its own, one
+  /// after another without the filling that starts each on a word
+  /// ([GpuExport.pngRowBytes]) — and the readout freed: what a writer
+  /// deflates.
+  Uint8List takePngRows(int width, int height, int pixelBytes) {
+    try {
+      return copyRows(
+        stride: GpuExport.pngRowBytes(width, pixelBytes),
+        rowBytes: 1 + width * pixelBytes,
+        rows: height,
+      );
     } finally {
       free();
     }

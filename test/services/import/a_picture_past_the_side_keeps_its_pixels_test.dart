@@ -364,17 +364,19 @@ void main() {
       for (var i = 0; i < second.length; i += 4) {
         second[i + 2] = 255 - second[i + 2];
       }
-      final png = encodeAnimatedPng(
-        width: 100,
-        height: 20,
-        frames: [
-          (
-            rgba: patterned(100, 20),
-            duration: const Duration(milliseconds: 40),
-          ),
-          (rgba: second, duration: const Duration(milliseconds: 80)),
-        ],
-      );
+      final png = (await tester.runAsync(
+        () => encodeAnimatedPng(
+          width: 100,
+          height: 20,
+          frames: [
+            (
+              rgba: patterned(100, 20),
+              duration: const Duration(milliseconds: 40),
+            ),
+            (rgba: second, duration: const Duration(milliseconds: 80)),
+          ],
+        ),
+      ))!;
       await tester.runAsync(() => readAsTheEngine(png));
     });
   });

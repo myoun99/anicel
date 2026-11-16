@@ -277,8 +277,10 @@ class TrimmedPieces {
       }
       final width = first.width;
       final height = first.height;
-      final png = await onAWorker(
-        () => encodeAnimatedPng(width: width, height: height, frames: frames),
+      final png = await encodeAnimatedPng(
+        width: width,
+        height: height,
+        frames: frames,
       );
       File(work).writeAsBytesSync(png, flush: true);
       return kept;

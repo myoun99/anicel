@@ -1,5 +1,5 @@
 //! A PNG's rows under their filters (gpu-export-path ①e) — `png.wgsl` has
-//! the law; `png_rgba.wgsl` and `png_rgb.wgsl` where a row's bytes come
+//! the law; `png_rgba.wgsl` and `png_packed.wgsl` where a row's bytes come
 //! from.
 
 use std::sync::OnceLock;
@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::shared::{kept_or_made, pipeline};
+use crate::kernels::shared::{kept_or_made, pipeline_with};
 
 impl Picture {
     /// Words a row of the filtered out takes, `pixel_bytes` a pixel: its
@@ -28,11 +28,13 @@ impl Picture {
 }
 
 /// The filter pass, from either source: the frame's pixels straight, or
-/// the over-the-ground pass's RGB — which is no frame, so its pipeline
-/// reads none.
+/// bytes that lie packed — the over-the-ground pass's RGB, a picture's
+/// straight RGBA the app hands over — which are no frame, so their
+/// pipelines read none.
 pub(crate) struct PngFilter {
     rgba: Pipelines,
-    rgb: OnceLock<wgpu::ComputePipeline>,
+    /// The packed pass of three bytes a pixel, and of four.
+    packed: [OnceLock<wgpu::ComputePipeline>; 2],
 }
 
 const PNG_WGSL: &str = include_str!("png.wgsl");
@@ -41,7 +43,7 @@ impl PngFilter {
     pub(crate) const fn new() -> Self {
         Self {
             rgba: Pipelines::new(&[include_str!("png_rgba.wgsl"), PNG_WGSL], "png_filter_pass"),
-            rgb: OnceLock::new(),
+            packed: [OnceLock::new(), OnceLock::new()],
         }
     }
 
@@ -56,29 +58,47 @@ impl PngFilter {
         Self::run(engine, pipeline, frame.buffer(), frame.stride(picture), picture, 4)
     }
 
-    /// [`Self::rgba`] for a PNG of three channels, from `rgb` — what the
-    /// over-the-ground pass returned for the picture.
-    pub(crate) fn rgb(&self, engine: &Engine, rgb: &wgpu::Buffer, picture: Picture) -> Option<wgpu::Buffer> {
+    /// [`Self::rgba`] for a PNG whose bytes lie packed in `bytes`,
+    /// `pixel_bytes` a pixel — three, what the over-the-ground pass
+    /// returned for the picture; four, a picture's straight RGBA
+    /// ([`Self::rgba`] reads a frame, whose colour is premultiplied: a
+    /// picture whose alpha is not whole would not come back as it was).
+    pub(crate) fn packed(
+        &self,
+        engine: &Engine,
+        bytes: &wgpu::Buffer,
+        picture: Picture,
+        pixel_bytes: u32,
+    ) -> Option<wgpu::Buffer> {
         picture.check()?;
-        let needed = picture.rgb_bytes().next_multiple_of(4);
-        if rgb.size() < needed {
-            return fail(format!("its RGB takes {needed} bytes; the buffer has {}", rgb.size()));
+        let pipeline = self.packed_pipeline(engine, pixel_bytes)?;
+        let needed = (picture.pixels() * u64::from(pixel_bytes)).next_multiple_of(4);
+        if bytes.size() < needed {
+            return fail(format!("its bytes take {needed}; the buffer has {}", bytes.size()));
         }
-        Self::run(engine, self.rgb_pipeline(engine), rgb, 0, picture, 3)
+        Self::run(engine, pipeline, bytes, 0, picture, pixel_bytes)
     }
 
-    /// The pass of three channels, compiled once.
-    fn rgb_pipeline(&self, engine: &Engine) -> &wgpu::ComputePipeline {
-        kept_or_made(&self.rgb, || {
-            pipeline(engine, &[include_str!("png_rgb.wgsl"), PNG_WGSL], "png_filter_pass")
-        })
+    /// The packed pass of `pixel_bytes` a pixel, compiled once — none for
+    /// a count it has none of.
+    fn packed_pipeline(&self, engine: &Engine, pixel_bytes: u32) -> Option<&wgpu::ComputePipeline> {
+        let Some(kept) = (pixel_bytes.checked_sub(3)).and_then(|at| self.packed.get(at as usize)) else {
+            return fail(format!("a packed PNG of {pixel_bytes} bytes a pixel"));
+        };
+        Some(kept_or_made(kept, || {
+            let sources = [include_str!("png_packed.wgsl"), PNG_WGSL];
+            pipeline_with(engine, &sources, "png_filter_pass", &[("PIXEL_BYTES", f64::from(pixel_bytes))])
+        }))
     }
 
-    /// Compiles both passes, the one of four channels as every pass
-    /// that reads a frame is ([`Pipelines::warm`]).
+    /// Compiles every pass a PNG takes: a still's — the one of four
+    /// channels as every pass that reads a frame is ([`Pipelines::warm`]),
+    /// and its three over the ground — and an animated one's frames,
+    /// straight four.
     pub(super) fn warm(&self, engine: &Engine, bgra: bool) {
         self.rgba.warm(engine, bgra);
-        self.rgb_pipeline(engine);
+        self.packed_pipeline(engine, 3);
+        self.packed_pipeline(engine, 4);
     }
 
     fn run(

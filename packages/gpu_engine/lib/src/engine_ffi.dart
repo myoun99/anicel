@@ -1491,6 +1491,25 @@ external Pointer<Readout> exportPngRgb(
   int height,
 );
 
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Uint8>,
+    Size,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_png_straight')
+external Pointer<Readout> exportPngStraight(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Uint8> rgba,
+  int length,
+  int width,
+  int height,
+);
+
 @Native<Uint64 Function(Uint32, Uint32)>(
   symbol: 'gpu_engine_export_png_row_bytes',
 )

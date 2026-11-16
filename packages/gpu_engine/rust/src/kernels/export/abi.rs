@@ -20,7 +20,7 @@ use super::{
 use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::Composited;
-use crate::kernels::shared::Counted;
+use crate::kernels::shared::{Counted, fits};
 use crate::platform::Surface;
 
 /// The export's passes, compiled ahead by the app once what a hand needs
@@ -691,9 +691,55 @@ pub unsafe extern "C" fn gpu_engine_export_png_rgb(
     let (export, engine, rgb) = unsafe { (&*export, &*engine, &*rgb) };
     engine.on_thread(|| {
         let picture = Picture { width, height };
-        readout(engine, export.png.rgb(engine, &rgb.out, picture), picture.png_bytes(3))
+        readout(engine, export.png.packed(engine, &rgb.out, picture, 3), picture.png_bytes(3))
     })
 }
+
+/// [`png_rgba`] for a picture of `width` × `height` straight pixels — the
+/// `length` bytes at `rgba`, four a pixel, red first, row after row —
+/// copied to the GPU as they are: an animated PNG's frame
+/// (`encodeAnimatedPng`), whose alpha a frame's premultiplied colour would
+/// not carry back as it was. Null on failure — `length` not the picture's
+/// bytes among them; see the last error.
+///
+/// ↩️Till 2026-11-16 the app filtered such a frame's rows itself, five
+/// filters a row in Dart (card the-trimmed-apng-filters-its-rows-in-dart).
+///
+/// # Safety
+/// `export` and `engine` are live, made one on the other; `rgba` holds
+/// `length` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_png_straight(
+    export: *const Export,
+    engine: *const Engine,
+    rgba: *const u8,
+    length: usize,
+    width: u32,
+    height: u32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine, rgba) = unsafe { (&*export, &*engine, held_bytes(rgba, length)) };
+    engine.on_thread(|| {
+        let picture = Picture { width, height };
+        let filtered = straight_bytes(engine, rgba, picture)
+            .and_then(|bytes| export.png.packed(engine, &bytes, picture, 4));
+        readout(engine, filtered, picture.png_bytes(4))
+    })
+}
+
+/// `rgba` — the straight bytes of `picture` — in a buffer the PNG pass
+/// reads, or none, with why, where they are not its bytes or the device
+/// holds no buffer of them.
+fn straight_bytes(engine: &Engine, rgba: &[u8], picture: Picture) -> Option<wgpu::Buffer> {
+    picture.check()?;
+    let bytes = picture.pixels() * 4;
+    if rgba.len() as u64 != bytes {
+        return fail(format!("a {}x{} picture is {bytes} bytes, not {}", picture.width, picture.height, rgba.len()));
+    }
+    fits(engine, &[bytes], std::iter::empty())?;
+    Some(engine.filled("png straight bytes", rgba, wgpu::BufferUsages::STORAGE))
+}
+
 
 /// Where each row of a PNG's filtered rows starts from the last's, for a
 /// picture `width` wide of `pixel_bytes` a pixel: its filter's byte and

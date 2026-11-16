@@ -456,14 +456,16 @@ void main() {
 
     testWidgets('an animated PNG is no still: the engine\'s, every '
         'frame', (tester) async {
-      final file = encodeAnimatedPng(
-        width: pixels.length,
-        height: 1,
-        frames: [
-          for (final ms in [40, 80])
-            (rgba: rgbaOf(pixels), duration: Duration(milliseconds: ms)),
-        ],
-      );
+      final file = (await tester.runAsync(
+        () => encodeAnimatedPng(
+          width: pixels.length,
+          height: 1,
+          frames: [
+            for (final ms in [40, 80])
+              (rgba: rgbaOf(pixels), duration: Duration(milliseconds: ms)),
+          ],
+        ),
+      ))!;
       await tester.runAsync(() async {
         final frames = await decodeImageFrames(file);
 

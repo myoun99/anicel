@@ -153,7 +153,7 @@ fn png_rgba_filters_what_its_pass_filters() {
 fn png_rgb_filters_over_grounds_rows() {
     let (frame, Rig { engine, over_ground, png, .. }) = (ran(), rig());
     let rgb = over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [5, 6, 7], None).expect("over ground");
-    let want = put(png.rgb(engine, &rgb, picture()), picture().png_bytes(3));
+    let want = put(png.packed(engine, &rgb, picture(), 3), picture().png_bytes(3));
     assert_eq!(want.len(), HEIGHT as usize * 112, "37 x 3 + 1 bytes a row, filled out to 112");
     // SAFETY: all are live, made on `engine`.
     let source = unsafe { gpu_engine_export_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0x07_0605, -1) };
@@ -168,6 +168,27 @@ fn png_rgb_filters_over_grounds_rows() {
     }
     // SAFETY: `source` is live.
     unsafe { gpu_engine_readout_free(source) };
+}
+
+// A picture's straight bytes, handed over as they lie, are filtered as the
+// packed pass filters them; bytes that are not the picture's are refused.
+#[test]
+fn png_straight_filters_the_bytes_it_is_handed() {
+    let Rig { engine, png, .. } = rig();
+    let pixel = mixed(23);
+    let bytes: Vec<u8> = (0..HEIGHT)
+        .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
+        .flat_map(|(x, y)| pixel(x, y).to_le_bytes())
+        .collect();
+    let source = engine.filled("straight", &bytes, wgpu::BufferUsages::STORAGE);
+    let want = put(png.packed(engine, &source, picture(), 4), picture().png_bytes(4));
+    // SAFETY: all are live, made on `engine`; `bytes` holds its length.
+    let readout = unsafe { gpu_engine_export_png_straight(export(), *engine, bytes.as_ptr(), bytes.len(), WIDTH, HEIGHT) };
+    assert_eq!(read_out(readout), want);
+    // SAFETY: as above, a byte short of the picture's.
+    let short = unsafe { gpu_engine_export_png_straight(export(), *engine, bytes.as_ptr(), bytes.len() - 1, WIDTH, HEIGHT) };
+    assert!(short.is_null());
+    assert!(last_error().contains("bytes, not"), "{}", last_error());
 }
 
 #[test]
