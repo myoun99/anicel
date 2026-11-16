@@ -420,11 +420,12 @@ class _TileGrid {
   /// Where a read tile's rows begin in [record].
   late final Int32List _starts = Int32List(total);
 
-  /// How much of its root's pixels tile t shows, from the top-left: a copy
-  /// keeps no more than the smaller of the two tiles (an edge tile is cut
-  /// short by the canvas).
+  /// How many columns of its root's pixels tile t shows: a copy keeps no
+  /// more than the narrower of the two (the grid's last column is cut short
+  /// by the canvas). Rows need no keeping — a copy's root was read before
+  /// it, so stands no lower in the grid, and only the grid's last row is
+  /// short.
   late final Uint8List _keptWidths = Uint8List(total);
-  late final Uint8List _keptHeights = Uint8List(total);
 
   /// A tile's pixels read again ([_readAgain]), rows of its own width, and
   /// which tile they are.
@@ -481,7 +482,6 @@ class _TileGrid {
     _starts[t] = from;
     _roots[t] = t;
     _keptWidths[t] = tw;
-    _keptHeights[t] = th;
     _written.add(t);
   }
 
@@ -505,17 +505,15 @@ class _TileGrid {
     }
     final dc = dst % cols;
     final keptWidth = math.min(_keptWidths[src], _tileWidth(dc));
-    final keptHeight = math.min(_keptHeights[src], _tileHeight(dst ~/ cols));
     _enterBandOf(dst);
     final pixels = _readAgain(root);
     final rootWidth = _tileWidth(root % cols);
-    for (var y = 0; y < keptHeight; y++) {
+    for (var y = 0; y < _tileHeight(dst ~/ cols); y++) {
       final at = y * width + dc * tile;
       band.setRange(at, at + keptWidth, pixels, y * rootWidth);
     }
     _roots[dst] = root;
     _keptWidths[dst] = keptWidth;
-    _keptHeights[dst] = keptHeight;
     _written.add(dst);
   }
 
