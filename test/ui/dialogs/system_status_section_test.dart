@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/dialogs/system_status_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// Preferences ▸ System (user rule 07-22): every runtime-selected
@@ -229,6 +230,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      // A name too long for the row is cut as every cut word is, and says
+      // the whole of itself (F-530, EllipsisText).
+      expect(tester.widget(inUse), isA<EllipsisText>());
       // Another file of the batch may have opened it already.
       expect(said(), appGpuEngineOpen.value?.adapterName ?? '');
       final kept = tester.getSize(find.byType(GpuPreferenceRow));
