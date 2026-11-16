@@ -85,7 +85,7 @@ void main() {
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
-        frameRate: const ProjectFrameRate.integer(24),
+        frameRate: ProjectFrameRate.fps24,
         tracks: [
           Track(
             id: const TrackId('track'),
