@@ -130,6 +130,16 @@ void main() {
     return false;
   }
 
+  /// [plate] as a failure says it: each tile, how many of its pixels hold
+  /// any alpha, the most one holds, and the box they lie in. On the Mac
+  /// runner a plate held tiles a letter does not cover (round-1091-builds-
+  /// all-stop-at-their-checks, 11-16) — what is in them says whether the
+  /// raster left a trace there or the plate took tiles it should not.
+  String inkOf(Map<TileCoord, BitmapTile> plate) => [
+    for (final MapEntry(:key, :value) in plate.entries)
+      '(${key.x},${key.y}) ${_inkIn(value.pixels, value.size)}',
+  ].join(' · ');
+
   /// A text that tries every setting at once, off the pixel grid.
   CelTextContent everything({double turn = 30}) => said(
     [
@@ -148,7 +158,11 @@ void main() {
       'and the plate holds no other', () async {
     final plate = await baked(said([run('ab')]));
 
-    expect(plate.keys.toSet(), {TileCoord(x: 1, y: 1), TileCoord(x: 2, y: 1)});
+    expect(
+      plate.keys.toSet(),
+      {TileCoord(x: 1, y: 1), TileCoord(x: 2, y: 1)},
+      reason: inkOf(plate),
+    );
     for (final tile in plate.values) {
       expect(tile.pixels, tileFilledWith(ink).pixels);
     }
@@ -164,7 +178,7 @@ void main() {
       TileCoord(x: 1, y: 1),
       TileCoord(x: 1, y: 2),
       TileCoord(x: 1, y: 3),
-    });
+    }, reason: inkOf(plate));
     for (final tile in plate.values) {
       expect(tile.pixels, tileFilledWith(ink).pixels);
     }
@@ -175,7 +189,7 @@ void main() {
       TileCoord(x: 2, y: 1),
       TileCoord(x: 3, y: 1),
       TileCoord(x: 4, y: 1),
-    });
+    }, reason: inkOf(lines));
   });
 
   // Three digits, each a cell of its own, tracked by a whole tile.
@@ -224,7 +238,7 @@ void main() {
       TileCoord(x: 2, y: 1),
       TileCoord(x: 1, y: 1),
       TileCoord(x: 1, y: 2),
-    });
+    }, reason: inkOf(plate));
     for (final tile in plate.values) {
       expect(tile.pixels, tileFilledWith(ink).pixels);
     }
@@ -284,7 +298,11 @@ void main() {
       const size = celTextTestTileSize;
       final plate = await baked(said([run('abc')], x: 960));
 
-      expect(plate.keys.toSet(), {TileCoord(x: 7, y: 1)});
+      expect(
+        plate.keys.toSet(),
+        {TileCoord(x: 7, y: 1)},
+        reason: inkOf(plate),
+      );
       final pixels = plate.values.single.pixels;
       for (var y = 0; y < size; y += 1) {
         for (var x = 0; x < size; x += 1) {
@@ -330,7 +348,7 @@ void main() {
         TileCoord(x: 1, y: 1),
         TileCoord(x: 2, y: 1),
         TileCoord(x: 3, y: 1),
-      });
+      }, reason: inkOf(after));
       expect(after[TileCoord(x: 1, y: 1)], same(before[TileCoord(x: 1, y: 1)]));
       expect(after[TileCoord(x: 2, y: 1)], same(before[TileCoord(x: 2, y: 1)]));
     });
@@ -375,7 +393,35 @@ void main() {
 
       final after = await baked(said([run('a')]), previous: before);
 
-      expect(after.keys.toSet(), {TileCoord(x: 1, y: 1)});
+      expect(
+        after.keys.toSet(),
+        {TileCoord(x: 1, y: 1)},
+        reason: inkOf(after),
+      );
     });
   });
+}
+
+/// What of [pixels] — a tile [side] square, straight RGBA — holds any alpha:
+/// how many pixels, the most alpha one holds, and the box they lie in.
+String _inkIn(Uint8List pixels, int side) {
+  var count = 0;
+  var most = 0;
+  var (left, top, right, bottom) = (side, side, -1, -1);
+  for (var at = 0; at < side * side; at += 1) {
+    final alpha = pixels[at * 4 + 3];
+    if (alpha == 0) {
+      continue;
+    }
+    count += 1;
+    if (alpha > most) {
+      most = alpha;
+    }
+    final (x, y) = (at % side, at ~/ side);
+    (left, right) = (x < left ? x : left, x > right ? x : right);
+    (top, bottom) = (y < top ? y : top, y > bottom ? y : bottom);
+  }
+  return count == 0
+      ? 'no alpha'
+      : '$count px, alpha up to $most, x $left..$right y $top..$bottom';
 }

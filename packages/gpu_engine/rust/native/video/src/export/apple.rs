@@ -429,6 +429,24 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
     })
 }
 
+/// False, and why `what` was refused: in the writer's words where it has
+/// failed — its status and AVFoundation's reason — as the other writers say
+/// why a frame or a sound was not taken (`windows.rs`: 「a frame failed to
+/// encode」). ↩️(round-1091-builds-all-stop-at-their-checks, 2026-11-16)
+/// each refusal here answered false and said nothing, so the Mac runner's
+/// two long test movies failed with an empty reason — and the writer they
+/// left open answered the next opens 「bad open parameters」.
+fn refused(writer: &AVAssetWriter, what: &str) -> bool {
+    // SAFETY: property reads on a writer of our own.
+    let (status, error) = unsafe { (writer.status(), writer.error()) };
+    let status = status.0;
+    set_error(&match error {
+        Some(error) => format!("video export: {what} (writer status {status}: {})", error.localizedDescription()),
+        None => format!("video export: {what} (writer status {status})"),
+    });
+    false
+}
+
 /// Whether `input` takes more within the wait — false when it never did.
 fn ready(input: &AVAssetWriterInput) -> bool {
     for _ in 0..=SPINS {
@@ -529,18 +547,19 @@ impl Writer {
     /// The next frame: a buffer of the adaptor's pool, filled by `fill`
     /// while it is locked, appended at its time.
     fn frame(&mut self, fill: impl FnOnce(&Writer, &CVPixelBuffer) -> bool) -> bool {
+        let at = self.frame_index;
         if !ready(&self.video) {
-            return false;
+            return refused(&self.writer, &format!("frame {at}: the video input took nothing for 10 s"));
         }
         // SAFETY: the adaptor's pool, once writing has begun.
         let Some(pool) = (unsafe { self.adaptor.pixelBufferPool() }) else {
-            return false;
+            return refused(&self.writer, &format!("frame {at}: the adaptor has no pixel buffer pool"));
         };
         let mut out: *mut CVPixelBuffer = ptr::null_mut();
         // SAFETY: `out` is a local the call writes once.
         let made = unsafe { CVPixelBufferPool::create_pixel_buffer(None, &pool, NonNull::from(&mut out)) };
         let Some(out) = NonNull::new(out).filter(|_| made == kCVReturnSuccess) else {
-            return false;
+            return refused(&self.writer, &format!("frame {at}: the pool made no pixel buffer ({made})"));
         };
         // SAFETY: a Create call hands over the one reference it made.
         let pixels = unsafe { CFRetained::from_raw(out) };
@@ -550,13 +569,13 @@ impl Writer {
         // frame into it was a segmentation fault instead of a refused frame.
         // SAFETY: a buffer of our own, unlocked below.
         if unsafe { CVPixelBufferLockBaseAddress(&pixels, CVPixelBufferLockFlags(0)) } != kCVReturnSuccess {
-            return false;
+            return refused(&self.writer, &format!("frame {at}: the pixel buffer would not lock"));
         }
         let filled = fill(self, &pixels);
         // SAFETY: locked above.
         unsafe { CVPixelBufferUnlockBaseAddress(&pixels, CVPixelBufferLockFlags(0)) };
         if !filled {
-            return false;
+            return refused(&self.writer, &format!("frame {at}: the pixel buffer is not the shape asked"));
         }
         // Frame i shows at i * den / num seconds — exact fraction, like
         // every other timing conversion in this program.
@@ -564,7 +583,7 @@ impl Writer {
         let time = unsafe { CMTime::new(self.frame_index * self.fps_den, self.fps_num as i32) };
         // SAFETY: a filled buffer at a numeric time, the input ready.
         if !unsafe { self.adaptor.appendPixelBuffer_withPresentationTime(&pixels, time) } {
-            return false;
+            return refused(&self.writer, &format!("frame {at} was not appended"));
         }
         self.frame_index += 1;
         true
@@ -574,8 +593,9 @@ impl Writer {
         let Some((input, format)) = &self.audio else {
             return false;
         };
+        let at = self.audio_samples;
         if !ready(input) {
-            return false;
+            return refused(&self.writer, &format!("sound at sample {at}: the audio input took nothing for 10 s"));
         }
         let mut block: *mut CMBlockBuffer = ptr::null_mut();
         // SAFETY: a block of `pcm.len()` bytes the buffer allocates; `block`
@@ -594,7 +614,7 @@ impl Writer {
             )
         };
         let Some(block) = NonNull::new(block).filter(|_| made == 0) else {
-            return false;
+            return refused(&self.writer, &format!("sound at sample {at}: no block buffer ({made})"));
         };
         // SAFETY: a Create call hands over the one reference it made.
         let block = unsafe { CFRetained::from_raw(block) };
@@ -621,13 +641,13 @@ impl Writer {
             )
         };
         let Some(sample) = NonNull::new(sample).filter(|_| made == 0) else {
-            return false;
+            return refused(&self.writer, &format!("sound at sample {at}: no sample buffer ({made})"));
         };
         // SAFETY: a Create call hands over the one reference it made.
         let sample = unsafe { CFRetained::from_raw(sample) };
         // SAFETY: an audio sample for the audio input, which is ready.
         if !unsafe { input.appendSampleBuffer(&sample) } {
-            return false;
+            return refused(&self.writer, &format!("sound at sample {at} was not appended"));
         }
         self.audio_samples += i64::from(frames);
         true
@@ -705,7 +725,7 @@ pub fn finish() -> bool {
         let _ = finished.recv();
         // SAFETY: a property read on a writer that has finished.
         let status = unsafe { writer.writer.status() };
-        status == AVAssetWriterStatus::Completed
+        status == AVAssetWriterStatus::Completed || refused(&writer.writer, "the movie did not finish")
     })
 }
 

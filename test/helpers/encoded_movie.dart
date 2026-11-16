@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
 import 'package:anicel/src/native/qa_video_decoder.dart' show MovieColours;
+import 'package:anicel/src/native/qa_video_encoder.dart' show QaVideoEncoder;
 import 'package:anicel/src/ui/frame_shots.dart' show frameOfRows;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuExport;
@@ -67,10 +68,45 @@ bool writeEncodedMovie(
     isTrue,
     reason: encoder.lastError,
   );
+  // 🚨A step refused lets the job go: the engine writes one movie at a
+  // time, and a job left open answers every later open 「bad open
+  // parameters」 — on the Mac runner one refused frame failed three more
+  // tests that way (round-1091-builds-all-stop-at-their-checks, 11-16).
+  try {
+    _writeOpened(
+      encoder,
+      frames: frames,
+      fps: fps,
+      picture: picture,
+      sound: sound,
+      sampleRate: sampleRate,
+      soundFrames: soundFrames,
+      colours: colours,
+    );
+  } on Object {
+    encoder.abort();
+    rethrow;
+  }
+  return true;
+}
+
+/// [writeEncodedMovie]'s frames and sound into the job [encoder] has open,
+/// and the job finished.
+void _writeOpened(
+  QaVideoEncoder encoder, {
+  required int frames,
+  required ({int numerator, int denominator}) fps,
+  required MovieColour Function(int frame, int pixel)? picture,
+  required int Function(int sample)? sound,
+  required int sampleRate,
+  required int? soundFrames,
+  required MovieColours? colours,
+}) {
   final nv12 = encoder.nv12Frame;
   expect(nv12, isNotNull, reason: 'an H.264 writer takes NV12');
   final stride = GpuExport.nv12RowBytes(nv12!.width);
   final heard = sound == null ? 0 : soundFrames ?? frames;
+  final running = Stopwatch()..start();
   var written = 0;
   for (var frame = 0; frame < math.max(frames, heard); frame += 1) {
     if (frame < frames) {
@@ -80,7 +116,7 @@ bool writeEncodedMovie(
       expect(
         encoder.writeNv12(bytes, stride: stride),
         isTrue,
-        reason: encoder.lastError,
+        reason: _why(encoder, 'frame $frame of $frames', running),
       );
     }
     if (frame < heard) {
@@ -95,13 +131,26 @@ bool writeEncodedMovie(
       expect(
         encoder.writeAudio(pcm, upTo - written),
         isTrue,
-        reason: encoder.lastError,
+        reason: _why(encoder, 'the sound of frame $frame', running),
       );
       written = upTo;
     }
   }
-  expect(encoder.finish(), isTrue, reason: encoder.lastError);
-  return true;
+  expect(
+    encoder.finish(),
+    isTrue,
+    reason: _why(encoder, 'the finish', running),
+  );
+}
+
+/// Why [step] of a job was refused: how long the job had run, and what
+/// the writer said — on the Mac runner a frame of a long movie was refused
+/// some 70 s in with nothing said (round-1091-builds-all-stop-at-their-
+/// checks, 11-16).
+String _why(QaVideoEncoder encoder, String step, Stopwatch running) {
+  final said = encoder.lastError;
+  return '$step, ${running.elapsedMilliseconds} ms into the job: '
+      '${said.isEmpty ? 'the writer said nothing' : said}';
 }
 
 const int _width = 64;

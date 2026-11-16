@@ -120,7 +120,11 @@ void main() {
       isTrue,
       reason: 'the roll\'s device stopped',
     );
-    expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
+    expect(
+      await manager.voiceRecording.stopVoiceRecordingAndPlace(),
+      isNull,
+      reason: _headSaid(manager),
+    );
   }
 
   test('🚨the head is what the microphone had taken in when the anchor was '
@@ -245,13 +249,36 @@ class _AheadMicrophone extends CannedAudioRecorder {
   @override
   int get sampleRate => recording.sampleRate;
 
+  /// What [capturedAt] last answered — the head the take is trimmed by, as
+  /// a failure says it.
+  int? lastAnswered;
+
   @override
   int? capturedAt(int atMicros) {
     final startedAt = _startedAt;
     if (startedAt == null || !isRecording) {
       return null;
     }
-    return ahead +
+    return lastAnswered =
+        ahead +
         (atMicros - startedAt) * 48000 ~/ Duration.microsecondsPerSecond;
   }
+}
+
+/// What a take that was not placed had been told its head was — a head as
+/// long as the take leaves nothing to place: on the Mac runner the anchor
+/// was heard late enough for that (round-1091-builds-all-stop-at-their-
+/// checks, 11-16), with nothing said of how late.
+String _headSaid(EditorSessionManager manager) {
+  final microphone = manager.voiceRecording.debugVoiceRecorderFactory?.call();
+  if (microphone is! _AheadMicrophone) {
+    return 'the take was not the fixture microphone\'s';
+  }
+  final head = microphone.lastAnswered;
+  if (head == null) {
+    return 'the microphone was never asked what it had taken in';
+  }
+  return 'the microphone said it had taken in $head samples of a take of '
+      '${microphone.recording.samples.length}, asked once the anchor was '
+      'heard — ${(head - microphone.ahead) * 1000 ~/ 48000} ms after the press';
 }
