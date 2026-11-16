@@ -204,30 +204,58 @@ void main() {
 
   // ⚠️What the keys wait for is the app's (`CanvasDragInFlight`): a canvas
   // taken down in the middle of its drag lets go of it, or every key held
-  // after would wait for a hand that never comes up.
+  // after would wait for a hand that never comes up — the selection's
+  // drag, the text's and the stamp's alike.
   testWidgets('a canvas taken down in the middle of a drag leaves no key '
       'waiting for it', (tester) async {
-    var brush = await pumpShell(tester);
-    await take(tester, brush, CanvasTool.fillShape);
-    final at = visibleCanvasPoint(tester);
-    final hand = await tester.startGesture(
-      at,
-      kind: PointerDeviceKind.mouse,
-    );
-    for (var step = 1; step <= 4; step += 1) {
-      await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+    Future<void> drag(TestGesture hand, Offset at, {bool up = true}) async {
+      for (var step = 1; step <= 4; step += 1) {
+        await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+        await tester.pump();
+      }
+      if (up) {
+        await hand.up();
+        await tester.pump();
+      }
+    }
+
+    for (final tool in const [
+      CanvasTool.fillShape,
+      CanvasTool.text,
+      CanvasTool.cutStamp,
+    ]) {
+      var brush = await pumpShell(tester);
+      final at = visibleCanvasPoint(tester);
+      if (tool == CanvasTool.cutStamp) {
+        // A piece in the hand first: a stroke, and a fresh cut of it arms
+        // the stamp.
+        for (final pen in const [CanvasTool.brush, CanvasTool.cut]) {
+          await take(tester, brush, pen);
+          await drag(
+            await tester.startGesture(at, kind: PointerDeviceKind.mouse),
+            at,
+          );
+        }
+      } else {
+        await take(tester, brush, tool);
+      }
+      expect(brush.value.tool, tool, reason: 'premise');
+      final hand = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag(hand, at, up: false);
+      await tester.pumpWidget(const SizedBox());
+      await hand.up();
+
+      brush = await pumpShell(tester);
+      await take(tester, brush, CanvasTool.brush);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(brush.value.tool, CanvasTool.eyedropper, reason: tool.name);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pump();
     }
-    await tester.pumpWidget(const SizedBox());
-    await hand.up();
-
-    brush = await pumpShell(tester);
-    await take(tester, brush, CanvasTool.brush);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.pump();
-    expect(brush.value.tool, CanvasTool.eyedropper);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-    await tester.pump();
   });
 
   // ⚠️Another hand can still take the tool mid drag (the rail, a tool's
