@@ -150,6 +150,13 @@ void main() {
 
     expect(census.gpuMemoryIsRam, isTrue);
     expect(
+      census.items.map((i) => i.id),
+      isNot(contains('gpuInSystem')),
+      reason:
+          'a GPU that shares the RAM has no memory of its own for a part '
+          'of it to lie in the RAM — its pictures are the rows',
+    );
+    expect(
       census.items.map((i) => i.id).toSet(),
       collectMemoryCensusWhereTexturesAreRam([
         session,
