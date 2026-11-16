@@ -81,6 +81,53 @@ void main() {
               .painter!
           as TimelineGridSheetPainter;
 
+  /// The ruler over [frames]' rows — the strip, the playhead's writing on
+  /// it and the cursor's strip — in the window they are drawn in (card
+  /// conte-sideways-scroll-build-spikes, 11-16).
+  void expectTheRulerIn(WidgetTester tester, TimelineFrameGeometry frames) {
+    ({bool ruler, TimelineFrameGeometryHandle? box}) rulerOf(
+      CustomPainter? painter,
+    ) => switch (painter) {
+      TimelineFrameRulerPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      XSheetFrameRailPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      TimelineRulerPlayheadWritingPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      TimelineRulerCursorOverlayPainter(:final geometry) => (
+        ruler: true,
+        box: geometry,
+      ),
+      _ => (ruler: false, box: null),
+    };
+    final ruler = [
+      for (final paint in tester.widgetList<CustomPaint>(
+        find.byType(CustomPaint),
+      ))
+        if (rulerOf(paint.painter) case (ruler: true, :final box)) box,
+    ];
+    expect(
+      ruler.length,
+      greaterThanOrEqualTo(2),
+      reason: '⛔premise: a strip and the cursor\'s',
+    );
+    for (final box in ruler) {
+      expect(box, isNotNull, reason: 'the ruler is as long as its axis');
+      expect(
+        box!.value.drawsAs(frames),
+        isTrue,
+        reason: 'the ruler stands a window apart from its rows: '
+            '${box.value} against $frames',
+      );
+    }
+  }
+
   /// Scrolls [position] two spans and a cell on and asks [sheet] for the
   /// window its painter draws there.
   Future<void> expectTheRowsWindow(
@@ -89,6 +136,8 @@ void main() {
     required ScrollPosition Function() position,
     required double cell,
   }) async {
+    // From the first frame, before a window crossing hands it on.
+    expectTheRulerIn(tester, sheetIn(tester, sheet).geometry!.value);
     final span = timelineFrameWindowSpanFor(cell) * cell;
     position().jumpTo(span * 2 + cell);
     await tester.pumpAndSettle();
@@ -135,50 +184,7 @@ void main() {
       reason: 'how far the view reaches',
     );
 
-    // And the ruler over them — the strip, the playhead's writing on it and
-    // the cursor's strip — in the window they are drawn in (card conte-
-    // sideways-scroll-build-spikes, 11-16).
-    ({bool ruler, TimelineFrameGeometryHandle? box}) rulerOf(
-      CustomPainter? painter,
-    ) => switch (painter) {
-      TimelineFrameRulerPainter(:final scale) => (
-        ruler: true,
-        box: scale.geometry,
-      ),
-      XSheetFrameRailPainter(:final scale) => (
-        ruler: true,
-        box: scale.geometry,
-      ),
-      TimelineRulerPlayheadWritingPainter(:final scale) => (
-        ruler: true,
-        box: scale.geometry,
-      ),
-      TimelineRulerCursorOverlayPainter(:final geometry) => (
-        ruler: true,
-        box: geometry,
-      ),
-      _ => (ruler: false, box: null),
-    };
-    final ruler = [
-      for (final paint in tester.widgetList<CustomPaint>(
-        find.byType(CustomPaint),
-      ))
-        if (rulerOf(paint.painter) case (ruler: true, :final box)) box,
-    ];
-    expect(
-      ruler.length,
-      greaterThanOrEqualTo(2),
-      reason: '⛔premise: a strip and the cursor\'s',
-    );
-    for (final box in ruler) {
-      expect(box, isNotNull, reason: 'the ruler is as long as its axis');
-      expect(
-        box!.value.drawsAs(frames),
-        isTrue,
-        reason: 'the ruler stands a window apart from its rows: '
-            '${box.value} against $frames',
-      );
-    }
+    expectTheRulerIn(tester, frames);
   }
 
   testWidgets('the timeline', (tester) async {
@@ -186,33 +192,49 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: LayerTimelineGrid(
-            hooks: hooks(cursor, 2000),
-            layers: layers,
-            metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 12),
-          ),
+    final gridHooks = hooks(cursor, 2000);
+    Widget grid(double cell) => MaterialApp(
+      home: Scaffold(
+        body: LayerTimelineGrid(
+          hooks: gridHooks,
+          layers: layers,
+          metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
         ),
       ),
     );
+    ScrollPosition position() => tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey<String>('timeline-frame-scroll-viewport'),
+            ),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position;
+    await tester.pumpWidget(grid(12));
     await tester.pumpAndSettle();
     await expectTheRowsWindow(
       tester,
       sheet: 'timeline-grid-sheet',
       cell: 12,
-      position: () => tester
-          .state<ScrollableState>(
-            find.descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-frame-scroll-viewport'),
-              ),
-              matching: find.byType(Scrollable),
-            ),
-          )
-          .position,
+      position: position,
     );
+
+    // A zoom where the frames start crosses no window: the timeline's ruler
+    // hears of it only where it is laid out (its handle of its own).
+    position().jumpTo(0);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(grid(16));
+    await tester.pumpAndSettle();
+    expect(
+      timelineFrameWindowBucketOf(offset: position().pixels, cellExtent: 16),
+      0,
+      reason: '⛔premise: no window crossed',
+    );
+    final zoomed = sheetIn(tester, 'timeline-grid-sheet').geometry!.value;
+    expect(zoomed.frameCellExtent, 16, reason: '⛔premise: zoomed');
+    expectTheRulerIn(tester, zoomed);
   });
 
   testWidgets('the x-sheet', (tester) async {

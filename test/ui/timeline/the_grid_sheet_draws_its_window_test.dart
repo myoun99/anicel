@@ -152,17 +152,20 @@ void main() {
     const length = 2000.0;
     final window = windowOf(length, 0);
     final extent = window.value.windowExtentPx;
-    expect(extent, greaterThan(length + 400), reason: '⛔premise: a window '
+    final end = ((length / cell).ceil() * cell).toInt();
+    expect(extent, greaterThan(end + 400), reason: '⛔premise: a window '
         'reaching past the end');
     final picture = recorded(sheetOf(geometry: window), length);
     final image = await picture.toImage(extent.toInt(), across.toInt());
     picture.dispose();
     final bytes = (await image.toByteData())!.buffer.asUint8List();
     image.dispose();
-    // A column of the first row's pixels, past the end, inked by a line.
+    // A column of the first row's pixels, past the end, inked by a line —
+    // past the line that closes the axis' last frame, which stands on the
+    // end, cut there or not.
     bool inked(int x) => bytes[(10 * extent.toInt() + x) * 4 + 3] != 0;
     final past = [
-      for (var x = length.toInt() + 1; x < length.toInt() + 400; x += 1)
+      for (var x = end + cell ~/ 2; x < end + 400; x += 1)
         if (inked(x)) x,
     ];
     expect(past, isNotEmpty, reason: 'the sheet stopped where the axis did');
