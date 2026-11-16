@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_drag_in_flight.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
@@ -246,6 +247,11 @@ void main() {
       );
       await drag(hand, at, up: false);
       await tester.pumpWidget(const SizedBox());
+      expect(
+        CanvasDragInFlight.live.value,
+        isFalse,
+        reason: '${tool.name}: let go as the canvas went, before the hand',
+      );
       await hand.up();
 
       brush = await pumpShell(tester);
