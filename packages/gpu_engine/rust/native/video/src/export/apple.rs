@@ -8,6 +8,7 @@
 //! names it; RGBA → BGRA for ProRes; and the even-size pad. ↩️RGBA was
 //! made NV12 here in the app's colour law for H.26x too, till 2026-11-15.
 
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
 use std::sync::{Mutex, mpsc};
@@ -58,8 +59,10 @@ use crate::colour::{Colours, Planes, core_video};
 
 pub const SUPPORTED: bool = true;
 
-/// How long a write waits for its input, in 1 ms naps: an offline render
-/// waits for the encoder to drain, and gives the frame up after 10 s.
+/// How long a write waits for an input that holds back more than it may
+/// ([`Writer::hand_on`]), in 1 ms naps with neither input taking anything:
+/// an offline render waits for the encoder to drain, and gives up after
+/// 10 s.
 const SPINS: u32 = 10_000;
 
 struct Writer {
@@ -87,6 +90,26 @@ struct Writer {
     ycbcr: bool,
     /// What the NV12 is named, on every buffer (`Job::named`).
     colours: Colours,
+    /// What each input was handed and has not taken yet, in the order it
+    /// came: a frame with its time and its index, a sound with its first
+    /// sample and its length ([`Writer::hand_on`]).
+    ///
+    /// 🚨A WRITE NEVER WAITS ON ONE INPUT WHILE THE CALLER HOLDS WHAT THE
+    /// OTHER NEEDS (저장 2026-11-16, round-1091-builds-all-stop-at-their-checks).
+    /// AVAssetWriter keeps an input not ready while it waits for another's
+    /// media, to lay the two in its own interleaving pattern
+    /// (AVAssetWriterInput.h, `readyForMoreMediaData`), and the caller
+    /// hands a frame and then that frame's sound, one call at a time. A
+    /// frame waited here for the video input, and the sound the writer
+    /// waited on could come only after it: on the Mac runner each long
+    /// movie with sound reached frame 28 (about 1.17 s in) 60 to 80 s into
+    /// its job and gave up there, 「the video input took nothing for 10 s
+    /// (writer status 1)」 — every run. Now what an input will not take yet
+    /// waits here, and goes in whenever it takes, while the caller's next
+    /// call hands the other its own. ⚠️Read from the code and the header:
+    /// no Mac has run it yet.
+    waiting_frames: VecDeque<(CFRetained<CVPixelBuffer>, CMTime, i64)>,
+    waiting_sound: VecDeque<(CFRetained<CMSampleBuffer>, i64, i64)>,
 }
 
 // SAFETY: the one export is called from whichever thread Dart is on, one
@@ -426,6 +449,8 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
         keep_alpha: job.codec == CODEC_PRORES_4444 && job.alpha,
         ycbcr,
         colours: job.named(),
+        waiting_frames: VecDeque::new(),
+        waiting_sound: VecDeque::new(),
     })
 }
 
@@ -444,18 +469,6 @@ fn refused(writer: &AVAssetWriter, what: &str) -> bool {
         Some(error) => format!("video export: {what} (writer status {status}: {})", error.localizedDescription()),
         None => format!("video export: {what} (writer status {status})"),
     });
-    false
-}
-
-/// Whether `input` takes more within the wait — false when it never did.
-fn ready(input: &AVAssetWriterInput) -> bool {
-    for _ in 0..=SPINS {
-        // SAFETY: a property read on an input of our own.
-        if unsafe { input.isReadyForMoreMediaData() } {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
     false
 }
 
@@ -545,12 +558,9 @@ fn into_two_planes(writer: &Writer, pixels: &CVPixelBuffer, fill: impl FnOnce(&m
 
 impl Writer {
     /// The next frame: a buffer of the adaptor's pool, filled by `fill`
-    /// while it is locked, appended at its time.
+    /// while it is locked, handed on at its time ([`Self::hand_on`]).
     fn frame(&mut self, fill: impl FnOnce(&Writer, &CVPixelBuffer) -> bool) -> bool {
         let at = self.frame_index;
-        if !ready(&self.video) {
-            return refused(&self.writer, &format!("frame {at}: the video input took nothing for 10 s"));
-        }
         // SAFETY: the adaptor's pool, once writing has begun.
         let Some(pool) = (unsafe { self.adaptor.pixelBufferPool() }) else {
             return refused(&self.writer, &format!("frame {at}: the adaptor has no pixel buffer pool"));
@@ -581,22 +591,16 @@ impl Writer {
         // every other timing conversion in this program.
         // SAFETY: plain arithmetic on a value type.
         let time = unsafe { CMTime::new(self.frame_index * self.fps_den, self.fps_num as i32) };
-        // SAFETY: a filled buffer at a numeric time, the input ready.
-        if !unsafe { self.adaptor.appendPixelBuffer_withPresentationTime(&pixels, time) } {
-            return refused(&self.writer, &format!("frame {at} was not appended"));
-        }
+        self.waiting_frames.push_back((pixels, time, at));
         self.frame_index += 1;
-        true
+        self.hand_on(self.second())
     }
 
     fn sound(&mut self, pcm: &[u8], frames: i32) -> bool {
-        let Some((input, format)) = &self.audio else {
+        let Some((_, format)) = &self.audio else {
             return false;
         };
         let at = self.audio_samples;
-        if !ready(input) {
-            return refused(&self.writer, &format!("sound at sample {at}: the audio input took nothing for 10 s"));
-        }
         let mut block: *mut CMBlockBuffer = ptr::null_mut();
         // SAFETY: a block of `pcm.len()` bytes the buffer allocates; `block`
         // is a local the call writes once.
@@ -645,12 +649,104 @@ impl Writer {
         };
         // SAFETY: a Create call hands over the one reference it made.
         let sample = unsafe { CFRetained::from_raw(sample) };
-        // SAFETY: an audio sample for the audio input, which is ready.
-        if !unsafe { input.appendSampleBuffer(&sample) } {
-            return refused(&self.writer, &format!("sound at sample {at} was not appended"));
-        }
+        self.waiting_sound.push_back((sample, at, i64::from(frames)));
         self.audio_samples += i64::from(frames);
-        true
+        self.hand_on(self.second())
+    }
+
+    /// A second of the movie — its frames, rounded up, and its samples:
+    /// how much an input may hold back before a write waits for it. ⚠️How
+    /// far the Apple writer holds one input for another is not measured;
+    /// the caller hands each frame's sound right after it, a skew of one
+    /// frame, and a refusal says how much was waiting.
+    fn second(&self) -> (usize, i64) {
+        (((self.fps_num + self.fps_den - 1) / self.fps_den) as usize, i64::from(self.sample_rate))
+    }
+
+    /// Hands each input what it was handed and has not taken, as far as it
+    /// takes it, and while either holds back more than `room` (frames,
+    /// samples) waits for them to. False, in the writer's words, where it
+    /// refused one, or neither took anything for [`SPINS`] naps.
+    fn hand_on(&mut self, room: (usize, i64)) -> bool {
+        let mut naps = 0;
+        loop {
+            let Some(frames) = self.hand_frames() else {
+                return false;
+            };
+            let Some(sound) = self.hand_sound() else {
+                return false;
+            };
+            if self.waiting_frames.len() <= room.0 && self.waiting_samples() <= room.1 {
+                return true;
+            }
+            if frames || sound {
+                naps = 0;
+            } else if naps == SPINS {
+                return self.refuse_waiting(room);
+            } else {
+                naps += 1;
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+
+    /// The frames waiting, appended while the video input takes them:
+    /// whether it took any — none where it refused one.
+    fn hand_frames(&mut self) -> Option<bool> {
+        let mut took = false;
+        // SAFETY: a property read on an input of our own.
+        while !self.waiting_frames.is_empty() && unsafe { self.video.isReadyForMoreMediaData() } {
+            let Some((pixels, time, at)) = self.waiting_frames.pop_front() else {
+                break;
+            };
+            // SAFETY: a filled buffer at a numeric time, the input ready.
+            if !unsafe { self.adaptor.appendPixelBuffer_withPresentationTime(&pixels, time) } {
+                refused(&self.writer, &format!("frame {at} was not appended"));
+                return None;
+            }
+            took = true;
+        }
+        Some(took)
+    }
+
+    /// [`Self::hand_frames`] for the sound.
+    fn hand_sound(&mut self) -> Option<bool> {
+        let Some((input, _)) = &self.audio else {
+            return Some(false);
+        };
+        let mut took = false;
+        // SAFETY: a property read on an input of our own.
+        while !self.waiting_sound.is_empty() && unsafe { input.isReadyForMoreMediaData() } {
+            let Some((sample, at, _)) = self.waiting_sound.pop_front() else {
+                break;
+            };
+            // SAFETY: an audio sample for the audio input, which is ready.
+            if !unsafe { input.appendSampleBuffer(&sample) } {
+                refused(&self.writer, &format!("sound at sample {at} was not appended"));
+                return None;
+            }
+            took = true;
+        }
+        Some(took)
+    }
+
+    fn waiting_samples(&self) -> i64 {
+        self.waiting_sound.iter().map(|(_, _, frames)| frames).sum()
+    }
+
+    /// False, and which input held back past `room` while neither took
+    /// anything for [`SPINS`] naps, with what each was holding.
+    fn refuse_waiting(&self, room: (usize, i64)) -> bool {
+        let held = format!("{} frames and {} samples waiting", self.waiting_frames.len(), self.waiting_samples());
+        match self.waiting_frames.front().filter(|_| self.waiting_frames.len() > room.0) {
+            Some((_, _, at)) => {
+                refused(&self.writer, &format!("frame {at}: the video input took nothing for 10 s ({held})"))
+            }
+            None => {
+                let at = self.waiting_sound.front().map_or(self.audio_samples, |(_, at, _)| *at);
+                refused(&self.writer, &format!("sound at sample {at}: the audio input took nothing for 10 s ({held})"))
+            }
+        }
     }
 }
 
@@ -705,17 +801,25 @@ pub unsafe fn write_audio(interleaved: *const i16, frames: i32) -> bool {
 }
 
 pub fn finish() -> bool {
-    let Some(writer) = lock(&WRITER).take() else {
+    let Some(mut writer) = lock(&WRITER).take() else {
         return false;
     };
     autoreleasepool(|_| {
-        // SAFETY: inputs of a writer that began, all appends returned.
-        unsafe {
-            writer.video.markAsFinished();
-            if let Some((audio, _)) = &writer.audio {
-                audio.markAsFinished();
-            }
+        // What either input still holds back goes in before it is marked
+        // finished — the sound first, so that no frame is held for sound
+        // that will not come; a writer that will not take it is let go.
+        let heard = writer.hand_on((usize::MAX, 0));
+        if heard && let Some((audio, _)) = &writer.audio {
+            // SAFETY: an input of a writer that began, its appends returned.
+            unsafe { audio.markAsFinished() };
         }
+        if !heard || !writer.hand_on((0, 0)) {
+            // SAFETY: a writer that began.
+            unsafe { writer.writer.cancelWriting() };
+            return false;
+        }
+        // SAFETY: as above.
+        unsafe { writer.video.markAsFinished() };
         let (done, finished) = mpsc::channel();
         let handler = RcBlock::new(move || {
             let _ = done.send(());

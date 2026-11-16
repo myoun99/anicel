@@ -285,6 +285,10 @@ fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
     let _one = one_at_a_time();
     for (name, shape, frames) in [
         ("h264", MOVIE, 24),
+        // Past where the Apple writer held each frame for the sound handed
+        // after it, and gave up at frame 28 (round-1091, 2026-11-16): 23.976
+        // and its sound a frame at a time, as an export hands them.
+        ("h264-past-a-second", Shape { fps: (24000, 1001), ..MOVIE }, 72),
         ("h264-silent", Shape { channels: 0, ..MOVIE }, 6),
         ("hevc", Shape { width: 1280, height: 720, codec: 1, ..MOVIE }, 6),
     ] {
