@@ -978,6 +978,7 @@ enum AppStrings {
   String get instructionEditorMark => _s('instructionEditorMark');
   String get systemStatusHelp => _s('systemStatusHelp');
   String get gpuPreferenceLabel => _s('gpuPreferenceLabel');
+  String get gpuInUseLabel => _s('gpuInUseLabel');
   String get gpuPreferenceHelp => _s('gpuPreferenceHelp');
   String get gpuPreferenceAuto => _s('gpuPreferenceAuto');
   String get gpuPreferenceLowPower => _s('gpuPreferenceLowPower');
@@ -2965,6 +2966,7 @@ enum AppStrings {
     'instructionEditorColor': 'Color',
     'instructionEditorMark': 'Mark',
     'gpuPreferenceLabel': 'GPU',
+    'gpuInUseLabel': 'GPU in use',
     'gpuPreferenceHelp':
         'Which kind of GPU Anicel asks Windows for when it starts, on a '
         'computer with more than one.',
@@ -4476,6 +4478,7 @@ enum AppStrings {
     'instructionEditorColor': '色',
     'instructionEditorMark': '記号',
     'gpuPreferenceLabel': 'GPU',
+    'gpuInUseLabel': '使用中のGPU',
     'gpuPreferenceHelp': 'GPU が複数あるコンピューターで、Anicel の起動時に Windows に求める GPU の種類。',
     'gpuPreferenceAuto': '自動',
     'gpuPreferenceLowPower': '省電力',
@@ -6409,6 +6412,7 @@ enum AppStrings {
     'instructionEditorColor': '색',
     'instructionEditorMark': '기호',
     'gpuPreferenceLabel': 'GPU',
+    'gpuInUseLabel': '사용 중인 GPU',
     'gpuPreferenceHelp': 'GPU 가 여럿인 컴퓨터에서 애니셀이 시작할 때 Windows 에 청할 GPU 의 종류.',
     'gpuPreferenceAuto': '자동',
     'gpuPreferenceLowPower': '절전',
@@ -8380,6 +8384,7 @@ enum AppStrings {
     'instructionEditorColor': 'Couleur',
     'instructionEditorMark': 'Repère',
     'gpuPreferenceLabel': 'GPU',
+    'gpuInUseLabel': 'GPU utilisé',
     'gpuPreferenceHelp':
         'Le type de GPU qu’Anicel demande à Windows au démarrage, sur un '
         'ordinateur qui en a plusieurs.',
@@ -10391,6 +10396,7 @@ enum AppStrings {
     'instructionEditorColor': '颜色',
     'instructionEditorMark': '记号',
     'gpuPreferenceLabel': 'GPU',
+    'gpuInUseLabel': '正在使用的 GPU',
     'gpuPreferenceHelp': '在有多个 GPU 的电脑上，Anicel 启动时向 Windows 请求的 GPU 类型。',
     'gpuPreferenceAuto': '自动',
     'gpuPreferenceLowPower': '节能',

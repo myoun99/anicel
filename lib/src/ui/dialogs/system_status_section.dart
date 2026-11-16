@@ -1,14 +1,17 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuEngine;
 
 import '../diagnostics/memory_census.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_gpu_settings.dart';
+import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
 import '../session/editor_app_settings.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_tooltip.dart';
 import '../widgets/settings_rows.dart';
 import 'usage_stats_switch_row.dart';
 
@@ -105,6 +108,7 @@ class GpuPreferenceRow extends StatelessWidget {
 
   static const pickerKey = 'settings-gpu-preference';
   static const nextLaunchKey = ValueKey<String>('settings-gpu-next-launch');
+  static const inUseKey = ValueKey<String>('settings-gpu-in-use');
 
   @override
   Widget build(BuildContext context) =>
@@ -125,6 +129,35 @@ class GpuPreferenceRow extends StatelessWidget {
                 values: AppGpuPreference.values,
                 labelOf: _labelOf,
                 onPicked: AppGpu.choosableHere ? _pick : null,
+              ),
+              // 🗣️show-the-gpu-the-app-runs-on (유저 2026-11-16): 「gpu는
+              // 밑에 오디오 임포트 디코더 카드 이런거말고 GPU고르는곳에 두자.
+              // 그래야 잘보이니까」 — the adapter this run draws on, by the
+              // name the engine opened it under (it follows the one Flutter
+              // took, app_gpu_settings.dart), here under the choice rather
+              // than in the runtime path report. Its place stands while the
+              // engine is still opening.
+              SettingsRow(
+                label: strings.gpuInUseLabel,
+                control: SizedBox(
+                  width: SettingsPickerRow.width,
+                  child: ValueListenableBuilder<GpuEngine?>(
+                    valueListenable: appGpuEngineOpen,
+                    builder: (context, engine, _) {
+                      final name = engine?.adapterName ?? '';
+                      return AppTooltip(
+                        message: name,
+                        child: Text(
+                          name,
+                          key: inUseKey,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
               Text(
                 started != null && settings.preference != started

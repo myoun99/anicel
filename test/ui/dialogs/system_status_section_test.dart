@@ -5,6 +5,8 @@ import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_gpu_settings.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart'
+    show appGpuEngineOpen, openAppGpuEngine;
 import 'package:anicel/src/ui/dialogs/system_status_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -211,6 +213,32 @@ void main() {
       );
       expect(AppGpu.settings.value, const AppGpuSettings());
     }, variant: elsewhere);
+
+    // 🗣️show-the-gpu-the-app-runs-on (유저 2026-11-16): 「GPU고르는곳에
+    // 두자. 그래야 잘보이니까」.
+    testWidgets('under the choice stands the GPU this run draws on, by the '
+        'name its engine opened it under — its line kept while the engine '
+        'is still opening', (tester) async {
+      final inUse = find.byKey(GpuPreferenceRow.inUseKey);
+      String said() => tester.widget<Text>(inUse).data!;
+      await pump(tester);
+      expect(
+        find.descendant(
+          of: find.byType(GpuPreferenceRow),
+          matching: find.text(AppText.strings.gpuInUseLabel),
+        ),
+        findsOneWidget,
+      );
+      // Another file of the batch may have opened it already.
+      expect(said(), appGpuEngineOpen.value?.adapterName ?? '');
+      final kept = tester.getSize(find.byType(GpuPreferenceRow));
+
+      final engine = (await tester.runAsync(openAppGpuEngine))!;
+      await tester.pump();
+      expect(said(), isNotEmpty);
+      expect(said(), engine.adapterName);
+      expect(tester.getSize(find.byType(GpuPreferenceRow)), kept);
+    });
   });
 
   // 🗣️an-endless-plugin-stalls-the-app-Q13 「열 배씩 … 고른다」 · -Q19 「화소
