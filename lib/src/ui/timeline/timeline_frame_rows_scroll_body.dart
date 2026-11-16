@@ -45,7 +45,14 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.viewportMainExtent = 0,
     this.frameAxisController,
     this.nextPage,
+    this.geometry,
   });
+
+  /// The handle this body publishes its rows' window into — the host's, so
+  /// the grid sheet under the rows is laid by the same window
+  /// ([TimelineGridSheet.geometry]). Null keeps one of the body's own; a
+  /// handed one is the host's to let go of, as a scroll controller is.
+  final TimelineFrameGeometryHandle? geometry;
 
   /// What the session answers to the rows — the grid's ONE bundle, which
   /// the x-sheet's columns read too ([timelineCellsRowFacts]). The body
@@ -154,8 +161,12 @@ class _TimelineFrameRowsScrollBodyState
   /// scroll must not rebuild this body — the same render-object-only
   /// listener contract. ↩️The sparse kinds kept a handle of their own, the
   /// whole cut's, until their spans were placed at layout time (07-26).
-  late final ValueNotifier<TimelineFrameGeometry> _windowedGeometry =
-      ValueNotifier(_windowedGeometryFromWidget());
+  late final TimelineFrameGeometryHandle _windowedGeometry =
+      widget.geometry ??
+      TimelineFrameGeometryHandle(_windowedGeometryFromWidget());
+
+  /// Whether [_windowedGeometry] is this body's own to let go of.
+  late final bool _ownsGeometry = widget.geometry == null;
 
   TimelineFrameGeometry _geometryFromWidget() => TimelineFrameGeometry(
     frameCellExtent: widget.metrics.frameCellWidth,
@@ -182,6 +193,9 @@ class _TimelineFrameRowsScrollBodyState
   @override
   void initState() {
     super.initState();
+    if (!_ownsGeometry) {
+      _windowedGeometry.value = _windowedGeometryFromWidget();
+    }
     widget.windowBucket?.addListener(_handleWindowBucket);
   }
 
@@ -194,7 +208,9 @@ class _TimelineFrameRowsScrollBodyState
   @override
   void dispose() {
     widget.windowBucket?.removeListener(_handleWindowBucket);
-    _windowedGeometry.dispose();
+    if (_ownsGeometry) {
+      _windowedGeometry.dispose();
+    }
     super.dispose();
   }
 

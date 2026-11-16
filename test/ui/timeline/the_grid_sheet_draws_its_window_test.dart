@@ -3,14 +3,19 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
-import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
-import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 
 /// 🔬Card the-grid-sheet-draws-the-whole-axis-outside-the-shared-window: a
-/// GRID SHEET DRAWS THE WINDOW ITS HOST'S ROWS DRAW — the frames
-/// [visibleFrameWindowFor] gives the bucket the view stands in (Q8 「타임라인
-/// · X시트 · 콘티 한 법」), not the whole axis. ↩️It drew the whole axis,
-/// the conte's the whole film, on a tick its dock draws live each frame.
+/// GRID SHEET DRAWS THE WINDOW ITS HOST'S ROWS ARE LAID IN — the window
+/// [TimelineFrameGeometry.windowedAt] gives the bucket the view stands in
+/// (Q8 「타임라인 · X시트 · 콘티 한 법」), not the whole axis. ↩️It drew
+/// the whole axis, the conte's the whole film, on a tick its dock draws
+/// live each frame.
+///
+/// 🔬Card conte-sideways-scroll-build-spikes (11-16): and its canvas IS
+/// that window, so the axis' end a drag past it grows a screen at a time
+/// repaints nothing of it. ↩️Ruled over its window but as long as the axis,
+/// it was laid out and painted again at every screen grown.
 ///
 /// ⚠️Plain `test`s: `Picture.toImage` never completes inside the widget
 /// tester's fake-async zone.
@@ -20,7 +25,26 @@ void main() {
   const viewport = 1600.0;
   const ground = Color(0xFF202124);
 
-  TimelineGridSheetPainter sheetOf({TimelineGridSheetWindow? window}) =>
+  /// The axis [length] px long, its view [reach] px, seen through the
+  /// window of the bucket the view stands in.
+  TimelineFrameGeometry framesOf(
+    double length,
+    int bucket, {
+    double reach = viewport,
+  }) => TimelineFrameGeometry(
+    frameCellExtent: cell,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: (length / cell).ceil(),
+    viewExtentPx: reach,
+  ).windowedAt(bucket);
+
+  TimelineFrameGeometryHandle windowOf(double length, int bucket) {
+    final handle = TimelineFrameGeometryHandle(framesOf(length, bucket));
+    addTearDown(handle.dispose);
+    return handle;
+  }
+
+  TimelineGridSheetPainter sheetOf({TimelineFrameGeometryHandle? geometry}) =>
       TimelineGridSheetPainter(
         frameCellExtent: cell,
         framesPerSecond: 24,
@@ -36,9 +60,11 @@ void main() {
           ],
           dashes: const [(frame: 300, from: 0, to: 40)],
         ),
-        window: window,
+        geometry: geometry,
       );
 
+  /// [sheet] as its box lays it: its window long under a [geometry], else
+  /// [length] long.
   ui.Picture recorded(
     TimelineGridSheetPainter sheet,
     double length, {
@@ -46,15 +72,13 @@ void main() {
   }) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder)..translate(-shift, 0);
-    sheet.paint(canvas, Size(length, across));
+    final window = sheet.geometry?.value.windowExtentPx;
+    sheet.paint(canvas, Size(window ?? length, across));
     return recorder.endRecording();
   }
 
   test('a sheet in a windowed host records its window, however long its '
       'axis', () {
-    final bucket = ValueNotifier<int>(0);
-    addTearDown(bucket.dispose);
-    final window = (bucket: bucket, viewportMainExtent: viewport);
     int bytesOf(TimelineGridSheetPainter sheet, double length) {
       final picture = recorded(sheet, length);
       addTearDown(picture.dispose);
@@ -62,15 +86,10 @@ void main() {
     }
 
     // The conte's axis at 30 cuts and at 120 (the card's 11-08 numbers).
-    final short = bytesOf(sheetOf(window: window), 5542);
-    final long = bytesOf(sheetOf(window: window), 22130);
+    final short = bytesOf(sheetOf(geometry: windowOf(5542, 0)), 5542);
+    final long = bytesOf(sheetOf(geometry: windowOf(22130, 0)), 22130);
     final whole = bytesOf(sheetOf(), 22130);
-    final inside = ValueNotifier<int>(7);
-    addTearDown(inside.dispose);
-    final midway = bytesOf(
-      sheetOf(window: (bucket: inside, viewportMainExtent: viewport)),
-      22130,
-    );
+    final midway = bytesOf(sheetOf(geometry: windowOf(22130, 7)), 22130);
     // ignore: avoid_print
     print(
       '[sheet] recorded bytes — whole axis 22130 px: $whole · its window: '
@@ -93,33 +112,28 @@ void main() {
   test('what it draws in its window is what the whole sheet draws '
       'there', () async {
     const length = 22130.0;
-    final bucket = ValueNotifier<int>(7);
-    addTearDown(bucket.dispose);
-    final frames = visibleFrameWindowFor(
-      bucket: bucket,
-      viewportMainExtent: viewport,
-      cellExtent: cell,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: (length / cell).ceil(),
-    );
-    final from = timelineFrameEdge(frames.startIndex, cell);
-    final to = timelineFrameEdge(frames.endIndexExclusive, cell);
+    final window = windowOf(length, 7);
+    final from = window.value.windowOriginPx;
+    final extent = window.value.windowExtentPx;
     const inside = '⛔premise: a window inside the axis';
     expect(from, greaterThan(0), reason: inside);
-    expect(to, lessThan(length), reason: inside);
+    expect(from + extent, lessThan(length), reason: inside);
+    expect(from, from.roundToDouble(), reason: '⛔premise: on a pixel');
 
     Future<List<int>> pixelsOf(TimelineGridSheetPainter sheet) async {
-      final picture = recorded(sheet, length, shift: from);
-      final image = await picture.toImage((to - from).toInt(), across.toInt());
+      final picture = recorded(
+        sheet,
+        length,
+        shift: sheet.geometry == null ? from : 0,
+      );
+      final image = await picture.toImage(extent.toInt(), across.toInt());
       picture.dispose();
       final bytes = await image.toByteData();
       image.dispose();
       return bytes!.buffer.asUint8List().toList();
     }
 
-    final windowed = await pixelsOf(
-      sheetOf(window: (bucket: bucket, viewportMainExtent: viewport)),
-    );
+    final windowed = await pixelsOf(sheetOf(geometry: window));
     final whole = await pixelsOf(sheetOf());
     expect(
       whole.any((byte) => byte != 0),
@@ -129,27 +143,30 @@ void main() {
     expect(windowed, whole);
   });
 
-  test('a bucket crossing repaints it, and nothing else of the same window '
-      'does', () {
-    final bucket = ValueNotifier<int>(0);
-    addTearDown(bucket.dispose);
-    final window = (bucket: bucket, viewportMainExtent: viewport);
-    final sheet = sheetOf(window: window);
+  test('a window move repaints it, and the axis growing in its window does '
+      'not', () {
+    const length = 22130.0;
+    final window = windowOf(length, 0);
+    final sheet = sheetOf(geometry: window);
     var repaints = 0;
     void heard() => repaints += 1;
     sheet.addListener(heard);
     addTearDown(() => sheet.removeListener(heard));
 
-    bucket.value = 1;
+    // A drag past the end grows the axis a screen, the view where it was.
+    window.value = framesOf(length + viewport, 0);
+    expect(repaints, 0, reason: 'the axis growing repainted the sheet');
 
-    expect(repaints, 1, reason: 'the crossing reaches the sheet');
-    expect(sheet.shouldRepaint(sheetOf(window: window)), isFalse);
+    window.value = framesOf(length + viewport, 3);
     expect(
-      sheet.shouldRepaint(
-        sheetOf(window: (bucket: bucket, viewportMainExtent: viewport + 1)),
-      ),
-      isTrue,
-      reason: 'a view of another reach draws another window',
+      window.value.windowOriginPx,
+      greaterThan(0),
+      reason: '⛔premise: a window that moved',
     );
+    expect(repaints, 1, reason: 'the window move reaches the sheet');
+    expect(sheet.shouldRepaint(sheetOf(geometry: window)), isFalse);
+
+    window.value = framesOf(length + viewport, 3, reach: viewport + 1);
+    expect(repaints, 2, reason: 'a view of another reach draws another window');
   });
 }

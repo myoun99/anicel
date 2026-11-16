@@ -8,6 +8,8 @@ import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
@@ -166,6 +168,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// Changes only on cell-boundary crossings — the rows body and the
   /// ruler content re-window from it (sub-cell movement rebuilds nothing).
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
+
+  /// The window the cells' rows are laid in, which their body publishes
+  /// ([TimelineFrameRowsScrollBody.geometry]) — held here so the grid sheet
+  /// under them is laid by the same, as the X-sheet's and the conte's are
+  /// by theirs (Q8 「타임라인 · X시트 · 콘티 한 법」).
+  final TimelineFrameGeometryHandle _windowedFrameGeometry =
+      TimelineFrameGeometryHandle(
+        const TimelineFrameGeometry(
+          frameCellExtent: 1,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
 
   /// The LAYER-axis twin of [_frameWindowBucket]: moves when the scroll
   /// carries the rows into another window ([_LayerGridScroll.standAt]). Only
@@ -354,6 +369,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // whole reason it is the host's.
     _ownedFrameAxisOffset.dispose();
     _frameWindowBucket.dispose();
+    _windowedFrameGeometry.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();
     super.dispose();
@@ -688,6 +704,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       viewportMainExtent: viewportWidth,
       frameAxisController: _horizontalScrollController,
       nextPage: _nextPage,
+      geometry: _windowedFrameGeometry,
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
@@ -700,7 +717,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   Widget _buildGridSheet(
     List<TimelineDisplayRow> rows,
     TimelineRowEdges edges,
-    double viewportWidth,
   ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('timeline-grid-sheet'),
@@ -709,7 +725,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       frameCellExtent: _metrics.frameCellWidth,
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
-      window: (bucket: _frameWindowBucket, viewportMainExtent: viewportWidth),
+      geometry: _windowedFrameGeometry,
     );
   }
 
@@ -822,11 +838,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                   // one sheet under EVERY
                   // row — grounds, lines
                   // and seams.
-                  gridSheet: _buildGridSheet(
-                    rows,
-                    window.edges,
-                    viewportWidth,
-                  ),
+                  gridSheet: _buildGridSheet(rows, window.edges),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -19,12 +20,17 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridSheetPainter;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
+    show timelineFrameWindowBucketOf;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/frame_census.dart';
 import '../../helpers/scrollable_of.dart';
 import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_zoom.dart';
@@ -39,6 +45,12 @@ import '../../helpers/timeline_zoom.dart';
 /// Every panel that runs a frame axis, through its own strip and a real
 /// pointer: the timeline's ruler, the x-sheet's rail, the storyboard's
 /// ruler.
+///
+/// 🔬And a growth paints the grid sheet no picture of its own while the
+/// view stands in its window (card conte-sideways-scroll-build-spikes,
+/// 11-16): the sheet stands in its rows' window box, Q8. ↩️As long as the
+/// axis, it was laid out and painted again at every screen grown — with
+/// the ruler about 70% of such a frame (main PC, profile).
 void main() {
   Layer drawing(String id) => Layer(
     id: LayerId(id),
@@ -101,11 +113,19 @@ void main() {
     var growths = 0;
     var shrinks = 0;
     var grewLast = false;
+    // The growths that crossed no window, and what of the sheet each painted.
+    var grewInAWindow = 0;
+    final sheetPainted = <int>[];
+    int bucket() => timelineFrameWindowBucketOf(
+      offset: position().pixels,
+      cellExtent: cell,
+    );
     for (var move = 0; move < moves || !grewLast; move += 1) {
       expect(move, lessThan(moves * 4), reason: 'the axis stopped growing');
       past += 0.5;
+      final stood = bucket();
       await hand.moveTo(at(past));
-      await tester.pump();
+      final (:painted, rebuilt: _) = await frameCensus(tester, () {});
       grewLast = position().maxScrollExtent > built;
       if (position().maxScrollExtent < built) {
         shrinks += 1;
@@ -113,9 +133,27 @@ void main() {
       if (grewLast) {
         growths += 1;
       }
+      if (grewLast && bucket() == stood) {
+        grewInAWindow += 1;
+        if (painted.any(
+          (object) =>
+              object is RenderCustomPaint &&
+              object.painter is TimelineGridSheetPainter,
+        )) {
+          sheetPainted.add(move);
+        }
+      }
       built = position().maxScrollExtent;
     }
     expect(shrinks, 0, reason: 'the room shrank under a hand moving on');
+    expect(grewInAWindow, greaterThan(0), reason: '⛔premise: a growth that '
+        'crossed no window');
+    expect(
+      sheetPainted,
+      isEmpty,
+      reason: 'the grid sheet painted again at a growth in its window '
+          '($grewInAWindow such growths)',
+    );
     final panned = position().pixels - from;
     expect(panned, greaterThan(view * 2), reason: '⛔premise: two screens');
     // A screen at a time: as many builds as screens the view went past the

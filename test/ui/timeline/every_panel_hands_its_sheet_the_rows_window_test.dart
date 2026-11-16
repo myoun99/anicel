@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -10,6 +12,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -19,11 +22,14 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import '../../helpers/storyboard_host.dart';
 
 /// 🔬Card the-grid-sheet-draws-the-whole-axis-outside-the-shared-window:
-/// EVERY PANEL HANDS ITS GRID SHEET THE WINDOW ITS ROWS DRAW — the bucket
-/// its frame axis stands in and how far its view reaches
-/// ([TimelineGridSheet.window]), live: scrolled two spans on, the sheet
-/// draws the window there. The timeline, the x-sheet and the storyboard,
-/// each through its own scroll.
+/// EVERY PANEL HANDS ITS GRID SHEET THE WINDOW ITS ROWS ARE LAID IN — the
+/// rows' own handle ([TimelineGridSheet.geometry]), live: scrolled two
+/// spans on, the sheet stands in the window there. The timeline, the
+/// x-sheet and the storyboard, each through its own scroll.
+///
+/// The handle itself, not one made alike (card conte-sideways-scroll-
+/// build-spikes, 11-16): a sheet laid by a window of its own could stand
+/// a window apart from the rows it lies under.
 void main() {
   Layer drawing(String id) => Layer(
     id: LayerId(id),
@@ -75,19 +81,45 @@ void main() {
     final span = timelineFrameWindowSpanFor(cell) * cell;
     position().jumpTo(span * 2 + cell);
     await tester.pumpAndSettle();
-    final window = sheetIn(tester, sheet).window;
+    final window = sheetIn(tester, sheet).geometry;
     expect(window, isNotNull, reason: 'the sheet drew the whole axis');
+    final ownBoxes = tester
+        .widgetList<TimelineFrameAxisBox>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(sheet)),
+            matching: find.byType(TimelineFrameAxisBox),
+          ),
+        )
+        .toSet();
+    final rowsWindows = [
+      for (final box in tester.widgetList<TimelineFrameAxisBox>(
+        find.byType(TimelineFrameAxisBox),
+      ))
+        if (!ownBoxes.contains(box)) box.geometry,
+    ];
+    expect(rowsWindows, isNotEmpty, reason: '⛔premise: rows in windows');
     expect(
-      window!.bucket.value,
+      rowsWindows.any((rows) => identical(rows, window)),
+      isTrue,
+      reason: 'the sheet stands in a window of its own, not its rows\'',
+    );
+    expect(
       timelineFrameWindowBucketOf(
         offset: position().pixels,
         cellExtent: cell,
       ),
-      reason: 'the bucket the view stands in',
+      2,
+      reason: '⛔premise: scrolled two spans',
     );
-    expect(window.bucket.value, 2, reason: '⛔premise: scrolled two spans');
+    final frames = window!.value;
+    expect(frames.isWindowed, isTrue, reason: 'the sheet drew the whole axis');
     expect(
-      window.viewportMainExtent,
+      frames.windowOriginPx,
+      math.max(0.0, span * 2 - timelineFrameWindowMarginPx),
+      reason: 'the window the view stands in',
+    );
+    expect(
+      frames.viewExtentPx,
       position().viewportDimension,
       reason: 'how far the view reaches',
     );

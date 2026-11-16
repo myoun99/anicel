@@ -2415,10 +2415,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         key: const ValueKey<String>('storyboard-grid-sheet'),
         frameCellExtent: frame.scale.pixelsPerFrame,
         rows: rows,
-        window: (
-          bucket: _horizontalWindowBucket,
-          viewportMainExtent: _stripViewportWidth,
-        ),
+        geometry: _windowedFrameGeometry,
       ),
     );
   }

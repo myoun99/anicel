@@ -365,6 +365,9 @@ class TimelineFrameAxisBox extends SingleChildRenderObjectWidget {
   });
 
   final TimelineFrameGeometryHandle geometry;
+
+  /// How far across the frames the child is laid — or, infinite, as far
+  /// across as the box is let: a grid sheet, under every row of its host.
   final double crossAxisExtent;
   final Axis axis;
 
@@ -506,8 +509,18 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
     this.axis = axis;
   }
 
-  Size _sizeFor(double main) =>
-      sizeAlong(axis, along: main, across: crossAxisExtent);
+  Size _sizeFor(double main, double across) =>
+      sizeAlong(axis, along: main, across: across);
+
+  /// How far across the frames the child is laid under [constraints]
+  /// ([TimelineFrameAxisBox.crossAxisExtent]).
+  double _acrossIn(BoxConstraints constraints) => crossAxisExtent.isFinite
+      ? crossAxisExtent
+      : extentAcross(axis, constraints.biggest);
+
+  /// [crossAxisExtent] where no constraints are asked: none, where it is
+  /// as far as the box is let.
+  double get _acrossUnasked => crossAxisExtent.isFinite ? crossAxisExtent : 0;
 
   /// What the CHILD is laid out at. Windowed, it is the constant window
   /// extent and the incoming constraints are deliberately NOT enforced: the
@@ -518,15 +531,18 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   /// and nothing here clips.
   BoxConstraints _innerConstraints(BoxConstraints constraints) {
     final frames = geometry.value;
-    final inner = BoxConstraints.tight(_sizeFor(frames.mainExtent));
+    final inner = BoxConstraints.tight(
+      _sizeFor(frames.mainExtent, _acrossIn(constraints)),
+    );
     return frames.isWindowed ? inner : inner.enforce(constraints);
   }
 
   /// The box's OWN size stays content-space, so everything above the row —
   /// the grid Stack, the scrolled content, the absolute overlays — sees the
   /// row it always saw.
-  Size _outerSize(BoxConstraints constraints) =>
-      constraints.constrain(_sizeFor(geometry.value.contentMainExtent));
+  Size _outerSize(BoxConstraints constraints) => constraints.constrain(
+    _sizeFor(geometry.value.contentMainExtent, _acrossIn(constraints)),
+  );
 
   /// Where the child sits inside this box — read live, so a window that
   /// moved paints it there without a layout ([TimelineFrameAxisRenderMixin]).
@@ -565,7 +581,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
 
   @override
   double computeMinIntrinsicWidth(double height) =>
-      _sizeFor(geometry.value.contentMainExtent).width;
+      _sizeFor(geometry.value.contentMainExtent, _acrossUnasked).width;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
@@ -573,7 +589,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
 
   @override
   double computeMinIntrinsicHeight(double width) =>
-      _sizeFor(geometry.value.contentMainExtent).height;
+      _sizeFor(geometry.value.contentMainExtent, _acrossUnasked).height;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>

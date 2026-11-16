@@ -6,6 +6,7 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_current_row.dart';
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline_row_edges.dart';
 
 /// What a display row's ground is decided from — the same for every row of
@@ -65,7 +66,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     required this.activeLayer,
     this.standing,
     this.axis = Axis.horizontal,
-    this.window,
+    this.geometry,
   });
 
   final List<TimelineDisplayRow> rows;
@@ -81,8 +82,8 @@ class TimelineRowsGridSheet extends StatelessWidget {
   final ValueListenable<TimelineRowAddress?>? standing;
   final Axis axis;
 
-  /// The rows' window ([TimelineGridSheet.window]).
-  final TimelineGridSheetWindow? window;
+  /// The window the rows are laid in ([TimelineGridSheet.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +99,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     return TimelineGridSheet(
       frameCellExtent: frameCellExtent,
       axis: axis,
-      window: window,
+      geometry: geometry,
       // No ground = rows lying on the artwork: nothing to paint under them
       // and, by the same law, no seam between them.
       rows: hostGround == null
