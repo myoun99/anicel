@@ -290,7 +290,7 @@ List<Uri> _shipCopies(
   }
   final read = readByTheBuild(
     built.dependencies,
-    target: input.outputDirectory.resolve('target/'),
+    output: input.outputDirectory,
     rust: input.packageRoot.resolve('rust/'),
     checkout: input.packageRoot.resolve('../../'),
   );

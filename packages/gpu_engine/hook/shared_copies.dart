@@ -59,8 +59,8 @@ final class SharedCopies {
   /// [outputDirectory], [library] among them — by the contents of what it
   /// [read] and of the hook's files under [hook]. ⛔Not when a read file
   /// changed after the build [started], or lies outside the checkout: the
-  /// copy would not be what those files build. What lies under
-  /// [outputDirectory] the hook made, and is no key.
+  /// copy would not be what those files build. [read] names nothing the
+  /// hook made ([readByTheBuild]).
   void keep({
     required Uri checkout,
     required Uri outputDirectory,
@@ -73,7 +73,6 @@ final class SharedCopies {
     final root = checkout.toFilePath();
     final listed = <String>{};
     for (final uri in [...read, ..._hookFiles(hook)]) {
-      if (lies(uri, under: outputDirectory)) continue;
       if (!lies(uri, under: checkout)) return;
       final file = File.fromUri(uri);
       if (!file.existsSync() || file.lastModifiedSync().isAfter(started)) {

@@ -1,19 +1,33 @@
 import 'dart:io';
 
 /// What the hook reports its build read, out of what the builder [named]:
-/// those outside the build's [target] folder, every file of the [rust]
+/// those outside the hook's [output] folder, every file of the [rust]
 /// workspace ([workspaceFiles]), and the manifests beside each source up to
 /// the [checkout] ([manifestsBeside]).
 ///
 /// 🚨WHAT THE BUILD MADE IS NOT WHAT IT READ (card
 /// a-batch-is-cut-silent-while-it-waits-for-the-hook-turn, 2026-11-13):
-/// the library's dep-info names `out/dxcompiler.dll` under [target] as
-/// well — rust/build.rs asks to be run again when it changes — and that
-/// path goes through the link `withTargetAimed` takes down when the build
-/// ends. The hooks runner found it changed every time and ran the hook
-/// again for every `flutter test`, so every run took the hook folder's turn
-/// and waited behind whoever held it: 9 minutes of a run's 13 once, for a
-/// cargo that then had nothing to build (0.8 s).
+/// the library's dep-info names `out/dxcompiler.dll` under the build's
+/// target folder as well — rust/build.rs asks to be run again when it
+/// changes — and that path goes through the link `withTargetAimed` takes
+/// down when the build ends. The hooks runner found it changed every time
+/// and ran the hook again for every `flutter test`, so every run took the
+/// hook folder's turn and waited behind whoever held it: 9 minutes of a
+/// run's 13 once, for a cargo that then had nothing to build (0.8 s).
+///
+/// 🚨NOR WHAT IT SHIPS — THE WHOLE [output] FOLDER, NOT ONLY THE TARGET IN
+/// IT (card a-second-release-build-loses-its-dxc, 2026-11-16): the dep-info
+/// names the DXC copy rust/build.rs leaves in `dxc/` beside the library too,
+/// and Flutter lists each file a hook ships as its build's output unless
+/// the hook reported it read — and deletes a file it listed last build that
+/// it no longer lists (flutter_tools build_system.dart, 「Delete outputs from
+/// previous stages」). A build from a kept copy (shared_copies.dart) reported
+/// no DXC read and a cargo build did, so a cargo build after a copy had
+/// Flutter delete the DXC it had just shipped, and `install_code_assets`
+/// failed to find it: every second Windows release build on the Surface
+/// (2026-11-16 22:58 · 23:30), and the main PC's stamps of one config
+/// flipped between the two (`build_hooks.stamp`, the DXC an input after a
+/// cargo build and an output after a copy).
 ///
 /// ⚠️THE DEP-INFO DOES NOT NAME ALL THE BUILD READS (measured 2026-11-14 in
 /// a dep-info of 208 files): cargo names the sources of the path crates it
@@ -24,13 +38,13 @@ import 'dart:io';
 /// manifests of a crate outside it (sdk/fx/anicel-fx, read from rust/).
 List<Uri> readByTheBuild(
   Iterable<Uri> named, {
-  required Uri target,
+  required Uri output,
   required Uri rust,
   required Uri checkout,
 }) {
   final sources = [
     for (final dependency in named)
-      if (!lies(dependency, under: target)) dependency,
+      if (!lies(dependency, under: output)) dependency,
   ];
   return {
     ...sources,

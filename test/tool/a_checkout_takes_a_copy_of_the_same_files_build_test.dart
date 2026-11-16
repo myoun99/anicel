@@ -35,12 +35,10 @@ void main() {
     write('$name/out/dxc/dxcompiler.dll', 'dxc');
   }
 
-  // As the hook's reads are: DXC beside its output among them, which it
-  // made and is no key.
+  // As the hook's reads are: nothing it made (readByTheBuild).
   List<Uri> readIn(String name) => [
     checkout(name).resolve('rust/src/lib.rs'),
     checkout(name).resolve('rust/Cargo.toml'),
-    checkout(name).resolve('out/dxc/dxcompiler.dll'),
   ];
 
   void keepFrom(String name, {DateTime? started}) => copies.keep(

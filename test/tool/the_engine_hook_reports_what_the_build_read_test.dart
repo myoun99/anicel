@@ -18,6 +18,11 @@ import '../helpers/temp_dir.dart';
 /// Measured once by hand with `flutter test -v` (the runner's 「Skipping
 /// build for gpu_engine」 on a second run, 「Rerunning」 after a vendored
 /// source or the fx SDK's manifest changed).
+///
+/// Nor what it ships (a-second-release-build-loses-its-dxc, 2026-11-16):
+/// the DXC copy beside the library was reported read by a cargo build and
+/// not by a kept copy, and Flutter deleted it as an output its build no
+/// longer listed — every second Windows release build failed to install it.
 void main() {
   late Directory root;
   late Uri checkout;
@@ -76,22 +81,22 @@ void main() {
     });
   });
 
-  test('what lies under the build\'s target folder is left out, and the '
-      'workspace and the manifests join the sources', () {
+  test('what lies under the hook\'s output folder is left out — the build\'s '
+      'target in it and the DXC it ships — and the workspace and the '
+      'manifests join the sources', () {
     final source = made('checkout/sdk/fx/src/lib.rs').uri;
     final built = made('out/target/release/build/g/out/dxcompiler.dll').uri;
     final shipped = made('out/dxc/dxcompiler.dll').uri;
-    final beside = made('out/targeted/notes.txt').uri;
+    final beside = made('outer/notes.txt').uri;
     final read = readByTheBuild(
       [source, built, shipped, beside],
-      target: Directory('${root.path}/out/target').uri,
+      output: Directory('${root.path}/out').uri,
       rust: rust,
       checkout: checkout,
     );
     expect(names(read), {
       'checkout/sdk/fx/src/lib.rs',
-      'out/dxc/dxcompiler.dll',
-      'out/targeted/notes.txt',
+      'outer/notes.txt',
       'checkout/rust/Cargo.toml',
       'checkout/rust/Cargo.lock',
       'checkout/rust/src/lib.rs',
