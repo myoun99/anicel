@@ -13,6 +13,8 @@ mod hid_axis;
 mod ledger;
 mod points;
 #[cfg(windows)]
+mod points_win;
+#[cfg(windows)]
 mod raw;
 mod report;
 #[cfg(windows)]

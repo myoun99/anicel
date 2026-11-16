@@ -56,9 +56,12 @@ const SIGNATURE: isize = 0xFFFF_FF00;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 
-/// The mouse's newest point written, in screen pixels at its time — where
-/// the next move's `GetMouseMovePointsEx` stops.
-static MOUSE_WRITTEN: Mutex<Option<(i32, i32, u32)>> = Mutex::new(None);
+/// A mouse move as `GetMouseMovePointsEx` keeps it: where, in screen
+/// pixels, and when, on the message clock (milliseconds, which wraps).
+pub(crate) type Move = (i32, i32, u32);
+
+/// The mouse's newest move written — where the next move's history stops.
+static MOUSE_WRITTEN: Mutex<Option<Move>> = Mutex::new(None);
 
 /// Subclasses the Flutter view of the app's window: true from then on.
 /// False where there is no window shown yet, or this is not the thread
@@ -216,26 +219,46 @@ fn mouse(view: HWND, l: LPARAM) {
     let found = unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) };
     let mut written = MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
     let now = now_micros();
-    let moves: Vec<(POINT, u32)> = moves[..found.max(0) as usize]
+    let history: Vec<Move> = moves[..found.max(0) as usize]
         .iter()
-        .map(|at| (POINT { x: signed(at.x), y: signed(at.y) }, at.time))
-        .take_while(|&(at, at_time)| *written != Some((at.x, at.y, at_time)))
+        .map(|at| (signed(at.x), signed(at.y), at.time))
         .collect();
-    // A move Windows keeps no points for, or one where the mouse stood:
-    // the message's own point, as the embedder hands it.
-    let moves = if moves.is_empty() { vec![(screen, time)] } else { moves };
+    let moves = moves_since((screen.x, screen.y, time), &history, *written);
     *written = Some((screen.x, screen.y, time));
     let points = moves
         .iter()
         .rev()
-        .map(|&(at, at_time)| {
-            let at = in_view(view, at);
+        .map(|&(x, y, at_time)| {
+            let at = in_view(view, POINT { x, y });
             let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
             Point::at(f64::from(at.x), f64::from(at.y), micros)
         })
         .collect();
     let handed = (f64::from(client.x), f64::from(client.y));
     book().write(Batch { contact: MOUSE, handed, points });
+}
+
+/// 🚨THE MOVES A MOUSE MESSAGE HANDS ON (I-110 · F-600): `history` — the
+/// newest first, the message's `own` move the first of it — down to the
+/// move `written` last, and none older than it. `own` alone where nothing
+/// was written yet, where the mouse stood, or where the history keeps none.
+///
+/// ↩️Cut at the move written alone (H56), a history that does not keep it
+/// — a move Windows makes as the window under the cursor changes or a
+/// key goes, and the first move of all — went by whole: 64 moves with no
+/// bound in time. 🔬Surface Pro 11, a lasso drawn with a mouse and held
+/// with Alt or Shift: its shape reached two points off the canvas where
+/// the cursor had rested seconds before, and the lasso's fill painted
+/// them (캔버스 베이스, 11-16). A stroke takes its points the same way.
+///
+/// A move of the millisecond `written` was in is newer where it comes
+/// before it: a mouse that reports faster than that keeps several there.
+pub(crate) fn moves_since(own: Move, history: &[Move], written: Option<Move>) -> Vec<Move> {
+    let newer = |at: &&Move| {
+        written.is_some_and(|last| **at != last && at.2.wrapping_sub(last.2) as i32 >= 0)
+    };
+    let moves: Vec<Move> = history.iter().take_while(newer).copied().collect();
+    if moves.is_empty() { vec![own] } else { moves }
 }
 
 /// A display point `GetMouseMovePointsEx` gives, as the screen's signed
