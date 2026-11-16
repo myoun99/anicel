@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import '../../core/mask_into_alpha.dart';
 import '../abr/photoshop_descriptor.dart';
 import 'photoshop_byte_reader.dart';
 import 'psd_pixels.dart';
@@ -58,7 +57,7 @@ class PsdLayer {
     required this.clipping,
     required this.blendKey,
     required this.role,
-    required this.pixels,
+    required this.picture,
     required this.adjustmentKey,
     this.collapsed = false,
     this.hasLayerEffects = false,
@@ -108,10 +107,17 @@ class PsdLayer {
   final String blendKey;
   final PsdLayerRole role;
 
+  /// Its picture, [width]×[height], as the file holds it — planes, and the
+  /// mask that is on, baked into alpha as it is packed. Null when the
+  /// record has no picture (an empty layer, a group row, an adjustment).
+  /// ↩️Straight RGBA8, packed whole as the layer was read, till 2026-11-16
+  /// (card psd-planes-pack-on-the-engine): an import cuts it into tiles a
+  /// row at a time now and never holds it whole ([PsdLayerPicture.rows]).
+  final PsdLayerPicture? picture;
+
   /// Straight RGBA8 covering [width]×[height], mask already multiplied into
-  /// alpha. Null when the record has no picture (an empty layer, a group
-  /// row, an adjustment).
-  final Uint8List? pixels;
+  /// alpha — packed whole each time it is asked ([PsdLayerPicture.rgba]).
+  Uint8List? get pixels => picture?.rgba();
 
   /// The additional-info key that makes this an adjustment or fill layer
   /// (`levl`, `curv`, `SoCo`…), or null for an ordinary layer. We cannot
@@ -120,7 +126,7 @@ class PsdLayer {
 
   int get width => right - left;
   int get height => bottom - top;
-  bool get hasPixels => pixels != null && width > 0 && height > 0;
+  bool get hasPixels => picture != null && width > 0 && height > 0;
   bool get isGroupRow => role != PsdLayerRole.raster;
   bool get isPassThrough => blendKey == 'pass';
 }
@@ -630,38 +636,36 @@ PsdLayer _readLayerPixels(
 
   final mask = record.mask;
   final maskOn = mask != null && !mask.disabled;
-  var maskBaked = false;
-  Uint8List? pixels;
+  PsdLayerPicture? picture;
   if (record.width > 0 && record.height > 0 && colorPlanes.isNotEmpty) {
-    pixels = psdPlanesToRgba(
-      mode: colorMode,
-      colorPlanes: [
-        for (var i = 0; i < colorMode.colorPlaneCount; i += 1)
-          colorPlanes[i] ?? Uint8List(record.width * record.height),
-      ],
-      alphaPlane: alpha,
-      width: record.width,
-      height: record.height,
-      palette: palette,
-      warnings: warnings,
+    picture = PsdLayerPicture(
+      PsdPlanes(
+        mode: colorMode,
+        colorPlanes: [
+          for (var i = 0; i < colorMode.colorPlaneCount; i += 1)
+            colorPlanes[i] ?? Uint8List(record.width * record.height),
+        ],
+        alphaPlane: alpha,
+        width: record.width,
+        height: record.height,
+        palette: palette,
+        warnings: warnings,
+      ),
+      left: record.left,
+      top: record.top,
+      mask: maskOn && maskPlane != null
+          ? (
+              plane: maskPlane,
+              left: mask.left,
+              top: mask.top,
+              width: mask.width,
+              height: mask.height,
+              defaultColor: mask.defaultColor,
+            )
+          : null,
     );
-    if (maskOn && maskPlane != null) {
-      maskBaked = true;
-      applyMaskToAlpha(
-        pixels,
-        layerLeft: record.left,
-        layerTop: record.top,
-        layerWidth: record.width,
-        layerHeight: record.height,
-        mask: maskPlane,
-        maskLeft: mask.left,
-        maskTop: mask.top,
-        maskWidth: mask.width,
-        maskHeight: mask.height,
-        defaultColor: mask.defaultColor,
-      );
-    }
   }
+  final maskBaked = picture?.mask != null;
 
   return PsdLayer(
     name: record.name,
@@ -674,7 +678,7 @@ PsdLayer _readLayerPixels(
     clipping: record.clipping,
     blendKey: record.blendKey,
     role: record.role,
-    pixels: pixels,
+    picture: picture,
     adjustmentKey: record.adjustmentKey,
     collapsed: record.collapsed,
     hasLayerEffects: record.hasLayerEffects,
@@ -761,24 +765,21 @@ Uint8List? _readComposite(
       ),
     );
   }
-  final rgba = psdPlanesToRgba(
+  // A fourth channel with no merged-transparency flag is a spot or saved
+  // selection channel as often as it is transparency. Photoshop shows the
+  // composite opaque in that case, so we do too — packed with no alpha
+  // plane. ↩️Packed with that channel as alpha and then made 255 over again
+  // till 2026-11-16 (card psd-planes-pack-on-the-engine): a pass over the
+  // picture for nothing.
+  return psdPlanesToRgba(
     mode: colorMode,
     colorPlanes: planes.sublist(0, colorPlaneCount),
-    alphaPlane: hasAlpha ? planes[colorPlaneCount] : null,
+    alphaPlane: hasAlpha && mergedAlpha ? planes[colorPlaneCount] : null,
     width: width,
     height: height,
     palette: palette,
     warnings: warnings,
   );
-  if (hasAlpha && !mergedAlpha) {
-    // A fourth channel with no merged-transparency flag is a spot or saved
-    // selection channel as often as it is transparency. Photoshop shows the
-    // composite opaque in that case, so we do too.
-    for (var i = 0; i < width * height; i += 1) {
-      rgba[i * 4 + 3] = 255;
-    }
-  }
-  return rgba;
 }
 
 Uint8List _normalise(

@@ -11,11 +11,10 @@ import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import '../photoshop/psd_reader.dart';
-import 'cel_picture.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'psd_layer_plan.dart';
 import 'raster_cel_import.dart';
-import 'tile_cutter.dart' show giveBackCut;
+import 'tile_cutter.dart' show TileCutter, giveBackCut, laidCelOf, tileCutOf;
 import '../../models/import/import_warning.dart';
 
 /// The pixel half of EXPAND: read the document, plan the stack, and turn
@@ -172,14 +171,26 @@ _ReadAndCut? _readAndCut(
       if (lay == null) {
         continue;
       }
-      // One layer's picture at a time: eighty full-canvas layers held at
-      // once is how expanding a background runs a tablet out of memory.
-      final picture = PixelsPicture(
-        _croppedTo(crop, source.pixels!, source.width),
-        width: crop.width,
-        height: crop.height,
+      // Its rows packed one at a time straight into the tiles they land in
+      // — the layer is never held whole, only its planes and the row under
+      // way, as a PNG's rows go in as they are inflated (`cutFileInWorker`).
+      // ↩️Each layer was packed whole as the document was read and cropped
+      // to a copy of its own here till 2026-11-16 (card
+      // psd-planes-pack-on-the-engine): 27–29 % of laying an 8K document of
+      // four layers out, nearly all of it the fresh RGBA's first touch.
+      final picture = source.picture!;
+      final tiles = TileCutter.cutting(
+        tileCutOf(lay.cut),
+        crop.width,
+        (row) => picture.rows(
+          fromX: crop.left,
+          fromY: crop.top,
+          width: crop.width,
+          height: crop.height,
+          row: row,
+        ),
       );
-      cuts[index] = (lay: lay, cel: cutPixels(picture, lay.cut));
+      cuts[index] = (lay: lay, cel: laidCelOf(lay.cut.layout, tiles));
     }
   } on Object {
     for (final cut in cuts.values) {
@@ -188,22 +199,4 @@ _ReadAndCut? _readAndCut(
     rethrow;
   }
   return (document: document, laidOn: laidOn, cuts: cuts);
-}
-
-/// [rgba], a picture [width] wide, cut down to [crop] — the same bytes
-/// when [crop] is all of it.
-Uint8List _croppedTo(PsdLayerCrop crop, Uint8List rgba, int width) {
-  final row = crop.width * 4;
-  if (crop.left == 0 &&
-      crop.top == 0 &&
-      crop.width == width &&
-      rgba.length == row * crop.height) {
-    return rgba;
-  }
-  final out = Uint8List(row * crop.height);
-  for (var y = 0; y < crop.height; y += 1) {
-    final from = ((crop.top + y) * width + crop.left) * 4;
-    out.setRange(y * row, (y + 1) * row, rgba, from);
-  }
-  return out;
 }

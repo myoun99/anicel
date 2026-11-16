@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -59,7 +57,7 @@ void main() {
     clipping: clipping,
     blendKey: blend,
     role: PsdLayerRole.raster,
-    pixels: pixels ? Uint8List((right - left) * (bottom - top) * 4) : null,
+    picture: pixels ? _picture(right - left, bottom - top) : null,
     adjustmentKey: adjustment,
     hasLayerEffects: effects,
     hasUnbakedMask: unbakedMask,
@@ -86,7 +84,7 @@ void main() {
     clipping: clipping,
     blendKey: blend,
     role: role,
-    pixels: null,
+    picture: null,
     adjustmentKey: null,
     collapsed: collapsed,
     hasLayerEffects: effects,
@@ -526,3 +524,19 @@ void main() {
     });
   });
 }
+
+/// A picture of [width] × [height] with nothing in it: the plan reads that
+/// a layer has one, not what it holds.
+PsdLayerPicture _picture(int width, int height) => PsdLayerPicture(
+  PsdPlanes(
+    mode: PsdColorMode.rgb,
+    colorPlanes: const [],
+    alphaPlane: null,
+    width: width,
+    height: height,
+    palette: null,
+    warnings: <ImportWarning>[],
+  ),
+  left: 0,
+  top: 0,
+);

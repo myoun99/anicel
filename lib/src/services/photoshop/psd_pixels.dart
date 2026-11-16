@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../core/mask_into_alpha.dart';
 import '../../core/srgb_byte.dart';
 import 'photoshop_byte_reader.dart';
 import '../../models/import/import_warning.dart';
@@ -220,7 +221,8 @@ int _eightBitOf(double value) {
   return (value * 255).round();
 }
 
-/// Turns colour planes into straight (un-premultiplied) RGBA8.
+/// Turns colour planes into straight (un-premultiplied) RGBA8: the whole
+/// picture, packed by [PsdPlanes] — what the composite is read as.
 ///
 /// A mode we cannot reproduce exactly is CONVERTED rather than refused —
 /// the user's rule is "follow CSP", which opens these and changes their
@@ -235,120 +237,252 @@ Uint8List psdPlanesToRgba({
   required Uint8List? palette,
   required List<ImportWarning> warnings,
 }) {
-  final pixelCount = width * height;
-  final rgba = Uint8List(pixelCount * 4);
-  Uint8List plane(int index) => index < colorPlanes.length
-      ? colorPlanes[index]
-      : Uint8List(pixelCount);
-
-  switch (mode) {
-    case PsdColorMode.rgb:
-      final r = plane(0);
-      final g = plane(1);
-      final b = plane(2);
-      for (var i = 0; i < pixelCount; i += 1) {
-        rgba[i * 4] = r[i];
-        rgba[i * 4 + 1] = g[i];
-        rgba[i * 4 + 2] = b[i];
-      }
-    case PsdColorMode.grayscale:
-    case PsdColorMode.duotone:
-    case PsdColorMode.bitmap:
-      final v = plane(0);
-      for (var i = 0; i < pixelCount; i += 1) {
-        rgba[i * 4] = v[i];
-        rgba[i * 4 + 1] = v[i];
-        rgba[i * 4 + 2] = v[i];
-      }
-      if (mode == PsdColorMode.duotone) {
-        warnings.add(
-          const ImportWarning('psdDuotone', 'Duotone read as grayscale.'),
-        );
-      }
-    case PsdColorMode.multichannel:
-      final v = plane(0);
-      for (var i = 0; i < pixelCount; i += 1) {
-        rgba[i * 4] = v[i];
-        rgba[i * 4 + 1] = v[i];
-        rgba[i * 4 + 2] = v[i];
-      }
-      warnings.add(
-        const ImportWarning(
-          'psdMultichannel',
-          'Multichannel read as grayscale of its first channel.',
-        ),
-      );
-    case PsdColorMode.indexed:
-      final index = plane(0);
-      if (palette == null || palette.length < 768) {
-        warnings.add(
-          const ImportWarning(
-            'psdIndexedNoPalette',
-            'Indexed colour without a palette read as grayscale.',
-          ),
-        );
-        for (var i = 0; i < pixelCount; i += 1) {
-          rgba[i * 4] = index[i];
-          rgba[i * 4 + 1] = index[i];
-          rgba[i * 4 + 2] = index[i];
-        }
-      } else {
-        for (var i = 0; i < pixelCount; i += 1) {
-          final entry = index[i];
-          rgba[i * 4] = palette[entry];
-          rgba[i * 4 + 1] = palette[256 + entry];
-          rgba[i * 4 + 2] = palette[512 + entry];
-        }
-      }
-    case PsdColorMode.cmyk:
-      // Photoshop stores CMYK inverted: 255 means no ink.
-      final c = plane(0);
-      final m = plane(1);
-      final y = plane(2);
-      final k = plane(3);
-      for (var i = 0; i < pixelCount; i += 1) {
-        final ink = 255 - k[i];
-        rgba[i * 4] = _clampByte(255 - (255 - c[i]) - ink);
-        rgba[i * 4 + 1] = _clampByte(255 - (255 - m[i]) - ink);
-        rgba[i * 4 + 2] = _clampByte(255 - (255 - y[i]) - ink);
-      }
-      warnings.add(
-        const ImportWarning(
-          'psdCmyk',
-          'CMYK converted to RGB without a profile — colour shifts.',
-        ),
-      );
-    case PsdColorMode.lab:
-      final l = plane(0);
-      final a = plane(1);
-      final b = plane(2);
-      for (var i = 0; i < pixelCount; i += 1) {
-        final rgb = _labToRgb(l[i] * 100 / 255, a[i] - 128.0, b[i] - 128.0);
-        rgba[i * 4] = rgb.$1;
-        rgba[i * 4 + 1] = rgb.$2;
-        rgba[i * 4 + 2] = rgb.$3;
-      }
-      warnings.add(
-        const ImportWarning(
-          'psdLab',
-          'Lab converted to RGB without a profile — colour shifts.',
-        ),
-      );
-  }
-
-  if (alphaPlane == null) {
-    for (var i = 0; i < pixelCount; i += 1) {
-      rgba[i * 4 + 3] = 255;
-    }
-  } else {
-    for (var i = 0; i < pixelCount; i += 1) {
-      rgba[i * 4 + 3] = alphaPlane[i];
-    }
-  }
+  final rgba = Uint8List(width * height * 4);
+  PsdPlanes(
+    mode: mode,
+    colorPlanes: colorPlanes,
+    alphaPlane: alphaPlane,
+    width: width,
+    height: height,
+    palette: palette,
+    warnings: warnings,
+  ).packInto(rgba, from: 0, count: width * height);
   return rgba;
 }
 
+/// A picture as its file holds it — a plane a channel, [width] × [height] —
+/// packed into straight RGBA8 a run of pixels at a time ([packInto]): the
+/// whole of it, or a row of a layer as it is cut into tiles.
+///
+/// 🚨★★**A LAYER IS NEVER PACKED WHOLE TO BE CUT** (card
+/// psd-planes-pack-on-the-engine, 2026-11-16): its rows go into the tile
+/// cutter packed one at a time, as a PNG's and a JPEG's go in as they are
+/// inflated (`cutFileInWorker`). 🔬Packing a layer whole was 27–29 % of
+/// laying an 8K document of four layers out as cels (Surface, profile) —
+/// and nearly all of that was the fresh 132 MB its RGBA took, not the
+/// packing: made and touched alone it cost 60–64 ms against the pack's
+/// 66–70. ⛔A pixel written as one word was SLOWER (110 ms — its alpha
+/// asked through a closure), and four a load faster by a fifth only.
+/// ⛔Not on the engine, as the card first said: what this makes is cut on
+/// the worker it runs on, which has no engine.
+final class PsdPlanes {
+  /// Says once, into [warnings], what a mode it can only convert loses.
+  PsdPlanes({
+    required this.mode,
+    required List<Uint8List> colorPlanes,
+    required Uint8List? alphaPlane,
+    required this.width,
+    required this.height,
+    required Uint8List? palette,
+    required List<ImportWarning> warnings,
+  }) : _colour = colorPlanes,
+       _alpha = alphaPlane,
+       _palette = palette != null && palette.length >= 768 ? palette : null {
+    final said = switch (mode) {
+      PsdColorMode.duotone => const ImportWarning(
+        'psdDuotone',
+        'Duotone read as grayscale.',
+      ),
+      PsdColorMode.multichannel => const ImportWarning(
+        'psdMultichannel',
+        'Multichannel read as grayscale of its first channel.',
+      ),
+      PsdColorMode.indexed when _palette == null => const ImportWarning(
+        'psdIndexedNoPalette',
+        'Indexed colour without a palette read as grayscale.',
+      ),
+      PsdColorMode.cmyk => const ImportWarning(
+        'psdCmyk',
+        'CMYK converted to RGB without a profile — colour shifts.',
+      ),
+      PsdColorMode.lab => const ImportWarning(
+        'psdLab',
+        'Lab converted to RGB without a profile — colour shifts.',
+      ),
+      _ => null,
+    };
+    if (said != null) {
+      warnings.add(said);
+    }
+  }
+
+  final PsdColorMode mode;
+  final int width;
+  final int height;
+  final List<Uint8List> _colour;
+  final Uint8List? _alpha;
+
+  /// Null where the file gave none, or one short of its 768 bytes.
+  final Uint8List? _palette;
+
+  Uint8List _plane(int index) => index < _colour.length
+      ? _colour[index]
+      : Uint8List(width * height);
+
+  /// Pixels [from] to [from] + [count] — counted row after row across the
+  /// planes — packed into [rgba] from its first byte.
+  void packInto(Uint8List rgba, {required int from, required int count}) {
+    final end = from + count;
+    void grey(Uint8List v) {
+      for (var i = from, o = 0; i < end; i += 1, o += 4) {
+        rgba[o] = v[i];
+        rgba[o + 1] = v[i];
+        rgba[o + 2] = v[i];
+      }
+    }
+
+    switch (mode) {
+      case PsdColorMode.rgb:
+        final r = _plane(0);
+        final g = _plane(1);
+        final b = _plane(2);
+        for (var i = from, o = 0; i < end; i += 1, o += 4) {
+          rgba[o] = r[i];
+          rgba[o + 1] = g[i];
+          rgba[o + 2] = b[i];
+        }
+      case PsdColorMode.grayscale:
+      case PsdColorMode.duotone:
+      case PsdColorMode.bitmap:
+      case PsdColorMode.multichannel:
+        grey(_plane(0));
+      case PsdColorMode.indexed:
+        final index = _plane(0);
+        final palette = _palette;
+        if (palette == null) {
+          grey(index);
+        } else {
+          for (var i = from, o = 0; i < end; i += 1, o += 4) {
+            final entry = index[i];
+            rgba[o] = palette[entry];
+            rgba[o + 1] = palette[256 + entry];
+            rgba[o + 2] = palette[512 + entry];
+          }
+        }
+      case PsdColorMode.cmyk:
+        // Photoshop stores CMYK inverted: 255 means no ink.
+        final c = _plane(0);
+        final m = _plane(1);
+        final y = _plane(2);
+        final k = _plane(3);
+        for (var i = from, o = 0; i < end; i += 1, o += 4) {
+          final ink = 255 - k[i];
+          rgba[o] = _clampByte(255 - (255 - c[i]) - ink);
+          rgba[o + 1] = _clampByte(255 - (255 - m[i]) - ink);
+          rgba[o + 2] = _clampByte(255 - (255 - y[i]) - ink);
+        }
+      case PsdColorMode.lab:
+        final l = _plane(0);
+        final a = _plane(1);
+        final b = _plane(2);
+        for (var i = from, o = 0; i < end; i += 1, o += 4) {
+          final rgb = _labToRgb(l[i] * 100 / 255, a[i] - 128.0, b[i] - 128.0);
+          rgba[o] = rgb.$1;
+          rgba[o + 1] = rgb.$2;
+          rgba[o + 2] = rgb.$3;
+        }
+    }
+
+    final alpha = _alpha;
+    if (alpha == null) {
+      for (var o = 3; o < count * 4; o += 4) {
+        rgba[o] = 255;
+      }
+    } else {
+      for (var i = from, o = 3; i < end; i += 1, o += 4) {
+        rgba[o] = alpha[i];
+      }
+    }
+  }
+}
+
 int _clampByte(int value) => value < 0 ? 0 : (value > 255 ? 255 : value);
+
+/// The mask a layer's alpha is multiplied by, in the document's space: its
+/// [plane] over its own rectangle, [defaultColor] past it
+/// (`applyMaskToAlpha`).
+typedef PsdLayerMask = ({
+  Uint8List plane,
+  int left,
+  int top,
+  int width,
+  int height,
+  int defaultColor,
+});
+
+/// A layer's picture as its file holds it: its [planes], their top-left at
+/// ([left], [top]) in the document, and the [mask] that is on — baked into
+/// alpha as each row is packed.
+final class PsdLayerPicture {
+  const PsdLayerPicture(
+    this.planes, {
+    required this.left,
+    required this.top,
+    this.mask,
+  });
+
+  final PsdPlanes planes;
+  final int left;
+  final int top;
+  final PsdLayerMask? mask;
+
+  /// The [width] × [height] part of it from its own column [fromX] and row
+  /// [fromY], a row at a time: each packed and its mask baked into ONE
+  /// buffer, handed to [row] with its index from 0 — and the next row's
+  /// once [row] returns, so [row] takes what it keeps.
+  void rows({
+    required int fromX,
+    required int fromY,
+    required int width,
+    required int height,
+    required void Function(int y, Uint8List rgba) row,
+  }) {
+    final buffer = Uint8List(width * 4);
+    for (var y = 0; y < height; y += 1) {
+      planes.packInto(
+        buffer,
+        from: (fromY + y) * planes.width + fromX,
+        count: width,
+      );
+      _bake(buffer, left + fromX, top + fromY + y);
+      row(y, buffer);
+    }
+  }
+
+  /// Every pixel of it, row after row — packed whole, each time it is
+  /// asked. ⚠️The import never asks: it cuts [rows].
+  Uint8List rgba() {
+    final width = planes.width;
+    final whole = Uint8List(width * planes.height * 4);
+    planes.packInto(whole, from: 0, count: width * planes.height);
+    for (var y = 0; y < planes.height; y += 1) {
+      _bake(
+        Uint8List.sublistView(whole, y * width * 4, (y + 1) * width * 4),
+        left,
+        top + y,
+      );
+    }
+    return whole;
+  }
+
+  void _bake(Uint8List row, int left, int top) {
+    final mask = this.mask;
+    if (mask == null) {
+      return;
+    }
+    applyMaskToAlphaRow(
+      row,
+      left: left,
+      top: top,
+      mask: mask.plane,
+      maskLeft: mask.left,
+      maskTop: mask.top,
+      maskWidth: mask.width,
+      maskHeight: mask.height,
+      defaultColor: mask.defaultColor,
+    );
+  }
+}
 
 /// Lab is defined against a white point; sRGB against D65. The conversion
 /// below uses D65 straight through, which is the "no profile" answer the
