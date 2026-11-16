@@ -9,31 +9,53 @@ use super::{
     qa_image_decode_jpg_row, qa_image_decode_jpg_size,
 };
 
-/// 🚨The most these tests hold of the heap at once: a request that would
-/// take them past it is refused — so a decoder that takes a buffer the size
-/// a file's header says, with no answer for 「no room」, ends the tests
-/// where it would end the app (`handle_alloc_error`), on any machine,
-/// however much memory it has. No test here holds a gigabyte.
+/// 🚨The most a test holds of the heap at once: a request that would take
+/// it past it is refused — so a decoder that takes a buffer the size a
+/// file's header says, with no answer for 「no room」, ends the tests where
+/// it would end the app (`handle_alloc_error`), on any machine, however
+/// much memory it has. No test here holds a gigabyte.
 ///
-/// Counted in all, where the audio decoder's tests refuse a request at a
-/// time (`native/audio/src/tests.rs`): a JPEG's coefficients are a buffer
-/// a component, each smaller than the pixels' that was let in before it.
+/// Counted over all it holds, where the audio decoder's tests refuse a
+/// request at a time (`native/audio/src/tests.rs`): a JPEG's coefficients
+/// are a buffer a component, each smaller than the pixels' that was let in
+/// before it.
 const ROOM: usize = 1 << 30;
 
-/// The bytes these tests hold now.
-static HELD: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+thread_local! {
+    /// The bytes the test on this thread holds now.
+    ///
+    /// 🚨EACH TEST HAS THE ROOM TO ITSELF, as the app's one import has the
+    /// machine's (저장 2026-11-16, card
+    /// a-jpeg-that-lies-about-its-size-can-end-the-app). Counted once for
+    /// every thread, a test that filled it — the coefficients' holds 867
+    /// MB of pixels as it asks — had the request of a test beside it
+    /// refused, a request with no answer for 「no room」: the main PC's
+    /// landing gate ended at 「memory allocation of 41024 bytes failed」
+    /// where the Surface's, its tests in another order, had been green. A
+    /// block let go on another thread than took it is counted off there:
+    /// it widens that thread's room, never narrows a test's.
+    static HELD: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+}
 
 /// Whether `bytes` more are let in — counted, where they are.
 fn lets_in(bytes: usize) -> bool {
-    use std::sync::atomic::Ordering::SeqCst;
-    if HELD.fetch_add(bytes as isize, SeqCst) + bytes as isize > ROOM as isize {
-        HELD.fetch_sub(bytes as isize, SeqCst);
-        return false;
-    }
-    true
+    HELD.try_with(|held| {
+        let after = held.get() + bytes as isize;
+        let fits = after <= ROOM as isize;
+        if fits {
+            held.set(after);
+        }
+        fits
+    })
+    .unwrap_or(true)
 }
 
-/// The system's allocator, refusing what would take the tests past [ROOM].
+/// `bytes` let go.
+fn lets_go(bytes: usize) {
+    let _ = HELD.try_with(|held| held.set(held.get() - bytes as isize));
+}
+
+/// The system's allocator, refusing what would take a test past [ROOM].
 struct Room;
 
 // SAFETY: the system's allocator, or null — which a caller must meet for
@@ -64,16 +86,16 @@ unsafe impl std::alloc::GlobalAlloc for Room {
         if moved.is_null() {
             // Refused by the system: what was let in for it is let go.
             if size > layout.size() {
-                HELD.fetch_sub((size - layout.size()) as isize, std::sync::atomic::Ordering::SeqCst);
+                lets_go(size - layout.size());
             }
         } else if size < layout.size() {
-            HELD.fetch_sub((layout.size() - size) as isize, std::sync::atomic::Ordering::SeqCst);
+            lets_go(layout.size() - size);
         }
         moved
     }
 
     unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
-        HELD.fetch_sub(layout.size() as isize, std::sync::atomic::Ordering::SeqCst);
+        lets_go(layout.size());
         // SAFETY: the caller's contract.
         unsafe { std::alloc::System.dealloc(at, layout) }
     }
@@ -350,8 +372,9 @@ fn a_jpeg_there_is_no_room_for_says_why_through_its_handle() {
 // a component, which it then does not: zune-jpeg 0.5.15 took them with
 // `vec!` and these tests ended here (「memory allocation of 578544128 bytes
 // failed」); the copy the workspace patches in answers (`Cargo.toml`,
-// `[patch.crates-io]`). One test, a file after the other — two at once
-// would be refused their pixels, and say so of the wrong buffer.
+// `[patch.crates-io]`). One test, a file after the other: ↩️till
+// 2026-11-16 two at once shared one room and would have been refused their
+// pixels, saying so of the wrong buffer — each test now has its own (HELD).
 #[test]
 fn a_jpeg_whose_coefficients_there_is_no_room_for_says_so() {
     let lying = saying(&image_encode::encode(&gradient(64, 48), 64, 48, 90), 17_000, 17_000);
@@ -359,4 +382,20 @@ fn a_jpeg_whose_coefficients_there_is_no_room_for_says_so() {
         let why = Decoded::of(&file).err().unwrap_or_else(|| panic!("{kind}: it decoded"));
         assert!(why.contains("out of memory for the coefficients"), "{kind}: {why}");
     }
+}
+
+// 🚨The room is a test's own (HELD): this thread lets in all of it but a
+// megabyte, and is refused two more — and a thread beside it is let in
+// those two. Counted for every thread at once, it was refused them, as the
+// main PC's landing gate had a test's request refused beside the
+// coefficients' (2026-11-16).
+#[test]
+fn a_test_that_fills_its_room_leaves_a_test_beside_it_its_own() {
+    let left = ROOM as isize - HELD.with(std::cell::Cell::get);
+    let mut filled = Vec::<u8>::new();
+    filled.try_reserve_exact(left as usize - (1 << 20)).expect("the premise: this thread is let in its room");
+    assert!(Vec::<u8>::new().try_reserve_exact(2 << 20).is_err(), "the premise: this thread's room is full");
+    let beside = std::thread::spawn(|| Vec::<u8>::new().try_reserve_exact(2 << 20).is_ok());
+    assert!(beside.join().expect("it ran"), "the thread beside was refused");
+    drop(filled);
 }
