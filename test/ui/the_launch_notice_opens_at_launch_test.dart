@@ -47,8 +47,10 @@ class _LateKorean extends AppLanguageSettingsStore {
   Future<void> save(AppLanguageSettings settings) async {}
 }
 
+/// A round's build: its notice says what the file says.
 final _content = LaunchNoticeContent(
   (language, section) => '## ${section.name} ${language.name}',
+  number: '1091',
 );
 
 /// A device never asked about the usage statistics, whose answers are
