@@ -8,11 +8,12 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock, mpsc};
 use std::time::Duration;
 
 use super::source_scan::files_where;
-use crate::testing::turn_of;
+use crate::testing::{a_device_of_its_own, first_engine, turn_of};
 
 /// How a function's body names the opening of a device: the engine's own
 /// ways (`open`, `open_sole`, `open_first`, `on`) and the C ABI's.
@@ -76,12 +77,12 @@ fn openers() -> Vec<(String, bool)> {
 fn the_turn_is_one_tests_at_a_time_and_outlives_a_test_that_failed_with_it() {
     // A turn of its own, taken as the tests' is (`turn_of`). On the tests'
     // own, each test that opens a device waits as well, and one of them
-    // may take it where it is let go, again and again — a `Mutex` is no
+    // may take it where it is let go, again and again — a lock is no
     // queue: once the door's tests came to take it (21 in device.rs),
     // the land gate's release run went red so, the second thread taking
     // it past the minute this waits (11-14, the-ui-thread-never-enters-
     // the-driver 1a).
-    static TURN: Mutex<()> = Mutex::new(());
+    static TURN: RwLock<()> = RwLock::new(());
     let turn = turn_of(&TURN);
     let (took, taken) = mpsc::channel();
     std::thread::scope(|scope| {
@@ -97,6 +98,40 @@ fn the_turn_is_one_tests_at_a_time_and_outlives_a_test_that_failed_with_it() {
         assert!(failing.join().is_err(), "LIVENESS — the test that took it failed");
     });
     drop(turn_of(&TURN));
+}
+
+// The turn is the GPU's (`testing::a_device_of_its_own` has why): while
+// a test's own device is up the shared device submits nothing, and what
+// it is asked meanwhile goes in once the turn is let go.
+#[test]
+fn the_shared_device_submits_nothing_while_a_tests_own_is_up() {
+    let engine = first_engine();
+    let turn = a_device_of_its_own();
+    let (went, gone) = mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(move || {
+            engine.queue.submit([]);
+            let _ = went.send(());
+        });
+        let early = gone.recv_timeout(Duration::from_millis(300));
+        assert!(early.is_err(), "the shared device submitted while a test's own was up");
+        drop(turn);
+        let late = gone.recv_timeout(Duration::from_secs(60));
+        assert!(late.is_ok(), "LIVENESS — it submits once the turn is let go");
+    });
+}
+
+// A test's own device comes up once the shared one is through with what it
+// was handed: none of that work runs beside it.
+#[test]
+fn the_turn_is_given_once_the_shared_device_is_through_with_its_work() {
+    let engine = first_engine();
+    engine.queue.submit([]);
+    let through = Arc::new(AtomicBool::new(false));
+    let told = Arc::clone(&through);
+    engine.queue.on_submitted_work_done(move || told.store(true, Ordering::Release));
+    let _turn = a_device_of_its_own();
+    assert!(through.load(Ordering::Acquire), "the turn was given with the shared device at work");
 }
 
 #[test]

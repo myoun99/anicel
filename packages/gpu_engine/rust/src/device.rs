@@ -387,7 +387,14 @@ impl Queue {
     /// is gone is the next wait's error.
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
+        #[cfg(test)]
+        let by = self.thread.number;
         let _ = self.thread.run(move || {
+            // The tests' shared device waits here while a test's own is up
+            // (`testing::a_device_of_its_own`) — on the engine's thread,
+            // where no caller waits for it with that turn in hand.
+            #[cfg(test)]
+            let _turn = crate::testing::submitting(by);
             queue.submit(buffers);
         });
     }
@@ -556,6 +563,25 @@ impl Engine {
     pub(crate) fn device(&self) -> &wgpu::Device {
         entered();
         &self.device
+    }
+
+    /// The number this engine's submits go by (`testing::submitting`).
+    #[cfg(test)]
+    pub(crate) fn submits_as(&self) -> u64 {
+        self.thread.number
+    }
+
+    /// Returns once the GPU is through with all this engine was handed —
+    /// the engine's one poll ([`Self::poll`]), its answer waited for and
+    /// nothing else of a wait's: no wait counted on the caller's thread, a
+    /// test's that may count its own, and no refusal told, which another
+    /// test's wait is to fail by. The shared device's work, done as a
+    /// test's own comes up (`testing::a_device_of_its_own`).
+    #[cfg(test)]
+    pub(crate) fn through_with_all_submitted(&self) {
+        if let Ok(answer) = self.poll().answer {
+            let _ = answer.recv_timeout(WAIT_LIMIT);
+        }
     }
 
     /// What `work` answers, run on the engine's thread while the caller

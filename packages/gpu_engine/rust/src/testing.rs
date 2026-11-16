@@ -1,6 +1,7 @@
 //! What the GPU tests share.
 
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::device::Engine;
 use crate::kernels::composite::TileAt;
@@ -21,14 +22,21 @@ pub use ledger::assert_pinned;
 /// waits would pass over one — here it ends the test that raised it, where
 /// it is raised, the alarm these tests had while it ended the process.
 pub fn first_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| {
+    FIRST.get_or_init(|| {
         let engine = Engine::open_first().expect("these tests need a GPU adapter");
         let alarm = |error: wgpu::Error| panic!("wgpu error: {error}");
         engine.device().on_uncaptured_error(std::sync::Arc::new(alarm));
+        SHARED_SUBMITS.store(engine.submits_as(), Ordering::Release);
         engine
     })
 }
+
+/// [`first_engine`]'s, once it is opened.
+static FIRST: OnceLock<Engine> = OnceLock::new();
+
+/// The number [`first_engine`]'s submits go by (`Engine::submits_as`) —
+/// none till it is opened: an engine's threads are numbered from one.
+static SHARED_SUBMITS: AtomicU64 = AtomicU64::new(0);
 
 /// The turn a test holds for as long as a device of its own is up
 /// ([`a_device_of_its_own`]): one test's at a time, beside
@@ -63,11 +71,31 @@ pub fn first_engine() -> &'static Engine {
 /// (`kernels/shared/one_device_turn.rs` reads the sources for it):
 /// 🗣️관제 2026-11-14 04:20, the-ui-thread-never-enters-the-driver, 「이번엔
 /// 쓸 수 없게 닫는다」.
-static A_DEVICE_OF_ITS_OWN: Mutex<()> = Mutex::new(());
+///
+/// 🚨★★AND NONE AT WORK BESIDE THE SHARED ONE: a device of a test's own and
+/// [`first_engine`]'s at work at once wrote wrong pixels on the Surface
+/// (Intel), each of them — empty composites, another test's colours —, and
+/// the GPU wrote them so: read twice, alike (🔬캔버스 베이스, 2026-11-15
+/// 04:06–05:23, engine-pictures-keep-to-pool-pages: devices of a probe's
+/// own beside the shared one, two runs of six red within 1,012 and 3,248
+/// rounds; the same work on the shared device from two threads, five runs
+/// and some 78,000 rounds, none). The crate's composite tests went on
+/// failing so in full runs, with this turn one device at a time beside the
+/// shared one: four tests, two gates of two, and the crate run whole on
+/// the Surface 2 of 8 red, those of a device of its own left out 0 of 8
+/// (🔬캔버스 베이스, posed-row-composite-tests-flicker-in-full-runs,
+/// 2026-11-16 13:57–14:25, the two run in turn). So the turn is the GPU's:
+/// taken once the shared device is through with what it was handed, and
+/// held, the shared device's submits wait for it (`Queue::submit`).
+/// ⚠️A test that holds it works no other device — the shared one's submit
+/// would wait for the test that waits for it. ⏳Why the driver mixes two
+/// devices' work is not known; the app opens one (`openAppGpuEngine`), and
+/// Flutter's renderer is no D3D12 one.
+static THE_GPU: RwLock<()> = RwLock::new(());
 
-/// A test's hold on [`A_DEVICE_OF_ITS_OWN`], let go where it is dropped:
-/// after every device opened under it, so it is taken first.
-pub(crate) struct DeviceTurn(#[allow(dead_code)] MutexGuard<'static, ()>);
+/// A test's hold on [`THE_GPU`], let go where it is dropped: after every
+/// device opened under it, so it is taken first.
+pub(crate) struct DeviceTurn(#[allow(dead_code)] RwLockWriteGuard<'static, ()>);
 
 impl DeviceTurn {
     /// An engine on the platform's first adapter, this test's own: for one
@@ -78,16 +106,28 @@ impl DeviceTurn {
 }
 
 /// The turn for a device of the calling test's own — waited for while
-/// another test has one up. A test that failed with it in hand left it
-/// behind in good order: the lock guards nothing but the turn.
+/// another test has one up, and given once the shared device is through
+/// with what it was handed ([`THE_GPU`]). A test that failed with it in
+/// hand left it behind in good order: the lock guards nothing but the turn.
 pub(crate) fn a_device_of_its_own() -> DeviceTurn {
-    turn_of(&A_DEVICE_OF_ITS_OWN)
+    let turn = turn_of(&THE_GPU);
+    if let Some(shared) = FIRST.get() {
+        shared.through_with_all_submitted();
+    }
+    turn
 }
 
 /// A hold on `turn` — the tests' ([`a_device_of_its_own`]), or one a
 /// test of the turn keeps for itself, where no other test waits.
-pub(crate) fn turn_of(turn: &'static Mutex<()>) -> DeviceTurn {
-    DeviceTurn(turn.lock().unwrap_or_else(PoisonError::into_inner))
+pub(crate) fn turn_of(turn: &'static RwLock<()>) -> DeviceTurn {
+    DeviceTurn(turn.write().unwrap_or_else(PoisonError::into_inner))
+}
+
+/// A submit's hold on [`THE_GPU`] where the engine whose submits go by
+/// `by` is [`first_engine`]'s — none for a device of a test's own.
+pub(crate) fn submitting(by: u64) -> Option<RwLockReadGuard<'static, ()>> {
+    let shared = SHARED_SUBMITS.load(Ordering::Acquire);
+    (shared != 0 && shared == by).then(|| THE_GPU.read().unwrap_or_else(PoisonError::into_inner))
 }
 
 /// `buffer`'s bytes once the GPU is done with all that was submitted — the
