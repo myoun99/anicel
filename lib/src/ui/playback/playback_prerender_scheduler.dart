@@ -235,9 +235,12 @@ class PlaybackPrerenderScheduler {
 
   /// Open input holds (pen down, drag in flight). While any hold is open
   /// warming stands down HARD: the idle gate stays closed regardless of
-  /// elapsed time, and an in-flight composite aborts between layers — a
-  /// live stroke never shares the UI/raster threads with opportunistic
-  /// cache warming (R13-3: the commit-timing stutter).
+  /// elapsed time, and a frame ahead whose lay is not made yet leaves the
+  /// line (`shouldAbort`, read before a frame is made and as the quiet
+  /// turn's and the store's `gone`) — a live stroke never shares the
+  /// UI/raster threads with opportunistic cache warming (R13-3: the
+  /// commit-timing stutter). A lay already handed to the engine runs to
+  /// its end: a frame is one composite, one submission (H59 B2, 11-17).
   int _inputHolds = 0;
 
   void beginInputHold() {
