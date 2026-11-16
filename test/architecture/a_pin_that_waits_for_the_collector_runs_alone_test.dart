@@ -356,6 +356,10 @@ void main() {
         // over holds its tiles till its copy has read them, and only the
         // collector can say a pointer alone would not have.
         'test/native/a_store_handed_over_holds_its_tiles_till_their_copy_reads_them_test.dart',
+        // a-thawed-cel-is-adopted-on-the-ui-thread (11-16): the weight a
+        // cel's tiles share goes with the last of them, a block with its
+        // own tile, and only the collector can say either did.
+        'test/models/tiles_made_together_are_weighed_once_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
