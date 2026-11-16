@@ -54,21 +54,32 @@ void main() {
 
   /// One row of a 겸용 pair: the bank is the link group's, and each cut
   /// shows ONE of its two cels — [shownByC1] on C1, the other on C2.
-  Layer rowOf(String cut, String row, {required String shownByC1}) {
+  ///
+  /// [bare] makes it as the menu makes a 겸용 cut's row: no cel yet.
+  Layer rowOf(
+    String cut,
+    String row, {
+    required String shownByC1,
+    bool bare = false,
+  }) {
     final other = shownByC1 == '1' ? '2' : '1';
     return Layer(
       id: LayerId('$cut-$row'),
       name: row.toUpperCase(),
-      frames: [frame('${row}1', '1'), frame('${row}2', '2')],
+      frames: bare
+          ? const []
+          : [frame('${row}1', '1'), frame('${row}2', '2')],
       mark: const LayerMark(process: LayerProcess.key),
       isVisible: true,
       onTimesheet: true,
-      timeline: {
-        0: TimelineExposure.drawing(
-          FrameId('$row${cut == 'c1' ? shownByC1 : other}'),
-          length: 2,
-        ),
-      },
+      timeline: bare
+          ? const {}
+          : {
+              0: TimelineExposure.drawing(
+                FrameId('$row${cut == 'c1' ? shownByC1 : other}'),
+                length: 2,
+              ),
+            },
     );
   }
 
@@ -76,8 +87,8 @@ void main() {
   /// and B 1 — so standing on either cut, each bundle's FIRST cel comes
   /// from a different cut than the other bundle's.
   ///
-  /// [inked] false leaves every cel as it was made: nothing drawn.
-  EditorSessionManager linkedPair({bool inked = true}) {
+  /// [bare] makes it as the menu does: rows with no cel yet.
+  EditorSessionManager linkedPair({bool bare = false}) {
     final session = EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
@@ -96,8 +107,8 @@ void main() {
                 duration: 2,
                 canvasSize: const CanvasSize(width: 8, height: 8),
                 layers: [
-                  rowOf(cut, 'a', shownByC1: '1'),
-                  rowOf(cut, 'b', shownByC1: '2'),
+                  rowOf(cut, 'a', shownByC1: '1', bare: bare),
+                  rowOf(cut, 'b', shownByC1: '2', bare: bare),
                   createCameraLayer(cutId: CutId(cut)),
                 ],
               ),
@@ -122,7 +133,7 @@ void main() {
       ),
     ),
     );
-    return inked ? inkEveryCel(session) : session;
+    return bare ? session : inkEveryCel(session);
   }
 
   Future<void> pumpCels(
@@ -240,12 +251,12 @@ void main() {
     );
   });
 
-  testWidgets('🚨under the project scope a pair with nothing drawn still '
+  testWidgets('🚨under the project scope a pair with no cel yet still '
       'lists its timesheets — a sheet each cut', (tester) async {
-    // F-415 (검증 2026-11-16 ②): standing on C2 with nothing drawn, the
+    // F-415 (검증 2026-11-16 ②): standing on C2 with no cel made, the
     // list stood on C2, and the pair's timesheets — listed in C1, where the
     // export walks the pair from — were in no row.
-    final session = linkedPair(inked: false);
+    final session = linkedPair(bare: true);
     addTearDown(session.dispose);
     session.selectCut(const CutId('c2'));
 
