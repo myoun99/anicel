@@ -170,10 +170,13 @@ Future<PanelKeys> pumpToolSettings(
 
 /// A channel with no box open, which takes [flipped] and [reset] presses
 /// while [canEdit] says the layer may be edited.
+/// [canReset]: whether the box has something to put back — a moved box
+/// unless said otherwise.
 CanvasSelectionCommands selectionChannel({
   void Function(bool horizontal)? flipped,
   VoidCallback? reset,
   bool Function()? canEdit,
+  bool Function()? canReset,
 }) {
   final commands = CanvasSelectionCommands();
   commands.bind(
@@ -183,6 +186,7 @@ CanvasSelectionCommands selectionChannel({
     canEditTransform: canEdit ?? () => true,
     flipTransform: ({required horizontal}) => flipped?.call(horizontal),
     resetTransform: reset,
+    canResetTransform: canReset ?? () => true,
   );
   return commands;
 }
@@ -480,10 +484,12 @@ void main() {
       final flips = <bool>[];
       var resets = 0;
       var canEdit = true;
+      var moved = false;
       final commands = selectionChannel(
         flipped: flips.add,
         reset: () => resets += 1,
         canEdit: () => canEdit,
+        canReset: () => moved,
       );
       final keys = await pumpToolSettings(
         tester,
@@ -500,8 +506,14 @@ void main() {
         reason: '⛔premise: the row is past what the list builds',
       );
 
+      keys.press(EditorActionIds.transformReset, CanvasTool.move);
+      expect(resets, 0, reason: 'a box as it opened has nothing to put back');
+
       keys.press(EditorActionIds.transformFlipHorizontal, CanvasTool.move);
       keys.press(EditorActionIds.transformFlipVertical, CanvasTool.move);
+      moved = true;
+      commands.notifySessionChanged();
+      await tester.pumpAndSettle();
       keys.press(EditorActionIds.transformReset, CanvasTool.move);
       expect(flips, [true, false]);
       expect(resets, 1);
