@@ -116,9 +116,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     widget.bindings.setActivators(actionId, const []);
   }
 
-  /// The modifiers held since the recording last saw none held, with no
-  /// other key pressed among them: a key that is modifiers alone, taken as
-  /// the first of them is let go ([_letGoOf]). Null while none is held.
+  /// The modifiers held as the last of them went down, with no other key
+  /// pressed since: a key that is modifiers alone, taken as the first of
+  /// them is let go ([_letGoOf]) — all of them held then. Null while none
+  /// waits.
   ///
   /// 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
   /// 단축키등록안됨. 다 가능하게」. ↩️A modifier pressed alone only ever
@@ -151,15 +152,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
     // A modifier waits — for the key it modifies, or to be let go alone.
     if (isModifierKey(key)) {
-      final soFar = _modifiersSoFar;
-      _modifiersSoFar = soFar == null
-          ? held
-          : modifiersAloneActivator(
-              control: soFar.control || held.control,
-              shift: soFar.shift || held.shift,
-              alt: soFar.alt || held.alt,
-              meta: soFar.meta || held.meta,
-            );
+      _modifiersSoFar = held;
       return KeyEventResult.handled;
     }
     _modifiersSoFar = null;
