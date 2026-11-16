@@ -566,7 +566,7 @@ TimelineRowDragHooks _dragsHeardBy(List<String> heard) => TimelineRowDragHooks(
       heard.add('drag ${layerId.value}');
     }
   },
-  onUpdate: (_, _, {pointerInRow}) {},
+  onUpdate: (_, _, {pointer}) {},
   onRowTarget: (_, _, _) {},
   onEffectUpdate: (_, _, _) {},
   onEnd: () {},

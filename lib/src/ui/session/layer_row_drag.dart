@@ -15,7 +15,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/media_asset.dart'
     show MediaAssetKind, mediaAssetKindForPath;
-import '../timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
+import '../timeline/layer_drop_policy.dart'
+    show PointerInRow, RowPointer, newRowInsertionForSlot;
 import '../timeline/layer_row_drag.dart'
     show
         ConteSeatRowSubject,
@@ -177,15 +178,11 @@ class LayerRowDrag {
   void updateLayerRowDrag(
     List<Layer> displayLayers,
     int slot, {
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   }) {
     final seat = _conteSeatDrag;
     if (seat == null) {
-      _rowOrderDrag?.updateLayerRow(
-        displayLayers,
-        slot,
-        pointerInRow: pointerInRow,
-      );
+      _rowOrderDrag?.updateLayerRow(displayLayers, slot, pointer: pointer);
       return;
     }
     final cut = _project.cutById(seat.cutId);
@@ -196,9 +193,14 @@ class LayerRowDrag {
     _rowOrderDrag?.updateLayerRow(
       rows,
       slot,
-      pointerInRow: pointerInRow == null
-          ? null
-          : _seatRowIn(cut, pointerInRow)?.id,
+      // A conte row with no seat in [cut] is still a row the pointer stands
+      // in, one the cut does not hold.
+      pointer: switch (pointer) {
+        PointerInRow(:final layerId) => PointerInRow(
+          _seatRowIn(cut, layerId)?.id ?? layerId,
+        ),
+        _ => pointer,
+      },
     );
   }
 

@@ -67,7 +67,7 @@ void main() {
     hooks = TimelineRowDragHooks(
       drag: drag,
       onBegin: (_) {},
-      onUpdate: (_, _, {pointerInRow}) {},
+      onUpdate: (_, _, {pointer}) {},
       onRowTarget: (_, _, _) {},
       onEffectUpdate: (_, _, _) {},
       onEnd: () {},

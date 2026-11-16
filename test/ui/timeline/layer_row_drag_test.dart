@@ -13,6 +13,8 @@ import 'package:anicel/src/models/layer_effect.dart' show EffectKind;
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show transitionLayerIdForTrack;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -1048,6 +1050,13 @@ void main() {
   Finder caretBefore(String id) =>
       find.byKey(ValueKey<String>('timeline-row-caret-before-$id'));
 
+  Finder caretAfter(String id) =>
+      find.byKey(ValueKey<String>('timeline-row-caret-after-$id'));
+
+  final anyRailRow = find.namedWhere(
+    (name) => name.startsWith('timeline-layer-row-'),
+  );
+
   final anyCaret = find.byWidgetPredicate(
     (widget) =>
         widget.key is ValueKey<String> &&
@@ -1193,6 +1202,116 @@ void main() {
     ];
     expect(ids.indexOf('m1'), greaterThan(ids.indexOf('f')));
     expect(_layerOf(session, 'm1').folderId, isNull);
+  });
+
+  group('🚨F-393: a row past its group\'s rows lets go there', () {
+    // 검증 2026-11-16 (서피스, 마우스): with the pointer over a row the cut
+    // does not hold — a track's row, on the rail and in no cut — or past
+    // the end of the list, the line said nothing, and the row stayed in the
+    // group or folder it was carried out of. A cut's own row there (the
+    // camera's) let it go.
+    final transition = transitionLayerIdForTrack(
+      const TrackId('drag-track'),
+    ).value;
+
+    testWidgets('the top rider of its section, over the track\'s row above '
+        'it, lets go of its base', (tester) async {
+      await _pump(
+        tester,
+        project: _stackProject([
+          Layer(id: const LayerId('base'), name: 'B', frames: const []),
+          Layer(
+            id: const LayerId('over'),
+            name: 'B+1',
+            frames: const [],
+            attachedToLayerId: const LayerId('base'),
+          ),
+        ]),
+      );
+      final session = _sessionOf(tester);
+      expect(
+        tester.getRect(_railRow(transition)).bottom,
+        lessThanOrEqualTo(tester.getRect(_railRow('over')).top),
+        reason: '⛔전제: the track\'s row stands above the section\'s top',
+      );
+      final dx = tester.getCenter(_railRowGrip('over')).dx;
+
+      final gesture = await lift(tester, 'over');
+      await pointInto(tester, gesture, transition, fraction: 0.8, dx: dx);
+      expect(caretBefore('over'), findsOneWidget);
+      expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(_order(session), ['base', 'over']);
+      expect(_layerOf(session, 'over').attachedToLayerId, isNull);
+    });
+
+    testWidgets('the last rider of the list, past its end, lets go of its '
+        'base', (tester) async {
+      await _pump(
+        tester,
+        project: _stackProject([
+          Layer(
+            id: const LayerId('under'),
+            name: 'B-1',
+            frames: const [],
+            attachedToLayerId: const LayerId('base'),
+            attachedPlacement: AttachedPlacement.below,
+          ),
+          Layer(id: const LayerId('base'), name: 'B', frames: const []),
+        ]),
+      );
+      final session = _sessionOf(tester);
+      final row = tester.getRect(_railRow('under'));
+      final rowTops = [
+        for (final element in anyRailRow.evaluate())
+          if (element.renderObject case final RenderBox box)
+            box.localToGlobal(Offset.zero).dy,
+      ];
+      expect(rowTops, contains(row.top), reason: '⛔전제: the rows are read');
+      expect(
+        rowTops.where((top) => top >= row.bottom),
+        isEmpty,
+        reason: '⛔전제: no row is drawn below the list\'s last',
+      );
+      final dx = tester.getCenter(_railRowGrip('under')).dx;
+
+      final gesture = await lift(tester, 'under');
+      await gesture.moveTo(Offset(dx, row.bottom + 8));
+      await tester.pump();
+      expect(caretAfter('under'), findsOneWidget);
+      expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(_order(session), ['under', 'base']);
+      expect(_layerOf(session, 'under').attachedToLayerId, isNull);
+    });
+
+    testWidgets('the TOP folder\'s top member, over the track\'s row above '
+        'it, goes out of the folder', (tester) async {
+      await _pump(tester, project: _topFolderProject());
+      final session = _sessionOf(tester);
+      expect(
+        tester.getRect(_railRow(transition)).bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.named('timeline-folder-row-f')).top,
+        ),
+        reason: '⛔전제: the track\'s row stands above the folder',
+      );
+      final dx = tester.getCenter(_railRowGrip('m2')).dx;
+
+      final gesture = await lift(tester, 'm2');
+      await pointInto(tester, gesture, transition, fraction: 0.8, dx: dx);
+      expect(caretBefore('f'), findsOneWidget);
+      expect(find.text(AppText.strings.tlDropOutOfFolder), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final ids = [
+        for (final layer in session.requireActiveCut.layers) layer.id.value,
+      ];
+      expect(ids.indexOf('m2'), greaterThan(ids.indexOf('f')));
+      expect(_layerOf(session, 'm2').folderId, isNull);
+    });
   });
 
   testWidgets('🚨F-423②: what a drop draws on a row — the line\'s notice, '
@@ -1473,7 +1592,7 @@ void main() {
                 hooks: TimelineRowDragHooks(
                   drag: drag,
                   onBegin: (_) {},
-                  onUpdate: (_, _, {pointerInRow}) {},
+                  onUpdate: (_, _, {pointer}) {},
                   onRowTarget: (_, _, _) {},
                   onEffectUpdate: (_, _, _) {},
                   onEnd: () {},
@@ -1630,7 +1749,7 @@ void main() {
                 hooks: TimelineRowDragHooks(
                   drag: drag,
                   onBegin: (_) {},
-                  onUpdate: (_, _, {pointerInRow}) {},
+                  onUpdate: (_, _, {pointer}) {},
                   onRowTarget: (_, _, _) {},
                   onEffectUpdate: (_, _, _) {},
                   onEnd: () {},
@@ -1688,7 +1807,7 @@ void main() {
                 hooks: TimelineRowDragHooks(
                   drag: drag,
                   onBegin: (_) {},
-                  onUpdate: (_, _, {pointerInRow}) {},
+                  onUpdate: (_, _, {pointer}) {},
                   onRowTarget: (_, _, _) {},
                   onEffectUpdate: (_, _, _) {},
                   onEnd: () {},
@@ -1738,7 +1857,7 @@ void main() {
                 hooks: TimelineRowDragHooks(
                   drag: drag,
                   onBegin: (_) {},
-                  onUpdate: (_, _, {pointerInRow}) {},
+                  onUpdate: (_, _, {pointer}) {},
                   onRowTarget: (_, _, _) {},
                   onEffectUpdate: (_, _, _) {},
                   onEnd: () {},

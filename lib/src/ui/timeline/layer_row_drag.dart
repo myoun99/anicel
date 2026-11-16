@@ -340,14 +340,14 @@ class TimelineRowDragHooks {
   /// the list the SURFACE renders, so the session can map the slot onto the
   /// model without guessing which way this rail runs.
   ///
-  /// F-31②: [pointerInRow] is the row the pointer stands IN — null over a
-  /// lane, or from a surface with no rail rows to name. The gap alone
-  /// cannot say which side of a group's boundary the drag came to rest on;
-  /// this is the half that can.
+  /// F-31②: [pointer] is where the pointer stands — in a row (a lane names
+  /// its layer) or past the rail's rows — or null from a surface with no
+  /// rail rows to name. The gap alone cannot say which side of a group's
+  /// boundary the drag came to rest on; this is the half that can.
   final void Function(
     List<Layer> displayLayers,
     int slot, {
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   })
   onUpdate;
 
@@ -1466,7 +1466,7 @@ Widget layerRowDragWrapper({
       hooks.onUpdate(
         drawn.layers,
         slot,
-        pointerInRow: drawn.layerUnder(inRow)?.id,
+        pointer: drawn.pointerAt(inRow),
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null

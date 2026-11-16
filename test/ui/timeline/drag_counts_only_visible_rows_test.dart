@@ -167,9 +167,13 @@ void main() {
     test('but the pointer over a lane stands in that lane\'s LAYER — the '
         'half a boundary is read off (F-31②)', () {
       final fromB = LayerRowCaret.of(rows, b.id)!;
+      LayerId? layerAt(int inRow) => switch (fromB.pointerAt(inRow)) {
+        PointerInRow(:final layerId) => layerId,
+        PointerPastTheRows() => null,
+      };
 
       expect(
-        [for (final inRow in [-3, -2, -1, 0, 1]) fromB.layerUnder(inRow)?.id],
+        [for (final inRow in [-3, -2, -1, 0, 1]) layerAt(inRow)],
         [a.id, a.id, a.id, b.id, c.id],
         reason:
             'a lane holds no drop, but it is still its layer\'s: read as no '
@@ -177,8 +181,19 @@ void main() {
             'folder, and over a neighbour\'s it stayed in a group it had '
             'left',
       );
-      expect(fromB.layerUnder(-4), isNull, reason: 'above the rail');
-      expect(fromB.layerUnder(2), isNull, reason: 'below the rail');
+      // F-393 (검증 2026-11-16): past the ends is a place of its own — read
+      // as no pointer, a row carried past the end of the list stayed in
+      // the group it was let go of.
+      expect(
+        fromB.pointerAt(-4),
+        isA<PointerPastTheRows>(),
+        reason: 'above the rail',
+      );
+      expect(
+        fromB.pointerAt(2),
+        isA<PointerPastTheRows>(),
+        reason: 'below the rail',
+      );
     });
 
     test('the row\'s own place has two gaps, and the pointer past its OWN '

@@ -477,7 +477,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('a1'),
         insertAt: 4,
-        pointerInRow: const LayerId('a2'),
+        pointer: const PointerInRow(LayerId('a2')),
       )!;
       expect(inside.attach.detachIds, isEmpty);
       expect(_ids(inside.order), ['under', 'base', 'a2', 'a1', 'top']);
@@ -485,7 +485,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('a1'),
         insertAt: 4,
-        pointerInRow: const LayerId('top'),
+        pointer: const PointerInRow(LayerId('top')),
       )!;
       expect(outside.attach.detachIds, {const LayerId('a1')});
       expect(_ids(outside.order), ['under', 'base', 'a2', 'a1', 'top']);
@@ -508,7 +508,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('a1'),
         insertAt: 4,
-        pointerInRow: const LayerId('far'),
+        pointer: const PointerInRow(LayerId('far')),
       )!;
       expect(within.attach.detachIds, isEmpty);
       expect(_ids(within.order), [
@@ -526,7 +526,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('a1'),
         insertAt: 6,
-        pointerInRow: const LayerId('a2'),
+        pointer: const PointerInRow(LayerId('a2')),
       )!;
       expect(beyond.attach.detachIds, {const LayerId('a1')});
     });
@@ -604,7 +604,7 @@ void main() {
           stack: above,
           movingId: const LayerId('a2'),
           insertAt: gap,
-          pointerInRow: const LayerId('top'),
+          pointer: const PointerInRow(LayerId('top')),
         )!;
         expect(_ids(plan.order), [
           'under',
@@ -625,7 +625,7 @@ void main() {
             stack: above,
             movingId: const LayerId('a2'),
             insertAt: 4,
-            pointerInRow: pointer == null ? null : LayerId(pointer),
+            pointer: pointer == null ? null : PointerInRow(LayerId(pointer)),
           ),
           isNull,
           reason: 'pointer $pointer',
@@ -644,7 +644,7 @@ void main() {
         stack: below,
         movingId: const LayerId('u'),
         insertAt: 1,
-        pointerInRow: const LayerId('under'),
+        pointer: const PointerInRow(LayerId('under')),
       )!;
       expect(_ids(plan.order), ['under', 'u', 'base', 'top']);
       expect(plan.attach.detachIds, {const LayerId('u')});
@@ -653,7 +653,7 @@ void main() {
           stack: below,
           movingId: const LayerId('u'),
           insertAt: 1,
-          pointerInRow: const LayerId('base'),
+          pointer: const PointerInRow(LayerId('base')),
         ),
         isNull,
       );
@@ -678,7 +678,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('m2'),
         insertAt: 1,
-        pointerInRow: const LayerId('m1'),
+        pointer: const PointerInRow(LayerId('m1')),
       )!;
       expect(_ids(plan.order), ['A', 'm2', 'm1', 'F', 'top']);
       expect(plan.folderIds, isEmpty);
@@ -690,7 +690,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('m2'),
         insertAt: 1,
-        pointerInRow: const LayerId('A'),
+        pointer: const PointerInRow(LayerId('A')),
       )!;
       expect(_ids(plan.order), ['A', 'm2', 'm1', 'F', 'top']);
       expect(plan.folderIds, {const LayerId('m2'): null});
@@ -702,7 +702,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('m1'),
         insertAt: 1,
-        pointerInRow: const LayerId('A'),
+        pointer: const PointerInRow(LayerId('A')),
       )!;
       expect(_ids(out.order), ['A', 'm1', 'm2', 'F', 'top']);
       expect(out.folderIds, {const LayerId('m1'): null});
@@ -713,7 +713,7 @@ void main() {
             stack: stack,
             movingId: const LayerId('m1'),
             insertAt: 1,
-            pointerInRow: LayerId(pointer),
+            pointer: PointerInRow(LayerId(pointer)),
           ),
           isNull,
           reason: pointer,
@@ -727,7 +727,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('top'),
         insertAt: 1,
-        pointerInRow: const LayerId('m1'),
+        pointer: const PointerInRow(LayerId('m1')),
       )!;
       expect(_ids(plan.order), ['A', 'top', 'm1', 'm2', 'F']);
       expect(plan.folderIds, isEmpty);
@@ -740,7 +740,7 @@ void main() {
         stack: stack,
         movingId: const LayerId('m1'),
         insertAt: 4,
-        pointerInRow: const LayerId('top'),
+        pointer: const PointerInRow(LayerId('top')),
       )!;
       expect(_ids(out.order), ['A', 'm2', 'F', 'm1', 'top']);
       expect(out.folderIds, {const LayerId('m1'): null});
@@ -749,7 +749,7 @@ void main() {
           stack: stack,
           movingId: const LayerId('m1'),
           insertAt: 4,
-          pointerInRow: const LayerId('F'),
+          pointer: const PointerInRow(LayerId('F')),
         ),
         isNull,
       );
@@ -762,6 +762,103 @@ void main() {
         insertAt: 1,
       )!;
       expect(plan.folderIds, {const LayerId('m2'): null});
+    });
+  });
+
+  group('🚨F-393: past a group is any row not its own, and no row at all', () {
+    // 검증 2026-11-16: a rider under a track's SE row (on the rail, in no
+    // cut), a rider at the end of the list, and a folder's top member
+    // under that SE row stayed where they were let go of — a row missing
+    // from the stack was read as one the drag carries, and past the end as
+    // no pointer.
+    const outside = [PointerInRow(LayerId('se')), PointerPastTheRows()];
+    String said(RowPointer? pointer) => switch (pointer) {
+      null => 'no pointer',
+      PointerInRow(:final layerId) => 'in ${layerId.value}',
+      PointerPastTheRows() => 'past the rows',
+    };
+
+    test('the outermost rider above lets go on its own outer line', () {
+      final stack = [_row('base'), _row('over', attachedTo: 'base')];
+      for (final pointer in outside) {
+        final plan = resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('over'),
+          insertAt: 2,
+          pointer: pointer,
+        );
+        expect(plan?.attach.detachIds, {
+          const LayerId('over'),
+        }, reason: said(pointer));
+        expect(_ids(plan!.order), ['base', 'over']);
+      }
+      // The row the drag carries, the group's own, and no pointer at all
+      // keep it — so nothing changes, and nothing lands.
+      for (final pointer in [
+        const PointerInRow(LayerId('over')),
+        const PointerInRow(LayerId('base')),
+        null,
+      ]) {
+        expect(
+          resolveLayerDrop(
+            stack: stack,
+            movingId: const LayerId('over'),
+            insertAt: 2,
+            pointer: pointer,
+          ),
+          isNull,
+          reason: said(pointer),
+        );
+      }
+    });
+
+    test('and so does the outermost rider below', () {
+      final stack = [
+        _row('under', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+      ];
+      for (final pointer in outside) {
+        final plan = resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('under'),
+          insertAt: 0,
+          pointer: pointer,
+        );
+        expect(plan?.attach.detachIds, {
+          const LayerId('under'),
+        }, reason: said(pointer));
+      }
+    });
+
+    test('a folder\'s top member goes out on the line above its folder', () {
+      final stack = [
+        _row('m1', folderId: 'F'),
+        _row('m2', folderId: 'F'),
+        _row('F', kind: LayerKind.folder),
+      ];
+      for (final pointer in outside) {
+        final plan = resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('m2'),
+          insertAt: 3,
+          pointer: pointer,
+        );
+        expect(plan?.folderIds, {
+          const LayerId('m2'): null,
+        }, reason: said(pointer));
+        expect(_ids(plan!.order), ['m1', 'F', 'm2']);
+      }
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('m2'),
+          insertAt: 3,
+          pointer: const PointerInRow(LayerId('F')),
+        ),
+        isNull,
+        reason: 'in the folder row\'s half it stays in, and a member cannot '
+            'sit above its folder',
+      );
     });
   });
 
@@ -1405,7 +1502,7 @@ void main() {
           stack: facing(),
           movingId: const LayerId('p'),
           insertAt: 4,
-          pointerInRow: inRow == null ? null : LayerId(inRow),
+          pointer: inRow == null ? null : PointerInRow(LayerId(inRow)),
         );
         expect(attachOf(plan), '', reason: 'pointer in $inRow');
         expect(_ids(plan!.order), pInTheSeat);

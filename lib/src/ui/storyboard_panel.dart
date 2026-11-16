@@ -140,6 +140,8 @@ import 'timeline/effect_lane_policy.dart'
     show effectGroupLaneId, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart'
     show
+        PointerInRow,
+        PointerPastTheRows,
         RowLinesBeyond,
         linesBeyondRow,
         ownsTheLane,

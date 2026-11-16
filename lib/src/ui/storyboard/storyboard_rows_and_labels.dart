@@ -717,9 +717,9 @@ class _StoryboardRowsAndLabels {
           hooks.onUpdate(
             rows,
             slot,
-            pointerInRow: under >= 0 && under < rows.length
-                ? rows[under].id
-                : null,
+            pointer: under >= 0 && under < rows.length
+                ? PointerInRow(rows[under].id)
+                : const PointerPastTheRows(),
           );
         },
         onSelectCrossed: _spanOnSelect(),

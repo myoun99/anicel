@@ -890,7 +890,7 @@ void main() {
         drag: ValueNotifier<LayerRowDragState?>(null),
         onBegin: (_) {},
         onRowTarget: (_, _, _) {},
-        onUpdate: (rows, slot, {pointerInRow}) =>
+        onUpdate: (rows, slot, {pointer}) =>
             moves.add([for (final row in rows) row.name]),
         onTrackUpdate: (_) {},
         onEffectUpdate: (_, _, _) {},
