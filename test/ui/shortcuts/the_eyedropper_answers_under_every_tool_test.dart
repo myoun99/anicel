@@ -137,6 +137,68 @@ void main() {
     }
   });
 
+  // 🔎I-110 (검증/서피스 11-17, 실기): Alt pressed while a lasso fill was
+  // traced painted nothing — the eyedropper took the tool from under the
+  // drag. A held key waits for what the canvas is in the middle of — a
+  // stroke, a drag on a selection layer — as a mapped button does, and then
+  // takes the tool.
+  testWidgets('🚨Alt pressed in the middle of a drag takes the tool only as '
+      'the hand comes up, under every tool', (tester) async {
+    // ⛔Spelled here, not asked of the code: the tools whose press is a
+    // drag the canvas is in the middle of — a stroke, or a selection
+    // layer's outline.
+    const dragged = {
+      CanvasTool.brush,
+      CanvasTool.eraser,
+      CanvasTool.fillShape,
+      CanvasTool.cut,
+      CanvasTool.shape,
+    };
+    const keepsItsAlt = {CanvasTool.select, CanvasTool.move};
+    // Where the drag leaves the tool, Alt or none: a fresh cut arms its
+    // stamp ([WorkspaceBrushPresets.armStampOnFreshCut]).
+    const endsAt = {CanvasTool.cut: CanvasTool.cutStamp};
+    final brush = await pumpShell(tester);
+    final at = visibleCanvasPoint(tester);
+    for (final tool in CanvasTool.values) {
+      if (keepsItsAlt.contains(tool)) continue;
+      await take(tester, brush, tool);
+      final hand = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var step = 1; step <= 4; step += 1) {
+        await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+        await tester.pump();
+      }
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        dragged.contains(tool) ? tool : CanvasTool.eyedropper,
+        reason: '${tool.name}, Alt in the middle of the drag',
+      );
+      await hand.moveTo(at + const Offset(20, 60));
+      await tester.pump();
+      await hand.up();
+      await tester.pump();
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        CanvasTool.eyedropper,
+        reason: '${tool.name}, the hand up with Alt held',
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        endsAt[tool] ?? tool,
+        reason: '${tool.name}, Alt let go',
+      );
+      expect(tester.takeException(), isNull, reason: tool.name);
+    }
+  });
+
   // 🚨The BUTTONS, through the real shell: every tool's own layer is
   // mounted over the canvas when the press comes, and goes away under the
   // pointer when the hold takes the tool.

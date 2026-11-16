@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
     show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
 
+import '../canvas/canvas_drag_in_flight.dart';
 import '../canvas/shown_cels.dart';
 import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
@@ -1721,6 +1722,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
+      CanvasDragInFlight.report(this, active: false);
     }
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
@@ -2242,6 +2244,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                         active,
                       );
                   _selectionDragActive = active;
+                  CanvasDragInFlight.report(
+                    this,
+                    active: active,
+                  );
                 }
               },
               // R14-④: the Move tool lifts the

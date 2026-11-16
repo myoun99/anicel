@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import '../../services/input/modifier_keys.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/temporary_tool.dart';
+import '../canvas/canvas_drag_in_flight.dart';
 import '../canvas/canvas_line_hold.dart';
 import '../canvas/canvas_view_hold.dart';
 import 'editor_action_registry.dart';
@@ -45,7 +46,8 @@ final class EditorKeyHolds {
     HardwareKeyboard.instance.addHandler(_onKey);
     GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
     CanvasViewHold.reask = _reaskTheView;
-    strokeLive.addListener(_onStrokeLive);
+    strokeLive.addListener(_onPressInFlight);
+    CanvasDragInFlight.live.addListener(_onPressInFlight);
   }
 
   final EditorShortcutBindings bindings;
@@ -59,6 +61,16 @@ final class EditorKeyHolds {
   ValueListenable<bool> get strokeLive => _strokeLive;
   ValueListenable<bool> _strokeLive;
 
+  /// Whether the canvas is in the middle of a press a tool switch would
+  /// take the tool from under: a stroke ([strokeLive]), or a drag on a
+  /// selection layer ([CanvasDragInFlight]) — what a canvas's mapped
+  /// buttons wait out too (`_busy`).
+  ///
+  /// 🔎I-110 (검증/서피스 11-17, 실기): Alt pressed while a lasso fill was
+  /// traced painted nothing. ↩️A stroke alone, till then.
+  bool get _pressInFlight =>
+      strokeLive.value || CanvasDragInFlight.live.value;
+
   /// Hears [next] instead — the stroke of the project that came on screen.
   ///
   /// 🚨The holds are the WINDOW's and outlive a project tab switch (I-7):
@@ -68,10 +80,10 @@ final class EditorKeyHolds {
     if (identical(next, _strokeLive)) {
       return;
     }
-    _strokeLive.removeListener(_onStrokeLive);
+    _strokeLive.removeListener(_onPressInFlight);
     _strokeLive = next;
-    next.addListener(_onStrokeLive);
-    _onStrokeLive();
+    next.addListener(_onPressInFlight);
+    _onPressInFlight();
   }
 
   final Map<LogicalKeyboardKey, _KeyHold> _held = {};
@@ -110,7 +122,7 @@ final class EditorKeyHolds {
       _held[key] = _KeyHold.line;
       CanvasLineHold.held.value = true;
     } else if (bindings.presses(EditorActionIds.eyedropperHold, event)) {
-      if (strokeLive.value) {
+      if (_pressInFlight) {
         _waiting.add(key);
       } else {
         _holdEyedropper(key);
@@ -169,19 +181,19 @@ final class EditorKeyHolds {
     temporaryTool.hold(CanvasTool.eyedropper);
   }
 
-  void _onStrokeLive() {
-    if (strokeLive.value || _waiting.isEmpty) {
+  void _onPressInFlight() {
+    if (_pressInFlight || _waiting.isEmpty) {
       return;
     }
-    // ⚠️Not now: a stroke also ends inside a TEARDOWN (a panel unmounting
-    // mid-stroke lets go of it), and switching the tool there would
-    // rebuild a tree that is being taken down.
+    // ⚠️Not now: a stroke or a drag also ends inside a TEARDOWN (a panel
+    // unmounting mid-stroke lets go of it), and switching the tool there
+    // would rebuild a tree that is being taken down.
     scheduleMicrotask(_takeWaiting);
   }
 
   void _takeWaiting() {
     // A new stroke may have begun before the wait resolved.
-    if (strokeLive.value) {
+    if (_pressInFlight) {
       return;
     }
     final waiting = [..._waiting];
@@ -298,7 +310,8 @@ final class EditorKeyHolds {
     if (CanvasViewHold.reask == _reaskTheView) {
       CanvasViewHold.reask = null;
     }
-    _strokeLive.removeListener(_onStrokeLive);
+    _strokeLive.removeListener(_onPressInFlight);
+    CanvasDragInFlight.live.removeListener(_onPressInFlight);
     _waiting.clear();
     _viewPresses.clear();
     _held.clear();
