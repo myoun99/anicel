@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/rendering.dart' show Layer, TextureLayer;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'dart:ui' show FilterQuality, Offset, Rect, Size;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -115,7 +116,7 @@ final class EngineScreenTexture {
     );
     // After it is presented: a frame that failed, or is still being drawn,
     // stands as it stood.
-    return _layerOf(texture, place);
+    return layerOf(texture, place);
   }
 
   /// The frame the texture open shows already, nothing drawn, by a layer
@@ -124,7 +125,7 @@ final class EngineScreenTexture {
     final texture = _texture;
     return texture == null || !texture.showsAFrame
         ? null
-        : _layerOf(texture, place);
+        : layerOf(texture, place);
   }
 
   /// A rect as big as [texture] around [shown], on device pixels: what it
@@ -142,8 +143,9 @@ final class EngineScreenTexture {
     );
   }
 
-  /// What [texture] shows now, laid at [place].
-  static Layer _layerOf(
+  /// What [texture] shows now, laid at [place] — a box's own, or the
+  /// picture another left up for it ([PicturesLeftUp]).
+  static Layer layerOf(
     ScreenTexture texture,
     FramePlace place,
   ) => debugLayerOfScreen(
@@ -179,6 +181,19 @@ final class EngineScreenTexture {
     _opening = null;
     _onTheEngine.stop();
     _freed();
+  }
+
+  /// [stop], keeping the texture where it shows a frame: what the box
+  /// showed last, the caller's now — left up for the screen that takes the
+  /// box's place ([PicturesLeftUp]). Null where it showed none.
+  ScreenTexture? stopLeavingItsFrame() {
+    final texture = _texture;
+    final up = texture != null && texture.showsAFrame;
+    if (up) {
+      _texture = null;
+    }
+    stop();
+    return up ? texture : null;
   }
 
   /// The engine the texture was opened on is the app's no more: neither is
@@ -239,5 +254,62 @@ final class EngineScreenTexture {
     _texture = opened..putUp = _putUp;
     _opened(engine);
     await held?.free();
+  }
+}
+
+/// 🚨★★★THE CANVAS'S PICTURE STANDS TILL THE SCREEN THAT TAKES ITS PLACE
+/// PUTS ONE UP — the screen's own law ([ScreenTexture.present]: the last
+/// frame put up stands meanwhile) across a screen made anew.
+///
+/// 🗣️F-365-Q2 (유저 2026-10-15): 「컷을 넘을 때도 직전 그림을 남기고」, and
+/// F-599 (유저 2026-11-16): the conte's run showed a black frame on the
+/// canvas at every cut it crossed. 🔬Measured on the Surface Pro 11 (S5 cut
+/// 352 into 353): the film's unit of the cut coming in is a screen of its
+/// own, and for its first paints it had nothing up — no texture yet, then
+/// none of its frames finished — so the stage's floor showed through. The
+/// same at Play and at Stop, where the editing canvas's screen and the
+/// film's take each other's place.
+///
+/// The picture handed on is the canvas's own, on its paper
+/// ([DemandedPicture.paintPaper]): the editing canvas's frame and the film's
+/// stage — never the ghosts laid over it, nor a track over the stage. A
+/// screen let go of leaves what it showed last here, and one that has put
+/// none up yet stands on it till it has; what no screen takes in the frame
+/// it was left in is freed after it. ⚠️Where two were left in one frame,
+/// which stands for which is not known: neither is taken, and the screens
+/// that come show their floor till they are up, as they did.
+final class PicturesLeftUp {
+  final List<({ScreenTexture texture, GpuEngine? engine})> _left = [];
+  bool _sweepAsked = false;
+
+  /// [texture] — up on a screen of the canvas's picture let go of — kept
+  /// for the screen that takes its place, till this frame is over.
+  void left(ScreenTexture texture) {
+    texture.putUp = null;
+    _left.add((texture: texture, engine: appGpuEngineOpen.value));
+    if (_sweepAsked) {
+      return;
+    }
+    _sweepAsked = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) => _sweep());
+  }
+
+  /// The picture left up this frame for a screen of the canvas's picture
+  /// that has none up, now that screen's to free — null where none was, or
+  /// more than one, or it was left on an engine the app has let go.
+  ScreenTexture? take() {
+    if (_left.length != 1 ||
+        !identical(_left.single.engine, appGpuEngineOpen.value)) {
+      return null;
+    }
+    return _left.removeLast().texture;
+  }
+
+  void _sweep() {
+    _sweepAsked = false;
+    for (final (:texture, engine: _) in _left) {
+      unawaited(texture.free());
+    }
+    _left.clear();
   }
 }

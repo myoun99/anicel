@@ -97,6 +97,7 @@ class _PanelBuild {
       child: PictureUpViewScope(
         view: _state._pictureUp,
         together: _state._picturesUp,
+        picturesLeftUp: _state._picturesLeftUp,
         child: _gestureLayer(context),
       ),
     );

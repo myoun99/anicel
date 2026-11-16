@@ -147,6 +147,7 @@ import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../widgets/panel_flyout.dart';
 import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
+import '../engine_screen_texture.dart' show PicturesLeftUp;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -1163,6 +1164,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// What the canvas's pictures go up together by ([PicturesUpTogether]).
   final PicturesUpTogether _picturesUp = PicturesUpTogether();
+
+  /// Where the canvas's picture is left up for the screen that takes its
+  /// place — at a cut a run crosses, at Play and at Stop ([PicturesLeftUp]).
+  final PicturesLeftUp _picturesLeftUp = PicturesLeftUp();
 
   /// The view what stands on the canvas's coordinates is drawn through:
   /// the view its picture stands at, the view being as it is

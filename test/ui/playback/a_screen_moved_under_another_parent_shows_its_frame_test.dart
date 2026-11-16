@@ -45,12 +45,12 @@ void main() {
   const under = Color(0xFF203040);
   final view = CanvasViewport(panX: tileSize / 2, panY: tileSize / 4);
 
-  final inked = BrushFrameKey(
-    projectId: const ProjectId('p'),
-    trackId: const TrackId('t'),
-    cutId: const CutId('c'),
-    layerId: const LayerId('inked'),
-    frameId: const FrameId('f'),
+  const inked = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('inked'),
+    frameId: FrameId('f'),
   );
   final cut = Cut(
     id: inked.cutId,
@@ -76,7 +76,7 @@ void main() {
   final screen = GlobalKey();
 
   List<CompositeNode<CanvasStackRow>> treeOf() => [
-    CompositeLeaf<CanvasStackRow>(
+    const CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: inked, opacity: 1),
     ),
   ];

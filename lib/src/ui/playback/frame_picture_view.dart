@@ -1226,6 +1226,13 @@ class _FramePictureViewState extends State<FramePictureView> {
         ? PictureUpViewScope.maybeOf(context)
         : null,
     together: PictureUpViewScope.togetherOf(context),
+    // The canvas's own picture — on its paper: the editing canvas's frame,
+    // the film's stage — is handed on where one screen takes another's
+    // place; never the ghosts over it, nor a track over the stage
+    // ([PicturesLeftUp], F-599).
+    leftUp: widget.picture.paintPaper
+        ? PictureUpViewScope.picturesLeftUpOf(context)
+        : null,
   );
 }
 
@@ -1264,6 +1271,7 @@ class _FrameScreen extends LeafRenderObjectWidget {
     required this.repaint,
     required this.overlays,
     required this.together,
+    required this.leftUp,
   });
 
   final _FramePictureViewState view;
@@ -1281,6 +1289,11 @@ class _FrameScreen extends LeafRenderObjectWidget {
 
   /// What its frames go up together with: the canvas's other pictures.
   final PicturesUpTogether? together;
+
+  /// Where the canvas's picture is left up for the screen that takes its
+  /// place, and taken by one that has put none up — named where this
+  /// screen's picture is the canvas's own, on its paper ([PicturesLeftUp]).
+  final PicturesLeftUp? leftUp;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
@@ -1333,6 +1346,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       _tellTheOverlays();
     },
     letGo: () {
+      _letGoOfTheStandIn();
       markNeedsPaint();
       _tellTheOverlays();
     },
@@ -1351,6 +1365,73 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// What its frames go up together with: the canvas's other pictures.
   PicturesUpTogether? _together;
 
+  /// Where the canvas's picture is left up and taken — this box's where its
+  /// picture is the canvas's own, on its paper ([PicturesLeftUp]).
+  PicturesLeftUp? _leftUp;
+
+  /// The canvas's picture another screen left up, stood on till this box
+  /// has put one up ([PicturesLeftUp]).
+  ScreenTexture? _standIn;
+
+  /// Whether this box's own texture shows a frame.
+  bool get _ownUp => _shownThrough.texture?.showsAFrame ?? false;
+
+  /// The texture this box's picture is seen through now: its own once it
+  /// has put one up, else the picture it stands in on.
+  ScreenTexture? get _seenThrough =>
+      _ownUp ? _shownThrough.texture : _standIn ?? _shownThrough.texture;
+
+  /// The picture left up for this box, laid where it was drawn for — while
+  /// this box has a picture to show and has put none up of its own. Let go
+  /// of where it has none to show: nothing would ever take its place.
+  Layer? _standingIn(Offset offset) {
+    if ((_view._drawnPicture ?? _asItStands) == null) {
+      _letGoOfTheStandIn();
+      return null;
+    }
+    var standIn = _standIn;
+    if (standIn == null) {
+      standIn = _standIn = _leftUp?.take();
+      if (standIn == null) {
+        return null;
+      }
+      _tellTheOverlays();
+    }
+    return EngineScreenTexture.layerOf(standIn, _placeAt(offset));
+  }
+
+  void _letGoOfTheStandIn() {
+    final standIn = _standIn;
+    if (standIn == null) {
+      return;
+    }
+    _standIn = null;
+    unawaited(standIn.free());
+    _tellTheOverlays();
+  }
+
+  /// Lets go of the screen — what it shows left up for the screen that
+  /// takes its place, where its picture is the canvas's own
+  /// ([PicturesLeftUp]).
+  void _leaveWhatIsUp() {
+    final leftUp = _leftUp;
+    final standIn = _standIn;
+    _standIn = null;
+    if (leftUp == null) {
+      _shownThrough.stop();
+      unawaited(standIn?.free());
+      return;
+    }
+    final own = _shownThrough.stopLeavingItsFrame();
+    if (own != null) {
+      unawaited(standIn?.free());
+    }
+    final left = own ?? standIn;
+    if (left != null) {
+      leftUp.left(left);
+    }
+  }
+
   /// The frame up is drawn through another view: what is drawn over the
   /// canvas is told — between the app's frames, as a frame goes up
   /// ([ScreenTexture.putUp]), so the frame that shows it draws them with
@@ -1367,7 +1448,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
 
   /// What the frame up was drawn for — null where none is up.
   _DrawnFor? _shownFor() {
-    final texture = _shownThrough.texture;
+    final texture = _seenThrough;
     final shownFor = texture?.shownFor;
     return texture != null && texture.showsAFrame && shownFor is _DrawnFor
         ? shownFor
@@ -1378,7 +1459,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// is where this box shows none ([viewStandingAt]).
   @override
   CanvasViewport standingFor(CanvasViewport now) {
-    final shownFor = _drawsAnything ? _shownFor() : null;
+    final shownFor = _drawsAnything || _standIn != null ? _shownFor() : null;
     return shownFor == null
         ? now
         : viewStandingAt(shownFor.viewport, now, _devicePixelRatio);
@@ -1437,6 +1518,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       _overlays = screen.overlays;
     }
     _together = screen.together;
+    _leftUp = screen.leftUp;
     if (changed || (moved && !_servedByTheFrameDrawnLast)) {
       markNeedsPaint();
     } else if (moved) {
@@ -1483,7 +1565,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   void detach() {
     _repaint?.removeListener(markNeedsPaint);
     _overlays?.letGoOf(this);
-    _shownThrough.stop();
+    _leaveWhatIsUp();
     super.detach();
   }
 
@@ -1640,7 +1722,11 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
         ? _layerNow(offset)
         : (layer: _shownThrough.standing(_placeAt(offset)), refused: false);
     _view._waitsAtPaint(refused: refused);
-    if (layer == null) {
+    if (_ownUp) {
+      _letGoOfTheStandIn();
+    }
+    final shown = _ownUp ? layer : _standingIn(offset) ?? layer;
+    if (shown == null) {
       return;
     }
     if (_ground case final ground?) {
@@ -1655,7 +1741,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       context.pushClipRect(true, offset, Offset.zero & size, (context, offset) {
         final canvasSize = _cutAtCanvas;
         if (canvasSize == null) {
-          context.addLayer(layer);
+          context.addLayer(shown);
           return;
         }
         // Where the picture stands: through a zoom, as it was drawn.
@@ -1669,7 +1755,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
           offset,
           Offset.zero & size,
           Path()..addPolygon(cut.corners, true),
-          (context, _) => context.addLayer(layer),
+          (context, _) => context.addLayer(shown),
           clipBehavior: cut.behavior,
         );
       });

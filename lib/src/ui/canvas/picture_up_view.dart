@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
+import '../engine_screen_texture.dart' show PicturesLeftUp;
 import 'viewport_canvas_transform.dart';
 
 /// The whole device pixels a picture drawn through [drawnFor] is moved by
@@ -195,11 +196,16 @@ class PictureUpViewScope extends InheritedWidget {
     super.key,
     required this.view,
     required this.together,
+    this.picturesLeftUp,
     required super.child,
   });
 
   final PictureUpView view;
   final PicturesUpTogether together;
+
+  /// Where the canvas's picture is left up for the screen that takes its
+  /// place ([PicturesLeftUp]) — none where null.
+  final PicturesLeftUp? picturesLeftUp;
 
   static PictureUpViewScope? _of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<PictureUpViewScope>();
@@ -209,8 +215,12 @@ class PictureUpViewScope extends InheritedWidget {
   static PicturesUpTogether? togetherOf(BuildContext context) =>
       _of(context)?.together;
 
+  static PicturesLeftUp? picturesLeftUpOf(BuildContext context) =>
+      _of(context)?.picturesLeftUp;
+
   @override
   bool updateShouldNotify(PictureUpViewScope oldWidget) =>
       !identical(view, oldWidget.view) ||
-      !identical(together, oldWidget.together);
+      !identical(together, oldWidget.together) ||
+      !identical(picturesLeftUp, oldWidget.picturesLeftUp);
 }
