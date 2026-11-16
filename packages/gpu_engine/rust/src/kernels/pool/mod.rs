@@ -86,6 +86,26 @@ const MOST_PICTURE_PAGE_BYTES: u64 = 32 << 20;
 /// each by a u16.
 const MOST_NAMED: usize = u16::MAX as usize + 1;
 
+/// The budget a pool keeps to in place of the OS's till one is set
+/// ([`Pool::set_budget_instead`]): none — the OS's — in the app.
+#[cfg(not(test))]
+const BUDGET_TILL_ONE_IS_SET: Option<u64> = None;
+
+/// cargo test's pool keeps to no budget but its own bytes till a test sets
+/// one: the test's numbers, never the machine's as it happens to stand.
+///
+/// 🗣️관제 2026-11-16 (pool-tests-ride-the-os-vram-budget): 「시험은 기계의
+/// 살아 있는 상태에 기대지 않는다 — OS 예산 자체를 재는 시험이 아니면 시험이
+/// 쓰는 풀은 예산을 스스로 정한다」. The budget the OS gives this process
+/// moves with whatever else runs: 🔬the main PC, 20:13 — 13.9 of 16 GB of
+/// VRAM taken by the user's own app and other tests — and 29 tests of this
+/// crate found a pool full at its first page, a landing of an unrelated
+/// lane refused for it. Set here, where every pool is made, not test by
+/// test. A test that keeps a pool to the OS's budget sets it so and says
+/// `os` in its name (`a_test_keeps_to_the_os_s_budget_only_by_name`).
+#[cfg(test)]
+const BUDGET_TILL_ONE_IS_SET: Option<u64> = Some(u64::MAX);
+
 /// A cel the pool stores tiles for — what names the pages its tiles go to
 /// first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -330,7 +350,7 @@ impl Pool {
             slots,
             most_pages,
             most_bytes,
-            budget_instead: None,
+            budget_instead: BUDGET_TILL_ONE_IS_SET,
             cels: 0,
             unwritten: Unwritten::default(),
             ahead: Spare::default(),

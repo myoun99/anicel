@@ -200,7 +200,9 @@ fn a_pool_s_bytes_move_and_the_pages_it_made_stay() {
 #[test]
 fn a_page_past_the_budget_the_os_gives_is_not_made() {
     let page = 2 * TILE_BYTES;
-    let pool = Pool::sized(2, MOST_NAMED, page).expect("pool");
+    let mut pool = Pool::sized(2, MOST_NAMED, page).expect("pool");
+    // Kept to the OS's, as the app's pool is (`BUDGET_TILL_ONE_IS_SET`).
+    pool.set_budget_instead(None);
     let said =
         |used, budget| Some(VideoMemory { used, budget, in_system: None, total: None });
     assert!(pool.fits(said(10, Some(10 + page)), page));
@@ -208,9 +210,101 @@ fn a_page_past_the_budget_the_os_gives_is_not_made() {
     assert!(!pool.fits(said(u64::MAX, Some(u64::MAX)), page), "a sum past a u64 is past any budget");
     assert!(pool.fits(said(u64::MAX, None), page));
     assert!(pool.fits(None, page));
-    let small = Pool::sized(2, MOST_NAMED, page - 1).expect("pool");
+    let mut small = Pool::sized(2, MOST_NAMED, page - 1).expect("pool");
+    small.set_budget_instead(None);
     assert!(!small.fits(None, page));
     assert!(small.fits(said(10, Some(10 + page - TILE_BYTES)), page - TILE_BYTES), "grown by less");
+}
+
+// cargo test's pool keeps to no budget but its own bytes till a test sets
+// one — made by itself, by the engine's size, or over the C ABI as the
+// flood's tests make theirs: an OS that gives this process nothing makes
+// no test's pool full (pool-tests-ride-the-os-vram-budget).
+#[test]
+fn a_test_s_pool_makes_a_page_whatever_budget_the_os_gives() {
+    use super::{gpu_engine_pool_free, gpu_engine_pool_new};
+    let engine = rig().engine;
+    let nothing = Some(VideoMemory { used: u64::MAX / 2, budget: Some(0), in_system: None, total: None });
+    let made = Pool::new(engine, u64::MAX).expect("pool");
+    assert!(made.fits(nothing, made.page_bytes()), "by the engine's size");
+    let sized = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    assert!(sized.fits(nothing, sized.page_bytes()), "by its own");
+    // SAFETY: the engine is the tests' own, alive for the run; the pool is
+    // freed once asked.
+    unsafe {
+        let handed = gpu_engine_pool_new(engine, u64::MAX);
+        assert!((*handed).fits(nothing, (*handed).page_bytes()), "over the C ABI");
+        gpu_engine_pool_free(handed);
+    }
+}
+
+// A test keeps a pool to the OS's budget — the machine's as it happens to
+// stand — only where its name says so: one that rides it is seen by the
+// word `os` in its name, and every other keeps to its own
+// (`BUDGET_TILL_ONE_IS_SET`). ⛔A test of behaviour cannot tell: a pool kept
+// to the OS's passes on a machine with VRAM to spare.
+#[test]
+fn a_test_keeps_to_the_os_s_budget_only_by_name() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut riders = Vec::new();
+    for text in rust_sources(&src) {
+        riders.extend(tests_riding_the_os_s_budget(&text));
+    }
+    riders.sort();
+    assert_eq!(
+        riders,
+        [
+            "a_budget_kept_to_instead_stands_in_the_os_s_place",
+            "a_page_past_the_budget_the_os_gives_is_not_made",
+            "the_c_abi_keeps_a_pool_to_a_budget_in_the_os_s_place",
+        ],
+        "LIVENESS — the scan finds the tests that keep to the OS's budget",
+    );
+    for rider in &riders {
+        assert!(rider.split('_').any(|word| word == "os"), "{rider} keeps to the OS's budget: say `os` in its name");
+    }
+    let planted = format!(
+        "#[test]\nfn a_cel_is_stored() {{\n    pool{NONE_SET};\n}}\n\
+         #[test]\nfn the_most_is_kept() {{\n    {OVER_THE_ABI}pool, -1);\n}}\n\
+         #[test]\nfn a_page_is_made() {{\n    {OVER_THE_ABI}pool, 0);\n}}\n"
+    );
+    assert_eq!(tests_riding_the_os_s_budget(&planted), ["a_cel_is_stored", "the_most_is_kept"], "the scan sees a plant");
+}
+
+/// A budget of none set in the OS's place, and one set over the C ABI —
+/// spelled apart, so the scan's own words are no test's.
+const NONE_SET: &str = concat!(".set_budget_instead", "(None)");
+const OVER_THE_ABI: &str = concat!("gpu_engine_pool_budget_instead", "(");
+
+/// Every `.rs` under `dir`, read.
+fn rust_sources(dir: &std::path::Path) -> Vec<String> {
+    let mut texts = Vec::new();
+    for entry in std::fs::read_dir(dir).expect("the crate's sources") {
+        let path = entry.expect("an entry").path();
+        if path.is_dir() {
+            texts.extend(rust_sources(&path));
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            texts.push(std::fs::read_to_string(&path).expect("a source"));
+        }
+    }
+    texts
+}
+
+/// The tests in `text` that keep a pool to the OS's budget: a budget of
+/// none set in its place, or a negative one over the C ABI — each test
+/// read to the next.
+fn tests_riding_the_os_s_budget(text: &str) -> Vec<String> {
+    let rides = |body: &str| {
+        body.contains(NONE_SET)
+            || body.split(OVER_THE_ABI).skip(1).any(|call| {
+                call.split(')').next().and_then(|args| args.split(',').nth(1)).is_some_and(|bytes| bytes.trim().starts_with('-'))
+            })
+    };
+    text.split("#[test]")
+        .skip(1)
+        .filter(|body| rides(body))
+        .filter_map(|body| body.split("fn ").nth(1)?.split('(').next().map(str::to_owned))
+        .collect()
 }
 
 // A budget kept to in the OS's place is the bound in it — below what the OS
