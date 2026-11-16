@@ -81,6 +81,7 @@ void main() {
       expect(keysOf(anicel, EditorActionIds.editDelete), ['Delete']);
       expect(keysOf(anicel, EditorActionIds.editClearPixels), ['Backspace']);
       expect(keysOf(anicel, EditorActionIds.canvasPanHold), ['Space']);
+      expect(keysOf(anicel, EditorActionIds.eyedropperHold), ['Alt']);
       expect(keysOf(anicel, EditorActionIds.toolEyedropper), ['I']);
     });
 
@@ -88,6 +89,7 @@ void main() {
         'other', () {
       const clipStudio = ShortcutPreset.clipStudio;
       expect(keysOf(clipStudio, EditorActionIds.toolFill), ['G']);
+      expect(keysOf(clipStudio, EditorActionIds.eyedropperHold), ['Alt']);
       // U is Figure and Ruler both in the program: the same command — the
       // shape tool — before the similar one (I-69).
       expect(keysOf(clipStudio, EditorActionIds.toolShape), ['U']);
@@ -216,10 +218,10 @@ void main() {
         isEmpty,
       );
       expect(keysOf(clipStudio, EditorActionIds.toolCut), isEmpty);
-      // Clip Studio's hand on Space and its shape on U meet TVPaint's play
-      // and undo.
+      // Clip Studio's eyedropper on Alt and its shape on U meet TVPaint's
+      // pan (F-603) and undo.
       const tvpaint = ShortcutPreset.tvpaint;
-      expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), isEmpty);
+      expect(keysOf(tvpaint, EditorActionIds.eyedropperHold), isEmpty);
       expect(keysOf(tvpaint, EditorActionIds.toolShape), isEmpty);
       // F8 — TVPaint's Lighten — is a key Clip Studio left free.
       expect(keysOf(clipStudio, blendModeActionId(BrushBlendMode.lighten)), [
@@ -327,8 +329,8 @@ void main() {
       // TVPaint names it none (F-417).
       expect(keysOf(tvpaint, EditorActionIds.toolFillBucket), ['F']);
       expect(keysOf(tvpaint, EditorActionIds.toolFill), ['G']);
-      // Space plays.
-      expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), isEmpty);
+      // Space plays; the view pans on Alt held (F-603).
+      expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), ['Alt']);
     });
 
     test('a TVPaint key that names a command the app lacks takes the key '

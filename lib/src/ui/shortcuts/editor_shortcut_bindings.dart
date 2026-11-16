@@ -254,11 +254,24 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   /// [activator]'s pressable forms for [actionId]: a DIRECTION key of a move
-  /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned.
+  /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned,
+  /// and a key that is modifiers alone is a HELD action's as they go down
+  /// ([ModifiersDownActivator]).
+  ///
+  /// ⚠️F-603-Q1: what a key that is modifiers alone does for an action that
+  /// is pressed rather than held is asked on the board — Ctrl+Z would go
+  /// through Ctrl alone on its way. Till it is answered it presses none,
+  /// and the settings window records none for one.
   Iterable<ShortcutActivator> _formsOf(
     String actionId,
     SingleActivator activator,
   ) {
+    if (isModifiersAlone(activator)) {
+      return [
+        if (definitionFor(actionId)?.hold ?? false)
+          ModifiersDownActivator(activator),
+      ];
+    }
     final place = _turnOf(actionId, activator);
     return place == null
         ? pressableForms(activator)
@@ -809,6 +822,47 @@ class ShiftTypedActivator extends ShortcutActivator {
 
   @override
   String debugDescribeKeys() => 'Shift-typed ${typed.debugDescribeKeys()}';
+}
+
+/// [alone] — a key that is modifiers alone ([modifiersAlone]) — pressed: one
+/// of its modifiers going down with every one of them held, and no other
+/// (F-603).
+class ModifiersDownActivator extends ShortcutActivator {
+  const ModifiersDownActivator(this.alone);
+
+  final SingleActivator alone;
+
+  @override
+  Iterable<LogicalKeyboardKey> get triggers => [
+    if (alone.control) ...const [
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.controlRight,
+    ],
+    if (alone.shift) ...const [
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.shiftRight,
+    ],
+    if (alone.alt) ...const [
+      LogicalKeyboardKey.altLeft,
+      LogicalKeyboardKey.altRight,
+    ],
+    if (alone.meta) ...const [
+      LogicalKeyboardKey.metaLeft,
+      LogicalKeyboardKey.metaRight,
+    ],
+  ];
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) =>
+      event is KeyDownEvent &&
+      triggers.contains(event.logicalKey) &&
+      state.isControlPressed == alone.control &&
+      state.isShiftPressed == alone.shift &&
+      state.isAltPressed == alone.alt &&
+      state.isMetaPressed == alone.meta;
+
+  @override
+  String debugDescribeKeys() => 'held alone ${alone.debugDescribeKeys()}';
 }
 
 /// The app-level ShortcutManager, and what it leaves to a text field.

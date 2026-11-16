@@ -25,20 +25,65 @@ SingleActivator? singleActivatorFromJson(Object? json) {
   }
   final trigger =
       LogicalKeyboardKey.findKeyByKeyId(keyId) ?? LogicalKeyboardKey(keyId);
-  return SingleActivator(
+  final activator = SingleActivator(
     trigger,
     control: json['ctrl'] == true,
     shift: json['shift'] == true,
     alt: json['alt'] == true,
     meta: json['meta'] == true,
   );
+  // Modifiers alone with none of them is no key at all.
+  return isModifiersAlone(activator) && !_holdsAModifier(activator)
+      ? null
+      : activator;
 }
+
+/// The trigger of a key that is its modifiers ALONE — Alt held by itself,
+/// Ctrl+Alt with no other key — the modifiers being the activator's own
+/// flags ([isModifiersAlone]).
+///
+/// 🗣️F-603 (유저 2026-11-16): 「tvp의 캔버스 누르는동안 이동 단축키는 alt
+/// … 단축키등록시 alt나 컨트롤키를 눌러도 단축키등록안됨. 다 가능하게」.
+/// Every key goes about as a [SingleActivator] — the registry, the presets,
+/// the shortcut file, the clashes, the labels — and Flutter's refuses a
+/// modifier as its trigger. So a key that is modifiers alone is one with no
+/// other key: this trigger, which no keyboard sends (a plane Flutter's key
+/// ids leave unused). It is pressed through the form its action reads it in
+/// (`EditorShortcutBindings`), never as a [SingleActivator] matches.
+/// ⛔Not one of the modifiers as the trigger, past the assert: Ctrl+Alt
+/// would be two keys then, one for each order they went down in — and held
+/// keys are a STATE, not an order (I-88).
+const LogicalKeyboardKey modifiersAlone = LogicalKeyboardKey(0x00a00000000);
+
+/// The key that is [control], [shift], [alt] and [meta] — those held — alone
+/// ([modifiersAlone]).
+SingleActivator modifiersAloneActivator({
+  bool control = false,
+  bool shift = false,
+  bool alt = false,
+  bool meta = false,
+}) => SingleActivator(
+  modifiersAlone,
+  control: control,
+  shift: shift,
+  alt: alt,
+  meta: meta,
+);
+
+/// Whether [activator] is a key that is its modifiers alone
+/// ([modifiersAlone]).
+bool isModifiersAlone(SingleActivator activator) =>
+    activator.trigger == modifiersAlone;
+
+bool _holdsAModifier(SingleActivator activator) =>
+    activator.control || activator.shift || activator.alt || activator.meta;
 
 /// Shift, Ctrl, Alt and ⌘ — a key that modifies another rather than being
 /// one. ★One question, two readers: the settings dialog waits past these for
-/// the real trigger, and the playback gate does not count one pressed alone
-/// (유저 2026-09-13, I-19-zoom-key-playback: 「수식키는 혼자선 입력으로 치지
-/// 않는다」).
+/// the real trigger — and takes them alone once one is let go with nothing
+/// else pressed (F-603) — and the playback gate does not count one pressed
+/// alone (유저 2026-09-13, I-19-zoom-key-playback: 「수식키는 혼자선 입력으로
+/// 치지 않는다」).
 bool isModifierKey(LogicalKeyboardKey key) => _modifierKeys.contains(key);
 
 final Set<LogicalKeyboardKey> _modifierKeys = {
@@ -104,18 +149,20 @@ SingleActivator commandSwapped(SingleActivator activator) => SingleActivator(
 /// How a shortcut is written on [platform]: 'Ctrl+Shift+Z' on Windows and
 /// the rest, '⇧⌘Z' on a Mac or an iPad — the modifier glyphs in the order
 /// Apple's own menus print them (⌃⌥⇧⌘), with no separators. The settings
-/// dialog's chips and every tooltip read this one spelling.
+/// dialog's chips and every tooltip read this one spelling. A key that is
+/// modifiers alone is its modifiers: 'Alt', '⌥' ([modifiersAlone]).
 String singleActivatorLabel(
   SingleActivator activator, [
   TargetPlatform? platform,
 ]) {
+  final alone = isModifiersAlone(activator);
   if (commandIsMeta(platform)) {
     return [
       if (activator.control) '⌃',
       if (activator.alt) '⌥',
       if (activator.shift) '⇧',
       if (activator.meta) '⌘',
-      _triggerLabel(activator.trigger, apple: true),
+      if (!alone) _triggerLabel(activator.trigger, apple: true),
     ].join();
   }
   final parts = <String>[
@@ -127,7 +174,7 @@ String singleActivatorLabel(
         'Win'
       else
         'Meta',
-    _triggerLabel(activator.trigger, apple: false),
+    if (!alone) _triggerLabel(activator.trigger, apple: false),
   ];
   return parts.join('+');
 }

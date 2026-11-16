@@ -12,6 +12,8 @@ import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show modifiersAloneActivator;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 
 /// 🗣️I-15 (유저 2026-09-11): 「단축키에 이동? 추가 … 기본값을 … 스페이스바로
@@ -521,6 +523,112 @@ void main() {
     await tester.pump();
     expect(tool.value.tool, CanvasTool.eyedropper);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush);
+  });
+
+  // 🗣️F-603 (유저 2026-11-16): 「tvp의 캔버스 누르는동안 이동 단축키는
+  // alt인데 비어있음. … 이미 쓰는거있으면 옮기거나」.
+  group("under TVPaint's keys, the view is held on modifiers alone", () {
+    /// The road under TVPaint's keys — the turn, where [turnOnCtrlAlt]
+    /// says, on the program's own Ctrl+Alt (asked: F-603-Q2).
+    Future<void> pumpTvpaint(
+      WidgetTester tester, {
+      bool turnOnCtrlAlt = false,
+    }) async {
+      await pumpRoad(tester);
+      bindings.setPreset(ShortcutPreset.tvpaint);
+      if (turnOnCtrlAlt) {
+        bindings.setActivators(EditorActionIds.canvasRotateHold, [
+          modifiersAloneActivator(control: true, alt: true),
+        ]);
+      }
+      await tester.pumpWidget(
+        road(const Focus(autofocus: true, child: SizedBox.expand())),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('🚨Alt held pans, and passes on — it still modifies what it '
+        'is held with; letting go lets go', (tester) async {
+      await pumpTvpaint(tester);
+      expect(
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft),
+        isFalse,
+      );
+      expect(CanvasViewHold.held.value, ViewHold.pan);
+      expect(
+        tool.value.tool,
+        CanvasTool.brush,
+        reason: "Clip Studio's eyedropper on Alt has no key here",
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      expect(CanvasViewHold.held.value, isNull);
+    });
+
+    testWidgets('a turn held on Ctrl+Alt is a STATE of the keys, whichever '
+        'went down first — and Ctrl let go pans again', (tester) async {
+      await pumpTvpaint(tester, turnOnCtrlAlt: true);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      expect(CanvasViewHold.held.value, isNull, reason: 'Ctrl alone is not');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      expect(CanvasViewHold.held.value, ViewHold.turn);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(CanvasViewHold.held.value, ViewHold.pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlRight);
+      expect(CanvasViewHold.held.value, ViewHold.turn);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlRight);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      expect(CanvasViewHold.held.value, isNull);
+    });
+
+    testWidgets('⛔Alt with another key is that key, not the pan', (
+      tester,
+    ) async {
+      await pumpTvpaint(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      expect(CanvasViewHold.held.value, isNull, reason: 'Shift+Alt is not');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    });
+
+    testWidgets('🚨the tools whose own drag reads Alt keep it from whatever '
+        'Alt holds — the pan, and a turn on Ctrl+Alt in either order '
+        '(F-299-Q1)', (tester) async {
+      await pumpTvpaint(tester, turnOnCtrlAlt: true);
+      for (final own in _whereAltIsTheToolsOwn) {
+        tool.value = tool.value.copyWith(tool: own);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        expect(CanvasViewHold.held.value, isNull, reason: '$own');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        expect(CanvasViewHold.held.value, isNull, reason: '$own, Ctrl after');
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.altRight);
+        expect(CanvasViewHold.held.value, isNull, reason: '$own, Alt after');
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.altRight);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      }
+    });
+  });
+
+  testWidgets('the eyedropper follows its binding: moved off Alt, Alt holds '
+      'nothing and its key holds it', (tester) async {
+    await pumpRoad(tester);
+    bindings.setActivators(EditorActionIds.eyedropperHold, const [
+      SingleActivator(LogicalKeyboardKey.keyQ),
+    ]);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+    expect(
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyQ),
+      isTrue,
+      reason: 'a key that is no modifier is spent on its hold',
+    );
+    expect(tool.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyQ);
     expect(tool.value.tool, CanvasTool.brush);
   });
 }

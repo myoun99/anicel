@@ -247,6 +247,13 @@ void main() {
       // till something comes after it (I-19, card
       // a-held-modifiers-repeat-is-heard-as-a-press). It keeps no tool's Alt.
       'lib/src/ui/playback/playback_actuation_gate.dart',
+      // The held keys: a modifier going down with Alt held, under a tool
+      // that keeps its Alt by the predicate above, holds nothing — whatever
+      // Alt holds (F-299-Q1, F-603). It reads the predicate; it keeps none.
+      'lib/src/ui/shortcuts/editor_key_holds.dart',
+      // A key that is modifiers alone, pressed with just its own held
+      // (F-603) — a key, no tool's.
+      'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
       // Off the canvas: a header graph's Alt-click on a line, which picks

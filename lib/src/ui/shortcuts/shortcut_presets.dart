@@ -364,6 +364,13 @@ final Map<String, ProgramRow> _clipStudioRows = {
     [],
     [SingleActivator(LogicalKeyboardKey.space, shift: true)],
   ),
+  // The eyedropper held on Alt, kept with them (F-603). ⚠️MY READING of the
+  // program's modifier key settings, Alt being 「スポイト」 under a drawing
+  // tool — what the app had held under every preset (I-15).
+  EditorActionIds.eyedropperHold: const ProgramRow(
+    [],
+    [SingleActivator(modifiersAlone, alt: true)],
+  ),
   // Rotate/Invert > Rotate Left / Rotate right.
   EditorActionIds.canvasRotateCcw: const ProgramRow(
     ['viewrotateleft'],
@@ -662,11 +669,15 @@ final Map<String, ProgramRow> _clipStudioRows = {
 /// `A` shakes the view, `G` `H` `V` `J` `K` are selection modes, `1`…`9`
 /// scroll the view — the action that held the key here keeps it: only a key
 /// the program gives to one of OUR actions leaves another ([ProgramKeys]).
-/// ⚠️`Space` plays (「再生 / 一時停止」), so the pan held on it has no key
-/// under this preset. The program pans on Alt and turns the view on
-/// Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」 page) — a
-/// modifier alone, which no key binding can hold — so the turn takes
-/// CLIP STUDIO PAINT's Shift+Space here (F-417), anicel's too (I-88).
+/// ⚠️`Space` plays (「再生 / 一時停止」). The program pans on Alt and turns
+/// the view on Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」
+/// page) — modifiers alone. 🗣️F-603 (유저 2026-11-16): 「tvp의 캔버스
+/// 누르는동안 이동 단축키는 alt인데 비어있음」 — the pan holds on Alt here.
+/// ↩️It had no key till then: none could be modifiers alone. Alt held is
+/// Clip Studio's eyedropper too, which the program's pan leaves with no key
+/// here (F-417-Q2). The turn takes CLIP STUDIO PAINT's Shift+Space (F-417),
+/// anicel's too (I-88) — ⚠️whether it turns on the program's own Ctrl+Alt
+/// now that a key can be modifiers alone is asked (F-603-Q2).
 /// ⚠️MY READINGS, each the nearest command, not one the user named: `Del`
 /// is the program's second Cut (「選択範囲をカット (設定で定義した)」, the
 /// timeline's, as Ctrl+X is), so it cuts here rather than clearing pixels;
@@ -682,6 +693,12 @@ final Map<String, ProgramRow> _tvpaintRows = {
   EditorActionIds.canvasLineHold: const ProgramRow(
     [],
     [SingleActivator(LogicalKeyboardKey.keyZ)],
+  ),
+  // Rotate, pan, zoom: the view pans with Alt held (F-603). No keymap file
+  // holds it.
+  EditorActionIds.canvasPanHold: const ProgramRow(
+    [],
+    [SingleActivator(modifiersAlone, alt: true)],
   ),
   // レイヤー: 左に移動 / 右に移動.
   EditorActionIds.framePrevious: const ProgramRow(

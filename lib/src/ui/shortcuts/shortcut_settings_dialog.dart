@@ -54,7 +54,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
 
   /// What the next key pressed is for (null = nothing): a row's new key, or
   /// the key the list is searched by. While set, a key-event listener
-  /// captures the next non-modifier press.
+  /// captures the next key ([_onRecordKey]).
   ///
   /// 🗣️I-168 (유저 2026-11-10): 「동작검색 말고 단축키검색도 생성. 키보드
   /// 단축키 지정하는거 재사용해서 버튼누르고 단축키입력하면 그 키의 단축키
@@ -90,6 +90,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   void _startRecording(_Recording recording) {
+    _modifiersSoFar = null;
     setState(() => _recording = recording);
     _recordFocus.requestFocus();
   }
@@ -115,27 +116,88 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     widget.bindings.setActivators(actionId, const []);
   }
 
+  /// The modifiers held since the recording last saw none held, with no
+  /// other key pressed among them: a key that is modifiers alone, taken as
+  /// the first of them is let go ([_letGoOf]). Null while none is held.
+  ///
+  /// 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
+  /// 단축키등록안됨. 다 가능하게」. ↩️A modifier pressed alone only ever
+  /// waited for the key it modifies till then: a key could not be one.
+  SingleActivator? _modifiersSoFar;
+
   KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
     final recording = _recording;
-    if (recording == null || event is! KeyDownEvent) {
+    final key = event.logicalKey;
+    if (recording == null) {
       return KeyEventResult.ignored;
     }
-    final key = event.logicalKey;
+    if (event is KeyUpEvent && isModifierKey(key)) {
+      _letGoOf(recording);
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
     if (key == LogicalKeyboardKey.escape) {
+      _modifiersSoFar = null;
       setState(() => _recording = null);
       return KeyEventResult.handled;
     }
-    // Modifier presses alone keep waiting for the real trigger.
-    if (isModifierKey(key)) {
-      return KeyEventResult.handled;
-    }
-    final pressed = SingleActivator(
-      key,
+    final held = modifiersAloneActivator(
       control: ModifierKeys.isControlPressed,
       shift: ModifierKeys.isShiftPressed,
       alt: ModifierKeys.isAltPressed,
       meta: ModifierKeys.isMetaPressed,
     );
+    // A modifier waits — for the key it modifies, or to be let go alone.
+    if (isModifierKey(key)) {
+      final soFar = _modifiersSoFar;
+      _modifiersSoFar = soFar == null
+          ? held
+          : modifiersAloneActivator(
+              control: soFar.control || held.control,
+              shift: soFar.shift || held.shift,
+              alt: soFar.alt || held.alt,
+              meta: soFar.meta || held.meta,
+            );
+      return KeyEventResult.handled;
+    }
+    _modifiersSoFar = null;
+    _take(
+      recording,
+      SingleActivator(
+        key,
+        control: held.control,
+        shift: held.shift,
+        alt: held.alt,
+        meta: held.meta,
+      ),
+    );
+    return KeyEventResult.handled;
+  }
+
+  /// A modifier let go: the modifiers held with it, with no other key
+  /// pressed among them, are the key [recording] waited for — for a row
+  /// whose action is held.
+  ///
+  /// ⚠️F-603-Q1: what modifiers alone do for an action that is pressed
+  /// rather than held is asked on the board (Ctrl+Z would go through Ctrl
+  /// alone on its way); till then such a row waits on for another key.
+  void _letGoOf(_Recording recording) {
+    final alone = _modifiersSoFar;
+    _modifiersSoFar = null;
+    if (alone == null) {
+      return;
+    }
+    if (recording case _ForAction(:final actionId)
+        when !(widget.bindings.definitionFor(actionId)?.hold ?? false)) {
+      return;
+    }
+    _take(recording, alone);
+  }
+
+  /// [pressed] is the key [recording] waited for.
+  void _take(_Recording recording, SingleActivator pressed) {
     switch (recording) {
       case _ForAction(:final actionId):
         widget.bindings.setActivators(actionId, [
@@ -151,7 +213,6 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           _openFoundBundles();
         });
     }
-    return KeyEventResult.handled;
   }
 
   /// The DISPLAYED wording, which is what the user is typing against — a

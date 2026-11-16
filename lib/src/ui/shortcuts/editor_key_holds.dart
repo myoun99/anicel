@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../services/input/modifier_keys.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/temporary_tool.dart';
 import '../canvas/canvas_line_hold.dart';
@@ -85,39 +86,67 @@ final class EditorKeyHolds {
   /// moment the stroke ends.
   final Set<LogicalKeyboardKey> _waiting = {};
 
-  /// A key event on the shortcut road. HANDLED when it holds the view or
-  /// the line — the space bar then does nothing else, its repeats
-  /// included; the eyedropper's Alt passes on, because it still modifies
-  /// whatever it is held with.
+  /// A key event on the shortcut road. HANDLED when its key holds anything
+  /// — the space bar then does nothing else, its repeats included — but
+  /// for a modifier, which passes on because it still modifies whatever it
+  /// is held with: the eyedropper's Alt, and the pan's under TVPaint's keys
+  /// (F-603).
   KeyEventResult engage(KeyEvent event) {
     final key = event.logicalKey;
-    if (event is! KeyDownEvent || _held.containsKey(key)) {
-      return switch (_held[key]) {
-        _KeyHold.view || _KeyHold.line => KeyEventResult.handled,
-        _ => KeyEventResult.ignored,
-      };
+    if (event is! KeyDownEvent || _takes(key)) {
+      return _takes(key) ? _taken(key) : KeyEventResult.ignored;
+    }
+    if (_theToolsOwn(key)) {
+      return KeyEventResult.ignored;
     }
     final view = _viewHoldOf(event);
     if (view != null) {
       _held[key] = _KeyHold.view;
       _viewPresses[key] = event;
       CanvasViewHold.held.value = view;
-      return KeyEventResult.handled;
-    }
-    if (bindings.presses(EditorActionIds.canvasLineHold, event)) {
+    } else if (bindings.presses(EditorActionIds.canvasLineHold, event)) {
       _held[key] = _KeyHold.line;
       CanvasLineHold.held.value = true;
-      return KeyEventResult.handled;
-    }
-    if (_isEyedropperKey(key)) {
+    } else if (bindings.presses(EditorActionIds.eyedropperHold, event)) {
       if (strokeLive.value) {
         _waiting.add(key);
       } else {
         _holdEyedropper(key);
       }
+    } else {
+      return KeyEventResult.ignored;
     }
-    return KeyEventResult.ignored;
+    return _taken(key);
   }
+
+  /// Whether [key] holds anything, or waits to.
+  bool _takes(LogicalKeyboardKey key) =>
+      _held.containsKey(key) || _waiting.contains(key);
+
+  /// What [engage] answers for a key that holds: the key is spent — but a
+  /// modifier's passes on.
+  static KeyEventResult _taken(LogicalKeyboardKey key) =>
+      isModifierKey(key) ? KeyEventResult.ignored : KeyEventResult.handled;
+
+  /// Whether [key] going down is the tool's own modifier rather than a key
+  /// that holds: a modifier going down with Alt held, under a tool whose
+  /// own drag reads Alt ([canvasToolReadsAlt]) — whatever Alt holds, alone
+  /// or with Ctrl, in whichever order they went down. A second Alt joins
+  /// the hold the first is in.
+  ///
+  /// 🗣️F-299-Q1 (유저 2026-10-06), the answer picked: 「Alt 가 그 도구의 자기
+  /// 수정자가 아닌 곳 전부에서 스포이드」 — the selection's subtract and the
+  /// transform's scale keep their Alt. ↩️Asked of the eyedropper alone till
+  /// F-603 (2026-11-16) put the pan on Alt under TVPaint's keys: the answer
+  /// is Alt's, so it stands for whatever Alt holds.
+  /// ⚠️Alt is the one modifier a tool's drag reads that has an answer. No
+  /// tool's drag reads Ctrl or ⌘; a hold on Shift alone takes the Shift of
+  /// the tools that read it — nobody has asked otherwise.
+  bool _theToolsOwn(LogicalKeyboardKey key) =>
+      isModifierKey(key) &&
+      ModifierKeys.isAltPressed &&
+      !_held.keys.any(_isAlt) &&
+      canvasToolReadsAlt(tool.value.tool);
 
   /// What [press] holds the view for, with the modifiers as they stand —
   /// or null.
@@ -132,13 +161,8 @@ final class EditorKeyHolds {
   }
 
   /// The eyedropper takes hold whatever tool is in hand (F-299) — but for
-  /// the tools whose own drag reads Alt ([canvasToolReadsAlt]), which keep
-  /// it. A second Alt joins the hold already in force.
+  /// the tools whose own drag reads its Alt ([_theToolsOwn]).
   void _holdEyedropper(LogicalKeyboardKey key) {
-    final joining = _held.containsValue(_KeyHold.eyedropper);
-    if (!joining && canvasToolReadsAlt(tool.value.tool)) {
-      return;
-    }
     _held[key] = _KeyHold.eyedropper;
     temporaryTool.hold(CanvasTool.eyedropper);
   }
@@ -245,8 +269,5 @@ final class EditorKeyHolds {
 /// ([CanvasLineHold]) or the eyedropper.
 enum _KeyHold { view, line, eyedropper }
 
-/// The eyedropper's key — Alt, as it always was (유저: 「스포이드는
-/// 그대로」). ⛔Not a registry binding: Flutter's [SingleActivator] refuses
-/// a modifier as its trigger, and Alt held ALONE is the gesture.
-bool _isEyedropperKey(LogicalKeyboardKey key) =>
+bool _isAlt(LogicalKeyboardKey key) =>
     key == LogicalKeyboardKey.altLeft || key == LogicalKeyboardKey.altRight;

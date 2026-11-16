@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show actionLabelOf, labelWithKeys;
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
-    show activatorKey, singleActivatorLabel;
+    show activatorKey, isModifiersAlone, singleActivatorLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
@@ -254,6 +254,24 @@ void main() {
       expect(rowsListed(tester), ['shortcut-row-$undo']);
     });
 
+
+    testWidgets('a key that is modifiers alone is sought as any other: Alt '
+        'pressed and let go finds what Alt alone holds (F-603)', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings.setPreset(ShortcutPreset.anicel);
+      await tester.pump();
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(rowsListed(tester), [
+        'shortcut-row-${EditorActionIds.eyedropperHold}',
+      ]);
+    });
     testWidgets('the ↺ lets the key go — and stands dead while none is '
         'sought', (tester) async {
       final bindings = await pump(tester);
@@ -705,6 +723,92 @@ void main() {
     expect(recorded.control, isTrue);
   });
 
+
+  // 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
+  // 단축키등록안됨. 다 가능하게」.
+  group('🗣️F-603: modifiers alone are a key', () {
+    const pan = EditorActionIds.canvasPanHold;
+
+    Future<EditorShortcutBindings> recording(
+      WidgetTester tester,
+      String id,
+    ) async {
+      final bindings = await pump(tester);
+      await openShelvesOf(tester, bindings, id);
+      await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
+      await tester.pump();
+      return bindings;
+    }
+
+    Finder hint() =>
+        find.byKey(const ValueKey<String>('shortcut-recording-hint'));
+
+    testWidgets('🚨Alt pressed and let go with nothing else is the key of a '
+        'held row', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(hint(), findsOneWidget, reason: 'it waits while Alt is down');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(hint(), findsNothing);
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Alt'],
+      );
+      expect(isModifiersAlone(bindings.activatorsFor(pan).single), isTrue);
+    });
+
+    testWidgets('modifiers held together are one key, whichever is let go '
+        'first: Ctrl+Alt', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Ctrl+Alt'],
+      );
+    });
+
+    testWidgets('a modifier that went down with a key is that chord, not the '
+        'modifier alone', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Alt+F9'],
+      );
+    });
+
+    testWidgets('⚠️F-603-Q1: a pressed row waits on past modifiers alone — '
+        'what they would do there is asked', (tester) async {
+      const undo = EditorActionIds.undo;
+      final bindings = await recording(tester, undo);
+      final before = bindings.activatorsFor(undo);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+
+      expect(hint(), findsOneWidget, reason: 'still recording');
+      expect(bindings.activatorsFor(undo), before);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pump();
+      expect(
+        bindings.activatorsFor(undo).map(singleActivatorLabel),
+        ['F9'],
+        reason: 'the Ctrl let go is gone from what comes after it',
+      );
+    });
+  });
   testWidgets('record captures the next key, and the reset restores', (
     tester,
   ) async {

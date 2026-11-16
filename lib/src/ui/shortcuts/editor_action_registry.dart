@@ -29,6 +29,7 @@ import '../text/model_vocabulary.dart'
         LayerKindWords,
         LayerMarkWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
+import 'shortcut_activator_codec.dart' show modifiersAlone;
 import 'shortcut_shelf.dart';
 
 /// The single shortcut intent: every editor action dispatches through ONE
@@ -662,6 +663,9 @@ abstract final class EditorActionIds {
 
   /// 「직전 획에서 직선」 (I-119), held as the pan is.
   static const canvasLineHold = 'canvas-line-hold';
+
+  /// The eyedropper while its key is held (I-15, F-603).
+  static const eyedropperHold = 'eyedropper-hold';
   static const playbackToggle = 'playback-toggle';
 
   /// The frame panels' transport's 「처음으로」 (F-261).
@@ -1409,6 +1413,20 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI)],
     toolPress: RailToolPress(CanvasTool.eyedropper),
+  ),
+  // 🗣️I-15 (유저 2026-09-11): 「스포이드는 그대로 해서 누르는동안 툴
+  // 바뀌도록」 — Alt held, as it always was. 🗣️F-603 (유저 2026-11-16):
+  // 「tvp의 캔버스 누르는동안 이동 단축키는 alt인데 비어있음. 다른데서
+  // 쓰고있나? … 이미 쓰는거있으면 옮기거나」 — a key now, as every held one
+  // is, so a preset can move it. ↩️It was Alt in the held keys' own code,
+  // under every preset, till then: a key that is a modifier alone had no
+  // way into the registry ([modifiersAlone]).
+  const EditorActionDefinition(
+    id: EditorActionIds.eyedropperHold,
+    label: 'Eyedropper (hold)',
+    shelf: ShortcutShelf.tools,
+    defaultActivators: [SingleActivator(modifiersAlone, alt: true)],
+    hold: true,
   ),
   // 🗣️F-560 (유저 2026-11-04): 「채우기도구의 채우기를 F로. 채우기도구 자체
   // 단축키는 해제」 — F went from the tool to its 채우기 tile.
