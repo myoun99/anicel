@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/text_measure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
@@ -219,30 +221,39 @@ void main() {
     });
   }
 
-  for (final scale in [1.0, 1.5, 2.0]) {
-    testWidgets('at $scale× the Total is the opacity bar\'s size and the '
-        'speaker the eye\'s, both whole in the blend column', (tester) async {
-      await pumpRail(tester, scale: scale);
-      expect(
-        part(tester, 'total-volume', sound).size,
-        part(tester, 'opacity', sound).size,
-        reason: 'F-577 「불투명도막대랑 완전 동일한 디자인/크기」',
-      );
-      expect(
-        part(tester, 'mute', sound).size,
-        part(tester, 'visibility', sound).size,
-        reason: 'F-409: no button in a narrower box than the eye\'s',
-      );
-      final column = legend(tester, 'blend');
-      expect(
-        part(tester, 'mute', sound).left,
-        greaterThanOrEqualTo(column.left - 0.01),
-      );
-      expect(
-        part(tester, 'total-volume', sound).right,
-        lessThanOrEqualTo(column.right + 0.01),
-      );
-    });
+  // 🗣️F-606 (유저 2026-11-16): 「s행의 사운드 조절 막대, 너무 작아서 3 다음
+  // 9로밖에 조절안되서 … 사운드막대를 지금의 1.5배로 늘리고, 그거에 맞춰서
+  // 블렌드 열이 늘어나도록」. ↩️F-577's 「불투명도막대랑 완전 동일한
+  // 디자인/크기」 — the bar's length too, until its 200 wanted more.
+  // In every language the program speaks: the column grows by its widest
+  // mode, and the Total by half again the bar's 「100」 (F-606).
+  for (final language in AppLanguage.values) {
+    for (final scale in [1.0, 1.5, 2.0]) {
+      testWidgets('$language at $scale×: the Total is the opacity bar half '
+          'again along the rail and as tall, the speaker the eye\'s size, '
+          'both whole in the blend column', (tester) async {
+        AppText.settings.value = AppLanguageSettings(programLanguage: language);
+        addTearDown(
+          () => AppText.settings.value = const AppLanguageSettings(),
+        );
+        await pumpRail(tester, scale: scale);
+        final total = part(tester, 'total-volume', sound);
+        final bar = part(tester, 'opacity', sound);
+        expect(total.width, closeTo(1.5 * bar.width, 0.01));
+        expect(total.height, bar.height);
+        expect(
+          part(tester, 'mute', sound).size,
+          part(tester, 'visibility', sound).size,
+          reason: 'F-409: no button in a narrower box than the eye\'s',
+        );
+        final column = legend(tester, 'blend');
+        expect(
+          part(tester, 'mute', sound).left,
+          greaterThanOrEqualTo(column.left - 0.01),
+        );
+        expect(total.right, lessThanOrEqualTo(column.right + 0.01));
+      });
+    }
   }
 
   testWidgets('a member lane stands its navigator right after the section '

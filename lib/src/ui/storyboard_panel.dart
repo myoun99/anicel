@@ -889,6 +889,10 @@ class StoryboardPanel extends StatefulWidget {
   // 2026-11-10 (F-577): the blend column took 4 for an S row's speaker and
   // Total. The number stays here as it stays on the timeline's rail, and
   // the name gives them.
+  //
+  // 2026-11-16 (F-606): it took 20 more for the Total half again as long.
+  // The number stays with the timeline's again, and the name gives them
+  // (⚠️the same reading — `timelineLayerControlsWidth`).
   static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every

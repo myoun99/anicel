@@ -9,7 +9,8 @@ import 'berth_row.dart';
 
 /// How thick a rail row's bar stands where [context] shows it: 18 at 1×,
 /// and its digits' growth ([FieldSlider.growthIn], text-scale-rail-rows).
-/// The opacity bar's and the S row's Total's — one bar, one size (F-577).
+/// The opacity bar's and the S row's Total's — one bar, one thickness
+/// (F-577), the Total the longer (F-606).
 double layerRailBarHeightIn(BuildContext context) =>
     18 + FieldSlider.growthIn(context);
 
@@ -64,6 +65,11 @@ Widget layerOpacityField({
 /// 필요없음. 불투명도막대랑 완전 동일한 디자인/크기」. ↩️It was the speaker
 /// window's bar (I-145-Q1 「따로 한 값 — 두 입구」); the row holds it now, and
 /// its 「오디오」 group's lane is still the other door.
+///
+/// 🗣️F-606 (유저 2026-11-16): 「불투명도는 최대 100이라 지금막대 길이로
+/// 충분하지만 사운드는 최대200이라 더 길어야한다고 판단. 사운드막대를 지금의
+/// 1.5배로」 — the bar's look and thickness, half again its length
+/// ([layerTotalVolumeLength]).
 ///
 /// It writes on RELEASE, as the window's did: a write is an undo step and
 /// re-uploads the whole live audio schedule. The bar shows the drag

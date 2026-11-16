@@ -1161,13 +1161,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// A row's own [buttons] and then its [bar], side by side along the rail
   /// and centred in the column; null when none stands. Each keeps its own
-  /// size — a button the box the eye stands in, the bar the opacity bar's
-  /// length ([layerRailPlateLength]) — and the column is wide enough for
-  /// both ([layerBlendSlotWidth]).
+  /// size — a button the box the eye stands in, the bar half again the
+  /// opacity bar's length ([layerTotalVolumeLength], F-606) — and the column
+  /// is wide enough for both ([layerBlendSlotWidth]).
   Widget? _ownCell({required List<Widget?> buttons, Widget? bar}) {
     final standing = buttons.nonNulls.toList();
     if (standing.isEmpty && bar == null) return null;
-    final length = layerRailPlateLength(metrics.railColumns.opacity);
+    final length = layerTotalVolumeLength(metrics.railColumns.opacity);
     return Center(
       child: Flex(
         direction: axis,

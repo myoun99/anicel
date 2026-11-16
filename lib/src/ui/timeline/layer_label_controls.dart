@@ -303,7 +303,23 @@ const double layerOpacitySlotWidth = 44;
 /// stands in (F-409) — and its Total, the opacity bar at that bar's own
 /// length, in this column, so the column is an opacity column and a button
 /// wide. The chip takes the 4 it gains.
-const double layerBlendSlotWidth = layerOpacitySlotWidth + layerGraphSlotWidth;
+///
+/// 66 → 86 (F-606, 유저 2026-11-16: 「s행의 사운드 조절 막대, 너무 작아서
+/// 3 다음 9로밖에 조절안되서 … 사운드막대를 지금의 1.5배로 늘리고, 그거에
+/// 맞춰서 블렌드 열이 늘어나도록. 즉 합성모드도 긴 이름 많으니까 이름 더
+/// 많이보이는 결과가 되도록」): the Total stands half again the opacity
+/// bar's length ([layerTotalVolumeBarScale]), and the column is the speaker,
+/// that and a chip gap — on every row, the column being one. The chip takes
+/// the 20 it gains.
+const double layerBlendSlotWidth =
+    layerGraphSlotWidth +
+    layerTotalVolumeBarScale * (layerOpacitySlotWidth - layerControlChipGap) +
+    layerControlChipGap;
+
+/// How much longer an S row's Total stands along the rail than the opacity
+/// bar ([layerBlendSlotWidth]): half again — the bar's length serves a
+/// 100, and the Total runs to 200 (F-606).
+const double layerTotalVolumeBarScale = 1.5;
 
 /// The rail's columns that hold WORDS — the opacity bar's digits, the
 /// blend chip's mode and a lane's value boxes ([layerLaneValueSlotWidth])
@@ -350,9 +366,11 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
         FieldSlider.widthGrowthIn(context, const ['100']),
     // As much wider as its widest word — and so never narrower than an S
     // row's speaker and Total ([layerBlendSlotWidth]): its widest word is
-    // wider than the bar's 「100」, so it grows more than the bar does.
-    // 🔬2026-11-11, en · ja · ko · fr · zh-Hans at 1–3×: never less, equal
-    // at 1×. ↩️A floor of the bar's growth stood here and never bound.
+    // wider than the bar's 「100」 by more than half, so it grows by more
+    // than the Total does — half again the bar's growth (F-606).
+    // 🔬2026-11-16, every language at 1–2× (the_rail_columns_line_up_test);
+    // 2026-11-11 against the bar's growth alone, 1–3×. ↩️A floor of the
+    // bar's growth stood here and never bound.
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:
