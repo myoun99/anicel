@@ -20,7 +20,7 @@ import android.view.MotionEvent
 object PenPoints {
     init {
         // The engine's code asset, built by hook/build.dart.
-        System.loadLibrary("gpu_engine")
+        System.loadLibrary("gpu_engine_core")
     }
 
     /** Writes [event]'s batch for each pointer the engine makes a datum of. */

@@ -14,6 +14,12 @@ crate-type = ["staticlib", "cdylib"]
 # gpu_engine_open_sole in the gpu_engine it opened (GPU engine run
 # 42349881697, 2026-11-07). Dart binds the library by its asset's id
 # (lib/src/engine_ffi.dart), never by this name.
+# ⚠️Android's Kotlin opens it by THIS name (`System.loadLibrary` in the
+# plugin's classes), and was missed when it was renamed: every Android
+# build found no library (board android-loads-the-engine-by-its-old-name,
+# 2026-11-16). test/architecture/
+# a_native_library_is_opened_by_the_name_it_is_built_as_test.dart reads
+# the two against each other.
 name = "gpu_engine_core"
 
 [dependencies]

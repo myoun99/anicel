@@ -69,7 +69,7 @@ class GpuEnginePlugin :
     companion object {
         init {
             // The engine's code asset, built by hook/build.dart.
-            System.loadLibrary("gpu_engine")
+            System.loadLibrary("gpu_engine_core")
         }
     }
 }
