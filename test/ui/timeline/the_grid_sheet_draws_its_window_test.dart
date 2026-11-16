@@ -143,6 +143,31 @@ void main() {
     expect(windowed, whole);
   });
 
+  // What a growth reaches is ruled before it is reached: the sheet is not
+  // painted again when the axis grows (below), so a sheet cut where the
+  // axis ended would show none of the room grown, the view walking into it
+  // without a window crossing. The rows' own law (Q8: a row with a window
+  // draws its window, not cut where the axis ends).
+  test('past the axis\' end it rules on to its window\'s', () async {
+    const length = 2000.0;
+    final window = windowOf(length, 0);
+    final extent = window.value.windowExtentPx;
+    expect(extent, greaterThan(length + 400), reason: '⛔premise: a window '
+        'reaching past the end');
+    final picture = recorded(sheetOf(geometry: window), length);
+    final image = await picture.toImage(extent.toInt(), across.toInt());
+    picture.dispose();
+    final bytes = (await image.toByteData())!.buffer.asUint8List();
+    image.dispose();
+    // A column of the first row's pixels, past the end, inked by a line.
+    bool inked(int x) => bytes[(10 * extent.toInt() + x) * 4 + 3] != 0;
+    final past = [
+      for (var x = length.toInt() + 1; x < length.toInt() + 400; x += 1)
+        if (inked(x)) x,
+    ];
+    expect(past, isNotEmpty, reason: 'the sheet stopped where the axis did');
+  });
+
   test('a window move repaints it, and the axis growing in its window does '
       'not', () {
     const length = 22130.0;
