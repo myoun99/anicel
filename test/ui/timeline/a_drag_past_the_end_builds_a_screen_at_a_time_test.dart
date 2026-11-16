@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
@@ -25,10 +26,18 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart'
+    show TimelineFrameRulerPainter;
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
     show timelineFrameWindowBucketOf;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart'
+    show TimelineRulerCursorOverlayPainter;
+import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart'
+    show TimelineRulerPlayheadWritingPainter;
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 import '../../helpers/frame_census.dart';
 import '../../helpers/scrollable_of.dart';
@@ -46,11 +55,12 @@ import '../../helpers/timeline_zoom.dart';
 /// pointer: the timeline's ruler, the x-sheet's rail, the storyboard's
 /// ruler.
 ///
-/// 🔬And a growth paints the grid sheet no picture of its own while the
-/// view stands in its window (card conte-sideways-scroll-build-spikes,
-/// 11-16): the sheet stands in its rows' window box, Q8. ↩️As long as the
-/// axis, it was laid out and painted again at every screen grown — with
-/// the ruler about 70% of such a frame (main PC, profile).
+/// 🔬And a growth paints neither the grid sheet nor the strip under the
+/// hand while the view stands in their window, and lays out nothing that
+/// rides the playhead on the strip (card conte-sideways-scroll-build-
+/// spikes, 11-16): they stand in their rows' window box, Q8. ↩️As long as
+/// the axis, they were laid out and painted again at every screen grown —
+/// the sheet and the ruler about 70% of such a frame (main PC, profile).
 void main() {
   Layer drawing(String id) => Layer(
     id: LayerId(id),
@@ -113,17 +123,40 @@ void main() {
     var growths = 0;
     var shrinks = 0;
     var grewLast = false;
-    // The growths that crossed no window, and what of the sheet each painted.
+    // The growths that crossed no window, and those that painted the
+    // sheet or the strip again or laid out what rides the playhead on it.
     var grewInAWindow = 0;
-    final sheetPainted = <int>[];
+    final pictured = <int>[];
+    final laidOut = <int>[];
     int bucket() => timelineFrameWindowBucketOf(
       offset: position().pixels,
       cellExtent: cell,
     );
+    bool kept(Object? painter) =>
+        painter is TimelineGridSheetPainter ||
+        painter is TimelineFrameRulerPainter ||
+        painter is XSheetFrameRailPainter;
+    bool riding(Object? painter) =>
+        painter is TimelineRulerPlayheadWritingPainter ||
+        painter is TimelineRulerCursorOverlayPainter;
+    Iterable<RenderCustomPaint> paints() =>
+        tester.renderObjectList<RenderCustomPaint>(find.byType(CustomPaint));
+    List<Size> ridingSizes() => [
+      for (final paint in paints())
+        if (riding(paint.painter)) paint.size,
+    ];
+    expect(
+      paints().where((paint) => kept(paint.painter)),
+      hasLength(2),
+      reason: '⛔premise: a sheet and a strip',
+    );
+    expect(ridingSizes(), hasLength(2), reason: '⛔premise: the writing and '
+        'the cursor on the strip');
     for (var move = 0; move < moves || !grewLast; move += 1) {
       expect(move, lessThan(moves * 4), reason: 'the axis stopped growing');
       past += 0.5;
       final stood = bucket();
+      final rode = ridingSizes();
       await hand.moveTo(at(past));
       final (:painted, rebuilt: _) = await frameCensus(tester, () {});
       grewLast = position().maxScrollExtent > built;
@@ -136,11 +169,12 @@ void main() {
       if (grewLast && bucket() == stood) {
         grewInAWindow += 1;
         if (painted.any(
-          (object) =>
-              object is RenderCustomPaint &&
-              object.painter is TimelineGridSheetPainter,
+          (object) => object is RenderCustomPaint && kept(object.painter),
         )) {
-          sheetPainted.add(move);
+          pictured.add(move);
+        }
+        if (!listEquals(ridingSizes(), rode)) {
+          laidOut.add(move);
         }
       }
       built = position().maxScrollExtent;
@@ -149,10 +183,16 @@ void main() {
     expect(grewInAWindow, greaterThan(0), reason: '⛔premise: a growth that '
         'crossed no window');
     expect(
-      sheetPainted,
+      pictured,
       isEmpty,
-      reason: 'the grid sheet painted again at a growth in its window '
-          '($grewInAWindow such growths)',
+      reason: 'the grid sheet or the strip painted again at a growth in '
+          'its window ($grewInAWindow such growths)',
+    );
+    expect(
+      laidOut,
+      isEmpty,
+      reason: 'what rides the playhead on the strip was laid out again at '
+          'a growth in its window ($grewInAWindow such growths)',
     );
     final panned = position().pixels - from;
     expect(panned, greaterThan(view * 2), reason: '⛔premise: two screens');

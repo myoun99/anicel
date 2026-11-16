@@ -13,11 +13,19 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart'
+    show TimelineFrameRulerPainter;
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart'
+    show TimelineRulerCursorOverlayPainter;
+import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart'
+    show TimelineRulerPlayheadWritingPainter;
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 import '../../helpers/storyboard_host.dart';
 
@@ -29,7 +37,10 @@ import '../../helpers/storyboard_host.dart';
 ///
 /// The handle itself, not one made alike (card conte-sideways-scroll-
 /// build-spikes, 11-16): a sheet laid by a window of its own could stand
-/// a window apart from the rows it lies under.
+/// a window apart from the rows it lies under. And the ruler over them
+/// stands in that window too — through the rows' handle where the panel
+/// publishes one above both, through one of its own made alike where the
+/// rows publish theirs as they are laid out (the timeline's).
 void main() {
   Layer drawing(String id) => Layer(
     id: LayerId(id),
@@ -123,6 +134,51 @@ void main() {
       position().viewportDimension,
       reason: 'how far the view reaches',
     );
+
+    // And the ruler over them — the strip, the playhead's writing on it and
+    // the cursor's strip — in the window they are drawn in (card conte-
+    // sideways-scroll-build-spikes, 11-16).
+    ({bool ruler, TimelineFrameGeometryHandle? box}) rulerOf(
+      CustomPainter? painter,
+    ) => switch (painter) {
+      TimelineFrameRulerPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      XSheetFrameRailPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      TimelineRulerPlayheadWritingPainter(:final scale) => (
+        ruler: true,
+        box: scale.geometry,
+      ),
+      TimelineRulerCursorOverlayPainter(:final geometry) => (
+        ruler: true,
+        box: geometry,
+      ),
+      _ => (ruler: false, box: null),
+    };
+    final ruler = [
+      for (final paint in tester.widgetList<CustomPaint>(
+        find.byType(CustomPaint),
+      ))
+        if (rulerOf(paint.painter) case (ruler: true, :final box)) box,
+    ];
+    expect(
+      ruler.length,
+      greaterThanOrEqualTo(2),
+      reason: '⛔premise: a strip and the cursor\'s',
+    );
+    for (final box in ruler) {
+      expect(box, isNotNull, reason: 'the ruler is as long as its axis');
+      expect(
+        box!.value.drawsAs(frames),
+        isTrue,
+        reason: 'the ruler stands a window apart from its rows: '
+            '${box.value} against $frames',
+      );
+    }
   }
 
   testWidgets('the timeline', (tester) async {

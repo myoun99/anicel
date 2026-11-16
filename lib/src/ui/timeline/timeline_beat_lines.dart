@@ -13,9 +13,9 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_geometry.dart'
     show
-        TimelineFrameAxisBox,
         TimelineFrameGeometryHandle,
-        timelineFrameDrawing;
+        timelineFrameDrawing,
+        timelineFrameWindowed;
 import 'timeline_grid_metrics.dart'
     show timelineFirstOnStride, timelineStrideHolding;
 import 'timeline_second.dart';
@@ -795,17 +795,13 @@ class TimelineGridSheet extends StatelessWidget {
         geometry: geometry,
       ),
     );
-    if (geometry == null) {
-      return sheet;
-    }
     // In its rows' window box, as far across as the host lets it: the
     // axis' end a drag past it grows moves the box alone, and the sheet
     // keeps its picture (card conte-sideways-scroll-build-spikes, 11-16).
-    return TimelineFrameAxisBox(
+    return timelineFrameWindowed(
       geometry: geometry,
-      crossAxisExtent: double.infinity,
       axis: axis,
-      child: RepaintBoundary(child: sheet),
+      child: geometry == null ? sheet : RepaintBoundary(child: sheet),
     );
   }
 }

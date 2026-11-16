@@ -182,6 +182,35 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
         ),
       );
 
+  /// The window the ruler is laid in — the rows' ([_windowedFrameGeometry]),
+  /// the same frames through the same [TimelineFrameGeometry.windowedAt],
+  /// published where the ruler is laid out and at every bucket crossing.
+  ///
+  /// ⚠️A handle of its own, not the rows': their body publishes theirs
+  /// while it is laid out, and a render object outside it — the ruler, in
+  /// the header beside it — may not be marked from there (Flutter asserts
+  /// it; 🧪card conte-sideways-scroll-build-spikes, 11-16). The X-sheet and
+  /// the conte publish one handle above both and share it.
+  final TimelineFrameGeometryHandle _rulerFrameGeometry =
+      TimelineFrameGeometryHandle(
+        const TimelineFrameGeometry(
+          frameCellExtent: 1,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
+
+  /// How far along the frames the ruler's view reaches, as its last layout
+  /// measured it — what a bucket crossing windows the ruler by.
+  double _rulerViewExtent = 0;
+
+  void _rewindowRuler() => _rulerFrameGeometry.value = TimelineFrameGeometry(
+    frameCellExtent: _metrics.frameCellWidth,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _renderedFrameCount,
+    viewExtentPx: _rulerViewExtent,
+  ).windowedAt(_frameWindowBucket.value);
+
   /// The LAYER-axis twin of [_frameWindowBucket]: moves when the scroll
   /// carries the rows into another window ([_LayerGridScroll.standAt]). Only
   /// what lays the window's rows subscribes — the rail's rows, its selection
@@ -291,6 +320,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.hooks.frameCursor.addListener(_handlePlaybackPage);
+    // Last: the frame axis stands its bucket where the scroll was kept as
+    // it is first read above, and the ruler's window reads that axis.
+    _frameWindowBucket.addListener(_rewindowRuler);
   }
 
   /// The reveal runs AFTER the frame the selection moved in: the rows this
@@ -369,6 +401,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // whole reason it is the host's.
     _ownedFrameAxisOffset.dispose();
     _frameWindowBucket.dispose();
+    _frameWindowBucket.removeListener(_rewindowRuler);
+    _rulerFrameGeometry.dispose();
     _windowedFrameGeometry.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();
@@ -1130,6 +1164,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                     _renderedFrameCount,
                                                     _metrics.frameCellWidth,
                                                   );
+                                              _rulerViewExtent = viewportWidth;
+                                              _rewindowRuler();
 
                                               // PRO-TIMELINE scrolling (UI-R15):
                                               // the strip builds ONCE at full width
@@ -1193,6 +1229,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                             _frameWindowBucket,
                                                         viewportMainExtent:
                                                             viewportWidth,
+                                                        geometry:
+                                                            _rulerFrameGeometry,
                                                         dragPreview: widget
                                                             .hooks
                                                             .dragPreview,
@@ -1221,6 +1259,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                             _frameWindowBucket,
                                                         viewportMainExtent:
                                                             viewportWidth,
+                                                        geometry:
+                                                            _rulerFrameGeometry,
                                                         renderedFrames:
                                                             _renderedFrameCount,
                                                         cellWidth: _metrics

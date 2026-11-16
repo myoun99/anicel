@@ -389,6 +389,57 @@ class TimelineFrameAxisBox extends SingleChildRenderObjectWidget {
     ..axis = axis;
 }
 
+/// [child] laid in [geometry]'s window box, as far across as it is let —
+/// a picture of a frame axis that keeps itself while the axis' end grows
+/// (Q8: the rows', and a host's grid sheet and ruler under the same law);
+/// with no [geometry], [child] as its host lays it.
+///
+/// [child] is laid at the window's extent, so it draws the window: its
+/// frames land [TimelineFrameGeometry.windowOriginPx] back from where the
+/// content has them. A child that keeps its picture is a repaint boundary
+/// of its own.
+Widget timelineFrameWindowed({
+  required TimelineFrameGeometryHandle? geometry,
+  required Axis axis,
+  required Widget child,
+}) => geometry == null
+    ? child
+    : TimelineFrameAxisBox(
+        geometry: geometry,
+        crossAxisExtent: double.infinity,
+        axis: axis,
+        child: child,
+      );
+
+/// Where a child laid in [geometry]'s window box begins along the content
+/// — the window's origin, as the offset the box paints it forward by
+/// ([TimelineFrameAxisRenderMixin.windowShift]); none with no geometry.
+Offset timelineFrameWindowShift(
+  ValueListenable<TimelineFrameGeometry>? geometry,
+  Axis axis,
+) => offsetAlong(axis, along: geometry?.value.windowOriginPx ?? 0, across: 0);
+
+/// [paint] onto the canvas of a child laid in [geometry]'s window box
+/// ([timelineFrameWindowed]) in the content's coordinates: moved back by
+/// the very shift the box paints it forward by ([timelineFrameWindowShift]).
+void paintAlongTheContent(
+  Canvas canvas, {
+  required ValueListenable<TimelineFrameGeometry>? geometry,
+  required Axis axis,
+  required VoidCallback paint,
+}) {
+  final shift = timelineFrameWindowShift(geometry, axis);
+  if (shift == Offset.zero) {
+    paint();
+    return;
+  }
+  canvas
+    ..save()
+    ..translate(-shift.dx, -shift.dy);
+  paint();
+  canvas.restore();
+}
+
 /// A render object subscribed to the live geometry handle for its lifetime,
 /// with the row's cross extent and axis beside it — the frame-axis render
 /// objects' shared arm ([RenderTimelineFrameAxisBox],
@@ -461,8 +512,7 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
 
   /// Where the window stands along the content, as an offset — what a
   /// piece laid out free of it is painted back by.
-  Offset get windowShift =>
-      offsetAlong(axis, along: geometry.value.windowOriginPx, across: 0);
+  Offset get windowShift => timelineFrameWindowShift(geometry, axis);
 
   double _crossAxisExtent = 0;
   double get crossAxisExtent => _crossAxisExtent;

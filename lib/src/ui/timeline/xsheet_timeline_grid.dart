@@ -40,7 +40,8 @@ import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_frame_geometry.dart' show TimelineFrameGeometry;
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
@@ -805,6 +806,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       repaintSignal: widget.hooks.frameReadySignal,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: bodyViewportHeight,
+      geometry: _windowedFrameGeometry,
       renderedFrames: _frameScroll.renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
       readyRunsIn: widget.hooks.readyRunsIn,
@@ -926,6 +928,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             pages: widget.hooks.sheetPages,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
+                            geometry: _windowedFrameGeometry,
                             markers: widget.hooks.rulerMarkers,
                           ),
                         ),
@@ -1338,6 +1341,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.playhead,
     this.markers,
   });
@@ -1360,6 +1364,10 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   /// the quantized bucket — pass full bounds, repaint per span crossing.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the rail is laid in — its sheet's columns'
+  /// ([TimelineRulerScale.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   /// The playhead the rail writes its own pair at (I-16) — a null VALUE
   /// writes none; a rail without one (null) mounts the writing for its
@@ -1403,6 +1411,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
+      geometry: geometry,
       // The RAIL grays its past-playback tail where the ruler does
       // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
       pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
@@ -1414,7 +1423,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       child: timelineRulerStripWithWriting(
         strip: CustomPaint(
           key: const ValueKey<String>('xsheet-frame-rail-paint'),
-          size: Size(metrics.layerControlsWidth, height),
           painter: XSheetFrameRailPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('xsheet-rail-playhead-writing'),
@@ -1437,7 +1445,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 class XSheetFrameRailPainter extends CustomPainter
     with RepaintOnProps, RepaintOnWordBakes {
   XSheetFrameRailPainter({required this.scale})
-    : super(repaint: scale.windowBucket);
+    : super(repaint: scale.repaint);
 
   /// The frame scale this rail draws — the ruler's, field for field
   /// ([TimelineRulerScale]), the rect and the model with it. Only the paint
@@ -1553,7 +1561,7 @@ class XSheetFrameRailPainter extends CustomPainter
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.
   @override
-  Object get props => (scale,);
+  Object get props => (scale.drawn,);
 
   // ↩️Every row got a node, because "the rail numbers every frame" — which
   // stopped being so when its numbers began to thin with the ruler's

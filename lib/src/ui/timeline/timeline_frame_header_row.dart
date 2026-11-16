@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_face.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'frame_ruler_view.dart';
 import 'ruler_marker_layer.dart';
 import 'timeline_frame_ruler_painter.dart';
@@ -37,6 +38,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.playhead,
     this.markers,
   });
@@ -46,6 +48,10 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// bounds; repaints land once per span crossing.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the strip is laid in — its host's rows'
+  /// ([TimelineRulerScale.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -105,6 +111,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
+      geometry: geometry,
     );
     return SizedBox(
       width: width,
@@ -112,7 +119,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       child: timelineRulerStripWithWriting(
         strip: CustomPaint(
           key: const ValueKey<String>('timeline-frame-ruler-paint'),
-          size: Size(width, metrics.layerRowHeight),
           painter: TimelineFrameRulerPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('timeline-ruler-playhead-writing'),

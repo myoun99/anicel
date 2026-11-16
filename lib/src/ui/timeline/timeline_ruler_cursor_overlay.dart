@@ -7,6 +7,12 @@ import 'axis_turn.dart' show extentAcross, rectAlong;
 import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge, timelinePlayheadSpan;
+import 'timeline_frame_geometry.dart'
+    show
+        TimelineFrameGeometryHandle,
+        paintAlongTheContent,
+        timelineFrameDrawing,
+        timelineFrameWindowed;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -117,11 +123,27 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     required this.cellWidth,
     required this.readyRunsIn,
     this.axis = Axis.horizontal,
+    this.geometry,
     this.onPaintedRuns,
     this.runsToDraw,
   }) : super(
-         repaint: Listenable.merge([?playhead, ?repaintSignal, windowBucket]),
+         repaint: Listenable.merge([
+           ?playhead,
+           ?repaintSignal,
+           windowBucket,
+           if (geometry != null) timelineFrameDrawing(geometry),
+         ]),
        );
+
+  /// The window box the strip is laid in — its host's rows' (Q8), as the
+  /// ruler's own is ([TimelineRulerScale.geometry]): in one it draws its
+  /// window whole, not cut where the axis ends, and the axis' end a drag
+  /// past it grows repaints none of it. Null, as long as its axis.
+  final TimelineFrameGeometryHandle? geometry;
+
+  /// Whether the strip draws its window whole ([_visibleWindow]).
+  bool get _drawsItsWindow =>
+      geometry?.value.rowDrawsItsWindow(windowBucket) ?? false;
 
   /// Told the ready runs each paint drew — what the overlay's gate compares
   /// a signal's answer against.
@@ -170,13 +192,15 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   static const double readyBarThickness = 1.5;
 
   ({int startIndex, int endIndexExclusive}) _visibleWindow() =>
-      visibleFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: cellWidth,
-        frameStartIndex: 0,
-        frameEndIndexExclusive: renderedFrames,
-      );
+      _drawsItsWindow
+      ? geometry!.value.rowDrawnFrames(windowBucket)
+      : visibleFrameWindowFor(
+          bucket: windowBucket,
+          viewportMainExtent: viewportMainExtent,
+          cellExtent: cellWidth,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: renderedFrames,
+        );
 
   /// The ready RUNS this overlay would draw — the probe surface tests read
   /// instead of scraping the canvas.
@@ -256,6 +280,17 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   @override
   void paint(Canvas canvas, Size size) {
+    // In a window box the canvas begins at the window's origin: the frames
+    // are laid where the content has them ([paintAlongTheContent]).
+    paintAlongTheContent(
+      canvas,
+      geometry: geometry,
+      axis: axis,
+      paint: () => _paintFrames(canvas, size),
+    );
+  }
+
+  void _paintFrames(Canvas canvas, Size size) {
     final barPaint = Paint()..color = readyBarColor;
     final barStart = extentAcross(axis, size) - readyBarThickness;
     final unreadablePaint = Paint()..color = unreadableBarColor;
@@ -293,7 +328,10 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   Object get props => (
     ByIdentity(windowBucket),
     viewportMainExtent,
-    renderedFrames,
+    // Where the axis ends draws nothing of a strip that draws its window
+    // whole: a drag past the end grows it a screen at a time (Q8).
+    _drawsItsWindow ? null : renderedFrames,
+    ByIdentity(geometry),
     cellWidth,
     axis,
     ByIdentity(playhead),
@@ -332,9 +370,14 @@ class TimelineRulerCursorOverlay extends StatefulWidget {
     required this.cellWidth,
     required this.readyRunsIn,
     this.axis = Axis.horizontal,
+    this.geometry,
   });
 
   final Axis axis;
+
+  /// The window box the strip is laid in
+  /// ([TimelineRulerCursorOverlayPainter.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
   final String keyValue;
   final ValueListenable<int?>? playhead;
   final Listenable? repaintSignal;
@@ -388,6 +431,7 @@ class _TimelineRulerCursorOverlayState
       cellWidth: widget.cellWidth,
       readyRunsIn: widget.readyRunsIn,
       axis: widget.axis,
+      geometry: widget.geometry,
       onPaintedRuns: _gate.drew,
       runsToDraw: _gate.runsToDraw,
     );
@@ -401,12 +445,16 @@ class _TimelineRulerCursorOverlayState
     // A rebuild handed the strip another answer: read it anew.
     _gate.forget();
     _painter = painter;
-    return _built = IgnorePointer(
-      // What a tick moves, on the one layer every tick rides (I-22 ③).
-      child: TickLayer(
-        child: CustomPaint(
-          key: ValueKey<String>(widget.keyValue),
-          painter: painter,
+    return _built = timelineFrameWindowed(
+      geometry: widget.geometry,
+      axis: widget.axis,
+      child: IgnorePointer(
+        // What a tick moves, on the one layer every tick rides (I-22 ③).
+        child: TickLayer(
+          child: CustomPaint(
+            key: ValueKey<String>(widget.keyValue),
+            painter: painter,
+          ),
         ),
       ),
     );

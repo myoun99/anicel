@@ -11,7 +11,15 @@ import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
+import 'memo_token.dart' show ByList;
 import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
+import 'timeline_frame_geometry.dart'
+    show
+        TimelineFrameGeometry,
+        TimelineFrameGeometryHandle,
+        paintAlongTheContent,
+        timelineFrameDrawing,
+        timelineFrameWindowShift;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import '../text/text_measure.dart' show everyDigitIn;
@@ -274,7 +282,7 @@ class TimelineRulerHeaderModel {
 class TimelineFrameRulerPainter extends CustomPainter
     with RepaintOnProps, RepaintOnWordBakes {
   TimelineFrameRulerPainter({required this.scale})
-    : super(repaint: scale.windowBucket);
+    : super(repaint: scale.repaint);
 
   /// The frame scale this strip draws — shared, field for field, with the
   /// X-sheet's rail painter, and the rect and the model with it.
@@ -396,7 +404,7 @@ class TimelineFrameRulerPainter extends CustomPainter
   // fresh layout per label per repaint was the priciest slice of a
   // scroll-time repaint in debug.
   @override
-  Object get props => (scale,);
+  Object get props => (scale.drawn,);
 
   // One node per labeled header (the old per-cell widgets' surface),
   // windowed with the paint pass ([TimelineRulerScale.windowSemantics]).
@@ -483,6 +491,7 @@ final class TimelineRulerScale {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.pastPlaybackWash,
   });
 
@@ -555,6 +564,67 @@ final class TimelineRulerScale {
   /// for the full bounds. Null keeps the classic pre-windowed contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the strip is laid in — its host's rows' (Q8,
+  /// `timelineFrameWindowed`) — or null where the strip is as long as its
+  /// axis. In one, the strip's canvas is the window: it draws its bucket's
+  /// window whole, not cut where the axis ends ([visibleWindow]), on a
+  /// canvas that begins at the window's origin ([onItsCanvas]), and the
+  /// axis' end a drag past it grows repaints none of it ([drawn]).
+  /// Everything else — the cell rects, the probes — stays the content's.
+  ///
+  /// 🔬Card conte-sideways-scroll-build-spikes (11-16, main PC, profile):
+  /// as long as the axis, the ruler was laid out and painted again at
+  /// every screen a drag past the end grew — with the grid sheet, about
+  /// 70% of such a frame.
+  final TimelineFrameGeometryHandle? geometry;
+
+  /// What a strip drawn off this scale repaints on: the window bucket, and
+  /// in a window box what its window draws ([timelineFrameDrawing]) — the
+  /// two a row's cells repaint on.
+  Listenable? get repaint {
+    final geometry = this.geometry;
+    return geometry == null
+        ? windowBucket
+        : Listenable.merge([timelineFrameDrawing(geometry), ?windowBucket]);
+  }
+
+  /// Whether the strip draws its window whole ([visibleWindow]): laid in
+  /// a window box that has one.
+  bool get _drawsItsWindow =>
+      geometry?.value.rowDrawsItsWindow(windowBucket) ?? false;
+
+  /// [paint] onto a strip's [canvas] in the content's coordinates — this
+  /// scale's ([cellRectFor]) — however far along its window box laid it.
+  void onItsCanvas(Canvas canvas, VoidCallback paint) =>
+      paintAlongTheContent(
+        canvas,
+        geometry: geometry,
+        axis: axis,
+        paint: paint,
+      );
+
+  /// What a strip draws off this scale, as one value ([RepaintOnProps]):
+  /// the scale — and where the axis ends, in a window box that draws its
+  /// window whole, only through what the strip measures off it: the
+  /// numbers' cadence, the seconds', the pages' marks. The end a drag past
+  /// it grows a screen at a time repaints nothing else (Q8).
+  Object get drawn => _drawsItsWindow
+      ? (
+          _ButItsEnd(this),
+          labelEveryFrames,
+          secondsLabelEverySeconds,
+          switch (_pageMarks) {
+            null => null,
+            final marks => (
+              ByList(marks.heads),
+              marks.everyPages,
+              marks.clearFrames,
+              marks.secondsRestartEvery,
+            ),
+          },
+        )
+      : this;
 
   /// The ground under a cell PAST the playback range, or null when the
   /// strip leaves its tail the colour of its paper.
@@ -720,13 +790,15 @@ final class TimelineRulerScale {
   /// narrow cell's label alive: the old single pass let the next cell's
   /// fill erase the half that overflowed (R26 #39, "텍스트 절반이 사라짐").
   void paintWindow(Canvas canvas, TimelineRulerGlyphLayout layout) {
-    final window = visibleWindow();
-    paintPaperIn(canvas, window);
-    for (final frameIndex in framesWrittenIn(window)) {
-      for (final glyph in writtenAt(layout, frameIndex, current: false)) {
-        glyph.paint(canvas);
+    onItsCanvas(canvas, () {
+      final window = visibleWindow();
+      paintPaperIn(canvas, window);
+      for (final frameIndex in framesWrittenIn(window)) {
+        for (final glyph in writtenAt(layout, frameIndex, current: false)) {
+          glyph.paint(canvas);
+        }
       }
-    }
+    });
   }
 
   /// What [layout] writes at [frameIndex] on this scale — laid out the
@@ -954,7 +1026,9 @@ final class TimelineRulerScale {
   List<CustomPainterSemantics> windowSemantics() => frameWindowSemantics(
     window: visibleWindow(),
     step: writingStep,
-    rectFor: cellRectFor,
+    rectFor: (frameIndex) => cellRectFor(
+      frameIndex,
+    ).shift(-timelineFrameWindowShift(geometry, axis)),
     labelFor: (frameIndex) =>
         modelAt(frameIndex).label.isEmpty ? null : 'frame ${frameIndex + 1}',
   );
@@ -1032,15 +1106,23 @@ final class TimelineRulerScale {
     );
   }
 
-  /// The frame window paint() actually draws (probe surface).
-  ({int startIndex, int endIndexExclusive}) visibleWindow() =>
-      visibleFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: metrics.frameCellWidth,
-        frameStartIndex: frameStartIndex,
-        frameEndIndexExclusive: frameEndIndexExclusive,
-      );
+  /// The frame window paint() actually draws (probe surface) — in a window
+  /// box its bucket's whole, as a row draws it
+  /// ([TimelineFrameGeometry.rowDrawnFrames]): not cut where the axis
+  /// ends, which a drag past it grows.
+  ({int startIndex, int endIndexExclusive}) visibleWindow() {
+    final laidIn = geometry?.value;
+    if (laidIn != null && laidIn.rowDrawsItsWindow(windowBucket)) {
+      return laidIn.rowDrawnFrames(windowBucket);
+    }
+    return visibleFrameWindowFor(
+      bucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      cellExtent: metrics.frameCellWidth,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+    );
+  }
 
   /// The bottom-line number at [frameIndex]: absolute and 1-based, or
   /// counted again each second or each page as [rulerView] has it.
@@ -1083,37 +1165,44 @@ final class TimelineRulerScale {
   // Value-compared, never `identical`: Theme.of(context).colorScheme
   // hands back a fresh instance every build (AnimatedTheme), so an
   // identity check re-recorded this whole strip on every rebuild. The
-  // window bucket is the one field compared by identity — the painter is
-  // subscribed to that notifier, so a different instance IS a change.
+  // window bucket and the window box are the fields compared by identity
+  // — the painter is subscribed to those notifiers, so a different
+  // instance IS a change.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is TimelineRulerScale &&
-          other.axis == axis &&
-          other.crossExtent == crossExtent &&
-          other.pastPlaybackWash == pastPlaybackWash &&
-          other.frameStartIndex == frameStartIndex &&
           other.frameEndIndexExclusive == frameEndIndexExclusive &&
-          other.playbackFrameCount == playbackFrameCount &&
-          other.leadingFrameSpacer == leadingFrameSpacer &&
-          other.metrics == metrics &&
-          other.face == face &&
-          other.numberType == numberType &&
-          other.secondsFontSize == secondsFontSize &&
-          other.framesPerSecond == framesPerSecond &&
-          other.rulerView == rulerView &&
-          other.pages == pages &&
-          identical(other.windowBucket, windowBucket) &&
-          other.viewportMainExtent == viewportMainExtent &&
-          other.colorScheme == colorScheme;
+          _sameButItsEnd(other);
 
   @override
-  int get hashCode => Object.hashAll([
+  int get hashCode => Object.hash(_hashButItsEnd, frameEndIndexExclusive);
+
+  /// Every field but where the axis ends compared ([drawn]).
+  bool _sameButItsEnd(TimelineRulerScale other) =>
+      other.axis == axis &&
+      other.crossExtent == crossExtent &&
+      other.pastPlaybackWash == pastPlaybackWash &&
+      other.frameStartIndex == frameStartIndex &&
+      other.playbackFrameCount == playbackFrameCount &&
+      other.leadingFrameSpacer == leadingFrameSpacer &&
+      other.metrics == metrics &&
+      other.face == face &&
+      other.numberType == numberType &&
+      other.secondsFontSize == secondsFontSize &&
+      other.framesPerSecond == framesPerSecond &&
+      other.rulerView == rulerView &&
+      other.pages == pages &&
+      identical(other.windowBucket, windowBucket) &&
+      other.viewportMainExtent == viewportMainExtent &&
+      identical(other.geometry, geometry) &&
+      other.colorScheme == colorScheme;
+
+  int get _hashButItsEnd => Object.hashAll([
     axis,
     crossExtent,
     pastPlaybackWash,
     frameStartIndex,
-    frameEndIndexExclusive,
     playbackFrameCount,
     leadingFrameSpacer,
     metrics,
@@ -1125,6 +1214,22 @@ final class TimelineRulerScale {
     pages,
     identityHashCode(windowBucket),
     viewportMainExtent,
+    identityHashCode(geometry),
     colorScheme,
   ]);
+}
+
+/// A scale compared on every field but where its axis ends
+/// ([TimelineRulerScale.drawn]).
+final class _ButItsEnd {
+  const _ButItsEnd(this.scale);
+
+  final TimelineRulerScale scale;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ButItsEnd && scale._sameButItsEnd(other.scale);
+
+  @override
+  int get hashCode => scale._hashButItsEnd;
 }

@@ -2869,6 +2869,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     viewportOffset: _horizontalScrollOffset,
                     windowBucket: _horizontalWindowBucket,
                     viewportWidth: viewportWidth,
+                    geometry: _windowedFrameGeometry,
                     timelineScale: frame.scale,
                     onSeekGlobalFrame: widget.onSeekGlobalFrame,
                     onScrubGlobalFrame: widget.onScrubGlobalFrame,
@@ -2914,6 +2915,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.viewportOffset,
     required this.windowBucket,
     required this.viewportWidth,
+    required this.geometry,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
     required this.onScrubGlobalFrame,
@@ -2960,6 +2962,10 @@ class _StoryboardRuler extends StatefulWidget {
   final ValueListenable<double> viewportOffset;
   final ValueListenable<int> windowBucket;
   final double viewportWidth;
+
+  /// The window box the strip rows are laid in, the ruler laid in it with
+  /// them ([TimelineRulerScale.geometry]).
+  final TimelineFrameGeometryHandle geometry;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
 
@@ -3126,6 +3132,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 pages: widget.rulerPages,
                 windowBucket: widget.windowBucket,
                 viewportMainExtent: widget.viewportWidth,
+                geometry: widget.geometry,
               ),
               // The moving parts REPAINT only: current-frame tint + green
               // ready bar, one thin isolated layer. Shared with the
@@ -3137,6 +3144,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                   repaintSignal: widget.frameReadySignal,
                   windowBucket: widget.windowBucket,
                   viewportMainExtent: widget.viewportWidth,
+                  geometry: widget.geometry,
                   renderedFrames: widget.renderedFrames,
                   cellWidth: cellWidth,
                   readyRunsIn: widget.readyRunsIn,

@@ -7,6 +7,7 @@ import 'frame_ruler_view.dart';
 import 'ruler_marker_layer.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline_frame_header_row.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_grid_metrics.dart';
@@ -28,6 +29,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.dragPreview,
     this.previewCutId,
     this.movieEndUnder,
@@ -55,6 +57,10 @@ class TimelineFrameRuler extends StatelessWidget {
   /// the quantized bucket — pass the full bounds, repaint per crossing.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the strip is laid in — its host's rows', handed to the
+  /// header row ([TimelineFrameHeaderRow.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   /// End-line live follow (UI-R18 #14): while a trim drag targets
   /// [previewCutId], the ruler's boundary line rides the previewed
@@ -106,6 +112,7 @@ class TimelineFrameRuler extends StatelessWidget {
           pages: pages,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          geometry: geometry,
           playhead: playhead,
           markers: markers,
         ),

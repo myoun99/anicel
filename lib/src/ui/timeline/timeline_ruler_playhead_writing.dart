@@ -10,6 +10,7 @@ import '../theme/ruler_marker_palette.dart' show rulerMarkerInk;
 import 'memo_token.dart';
 import 'ruler_marker_layer.dart';
 import 'timeline_drag_preview.dart' show rulerMarkersUnder;
+import 'timeline_frame_geometry.dart' show timelineFrameWindowed;
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -230,9 +231,22 @@ Widget timelineRulerStripWithWriting({
   required TimelineRulerPlayheadWritingPainter writing,
 }) {
   final markers = writing.markers;
+  final scale = writing.scale;
   return Stack(
     children: [
-      strip,
+      // As far as the strip's box, as the writing is: a strip handed the
+      // axis' length as a size of its own was laid out — and so painted —
+      // again at every screen a drag past the end grew, its window box
+      // notwithstanding (card conte-sideways-scroll-build-spikes, 11-16).
+      Positioned.fill(
+        child: timelineFrameWindowed(
+          geometry: scale.geometry,
+          axis: scale.axis,
+          child: scale.geometry == null
+              ? strip
+              : RepaintBoundary(child: strip),
+        ),
+      ),
       if (markers != null)
         Positioned.fill(
           child: RulerMarkerLayer(
@@ -243,10 +257,15 @@ Widget timelineRulerStripWithWriting({
         ),
       if (writing.playhead != null || markers != null)
         Positioned.fill(
-          child: IgnorePointer(
-            // What a tick moves, on the one layer every tick rides (I-22 ③).
-            child: TickLayer(
-              child: CustomPaint(key: writingKey, painter: writing),
+          child: timelineFrameWindowed(
+            geometry: scale.geometry,
+            axis: scale.axis,
+            child: IgnorePointer(
+              // What a tick moves, on the one layer every tick rides (I-22
+              // ③).
+              child: TickLayer(
+                child: CustomPaint(key: writingKey, painter: writing),
+              ),
             ),
           ),
         ),
@@ -281,7 +300,7 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
   }) : super(
          repaint: Listenable.merge([
            ?playhead,
-           ?scale.windowBucket,
+           ?scale.repaint,
            ?markers?.dragPreview,
          ]),
        );
@@ -311,7 +330,11 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
   }
 
   @override
-  void paintWords(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) =>
+      scale.onItsCanvas(canvas, () => _write(canvas));
+
+  /// The writing, in the scale's coordinates ([paintWords]).
+  void _write(Canvas canvas) {
     final frame = writtenFrame();
     final writing = frame == null
         ? null
@@ -449,7 +472,7 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
 
   @override
   Object get props => (
-    scale,
+    scale.drawn,
     ByIdentity(playhead),
     layout,
     markers?.holder,
