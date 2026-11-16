@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 /// The collections a model holds: frozen ONCE, then handed on as
 /// themselves.
 ///
@@ -16,16 +18,47 @@
 /// collection these functions froze is known to be frozen, and only that
 /// one is handed back as itself.
 ///
-/// ⚠️The mark is an [Expando]: weak, so it goes when the collection goes,
-/// at one entry for each frozen collection alive — measured (plain Dart,
-/// 1M lists held) at ~0.8 µs and ~60–140 bytes a mark.
+/// 🚨THE MARK IS THE COLLECTION'S OWN CLASS ([_FrozenList] · [_FrozenSet] ·
+/// [_FrozenMap]). ↩️It was an [Expando]: a weak table with an entry for
+/// every frozen collection alive, which grows — and drops what died — by
+/// walking every entry it holds, on whatever thread froze one more. 🔬Card
+/// a-thawed-cel-is-adopted-on-the-ui-thread (11-16): a thawed cel's new
+/// surface marking its tile map held the UI 33.7 ms there (Surface,
+/// profile app: `_settled < frozenMap < BitmapSurface < laidCelSurface`).
+/// Plain Dart, the worst single mark among N alive while short-lived ones
+/// churn: N = 10k 4.5 ms · 100k 12.7 · 300k 36.3 · 1M 35.6 — a class's,
+/// 1.5–4.6 ms (a collection, not the mark), on average 0.02–0.05 µs
+/// against 0.06–0.52.
 ///
-/// 🚨A MARK DOES NOT CROSS ISOLATES: it is this isolate's [Expando], and a
-/// file opens on a worker (`AnicelFileService.open`), so every collection
-/// an opened project holds arrives here unmarked — and the first copy of
-/// each model after opening wrapped them all anew. A copy says what it
-/// hands on is its own ([ownFrozen]).
-final Expando<bool> _frozen = Expando('frozen by a model');
+/// A class also crosses isolates, which the Expando's mark did not: what
+/// a file opens on a worker (`AnicelFileService.open`) arrives frozen, so
+/// a copy hands it on as itself with nothing to say. ↩️Every copy said so
+/// through `ownFrozen`, kept by a scan.
+
+/// A list frozen here, walked through the list it holds: a view walks
+/// itself by index through its delegate, and a `for` over a model's list
+/// is the hot use. 🔬Plain Dart, 200k walks of 100 ints: the SDK's own
+/// unmodifiable list 36 ms (AOT 65) · a view 77 (143) · this 37 (65) —
+/// read by index the three are alike, so only the walk is its own.
+final class _FrozenList<E> extends UnmodifiableListView<E> {
+  _FrozenList(Iterable<E> items) : this._(List<E>.unmodifiable(items));
+  _FrozenList._(this._items) : super(_items);
+
+  final List<E> _items;
+
+  @override
+  Iterator<E> get iterator => _items.iterator;
+}
+
+/// A set frozen here.
+final class _FrozenSet<E> extends UnmodifiableSetView<E> {
+  _FrozenSet(Iterable<E> items) : super(Set<E>.of(items));
+}
+
+/// A map frozen here.
+final class _FrozenMap<K, V> extends UnmodifiableMapView<K, V> {
+  _FrozenMap(Map<K, V> entries) : super(Map<K, V>.of(entries));
+}
 
 /// 🔬One empty collection for each type (card above, 11-11): most a model
 /// holds are empty — no fx, no audio, no twirls — and each was an object of
@@ -37,51 +70,31 @@ final Map<Type, Object> _noLists = {};
 final Map<Type, Object> _noSets = {};
 final Map<Type, Map<Type, Object>> _noMaps = {};
 
-bool _isFrozen(Object items) => _frozen[items] ?? false;
-
-T _marked<T extends Object>(T frozen) {
-  _frozen[frozen] = true;
-  return frozen;
-}
-
-/// [frozen] marked — or, when it holds nothing, the one empty collection
-/// of its kind and type: [empties]' under [type].
+/// [frozen] — or, when it holds nothing, the one empty collection of its
+/// kind and type: [empties]' under [type].
 T _settled<T extends Object>(T frozen, Map<Type, Object> empties, Type type) {
   final empty = switch (frozen) {
     final Iterable<Object?> items => items.isEmpty,
     final Map<Object?, Object?> entries => entries.isEmpty,
     _ => false,
   };
-  return empty ? (empties[type] ??= _marked(frozen)) as T : _marked(frozen);
+  return empty ? (empties[type] ??= frozen) as T : frozen;
 }
 
 /// [items] frozen — [items] itself when it is a list frozen here.
-List<E> frozenList<E>(Iterable<E> items) =>
-    items is List<E> && _isFrozen(items)
+List<E> frozenList<E>(Iterable<E> items) => items is _FrozenList<E>
     ? items
-    : _settled(List<E>.unmodifiable(items), _noLists, E);
+    : _settled(_FrozenList<E>(items), _noLists, E);
 
 /// [items] frozen — [items] itself when it is a set frozen here.
-Set<E> frozenSet<E>(Iterable<E> items) =>
-    items is Set<E> && _isFrozen(items)
+Set<E> frozenSet<E>(Iterable<E> items) => items is _FrozenSet<E>
     ? items
-    : _settled(Set<E>.unmodifiable(items), _noSets, E);
+    : _settled(_FrozenSet<E>(items), _noSets, E);
 
 /// [entries] frozen — [entries] itself when it is a map frozen here.
-Map<K, V> frozenMap<K, V>(Map<K, V> entries) => _isFrozen(entries)
+Map<K, V> frozenMap<K, V>(Map<K, V> entries) => entries is _FrozenMap<K, V>
     ? entries
-    : _settled(Map<K, V>.unmodifiable(entries), _noMaps[K] ??= {}, V);
-
-/// [frozen] — a collection the model handing it on froze itself, marked
-/// here so the model it is handed to keeps it as itself.
-///
-/// For a copy's fallback to its own field (`seLayers ?? ownFrozen(this
-/// .seLayers)`), and only where EVERY constructor of the class freezes that
-/// field: ⛔it marks without asking, and a list taken as it was handed
-/// would be marked frozen while its giver can still change it. The scan
-/// `a_model_freezes_through_one_helper_test.dart` holds both.
-T ownFrozen<T extends Object>(T frozen) =>
-    _isFrozen(frozen) ? frozen : _marked(frozen);
+    : _settled(_FrozenMap<K, V>(entries), _noMaps[K] ??= {}, V);
 
 /// [built] frozen — or [given] itself when [given] was frozen here and
 /// holds what [built] holds: the same keys with the very same values, in
@@ -91,7 +104,7 @@ T ownFrozen<T extends Object>(T frozen) =>
 /// filling in defaults, dropping the empty — so that a copy handing its
 /// own map back still gets that map, and not one built equal to it.
 Map<K, V> frozenMapOrSame<K, V>(Map<K, V>? given, Map<K, V> built) =>
-    given != null && _isFrozen(given) && _holdsTheSame(given, built)
+    given is _FrozenMap<K, V> && _holdsTheSame(given, built)
     ? given
     : frozenMap(built);
 

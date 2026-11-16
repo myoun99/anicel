@@ -138,16 +138,16 @@ class Track {
     return Track(
       id: id ?? this.id,
       name: name ?? this.name,
-      cuts: cuts ?? ownFrozen(this.cuts),
-      seLayers: seLayers ?? ownFrozen(this.seLayers),
+      cuts: cuts ?? this.cuts,
+      seLayers: seLayers ?? this.seLayers,
       transitionLayer: transitionLayer ?? this.transitionLayer,
-      effects: effects ?? ownFrozen(this.effects),
+      effects: effects ?? this.effects,
       type: type ?? this.type,
       fxEnabled: fxEnabled ?? this.fxEnabled,
       conte: conte ?? this.conte,
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
       expandedLaneGroups:
-          expandedLaneGroups ?? ownFrozen(this.expandedLaneGroups),
+          expandedLaneGroups ?? this.expandedLaneGroups,
     );
   }
 

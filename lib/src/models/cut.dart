@@ -88,7 +88,7 @@ class Cut {
     return Cut(
       id: id ?? this.id,
       name: name ?? this.name,
-      layers: layers ?? ownFrozen(this.layers),
+      layers: layers ?? this.layers,
       duration: duration ?? this.duration,
       canvasSize: canvasSize ?? this.canvasSize,
       metadata: metadata ?? this.metadata,

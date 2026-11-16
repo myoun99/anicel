@@ -358,20 +358,20 @@ class Layer {
     Object? seNameTag = copyWithSentinel,
     Object? conteKey = copyWithSentinel,
   }) {
-    final nextFrames = frames ?? ownFrozen(this.frames);
+    final nextFrames = frames ?? this.frames;
     return Layer(
       id: id ?? this.id,
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
       instructions: _instructionsForCopy(instructions),
-      audioClips: audioClips ?? ownFrozen(this.audioClips),
+      audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
       collapsed: collapsed ?? this.collapsed,
       foldedAttaches: foldedAttaches ?? this.foldedAttaches,
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
       expandedLaneGroups:
-          expandedLaneGroups ?? ownFrozen(this.expandedLaneGroups),
+          expandedLaneGroups ?? this.expandedLaneGroups,
       muted: muted ?? this.muted,
       seSound: seSound ?? this.seSound,
       opacity: opacity ?? this.opacity,
@@ -383,7 +383,7 @@ class Layer {
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
       transformBasis: transformBasis ?? this.transformBasis,
-      effects: effects ?? ownFrozen(this.effects),
+      effects: effects ?? this.effects,
       // Sentinel: DETACHING (P3) clears the linkage — an attach row can
       // become an ordinary drawing row again, so null must be expressible.
       // It used to be a plain `??`, which silently meant "keep".
@@ -392,7 +392,7 @@ class Layer {
           : attachedToLayerId as LayerId?,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       attachedMode: attachedMode ?? this.attachedMode,
-      baseFrameLinks: baseFrameLinks ?? ownFrozen(this.baseFrameLinks),
+      baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
       // Sentinel: moving a layer OUT of its folder (null) must be
       // expressible.
       folderId: identical(folderId, copyWithSentinel)

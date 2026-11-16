@@ -83,20 +83,12 @@ void main() {
     });
   });
 
-  // 🚨A mark is this isolate's own, and a file opens on a worker.
+  // 🚨A file opens on a worker: what was frozen there is frozen here — the
+  // mark is the collection's own class, which crosses isolates. ↩️It was an
+  // Expando's entry, which stayed in the worker, and every copy had to say
+  // what it handed on was its own.
   group('🚨frozen in another isolate, as a file opens', () {
-    test('is handed on as itself once the model holding it says it is its '
-        'own', () async {
-      final there = await Isolate.run(() => frozenList([1, 2]));
-      expect(
-        identical(frozenList(there), there),
-        isFalse,
-        reason: '⛔premise: the worker\'s mark stayed in the worker',
-      );
-      expect(identical(frozenList(ownFrozen(there)), there), isTrue);
-    });
-
-    test('still refuses a change', () async {
+    test('is handed on as itself, and still refuses a change', () async {
       final (:items, :members, :entries) = await Isolate.run(
         () => (
           items: frozenList([1]),
@@ -104,9 +96,12 @@ void main() {
           entries: frozenMap({1: 2}),
         ),
       );
-      expect(() => ownFrozen(items).add(2), throwsUnsupportedError);
-      expect(() => ownFrozen(members).add(2), throwsUnsupportedError);
-      expect(() => ownFrozen(entries)[3] = 4, throwsUnsupportedError);
+      expect(identical(frozenList(items), items), isTrue);
+      expect(identical(frozenSet(members), members), isTrue);
+      expect(identical(frozenMap(entries), entries), isTrue);
+      expect(() => items.add(2), throwsUnsupportedError);
+      expect(() => members.add(2), throwsUnsupportedError);
+      expect(() => entries[3] = 4, throwsUnsupportedError);
     });
   });
 

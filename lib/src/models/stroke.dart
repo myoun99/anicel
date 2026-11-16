@@ -22,7 +22,7 @@ class Stroke {
   }) {
     return Stroke(
       id: id ?? this.id,
-      points: points ?? ownFrozen(this.points),
+      points: points ?? this.points,
       brushSettings: brushSettings ?? this.brushSettings,
     );
   }

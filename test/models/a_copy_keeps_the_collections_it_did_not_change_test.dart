@@ -114,10 +114,11 @@ void main() {
     });
   });
 
-  // 🚨A mark is this isolate's own, and a file opens on a worker
-  // (`AnicelFileService.open`): what the worker froze comes here unmarked,
-  // and the first copy of each model after opening wrapped it all anew. A
-  // copy says what it hands on is its own (`ownFrozen`).
+  // 🚨A file opens on a worker (`AnicelFileService.open`): what the worker
+  // froze must come here frozen, or the first copy of each model after
+  // opening wraps it all anew. The mark is the collection's own class,
+  // which crosses isolates (↩️an Expando's, which did not, had every copy
+  // say what it handed on was its own).
   group('🚨made in a worker, as a file opens, and copied here', () {
     test('a track hands back every collection it did not change', () async {
       final before = await Isolate.run(track);
