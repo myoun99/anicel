@@ -18,6 +18,8 @@ mod dispatch;
 #[cfg(test)]
 mod every_free;
 #[cfg(test)]
+mod every_test_pool;
+#[cfg(test)]
 mod every_verb;
 #[cfg(test)]
 mod one_builder;

@@ -102,7 +102,7 @@ const BUDGET_TILL_ONE_IS_SET: Option<u64> = None;
 /// crate found a pool full at its first page, a landing of an unrelated
 /// lane refused for it. Set here, where every pool is made, not test by
 /// test. A test that keeps a pool to the OS's budget sets it so and says
-/// `os` in its name (`a_test_keeps_to_the_os_s_budget_only_by_name`).
+/// `os` in its name (`kernels/shared/every_test_pool.rs`).
 #[cfg(test)]
 const BUDGET_TILL_ONE_IS_SET: Option<u64> = Some(u64::MAX);
 
