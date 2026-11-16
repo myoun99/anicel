@@ -75,7 +75,6 @@ Future<Uint8List> _rgbaPng(
   () => _animatedPng(
     width: width,
     height: height,
-    colourType: pngRgba,
     frames: [
       for (final frame in frames)
         (data: pngDeflated(frame.rows), duration: frame.duration),
@@ -96,7 +95,6 @@ Uint8List? _indexedPng(
   return _animatedPng(
     width: width,
     height: height,
-    colourType: pngIndexed,
     palette: (rgb: palette.rgb, alpha: palette.alpha),
     frames: [
       for (final frame in frames)
@@ -111,17 +109,23 @@ Uint8List? _indexedPng(
 }
 
 /// The file of [frames] — each its image data, deflated, and how long it
-/// stays up — of [colourType], led by [palette]'s entries where it is one.
+/// stays up — a palette's, its entries leading them, where [palette] is one;
+/// RGBA where none is.
 Uint8List _animatedPng({
   required int width,
   required int height,
-  required int colourType,
   ({List<int> rgb, List<int> alpha})? palette,
   required List<({Uint8List data, Duration duration})> frames,
 }) {
   final out = BytesBuilder(copy: false)
     ..add(pngSignature)
-    ..add(pngHeader(width: width, height: height, colourType: colourType))
+    ..add(
+      pngHeader(
+        width: width,
+        height: height,
+        colourType: palette == null ? pngRgba : pngIndexed,
+      ),
+    )
     ..add(pngChunk('acTL', [...pngUint32(frames.length), ...pngUint32(0)]));
   if (palette != null) {
     out
