@@ -1856,30 +1856,54 @@ String stageName(BoardCard e, int i) {
 /// 일로 옮기고 담당 세션에 알림」) — the move 관제 made by hand for every
 /// failure before (🧪10 of the first 12, within 2–23 minutes; none went to
 /// 분류 대기, the owner being known). The owner is told by [lettersOf].
-/// ⚠️유저 확인 필요 moves nothing: the card stays in 검증, on the shelf that
-/// waits on nobody ([onTheShelf]). ↩️It was the user's turn till 2026-11-16
-/// (verification-is-ai-by-default).
+/// ⚠️유저 확인 필요 moves nothing on a card in 검증: it stays there, on the
+/// shelf that waits on nobody ([onTheShelf]). ↩️It was the user's turn till
+/// 2026-11-16 (verification-is-ai-by-default).
 ///
 /// ⚠️READ, NOT WRITTEN. The line is the record and no word is appended for
 /// it — 🧪the 24 cards that already carried a 검증완료 when it came in left
 /// 검증 without a word written about them.
 /// ⚠️Only on a card standing in 검증 (or 실기 확인) just before the line —
-/// where the user's last tick ends a card, and nowhere else: a verdict on a
-/// card someone has taken back into work does not finish that work.
+/// where the user's last tick ends a card — or ended by an AI verdict (below),
+/// and nowhere else: a verdict on a card someone has taken back into work
+/// does not finish that work.
 /// ⚠️Never a letter, which stands in the story and moves nothing
 /// ([BoardLog.to]); never a line whose `at` names a 대분류 of its own.
+///
+/// 🆕🚨★★★A LATER AI VERDICT REOPENS WHAT AN AI VERDICT ENDED (유저
+/// 2026-11-15, a-voided-ai-verdict-cannot-reopen-its-card-Q1 = a 「AI 가 끝낸
+/// 카드만, AI 의 뒤 판정 줄로 다시 연다」). A meter can be wrong where the
+/// user's eye is not: 🧪pen-up-dock-tail was ended by a 검증완료 measured on
+/// a screen that was not drawing, and the verify session's 유저 확인 필요
+/// after it changed the chip and left the card in 완료, where nothing is
+/// drawn. On a card the AI ended, a 실패 sends it to its owner's 할 일 and a
+/// 유저 확인 필요 back to 검증 — on its shelf ([onTheShelf]). ⚠️A 완료 the
+/// user pressed stays ended. ⚠️Nothing changes on the writing side: an ended
+/// card takes the verdict as a `정정` line, and `정정` is no 대분류.
 String? _aiVerdictMoves(BoardCard e, int i) {
   final entry = e.log[i];
   if (entry.isLetter || kSection.containsKey(entry.at)) return null;
-  final word = switch (aiVerdictIn(entry)) {
-    'done' || 'evidence' => kStatusWord[BoardStatus.done],
-    'failed' => kStatusWord[BoardStatus.todo],
-    _ => null,
-  };
-  if (word == null) return null;
+  final verdict = aiVerdictIn(entry);
+  if (verdict == null) return null;
+  final done = kStatusWord[BoardStatus.done];
   for (var j = i - 1; j >= 0; j--) {
     final name = stageName(e, j);
-    if (isPlaceWord(name)) return kSection[name] == 'hands' ? word : null;
+    if (!isPlaceWord(name)) continue;
+    if (kSection[name] == 'hands') {
+      return switch (verdict) {
+        'done' || 'evidence' => done,
+        'failed' => kStatusWord[BoardStatus.todo],
+        _ => null,
+      };
+    }
+    if (name == done && _aiVerdictMoves(e, j) == done) {
+      return switch (verdict) {
+        'failed' => kStatusWord[BoardStatus.todo],
+        'user' => kStatusWord[BoardStatus.verify],
+        _ => null,
+      };
+    }
+    return null;
   }
   return null;
 }
