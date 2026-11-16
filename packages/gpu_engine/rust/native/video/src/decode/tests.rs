@@ -7,6 +7,8 @@ use std::ffi::CStr;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use super::*;
+use crate::colour::tests::by_hand;
+use crate::colour::{BT601, BT709, UNSPECIFIED};
 
 /// The error buffer and the slots are the process's: a test that reads
 /// either holds this, so another's failure does not answer for its own.
@@ -146,6 +148,8 @@ fn a_frame_is_turned_upright_where_it_is_read() {
         rate: (24, 1),
         frame_count: 1,
         pixels: Pixels::Rgba,
+        // A reader of RGBA — Apple's, of a movie with alpha: no sum here.
+        decodes: Pixels::Rgba,
         colours: Colours::NONE,
     };
     let (mut scratch, mut out) = (Vec::new(), vec![0u8; 24]);
@@ -161,6 +165,71 @@ fn a_frame_is_turned_upright_where_it_is_read() {
     assert!(untouched.iter().all(|&byte| byte == 9), "and turns nothing into the caller's buffer");
 }
 
+// 🚨A document of RGBA is made of the decoder's NV12 by the law, after its
+// turn: each pixel turned with its own 2×2 block's chroma, by the sums the
+// movie names — the size's where it names none (유저 11-16, movie-frames-
+// come-as-their-yuv-to-the-engine-Q1: this 4×2 is BT.601's).
+#[test]
+fn a_document_of_rgba_is_made_of_its_nv12_after_its_turn() {
+    // Stored 4x2: luma 16 + 20·i, the left block's chroma red, the right's grey.
+    let stored: Vec<u8> = (0..8u8).map(|i| 16 + 20 * i).chain([90, 240, 128, 128]).collect();
+    let read = |into: &mut [u8]| -> Result<(), Why> {
+        assert_eq!(into.len(), stored.len(), "the reader is handed the stored NV12");
+        into.copy_from_slice(&stored);
+        Ok(())
+    };
+    let shape = |matrix| Shape {
+        stored: (4, 2),
+        rotation: 90,
+        shown: (2, 4),
+        rate: (24, 1),
+        frame_count: 1,
+        pixels: Pixels::Rgba,
+        decodes: Pixels::Nv12,
+        colours: Colours { matrix, ..Colours::NONE },
+    };
+    for (matrix, sums) in [(UNSPECIFIED, BT601[0]), (1, BT709[0])] {
+        let mut out = vec![0u8; 4 * 2 * 4];
+        upright(&shape(matrix), &mut Vec::new(), &mut out, read).expect("read");
+        for (x, y) in (0..4).flat_map(|x| (0..2).map(move |y| (x, y))) {
+            let (cb, cr) = if x < 2 { (90, 240) } else { (128, 128) };
+            let want = by_hand(stored[y * 4 + x], cb, cr, sums);
+            // A quarter turn puts the stored top-left at the shown top-right.
+            let at = (x * 2 + (1 - y)) * 4;
+            assert_eq!(out[at..at + 4], want, "matrix {matrix}: stored ({x}, {y})");
+        }
+    }
+}
+
+// ⚠️The size a movie that names no matrix is read by is the STORED one —
+// the picture as its encoder wrote it, before its turn — so an SD movie
+// held sideways is SD stood up too. 578×2 is SD as stored and more than
+// 576 tall as shown.
+#[test]
+fn a_movie_that_names_no_matrix_is_sized_as_stored() {
+    let (width, height) = (578usize, 2usize);
+    let stored = [vec![100u8; width * height], [90u8, 240].repeat(width / 2)].concat();
+    let shape = Shape {
+        stored: (578, 2),
+        rotation: 90,
+        shown: (2, 578),
+        rate: (24, 1),
+        frame_count: 1,
+        pixels: Pixels::Rgba,
+        decodes: Pixels::Nv12,
+        colours: Colours::NONE,
+    };
+    let mut out = vec![0u8; width * height * 4];
+    let read = |into: &mut [u8]| -> Result<(), Why> {
+        into.copy_from_slice(&stored);
+        Ok(())
+    };
+    upright(&shape, &mut Vec::new(), &mut out, read).expect("read");
+    let (sd, hd) = (by_hand(100, 90, 240, BT601[0]), by_hand(100, 90, 240, BT709[0]));
+    assert_ne!(sd, hd, "the two matrices tell this pixel apart");
+    assert!(out.chunks(4).all(|pixel| pixel == sd), "BT.601, as stored");
+}
+
 #[test]
 fn the_law_settles_size_rate_and_length_once() {
     let colours = Colours { primaries: 1, transfer: 1, matrix: 1, range: 0 };
@@ -168,6 +237,7 @@ fn the_law_settles_size_rate_and_length_once() {
         stored_width: 1920,
         stored_height: 1080,
         colours,
+        decodes: Pixels::Nv12,
         rotation,
         rate,
         length,
@@ -181,6 +251,7 @@ fn the_law_settles_size_rate_and_length_once() {
         rate: (30000, 1001),
         frame_count: 30,
         pixels: Pixels::Nv12,
+        decodes: Pixels::Nv12,
         colours,
     };
     let said = "a quarter turn swaps the sides; 1.001 s at 29.97 is thirty; the colours and the pixels ride along";

@@ -26,6 +26,7 @@ const SHAPE: Shape = Shape {
     rate: (24, 1),
     frame_count: 10,
     pixels: Pixels::Rgba,
+    decodes: Pixels::Rgba,
     colours: Colours::NONE,
 };
 

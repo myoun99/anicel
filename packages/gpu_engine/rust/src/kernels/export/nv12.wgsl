@@ -2,7 +2,7 @@
 // the app's colour law for movies — converted before the readback, so 1.5
 // bytes a pixel cross to the CPU instead of 4 (gpu-export-path ①a). Every
 // H.264 and H.265 the app writes of its own pictures is this pass's; the
-// law's reader is video's `colour::to_rgba`. ↩️video's `colour::from_rgba`
+// law's reader is video's `colour::rgba_of`. ↩️video's `colour::from_rgba`
 // wrote the law on the CPU too, and this pass was held to it byte for
 // byte, till 2026-11-15 (board trimmed-movie-decodes-to-nv12-Q2).
 //

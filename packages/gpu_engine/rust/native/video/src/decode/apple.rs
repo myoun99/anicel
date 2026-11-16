@@ -5,8 +5,9 @@
 //! asset on its URL; a span is SERVED — AVFoundation has no 「open this file
 //! from byte N」 — through a URL whose scheme it does not know, and a
 //! resource loader answering every request for it out of media's one span
-//! reader. The only pixel job here is BGRA → RGBA and the stride — or,
-//! for a document opened for NV12, the two planes laid as they are.
+//! reader. The pixel job here is the decoder's two planes laid as they are
+//! (NV12) — or, for a movie with alpha read as RGBA, BGRA → RGBA and the
+//! stride.
 //!
 //! 🔄**THE C'S READER HALF ONCE SAID THE OPPOSITE**: 「deliberately NOT
 //! AVAssetReader … a reader is sequential, the wrong tool for 『the picture
@@ -131,17 +132,29 @@ impl Reader {
                 .unwrap_or(0.0);
             // What the movie says its pictures are: its track's format
             // description's extensions, which the container and the stream
-            // fill in.
+            // fill in — and whether they hold alpha.
             // SAFETY: a property read on the track; each of its objects is a
             // CMFormatDescription, toll-free a CF object.
-            let colours = unsafe { track.formatDescriptions() }.firstObject().map_or(Colours::NONE, |format| {
-                let format = unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() };
-                core_video::colours_of(format)
-            });
+            let (colours, alpha) =
+                unsafe { track.formatDescriptions() }.firstObject().map_or((Colours::NONE, false), |format| {
+                    let format = unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() };
+                    (core_video::colours_of(format), core_video::holds_alpha(format))
+                });
+            // The decoder's own 4:2:0 for every document, which the law makes
+            // a document's RGBA of (`upright`) — save a movie with alpha read
+            // for its RGBA, which the 4:2:0 would lose: 32BGRA, Apple's
+            // conversion, then. ↩️Every document of RGBA asked 32BGRA till
+            // 2026-11-16 (card movie-frames-come-as-their-yuv-to-the-engine).
+            let (format, decodes) = if pixels == Pixels::Rgba && alpha {
+                (kCVPixelFormatType_32BGRA, Pixels::Rgba)
+            } else {
+                (core_video::biplanar_of(colours.range), Pixels::Nv12)
+            };
             let opened = Opened {
                 stored_width: width,
                 stored_height: height,
                 colours,
+                decodes,
                 rotation,
                 // ⚠️The rate goes back RAW, as a number: the law makes it a
                 // fraction (`rate_to_fraction`), for MediaCodec's too.
@@ -152,10 +165,6 @@ impl Reader {
             // depends on the frame asked for — `reposition`'s, which the law
             // calls exactly when the position it wants is not the one loaded.
             let stored = (width.max(0) as usize, height.max(0) as usize);
-            let format = match pixels {
-                Pixels::Rgba => kCVPixelFormatType_32BGRA,
-                Pixels::Nv12 => core_video::biplanar_of(colours.range),
-            };
             Ok((Reader { asset, track, serving, reading: None, stored, format }, opened))
         })
     }
@@ -184,9 +193,10 @@ impl Reader {
         unsafe {
             let reader = AVAssetReader::initWithAsset_error(AVAssetReader::alloc(), &self.asset).map_err(described)?;
             reader.setTimeRange(CMTimeRange { start, duration: kCMTimePositiveInfinity });
-            // 32BGRA so the pixel job is the byte swap Media Foundation's path
-            // does — one conversion shape rather than a second one; a
-            // document opened for NV12 the movie's own 4:2:0, no sum.
+            // The format `open` chose: the movie's own 4:2:0, no sum — or
+            // 32BGRA, for a movie with alpha read as RGBA. ↩️32BGRA for every
+            // document of RGBA till 2026-11-16, so its pixel job was the byte
+            // swap Media Foundation's RGB32 path did.
             let format = NSNumber::new_u32(self.format);
             let (key, value): (&NSString, &AnyObject) = (kCVPixelBufferPixelFormatTypeKey.as_ref(), &format);
             let settings = NSDictionary::from_slices(&[key], &[value]);

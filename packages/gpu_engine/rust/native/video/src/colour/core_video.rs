@@ -7,10 +7,11 @@
 
 use std::ffi::c_int;
 
-use objc2_core_foundation::{CFBoolean, CFRetained, CFString};
+use objc2_core_foundation::{CFBoolean, CFNumber, CFRetained, CFString};
 use objc2_core_media::{
-    CMFormatDescription, kCMFormatDescriptionExtension_ColorPrimaries, kCMFormatDescriptionExtension_FullRangeVideo,
-    kCMFormatDescriptionExtension_TransferFunction, kCMFormatDescriptionExtension_YCbCrMatrix,
+    CMFormatDescription, kCMFormatDescriptionExtension_ColorPrimaries, kCMFormatDescriptionExtension_Depth,
+    kCMFormatDescriptionExtension_FullRangeVideo, kCMFormatDescriptionExtension_TransferFunction,
+    kCMFormatDescriptionExtension_YCbCrMatrix,
 };
 use objc2_core_video::{
     CVColorPrimariesGetIntegerCodePointForString, CVColorPrimariesGetStringForIntegerCodePoint,
@@ -49,6 +50,18 @@ pub fn colours_of(format: &CMFormatDescription) -> Colours {
         )),
         range: full.map_or(UNSPECIFIED, u8::from),
     }
+}
+
+/// Whether a movie's pictures hold alpha: its format description says a
+/// depth of 32 — Apple's 24 is a picture without it (ProRes 4444 is either).
+/// What the decoder's 4:2:0 would lose, and so what the reader asks as
+/// 32BGRA (`decode/apple.rs`). ⚠️Not run here: no Mac reads a movie in
+/// these tests.
+pub fn holds_alpha(format: &CMFormatDescription) -> bool {
+    // SAFETY: reading an extension of a live description by the
+    // framework's own key.
+    let depth = unsafe { format.extension(kCMFormatDescriptionExtension_Depth) };
+    depth.and_then(|value| value.downcast::<CFNumber>().ok()).and_then(|depth| depth.as_i32()) == Some(32)
 }
 
 /// Core Video's names for `colours`' primaries, transfer and matrix — none

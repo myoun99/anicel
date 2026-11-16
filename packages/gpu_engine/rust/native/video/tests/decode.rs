@@ -108,12 +108,12 @@ fn picture(width: usize, height: usize, stride: usize, k: usize) -> Vec<u8> {
     nv12
 }
 
-/// What the law's own reader ([`colour::to_rgba`]) makes of frame `k` on
-/// chroma row `row`, the frame `height` tall.
+/// What the law's own reader ([`colour::rgba_of`], BT.601's) makes of
+/// frame `k` on chroma row `row`, the frame `height` tall.
 fn read_as(k: usize, row: usize, height: usize) -> [u8; 3] {
     let frame = [luma(k), luma(k), luma(k), luma(k), cb_at(row, height), 128];
     let mut rgba = [0u8; 2 * 2 * 4];
-    assert!(colour::to_rgba(&frame, 2, 2, 2, 2, true, &mut rgba), "a 2×2 frame");
+    assert!(colour::rgba_of(&frame, (2, 2), colour::BT601[0], &mut rgba), "a 2×2 frame");
     [rgba[0], rgba[1], rgba[2]]
 }
 
@@ -188,13 +188,13 @@ fn feed_of(codec: i32) -> Feed {
 /// picture `width` × `height`, handed to the open job as `feed` says: as
 /// NV12 in the writer's frame, on rows longer than it as the engine's
 /// readback rows are — or as the RGBA the law's own reader makes of it
-/// ([`colour::to_rgba`]). What the export answers.
+/// ([`colour::rgba_of`], BT.601's). What the export answers.
 fn hand(feed: Feed, paint: &impl Fn(usize, usize, usize, usize) -> Vec<u8>, width: usize, height: usize, k: usize) -> i32 {
     if feed == Feed::Rgba {
         let (even_width, even_height) = (width + (width & 1), height + (height & 1));
         let nv12 = paint(even_width, even_height, even_width, k);
         let mut rgba = vec![0u8; width * height * 4];
-        assert!(colour::to_rgba(&nv12, width, height, even_width, even_height, true, &mut rgba), "its own frame");
+        assert!(colour::rgba_of(&nv12, (width, height), colour::BT601[0], &mut rgba), "its own frame");
         // SAFETY: a whole frame of the size opened.
         return unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
     }
@@ -705,6 +705,44 @@ fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
     let movie = write_named("unnamed", (64, 48), unnamed, &frames);
     let (named, _) = read_nv12(movie.path());
     assert_eq!(named, unnamed, "nothing named, nothing said");
+}
+
+// 🚨A FRAME SHOWN IS ITS DECODER'S NV12 THROUGH THE LAW, TO THE BYTE (card
+// movie-frames-come-as-their-yuv-to-the-engine, 2026-11-16): a document of
+// RGBA asks the decoder for its 4:2:0 as a piece's does, and the law makes
+// the RGB by what the movie names — by its size where it names no matrix
+// (유저 11-16, Q1). ↩️Media Foundation's advanced processing made it till
+// then, by a matrix of its own.
+#[test]
+fn a_frame_shown_is_its_nv12_through_the_law() {
+    let _turn = one_at_a_time();
+    if qa_video_decode_supported() == 0 {
+        return;
+    }
+    for (name, size, named, sums) in [
+        ("law-hd-709", (1280, 720), [1, 1, 1, 0], colour::BT709[0]),
+        ("law-hd-unnamed", (1280, 720), [2, 2, 2, 2], colour::BT709[0]),
+        ("law-sd-unnamed", (320, 240), [2, 2, 2, 2], colour::BT601[0]),
+        ("law-sd-601", (320, 240), [6, 1, 6, 0], colour::BT601[0]),
+    ] {
+        let frames: Vec<_> = (0..3).map(|k| picture(size.0, size.1, size.0, k)).collect();
+        let movie = write_named(name, size, named, &frames);
+        let (codes, decoded) = read_nv12(&movie);
+        let [primaries, transfer, matrix, range] = codes.map(|code| code as u8);
+        let colours = colour::Colours { primaries, transfer, matrix, range };
+        assert_eq!(colour::Sums::of(colours, size), sums, "{name}: what its names and its size say ({codes:?})");
+        let handle = open(movie.to_str().expect("UTF-8"));
+        assert!(handle > 0, "{name}: {}", error());
+        for (k, nv12) in decoded.iter().enumerate() {
+            let rgba = size.0 * size.1 * 4;
+            let shown = frame(handle, k as i64, rgba).unwrap_or_else(|why| panic!("{name} frame {k}: {why}"));
+            let mut law = vec![0u8; rgba];
+            assert!(colour::rgba_of(nv12, size, sums, &mut law), "{name} frame {k}");
+            assert!(shown == law, "{name} frame {k}: the frame shown is its NV12 through the law");
+        }
+        qa_video_decode_close(handle);
+        std::fs::remove_file(movie).ok();
+    }
 }
 
 // H.264 and H.265 are written of NV12 alone, whoever writes them — an

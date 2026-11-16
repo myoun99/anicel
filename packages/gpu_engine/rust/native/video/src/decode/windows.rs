@@ -1,10 +1,12 @@
-//! Windows: Media Foundation's Source Reader, which also converts to RGB32
-//! for us (the advanced video processing attribute) — so the only pixel job
-//! here is BGRA → RGBA and the stride. A document opened for NV12 asks the
-//! decoder's own NV12, which comes as the file holds it (🔬Surface,
+//! Windows: Media Foundation's Source Reader, asked for the decoder's own
+//! NV12 for every document — which comes as the file holds it (🔬Surface,
 //! 2026-11-15: a red written 200·60·30 came back Y 101 · Cb 94 · Cr 191,
-//! the colour law's own sum). A whole file goes through its URL; a span
-//! through media's one byte stream (`span_stream`), plain or framed.
+//! the colour law's own sum) — and made RGB, where a document hands RGBA,
+//! by the law (`colour::Sums`). ↩️It asked RGB32 of the reader's advanced
+//! video processing till 2026-11-16, and the colour was Media Foundation's
+//! (card movie-frames-come-as-their-yuv-to-the-engine). A whole file goes
+//! through its URL; a span through media's one byte stream
+//! (`span_stream`), plain or framed.
 
 use std::ffi::CStr;
 
@@ -34,11 +36,10 @@ const WALK: usize = 600;
 
 const VIDEO: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 
-/// The platform's own state for one movie: the reader, what it hands, and
+/// The platform's own state for one movie: the reader, the size it stores, and
 /// how Media Foundation lays out its rows.
 pub struct Reader {
     reader: IMFSourceReader,
-    pixels: Pixels,
     stored: (usize, usize),
     layout: Layout,
 }
@@ -57,20 +58,19 @@ struct Layout {
 }
 
 impl Layout {
-    /// What `current`, the reader's output type, says — the stride a row
-    /// of `pixels` would have where it names none.
+    /// What `current`, the reader's output type, says — the stride a luma
+    /// row would have where it names none.
     ///
     /// 🔬A 1920×1080 H.264 movie read as NV12 says 1920×1080 at first, and
     /// with its first sample the type changes to 1920×1088 — its coded
     /// rows — and the picture 1080 of them (its minimum display aperture;
-    /// measured on Surface, 2026-11-15). RGB32 is cut to the picture by the
-    /// conversion, and was never seen to change there.
-    fn of(current: &IMFMediaType, pixels: Pixels, stored: (usize, usize)) -> Layout {
+    /// measured on Surface, 2026-11-15). ↩️RGB32, asked till 2026-11-16, was
+    /// cut to the picture by the conversion, and was never seen to change.
+    fn of(current: &IMFMediaType, stored: (usize, usize)) -> Layout {
         // SAFETY (each): reading an attribute of a live type.
         let (_, rows) = halves(unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0));
-        let bytes = if pixels == Pixels::Rgba { 4 } else { 1 };
-        let stride = unsafe { current.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
-            .map_or(stored.0 as i32 * bytes, |stride| stride as i32);
+        let stride =
+            unsafe { current.GetUINT32(&MF_MT_DEFAULT_STRIDE) }.map_or(stored.0 as i32, |stride| stride as i32);
         Layout { stride: stride.unsigned_abs() as usize, bottom_up: stride < 0, rows: (rows as usize).max(stored.1) }
     }
 }
@@ -81,14 +81,17 @@ impl Layout {
 unsafe impl Send for Reader {}
 
 impl Reader {
-    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, pixels: Pixels) -> Result<(Reader, Opened), Why> {
+    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, _pixels: Pixels) -> Result<(Reader, Opened), Why> {
         let Some(wide) = media::path::wide(path) else { return Err("path is not valid UTF-8".into()) };
         if !media::media_foundation::up() {
             return Err("MFStartup failed".into());
         }
-        // ENABLE_ADVANCED_VIDEO_PROCESSING is what lets RGB32 be asked of a
-        // YUV source — without it the reader refuses, and this would carry a
-        // colour converter of its own.
+        // ENABLE_ADVANCED_VIDEO_PROCESSING is what lets NV12 be asked of a
+        // decoder that hands another layout (4:2:2, ten bits) — without it
+        // the reader refuses (⚠️not measured: every movie the tests write is
+        // 4:2:0). ↩️It was what let RGB32 be asked of a YUV source, which
+        // this reader asked till 2026-11-16 — the colour was Media
+        // Foundation's then, and the law's now (`colour::Sums`).
         let mut attributes = None;
         // SAFETY (each MF call below): a plain COM call on live objects.
         unsafe { MFCreateAttributes(&mut attributes, 1) }.map_err(|_| "MFCreateAttributes failed")?;
@@ -122,13 +125,9 @@ impl Reader {
 
         let wanted = unsafe { MFCreateMediaType() }.map_err(|_| "MFCreateMediaType failed")?;
         let _ = unsafe { wanted.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) };
-        let subtype = if pixels == Pixels::Rgba { MFVideoFormat_RGB32 } else { MFVideoFormat_NV12 };
-        let _ = unsafe { wanted.SetGUID(&MF_MT_SUBTYPE, &subtype) };
+        let _ = unsafe { wanted.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12) };
         ask_for_the_stored_rate(&reader, &wanted);
-        unsafe { reader.SetCurrentMediaType(VIDEO, None, &wanted) }.map_err(|_| match pixels {
-            Pixels::Rgba => "no RGB conversion for this codec",
-            Pixels::Nv12 => "no NV12 from this codec",
-        })?;
+        unsafe { reader.SetCurrentMediaType(VIDEO, None, &wanted) }.map_err(|_| "no NV12 from this codec")?;
         let current =
             unsafe { reader.GetCurrentMediaType(VIDEO) }.map_err(|_| "the reader would not describe its output")?;
         let (width, height) = halves(unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0));
@@ -148,6 +147,7 @@ impl Reader {
             stored_width: width as i32,
             stored_height: height as i32,
             colours,
+            decodes: Pixels::Nv12,
             rotation: rotation as i32,
             // Media Foundation hands the rate over as a ratio already — the
             // one backend with nothing to reconstruct.
@@ -155,8 +155,8 @@ impl Reader {
             length: (length, TICKS),
         };
         let stored = (width as usize, height as usize);
-        let layout = Layout::of(&current, pixels, stored);
-        Ok((Reader { reader, pixels, stored, layout }, opened))
+        let layout = Layout::of(&current, stored);
+        Ok((Reader { reader, stored, layout }, opened))
     }
 
     pub fn reposition(&mut self, index: i64, rate: (i32, i32)) -> Result<(), Why> {
@@ -170,7 +170,7 @@ impl Reader {
     }
 
     /// Walks forward to the picture for `index` and writes it at the stored
-    /// size, in the document's [`Pixels`].
+    /// size, as NV12 padded even ([`Self::copy_nv12`]).
     pub fn read(&mut self, index: i64, rate: (i32, i32), out: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let target = ticks_at(index, TICKS, rate);
         let frame = frame_ticks(TICKS, rate);
@@ -187,7 +187,7 @@ impl Reader {
                 // SAFETY: a plain COM call.
                 let current = unsafe { self.reader.GetCurrentMediaType(VIDEO) }
                     .map_err(|_| "the reader would not describe its output")?;
-                self.layout = Layout::of(&current, self.pixels, self.stored);
+                self.layout = Layout::of(&current, self.stored);
             }
             // None is a gap or a format change: keep reading.
             let Some(sample) = sample else { continue };
@@ -205,31 +205,9 @@ impl Reader {
         unsafe { buffer.Lock(&mut data, None, Some(&mut length)) }.map_err(|_| "the decoded frame would not lock")?;
         // SAFETY: the locked buffer holds `length` bytes until Unlock.
         let source = unsafe { std::slice::from_raw_parts(data, length as usize) };
-        let wrote = match self.pixels {
-            Pixels::Rgba => self.copy_bgra(source, out),
-            Pixels::Nv12 => self.copy_nv12(source, out),
-        };
+        let wrote = self.copy_nv12(source, out);
         let _ = unsafe { buffer.Unlock() };
         wrote
-    }
-
-    fn copy_bgra(&self, source: &[u8], rgba: &mut [u8]) -> Result<(), Why> {
-        let ((width, height), Layout { stride, bottom_up, .. }) = (self.stored, self.layout);
-        if source.len() < stride * height {
-            return Err("the decoded frame was short".into());
-        }
-        for y in 0..height {
-            // A bottom-up buffer stores the LAST row first; read forwards
-            // it comes out upside down.
-            let row = if bottom_up { height - 1 - y } else { y } * stride;
-            let from = &source[row..row + width * 4];
-            let into = &mut rgba[y * width * 4..(y + 1) * width * 4];
-            for (to, bgra) in into.chunks_exact_mut(4).zip(from.chunks_exact(4)) {
-                // MFVideoFormat_RGB32 is BGRA in memory, its fourth byte unset.
-                to.copy_from_slice(&[bgra[2], bgra[1], bgra[0], 255]);
-            }
-        }
-        Ok(())
     }
 
     /// The decoder's NV12 as it is, padded even (`colour::nv12_of`). NV12

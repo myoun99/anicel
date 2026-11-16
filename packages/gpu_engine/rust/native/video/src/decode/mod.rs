@@ -77,9 +77,9 @@ enum Rate {
 /// What a document hands for a frame: straight RGBA — what every surface
 /// shows — or the movie's own 4:2:0 as NV12, as the decoder made it, for a
 /// piece written of it with no sum (`colour`: 유저 2026-11-14,
-/// trimmed-movie-decodes-to-nv12-Q1). A document is opened for one; the
-/// backend asks its decoder for that, and a reader opened afresh asks the
-/// same ([`Doc::source`]).
+/// trimmed-movie-decodes-to-nv12-Q1). A document is opened for one, and
+/// a reader opened afresh is asked the same ([`Doc::source`]); what the
+/// decoder hands for either is [`Opened::decodes`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Pixels {
     Rgba,
@@ -103,6 +103,11 @@ struct Opened {
     /// What the movie says its pictures are — [`Colours::NONE`] where it
     /// says nothing.
     colours: Colours,
+    /// What its reader writes a frame as: the decoder's 4:2:0 as NV12 for
+    /// every document — the law makes a document's RGBA of it ([`upright`])
+    /// — or RGBA where the decoder's own would lose what the movie holds
+    /// (Apple's, of a movie with alpha).
+    decodes: Pixels,
     /// The clockwise turn the container asks for, in degrees, as it says it.
     ///
     /// 🚨★★★**A PHONE HOLDS ITS SENSOR SIDEWAYS AND WRITES THE TURN DOWN.**
@@ -137,6 +142,8 @@ struct Shape {
     rate: (i32, i32),
     frame_count: i64,
     pixels: Pixels,
+    /// What its reader writes ([`Opened::decodes`]).
+    decodes: Pixels,
     colours: Colours,
 }
 
@@ -317,7 +324,7 @@ fn settle(opened: Opened, pixels: Pixels) -> Result<Shape, Why> {
     // that declared no rate — while it then sought at 24; Android and Apple
     // made the 24 first. The law's order, for every backend.
     let frame_count = frame_count_for(opened.length, rate);
-    Ok(Shape { stored, rotation, shown, rate, frame_count, pixels, colours: opened.colours })
+    Ok(Shape { stored, rotation, shown, rate, frame_count, pixels, decodes: opened.decodes, colours: opened.colours })
 }
 
 /// The slot `handle` names, locked, while it holds a movie. Handles are
@@ -552,30 +559,60 @@ fn frame(doc: &mut Doc, index: i64, out: &mut [u8]) -> Result<(), Why> {
     Ok(())
 }
 
-/// One frame the right way up into `out`, which `read` fills at the
-/// STORED size, in the document's [`Pixels`]: straight into `out` with no
-/// turn, into `scratch` and then turned with one.
+/// One frame the right way up into `out`, in the document's [`Pixels`],
+/// of what `read` fills at the STORED size in what the reader decodes
+/// ([`Shape::decodes`]): straight into `out` where that is the document's
+/// and there is no turn — else into `scratch`, turned, and where the reader
+/// decoded NV12 for a document of RGBA, made RGBA by the law
+/// ([`colour::rgba_of`], the movie's own [`colour::Sums`]).
 ///
 /// ⛔The turn is applied HERE, once, for every backend — not by whichever
 /// backend's author happened to know about it (until 2026-08-31 Apple's
 /// alone did, and upright phone video lay on its side elsewhere).
+///
+/// 🚨★★★**SO IS THE COLOUR** (card movie-frames-come-as-their-yuv-to-the-
+/// engine, 2026-11-16): each OS made a document's RGB its own way till then
+/// — Media Foundation's matrix, Apple's, and Android this law's BT.601
+/// whatever the movie named. A turned frame is turned as NV12 — 1.5 bytes
+/// a pixel moved where RGBA moves 4 — and made RGB after.
 fn upright(
     shape: &Shape,
     scratch: &mut Vec<u8>,
     out: &mut [u8],
     read: impl FnOnce(&mut [u8]) -> Result<(), Why>,
 ) -> Result<(), Why> {
-    if shape.rotation == 0 {
+    let made_here = shape.decodes != shape.pixels;
+    if shape.rotation == 0 && !made_here {
         return read(out);
     }
-    let stored = (shape.stored.0 as usize, shape.stored.1 as usize);
-    let needed = shape.pixels.bytes(stored);
-    if scratch.len() < needed {
-        scratch.try_reserve_exact(needed - scratch.len()).map_err(|_| "out of memory turning the frame upright")?;
-        scratch.resize(needed, 0);
+    let size = |(width, height): (i32, i32)| (width as usize, height as usize);
+    let (stored, shown) = (size(shape.stored), size(shape.shown));
+    let decoded = shape.decodes.bytes(stored);
+    let turned = if made_here && shape.rotation != 0 { shape.decodes.bytes(shown) } else { 0 };
+    if scratch.len() < decoded + turned {
+        scratch
+            .try_reserve_exact(decoded + turned - scratch.len())
+            .map_err(|_| "out of memory turning the frame upright")?;
+        scratch.resize(decoded + turned, 0);
     }
-    read(&mut scratch[..needed])?;
-    turn(scratch, shape.pixels, stored, shape.rotation, out);
+    let (read_into, turned_into) = scratch.split_at_mut(decoded);
+    read(read_into)?;
+    if !made_here {
+        turn(read_into, shape.decodes, stored, shape.rotation, out);
+        return Ok(());
+    }
+    let upright = if shape.rotation == 0 {
+        &*read_into
+    } else {
+        turn(read_into, shape.decodes, stored, shape.rotation, &mut turned_into[..turned]);
+        &turned_into[..turned]
+    };
+    // ⚠️Sized as STORED where the movie names no matrix — the picture as
+    // its encoder wrote it, before its turn: an SD movie held sideways is SD
+    // stood up too (mine, 2026-11-16 — Q1 said the size, not which).
+    if !colour::rgba_of(upright, shown, colour::Sums::of(shape.colours, stored), out) {
+        return Err("the decoded frame was short".into());
+    }
     Ok(())
 }
 

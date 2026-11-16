@@ -1,8 +1,9 @@
 //! The app's colour law for movies: BT.601, studio range, 4:2:0 — what a
-//! picture the app drew becomes as YCbCr when it writes a movie, and how
-//! YCbCr becomes a picture where the app converts one back itself. The
-//! writing side is the GPU engine's NV12 pass (`gpu_engine`
-//! `kernels/export/nv12.wgsl`), the reading side is here ([`to_rgba`]), and
+//! picture the app drew becomes as YCbCr when it writes a movie — and how
+//! every movie's YCbCr becomes a picture: by the matrix and the range the
+//! movie names ([`Sums`]), this law's for the app's own. The writing side
+//! is the GPU engine's NV12 pass (`gpu_engine`
+//! `kernels/export/nv12.wgsl`), the reading side is here ([`rgba_of`]), and
 //! both are held to the same sums worked out by hand, so the matrix one
 //! side writes is the matrix the other reads. ↩️Both directions were here
 //! till 2026-11-15 — the writing one as `from_rgba`, the pass's twin on the
@@ -203,54 +204,142 @@ pub fn nv12_of(frame: &Decoded, width: usize, height: usize, out: &mut [u8]) -> 
     true
 }
 
-/// YUV420 → RGBA, BT.601 studio range — the inverse of the GPU engine's
-/// NV12 pass (`kernels/export/nv12.wgsl`).
+/// The integer sums a movie's YCbCr becomes RGB by ([`rgba_of`]), eight
+/// bits of fraction each: its luma less `black`, times `luma`, and its
+/// chroma less 128, times each weight — red of Cr, green of both, blue of
+/// Cb. Which ones are the movie's to say ([`Sums::of`]).
 ///
-/// `data` lies as [`Decoded::in_one_buffer`] reads it: `stride` bytes a
-/// luma row, `slice` rows to the chroma, `semi_planar` NV12 over I420.
+/// 🚨★★★**ONE LAW FOR WHAT EVERY OS DECODES** (card movie-frames-come-as-
+/// their-yuv-to-the-engine, 2026-11-16). ↩️Each OS converted its own way:
+/// Media Foundation's advanced processing made RGB32 by its own matrix,
+/// Apple's reader 32BGRA by Apple's, and Android these sums' BT.601 alone,
+/// whatever the movie named. Every decoder now hands its 4:2:0 as it is,
+/// and the RGB is made here, by what the movie names.
+///
+/// Each row is worked out of its matrix's two weights (H.273's Kr and Kb)
+/// and its range, and rounded — `colour/tests.rs` works every one out
+/// again. BT.601's studio row is the inverse of the GPU engine's NV12 pass
+/// (`kernels/export/nv12.wgsl`): the app's own law for the movies it
+/// writes, which it reads back by these.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sums {
+    pub black: i32,
+    pub luma: i32,
+    pub red_cr: i32,
+    pub green_cb: i32,
+    pub green_cr: i32,
+    pub blue_cb: i32,
+}
+
+const fn sums(black: i32, luma: i32, red_cr: i32, green_cb: i32, green_cr: i32, blue_cb: i32) -> Sums {
+    Sums { black, luma, red_cr, green_cb, green_cr, blue_cb }
+}
+
+/// BT.601's sums, studio range and then full.
+pub const BT601: [Sums; 2] = [sums(16, 298, 409, -100, -208, 516), sums(0, 256, 359, -88, -183, 454)];
+
+/// BT.709's sums, studio range and then full.
+pub const BT709: [Sums; 2] = [sums(16, 298, 459, -55, -136, 541), sums(0, 256, 403, -48, -120, 475)];
+
+/// Every matrix a platform's table names (`colour/media_foundation.rs`,
+/// `media_format.rs`; Apple's asks the OS), by its H.273 code point.
+pub const MATRICES: [(u8, [Sums; 2]); 5] = [
+    (1, BT709),
+    // BT.470 System B/G's and SMPTE 170M's: BT.601's, weight for weight.
+    (5, BT601),
+    (6, BT601),
+    // SMPTE 240M.
+    (7, [sums(16, 298, 459, -66, -139, 532), sums(0, 256, 403, -58, -122, 467)]),
+    // BT.2020's, of non-constant luminance.
+    (9, [sums(16, 298, 430, -48, -167, 548), sums(0, 256, 377, -42, -146, 482)]),
+];
+
+impl Sums {
+    /// The sums of a movie whose pictures are `colours`, `stored` its
+    /// pictures' size as its decoder hands them.
+    ///
+    /// 🗣️★★**A MOVIE THAT NAMES NO MATRIX IS READ BY ITS SIZE** (유저 11-16,
+    /// movie-frames-come-as-their-yuv-to-the-engine-Q1 (가): 「추천대로 가
+    /// 로 해도 문제없어」): BT.709 where it is 1280 wide or more, or more than
+    /// 576 tall — HD — and BT.601 under that. 🔬Media Foundation read a
+    /// 1920×1080 movie that had lost its names as BT.709 (main PC,
+    /// 2026-11-14 — this module's head). ⚠️A matrix it names that no
+    /// platform table knows (YCgCo, BT.2020's constant luminance…) is read
+    /// by its size too — mine, 2026-11-16: only Apple's OS hands a name for
+    /// one, and these sums can make nothing else of it.
+    ///
+    /// A range it does not name is studio: H.264's and H.265's
+    /// `video_full_range_flag` is 0 where a stream leaves it out.
+    pub fn of(colours: Colours, (width, height): (usize, usize)) -> Sums {
+        let named = MATRICES.iter().find(|(code, _)| *code == colours.matrix).map(|(_, sums)| sums);
+        let matrix = named.unwrap_or(if width >= 1280 || height > 576 { &BT709 } else { &BT601 });
+        matrix[usize::from(colours.range == 1)]
+    }
+}
+
+/// `nv12`, a `width`×`height` picture laid as [`nv12_of`] lays one — padded
+/// even, its CbCr pairs after its luma, every row the padded width apart —
+/// as straight RGBA into `rgba`, by `sums`: every pixel opaque, its 2×2
+/// block's chroma its own.
+///
+/// 🔬A row at a time, the row's chroma spread a pixel apiece first and every
+/// pixel written whole: 3.1 ms a 1080p frame on the Surface, where reading
+/// each pixel's three through [`Decoded`] took 11.6 and Media Foundation's
+/// own conversion about 5 (2026-11-16, release, 72 frames) — the same bytes.
 ///
 /// 🚨★★★**IT LIVES IN THE LAW BECAUSE IT IS ARITHMETIC, AND BECAUSE IT WAS
 /// NEVER RUN.** It was inside the Android backend, where it compiled on
 /// every PR and executed on no machine anybody has — the card
 /// `android-decoder-branch-never-runs` is about exactly that gap. Nothing in
 /// it touches a platform: it reads bytes and writes bytes, so it can be
-/// proven on the bench.
+/// proven on the bench. (↩️As `to_rgba`, BT.601 alone, till 2026-11-16.)
 ///
 /// ⛔The picture size comes in as ARGUMENTS. It used to read the decoder's
 /// global document, which is what tied a pure calculation to a backend
 /// having opened something.
 ///
-/// ⚠️Refused, not read past, where `data` does not hold the frame
-/// ([`Decoded::holds`]).
+/// ⚠️Refused, not read past, where a buffer is short of the picture: the
+/// decoder's own buffers are made NV12 first ([`nv12_of`], which refuses
+/// one that does not hold its frame — [`Decoded::holds`]), and these two
+/// are checked here — `rgba` untouched then.
 #[must_use]
-pub fn to_rgba(
-    data: &[u8],
-    width: usize,
-    height: usize,
-    stride: usize,
-    slice: usize,
-    semi_planar: bool,
-    rgba: &mut [u8],
-) -> bool {
+pub fn rgba_of(nv12: &[u8], (width, height): (usize, usize), sums: Sums, rgba: &mut [u8]) -> bool {
     if width == 0 || height == 0 {
         return true;
     }
-    let frame = Decoded::in_one_buffer(data, stride, slice, semi_planar);
-    if !frame.holds(width, height) || rgba.len() < width * height * 4 {
+    let (padded, rows) = (width + (width & 1), height + (height & 1));
+    if nv12.len() < nv12_bytes(width, height) || rgba.len() < width * height * 4 {
         return false;
     }
-    for y in 0..height {
-        for x in 0..width {
-            let (luma, cb, cr) = frame.at(x, y);
-            let (luma, cb, cr) = (i32::from(luma) - 16, i32::from(cb) - 128, i32::from(cr) - 128);
-            let r = (298 * luma + 409 * cr + 128) >> 8;
-            let g = (298 * luma - 100 * cb - 208 * cr + 128) >> 8;
-            let b = (298 * luma + 516 * cb + 128) >> 8;
-            let out = &mut rgba[(y * width + x) * 4..][..4];
-            out.copy_from_slice(&[r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8, 255]);
+    let (luma, chroma) = nv12.split_at(padded * rows);
+    let mut spread = vec![0i32; width * 3];
+    let (red, rest) = spread.split_at_mut(width);
+    let (green, blue) = rest.split_at_mut(width);
+    let Sums { black, luma: scale, red_cr, green_cb, green_cr, blue_cb } = sums;
+    for (y, out) in rgba.chunks_exact_mut(width * 4).take(height).enumerate() {
+        if y % 2 == 0 {
+            let pairs = &chroma[(y / 2) * padded..][..padded];
+            for (x, ((red, green), blue)) in red.iter_mut().zip(green.iter_mut()).zip(blue.iter_mut()).enumerate() {
+                let (cb, cr) = (i32::from(pairs[x & !1]) - 128, i32::from(pairs[x | 1]) - 128);
+                *red = red_cr * cr + 128;
+                *green = green_cb * cb + green_cr * cr + 128;
+                *blue = blue_cb * cb + 128;
+            }
+        }
+        let row = &luma[y * padded..][..width];
+        for ((((pixel, &l), &r), &g), &b) in out.chunks_exact_mut(4).zip(row).zip(red.iter()).zip(green.iter()).zip(blue.iter())
+        {
+            let l = scale * (i32::from(l) - black);
+            let word = channel(l + r) | channel(l + g) << 8 | channel(l + b) << 16 | 0xff00_0000;
+            pixel.copy_from_slice(&word.to_le_bytes());
         }
     }
     true
+}
+
+/// A sum of eight bits of fraction as a channel's byte.
+fn channel(sum: i32) -> u32 {
+    (sum >> 8).clamp(0, 255) as u32
 }
 
 #[cfg(windows)]
@@ -263,4 +352,4 @@ pub mod media_format;
 pub mod core_video;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

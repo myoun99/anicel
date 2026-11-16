@@ -1,10 +1,11 @@
 //! Android: the NDK's MediaExtractor and MediaCodec, through `ndk-sys`.
-//! The colour conversion is ours ([`colour::to_rgba`]) — a decoder hands
-//! back YUV in whichever layout the vendor's hardware likes, described by
-//! STRIDE, SLICE HEIGHT and a colour format, easy to assume and wrong to.
-//! Planar I420 and semi-planar NV12 are read — into RGBA, or laid as NV12
-//! as they are for a document opened for it ([`colour::nv12_of`]);
-//! anything else is refused by name instead of drawn as noise.
+//! A decoder hands back YUV in whichever layout the vendor's hardware
+//! likes, described by STRIDE, SLICE HEIGHT and a colour format, easy to
+//! assume and wrong to. Planar I420 and semi-planar NV12 are read — laid
+//! as NV12 as they are ([`colour::nv12_of`]), which the law makes a
+//! document's RGBA of (`colour::Sums`; ↩️this backend made it here in
+//! BT.601 alone, whatever the movie named, till 2026-11-16); anything else
+//! is refused by name instead of drawn as noise.
 //!
 //! ⚠️Not run on a device by these tests, as the C's was not: the law and
 //! the colour arithmetic are what the bench proves.
@@ -53,7 +54,6 @@ pub struct Reader {
     codec: Codec,
     extractor: Extractor,
     _served: Option<ServedSpan>,
-    pixels: Pixels,
     stored: (usize, usize),
 }
 
@@ -63,7 +63,7 @@ pub struct Reader {
 unsafe impl Send for Reader {}
 
 impl Reader {
-    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, pixels: Pixels) -> Result<(Reader, Opened), Why> {
+    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, _pixels: Pixels) -> Result<(Reader, Opened), Why> {
         // SAFETY: no arguments.
         let extractor = Extractor(unsafe { AMediaExtractor_new() });
         if extractor.0.is_null() {
@@ -137,6 +137,7 @@ impl Reader {
             stored_width: width,
             stored_height: height,
             colours,
+            decodes: Pixels::Nv12,
             rotation,
             // 🚨★★★**29.97 IS NOT 30**: read as a FLOAT; some extractors store
             // the key as an int32 and the float getter refuses it, and the
@@ -145,7 +146,7 @@ impl Reader {
             length: (duration, TICKS),
         };
         let stored = (width.max(0) as usize, height.max(0) as usize);
-        Ok((Reader { codec, extractor, _served: served, pixels, stored }, opened))
+        Ok((Reader { codec, extractor, _served: served, stored }, opened))
     }
 
     /// ⛔The flush goes WITH the seek: flushing without seeking would throw
@@ -210,8 +211,8 @@ impl Reader {
         }
     }
 
-    /// Output buffer `out` at the stored size, in the document's [`Pixels`]:
-    /// RGBA in the app's law, or the decoder's own 4:2:0 as NV12, no sum.
+    /// Output buffer `out` at the stored size, as the decoder's own 4:2:0
+    /// laid as NV12, no sum — a document of RGBA is made of it by the law.
     fn copy(&self, out: usize, pixels: &mut [u8]) -> Result<(), Why> {
         let (width, height) = self.stored;
         let mut size = 0;
@@ -239,14 +240,8 @@ impl Reader {
         // ⚠️Measured, not assumed: the C read as far as stride and slice said,
         // whatever the buffer held.
         let semi_planar = colour == SEMI_PLANAR;
-        let wrote = match self.pixels {
-            Pixels::Rgba => colour::to_rgba(data, width, height, stride, slice, semi_planar, pixels),
-            Pixels::Nv12 => {
-                let frame = Decoded::in_one_buffer(data, stride, slice, semi_planar);
-                colour::nv12_of(&frame, width, height, pixels)
-            }
-        };
-        if !wrote {
+        let frame = Decoded::in_one_buffer(data, stride, slice, semi_planar);
+        if !colour::nv12_of(&frame, width, height, pixels) {
             return Err("the decoded frame was short".into());
         }
         Ok(())
