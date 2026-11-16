@@ -199,6 +199,34 @@ void main() {
     }
   });
 
+  // ⚠️What the keys wait for is the app's (`CanvasDragInFlight`): a canvas
+  // taken down in the middle of its drag lets go of it, or every key held
+  // after would wait for a hand that never comes up.
+  testWidgets('a canvas taken down in the middle of a drag leaves no key '
+      'waiting for it', (tester) async {
+    var brush = await pumpShell(tester);
+    await take(tester, brush, CanvasTool.fillShape);
+    final at = visibleCanvasPoint(tester);
+    final hand = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 1; step <= 4; step += 1) {
+      await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+      await tester.pump();
+    }
+    await tester.pumpWidget(const SizedBox());
+    await hand.up();
+
+    brush = await pumpShell(tester);
+    await take(tester, brush, CanvasTool.brush);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(brush.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+  });
+
   // 🚨The BUTTONS, through the real shell: every tool's own layer is
   // mounted over the canvas when the press comes, and goes away under the
   // pointer when the hold takes the tool.
