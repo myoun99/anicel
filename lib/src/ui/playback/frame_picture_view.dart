@@ -1471,6 +1471,12 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     _repaint?.addListener(markNeedsPaint);
     _overlays?.carriedBy(this);
     _shownThrough.start();
+    // A box put back — moved under another parent, laid out with the
+    // constraints it had — is not resized, and asks for its texture here
+    // (frame-timing-overlay-hides-the-canvas): the grid's slots' law
+    // (`_RenderGridScreenSlot.attach`). A box come anew has nothing wanted
+    // yet, and asks as it is sized ([performResize]).
+    unawaited(_shownThrough.open());
   }
 
   @override

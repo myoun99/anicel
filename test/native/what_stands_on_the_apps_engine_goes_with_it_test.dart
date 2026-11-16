@@ -137,5 +137,65 @@ void main() {
       await pumpEventQueue();
       expect(screen.texture, same(ofTheNext));
     });
+
+    test('taken off and put back — a tree moved under another parent — it '
+        'opens again, asked at the size it held', () async {
+      // frame-timing-overlay-hides-the-canvas (검증 2026-11-15): the overlay
+      // rebuilt the app round the canvas, and its screens stayed dark.
+      await openAppGpuEngine();
+      final screen = EngineScreenTexture(
+        asks: () => true,
+        opened: (_) {},
+        letGo: () {},
+        putUp: ({required behind}) {},
+      )..wanted = (4, 4);
+      screen.start();
+      addTearDown(screen.stop);
+      await screen.open();
+      expect(screen.texture, isNotNull, reason: '⛔premise: one is open');
+
+      screen.stop();
+      expect(screen.texture, isNull, reason: '⛔premise: let go');
+      screen.start();
+      await screen.open();
+
+      expect(screen.texture, isNotNull);
+      expect(screen.holdsWhatIsWanted, isTrue);
+    });
+
+    test('put back while the one asked for was on its way, it is asked for '
+        'again — the one on its way freed as it comes', () async {
+      await openAppGpuEngine();
+      final opening = <Completer<ScreenTexture>>[];
+      final opener = debugOpenEngineScreen;
+      addTearDown(() => debugOpenEngineScreen = opener);
+      debugOpenEngineScreen = (_, _, _) {
+        opening.add(Completer<ScreenTexture>());
+        return opening.last.future;
+      };
+      final screen = EngineScreenTexture(
+        asks: () => true,
+        opened: (_) {},
+        letGo: () {},
+        putUp: ({required behind}) {},
+      )..wanted = (4, 4);
+      screen.start();
+      addTearDown(screen.stop);
+      unawaited(screen.open());
+      expect(opening, hasLength(1), reason: '⛔premise: one is on its way');
+
+      screen.stop();
+      opening.first.complete(aTexture(1));
+      await pumpEventQueue();
+      expect(screen.texture, isNull, reason: 'taken off meanwhile');
+
+      screen.start();
+      unawaited(screen.open());
+      expect(opening, hasLength(2), reason: 'asked for again');
+      final next = aTexture(2);
+      opening.last.complete(next);
+      await pumpEventQueue();
+      expect(screen.texture, same(next));
+    });
   });
 }

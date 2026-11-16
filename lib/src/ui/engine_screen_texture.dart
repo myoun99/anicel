@@ -157,10 +157,26 @@ final class EngineScreenTexture {
     filterQuality: FilterQuality.none,
   );
 
-  void start() => _onTheEngine.start();
+  /// Hears of the app's engine from here on — again after a [stop]: a box
+  /// taken off and put back asks for its texture again ([open]).
+  ///
+  /// 🚨frame-timing-overlay-hides-the-canvas (검증 2026-11-15: 「캔버스 자리가
+  /// 통째로 어둡다 … 새 프로젝트를 열면 다시 그려진다」): a tree moved under
+  /// another parent — the app rebuilt round it as the frame timing overlay
+  /// is turned on — detaches its boxes and attaches them again. ↩️This only
+  /// heard again: [stop] had marked the texture stopped for good, every
+  /// open after it freed what it opened, and the canvas stayed dark till its
+  /// boxes were made anew.
+  void start() {
+    _stopped = false;
+    _onTheEngine.start();
+  }
 
+  /// Hears no more, and lets go of the texture — and of one on its way,
+  /// which is freed as it comes.
   void stop() {
     _stopped = true;
+    _opening = null;
     _onTheEngine.stop();
     _freed();
   }
