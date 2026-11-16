@@ -107,11 +107,14 @@ void main() {
 
   group('🎯through its mask, as Photoshop\'s is baked (보드 the-clip-import-'
       'leaves-masks-and-locks-unsaid)', () {
-    /// A one-byte mask of 64 × 64 standing at ([left], [top]): [coverage]
-    /// in its one block — or no block stored — and [fill] past its edges.
+    /// A one-byte mask of [width] × [height] standing at ([left], [top]):
+    /// [coverage] in its one block — or no block stored — and [fill] past
+    /// its edges.
     ClipStoredMask mask({
       required int left,
       required int top,
+      int width = 64,
+      int height = 64,
       int fill = 1,
       int Function(int x, int y)? coverage,
       int colourChannels = 0,
@@ -126,8 +129,8 @@ void main() {
       }
       return (
         attribute: offscreenAttributeBytes(
-          width: 64,
-          height: 64,
+          width: width,
+          height: height,
           columns: 1,
           rows: 1,
           colourChannels: colourChannels,
@@ -179,6 +182,23 @@ void main() {
         reason: 'left of the mask its fill shows all',
       );
       expect(pixelAt(tiles, 80, 30), [76, 24, 7, 255], reason: 'right of it');
+    });
+
+    test('a mask wider than it is tall stops at its own last row', () {
+      final tiles = bakeThrough(
+        mask(left: 10, top: 20, height: 16, coverage: (x, y) => 128),
+      )!;
+
+      expect(
+        pixelAt(tiles, 50, 30),
+        [46, 24, 7, 128],
+        reason: 'the mask\'s (40, 10) halves it',
+      );
+      expect(
+        pixelAt(tiles, 50, 40),
+        [46, 34, 7, 255],
+        reason: 'the mask\'s 16 rows end above it — its fill shows all',
+      );
     });
 
     test('where it stores no block it is its fill — 0 hides everything', () {

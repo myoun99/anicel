@@ -258,11 +258,14 @@ Uint8List psdPlanesToRgba({
 /// psd-planes-pack-on-the-engine, 2026-11-16): its rows go into the tile
 /// cutter packed one at a time, as a PNG's and a JPEG's go in as they are
 /// inflated (`cutFileInWorker`). 🔬Packing a layer whole was 27–29 % of
-/// laying an 8K document of four layers out as cels (Surface, profile) —
-/// and nearly all of that was the fresh 132 MB its RGBA took, not the
-/// packing: made and touched alone it cost 60–64 ms against the pack's
-/// 66–70. ⛔A pixel written as one word was SLOWER (110 ms — its alpha
-/// asked through a closure), and four a load faster by a fifth only.
+/// laying an 8K document of four layers out as cels (Surface, profile),
+/// but what packing it a row at a time saves is the whole RGBA only: the
+/// worker's pack and cut of three 8K layers and a small one went 1,136 →
+/// 1,068 ms (−6 %, the two turn about in one process), the same tiles.
+/// Of the rest the cutter is 772 ms, the pack about 300 — packing is not
+/// where the time is. ⛔A pixel written as one word was SLOWER (110 ms an
+/// 8K layer against 66–70 — its alpha asked through a closure), and four
+/// a load faster by a fifth only.
 /// ⛔Not on the engine, as the card first said: what this makes is cut on
 /// the worker it runs on, which has no engine.
 final class PsdPlanes {

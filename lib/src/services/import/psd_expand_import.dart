@@ -176,8 +176,8 @@ _ReadAndCut? _readAndCut(
       // way, as a PNG's rows go in as they are inflated (`cutFileInWorker`).
       // ↩️Each layer was packed whole as the document was read and cropped
       // to a copy of its own here till 2026-11-16 (card
-      // psd-planes-pack-on-the-engine): 27–29 % of laying an 8K document of
-      // four layers out, nearly all of it the fresh RGBA's first touch.
+      // psd-planes-pack-on-the-engine) — 6 % of the worker's pack and cut,
+      // measured (`PsdPlanes`).
       final picture = source.picture!;
       final tiles = TileCutter.cutting(
         tileCutOf(lay.cut),
