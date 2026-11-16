@@ -25,6 +25,14 @@ void main() {
     expect(code, isNot(contains('detach')));
   });
 
+  test('a block weighed with the rest of its cel is attached with no weight '
+      'of its own — the cel tells it once (TileWeight)', () {
+    // ⚠️On the source for the reason above: the weight told is the VM's
+    // to count, and no test here reads it. Told twice, the cel's tiles
+    // were scavenged for as before (the card's 11-16 lines).
+    expect(code, contains('_freesWhenCollected.attach(holder, block.cast());'));
+  });
+
   test('the finalizer of the tile blocks is the lists\' own', () {
     final finalizers = [
       for (final declared in RegExp(
