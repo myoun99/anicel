@@ -208,12 +208,14 @@ void _bakeMask(
     layerTop: target.top,
     layerWidth: picture.width,
     layerHeight: picture.height,
-    mask: plane,
-    maskLeft: mask.left,
-    maskTop: mask.top,
-    maskWidth: shape.width,
-    maskHeight: shape.height,
-    defaultColor: shape.maskOutside,
+    mask: (
+      plane: plane,
+      left: mask.left,
+      top: mask.top,
+      width: shape.width,
+      height: shape.height,
+      defaultColor: shape.maskOutside,
+    ),
   );
 }
 

@@ -181,23 +181,20 @@ void main() {
       ),
     );
     final whole = layer.rgba();
-    final (fromX, fromY, cropWidth, cropHeight) = (5, 2, 25, 8);
+    const crop = (left: 5, top: 2, width: 25, height: 8);
     final seen = <int>[];
     Uint8List? buffer;
     layer.rows(
-      fromX: fromX,
-      fromY: fromY,
-      width: cropWidth,
-      height: cropHeight,
+      crop,
       row: (y, rgba) {
         seen.add(y);
         expect(identical(buffer ?? rgba, rgba), isTrue, reason: 'one buffer');
         buffer = rgba;
-        final from = ((fromY + y) * width + fromX) * 4;
-        expect(rgba, whole.sublist(from, from + cropWidth * 4), reason: '$y');
+        final from = ((crop.top + y) * width + crop.left) * 4;
+        expect(rgba, whole.sublist(from, from + crop.width * 4), reason: '$y');
       },
     );
-    expect(seen, [for (var y = 0; y < cropHeight; y += 1) y]);
+    expect(seen, [for (var y = 0; y < crop.height; y += 1) y]);
     final hidden = whole[(0 * width + 0) * 4 + 3];
     expect(hidden, 0, reason: 'past the mask, its default hides');
   });

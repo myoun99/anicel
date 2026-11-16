@@ -182,13 +182,7 @@ _ReadAndCut? _readAndCut(
       final tiles = TileCutter.cutting(
         tileCutOf(lay.cut),
         crop.width,
-        (row) => picture.rows(
-          fromX: crop.left,
-          fromY: crop.top,
-          width: crop.width,
-          height: crop.height,
-          row: row,
-        ),
+        (row) => picture.rows(crop, row: row),
       );
       cuts[index] = (lay: lay, cel: laidCelOf(lay.cut.layout, tiles));
     }

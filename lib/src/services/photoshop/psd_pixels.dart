@@ -398,18 +398,6 @@ final class PsdPlanes {
 
 int _clampByte(int value) => value < 0 ? 0 : (value > 255 ? 255 : value);
 
-/// The mask a layer's alpha is multiplied by, in the document's space: its
-/// [plane] over its own rectangle, [defaultColor] past it
-/// (`applyMaskToAlpha`).
-typedef PsdLayerMask = ({
-  Uint8List plane,
-  int left,
-  int top,
-  int width,
-  int height,
-  int defaultColor,
-});
-
 /// A layer's picture as its file holds it: its [planes], their top-left at
 /// ([left], [top]) in the document, and the [mask] that is on — baked into
 /// alpha as each row is packed.
@@ -424,27 +412,23 @@ final class PsdLayerPicture {
   final PsdPlanes planes;
   final int left;
   final int top;
-  final PsdLayerMask? mask;
+  final LayerMask? mask;
 
-  /// The [width] × [height] part of it from its own column [fromX] and row
-  /// [fromY], a row at a time: each packed and its mask baked into ONE
-  /// buffer, handed to [row] with its index from 0 — and the next row's
-  /// once [row] returns, so [row] takes what it keeps.
-  void rows({
-    required int fromX,
-    required int fromY,
-    required int width,
-    required int height,
+  /// Its [crop] — in its own pixels — a row at a time: each packed and its
+  /// mask baked into ONE buffer, handed to [row] with its index from 0 —
+  /// and the next row's once [row] returns, so [row] takes what it keeps.
+  void rows(
+    ({int left, int top, int width, int height}) crop, {
     required void Function(int y, Uint8List rgba) row,
   }) {
-    final buffer = Uint8List(width * 4);
-    for (var y = 0; y < height; y += 1) {
+    final buffer = Uint8List(crop.width * 4);
+    for (var y = 0; y < crop.height; y += 1) {
       planes.packInto(
         buffer,
-        from: (fromY + y) * planes.width + fromX,
-        count: width,
+        from: (crop.top + y) * planes.width + crop.left,
+        count: crop.width,
       );
-      _bake(buffer, left + fromX, top + fromY + y);
+      _bake(buffer, left + crop.left, top + crop.top + y);
       row(y, buffer);
     }
   }
@@ -470,17 +454,7 @@ final class PsdLayerPicture {
     if (mask == null) {
       return;
     }
-    applyMaskToAlphaRow(
-      row,
-      left: left,
-      top: top,
-      mask: mask.plane,
-      maskLeft: mask.left,
-      maskTop: mask.top,
-      maskWidth: mask.width,
-      maskHeight: mask.height,
-      defaultColor: mask.defaultColor,
-    );
+    applyMaskToAlphaRow(row, left: left, top: top, mask: mask);
   }
 }
 
