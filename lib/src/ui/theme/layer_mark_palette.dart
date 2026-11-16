@@ -30,8 +30,10 @@ import '../../models/layer_process.dart';
 /// ⇒ 다시 여러 톤이 필요해지면 **한 행이 한 색이 아니라 한 줄이 되는** 옛
 /// 모양으로 돌아가면 된다. 톤은 같은 색상의 변환이었으므로 표는 하나였고,
 /// 색상 하나를 고치면 네 톤이 함께 움직였다.
+///
+/// ⛔No 用紙 row: a 用紙 label is coloured as what it is the paper of
+/// ([resolveLayerMarkColor]).
 const Map<LayerProcess, int> _processColors = {
-  LayerProcess.paper: 0xFFFFA463,
   LayerProcess.conte: 0xFFD1BAF7,
   LayerProcess.layout: 0xFFFFFDF7,
   LayerProcess.roughKey: 0xFFAEFCF2,
@@ -55,14 +57,26 @@ const Map<LayerRevise, int> _reviseColors = {
   LayerRevise.cellCheck: 0xFFFFBDC8,
 };
 
-/// The paper an unlabelled layer's blocks wear. Passed in rather than named
-/// here so the theme keeps owning it — this file knows labels, not chrome.
+/// [mark]'s colour; [noneColor] is the paper an unlabelled layer's blocks
+/// wear. Passed in rather than named here so the theme keeps owning it —
+/// this file knows labels, not chrome.
+///
+/// 🗣️A 用紙 LABEL WEARS WHAT IT IS THE PAPER OF (F-594 ①, 유저 2026-11-15:
+/// 「용지색라벨 색, 주황색인 용지색 필요없어졌으니 주황색 말고 각 공정의
+/// 소재색으로. 용지LO면 레이아웃 소재의 색이라던가」) — 용지-LO LO's,
+/// 용지-작감 작감's: its second axis is a stage or a correction, and that
+/// one's colour is asked here as anyone's is. ↩️用紙 wore an orange of its
+/// own (0xFFFFA463) from when it named nothing it was the paper of, till
+/// F-578 gave it that second axis.
 Color resolveLayerMarkColor(LayerMark mark, {required Color noneColor}) {
   final revise = mark.revise;
   if (revise != null) {
     return Color(_reviseColors[revise]!);
   }
-  final process = mark.process;
+  final process = switch (mark.step) {
+    final LayerProcess paperOf => paperOf,
+    _ => mark.process,
+  };
   if (process == null) {
     return noneColor;
   }

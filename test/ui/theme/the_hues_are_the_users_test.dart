@@ -74,16 +74,43 @@ void main() {
 
   test('every stage has a colour of its own — a table with a hole would '
       'throw on the row that used it', () {
+    final stages = [
+      for (final process in LayerProcess.values)
+        if (process != LayerProcess.paper) process,
+    ];
     final seen = <Color>{};
-    for (final process in LayerProcess.values) {
+    for (final process in stages) {
       final color = colorOf(labelsOf(process).first);
       expect(color, isNot(none));
       seen.add(color);
     }
     expect(
       seen,
-      hasLength(LayerProcess.values.length),
+      hasLength(stages.length),
       reason: 'two stages sharing a paper would be unreadable on the sheet',
+    );
+  });
+
+  test('🚨a 用紙 label wears what it is the paper of — 「용지LO면 레이아웃 '
+      '소재의 색」 (F-594 ①): every one, the stages\' and the '
+      'corrections\'', () {
+    final papers = labelsOf(LayerProcess.paper);
+    expect(papers, isNotEmpty, reason: 'fixture');
+    for (final paper in papers) {
+      final worn = switch (paper.step) {
+        final LayerProcess stage => LayerMark(process: stage),
+        final LayerRevise correction => LayerMark(
+          process: LayerProcess.key,
+          revise: correction,
+        ),
+        null => fail('$paper names nothing it is the paper of'),
+      };
+      expect(colorOf(paper), colorOf(worn), reason: '$paper');
+    }
+    expect(
+      colorOf(const LayerMark.paper(LayerProcess.layout)),
+      colorOf(const LayerMark(process: LayerProcess.layout)),
+      reason: '🗣️「용지LO면 레이아웃 소재의 색」',
     );
   });
 
