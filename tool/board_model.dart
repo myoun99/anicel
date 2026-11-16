@@ -1856,7 +1856,9 @@ String stageName(BoardCard e, int i) {
 /// 일로 옮기고 담당 세션에 알림」) — the move 관제 made by hand for every
 /// failure before (🧪10 of the first 12, within 2–23 minutes; none went to
 /// 분류 대기, the owner being known). The owner is told by [lettersOf].
-/// ⚠️유저 확인 필요 moves nothing: it is the user's turn, in 검증.
+/// ⚠️유저 확인 필요 moves nothing: the card stays in 검증, on the shelf that
+/// waits on nobody ([onTheShelf]). ↩️It was the user's turn till 2026-11-16
+/// (verification-is-ai-by-default).
 ///
 /// ⚠️READ, NOT WRITTEN. The line is the record and no word is appended for
 /// it — 🧪the 24 cards that already carried a 검증완료 when it came in left
@@ -2010,6 +2012,28 @@ BoardStatus statusOf(BoardCard e) {
   return _statusOfSection(e.state) ?? BoardStatus.triage;
 }
 
+/// 🆕「원하면 확인」 — a card whose waiting checks the AI handed to a person
+/// (`👤유저 확인 필요`): it waits on nobody, and the user ticks it if and
+/// when they like (유저 2026-11-16 via 관제, board
+/// verification-is-ai-by-default: that verdict is the last resort, for what
+/// only a person can judge, and blocks nothing).
+///
+/// ⚠️READ, NOT WRITTEN: the verdict lines already on the board shelve their
+/// cards as they stand.
+/// ⚠️A verdict answers the checks before it, as [_aiVerdictMoves] reads one:
+/// a check opened after it — the card landed again — is one nobody has
+/// looked at, and the AI's turn again.
+bool onTheShelf(BoardCard e) {
+  final waiting = checksWaiting(e).toSet();
+  if (waiting.isEmpty) return false;
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    final verdict = aiVerdictIn(e.log[i]);
+    if (verdict != null) return verdict == 'user';
+    if (waiting.contains(e.log[i].ts)) return false;
+  }
+  return false;
+}
+
 /// The questions on this card nobody has answered yet, oldest first.
 List<BoardCard> openQuestions(BoardCard e) => [
       for (final l in e.log)
@@ -2034,19 +2058,30 @@ bool userSpokeLast(BoardCard e) {
   return false;
 }
 
-/// 🆕Whose move it is — both can be true at once: a card can hold a question
-/// for the user while I owe an answer to their last memo.
+/// 🆕Whose move it is — more than one can be true at once: a card can hold a
+/// question for the user while I owe an answer to their last memo.
 ///
-/// ⚠️The user's turn is something they can press: a question to answer, a
-/// check to tick. ↩️A card in 대화 중 used to count as well, and that is how
-/// it came to be listed as 「답 기다림」 — a talk is held together, not
-/// answered from the board.
-({bool user, bool me}) turnOf(BoardCard e) {
+/// ⚠️The user's turn is a question to answer, and nothing else.
+/// ↩️A waiting check counted as well till 2026-11-16 — 「something they can
+/// press: a question to answer, a check to tick」 — and 383 cards in 검증
+/// stood as the user's. 유저 (관제's chat, 11-16): 「검증은 내가 수동으로
+/// 안할거야. 기본 ai가 검증해줬으면하고 가끔 수동으로 내가 누를때가 있을지도
+/// 모를정도?」 — a waiting check is the AI verifiers' turn (`aiCheck`), the
+/// user's own tick still ends it as it always has, and a check the AI handed
+/// to a person is nobody's turn ([onTheShelf]) (board
+/// verification-is-ai-by-default).
+/// ↩️A card in 대화 중 used to count as well, and that is how it came to be
+/// listed as 「답 기다림」 — a talk is held together, not answered from the
+/// board.
+({bool user, bool me, bool aiCheck}) turnOf(BoardCard e) {
   final status = statusOf(e);
   final ended = status == BoardStatus.done || status == BoardStatus.canceled;
-  if (ended) return (user: false, me: false);
-  final user = openQuestions(e).isNotEmpty || checksWaiting(e).isNotEmpty;
-  return (user: user, me: userSpokeLast(e) || status == BoardStatus.triage);
+  if (ended) return (user: false, me: false, aiCheck: false);
+  return (
+    user: openQuestions(e).isNotEmpty,
+    me: userSpokeLast(e) || status == BoardStatus.triage,
+    aiCheck: checksWaiting(e).isNotEmpty && !onTheShelf(e),
+  );
 }
 
 /// 「담당: X」 in a note — how a session said it took a card before [BoardCard.owner]

@@ -93,7 +93,10 @@ void main() {
 
   // ↩️실패 waited here too until Q1 = a sent it back to its owner — pinned in
   // an_ai_failure_goes_back_to_its_owner_test.
-  test('⛔유저 확인 필요 leaves it waiting in 검증 for the user', () {
+  // ↩️「…for the user」 till 2026-11-16: it waits on nobody now, on the shelf
+  // — pinned in a_card_is_read_on_separate_axes_test (verification-is-ai-by-
+  // default). It still waits, and the user's tick still ends it.
+  test('⛔유저 확인 필요 leaves it waiting in 검증', () {
     expect(asked([born, landed, note('👤**유저 확인 필요**: 펜')]),
         asked([born, landed]));
   });
