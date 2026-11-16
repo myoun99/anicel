@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 
+import '../../helpers/a_row_by_its_name.dart';
 import '../../helpers/named_finders.dart';
 
 /// 🗣️F-476 (유저 2026-10-26): 「지금 레이어에서 서있는상태로, fx선택범위
@@ -69,7 +70,7 @@ void main() {
     expect(label, findsOneWidget, reason: '⛔전제: the header is drawn');
 
     final gesture = await tester.startGesture(
-      tester.getCenter(label),
+      tester.getCenter(theNameOf(label)),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -124,7 +125,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final gesture = await tester.startGesture(
-      tester.getCenter(label),
+      tester.getCenter(theNameOf(label)),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -144,7 +145,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final gesture = await tester.startGesture(
-      tester.getCenter(labelOf(header)),
+      tester.getCenter(theNameOf(labelOf(header))),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
