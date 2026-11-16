@@ -11,7 +11,7 @@ import '../../services/runtime_path_report.dart';
 import '../session/editor_app_settings.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_tooltip.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
 import 'usage_stats_switch_row.dart';
 
@@ -143,19 +143,12 @@ class GpuPreferenceRow extends StatelessWidget {
                   width: SettingsPickerRow.width,
                   child: ValueListenableBuilder<GpuEngine?>(
                     valueListenable: appGpuEngineOpen,
-                    builder: (context, engine, _) {
-                      final name = engine?.adapterName ?? '';
-                      return AppTooltip(
-                        message: name,
-                        child: Text(
-                          name,
-                          key: inUseKey,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                        ),
-                      );
-                    },
+                    builder: (context, engine, _) => EllipsisText(
+                      engine?.adapterName ?? '',
+                      key: inUseKey,
+                      maxLines: 1,
+                      textAlign: TextAlign.end,
+                    ),
                   ),
                 ),
               ),
