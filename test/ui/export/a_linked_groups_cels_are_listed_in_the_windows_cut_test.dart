@@ -75,7 +75,10 @@ void main() {
   /// C1 and C2 sharing rows A and B. C1 shows A 1 and B 2; C2 shows A 2
   /// and B 1 — so standing on either cut, each bundle's FIRST cel comes
   /// from a different cut than the other bundle's.
-  EditorSessionManager linkedPair() => inkEveryCel(EditorSessionManager(
+  ///
+  /// [inked] false leaves every cel as it was made: nothing drawn.
+  EditorSessionManager linkedPair({bool inked = true}) {
+    final session = EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -118,7 +121,9 @@ void main() {
         ],
       ),
     ),
-  ));
+    );
+    return inked ? inkEveryCel(session) : session;
+  }
 
   Future<void> pumpCels(
     WidgetTester tester,
@@ -232,6 +237,31 @@ void main() {
       folders.single.onPressed,
       isNull,
       reason: 'the group exports once, as one cut: nothing to pick between',
+    );
+  });
+
+  testWidgets('🚨under the project scope a pair with nothing drawn still '
+      'lists its timesheets — a sheet each cut', (tester) async {
+    // F-415 (검증 2026-11-16 ②): standing on C2 with nothing drawn, the
+    // list stood on C2, and the pair's timesheets — listed in C1, where the
+    // export walks the pair from — were in no row.
+    final session = linkedPair(inked: false);
+    addTearDown(session.dispose);
+    session.selectCut(const CutId('c2'));
+
+    await pumpCels(
+      tester,
+      session,
+      scope: ExportScopeKind.project,
+      kinds: {...celKindsAlone, ExportCelKind.timesheet},
+    );
+
+    expect(
+      [
+        for (final row in tester.celsBoard.rows)
+          if (row is ExportCelsDocumentRow) (row.kind, row.sheets.length),
+      ],
+      [(ExportCelKind.timesheet, 2)],
     );
   });
 

@@ -1004,10 +1004,19 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  /// The cuts [plan] lists drawings for, in the order the export walks
-  /// them.
+  /// The cuts [plan] lists files for — drawings, and the documents beside
+  /// them — in the order the export walks them.
+  ///
+  /// 🔎F-415 (검증 2026-11-16 ②): a 겸용 pair with nothing drawn yet, under
+  /// the project scope, listed no drawing, so the list stood on the cut the
+  /// window opened on — and the pair's timesheets, listed in the cut the
+  /// export walks the pair from, stood in no row. A document is a file the
+  /// list shows as a drawing is.
   List<Cut> _celListCuts(ExportCelGroupPlan plan) {
-    final listed = {for (final sheet in plan.sheets) sheet.cut.id};
+    final listed = {
+      for (final sheet in plan.sheets) sheet.cut.id,
+      for (final document in plan.documents) document.listedIn.id,
+    };
     return [
       for (final cut in resolveExportCuts(
         project: _session.repository.requireProject(),
