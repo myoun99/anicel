@@ -166,6 +166,10 @@ void main() {
 
     await tester.pumpWidget(shown(moved: true));
     expect(theBox(), same(box), reason: '⛔premise: moved, not made anew');
+    // A boundary of its own, it is not painted again by being moved: the
+    // layer it put up before stands in the tree. Asked to paint — as the
+    // app's canvas is at anything that changes — it shows what it holds.
+    box.markNeedsPaint();
     await lendBothClocks(tester, rounds: 2);
 
     expect(
