@@ -30,7 +30,10 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// thread anything it waits for.
 const ON_THEIR_CALLERS: [(&str, &str); 10] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
-    ("gpu_engine_video_memory", "asks the OS of the adapter's memory (DXGI), not the device"),
+    (
+        "gpu_engine_video_memory",
+        "asks the OS of the adapter's memory (DXGI) and the adapter of its kind, not the device",
+    ),
     ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
     ("gpu_engine_noted", "takes the engine's own word of its device (`Refusals`)"),
     (

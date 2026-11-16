@@ -97,11 +97,14 @@ pub unsafe extern "C" fn gpu_engine_keep_shaders_in(folder: *const u8, length: u
 }
 
 /// This process's use of the adapter's memory, in bytes, and the budget
-/// the OS gives it there where the OS says one.
+/// the OS gives it there where the OS says one — and what of its video
+/// memory lies in the system's RAM where the OS says that: moved out past
+/// the budget, or made there for the CPU to reach.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VideoMemory {
     pub used: u64,
     pub budget: Option<u64>,
+    pub in_system: Option<u64>,
 }
 
 /// WHY A DEVICE WENT, as far as the engine can tell — what the app says of

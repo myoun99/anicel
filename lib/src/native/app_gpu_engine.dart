@@ -88,6 +88,18 @@ bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 GpuDeviceWent get appGpuEngineWentBy =>
     _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
 
+/// What the OS says of the app's engine's adapter memory
+/// ([GpuEngine.videoMemory]) — null where the app has opened none: asked
+/// without opening one, by the memory census (`collectMemoryCensus`).
+GpuVideoMemory? get appGpuVideoMemory =>
+    debugAppGpuVideoMemory ?? _its.engine?.videoMemory;
+
+/// What [appGpuVideoMemory] says in a test that names the GPU it reads as:
+/// a test machine's own GPU — a discrete card, one that shares the RAM, or
+/// none — is no premise of a test's.
+@visibleForTesting
+GpuVideoMemory? debugAppGpuVideoMemory;
+
 /// Whether [engine] is the one the app has now — asked without opening
 /// one: what was made on another is not kept for the next use
 /// (`EngineStrokes.giveBack`).

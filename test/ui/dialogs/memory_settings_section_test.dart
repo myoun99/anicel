@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart'
+    show debugAppGpuVideoMemory;
+import 'package:gpu_engine/gpu_engine.dart' show GpuVideoMemory;
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/dialogs/memory_settings_section.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
@@ -29,6 +32,30 @@ import '../../helpers/text_finders.dart';
 void main() {
   EditorSessionManager newSession() =>
       EditorSessionManager(initialProject: createDefaultProject());
+
+  /// A GPU of its own, as the OS says it on Windows.
+  const discrete = (
+    integrated: false,
+    used: 860 << 20,
+    budget: 12800 << 20,
+    inSystem: 93 << 20,
+  );
+
+  /// A GPU that shares the RAM, as the OS says it on Windows.
+  const integrated = (
+    integrated: true,
+    used: 3000 << 20,
+    budget: 16000 << 20,
+    inSystem: 0,
+  );
+
+  /// Where the OS says nothing of the GPU's memory (Android, Linux).
+  const unsaid = (integrated: false, used: null, budget: null, inSystem: null);
+
+  void readsTheGpuAs(GpuVideoMemory gpu) {
+    debugAppGpuVideoMemory = gpu;
+    addTearDown(() => debugAppGpuVideoMemory = null);
+  }
 
   test('the census reports the process, not just our caches', () {
     final session = newSession();
@@ -74,10 +101,11 @@ void main() {
     addTearDown(session.dispose);
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    readsTheGpuAs(discrete);
 
-    final ids = collectMemoryCensus([session]).items.map((i) => i.id).toSet();
+    final census = collectMemoryCensus([session]);
 
-    expect(ids, {
+    expect(census.items.map((i) => i.id).toSet(), {
       'drawings',
       'sheetInk',
       'undo',
@@ -85,16 +113,86 @@ void main() {
       'moviePictures',
       'enginePool',
       'engineScratch',
+      'gpuInSystem',
+    });
+    expect(census.gpuMemoryIsRam, isFalse);
+  });
+
+  test('🚨what the GPU holds in the RAM is RAM where its own memory is '
+      'apart: the non-local use is a row of its own, its local use and '
+      'budget the VRAM line, in no row (관제 2026-11-07, '
+      'census-counts-integrated-gpu-textures-as-ram)', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    readsTheGpuAs(discrete);
+
+    final census = collectMemoryCensus([session]);
+
+    expect(
+      census.items.singleWhere((item) => item.id == 'gpuInSystem').bytes,
+      93 << 20,
+    );
+    expect(census.videoMemory, (used: 860 << 20, budget: 12800 << 20));
+  });
+
+  test('🗣️census-counts-integrated-gpu-textures-as-ram-Q1 (유저 '
+      '2026-11-07): a Windows GPU that shares the RAM keeps its pictures '
+      'there — the census counts them, as it does on Apple', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    readsTheGpuAs(integrated);
+
+    final census = collectMemoryCensus([session]);
+
+    expect(census.gpuMemoryIsRam, isTrue);
+    expect(
+      census.items.map((i) => i.id).toSet(),
+      collectMemoryCensusWhereTexturesAreRam([
+        session,
+      ]).items.map((i) => i.id).toSet(),
+    );
+  });
+
+  test('which GPU it is decides on Windows alone: Apple counts the '
+      "pictures whatever it is, and Android and Linux, whose GPU's memory "
+      'is billed apart from their number, count them for none', () {
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final counted = <TargetPlatform, List<bool>>{};
+    for (final platform in TargetPlatform.values) {
+      debugDefaultTargetPlatformOverride = platform;
+      counted[platform] = [
+        for (final gpu in [discrete, integrated, unsaid, null])
+          texturesAreInTheRamFigure(gpu),
+      ];
+    }
+
+    expect(counted, {
+      TargetPlatform.android: [false, false, false, false],
+      TargetPlatform.fuchsia: [false, false, false, false],
+      TargetPlatform.iOS: [true, true, true, true],
+      TargetPlatform.linux: [false, false, false, false],
+      TargetPlatform.macOS: [true, true, true, true],
+      TargetPlatform.windows: [false, true, false, false],
     });
   });
 
   test('every item carries a label, and the ids are the census ids', () {
     final session = newSession();
     addTearDown(session.dispose);
-    // Where the GPU shares the RAM every row is counted — the whole list.
+    // Where the GPU shares the RAM every picture row is counted, and
+    // where it has its own memory what of it lies in the RAM — the whole
+    // list between them.
     final ids = collectMemoryCensusWhereTexturesAreRam([
       session,
     ]).items.map((i) => i.id).toSet();
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    readsTheGpuAs(discrete);
+    ids.addAll(collectMemoryCensus([session]).items.map((i) => i.id));
     // A new cache added to the census with no label would render its raw
     // id — `panelRasters` in front of an animator. This is the list the
     // section switches on; the two must not drift.
@@ -116,6 +214,7 @@ void main() {
       'tileImages',
       'enginePool',
       'engineScratch',
+      'gpuInSystem',
     });
   });
 
@@ -214,6 +313,62 @@ void main() {
     ).items.singleWhere((item) => item.id == 'sheetImages');
     expect(row.bytes, 6789);
   });
+  group('🗣️the VRAM line, right under the RAM\'s (유저 2026-11-12, '
+      'vram-in-use-shown-in-the-memory-tab-Q1: 「RAM 과 따로, VRAM 한 줄 — '
+      '쓰는 양 / 예산」)', () {
+    /// The value of the line under 「이 앱이 쓰는 RAM」, once it says it is
+    /// the VRAM's.
+    Future<String?> theLineUnderTheRam(WidgetTester tester) async {
+      final session = newSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MemorySettingsSection(
+              session: session,
+              openSessions: [session],
+            ),
+          ),
+        ),
+      );
+      final texts = [
+        for (final text in tester.widgetList<Text>(find.byType(Text)))
+          text.data,
+      ];
+      final ram = texts.indexOf(AppText.strings.memoryProcessTotal);
+      expect(texts[ram + 2], AppText.strings.memoryGpuTotal);
+      await tester.pump(const Duration(milliseconds: 600));
+      return texts[ram + 3];
+    }
+
+    testWidgets('a GPU of its own: what this app uses of it, over the '
+        'budget the OS gives it', (tester) async {
+      readsTheGpuAs(discrete);
+      expect(await theLineUnderTheRam(tester), '860.0MB / 12800.0MB');
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    testWidgets('a GPU that shares the RAM: 「RAM 에 포함」', (tester) async {
+      readsTheGpuAs(integrated);
+      expect(
+        await theLineUnderTheRam(tester),
+        AppText.strings.memoryGpuInRam,
+      );
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    testWidgets('Apple: 「RAM 에 포함」, whatever the GPU', (tester) async {
+      readsTheGpuAs(discrete);
+      expect(
+        await theLineUnderTheRam(tester),
+        AppText.strings.memoryGpuInRam,
+      );
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('where the OS says nothing of it: 「—」', (tester) async {
+      readsTheGpuAs(unsaid);
+      expect(await theLineUnderTheRam(tester), '—');
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+  });
+
   group('three tiers (유저 2026-09-11)', () {
     tearDown(() => AppMemory.settings.value = const AppMemorySettings());
 

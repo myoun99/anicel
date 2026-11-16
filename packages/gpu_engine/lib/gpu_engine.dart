@@ -278,9 +278,20 @@ class GpuEngine {
     return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
   });
 
-  /// This process's use of the adapter's local video memory, in bytes; 0
-  /// where the platform cannot say (Android, Linux).
-  int get videoMemoryBytes => rust.engineVideoMemory(_engine);
+  /// This process's use of the adapter's memory, as the OS says it
+  /// ([GpuVideoMemory]).
+  GpuVideoMemory get videoMemory => using((arena) {
+    final report = arena<rust.VideoMemoryReport>();
+    rust.engineVideoMemory(_engine, report);
+    final said = report.ref;
+    int? where(int bit, int bytes) => said.flags & bit == 0 ? null : bytes;
+    return (
+      integrated: said.flags & rust.videoMemoryIntegrated != 0,
+      used: where(rust.videoMemoryUsedSaid, said.used),
+      budget: where(rust.videoMemoryBudgetSaid, said.budget),
+      inSystem: where(rust.videoMemoryInSystemSaid, said.inSystem),
+    );
+  });
 
   /// The bytes the engine keeps for pictures that are no picture's. Every
   /// [GpuScreen]'s canvas and halvings lie in slots of one pool of the
@@ -617,6 +628,19 @@ final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
 
 /// Where a [GpuPool] keeps a tile: a slot of one of its pages.
 typedef GpuTile = ({int page, int slot});
+
+/// What the OS says of this process's use of an engine's adapter, in
+/// bytes: of its local video memory (`used`), the budget it gives the
+/// process there (`budget`) and what of its video memory lies in the
+/// system's RAM (`inSystem`) — each null where the OS says none (Android
+/// and Linux say nothing; Apple, no budget and no RAM apart) — and whether
+/// the adapter is one that shares the system's RAM (`integrated`).
+typedef GpuVideoMemory = ({
+  bool integrated,
+  int? used,
+  int? budget,
+  int? inSystem,
+});
 
 /// A tile with nothing on it, as a tile set names one.
 const _noTile = 0xFFFFFFFF;

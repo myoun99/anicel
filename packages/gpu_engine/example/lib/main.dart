@@ -410,8 +410,8 @@ String _mib(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
 
 /// The engine's video memory — which Android has no call to read.
 String _videoMemory(GpuEngine engine) {
-  final bytes = engine.videoMemoryBytes;
-  return bytes == 0 ? 'not readable here' : _mib(bytes);
+  final used = engine.videoMemory.used;
+  return used == null ? 'not readable here' : _mib(used);
 }
 
 /// p50 / p95 / max, in milliseconds.

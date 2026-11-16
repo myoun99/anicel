@@ -194,8 +194,32 @@ external int engineAdapterName(
   int capacity,
 );
 
-@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_video_memory')
-external int engineVideoMemory(Pointer<Engine> engine);
+/// What `gpu_engine_video_memory` writes (device.rs `VideoMemoryReport`):
+/// each number where its bit of [flags] says the OS said it.
+final class VideoMemoryReport extends Struct {
+  @Uint64()
+  external int used;
+  @Uint64()
+  external int budget;
+  @Uint64()
+  external int inSystem;
+  @Uint32()
+  external int flags;
+}
+
+// `VideoMemoryReport::flags` (device.rs).
+const videoMemoryUsedSaid = 1;
+const videoMemoryBudgetSaid = 2;
+const videoMemoryInSystemSaid = 4;
+const videoMemoryIntegrated = 8;
+
+@Native<Void Function(Pointer<Engine>, Pointer<VideoMemoryReport>)>(
+  symbol: 'gpu_engine_video_memory',
+)
+external void engineVideoMemory(
+  Pointer<Engine> engine,
+  Pointer<VideoMemoryReport> report,
+);
 
 @Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_gone')
 external bool engineGone(Pointer<Engine> engine);

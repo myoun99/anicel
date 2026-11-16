@@ -2062,16 +2062,61 @@ pub unsafe extern "C" fn gpu_engine_adapter_name(
     copy_out(&engine.adapter.get_info().name, buffer, capacity)
 }
 
-/// This process's use of the adapter's local video memory, in bytes; 0
-/// when it cannot be read.
+/// What [`gpu_engine_video_memory`] says, field by field: each number where
+/// its bit of `flags` says the OS said it ([`platform::VideoMemory`]).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VideoMemoryReport {
+    pub used: u64,
+    pub budget: u64,
+    pub in_system: u64,
+    pub flags: u32,
+}
+
+// `VideoMemoryReport::flags`.
+pub const USED_SAID: u32 = 1;
+pub const BUDGET_SAID: u32 = 2;
+pub const IN_SYSTEM_SAID: u32 = 4;
+/// The adapter shares the system's RAM (wgpu's `DeviceType::IntegratedGpu`).
+pub const INTEGRATED: u32 = 8;
+
+/// Writes into `report` this process's use of the adapter's local video
+/// memory, the budget the OS gives it there and what of its video memory
+/// lies in the system's RAM, where the OS says those — and whether the
+/// adapter is one that shares the system's RAM.
+///
+/// 🗣️관제 11-12 (vram-in-use-shown-in-the-memory-tab): ONE EXPORT for all a
+/// memory census reads of the GPU — the memory tab's VRAM line and whether
+/// what the GPU holds is counted in the process's RAM read from it alike.
 ///
 /// # Safety
-/// `engine` is live.
+/// `engine` is live and `report` is writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
+pub unsafe extern "C" fn gpu_engine_video_memory(
+    engine: *const Engine,
+    report: *mut VideoMemoryReport,
+) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    platform::video_memory(&engine.adapter).map_or(0, |memory| memory.used)
+    let integrated = engine.adapter.get_info().device_type == wgpu::DeviceType::IntegratedGpu;
+    let mut said = VideoMemoryReport {
+        flags: if integrated { INTEGRATED } else { 0 },
+        ..VideoMemoryReport::default()
+    };
+    if let Some(memory) = platform::video_memory(&engine.adapter) {
+        said.used = memory.used;
+        said.flags |= USED_SAID;
+        if let Some(budget) = memory.budget {
+            said.budget = budget;
+            said.flags |= BUDGET_SAID;
+        }
+        if let Some(in_system) = memory.in_system {
+            said.in_system = in_system;
+            said.flags |= IN_SYSTEM_SAID;
+        }
+    }
+    // SAFETY: see the function's contract.
+    unsafe { report.write(said) };
 }
 
 /// Whether `engine`'s device is gone ([`Refusals`]) — lost to the driver,

@@ -34,6 +34,7 @@ use windows::Win32::Graphics::Dxgi::Common::{
 use windows::Win32::Graphics::Dxgi::{
     DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
     DXGI_ERROR_DRIVER_INTERNAL_ERROR, DXGI_ERROR_INVALID_CALL, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+    DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
 };
 use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -234,14 +235,19 @@ pub fn adapter_luid(adapter: &wgpu::Adapter) -> Option<u64> {
 /// This process's use of the adapter's local video memory and the budget
 /// the OS gives it there — past it, WDDM moves the process's video memory
 /// out to system memory (F-569, RTX 4080: dedicated 4.9 → 2.4 GB).
+///
+/// What of its video memory the OS keeps in the system's RAM is its use of
+/// the non-local segments.
 pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the adapter's memory report.
     let hal = unsafe { adapter.as_hal::<Dx12>() }?;
-    let info = hal
-        .raw_adapter()
-        .query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_LOCAL)
-        .ok()?;
-    Some(super::VideoMemory { used: info.CurrentUsage, budget: Some(info.Budget) })
+    let raw = hal.raw_adapter();
+    let local = raw.query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_LOCAL).ok()?;
+    let in_system = raw
+        .query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL)
+        .ok()
+        .map(|info| info.CurrentUsage);
+    Some(super::VideoMemory { used: local.CurrentUsage, budget: Some(local.Budget), in_system })
 }
 
 /// Why the device went, as D3D12 says it was removed
@@ -433,8 +439,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let engine = first_engine();
         let memory = super::video_memory(&engine.adapter).expect("a memory report");
         assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
-        // SAFETY: the test process's engine lives as long as the process.
-        assert!(unsafe { crate::device::gpu_engine_video_memory(engine) } > 0);
+        assert!(memory.in_system.is_some(), "{memory:?}");
+        let mut report = crate::device::VideoMemoryReport::default();
+        // SAFETY: the test process's engine lives as long as the process,
+        // and the report is a local.
+        unsafe { crate::device::gpu_engine_video_memory(engine, &mut report) };
+        let said = crate::device::USED_SAID
+            | crate::device::BUDGET_SAID
+            | crate::device::IN_SYSTEM_SAID;
+        assert_eq!(report.flags & said, said, "{report:?}");
+        assert!(report.used > 0 && report.budget > 0, "{report:?}");
     }
 
     // Each reason D3D12 gives for a device removed is the cause the app

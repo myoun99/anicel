@@ -209,7 +209,7 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the device's allocation count.
     let hal = unsafe { adapter.as_hal::<Metal>() }?;
     let used = hal.raw_device().currentAllocatedSize() as u64;
-    Some(super::VideoMemory { used, budget: None })
+    Some(super::VideoMemory { used, budget: None, in_system: None })
 }
 
 /// Why the device went — unsaid: nothing wgpu hands over of Metal says

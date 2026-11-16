@@ -2,7 +2,8 @@ import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuMask, GpuStampPicture;
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuMask, GpuStampPicture, GpuVideoMemory;
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/engine_selection_masks.dart';
@@ -75,6 +76,8 @@ class MemoryCensus {
   const MemoryCensus({
     required this.footprintBytes,
     required this.items,
+    required this.gpuMemoryIsRam,
+    required this.videoMemory,
     this.availableBytes,
     this.deviceBytes,
   });
@@ -115,6 +118,20 @@ class MemoryCensus {
   /// The enumerable holdings, largest first.
   final List<MemoryCensusItem> items;
 
+  /// Whether what the GPU holds for this process is part of
+  /// [footprintBytes] ([texturesAreInTheRamFigure]): its pictures among the
+  /// [items], and the memory tab's VRAM line reading 「RAM 에 포함」.
+  final bool gpuMemoryIsRam;
+
+  /// What this process holds in the GPU's local memory and the budget the
+  /// OS gives it there, where the OS says them (`GpuEngine.videoMemory`) —
+  /// null where it says none, or the app has opened no engine.
+  ///
+  /// 🗣️유저 2026-11-12 (vram-in-use-shown-in-the-memory-tab-Q1): 「RAM 과
+  /// 따로, VRAM 한 줄 — 쓰는 양 / 예산」. ⛔BESIDE [footprintBytes], never
+  /// added to it or to [items] (F-226-Q1).
+  final ({int used, int? budget})? videoMemory;
+
   /// The sum of what we can account for. Always less than [footprintBytes].
   int get trackedBytes {
     var total = 0;
@@ -143,7 +160,9 @@ class MemoryCensus {
 /// Whether what the GPU holds for this process — the pictures every
 /// `ui.Image` row counts: tile pictures, layer images, playback frames,
 /// panel rasters, viewer pages, thumbnails, the framework's image cache —
-/// is part of the OS's number for its RAM ([MemoryCensus.footprintBytes]).
+/// is part of the OS's number for its RAM ([MemoryCensus.footprintBytes]),
+/// [gpu] being what the OS says of the app's engine's adapter
+/// ([appGpuVideoMemory]).
 ///
 /// 🗣️F-226-Q1 (유저 2026-09-30): 「애초에 gpu에 들어가는 메모리를 셀
 /// 필요가 있나? … GPU에 들어가는 메모리는 계산에서 싹 빼고 RAM만
@@ -154,17 +173,27 @@ class MemoryCensus {
 /// 1,769MB private beside 859MB of dedicated GPU memory, the census adding
 /// the pictures to RAM and reading 3,132MB 「known」 inside 1,737MB. ⚠️Android
 /// and Linux are not measured: their number is private pages, which the
-/// GPU driver's memory is billed apart from, so they go with Windows.
+/// GPU driver's memory is billed apart from, so they go with a Windows
+/// GPU of its own.
+///
+/// 🗣️census-counts-integrated-gpu-textures-as-ram-Q1 (유저 2026-11-07):
+/// 「연결 라운드에서 — 엔진이 알려 주는 GPU 종류로 가른다」 — a Windows GPU
+/// that shares the RAM keeps its pictures there, and the private working
+/// set bills them: on the Surface Pro 11 (2026-11-15, a big cut, onion
+/// skins on) the 4.3~6.4GB the census could not name was the GPU's
+/// textures, rising with the OS's shared GPU memory while the dedicated
+/// stayed 0.
 ///
 /// ⛔The CEILINGS stay whatever this answers (`CacheBudgetLine`): a GPU's
 /// memory runs out too, and the allowance still moves them.
-bool get texturesAreInTheRamFigure => switch (defaultTargetPlatform) {
-  TargetPlatform.iOS || TargetPlatform.macOS => true,
-  TargetPlatform.android ||
-  TargetPlatform.fuchsia ||
-  TargetPlatform.linux ||
-  TargetPlatform.windows => false,
-};
+bool texturesAreInTheRamFigure(GpuVideoMemory? gpu) =>
+    switch (defaultTargetPlatform) {
+      TargetPlatform.iOS || TargetPlatform.macOS => true,
+      TargetPlatform.windows => gpu?.integrated ?? false,
+      TargetPlatform.android ||
+      TargetPlatform.fuchsia ||
+      TargetPlatform.linux => false,
+    };
 
 /// Takes the census. Cheap — every number below is a counter the holder
 /// already maintains, so this is addition, not measurement.
@@ -178,7 +207,8 @@ bool get texturesAreInTheRamFigure => switch (defaultTargetPlatform) {
 MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   int sum(int Function(EditorSessionManager session) bytesOf) =>
       sessions.fold(0, (total, session) => total + bytesOf(session));
-  final textures = texturesAreInTheRamFigure;
+  final gpu = appGpuVideoMemory;
+  final textures = texturesAreInTheRamFigure(gpu);
   final items = <MemoryCensusItem>[
     MemoryCensusItem(
       id: 'drawings',
@@ -296,6 +326,19 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       bytes: TileBlocks.parkedBytes,
     ),
     MemoryCensusItem(id: 'engineScratch', bytes: NativeScratch.liveBytes),
+    // 🚨WHAT THE GPU HOLDS IN THE RAM, where its own memory is apart: the
+    // non-local segments' use (`GpuEngine.videoMemory`) — the buffers the
+    // CPU writes the GPU's work into and reads it back from. The OS bills
+    // it to the process's RAM: on the RTX 4080 (2026-11-16) 512MB of upload
+    // buffers written moved the non-local use and the private working set
+    // by 512MB each, and 512MB of textures moved the local use alone.
+    // 🗣️관제 2026-11-07 (census-counts-integrated-gpu-textures-as-ram): ONE
+    // LAW, 「그림이 지금 어느 메모리에 있나」 — the GPU's memory in the RAM is
+    // RAM, a GPU that shares it and one whose memory ran over alike. ⚠️What
+    // the OS moves out past the budget (F-569: dedicated 4.9 → 2.4GB, the
+    // working set 1.3 → 3.8GB) is not measured to land in this use.
+    if (!textures)
+      MemoryCensusItem(id: 'gpuInSystem', bytes: gpu?.inSystem ?? 0),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
     // is allowed 100 MiB and 1000 entries by default and nothing in this
     // app ever set either — so the readout could not say whether it held
@@ -404,6 +447,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     availableBytes: QaMemory.availableMemoryBytes,
     deviceBytes: QaMemory.physicalMemoryBytes,
     items: items,
+    gpuMemoryIsRam: textures,
+    videoMemory: switch (gpu?.used) {
+      final used? => (used: used, budget: gpu?.budget),
+      null => null,
+    },
   );
 }
 

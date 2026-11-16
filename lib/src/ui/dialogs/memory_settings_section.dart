@@ -87,6 +87,23 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
   static String _mb(int bytes) =>
       '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
 
+  /// The VRAM line's value: 「RAM 에 포함」 where the GPU's memory is the
+  /// RAM's, what this process uses of it over the budget the OS gives it,
+  /// 「—」 where the OS will not say.
+  static String _videoMemory(MemoryCensus? census) {
+    if (census != null && census.gpuMemoryIsRam) {
+      return AppText.strings.memoryGpuInRam;
+    }
+    final memory = census?.videoMemory;
+    if (memory == null) {
+      return '—';
+    }
+    final budget = memory.budget;
+    return budget == null
+        ? _mb(memory.used)
+        : '${_mb(memory.used)} / ${_mb(budget)}';
+  }
+
   String _labelFor(String id) {
     final strings = AppText.strings;
     return switch (id) {
@@ -107,6 +124,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'tileImages' => strings.memoryItemTileImages,
       'enginePool' => strings.memoryItemEnginePool,
       'engineScratch' => strings.memoryItemEngineScratch,
+      'gpuInSystem' => strings.memoryItemGpuInSystem,
       _ => id,
     };
   }
@@ -180,6 +198,14 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
               _TotalRow(
                 label: strings.memoryProcessTotal,
                 value: _mb(footprint),
+                emphasis: true,
+              ),
+              // 🗣️유저 2026-11-12 (vram-in-use-shown-in-the-memory-tab-Q1):
+              // 「RAM 과 따로, VRAM 한 줄 — 쓰는 양 / 예산」, right under the
+              // RAM's, on every device.
+              _TotalRow(
+                label: strings.memoryGpuTotal,
+                value: _videoMemory(census),
                 emphasis: true,
               ),
               const SizedBox(height: 6),
