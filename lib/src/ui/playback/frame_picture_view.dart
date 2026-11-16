@@ -1382,13 +1382,9 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       _ownUp ? _shownThrough.texture : _standIn ?? _shownThrough.texture;
 
   /// The picture left up for this box, laid where it was drawn for — while
-  /// this box has a picture to show and has put none up of its own. Let go
-  /// of where it has none to show: nothing would ever take its place.
+  /// this box has put none up of its own, its picture made or not yet: a
+  /// cut coming in that makes its own has none at its first paint.
   Layer? _standingIn(Offset offset) {
-    if ((_view._drawnPicture ?? _asItStands) == null) {
-      _letGoOfTheStandIn();
-      return null;
-    }
     var standIn = _standIn;
     if (standIn == null) {
       standIn = _standIn = _leftUp?.take();
