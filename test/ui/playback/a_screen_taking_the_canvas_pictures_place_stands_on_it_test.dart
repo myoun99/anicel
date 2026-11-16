@@ -20,6 +20,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/screen_texture.dart' show ScreenTexture;
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -192,6 +193,7 @@ void main() {
       fill,
       reason: '⛔premise: the first screen shows its picture',
     );
+    final oneScreen = ScreenTexture.liveBytes;
 
     await tester.pumpWidget(
       theCanvas(
@@ -213,6 +215,12 @@ void main() {
       onThePage(await shotOf(tester, screen)),
       other,
       reason: 'up, the screen shows its own, and the picture left up goes',
+    );
+    expect(
+      ScreenTexture.liveBytes,
+      oneScreen,
+      reason: 'up, the picture left up is freed — not kept till the screen '
+          'goes',
     );
     await tester.pumpWidget(const SizedBox());
   });
