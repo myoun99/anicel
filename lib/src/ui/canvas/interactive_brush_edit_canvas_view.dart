@@ -603,19 +603,29 @@ class _InteractiveBrushEditCanvasViewState
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
   /// Dabs collected since the last rasterized batch: one frame callback
-  /// blends what a press, a path or a shape queued. Dab generation, order
-  /// and blend math are the same either way — the batch is byte-identical
-  /// to per-event blending, and pen-up flushes synchronously before commit.
+  /// blends what a press, a path, a shape or a pen's samples queued. Dab
+  /// generation, order and blend math are the same either way — the batch
+  /// is byte-identical to per-event blending, and pen-up flushes
+  /// synchronously before commit.
   ///
   /// ↩️Every pointer sample queued here until F-512 (rasterizing per event
-  /// «multiplied the blend work for zero visible benefit», 2026-07-08): a
-  /// pen's sample blends as it comes now
-  /// ([_BrushEditStroke.takeSample]): a step asked late in a frame holds
-  /// what came in it (`StepPace`), and the work is the same dabs. 🔬Main PC,
-  /// 144 Hz, input at 1000 Hz: a frame every vsync still. ⛔Once a sample, not
-  /// at every queue: a post-correcting brush lays its whole line again at the
-  /// pen-up, a queue a point, and that held this thread 72 ms on the main PC
-  /// and 144 on the Surface Pro 11.
+  /// «multiplied the blend work for zero visible benefit», 2026-07-08).
+  /// ↩️From F-512 (10-31) to F-600 (11-17) a pen's sample blended as it
+  /// came ([_BrushEditStroke.takeSample]), so that a step asked late in a
+  /// frame (`StepPace`) held what came in it. 🔬Main PC, 144 Hz, input at
+  /// 1000 Hz: a frame every vsync still. That step went with the picture
+  /// medium (5987bdfb1, 11-09): the picture is made at the paint, after
+  /// this callback, so a sample blended as it comes is on no frame sooner
+  /// — and each was a pile of its own, a GPU submission. A mouse reports
+  /// at 1000 Hz, five times a pen, and a message a busy thread held hands
+  /// on every point it missed: the piles went with the mouse's rate, and
+  /// their work fed the load that made them (F-600, 유저: 「펜은 어느정도
+  /// 빠른데 마우스는 심하게 느림」). 🔬Main PC, the measuring scene's band
+  /// full, a stroke of 16 / 32 / 64 points a frame: a step's handling
+  /// 4.7 / 6.8 / 10.2 ms at a pile a point, 1.0 ms at one
+  /// a frame. ⛔Once a frame, not at every queue: a post-correcting brush
+  /// lays its whole line again at the pen-up, a queue a point, and that
+  /// held this thread 72 ms on the main PC and 144 on the Surface Pro 11.
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 

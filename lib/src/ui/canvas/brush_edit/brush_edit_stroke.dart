@@ -300,9 +300,10 @@ class _BrushEditStroke {
     _state._collectedDabs.clear();
   }
 
-  /// One pen sample for the stroke: painted now — or, while the stroke
-  /// waits for its first readings ([_BrushEditOpening.holds]), held with
-  /// the others until they come. [read] is what
+  /// One pen sample for the stroke: its dabs laid now, blended with the
+  /// frame's ([_BrushEditOverlay.queueOverlayDabs]) — or, while the
+  /// stroke waits for its first readings ([_BrushEditOpening.holds]),
+  /// held with the others until they come. [read] is what
   /// [_BrushEditPressure.noteSample] answered for it.
   void takeSample(
     CanvasPoint penPosition, {
@@ -322,9 +323,6 @@ class _BrushEditStroke {
         _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
         _keepSteadying();
       }
-      // On the stroke as it comes, for the step asked late in this frame
-      // (`StepPace`).
-      _state._overlay.flushPendingOverlayDabs();
     }
     if (_state._opening.holds(
       paint,
