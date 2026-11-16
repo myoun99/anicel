@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart' show codeOf, codeOfLines;
 
 /// 🚨A KOTLIN NATIVE METHOD MEETS ITS RUST EXPORT, AND THE PLUGIN HANDS THE
 /// ENGINE ITS CONTEXT AS IT ATTACHES.
@@ -86,7 +87,7 @@ pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_point(
 /// package with its dots as `_`, the class, the method — each `_` in a
 /// name written `_1` (the JNI spec's escape).
 Set<String> _jniNamesAsked(String kotlin) {
-  final code = kotlin.split('\n').map(_code).join('\n');
+  final code = codeOfLines(kotlin);
   final package = RegExp(r'^package\s+([\w.]+)', multiLine: true)
       .firstMatch(code)!
       .group(1)!;
@@ -113,14 +114,8 @@ Set<String> _jniNamesAsked(String kotlin) {
 /// The `Java_…` functions [rust] exports, outside a `//` comment.
 Set<String> _jniExports(String rust) => {
   for (final line in rust.split('\n'))
-    for (final match in RegExp(r'\bfn\s+(Java_\w+)').allMatches(_code(line)))
+    for (final match in RegExp(r'\bfn\s+(Java_\w+)').allMatches(codeOf(line)))
       match.group(1)!,
 };
 
 String _escaped(String name) => name.replaceAll('_', '_1');
-
-/// [line] up to a `//` comment.
-String _code(String line) {
-  final comment = line.indexOf('//');
-  return comment < 0 ? line : line.substring(0, comment);
-}

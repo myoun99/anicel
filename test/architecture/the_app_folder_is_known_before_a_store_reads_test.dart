@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/source_ledger.dart' show codeOfLines;
+
 /// 🚨THE APP'S OWN FOLDER IS KNOWN BEFORE A STORE READS, AND ON ANDROID IT
 /// IS ONE AN UPDATE KEEPS.
 ///
@@ -20,7 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('main awaits the platform\'s folders before the first store reads',
       () {
-    final start = _code(File('lib/main.dart').readAsStringSync());
+    final start = codeOfLines(File('lib/main.dart').readAsStringSync());
     final asked = start.indexOf('await AppStorage.ensureInitialized();');
     final firstRead = [
       start.indexOf('migrateSettingsIntoTheirRoom();'),
@@ -34,12 +36,12 @@ void main() {
 
   test('the name Dart asks the app\'s folder by is the name Android answers, '
       'with filesDir', () {
-    final dart = _code(
+    final dart = codeOfLines(
       File(
         'lib/src/services/persistence/app_documents.dart',
       ).readAsStringSync(),
     );
-    final kotlin = _code(
+    final kotlin = codeOfLines(
       File(
         'android/app/src/main/kotlin/com/myoun/anicel/MainActivity.kt',
       ).readAsStringSync(),
@@ -62,12 +64,3 @@ void main() {
     );
   });
 }
-
-/// [source] with each line cut at a `//` comment.
-String _code(String source) => source
-    .split('\n')
-    .map((line) {
-      final comment = line.indexOf('//');
-      return comment < 0 ? line : line.substring(0, comment);
-    })
-    .join('\n');

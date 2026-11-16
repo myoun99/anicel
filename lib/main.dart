@@ -7,6 +7,7 @@ import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
 import 'src/models/app_language.dart';
+import 'src/models/app_workspace_colors.dart';
 import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
 import 'src/native/engine_refusals.dart';
@@ -21,6 +22,7 @@ import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/services/persistence/app_ui_scale_store.dart';
 import 'src/services/persistence/app_window_store.dart';
 import 'src/services/persistence/app_language_settings_store.dart';
+import 'src/services/persistence/app_workspace_colors_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/debug/frame_stats.dart';
@@ -86,6 +88,16 @@ Future<void> main(List<String> handedAtLaunch) async {
       await AppLanguageSettingsStore().load() ??
       AppLanguageSettings.ofDevice(AppText.deviceLanguageCodes());
   await LaunchSplash.preparing(AppText.strings);
+  // The ground a new project is made on, AWAITED like the language: the
+  // first untitled project is made as the home page starts and COPIES the
+  // ground the settings hold then. 🔬Left to the session's restore, it
+  // landed after that project — saved ff2e7d32, the launch's project wore
+  // the built-in ff141517 and every later one the saved (board
+  // the-first-untitled-project-misses-the-saved-ground-colour, 2026-11-16,
+  // the profile app on Windows). One small file read; the restore then
+  // lands on the same value.
+  AppWorkspaceColors.settings.value =
+      await AppWorkspaceColorsStore().load() ?? const AppWorkspaceColors();
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
   // canvas across the top, and a drawing app is the case the immersive
