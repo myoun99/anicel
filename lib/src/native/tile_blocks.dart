@@ -135,6 +135,12 @@ abstract final class TileBlocks {
 /// scavenges with a weight a tile, 134 with one a cel — one a cel, its
 /// weight past new space's room by itself — and the cels made in half the
 /// time.
+/// 🔬After, the same harness and copy (저장 11-16 17:29–17:44, two runs
+/// each way): the `external` scavenges of each step about halved — one
+/// row's 456 · 410 → 253 · 252, every row's 439 · 413 → 207 · 207 — the
+/// UI thread's stops over 33 ms 4 · 5 a run → 1 · 1, the longest 48.7 →
+/// 39.0 ms; and the 858 MB told stayed told while the cels stood. ⚠️One
+/// scavenge a cel is left, and a longer one, a cel promoted whole.
 /// ⚠️The price: the weight stays told till the LAST of the tiles goes,
 /// though a block whose tile went first is freed then — the collector is
 /// told more than there is, never less.
