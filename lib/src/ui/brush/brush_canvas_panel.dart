@@ -1724,8 +1724,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.onSelectionInteractionChanged?.call(false);
     }
     // A stamp's drag in flight as the canvas goes ends with it: nothing
-    // waits for it any more ([_CanvasPanelTap._stampDrag]).
-    _tap._stampDrag = null;
+    // waits for it any more ([_StampTrail]).
+    _tap._trail.drop();
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     _stopAskingTheGhost();
