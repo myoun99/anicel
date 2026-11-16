@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../repaint_props.dart';
-import '../theme/app_theme.dart' show AppColors;
 import 'display_resample.dart' show displayEdgeAntiAliased, displayEdgeRect;
 import 'paper_background.dart' show paintAbsentPlane;
 import 'viewport_canvas_transform.dart' show applyViewportTransform;
@@ -16,15 +14,18 @@ import 'viewport_canvas_transform.dart' show applyViewportTransform;
 /// (F-114) — one value, so a colour never travels without its absence.
 typedef StagePlane = ({Color color, bool none});
 
-/// The colour a project's backdrop or pasteboard is drawn in on screen.
+/// The colour a project's backdrop or pasteboard is drawn in on screen:
+/// the colour its setting says, whichever palette the app wears.
 ///
-/// 🗣️I-143-Q5 (유저 2026-10-30, 「바닥을 따라 밝게」): both start at the
-/// floor (R3 #4 — 둘레와 바닥이 한 판), and a project stores that start as
-/// the dark palette's floor. That value is read as 「the floor」, so a
-/// project left at it follows the palette it is opened in; any other value
-/// is the colour it says.
-Color stageColorOnScreen(int argb) =>
-    argb == defaultProjectBackdropArgb ? AppColors.backdrop : Color(argb);
+/// 🗣️F-598 (유저 2026-11-16): 「그거는 따로 설정한게있으니 설정한거
+/// 따르도록. 그러니 모드 바꾼다고 안바뀌도록」 — the backdrop and the
+/// pasteboard are settings of their own, and a switch of the app's light
+/// or dark mode leaves them as they are.
+///
+/// ↩️I-143-Q5 (유저 2026-10-30, 「바닥을 따라 밝게」, `3b64ee960`) read
+/// the start both share (#141517) as 「the floor」 of the palette worn, so a
+/// project left at it went light with the light palette. Withdrawn by F-598.
+Color stageColorOnScreen(int argb) => Color(argb);
 
 /// The ground a canvas panel's shell lays under its stage — the one surface
 /// with no panel behind it, so it states its own colour — and so what a

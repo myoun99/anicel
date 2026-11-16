@@ -43,8 +43,8 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 ///
 /// ⚠️Must stay in step with `AppPalette.dark.backdrop`, the same colour
 /// stated in the UI layer (the models layer may not import the theme). On
-/// screen this value is read as 「the floor」 of whichever palette is worn
-/// (`stageColorOnScreen`, I-143-Q5).
+/// screen it is the colour it says in either palette (`stageColorOnScreen`,
+/// F-598 — ↩️I-143-Q5 had read it as the floor of the palette worn).
 const defaultProjectBackdropArgb = 0xFF141517;
 
 /// The default PASTEBOARD: the same as the backdrop (유저, R3 #4, held).
