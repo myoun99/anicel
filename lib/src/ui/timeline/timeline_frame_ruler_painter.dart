@@ -1030,13 +1030,27 @@ final class TimelineRulerScale {
   /// The strip's a11y surface: one node per frame it writes a number on,
   /// windowed and walked like its paint ([writingStep]) — the ruler's
   /// across and the rail's down, one code.
-  List<CustomPainterSemantics> windowSemantics() => frameWindowSemantics(
-    window: visibleWindow(),
-    step: writingStep,
-    rectFor: cellRectOnItsCanvas,
-    labelFor: (frameIndex) =>
-        modelAt(frameIndex).label.isEmpty ? null : 'frame ${frameIndex + 1}',
-  );
+  ///
+  /// ⛔Only the axis' own frames: past its end a window box's strip draws
+  /// on (Q8), but that room holds no frame to name (UI-R12 #16) — a strip
+  /// as long as its axis stopped there, and so its nodes still do.
+  List<CustomPainterSemantics> windowSemantics() {
+    final drawn = visibleWindow();
+    return frameWindowSemantics(
+      window: (
+        startIndex: math.max(drawn.startIndex, frameStartIndex),
+        endIndexExclusive: math.min(
+          drawn.endIndexExclusive,
+          frameEndIndexExclusive,
+        ),
+      ),
+      step: writingStep,
+      rectFor: cellRectOnItsCanvas,
+      labelFor: (frameIndex) => modelAt(frameIndex).label.isEmpty
+          ? null
+          : 'frame ${frameIndex + 1}',
+    );
+  }
 
   /// The step every number and second this strip writes stands on — the
   /// gcd of the number cadence ([labelEveryFrames]) and the seconds'

@@ -229,6 +229,34 @@ void main() {
       });
     }
 
+    // The same strip at the axis' end, in its box and as long as its axis:
+    // drawn past the end, it names what the long one named and no more.
+    test('name no frame past the axis\' end, though they draw on there', () {
+      final bucket = bucketAt(0);
+      final box = boxOf(40, 0);
+      final laid = scaleOf(frames: 40, bucket: bucket, box: box);
+      expect(
+        laid.visibleWindow().endIndexExclusive,
+        greaterThan(40),
+        reason: '⛔premise: drawn past the end',
+      );
+      expect(
+        [
+          for (var f = 40; f < laid.visibleWindow().endIndexExclusive; f++)
+            if (laid.modelAt(f).label.isNotEmpty) f,
+        ],
+        isNotEmpty,
+        reason: '⛔premise: the room past the end is written on',
+      );
+      List<(String?, Rect)> named(TimelineRulerScale scale) => [
+        for (final node in scale.windowSemantics())
+          (node.properties.label, node.rect),
+      ];
+      final long = named(scaleOf(frames: 40, bucket: bucket));
+      expect(long, isNotEmpty, reason: '⛔premise: nodes');
+      expect(named(laid), long);
+    });
+
     test('the playhead\'s writing lays its paper back where the whole strip '
         'has it, moved back by the window', () {
       final bucket = bucketAt(7);
