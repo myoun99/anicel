@@ -789,10 +789,33 @@ impl Engine {
     /// The texture's bytes, rows top to bottom with no padding — for
     /// fingerprints and tests; the screen path never reads back.
     pub(crate) fn read_texture(&self, texture: &wgpu::Texture) -> Option<Vec<u8>> {
+        let texel = texture.format().block_copy_size(None).unwrap_or(0);
+        let mut bytes = vec![0; (texture.width() * texel) as usize * texture.height() as usize];
+        self.read_texture_into(texture, &mut bytes)?;
+        Some(bytes)
+    }
+
+    /// [`Self::read_texture`] into `into`, as long as the texture's bytes:
+    /// its rows copied there from the mapped buffer each once.
+    ///
+    /// 🔬A test's screen is read back as each frame of it is laid (the
+    /// stand-in for a texture `flutter test` does not show), and the bytes
+    /// went through a zeroed buffer, a byte-by-byte gather and a third copy
+    /// on their way: 2026-11-17, main PC, the float landing test's file,
+    /// 121 s of its 487 in this read (board
+    /// ci-heaviest-files-draw-on-the-cpu).
+    pub(crate) fn read_texture_into(&self, texture: &wgpu::Texture, into: &mut [u8]) -> Option<()> {
         let Some(texel) = texture.format().block_copy_size(None) else {
             return fail(format!("{:?} has no one size per texel", texture.format()));
         };
         let row = texture.width() * texel;
+        let length = row as usize * texture.height() as usize;
+        if into.len() != length {
+            return fail(format!(
+                "a texture of {length} bytes read into {}",
+                into.len()
+            ));
+        }
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padded = row.div_ceil(align) * align;
         let buffer = self.readback(u64::from(padded) * u64::from(texture.height()));
@@ -812,14 +835,15 @@ impl Engine {
             texture.size(),
         );
         self.queue.submit([encoder.finish()]);
-        let mapped = self.mapped(&buffer)?;
-        Some(
-            mapped
-                .chunks(padded as usize)
-                .flat_map(|line| &line[..row as usize])
-                .copied()
-                .collect(),
-        )
+        self.map(&buffer)?;
+        let view = match buffer.get_mapped_range(..) {
+            Ok(view) => view,
+            Err(error) => return fail(format!("get_mapped_range: {error}")),
+        };
+        for (line, out) in view.chunks(padded as usize).zip(into.chunks_exact_mut(row as usize)) {
+            out.copy_from_slice(&line[..row as usize]);
+        }
+        Some(())
     }
 
     /// The bytes of `buffer` — `COPY_SRC` — once the GPU is done with all

@@ -96,21 +96,9 @@ pub unsafe extern "C" fn gpu_engine_surface_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, surface) = unsafe { (&*engine, &*surface) };
-    engine.on_thread(|| {
-        let Some(bytes) = engine.read_texture(&surface.texture) else {
-            return false;
-        };
-        if bytes.len() != length {
-            return crate::fail::<()>(format!(
-                "a surface of {} bytes read into {length}",
-                bytes.len()
-            ))
-            .is_some();
-        }
-        // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
-        true
-    })
+    // SAFETY: `out` holds `length` writable bytes.
+    let into = unsafe { std::slice::from_raw_parts_mut(out, length) };
+    engine.on_thread(|| engine.read_texture_into(&surface.texture, into).is_some())
 }
 
 #[cfg(test)]

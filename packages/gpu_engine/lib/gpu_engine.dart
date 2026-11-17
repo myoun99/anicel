@@ -579,13 +579,20 @@ class GpuSurface extends GpuTarget {
   /// The surface's pixels read back from the GPU: straight from its
   /// texture, premultiplied, RGBA whichever way it is laid, row after row
   /// with nothing between.
-  Uint8List read() => using((arena) {
+  ///
+  /// The engine writes them where the list keeps them, freed with it: no
+  /// stage zeroed first, no copy after. 🔬2026-11-17, main PC, the float
+  /// landing test's file — a test's screen is read as each frame of it is
+  /// laid — 28 s of its 487 zeroing a 63 MB stage and 25 s copying it out
+  /// (board ci-heaviest-files-draw-on-the-cpu).
+  Uint8List read() {
     final count = width * height * 4;
-    final bytes = arena<Uint8>(_held(count));
+    final bytes = malloc<Uint8>(_held(count));
     if (!rust.surfaceRead(_engine._engine, _surface, bytes, count)) {
+      malloc.free(bytes);
       throw GpuReadFailed(_lastError());
     }
-    final pixels = Uint8List.fromList(bytes.asTypedList(count));
+    final pixels = bytes.asTypedList(count, finalizer: malloc.nativeFree);
     if (bgra) {
       for (var at = 0; at < count; at += 4) {
         final blue = pixels[at];
@@ -594,7 +601,7 @@ class GpuSurface extends GpuTarget {
       }
     }
     return pixels;
-  });
+  }
 
   /// What a D3D11 device of Flutter's adapter sees when it opens the
   /// handle, as ANGLE will; null when it cannot open it, and off Windows,
