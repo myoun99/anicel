@@ -50,7 +50,7 @@ impl Clear {
         let groups = (row_words.div_ceil(64), picture.height);
         let out = out_plane(engine, "clear out", picture.clear_bytes(), groups)?;
         let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &out, groups);
+        submit(engine, pipeline, &params, frame.buffer(), &out, groups)?;
         Some(out)
     }
 }

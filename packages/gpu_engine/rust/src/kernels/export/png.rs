@@ -112,7 +112,7 @@ impl PngFilter {
         let params = [stride, picture.width, picture.height, picture.png_row_words(pixel_bytes)];
         let groups = (1, picture.height);
         let out = out_plane(engine, "png filter out", picture.png_bytes(pixel_bytes), groups)?;
-        submit(engine, pipeline, &params, source, &out, groups);
+        submit(engine, pipeline, &params, source, &out, groups)?;
         Some(out)
     }
 }

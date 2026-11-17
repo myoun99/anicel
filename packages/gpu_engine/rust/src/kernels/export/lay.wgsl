@@ -38,8 +38,12 @@ struct Params {
   // 1: `cover` holds a byte a pixel of the frame laid onto, four a word,
   // the low byte first — how much of the source each pixel takes.
   covered: u32,
-  pad0: u32,
-  pad1: u32,
+  // The word of the frame laid onto, and of the cover, its binding begins
+  // on: a pass binds the band of rows it lays, not the frame whole (board
+  // the-engine-binds-a-plane-past-the-device-limit, 2026-11-17). The
+  // source's is taken off `sx`, wrapping where it passes it.
+  onto_base: u32,
+  cover_base: u32,
   pad2: u32,
   pad3: u32,
 }
@@ -73,7 +77,7 @@ fn narrowed(pixel: vec4<u32>) -> u32 {
 
 // The cover's byte at the frame's pixel `index`.
 fn covering(index: u32) -> u32 {
-  return (cover[index / 4u] >> (index % 4u * 8u)) & 0xffu;
+  return (cover[index / 4u - params.cover_base] >> (index % 4u * 8u)) & 0xffu;
 }
 
 @compute @workgroup_size(64)
@@ -92,6 +96,12 @@ fn lay_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (params.covered == 1u) {
     cover = covering(at);
   }
-  let laid = blend_laid(BLEND_NORMAL, params.opacity, cover, widened(word), widened(onto[at]));
-  onto[at] = narrowed(laid);
+  let laid = blend_laid(
+    BLEND_NORMAL,
+    params.opacity,
+    cover,
+    widened(word),
+    widened(onto[at - params.onto_base]),
+  );
+  onto[at - params.onto_base] = narrowed(laid);
 }

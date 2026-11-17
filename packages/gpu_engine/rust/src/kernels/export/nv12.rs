@@ -87,7 +87,7 @@ impl Nv12 {
         let groups = ((shape.y_stride / 4).div_ceil(16), (shape.height / 2).div_ceil(8));
         let out = out_plane(engine, "nv12 out", shape.bytes(), groups)?;
         let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &out, groups);
+        submit(engine, pipeline, &params, frame.buffer(), &out, groups)?;
         Some(out)
     }
 }

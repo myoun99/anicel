@@ -51,7 +51,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, encode, fits, flat, kept_or_made, pipeline_with, plane,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, buffer_holds, encode, fits, flat, kept_or_made, pipeline_with, plane,
     whole, words_buffer,
 };
 
@@ -154,7 +154,7 @@ impl Shown {
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let row = (width * 4).div_ceil(align) * align;
         let bytes = u64::from(row) * u64::from(height);
-        fits(engine, &[bytes], std::iter::empty())?;
+        buffer_holds(engine, bytes)?;
         let rows = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("export shown"),
             size: bytes,
@@ -283,7 +283,11 @@ fn out_plane(engine: &Engine, label: &str, bytes: u64, groups: (u32, u32)) -> Op
 
 /// Runs `pipeline` over `frame` in `groups` (across, down) and submits the
 /// work; the caller waits. Its binding 0 is `params`, 1 the frame and 2
-/// `out` — the export's own bindings, on the shared plumbing.
+/// `out` — the export's own bindings, on the shared plumbing. None, with
+/// why, where a binding does not hold the frame whole: a conversion reads
+/// it so (board the-engine-binds-a-plane-past-the-device-limit,
+/// 2026-11-17 — a frame is made past a binding, and only the lay pass
+/// binds it a band at a time).
 fn submit(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
@@ -291,7 +295,8 @@ fn submit(
     frame: &wgpu::Buffer,
     out: &wgpu::Buffer,
     groups: (u32, u32),
-) {
+) -> Option<()> {
+    fits(engine, &[frame.size()], std::iter::empty())?;
     let params = words_buffer(engine, "export params", params, wgpu::BufferUsages::UNIFORM);
     encode(
         engine,
@@ -301,4 +306,5 @@ fn submit(
             groups: flat(groups),
         }],
     );
+    Some(())
 }

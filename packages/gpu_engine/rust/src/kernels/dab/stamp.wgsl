@@ -43,7 +43,10 @@ struct Stamp {
   // `takeWholePixels` — the erase the twin of the lift's gather).
   whole: u32,
   // The word of `given` the box's first pixel is: a picture a wall cut
-  // reads on from where what it left begins.
+  // reads on from where what it left begins. A pass binds the rows of the
+  // box its tiles meet, so it counts from that binding's first word — and
+  // wraps below it, the rows before the binding being read by no pixel of
+  // the pass (stamp.rs `rows_bound`).
   origin: u32,
 }
 
@@ -74,7 +77,7 @@ fn stamp_pixel(id: vec3<u32>) -> vec2<i32> {
 fn stamp_at(id: vec3<u32>) -> vec3<i32> {
   let at = stamp_pixel(id);
   // A pixel past the box's left or top wraps past its width or height.
-  let plane = MaskPlane(0u, stamp.width, stamp.height, stamp.stride);
+  let plane = MaskPlane(stamp.origin, stamp.width, stamp.height, stamp.stride);
   let byte = mask_byte_of(plane, u32(at.x - stamp.left), u32(at.y - stamp.top));
   let covered = select(byte, 255u, stamp.whole != 0u && byte != 0u);
   return vec3<i32>(at, i32(covered));

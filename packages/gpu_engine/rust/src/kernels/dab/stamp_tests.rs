@@ -17,10 +17,10 @@ use crate::kernels::dab::landing::{Asked, Laid};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::{Cel, Pool};
-use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, le_words, words_buffer};
+use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, le_words, room, words_buffer};
 use crate::kernels::warp::{Boxed, Window};
 use crate::kernels::write::Change;
-use crate::testing::{first_engine, last_error, read_buffer};
+use crate::testing::{a_device_of_its_own, first_engine, last_error, read_buffer};
 
 /// A `within` no picture reaches past.
 pub(crate) const EVERYWHERE: [i32; 4] = [i32::MIN / 2, i32::MIN / 2, i32::MAX / 2, i32::MAX / 2];
@@ -55,7 +55,16 @@ fn pages(stamped: &Stamped) -> Vec<Vec<u32>> {
 
 /// `source` stamped from `first_page` on, `per_page` tiles a page.
 fn stamped(source: &Source, first_page: u16, per_page: usize) -> Option<Stamped> {
-    stamps().stamp_by(first_engine(), source, first_page, per_page)
+    let engine = first_engine();
+    stamps().stamp_by(engine, source, first_page, (per_page, room(engine)))
+}
+
+/// `source` stamped from page 0 on, a page binding no more than `rows` rows
+/// of `row_bytes` of what it reads — wherever they start.
+fn stamped_in_rows(source: &Source, rows: u64, row_bytes: u64) -> Option<Stamped> {
+    let engine = first_engine();
+    let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+    stamps().stamp_by(engine, source, 0, (usize::MAX, step + rows * row_bytes))
 }
 
 /// `mask` stamped in orange, its byte for an alpha.
@@ -264,6 +273,88 @@ fn a_picture_past_a_page_goes_on_the_next() {
     let (read_whole, read_paged) = (pages(&whole), pages(&paged));
     assert_eq!(read_paged.len(), 2);
     assert!(read_paged.concat() == read_whole.concat());
+}
+
+// ---- A box past a binding (board the-engine-binds-a-plane-past-the-
+// device-limit, 2026-11-17) ----
+
+// A page binds the rows of the box its tiles meet, and holds no more tiles
+// than those rows fit: a picture of 70 × 200 read a tile row of rows at a
+// time — six pages of a tile, each binding from past the last one's rows
+// on — puts the words one binding of it all does.
+#[test]
+fn a_picture_past_a_binding_is_read_a_row_of_tiles_at_a_time() {
+    let (width, height) = (70u32, 200u32);
+    let words: Vec<u32> = (1..=width * height).collect();
+    let pixels = picture(&words);
+    let boxed = Boxed { pixels: &pixels, size: (width, height) };
+    let source = Source::Picture { picture: &boxed, at: (-5, 100), within: EVERYWHERE };
+    let whole = stamped(&source, 0, usize::MAX).expect("stamp");
+    let banded = stamped_in_rows(&source, u64::from(TILE), u64::from(width) * 4).expect("stamp");
+    assert_eq!(whole.pages.len(), 1);
+    assert_eq!(banded.pages.len(), 6, "two tiles a row, three rows, a tile a page");
+    assert!(pages(&banded).concat() == pages(&whole).concat());
+}
+
+// A mask is read so too: its rows of words, a row of tiles of them a page.
+#[test]
+fn a_mask_past_a_binding_is_read_a_row_of_tiles_at_a_time() {
+    let mask = masked((-3, 100), (70, 200), |x, y| (x * 7 + y * 3) as u8 | 1);
+    let mask = mask.mask();
+    let source = Source::Mask { mask: &mask, paint: &Paint::Colour(ORANGE), whole: false };
+    let whole = stamped(&source, 0, usize::MAX).expect("stamp");
+    let row_bytes = u64::from(mask.size.stride()) * 4;
+    let banded = stamped_in_rows(&source, u64::from(TILE), row_bytes).expect("stamp");
+    assert_eq!(banded.pages.len(), 6);
+    assert!(pages(&banded).concat() == pages(&whole).concat());
+}
+
+// Where a binding holds two rows of tiles, a page takes a row of tiles and
+// one more — the most whose rows it holds wherever it starts —; where it
+// holds less than one row of tiles, the stamp is refused, not bound past.
+#[test]
+fn a_page_holds_the_tiles_whose_rows_a_binding_holds() {
+    let (width, height) = (300u32, 400u32);
+    let words: Vec<u32> = (1..=width * height).collect();
+    let pixels = picture(&words);
+    let boxed = Boxed { pixels: &pixels, size: (width, height) };
+    let source = Source::Picture { picture: &boxed, at: (0, 0), within: EVERYWHERE };
+    let row_bytes = u64::from(width) * 4;
+    let whole = stamped(&source, 0, usize::MAX).expect("stamp");
+    let two = stamped_in_rows(&source, 2 * u64::from(TILE), row_bytes).expect("stamp");
+    let pages_of =
+        |stamped: &Stamped| stamped.set.tiles.iter().map(|at| at.unwrap().page).collect::<Vec<_>>();
+    assert_eq!(pages_of(&two), [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]);
+    assert!(pages(&two).concat() == pages(&whole).concat());
+    assert!(stamped_in_rows(&source, u64::from(TILE) - 1, row_bytes).is_none());
+    assert!(last_error().contains("a row of tiles exceeds a binding"), "{}", last_error());
+}
+
+// On a device whose binding holds 64 KiB — less than a picture of 100 x
+// 200, as lavapipe's 128 MiB holds less than a dab's picture of 7,988² —
+// the picture is stamped a row of tiles a page, each word where its box
+// lies, and the device refuses no binding.
+#[test]
+fn a_picture_past_the_device_s_binding_is_stamped() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(1 << 16);
+    let (width, height) = (100u32, 200u32);
+    let words: Vec<u32> = (1..=width * height).collect();
+    let pixels = words_buffer(&engine, "picture", &words, wgpu::BufferUsages::STORAGE);
+    let boxed = Boxed { pixels: &pixels, size: (width, height) };
+    let source = Source::Picture { picture: &boxed, at: (-5, 100), within: EVERYWHERE };
+    let stamped = Stamps::new(&engine).stamp(&engine, &source, 0).expect("stamp");
+
+    engine.wait().expect("the device refused no binding");
+    assert_eq!(stamped.pages.len(), 6, "two tiles a row, three rows, a tile a page");
+    let read: Vec<Vec<u32>> =
+        stamped.pages.iter().map(|page| le_words(&read_buffer(&engine, page))).collect();
+    for y in 100..300 {
+        for x in -5..95 {
+            let want = words[((y - 100) * width as i32 + x + 5) as usize];
+            assert_eq!(word(&stamped, &read, 0, (x, y)), want, "({x}, {y})");
+        }
+    }
 }
 
 // A picture whose buffer holds less than its box is refused, not read

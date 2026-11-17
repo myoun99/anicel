@@ -5,8 +5,8 @@
 use super::shown_tests::shown;
 use super::tests::rig;
 use super::{Cover, Frame, Lay, Picture, Shown, Source};
-use crate::kernels::shared::gpu_engine_kernels_built_here;
-use crate::testing::{last_error, read_buffer};
+use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
+use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 
 const WHITE: u32 = 0xffff_ffff;
 const RED: u32 = 0xff00_00ff;
@@ -233,4 +233,87 @@ fn a_lay_warmed_on_another_thread_compiles_nothing_where_it_lays() {
 
     assert_eq!(gpu_engine_kernels_built_here(), before);
     assert_eq!(words(&frame), vec![RED; 2]);
+}
+
+// ---- A frame past a binding (board the-engine-binds-a-plane-past-the-
+// device-limit, 2026-11-17) ----
+
+/// What a bake's lays leave on a 37 x 23 frame, each pass binding no more
+/// than `room` bytes of a plane: a ground, a frame shown laid at (-4, 3)
+/// under a cover at a strength — its rows 64 words for 30 pixels —, and a
+/// colour within a box under it.
+fn baked_in(room: u64) -> Vec<u32> {
+    let rig = rig();
+    let picture = Picture { width: 37, height: 23 };
+    let frame = Shown::blank(rig.engine, picture).expect("blank");
+    let alpha: Vec<u8> = (0..37 * 23).map(|at: u32| (at * 37 % 256) as u8).collect();
+    let cover = Cover::of(rig.engine, &alpha, picture).expect("cover");
+    let shown = shown(30, 20, false, |x, y| {
+        0xff00_0000 | (x * 8) << 16 | (y * 12) << 8 | 90
+    });
+    let laid = |source: Source, opacity: u16, cover: Option<&Cover>, within| {
+        rig.lay
+            .laid_by(rig.engine, (&frame, source), (opacity, cover, within), room)
+            .expect("laid");
+    };
+    laid(Source::Solid(WHITE), u16::MAX, None, None);
+    let source = Source::Frame { frame: &shown, x: -4, y: 3 };
+    laid(source, 40_000, Some(&cover), None);
+    laid(Source::Solid(RED), 30_000, Some(&cover), Some([5, 2, 33, 21]));
+    words(&frame)
+}
+
+// A binding of three of the source's rows lays the frame three rows a
+// pass — the frame's, the source's and the cover's rows each bound from
+// where the device lets a binding begin, at or before the band's first —
+// and lays what passes binding them whole do.
+#[test]
+fn a_frame_past_a_binding_is_laid_a_band_of_rows_at_a_time() {
+    let engine = rig().engine;
+    let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+
+    assert!(baked_in(step + 3 * 256) == baked_in(room(engine)));
+}
+
+// Where a binding holds less than a row of the frame, the lay is refused,
+// not bound past.
+#[test]
+fn a_frame_whose_row_exceeds_a_binding_is_refused() {
+    let rig = rig();
+    let step = u64::from(rig.engine.device().limits().min_storage_buffer_offset_alignment);
+    let frame = Shown::blank(rig.engine, Picture { width: 37, height: 2 }).expect("blank");
+    let ground = (&frame, Source::Solid(WHITE));
+
+    assert!(rig.lay.laid_by(rig.engine, ground, (u16::MAX, None, None), step + 147).is_none());
+    assert_eq!(last_error(), format!("a row of 148 bytes exceeds a binding of {}", step + 147));
+}
+
+// On a device whose binding holds 64 KiB — less than a frame of 200 x 120
+// and the picture of 180 x 110 laid over it, as lavapipe's 128 MiB holds
+// less than a bake's frame of 139,332,960 bytes — both are made and laid,
+// and the device refuses no binding.
+#[test]
+fn a_frame_past_the_device_s_binding_is_made_and_laid() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(1 << 16);
+    let lay = Lay::new();
+    let (width, height) = (200, 120);
+    let frame = Shown::blank(&engine, Picture { width, height }).expect("a frame past a binding");
+    lay.run(&engine, &frame, Source::Solid(WHITE), u16::MAX, None, None).expect("ground");
+    let word = |x: u32, y: u32| 0xff00_0000 | x << 8 | y;
+    let rgba: Vec<u8> = (0..110)
+        .flat_map(|y| (0..180).map(move |x| word(x, y)))
+        .flat_map(u32::to_le_bytes)
+        .collect();
+    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 180, height: 110 })
+        .expect("a picture past a binding");
+    let source = Source::Frame { frame: &picture, x: -20, y: 25 };
+    lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
+
+    engine.wait().expect("the device refused no binding");
+    let expected: Vec<u32> = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .map(|(x, y)| if x < 160 && y >= 25 { word(x + 20, y - 25) } else { WHITE })
+        .collect();
+    assert!(le_words(&read_buffer(&engine, &frame.rows)) == expected);
 }

@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use super::pages::NO_PAGE;
 use super::{
     Encoded, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL,
-    encode, fits, flat, page_table, pipeline, runs, tiles_a_pass, whole,
+    encode, fits, flat, page_table, pipeline, rows_a_binding, runs, tiles_a_pass, whole,
 };
 use crate::device::Engine;
 use crate::kernels::warp::{Boxed, Warp, Window};
@@ -1172,6 +1172,18 @@ fn a_pass_takes_the_tiles_its_binding_holds_past_its_own() {
     assert_eq!(tiles_a_pass(engine, 1, 0), Some(reach as usize));
     assert_eq!(tiles_a_pass(engine, room, 0), Some(1));
     assert!(tiles_a_pass(engine, room, 1).is_none());
+}
+
+// A binding holds the rows that fit past a step it may begin short of their
+// first; none, refused, where not one row does.
+#[test]
+fn a_binding_holds_the_rows_that_fit_past_a_step() {
+    assert_eq!(rows_a_binding(1_000, 256, 100), Some(7));
+    assert_eq!(rows_a_binding(1_056, 256, 100), Some(8));
+    assert_eq!(rows_a_binding(356, 256, 100), Some(1));
+    assert!(rows_a_binding(355, 256, 100).is_none());
+    assert!(rows_a_binding(100, 256, 1).is_none());
+    assert_eq!(rows_a_binding(1_000, 256, 0), Some(u64::MAX));
 }
 
 /// A kernel of its own for a test: no other asks for these sources, so the

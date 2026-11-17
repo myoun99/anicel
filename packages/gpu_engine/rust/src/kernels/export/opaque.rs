@@ -31,7 +31,7 @@ impl Opaque {
         let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
         let answer = words_buffer(engine, "opaque answer", &[255], usage);
         let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &answer, picture.tiles());
+        submit(engine, pipeline, &params, frame.buffer(), &answer, picture.tiles())?;
         Some(answer)
     }
 }

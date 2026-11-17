@@ -8,7 +8,10 @@ use super::{Picture, Pipelines, Read, Shown};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{Encoded, ISQRT_WGSL, encode, fits, flat, plane, whole, words_buffer};
+use crate::kernels::shared::{
+    Encoded, ISQRT_WGSL, buffer_holds, encode, fits, flat, plane, room, rows_a_binding, whole,
+    words_bound, words_buffer,
+};
 
 /// How much of what is laid each pixel of a frame takes: a byte each, four
 /// a word, the low byte first — the canvas's edge as a view cuts it, which
@@ -37,7 +40,7 @@ impl Cover {
         for (at, &byte) in alpha.iter().enumerate() {
             words[at / 4] |= u32::from(byte) << (at % 4 * 8);
         }
-        fits(engine, &[words.len() as u64 * 4], std::iter::empty())?;
+        buffer_holds(engine, words.len() as u64 * 4)?;
         Some(Self {
             bytes: words_buffer(engine, "export cover", &words, wgpu::BufferUsages::STORAGE),
             width: picture.width,
@@ -52,7 +55,7 @@ impl Shown {
     pub(crate) fn blank(engine: &Engine, picture: Picture) -> Option<Self> {
         picture.check()?;
         let bytes = picture.pixels() * 4;
-        fits(engine, &[bytes], std::iter::empty())?;
+        buffer_holds(engine, bytes)?;
         Some(Self::rgba(plane(engine, "export frame", bytes), picture))
     }
 
@@ -70,7 +73,7 @@ impl Shown {
                 rgba.len()
             ));
         }
-        fits(engine, &[bytes], std::iter::empty())?;
+        buffer_holds(engine, bytes)?;
         let words: Vec<u32> = rgba
             .chunks_exact(4)
             .map(|pixel| u32::from_le_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]))
@@ -131,6 +134,27 @@ impl Lay {
         cover: Option<&Cover>,
         within: Option<[i32; 4]>,
     ) -> Option<()> {
+        self.laid_by(engine, (onto, source), (opacity, cover, within), room(engine))
+    }
+
+    /// [`Self::run`], each pass binding no more than `room` bytes of a
+    /// plane — a test's fewer than the device's, to see a frame laid a
+    /// band of rows at a time.
+    ///
+    /// 🚨A PASS BINDS THE ROWS IT LAYS, NOT THE FRAMES WHOLE, and lays no
+    /// more rows than each plane's fit a binding (board
+    /// the-engine-binds-a-plane-past-the-device-limit, 2026-11-17: a bake's
+    /// frame of 139,332,960 bytes was refused past lavapipe's 128 MiB). Each
+    /// band's bindings begin where the device lets them, at or before its
+    /// first row, and lay.wgsl counts from there (`onto_base`, `cover_base`;
+    /// the source's by `sx`).
+    pub(super) fn laid_by(
+        &self,
+        engine: &Engine,
+        (onto, source): (&Shown, Source),
+        (opacity, cover, within): (u16, Option<&Cover>, Option<[i32; 4]>),
+        room: u64,
+    ) -> Option<()> {
         if onto.bgra {
             return fail("a frame is laid onto as the export lays one: RGBA, not BGRA".to_owned());
         }
@@ -163,45 +187,101 @@ impl Lay {
         if width == 0 || height == 0 {
             return Some(());
         }
-        let groups = (width.div_ceil(64), height);
-        fits(engine, &[], [groups].into_iter())?;
-        let params = [
-            stride,
-            onto.stride,
-            x0,
-            y0,
-            width,
-            height,
-            sx,
-            sy,
-            u32::from(opacity),
-            solid,
-            colour,
-            u32::from(cover.is_some()),
-            0,
-            0,
-            0,
-            0,
-        ];
-        let params = words_buffer(engine, "export lay params", &params, wgpu::BufferUsages::UNIFORM);
+        let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+        let source_stride = rows.map(|_| stride);
+        let most = rows_a_band((room, step), onto.stride, source_stride, cover.is_some())?;
+        let bands: Vec<(u32, u32)> = (y0..y0 + height)
+            .step_by(most as usize)
+            .map(|top| (top, top.saturating_add(most).min(y0 + height)))
+            .collect();
+        let groups = |(top, bottom): (u32, u32)| (width.div_ceil(64), bottom - top);
+        fits(engine, &[], bands.iter().map(|&band| groups(band)))?;
+        // The words of a plane `stride` words a row that rows `top` to
+        // `bottom` hold from `left` on, `width` of each.
+        let words_of = |stride: u32, (left, top, bottom): (u32, u32, u32)| {
+            let (stride, left, top, last) =
+                (u64::from(stride), u64::from(left), u64::from(top), u64::from(bottom - 1));
+            top * stride + left..last * stride + left + u64::from(width)
+        };
         // A binding the pass reads nothing of where it lays a colour, or
         // takes no cover.
         let nothing = plane(engine, "export lay nothing", 4);
-        encode(
-            engine,
-            &[Encoded {
-                pipeline: self.pipelines.reading(engine, read),
-                bound: whole(&[
-                    (0, &params),
-                    (1, rows.unwrap_or(&nothing)),
-                    (2, &onto.rows),
-                    (3, cover.map_or(&nothing, |cover| &cover.bytes)),
-                ]),
-                groups: flat(groups),
-            }],
-        );
+        let mut params = Vec::new();
+        let mut bound = Vec::new();
+        for &(top, bottom) in &bands {
+            let (onto_bound, onto_base) =
+                words_bound(&onto.rows, words_of(onto.stride, (x0, top, bottom)), step);
+            let source_top = sy + (top - y0);
+            let (rows_bound, source_base) = match rows {
+                Some(rows) => {
+                    let band = (sx, source_top, source_top + (bottom - top));
+                    words_bound(rows, words_of(stride, band), step)
+                }
+                None => (nothing.as_entire_binding(), 0),
+            };
+            let (cover_bound, cover_base) = match cover {
+                Some(cover) => {
+                    let pixels = words_of(onto.stride, (x0, top, bottom));
+                    words_bound(&cover.bytes, pixels.start / 4..pixels.end.div_ceil(4), step)
+                }
+                None => (nothing.as_entire_binding(), 0),
+            };
+            let words = [
+                stride,
+                onto.stride,
+                x0,
+                top,
+                width,
+                bottom - top,
+                sx.wrapping_sub(source_base as u32),
+                source_top,
+                u32::from(opacity),
+                solid,
+                colour,
+                u32::from(cover.is_some()),
+                onto_base as u32,
+                cover_base as u32,
+                0,
+                0,
+            ];
+            params.push(words_buffer(engine, "export lay params", &words, wgpu::BufferUsages::UNIFORM));
+            bound.push([(1, rows_bound), (2, onto_bound), (3, cover_bound)]);
+        }
+        let pipeline = self.pipelines.reading(engine, read);
+        let passes: Vec<Encoded> = params
+            .iter()
+            .zip(bound)
+            .zip(&bands)
+            .map(|((params, planes), &band)| {
+                let mut entries = whole(&[(0, params)]);
+                entries.extend(
+                    planes.map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource }),
+                );
+                Encoded { pipeline, bound: entries, groups: flat(groups(band)) }
+            })
+            .collect();
+        encode(engine, &passes);
         Some(())
     }
+}
+
+/// The most rows a pass lays where one binding of `room` bytes, begun on a
+/// multiple of `step`, holds each plane's: the frame's, `onto_stride`
+/// words a row; the source's, `source_stride` where it reads one; and the
+/// cover's, a byte a pixel of the frame, where one is given.
+fn rows_a_band(
+    (room, step): (u64, u64),
+    onto_stride: u32,
+    source_stride: Option<u32>,
+    covered: bool,
+) -> Option<u32> {
+    let words = |stride: u32| u64::from(stride) * 4;
+    let planes = [Some(words(onto_stride)), source_stride.map(words), covered.then_some(u64::from(onto_stride))];
+    let mut most = u64::MAX;
+    for row_bytes in planes.into_iter().flatten() {
+        most = most.min(rows_a_binding(room, step, row_bytes)?);
+    }
+    Some(u32::try_from(most).unwrap_or(u32::MAX))
 }
 
 /// The pixels of `onto` a pass may lay — [left, top, right, bottom) — all

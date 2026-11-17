@@ -73,6 +73,51 @@ pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
     Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX)))
 }
 
+/// The most rows of a plane, `row_bytes` each, one binding of `room` bytes
+/// holds wherever they start: a binding begins on a multiple of `step` —
+/// the device's `min_storage_buffer_offset_alignment` — up to a step short
+/// of its first row ([`words_bound`]); any number of rows of nothing (an
+/// empty mask's). Fails where one row does not fit.
+///
+/// Board the-engine-binds-a-plane-past-the-device-limit (2026-11-17): a
+/// plane read whole was bound whole, and a binding holds 128 MiB on
+/// lavapipe — a stamp's picture of 7,988² past it at a wgpu validation
+/// error. A plane read a part at a time is read as rows, these many a
+/// part.
+pub(crate) fn rows_a_binding(room: u64, step: u64, row_bytes: u64) -> Option<u64> {
+    match room.saturating_sub(step).checked_div(row_bytes) {
+        None => Some(u64::MAX),
+        Some(0) => fail(format!("a row of {row_bytes} bytes exceeds a binding of {room}")),
+        Some(rows) => Some(rows),
+    }
+}
+
+/// The `words` of `buffer` as one binding a device takes — from the
+/// multiple of `step` at or before their first, through their last or the
+/// buffer's end — and the word it begins on, which a pass's indices count
+/// from.
+pub(crate) fn words_bound(
+    buffer: &wgpu::Buffer,
+    words: Range<u64>,
+    step: u64,
+) -> (wgpu::BindingResource<'_>, u64) {
+    let start = words.start * 4 / step * step;
+    let end = (words.end * 4).min(buffer.size());
+    (range(buffer, start..end), start / 4)
+}
+
+/// Whether the device makes a buffer of `bytes` — none, with why, where
+/// not. A plane only made, copied or bound a part at a time asks this,
+/// not [`fits`]: a buffer holds more than one binding of it does (board
+/// the-engine-binds-a-plane-past-the-device-limit, 2026-11-17).
+pub(crate) fn buffer_holds(engine: &Engine, bytes: u64) -> Option<()> {
+    let most = engine.device().limits().max_buffer_size;
+    if bytes > most {
+        return fail(format!("a plane of {bytes} bytes exceeds a buffer of {most}"));
+    }
+    Some(())
+}
+
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
 /// each of `groups`.
 pub(crate) fn fits(

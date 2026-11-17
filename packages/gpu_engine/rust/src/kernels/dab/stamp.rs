@@ -31,6 +31,8 @@
 pub(crate) mod tests;
 
 
+use std::ops::Range;
+
 use super::landing::{self, Asked, Laid, Over};
 use crate::device::Engine;
 use crate::fail;
@@ -40,7 +42,7 @@ use crate::kernels::mesh::{MeshGrid, MeshOwners};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
     Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode,
-    pipeline, plane, tiles_a_page, whole, words_buffer,
+    pipeline, plane, room, rows_a_binding, tiles_a_page, whole, words_bound, words_buffer,
 };
 use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
@@ -126,6 +128,45 @@ struct Read<'a> {
     stops: Option<wgpu::Buffer>,
 }
 
+/// Of a [`Read`]'s `rest`, stamp.wgsl's `origin`: the word of `given`'s
+/// binding the box's first pixel is.
+const ORIGIN: usize = 7;
+
+impl Read<'_> {
+    /// The rows of `given` the tiles `tiles` of `set` meet — the box's,
+    /// those tiles' rows on the canvas — as one binding, and the word it
+    /// begins on.
+    fn rows_bound(
+        &self,
+        set: &TileSet,
+        tiles: Range<usize>,
+        step: u64,
+    ) -> (wgpu::BindingResource<'_>, u64) {
+        let columns = set.columns as usize;
+        let canvas_row = |tile_row: usize| (set.y0 + tile_row as i32) * TILE as i32;
+        let box_row = |y: i32| (y - self.at.1).clamp(0, self.size.1 as i32) as u64;
+        let top = box_row(canvas_row(tiles.start / columns));
+        let bottom = box_row(canvas_row((tiles.end - 1) / columns + 1));
+        let (origin, stride) = (u64::from(self.rest[ORIGIN]), u64::from(self.stride));
+        words_bound(self.given, origin + top * stride..origin + bottom * stride, step)
+    }
+}
+
+/// The most tiles a page of `columns` tiles a row takes whose pixel rows
+/// one binding holds, `rows` of them, wherever the page starts: a page
+/// begun at a row's last tile reaches a row further than its count of
+/// rows.
+fn tiles_within(rows: u64, columns: u32) -> Option<usize> {
+    match rows / u64::from(TILE) {
+        0 => fail(format!("a row of tiles exceeds a binding of {rows} rows")),
+        1 => Some(1),
+        tile_rows => {
+            let held = (tile_rows - 1).saturating_mul(u64::from(columns)).saturating_add(1);
+            Some(usize::try_from(held).unwrap_or(usize::MAX))
+        }
+    }
+}
+
 impl Stamps {
     pub(crate) fn new(engine: &Engine) -> Self {
         let sources = [
@@ -153,24 +194,38 @@ impl Stamps {
     ) -> Option<Stamped> {
         // A pass a page, a tile a workgroup deep.
         let most = tiles_a_page(engine)?;
-        self.stamp_by(engine, source, first_page, most)
+        self.stamp_by(engine, source, first_page, (most, room(engine)))
     }
 
-    /// `stamp`, a page holding no more than `per_page` tiles — a test's
-    /// fewer than the device's, to see a stamp go on to its next page.
+    /// `stamp`, a page holding no more than `per_page` tiles and binding no
+    /// more than `room` bytes of what it reads — a test's fewer than the
+    /// device's, to see a stamp go on to its next page.
+    ///
+    /// 🚨A PAGE BINDS THE ROWS OF THE BOX ITS TILES MEET, NOT ALL OF IT, and
+    /// holds no more tiles than those rows fit a binding (board
+    /// the-engine-binds-a-plane-past-the-device-limit, 2026-11-17: a dab of
+    /// 7,988² was bound whole, 255 MB, past lavapipe's 128 MiB — a wgpu
+    /// validation error, no refusal before it).
     fn stamp_by(
         &self,
         engine: &Engine,
         source: &Source,
         first_page: u16,
-        per_page: usize,
+        (per_page, room): (usize, u64),
     ) -> Option<Stamped> {
         let read = self.read(engine, source)?;
+        let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+        let rows = rows_a_binding(room, step, u64::from(read.stride) * 4)?;
+        let wide = TileSet::paged(read.at, read.size, first_page, per_page)?;
+        let per_page = per_page.min(tiles_within(rows, wide.columns)?);
         let set = TileSet::paged(read.at, read.size, first_page, per_page)?;
         let mut pages = Vec::new();
         let mut first = 0;
         while first < set.tiles.len() {
             let count = per_page.min(set.tiles.len() - first);
+            let (given, base) = read.rows_bound(&set, first..first + count, step);
+            let mut rest = read.rest;
+            rest[ORIGIN] = rest[ORIGIN].wrapping_sub(base as u32);
             let mut words = vec![
                 read.at.0 as u32,
                 read.at.1 as u32,
@@ -182,17 +237,19 @@ impl Stamps {
                 set.columns,
                 first as u32,
             ];
-            words.extend(read.rest);
+            words.extend(rest);
             let words = &words_buffer(engine, "stamp", &words, wgpu::BufferUsages::UNIFORM);
             let page = plane(engine, "stamp page", count as u64 * TILE_BYTES);
             let side = TILE / 16;
-            let mut bound = vec![(0, words), (1, read.given), (2, &page)];
-            bound.extend(read.stops.as_ref().map(|stops| (3, stops)));
+            let mut owned = vec![(0, words), (2, &page)];
+            owned.extend(read.stops.as_ref().map(|stops| (3, stops)));
+            let mut bound = whole(&owned);
+            bound.push(wgpu::BindGroupEntry { binding: 1, resource: given });
             encode(
                 engine,
                 &[Encoded {
                     pipeline: read.pipeline,
-                    bound: whole(&bound),
+                    bound,
                     groups: (side, side, count as u32),
                 }],
             );
