@@ -5,8 +5,6 @@
 // The rail's row ([TimelineLayerControlsRow]) is the timeline's, the
 // conte's, the X-sheet's stood up and the collapsed rows' — one row, so one
 // pin. The bar's own law is `a_double_click_in_a_bar_types_its_number_test`.
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -18,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/dart_sources.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/number_pad_keyboard.dart';
 
@@ -122,13 +121,11 @@ void main() {
   // 「레이어의 불투명도랑 총볼륨막대만」: no other bar of the program says so.
   test('the two rail bars are the only bars that type on a double click', () {
     final saying = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is File && file.path.endsWith('.dart')) {
-        final source = file.readAsStringSync();
-        final times = 'typesOnDoubleClick: true'.allMatches(source).length;
-        for (var time = 0; time < times; time += 1) {
-          saying.add(file.uri.pathSegments.last);
-        }
+    for (final file in dartFilesUnder('lib')) {
+      final source = file.readAsStringSync();
+      final times = 'typesOnDoubleClick: true'.allMatches(source).length;
+      for (var time = 0; time < times; time += 1) {
+        saying.add(file.uri.pathSegments.last);
       }
     }
     expect(saying, ['layer_opacity_field.dart', 'layer_opacity_field.dart']);

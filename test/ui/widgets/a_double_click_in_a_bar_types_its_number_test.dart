@@ -10,6 +10,8 @@
 import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show extentAcross, extentAlong, offsetAlong, sizedAlong;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
@@ -29,9 +31,10 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: axis == Axis.horizontal ? 200 : 24,
-              height: axis == Axis.horizontal ? 24 : 200,
+            child: sizedAlong(
+              axis,
+              along: 200,
+              across: 24,
               child: StatefulBuilder(
                 builder: (context, setState) => FieldSlider.opacity(
                   value: value,
@@ -54,13 +57,16 @@ void main() {
 
   final bar = find.byType(FieldSlider);
 
-  /// Where [along] of the way down the bar's track is — from its start,
-  /// left to right lying, bottom to top stood.
+  /// Where [along] of the way down the bar is, from its first edge along
+  /// [axis] — its left lying, its top stood — across its middle.
   Offset at(WidgetTester tester, double along, {Axis axis = Axis.horizontal}) {
     final box = tester.getRect(bar);
-    return axis == Axis.horizontal
-        ? Offset(box.left + along * box.width, box.center.dy)
-        : Offset(box.center.dx, box.bottom - along * box.height);
+    return box.topLeft +
+        offsetAlong(
+          axis,
+          along: along * extentAlong(axis, box.size),
+          across: extentAcross(axis, box.size) / 2,
+        );
   }
 
   Future<void> click(WidgetTester tester, Offset where) async {

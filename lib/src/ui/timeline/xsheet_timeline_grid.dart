@@ -157,7 +157,7 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// ★ The header block is the timeline's rail, turned on its side — EVERY
   /// control single file, plus a name as generous as the rail's own name
-  /// column and the third of it the rail gave up ([_nameTheRailGaveUp]).
+  /// column and what the rail gave up of it ([_nameTheRailGaveUp]).
   /// A control the rail gains or sheds the block gains or sheds with it,
   /// with nothing to remember; the rail's names are the rail's own.
   ///
@@ -228,7 +228,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// 패딩개선등 통일할건 통일하지만 x시트는 애초에 지금도 fx부분 보면 공간
   /// 부족하거나 하니 총 길이는 유지해도됨」): the rail went 519 → 461 for its
   /// names alone, and the block keeps the length it had.
-  static const double _nameTheRailGaveUp = 58;
+  /// 58 → 78 (I-177, 2026-11-17): the rail went 461 → 441 for the blend
+  /// column the S row's Total gave back, and the block keeps its length
+  /// still — the sheet's names take the 20. 🔬Shed, the block stood 20
+  /// short and a stood-up lane's column no longer paid its graph chips.
+  /// ⚠️That the block keeps its length here is this lane's reading of the
+  /// rule above, not the user's word on I-177.
+  static const double _nameTheRailGaveUp = 78;
 
   /// The column header's own hairlines, top and bottom.
   static const double _headerBorderExtent = 2;

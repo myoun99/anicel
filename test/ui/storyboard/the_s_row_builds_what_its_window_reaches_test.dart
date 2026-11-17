@@ -138,13 +138,14 @@ Finder _key(String name) => find.byKey(ValueKey<String>(name));
 
 /// A window whose storyboard view's last cell and overscan end on a span's
 /// edge — where a window ends least past the view
-/// ([timelineFrameWindowFor]): the view is 494px at 1560 and two thirds of
+/// ([timelineFrameWindowFor]): the view is 514px at 1560 and two thirds of
 /// a pixel wider for each pixel more.
 ///
 /// ↩️The rail was moved there, by up to a span: at 512px a span is more
 /// than the rail moves, and in a window wide enough for one it stands at
-/// its own breadth.
-const _windowEndingOnASpan = Size(1580, 900);
+/// its own breadth. ↩️1580 while the rail was 20 wider (F-606 till I-177):
+/// the view was 494 at 1560.
+const _windowEndingOnASpan = Size(1550, 900);
 
 /// The storyboard's view, where its last cell and the window's overscan end
 /// on a span's edge ([_windowEndingOnASpan]).
