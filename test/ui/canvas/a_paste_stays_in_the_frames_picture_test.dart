@@ -147,15 +147,31 @@ void main() {
   }
 
   /// What the picture under the frame's key — the one every screen takes,
-  /// the view's own after any leaving and coming back — holds at ([x], [y]).
-  Future<List<int>?> pictureAt(WidgetTester tester, double x, double y) async {
+  /// the view's own after any leaving and coming back — holds at ([x], [y]);
+  /// where the store holds none, why, in words.
+  ///
+  /// ↩️Null till 2026-11-17, and Linux's CI read null at `solo off` in
+  /// three of these pins, run after run, while every other machine and a
+  /// binding held to Linux's 128 MiB read the paste (board
+  /// a-paste-reads-back-nothing-on-linux): null said nothing of whether the
+  /// picture was still on its way, never made, or let go of.
+  Future<Object> pictureAt(WidgetTester tester, double x, double y) async {
     final view = tester.widget<FramePictureView>(theFramesPicture());
     final pictures = view.run.pictures;
-    final there = pictures.store.peek(
-      pictures.keyOfStack(view.nodes, view.picture),
-    );
+    final key = pictures.keyOfStack(view.nodes, view.picture);
+    final there = pictures.store.peek(key);
     if (there == null) {
-      return null;
+      final state = tester.state(theFramesPicture()) as dynamic;
+      // ignore: avoid_dynamic_calls
+      final drawnAsItStands = state.drawnAsItStands as bool;
+      // ignore: avoid_dynamic_calls
+      final nothingOnItsWay = state.nothingOnItsWay as bool;
+      return 'no picture under the frame\'s key: '
+          'engine still to open ${pictures.store.toolsAreToCome}, '
+          'waits for kernels ${pictures.store.waitsForKernels}, '
+          'making it gave up ${pictures.gaveUpAt(key)}, '
+          'drawn as it stands $drawnAsItStands, '
+          'nothing on its way $nothingOnItsWay';
     }
     return pixelsOfPicture(there, Rect.fromLTWH(x, y, 1, 1));
   }
