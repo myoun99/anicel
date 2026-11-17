@@ -1028,6 +1028,17 @@ final GpuEngine _engine;
   /// bytes to be stored again from: the ones stored longest ago first and
   /// no more than [most] of them, where given. What is let go is swept out
   /// of [_stored], as far as the walk went.
+  ///
+  /// 🚨THE CALLER'S QUESTION FIRST (card a-closed-projects-collection-
+  /// walks-the-tile-ledger, 2026-11-18): [goes] is what the walk is for,
+  /// and whether the engine alone holds a tile only guards a slot it would
+  /// let go. A collected key's walk passes every live slot — some 22,000
+  /// of them (FNK_02 cut 59) — to find the few whose key is gone.
+  /// ↩️Asked the other way round since the walk was written (nobody's
+  /// order): 🔬the test VM, a closed project collected as an eye was
+  /// toggled (S5_BA cut 352, a second copy handed over), 194 ms of the UI
+  /// thread, 161 of them asking each live slot whether the engine alone
+  /// held its tile.
   void _letGoWhere(
     bool Function(Object? key, GpuTile at) goes, {
     int? most,
@@ -1040,7 +1051,8 @@ final GpuEngine _engine;
       if (slot.out) {
         continue;
       }
-      if (slot.onlyOnEngine != null || !goes(slot.key.target, slot.at)) {
+      final key = slot.key.target;
+      if (!goes(key, slot.at) || _guards(key)) {
         _stored[kept++] = slot;
         continue;
       }
@@ -1049,6 +1061,18 @@ final GpuEngine _engine;
     }
     _stored.removeRange(kept, walked);
   }
+
+  /// Whether [key] is a tile the engine alone holds — a slot no walk lets
+  /// go ([_letGoWhere]).
+  bool _guards(Object? key) {
+    debugGuardsAsked += 1;
+    return _Slot.onlyOnEngineOf(key) != null;
+  }
+
+  /// How many slots a walk asked whether the engine alone holds their
+  /// tile ([_guards]): those its caller's question let through.
+  @visibleForTesting
+  int debugGuardsAsked = 0;
 }
 
 /// A tile a landing was asked for: its [column] and [row], and the cel's
@@ -1102,7 +1126,11 @@ final class _Slot {
   /// ([BitmapTile.isOnlyOnEngine]) — null for a tile collected or one whose
   /// pixels are here, and for a colour's block, whose tiles' pixels are
   /// here from the start.
-  BitmapTile? get onlyOnEngine => switch (key.target) {
+  BitmapTile? get onlyOnEngine => onlyOnEngineOf(key.target);
+
+  /// [key] where it is a tile the engine holds the only copy of the
+  /// pixels of ([onlyOnEngine]), else null.
+  static BitmapTile? onlyOnEngineOf(Object? key) => switch (key) {
     final BitmapTile tile when tile.isOnlyOnEngine => tile,
     _ => null,
   };
