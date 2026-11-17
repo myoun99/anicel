@@ -449,6 +449,46 @@ fn the_engines_pace_is_measured_once() {
     assert_eq!(Pace::of(engine), Some(pace));
 }
 
+/// A probe's runs as the 512² probe's ran (🔬main PC, 11-18): `own` of
+/// their own — the quicker of two jumping by 2 ms every other size — and
+/// `turn` a turn beside it; and the turns each was given.
+fn probe_runs(
+    own: f64,
+    turn: f64,
+) -> (impl FnMut(u32) -> Option<f64>, std::rc::Rc<std::cell::RefCell<Vec<u32>>>) {
+    let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen = asked.clone();
+    let runs = move |turns: u32| {
+        let jump = if seen.borrow().len() % 2 == 1 { 0.002 } else { 0.0 };
+        seen.borrow_mut().push(turns);
+        Some(own + jump + f64::from(turns) * turn)
+    };
+    (runs, asked)
+}
+
+#[test]
+fn a_probe_is_paced_by_what_its_turns_add_not_by_its_runs_own_cost() {
+    use super::pace::turn_time_of;
+    let turn = 1e-6;
+    let (runs, asked) = probe_runs(0.010, turn);
+    let paced = turn_time_of(runs, 256).expect("measured");
+    // ↩️Stopped once a run passed 10 ms, a doubling's 2 ms jump over 512
+    // turns: 4.9 µs a turn.
+    assert!((paced / turn - 1.0).abs() < 0.25, "{paced:e} s a turn, for {turn:e}");
+    assert_eq!(*asked.borrow(), [256, 256, 1024, 4096, 16384], "grown fourfold till they added 10 ms");
+}
+
+#[test]
+fn a_probe_whose_turns_never_add_enough_is_paced_at_the_most_turns() {
+    use super::pace::{MOST_TURNS, turn_time_of};
+    let (runs, asked) = probe_runs(0.010, 0.0);
+    let paced = turn_time_of(runs, 1 << 12).expect("measured");
+    assert_eq!(asked.borrow().last(), Some(&MOST_TURNS));
+    assert_eq!(paced, 0.012 / f64::from(MOST_TURNS), "the whole run over its turns: slower, never quicker");
+    let failed = turn_time_of(|_| None, 1 << 12);
+    assert_eq!(failed, None, "a run the device did not make measures nothing");
+}
+
 /// `words`, a picture over `whole` — (left, top, right, bottom) — at
 /// `at`'s (left, top, width, height), row after row: clear past `whole`.
 fn cropped(words: &[u32], [left, top, right, bottom]: [i32; 4], [x0, y0, width, height]: [i32; 4]) -> Vec<u32> {

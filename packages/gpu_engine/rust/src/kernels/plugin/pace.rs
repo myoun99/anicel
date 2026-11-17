@@ -86,13 +86,22 @@ impl Batches {
     }
 }
 
-/// What a timed probe run reaches before its turns stop doubling: long
-/// enough that a submit's cost and the timer's are lost in it.
-const STEP: Duration = Duration::from_millis(10);
+/// What the turns a probe's run is given add to it before they stop
+/// growing: long enough that the run's own cost, and how much that jumps,
+/// are lost in it ([`turn_time_of`]).
+pub(super) const STEP: Duration = Duration::from_millis(10);
+
+/// How many times the turns a probe's run is given grow from one run to
+/// the next: a run's own cost is most of it till its turns are many
+/// (🔬main PC, 11-18: the 512² probe took 3–6 ms at 256 turns, 11 at 8,192
+/// and 28 at 65,536), so a step that taught nothing is passed by quickly —
+/// and the run that ends the walk still keeps the device well inside a
+/// chunk's [`CHUNK_BUDGET`]: under 4/3 · 4 · [`STEP`].
+const GROWTH: u32 = 4;
 
 /// The most turns a probe run is given — a device too slow to reach
 /// [`STEP`] under it is measured at it.
-const MOST_TURNS: u32 = 1 << 24;
+pub(super) const MOST_TURNS: u32 = 1 << 24;
 
 /// Each invocation divides its word as many turns as value 0 says.
 const PROBE: &str = "@compute @workgroup_size(16, 16)\n\
@@ -159,15 +168,9 @@ impl Pace {
     }
 }
 
-/// The seconds one turn of the probe takes over a `side`-square picture:
-/// what the last doubling of its turns, from `turns`, added to the
-/// quicker of two runs, once a run passes [`STEP`] — a doubling that
-/// added nothing is a device still waking (🔬a fresh engine's first runs
-/// on the Surface took 4.3 ms, then 3.8 and 3.0 as their turns doubled,
-/// 2026-11-11), and the turns double past it. At [`MOST_TURNS`], the whole
-/// run's time over its turns, which is more: a pace taken too slow only
-/// makes chunks smaller.
-fn turn_time(engine: &Engine, plugin: &Plugin, side: usize, mut turns: u32) -> Option<f64> {
+/// The seconds one turn of the probe takes over a `side`-square picture,
+/// its turns from `turns` ([`turn_time_of`]).
+fn turn_time(engine: &Engine, plugin: &Plugin, side: usize, turns: u32) -> Option<f64> {
     let input: Vec<u32> = (0..(side * side) as u32).map(|at| at.wrapping_mul(2654435761) | 1).collect();
     let mut output = vec![0; side * side];
     let mut run = |turns: u32| -> Option<f64> {
@@ -193,14 +196,37 @@ fn turn_time(engine: &Engine, plugin: &Plugin, side: usize, mut turns: u32) -> O
             Err(_) => fail("the probe was cut"),
         }
     };
-    let mut quicker = |turns: u32| -> Option<f64> { Some(run(turns)?.min(run(turns)?)) };
+    turn_time_of(|turns| Some(run(turns)?.min(run(turns)?)), turns)
+}
+
+/// The seconds one turn takes, `quicker` the quicker of two runs given so
+/// many turns: what the last growth of its turns, from `turns`, added,
+/// once it adds [`STEP`] — a growth that added less is a run's own cost
+/// jumping, or a device still waking (🔬a fresh engine's first runs on
+/// the Surface took 4.3 ms, then 3.8 and 3.0 as their turns doubled,
+/// 2026-11-11), and the turns grow past it. At [`MOST_TURNS`], the whole
+/// run's time over its turns, which is more: a pace taken too slow only
+/// makes chunks smaller.
+///
+/// ↩️The turns stopped growing once a RUN passed [`STEP`], and doubled
+/// (11-11 – 11-18): the 512² probe's run costs 8–14 ms of its own (its
+/// picture laid and read back, two waits) and jumps by a few ms, so the
+/// first doubling ended the walk with next to no turns in it, and the
+/// pace was that jump over the turns. 🔬Main PC, the measuring scene with
+/// the fixture's invert on a row, three runs of the app: a pixel's charge
+/// measured 0.055, 0.633 and 1.590 ps — chunks of the band's plug-in
+/// renders 3, 24 and 96 a render (192 in another), a render 3.4 to 47 ms
+/// on the engine's thread, the band's plug-in renders 0.8 to 8.6 s
+/// (a-plugin-step-is-keyed-by-a-moment-it-may-not-read). Stopped by what
+/// the growth adds: 0.053, 0.059 and 0.078 ps, 2–3 chunks.
+pub(super) fn turn_time_of(mut quicker: impl FnMut(u32) -> Option<f64>, mut turns: u32) -> Option<f64> {
     quicker(turns)?;
     let mut before = quicker(turns)?;
     loop {
-        let next = turns * 2;
+        let next = turns.saturating_mul(GROWTH);
         let took = quicker(next)?;
         let added = took - before;
-        if added > 0.0 && took > STEP.as_secs_f64() {
+        if added > STEP.as_secs_f64() {
             return Some(added / f64::from(next - turns));
         }
         if next >= MOST_TURNS {
