@@ -257,6 +257,19 @@ void main() {
       expect(SeSound.maxVolume, 2.0, reason: 'CONTROL: 200%');
     });
 
+    testWidgets('a Total asked past its top is held at it — the row holds '
+        '0–200 %', (tester) async {
+      final session = EditorSessionManager(initialProject: _project());
+      addTearDown(session.dispose);
+      session.layerSwitches.setLayerTotalVolume(_seLayerId, 3.0);
+      expect(
+        _seLayer(session.repository).seSound.totalVolume,
+        SeSound.maxVolume,
+      );
+      session.layerSwitches.setLayerTotalVolume(_seLayerId, -1.0);
+      expect(_seLayer(session.repository).seSound.totalVolume, 0.0);
+    });
+
     testWidgets('a Total past 100% stands on the bar', (tester) async {
       final session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
