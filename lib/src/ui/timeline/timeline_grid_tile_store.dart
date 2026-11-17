@@ -880,7 +880,7 @@ class TimelineGridTileStore {
       picture: rastered.picture,
       ink: emitted.ink,
       waves: emitted.waves,
-      grips: emitted.grips,
+      gripOps: emitted.gripOps,
     );
   }
 
@@ -1380,9 +1380,9 @@ class TimelineGridTileStore {
         request.spanEndIndexExclusive,
         dpr,
       ),
-      grips: painter.gripsIn(
-        request.spanStartIndex,
-        request.spanEndIndexExclusive,
+      gripOps: _gripOps(
+        request,
+        painter.gripsIn(request.spanStartIndex, request.spanEndIndexExclusive),
       ),
     );
   }
@@ -1418,8 +1418,13 @@ class TimelineGridTileStore {
     if (picture == null) {
       return null;
     }
-    final grips = _gripOps(request, emitted.grips);
-    batch.draw(picture, (writer..append(lettered)..append(grips)).build());
+    batch.draw(
+      picture,
+      (writer
+            ..append(lettered)
+            ..append(emitted.gripOps))
+          .build(),
+    );
     for (final (:peaks, :view) in emitted.waves) {
       batch.wave(picture, EngineWavePeaks.of(peaks), view);
     }
@@ -1431,6 +1436,11 @@ class TimelineGridTileStore {
   /// ([blockEdgeGripRightAngle]), its round end's bleed one device pixel —
   /// as the chrome drew it over the tiles before (F-604,
   /// [TimelineTileRasterSource.gripsIn]).
+  ///
+  /// What a tile is asked against ([_TileEntry.gripOps]): the grips in its
+  /// own pixels, as its ink is ([_TileEntry.ink]). ⛔Not their boxes on the
+  /// row — the row's cells stand where its window has moved them, and a
+  /// window that moved under a tile would have baked every tile again.
   static Int32List _gripOps(
     _TileRequest request,
     List<TimelineRowGrip> grips,
@@ -1760,7 +1770,7 @@ typedef _Emitted = ({
   TimelineRowSubstrate substrate,
   _TileInk ink,
   List<TimelineTileWave> waves,
-  List<TimelineRowGrip> grips,
+  Int32List gripOps,
 });
 
 /// What a raster hands its landing: the picture, and what it shows.
@@ -1819,7 +1829,7 @@ class _TileEntry {
     required this.picture,
     required this.ink,
     required this.waves,
-    required this.grips,
+    required this.gripOps,
   });
 
   /// #29: the (project, cut) world this tile's resolvers answered from.
@@ -1899,9 +1909,10 @@ class _TileEntry {
   /// ([TimelineTileRasterSource.wavesIn]).
   final List<TimelineTileWave> waves;
 
-  /// The grips `_raster` drew after [ink]'s words, in the inks they wore
-  /// ([TimelineTileRasterSource.gripsIn]).
-  final List<TimelineRowGrip> grips;
+  /// The ops of the grips `_raster` drew after [ink]'s words, in the inks
+  /// they wore ([TimelineTileRasterSource.gripsIn],
+  /// [TimelineGridTileStore._gripOps]).
+  final Int32List gripOps;
 
   /// Whether this tile shows [asked]'s span as the row is now. Asked
   /// alike by every asker: a span shown, past the window or a page away.
@@ -1953,7 +1964,11 @@ class _TileEntry {
     }
     // And the grips, asked of the span as the waves are: the pointer coming
     // to rest on one moves no layer (F-604).
-    if (!listEquals(grips, painter.gripsIn(asked.spanStartIndex, end))) {
+    final gripsNow = TimelineGridTileStore._gripOps(
+      asked,
+      painter.gripsIn(asked.spanStartIndex, end),
+    );
+    if (!listEquals(gripOps, gripsNow)) {
       return false;
     }
     final sameCells = _showsSameCellsAs(painter.layer);

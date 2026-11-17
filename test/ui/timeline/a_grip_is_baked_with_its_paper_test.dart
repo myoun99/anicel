@@ -28,10 +28,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show blockEdgeGripRightAngle;
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart'
     show TimelineGridScreenTile;
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show TimelineRowGrip;
@@ -39,10 +42,12 @@ import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/tiles_laid.dart';
 import '../../helpers/timeline_host.dart';
 import 'tile_store_idle.dart';
 import 'timeline_cell_probe.dart';
+import 'timeline_frame_geometry_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 
 /// 🗣️F-604 (유저 2026-11-16): 「밑의 블록의 오른쪽위 엣지 위에 블록 공간이
@@ -331,6 +336,97 @@ void main() {
       });
     }
   }
+
+  // ⛔Asked in the tile's own pixels, not on the row: a row's cells stand
+  // where its window has moved them, and the window moves as the view
+  // scrolls — every tile of every row would bake again at each move.
+  test('a window that moves the cells under a tile bakes it no more', () async {
+    final store = TimelineGridTileStore.instance..clear();
+    addTearDown(store.clear);
+    final layer = Layer(
+      id: const LayerId('w'),
+      name: 'w',
+      frames: const [],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('w1'), length: 6),
+        6: const TimelineExposure.drawing(FrameId('w2'), length: 6),
+      },
+    );
+    final grips = TimelineRowPaperGrips(
+      resolver: TimelineRowChromeResolver(
+        gripBlocks: const [
+          (
+            ordinal: 0,
+            startIndex: 0,
+            endIndexExclusive: 6,
+            startGrip: true,
+            endGrip: true,
+          ),
+          (
+            ordinal: 1,
+            startIndex: 6,
+            endIndexExclusive: 12,
+            startGrip: true,
+            endGrip: true,
+          ),
+        ],
+        gripIdScope: 'w',
+        layer: null,
+        baseLayer: null,
+        crossAxisExtent: 27,
+        axis: Axis.horizontal,
+        includeRunEdges: false,
+      ),
+      state: ValueNotifier((hovered: null, dragging: null)),
+      gripGround: const Color(0xFFF2BDB7),
+    );
+    // One answer for both: a host hands the same one at every paint.
+    TimelineCellExposureState states(Layer _, int frame) => frame % 6 == 0
+        ? TimelineCellExposureState.drawingStart
+        : TimelineCellExposureState.held;
+    TimelineRowCellsPainter row({required double window}) =>
+        TimelineRowCellsPainter(
+          axis: Axis.horizontal,
+          layer: layer,
+          geometry: testFrameGeometry(
+            frameCellExtent: 19.3,
+            frameEndIndexExclusive: 12,
+            leadingFrameSpacerWidth: window,
+          ),
+          crossAxisExtent: 28,
+          exposureStateForLayer: states,
+          colorScheme: const ColorScheme.dark(),
+          baseTextStyle: const TextStyle(fontSize: 11),
+          tileStore: store,
+          devicePixelRatio: 0.9,
+          paperGrips: grips,
+        );
+    TimelineGridTilePicture? asked(TimelineRowCellsPainter painter) =>
+        store.tileFor(
+          painter: painter,
+          spanStartIndex: 0,
+          spanEndIndexExclusive: 12,
+          devicePixelRatio: 0.9,
+        );
+
+    final before = row(window: 0);
+    expect(await pollUntil(() => asked(before) != null), isTrue);
+    final held = asked(before)!..hold();
+    addTearDown(held.letGo);
+
+    final moved = row(window: -137.3);
+    expect(
+      moved.gripsIn(0, 12).first.box,
+      isNot(before.gripsIn(0, 12).first.box),
+      reason: '⛔premise: the window moved the grips on the row',
+    );
+    expect(
+      identical(asked(moved), held),
+      isTrue,
+      reason: 'the tile shows the span as it did: its grips stand in it '
+          'where they stood',
+    );
+  });
 
   testWidgets('the pointer coming to rest on a grip inks it on the screen in '
       'that frame — the tile under it baked again in its paint', (
