@@ -20,7 +20,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
@@ -116,7 +115,7 @@ void main() {
       final named = colours ? '$way, in the sides\' colours' : way;
       test('the frame of a numbered row with its ghosts $named is laid',
           () async {
-        final defaults = const OnionSkinSettings();
+        const defaults = OnionSkinSettings();
         final session = numberedWithItsOnion(
           defaults.copyWith(
             placement: placement,
