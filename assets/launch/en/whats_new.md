@@ -42,7 +42,7 @@
 - **Cut tool** — choose "Display" or "Layer" under "Reference". "Display" cuts every visible layer just as it shows.
 - **Fill tool** — holding down and moving slides the checker pattern along with the cursor.
 - **Import defaults** — pictures come in at their original size. Long options no longer widen the import window. Importing a file of the same name again previews and brings in the new file. Kept files in the media pool show the date they were kept instead of a path.
-- **Percent while opening and importing** — opening a project, or importing from the import window, the percent grows with how much of the file has been read. The bar no longer stands still while a file comes down from the cloud, and a .anicel file shows its percent from the start.
+- **Percent while opening and importing** — when you open a project or import from the import window, the percent grows with how much of the file has been read. The bar no longer stands still while a file comes down from the cloud, and a .anicel file shows its percent from the start.
 - **Frame rate** — 23.976 fps is marked "Recommended".
 - **Export** — the video preview shows the same picture as the file it writes. Save As (PNG) prints the camera path, guides and onion skin as the canvas shows them. The Cels tab always has a scrollbar for layer folders, and exports the timesheets of every linked cut.
 - **Color labels** — the "Art" process is gone. Paper labels start from the LO paper and take their stage's color, and a new image layer starts in the LO color.
