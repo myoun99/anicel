@@ -8,6 +8,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -79,12 +80,12 @@ void main() {
     addTearDown(images.dispose);
   });
 
-  /// Pictures whose frames stack cel a — under a plugin's chain where
-  /// [plugin] says — counting each stacking in [stacked], under the stamp
-  /// [stamp] answers; [paper] is the page's.
+  /// Pictures whose frames stack cel a — under a plugin's step run as
+  /// [run] answers, where it answers one — counting each stacking in
+  /// [stacked], under the stamp [stamp] answers; [paper] is the page's.
   ({FramePictures pictures, List<int> stacked}) picturesOf({
     required Object? Function() stamp,
-    bool Function()? plugin,
+    FxPluginRun? Function()? run,
     ProjectBackground Function()? paper,
   }) {
     final stacked = [0];
@@ -101,12 +102,12 @@ void main() {
               frameKey: keyOf('a'),
               opacity: 1,
               effects: [
-                if (plugin?.call() ?? false)
+                if (run?.call() case final run?)
                   ResolvedLayerEffect(
                     kind: EffectKind.plugin,
                     plugin: shiftingFxPluginDescription,
                     values: const [],
-                    run: fxPluginRunOf(ShiftingFxPlugin()),
+                    run: run,
                   ),
               ],
             ),
@@ -370,12 +371,81 @@ void main() {
     expect(after, isNot(before));
   });
 
-  test('a frame whose chain runs a plugin is stacked at every asking — its '
-      'key signs the run, which no stamp follows', () {
+  // 🔬The bar read its window again at each landing, and a frame whose
+  // chain runs a plugin was stacked anew at every asking — 1.1–1.3 s of
+  // the UI thread a band on S5_BA cut 352 with an invert on a row
+  // (11-17, main PC, a-plugin-step-is-keyed-by-a-moment-it-may-not-read).
+  test('🚨a frame whose chain runs a plugin is stacked once while its run '
+      'stands as bound — the walk, the bar and the weighing ask one '
+      'reading', () {
     final cut = aCut();
+    final run = fxPluginRunOf(ShiftingFxPlugin());
     final (:pictures, :stacked) = picturesOf(
       stamp: () => 'still',
-      plugin: () => true,
+      run: () => run,
+    );
+
+    final key = pictures.keyOf(at(cut, 0));
+    pictures.standingOf(at(cut, 0));
+    pictures.has(at(cut, 0));
+
+    expect(stacked.single, 1);
+    expect(pictures.keyOf(at(cut, 0)), key);
+  });
+
+  test('a frame whose plugin\'s run stands no more is stacked anew — its '
+      'key signs the run bound now', () {
+    final cut = aCut();
+    final runner = ShiftingFxPlugin();
+    var run = fxPluginRunOf(runner);
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      run: () => run,
+    );
+    final before = pictures.keyOf(at(cut, 0));
+
+    runner.close();
+    run = fxPluginRunOf(ShiftingFxPlugin());
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before), reason: 'another runner signs it');
+  });
+
+  test('a frame whose plugin\'s run reads rows its binding says moved is '
+      'stacked anew', () {
+    final cut = aCut();
+    var rowsStand = true;
+    final run = FxPluginRun(
+      runner: ShiftingFxPlugin(),
+      moment: (frameIndex: 0, time: 0, frameRate: 24, scale: 1),
+      rows: {const LayerId('m'): null},
+      rowsAsBound: () => rowsStand,
+    );
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      run: () => run,
+    );
+
+    pictures.keyOf(at(cut, 0));
+    pictures.keyOf(at(cut, 0));
+    expect(stacked.single, 1);
+    rowsStand = false;
+    pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+  });
+
+  test('LIVENESS — a frame whose plugin\'s run cannot say it stands is '
+      'stacked at every asking, as every such frame was', () {
+    final cut = aCut();
+    final run = fxPluginRunOf(
+      ShiftingFxPlugin(),
+      rows: {const LayerId('m'): null},
+    );
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      run: () => run,
     );
 
     pictures.keyOf(at(cut, 0));
@@ -389,9 +459,10 @@ void main() {
     debugCheckFrameStanding = true;
     final cut = aCut();
     var plugin = false;
+    final run = fxPluginRunOf(ShiftingFxPlugin());
     final (:pictures, :stacked) = picturesOf(
       stamp: () => 'still',
-      plugin: () => plugin,
+      run: () => plugin ? run : null,
     );
     pictures.keyOf(at(cut, 0));
 

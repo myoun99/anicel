@@ -10,6 +10,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/fx_plugin_run.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../services/cel_content_notes.dart';
@@ -37,14 +38,14 @@ typedef FrameDrawingNow = ({
 typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
 
 /// A frame's key as [FramePictures._standing] read it: of [cut] as it was,
-/// on [page], with each cel its tree stacks as it stood then — and whether
-/// it is [kept] for the next asking.
+/// on [page], with each cel its tree stacks as it stood then and each
+/// plug-in's run it signs ([pluginRunsOf]).
 typedef _Stood = ({
   Cut cut,
   FramePage page,
   FramePictureKey key,
   List<({BrushFrameKey cel, int revision, bool drawn})> cels,
-  bool kept,
+  List<FxPluginRun> runs,
   _CelsStamp celsRead,
 });
 
@@ -386,11 +387,20 @@ class FramePictures implements PlaybackPictures {
   /// [picture]'s key and the cels its tree stacks, read once while what the
   /// tree reads stays ([treeStamp]): kept where [picture]'s cut is the one
   /// it was read of, on the same page, each cel at the revision and the
-  /// drawn-ness it stood at; stacked and signed anew where any moved.
+  /// drawn-ness it stood at, and each plug-in's run still the one its
+  /// binding would make ([FxPluginRun.standsAsBound]); stacked and signed
+  /// anew where any moved.
   ///
-  /// ⛔Not kept: a frame whose chains run a plugin ([waitsForItsPlugins]) —
-  /// its key signs each run, which carries the rows' live surfaces and how
-  /// the run went last, and no stamp follows those.
+  /// 🚨A PLUG-IN'S FRAME IS KEPT AS EVERY OTHER IS (H57): its key signs each
+  /// run — its runner, the moment as the runner reads it, the rows it
+  /// reads — which no stamp follows, so the run itself says whether it
+  /// stands. ↩️Such a frame was not kept: stacked anew at every asking,
+  /// it was what the bar and the walk spent their time on while a band
+  /// with a plug-in filled — 🔬main PC, S5_BA cut 352 with an invert on a
+  /// row, 176 frames made anew: the ruler's bar read its window again at
+  /// each landing, 1.1–1.3 s of the UI thread a band, nearly all of it
+  /// these frames stacked and signed (11-17,
+  /// a-plugin-step-is-keyed-by-a-moment-it-may-not-read).
   ///
   /// 🔬The walk, the ruler's bar and the weighing ask it of every frame
   /// (11-14, S5_BA cut 352 · 68 rows, its frames refilled after a stroke,
@@ -416,6 +426,7 @@ class FramePictures implements PlaybackPictures {
     if (kept != null &&
         identical(kept.cut, picture.cut) &&
         kept.page == pageOf(picture) &&
+        kept.runs.every((run) => run.standsAsBound) &&
         (kept.celsRead == cels || _celsStand(kept))) {
       assert(!debugCheckFrameStanding || _standsAsRead(kept, picture));
       if (kept.celsRead != cels) {
@@ -424,19 +435,15 @@ class FramePictures implements PlaybackPictures {
           page: kept.page,
           key: kept.key,
           cels: kept.cels,
-          kept: kept.kept,
+          runs: kept.runs,
           celsRead: cels,
         );
       }
       return kept;
     }
-    final now = _stoodNow(picture);
-    if (now.kept) {
-      _stood[ask] = now;
-    } else {
-      _stood.remove(ask);
-    }
-    return now;
+    // A run that cannot say whether it stands ([FxPluginRun.standsAsBound])
+    // is kept too, and stacked anew at the next asking all the same.
+    return _stood[ask] = _stoodNow(picture);
   }
 
   /// Whether each cel [kept]'s tree stacks stands at the revision and the
@@ -482,7 +489,7 @@ class FramePictures implements PlaybackPictures {
         for (final cel in stackedCelsOf(nodes))
           (cel: cel, revision: _revisionOf(cel), drawn: _drawn(cel)),
       ],
-      kept: !waitsForItsPlugins(nodes),
+      runs: pluginRunsOf(nodes),
       celsRead: celsRead,
     );
   }

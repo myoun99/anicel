@@ -21,6 +21,7 @@ import '../../services/cut_frame_composite_plan.dart'
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
+import '../../models/fx_plugin_run.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/canvas_size.dart';
@@ -483,19 +484,25 @@ final class StackedFrame {
 /// drawn whole only by a recording that waits for its plugins
 /// (`FxPluginStages`), and drawn as it stands with the step as if off.
 bool waitsForItsPlugins(List<CompositeNode<CanvasStackRow>> nodes) =>
-    preorderNodes(nodes).any(
-      (node) => switch (node) {
-        CompositeLeaf(payload: CanvasActiveLayerRow(:final effects)) ||
-        CompositeLeaf(payload: CanvasLayerImageRequest(:final effects)) ||
-        CompositeGroup(:final effects) ||
-        CompositeAdjustment(:final effects) => _runsAPlugin(effects),
-        _ => false,
-      },
-    );
+    pluginRunsOf(nodes).isNotEmpty;
 
-bool _runsAPlugin(List<ResolvedLayerEffect> chain) => chain.any(
-  (effect) => effect.kind == EffectKind.plugin && effect.run != null,
-);
+/// The run of each plugin's step [nodes] hold ([waitsForItsPlugins]), in
+/// the order the tree is walked — what a frame's key signs of its plug-ins
+/// (`FramePictures._standing`).
+List<FxPluginRun> pluginRunsOf(List<CompositeNode<CanvasStackRow>> nodes) => [
+  for (final node in preorderNodes(nodes))
+    for (final effect in _chainOf(node))
+      if (effect.kind == EffectKind.plugin) ?effect.run,
+];
+
+List<ResolvedLayerEffect> _chainOf(CompositeNode<CanvasStackRow> node) =>
+    switch (node) {
+      CompositeLeaf(payload: CanvasActiveLayerRow(:final effects)) ||
+      CompositeLeaf(payload: CanvasLayerImageRequest(:final effects)) ||
+      CompositeGroup(:final effects) ||
+      CompositeAdjustment(:final effects) => effects,
+      _ => const [],
+    };
 
 /// The painters the rows a lift holds beside the live one are drawn by
 /// ([LiftedCel]), by cel — kept while a row's surface stays what it was: a

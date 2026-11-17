@@ -47,6 +47,12 @@ FxPluginBinding deviceFxPluginBinding({
     }
     final told = plugin.frame ?? frameIndex;
     final worn = plugin.worn;
+    final named = [
+      for (final id in plugin.layers.values.nonNulls) ?cut.layers.byId(id),
+    ];
+    BitmapSurface? pictureOf(Layer row) =>
+        _ownPictureAt(cut, row, frameIndex, surfaceOf);
+    final rows = {for (final row in named) row.id: pictureOf(row)};
     return plugin.withRun(
       FxPluginRun(
         told: outcomes == null || worn == null
@@ -60,11 +66,9 @@ FxPluginBinding deviceFxPluginBinding({
           // A cel's own pixels; a step past them runs at its raster's.
           scale: 1,
         ),
-        rows: {
-          for (final named in plugin.layers.values.nonNulls)
-            if (cut.layers.byId(named) case final read?)
-              named: _ownPictureAt(cut, read, frameIndex, surfaceOf),
-        },
+        rows: rows,
+        rowsAsBound: () =>
+            named.every((row) => identical(rows[row.id], pictureOf(row))),
       ),
     );
   }

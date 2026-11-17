@@ -113,13 +113,37 @@ final class FxPluginRun {
     required this.moment,
     required Map<LayerId, BitmapSurface?> rows,
     this.told,
+    bool Function()? rowsAsBound,
   }) : rows = frozenMap(rows),
-       _signedMoment = runner.readsTheMoment
-           ? moment
-           : (frameRate: moment.frameRate, scale: moment.scale);
+       _rowsAsBound = rowsAsBound,
+       _signedMoment = _signed(runner, moment);
 
   final FxPluginRunner runner;
   final FxPluginMoment moment;
+
+  /// What of [moment] a run of [runner] is signed with ([_signedMoment]).
+  static Object _signed(FxPluginRunner runner, FxPluginMoment moment) =>
+      runner.readsTheMoment
+      ? moment
+      : (frameRate: moment.frameRate, scale: moment.scale);
+
+  /// Whether this run is still the one its binding would make now: equal
+  /// ([==]) to the run bound again at its frame — its runner not let go
+  /// ([FxPluginRunner.closed]), [moment] signed as the runner reads it now
+  /// (a build still to come signs with all of it till it opens), and each
+  /// of [rows] the very picture its cel holds now ([_rowsAsBound]). False
+  /// where it cannot say: rows, and no word on them from what bound it.
+  ///
+  /// What a frame's key kept over a plug-in's step asks before it is
+  /// handed out again (`FramePictures._standing`, H57).
+  bool get standsAsBound =>
+      !runner.closed &&
+      _signed(runner, moment) == _signedMoment &&
+      (_rowsAsBound?.call() ?? rows.isEmpty);
+
+  /// The binding's word that each of [rows] is the picture its cel holds
+  /// now. ⛔Not in [==]: it says whether the run stands, not what it draws.
+  final bool Function()? _rowsAsBound;
 
   /// 🚨WHAT OF [moment] A RUN IS SIGNED WITH IS WHAT ITS PLUGIN READS (card
   /// a-plugin-step-is-keyed-by-a-moment-it-may-not-read, 브러시/렌더링
