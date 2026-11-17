@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/material.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
@@ -265,9 +264,11 @@ Future<void> _layBlockPictures(
   }
 }
 
-/// What a merge lays its pictures with: each drawn over [cut]'s whole
-/// pasteboard — what lies past the canvas is the rows' too (a pan's
-/// background) — on a clear ground, and laid on its new cel where it lies.
+/// What a merge lays its pictures with: each drawn over [cut]'s pasteboard
+/// — what lies past the canvas is the rows' too (a pan's background) — as
+/// far as the picture's world reaches into it
+/// ([ExportFrameRenderer.frameOver]), on a clear ground, and laid on its
+/// new cel where it lies.
 final class _Laying {
   _Laying(this.session, this.cut)
     : wall = session.pasteboardOf(cut.canvasSize),
@@ -281,13 +282,14 @@ final class _Laying {
   final PasteboardWall wall;
   final ExportFrameRenderer _renderer;
 
-  /// [from] at [frameIndex], over the whole wall: a frame on the engine.
-  Future<GpuShown> draw(Cut from, int frameIndex) =>
+  /// [from] at [frameIndex], over the wall: a frame on the engine, or none
+  /// where nothing of it stands there.
+  Future<RegionShot?> draw(Cut from, int frameIndex) =>
       _renderer.frameOver(from, frameIndex, wall.rect);
 
-  /// [cels] of [cut]'s [rowId] stacked bottom → top over the whole wall
-  /// ([ExportFrameRenderer.frameOfCels]): a frame on the engine.
-  Future<GpuShown> stack(LayerId rowId, List<FrameId> cels) =>
+  /// [cels] of [cut]'s [rowId] stacked bottom → top over the wall
+  /// ([ExportFrameRenderer.frameOfCels]), as [draw] draws.
+  Future<RegionShot?> stack(LayerId rowId, List<FrameId> cels) =>
       _renderer.frameOfCels(cut, rowId, cels, wall.rect);
 
   /// The frame [drawn] laid as [cut]'s cel [frameId] of [rowId], where it
@@ -296,11 +298,11 @@ final class _Laying {
   Future<void> lay(
     LayerId rowId,
     FrameId frameId,
-    Future<GpuShown> drawn,
+    Future<RegionShot?> drawn,
   ) async {
-    final frame = await drawn;
+    final shot = await drawn;
     try {
-      final ink = inkOfFrame(appGpuExport, frame);
+      final ink = shot == null ? null : inkOfFrame(appGpuExport, shot.frame);
       session.layerMerging.layPicture(
         cut,
         rowId,
@@ -315,13 +317,13 @@ final class _Laying {
                   0,
                   0,
                   1,
-                  (wall.left + ink.left).toDouble(),
-                  (wall.top + ink.top).toDouble(),
+                  shot!.over.left + ink.left,
+                  shot.over.top + ink.top,
                 ),
               ),
       );
     } finally {
-      frame.free();
+      shot?.frame.free();
     }
   }
 

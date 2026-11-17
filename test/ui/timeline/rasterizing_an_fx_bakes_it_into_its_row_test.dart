@@ -248,7 +248,8 @@ void main() {
 
   /// What [s]'s cut — [of], where given — shows on [frame], drawn as a bake
   /// draws it: the wall's pixels row by row, straight as the engine reads
-  /// them, [width] to a row, the first at canvas ([left], [top]).
+  /// them, [width] to a row, the first at canvas ([left], [top]) — clear
+  /// past what the bake draws, where the frame's world stops.
   Future<({List<int> rgba, int width, int left, int top})> wallAt(
     WidgetTester tester,
     EditorSessionManager s,
@@ -257,21 +258,38 @@ void main() {
   }) async {
     final cut = of ?? s.requireActiveCut;
     final wall = s.pasteboardOf(cut.canvasSize);
+    final (wide, high) = (
+      wall.rightExclusive - wall.left,
+      wall.bottomExclusive - wall.top,
+    );
     final drawn = await tester.runAsync(() async {
       final renderer = ExportFrameRenderer(
         session: s,
         ground: const ui.Color(0x00000000),
       );
       try {
-        final shown = await renderer.frameOver(cut, frame, wall.rect);
+        final rgba = List.filled(wide * high * 4, 0);
+        final shot = await renderer.frameOver(cut, frame, wall.rect);
+        if (shot == null) {
+          return rgba;
+        }
+        final (frame: shown, :over) = shot;
         try {
-          return (
-            rgba: appGpuExport
-                .straight(shown, shown.width, shown.height)
-                .take()
-                .toList(),
-            width: shown.width,
-          );
+          final drawn = appGpuExport
+              .straight(shown, shown.width, shown.height)
+              .take();
+          final (x, y) = (over.left.toInt(), over.top.toInt());
+          for (var row = 0; row < shown.height; row += 1) {
+            final from = row * shown.width * 4;
+            rgba.setRange(
+              ((y - wall.top + row) * wide + x - wall.left) * 4,
+              ((y - wall.top + row) * wide + x - wall.left) * 4 +
+                  shown.width * 4,
+              drawn,
+              from,
+            );
+          }
+          return rgba;
         } finally {
           shown.free();
         }
@@ -280,8 +298,8 @@ void main() {
       }
     });
     return (
-      rgba: drawn!.rgba,
-      width: drawn.width,
+      rgba: drawn!,
+      width: wide,
       left: wall.left,
       top: wall.top,
     );

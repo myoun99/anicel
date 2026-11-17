@@ -59,6 +59,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         CanvasNameTagRow,
         CanvasStackRow,
         FramePage,
+        StackedFrame,
         nameTagRows;
 import '../canvas/guide_overlay.dart' show paintGuideLines;
 import '../conte/conte_fonts.dart' show conteTextStyle;
@@ -87,6 +88,10 @@ import '../text/app_strings.dart';
 /// the storyboard's and the conte's pictures stand on, and so what a conte
 /// picture drawn live stands on too.
 const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
+
+/// A frame on the engine, for its taker to free, and the canvas rect it is
+/// a picture of, a pixel a pixel ([ExportFrameRenderer.frameOver]).
+typedef RegionShot = ({GpuShown frame, ui.Rect over});
 
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
 /// row and the cut it is a row of, its drawing there, the effects it
@@ -1016,10 +1021,10 @@ class ExportFrameRenderer {
 
   /// [cut]'s rows at [frameIndex] over the canvas [region], a pixel a
   /// pixel — a camera standing square over it ([cameraViewOver]), and the
-  /// pasteboard it takes in kept — as a frame on the engine, for the caller
-  /// to free: what a merge lays as the one cel its rows become
-  /// (`merge_layer_rows`), read back where its ink is and nowhere else
-  /// (`inkOfFrame`).
+  /// pasteboard it takes in kept — as a frame on the engine and the rect it
+  /// shows ([RegionShot]), for the caller to free: what a merge lays as the
+  /// one cel its rows become (`merge_layer_rows`), read back where its ink
+  /// is and nowhere else (`inkOfFrame`).
   ///
   /// ↩️It was a panel's picture too — at a panel's width, through the
   /// camera where no region was given — until a panel was cut from the
@@ -1036,16 +1041,21 @@ class ExportFrameRenderer {
   /// 65,280 pixels (alphas 6–252, the even ones) — 🧭관제 2026-11-14 ⏳
   /// 「받는다 — 풀기가 두 벌이던 것이 엔진 한 벌이 된다」, which the user
   /// can turn back.
-  Future<GpuShown> frameOver(Cut cut, int frameIndex, ui.Rect region) async {
-    final view = cameraViewOver(region);
+  ///
+  /// Drawn over what of [region] the frame's world reaches ([_shotOver]),
+  /// and null where it reaches none of it.
+  Future<RegionShot?> frameOver(
+    Cut cut,
+    int frameIndex,
+    ui.Rect region,
+  ) async {
     _startFrame();
     await _hydrate(cut, frameIndex);
-    return _shot(
+    return _shotOver(
       cut,
       frameIndex,
       _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
-      view: view,
-      cutsToTheCanvas: false,
+      region,
     );
   }
 
@@ -1054,29 +1064,80 @@ class ExportFrameRenderer {
   /// the row's, in the normal blend at full strength — through the camera
   /// [frameOver] stands, as a frame on the engine for the caller to free:
   /// what a block merge lays as the one cel the cels become
-  /// (`merge_layer_rows`).
-  Future<GpuShown> frameOfCels(
+  /// (`merge_layer_rows`). Drawn over what of [region] their world reaches,
+  /// as [frameOver] is.
+  Future<RegionShot?> frameOfCels(
     Cut cut,
     LayerId row,
     List<FrameId> cels,
     ui.Rect region,
   ) {
     _startFrame();
-    return _shot(
-      cut,
-      0,
-      [
-        for (final cel in cels)
-          CompositeLeaf<CanvasStackRow>(
-            CanvasLayerImageRequest(
-              frameKey: session.brushFrameKeyForCut(cut, row, cel),
-              opacity: 1,
-            ),
+    return _shotOver(cut, 0, [
+      for (final cel in cels)
+        CompositeLeaf<CanvasStackRow>(
+          CanvasLayerImageRequest(
+            frameKey: session.brushFrameKeyForCut(cut, row, cel),
+            opacity: 1,
           ),
-      ],
-      view: cameraViewOver(region),
+        ),
+    ], region);
+  }
+
+  /// [nodes] — [cut]'s frame [frameIndex] — shot square over what of the
+  /// canvas [region] the frame's world reaches ([_worldOf]), a pixel a
+  /// pixel, the pasteboard kept: past its world a frame holds nothing. Null
+  /// where its world reaches none of [region].
+  ///
+  /// 🔬Card a-rider-bake-draws-the-whole-wall-a-cel (저장 11-16, Surface):
+  /// a bake drew each cel over the whole wall — 7020×4962 on the default
+  /// canvas — ≈125 ms to draw and ≈60 ms to read which of its pixels are
+  /// clear, for a 28-pixel ink. ⛔Not the ink's own box: what a frame is
+  /// drawn over is where it stands, the page and every row's content as far
+  /// as its chain reaches — the one law its picture is kept over.
+  Future<RegionShot?> _shotOver(
+    Cut cut,
+    int frameIndex,
+    List<CompositeNode<CanvasStackRow>> nodes,
+    ui.Rect region,
+  ) async {
+    final over = (await _worldOf(cut, frameIndex, nodes)).intersect(region);
+    if (over.isEmpty) {
+      return null;
+    }
+    final frame = await _shot(
+      cut,
+      frameIndex,
+      nodes,
+      view: cameraViewOver(over),
       cutsToTheCanvas: false,
     );
+    return (frame: frame, over: over);
+  }
+
+  /// The world [nodes] — [cut]'s frame [frameIndex] on this renderer's
+  /// ground — stand in ([StackedFrame.extent]): the page and every row's
+  /// content as far as its chain reaches, which the engine keeps the
+  /// frame's picture over. Its cels are read as the shot reads them, as
+  /// looks held for the frame ([_looks]).
+  Future<ui.Rect> _worldOf(
+    Cut cut,
+    int frameIndex,
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) async {
+    final pictures = session.playbackRig.framePictures;
+    final page = _pageOf(cut, ground, null);
+    final frame = _frameOn(cut, frameIndex, page);
+    final ahead = await pictures.readInStack(
+      nodes,
+      frame,
+      page: page,
+      looks: _looks,
+    );
+    return pictures
+        .drawingNow(nodes, frame, page: page, looks: _looks, ahead: ahead)
+        .frame
+        .extent;
   }
 
   /// What a render of [cut] at [frameIndex] looks through in [mode]: its

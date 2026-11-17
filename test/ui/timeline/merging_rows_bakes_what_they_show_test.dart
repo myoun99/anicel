@@ -37,6 +37,7 @@ import 'package:anicel/src/services/editing/layer_merge_plan.dart'
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/merge_layer_rows.dart';
 
@@ -287,6 +288,40 @@ void main() {
       [at(mergedCel(s), 160, 40), at(mergedCel(s), 288, 40)],
       [red, green],
     );
+  });
+
+  testWidgets('🎯a bake draws a frame over the world its rows stand in — the '
+      'canvas and their ink past it — and not over the whole wall (card '
+      'a-rider-bake-draws-the-whole-wall-a-cel)', (tester) async {
+    final s = session();
+    addTearDown(s.dispose);
+    final cut = s.requireActiveCut;
+    final wall = s.pasteboardOf(canvasSize);
+    for (final (edge, past) in [
+      (wall.left, lessThan(-tile)),
+      (wall.rightExclusive, greaterThan(4 * tile)),
+      (wall.bottomExclusive, greaterThan(3 * tile)),
+    ]) {
+      expect(edge, past, reason: '⛔premise: the wall reaches past the world');
+    }
+    final shot = await tester.runAsync(() async {
+      final renderer = ExportFrameRenderer(
+        session: s,
+        ground: const Color(0x00000000),
+      );
+      try {
+        final (:frame, :over) = (await renderer.frameOver(cut, 0, wall.rect))!;
+        frame.free();
+        return (over: over, size: (frame.width, frame.height));
+      } finally {
+        renderer.dispose();
+      }
+    });
+
+    // The page, and `b`'s tile left of it.
+    final world = Rect.fromLTRB(-tile.toDouble(), 0, 4.0 * tile, 3.0 * tile);
+    expect(shot!.over, world);
+    expect(shot.size, (5 * tile, 3 * tile), reason: 'a pixel a pixel');
   });
 
   testWidgets('🎯an attach row the merge does not take rides the result, its '
