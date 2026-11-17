@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
@@ -525,7 +527,7 @@ bool _isClipBase(Cut cut, Layer row) {
 /// or null where none is.
 Layer? _clipBaseAround(Cut cut, Layer row) {
   Layer? outermost;
-  for (final folder in cut.layers.ancestryOf(row.folderId)) {
+  for (final folder in _stackOf(cut).folders.ancestryOf(row.folderId)) {
     if (_isClipBase(cut, folder)) {
       outermost = folder;
     }
@@ -534,8 +536,75 @@ Layer? _clipBaseAround(Cut cut, Layer row) {
 }
 
 /// [row]'s place in [cut]'s stack — by id, as a row's identity is.
-int _rowIndexOf(Cut cut, Layer row) =>
-    cut.layers.indexWhere((layer) => layer.id == row.id);
+int _rowIndexOf(Cut cut, Layer row) => _stackOf(cut).indexOf(row.id);
+
+/// [cut]'s stack as the plan asks it — where each row stands, by id, and
+/// its folders ([LayerFolderIndex]) — read once per stack.
+///
+/// 🚨The plan asks these of every row of every frame it lays: the clip
+/// law places each row by its index ([meetsAClip]), every folder row's
+/// chain is walked ([resolveFolderChainAt]) and an attach row's carrier and
+/// base are looked up ([_paintingRowOf]). Asked of the list, each was a
+/// scan of the stack — a frame of n rows cost n² id compares, for answers
+/// that are the stack's, not the frame's (card
+/// an-eye-toggle-holds-the-ui-thread).
+///
+/// Kept by the stack itself, weakly: a cut's rows are frozen
+/// ([Cut.layers]), so an edit is a new list and the list is the whole
+/// invalidation story, as [compositeStructureSpansIn]'s tables are by
+/// their cut.
+_PlanStack _stackOf(Cut cut) =>
+    _planStacks[cut.layers] ??= _PlanStack(cut.layers);
+
+final Expando<_PlanStack> _planStacks = Expando('composite plan stack');
+
+/// How many stacks the plan has read ([_stackOf]) — the work it keeps,
+/// read by the test that pins it.
+@visibleForTesting
+int get debugPlanStacksRead => _planStacksRead;
+
+int _planStacksRead = 0;
+
+final class _PlanStack {
+  _PlanStack(this._layers) : folders = LayerFolderIndex(_layers) {
+    _planStacksRead += 1;
+    for (var i = 0; i < _layers.length; i += 1) {
+      // The first wins, as a scan from the bottom finds it.
+      _index.putIfAbsent(_layers[i].id, () => i);
+    }
+  }
+
+  final List<Layer> _layers;
+
+  /// The stack's folder questions, each answered once.
+  final LayerFolderIndex folders;
+
+  final Map<LayerId, int> _index = {};
+
+  /// Where the row [id] stands, or -1 where none does.
+  int indexOf(LayerId id) => _index[id] ?? -1;
+
+  final Map<Layer, ({Layer carrier, Layer? base})?> _painting =
+      Map.identity();
+
+  /// [read] of [row] in this stack, kept where [row] is the stack's own
+  /// row — the very object: a row handed in from outside may share an id
+  /// with one of its rows and not be it, and is read as it is asked.
+  ({Layer carrier, Layer? base})? paintingRowOf(
+    Layer row,
+    ({Layer carrier, Layer? base})? Function(List<Layer> layers, Layer row)
+    read,
+  ) {
+    final at = indexOf(row.id);
+    if (at < 0 || !identical(_layers[at], row)) {
+      return read(_layers, row);
+    }
+    if (_painting.containsKey(row)) {
+      return _painting[row];
+    }
+    return _painting[row] = read(_layers, row);
+  }
+}
 
 /// Where the clip law lays a row ([clipTargetOf]).
 enum ClipPlaced {
@@ -692,7 +761,7 @@ resolveFolderChainAt({
   /// either way (see [folderNeedsCompositeBuffer] for why).
   bool foldBufferedFolders = true,
 }) {
-  final chain = cut.layers.ancestryOf(layer.folderId);
+  final chain = _stackOf(cut).folders.ancestryOf(layer.folderId);
   if (chain.isEmpty) {
     return (
       visible: true,
@@ -975,7 +1044,8 @@ List<LayerPoseSample> _folderPosesAbove(
   Layer layer,
   int frameIndex,
 ) => [
-  for (final folder in cut.layers.ancestryOf(layer.folderId).reversed)
+  for (final folder
+      in _stackOf(cut).folders.ancestryOf(layer.folderId).reversed)
     ?_folderPoseAt(folder, frameIndex, cut.canvasSize),
 ];
 
@@ -1079,7 +1149,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
     return (
       cutBy: [
         for (final entry in entries)
-          if (cut.layers
+          if (_stackOf(cut).folders
               .ancestryOf(entry.layer.folderId)
               .any((folder) => folder.id == base.id))
             entry,
@@ -1145,15 +1215,24 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
 /// [resolveFolderChainAt] (flat) or a [CompositeGroup] (tree); an
 /// adjustment filters what is under it. And null for an attach row whose
 /// base is gone — a dangling link contributes nothing.
-({Layer carrier, Layer? base})? _paintingRowOf(Cut cut, Layer layer) {
+///
+/// Read once per row of a stack ([_PlanStack.paintingRowOf]): the carrier
+/// and the base are the stack's, and each was a walk of it, every frame.
+({Layer carrier, Layer? base})? _paintingRowOf(Cut cut, Layer layer) =>
+    _stackOf(cut).paintingRowOf(layer, _paintingRowIn);
+
+({Layer carrier, Layer? base})? _paintingRowIn(
+  List<Layer> layers,
+  Layer layer,
+) {
   if (!layer.kind.paintsArtwork) {
     return null;
   }
-  final carrier = fxCarrierOf(layer, cut.layers);
+  final carrier = fxCarrierOf(layer, layers);
   if (carrier == null) {
     return null;
   }
-  return (carrier: carrier, base: attachedBaseOf(layer, cut.layers));
+  return (carrier: carrier, base: attachedBaseOf(layer, layers));
 }
 
 /// The effect chain [layer] wears in [cut]: its own — or, for an attach
@@ -1400,7 +1479,8 @@ _adjustmentScopeNode({
   // adds the top-level bucket.
   final scopeKeys = <LayerId?>[];
   var stoppedAtBuffer = false;
-  for (final folder in cut.layers.ancestryOf(adjustment.folderId)) {
+  for (final folder
+      in _stackOf(cut).folders.ancestryOf(adjustment.folderId)) {
     scopeKeys.add(folder.id);
     if (folderNeedsCompositeBuffer(
       cut: cut,
@@ -1751,10 +1831,12 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
   required LayerId? liveLayerId,
 }) {
   final above = {
-    for (final layer in cut.layers.ancestryOf(folder.folderId)) layer.id,
+    for (final layer in _stackOf(cut).folders.ancestryOf(folder.folderId))
+      layer.id,
   };
   final held = {
-    for (final layer in cut.layers.subtreeMembersOf(folder.id)) layer.id,
+    for (final layer in _stackOf(cut).folders.subtreeMembersOf(folder.id))
+      layer.id,
   };
   Layer alone(Layer layer) {
     final namingNone = layer.copyWith(
