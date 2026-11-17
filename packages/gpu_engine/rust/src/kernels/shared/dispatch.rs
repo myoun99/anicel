@@ -84,6 +84,12 @@ pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
 /// lavapipe — a stamp's picture of 7,988² past it at a wgpu validation
 /// error. A plane read a part at a time is read as rows, these many a
 /// part.
+///
+/// ⛔NOT [`bands`] (board conversions-bind-a-frame-past-the-device-limit,
+/// 2026-11-17): a stamp's pages each hold the same count of tiles — a
+/// tile's page is its index over that count (`TileSet::paged`) — so the
+/// stamp asks how many rows a binding holds wherever a page's tiles begin,
+/// not where a greedy cut of the rows ends.
 pub(crate) fn rows_a_binding(room: u64, step: u64, row_bytes: u64) -> Option<u64> {
     match room.saturating_sub(step).checked_div(row_bytes) {
         None => Some(u64::MAX),

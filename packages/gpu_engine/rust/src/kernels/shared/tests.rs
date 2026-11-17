@@ -63,7 +63,7 @@ fn rig() -> &'static Rig {
         Rig {
             engine,
             wide,
-            warp: Warp::new(engine),
+            warp: Warp::new(engine).expect("the warp compiled"),
             premultiply,
             divide,
         }

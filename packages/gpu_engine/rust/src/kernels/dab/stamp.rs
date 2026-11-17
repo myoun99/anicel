@@ -351,7 +351,7 @@ impl StampLanding {
         Some(Self {
             stamps: Stamps::new(engine),
             write: Write::new(engine)?,
-            warp: Warp::new(engine),
+            warp: Warp::new(engine)?,
             owners: MeshOwners::new(engine),
         })
     }

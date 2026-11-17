@@ -14,6 +14,7 @@
 
 use std::ops::Range;
 
+use super::range;
 use crate::device::Engine;
 use crate::fail;
 
@@ -62,6 +63,12 @@ impl Pages {
     /// the device's most — only the time (mutant p04, 11-06).
     pub(crate) fn writable(engine: &Engine, own: Own, first: u32, most: usize) -> Option<Pages> {
         Self::bound(engine, (own, first), true, most)
+    }
+
+    /// [`Pages::new`] binding no more than `most` a pass, for a kernel
+    /// that reads one plane on them ([`Pages::cut`]) and needs no more.
+    pub(crate) fn reading(engine: &Engine, own: Own, first: u32, most: usize) -> Option<Pages> {
+        Self::bound(engine, (own, first), false, most)
     }
 
     fn bound(
@@ -148,11 +155,48 @@ impl Pages {
         &'a self,
         bound: impl IntoIterator<Item = &'a wgpu::Buffer>,
     ) -> Vec<wgpu::BindGroupEntry<'a>> {
+        self.resources(bound.into_iter().map(wgpu::Buffer::as_entire_binding))
+    }
+
+    /// The bindings of the first `bytes` of `buffer` cut into pages of
+    /// `page` bytes — a multiple of the device's offset step — the k-th its
+    /// k-th, the blank one past them: one plane a buffer holds and no
+    /// binding does, read where a pass cannot tell beforehand (the warp's
+    /// picture). None, with why, where it takes more pages than a pass
+    /// binds.
+    ///
+    /// 🚨A PAGE IS A STORAGE BUFFER OR A PART OF ONE, BOUND AS ITS K (board
+    /// conversions-bind-a-frame-past-the-device-limit, 2026-11-17): the
+    /// warp's picture was bound whole and refused past a binding, and a
+    /// band of the window cannot name the rows it reads — a map may read
+    /// every row of the picture for one row of the window.
+    pub(crate) fn cut<'a>(
+        &'a self,
+        buffer: &'a wgpu::Buffer,
+        bytes: u64,
+        page: u64,
+    ) -> Option<Vec<wgpu::BindGroupEntry<'a>>> {
+        let count = bytes.div_ceil(page);
+        if count > self.per_pass as u64 {
+            return fail(format!(
+                "a plane of {bytes} bytes takes {count} pages of {page}; a pass binds {}",
+                self.per_pass
+            ));
+        }
+        let pages = (0..count).map(|k| range(buffer, k * page..((k + 1) * page).min(bytes)));
+        Some(self.resources(pages))
+    }
+
+    /// `bound` at the pages' bindings in order, the blank one past them.
+    fn resources<'a>(
+        &'a self,
+        bound: impl IntoIterator<Item = wgpu::BindingResource<'a>>,
+    ) -> Vec<wgpu::BindGroupEntry<'a>> {
         let mut bound = bound.into_iter();
         (0..self.per_pass)
             .map(|k| wgpu::BindGroupEntry {
                 binding: self.first + k as u32,
-                resource: bound.next().unwrap_or(&self.blank).as_entire_binding(),
+                resource: bound.next().unwrap_or_else(|| self.blank.as_entire_binding()),
             })
             .collect()
     }
