@@ -46,7 +46,7 @@ void main() {
         for (final kind in EffectKind.values)
           if (kind.filtersSound) kind,
       ],
-      [EffectKind.equalizer],
+      [EffectKind.equalizer, EffectKind.compressor],
     );
   });
 }

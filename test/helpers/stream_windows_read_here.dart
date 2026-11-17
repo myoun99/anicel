@@ -1,6 +1,6 @@
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
-import 'package:anicel/src/services/audio/equalized_stream.dart'
+import 'package:anicel/src/services/audio/filtered_stream.dart'
     show StreamWindowRead, readStreamedWindow;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 

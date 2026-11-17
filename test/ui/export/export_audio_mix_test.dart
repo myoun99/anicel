@@ -222,7 +222,7 @@ void main() {
       sampleRate: 48000,
       resolveSource: (_) async =>
           fail('a streamable source must never be loaded whole'),
-      resolveStreamReader: (_) async => (reader: reader, equalized: null),
+      resolveStreamReader: (_) async => (reader: reader, filtered: null),
       outputPath: streamedPath,
     );
 

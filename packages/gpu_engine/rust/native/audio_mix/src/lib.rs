@@ -6,8 +6,9 @@
 //! the engine's exports, bit for bit — and went in the connection round
 //! (H): the app's ledger holds them now.
 //!
-//! A sound row's equalizer is here too (equalizer.rs), baked once a span
-//! for playback and export both to read — one bake, so no twin of it.
+//! A sound row's filters are here too — its equalizer (equalizer.rs) and its
+//! compressor (compressor.rs), through one door (filter.rs) —, baked once a span
+//! for playback and export both to read: one bake, so no twin of it.
 //!
 //! Each half has a Dart twin it already agrees with bit for bit
 //! (`audio_mixer_reference.dart`, and the test answer key
@@ -27,14 +28,16 @@
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 mod bus;
+mod compressor;
 mod equalizer;
+mod filter;
 mod resample;
 #[cfg(test)]
 mod tests;
 
-pub use equalizer::{
-    Biquad, EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, Setting, equalize, equalize_on, qa_audio_equalize,
-};
+pub use compressor::{COMPRESSOR_MEMORY, COMPRESSOR_VALUES, Compressor, compress, compress_on};
+pub use equalizer::{Biquad, EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, equalize, equalize_on};
+pub use filter::{Filter, Setting, qa_audio_filter, qa_audio_filter_memory, qa_audio_filter_values};
 pub use bus::{Clip, EnvelopeKey, MONO_ON_STEREO, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
 // `qa_audio_resample` by its path too: the audio crate's tests convert a
 // whole sound through it (타임라인/콘티 2026-11-08), the C's being gone.

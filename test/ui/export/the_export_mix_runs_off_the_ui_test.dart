@@ -103,7 +103,7 @@ void main() {
         final reader = source.path == 'streamed'
             ? ConformPcmStreamReader.open(conformPath)
             : null;
-        return reader == null ? null : (reader: reader, equalized: null);
+        return reader == null ? null : (reader: reader, filtered: null);
       },
       outputPath: path,
       device: () => device,

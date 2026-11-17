@@ -24,11 +24,11 @@ import 'dart:typed_data';
 import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_device.dart';
-import '../../native/qa_audio_equalizer.dart';
+import '../../native/qa_audio_filter.dart';
 import '../../native/qa_audio_resampler.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
-import 'audio_equalizer.dart' show EqualizedSpan;
+import 'sound_filters.dart' show FilteredSpan;
 import 'audio_decode_stream.dart';
 
 /// One conform request — every field a sendable value so the whole thing
@@ -128,13 +128,13 @@ typedef ResampleRunner = Future<Float32List> Function(ResampleRequest request);
 Future<Float32List> runResampleInIsolate(ResampleRequest request) =>
     Isolate.run(() => runResampleHere(request));
 
-/// One span of already-conformed PCM through its row's equalizer — what
-/// playback and an export both read of an equalized span (board
+/// One span of already-conformed PCM through its row's filters — what
+/// playback and an export both read of a filtered span (board
 /// audio-fx-grows-like-the-pros ③). [samples] are the whole conform at
 /// [rate]; [span] says which of them, baked from rest at its first.
 /// Sendable values only, same as [ConformRequest].
-class EqualizeRequest implements _PcmFromPcm<EqualizeRequest> {
-  const EqualizeRequest({
+class FilterRequest implements _PcmFromPcm<FilterRequest> {
+  const FilterRequest({
     required this.samples,
     required this.channels,
     required this.rate,
@@ -145,11 +145,11 @@ class EqualizeRequest implements _PcmFromPcm<EqualizeRequest> {
   final Float32List samples;
   final int channels;
   final int rate;
-  final EqualizedSpan span;
+  final FilteredSpan span;
 
   /// This bake of [samples] instead.
   @override
-  EqualizeRequest withSamples(Float32List samples) => EqualizeRequest(
+  FilterRequest withSamples(Float32List samples) => FilterRequest(
     samples: samples,
     channels: channels,
     rate: rate,
@@ -157,16 +157,16 @@ class EqualizeRequest implements _PcmFromPcm<EqualizeRequest> {
   );
 }
 
-/// How a store bakes a span; production is [runEqualizeInIsolate], tests
+/// How a store bakes a span; production is [runFilterInIsolate], tests
 /// substitute a synchronous fake.
-typedef EqualizeRunner = Future<Float32List> Function(EqualizeRequest request);
+typedef FilterRunner = Future<Float32List> Function(FilterRequest request);
 
 /// The production bake runner.
-Future<Float32List> runEqualizeInIsolate(EqualizeRequest request) =>
-    Isolate.run(() => runEqualizeHere(request));
+Future<Float32List> runFilterInIsolate(FilterRequest request) =>
+    Isolate.run(() => runFilterHere(request));
 
 /// A job that makes PCM out of PCM already conformed — a conversion to the
-/// device's rate, a span through its equalizer — so the samples it reads
+/// device's rate, a span through its filters — so the samples it reads
 /// can be lent to its worker where they lie ([_pcmFromPcmInto]).
 abstract interface class _PcmFromPcm<R extends _PcmFromPcm<R>> {
   Float32List get samples;
@@ -183,7 +183,7 @@ typedef _Landed<T> = ({T result, int address, int floats});
 /// 🚨THE PCM THE DEVICE PLAYS LIVES IN THE DEVICE FROM THE MOMENT IT LANDS
 /// (play-press-first-frame-stall, 10-15). A conform's samples, each rate
 /// they were converted to ([resamplingInto]) and each span baked through
-/// its equalizer ([equalizingInto]) are placed there ONCE, and every
+/// its filters ([filteringInto]) are placed there ONCE, and every
 /// schedule after names them without a copy. ↩️They stayed in Dart memory,
 /// and every upload — each press, seek and streaming advance — copied every
 /// resident sound into the device again, however many takes a project had.
@@ -207,12 +207,12 @@ ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
     );
 
 /// The production bake runner, placed and lent as [resamplingInto]'s.
-EqualizeRunner equalizingInto(QaAudioDevice? Function() device) =>
+FilterRunner filteringInto(QaAudioDevice? Function() device) =>
     (request) => _pcmFromPcmInto(
       device(),
       request,
-      plainly: runEqualizeInIsolate,
-      here: runEqualizeHere,
+      plainly: runFilterInIsolate,
+      here: runFilterHere,
     );
 
 /// 🚨THE ONE WAY PCM MADE ON A WORKER LANDS WHERE THE DEVICE PLAYS IT: with
@@ -357,12 +357,12 @@ Float32List runResampleHere(ResampleRequest request) => resampleAudio(
 ///
 /// Throws where the engine refuses what it was handed, so the store
 /// remembers the bake as failed rather than playing silence for it.
-Float32List runEqualizeHere(EqualizeRequest request) {
+Float32List runFilterHere(FilterRequest request) {
   final channels = request.channels;
   final frames = channels <= 0 ? 0 : request.samples.length ~/ channels;
   final start = request.span.start.clamp(0, frames);
   final end = (request.span.start + request.span.length).clamp(start, frames);
-  final baked = equalizeAudio(
+  final baked = filterAudio(
     samples: Float32List.sublistView(
       request.samples,
       start * channels,

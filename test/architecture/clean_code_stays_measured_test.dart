@@ -1111,6 +1111,11 @@ void main() {
   /// ⛔Not bundled to fit: the door is an ABI, and every other function the
   /// lane added that ran to five took a record instead (the window read,
   /// the stretch bake's resume, the store's landing).
+  ///
+  /// ↩️2026-11-18 (board audio-fx-second-effect-and-presets): that binding
+  /// is `_filter` (eleven) now, of `qa_audio_filter` — the ONE door every
+  /// sound filter takes, its kind first, so the compressor brought no door
+  /// of its own. The count did not move.
   const wideSignatures = 453;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's

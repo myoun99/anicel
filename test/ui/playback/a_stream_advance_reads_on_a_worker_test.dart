@@ -14,7 +14,7 @@ import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
-import 'package:anicel/src/services/audio/equalized_stream.dart'
+import 'package:anicel/src/services/audio/filtered_stream.dart'
     show StreamWindowRead;
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -231,7 +231,7 @@ void main() {
       reader: reader,
       start: reader.length + 10,
       count: 100,
-      equalized: null,
+      filtered: null,
     );
     final made = <int>[];
     final hands = (

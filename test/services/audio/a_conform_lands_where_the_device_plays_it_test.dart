@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
-import 'package:anicel/src/services/audio/audio_equalizer.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/temp_dir.dart';
@@ -135,24 +135,24 @@ void main() {
     final plain = runConformHere(aSound()).samples!;
     final from = device.newSamples(plain.length)!..setAll(0, plain);
     const shelf = AudioEqualizer.none(lowShelf: 250, highShelf: 4000);
-    final request = EqualizeRequest(
+    final request = FilterRequest(
       samples: from,
       channels: 2,
       rate: 48000,
-      span: EqualizedSpan(
+      span: FilteredSpan(
         slot: aSlot,
         start: 40,
         length: 300,
         stages: [[
-          (start: 0, equalizer: _withLowDb(shelf, 6)),
-          (start: 120, equalizer: _withLowDb(shelf, -9)),
+          (start: 0, filter: _withLowDb(shelf, 6)),
+          (start: 120, filter: _withLowDb(shelf, -9)),
         ]],
       ),
     );
-    final here = runEqualizeHere(request.withSamples(plain));
+    final here = runFilterHere(request.withSamples(plain));
     debugWorkersRunHere = false;
 
-    final baking = equalizingInto(() => device)(request);
+    final baking = filteringInto(() => device)(request);
     expect(device.debugHoldsOf(from), 2, reason: 'lent to the worker');
     final baked = await baking;
 

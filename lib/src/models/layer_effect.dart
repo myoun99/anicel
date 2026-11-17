@@ -509,7 +509,7 @@ enum EffectKind {
   /// The EQUALIZER (board audio-fx-grows-like-the-pros ③): a sound row's
   /// lows and highs — a low cut, a high cut and a shelf each way, the
   /// shelves turning at [equalizerLowShelfHz] and [equalizerHighShelfHz] —
-  /// baked into the row's sound a span at a time (`EqualizedSpan`), never
+  /// baked into the row's sound a span at a time (`FilteredSpan`), never
   /// into its picture ([filtersSound]).
   ///
   /// 🗣️Q2 (유저 2026-11-17): 「시안 3 · 시안 1 + 성격 프리셋」 — the
@@ -550,6 +550,74 @@ enum EffectKind {
         label: 'High',
         defaultValue: 0,
         minimum: -24,
+        maximum: 24,
+        unit: EffectParameterUnit.decibels,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
+    filtersSound: true,
+  ),
+
+  /// The COMPRESSOR (board audio-fx-second-effect-and-presets ①): what
+  /// rises over its Threshold is turned down by its Ratio, following the
+  /// level with its Attack and letting go with its Release, and the whole
+  /// raised by its Makeup — baked into the row's sound a span at a time
+  /// (`FilteredSpan`), never into its picture ([filtersSound]).
+  ///
+  /// 🗣️Q2 (유저 2026-11-17): 「시안 3 · 시안 1 + 성격 프리셋」 — the
+  /// menu's second, コンプレッサー. The design drew its head row alone:
+  /// the five knobs and their ranges are my choice from a general guide
+  /// to a compressor's knobs (board line 11-18 06:14), changed if the
+  /// user says so. Its Ratio starts at 1, so the effect just added
+  /// changes nothing until a value is touched, as every kind of the
+  /// app's own that has such a value ([changesNothingAtItsDefaults]).
+  compressor(
+    'compressor',
+    label: 'Compressor',
+    parameters: [
+      EffectParameterSpec(
+        id: 'threshold',
+        label: 'Threshold',
+        defaultValue: -20,
+        minimum: -60,
+        maximum: 0,
+        unit: EffectParameterUnit.decibels,
+      ),
+      EffectParameterSpec(
+        id: 'ratio',
+        label: 'Ratio',
+        defaultValue: 1,
+        minimum: 1,
+        maximum: 20,
+        unit: EffectParameterUnit.ratio,
+      ),
+      EffectParameterSpec(
+        id: 'attack',
+        label: 'Attack',
+        defaultValue: 10,
+        minimum: 0,
+        maximum: 200,
+        unit: EffectParameterUnit.milliseconds,
+      ),
+      EffectParameterSpec(
+        id: 'release',
+        label: 'Release',
+        defaultValue: 100,
+        minimum: 5,
+        maximum: 2000,
+        unit: EffectParameterUnit.milliseconds,
+      ),
+      EffectParameterSpec(
+        id: 'makeup',
+        label: 'Makeup',
+        defaultValue: 0,
+        minimum: 0,
         maximum: 24,
         unit: EffectParameterUnit.decibels,
       ),
@@ -746,7 +814,7 @@ final List<EffectKind> effectKindsAddedAlone = frozenList([
 ///
 /// ⛔NOT HALF A RATE: a project of 96 kHz (`audioSampleRatePresets`)
 /// hears to 48 kHz, so a top at 48 kHz's half would cut it at 24 kHz. The
-/// top is no cut at every rate — `audioEqualizerOf` leaves it out.
+/// top is no cut at every rate — `soundFilterOf` leaves it out.
 const double equalizerHighCutTop = 20000;
 
 /// Where an equalizer's Low shelf turns, Hz ([EffectKind.equalizer]).

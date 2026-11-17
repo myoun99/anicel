@@ -14,6 +14,8 @@
 //! every OS (Cargo.toml); the filtering is IEEE's add and multiply in f64,
 //! with no fused multiply-add, so a baked span is the same bits on every
 //! device.
+use crate::filter::{Setting, Walk};
+
 
 /// One biquad's coefficients over its a0.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -155,21 +157,13 @@ fn sections(equalizer: &Equalizer, rate: f64) -> [Option<Biquad>; 4] {
     ]
 }
 
-/// The settings from `start` — a sample of the span, 0 its first — until
-/// the next's.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Setting {
-    pub start: i64,
-    pub equalizer: Equalizer,
-}
-
 /// `samples` — interleaved by `channels`, at `rate` — through the
 /// equalizer `settings` give, each channel's sections from rest at the
 /// first sample. The settings run in order of `start`; where one starts,
 /// its coefficients take over with the memory as it stands, and a section
 /// left out passes its sample on and remembers it, so one that comes in
 /// later starts from what it would have seen.
-pub fn equalize(samples: &[f32], channels: usize, rate: f64, settings: &[Setting]) -> Vec<f32> {
+pub fn equalize(samples: &[f32], channels: usize, rate: f64, settings: &[Setting<Equalizer>]) -> Vec<f32> {
     let mut out = vec![0.0; samples.len()];
     let mut memory = vec![0.0; channels * MEMORY_VALUES];
     equalize_on(samples, channels, rate, settings, 0, &mut memory, &mut out);
@@ -189,7 +183,7 @@ pub fn equalize_on(
     samples: &[f32],
     channels: usize,
     rate: f64,
-    settings: &[Setting],
+    settings: &[Setting<Equalizer>],
     first: i64,
     memory: &mut [f64],
     out: &mut [f32],
@@ -207,13 +201,12 @@ pub fn equalize_on(
             sections
         })
         .collect();
-    let mut next = 0;
+    let mut walk = Walk::new(settings);
     let mut current = [None; 4];
     let frames = samples.chunks_exact(channels).zip(out.chunks_exact_mut(channels));
     for ((frame, written), at) in frames.zip(first..) {
-        while next < settings.len() && settings[next].start <= at {
-            current = sections(&settings[next].equalizer, rate);
-            next += 1;
+        if let Some(equalizer) = walk.taking_over(at) {
+            current = sections(equalizer, rate);
         }
         for ((&sample, memory), slot) in frame.iter().zip(memories.iter_mut()).zip(written.iter_mut()) {
             let mut x = f64::from(sample);
@@ -234,81 +227,16 @@ pub fn equalize_on(
     }
 }
 
-/// The floats a setting takes in [`qa_audio_equalize`]'s `values`, in
-/// [`Equalizer`]'s order: low cut, high cut, low shelf, low dB, high
-/// shelf, high dB.
+/// The doubles a setting takes at the filter door
+/// ([`crate::filter::qa_audio_filter`]), in [`Equalizer`]'s order: low cut,
+/// high cut, low shelf, low dB, high shelf, high dB.
 pub const EQUALIZER_VALUES: usize = 6;
 
-/// [`equalize_on`] for C: `samples` — `frames` x `channels` floats at
-/// `rate`, the span's from its sample `first` — into `out`, as many,
-/// through `count` settings, each a start in `starts` and
-/// [`EQUALIZER_VALUES`] floats in `values`, going on from `memory` and
-/// leaving it for the next stretch; a null `memory` starts from rest and
-/// keeps nothing. 1 when it ran, 0 on bad geometry, `out` and `memory`
-/// then untouched.
-///
-/// # Safety
-/// `samples` and `out` are null or point at `frames` x `channels` floats,
-/// `starts` at `count` integers, `values` at `count` x [`EQUALIZER_VALUES`]
-/// floats and `memory`, unless null, at `channels` x [`MEMORY_VALUES`]
-/// doubles.
-#[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn qa_audio_equalize(
-    samples: *const f32,
-    frames: i64,
-    channels: i32,
-    rate: i32,
-    first: i64,
-    starts: *const i64,
-    values: *const f64,
-    count: i32,
-    memory: *mut f64,
-    out: *mut f32,
-) -> i32 {
-    let (Ok(frames), Ok(channels), Ok(count)) =
-        (usize::try_from(frames), usize::try_from(channels), usize::try_from(count))
-    else {
-        return 0;
-    };
-    let unset = samples.is_null() || out.is_null() || (count > 0 && (starts.is_null() || values.is_null()));
-    if unset || channels == 0 || rate <= 0 {
-        return 0;
+impl Equalizer {
+    /// The equalizer a setting's [`EQUALIZER_VALUES`] doubles say.
+    pub(crate) fn of_values(v: &[f64]) -> Self {
+        Self { low_cut: v[0], high_cut: v[1], low_shelf: v[2], low_db: v[3], high_shelf: v[4], high_db: v[5] }
     }
-    // SAFETY: the caller's contract.
-    let (samples, out, starts, values) = unsafe {
-        (
-            std::slice::from_raw_parts(samples, frames * channels),
-            std::slice::from_raw_parts_mut(out, frames * channels),
-            if count == 0 { &[][..] } else { std::slice::from_raw_parts(starts, count) },
-            if count == 0 { &[][..] } else { std::slice::from_raw_parts(values, count * EQUALIZER_VALUES) },
-        )
-    };
-    let mut from_rest = Vec::new();
-    let memory = if memory.is_null() {
-        from_rest.resize(channels * MEMORY_VALUES, 0.0);
-        &mut from_rest[..]
-    } else {
-        // SAFETY: the caller's contract.
-        unsafe { std::slice::from_raw_parts_mut(memory, channels * MEMORY_VALUES) }
-    };
-    let settings: Vec<Setting> = starts
-        .iter()
-        .zip(values.chunks_exact(EQUALIZER_VALUES))
-        .map(|(&start, v)| Setting {
-            start,
-            equalizer: Equalizer {
-                low_cut: v[0],
-                high_cut: v[1],
-                low_shelf: v[2],
-                low_db: v[3],
-                high_shelf: v[4],
-                high_db: v[5],
-            },
-        })
-        .collect();
-    equalize_on(samples, channels, f64::from(rate), &settings, first, memory, out);
-    1
 }
 
 #[cfg(test)]

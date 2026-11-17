@@ -4,13 +4,13 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_equalizer.dart';
+import 'package:anicel/src/native/qa_audio_filter.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/audio_equalizer.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
-import 'package:anicel/src/services/audio/equalized_stream.dart';
+import 'package:anicel/src/services/audio/filtered_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/export/export_audio_mix.dart';
@@ -59,24 +59,24 @@ void main() {
   );
 
   /// The span three frames into the file, forty long, darker fifteen in.
-  const span = ScheduledEqualizer(
+  const span = ScheduledFilters(
     slot: aSlot,
     spanOffsetFrames: 3,
     spanFrames: 40,
     stages: [[
-      (frame: 0, equalizer: bright),
-      (frame: 15, equalizer: darker),
+      (frame: 0, filter: bright),
+      (frame: 15, filter: darker),
     ]],
   );
   const spanStart = 6000;
   const spanEnd = 86000;
-  const equalized = EqualizedSpan(
+  const filtered = FilteredSpan(
     slot: aSlot,
     start: spanStart,
     length: spanEnd - spanStart,
     stages: [[
-      (start: 0, equalizer: bright),
-      (start: 30000, equalizer: darker),
+      (start: 0, filter: bright),
+      (start: 30000, filter: darker),
     ]],
   );
 
@@ -99,11 +99,11 @@ void main() {
     conformPath = '${directory.path}/long.conform';
     File(conformPath).writeAsBytesSync(bytes);
     decoded = decodeConform(bytes).samples;
-    whole = equalizeAudio(
+    whole = filterAudio(
       samples: Float32List.sublistView(decoded, 2 * spanStart, 2 * spanEnd),
       channels: 2,
       rate: sampleRate,
-      stages: equalized.stages,
+      stages: filtered.stages,
     );
   });
 
@@ -141,7 +141,7 @@ void main() {
   test('🎯every window, baked on from the checkpoint before it, is the '
       'whole span\'s bake there', () {
     final reader = ConformPcmStreamReader.open(conformPath)!;
-    final checkpoints = equalizerCheckpointsOf(reader, equalized)!;
+    final checkpoints = filterCheckpointsOf(reader, filtered)!;
     expect(checkpoints.spacing, sampleRate ~/ 4);
     expect(checkpoints.memories, hasLength(7), reason: '80,000 / 12,000');
     expect(checkpoints.memories.first, everyElement(0));
@@ -152,7 +152,7 @@ void main() {
           reader: reader,
           start: start,
           count: count,
-          equalized: (span: equalized, checkpoints: checkpoints),
+          filtered: (span: filtered, checkpoints: checkpoints),
         ));
 
     for (final (start, end) in [
@@ -189,7 +189,7 @@ void main() {
             startFrame: 0,
             endFrameExclusive: 40 - lead,
             offsetFrames: 3 + lead,
-            equalizer: span,
+            filters: span,
           ),
         ],
         rate: rate,
@@ -227,7 +227,7 @@ void main() {
       startFrame: 0,
       endFrameExclusive: 40,
       offsetFrames: 3,
-      equalizer: span,
+      filters: span,
     );
     // As the export does before it mixes (`_writeAudioMix`).
     await store.ensureFor('long');
@@ -274,20 +274,20 @@ void main() {
     store.resultFor('long');
     await pumpEventQueue();
 
-    expect(store.equalizerCheckpointsFor('long', equalized), isNull);
+    expect(store.filterCheckpointsFor('long', filtered), isNull);
     expect(store.isLanding('long', sampleRate), isTrue);
-    expect(store.cannotPlayAt('long', sampleRate, equalized: equalized), isNull);
+    expect(store.cannotPlayAt('long', sampleRate, filtered: filtered), isNull);
     await pumpEventQueue();
-    final made = store.equalizerCheckpointsFor('long', equalized);
+    final made = store.filterCheckpointsFor('long', filtered);
     expect(made, isNotNull);
     expect(store.isLanding('long', sampleRate), isFalse);
-    expect(identical(store.equalizerCheckpointsFor('long', equalized), made),
+    expect(identical(store.filterCheckpointsFor('long', filtered), made),
         isTrue);
 
     store.invalidate('long');
     store.resultFor('long');
     await pumpEventQueue();
-    expect(store.equalizerCheckpointsFor('long', equalized), isNull,
+    expect(store.filterCheckpointsFor('long', filtered), isNull,
         reason: 'made again for the conform as it is now');
   });
 
@@ -301,7 +301,7 @@ void main() {
       resolveConformPath: (_) => null,
       runner: (request) => conforming.future,
       resampleRunner: (request) => converting.future,
-      equalizeRunner: (request) => baking.future,
+      filterRunner: (request) => baking.future,
       log: (_) {},
     );
     addTearDown(resident.dispose);
@@ -326,10 +326,10 @@ void main() {
     await pumpEventQueue();
     expect(resident.isLanding('a', 44100), isFalse);
 
-    resident.equalizedAt(
+    resident.filteredAt(
       'a',
       sampleRate,
-      const EqualizedSpan(slot: aSlot, start: 0, length: 100, stages: []),
+      const FilteredSpan(slot: aSlot, start: 0, length: 100, stages: []),
     );
     expect(resident.isLanding('a', sampleRate), isTrue, reason: 'bake');
     baking.complete(Float32List(200));
@@ -339,7 +339,7 @@ void main() {
     final streamed = streamingStore();
     streamed.resultFor('long');
     await pumpEventQueue();
-    streamed.equalizerCheckpointsFor('long', equalized);
+    streamed.filterCheckpointsFor('long', filtered);
     expect(streamed.isLanding('long', sampleRate), isTrue,
         reason: 'checkpoints');
     await pumpEventQueue();

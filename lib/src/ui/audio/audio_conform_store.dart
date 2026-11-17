@@ -7,11 +7,11 @@ import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project_frame_rate.dart' show noPull;
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
-import '../../services/audio/audio_equalizer.dart'
-    show EqualizedSpan, EqualizerSlot;
+import '../../services/audio/sound_filters.dart'
+    show FilterSlot, FilteredSpan;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/audio/conform_pcm_stream.dart';
-import '../../services/audio/equalized_stream.dart';
+import '../../services/audio/filtered_stream.dart';
 import '../../services/media/media_byte_source.dart';
 import 'sound_cannot_play.dart';
 
@@ -56,7 +56,7 @@ class AudioConformStore extends ChangeNotifier {
     this.resolveCarry,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
-    EqualizeRunner? equalizeRunner,
+    FilterRunner? filterRunner,
     int Function()? resolveProjectSampleRate,
     int projectSampleRate = 48000,
     ({int numerator, int denominator}) Function()? resolveAudioSpeed,
@@ -67,7 +67,7 @@ class AudioConformStore extends ChangeNotifier {
     void Function(String message)? log,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
-       _equalizeRunner = equalizeRunner ?? runEqualizeInIsolate,
+       _filterRunner = filterRunner ?? runFilterInIsolate,
        _resolveProjectSampleRate =
            resolveProjectSampleRate ?? (() => projectSampleRate),
        _resolveAudioSpeed =
@@ -114,7 +114,7 @@ class AudioConformStore extends ChangeNotifier {
 
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
-  final EqualizeRunner _equalizeRunner;
+  final FilterRunner _filterRunner;
 
   /// The PROJECT's audio rate, read live (EXPORT-AUDIO ③ made it a
   /// project setting; a fixed int remains as the test-friendly default).
@@ -139,7 +139,7 @@ class AudioConformStore extends ChangeNotifier {
     resolveConformPath: (_) => null,
     runner: _runner,
     resampleRunner: _resampleRunner,
-    equalizeRunner: _equalizeRunner,
+    filterRunner: _filterRunner,
     resolveProjectSampleRate: _resolveProjectSampleRate,
     resolveAudioSpeed: _resolveAudioSpeed,
     bucketsPerSecond: bucketsPerSecond,
@@ -299,7 +299,7 @@ class AudioConformStore extends ChangeNotifier {
 
   /// Whether [sourcePath] is on its way to being played at [sampleRate]:
   /// its conform, its conversion to that rate, or a span of it baked
-  /// through its equalizer ([equalizedAt]) under way — and it will
+  /// through its filters ([filteredAt]) under way — and it will
   /// say so when it lands (a notify).
   ///
   /// 🚨What a run that waits for its sound waits on
@@ -326,13 +326,13 @@ class AudioConformStore extends ChangeNotifier {
   /// a device again at the project's rate before it plans
   /// (`armAudioOutput`).
   ///
-  /// [equalized]: the span of it a run plays, baked through its equalizer
-  /// ([equalizedAt]) — the bake under way, or failed, in place of the
+  /// [filtered]: the span of it a run plays, baked through its filters
+  /// ([filteredAt]) — the bake under way, or failed, in place of the
   /// conform's samples.
   SoundCannotPlay? cannotPlayAt(
     String sourcePath,
     int sampleRate, {
-    EqualizedSpan? equalized,
+    FilteredSpan? filtered,
   }) {
     if (isStreaming(sourcePath)) {
       if (sampleRate != projectSampleRate) {
@@ -341,20 +341,20 @@ class AudioConformStore extends ChangeNotifier {
       if (streamReaderFor(sourcePath) == null) {
         return SoundCannotPlay.conform;
       }
-      return equalized == null
+      return filtered == null
           ? null
           : _bakedOrComing(
               sourcePath,
               sampleRate,
-              equalizerCheckpointsFor(sourcePath, equalized),
+              filterCheckpointsFor(sourcePath, filtered),
             );
     }
     final samples = samplesAtRate(sourcePath, sampleRate);
-    if (samples != null && equalized != null) {
+    if (samples != null && filtered != null) {
       return _bakedOrComing(
         sourcePath,
         sampleRate,
-        equalizedAt(sourcePath, sampleRate, equalized),
+        filteredAt(sourcePath, sampleRate, filtered),
       );
     }
     if (samples != null || isLanding(sourcePath, sampleRate)) {
@@ -384,7 +384,7 @@ class AudioConformStore extends ChangeNotifier {
       ? null
       : SoundCannotPlay.conform;
 
-  /// [sourcePath]'s [span] through its equalizer, at [sampleRate] — baked
+  /// [sourcePath]'s [span] through its filters, at [sampleRate] — baked
   /// ONCE from the span's first sample, whatever part of it a run or an
   /// export plays (board audio-fx-grows-like-the-pros ③), and read by both.
   /// A missing bake is kicked async and lands with a notify, as a rate
@@ -394,54 +394,54 @@ class AudioConformStore extends ChangeNotifier {
   /// The span is cut from the samples the device plays at [sampleRate]
   /// ([samplesAtRate]), so a device off the project's rate bakes from the
   /// conversion — null while that is landing.
-  Float32List? equalizedAt(
+  Float32List? filteredAt(
     String sourcePath,
     int sampleRate,
-    EqualizedSpan span,
+    FilteredSpan span,
   ) => _derived.bakedAt(sourcePath, sampleRate, span);
 
-  /// [sourcePath]'s [span] through its equalizer where its conform streams
+  /// [sourcePath]'s [span] through its filters where its conform streams
   /// ([isStreaming]): the checkpoints its windows are baked on from
-  /// ([readEqualizedWindow]), made once by a pass over the span on a worker
-  /// — kicked and landing as [equalizedAt]'s bake does, for a run to wait
+  /// ([readStreamedWindow]), made once by a pass over the span on a worker
+  /// — kicked and landing as [filteredAt]'s bake does, for a run to wait
   /// on ([isLanding]).
-  EqualizerCheckpoints? equalizerCheckpointsFor(
+  FilterCheckpoints? filterCheckpointsFor(
     String sourcePath,
-    EqualizedSpan span,
+    FilteredSpan span,
   ) => _derived.checkpointsFor(sourcePath, span);
 
   /// How many spans of [sourcePath] the store holds baked or checkpointed
-  /// — what a knob's bound ([EqualizerSlot]) is read by.
+  /// — what a knob's bound ([FilterSlot]) is read by.
   @visibleForTesting
-  int heldEqualizingsOf(String sourcePath) => _derived.heldOf(sourcePath);
+  int heldFilteringsOf(String sourcePath) => _derived.heldOf(sourcePath);
 
   /// Awaits [sourcePath]'s [span] baked at [sampleRate]: the bake, or null
   /// once it is not coming — no conform, or a bake that failed. What an
-  /// export mixes an equalized span from: the same bake playback reads.
-  Future<Float32List?> ensureEqualizedFor(
+  /// export mixes an filtered span from: the same bake playback reads.
+  Future<Float32List?> ensureFilteredFor(
     String sourcePath,
     int sampleRate,
-    EqualizedSpan span,
+    FilteredSpan span,
   ) async => await ensureFor(sourcePath) == null
       ? null
       : _onceLanded(
           sourcePath,
           sampleRate,
-          () => equalizedAt(sourcePath, sampleRate, span),
+          () => filteredAt(sourcePath, sampleRate, span),
         );
 
-  /// Awaits a streamed [span]'s checkpoints ([equalizerCheckpointsFor]), or
-  /// null once they are not coming — what an export streams an equalized
+  /// Awaits a streamed [span]'s checkpoints ([filterCheckpointsFor]), or
+  /// null once they are not coming — what an export streams an filtered
   /// long span through: the checkpoints playback's windows are baked from.
-  Future<EqualizerCheckpoints?> ensureEqualizerCheckpointsFor(
+  Future<FilterCheckpoints?> ensureFilterCheckpointsFor(
     String sourcePath,
-    EqualizedSpan span,
+    FilteredSpan span,
   ) async => await ensureFor(sourcePath) == null
       ? null
       : _onceLanded(
           sourcePath,
           projectSampleRate,
-          () => equalizerCheckpointsFor(sourcePath, span),
+          () => filterCheckpointsFor(sourcePath, span),
         );
 
   /// What [look] finds, as soon as it finds it — or once nothing of
@@ -637,7 +637,7 @@ typedef _Landing<T> = ({
 
 /// What [AudioConformStore] makes of its conforms, kept beside them and
 /// let go of with them: each conversion to a device's rate, each span
-/// baked through its equalizer, each long span's checkpoints.
+/// baked through its filters, each long span's checkpoints.
 ///
 /// 🚨PART OF THE STORE, NOT A STORE OF ITS OWN: it reads the conforms the
 /// store holds and tells the store's listeners as each result lands. Split
@@ -658,28 +658,28 @@ final class _DerivedSound {
   /// a conversion failing again at every landing. [forget] forgets them.
   final Map<String, Set<int>> _conversionsThatFailed = {};
 
-  /// Each span of a path baked through its equalizer, by the rate and the
+  /// Each span of a path baked through its filters, by the rate and the
   /// span — the second result made of a conform, beside
   /// [_resampledByRate].
-  final Map<String, Map<(int, EqualizedSpan), Float32List>> _equalized = {};
+  final Map<String, Map<(int, FilteredSpan), Float32List>> _filtered = {};
 
-  /// Each span of a STREAMED path through its equalizer: its checkpoints,
-  /// by the span — the long sound's half of [_equalized], under way and
+  /// Each span of a STREAMED path through its filters: its checkpoints,
+  /// by the span — the long sound's half of [_filtered], under way and
   /// failing under the same keys, at the project's rate, the one a streamed
   /// conform plays at.
-  final Map<String, Map<EqualizedSpan, EqualizerCheckpoints>> _checkpoints =
+  final Map<String, Map<FilteredSpan, FilterCheckpoints>> _checkpoints =
       {};
 
-  final Set<(String, int, EqualizedSpan)> _equalizePending = {};
+  final Set<(String, int, FilteredSpan)> _filterPending = {};
 
   /// The bakes and checkpoints that could not be made — not kicked again,
   /// as [_conversionsThatFailed] are not.
-  final Map<String, Set<(int, EqualizedSpan)>> _equalizingThatFailed = {};
+  final Map<String, Set<(int, FilteredSpan)>> _filteringThatFailed = {};
 
-  /// Each slot's hold at each rate ([EqualizerSlot]) — the bound a dragged
+  /// Each slot's hold at each rate ([FilterSlot]) — the bound a dragged
   /// knob's bakes and checkpoints keep: the one last asked, the one last
   /// made, one under way.
-  final Map<(EqualizerSlot, int), _SlotHold> _holds = {};
+  final Map<(FilterSlot, int), _SlotHold> _holds = {};
 
   String _resampleKey(String sourcePath, int sampleRate) =>
       '$sampleRate|$sourcePath';
@@ -727,8 +727,8 @@ final class _DerivedSound {
   }
 
   /// [sourcePath]'s [span] baked at [sampleRate] — null while that is
-  /// kicked ([AudioConformStore.equalizedAt]).
-  Float32List? bakedAt(String sourcePath, int sampleRate, EqualizedSpan span) {
+  /// kicked ([AudioConformStore.filteredAt]).
+  Float32List? bakedAt(String sourcePath, int sampleRate, FilteredSpan span) {
     final samples = _store.samplesAtRate(sourcePath, sampleRate);
     final entry = _store._entries[sourcePath];
     if (samples == null || entry == null) {
@@ -736,7 +736,7 @@ final class _DerivedSound {
     }
     final key = (sampleRate, span);
     final hold = _askedOf(sourcePath, key);
-    final cached = _equalized[sourcePath]?[key];
+    final cached = _filtered[sourcePath]?[key];
     if (cached != null) {
       _madeFor(hold, key);
       return cached;
@@ -747,22 +747,22 @@ final class _DerivedSound {
     _kickOnce(
       sourcePath,
       key,
-      () => _store._equalizeRunner(
-        EqualizeRequest(
+      () => _store._filterRunner(
+        FilterRequest(
           samples: samples,
           channels: entry.channels,
           rate: sampleRate,
           span: span,
         ),
       ),
-      (baked) => (_equalized[sourcePath] ??= {})[key] = baked,
+      (baked) => (_filtered[sourcePath] ??= {})[key] = baked,
     );
     return null;
   }
 
   /// [sourcePath]'s streamed [span]'s checkpoints — null while they are
-  /// kicked ([AudioConformStore.equalizerCheckpointsFor]).
-  EqualizerCheckpoints? checkpointsFor(String sourcePath, EqualizedSpan span) {
+  /// kicked ([AudioConformStore.filterCheckpointsFor]).
+  FilterCheckpoints? checkpointsFor(String sourcePath, FilteredSpan span) {
     final reader = _store.streamReaderFor(sourcePath);
     if (reader == null) {
       return null;
@@ -788,16 +788,16 @@ final class _DerivedSound {
 
   /// How many spans of [sourcePath] are held baked or checkpointed.
   int heldOf(String sourcePath) =>
-      (_equalized[sourcePath]?.length ?? 0) +
+      (_filtered[sourcePath]?.length ?? 0) +
       (_checkpoints[sourcePath]?.length ?? 0);
 
-  bool _cannotBeMade(String sourcePath, (int, EqualizedSpan) key) =>
-      _equalizingThatFailed[sourcePath]?.contains(key) ?? false;
+  bool _cannotBeMade(String sourcePath, (int, FilteredSpan) key) =>
+      _filteringThatFailed[sourcePath]?.contains(key) ?? false;
 
-  /// [key]'s slot's hold at its rate ([EqualizerSlot]), asked for [key] —
+  /// [key]'s slot's hold at its rate ([FilterSlot]), asked for [key] —
   /// a fresh one where the slot's clip took another file, what the old one
   /// made let go of.
-  _SlotHold _askedOf(String sourcePath, (int, EqualizedSpan) key) {
+  _SlotHold _askedOf(String sourcePath, (int, FilteredSpan) key) {
     final at = (key.$2.slot, key.$1);
     final held = _holds[at];
     if (held != null && held.sourcePath == sourcePath) {
@@ -811,7 +811,7 @@ final class _DerivedSound {
 
   /// [key] made for [hold]: what it held made before let go of, unless it
   /// is what the slot asks for again.
-  void _madeFor(_SlotHold hold, (int, EqualizedSpan) key) {
+  void _madeFor(_SlotHold hold, (int, FilteredSpan) key) {
     final before = hold.made;
     hold.made = key;
     if (before != null && before != key && before != hold.asked) {
@@ -820,11 +820,11 @@ final class _DerivedSound {
   }
 
   /// [key]'s bake and checkpoints of [sourcePath], let go of.
-  void _letGo(String sourcePath, (int, EqualizedSpan)? key) {
+  void _letGo(String sourcePath, (int, FilteredSpan)? key) {
     if (key == null) {
       return;
     }
-    _equalized[sourcePath]?.remove(key);
+    _filtered[sourcePath]?.remove(key);
     _checkpoints[sourcePath]?.remove(key.$2);
   }
 
@@ -834,14 +834,14 @@ final class _DerivedSound {
   /// when the store is asked again after this one lands.
   void _kickOnce<T>(
     String sourcePath,
-    (int, EqualizedSpan) key,
+    (int, FilteredSpan) key,
     Future<T> Function() making,
     void Function(T made) keep,
   ) {
     final at = (key.$2.slot, key.$1);
     final hold = _holds[at]!;
     final pending = (sourcePath, key.$1, key.$2);
-    if (hold.underWay != null || !_equalizePending.add(pending)) {
+    if (hold.underWay != null || !_filterPending.add(pending)) {
       return;
     }
     hold.underWay = key;
@@ -853,12 +853,12 @@ final class _DerivedSound {
             _madeFor(hold, key);
           }
         },
-        failed: () => (_equalizingThatFailed[sourcePath] ??= {}).add(key),
+        failed: () => (_filteringThatFailed[sourcePath] ??= {}).add(key),
         saying: (error) =>
-            'equalizing ${key.$2} of $sourcePath at ${key.$1}Hz '
+            'filtering ${key.$2} of $sourcePath at ${key.$1}Hz '
             'failed: $error',
         settled: () {
-          _equalizePending.remove(pending);
+          _filterPending.remove(pending);
           hold.underWay = null;
         },
       )),
@@ -869,7 +869,7 @@ final class _DerivedSound {
   /// baked or checkpointed at that rate, is under way.
   bool isLanding(String sourcePath, int sampleRate) =>
       _resamplePending.contains(_resampleKey(sourcePath, sampleRate)) ||
-      _equalizePending.any(
+      _filterPending.any(
         (bake) => bake.$1 == sourcePath && bake.$2 == sampleRate,
       );
 
@@ -877,7 +877,7 @@ final class _DerivedSound {
   /// was made of is gone ([AudioConformStore.resultFor]).
   void letGoOfWhatWasMade(String sourcePath) {
     _resampledByRate.remove(sourcePath);
-    _equalized.remove(sourcePath);
+    _filtered.remove(sourcePath);
     _checkpoints.remove(sourcePath);
     _holds.removeWhere((_, hold) => hold.sourcePath == sourcePath);
   }
@@ -887,7 +887,7 @@ final class _DerivedSound {
   void forget(String sourcePath) {
     letGoOfWhatWasMade(sourcePath);
     _conversionsThatFailed.remove(sourcePath);
-    _equalizingThatFailed.remove(sourcePath);
+    _filteringThatFailed.remove(sourcePath);
   }
 
   /// What [making] makes of [sourcePath]'s conform [entry], gone where
@@ -938,21 +938,21 @@ final class _SlotHold {
   final String sourcePath;
 
   /// The one last asked of the slot — where its knob stands.
-  (int, EqualizedSpan)? asked;
+  (int, FilteredSpan)? asked;
 
   /// The one last made for the slot, kept while [asked] is made.
-  (int, EqualizedSpan)? made;
+  (int, FilteredSpan)? made;
 
   /// The one being made — one at a time.
-  (int, EqualizedSpan)? underWay;
+  (int, FilteredSpan)? underWay;
 }
 /// The checkpoints' pass, in a function of its own: [onAWorker] copies the
 /// closure's whole context, and this one holds a reader and a span.
-Future<EqualizerCheckpoints> _checkpointsOnAWorker(
+Future<FilterCheckpoints> _checkpointsOnAWorker(
   ConformPcmStreamReader reader,
-  EqualizedSpan span,
+  FilteredSpan span,
 ) => onAWorker(
   () =>
-      equalizerCheckpointsOf(reader, span) ??
+      filterCheckpointsOf(reader, span) ??
       (throw StateError('the conform did not read whole')),
 );

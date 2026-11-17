@@ -26,7 +26,7 @@ import '../../native/qa_audio_device.dart'
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
 import '../../services/audio/conform_pcm_stream.dart';
-import '../../services/audio/equalized_stream.dart';
+import '../../services/audio/filtered_stream.dart';
 import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_playback_schedule.dart'
@@ -37,7 +37,7 @@ import '../playback/audio_playback_schedule.dart'
         audioMixScheduleFrom;
 
 /// Resolves one source's PCM — a file's conform, or a span of it baked
-/// through its equalizer, the bake playback reads — at the mix's own
+/// through its filters, the bake playback reads — at the mix's own
 /// sample rate, or null when it cannot be had: that clip renders silent,
 /// the export goes on (a missing sound must not kill a deadline render; the
 /// log says so).
@@ -45,7 +45,7 @@ typedef ExportAudioSourceResolver =
     Future<AudioMixSource?> Function(AudioMixSourceOf source);
 
 /// [store]'s PCM for each source of an export mix, at the project's rate:
-/// a file's conform, or a span of it baked through its equalizer — the bake
+/// a file's conform, or a span of it baked through its filters — the bake
 /// playback reads (board audio-fx-grows-like-the-pros ③), awaited where it
 /// is still on its way.
 ExportAudioSourceResolver exportSourcesOf(AudioConformStore store) =>
@@ -54,29 +54,29 @@ ExportAudioSourceResolver exportSourcesOf(AudioConformStore store) =>
       if (entry == null || !entry.isUsable || entry.samples == null) {
         return null;
       }
-      final equalized = source.equalized;
-      final samples = equalized == null
+      final filtered = source.filtered;
+      final samples = filtered == null
           ? entry.samples
-          : await store.ensureEqualizedFor(
+          : await store.ensureFilteredFor(
               source.path,
               store.projectSampleRate,
-              equalized,
+              filtered,
             );
       return samples == null
           ? null
           : AudioMixSource(
               samples: samples,
               channels: entry.channels,
-              sourceStart: equalized?.start ?? 0,
+              sourceStart: filtered?.start ?? 0,
             );
     };
 
 /// A DISK-BACKED source as an export streams it: its conform's reader, and
-/// its span's equalizer where it has one — the checkpoints playback's
+/// its span's filters where it has them — the checkpoints playback's
 /// windows are baked from ([readStreamedWindow]).
 typedef ExportAudioStream = ({
   ConformPcmStreamReader reader,
-  EqualizedStream? equalized,
+  FilteredStream? filtered,
 });
 
 /// Resolves a DISK-BACKED source (AUDIO-PRO R6): a long conform whose PCM
@@ -89,26 +89,26 @@ typedef ExportAudioStreamResolver =
     Future<ExportAudioStream?> Function(AudioMixSourceOf source);
 
 /// [store]'s stream of each disk-backed source of an export mix — through
-/// its span's checkpoints where it has an equalizer, awaited where they
+/// its span's checkpoints where it has filters, awaited where they
 /// are still on their way: what playback streams it through.
 ExportAudioStreamResolver exportStreamsOf(AudioConformStore store) =>
     (source) async {
       final reader = store.isStreaming(source.path)
           ? store.streamReaderFor(source.path)
           : null;
-      final equalized = source.equalized;
-      if (reader == null || equalized == null) {
-        return reader == null ? null : (reader: reader, equalized: null);
+      final filtered = source.filtered;
+      if (reader == null || filtered == null) {
+        return reader == null ? null : (reader: reader, filtered: null);
       }
-      final checkpoints = await store.ensureEqualizerCheckpointsFor(
+      final checkpoints = await store.ensureFilterCheckpointsFor(
         source.path,
-        equalized,
+        filtered,
       );
       return checkpoints == null
           ? null
           : (
               reader: reader,
-              equalized: (span: equalized, checkpoints: checkpoints),
+              filtered: (span: filtered, checkpoints: checkpoints),
             );
     };
 
@@ -465,7 +465,7 @@ void _refillStreamedSources(
         reader: each.stream.reader,
         start: from,
         count: to - from,
-        equalized: each.stream.equalized,
+        filtered: each.stream.filtered,
       ),
     );
     sources[each.slot] = AudioMixSource(

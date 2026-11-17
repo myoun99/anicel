@@ -13,14 +13,15 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/audio/audio_equalizer.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
-/// 🚨AN S ROW'S EQUALIZERS ARE WHAT ITS SPANS ARE BAKED THROUGH (board
-/// audio-fx-grows-like-the-pros ③ · Q2 design 1): the row's Equalizer
-/// effects, in its chain's order and read at the span's frames, ride each
-/// span's schedule entry to the bake playback and an export both read.
+/// 🚨AN S ROW'S SOUND FILTERS ARE WHAT ITS SPANS ARE BAKED THROUGH (board
+/// audio-fx-grows-like-the-pros ③ · Q2 design 1): the row's Equalizer and
+/// Compressor effects, in its chain's order and read at the span's frames,
+/// ride each span's schedule entry to the bake playback and an export
+/// both read.
 ///
 /// 🗣️Q2 (유저 2026-11-17): 「시안 3 · 시안 1 + 성격 프리셋」 — design 1: an
 /// effect added from the Fx pill's 音声 section stacks under the row, keyed
@@ -45,7 +46,7 @@ void main() {
     effects: effects,
   );
 
-  ScheduledEqualizer? equalizerOf(List<LayerEffect> effects) =>
+  ScheduledFilters? filtersOf(List<LayerEffect> effects) =>
       buildAudioPlaybackSchedule(
         window: const PlaybackWindow(
           trackId: TrackId('t'),
@@ -69,7 +70,7 @@ void main() {
         ),
         rate: rate,
         durationSecondsFor: (_) => 100,
-      ).single.equalizer;
+      ).single.filters;
 
   LayerEffect equalizer(
     String id, {
@@ -97,14 +98,14 @@ void main() {
   );
 
   test('a row with no equalizer switched on bakes nothing', () {
-    expect(equalizerOf(const []), isNull);
-    expect(equalizerOf([equalizer('off', enabled: false)]), isNull);
+    expect(filtersOf(const []), isNull);
+    expect(filtersOf([equalizer('off', enabled: false)]), isNull);
   });
 
   test('🎯an equalizer is the whole span\'s: its trim, its length, its '
       'values and the row\'s clip it is baked for', () {
     expect(
-      equalizerOf([
+      filtersOf([
         equalizer(
           'eq',
           parameters: {
@@ -115,14 +116,14 @@ void main() {
           },
         ),
       ]),
-      ScheduledEqualizer(
+      ScheduledFilters(
         spanOffsetFrames: 3,
         spanFrames: 6,
         stages: [
           [
             (
               frame: 0,
-              equalizer: engineOf(
+              filter: engineOf(
                 lowCut: 80,
                 highCut: 9000,
                 lowDb: -3,
@@ -137,8 +138,8 @@ void main() {
   });
 
   test('a High Cut at its top cuts nothing, at every rate', () {
-    final stage = equalizerOf([equalizer('eq')])!.stages.single;
-    expect(stage, [(frame: 0, equalizer: engineOf())]);
+    final stage = filtersOf([equalizer('eq')])!.stages.single;
+    expect(stage, [(frame: 0, filter: engineOf())]);
     expect(
       EffectKind.equalizer.parameterSpec('highCut')!.maximum,
       equalizerHighCutTop,
@@ -147,7 +148,7 @@ void main() {
 
   test('🎯a keyed value is read at each frame of the span, a setting where '
       'it changes', () {
-    final stage = equalizerOf([
+    final stage = filtersOf([
       equalizer(
         'eq',
         parameters: {
@@ -165,22 +166,95 @@ void main() {
       ),
     ])!.stages.single;
     expect(stage, [
-      (frame: 0, equalizer: engineOf()),
-      (frame: 1, equalizer: engineOf(lowDb: 6)),
-      (frame: 2, equalizer: engineOf(lowDb: 12)),
+      (frame: 0, filter: engineOf()),
+      (frame: 1, filter: engineOf(lowDb: 6)),
+      (frame: 2, filter: engineOf(lowDb: 12)),
     ]);
   });
 
   test('🎯two equalizers are two stages in the chain\'s order; one '
       'switched off is none', () {
-    final stages = equalizerOf([
+    final stages = filtersOf([
       equalizer('a', parameters: {'lowGain': EffectParameter(value: 3)}),
       equalizer('off', enabled: false),
       equalizer('b', parameters: {'highGain': EffectParameter(value: -6)}),
     ])!.stages;
     expect(stages, [
-      [(frame: 0, equalizer: engineOf(lowDb: 3))],
-      [(frame: 0, equalizer: engineOf(highDb: -6))],
+      [(frame: 0, filter: engineOf(lowDb: 3))],
+      [(frame: 0, filter: engineOf(highDb: -6))],
     ]);
+  });
+
+  LayerEffect compressor(
+    String id, {
+    Map<String, EffectParameter> parameters = const {},
+  }) => LayerEffect(
+    id: EffectId(id),
+    kind: EffectKind.compressor,
+    parameters: parameters,
+  );
+
+  test('🎯a compressor is a stage of its own, in the chain\'s order with an '
+      'equalizer, its knobs read as the engine takes them', () {
+    final stages = filtersOf([
+      compressor(
+        'comp',
+        parameters: {
+          'threshold': EffectParameter(value: -24),
+          'ratio': EffectParameter(value: 6),
+          'attack': EffectParameter(value: 3),
+          'release': EffectParameter(value: 250),
+          'makeup': EffectParameter(value: 4),
+        },
+      ),
+      equalizer('eq', parameters: {'lowGain': EffectParameter(value: 3)}),
+    ])!.stages;
+    expect(stages, [
+      [
+        (
+          frame: 0,
+          filter: const AudioCompressor(
+            thresholdDb: -24,
+            ratio: 6,
+            attackMs: 3,
+            releaseMs: 250,
+            makeupDb: 4,
+          ),
+        ),
+      ],
+      [(frame: 0, filter: engineOf(lowDb: 3))],
+    ]);
+  });
+
+  test('a compressor just added is a stage at a ratio of one', () {
+    expect(filtersOf([compressor('comp')])!.stages, [
+      [
+        (
+          frame: 0,
+          filter: const AudioCompressor(
+            thresholdDb: -20,
+            ratio: 1,
+            attackMs: 10,
+            releaseMs: 100,
+            makeupDb: 0,
+          ),
+        ),
+      ],
+    ]);
+  });
+
+  test('a picture\'s effect on the row is no stage', () {
+    final blur = LayerEffect(
+      id: const EffectId('blur'),
+      kind: EffectKind.blur,
+      parameters: {'blurriness': EffectParameter(value: 4)},
+    );
+    expect(filtersOf([blur]), isNull);
+    expect(
+      () => soundFilterOf(
+        sampleLayerEffectAt(blur, frameIndex: 0, blocks: null, worn: null),
+      ),
+      throwsArgumentError,
+    );
   });
 }

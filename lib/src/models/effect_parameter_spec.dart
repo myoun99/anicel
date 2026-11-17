@@ -74,6 +74,14 @@ enum EffectParameterUnit {
   /// Decibels — a sound filter's gain (an equalizer's shelves), the lanes
   /// 低域 (dB) · 高域 (dB) of the same design.
   decibels,
+
+  /// Milliseconds — a sound filter's time (a compressor's attack and
+  /// release; audio-fx-second-effect-and-presets ①).
+  milliseconds,
+
+  /// How many to one — a compressor's ratio, the decibels over its
+  /// threshold that go in for each that comes out.
+  ratio,
 }
 
 /// One word of a menu parameter ([EffectParameterUnit.choice]).

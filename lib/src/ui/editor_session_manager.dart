@@ -91,7 +91,7 @@ import '../services/wait_window.dart' show StepBehind;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart'
-    show conformingInto, equalizingInto, resamplingInto, runConformHere;
+    show conformingInto, filteringInto, resamplingInto, runConformHere;
 import '../native/app_gpu_engine.dart' show EnginePictures;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
@@ -1947,7 +1947,7 @@ class EditorSessionManager extends ChangeNotifier
                   ? (request) => Future.value(runConformHere(request))
                   : conformingInto(audioDeviceUnlessTesting),
               resampleRunner: resamplingInto(audioDeviceUnlessTesting),
-              equalizeRunner: equalizingInto(audioDeviceUnlessTesting),
+              filterRunner: filteringInto(audioDeviceUnlessTesting),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.

@@ -87,6 +87,8 @@ double? _bareValueOf(String text) => double.tryParse(
       .replaceAll('px', '')
       .replaceAll('Hz', '')
       .replaceAll('dB', '')
+      .replaceAll('ms', '')
+      .replaceAll(':1', '')
       .trim(),
 );
 

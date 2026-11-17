@@ -253,6 +253,8 @@ GpuPluginValue _kindOf(EffectParameterUnit unit) => switch (unit) {
   EffectParameterUnit.pixels ||
   EffectParameterUnit.hertz ||
   EffectParameterUnit.decibels ||
+  EffectParameterUnit.milliseconds ||
+  EffectParameterUnit.ratio ||
   EffectParameterUnit.point => GpuPluginValue.fixed,
   EffectParameterUnit.color => GpuPluginValue.channels,
   EffectParameterUnit.choice ||

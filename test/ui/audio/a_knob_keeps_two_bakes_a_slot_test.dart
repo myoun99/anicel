@@ -7,7 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
-import 'package:anicel/src/services/audio/audio_equalizer.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
 /// 🚨A DRAGGED KNOB'S BAKES ARE BOUNDED BY ITS SLOT (agreed with 저장 on
@@ -25,7 +25,7 @@ void main() {
   const other = (row: LayerId('s2'), clip: FrameId('f1'));
 
   /// The span [slot]'s knob makes standing at [db] dB of lows.
-  EqualizedSpan at(double db, {EqualizerSlot slot = knob}) => EqualizedSpan(
+  FilteredSpan at(double db, {FilterSlot slot = knob}) => FilteredSpan(
     slot: slot,
     start: 0,
     length: sampleOf(4),
@@ -33,7 +33,7 @@ void main() {
       [
         (
           start: 0,
-          equalizer: AudioEqualizer(
+          filter: AudioEqualizer(
             lowCut: 0,
             highCut: 0,
             lowShelf: 250,
@@ -51,7 +51,7 @@ void main() {
     sound[index] = ((index * 7919) % 2001) / 1000.0 - 1.0;
   }
 
-  late List<EqualizeRequest> kicked;
+  late List<FilterRequest> kicked;
   late List<Completer<void>> gates;
   late int underWay;
   late int mostUnderWay;
@@ -72,7 +72,7 @@ void main() {
         frames: sound.length ~/ 2,
       ),
       // Each bake waits at a gate of its own till the test opens it.
-      equalizeRunner: (request) async {
+      filterRunner: (request) async {
         kicked.add(request);
         underWay += 1;
         mostUnderWay = underWay > mostUnderWay ? underWay : mostUnderWay;
@@ -80,7 +80,7 @@ void main() {
         gates.add(gate);
         await gate.future;
         underWay -= 1;
-        return runEqualizeHere(request);
+        return runFilterHere(request);
       },
       log: (_) {},
     );
@@ -114,15 +114,15 @@ void main() {
       'then the one it stopped at', () async {
     await conformed();
     for (var db = 1; db <= 20; db += 1) {
-      store.equalizedAt('a.wav', sampleRate, at(db.toDouble()));
+      store.filteredAt('a.wav', sampleRate, at(db.toDouble()));
     }
     expect(kicked.map((bake) => bake.span), [at(1)]);
     await landAll();
     // The run asks again as the bake lands, for where the knob stands.
-    expect(store.equalizedAt('a.wav', sampleRate, at(20)), isNull);
+    expect(store.filteredAt('a.wav', sampleRate, at(20)), isNull);
     await landAll();
     expect(kicked.map((bake) => bake.span), [at(1), at(20)]);
-    expect(store.equalizedAt('a.wav', sampleRate, at(20)), isNotNull);
+    expect(store.filteredAt('a.wav', sampleRate, at(20)), isNotNull);
     expect(mostUnderWay, 1);
   });
 
@@ -132,28 +132,28 @@ void main() {
     for (var db = 1; db <= 12; db += 1) {
       // A run that asks at every step and lets each bake land: the
       // knob's every value is made in turn.
-      store.equalizedAt('a.wav', sampleRate, at(db.toDouble()));
+      store.filteredAt('a.wav', sampleRate, at(db.toDouble()));
       await landAll();
-      store.equalizedAt('a.wav', sampleRate, at(db.toDouble()));
-      final held = store.heldEqualizingsOf('a.wav');
+      store.filteredAt('a.wav', sampleRate, at(db.toDouble()));
+      final held = store.heldFilteringsOf('a.wav');
       most = held > most ? held : most;
     }
     expect(kicked, hasLength(12));
     expect(most, lessThanOrEqualTo(2));
-    expect(store.heldEqualizingsOf('a.wav'), 1);
+    expect(store.heldFilteringsOf('a.wav'), 1);
   });
 
   test('the bake a knob moved back to stays held while the next is made',
       () async {
     await conformed();
-    store.equalizedAt('a.wav', sampleRate, at(1));
+    store.filteredAt('a.wav', sampleRate, at(1));
     await landAll();
-    expect(store.equalizedAt('a.wav', sampleRate, at(1)), isNotNull);
-    store.equalizedAt('a.wav', sampleRate, at(2));
+    expect(store.filteredAt('a.wav', sampleRate, at(1)), isNotNull);
+    store.filteredAt('a.wav', sampleRate, at(2));
     // Back where it was before the second lands: the first is still held.
-    expect(store.equalizedAt('a.wav', sampleRate, at(1)), isNotNull);
+    expect(store.filteredAt('a.wav', sampleRate, at(1)), isNotNull);
     await landAll();
-    expect(store.equalizedAt('a.wav', sampleRate, at(1)), isNotNull);
+    expect(store.filteredAt('a.wav', sampleRate, at(1)), isNotNull);
     expect(kicked.map((bake) => bake.span), [at(1), at(2)]);
   });
 
@@ -161,19 +161,19 @@ void main() {
       () async {
     await conformed();
     store
-      ..equalizedAt('a.wav', sampleRate, at(1))
-      ..equalizedAt('a.wav', sampleRate, at(5, slot: other));
+      ..filteredAt('a.wav', sampleRate, at(1))
+      ..filteredAt('a.wav', sampleRate, at(5, slot: other));
     await landAll();
     // A run asks for both at every landing: each made once, both held.
     for (var round = 0; round < 3; round += 1) {
-      expect(store.equalizedAt('a.wav', sampleRate, at(1)), isNotNull);
+      expect(store.filteredAt('a.wav', sampleRate, at(1)), isNotNull);
       expect(
-        store.equalizedAt('a.wav', sampleRate, at(5, slot: other)),
+        store.filteredAt('a.wav', sampleRate, at(5, slot: other)),
         isNotNull,
       );
       await landAll();
     }
     expect(kicked, hasLength(2));
-    expect(store.heldEqualizingsOf('a.wav'), 2);
+    expect(store.heldFilteringsOf('a.wav'), 2);
   });
 }

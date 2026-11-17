@@ -48,7 +48,8 @@ AeEffect? aeEffectOf(
     EffectKind.colorKey => kin.linearColorKey(),
     EffectKind.celNumber ||
     EffectKind.plugin ||
-    EffectKind.equalizer => null,
+    EffectKind.equalizer ||
+    EffectKind.compressor => null,
   };
 }
 

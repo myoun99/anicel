@@ -416,6 +416,8 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
     EffectParameterUnit.pixels => '${columnValueText(value)} px',
     EffectParameterUnit.hertz => '${columnValueText(value)} Hz',
     EffectParameterUnit.decibels => '${columnValueText(value)} dB',
+    EffectParameterUnit.milliseconds => '${columnValueText(value)} ms',
+    EffectParameterUnit.ratio => '${columnValueText(value)}:1',
     EffectParameterUnit.choice =>
       spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
     EffectParameterUnit.color => formatLaneColorValue(value.toInt()),

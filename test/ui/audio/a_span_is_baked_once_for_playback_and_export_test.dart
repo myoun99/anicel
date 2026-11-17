@@ -3,10 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_equalizer.dart';
+import 'package:anicel/src/native/qa_audio_filter.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
-import 'package:anicel/src/services/audio/audio_equalizer.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/ui/export/export_audio_mix.dart';
@@ -50,13 +50,13 @@ void main() {
 
   /// A row's equalizer over a span trimmed [spanOffsetFrames] into the
   /// file, ten frames long, turning darker four frames in.
-  ScheduledEqualizer overTheSpan(int spanOffsetFrames) => ScheduledEqualizer(
+  ScheduledFilters overTheSpan(int spanOffsetFrames) => ScheduledFilters(
     slot: aSlot,
     spanOffsetFrames: spanOffsetFrames,
     spanFrames: 10,
     stages: const [[
-      (frame: 0, equalizer: every),
-      (frame: 4, equalizer: darker),
+      (frame: 0, filter: every),
+      (frame: 4, filter: darker),
     ]],
   );
 
@@ -74,7 +74,7 @@ void main() {
     frames: sound.length ~/ 2,
   );
 
-  late List<EqualizeRequest> bakes;
+  late List<FilterRequest> bakes;
   late AudioConformStore store;
 
   setUp(() {
@@ -82,9 +82,9 @@ void main() {
     store = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => conformed(),
-      equalizeRunner: (request) async {
+      filterRunner: (request) async {
         bakes.add(request);
-        return runEqualizeHere(request);
+        return runFilterHere(request);
       },
       log: (_) {},
     );
@@ -126,7 +126,7 @@ void main() {
           startFrame: 0,
           endFrameExclusive: 10,
           offsetFrames: 2,
-          equalizer: overTheSpan(2),
+          filters: overTheSpan(2),
         ),
       ],
       rate: rate,
@@ -135,13 +135,13 @@ void main() {
     expect(mix.sources, [
       (
         path: 'a.wav',
-        equalized: EqualizedSpan(
+        filtered: FilteredSpan(
           slot: aSlot,
           start: sampleOf(2),
           length: sampleOf(10),
           stages: [[
-            (start: 0, equalizer: every),
-            (start: sampleOf(4), equalizer: darker),
+            (start: 0, filter: every),
+            (start: sampleOf(4), filter: darker),
           ]],
         ),
       ),
@@ -150,7 +150,7 @@ void main() {
 
   test('🎯the bake is the span from its own first sample, wherever a run '
       'begins in it', () async {
-    final expected = equalizeAudio(
+    final expected = filterAudio(
       samples: Float32List.sublistView(
         sound,
         2 * sampleOf(2),
@@ -159,8 +159,8 @@ void main() {
       channels: 2,
       rate: sampleRate,
       stages: [[
-        (start: 0, equalizer: every),
-        (start: sampleOf(4), equalizer: darker),
+        (start: 0, filter: every),
+        (start: sampleOf(4), filter: darker),
       ]],
     );
     // A run from the span's start, and one begun three frames into it —
@@ -171,7 +171,7 @@ void main() {
         startFrame: 0,
         endFrameExclusive: 10,
         offsetFrames: 2,
-        equalizer: overTheSpan(2),
+        filters: overTheSpan(2),
       ),
     ]);
     final fromInside = await uploadOf([
@@ -180,7 +180,7 @@ void main() {
         startFrame: 0,
         endFrameExclusive: 7,
         offsetFrames: 5,
-        equalizer: overTheSpan(2),
+        filters: overTheSpan(2),
       ),
     ]);
 
@@ -202,7 +202,7 @@ void main() {
       startFrame: 0,
       endFrameExclusive: 10,
       offsetFrames: 2,
-      equalizer: overTheSpan(2),
+      filters: overTheSpan(2),
     );
     final played = (await uploadOf([clip])).resident.single;
     final source = audioMixScheduleFrom(
@@ -222,11 +222,11 @@ void main() {
   test('an export waits for a bake still under way', () async {
     final source = (
       path: 'a.wav',
-      equalized: EqualizedSpan(
+      filtered: FilteredSpan(
         slot: aSlot,
         start: sampleOf(2),
         length: sampleOf(10),
-        stages: const [[(start: 0, equalizer: every)]],
+        stages: const [[(start: 0, filter: every)]],
       ),
     );
     final exported = await exportSourcesOf(store)(source);
@@ -251,26 +251,26 @@ void main() {
 
   test('a bake under way is landing; it lands with a notify and is kept',
       () async {
-    final span = EqualizedSpan(
+    final span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: sampleOf(4),
-      stages: const [[(start: 0, equalizer: every)]],
+      stages: const [[(start: 0, filter: every)]],
     );
     store.resultFor('a.wav');
     await pumpEventQueue();
     var notified = 0;
     store.addListener(() => notified += 1);
 
-    expect(store.equalizedAt('a.wav', sampleRate, span), isNull);
-    expect(store.equalizedAt('a.wav', sampleRate, span), isNull);
+    expect(store.filteredAt('a.wav', sampleRate, span), isNull);
+    expect(store.filteredAt('a.wav', sampleRate, span), isNull);
     expect(store.isLanding('a.wav', sampleRate), isTrue);
     expect(store.isLanding('a.wav', 44100), isFalse, reason: 'another rate');
     await pumpEventQueue();
 
     expect(notified, 1);
     expect(store.isLanding('a.wav', sampleRate), isFalse);
-    expect(store.equalizedAt('a.wav', sampleRate, span), isNotNull);
+    expect(store.filteredAt('a.wav', sampleRate, span), isNotNull);
     expect(bakes, hasLength(1), reason: 'one bake for the span');
     expect(bakes.single.span, span);
     expect(identical(bakes.single.samples, sound), isTrue);
@@ -284,44 +284,44 @@ void main() {
     // way at a time.
     final spans = [
       for (final start in [0, sampleOf(3)])
-        EqualizedSpan(
+        FilteredSpan(
           slot: (row: const LayerId('s1'), clip: FrameId('f$start')),
           start: start,
           length: sampleOf(4),
-          stages: const [[(start: 0, equalizer: every)]],
+          stages: const [[(start: 0, filter: every)]],
         ),
     ];
     for (final span in spans) {
-      store.equalizedAt('a.wav', sampleRate, span);
+      store.filteredAt('a.wav', sampleRate, span);
     }
     await pumpEventQueue();
     expect([for (final bake in bakes) bake.span], spans);
     expect(
       identical(
-        store.equalizedAt('a.wav', sampleRate, spans.first),
-        store.equalizedAt('a.wav', sampleRate, spans.last),
+        store.filteredAt('a.wav', sampleRate, spans.first),
+        store.filteredAt('a.wav', sampleRate, spans.last),
       ),
       isFalse,
     );
   });
 
   test('forgetting the sound forgets its bakes', () async {
-    final span = EqualizedSpan(
+    final span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: sampleOf(4),
-      stages: const [[(start: 0, equalizer: every)]],
+      stages: const [[(start: 0, filter: every)]],
     );
     store.resultFor('a.wav');
     await pumpEventQueue();
-    store.equalizedAt('a.wav', sampleRate, span);
+    store.filteredAt('a.wav', sampleRate, span);
     await pumpEventQueue();
-    expect(store.equalizedAt('a.wav', sampleRate, span), isNotNull);
+    expect(store.filteredAt('a.wav', sampleRate, span), isNotNull);
 
     store.invalidate('a.wav');
     store.resultFor('a.wav');
     await pumpEventQueue();
-    expect(store.equalizedAt('a.wav', sampleRate, span), isNull);
+    expect(store.filteredAt('a.wav', sampleRate, span), isNull);
     await pumpEventQueue();
     expect(bakes, hasLength(2));
   });
@@ -331,19 +331,19 @@ void main() {
     final slow = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => conformed(),
-      equalizeRunner: (request) => baking.future,
+      filterRunner: (request) => baking.future,
       log: (_) {},
     );
     addTearDown(slow.dispose);
-    const span = EqualizedSpan(
+    const span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: 4,
-      stages: [[(start: 0, equalizer: every)]],
+      stages: [[(start: 0, filter: every)]],
     );
     slow.resultFor('a.wav');
     await pumpEventQueue();
-    slow.equalizedAt('a.wav', sampleRate, span);
+    slow.filteredAt('a.wav', sampleRate, span);
     slow.invalidate('a.wav');
     slow.resultFor('a.wav');
     await pumpEventQueue();
@@ -351,7 +351,7 @@ void main() {
     baking.complete(Float32List(8));
     await pumpEventQueue();
     expect(
-      slow.equalizedAt('a.wav', sampleRate, span),
+      slow.filteredAt('a.wav', sampleRate, span),
       isNull,
       reason: 'the bake was of the conform let go of',
     );
@@ -363,30 +363,30 @@ void main() {
     final failing = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => conformed(),
-      equalizeRunner: (request) async {
+      filterRunner: (request) async {
         tries += 1;
         throw StateError('refused');
       },
       log: (_) {},
     );
     addTearDown(failing.dispose);
-    const span = EqualizedSpan(
+    const span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: 4,
-      stages: [[(start: 0, equalizer: every)]],
+      stages: [[(start: 0, filter: every)]],
     );
     failing.resultFor('a.wav');
     await pumpEventQueue();
-    failing.equalizedAt('a.wav', sampleRate, span);
+    failing.filteredAt('a.wav', sampleRate, span);
     await pumpEventQueue();
 
-    expect(failing.equalizedAt('a.wav', sampleRate, span), isNull);
+    expect(failing.filteredAt('a.wav', sampleRate, span), isNull);
     expect(failing.isLanding('a.wav', sampleRate), isFalse);
     await pumpEventQueue();
     expect(tries, 1);
     expect(
-      failing.cannotPlayAt('a.wav', sampleRate, equalized: span),
+      failing.cannotPlayAt('a.wav', sampleRate, filtered: span),
       SoundCannotPlay.conform,
     );
     expect(
@@ -395,7 +395,7 @@ void main() {
       reason: 'the sound itself plays',
     );
     expect(
-      await exportSourcesOf(failing)((path: 'a.wav', equalized: span)),
+      await exportSourcesOf(failing)((path: 'a.wav', filtered: span)),
       isNull,
     );
   });
@@ -407,32 +407,32 @@ void main() {
     final moving = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => conformed(),
-      equalizeRunner: (request) {
+      filterRunner: (request) {
         tries += 1;
         return tries == 1 ? first.future : Future.value(Float32List(8));
       },
       log: (_) {},
     );
     addTearDown(moving.dispose);
-    const span = EqualizedSpan(
+    const span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: 4,
-      stages: [[(start: 0, equalizer: every)]],
+      stages: [[(start: 0, filter: every)]],
     );
     moving.resultFor('a.wav');
     await pumpEventQueue();
-    moving.equalizedAt('a.wav', sampleRate, span);
+    moving.filteredAt('a.wav', sampleRate, span);
     moving.invalidate('a.wav');
     moving.resultFor('a.wav');
     await pumpEventQueue();
 
     first.completeError(StateError('its file went away'));
     await pumpEventQueue();
-    moving.equalizedAt('a.wav', sampleRate, span);
+    moving.filteredAt('a.wav', sampleRate, span);
     await pumpEventQueue();
     expect(tries, 2, reason: 'the failure was of the conform let go of');
-    expect(moving.equalizedAt('a.wav', sampleRate, span), isNotNull);
+    expect(moving.filteredAt('a.wav', sampleRate, span), isNotNull);
   });
 
   test('forgetting the sound lets a bake that failed be tried again', () async {
@@ -440,49 +440,49 @@ void main() {
     final once = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async => conformed(),
-      equalizeRunner: (request) async {
+      filterRunner: (request) async {
         tries += 1;
         return tries == 1 ? throw StateError('refused') : Float32List(8);
       },
       log: (_) {},
     );
     addTearDown(once.dispose);
-    const span = EqualizedSpan(
+    const span = FilteredSpan(
       slot: aSlot,
       start: 0,
       length: 4,
-      stages: [[(start: 0, equalizer: every)]],
+      stages: [[(start: 0, filter: every)]],
     );
     once.resultFor('a.wav');
     await pumpEventQueue();
-    once.equalizedAt('a.wav', sampleRate, span);
+    once.filteredAt('a.wav', sampleRate, span);
     await pumpEventQueue();
-    expect(once.equalizedAt('a.wav', sampleRate, span), isNull);
+    expect(once.filteredAt('a.wav', sampleRate, span), isNull);
 
     once.invalidate('a.wav');
     once.resultFor('a.wav');
     await pumpEventQueue();
-    once.equalizedAt('a.wav', sampleRate, span);
+    once.filteredAt('a.wav', sampleRate, span);
     await pumpEventQueue();
     expect(tries, 2);
-    expect(once.equalizedAt('a.wav', sampleRate, span), isNotNull);
+    expect(once.filteredAt('a.wav', sampleRate, span), isNotNull);
   });
 
-  group('runEqualizeHere', () {
+  group('runFilterHere', () {
     test('bakes only the samples of the span the conform holds', () {
-      final baked = runEqualizeHere(
-        EqualizeRequest(
+      final baked = runFilterHere(
+        FilterRequest(
           samples: Float32List.fromList([1, 2, 3, 4, 5, 6]),
           channels: 2,
           rate: sampleRate,
-          span: const EqualizedSpan(
+          span: const FilteredSpan(
             slot: aSlot,
             start: 1,
             length: 9,
             stages: [[
               (
                 start: 0,
-                equalizer: AudioEqualizer.none(lowShelf: 250, highShelf: 4000),
+                filter: AudioEqualizer.none(lowShelf: 250, highShelf: 4000),
               ),
             ]],
           ),
@@ -493,12 +493,12 @@ void main() {
 
     test('throws where the engine refuses what it was handed', () {
       expect(
-        () => runEqualizeHere(
-          EqualizeRequest(
+        () => runFilterHere(
+          FilterRequest(
             samples: Float32List(8),
             channels: 2,
             rate: 0,
-            span: const EqualizedSpan(
+            span: const FilteredSpan(
               slot: aSlot,
               start: 0,
               length: 4,

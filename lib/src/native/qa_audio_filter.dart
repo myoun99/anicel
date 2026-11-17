@@ -1,7 +1,7 @@
-// The engine's Rust library bakes a sound row's equalizer
-// (native/audio_mix equalizer.rs), and its name is found in that code
-// asset — no library opened, no path named. A span is baked once from its
-// first sample, never on the device thread.
+// The engine's Rust library bakes a sound row's filters through ONE door
+// that takes the filter's kind (native/audio_mix filter.rs), and its names
+// are found in that code asset — no library opened, no path named. A span
+// is baked once from its first sample, never on the device thread.
 @DefaultAsset(gpuEngineAsset)
 library;
 
@@ -10,11 +10,12 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import '../services/audio/audio_equalizer.dart';
+import '../services/audio/sound_filters.dart';
 import 'gpu_engine_asset.dart';
 
 @Native<
   Int32 Function(
+    Int32,
     Pointer<Float>,
     Int64,
     Int32,
@@ -26,8 +27,9 @@ import 'gpu_engine_asset.dart';
     Pointer<Double>,
     Pointer<Float>,
   )
->(symbol: 'qa_audio_equalize')
-external int _equalize(
+>(symbol: 'qa_audio_filter')
+external int _filter(
+  int kind,
   Pointer<Float> samples,
   int frames,
   int channels,
@@ -40,21 +42,24 @@ external int _equalize(
   Pointer<Float> out,
 );
 
-/// The doubles one channel's memory takes in one stage — the door's
-/// `MEMORY_VALUES` (native/audio_mix equalizer.rs).
-const _memoryValues = 16;
+/// The doubles one setting of the filter [kind] takes.
+@Native<Int32 Function(Int32)>(symbol: 'qa_audio_filter_values')
+external int _valuesOf(int kind);
 
-/// [samples] — interleaved by [channels], at [rate] — through the
-/// equalizer [stages] give, one after another, each by its settings in
-/// order of their start and each channel from rest at the first sample:
-/// what the engine bakes a span by. Empty where the engine refuses the
-/// geometry.
-Float32List equalizeAudio({
+/// The doubles the filter [kind] remembers over [channels].
+@Native<Int32 Function(Int32, Int32)>(symbol: 'qa_audio_filter_memory')
+external int _memoryOf(int kind, int channels);
+
+/// [samples] — interleaved by [channels], at [rate] — through the filters
+/// [stages] give, one after another, each by its settings in order of
+/// their start and each from rest at the first sample: what the engine
+/// bakes a span by. Empty where the engine refuses the geometry.
+Float32List filterAudio({
   required Float32List samples,
   required int channels,
   required int rate,
-  required List<List<AudioEqualizerSetting>> stages,
-}) => EqualizerStretches(
+  required List<List<SoundFilterSetting>> stages,
+}) => FilterStretches(
   channels: channels,
   rate: rate,
   stages: stages,
@@ -63,33 +68,35 @@ Float32List equalizeAudio({
 /// A span baked a stretch at a time — one too long to hold, read and
 /// written in pieces: each stretch goes on from the filters' memory where
 /// the one before left it, so the stretches together are the samples
-/// [equalizeAudio] makes of the span at once.
+/// [filterAudio] makes of the span at once.
 ///
-/// A stage is the engine's equalizer, called once a stretch, the next
-/// stage taking the floats it wrote: the door the engine has, one stage
-/// a call.
-final class EqualizerStretches {
+/// A stage is the engine's door, called once a stretch with its filter's
+/// kind, the next stage taking the floats it wrote: one stage a call.
+final class FilterStretches {
   /// From the span's first sample at rest — or, [from] given, going on from
   /// the span's sample `first`, the filters remembering `memory`: a [kept]
   /// of a bake of the same span that got that far.
-  EqualizerStretches({
+  FilterStretches({
     required this.channels,
     required this.rate,
     required this.stages,
     ({int first, Float64List memory})? from,
-  }) : _memory = from == null
-           ? Float64List(
-               channels <= 0 ? 0 : stages.length * channels * _memoryValues,
-             )
-           : Float64List.fromList(from.memory),
-       _first = from?.first ?? 0;
+  }) : _ends = _memoryEnds(stages, channels),
+       _first = from?.first ?? 0 {
+    _memory = from == null
+        ? Float64List(_ends.isEmpty ? 0 : _ends.last)
+        : Float64List.fromList(from.memory);
+  }
 
   final int channels;
   final int rate;
-  final List<List<AudioEqualizerSetting>> stages;
+  final List<List<SoundFilterSetting>> stages;
+
+  /// Where each stage's memory ends in [_memory], the first stage's first.
+  final List<int> _ends;
 
   /// Every stage's memory, the first stage's first.
-  final Float64List _memory;
+  late final Float64List _memory;
 
   /// The span's sample the next stretch begins at.
   int _first;
@@ -104,13 +111,16 @@ final class EqualizerStretches {
       return Float32List(0);
     }
     final memory = Float64List.fromList(_memory);
-    final each = channels * _memoryValues;
     var baked = Float32List.fromList(samples);
     for (final (index, settings) in stages.indexed) {
       final made = _stage(
         baked,
         settings,
-        Float64List.sublistView(memory, index * each, (index + 1) * each),
+        Float64List.sublistView(
+          memory,
+          index == 0 ? 0 : _ends[index - 1],
+          _ends[index],
+        ),
       );
       if (made == null) {
         return Float32List(0);
@@ -126,10 +136,14 @@ final class EqualizerStretches {
   /// leaving it there — null where the engine refuses.
   Float32List? _stage(
     Float32List samples,
-    List<AudioEqualizerSetting> settings,
+    List<SoundFilterSetting> settings,
     Float64List memory,
   ) {
-    const valuesEach = audioEqualizerValues;
+    if (settings.isEmpty) {
+      return samples;
+    }
+    final kind = settings.first.filter.door;
+    final valuesEach = _valuesOf(kind);
     final frames = samples.length ~/ channels;
     final input = calloc<Float>(samples.length);
     final output = calloc<Float>(samples.length);
@@ -142,10 +156,11 @@ final class EqualizerStretches {
         starts[index] = setting.start;
         values
             .asTypedList(settings.length * valuesEach)
-            .setAll(index * valuesEach, setting.equalizer.values);
+            .setAll(index * valuesEach, setting.filter.values);
       }
       held.asTypedList(memory.length).setAll(0, memory);
-      final ran = _equalize(
+      final ran = _filter(
+        kind,
         input,
         frames,
         channels,
@@ -171,4 +186,17 @@ final class EqualizerStretches {
         ..free(input);
     }
   }
+}
+
+/// Where each of [stages]' memories ends, laid one after another: each as
+/// many doubles as its filter remembers over [channels], none for a stage
+/// of no setting.
+List<int> _memoryEnds(List<List<SoundFilterSetting>> stages, int channels) {
+  var end = 0;
+  return [
+    for (final settings in stages)
+      end += settings.isEmpty || channels <= 0
+          ? 0
+          : _memoryOf(settings.first.filter.door, channels),
+  ];
 }

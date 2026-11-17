@@ -241,7 +241,9 @@ final class FxPluginDescription {
       EffectParameterUnit.number ||
       EffectParameterUnit.pixels ||
       EffectParameterUnit.hertz ||
-      EffectParameterUnit.decibels => {
+      EffectParameterUnit.decibels ||
+      EffectParameterUnit.milliseconds ||
+      EffectParameterUnit.ratio => {
         ...head,
         'kind': 'number',
         'default': spec.defaultValue,
