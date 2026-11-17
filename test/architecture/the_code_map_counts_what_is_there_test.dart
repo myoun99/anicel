@@ -354,8 +354,12 @@ int f(int a) {
       final a = map.files.values.singleWhere(
         (f) => f.path.endsWith('alpha.dart'),
       );
-      expect(a.imports.where((i) => i.contains('math')), isEmpty);
-      expect(a.imports.where((i) => i.contains('material')), isEmpty);
+      // By the file's name alone: the fixture lies under a temp folder named
+      // after the checkout, and a checkout's name may hold either word (one
+      // called alike-maths did, 2026-11-17).
+      final names = a.imports.map((i) => i.substring(i.lastIndexOf('/') + 1));
+      expect(names.where((name) => name.contains('math')), isEmpty);
+      expect(names.where((name) => name.contains('material')), isEmpty);
     });
   });
 
