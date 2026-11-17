@@ -457,21 +457,32 @@ class Pill extends StatelessWidget {
       child: FaceInkWell.share(
         fill: selected ? accent.withValues(alpha: 0.14) : null,
         onTap: silentPress(onTap),
-        child: Container(
-          padding: fills ? _sharePadding : _pillPadding,
-          // Down, a pill takes the whole width the strip is given and sets
-          // its word in the middle, as it sits in a pill only as wide as
-          // its word — one alignment does both; and so does a pill that is
-          // a share of an even strip.
-          alignment: axis == Axis.vertical || fills ? Alignment.center : null,
-          decoration: BoxDecoration(
-            border: !leadingHairline
-                ? null
-                : axis == Axis.horizontal
-                ? Border(left: hairline)
-                : Border(top: hairline),
+        // 🚨A PILL'S WORD IS PAINTED IN ITS PILL ALONE (board
+        // tool-settings-segments-overlap-at-the-narrowest, 2026-11-17): a
+        // word of one letter — 「1」 · 「2」 · 「3」 — cannot be cut, so in a
+        // pill narrower than it no line ran over and nothing clipped it,
+        // and it was painted past its pill: at the tool settings' least
+        // width the brush's edge strip had none, and its letters stood on
+        // one another and past the strip.
+        child: ClipRect(
+          child: Container(
+            padding: fills ? _sharePadding : _pillPadding,
+            // Down, a pill takes the whole width the strip is given and
+            // sets its word in the middle, as it sits in a pill only as wide
+            // as its word — one alignment does both; and so does a pill
+            // that is a share of an even strip.
+            alignment: axis == Axis.vertical || fills
+                ? Alignment.center
+                : null,
+            decoration: BoxDecoration(
+              border: !leadingHairline
+                  ? null
+                  : axis == Axis.horizontal
+                  ? Border(left: hairline)
+                  : Border(top: hairline),
+            ),
+            child: _face(theme, accent),
           ),
-          child: _face(theme, accent),
         ),
       ),
     );
