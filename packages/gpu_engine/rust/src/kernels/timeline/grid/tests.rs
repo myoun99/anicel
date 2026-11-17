@@ -15,6 +15,12 @@ const VLINE: i32 = 3;
 const GLYPH: i32 = 4;
 const RRECT_FILL: i32 = 5;
 const RRECT_RING: i32 = 6;
+const GRIP: i32 = 7;
+
+/// The corners a grip's mask names, and the pixel each puts the right angle
+/// in on an 8-pixel box from the tile's corner: top left, top right, bottom
+/// left, bottom right.
+const GRIP_CORNERS: [(i32, (u32, u32)); 4] = [(1, (0, 0)), (2, (7, 0)), (4, (0, 7)), (8, (7, 7))];
 
 const WHITE: i32 = -1; // 0xffffffff: opaque white.
 
@@ -382,6 +388,128 @@ fn the_largest_corner_is_taken_whole_and_a_larger_one_is_refused() {
     // One the box holds to less is drawn as the box holds it.
     let held = tile(engine, (24, 24), RGBA, 0, &corner(q8(100.0), 16.0), &[]);
     assert!(held.is_some());
+}
+
+// An 8-pixel box, its right angle in the top right and no paper corner:
+// legs 4096 in q9 each way, its far side 4096·√2 long, isqrt_round(2·4096²)
+// = isqrt_round(33554432) = 5793 (√ = 5792.6). Pixel (0, 0)'s centre is 7.5
+// in from the right and 0.5 down — on the far side, u/w + v/h = 1: half a
+// pixel, 256 → 32768, a byte of 128. So is (3, 3): 4.5 in, 3.5 down. Pixel
+// (4, 3), 3.5 in each way, is 4096·(1792 + 1792 − 4096) / 5793 = −362 past
+// it: 256 + 362, all of it. Pixel (0, 7) is as far the other way: none.
+#[test]
+fn a_grip_is_the_right_triangle_in_its_corner() {
+    let engine = first_engine();
+    let ops = [GRIP, 0, 0, q8(8.0), q8(8.0), 0, 0, 2, WHITE];
+    let bytes = clear_tile(engine, (8, 8), &ops);
+    assert_eq!(at(&bytes, 8, 7, 0), [255; 4], "the right angle");
+    assert_eq!(at(&bytes, 8, 0, 0), white(128), "the far side's end");
+    assert_eq!(at(&bytes, 8, 3, 3), white(128), "on the far side");
+    assert_eq!(at(&bytes, 8, 4, 3), [255; 4], "inside it");
+    assert_eq!(at(&bytes, 8, 0, 7), [0; 4], "past it");
+}
+
+// The same box as each mask names its corner: the right angle whole, the
+// pixel across the box from it bare.
+#[test]
+fn a_grip_stands_in_the_one_corner_its_mask_names() {
+    let engine = first_engine();
+    for (mask, (x, y)) in GRIP_CORNERS {
+        let ops = [GRIP, 0, 0, q8(8.0), q8(8.0), 0, 0, mask, WHITE];
+        let bytes = clear_tile(engine, (8, 8), &ops);
+        assert_eq!(at(&bytes, 8, x, y), [255; 4], "mask {mask}");
+        assert_eq!(at(&bytes, 8, 7 - x, 7 - y), [0; 4], "mask {mask}");
+    }
+}
+
+// The paper's corner of 4 pixels cuts the right angle: its circle stands
+// 2048 in q9 in from both legs. Pixel (7, 0)'s centre is 256 in each way,
+// 1792 past the circle's centre each way: isqrt_round(2·1792²) =
+// isqrt_round(6422528) = 2534 (√ = 2534.3), 486 outside the radius 2048 —
+// none. Pixel (6, 1), 1280 past each way: isqrt_round(3276800) = 1810
+// (√ = 1810.19), 238 inside, 494 → 63231, a byte of 246; so is (4, 0),
+// 256 and 1792 past. Pixel (3, 0) is 2304 in, past the circle's centre:
+// the paper is square there, and it is whole.
+#[test]
+fn a_grip_follows_its_papers_corner() {
+    let engine = first_engine();
+    let ops = [GRIP, 0, 0, q8(8.0), q8(8.0), q8(4.0), 0, 2, WHITE];
+    let bytes = clear_tile(engine, (8, 8), &ops);
+    assert_eq!(at(&bytes, 8, 7, 0), [0; 4], "the corner the paper cuts");
+    assert_eq!(at(&bytes, 8, 6, 1), white(246), "under its arc");
+    assert_eq!(at(&bytes, 8, 4, 0), white(246), "under its arc, on the leg");
+    assert_eq!(at(&bytes, 8, 3, 0), [255; 4], "past the round");
+}
+
+// A bleed of a pixel, 512 in q9, widens the circle to 2560: pixel (6, 1),
+// 1810 from its centre, is whole; pixel (7, 0), 2534, is 26 inside — 282
+// → 36095, a byte of 140. The legs do not move: on a 12-pixel tile with the
+// box from x = 2, pixel (10, 4)'s centre is half a pixel past the right
+// leg, 256 − 256 = none, bleed or no bleed.
+#[test]
+fn a_grips_bleed_widens_its_round_end_alone() {
+    let engine = first_engine();
+    let ops = [GRIP, 0, 0, q8(8.0), q8(8.0), q8(4.0), q8(1.0), 2, WHITE];
+    let bytes = clear_tile(engine, (8, 8), &ops);
+    assert_eq!(at(&bytes, 8, 6, 1), [255; 4]);
+    assert_eq!(at(&bytes, 8, 7, 0), white(140));
+    for bleed in [0.0, 1.0] {
+        let ops = [GRIP, q8(2.0), 0, q8(8.0), q8(8.0), q8(4.0), q8(bleed), 2, WHITE];
+        let bytes = clear_tile(engine, (12, 8), &ops);
+        assert_eq!(at(&bytes, 12, 9, 4), [255; 4], "inside the leg, bleed {bleed}");
+        assert_eq!(at(&bytes, 12, 10, 4), [0; 4], "past the leg, bleed {bleed}");
+    }
+}
+
+// A side of 8192 pixels — 2²² in q9, where half a pixel times the far
+// side's length leaves an i32 — a corner below square or past 64 pixels, a
+// bleed below none, and a mask naming no one corner are refused; a step
+// inside each is drawn. A place past the reach is refused as every op's is.
+// A box 100 by 120 pixels, 51200 by 61440 in q9, its right angle in the top
+// right. Pixel (0, 119)'s centre is 50944 in and 61184 down: h·u alone is
+// 61440 · 50944 = 3130000000-odd, past an i32, and a wrapped sum would read
+// the corner across from the right angle as inside. Its length, of sides
+// shifted down one to 25600 and 30720: isqrt_round(1599078400) = 39988,
+// back up, 79976 (√ = 79976.9); half a pixel of it, 20473856. On row 59
+// (v = 30464): pixel (49, 59), u = 25856, sums 61440 · 25856 + 51200 ·
+// (30464 − 61440) = 2621440, inside half a pixel — 2621440 / 79976 = 32
+// past the far side, 224 covered → 28672, a byte of 112. Pixel (50, 59),
+// u = 25344, is −28835840: more than half a pixel in, all of it. Pixel
+// (48, 59), u = 26368, is 34078720: more than half a pixel out, none.
+#[test]
+fn a_long_grip_takes_its_far_side_whole() {
+    let engine = first_engine();
+    let ops = [GRIP, 0, 0, q8(100.0), q8(120.0), 0, 0, 2, WHITE];
+    let bytes = clear_tile(engine, (100, 120), &ops);
+    assert_eq!(at(&bytes, 100, 99, 0), [255; 4], "the right angle");
+    assert_eq!(at(&bytes, 100, 0, 119), [0; 4], "across from it");
+    assert_eq!(at(&bytes, 100, 49, 59), white(112), "on the far side");
+    assert_eq!(at(&bytes, 100, 50, 59), [255; 4], "inside it");
+    assert_eq!(at(&bytes, 100, 48, 59), [0; 4], "past it");
+}
+
+#[test]
+fn a_grip_the_pass_cannot_draw_is_refused() {
+    let engine = first_engine();
+    let drawn = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, &[]).is_some();
+    let grip = |x: i32, w: i32, h: i32, corner: i32, bleed: i32, mask: i32| {
+        [GRIP, x, 0, w, h, corner, bleed, mask, WHITE]
+    };
+    let side = q8(8192.0);
+    assert!(!drawn(&grip(0, side, 256, 0, 0, 2)), "8192 pixels across");
+    assert!(!drawn(&grip(0, 256, side, 0, 0, 2)), "8192 pixels down");
+    assert!(drawn(&grip(0, side - 1, side - 1, 0, 0, 2)), "just under");
+    let corner = MOST_RADIUS_Q9 / 2;
+    assert!(!drawn(&grip(0, 256, 256, corner + 1, 0, 2)), "a corner past 64");
+    assert!(drawn(&grip(0, 256, 256, corner, 0, 2)), "a corner of 64");
+    assert!(!drawn(&grip(0, 256, 256, -1, 0, 2)), "a corner below square");
+    assert!(!drawn(&grip(0, 256, 256, 0, -1, 2)), "a bleed below none");
+    for mask in [0, 3, 6, 15, 16] {
+        assert!(!drawn(&grip(0, 256, 256, 0, 0, mask)), "mask {mask}");
+    }
+    let reach = 1 << 28;
+    assert!(!drawn(&grip(reach, 256, 256, 0, 0, 2)), "a place past the reach");
+    assert!(drawn(&grip(reach - 1, 256, 256, 0, 0, 2)), "one inside it");
 }
 
 #[test]

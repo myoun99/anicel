@@ -29,7 +29,8 @@
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's
 // centre is too; its one square root is isqrt_round.
 //
-// Needs shared/isqrt.wgsl, blend/blend.wgsl and laid.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl and laid.wgsl
+// before it.
 
 struct Params {
   width: u32,
@@ -56,6 +57,7 @@ const OP_VLINE: i32 = 3;
 const OP_GLYPH: i32 = 4;
 const OP_RRECT_FILL: i32 = 5;
 const OP_RRECT_RING: i32 = 6;
+const OP_GRIP: i32 = 7;
 
 // A pixel's whole width in q9, and half of it.
 const ONE: i32 = 512;
@@ -144,6 +146,64 @@ fn coverage(f: Field, p: vec2<i32>) -> i32 {
   return clamp(HALF - (outside + within - radius), 0, ONE);
 }
 
+// How much of the pixel `p` the grip at `at` covers, in q9: the right
+// triangle in its box's one corner the mask names, its legs on the box's two
+// sides there and its far side from the end of one to the end of the other —
+// and that corner cut by the PAPER'S circle, `radius` in from both legs and
+// `bleed` wider (timeline_exposure_comma_drag_handle.dart, blockEdgeGripPath).
+// Each of the three takes half a pixel less the centre's signed distance past
+// it, and the pixel the least of them: where two meet, at a tip, it is the
+// nearer one's.
+fn grip_coverage(at: u32, p: vec2<i32>) -> i32 {
+  let x = 2 * ops[at + 1u];
+  let y = 2 * ops[at + 2u];
+  let w = 2 * ops[at + 3u];
+  let h = 2 * ops[at + 4u];
+  let radius = 2 * ops[at + 5u];
+  let bleed = 2 * ops[at + 6u];
+  let corner = ops[at + 7u];
+  let centre = p * ONE + vec2<i32>(HALF);
+  // (u, v): how far in from the corner, along x and along y.
+  let u = select(centre.x - x, x + w - centre.x, (corner & 10) != 0);
+  let v = select(centre.y - y, y + h - centre.y, (corner & 12) != 0);
+  if (u < -HALF || v < -HALF || u > w + HALF || v > h + HALF) {
+    return 0;
+  }
+  let legs = clamp(HALF + min(u, v), 0, ONE);
+  // The far side, h·u + w·v = w·h, over its length — the sum taken whole on
+  // two words (shared/wide.wgsl), which a long box takes past an i32. A
+  // centre half a pixel or more past it, either way, is all out or all in;
+  // only nearer than that is the sum small enough to divide. The length is
+  // taken of the sides shifted to under 2^15, so its squares stay in a u32:
+  // a box that long loses a part in 2^15 of it.
+  let shift = u32(max(i32(firstLeadingBit(u32(max(w, h)))) - 14, 0));
+  let ws = u32(w) >> shift;
+  let hs = u32(h) >> shift;
+  let side = i32(isqrt_round(ws * ws + hs * hs) << shift);
+  let sum = wide_add(wide_mul_i32(h, u), wide_mul_i32(w, v - h));
+  // HALF·side stays in an i32: each side is held under 2^22 (mod.rs).
+  let reach = HALF * side;
+  var far = clamp(HALF - bitcast<i32>(sum.x) / side, 0, ONE);
+  if (!wide_less(sum, wide(reach))) {
+    far = 0;
+  } else if (!wide_less(wide(-reach), sum)) {
+    far = ONE;
+  }
+  // The round end: the circle's centre `radius` in from both legs, and how
+  // far past it toward the corner the pixel's centre lies. It cuts only
+  // there, where the centre is nearer the corner than the circle's both
+  // ways: anywhere else the paper is square, and a corner of none cuts
+  // nothing the legs keep.
+  let past = max(vec2<i32>(radius) - vec2<i32>(u, v), vec2<i32>(0));
+  var cut = ONE;
+  if (past.x > 0 && past.y > 0) {
+    let square = vec2<u32>(past) * vec2<u32>(past);
+    let beyond = i32(isqrt_round(square.x + square.y)) - (radius + bleed);
+    cut = clamp(HALF - beyond, 0, ONE);
+  }
+  return min(legs, min(far, cut));
+}
+
 // `rgba`'s alpha on the 16-bit scale times a q9 coverage, rounded half up.
 fn covered(rgba: u32, c: i32) -> u32 {
   return (u32(c) * (rgba >> 24u) * 257u + u32(HALF)) >> 9u;
@@ -221,6 +281,18 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
           }
         }
         at += 10u;
+      }
+      case OP_GRIP: {
+        // x, y, w, h, the paper's corner, its bleed, the corner (one mask
+        // bit), rgba.
+        let rgba = bitcast<u32>(ops[at + 8u]);
+        if (ops[at + 3u] > 0 && ops[at + 4u] > 0) {
+          let c = grip_coverage(at, p);
+          if (c > 0) {
+            pixel = laid(pixel, rgba, covered(rgba, c));
+          }
+        }
+        at += 9u;
       }
       default: {
         at = params.words;

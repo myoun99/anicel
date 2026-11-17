@@ -21,7 +21,8 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::Work;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, aligned, encode_on, fits, flat, pipeline, range, storage_format,
+    Encoded, ISQRT_WGSL, WIDE_WGSL, aligned, encode_on, fits, flat, pipeline, range,
+    storage_format,
 };
 use crate::kernels::timeline::LAID_WGSL;
 
@@ -31,6 +32,7 @@ const VLINE: i32 = 3;
 const GLYPH: i32 = 4;
 const RRECT_FILL: i32 = 5;
 const RRECT_RING: i32 = 6;
+const GRIP: i32 = 7;
 
 /// The largest corner a rounded rect may wear, in q9 (64 pixels), once
 /// held to what its box can hold.
@@ -43,6 +45,18 @@ const RRECT_RING: i32 = 6;
 /// with nobody told. The writer is to refuse to write one first
 /// (`TimelineGridTileOpWriter.rrectFill` · `rrectRing`, at the bridge).
 pub(crate) const MOST_RADIUS_Q9: i32 = 1 << 15;
+
+/// The longest side a grip's box may have, in q9 (8192 pixels): half a
+/// pixel times its far side's length must stay in an i32 — the bound past
+/// which `grid.wgsl`'s `grip_coverage` reads a pixel as all in or all out
+/// before it divides.
+///
+/// ⚠️Mine (F-604, 2026-11-17): a grip's box is half a block's paper across
+/// — on the X-sheet half a column, a hundred device pixels and more at a
+/// high ratio — and one past this is refused rather than drawn wrapped, as
+/// a corner past [`MOST_RADIUS_Q9`] is (`TimelineGridTileOpWriter.grip`
+/// refuses first).
+pub(crate) const MOST_GRIP_SIDE_Q9: i32 = 1 << 22;
 
 /// A frame grid's tile as the engine keeps it: what the pass draws, stored
 /// straight (grid.wgsl says why), for the view's screen to lay
@@ -147,6 +161,8 @@ fn shape_of(op: i32) -> Option<(usize, &'static [usize])> {
         // x, y, w, h and the radius — and a ring's line.
         RRECT_FILL => Some((8, &[1, 2, 3, 4, 5])),
         RRECT_RING => Some((10, &[1, 2, 3, 4, 5, 7])),
+        // x, y, w, h, the paper's corner and its bleed.
+        GRIP => Some((9, &[1, 2, 3, 4, 5, 6])),
         _ => None,
     }
 }
@@ -183,7 +199,34 @@ fn fault_in(ops: &[i32], has_atlas: bool) -> Option<String> {
                 return Some(format!("the corner at word {at} is past 64 pixels"));
             }
         }
+        if op == GRIP {
+            if let Some(fault) = grip_fault(&ops[at..at + words]) {
+                return Some(format!("the grip at word {at} {fault}"));
+            }
+        }
         at += words;
+    }
+    None
+}
+
+/// Why a GRIP op's `words` cannot be drawn, if they cannot: a side past
+/// [`MOST_GRIP_SIDE_Q9`], a corner below square or past [`MOST_RADIUS_Q9`],
+/// a bleed below none, or a corner that is not one of the box's four.
+fn grip_fault(words: &[i32]) -> Option<&'static str> {
+    if 2 * words[3] >= MOST_GRIP_SIDE_Q9 || 2 * words[4] >= MOST_GRIP_SIDE_Q9 {
+        return Some("is 8192 pixels or more across");
+    }
+    if words[5] < 0 {
+        return Some("has a corner below square");
+    }
+    if 2 * words[5] > MOST_RADIUS_Q9 {
+        return Some("has a corner past 64 pixels");
+    }
+    if words[6] < 0 {
+        return Some("bleeds less than nothing");
+    }
+    if !matches!(words[7], 1 | 2 | 4 | 8) {
+        return Some("names no one corner");
     }
     None
 }
@@ -253,7 +296,7 @@ impl GridTile {
         let body = include_str!("grid.wgsl").replace("__FORMAT__", token);
         let pipeline = pipeline(
             engine,
-            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body],
+            &[ISQRT_WGSL, BLEND_WGSL, WIDE_WGSL, LAID_WGSL, &body],
             "grid",
         );
         self.pipelines.push((format, pipeline.clone()));

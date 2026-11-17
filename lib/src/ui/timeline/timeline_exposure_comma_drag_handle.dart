@@ -173,30 +173,26 @@ typedef BlockEdgeGripRound = ({double paperCorner, double bleed});
 ///    would ink them.
 ///
 /// Stated along the frame axis and across it, so the X-sheet reads it turned
-/// on its side like every other mark: the start edge's corner is the box's
-/// LEADING end on its FAR side (the timeline's bottom-left, the X-sheet's
-/// top-right), the end edge's the TRAILING end on the NEAR side (top-right,
-/// bottom-left).
+/// on its side like every other mark ([blockEdgeGripRightAngle]).
 Path blockEdgeGripPath(
   Rect box, {
   required TimelineBlockEdge edge,
   required Axis axis,
   required BlockEdgeGripRound round,
 }) {
-  final a0 = startAlong(axis, box);
-  final a1 = endAlong(axis, box);
-  final c0 = startAcross(axis, box);
-  final c1 = endAcross(axis, box);
+  final corner = blockEdgeGripRightAngle(box, edge: edge, axis: axis);
   final start = edge == TimelineBlockEdge.start;
   // (u, v): how far in from the block's corner — along the frame axis, and
   // across the row.
-  Offset at(Offset uv) => offsetAlong(
-    axis,
-    along: start ? a0 + uv.dx : a1 - uv.dx,
-    across: start ? c1 - uv.dy : c0 + uv.dy,
-  );
-  final legAlong = a1 - a0;
-  final legAcross = c1 - c0;
+  Offset at(Offset uv) =>
+      corner +
+      offsetAlong(
+        axis,
+        along: start ? uv.dx : -uv.dx,
+        across: start ? -uv.dy : uv.dy,
+      );
+  final legAlong = extentAlong(axis, box.size);
+  final legAcross = extentAcross(axis, box.size);
   final path = Path();
   if (legAlong <= 0 || legAcross <= 0) {
     return path;
@@ -361,6 +357,25 @@ void paintBlockEdgeGrip(
   TimelineBlockFace on = blockEdgeGripOnPaper,
 }) {
   canvas.drawPath(triangle, Paint()..color = timelineBlockGripColor(ink, on));
+}
+
+/// Where a grip's right angle stands in its [box]: the block's corner its
+/// [edge] is. The start edge's is the box's LEADING end on its FAR side (the
+/// timeline's bottom-left, the X-sheet's top-right), the end edge's the
+/// TRAILING end on the NEAR side (top-right, bottom-left) — the one law the
+/// grip's path ([blockEdgeGripPath]) and its tile op
+/// ([TimelineGridTileOpWriter.grip]) both stand on.
+Offset blockEdgeGripRightAngle(
+  Rect box, {
+  required TimelineBlockEdge edge,
+  required Axis axis,
+}) {
+  final start = edge == TimelineBlockEdge.start;
+  return offsetAlong(
+    axis,
+    along: start ? startAlong(axis, box) : endAlong(axis, box),
+    across: start ? endAcross(axis, box) : startAcross(axis, box),
+  );
 }
 
 /// The widget grip's triangle, painted rather than boxed: the sparse

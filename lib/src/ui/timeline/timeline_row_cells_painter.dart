@@ -65,6 +65,8 @@ import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 import 'timeline_tile_raster_source.dart';
+import 'timeline_exposure_comma_drag_handle.dart' show blockEdgeGripPath;
+import 'timeline_row_edit_chrome.dart' show TimelineRowPaperGrips;
 
 const String _holdGlyph = timelineHoldGlyph;
 
@@ -157,10 +159,14 @@ class TimelineRowCellsPainter extends CustomPainter
     this.framesPerSecond = 0,
     this.shown = true,
     this.sounds,
+    this.paperGrips,
   }) : super(
          repaint: Listenable.merge([
            timelineFrameDrawing(geometry),
            ?windowBucket,
+           // What the row's chrome says its grips wear: a hover changes no
+           // layer ([gripsIn]).
+           ?paperGrips?.state,
            // Its OWN row's landings — never every row's (I-22 ③).
            ?tileStore?.noticesFor(
              substrateGeneration: substrateGeneration,
@@ -349,6 +355,27 @@ class TimelineRowCellsPainter extends CustomPainter
   /// ↩️The row laid a strip widget a sound over its cells
   /// ([timelineRowAudioOverlays]).
   final TimelineRowSounds? sounds;
+
+  /// The grips the row's blocks wear, where this painter draws them with
+  /// their paper ([gripsIn]) — null on a row whose chrome draws its own, or
+  /// that has none.
+  final TimelineRowPaperGrips? paperGrips;
+
+  @override
+  List<TimelineRowGrip> gripsIn(int from, int to) {
+    final grips = paperGrips;
+    if (grips == null || to <= from) {
+      return const [];
+    }
+    return grips.gripsIn(
+      geometry.value,
+      axis: axis,
+      along: (
+        from: startAlong(axis, cellRectFor(from)),
+        to: startAlong(axis, cellRectFor(to)),
+      ),
+    );
+  }
 
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
@@ -1095,7 +1122,26 @@ class TimelineRowCellsPainter extends CustomPainter
       _paintCellForeground(canvas, frameIndex);
     }
     _paintWaves(canvas, from, to);
+    _paintGrips(canvas, from, to);
     canvas.restore();
+  }
+
+  /// The grips over [from, to), each in its ink, as a tile bakes them after
+  /// its words ([gripsIn]) — under the stretch's clip, as the tile's own
+  /// edge cuts one that reaches past its span.
+  void _paintGrips(Canvas canvas, int from, int to) {
+    for (final grip in gripsIn(from, to)) {
+      canvas.drawPath(
+        blockEdgeGripPath(
+          grip.box,
+          edge: grip.edge,
+          axis: axis,
+          // The round end's one-device-pixel bleed, as the chrome drew it.
+          round: (paperCorner: grip.paperCorner, bleed: 1 / devicePixelRatio),
+        ),
+        Paint()..color = grip.color,
+      );
+    }
   }
 
   /// The sounds' waves over [from, to), each over its strip — the frames of
@@ -1653,6 +1699,7 @@ class TimelineRowCellsPainter extends CustomPainter
     ByList(sounds?.sounds ?? const []),
     sounds?.frameRate,
     sounds?.ink,
+    paperGrips,
   );
 
   // The row's window said in ONE node — what each non-empty cell says, in
@@ -1720,6 +1767,10 @@ Widget timelineRowCellsPaintArea({
   /// The sounds the strip draws on its paper, for the layer the row shows
   /// ([TimelineRowCellsPainter.sounds]).
   TimelineRowSounds? Function(BuildContext context, Layer shown)? soundsFor,
+
+  /// The grips the strip draws with its paper, as the row's chrome stands
+  /// them on what it shows ([TimelineRowCellsPainter.paperGrips]).
+  TimelineRowPaperGrips? Function(BuildContext context)? paperGripsFor,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -1849,6 +1900,7 @@ Widget timelineRowCellsPaintArea({
             axis: axis,
             foregroundPainterFor: foregroundPainterFor,
             soundsFor: soundsFor,
+            paperGripsFor: paperGripsFor,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
             celContent: celContent,
@@ -1877,6 +1929,7 @@ class _RowCellsPicture extends StatelessWidget {
     required this.axis,
     required this.foregroundPainterFor,
     required this.soundsFor,
+    required this.paperGripsFor,
     required this.exposureStateForLayer,
     required this.frameNameForLayer,
     required this.celContent,
@@ -1896,6 +1949,7 @@ class _RowCellsPicture extends StatelessWidget {
   foregroundPainterFor;
   final TimelineRowSounds? Function(BuildContext context, Layer shown)?
   soundsFor;
+  final TimelineRowPaperGrips? Function(BuildContext context)? paperGripsFor;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -1951,6 +2005,7 @@ class _RowCellsPicture extends StatelessWidget {
       // rail's own plate and name hear it.
       shown: RailEyes.of(context, layer).shown,
       sounds: soundsFor?.call(context, layer),
+      paperGrips: paperGripsFor?.call(context),
     );
     // The row lays its tiles on its grid's screen, where there is one
     // ([TimelineGridScreenHost]); outside the name, which is the picture's.

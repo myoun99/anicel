@@ -35,6 +35,7 @@ import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
+import 'timeline_block_look.dart' show TimelineBlockRow;
 import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -302,13 +303,22 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the largest share of a crossing frame once the waveform stopped
   /// drawing what nobody sees.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TimelineRowGripStateHolder(
+    builder: (grips) => _row(context, grips),
+  );
+
+  /// The row, its [grips]' state held for its chrome to tell and its cells
+  /// to draw by (F-604, [TimelineRowPaperGrips]).
+  Widget _row(
+    BuildContext context,
+    ValueNotifier<TimelineRowGripState> grips,
+  ) {
     final stack = Stack(
       // The frame-axis box below sizes this row, so the cell strip (the one
       // non-positioned child) takes the box outright instead of sizing it.
       fit: StackFit.expand,
       children: [
-        _cellsPaintArea(context),
+        _cellsPaintArea(context, grips),
         _shownSpans(_silhouetteSpans),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
@@ -317,7 +327,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // are already dark — the gray wash is print-sheet-only.
         if (_mountsOverlays) _shownSpans(_spanOverlays),
         ?_rangeGestureLayer(),
-        ?_editChromeLayer(),
+        ?_editChromeLayer(grips),
         // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
         if (_mountsSpanGrips) _shownSpans(_spanGrips),
         ?_assetDropTarget(),
@@ -656,10 +666,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// render a widget per cell, which is what made a zoom step rebuild
   /// 140-180 widgets on four rows alone. The span overlays still position
   /// themselves as widgets — the cells beneath them are canvas work now.
-  Widget _cellsPaintArea(BuildContext context) => timelineRowCellsPaintArea(
+  Widget _cellsPaintArea(
+    BuildContext context,
+    ValueListenable<TimelineRowGripState> grips,
+  ) => timelineRowCellsPaintArea(
     context: context,
     keyPrefix: keyPrefix,
     layer: layer,
+    // The grips are the paper's corners, inked: drawn with it (F-604).
+    paperGripsFor: _wantsGrips
+        ? (context) => _paperGrips(context, grips)
+        : null,
     geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     axis: axis,
@@ -786,7 +803,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   ///
   /// It draws what the row shows, so it is one of the pieces built again
   /// when that changes ([_Shown]) — in its slot, keeping its State.
-  Widget? _editChromeLayer() {
+  Widget? _editChromeLayer(ValueNotifier<TimelineRowGripState> grips) {
     if (!_wantsGrips && !_wantsRunEdges) return null;
     final drag = commaDrag;
     return Positioned.fill(
@@ -797,25 +814,18 @@ class TimelineFrameCellsRow extends StatelessWidget {
         row: this,
         builder: (context, shows) {
           final layer = shows.shown;
+          final (:ground, :row) = _gripsStandOn(context, layer);
           return TimelineRowEditChromeLayer(
             paintName: '$keyPrefix-edit-chrome-${layer.id}',
             layerId: layer.id,
             resolver: _chromeResolver(shows),
             geometry: geometry,
             axis: axis,
-            // The grips sit on THIS row's blocks, and the blocks are the
-            // layer's color label (⑲) — so a purple row's bars go black by
-            // the same ground law its numbers follow.
-            gripGround: layerMarkColor(layer.mark),
-            // …each grip on its block as the cells draw the block (I-129):
-            // the row's eye, its cels and the host's ground, as the 코마
-            // numbers take them.
-            gripRow: (
-              layer: layer,
-              shown: RailEyes.of(context, layer).shown,
-              content: celContent,
-              ground: TimelineGridLaw.maybeOf(context)?.ground,
-            ),
+            gripGround: ground,
+            gripRow: row,
+            // The cells draw the grips with their paper; this layer takes
+            // their pointer and tells the cells what it rests on (F-604).
+            paperGrips: _wantsGrips ? grips : null,
             // The cells' window: what the chrome draws, as the cells under
             // it.
             windowBucket: windowBucket,
@@ -835,6 +845,39 @@ class TimelineFrameCellsRow extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  /// What a row's grips stand on: the ground its blocks' colour label is
+  /// (⑲ — a purple row's grips go black by the same ground law its numbers
+  /// follow), and each block as the cells draw it (I-129): the row's eye,
+  /// its cels and the host's ground, as the 코마 numbers take them.
+  ({Color ground, TimelineBlockRow row}) _gripsStandOn(
+    BuildContext context,
+    Layer layer,
+  ) => (
+    ground: layerMarkColor(layer.mark),
+    row: (
+      layer: layer,
+      shown: RailEyes.of(context, layer).shown,
+      content: celContent,
+      ground: TimelineGridLaw.maybeOf(context)?.ground,
+    ),
+  );
+
+  /// The row's grips as its cells draw them with their paper: where its
+  /// chrome stands them, on what it shows, in the inks [state] says.
+  TimelineRowPaperGrips _paperGrips(
+    BuildContext context,
+    ValueListenable<TimelineRowGripState> state,
+  ) {
+    final shows = _showsAt(context);
+    final (:ground, :row) = _gripsStandOn(context, shows.shown);
+    return TimelineRowPaperGrips(
+      resolver: _chromeResolver(shows),
+      state: state,
+      gripGround: ground,
+      gripRow: row,
     );
   }
 

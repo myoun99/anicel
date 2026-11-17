@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, Rect;
 
 import '../../core/argb_channels.dart';
 
@@ -40,6 +40,21 @@ abstract final class TimelineGridTileOp {
   /// the Dart reference and the C engine together with the substrate
   /// rewrite of 2026-09-24.
   static const int rrectRing = 6;
+
+  /// A block's edge GRIP (F-604, 2026-11-17): the right triangle in one
+  /// corner of its box — [cornerMask] names that corner by one bit — its legs
+  /// on the box's sides there, that corner cut by the paper's own circle
+  /// (`blockEdgeGripPath`, `timeline_exposure_comma_drag_handle.dart`).
+  /// x, y, w, h, the paper's corner and the round end's bleed are 24.8 fixed
+  /// point, as [rrectFill]'s.
+  ///
+  /// 🗣️F-604 (유저 2026-11-16): 「밑의 블록의 오른쪽위 엣지 위에 블록 공간이
+  /// 보임 … 근본/구조적으로해결」. The grip was the chrome's, drawn by Flutter
+  /// where the block stands, and its paper the tile's, laid on whole device
+  /// pixels: two roundings of one corner, a pixel apart at a fractional
+  /// ratio, and apart again while a zoom stretched the tiles. Baked with its
+  /// paper, it is laid as its paper is.
+  static const int grip = 7;
 
   static const int cornerTopLeft = 1;
   static const int cornerTopRight = 2;
@@ -92,6 +107,10 @@ int timelineGridQ8(double pixels) => (pixels * 256).round();
 }
 
 const int _mostCornerQ9 = 1 << 15;
+
+/// The longest side a grip's box may have, in q9 (8192 pixels) — the grid
+/// pass's own bound (`MOST_GRIP_SIDE_Q9`, `kernels/timeline/grid/mod.rs`).
+const int _mostGripSideQ9 = 1 << 22;
 
 /// Packs a straight-alpha color into the op stream's RGBA word.
 int timelineGridPackRgba(Color color) {
@@ -183,6 +202,49 @@ class TimelineGridTileOpWriter {
       ..add(box.cornerMask)
       ..add(timelineGridQ8(lineWidth))
       ..add(openMask)
+      ..add(rgba);
+  }
+
+  /// A grip in [box] (PIXELS, converted to q8 here), its right angle in the
+  /// corner [cornerMask] names, cut by the paper's [corner] and its round
+  /// end [bleed] wider ([TimelineGridTileOp.grip]).
+  ///
+  /// ⛔A GRIP THE GPU ENGINE'S GRID PASS REFUSES IS REFUSED HERE, as
+  /// [rrectFill]'s corner is: a side of 8192 pixels or more, a corner below
+  /// square or past 64, a bleed below none, or a mask naming no one corner.
+  /// Throws [ArgumentError].
+  void grip(
+    Rect box, {
+    required double corner,
+    required double bleed,
+    required int cornerMask,
+    required int rgba,
+  }) {
+    final (w, h) = (timelineGridQ8(box.width), timelineGridQ8(box.height));
+    final r = timelineGridQ8(corner);
+    final b = timelineGridQ8(bleed);
+    if (2 * w >= _mostGripSideQ9 ||
+        2 * h >= _mostGripSideQ9 ||
+        r < 0 ||
+        2 * r > _mostCornerQ9 ||
+        b < 0 ||
+        !const {1, 2, 4, 8}.contains(cornerMask)) {
+      throw ArgumentError(
+        'a grip $box with a corner of $corner px, a bleed of $bleed px, in '
+        'corner $cornerMask: the grid takes none of 8192 px or more across, '
+        'no corner below square or past 64 px, no bleed below none, one '
+        'corner',
+      );
+    }
+    _words
+      ..add(TimelineGridTileOp.grip)
+      ..add(timelineGridQ8(box.left))
+      ..add(timelineGridQ8(box.top))
+      ..add(w)
+      ..add(h)
+      ..add(r)
+      ..add(b)
+      ..add(cornerMask)
       ..add(rgba);
   }
 

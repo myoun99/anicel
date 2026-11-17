@@ -11,7 +11,8 @@ import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
         OwningVerticalDragGestureRecognizer;
-import 'axis_turn.dart' show offsetAlong, partAlong, rectAlong;
+import 'axis_turn.dart'
+    show endAlong, offsetAlong, partAlong, rectAlong, startAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -25,6 +26,7 @@ import 'timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
 import 'timeline_block_look.dart'
     show
+        TimelineBlockFace,
         TimelineBlockRow,
         TimelineBlockState,
         timelineBlockRowFacts,
@@ -34,6 +36,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
 import 'timeline_run_end_handles.dart';
+import 'timeline_tile_raster_source.dart' show TimelineRowGrip;
 import '../effective_device_pixel_ratio.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart';
@@ -455,6 +458,135 @@ class TimelineRowChromeResolver {
   }
 }
 
+/// Which of a row's grips the pointer rests on, and which it presses or
+/// drags — the inks they take ([BlockEdgeGripInk]).
+typedef TimelineRowGripState = ({String? hovered, String? dragging});
+
+/// The ink [target] takes in [state], and the face of the block it stands
+/// on as its row draws that block — however the grip is drawn: by the
+/// row's chrome, or by the painter of its paper ([TimelineRowPaperGrips]).
+({BlockEdgeGripInk ink, TimelineBlockFace on}) timelineRowGripLook(
+  TimelineRowGripTarget target, {
+  required TimelineRowGripState state,
+  required Color gripGround,
+  required TimelineBlockRow? gripRow,
+}) => (
+  ink: target.id == state.dragging
+      ? BlockEdgeGripInk.dragging
+      : target.id == state.hovered
+      ? BlockEdgeGripInk.hovered
+      : BlockEdgeGripInk.rest,
+  on: gripRow == null
+      ? (state: TimelineBlockState.shown, paper: gripGround, ground: null)
+      : timelineFrameBlockFace(
+          gripRow,
+          target.blockStartIndex,
+          paper: gripGround,
+        ),
+);
+
+/// A row's grips as the painter of its PAPER draws them
+/// ([TimelineTileRasterSource.gripsIn]): where [resolver] stands them, in
+/// the inks [state] says — told it by the row's chrome, which takes their
+/// pointer and draws none of them ([TimelineRowEditChromeLayer.paperGrips]).
+@immutable
+class TimelineRowPaperGrips {
+  const TimelineRowPaperGrips({
+    required this.resolver,
+    required this.state,
+    required this.gripGround,
+    this.gripRow,
+  });
+
+  /// The chrome's own resolver: the grips stand where its targets do.
+  final TimelineRowChromeResolver resolver;
+
+  final ValueListenable<TimelineRowGripState> state;
+
+  /// As [TimelineRowEditChromeLayer.gripGround].
+  final Color gripGround;
+
+  /// As [TimelineRowEditChromeLayer.gripRow].
+  final TimelineBlockRow? gripRow;
+
+  /// The grips on [frames] whose boxes reach [along] on [axis], each in the
+  /// ink [state] gives it now.
+  List<TimelineRowGrip> gripsIn(
+    TimelineFrameGeometry frames, {
+    required Axis axis,
+    required ({double from, double to}) along,
+  }) {
+    final now = state.value;
+    return [
+      for (final target in resolver.resolve(frames).targets)
+        if (target is TimelineRowGripTarget &&
+            endAlong(axis, target.rect) > along.from &&
+            startAlong(axis, target.rect) < along.to)
+          _gripOf(target, now),
+    ];
+  }
+
+  TimelineRowGrip _gripOf(
+    TimelineRowGripTarget target,
+    TimelineRowGripState now,
+  ) {
+    final (:ink, :on) = timelineRowGripLook(
+      target,
+      state: now,
+      gripGround: gripGround,
+      gripRow: gripRow,
+    );
+    return (
+      box: target.rect,
+      edge: target.edge,
+      paperCorner: target.paperCorner,
+      color: timelineBlockGripColor(ink, on),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineRowPaperGrips &&
+      other.resolver.matches(resolver) &&
+      identical(other.state, state) &&
+      other.gripGround == gripGround &&
+      other.gripRow == gripRow;
+
+  @override
+  int get hashCode => Object.hash(state, gripGround, gripRow);
+}
+
+/// Holds a row's [TimelineRowGripState] for as long as the row stands: its
+/// chrome tells it ([TimelineRowEditChromeLayer.paperGrips]) and the
+/// painter of its paper draws by it ([TimelineRowPaperGrips.state]) — two
+/// pieces of one row's stack, neither the other's.
+class TimelineRowGripStateHolder extends StatefulWidget {
+  const TimelineRowGripStateHolder({super.key, required this.builder});
+
+  final Widget Function(ValueNotifier<TimelineRowGripState> state) builder;
+
+  @override
+  State<TimelineRowGripStateHolder> createState() =>
+      _TimelineRowGripStateHolderState();
+}
+
+class _TimelineRowGripStateHolderState
+    extends State<TimelineRowGripStateHolder> {
+  final _state = ValueNotifier<TimelineRowGripState>((
+    hovered: null,
+    dragging: null,
+  ));
+
+  @override
+  void dispose() {
+    _state.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_state);
+}
+
 /// Draws a dense row's whole edit chrome in one pass.
 class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   TimelineRowEditChromePainter({
@@ -470,6 +602,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     this.gripGrounds,
     this.gripRow,
     this.windowBucket,
+    this.gripsOnPaper = false,
   }) : super(
          repaint: Listenable.merge([
            timelineFrameDrawing(geometry),
@@ -541,6 +674,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// ([TimelineRowEditChromeLayer.gripRow]).
   final TimelineBlockRow? gripRow;
 
+  /// Whether the painter of the row's paper draws its grips
+  /// ([TimelineRowEditChromeLayer.paperGrips]) — this one then draws none.
+  final bool gripsOnPaper;
+
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
   List<TimelineRowChromeTarget> get targets => model.targets;
@@ -602,8 +739,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     final grounds = gripGrounds?.call();
     for (final target in model.targets.where((target) => shows(target.rect))) {
       switch (target) {
-        case TimelineRowGripTarget():
+        case TimelineRowGripTarget() when !gripsOnPaper:
           _paintGrip(canvas, target, grounds);
+        case TimelineRowGripTarget():
+          break;
         case TimelineRowRunAddTarget():
           paintTimelineRunGlyph(
             canvas,
@@ -662,19 +801,12 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       axis: resolver.axis,
       round: (paperCorner: target.paperCorner, bleed: 1 / devicePixelRatio),
     );
-    final ink = target.id == draggingGripId
-        ? BlockEdgeGripInk.dragging
-        : target.id == hoveredId
-        ? BlockEdgeGripInk.hovered
-        : BlockEdgeGripInk.rest;
-    final row = gripRow;
-    final on = row == null
-        ? (state: TimelineBlockState.shown, paper: gripGround, ground: null)
-        : timelineFrameBlockFace(
-            row,
-            target.blockStartIndex,
-            paper: gripGround,
-          );
+    final (:ink, :on) = timelineRowGripLook(
+      target,
+      state: (hovered: hoveredId, dragging: draggingGripId),
+      gripGround: gripGround,
+      gripRow: gripRow,
+    );
     final under = grounds?.under(target.rect) ?? const [];
     if (under.isEmpty) {
       paintBlockEdgeGrip(canvas, triangle, ink, on: on);
@@ -723,6 +855,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       timelineBlockRowFacts(gripRow),
       devicePixelRatio,
       ByIdentity(windowBucket),
+      gripsOnPaper,
     );
   }
 
@@ -802,7 +935,15 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     this.gripGrounds,
     this.gripRow,
     this.windowBucket,
+    this.paperGrips,
   });
+
+  /// Where the painter of the row's PAPER draws its grips
+  /// ([TimelineRowPaperGrips]): this layer takes their pointer, tells it
+  /// what the pointer rests on and presses, and draws none of them. Null
+  /// where it draws them itself — the storyboard's cut row, whose plate
+  /// Flutter paints.
+  final ValueNotifier<TimelineRowGripState>? paperGrips;
 
   /// What a finder calls the [CustomPaint] itself ([Named]): tests read the
   /// painter (and its render box, for target geometry) off it.
@@ -983,6 +1124,10 @@ class _TimelineRowEditChromeLayerState
 
   @override
   void dispose() {
+    // What it told the paper goes with it: a grip it last saw hovered is
+    // not left wearing that ink. Its holder outlives it — a subtree is
+    // let go of from its leaves.
+    widget.paperGrips?.value = (hovered: null, dragging: null);
     // A row can unmount mid-drag (its layer scrolls out of the list); the
     // session keeps the preview and the pointer-up never arrives here, so
     // land the operation rather than leaking an open session.
@@ -1351,6 +1496,12 @@ class _TimelineRowEditChromeLayerState
       Named(widget.paintName, child: _paint(context));
 
   CustomPaint _paint(BuildContext context) {
+    // R9 #12: pressed reads as engaged from the pointer DOWN, not from the
+    // moment the drag recognizer wins.
+    final dragging = _gripDragging ? _gripTarget?.id : _pressedId;
+    // Told as it is built, in the frame it changed: the paper's grips take
+    // the ink in the same frame as everything this layer draws.
+    widget.paperGrips?.value = (hovered: _hoveredId, dragging: dragging);
     return CustomPaint(
       painter: TimelineRowEditChromePainter(
         resolver: widget.resolver,
@@ -1359,14 +1510,13 @@ class _TimelineRowEditChromeLayerState
         face: appFaceOf(DefaultTextStyle.of(context).style),
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,
-        // R9 #12: pressed reads as engaged from the pointer DOWN, not from
-        // the moment the drag recognizer wins.
-        draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
+        draggingGripId: dragging,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
         gripGrounds: widget.gripGrounds,
         gripRow: widget.gripRow,
         windowBucket: widget.windowBucket,
+        gripsOnPaper: widget.paperGrips != null,
       ),
       child: HitGate(
         // Off-target pixels belong to the cells: the gate keeps the

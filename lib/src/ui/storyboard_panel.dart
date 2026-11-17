@@ -219,6 +219,9 @@ import 'timeline/timeline_row_edit_chrome.dart'
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
         TimelineRowGripCallbacks,
+        TimelineRowGripState,
+        TimelineRowGripStateHolder,
+        TimelineRowPaperGrips,
         timelineLayerGripBlocks;
 import 'timeline/timeline_frame_geometry.dart'
     show

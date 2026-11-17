@@ -313,11 +313,22 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   );
 
   @override
-  Widget buildKept(BuildContext context) {
+  Widget buildKept(BuildContext context) =>
+      TimelineRowGripStateHolder(builder: (grips) => _row(context, grips));
+
+  /// The row, its [grips]' state held for its edges to tell and its cells
+  /// to draw by (F-604, [TimelineRowPaperGrips]).
+  Widget _row(
+    BuildContext context,
+    ValueNotifier<TimelineRowGripState> grips,
+  ) {
     final shown = trackConteRowShown(trackId, layoutEntries, seat: seat);
     final headShown = _headShown();
     final stripGesture = _stripGesture();
-    final edges = stripEdges;
+    final strip = stripEdges;
+    final edges = strip == null
+        ? null
+        : _edges(strip, _blocks(context, shown, headShown), grips);
     final stripSelect = this.stripSelect;
     final edit = _edit;
     return _storyboardRowBox(
@@ -327,7 +338,12 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       windowIsStill: windowIsStill,
       child: Stack(
         children: [
-          _cells(context, shown, headShown: headShown),
+          _cells(
+            context,
+            shown,
+            headShown: headShown,
+            paperGrips: edges?.paperGrips,
+          ),
           // Each panel's length at its end — the timeline row's own print
           // (F-228), over the paper and under everything that answers.
           _runLabels(
@@ -365,7 +381,11 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
           if (stripSelect != null) _selectionBand(stripSelect),
           // THE EDGES ride ABOVE the range gesture so an edge keeps its
           // priority over it; the middles keep the rest.
-          if (edges != null) _edges(edges, _blocks(context, shown, headShown)),
+          if (edges != null)
+            Positioned.fill(
+              key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
+              child: edges,
+            ),
         ],
       ),
     );
@@ -385,23 +405,23 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   );
 
   /// The row's edges, over its blocks ([_StoryboardPanelEdges]) — on them
-  /// as [row] draws them, the cells' own (I-129).
-  Widget _edges(
+  /// as [row] draws them, the cells' own (I-129) — telling [grips] what
+  /// the pointer does to them.
+  _StoryboardPanelEdges _edges(
     StoryboardStripEdgeCallbacks stripEdges,
     TimelineBlockRow row,
-  ) => Positioned.fill(
-    key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
-    child: _StoryboardPanelEdges(
-      trackId: trackId,
-      seat: seat,
-      scope: _scope,
-      layoutEntries: layoutEntries,
-      stripEdges: stripEdges,
-      row: row,
-      height: height,
-      frameGeometry: frameGeometry,
-      windowBucket: windowBucket,
-    ),
+    ValueNotifier<TimelineRowGripState> grips,
+  ) => _StoryboardPanelEdges(
+    trackId: trackId,
+    seat: seat,
+    scope: _scope,
+    layoutEntries: layoutEntries,
+    stripEdges: stripEdges,
+    row: row,
+    height: height,
+    frameGeometry: frameGeometry,
+    windowBucket: windowBucket,
+    paperGripState: grips,
   );
 
   /// THE blocks — the timeline's own row painter, on the cuts' conte layers
@@ -412,7 +432,12 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// first cell of every empty run (the timesheet's X), and here a stretch
   /// with no block is not an empty drawing — it is a cut with no conte
   /// layer, which wears its button, or a gap, where there is no cut at all.
-  Widget _cells(BuildContext context, Layer shown, {required bool headShown}) {
+  Widget _cells(
+    BuildContext context,
+    Layer shown, {
+    required bool headShown,
+    required TimelineRowPaperGrips? paperGrips,
+  }) {
     // I-44: the HOST's ground and lines, stated once by its law — as the
     // timeline's rows read them.
     final law = TimelineGridLaw.maybeOf(context);
@@ -451,6 +476,9 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               substrateGeneration: filmSubstrateGeneration,
               followsTheLiveCut: false,
               devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+              // The edges are the paper's corners, inked: drawn with it,
+              // as the timeline's rows draw theirs (F-604).
+              paperGrips: paperGrips,
             ),
           ),
         ),
@@ -702,6 +730,7 @@ class _StoryboardPanelEdges extends StatelessWidget {
     required this.height,
     required this.frameGeometry,
     required this.windowBucket,
+    required this.paperGripState,
   });
 
   final TrackId trackId;
@@ -724,6 +753,46 @@ class _StoryboardPanelEdges extends StatelessWidget {
   final double height;
   final TimelineFrameGeometryHandle frameGeometry;
   final ValueListenable<int> windowBucket;
+
+  /// What the pointer does to the edges, told for the row's cells to draw
+  /// them by ([TimelineRowEditChromeLayer.paperGrips]).
+  final ValueNotifier<TimelineRowGripState> paperGripState;
+
+  /// The edges as the row's cells draw them with their paper (F-604):
+  /// where this layer stands them, in the inks it tells.
+  TimelineRowPaperGrips get paperGrips => TimelineRowPaperGrips(
+    resolver: _resolver(_grips()),
+    state: paperGripState,
+    gripGround: _ground,
+    gripRow: row,
+  );
+
+  /// The grips sit on this row's blocks, and the blocks are the row's
+  /// colour label (⑲) — the ground law reads their ink off it.
+  Color get _ground => layerMarkColor(row.layer.mark);
+
+  /// Where [grips] stand on the row.
+  TimelineRowChromeResolver _resolver(List<_StoryboardStripGrip> grips) =>
+      TimelineRowChromeResolver(
+        gripBlocks: [
+          for (var index = 0; index < grips.length; index += 1)
+            (
+              ordinal: index,
+              startIndex: grips[index].startFrame,
+              endIndexExclusive: grips[index].endFrameExclusive,
+              startGrip: grips[index].startGrip,
+              endGrip: grips[index].endGrip,
+            ),
+        ],
+        gripIdScope: trackConteRowId(trackId, seat: seat).value,
+        layer: null,
+        baseLayer: null,
+        // I-44: the chrome stands on the block's PAPER — the row short of
+        // its seam — so the edge triangles sit in the paper's own corners.
+        crossAxisExtent: timelineRowPaperExtent(height),
+        axis: Axis.horizontal,
+        includeRunEdges: false,
+      );
 
   /// One entry per block of the row, in track order — what the edit chrome
   /// hangs its grips on.
@@ -851,36 +920,18 @@ class _StoryboardPanelEdges extends StatelessWidget {
     final grips = _grips();
     return TimelineRowEditChromeLayer(
       paintName: 'storyboard-edit-chrome-$scope',
-      // The grips sit on this row's blocks, and the blocks are the row's
-      // colour label (⑲) — the ground law reads their ink off it.
-      gripGround: layerMarkColor(row.layer.mark),
+      gripGround: _ground,
       gripRow: row,
+      // The cells draw the edges with their paper; this layer takes their
+      // pointer and tells the cells what it rests on (F-604).
+      paperGrips: paperGripState,
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
       // No layer: these blocks are rows of many cuts, and the row has no
       // run edges for a LayerId to name.
       layerId: null,
-      resolver: TimelineRowChromeResolver(
-        gripBlocks: [
-          for (var index = 0; index < grips.length; index += 1)
-            (
-              ordinal: index,
-              startIndex: grips[index].startFrame,
-              endIndexExclusive: grips[index].endFrameExclusive,
-              startGrip: grips[index].startGrip,
-              endGrip: grips[index].endGrip,
-            ),
-        ],
-        gripIdScope: trackConteRowId(trackId, seat: seat).value,
-        layer: null,
-        baseLayer: null,
-        // I-44: the chrome stands on the block's PAPER — the row short of
-        // its seam — so the edge triangles sit in the paper's own corners.
-        crossAxisExtent: timelineRowPaperExtent(height),
-        axis: Axis.horizontal,
-        includeRunEdges: false,
-      ),
+      resolver: _resolver(grips),
       geometry: frameGeometry,
       axis: Axis.horizontal,
       // The row closes the identity in, by ordinal — the grip hooks

@@ -26,6 +26,7 @@ import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_grid_tile_picture.dart';
 import 'timeline_tile_raster_source.dart';
+import 'timeline_exposure_comma_drag_handle.dart' show blockEdgeGripRightAngle;
 import '../../core/bake_once_lru.dart';
 import '../../core/lru.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
@@ -879,6 +880,7 @@ class TimelineGridTileStore {
       picture: rastered.picture,
       ink: emitted.ink,
       waves: emitted.waves,
+      grips: emitted.grips,
     );
   }
 
@@ -1378,6 +1380,10 @@ class TimelineGridTileStore {
         request.spanEndIndexExclusive,
         dpr,
       ),
+      grips: painter.gripsIn(
+        request.spanStartIndex,
+        request.spanEndIndexExclusive,
+      ),
     );
   }
 
@@ -1412,11 +1418,52 @@ class TimelineGridTileStore {
     if (picture == null) {
       return null;
     }
-    batch.draw(picture, (writer..append(lettered)).build());
+    final grips = _gripOps(request, emitted.grips);
+    batch.draw(picture, (writer..append(lettered)..append(grips)).build());
     for (final (:peaks, :view) in emitted.waves) {
       batch.wave(picture, EngineWavePeaks.of(peaks), view);
     }
     return TimelineGridTilePicture(picture, drawn: emitted.drawn);
+  }
+
+  /// The ops of [grips] over [request]'s span, after its words: each in the
+  /// tile's device pixels, its right angle in the corner its edge names
+  /// ([blockEdgeGripRightAngle]), its round end's bleed one device pixel —
+  /// as the chrome drew it over the tiles before (F-604,
+  /// [TimelineTileRasterSource.gripsIn]).
+  static Int32List _gripOps(
+    _TileRequest request,
+    List<TimelineRowGrip> grips,
+  ) {
+    final writer = TimelineGridTileOpWriter();
+    final painter = request.painter;
+    final axis = painter.axis;
+    final dpr = request.devicePixelRatio;
+    final toLocal = offsetAlong(
+      axis,
+      along: -startAlong(axis, painter.cellRectFor(request.spanStartIndex)),
+      across: 0,
+    );
+    for (final grip in grips) {
+      final box = grip.box;
+      final angle = blockEdgeGripRightAngle(box, edge: grip.edge, axis: axis);
+      final right = angle.dx == box.right;
+      final bottom = angle.dy == box.bottom;
+      final local = box.shift(toLocal);
+      writer.grip(
+        Rect.fromLTRB(
+          local.left * dpr,
+          local.top * dpr,
+          local.right * dpr,
+          local.bottom * dpr,
+        ),
+        corner: grip.paperCorner * dpr,
+        bleed: 1,
+        cornerMask: 1 << ((right ? 1 : 0) + (bottom ? 2 : 0)),
+        rgba: timelineGridPackRgba(grip.color),
+      );
+    }
+    return writer.build();
   }
 
   /// The ink [request]'s span bakes over its substrate: the ops of its
@@ -1713,6 +1760,7 @@ typedef _Emitted = ({
   TimelineRowSubstrate substrate,
   _TileInk ink,
   List<TimelineTileWave> waves,
+  List<TimelineRowGrip> grips,
 });
 
 /// What a raster hands its landing: the picture, and what it shows.
@@ -1771,6 +1819,7 @@ class _TileEntry {
     required this.picture,
     required this.ink,
     required this.waves,
+    required this.grips,
   });
 
   /// #29: the (project, cut) world this tile's resolvers answered from.
@@ -1850,6 +1899,10 @@ class _TileEntry {
   /// ([TimelineTileRasterSource.wavesIn]).
   final List<TimelineTileWave> waves;
 
+  /// The grips `_raster` drew after [ink]'s words, in the inks they wore
+  /// ([TimelineTileRasterSource.gripsIn]).
+  final List<TimelineRowGrip> grips;
+
   /// Whether this tile shows [asked]'s span as the row is now. Asked
   /// alike by every asker: a span shown, past the window or a page away.
   ///
@@ -1896,6 +1949,11 @@ class _TileEntry {
       asked.devicePixelRatio,
     );
     if (!listEquals(waves, wavesNow)) {
+      return false;
+    }
+    // And the grips, asked of the span as the waves are: the pointer coming
+    // to rest on one moves no layer (F-604).
+    if (!listEquals(grips, painter.gripsIn(asked.spanStartIndex, end))) {
       return false;
     }
     final sameCells = _showsSameCellsAs(painter.layer);
