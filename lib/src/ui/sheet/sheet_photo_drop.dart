@@ -11,7 +11,7 @@ import '../../models/sheet_marks.dart' show SheetInkPlacement;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/cel_photo_edit_command.dart';
 import '../../services/import/raster_cel_import.dart' show fitPose;
-import '../../services/media/media_pixel_size.dart';
+import '../../services/media/media_facts.dart';
 import '../editor_session_manager.dart';
 import '../media/media_asset_drag_data.dart';
 import '../media/media_asset_drop_target.dart';
@@ -164,11 +164,11 @@ class _SheetPhotoDropState extends State<SheetPhotoDrop> {
   /// was read (a form switched, a page added) is asked again, as a stroke
   /// started there would ask it.
   Future<void> _land(Offset paper, String path) async {
-    final picture = await readMediaPixelSize(
+    final picture = (await readMediaFacts(
       MediaAssetKind.image,
       path,
       widget.session.projectFile.holdMediaBytes,
-    );
+    ))?.size;
     if (picture == null || !mounted) {
       return;
     }

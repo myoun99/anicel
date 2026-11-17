@@ -121,6 +121,20 @@ bool placementRegisters({required bool baked, bool soundReadsIt = false}) =>
 /// — one frame in a cut that has none.
 int stillHoldIn(Cut cut) => cut.duration < 1 ? 1 : cut.duration;
 
+/// Whether a placement of [pictures] pictures lands as a STILL — one cel
+/// held over the cut ([planStillImageLayer]) — rather than as cels
+/// ([planSequenceLayer]): ONE picture, as a kind that holds one cel
+/// ([LayerKind.holdsSingleCel]; a row's [LayerKind.bornOfOnePicture] until
+/// someone picks another), placed as a layer — a row's frames take cels.
+///
+/// The cut folder's rows ask the kind the same question (F-429): the kind
+/// decides the shape, whatever file the row came from.
+bool placesAStill(
+  int pictures,
+  LayerKind kind, {
+  required bool ontoFrames,
+}) => pictures == 1 && kind.holdsSingleCel && !ontoFrames;
+
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
 /// With a [reference] the layer SHOWS the file — it is stamped as

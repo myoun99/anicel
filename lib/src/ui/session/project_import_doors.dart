@@ -252,6 +252,10 @@ class ProjectImportDoors {
     required bool copyIntoProject,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.born,
+
+    /// What ONE picture comes in as — an image layer holding over the cut,
+    /// or an animation layer's one cel ([placesAStill]).
+    LayerKind pictureKind = LayerKind.bornOfOnePicture,
     int? lengthFrames,
     int inFrame = 0,
     int? outFrame,
@@ -331,7 +335,11 @@ class ProjectImportDoors {
     final List<MediaAsset> assets;
     // A drop on a row's frames takes every picture as frames: a still is
     // ONE cell there (「한 장이면 한 칸」), not a hold over the cut.
-    if (decoded.length == 1 && spot is! RowFramesSpot) {
+    if (placesAStill(
+      decoded.length,
+      pictureKind,
+      ontoFrames: spot is RowFramesSpot,
+    )) {
       final plan = planStillImageLayer(
         sourceFile: source,
         displayName: arrival.displayName,
@@ -667,6 +675,9 @@ class ProjectImportDoors {
     required bool copyIntoProject,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.born,
+
+    /// What a span of ONE page comes in as ([placesAStill]).
+    LayerKind pictureKind = LayerKind.bornOfOnePicture,
     int inFrame = 0,
     int? outFrame,
     void Function(int done, int total)? onRenderProgress,
@@ -732,9 +743,13 @@ class ProjectImportDoors {
       final List<PlannedCelBake> bakes;
       final List<MediaAsset> assets;
       // A row's frames take one cell per page, a single page too.
-      if (spanCount == 1 && spot is! RowFramesSpot) {
-        // A one-page span is a still: an image-kind layer holding over the
-        // cut, exactly like a placed PNG.
+      if (placesAStill(
+        spanCount,
+        pictureKind,
+        ontoFrames: spot is RowFramesSpot,
+      )) {
+        // A one-page span placed as an image is a still: an image-kind
+        // layer holding over the cut, exactly like a placed PNG.
         final plan = planStillImageLayer(
           sourceFile: source,
           displayName: arrival.displayName,

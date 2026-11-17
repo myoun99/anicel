@@ -15,8 +15,8 @@ import '../../models/import/cut_folder_parse.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/import/picture_run.dart';
 import '../../services/import/cut_folder_listing.dart';
-import '../../models/canvas_size.dart';
 import '../../models/layer_id.dart';
+import '../../models/kept_span.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
@@ -27,7 +27,7 @@ import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/media/media_byte_source.dart' show HeldMediaBytes;
-import '../../services/media/media_pixel_size.dart';
+import '../../services/media/media_facts.dart';
 import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
 import '../audio/audio_conform_store.dart';
 import '../media/viewer_sound.dart';
@@ -353,6 +353,12 @@ enum _OptionAsked {
 
   /// A movie's with a sound: picture and sound, picture, or sound.
   sound,
+
+  /// A picture's, as a cut folder's picture is asked it (F-429): what kind
+  /// of layer it comes in as — an image for ONE picture until someone picks
+  /// another ([LayerKind.bornOfOnePicture]), and as far as its pictures
+  /// allow.
+  kind,
 }
 
 /// The Into answer a SOUND gives: the track's SE rows, by their own rule.
@@ -705,8 +711,8 @@ class _ImportDialogState extends State<ImportDialog> {
     // has its size read again from there: what it shows is what comes in.
     for (final MapEntry(key: path, value: itself) in readItself.entries) {
       if (_readsTheFileItself(path) != itself) {
-        _pixelSizes.remove(normalizedMediaPath(path));
-        _readPixelSize(path);
+        _facts.remove(normalizedMediaPath(path));
+        _readFacts(path);
       }
     }
   }
@@ -717,15 +723,17 @@ class _ImportDialogState extends State<ImportDialog> {
   /// changed under a press in another.
   ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
 
-  /// What an untouched row of [path] answers: [_seed], with the span and
-  /// the fit the pool entry's PRESET says when the pool holds [path]
-  /// ([MediaPreset]) — a placement copies its file's preset as it is made,
-  /// and the row is where the window asks what the placement is.
+  /// What an untouched row of [path] answers: [_seed], with the span, the
+  /// fit and the kind of one picture the pool entry's PRESET says when the
+  /// pool holds [path] ([MediaPreset]) — a placement copies its file's
+  /// preset as it is made, and the row is where the window asks what the
+  /// placement is.
   ImportFileSettings _seedFor(String path) => switch (_poolEntryFor(path)) {
     MediaAsset(:final preset) => _seed.copyWith(
       inFrame: preset.inFrame,
       outFrame: preset.outFrame,
       fit: preset.fit,
+      pictureKind: preset.pictureKind,
     ),
     null => _seed,
   };
@@ -793,13 +801,13 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final picture in named.pictures)
         picture.file: normalizedMediaPath('$folder/${picture.file}'),
     };
-    if (!sizeKeys.values.every(_pixelSizes.containsKey)) {
+    if (!sizeKeys.values.every(_facts.containsKey)) {
       return null;
     }
     return _measuredRuns[key] = sameSizeRunOf(
       named,
       mediaFileName(path),
-      (file) => _pixelSizes[sizeKeys[file]],
+      (file) => _facts[sizeKeys[file]]?.size,
     );
   }
 
@@ -831,11 +839,12 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// What the window asks of a file the moment it is listed: whether its
-  /// movie has a sound ([_movieSound]), its size in pixels ([_pixelSizes]),
-  /// and the sizes of the pictures it runs with ([_probeRun]).
+  /// movie has a sound ([_movieSound]), its size in pixels and how many
+  /// pictures it holds ([_facts]), and the sizes of the pictures it runs
+  /// with ([_probeRun]).
   void _probe(String path) {
     _probeMovieSound(path);
-    _readPixelSize(path);
+    _readFacts(path);
     _probeRun(path);
   }
 
@@ -845,7 +854,7 @@ class _ImportDialogState extends State<ImportDialog> {
   void _probeRun(String path) {
     final folder = File(path).parent.path;
     for (final picture in _namedRunOf(path)?.pictures ?? const <RunPicture>[]) {
-      _readPixelSize(
+      _readFacts(
         '$folder/${picture.file}',
         wanted: () => _files.contains(path),
       );
@@ -873,48 +882,49 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// Each listed file's size at 1:1 once it is read ([readMediaPixelSize]),
-  /// and each picture's it runs with ([_probeRun]), by pool key — null for
-  /// one that has none, a sound, or that could not be read. A file not here
-  /// is still waiting its turn (F-375).
-  final Map<String, CanvasSize?> _pixelSizes = {};
+  /// Each listed file's facts once they are read ([readMediaFacts]) — its
+  /// size at 1:1 and how many pictures it holds — and each picture's it
+  /// runs with ([_probeRun]), by pool key: null for one that has none, a
+  /// sound, or that could not be read. A file not here is still waiting its
+  /// turn (F-375).
+  final Map<String, MediaFacts?> _facts = {};
 
   /// The reads, ONE AT A TIME in the order the files were listed: a
   /// picture's header is read off its whole file in memory, so a batch read
   /// at once would hold every file of it together.
-  Future<void> _pixelSizeReads = Future<void>.value();
+  Future<void> _factReads = Future<void>.value();
 
-  /// [path]'s size read in its turn, while [wanted] — while it is listed,
+  /// [path]'s facts read in its turn, while [wanted] — while it is listed,
   /// unless a caller says otherwise.
-  void _readPixelSize(String path, {bool Function()? wanted}) {
+  void _readFacts(String path, {bool Function()? wanted}) {
     final key = normalizedMediaPath(path);
-    _pixelSizeReads = _pixelSizeReads.then((_) async {
+    _factReads = _factReads.then((_) async {
       if (!mounted ||
-          _pixelSizes.containsKey(key) ||
+          _facts.containsKey(key) ||
           !(wanted?.call() ?? _files.contains(path))) {
         return;
       }
       final kind = mediaAssetKindForPath(path);
-      final size = kind == null
+      final facts = kind == null
           ? null
-          : await readMediaPixelSize(kind, path, _holdBytes);
+          : await readMediaFacts(kind, path, _holdBytes);
       if (mounted) {
-        _pixelSizes[key] = size;
-        _showPixelSizesSoon();
+        _facts[key] = facts;
+        _showFactsSoon();
       }
     });
   }
 
-  /// The sizes read since the rows last showed them come up together, at
-  /// most every [_pixelSizesShownEvery]: a batch read one by one would
+  /// The facts read since the rows last showed them come up together, at
+  /// most every [_factsShownEvery]: a batch read one by one would
   /// otherwise rebuild the whole window once a file — the window whose
   /// every press was late (F-373).
-  Timer? _pixelSizesShowing;
-  static const _pixelSizesShownEvery = Duration(milliseconds: 200);
+  Timer? _factsShowing;
+  static const _factsShownEvery = Duration(milliseconds: 200);
 
-  void _showPixelSizesSoon() {
-    _pixelSizesShowing ??= Timer(_pixelSizesShownEvery, () {
-      _pixelSizesShowing = null;
+  void _showFactsSoon() {
+    _factsShowing ??= Timer(_factsShownEvery, () {
+      _factsShowing = null;
       if (mounted) {
         setState(() {});
       }
@@ -925,10 +935,10 @@ class _ImportDialogState extends State<ImportDialog> {
   /// a file with none.
   String _resolutionOf(String path) {
     final key = normalizedMediaPath(path);
-    if (!_pixelSizes.containsKey(key)) {
+    if (!_facts.containsKey(key)) {
       return '';
     }
-    final size = _pixelSizes[key];
+    final size = _facts[key]?.size;
     return size == null ? '—' : pixelSizeLabel(size.width, size.height);
   }
 
@@ -1100,7 +1110,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   @override
   void dispose() {
-    _pixelSizesShowing?.cancel();
+    _factsShowing?.cancel();
     // A copy still on its way is stopped: nothing is left to take it.
     _wait.cancel();
     _wait.status.removeListener(_waitChanged);
@@ -1270,7 +1280,7 @@ class _ImportDialogState extends State<ImportDialog> {
         _folderRowKey(picture.rowKey): _FolderPictureRow(picture),
     };
     for (final MapEntry(:key, value: row) in _folderRows.entries) {
-      _readPixelSize(
+      _readFacts(
         _folderFilesOf(row).first,
         wanted: () => _folderRows.containsKey(key),
       );
@@ -1948,7 +1958,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // waits out the reads the rows asked for ([_probeRun]) — and places the
     // rows those runs make: a picture another row brings is that row's
     // ([_fileRows]).
-    await _pixelSizeReads;
+    await _factReads;
     if (!mounted) {
       return false;
     }
@@ -2279,6 +2289,7 @@ class _ImportDialogState extends State<ImportDialog> {
         destination: settings.into,
         rasterize: bake,
         fit: settings.fit,
+        pictureKind: settings.pictureKind,
         copyIntoProject: carry,
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
@@ -2306,6 +2317,7 @@ class _ImportDialogState extends State<ImportDialog> {
     destination: into.settings.into,
     rasterize: into.settings.bake,
     fit: into.settings.fit,
+    pictureKind: into.settings.pictureKind,
     copyIntoProject: into.settings.mode == ImportFileMode.keepInside,
     inFrame: into.settings.inFrame,
     outFrame: into.settings.outFrame,
@@ -3437,11 +3449,14 @@ class _ImportDialogState extends State<ImportDialog> {
       MovieParts.pictureAndSound,
       MovieParts.picture,
       MovieParts.sound,
+      LayerKind.image,
+      LayerKind.animation,
     ],
     valuesFor: _optionAnswers,
     labelOf: (value) => switch (value) {
       final PsdPlaceMode psd => importPsdLabel(psd),
       final MovieParts parts => importMoviePartsLabel(parts),
+      final LayerKind kind => layerKindDisplayName(kind),
       _ => '',
     },
     wordOf: (path, value) => switch (value) {
@@ -3475,6 +3490,11 @@ class _ImportDialogState extends State<ImportDialog> {
               ),
             ) ==
             parts,
+      // An image holds ONE picture (F-429): a row of more comes in as cels.
+      final LayerKind kind => CutFolderEdits.holds(
+        kind,
+        _picturesKept(path) ?? 1,
+      ),
       _ => true,
     },
     // A header press speaks for every row: each takes the answer of its
@@ -3484,6 +3504,7 @@ class _ImportDialogState extends State<ImportDialog> {
       (settings) => switch (value) {
         final PsdPlaceMode psd => settings.copyWith(psd: psd),
         final MovieParts parts => settings.copyWith(movieParts: parts),
+        final LayerKind kind => settings.copyWith(pictureKind: kind),
         _ => settings,
       },
     ),
@@ -3498,6 +3519,7 @@ class _ImportDialogState extends State<ImportDialog> {
       MovieParts.picture,
       MovieParts.sound,
     ],
+    _OptionAsked.kind => const [LayerKind.image, LayerKind.animation],
     null => const [],
   };
 
@@ -3508,6 +3530,7 @@ class _ImportDialogState extends State<ImportDialog> {
       _OptionAsked.run => const _RunSpan(),
       _OptionAsked.psd => settings.psd,
       _OptionAsked.sound => settings.movieParts,
+      _OptionAsked.kind => _pictureKindOf(path),
       null => null,
     };
   }
@@ -3541,7 +3564,49 @@ class _ImportDialogState extends State<ImportDialog> {
     if (_placing(path) && importPathIsPsd(path)) {
       return _OptionAsked.psd;
     }
-    return _asksSound(path) ? _OptionAsked.sound : null;
+    if (_asksSound(path)) {
+      return _OptionAsked.sound;
+    }
+    return _asksPictureKind(path) ? _OptionAsked.kind : null;
+  }
+
+  /// Whether [path]'s row is asked what kind of layer its pictures come in
+  /// as: a placed picture — a picture file's or a PDF's — that lands as a
+  /// layer of its own. A row's frames take cels whatever the kind; a
+  /// Photoshop document and a run are asked their own question first.
+  bool _asksPictureKind(String path) =>
+      _placing(path) &&
+      _placesPicture(path) &&
+      switch (mediaAssetKindForPath(path)) {
+        MediaAssetKind.image || MediaAssetKind.pdf => true,
+        _ => false,
+      } &&
+      widget.spot is! RowFramesSpot;
+
+  /// How many pictures [path]'s row places — its file's, as far as its span
+  /// keeps them ([KeptSpan]) — or null while they are not read
+  /// ([_facts]).
+  int? _picturesKept(String path) {
+    final pictures = _facts[normalizedMediaPath(path)]?.pictures;
+    if (pictures == null || pictures < 1) {
+      return null;
+    }
+    final settings = _settingsFor(path);
+    return KeptSpan(
+      length: pictures,
+      inFrame: settings.inFrame,
+      outFrame: settings.outFrame,
+    ).count;
+  }
+
+  /// The kind [path]'s row comes in as: its answer, as far as the pictures
+  /// it keeps allow ([CutFolderEdits.holds]) — the door lays it so
+  /// (`placesAStill`), as the cut folder lays its rows (F-429).
+  LayerKind _pictureKindOf(String path) {
+    final picked = _settingsFor(path).pictureKind;
+    return CutFolderEdits.holds(picked, _picturesKept(path) ?? 1)
+        ? picked
+        : LayerKind.animation;
   }
 
   /// The room a place is said in, whatever the layer is named (🗣️F-582-Q1,

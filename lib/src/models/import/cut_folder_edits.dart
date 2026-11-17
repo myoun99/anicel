@@ -109,7 +109,7 @@ class CutFolderEdits {
   /// [picture]'s kind. 🗣️F-429: 「1장짜리 그림을 기본 이미지레이어로
   /// 자동지정해두지만 같은창에서 애니메이션레이어로 변경가능」.
   LayerKind kindOfPicture(ParsedPicture picture) =>
-      kinds[picture.rowKey] ?? LayerKind.image;
+      kinds[picture.rowKey] ?? LayerKind.bornOfOnePicture;
 
   /// [picture]'s colour label: what a new layer of its kind is born with,
   /// until someone picks another.

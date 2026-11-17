@@ -29,6 +29,7 @@ import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
 import '../media/colour_profile.dart' show readsTheColoursOf;
+import '../media/image_viewer_document.dart' show ImageViewerDocument;
 import '../persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, LaidPixels, laidCelSurface;
 import '../photoshop/psd_image.dart';
@@ -147,17 +148,8 @@ Future<List<DecodedImageFrame>> _framesPastTheSide(
 
 /// Whether [descriptor]'s picture is one frame. How many it has is the
 /// codec's to say, from the file's head — nothing is decoded to count them.
-Future<bool> _isAStill(ui.ImageDescriptor descriptor) async {
-  final counting = await descriptor.instantiateCodec(
-    targetWidth: 1,
-    targetHeight: 1,
-  );
-  try {
-    return counting.frameCount <= 1;
-  } finally {
-    counting.dispose();
-  }
-}
+Future<bool> _isAStill(ui.ImageDescriptor descriptor) async =>
+    await ImageViewerDocument.picturesIn(descriptor) <= 1;
 
 /// The still picture [bytes] as its file, read when it is laid
 /// ([FilePicture]) — at the size [descriptor] says.

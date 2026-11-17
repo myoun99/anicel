@@ -105,7 +105,7 @@ void main() {
     const picture = '/pool/bg_street.png';
     const sound = '/pool/door.mp3';
 
-    EditorSessionManager session() {
+    EditorSessionManager session({MediaPreset preset = const MediaPreset()}) {
       final manager = EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('gap-project'),
@@ -117,6 +117,7 @@ void main() {
               // Not the file's own name: the silhouette must read the POOL.
               name: '거리',
               kind: MediaAssetKind.image,
+              preset: preset,
             ),
             MediaAsset(path: sound, name: 'door', kind: MediaAssetKind.audio),
           ],
@@ -172,6 +173,22 @@ void main() {
         0,
         reason: 'the line and the row mark ONE gap',
       );
+    });
+
+    // 🗣️유저 2026-11-17 (card 「파일마다 배치 기본값」-Q4): a picture's
+    // preset says what kind of layer it comes in as, and the window it
+    // opens starts the row from it.
+    test('🚨one picture whose preset says 애니메이션 stands as an animation '
+        'row', () {
+      final s = session(
+        preset: const MediaPreset(pictureKind: LayerKind.animation),
+      );
+
+      s.showLayerPlacement(s.requireActiveCut.layers, 0, picture);
+
+      final preview = s.dragPreview.value as MediaPlacementPreview?;
+      expect(preview?.silhouetteRow?.kind, LayerKind.animation);
+      expect(preview?.silhouetteRow?.frames, hasLength(1));
     });
 
     test('a SOUND raises neither: it goes to the SE rows whichever way it '

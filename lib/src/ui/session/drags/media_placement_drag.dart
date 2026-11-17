@@ -19,6 +19,7 @@ import '../../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../../models/track_se_window.dart';
 import '../../../models/project_frame_rate.dart';
 import '../../../services/audio/audio_peaks_extractor.dart';
+import '../../../services/import/media_import_planner.dart' show placesAStill;
 import '../../timeline/timeline_drag_preview.dart';
 
 /// A FILE FROM THE POOL, HELD OVER THE TIMELINE — 「끄는 동안 보이는 것은
@@ -218,22 +219,24 @@ class MediaPlacementDrag {
   /// 끼운다」).
   ///
   /// What KIND of row, and how long its block, is the landing's own branch
-  /// asked at hover time: one picture becomes an image row holding the cut
-  /// (`planStillImageLayer`), and several become cels (`planSequenceLayer`).
-  /// The count is the pool's, which is the count the bake writes — so the
-  /// row drawn here is the row that appears.
+  /// asked at hover time ([placesAStill]): one picture of a kind that holds
+  /// one cel becomes an image row holding the cut (`planStillImageLayer`),
+  /// and the rest become cels (`planSequenceLayer`) — the kind the file's
+  /// preset places it as. The count is the pool's, the count the bake writes
+  /// — so the row drawn here is the row that appears.
   ///
   /// ⚠️Whether a row may go in that gap is NOT asked here: the rail's caret
   /// already asked it (`newRowInsertionForSlot`), and the caller only draws
   /// where that said yes.
   void showOnLayerSlot({required int slot, required String path}) {
     final count = _cellsFor(path) ?? 1;
+    final kind = (_assetFor(path)?.preset ?? const MediaPreset()).pictureKind;
     final cut = _cutFrameCount();
     // The name the landing gives the row ([mediaAssetNameFor]).
     final name = mediaAssetNameFor(_assetFor(path), path);
     _preview.value = MediaPlacementPreview(
       silhouetteSlot: slot,
-      silhouetteRow: count == 1
+      silhouetteRow: placesAStill(count, kind, ontoFrames: false)
           ? Layer(
               id: _previewRowId,
               name: name,

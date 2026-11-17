@@ -108,6 +108,21 @@ void main() {
     // ↩️「구워도 풀에 남음」 (09-11): both registered their file.
   });
 
+  // 🗣️F-429: 「레이어 타입(이미지,애니메이션)으로서 지정가능하고 그게
+  // 인식기준」 — the kind decides the shape, whatever file the row came from.
+  test('a placement is a STILL when it is one picture, of a kind that holds '
+      'one cel, placed as a layer of its own', () {
+    expect(placesAStill(1, LayerKind.image, ontoFrames: false), isTrue);
+    expect(placesAStill(1, LayerKind.animation, ontoFrames: false), isFalse);
+    expect(placesAStill(2, LayerKind.image, ontoFrames: false), isFalse);
+    expect(
+      placesAStill(1, LayerKind.image, ontoFrames: true),
+      isFalse,
+      reason: 'a row\'s frames take cels — a still is ONE cell there',
+    );
+    expect(LayerKind.bornOfOnePicture, LayerKind.image);
+  });
+
   test('the law: a placement registers when the layer draws from the file, '
       'or when a sound placed beside a baked picture still reads it', () {
     expect(placementRegisters(baked: false), isTrue);

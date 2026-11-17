@@ -1,5 +1,6 @@
 import '../../models/import/import_destination.dart';
 import '../../models/kept_span.dart';
+import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../text/app_strings.dart';
@@ -81,6 +82,7 @@ class ImportFileSettings {
     // MERGE was the default from 08-14. The import brings everything the
     // file holds, so a PSD comes in as its stack unless the row says merge.
     this.psd = PsdPlaceMode.expand,
+    this.pictureKind = LayerKind.bornOfOnePicture,
     this.inFrame = 0,
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
@@ -124,6 +126,12 @@ class ImportFileSettings {
   final MediaFitMode fit;
   final PsdPlaceMode psd;
 
+  /// The kind of layer a row of ONE picture comes in as — 이미지 or
+  /// 애니메이션, an image until someone picks another
+  /// ([LayerKind.bornOfOnePicture]). A row of more pictures takes it as far
+  /// as its cels allow, as a cut folder's row does (F-429).
+  final LayerKind pictureKind;
+
   /// The trim, in source frames/pages. [outFrame] null means "to the end",
   /// which is what an un-trimmed source is — storing the last index would
   /// go stale the moment the count is read.
@@ -158,6 +166,7 @@ class ImportFileSettings {
     ImportDestination? into,
     MediaFitMode? fit,
     PsdPlaceMode? psd,
+    LayerKind? pictureKind,
     int? inFrame,
     int? outFrame,
     bool clearOut = false,
@@ -173,6 +182,7 @@ class ImportFileSettings {
     into: into ?? this.into,
     fit: fit ?? this.fit,
     psd: psd ?? this.psd,
+    pictureKind: pictureKind ?? this.pictureKind,
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
@@ -190,6 +200,7 @@ class ImportFileSettings {
       other.into == into &&
       other.fit == fit &&
       other.psd == psd &&
+      other.pictureKind == pictureKind &&
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.movieParts == movieParts &&
@@ -205,6 +216,7 @@ class ImportFileSettings {
     into,
     fit,
     psd,
+    pictureKind,
     inFrame,
     outFrame,
     movieParts,

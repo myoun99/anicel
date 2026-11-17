@@ -105,6 +105,7 @@ void main() {
           inFrame: 2,
           outFrame: 5,
           fit: MediaFitMode.stretch,
+          pictureKind: LayerKind.animation,
           seName: 'A',
           dialogue: '쾅',
         ),
@@ -119,12 +120,14 @@ void main() {
         'in': 2,
         'out': 5,
         'fit': 'stretch',
+        'kind': 'animation',
         'seName': 'A',
         'dialogue': '쾅',
       });
       for (final start in const [
         MediaPreset(),
         MediaPreset(fit: MediaFitMode.born),
+        MediaPreset(pictureKind: LayerKind.bornOfOnePicture),
       ]) {
         expect(
           MediaAsset(path: '/a/door.wav', name: 'door', preset: start)
@@ -141,6 +144,7 @@ void main() {
         inFrame: 2,
         outFrame: 5,
         fit: MediaFitMode.stretch,
+        pictureKind: LayerKind.animation,
         seName: 'A',
         dialogue: '쾅',
       );
@@ -149,6 +153,7 @@ void main() {
         preset.copyWith(outFrame: 6),
         preset.copyWith(outFrame: null),
         preset.copyWith(fit: MediaFitMode.contain),
+        preset.copyWith(pictureKind: LayerKind.image),
         preset.copyWith(seName: 'B'),
         preset.copyWith(seName: null),
         preset.copyWith(dialogue: '탕'),

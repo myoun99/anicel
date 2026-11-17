@@ -4,6 +4,7 @@ import '../core/copy_with_sentinel.dart';
 import '../core/frozen_collections.dart';
 import '../core/path_names.dart' show fileNameOfPath, pathHash;
 import 'kept_span.dart';
+import 'layer_kind.dart';
 import 'media_identity.dart';
 
 export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
@@ -196,6 +197,7 @@ final class MediaPreset {
     this.inFrame = 0,
     this.outFrame,
     this.fit = MediaFitMode.born,
+    this.pictureKind = LayerKind.bornOfOnePicture,
     this.seName,
     this.dialogue,
   });
@@ -208,6 +210,12 @@ final class MediaPreset {
 
   /// How a placed picture meets the cut's canvas.
   final MediaFitMode fit;
+
+  /// The kind of layer the file comes in as when it is ONE picture — 이미지
+  /// or 애니메이션 (🗣️유저 2026-11-17, Q4: 「그림한장은 애초에 길이
+  /// 필요없어보이는데. 타입을 애니메이션으로할지 이미지로할지 정하게하는게
+  /// 좋을듯」; [LayerKind.bornOfOnePicture]).
+  final LayerKind pictureKind;
 
   /// A placed sound's block: its name tag — [placedSoundNameTag] when null
   /// — and its words, the entry's name when null ([placedSoundBlockOf]).
@@ -225,6 +233,7 @@ final class MediaPreset {
     int? inFrame,
     Object? outFrame = copyWithSentinel,
     MediaFitMode? fit,
+    LayerKind? pictureKind,
     Object? seName = copyWithSentinel,
     Object? dialogue = copyWithSentinel,
   }) => MediaPreset(
@@ -233,6 +242,7 @@ final class MediaPreset {
         ? this.outFrame
         : outFrame as int?,
     fit: fit ?? this.fit,
+    pictureKind: pictureKind ?? this.pictureKind,
     seName: identical(seName, copyWithSentinel)
         ? this.seName
         : seName as String?,
@@ -247,6 +257,8 @@ final class MediaPreset {
     if (inFrame != 0) 'in': inFrame,
     'out': ?outFrame,
     if (fit != MediaFitMode.born) 'fit': fit.name,
+    if (pictureKind != LayerKind.bornOfOnePicture)
+      'kind': pictureKind.toJson(),
     'seName': ?seName,
     'dialogue': ?dialogue,
   };
@@ -259,6 +271,10 @@ final class MediaPreset {
       inFrame: json['in'] as int? ?? 0,
       outFrame: json['out'] as int?,
       fit: MediaFitMode.values.asNameMap()[json['fit']] ?? MediaFitMode.born,
+      pictureKind: switch (json['kind']) {
+        final Object kind => LayerKind.fromJson(kind),
+        null => LayerKind.bornOfOnePicture,
+      },
       seName: json['seName'] as String?,
       dialogue: json['dialogue'] as String?,
     );
@@ -270,11 +286,13 @@ final class MediaPreset {
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.fit == fit &&
+      other.pictureKind == pictureKind &&
       other.seName == seName &&
       other.dialogue == dialogue;
 
   @override
-  int get hashCode => Object.hash(inFrame, outFrame, fit, seName, dialogue);
+  int get hashCode =>
+      Object.hash(inFrame, outFrame, fit, pictureKind, seName, dialogue);
 }
 
 /// One entry of the project's media pool (the Premiere/Resolve-style

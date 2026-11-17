@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
@@ -12,6 +13,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/placed_sound_conform.dart';
@@ -162,6 +165,109 @@ void main() {
       reason: 'two of its three frames placed; the file holds three',
     );
     await tester.pumpAndSettle();
+  });
+
+  // 🗣️F-429 (유저 2026-10-21): 「1장짜리 그림을 기본 이미지레이어로
+  // 자동지정해두지만 같은창에서 애니메이션레이어로 변경가능」 — a cut
+  // folder's picture; a file of one picture is the same family. 🗣️유저
+  // 2026-11-17 (Q4): 「기본 그림한장은 이미지」, a preset's to say.
+  group('a picture\'s kind', () {
+    Future<ImportColumn<Object?>> optionOf(
+      WidgetTester tester,
+      EditorSessionManager s,
+      String path, {
+      bool placeOnly = false,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(
+              session: s,
+              initialPaths: [path],
+              placeOnly: placeOnly,
+            ),
+          ),
+        ),
+      );
+      await settleLoadedPages(tester);
+      return tester
+          .widget<ImportFileTable>(find.byType(ImportFileTable))
+          .columns
+          .singleWhere((column) => column.id == 'option');
+    }
+
+    String said(LayerKind kind) => layerKindDisplayName(kind);
+
+    testWidgets('🚨one picture is asked it — an image until picked; picked '
+        '애니메이션, it lands as one cel of an animation layer', (
+      tester,
+    ) async {
+      final s = session();
+      final path = normalizedMediaPath(
+        (await tester.runAsync(() => writeSolidPng(tempDir, 'bg.png')))!,
+      );
+      final option = await optionOf(tester, s, path);
+      expect(option.cellWordOf(path), said(LayerKind.image));
+      expect(option.enabledFor(path, LayerKind.image), isTrue);
+
+      option.onPick([path], LayerKind.animation);
+      await tester.pump();
+      final picked = tester
+          .widget<ImportFileTable>(find.byType(ImportFileTable))
+          .columns
+          .singleWhere((column) => column.id == 'option');
+      expect(picked.cellWordOf(path), said(LayerKind.animation));
+
+      final before = {for (final layer in s.requireActiveCut.layers) layer.id};
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
+      final landed = s.requireActiveCut.layers.singleWhere(
+        (layer) => !before.contains(layer.id),
+      );
+      expect(landed.kind, LayerKind.animation);
+      expect(landed.frames, hasLength(1));
+      expect(
+        [for (final block in landed.timeline.values) block.length],
+        [1],
+        reason: 'an animation layer\'s cel is one comma, as a cut folder '
+            'lays its rows (F-429)',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🚨held by the pool, it starts as its preset says', (
+      tester,
+    ) async {
+      final s = session();
+      final path = normalizedMediaPath(
+        (await tester.runAsync(() => writeSolidPng(tempDir, 'bg.png')))!,
+      );
+      s.cutCommandCoordinator.updateMediaAssets([
+        MediaAsset(
+          path: path,
+          name: 'bg',
+          kind: MediaAssetKind.image,
+          preset: const MediaPreset(pictureKind: LayerKind.animation),
+        ),
+      ]);
+
+      final option = await optionOf(tester, s, path, placeOnly: true);
+
+      expect(option.cellWordOf(path), said(LayerKind.animation));
+    });
+
+    testWidgets('pictures of more than one cannot be an image — they come in '
+        'as cels, as a cut folder\'s row of many does', (tester) async {
+      final s = session();
+      final path = normalizedMediaPath(
+        (await tester.runAsync(() => writeThreeFrameGif(tempDir, 'b.gif')))!,
+      );
+
+      final option = await optionOf(tester, s, path);
+
+      expect(option.enabledFor(path, LayerKind.image), isFalse);
+      expect(option.cellWordOf(path), said(LayerKind.animation));
+    });
   });
 
   group('a picture', () {

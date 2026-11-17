@@ -927,6 +927,16 @@ enum LayerKind {
   /// 기본상태를 속이 찬 동그라미로 통일」); the image layer stopped on 09-25.
   bool get unnamedDrawingIsInbetween => this == LayerKind.animation;
 
+  /// The kind a row of ONE picture comes in as until someone picks another
+  /// — a cut folder's picture, a file of one picture in the import window,
+  /// and a pool file's preset alike. A row of more takes the kind as far as
+  /// its cels allow ([holdsSingleCel]).
+  ///
+  /// 🗣️F-429 (유저 2026-10-21): 「1장짜리 그림을 기본 이미지레이어로
+  /// 자동지정해두지만 같은창에서 애니메이션레이어로 변경가능」. 🗣️유저
+  /// 2026-11-17 (card 「파일마다 배치 기본값」-Q4): 「기본 그림한장은 이미지」.
+  static const LayerKind bornOfOnePicture = LayerKind.image;
+
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {
