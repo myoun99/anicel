@@ -83,4 +83,5 @@
 - In the TVPaint preset, the + key did not change the brush size.
 - Opening a TVPaint file with several clips showed a false warning.
 - Reading a video stopped right after rewinding it, sound exported to MP4 lost its first moment when opened again, and colors of videos exported on Windows were read wrong.
+- On Windows, a video's frame count came out two too many, and a jump showed the picture from two frames before.
 - Importing a JPEG with false size information closed the app.

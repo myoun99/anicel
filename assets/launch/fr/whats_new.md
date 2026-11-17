@@ -83,4 +83,5 @@
 - Dans le préréglage TVPaint, la touche + ne changeait pas la taille du pinceau.
 - Ouvrir un fichier TVPaint à plusieurs clips affichait un faux avertissement.
 - La lecture d'une vidéo s'arrêtait juste après un retour en arrière, le son exporté en MP4 perdait son tout début une fois rouvert, et les couleurs des vidéos exportées sous Windows étaient mal lues.
+- Sous Windows, une vidéo comptait deux images de trop, et un saut affichait l'image située deux images plus tôt.
 - Importer un JPEG aux informations de taille fausses fermait l'application.
