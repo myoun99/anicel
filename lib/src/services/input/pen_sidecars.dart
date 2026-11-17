@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
     show
         DeviceGestureSettings,
         PointerDeviceKind,
+        PointerEvent,
         computeHitSlop,
         kPrimaryButton,
         kPrimaryStylusButton,
@@ -12,6 +13,7 @@ import 'package:flutter/gestures.dart'
 
 import '../../native/qa_pen_ledger.dart';
 import 'pen_lean.dart';
+import 'pen_path.dart';
 import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
 import 'raw_pen_input_service.dart';
@@ -31,7 +33,7 @@ import 'wintab_pen_service.dart';
 ///   its own event cannot arrive late; the channel's could, and stood over it
 ///   for 150ms (mac-linux-pen-sidecar-opening).
 ///
-/// The brush canvas asks [freshReading] per pointer sample; the
+/// The brush canvas asks [readingOf] per pointer sample; the
 /// input inspector lists [channelServices] readouts beside the Wintab
 /// line.
 abstract final class PenSidecars {
@@ -80,6 +82,20 @@ abstract final class PenSidecars {
       }
     }
     return null;
+  }
+
+  /// The driver-side reading of [event]: the pressure its own point
+  /// carried where the platform's reader paired it with the driver
+  /// ([PenPath.drivenPressureOf] — a pen the OS hands over as a mouse), and
+  /// the freshest reading otherwise ([freshReading]).
+  ///
+  /// 🚨THE POINT'S OWN READING FIRST (pen-points-are-taken-off-the-ui-thread,
+  /// 2026-11-17): the freshest packet is the pen NOW. After a stall every
+  /// point of a merged move took the pressure the pen had when the move was
+  /// handled, not when it was drawn.
+  static ({double pressure, bool touching})? readingOf(PointerEvent event) {
+    final driven = PenPath.drivenPressureOf(event);
+    return driven != null ? _reading(driven, tip: false) : freshReading();
   }
 
   static ({double pressure, bool touching}) _reading(

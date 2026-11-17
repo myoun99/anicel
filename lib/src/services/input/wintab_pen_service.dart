@@ -23,8 +23,9 @@ class WintabPenService {
 
   static final WintabPenService instance = WintabPenService._();
 
-  /// Poll cadence: the Wintab queue holds ~128 packets and drivers report
-  /// 133–200Hz — 8ms drains comfortably ahead of loss.
+  /// Poll cadence: drivers report 133–200Hz, and the queue the reader asks
+  /// the driver for holds five seconds of them — 8ms drains far ahead of
+  /// loss.
   static const Duration pollInterval = Duration(milliseconds: 8);
 
   /// A pressure sample older than this no longer overrides pointer events
@@ -183,7 +184,7 @@ class WintabPenService {
       if (!_opened) {
         // The context needs the app window — retry until the runner
         // window exists (first frames of app start).
-        _opened = bridge.open();
+        _opened = bridge.open(within: freshWindow);
         if (!_opened) {
           return;
         }
@@ -205,6 +206,19 @@ class WintabPenService {
     if (_packetsWithoutPointer >= deadPathPacketBudget) {
       _demoteForSafety();
     }
+  }
+
+  /// What the driver's queue said while the stream is open: how far its
+  /// newest packet was behind the mouse message last handled, in ms (null
+  /// before one met a packet), and how many packets said the queue
+  /// overflowed before them — null while it is closed. The input inspector
+  /// shows it beside the packet.
+  ({int? gapMs, int overflowed})? heard() {
+    final bridge = _bridge;
+    if (!_opened || bridge == null) {
+      return null;
+    }
+    return (gapMs: bridge.clockGap(), overflowed: bridge.overflowed());
   }
 
   /// The driver's BUTTON state (raw Wintab bits) while the stream is live

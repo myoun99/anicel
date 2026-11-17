@@ -34,6 +34,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::w;
 
 use crate::points::{Batch, Lost, Point, book};
+use crate::wintab;
 
 /// The mouse's name among the contacts: past every pointer id, which is
 /// a word.
@@ -214,8 +215,17 @@ fn since_message(time: u32) -> i64 {
 }
 
 /// A mouse move's points: the moves since the newest written, the oldest
-/// first, each timed back from now by its milliseconds.
-fn mouse(view: HWND, l: LPARAM) {
+/// first, each timed back from now by its milliseconds — and each with the
+/// tablet driver's pressure at its milliseconds where a Wintab context is
+/// open ([`wintab::pressures_at`]).
+///
+/// 🚨PAIRED HERE, BY THE MOVE'S OWN MILLISECONDS: a pen the OS hands over as
+/// a mouse (Windows Ink off) carries no pressure, and the driver's packet
+/// the app read at the event was the NEWEST — after a stall, one taken long
+/// after the move (pen-points-are-taken-off-the-ui-thread). A move's
+/// microseconds are counted back from the message's handling, so the
+/// pairing is made on the clock both are stamped by before that.
+pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let client = of(l);
     let mut screen = client;
     // SAFETY: a window this subclass is on, and a local.
@@ -236,13 +246,16 @@ fn mouse(view: HWND, l: LPARAM) {
     let moves = moves_since((screen.x, screen.y, time), &history, *written);
     let lost = mouse_lost(found, moves.len(), *written);
     *written = Some((screen.x, screen.y, time));
+    let times: Vec<u32> = moves.iter().map(|&(_, _, at_time)| at_time).collect();
+    let pressures = wintab::pressures_at(time, &times);
     let points = moves
         .iter()
+        .zip(pressures)
         .rev()
-        .map(|&(x, y, at_time)| {
+        .map(|(&(x, y, at_time), pressure)| {
             let at = in_view(view, POINT { x, y });
             let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
-            Point::at(f64::from(at.x), f64::from(at.y), micros)
+            Point { pressure, ..Point::at(f64::from(at.x), f64::from(at.y), micros) }
         })
         .collect();
     let handed = (f64::from(client.x), f64::from(client.y));

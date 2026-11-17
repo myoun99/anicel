@@ -43,11 +43,13 @@ mod tests;
 mod wintab;
 
 /// v2 (F-176-Q9): a packet's record carries the twist, so it is eight
-/// floats where it was six.
+/// floats where it was six; v3: `qat_open` takes the window a packet gives
+/// a mouse move its pressure within, and the queue says how it went
+/// (`qat_overflowed` · `qat_clock_gap`).
 #[cfg(windows)]
 #[unsafe(no_mangle)]
 pub extern "C" fn qat_abi_version() -> i32 {
-    2
+    3
 }
 
 /// 1 when wintab32 loads AND it reports an installed driver and device.
@@ -72,18 +74,20 @@ pub unsafe extern "C" fn qat_device_name(out: *mut u16, cap: i32) -> i32 {
     wintab::device_name(room).map_or(0, |length| length as i32)
 }
 
-/// Opens the observe-only polling context. 1 on success; idempotent. 0 with
-/// no driver, or no app window yet.
+/// Opens the observe-only polling context, a packet giving a mouse move its
+/// pressure `within_ms` of it (none below 0). 1 on success; idempotent. 0
+/// with no driver, or no app window yet.
 #[cfg(windows)]
 #[unsafe(no_mangle)]
-pub extern "C" fn qat_open() -> i32 {
-    i32::from(wintab::open())
+pub extern "C" fn qat_open(within_ms: i32) -> i32 {
+    i32::from(wintab::open(within_ms.max(0) as u32))
 }
 
-/// Drains the queued packets into `out` as records of 8 floats — pressure
-/// 0..1, bearing, altitude, time in ms, buttons, oriented, twist, twisted
-/// (see `wintab::Scales::record`) — at most `cap` of them and at most 64.
-/// The record count; 0 with nothing queued, or no context open.
+/// Drains the queue and hands `out` the newest packets not handed yet as
+/// records of 8 floats — pressure 0..1, bearing, altitude, time in ms,
+/// buttons, oriented, twist, twisted (see `wintab::Scales::record`) — at
+/// most `cap` of them. The record count; 0 with nothing new, or no context
+/// open.
 ///
 /// # Safety
 /// `out` is null or `8 * cap` writable `f32`s.
@@ -96,6 +100,33 @@ pub unsafe extern "C" fn qat_poll(out: *mut f32, cap: i32) -> i32 {
     // SAFETY: see the function's contract.
     let out = unsafe { std::slice::from_raw_parts_mut(out, 8 * cap as usize) };
     wintab::poll(out) as i32
+}
+
+/// How many packets said the driver's queue overflowed before them since
+/// the context opened; 0 with none open.
+#[cfg(windows)]
+#[unsafe(no_mangle)]
+pub extern "C" fn qat_overflowed() -> i32 {
+    wintab::heard().map_or(0, |(overflowed, _)| overflowed.min(i32::MAX as u32) as i32)
+}
+
+/// How far the newest packet was behind the mouse message last handled, in
+/// ms of the message clock, into `out`: 1 when it was written, 0 before a
+/// mouse message met a packet or with no context open.
+///
+/// # Safety
+/// `out` is null or a writable `i32`.
+#[cfg(windows)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qat_clock_gap(out: *mut i32) -> i32 {
+    match wintab::heard().and_then(|(_, gap)| gap) {
+        Some(gap) if !out.is_null() => {
+            // SAFETY: see the function's contract.
+            unsafe { out.write(gap) };
+            1
+        }
+        _ => 0,
+    }
 }
 
 #[cfg(windows)]

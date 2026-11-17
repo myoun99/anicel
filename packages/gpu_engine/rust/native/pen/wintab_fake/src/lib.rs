@@ -28,11 +28,12 @@ pub struct Axis {
     pub resolution: u32,
 }
 
-/// The packet the pen asks for (TIME | BUTTONS | X | Y | NORMAL_PRESSURE |
-/// ORIENTATION), its fields in that order.
+/// The packet the pen asks for (STATUS | TIME | BUTTONS | X | Y |
+/// NORMAL_PRESSURE | ORIENTATION), its fields in that order.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Packet {
+    pub status: u32,
     pub time: u32,
     pub buttons: u32,
     pub x: i32,
@@ -57,7 +58,7 @@ pub const PACKET_MODE: usize = 27;
 pub const MOVE_MASK: usize = 28;
 
 const _: () = assert!(size_of::<Axis>() == 16);
-const _: () = assert!(size_of::<Packet>() == 32);
+const _: () = assert!(size_of::<Packet>() == 36);
 const _: () = assert!(size_of::<Context>() == 212);
 
 /// What the driver answers.
@@ -85,6 +86,8 @@ pub struct Script {
     pub queued: i32,
     /// How many more packets than it wrote WTPacketsGet says it wrote.
     pub claims_more: i32,
+    /// The longest queue WTQueueSizeSet takes.
+    pub queue_most: i32,
 }
 
 /// What the driver was asked.
@@ -97,6 +100,7 @@ pub struct Seen {
     pub window: isize,
     pub context: Context,
     pub enable: i32,
+    /// The queue size WTQueueSizeSet was last asked for.
     pub queue_size: i32,
     /// How many packets each WTPacketsGet asked for, the first eight.
     pub asked: [i32; 8],
@@ -125,6 +129,7 @@ impl Script {
         has_orientation: false,
         orientation: [Axis { min: 0, max: 0, units: 0, resolution: 0 }; 3],
         packets: [Packet {
+            status: 0,
             time: 0,
             buttons: 0,
             x: 0,
@@ -136,6 +141,7 @@ impl Script {
         }; 80],
         queued: 0,
         claims_more: 0,
+        queue_most: i32::MAX,
     };
 }
 
@@ -252,8 +258,10 @@ pub extern "system" fn WTClose(handle: isize) -> i32 {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "system" fn WTQueueSizeSet(_handle: isize, size: i32) -> i32 {
-    played(|played| played.seen.queue_size = size);
-    1
+    played(|played| {
+        played.seen.queue_size = size;
+        i32::from(size <= played.script.queue_most)
+    })
 }
 
 /// # Safety

@@ -58,10 +58,12 @@ void main() {
     Offset physical, {
     PointerDeviceKind kind = PointerDeviceKind.stylus,
     Offset? from,
+    int buttons = 0,
   }) => ui.PointerData(
     viewId: tester.view.viewId,
     change: change,
     kind: kind,
+    buttons: buttons,
     physicalX: physical.dx,
     physicalY: physical.dy,
     // The step from the pointer's last place, as the engine works it
@@ -156,6 +158,61 @@ void main() {
       handed,
     ], reason: 'the press, the move and the lift each ask, in order');
   });
+
+  testWidgets(
+    "a mouse's points carry their pressure beside the event — its range "
+    'measures none — and a stylus\'s in it',
+    (tester) async {
+      final heard = <PointerEvent>[];
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 30, top: 10),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerMove: (event) => heard.addAll(PenPath.eventsOf(event)),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      );
+      const handed = Offset(600, 400);
+      book(handed, [
+        (at: const Offset(500, 380), time: const Duration(milliseconds: 31), force: 0.25),
+        (at: const Offset(560, 390), time: const Duration(milliseconds: 35), force: null),
+        (at: handed, time: const Duration(milliseconds: 39), force: 0.75),
+      ], []);
+      List<double?> driven(PointerDeviceKind kind) {
+        heard.clear();
+        final buttons = kind == PointerDeviceKind.mouse ? kPrimaryButton : 0;
+        binding.pumpPointerPacket(
+          ui.PointerDataPacket(
+            data: [
+              for (final (change, at, from) in [
+                (ui.PointerChange.down, const Offset(400, 360), null),
+                (ui.PointerChange.move, handed, const Offset(400, 360)),
+                (ui.PointerChange.up, handed, null),
+              ])
+                datum(
+                  tester,
+                  change,
+                  at,
+                  kind: kind,
+                  from: from,
+                  buttons: change == ui.PointerChange.up ? 0 : buttons,
+                ),
+            ],
+          ),
+        );
+        return [for (final event in heard) PenPath.drivenPressureOf(event)];
+      }
+
+      expect(driven(PointerDeviceKind.mouse), [0.25, null, 0.75]);
+      expect(heard.first.original, isNotNull, reason: 'heard in its frame');
+      expect(driven(PointerDeviceKind.stylus), [null, null, null]);
+    },
+  );
 
   testWidgets('a datum the door keeps out still takes its message\'s points', (
     tester,

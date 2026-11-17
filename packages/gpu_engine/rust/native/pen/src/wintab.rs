@@ -6,12 +6,15 @@
 //!
 //! - wintab32.dll is loaded DYNAMICALLY; a machine without a driver is a
 //!   normal, silent state (`qat_available` 0) — never a link error.
-//! - Dart POLLS the packet queue (no window subclassing, no message pump
-//!   dependency): WTPacketsGet drains without CXO_MESSAGES.
+//! - The packet queue is drained without CXO_MESSAGES (no message pump
+//!   dependency) into the packets heard ([`Heard`]), by Dart's poll and by
+//!   the mouse reader at each move (points_win.rs), which gives each of its
+//!   points the pressure of the packet nearest it in time.
 //! - The Wintab structs and constants are declared here (the vendor header
 //!   set is not in the Windows SDK; the LOGCONTEXT layout and the PK_*
 //!   serialization order are stable, documented ABI).
 
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::sync::{Mutex, PoisonError};
 
@@ -29,6 +32,7 @@ const CXO_SYSTEM: u32 = 0x0001;
 
 // WTPKT field bits — a packet serializes its fields in ASCENDING bit order,
 // and [`Packet`] lists them in exactly that order.
+const PK_STATUS: u32 = 0x0002;
 const PK_TIME: u32 = 0x0004;
 const PK_BUTTONS: u32 = 0x0040;
 const PK_X: u32 = 0x0080;
@@ -36,7 +40,17 @@ const PK_Y: u32 = 0x0100;
 const PK_NORMAL_PRESSURE: u32 = 0x0400;
 const PK_ORIENTATION: u32 = 0x1000;
 const PACKET_DATA: u32 =
-    PK_TIME | PK_BUTTONS | PK_X | PK_Y | PK_NORMAL_PRESSURE | PK_ORIENTATION;
+    PK_STATUS | PK_TIME | PK_BUTTONS | PK_X | PK_Y | PK_NORMAL_PRESSURE | PK_ORIENTATION;
+
+/// A packet's status word: the context's queue overflowed before it.
+const TPS_QUEUE_ERR: u32 = 0x0002;
+
+/// The longest queue the driver is asked for, and the most packets heard.
+///
+/// ↩️It was 128: at a pen's 200 Hz, 0.64 s — and a UI thread held longer
+/// than that (a plugin's frames held it over a second, 11-17) lost every
+/// packet between. 1024 is five seconds of them.
+pub(crate) const QUEUE: usize = 1024;
 
 /// AXIS: a device axis's range, unit and resolution.
 #[repr(C)]
@@ -60,10 +74,11 @@ pub(crate) struct Orientation {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Packet {
+    pub(crate) status: u32,
     pub(crate) time: u32,
     pub(crate) buttons: u32,
-    x: i32,
-    y: i32,
+    pub(crate) x: i32,
+    pub(crate) y: i32,
     pub(crate) normal_pressure: u32,
     pub(crate) orientation: Orientation,
 }
@@ -95,7 +110,7 @@ struct LogContext {
 }
 
 const _: () = assert!(size_of::<Axis>() == 16);
-const _: () = assert!(size_of::<Packet>() == 32);
+const _: () = assert!(size_of::<Packet>() == 36);
 const _: () = assert!(size_of::<LogContext>() == 212);
 
 type WtInfoW = unsafe extern "system" fn(u32, u32, *mut c_void) -> u32;
@@ -212,7 +227,7 @@ impl Scales {
     /// wrong one); the twist about the barrel in degrees 0..360, clockwise as
     /// Wintab's orTwist runs; and 1 when the device declares a twist.
     pub(crate) fn record(&self, packet: &Packet) -> [f32; 8] {
-        let pressure = (f64::from(packet.normal_pressure) * self.pressure).clamp(0.0, 1.0);
+        let pressure = self.pressure_of(packet);
         let turn = |units: i32, span: i32| (f64::from(units) * 360.0 / f64::from(span)) as f32;
         let pose = packet.orientation;
         let (bearing, altitude, oriented) = match self.lean {
@@ -228,11 +243,99 @@ impl Scales {
         let time = packet.time as f32;
         [pressure as f32, bearing, altitude, time, packet.buttons as f32, oriented, twist, twisted]
     }
+
+    /// A packet's pressure, 0..1 of the device's axis.
+    pub(crate) fn pressure_of(&self, packet: &Packet) -> f64 {
+        (f64::from(packet.normal_pressure) * self.pressure).clamp(0.0, 1.0)
+    }
+}
+
+/// What the driver said of the pen, kept past the drain that took it: the
+/// newest [`QUEUE`] packets, the oldest first.
+#[derive(Debug, Default)]
+pub(crate) struct Heard {
+    packets: VecDeque<Packet>,
+    /// How many of the newest the app has not been handed ([`Heard::hand`]).
+    unhanded: usize,
+    /// How many packets said the queue overflowed before them.
+    pub(crate) overflowed: u32,
+    /// How far the newest packet was behind the mouse message last handled,
+    /// in ms of the message clock ([`Heard::behind`]).
+    pub(crate) gap: Option<i32>,
+}
+
+impl Heard {
+    /// Keeps `packets`, newer than every one kept, past the oldest kept.
+    pub(crate) fn hear(&mut self, packets: &[Packet]) {
+        for packet in packets {
+            if packet.status & TPS_QUEUE_ERR != 0 {
+                self.overflowed += 1;
+            }
+            if self.packets.len() == QUEUE {
+                self.packets.pop_front();
+            }
+            self.packets.push_back(*packet);
+        }
+        self.unhanded = (self.unhanded + packets.len()).min(self.packets.len());
+    }
+
+    /// The newest `room` of the packets the app was not handed yet, the
+    /// oldest first — and none of them again: what the app reads off a poll
+    /// is the pen now, and the newest is that.
+    pub(crate) fn hand(&mut self, room: usize) -> impl Iterator<Item = &Packet> {
+        let handed = self.unhanded.min(room);
+        self.unhanded = 0;
+        self.packets.iter().skip(self.packets.len() - handed)
+    }
+
+    /// The packet nearest `time` on the message clock, `within` ms of it at
+    /// most — of two as near, the newer.
+    ///
+    /// ⚠️Wintab's `pkTime` is read as the message clock's own milliseconds,
+    /// as Qt reads it; the input inspector shows how far apart the two run
+    /// ([`Heard::behind`]).
+    pub(crate) fn near(&self, time: u32, within: u32) -> Option<&Packet> {
+        let mut nearest: Option<(u32, &Packet)> = None;
+        for packet in self.packets.iter().rev() {
+            let after = packet.time.wrapping_sub(time) as i32;
+            if i64::from(after) < -i64::from(within) {
+                break; // and every packet before it, older still
+            }
+            let off = after.unsigned_abs();
+            if off <= within && nearest.is_none_or(|(best, _)| off < best) {
+                nearest = Some((off, packet));
+            }
+        }
+        nearest.map(|(_, packet)| packet)
+    }
+
+    /// Notes how far the newest packet is behind a message at `time`.
+    pub(crate) fn behind(&mut self, time: u32) {
+        self.gap = self.packets.back().map(|packet| time.wrapping_sub(packet.time) as i32);
+    }
 }
 
 struct Opened {
     context: *mut c_void,
     scales: Scales,
+    /// How far from a mouse move a packet may be to give it its pressure:
+    /// the app's own window for a fresh packet.
+    within: u32,
+    /// Room for the whole queue: one drain takes all of it.
+    room: Vec<Packet>,
+    heard: Heard,
+}
+
+impl Opened {
+    /// Takes every packet the driver has queued into what was heard.
+    fn drain(&mut self, driver: &Driver) {
+        // SAFETY: the open context and room for QUEUE packets.
+        let got = unsafe { (driver.packets_get)(self.context, QUEUE as i32, self.room.as_mut_ptr()) };
+        // ⛔A DRIVER IS NOT TRUSTED PAST WHAT IT WAS ASKED FOR: the C read on
+        // past its 64 for a count it was handed (native-memory-safety).
+        let got = (got.max(0) as usize).min(QUEUE);
+        self.heard.hear(&self.room[..got]);
+    }
 }
 
 struct Tablet {
@@ -284,9 +387,10 @@ pub(crate) fn device_name(out: Option<&mut [u16]>) -> Option<usize> {
     Some(length)
 }
 
-/// Opens the polling context. Idempotent. False with no driver, or no app
-/// window yet.
-pub(crate) fn open() -> bool {
+/// Opens the polling context, a packet giving a mouse move its pressure
+/// `within` ms of it. Idempotent. False with no driver, or no app window
+/// yet.
+pub(crate) fn open(within: u32) -> bool {
     let mut tablet = tablet();
     if tablet.opened.is_some() {
         return true;
@@ -325,35 +429,68 @@ pub(crate) fn open() -> bool {
         return false;
     }
     if let Some(queue_size_set) = driver.queue_size_set {
+        // 🚨A REFUSED SIZE LEAVES NO QUEUE AT ALL: WTQueueSizeSet deletes the
+        // old queue before it tries the new one, and the app is to ask again,
+        // smaller, until one is taken (Wintab 1.4) — so down to one packet.
+        let mut size = QUEUE as i32;
         // SAFETY: the context just opened.
-        unsafe { queue_size_set(opened, 128) };
+        while size > 0 && unsafe { queue_size_set(opened, size) } == 0 {
+            size /= 2;
+        }
     }
     let pressure = driver.info::<Axis>(WTI_DEVICES, DVC_NPRESSURE);
     let orientation = driver.info::<[Axis; 3]>(WTI_DEVICES, DVC_ORIENTATION);
     let scales = Scales::of(pressure, orientation);
-    tablet.opened = Some(Opened { context: opened, scales });
+    let room = vec![Packet::default(); QUEUE];
+    tablet.opened = Some(Opened { context: opened, scales, within, room, heard: Heard::default() });
     true
 }
 
-/// Drains the queued packets into `out`, a record of 8 floats each
-/// ([`Scales::record`]) for as many whole records as it holds, at most 64.
-/// The record count; 0 with nothing queued, or no context open.
+/// Drains the queue and hands `out` the newest of the packets not handed
+/// yet ([`Heard::hand`]), a record of 8 floats each ([`Scales::record`]) for
+/// as many whole records as it holds. The record count; 0 with nothing new,
+/// or no context open.
 pub(crate) fn poll(out: &mut [f32]) -> usize {
-    let tablet = tablet();
-    let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.as_ref()) else {
+    let mut tablet = tablet();
+    let tablet = &mut *tablet;
+    let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.as_mut()) else {
         return 0;
     };
-    let mut packets = [Packet::default(); 64];
-    let want = (out.len() / 8).min(packets.len());
-    // SAFETY: the open context and room for `want` packets.
-    let got = unsafe { (driver.packets_get)(opened.context, want as i32, packets.as_mut_ptr()) };
-    // ⛔A DRIVER IS NOT TRUSTED PAST WHAT IT WAS ASKED FOR: the C read on
-    // past its 64 for a count it was handed (native-memory-safety).
-    let got = (got.max(0) as usize).min(want);
-    for (packet, record) in packets[..got].iter().zip(out.chunks_exact_mut(8)) {
-        record.copy_from_slice(&opened.scales.record(packet));
+    opened.drain(&driver);
+    let scales = opened.scales;
+    let mut handed = 0;
+    for (packet, record) in opened.heard.hand(out.len() / 8).zip(out.chunks_exact_mut(8)) {
+        record.copy_from_slice(&scales.record(packet));
+        handed += 1;
     }
-    got
+    handed
+}
+
+/// The driver's pressure, 0..1, at each of `times` on the message clock —
+/// the packet's nearest it within the window the context opened with
+/// ([`Heard::near`]) — and NaN where no packet is; all NaN while no context
+/// is open. The queue drained first, and how far its newest packet is
+/// behind the message being handled, at `message`, noted.
+pub(crate) fn pressures_at(message: u32, times: &[u32]) -> Vec<f64> {
+    let mut tablet = tablet();
+    let tablet = &mut *tablet;
+    let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.as_mut()) else {
+        return vec![f64::NAN; times.len()];
+    };
+    opened.drain(&driver);
+    opened.heard.behind(message);
+    let (heard, scales, within) = (&opened.heard, opened.scales, opened.within);
+    let pressure = |time| heard.near(time, within).map_or(f64::NAN, |packet| scales.pressure_of(packet));
+    times.iter().map(|&time| pressure(time)).collect()
+}
+
+/// How many packets said the queue overflowed before them since the
+/// context opened, and how far the newest was behind the mouse message last
+/// handled ([`Heard`]); None while no context is open.
+pub(crate) fn heard() -> Option<(u32, Option<i32>)> {
+    let tablet = tablet();
+    let heard = &tablet.opened.as_ref()?.heard;
+    Some((heard.overflowed, heard.gap))
 }
 
 pub(crate) fn close() {

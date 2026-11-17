@@ -105,11 +105,17 @@ external int _available();
 @Native<Int32 Function(Pointer<Uint16>, Int32)>(symbol: 'qat_device_name')
 external int _deviceName(Pointer<Uint16> out, int cap);
 
-@Native<Int32 Function()>(symbol: 'qat_open')
-external int _open();
+@Native<Int32 Function(Int32)>(symbol: 'qat_open')
+external int _open(int withinMs);
 
 @Native<Int32 Function(Pointer<Float>, Int32)>(symbol: 'qat_poll')
 external int _poll(Pointer<Float> out, int cap);
+
+@Native<Int32 Function()>(symbol: 'qat_overflowed')
+external int _overflowed();
+
+@Native<Int32 Function(Pointer<Int32>)>(symbol: 'qat_clock_gap')
+external int _clockGap(Pointer<Int32> out);
 
 @Native<Void Function()>(symbol: 'qat_close')
 external void _close();
@@ -139,8 +145,10 @@ external int _rawPoll(Pointer<Float> out, int cap);
 class QaTabletBridge {
   QaTabletBridge._();
 
-  /// v2 (F-176-Q9): a packet's record carries the twist.
-  static const int abiVersion = 2;
+  /// v2 (F-176-Q9): a packet's record carries the twist; v3 the context
+  /// opens with the window a packet gives a mouse move its pressure within,
+  /// and the queue says how it went ([overflowed] · [clockGap]).
+  static const int abiVersion = 3;
 
   /// The Raw Input observer's own ABI: v2 (desktop-pen-tilt) hands over the
   /// report's tilt as well, v3 (F-176-Q9) its twist.
@@ -173,6 +181,8 @@ class QaTabletBridge {
   static const int _rawFloats = 7;
   final Pointer<Float> _rawBuffer = malloc<Float>(_rawFloats);
 
+  final Pointer<Int32> _gapBuffer = malloc<Int32>();
+
   /// Whether wintab32 loads AND an installed driver answers.
   bool get available => _available() != 0;
 
@@ -189,11 +199,14 @@ class QaTabletBridge {
     }
   }
 
-  /// Opens the observe-only polling context (idempotent). False = no
-  /// driver / no app window yet.
-  bool open() => _open() != 0;
+  /// Opens the observe-only polling context (idempotent), a packet giving
+  /// a mouse move the OS saw its pressure [within] of it (the Windows mouse
+  /// reader pairs them — native/pen points_win.rs). False = no driver / no
+  /// app window yet.
+  bool open({required Duration within}) => _open(within.inMilliseconds) != 0;
 
-  /// Drains queued driver packets (empty list when idle/closed).
+  /// Drains the driver's queue and hands over the newest packets not
+  /// handed yet, the oldest first (empty list when idle/closed).
   List<QaTabletPacket> poll() {
     final count = _poll(_pollBuffer, _pollCapacity);
     if (count <= 0) {
@@ -220,6 +233,15 @@ class QaTabletBridge {
         timeMs: floats[base + 3],
         buttons: floats[base + 4].toInt(),
       );
+
+  /// How many packets said the driver's queue overflowed before them since
+  /// the context opened.
+  int overflowed() => _overflowed();
+
+  /// How far the driver's newest packet was behind the mouse message last
+  /// handled, in milliseconds of the message clock — null before a mouse
+  /// message met a packet.
+  int? clockGap() => _clockGap(_gapBuffer) != 0 ? _gapBuffer.value : null;
 
   void close() => _close();
 

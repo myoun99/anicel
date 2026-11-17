@@ -507,7 +507,12 @@ class _InspectorCard extends StatelessWidget {
                                 padding: const EdgeInsets.only(left: 6),
                                 child: Text(
                                   'wt p='
-                                  '${packet.pressure.toStringAsFixed(2)}',
+                                  '${packet.pressure.toStringAsFixed(2)}'
+                                  // How far the driver's newest packet ran
+                                  // behind the mouse message, and the
+                                  // overflows its queue said: a pkTime on
+                                  // another clock pairs no mouse point.
+                                  '${_wintabHeard()}',
                                   key: const ValueKey<String>(
                                     'input-inspector-wintab',
                                   ),
@@ -647,6 +652,15 @@ class _InspectorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// What the tablet driver's queue said ([WintabPenService.heard]), as the
+/// strip says it.
+String _wintabHeard() {
+  final heard = WintabPenService.instance.heard();
+  return heard == null
+      ? ''
+      : ' gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
 }
 
 /// What the point book lost ([QaPenPoints.lost]), by why, as the strip

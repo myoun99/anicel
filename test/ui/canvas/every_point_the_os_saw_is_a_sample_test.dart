@@ -14,7 +14,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/native/qa_pen_points.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/pen_path.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -58,6 +60,39 @@ void main() {
 
       expect(merged.where((dab) => dab.center.y > 13), isNotEmpty);
       expect(_look(merged), _look(apart));
+    },
+  );
+
+  testWidgets(
+    'a pen the OS hands over as a mouse lays each point at the pressure the '
+    "driver gave it, as a stylus lays its own — not the newest packet's",
+    (tester) async {
+      final stylus = await _line(
+        tester,
+        _pressureAndSpeed,
+        _stroke(PointerDeviceKind.stylus),
+      );
+      final wintab = WintabPenService.instance;
+      WintabPenService.debugClockOverride = () => DateTime(2024);
+      wintab.debugPollOverride = () => const [];
+      wintab.start();
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0.9, timeMs: 0, buttons: 1),
+      );
+      final mouse = await _line(
+        tester,
+        _pressureAndSpeed,
+        _stroke(PointerDeviceKind.mouse),
+      );
+      // The poll timer must die before the binding's pending-timer check.
+      wintab.debugReset();
+
+      expect(
+        stylus.map((dab) => dab.pressure).toSet(),
+        hasLength(greaterThan(2)),
+        reason: 'a line of the points\' own pressures',
+      );
+      expect(_look(mouse), _look(stylus));
     },
   );
 
@@ -154,14 +189,38 @@ typedef _Event = ({
   List<_Point>? points,
 });
 
-/// The press at [point], handled then; the OS saw it at [seenAt].
-_Event _press(_Point point, {Duration? seenAt}) => (
+/// A press, a move the OS merged three points into and the lift, each
+/// point the OS saw at a pressure of its own, handed over as [kind]: a
+/// stylus measuring 0..1 on its events, a mouse measuring none.
+List<_Event> _stroke(PointerDeviceKind kind) {
+  final least = kind == PointerDeviceKind.mouse ? 1.0 : 0.0;
+  return [
+    _press(_p(4, 8, 0, 0.5), seenAt: _ms(0), kind: kind, pressureMin: least),
+    _merged(
+      [_p(20, 10, 8, 0.2), _p(36, 16, 13, 0.3), _p(60, 12, 30, 0.8)],
+      kind: kind,
+      pressureMin: least,
+    ),
+    _lift(_p(60, 12, 34, 0), kind: kind, pressureMin: least),
+  ];
+}
+
+/// The press at [point], handled then; the OS saw it at [seenAt]. A
+/// stylus's own pressure reads from [pressureMin] to 1 — Flutter's minimum,
+/// 1, is a range of nothing.
+_Event _press(
+  _Point point, {
+  Duration? seenAt,
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
+  double pressureMin = 1,
+}) => (
   made: (tester) => PointerDownEvent(
     pointer: 1,
-    kind: PointerDeviceKind.stylus,
+    kind: kind,
     position: canvasGlobalOffset(tester, point.at),
     timeStamp: point.time,
     pressure: point.force,
+    pressureMin: pressureMin,
     pressureMax: 1,
   ),
   points: seenAt == null
@@ -170,25 +229,36 @@ _Event _press(_Point point, {Duration? seenAt}) => (
 );
 
 /// A move the OS merged [points] into — the newest is the message's own.
-_Event _merged(List<_Point> points) => (
+_Event _merged(
+  List<_Point> points, {
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
+  double pressureMin = 1,
+}) => (
   made: (tester) => PointerMoveEvent(
     pointer: 1,
-    kind: PointerDeviceKind.stylus,
+    kind: kind,
     position: canvasGlobalOffset(tester, points.last.at),
     timeStamp: points.last.time,
     pressure: points.last.force,
+    pressureMin: pressureMin,
     pressureMax: 1,
   ),
   points: points.length == 1 ? null : points,
 );
 
 /// The lift at [point], with the moves the OS merged into it [before].
-_Event _lift(_Point point, {List<_Point> before = const []}) => (
+_Event _lift(
+  _Point point, {
+  List<_Point> before = const [],
+  PointerDeviceKind kind = PointerDeviceKind.stylus,
+  double pressureMin = 1,
+}) => (
   made: (tester) => PointerUpEvent(
     pointer: 1,
-    kind: PointerDeviceKind.stylus,
+    kind: kind,
     position: canvasGlobalOffset(tester, point.at),
     timeStamp: point.time,
+    pressureMin: pressureMin,
     pressureMax: 1,
   ),
   points: before.isEmpty ? null : [...before, point],

@@ -37,6 +37,12 @@ abstract final class PenPath {
     'the points the OS saw',
   );
 
+  /// The pressure a MOUSE's point carried, by the event made at it — what
+  /// the mouse's range of nothing cannot ([drivenPressureOf]).
+  static final Expando<double> _driven = Expando<double>(
+    "a mouse point's pressure",
+  );
+
   /// Pairs [event], made of [datum] at [ratio] physical pixels a logical
   /// one, with the points the platform's reader wrote for its message.
   /// Every datum a message makes, as it comes in — ahead of every gate,
@@ -85,34 +91,43 @@ abstract final class PenPath {
     final made = <PointerEvent>[];
     var before = original.position - original.delta;
     for (final point in points) {
-      final at = _at(original, point, before, event.transform);
-      made.add(at);
+      final at = _at(original, point, before);
+      final pressure = point.pressure;
+      if (pressure != null && original.kind == PointerDeviceKind.mouse) {
+        _driven[at] = pressure;
+      }
+      made.add(at.transformed(event.transform));
       before = at.position;
     }
     return made;
   }
+
+  /// The pressure, 0..1, the point [event] was made at carried where it is
+  /// a MOUSE's — or null. A mouse's points carry one where the platform's
+  /// reader read it for that moment: on Windows, the tablet driver's packet
+  /// nearest the move (native/pen points_win.rs) — a pen the OS hands over
+  /// as a mouse.
+  static double? drivenPressureOf(PointerEvent event) =>
+      _driven[event.original ?? event];
 
   /// [original] made over at [point], moved from [before].
   static PointerEvent _at(
     PointerEvent original,
     OsPoint point,
     Offset before,
-    Matrix4? transform,
   ) {
     final position = Offset(point.x, point.y);
     final pressure = point.pressure;
-    return original
-        .copyWith(
-          position: position,
-          delta: position - before,
-          timeStamp: point.at,
-          pressure: pressure == null
-              ? null
-              : original.pressureMin +
-                    pressure * (original.pressureMax - original.pressureMin),
-          tilt: point.tilt,
-          orientation: point.orientation,
-        )
-        .transformed(transform);
+    return original.copyWith(
+      position: position,
+      delta: position - before,
+      timeStamp: point.at,
+      pressure: pressure == null
+          ? null
+          : original.pressureMin +
+                pressure * (original.pressureMax - original.pressureMin),
+      tilt: point.tilt,
+      orientation: point.orientation,
+    );
   }
 }
