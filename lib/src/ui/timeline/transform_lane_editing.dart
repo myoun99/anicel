@@ -322,11 +322,12 @@ PropertyTrack<T> laneResetAt<T>(
       lane.withKey(frame, value, outgoing: outgoing);
 }
 
-/// [lane] put back to [value] at each of [frames] ([laneResetAt]) — at
-/// every one, or, [keyedFramesOnly], at the keys it holds there alone —
-/// the one walk every group's Reset takes. An unkeyed lane already shows
-/// its rest everywhere and comes back as it is: a Reset never authors
-/// animation (R5, 유저 2026-08-09: 「키를 삭제하진 않고 값만 리셋」).
+/// [lane] put back at each of [frames] by [resetAt] — [laneResetAt] at
+/// the group's rest — at every one, or, [keyedFramesOnly], at the keys it
+/// holds there alone: the one walk every group's Reset takes. An unkeyed
+/// lane already shows its rest everywhere and comes back as it is: a Reset
+/// never authors animation (R5, 유저 2026-08-09: 「키를 삭제하진 않고 값만
+/// 리셋」).
 ///
 /// ↩️Each group walked its own copy — the transform's, the name tag's,
 /// the effect's colour and number, the sound's — until the sound's
@@ -335,12 +336,8 @@ PropertyTrack<T> laneResetAt<T>(
 PropertyTrack<T> laneResetOver<T>(
   PropertyTrack<T> lane,
   Iterable<int> frames,
-  T value, {
-  required KeyValueSpace<T> space,
+  PropertyTrack<T> Function(PropertyTrack<T> lane, int frame) resetAt, {
   required bool keyedFramesOnly,
-  KeyExit? outgoing,
-  PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
-  keyed,
 }) {
   if (lane.isEmpty) {
     return lane;
@@ -348,14 +345,7 @@ PropertyTrack<T> laneResetOver<T>(
   var next = lane;
   for (final frame in frames) {
     if (!keyedFramesOnly || lane.keyAt(frame) != null) {
-      next = laneResetAt(
-        next,
-        frame,
-        value,
-        space: space,
-        outgoing: outgoing,
-        keyed: keyed,
-      );
+      next = resetAt(next, frame);
     }
   }
   return next;
@@ -400,10 +390,9 @@ TransformTrack? transformTrackWithGroupReset(
     final next = laneResetOver(
       lane,
       frames,
-      value,
-      space: space,
+      (next, frame) =>
+          laneResetAt(next, frame, value, space: space, keyed: keyed),
       keyedFramesOnly: keyedFramesOnly,
-      keyed: keyed,
     );
     return next == lane ? null : next;
   }

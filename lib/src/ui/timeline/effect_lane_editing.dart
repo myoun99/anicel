@@ -25,6 +25,7 @@ import 'property_lane_lens.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import 'transform_lane_editing.dart'
     show
+        laneResetAt,
         laneResetOver,
         transformLaneLens,
         transformTrackWithGroupReset,
@@ -266,8 +267,12 @@ List<LayerEffect>? effectsWithGroupReset(
         final reset = laneResetOver(
           keys,
           frames,
-          spec.defaultValue.toInt(),
-          space: argbKeySpace,
+          (next, frame) => laneResetAt(
+            next,
+            frame,
+            spec.defaultValue.toInt(),
+            space: argbKeySpace,
+          ),
           keyedFramesOnly: keyedFramesOnly,
         );
         if (reset != keys) {
@@ -291,10 +296,14 @@ List<LayerEffect>? effectsWithGroupReset(
       final track = laneResetOver(
         parameter.track,
         frames,
-        spec.defaultValue,
-        space: spec.keySpace,
+        (next, frame) => laneResetAt(
+          next,
+          frame,
+          spec.defaultValue,
+          space: spec.keySpace,
+          outgoing: spec.keyExit,
+        ),
         keyedFramesOnly: keyedFramesOnly,
-        outgoing: spec.keyExit,
       );
       if (track == parameter.track) {
         continue;

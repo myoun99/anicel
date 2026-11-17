@@ -8,7 +8,7 @@ import '../../models/se_sound.dart';
 import '../../models/transform_track.dart' show doubleKeySpace;
 import '../text/readout_text.dart' show columnValueOf;
 import 'se_sound_lane_policy.dart';
-import 'transform_lane_editing.dart' show laneResetOver;
+import 'transform_lane_editing.dart' show laneResetAt, laneResetOver;
 
 /// Adds a key at [frameIndex] on member lane [laneId] holding what the row
 /// plays there (AE: keying a property freezes what it currently shows), or
@@ -118,8 +118,8 @@ SeSound? seSoundWithGroupReset(
       laneResetOver(
         lane,
         frames,
-        rest,
-        space: doubleKeySpace,
+        (next, frame) =>
+            laneResetAt(next, frame, rest, space: doubleKeySpace),
         keyedFramesOnly: keyedFramesOnly,
       );
 
