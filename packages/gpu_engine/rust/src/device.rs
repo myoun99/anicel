@@ -9,7 +9,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
-use crate::kernels::shared::{built_here, put_built_here};
+use crate::kernels::shared::{Counted, built_here, put_built_here};
 use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
 /// How long a wait for the GPU is waited out before it is answered that the
@@ -696,7 +696,21 @@ impl Engine {
     /// till it is let go of ([`let_go`], [`let_go_unwaited`]), on this
     /// engine's thread ([`Handed`]).
     pub(crate) fn hands<T>(&self, made: T) -> *mut T {
-        Box::into_raw(Box::new(Handed { kept: made, thread: self.thread.clone() })).cast()
+        self.handed(made, None)
+    }
+
+    /// `made`, handed out as [`Self::hands`] hands a thing, with the bytes
+    /// it counts ([`Counted`]) beside it: counted off as its free lets go
+    /// of it, before the thing goes to its engine's thread
+    /// ([`let_go_unwaited`]) — so what reads the count right after the free
+    /// reads them gone, as when the free counted them off by hand.
+    pub(crate) fn hands_counted<T>(&self, made: T, counted: Counted) -> *mut T {
+        self.handed(made, Some(counted))
+    }
+
+    fn handed<T>(&self, made: T, counted: Option<Counted>) -> *mut T {
+        let thread = self.thread.clone();
+        Box::into_raw(Box::new(Handed { kept: made, thread, counted })).cast()
     }
 
     /// This engine as the ABI hands one out, [`gpu_engine_close`]'s to let
@@ -1935,6 +1949,9 @@ unsafe impl<T> Send for Sent<T> {}
 struct Handed<T> {
     kept: T,
     thread: EngineThread,
+    /// The bytes it counts among the engine's live ones, where it counts
+    /// any ([`Engine::hands_counted`]).
+    counted: Option<Counted>,
 }
 
 /// `handed`'s whole, and the thread it is let go of on; none of a null.
@@ -2049,15 +2066,20 @@ pub(crate) unsafe fn taken_bytes<T>(handed: *mut T) -> T {
 /// off where the thing is dropped (`HELD_BYTES`, `READOUT_BYTES`,
 /// `FLOOD_BYTES`; `KEPT_BYTES` was the fourth till a screen's free came
 /// here, 2026-11-16 — kernels/composite/abi.rs) and would read late, to
-/// the app's tests and the leak pins alike. ⚠️A verb that lets go here
-/// counts off what its thing counted before it does, on its caller's
-/// thread.
+/// the app's tests and the leak pins alike. What its thing counts
+/// ([`Engine::hands_counted`]) is counted off here, on its caller's
+/// thread, before the rest goes — no free has the counting off to forget.
+/// ↩️Each free counted off its own by hand till 2026-11-17 (`MASK_BYTES`,
+/// `STAMP_PICTURE_BYTES` — live-bytes-are-counted-by-hand-in-four-places);
+/// a screen counts off its part itself, by what its last body told
+/// (kernels/composite/abi.rs).
 ///
 /// # Safety
 /// `handed` came from [`Engine::hands`], and is let go of once.
 pub(crate) unsafe fn let_go_unwaited<T: 'static>(handed: *mut T) {
     // SAFETY: see the function's contract.
-    if let Some((thread, whole)) = unsafe { taken(handed) } {
+    if let Some((thread, mut whole)) = unsafe { taken(handed) } {
+        drop(whole.counted.take());
         thread.lets_go(whole);
     }
 }

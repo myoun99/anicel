@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::kernels::effects::blur::TileRect;
+use crate::kernels::shared::Counted;
 
 /// The bytes every hold keeps, kept and not let go.
 static HELD_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -44,17 +45,12 @@ pub(crate) struct Made {
 struct Held {
     rect: TileRect,
     made: Made,
+    _counted: Counted,
 }
 
-impl Held {
+impl Made {
     fn bytes(&self) -> u64 {
-        self.made.put.size() + self.made.under.as_ref().map_or(0, wgpu::Buffer::size)
-    }
-}
-
-impl Drop for Held {
-    fn drop(&mut self) {
-        HELD_BYTES.fetch_sub(self.bytes(), Ordering::Relaxed);
+        self.put.size() + self.under.as_ref().map_or(0, wgpu::Buffer::size)
     }
 }
 
@@ -77,9 +73,8 @@ impl HeldChains {
 
     /// Keeps `made` over `rect` under `id`, letting go of what it kept.
     pub(crate) fn keep(&self, id: u32, rect: TileRect, made: Made) {
-        let held = Held { rect, made };
-        HELD_BYTES.fetch_add(held.bytes(), Ordering::Relaxed);
-        self.held().insert(id, held);
+        let counted = Counted::among(&HELD_BYTES, made.bytes());
+        self.held().insert(id, Held { rect, made, _counted: counted });
     }
 
     /// Lets go of what `id` keeps, if anything.
@@ -89,7 +84,7 @@ impl HeldChains {
 
     /// The bytes `id` keeps — none where it keeps nothing.
     pub(crate) fn bytes_of(&self, id: u32) -> u64 {
-        self.held().get(&id).map_or(0, Held::bytes)
+        self.held().get(&id).map_or(0, |held| held.made.bytes())
     }
 
     fn held(&self) -> MutexGuard<'_, HashMap<u32, Held>> {

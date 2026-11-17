@@ -2,7 +2,8 @@
 //! `device.rs` (the-ui-thread-never-enters-the-driver 1b, 2026-11-14), one
 //! of two:
 //!
-//! - the engine's — `Engine::hands`, and `let_go` and `let_go_unwaited`,
+//! - the engine's — `Engine::hands` (or `Engine::hands_counted`, with the
+//!   bytes it counts beside it), and `let_go` and `let_go_unwaited`,
 //!   which let go of a thing on the thread of the engine that made it
 //!   (`Handed` has why) — for what holds, or comes to hold, anything of the
 //!   device;
@@ -52,7 +53,8 @@ enum Door {
 
 /// The door `body` hands its thing out by, where it names one itself.
 fn hands_out_by(body: &str) -> Option<Door> {
-    match (body.contains(".hands("), hands_out_bytes(body)) {
+    let engines = body.contains(".hands(") || body.contains(".hands_counted(");
+    match (engines, hands_out_bytes(body)) {
         (true, false) => Some(Door::Engines),
         (false, true) => Some(Door::Bytes),
         _ => None,

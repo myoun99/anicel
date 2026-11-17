@@ -1,7 +1,10 @@
 //! Bytes counted for as long as what holds them is alive. A kind of thing
 //! the app keeps on the GPU counts its own in a static, and each one made
 //! has a [`Counted`] beside its buffer: added as it is made, taken off as
-//! it is dropped — no free has the taking to forget. What is read of the
+//! it is dropped — no free has the taking to forget. A thing the ABI hands
+//! out has it beside it in its hand (`Engine::hands_counted`), taken off as
+//! its free lets go of it, on the free's own thread — where the GC's free
+//! waits for none of the rest. What is read of the
 //! static is what was made and not yet freed, which is how a test sees a
 //! free that is gone: it answers every other test as one that frees (관제,
 //! connection-round-checklist 2026-11-08 00:06: a leak mutant is not an

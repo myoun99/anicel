@@ -22,7 +22,7 @@ use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, TileAt, TileSet};
 use crate::kernels::mesh::MeshGrid;
 use crate::kernels::pool::{Cel, Pool};
-use crate::kernels::shared::ResampleMap;
+use crate::kernels::shared::{Counted, ResampleMap};
 use crate::kernels::warp::{Boxed, Window};
 use crate::kernels::write::Change;
 
@@ -659,8 +659,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
             rgba,
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         );
-        STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
-        engine.hands(StampPicture { pixels, size: (width, height) })
+        kept(engine, Some(pixels), (width, height))
     })
 }
 
@@ -781,8 +780,8 @@ fn kept(engine: &Engine, pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut
     let Some(pixels) = pixels else {
         return std::ptr::null_mut();
     };
-    STAMP_PICTURE_BYTES.fetch_add(pixels.size(), Ordering::Relaxed);
-    engine.hands(StampPicture { pixels, size })
+    let counted = Counted::among(&STAMP_PICTURE_BYTES, pixels.size());
+    engine.hands_counted(StampPicture { pixels, size }, counted)
 }
 
 /// `picture`'s pixels at `into`, row after row, once the GPU has made them:
@@ -815,10 +814,6 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_read(
 /// `gpu_engine_stamp_picture_carried` or `gpu_engine_stamp_picture_meshed`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stamp_picture_free(picture: *mut StampPicture) {
-    // SAFETY: see the function's contract.
-    if let Some(picture) = unsafe { picture.as_ref() } {
-        STAMP_PICTURE_BYTES.fetch_sub(picture.pixels.size(), Ordering::Relaxed);
-    }
     // SAFETY: see the function's contract.
     unsafe { let_go_unwaited(picture) };
 }

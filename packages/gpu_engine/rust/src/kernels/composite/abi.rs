@@ -30,7 +30,7 @@ use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::Pool;
-use crate::kernels::shared::{ResampleMap, ResampleMode, words_buffer};
+use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
 use super::halvings::Camera;
@@ -70,8 +70,7 @@ impl MaskPlane {
     /// `engine` — kept for the app, counted among its masks until it lets
     /// it go ([`gpu_engine_mask_free`]).
     pub(crate) fn kept(engine: &Engine, plane: wgpu::Buffer, at: (i32, i32), size: MaskBox) -> *mut MaskPlane {
-        MASK_BYTES.fetch_add(size.bytes(), Ordering::Relaxed);
-        engine.hands(MaskPlane { plane, at, size })
+        engine.hands_counted(MaskPlane { plane, at, size }, Counted::among(&MASK_BYTES, size.bytes()))
     }
 
     pub(crate) fn mask(&self) -> Mask<'_> {
@@ -541,10 +540,6 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
 /// `gpu_engine_selection_mask_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
-    // SAFETY: see the function's contract.
-    if let Some(mask) = unsafe { mask.as_ref() } {
-        MASK_BYTES.fetch_sub(mask.size.bytes(), Ordering::Relaxed);
-    }
     // SAFETY: see the function's contract.
     unsafe { let_go_unwaited(mask) };
 }
