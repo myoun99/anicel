@@ -118,6 +118,73 @@ class TextMeasure {
     return size;
   });
 
+  /// The mark a line is cut with ([TextOverflow.ellipsis] — Flutter's own).
+  static const String ellipsis = '…';
+
+  /// The least width [text] still READS in where a line is cut
+  /// ([TextOverflow.ellipsis]): the whole of it, or — where that is wider —
+  /// its first letter and the [ellipsis] it is cut with, the rest in its
+  /// tooltip (`EllipsisText`). A single letter has no cut that reads.
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q2 (유저 2026-11-18):
+  /// 「단추마다 첫 글자는 보이는 폭」.
+  ///
+  /// ⚠️READ OFF THE CUT LINE, not summed: the engine sets the mark in the
+  /// face of the letter before it, so the letter and the mark measured
+  /// apart were wider than the line by 0.26 px in Latin and 0.92 in Hangul
+  /// (measured 2026-11-18) — a floor that much too wide.
+  double readableWidthOf(String text) {
+    final whole = size(text).width;
+    final letters = text.characters;
+    if (letters.length < 2) {
+      return whole;
+    }
+    final first = letters.first;
+    final apart = size(first).width + size(ellipsis).width;
+    final cut = _cut.resolve(text, () {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: _direction,
+        textScaler: _scaler,
+        maxLines: 1,
+        ellipsis: ellipsis,
+        // Short of the whole, so the line is cut even where the two apart
+        // are wider than it (「콘티」: its 「콘…」 is narrower still).
+      )..layout(maxWidth: math.min(apart, whole - _shortOfWhole));
+      // The first letter's box runs on through the mark after it.
+      final kept = painter.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: first.length),
+      );
+      final more = painter.getBoxesForSelection(
+        TextSelection(
+          baseOffset: first.length,
+          extentOffset: first.length + letters.elementAt(1).length,
+        ),
+      );
+      painter.dispose();
+      // A second letter that fits too says nothing of the first's least:
+      // the two measured apart stand, wider but never short.
+      return kept.isEmpty || more.isNotEmpty
+          ? apart
+          : kept.map((box) => box.right).reduce(math.max);
+    });
+    return math.min(whole, cut);
+  }
+
+  /// How far short of a whole line [readableWidthOf] lays it, to see it cut
+  /// — less than any letter, more than the engine's rounding.
+  static const double _shortOfWhole = 0.01;
+
+  /// The cut lines laid out where this measure lays text out
+  /// ([readableWidthOf]), shared as [_measured] is.
+  late final BoundedMemo<String, double> _cut = _cutGrounds.resolve(
+    (style: style, scaler: _scaler, direction: _direction, fonts: fontsNow),
+    () => BoundedMemo(_linesPerGround),
+  );
+
+  static final BoundedMemo<_Ground, BoundedMemo<String, double>> _cutGrounds =
+      BoundedMemo(64);
+
   /// The widest of [texts] on one line — 0 when there are none.
   double widest(Iterable<String> texts) =>
       texts.fold(0, (width, text) => math.max(width, size(text).width));

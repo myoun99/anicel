@@ -202,14 +202,15 @@ class ToolSettingsPanel extends StatelessWidget {
   final List<String>? Function(CanvasReadSource source)? readLayerNames;
 
   /// The least width this panel stands EVERY tool's settings at — the
-  /// widest of what each tool's section needs for its choices to stand
-  /// whole beside its names and its end column.
+  /// widest of what each tool's section needs for its choices to read
+  /// beside its names and its end column.
   ///
   /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
   /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 — the
-  /// rail holding this panel reads it. ⛔NOT the tool in hand's alone: the
-  /// widest of them all, so the rail does not move when the tool changes
-  /// (관제 11-17: 「가장 넓은 것을 따라 … 흔들리지 않게」).
+  /// rail holding this panel reads it; Q2 (11-18) 「단추마다 첫 글자는 보이는
+  /// 폭」 is what a choice needs ([PillStrip.evenWidthIn]). ⛔NOT the tool in
+  /// hand's alone: the widest of them all, so the rail does not move when
+  /// the tool changes (관제 11-17: 「가장 넓은 것을 따라 … 흔들리지 않게」).
   static double minPanelWidthIn(BuildContext context) => [
     for (final tool in CanvasTool.values) minWidthOf(tool, context),
   ].reduce(math.max);
@@ -227,7 +228,7 @@ class ToolSettingsPanel extends StatelessWidget {
         CanvasTool.select => _SelectionSettings.minWidthIn(context),
         CanvasTool.cut ||
         CanvasTool.cutWhole => _CutGrabSettings.minWidthIn(context),
-        // Nothing of theirs has words to keep whole.
+        // Nothing of theirs has words to keep readable.
         CanvasTool.cutStamp || CanvasTool.move => ToolSettingColumns.panelFor(
           chrome: ToolSettingsSection.chromeIn(context),
           controls: const [],

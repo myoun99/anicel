@@ -2215,7 +2215,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
   /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 —
   /// ⛔held in ANY group of the rail, open or shut, shown or behind another
-  /// tab: opening or picking it must not move the rail.
+  /// tab: opening or picking it must not move the rail (Q3, 유저 11-18:
+  /// 「닫혀 있어도 건다 — 그 레일은 늘 바닥 이상」).
   double? _railWidthFloor({required bool right}) {
     const tabId = EditorWorkspace.brushSettingsTabId;
     final at = _layout.locateTab(tabId);

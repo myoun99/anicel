@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../helpers/an_answer_reads.dart';
 import '../helpers/app_faces.dart';
 import '../helpers/rail_group_button.dart';
 
@@ -61,9 +62,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Every answer's word in the tool settings at its whole width.
-  void expectWordsWhole(WidgetTester tester) {
-    final words = find
+  /// Every answer in the tool settings reads ([lineReads]).
+  void expectAnswersRead(WidgetTester tester) {
+    final answers = find
         .descendant(
           of: find.descendant(
             of: find.byType(ToolSettingsPanel),
@@ -74,19 +75,15 @@ void main() {
         .evaluate()
         .map((line) => line.renderObject! as RenderParagraph)
         .toList();
-    expect(words, isNotEmpty, reason: '⛔premise: a choice stands');
-    for (final word in words) {
-      expect(
-        word.size.width + 0.01,
-        greaterThanOrEqualTo(word.getMaxIntrinsicWidth(double.infinity)),
-        reason: word.text.toPlainText(),
-      );
+    expect(answers, isNotEmpty, reason: '⛔premise: a choice stands');
+    for (final answer in answers) {
+      expect(lineReads(answer), isTrue, reason: answer.text.toPlainText());
     }
   }
 
-  testWidgets('the tool settings\' rail is pulled no narrower than they '
-      'stand whole at, and their words are whole there — and a rail '
-      'without them goes on past it', (tester) async {
+  testWidgets('the tool settings\' rail is pulled no narrower than their '
+      'answers read at, and they read there — and a rail without them goes '
+      'on past it', (tester) async {
     await pumpApp(tester, AppLanguage.zhHans);
     await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
@@ -100,7 +97,7 @@ void main() {
     // The left rail's inner edge is its right one.
     await pull(tester, library, -250);
     expect(widthOf(tester, toolSettingsGroupId), atTheFloorOf(floor));
-    expectWordsWhole(tester);
+    expectAnswersRead(tester);
 
     // The GRIP stopped there, not only the drawing: the way back out moves
     // the edge from the first pixel (유저 R4 #13 — a grip that banked travel
@@ -132,7 +129,7 @@ void main() {
     final wider = floorIn(tester);
     expect(wider, greaterThan(narrower), reason: '⛔premise');
     expect(widthOf(tester, toolSettingsGroupId), atTheFloorOf(wider));
-    expectWordsWhole(tester);
+    expectAnswersRead(tester);
 
     // 🗣️Q3: shut, the tool settings still hold the rail — the library
     // above them keeps their width.

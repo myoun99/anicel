@@ -142,15 +142,18 @@ class PillStrip extends StatelessWidget {
     return width;
   }
 
-  /// The least width an EVEN strip of [labels] lays every word whole at
-  /// ([PillStrip.even]): its pills share the width evenly, so each share
-  /// holds the widest word with its padding — and, but for the first, the
-  /// hairline before it — and the strip its box's edge. [glyphs] where its
-  /// pills show glyphs for their words ([PillItem.icon]).
+  /// The least width an EVEN strip of [labels] lays every answer READABLE
+  /// at ([PillStrip.even]): its pills share the width evenly, so each share
+  /// holds the widest answer's least ([TextMeasure.readableWidthOf] — the
+  /// word, or its first letter cut) with its padding — and, but for the
+  /// first, the hairline before it — and the strip its box's edge. [glyphs]
+  /// where its pills show glyphs for their words ([PillItem.icon]).
   ///
   /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
   /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 — the
-  /// width the tool settings' least width reads its control column by.
+  /// width the tool settings' least width reads its control column by. And
+  /// Q2 (11-18): 「단추마다 첫 글자는 보이는 폭」. ↩️It was every word whole,
+  /// which took the rail to 536 in French for one long answer.
   ///
   /// ⚠️It reads what [build] lays out, as [naturalWidthIn] does, and
   /// `test/ui/widgets/a_strip_measures_as_it_lays_out_test.dart` holds the
@@ -167,7 +170,7 @@ class PillStrip extends StatelessWidget {
     );
     var share = 0.0;
     for (final (index, label) in labels.indexed) {
-      final face = glyphs ? _glyphSize : words.size(label).width;
+      final face = glyphs ? _glyphSize : words.readableWidthOf(label);
       final before = index == 0 ? 0.0 : Pill._hairlineOf(theme).width;
       share = math.max(share, face + _sharePadding.horizontal + before);
     }

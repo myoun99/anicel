@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/an_answer_reads.dart';
 import '../../helpers/app_faces.dart';
 
 /// F-486: a box that sizes itself to its pills asks the strip what its
@@ -61,12 +62,13 @@ void main() {
     });
   }
 
-  // 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1: an even strip
-  // given its least width holds every word whole, and a pixel less cuts one
-  // — the width the tool settings' least width reads.
+  // 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 · Q2: an even strip
+  // given its least width shows every answer — whole, or its first letter
+  // cut — and a pixel less loses one: the width the tool settings' least
+  // width reads.
   for (final language in AppLanguage.values) {
-    testWidgets('an even strip\'s least width is the one its words stand '
-        'whole at — ${language.name}', (tester) async {
+    testWidgets('an even strip\'s least width is the one its answers read '
+        'at — ${language.name}', (tester) async {
       await loadTheAppFaces();
       AppText.settings.value = AppLanguageSettings(programLanguage: language);
       addTearDown(() => AppText.settings.value = const AppLanguageSettings());
@@ -75,7 +77,7 @@ void main() {
         ...wordSets,
       ];
       for (final words in sets) {
-        Future<bool> wholeAt(double width) async {
+        Future<bool> readsAt(double width) async {
           await tester.pumpWidget(
             MaterialApp(
               theme: buildAppTheme(),
@@ -108,11 +110,7 @@ void main() {
                   matching: find.byWidgetPredicate((line) => line is RichText),
                 ),
               ),
-          ].every(
-            (word) =>
-                word.size.width + 0.01 >=
-                word.getMaxIntrinsicWidth(double.infinity),
-          );
+          ].every(lineReads);
         }
 
         await tester.pumpWidget(
@@ -123,8 +121,8 @@ void main() {
           words,
         );
         final reason = '${words.join(' · ')} in ${language.name}';
-        expect(await wholeAt(least), isTrue, reason: reason);
-        expect(await wholeAt(least - 1), isFalse, reason: reason);
+        expect(await readsAt(least), isTrue, reason: reason);
+        expect(await readsAt(least - 1), isFalse, reason: reason);
       }
     });
   }

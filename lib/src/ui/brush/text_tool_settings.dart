@@ -57,7 +57,7 @@ class TextToolSettings extends StatelessWidget {
   /// app's faces, and nothing is brought from it.
   final ImportedFonts? fonts;
 
-  /// The least width the section stands its choices whole at — every one
+  /// The least width the section lays its choices readable at — every one
   /// it can show, lines and columns alike, so writing the other way does
   /// not move the rail (see `ToolSettingsPanel.minPanelWidthIn`).
   static double minWidthIn(BuildContext context) {

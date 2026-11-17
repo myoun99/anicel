@@ -680,7 +680,7 @@ class GuideSettings extends StatelessWidget {
   final CutGuides guides;
   final GuideId? selectedGuideId;
 
-  /// The least width a guide's settings stand whole at: a vanishing
+  /// The least width a guide's settings read at: a vanishing
   /// point's 「평행」 pill in its half of the control column, beside the
   /// delete ([_VanishingPointRow]'s last line). See
   /// `ToolSettingsPanel.minPanelWidthIn`.

@@ -113,7 +113,7 @@ class BrushSettingsPanel extends StatefulWidget {
   // the blend labels (ja = CSP terms), and the rest of the panel reads its
   // wording from `AppText.strings`.
 
-  /// The least width this panel stands every brush's choices whole at
+  /// The least width this panel lays every brush's choices readable at
   /// ([ToolSettingColumns.panelFor]) — its frame's inset and lane, and its
   /// end column with the curve buttons in it. Every choice it can show
   /// counts, shown or not, so a brush that shows another does not move it.

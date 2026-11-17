@@ -304,7 +304,7 @@ class ToolSettingChoiceRow<T> extends StatelessWidget {
   /// the pill keeps its place and loses its tap.
   final VoidCallback? Function(T answer) onPick;
 
-  /// How wide the control column has to be for [answers] to stand whole
+  /// How wide the control column has to be for [answers] to read
   /// ([PillStrip.evenWidthIn]).
   static double widthIn<T>(
     BuildContext context,

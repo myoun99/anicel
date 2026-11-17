@@ -21,16 +21,20 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/an_answer_reads.dart';
 import '../../helpers/app_faces.dart';
 
 /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
 /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」.
 ///
+/// And Q2 (11-18): 「단추마다 첫 글자는 보이는 폭」.
+///
 /// Each tool's settings, every choice they can show standing, laid at the
-/// least width the panel says that tool needs: every answer's word whole —
-/// and a pixel narrower, one of them cut, so the least is no wider than
-/// the words make it. A choice a section adds and its least width does not
-/// count is cut here.
+/// least width the panel says that tool needs: every answer reads — whole,
+/// or its first letter cut ([lineReads]) — and a pixel narrower, one of
+/// them does not, so the least is no wider than the answers make it. A
+/// choice a section adds and its least width does not count loses its
+/// letters here.
 void main() {
   const vanishing = GuideId('p1');
 
@@ -117,9 +121,9 @@ void main() {
     await tester.pump();
   }
 
-  /// Every answer's word — a glyph's too, which is laid as a line — at its
-  /// whole width, and how many answers there are.
-  ({bool whole, int answers}) answersIn(WidgetTester tester) {
+  /// Whether every answer — a glyph's too, which is laid as a line — reads,
+  /// and how many answers there are.
+  ({bool reads, int answers}) answersIn(WidgetTester tester) {
     final lines = find
         .descendant(
           of: find.byType(Pill),
@@ -129,35 +133,31 @@ void main() {
         .map((line) => line.renderObject! as RenderParagraph)
         .toList();
     return (
-      whole: lines.every(
-        (line) =>
-            line.size.width + 0.01 >=
-            line.getMaxIntrinsicWidth(double.infinity),
-      ),
+      reads: lines.every(lineReads),
       answers: lines.length,
     );
   }
 
-  /// Whether [tool]'s answers stand whole at [width] in every face.
-  Future<({bool whole, int answers})> standingAt(
+  /// Whether [tool]'s answers read at [width] in every face.
+  Future<({bool reads, int answers})> standingAt(
     WidgetTester tester,
     CanvasTool tool,
     double width,
   ) async {
-    var whole = true;
+    var reads = true;
     var answers = 0;
     for (final columns in facesOf(tool)) {
       await pumpAt(tester, tool, width, columns: columns);
       final face = answersIn(tester);
-      whole = whole && face.whole;
+      reads = reads && face.reads;
       answers += face.answers;
     }
-    return (whole: whole, answers: answers);
+    return (reads: reads, answers: answers);
   }
 
   for (final language in AppLanguage.values) {
-    testWidgets('every tool\'s choices stand whole at its least width, and '
-        'a pixel less cuts one — ${language.name}', (tester) async {
+    testWidgets('every tool\'s choices read at its least width, and a pixel '
+        'less loses one — ${language.name}', (tester) async {
       await loadTheAppFaces();
       AppText.settings.value = AppLanguageSettings(programLanguage: language);
       addTearDown(() => AppText.settings.value = const AppLanguageSettings());
@@ -173,14 +173,14 @@ void main() {
         );
 
         final at = await standingAt(tester, tool, least);
-        expect(at.whole, isTrue, reason: '${tool.name} at $least');
+        expect(at.reads, isTrue, reason: '${tool.name} at $least');
         if (at.answers == 0) {
           continue;
         }
         expect(
-          (await standingAt(tester, tool, least - 1)).whole,
+          (await standingAt(tester, tool, least - 1)).reads,
           isFalse,
-          reason: '${tool.name} at ${least - 1}: no wider than its words',
+          reason: '${tool.name} at ${least - 1}: no wider than its answers',
         );
       }
     });
