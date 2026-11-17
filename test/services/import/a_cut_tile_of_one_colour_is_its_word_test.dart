@@ -128,7 +128,10 @@ void main() {
       final block = TileBlocks.alloc(length);
       addTearDown(() => TileBlocks.free(block));
 
-      expect(LaidBlock(block.address).inABlock(side).address, block.address);
+      expect(
+        LaidBlock(block.address, hasInk: false).inABlock(side).address,
+        block.address,
+      );
     });
 
     test('🚨and laid again it is asked its colour again: one colour gives '

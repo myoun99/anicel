@@ -298,7 +298,11 @@ void main() {
       final block = TileBlocks.alloc(length);
       block.asTypedList(length).setAll(0, filled(clearWhite));
 
-      final adopted = BitmapTile.adoptNative(size: side, pixels: block);
+      final adopted = BitmapTile.adoptNative(
+        size: side,
+        pixels: block,
+        hasInk: false,
+      );
 
       expect(addressOf(adopted), block.address);
       expect(adopted.ownBytes, length);

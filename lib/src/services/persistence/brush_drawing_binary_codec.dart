@@ -128,6 +128,12 @@ typedef CelParts<P> = ({
 /// colour adopted is the weight the tile was to be without (`BitmapTile`,
 /// card `a-file-keeps-all-clear-tiles-in-its-cels`).
 ///
+/// 🚨AND WHETHER IT SHOWS ANYTHING ([anyInkIn]), carried by the block it
+/// lays ([LaidBlock.hasInk]) — a word's is its alpha: a look letting go of
+/// its cels asked it of every tile it shelled, on the UI thread, outside
+/// every frame (card `a-picture-lay-holds-the-raster-thread`, 2026-11-17:
+/// some 27,000 tiles and 108–156 ms a sweep of the onion on, the Surface).
+///
 /// One value of two shapes, as the tile it becomes holds its pixels: an
 /// address beside a word would let a record carry both, or neither.
 sealed class LaidPixels {
@@ -142,7 +148,7 @@ sealed class LaidPixels {
     }
     final block = TileBlocks.alloc(pixels.length);
     block.asTypedList(pixels.length).setAll(0, pixels);
-    return LaidBlock(block.address);
+    return LaidBlock(block.address, hasInk: anyInkIn(pixels));
   }
 
   /// [block], whose bytes [pixels] are, laid: itself, or — one colour —
@@ -150,7 +156,7 @@ sealed class LaidPixels {
   factory LaidPixels.keeping(Pointer<Uint8> block, Uint8List pixels) {
     final word = oneWordOf(pixels);
     if (word == null) {
-      return LaidBlock(block.address);
+      return LaidBlock(block.address, hasInk: anyInkIn(pixels));
     }
     TileBlocks.free(block);
     return LaidWord(word);
@@ -163,7 +169,8 @@ sealed class LaidPixels {
 
   /// A block of the lists' holding them, the caller's to free or to lay
   /// again ([LaidPixels.keeping]) — for whoever writes into a laid tile
-  /// before it is adopted. These are not used after.
+  /// before it is adopted. These are not used after — what they knew of
+  /// the bytes ([LaidBlock.hasInk]) with them: laid again, asked again.
   Pointer<Uint8> inABlock(int tileSize);
 
   /// Gives back what they hold of the lists — for pixels nothing will
@@ -174,9 +181,13 @@ sealed class LaidPixels {
 /// A block of the lists' ([TileBlocks]) at [address], the adopting tile's
 /// to free.
 final class LaidBlock extends LaidPixels {
-  const LaidBlock(this.address);
+  const LaidBlock(this.address, {required this.hasInk});
 
   final int address;
+
+  /// Whether its pixels show anything ([anyInkIn]) — asked by whoever laid
+  /// them, on their isolate, and adopted with them.
+  final bool hasInk;
 
   Pointer<Uint8> get _block => Pointer.fromAddress(address);
 
@@ -185,6 +196,7 @@ final class LaidBlock extends LaidPixels {
       BitmapTile.adoptNative(
         size: tileSize,
         pixels: _block,
+        hasInk: hasInk,
         weighedBy: weighedBy,
       );
 

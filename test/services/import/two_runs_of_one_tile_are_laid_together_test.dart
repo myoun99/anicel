@@ -29,7 +29,7 @@ void main() {
     for (var at = from * side * 4; at < to * side * 4; at += 1) {
       bytes[at] = rgba[at % 4];
     }
-    return LaidBlock(block.address);
+    return LaidBlock(block.address, hasInk: anyInkIn(bytes));
   }
 
   /// What [rows] lays, as bytes.

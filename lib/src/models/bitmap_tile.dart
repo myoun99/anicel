@@ -107,6 +107,30 @@ int? oneWordOf(Uint8List pixels) {
   return first;
 }
 
+/// Whether any pixel of [pixels] — RGBA, four bytes each — shows: its
+/// alpha, the fourth byte, is not zero.
+///
+/// 🚨THE ONE ASKER OF 「DOES THIS TILE SHOW ANYTHING」, on whichever isolate
+/// the bytes are, as [oneWordOf] is of its colour: a tile asks it of its
+/// own bytes once ([BitmapTile.hasInk]), and a worker laying a cel asks it
+/// beside [oneWordOf] (`LaidPixels`), so what it lays comes home knowing
+/// ([BitmapTile.adoptNative]).
+///
+/// 🔬Card `a-picture-lay-holds-the-raster-thread` (the Surface, profile,
+/// FNK_02 cut 59, 2026-11-17): a look letting go of its cels asked it of
+/// every tile it shelled (`EngineTileLedger._shellOf`) and knew none —
+/// some 27,000 tiles a sweep of the onion on, 108–156 ms of the UI
+/// isolate's, outside every frame; nine in ten had ink.
+bool anyInkIn(Uint8List pixels) {
+  const step = BitmapTile.bytesPerPixel;
+  for (var at = step - 1; at < pixels.length; at += step) {
+    if (pixels[at] != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Where a tile's pixels lie on this side: a block the tile alone holds, or
 /// its colour's.
 ///
@@ -331,23 +355,28 @@ class BitmapTile implements Finalizable {
   /// Allocation contract: the buffer comes from [TileBlocks.alloc],
   /// whichever isolate asked — the finalizer gives it back there.
   ///
-  /// ⚠️Adopted unread: whether its pixels are one colour was the worker's
-  /// to ask before it took the block (`layCelEntry`), and asking here would
-  /// read on the thread the worker was there to spare.
+  /// ⚠️Adopted unread: whether its pixels are one colour, and whether they
+  /// show anything ([hasInk]), were the worker's to ask before it took the
+  /// block (`layCelEntry`, through `LaidPixels`), and asking here would
+  /// read on the thread the worker was there to spare. [hasInk] is the
+  /// worker's answer ([anyInkIn]).
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
+    required bool hasInk,
     TileWeight? weighedBy,
   }) {
     _validateSize(size);
-    return BitmapTile._adopt(size, pixels, weighedBy);
+    return BitmapTile._adopt(size, pixels, weighedBy, hasInk);
   }
 
   BitmapTile._adopt(
     this.size,
     Pointer<Uint8> pixels, [
     TileWeight? weighedBy,
-  ]) : _onEngine = null {
+    bool? hasInk,
+  ]) : _onEngine = null,
+       _hasInk = hasInk {
     _hold(pixels, weighedBy);
   }
 
@@ -518,16 +547,10 @@ class BitmapTile implements Finalizable {
   /// source-over draws nothing at alpha 0 whatever the colour bytes say,
   /// and all five of the twin's callers were asking「is there anything to
   /// draw here」. Deleted 2026-09-08; the callers ask this.
-  bool get hasInk => _hasInk ??= _scanForInk();
-
-  bool _scanForInk() {
-    for (var i = bytesPerPixel - 1; i < _view.length; i += bytesPerPixel) {
-      if (_view[i] != 0) {
-        return true;
-      }
-    }
-    return false;
-  }
+  ///
+  /// ⚠️A tile a worker laid comes home with it ([BitmapTile.adoptNative]):
+  /// the worker asked its bytes ([anyInkIn]), so this thread reads none.
+  bool get hasInk => _hasInk ??= anyInkIn(_view);
 
   TileInkBounds? _inkBounds;
 
