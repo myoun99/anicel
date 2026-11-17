@@ -116,8 +116,8 @@ void main() {
     expect(placementRegisters(baked: false, soundReadsIt: true), isTrue);
   });
 
-  test('a sequence in REFERENCE mode registers one asset with the frame '
-      'count and stamps the layer reference', () {
+  test("a sequence in REFERENCE mode registers one asset with the FILE's "
+      "frame count — not the span's — and stamps the layer reference", () {
     final reference = referenceTo('C:/media/a.gif');
     final plan = planSequenceLayer(
       sourceFiles: const ['a.gif', 'a.gif'],
@@ -126,6 +126,7 @@ void main() {
       cutId: const CutId('cut-1'),
       mint: mint(),
       reference: reference,
+      frameCount: 5,
     );
     expect(
       plan.layer.mediaReference,
@@ -133,11 +134,17 @@ void main() {
       reason: 'the reference the door made — where it stands included',
     );
     expect(plan.assets.single.path, 'C:/media/a.gif');
-    expect(plan.assets.single.frameCount, 2);
+    expect(
+      plan.assets.single.frameCount,
+      5,
+      reason: 'two frames of a five-frame GIF placed: a preset spans the file',
+    );
     expect(plan.assets.single.kind, MediaAssetKind.image);
-    // ↩️And 「the fit it was placed with, the entry's placement default」 —
-    // an entry keeps none (유저 2026-11-10, `MediaAsset`): where the picture
-    // stands is the reference's own pose, asserted above.
+    // ↩️And 「the fit it was placed with, the entry's placement default」.
+    // A placement writes no preset: the entry starts where every placement
+    // does (`MediaPreset`), and where this picture stands is the
+    // reference's own pose, asserted above.
+    expect(plan.assets.single.preset, const MediaPreset());
   });
 
   // I-68 「가」 (유저 2026-10-10): a row that shows its file says by cel

@@ -365,6 +365,7 @@ class ProjectImportDoors {
         carried: copyIntoProject,
         sourcePath: sourcePath,
         firstPicture: kept.first,
+        frameCount: allFrames.length,
       );
       layer = plan.layer;
       bakes = plan.bakes;

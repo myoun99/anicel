@@ -74,10 +74,10 @@ void main() {
     return manager;
   }
 
-  /// The pool entry a sequence registers: ONE path, and the count of files
-  /// behind it — `planSequenceLayer` writes exactly this
-  /// (`frameCount: sourceFiles.length`), so the silhouette is as long as
-  /// the bake will be.
+  /// A pool entry of a file of four pictures: ONE path, and the file's own
+  /// count of them — what a registration records (`planSequenceLayer`'s
+  /// `frameCount`). Its preset places the whole file, so the silhouette is
+  /// as long as the bake will be.
   final sequence = MediaAsset(
     path: sequencePath,
     name: 'walk',
@@ -99,6 +99,31 @@ void main() {
       (layerId: rowId, startIndex: 3, endIndexExclusive: 7),
       reason: 'the cells it would make, where it would make them',
     );
+  });
+
+  // 🗣️Card 「파일마다 배치 기본값」: a placement copies its file's preset,
+  // and the window it opens starts the row from it — so the cells drawn
+  // while it hovers are the preset's span, never more than the file holds.
+  test('🚨a file whose preset places part of it draws that part — and never '
+      'more than the file holds', () {
+    MediaAsset placing(MediaPreset preset) =>
+        sequence.copyWith(preset: preset);
+
+    for (final (preset, cells) in [
+      (const MediaPreset(inFrame: 1, outFrame: 2), 2),
+      (const MediaPreset(inFrame: 2), 2),
+      (const MediaPreset(outFrame: 99), 4),
+    ]) {
+      final s = session(pool: [placing(preset)]);
+
+      s.showMediaPlacement(rowId, 3, sequencePath);
+
+      expect(
+        shown(s)?.silhouette,
+        (layerId: rowId, startIndex: 3, endIndexExclusive: 3 + cells),
+        reason: '${preset.toJson()}',
+      );
+    }
   });
 
   test('the block in the way is PUSHED while it hovers — the landing\'s own '

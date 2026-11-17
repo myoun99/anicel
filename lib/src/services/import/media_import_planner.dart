@@ -259,6 +259,13 @@ SequenceLayerImportPlan planSequenceLayer({
   MediaIdentity? identity,
   bool carried = false,
   double? sourceFps,
+
+  /// The FILE's own count of frames, detected (§6-x) — a GIF's, whatever
+  /// span of it this places: a span of it is what a preset places
+  /// ([MediaPreset.spanOf]). ↩️It was the count of [sourceFiles], so a GIF
+  /// first placed trimmed was registered as long as its trim. Null where the
+  /// file counts in pages instead ([pageCount]).
+  int? frameCount,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
   List<int>? sourceFrameIndices,
@@ -364,11 +371,7 @@ SequenceLayerImportPlan planSequenceLayer({
               identity: identity,
               carried: carried,
               sourceFps: sourceFps,
-              // A PDF's page count is its own field; frameCount stays the
-              // image-sequence/video detection slot (§6-z10).
-              frameCount: assetKind == MediaAssetKind.pdf
-                  ? null
-                  : sourceFiles.length,
+              frameCount: frameCount,
               pageCount: pageCount,
             ),
           ],

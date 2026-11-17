@@ -193,7 +193,7 @@ class MediaPlacementDrag {
     final gaps = emptyGapsBetween(
       row,
       start,
-      start + peaks.durationFrames(_frameRate()),
+      start + _soundFramesFor(path, peaks),
     );
     // ⛔The landing's own two rules, not a second reading of them: the gap
     // must begin AT the cell, and the block is as long as the gap answers
@@ -264,11 +264,26 @@ class MediaPlacementDrag {
     }
   }
 
-  /// How many cells [path] would become — the pool's own count, which is
-  /// the number the bake writes ([planSequenceLayer] registers
-  /// `frameCount: sourceFiles.length`). A file with no count is one cell:
-  /// a still is one picture.
-  int? _cellsFor(String path) => _assetFor(path)?.frameCount ?? 1;
+  /// How many cells [path] would become: the file's frames — the pool's
+  /// own count of them — as many as its preset places
+  /// ([MediaPreset.spanOf]), the span the import window starts its row
+  /// from. So the row drawn here is the row that appears. A file with no
+  /// count is one cell: a still is one picture.
+  int? _cellsFor(String path) {
+    final asset = _assetFor(path);
+    final frames = asset?.frameCount;
+    return asset == null || frames == null || frames < 1
+        ? 1
+        : asset.preset.spanOf(frames).count;
+  }
+
+  /// How many frames the sound at [path] would place, its conform [peaks]
+  /// in hand — as many of them as its preset places ([MediaPreset.spanOf]).
+  int _soundFramesFor(String path, AudioPeaks peaks) {
+    final frames = peaks.durationFrames(_frameRate());
+    final preset = _assetFor(path)?.preset ?? const MediaPreset();
+    return frames < 1 ? 0 : preset.spanOf(frames).count;
+  }
 
   /// [count] cells standing at [frameIndex] — a row that exists only to be
   /// planned with.

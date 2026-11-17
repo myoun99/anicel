@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
@@ -17,6 +18,7 @@ import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/three_frame_gif.dart';
 import '../../helpers/wait_window.dart';
 
 /// 🚨A FILE THE POOL HOLDS IS PLACED WITH ITS PRESET (card 「파일마다 배치
@@ -134,6 +136,32 @@ void main() {
       expect(placed.outFrame, greaterThan(5), reason: 'the whole second');
       expect((placed.seName, placed.words), ('SE', '문'));
     });
+  });
+
+  testWidgets('🚨a GIF first placed trimmed is registered as long as the '
+      'FILE — so its preset can span all of it', (tester) async {
+    final s = session();
+    final path = normalizedMediaPath(
+      (await tester.runAsync(() => writeThreeFrameGif(tempDir, 'clip.gif')))!,
+    );
+
+    final landed = await tester.runAsync(
+      () => s.importDoors.importImageFile(
+        path: path,
+        destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
+        inFrame: 1,
+        outFrame: 2,
+      ),
+    );
+
+    expect(landed, isTrue);
+    expect(
+      s.repository.requireProject().mediaAssetByPath(path)?.frameCount,
+      3,
+      reason: 'two of its three frames placed; the file holds three',
+    );
+    await tester.pumpAndSettle();
   });
 
   group('a picture', () {

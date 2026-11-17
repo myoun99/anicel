@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../core/copy_with_sentinel.dart';
 import '../core/frozen_collections.dart';
 import '../core/path_names.dart' show fileNameOfPath, pathHash;
+import 'kept_span.dart';
 import 'media_identity.dart';
 
 export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
@@ -209,9 +210,16 @@ final class MediaPreset {
   final MediaFitMode fit;
 
   /// A placed sound's block: its name tag — [placedSoundNameTag] when null
-  /// — and its words, the entry's name when null ([soundWordsFor]).
+  /// — and its words, the entry's name when null ([placedSoundBlockOf]).
   final String? seName;
   final String? dialogue;
+
+  /// The span this preset places of a file [length] frames or pages long —
+  /// clamped into the file as every trim is ([KeptSpan]): never past its
+  /// last frame (🗣️유저 2026-11-17, Q4: 「아웃을 원래파일보다 크게 허용할
+  /// 이유가없어보이는데」).
+  KeptSpan spanOf(int length) =>
+      KeptSpan(length: length, inFrame: inFrame, outFrame: outFrame);
 
   MediaPreset copyWith({
     int? inFrame,
