@@ -193,6 +193,12 @@ void main() {
         tag,
         expanded: true,
         resolveAt: (_) => tag,
+        pose: (
+          track: TransformTrack.empty(),
+          enabled: true,
+          basis: null,
+          lanes: const [],
+        ),
       );
       expect(lanes.first.keyMarks, {4: KeyMark.mixed, 9: _heldOut});
       expect(

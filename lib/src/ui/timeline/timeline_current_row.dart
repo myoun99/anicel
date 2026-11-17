@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
 
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'reference_lane_policy.dart'
@@ -78,22 +79,45 @@ bool currentRowIsInsideGroup(
 ) =>
     row is LaneRowAddress &&
     row.layerId == layerId &&
-    laneGroupOf(row.laneId) == headerLaneId;
+    laneIsInGroup(row.laneId, headerLaneId);
 
-/// The header lane of the group [laneId] is a MEMBER of, or null — for a
-/// header itself, and for a lane in no group.
+/// The header lane of the group [laneId] is a MEMBER of on a row of
+/// [kind], or null — for a header itself, and for a lane in no group.
 ///
 /// The membership is the lane-id grammar, which is why it can live in a
 /// widget: an effect's members carry its id (`fx:<effectId>:<param>` under
-/// `fx-group:<effectId>`), the transform group's members are the named
-/// transform lanes — the camera row's included, the row being that group's
-/// header (㉙) — and the fixed groups' carry theirs (`reference:` under
-/// the reference fx, `name-tag:` under the name tag, `sound:` under the
-/// 「오디오」 group, I-140; F-374: the reference fx is an fx like every
-/// other, and I-68-Q1 made the two one law). The light a header wears while
-/// you stand inside it and the graph a header opens over its lanes (I-89 ③)
-/// ask it alike.
-String? laneGroupOf(String laneId) {
+/// `fx-group:<effectId>`), the transform's are the named transform lanes —
+/// the camera row's included, the row being that group's header (㉙) — and
+/// the fixed groups' carry theirs (`reference:` under the reference fx,
+/// `name-tag:` under the name tag, `sound:` under the 「오디오」 group,
+/// I-140; F-374: the reference fx is an fx like every other, and I-68-Q1
+/// made the two one law). The light a header wears while you stand inside
+/// it and the graph a header opens over its lanes (I-89 ③) ask it alike.
+///
+/// The one word the grammar leaves to the row is a transform lane's
+/// group: an S row's name tag, whose pose it is
+/// (🗣️audio-fx-grows-like-the-pros-Q3 · Q4), every other row's Transform.
+String? laneGroupOf(String laneId, {required LayerKind kind}) =>
+    transformLaneDisplayOrder.contains(laneId)
+    ? _poseGroupOf(kind)
+    : _fixedGroupOf(laneId);
+
+/// Whether [laneId] is a MEMBER of the group [headerLaneId] leads, on the
+/// row that draws that header: [laneGroupOf] of the kinds of row there
+/// are, a header standing on its own kind's rows alone — no S row draws a
+/// Transform group, and no other row a name tag.
+bool laneIsInGroup(String laneId, String headerLaneId) =>
+    transformLaneDisplayOrder.contains(laneId)
+    ? LayerKind.values.map(_poseGroupOf).contains(headerLaneId)
+    : _fixedGroupOf(laneId) == headerLaneId;
+
+/// The group a [kind] row's transform lanes stand in ([laneGroupOf]).
+String _poseGroupOf(LayerKind kind) => kind == LayerKind.se
+    ? seNameTagGroupLaneId
+    : transformGroupHeaderLane.laneId;
+
+/// The group of a lane that is no transform lane, by its id alone.
+String? _fixedGroupOf(String laneId) {
   final effect = parseEffectLaneId(laneId);
   if (effect != null) {
     return effect.parameterId == null
@@ -106,10 +130,7 @@ String? laneGroupOf(String laneId) {
   if (seSoundLaneDisplayOrder.contains(laneId)) {
     return seSoundGroupLaneId;
   }
-  if (seNameTagLaneDisplayOrder.contains(laneId)) {
-    return seNameTagGroupLaneId;
-  }
-  return transformLaneDisplayOrder.contains(laneId)
-      ? transformGroupHeaderLane.laneId
+  return seNameTagLaneDisplayOrder.contains(laneId)
+      ? seNameTagGroupLaneId
       : null;
 }

@@ -2,7 +2,8 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'reference_lane_policy.dart' show laneIsReference;
-import 'se_name_tag_lane_policy.dart' show laneIsSeNameTag;
+import 'se_name_tag_lane_policy.dart'
+    show laneIsSeNameTag, seNameTagGroupLaneId;
 import 'se_sound_lane_policy.dart' show laneIsSeSound;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
@@ -48,6 +49,11 @@ Object laneRowSlice(Layer layer, String laneId) {
   }
   if (laneIsSeSound(laneId)) {
     return layer.seSound;
+  }
+  // The name tag's header shows its pose's keys beside its own
+  // (`SeNameTagPose`): two families, so the whole layer.
+  if (laneId == seNameTagGroupLaneId) {
+    return layer;
   }
   if (laneIsSeNameTag(laneId)) {
     return layer.seNameTag ?? layer;

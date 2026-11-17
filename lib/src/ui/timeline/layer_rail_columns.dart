@@ -460,25 +460,34 @@ List<Widget> layerRailTrailingCells({
   Widget? blend,
   Widget? trailingRegion,
 }) {
+  // 🗣️audio-fx-grows-like-the-pros-Q4 (「이름표 머리로 옮긴다」): a header
+  // wearing a region and a [blend] both — the name tag's preview and its
+  // pose's basis chip — keeps the chip in its column, the region running
+  // up to it.
+  final blendBesideRegion =
+      trailingRegion != null && blend != null && optionalColumns.blend;
   return [
     layerRailSlot(axis, layerClipSlotWidth, clip),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
-    // group header has no eye and no blend, so the space is free
-    // and a preview wants it whole. The EXTENT is identical either way (it
-    // comes from [layerRailTrailingWidth]), which is what keeps the fx
-    // column pinned however this branches.
-    if (trailingRegion != null)
+    // group header has no eye and, but for a basis chip, no blend, so the
+    // space is free and a preview wants it whole. The EXTENT is identical
+    // either way (it comes from [layerRailTrailingWidth]), which is what
+    // keeps the fx column pinned however this branches.
+    if (trailingRegion != null) ...[
       layerRailSlot(
         axis,
         layerRailTrailingWidth(
-          columns: columns,
-          from: LayerRailTrailingSlot.onion,
-          optionalColumns: optionalColumns,
-        ),
+              columns: columns,
+              from: LayerRailTrailingSlot.onion,
+              optionalColumns: optionalColumns,
+            ) -
+            (blendBesideRegion ? columns.blend : 0),
         trailingRegion,
-      )
-    else ...[
+      ),
+      if (blendBesideRegion)
+        layerRailSlot(axis, columns.blend, _plateIn(axis, blend)),
+    ] else ...[
       if (optionalColumns.onion)
         layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),

@@ -138,6 +138,12 @@ List<PropertyLaneRow> propertyLanesForRow({
     ];
   }
 
+  // I-120-Q9: the transform's basis chip only where the row has blocks of
+  // its own to step on — a folder's transform reads every frame.
+  final transformBasisChip = layer.fxBlocks == null
+      ? null
+      : layer.transformBasis;
+
   /// AE group collapse: the Transform group header always shows; its member
   /// lanes only while the layer's group is twirled open (default collapsed,
   /// host-owned per layer so it survives tab switches).
@@ -161,9 +167,7 @@ List<PropertyLaneRow> propertyLanesForRow({
         enabled: layer.kind.hasLayerTransform
             ? layer.transformEnabled
             : null,
-        // I-120-Q9: the basis chip only where the row has blocks of its
-        // own to step on — a folder's transform reads every frame.
-        basis: layer.fxBlocks == null ? null : layer.transformBasis,
+        basis: transformBasisChip,
       ),
       if (expanded) ...group.where((lane) => !lane.isGroupHeader),
     ];
@@ -273,12 +277,13 @@ List<PropertyLaneRow> propertyLanesForRow({
       );
     case LayerKind.se:
       // The row's sound leads the SE twirl-down (the row's main tool); the
-      // Transform group sits below, collapsed by default.
+      // name tag sits below, collapsed by default.
       //
-      // R5 #7: the NAME TAG group is Transform's SIBLING — not a member of
-      // it, and not an effect. The row simply HAS one, the way it has a
-      // transform track, so it sits directly above Transform. I-140: so
-      // does its 「오디오」 group, where its waveform lane stood.
+      // R5 #7: the NAME TAG group is no effect. The row simply HAS one, the
+      // way it has a transform track. I-140: so does its 「오디오」 group,
+      // where its waveform lane stood. And its transform is the tag's pose,
+      // a member of it ([SeNameTagPose], audio-fx-grows-like-the-pros-Q3 ·
+      // Q4). ↩️R5 #7 stood the tag beside a Transform group of its own.
       final nameTag = layer.seNameTag ?? const SeNameTag();
       return [
         ...seSoundPropertyLanes(
@@ -306,8 +311,16 @@ List<PropertyLaneRow> propertyLanesForRow({
               at.frame,
             );
           },
+          pose: (
+            track: layer.transformTrack,
+            enabled: layer.transformEnabled,
+            basis: transformBasisChip,
+            lanes: [
+              for (final lane in layerTransformLanes())
+                if (!lane.isGroupHeader) lane,
+            ],
+          ),
         ),
-        ...collapsibleTransformGroup(layerTransformLanes()),
       ];
     case LayerKind.adjustment:
       // R6b: an adjustment row has no picture to move, so its twirl-down is

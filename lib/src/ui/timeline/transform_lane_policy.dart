@@ -22,6 +22,7 @@ import '../theme/lane_curve_palette.dart';
 import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
+import 'se_name_tag_lane_policy.dart' show seNameTagGroupLaneId;
 import 'transform_lane_editing.dart' show opacityLaneNumbers;
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
@@ -340,6 +341,15 @@ const List<String> transformLaneDisplayOrder = [
   'opacity',
 ];
 
+/// Whether [headerLaneId] leads a row's TRANSFORM: the Transform group's
+/// header, or an S row's name tag, whose members hold the row's pose
+/// (`SeNameTagPose`, 🗣️audio-fx-grows-like-the-pros-Q3 · Q4 「이름표 머리로
+/// 옮긴다」) — the header whose switch, basis chip and canvas handles are
+/// the transform's.
+bool headerLeadsTransform(String headerLaneId) =>
+    headerLaneId == transformGroupHeaderLane.laneId ||
+    headerLaneId == seNameTagGroupLaneId;
+
 /// What the CANVAS can be driven with, for one standing lane.
 ///
 /// R5 #10 — the rule, in the user's words: **an fx declares its own
@@ -365,7 +375,7 @@ enum CanvasManipulator {
 /// user's rule was that showing a control for a value you cannot grab on
 /// the canvas is worse than showing none.
 Set<CanvasManipulator> canvasManipulatorsForLane(String? laneId) {
-  if (laneId == transformGroupHeaderLane.laneId) {
+  if (laneId != null && headerLeadsTransform(laneId)) {
     return const {CanvasManipulator.transformBox, CanvasManipulator.anchorPoint};
   }
   return switch (laneId) {

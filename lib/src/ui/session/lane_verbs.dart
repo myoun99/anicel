@@ -83,6 +83,7 @@ import '../timeline/timeline_current_row.dart' show laneGroupOf;
 import '../timeline/transform_lane_policy.dart'
     show
         cameraPropertyLanes,
+        headerLeadsTransform,
         transformGroupHeaderLane,
         transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
@@ -259,11 +260,13 @@ class LaneVerbs {
         transformLaneDisplayOrder.forEach(add);
         continue;
       }
-      // The name-tag header stands for its seven members, exactly as the
-      // transform header does (한번에 잡아 이동) — and the reference fx's
-      // for its three (F-374).
+      // The name-tag header stands for its members, exactly as the
+      // transform header does (한번에 잡아 이동) — the pose's among them
+      // (`SeNameTagPose`, Q3 · Q4) — and the reference fx's for its three
+      // (F-374).
       if (laneId == seNameTagGroupLaneId) {
         seNameTagLaneDisplayOrder.forEach(add);
+        transformLaneDisplayOrder.forEach(add);
         continue;
       }
       if (laneId == seSoundGroupLaneId) {
@@ -1076,8 +1079,9 @@ class LaneVerbs {
   }
 
   /// A group header's switch, whichever group the header names: the
-  /// Transform group's is the row's own field (R8), an effect's is that
-  /// effect's eyeball (R6), and a group with no switch does nothing.
+  /// Transform's — a header leading it ([headerLeadsTransform]) — is the
+  /// row's own field (R8), an effect's is that effect's eyeball (R6),
+  /// and a group with no switch does nothing.
   ///
   /// One dispatch for every rail that draws a header. The timeline host held
   /// it alone, so the storyboard's S rows had no switch to press (F-101).
@@ -1086,7 +1090,7 @@ class LaneVerbs {
     String headerLaneId, {
     required String description,
   }) {
-    if (headerLaneId == transformGroupHeaderLane.laneId) {
+    if (headerLeadsTransform(headerLaneId)) {
       _effectsAndFx.toggleLayerTransformFx(layerId);
       return;
     }
@@ -1097,7 +1101,7 @@ class LaneVerbs {
   }
 
   /// A group header's basis chip (I-120-Q10), dispatched as its switch is
-  /// ([toggleLaneGroupEnabled]): the Transform group's is the row's own
+  /// ([toggleLaneGroupEnabled]): the Transform's is the row's own
   /// field, an effect's is that effect's. A pick of what it already reads
   /// writes nothing.
   void setLaneGroupBasis(
@@ -1110,7 +1114,7 @@ class LaneVerbs {
     if (layer == null) {
       return;
     }
-    if (headerLaneId == transformGroupHeaderLane.laneId) {
+    if (headerLeadsTransform(headerLaneId)) {
       if (layer.transformBasis != basis) {
         _controllers.layerController.setLayerTransformBasis(
           layerId: layerId,
@@ -1143,7 +1147,7 @@ class LaneVerbs {
     if (layer == null) {
       return null;
     }
-    if (headerLaneId == transformGroupHeaderLane.laneId) {
+    if (headerLeadsTransform(headerLaneId)) {
       return layer.transformEnabled;
     }
     final effectId = parseEffectLaneId(headerLaneId)?.effectId;
@@ -1210,7 +1214,7 @@ class LaneVerbs {
     if (layer == null) {
       return null;
     }
-    final group = laneGroupOf(laneId);
+    final group = laneGroupOf(laneId, kind: layer.kind);
     final lanes = layer.kind == LayerKind.camera
         ? cameraPropertyLanes(
             layer,
@@ -2511,7 +2515,8 @@ class LaneVerbs {
   ///
   /// [headerLaneId] names the group: the transform header resets the
   /// transform track, an `fx-group:` header its own effect, and the fixed
-  /// groups' headers the SE row's name tag, its 「오디오」 and a reference
+  /// groups' headers the SE row's name tag — with the pose it holds
+  /// (`SeNameTagPose`) — its 「오디오」 and a reference
   /// row's fx.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
     final reset = _groupResetInScope(layerId, headerLaneId);
@@ -2583,16 +2588,7 @@ class LaneVerbs {
     // ↩️The two fixed groups drew the button and nothing answered it
     // (F-374, 유저 2026-10-17: 「참조fx에서 리셋버튼도 안먹힘」).
     if (headerLaneId == seNameTagGroupLaneId) {
-      final tag = layer.kind == LayerKind.se
-          ? seNameTagWithGroupReset(
-              layer.seNameTag ?? const SeNameTag(),
-              frameIndexes: frames,
-              keyedFramesOnly: scoped,
-            )
-          : null;
-      return tag == null
-          ? null
-          : () => _commitLaneSeNameTag(layer, tag, description: 'Reset group');
+      return _nameTagGroupReset(layer, frames, scoped: scoped);
     }
     if (headerLaneId == seSoundGroupLaneId) {
       final sound = layer.kind == LayerKind.se
@@ -2665,11 +2661,24 @@ class LaneVerbs {
     Iterable<int> frames, {
     required bool scoped,
   }) {
+    final next = _transformTrackReset(layer, frames, scoped: scoped);
+    return next == null
+        ? null
+        : () => _commitTransformTrack(layer, next, description: 'Reset group');
+  }
+
+  /// [layer]'s transform track [_transformGroupReset] writes, or null where
+  /// it changes nothing.
+  TransformTrack? _transformTrackReset(
+    Layer layer,
+    Iterable<int> frames, {
+    required bool scoped,
+  }) {
     final space = _paperOf(layer);
     if (space == null) {
       return null;
     }
-    final next = transformTrackWithGroupReset(
+    return transformTrackWithGroupReset(
       _laneTransformTrackOf(layer),
       frameIndexes: frames,
       identity: layerIdentityPose(space),
@@ -2679,9 +2688,34 @@ class LaneVerbs {
       ),
       keyedFramesOnly: scoped,
     );
-    return next == null
+  }
+
+  /// An S row's name tag reset — its own members and the pose it holds
+  /// (`SeNameTagPose`, audio-fx-grows-like-the-pros-Q3 · Q4), the pose as
+  /// [_transformGroupReset] puts it — as ONE step ([_commitRowLanes]), or
+  /// null where neither changes.
+  void Function()? _nameTagGroupReset(
+    Layer layer,
+    Iterable<int> frames, {
+    required bool scoped,
+  }) {
+    if (layer.kind != LayerKind.se) {
+      return null;
+    }
+    final edit = LaneEdit(
+      nameTag: seNameTagWithGroupReset(
+        layer.seNameTag ?? const SeNameTag(),
+        frameIndexes: frames,
+        keyedFramesOnly: scoped,
+      ),
+      transform: (
+        own: _transformTrackReset(layer, frames, scoped: scoped),
+        reference: null,
+      ),
+    );
+    return edit.isEmpty
         ? null
-        : () => _commitTransformTrack(layer, next, description: 'Reset group');
+        : () => _commitRowLanes(layer, edit, description: 'Reset group');
   }
 
   /// Whether [laneVerbRange] holds a key to delete, on a lane of any home.

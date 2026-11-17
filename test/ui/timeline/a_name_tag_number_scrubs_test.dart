@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cel_text_box_edits.dart'
     show celTextMinFontSize;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -23,6 +24,12 @@ void main() {
     tag,
     expanded: true,
     resolveAt: tag.resolveAt,
+    pose: (
+      track: TransformTrack.empty(),
+      enabled: true,
+      basis: null,
+      lanes: const [],
+    ),
   );
   PropertyLaneRow row(String laneId) =>
       rows.firstWhere((lane) => lane.laneId == laneId);

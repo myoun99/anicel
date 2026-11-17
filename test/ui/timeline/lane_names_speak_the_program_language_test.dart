@@ -76,6 +76,12 @@ void main() {
               const SeNameTag(),
               expanded: true,
               resolveAt: (_) => const SeNameTag(),
+              pose: (
+                track: TransformTrack.empty(),
+                enabled: true,
+                basis: null,
+                lanes: const [],
+              ),
             ),
           ),
           words.nameTag,
