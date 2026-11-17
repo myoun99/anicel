@@ -72,6 +72,28 @@ runs:
           | awk '{sz=$1; $1=""; sub(/^ /, "");
                   if ($0 != "total") printf "%s\t%s\n", sz, $0}' \
           | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
+        # A test that opens the app weighs three times its size
+        # (ci-takes-an-hour-on-lavapipe, measured 2026-11-17 on the three
+        # Linux shards of run 44026201673): those 385 files of 2,209 timed
+        # took 62% of the time — 1,348 ms a KB against 188 for the rest —
+        # since every test in one pumps the whole workspace. Against the
+        # time each file took, size alone correlates 0.44, size x3 for these
+        # 0.53 (x2 0.52, x5 0.51, x7 0.49). ⚖️NOT the tests that reach the
+        # GPU engine, the split the Windows shards leave out: 76% of the
+        # files reach it, the size deal had already spread them evenly (810,
+        # 852, 826 of the three shards), and weighing them lowered the
+        # correlation to 0.42. Still read from the tree, never a recorded
+        # duration, for the reason above.
+        dart tool/tests_reaching_files.dart \
+          lib/src/ui/home_page.dart lib/src/ui/editor_workspace.dart \
+          > "$RUNNER_TEMP/opens_the_app.txt"
+        awk -F'\t' 'NR == FNR { app[$0]; next }
+                    { printf "%d\t%s\n", ($2 in app) ? $1 * 3 : $1, $2 }' \
+          "$RUNNER_TEMP/opens_the_app.txt" "$RUNNER_TEMP/weighted.txt" \
+          | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/reweighted.txt"
+        mv "$RUNNER_TEMP/reweighted.txt" "$RUNNER_TEMP/weighted.txt"
+        echo "$(wc -l < "$RUNNER_TEMP/opens_the_app.txt") test files open" \
+          "the app — weighed x3"
         # Left out before the deal, not after it, so the shards that are
         # left stay even.
         if [ -n "${{ inputs.leave-out-package }}" ]; then
@@ -150,6 +172,15 @@ runs:
     # Schedule counts as master here too: the macOS suite only ever runs
     # on schedule/dispatch, and without its own seed those shards would
     # compile cold every night.
+    #
+    # ⚖️Fewer master runs reach here since one whose tree a pull request
+    # already tested green stands down (ci.yml's scope job, 2026-11-17), and
+    # that was weighed: every Linux run since 11-06 found no seed, and the
+    # seedless 11-06 shards reached their first test 14-20 s after the batch
+    # began. 11-17's took 4.9 min, the Windows shards 7: what came between
+    # is the GPU engine's Rust, built cold by the app's build hook (315 s on
+    # the Surface, .github/actions/rust-engine) — not timed apart from the
+    # compile here, but no seed of this cache reaches it.
     - if: (github.event_name == 'push' || github.event_name == 'schedule') && inputs.index == '0'
       uses: actions/cache/save@v4
       with:

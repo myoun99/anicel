@@ -50,12 +50,29 @@ jobs:
   # workflow reports NO check at all, and 「체크 0개」 is not green, it is
   # unverified — `merge_check.sh` counts checks and would have to learn a
   # second meaning for zero. A skipped JOB still posts its check.
+  #
+  # 🔁AND HAS THIS TREE BEEN TESTED GREEN ALREADY? (ci-takes-an-hour-on-lavapipe,
+  # 관제 2026-11-17 for 유저 「CI 너무 긴거아닌가」). A bundle PR merged with
+  # `gh pr merge --merge` pushes a merge commit whose tree is the PR head's —
+  # and master's run went through that same tree once more: 30 + 29 minutes
+  # on 11-06, 26 + 25 on 11-03, the second telling nothing the first had not.
+  # So a master push whose tree is a commit's that a pull_request run of this
+  # workflow passed (the pushed commit itself, or a merge's second parent)
+  # sets `again`, and every job below stands down; the run still ends green,
+  # which is what tool/build_check.sh reads. ⚠️A board-only push straight to
+  # master has no such run, so it runs as before — that run is its gate. The
+  # fail-safe above holds: a tree that differs, a call that fails, any doubt
+  # at all, and `again` stays false.
   scope:
     name: what changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       app: ${{ steps.what.outputs.app }}
+      again: ${{ steps.again.outputs.again }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -91,6 +108,32 @@ jobs:
           fi
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "app=$app  (${files:-<no diff read>})"
+      - id: again
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          again=false
+          head="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tree=$(git rev-parse --verify -q "$head^{tree}" || true)
+            second=$(git rev-parse --verify -q "$head^2" || true)
+            for c in "$head" $second; do
+              [ -n "$tree" ] || break
+              [ "$(git rev-parse --verify -q "$c^{tree}" || true)" = "$tree" ] \
+                || continue
+              green=$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$c&event=pull_request&status=success&per_page=1" \
+                --jq '.total_count' 2>/dev/null || true)
+              if [ "${green:-0}" -gt 0 ] 2>/dev/null; then
+                again=true
+                echo "tree ${tree:0:12} passed as pull-request head ${c:0:12}"
+                break
+              fi
+            done
+          fi
+          echo "again=$again" >> "$GITHUB_OUTPUT"
+          echo "again=$again"
 
   # ↩️A job stood here that compiled the C core with gcc and clang on
   # Linux — a third compiler on a different OS, the fastest way to catch
@@ -157,18 +200,25 @@ jobs:
   # that does it.
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
+    needs: scope
+    if: needs.scope.outputs.again != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
       fail-fast: false
-      # Three, because the job COUNT is now the thing that costs — see the
-      # note above the windows job. Linux shards are the cheap ones (33s of
-      # setup against Windows' 110s), so they are also the ones it costs
-      # least to give up.
+      # ↩️Three, while the job COUNT was the thing that cost — see the note
+      # above the windows job. Six from 2026-11-17 (ci-takes-an-hour-on-
+      # lavapipe): since the canvas went to the GPU engine (11-09) these
+      # shards draw it on the CPU and decide the run alone — 51.9, 56.1 and
+      # about 40 minutes of tests on 11-17, the Windows shards 11-15. The
+      # run is one bundle PR now, not five runs in flight (the 08-12
+      # saturation), and six makes it fifteen jobs against the limit of
+      # twenty. ⚠️The 120 above is still the three shards' rule — measure
+      # six on the next run and set it again.
       matrix:
-        shard: [0, 1, 2]
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -216,13 +266,13 @@ jobs:
       - name: Run tests against the engine this run built
         uses: ./.github/actions/test-shard
         with:
-          total: 3
+          total: 6
           index: ${{ matrix.shard }}
 
   android:
     name: Android build
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -263,7 +313,7 @@ jobs:
   windows-app:
     name: Windows app build
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -317,7 +367,7 @@ jobs:
     # watch the job is named for, till the C went — 2026-11-13). Board
     # tests are pure Dart and are covered by the Linux shards either way.
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
