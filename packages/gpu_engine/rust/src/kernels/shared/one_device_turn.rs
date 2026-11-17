@@ -23,12 +23,13 @@ const OPENS: [&str; 5] =
 const TURN: &str = "a_device_of_its_own(";
 
 /// The functions that open a device with no turn, each with why.
-const OUT_OF_TURN: [(&str, &str); 5] = [
+const OUT_OF_TURN: [(&str, &str); 6] = [
     ("gpu_engine_open", "the C ABI's: the app's own device"),
     ("gpu_engine_open_sole", "the C ABI's: the app's own device"),
     ("gpu_engine_open_first", "the C ABI's: `flutter test`'s own device"),
     ("first_engine", "the device every test shares, opened once for the process"),
     ("engine", "`DeviceTurn::engine`: handed to nothing but a turn a test holds"),
+    ("engine_binding", "`DeviceTurn::engine_binding`: handed to nothing but a turn a test holds"),
 ];
 
 /// Where `line` — its indent taken off — names the function it begins:
