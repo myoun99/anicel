@@ -160,15 +160,15 @@ void main() {
     final list = listOf(session);
     final kinds = effectKindsAddedAlone.length;
 
-    expect(list.length, 1 + kinds + 2 + 2);
-    expect(list[1 + kinds], isA<PanelFlyoutDivider>());
+    expect(list.length, 3 + kinds + 2 + 2);
+    expect(list[3 + kinds], isA<PanelFlyoutDivider>());
     expect(
-      (list[2 + kinds] as PanelFlyoutHeader).label,
+      (list[4 + kinds] as PanelFlyoutHeader).label,
       AppText.strings.fxPluginsOfDevice,
     );
     expect(
       [
-        for (final entry in list.skip(3 + kinds))
+        for (final entry in list.skip(5 + kinds))
           (entry as PanelFlyoutItem).label,
       ],
       [
@@ -185,10 +185,48 @@ void main() {
     );
   });
 
-  test('a device with none shows none — no heading, no rule', () async {
+  test('a device with none shows none — no heading, no rule of its own',
+      () async {
     final session = sessionOn(await deviceWith([]));
-    expect(listOf(session).length, 1 + effectKindsAddedAlone.length);
-    expect(listOf(session).whereType<PanelFlyoutDivider>(), isEmpty);
+    expect(listOf(session).length, 3 + effectKindsAddedAlone.length);
+    expect(listOf(session).whereType<PanelFlyoutDivider>(), hasLength(1));
+    expect(
+      listOf(session).whereType<PanelFlyoutHeader>().map((h) => h.label),
+      isNot(contains(AppText.strings.fxPluginsOfDevice)),
+    );
+  });
+
+  // 🗣️audio-fx-grows-like-the-pros Q2 (유저 2026-11-17): 「시안 3 · 시안 1
+  // + 성격 프리셋」 — design 1's menu as drawn: 音声 first, a rule, 映像.
+  test('🎯the sound section leads, the picture one follows a rule; a '
+      'picture row\'s sound kinds are dimmed, never hidden', () async {
+    final session = sessionOn(await deviceWith([]));
+    final list = listOf(session);
+    final sound = [
+      for (final kind in effectKindsAddedAlone)
+        if (kind.filtersSound) kind,
+    ];
+    expect(
+      (list.first as PanelFlyoutHeader).label,
+      AppText.strings.tlEffectsOfSound,
+    );
+    expect(
+      [
+        for (final entry in list.skip(1).take(sound.length))
+          (entry as PanelFlyoutItem).keyValue,
+      ],
+      [for (final kind in sound) 'add-effect-${kind.jsonValue}'],
+    );
+    expect(list[1 + sound.length], isA<PanelFlyoutDivider>());
+    expect(
+      (list[2 + sound.length] as PanelFlyoutHeader).label,
+      AppText.strings.tlEffectsOfPicture,
+    );
+    PanelFlyoutItem entryOf(EffectKind kind) => list
+        .whereType<PanelFlyoutItem>()
+        .singleWhere((item) => item.keyValue == 'add-effect-${kind.jsonValue}');
+    expect(entryOf(EffectKind.equalizer).enabled, isFalse);
+    expect(entryOf(EffectKind.blur).enabled, isTrue);
   });
 
   test('its row adds an effect of it, at its own values', () async {

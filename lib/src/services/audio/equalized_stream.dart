@@ -43,7 +43,7 @@ EqualizerCheckpoints? equalizerCheckpointsOf(
   final stretches = EqualizerStretches(
     channels: reader.channels,
     rate: reader.sampleRate,
-    settings: span.settings,
+    stages: span.stages,
   );
   final memories = <Float64List>[];
   final end = math.min(span.start + span.length, reader.length);
@@ -120,7 +120,7 @@ typedef StreamWindowRead = ({
   final baked = EqualizerStretches(
     channels: channels,
     rate: reader.sampleRate,
-    settings: span.settings,
+    stages: span.stages,
     from: (first: from - span.start, memory: checkpoints.memories[k]),
   ).next(stretch);
   if (baked.length != (start - from + held) * channels) {

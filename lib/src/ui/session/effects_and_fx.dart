@@ -73,7 +73,9 @@ class EffectsAndFx {
   /// Whether the ACTIVE row can take an effect of [kind]: a row that carries
   /// its own FX — and, for a kind that draws a cel number
   /// ([EffectKind.drawsItsOwnPicture]), one whose drawings carry one
-  /// ([LayerKind.numbersItsDrawings]): the letters print it.
+  /// ([LayerKind.numbersItsDrawings]): the letters print it. A sound's
+  /// filter goes on a row that plays sound and a picture's on any other
+  /// ([EffectKind.isTakenByARow] — Q3 of audio-fx-grows-like-the-pros).
   ///
   /// ↩️A track-owned SE row was fenced off here since R6a (2026-07-30: 「its
   /// display clone strips FX」). The clone projects the track's chain now,
@@ -92,6 +94,7 @@ class EffectsAndFx {
           layer,
           _project.activeCutOrNull?.layers ?? const [],
         ) &&
+        kind.isTakenByARow(playsSound: layer.kind.playsSound) &&
         (!kind.drawsItsOwnPicture || layer.kind.numbersItsDrawings);
   }
 
@@ -420,9 +423,12 @@ class EffectsAndFx {
   /// is there, and not a kind that draws a cel number
   /// ([EffectKind.drawsItsOwnPicture]), by the law the row gate keeps
   /// ([canAddEffectToActiveLayer]): the V row has no drawing whose number
-  /// the letters would print.
+  /// the letters would print — and a picture's alone: it plays no sound
+  /// ([EffectKind.isTakenByARow]).
   bool canAddEffectToTrack(TrackId trackId, EffectKind kind) =>
-      _project.trackById(trackId) != null && !kind.drawsItsOwnPicture;
+      _project.trackById(trackId) != null &&
+      kind.isTakenByARow(playsSound: false) &&
+      !kind.drawsItsOwnPicture;
 
   /// Adds an effect to the V row's chain, as [addEffectToActiveLayer] does
   /// to a layer's.

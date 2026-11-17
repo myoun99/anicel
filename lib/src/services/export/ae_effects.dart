@@ -46,7 +46,9 @@ AeEffect? aeEffectOf(
     EffectKind.radialBlur => kin.radialBlur(),
     EffectKind.cameraLensBlur => kin.cameraLensBlur(),
     EffectKind.colorKey => kin.linearColorKey(),
-    EffectKind.celNumber || EffectKind.plugin => null,
+    EffectKind.celNumber ||
+    EffectKind.plugin ||
+    EffectKind.equalizer => null,
   };
 }
 

@@ -195,27 +195,41 @@ class TimelineBarMenus {
     // 필요없으니 삭제하고 관련로직 싹 제거」): an effect is removed by a range
     // over its header and the one Delete.
     return [
-      PanelFlyoutHeader(AppText.strings.tlEffects),
+      // 🗣️audio-fx-grows-like-the-pros Q2 (유저 2026-11-17): 「시안 3 · 시안
+      // 1 + 성격 프리셋」 — design 1's menu as drawn: the 音声 section
+      // first, a rule, then the 映像 one. A row takes one section's alone
+      // (Q3: 「s행은 그냥 영상fx안붙게? 오디오fx만 기본으로」); the other is
+      // dimmed by the gate, never hidden.
+      PanelFlyoutHeader(AppText.strings.tlEffectsOfSound),
+      for (final kind in effectKindsAddedAlone)
+        if (kind.filtersSound) _addEffectItem(holder, kind),
+      const PanelFlyoutDivider(),
+      PanelFlyoutHeader(AppText.strings.tlEffectsOfPicture),
       // ⛔EVERY KIND IS LISTED, ALWAYS; the ones this row cannot take are
       // DIMMED. Same rule the two pixel verbs on the shared pill follow
       // ("Dimmed with nothing to act on, never hidden") — a menu that grew
       // and shrank under the pointer would make the artist look for an
       // entry that is simply not there today.
       for (final kind in effectKindsAddedAlone)
-        PanelFlyoutItem(
-          keyValue: 'add-effect-${kind.jsonValue}',
-          label: editorActionLabel(addEffectActionId(kind)),
-          shortcuts: [addEffectActionId(kind)],
-          icon: Icons.auto_fix_high_outlined,
-          enabled:
-              holder != null && session.effectsAndFx.canAddEffect(holder, kind),
-          onSelected: holder == null
-              ? null
-              : () => session.effectsAndFx.addEffect(holder, kind),
-        ),
+        if (!kind.filtersSound) _addEffectItem(holder, kind),
       ..._plugins(holder),
     ];
   }
+
+  /// The entry that adds an effect of [kind] to [holder]'s chain — dimmed
+  /// where its gate refuses (`EffectsAndFx.canAddEffect`).
+  PanelFlyoutItem _addEffectItem(EffectChainHolder? holder, EffectKind kind) =>
+      PanelFlyoutItem(
+        keyValue: 'add-effect-${kind.jsonValue}',
+        label: editorActionLabel(addEffectActionId(kind)),
+        shortcuts: [addEffectActionId(kind)],
+        icon: Icons.auto_fix_high_outlined,
+        enabled:
+            holder != null && session.effectsAndFx.canAddEffect(holder, kind),
+        onSelected: holder == null
+            ? null
+            : () => session.effectsAndFx.addEffect(holder, kind),
+      );
 
   /// The plugins this device has installed (I-132), under their own
   /// heading — each added as an effect of it, and deleted off the device

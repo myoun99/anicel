@@ -63,6 +63,8 @@ Float64List fxPluginValuesOf(
       case EffectParameterUnit.number ||
           EffectParameterUnit.degrees ||
           EffectParameterUnit.pixels ||
+          EffectParameterUnit.hertz ||
+          EffectParameterUnit.decibels ||
           EffectParameterUnit.choice:
         values[at] = value;
     }

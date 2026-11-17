@@ -7,7 +7,8 @@ import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project_frame_rate.dart' show noPull;
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
-import '../../services/audio/audio_equalizer.dart' show EqualizedSpan;
+import '../../services/audio/audio_equalizer.dart'
+    show EqualizedSpan, EqualizerSlot;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/audio/equalized_stream.dart';
@@ -402,6 +403,11 @@ class AudioConformStore extends ChangeNotifier {
     EqualizedSpan span,
   ) => _derived.checkpointsFor(sourcePath, span);
 
+  /// How many spans of [sourcePath] the store holds baked or checkpointed
+  /// — what a knob's bound ([EqualizerSlot]) is read by.
+  @visibleForTesting
+  int heldEqualizingsOf(String sourcePath) => _derived.heldOf(sourcePath);
+
   /// Awaits [sourcePath]'s [span] baked at [sampleRate]: the bake, or null
   /// once it is not coming — no conform, or a bake that failed. What an
   /// export mixes an equalized span from: the same bake playback reads.
@@ -663,6 +669,11 @@ final class _DerivedSound {
   /// as [_conversionsThatFailed] are not.
   final Map<String, Set<(int, EqualizedSpan)>> _equalizingThatFailed = {};
 
+  /// Each slot's hold at each rate ([EqualizerSlot]) — the bound a dragged
+  /// knob's bakes and checkpoints keep: the one last asked, the one last
+  /// made, one under way.
+  final Map<(EqualizerSlot, int), _SlotHold> _holds = {};
+
   String _resampleKey(String sourcePath, int sampleRate) =>
       '$sampleRate|$sourcePath';
 
@@ -717,13 +728,19 @@ final class _DerivedSound {
       return null;
     }
     final key = (sampleRate, span);
+    final hold = _askedOf(sourcePath, key);
     final cached = _equalized[sourcePath]?[key];
-    if (cached != null || _cannotBeMade(sourcePath, key)) {
+    if (cached != null) {
+      _madeFor(hold, key);
       return cached;
+    }
+    if (_cannotBeMade(sourcePath, key)) {
+      return null;
     }
     _kickOnce(
       sourcePath,
       key,
+      hold,
       () => _store._equalizeRunner(
         EqualizeRequest(
           samples: samples,
@@ -745,42 +762,100 @@ final class _DerivedSound {
       return null;
     }
     final key = (_store.projectSampleRate, span);
+    final hold = _askedOf(sourcePath, key);
     final cached = _checkpoints[sourcePath]?[span];
-    if (cached != null || _cannotBeMade(sourcePath, key)) {
+    if (cached != null) {
+      _madeFor(hold, key);
       return cached;
+    }
+    if (_cannotBeMade(sourcePath, key)) {
+      return null;
     }
     _kickOnce(
       sourcePath,
       key,
+      hold,
       () => _checkpointsOnAWorker(reader, span),
       (made) => (_checkpoints[sourcePath] ??= {})[span] = made,
     );
     return null;
   }
 
+  /// How many spans of [sourcePath] are held baked or checkpointed.
+  int heldOf(String sourcePath) =>
+      (_equalized[sourcePath]?.length ?? 0) +
+      (_checkpoints[sourcePath]?.length ?? 0);
+
   bool _cannotBeMade(String sourcePath, (int, EqualizedSpan) key) =>
       _equalizingThatFailed[sourcePath]?.contains(key) ?? false;
 
-  /// [making] [sourcePath]'s span at [key] from the conform it holds now —
-  /// once while it is under way, kept by [keep] as it lands.
+  /// [key]'s slot's hold at its rate ([EqualizerSlot]), asked for [key] —
+  /// a fresh one where the slot's clip took another file, what the old one
+  /// made let go of.
+  _SlotHold _askedOf(String sourcePath, (int, EqualizedSpan) key) {
+    final at = (key.$2.slot, key.$1);
+    final held = _holds[at];
+    if (held != null && held.sourcePath == sourcePath) {
+      return held..asked = key;
+    }
+    if (held != null) {
+      _letGo(held.sourcePath, held.made);
+    }
+    return _holds[at] = _SlotHold(sourcePath)..asked = key;
+  }
+
+  /// [key] made for [hold]: what it held made before let go of, unless it
+  /// is what the slot asks for again.
+  void _madeFor(_SlotHold hold, (int, EqualizedSpan) key) {
+    final before = hold.made;
+    hold.made = key;
+    if (before != null && before != key && before != hold.asked) {
+      _letGo(hold.sourcePath, before);
+    }
+  }
+
+  /// [key]'s bake and checkpoints of [sourcePath], let go of.
+  void _letGo(String sourcePath, (int, EqualizedSpan)? key) {
+    if (key == null) {
+      return;
+    }
+    _equalized[sourcePath]?.remove(key);
+    _checkpoints[sourcePath]?.remove(key.$2);
+  }
+
+  /// [making] [sourcePath]'s span at [key] from the conform it holds now,
+  /// for [hold] — kept by [keep] as it lands, while the slot still holds
+  /// that file. One under way a slot: the one asked meanwhile is kicked
+  /// when the store is asked again after this one lands.
   void _kickOnce<T>(
     String sourcePath,
     (int, EqualizedSpan) key,
+    _SlotHold hold,
     Future<T> Function() making,
     void Function(T made) keep,
   ) {
     final pending = (sourcePath, key.$1, key.$2);
-    if (!_equalizePending.add(pending)) {
+    if (hold.underWay != null || !_equalizePending.add(pending)) {
       return;
     }
+    hold.underWay = key;
+    final at = (key.$2.slot, key.$1);
     unawaited(
       _land(sourcePath, _store._entries[sourcePath]!, making, (
-        keep: keep,
+        keep: (T made) {
+          if (identical(_holds[at], hold)) {
+            keep(made);
+            _madeFor(hold, key);
+          }
+        },
         failed: () => (_equalizingThatFailed[sourcePath] ??= {}).add(key),
         saying: (error) =>
             'equalizing ${key.$2} of $sourcePath at ${key.$1}Hz '
             'failed: $error',
-        settled: () => _equalizePending.remove(pending),
+        settled: () {
+          _equalizePending.remove(pending);
+          hold.underWay = null;
+        },
       )),
     );
   }
@@ -799,6 +874,7 @@ final class _DerivedSound {
     _resampledByRate.remove(sourcePath);
     _equalized.remove(sourcePath);
     _checkpoints.remove(sourcePath);
+    _holds.removeWhere((_, hold) => hold.sourcePath == sourcePath);
   }
 
   /// [letGoOfWhatWasMade], and of what could not be made, so the next
@@ -848,6 +924,23 @@ final class _DerivedSound {
   }
 }
 
+
+/// A slot's hold on the bakes of its clip's file at one rate
+/// ([_DerivedSound._holds]): each a rate and a span, null for none.
+final class _SlotHold {
+  _SlotHold(this.sourcePath);
+
+  final String sourcePath;
+
+  /// The one last asked of the slot — where its knob stands.
+  (int, EqualizedSpan)? asked;
+
+  /// The one last made for the slot, kept while [asked] is made.
+  (int, EqualizedSpan)? made;
+
+  /// The one being made — one at a time.
+  (int, EqualizedSpan)? underWay;
+}
 /// The checkpoints' pass, in a function of its own: [onAWorker] copies the
 /// closure's whole context, and this one holds a reader and a span.
 Future<EqualizerCheckpoints> _checkpointsOnAWorker(

@@ -97,6 +97,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
   // 🗣️I-132-Q4 (유저 2026-10-27): 「이름 · 범위만 AE 에 맞추고 식은 지금대로」
   // — the names and ranges are AE's Hue/Saturation (Adobe's help, read
@@ -137,6 +138,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// AE's Gaussian Blur: `blurriness` each way along its `blurDimensions`.
@@ -189,6 +191,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// Every pixel the average of the line through it — AE's Directional
@@ -229,6 +232,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// Every pixel the average of the arc through it about its `center`
@@ -281,6 +285,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// Every pixel the mean of the pixels about it its iris covers — AE's
@@ -433,6 +438,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// THE colour key: its Key Operation erases every pixel within the
@@ -456,6 +462,7 @@ enum EffectKind {
     staysOnItsRow: false,
     addedByItsKind: true,
     changesNothingAtItsDefaults: true,
+    filtersSound: false,
   ),
 
   /// The CEL NUMBER (I-65): the row's name and its drawing's, in letters
@@ -496,6 +503,65 @@ enum EffectKind {
     staysOnItsRow: true,
     addedByItsKind: true,
     changesNothingAtItsDefaults: false,
+    filtersSound: false,
+  ),
+
+  /// The EQUALIZER (board audio-fx-grows-like-the-pros ③): a sound row's
+  /// lows and highs — a low cut, a high cut and a shelf each way, the
+  /// shelves turning at [equalizerLowShelfHz] and [equalizerHighShelfHz] —
+  /// baked into the row's sound a span at a time (`EqualizedSpan`), never
+  /// into its picture ([filtersSound]).
+  ///
+  /// 🗣️Q2 (유저 2026-11-17): 「시안 3 · 시안 1 + 성격 프리셋」 — the
+  /// lanes drawn in design 1: ローカット (Hz) · ハイカット (Hz) · 低域 (dB) ·
+  /// 高域 (dB). A cut at its end of the range is no cut (`AudioEqualizer`
+  /// leaves out a corner at 0 Hz or past half the rate), so the effect
+  /// just added changes nothing until a value is touched.
+  equalizer(
+    'equalizer',
+    label: 'Equalizer',
+    parameters: [
+      EffectParameterSpec(
+        id: 'lowCut',
+        label: 'Low Cut',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 1000,
+        unit: EffectParameterUnit.hertz,
+      ),
+      EffectParameterSpec(
+        id: 'highCut',
+        label: 'High Cut',
+        defaultValue: equalizerHighCutTop,
+        minimum: 1000,
+        maximum: equalizerHighCutTop,
+        unit: EffectParameterUnit.hertz,
+      ),
+      EffectParameterSpec(
+        id: 'lowGain',
+        label: 'Low',
+        defaultValue: 0,
+        minimum: -24,
+        maximum: 24,
+        unit: EffectParameterUnit.decibels,
+      ),
+      EffectParameterSpec(
+        id: 'highGain',
+        label: 'High',
+        defaultValue: 0,
+        minimum: -24,
+        maximum: 24,
+        unit: EffectParameterUnit.decibels,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
+    filtersSound: true,
   ),
 
   /// A plugin's effect: its parameters, the words they go by and what it
@@ -522,6 +588,7 @@ enum EffectKind {
     // Its defaults are the plugin's to mean — an inversion changes every
     // pixel at its first value.
     changesNothingAtItsDefaults: false,
+    filtersSound: false,
   );
 
   const EffectKind(
@@ -535,6 +602,7 @@ enum EffectKind {
     required this.staysOnItsRow,
     required this.addedByItsKind,
     required this.changesNothingAtItsDefaults,
+    required this.filtersSound,
     this.strength,
   });
 
@@ -628,6 +696,23 @@ enum EffectKind {
   /// defaults are the plugin's to mean ([ResolvedLayerEffect.isNoOp]).
   final bool changesNothingAtItsDefaults;
 
+  /// Whether this kind filters the row's SOUND, not its picture — a sound
+  /// row's only kind (`LayerKind.playsSound`), and no other row's: the
+  /// rows a kind is offered on are the rows that answer this the same
+  /// (`canAddEffectToActiveLayer`). Its sample changes no pixel
+  /// ([ResolvedLayerEffect.isNoOp]), so no picture's chain runs it.
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros Q3 (유저 2026-11-17): 「s행은 그냥
+  /// 영상fx안붙게? 오디오fx만 기본으로」 — and no picture row takes a sound's.
+  final bool filtersSound;
+
+  /// Whether the chain of a row that [playsSound] (`LayerKind.playsSound`)
+  /// takes this kind — a sound's filter on a sound's row, a picture's on a
+  /// picture's, never across ([filtersSound]). Every gate an add passes
+  /// asks it (`canAddEffect`).
+  bool isTakenByARow({required bool playsSound}) =>
+      filtersSound == playsSound;
+
   /// The parameter [id] of this kind — null for an id it does not declare.
   EffectParameterSpec? parameterSpec(String id) => _specOf(parameters, id);
 
@@ -654,6 +739,21 @@ final List<EffectKind> effectKindsAddedAlone = frozenList([
   for (final kind in EffectKind.values)
     if (kind.addedByItsKind) kind,
 ]);
+
+/// The top of an equalizer's High Cut ([EffectKind.equalizer]), where it
+/// cuts nothing — the end of what is heard, as a mixing desk's high cut
+/// runs out at 20 kHz.
+///
+/// ⛔NOT HALF A RATE: a project of 96 kHz (`audioSampleRatePresets`)
+/// hears to 48 kHz, so a top at 48 kHz's half would cut it at 24 kHz. The
+/// top is no cut at every rate — `audioEqualizerOf` leaves it out.
+const double equalizerHighCutTop = 20000;
+
+/// Where an equalizer's Low shelf turns, Hz ([EffectKind.equalizer]).
+const double equalizerLowShelfHz = 250;
+
+/// Where an equalizer's High shelf turns, Hz ([EffectKind.equalizer]).
+const double equalizerHighShelfHz = 4000;
 
 /// The spec of [specs] whose id is [id] — null for none.
 EffectParameterSpec? _specOf(List<EffectParameterSpec> specs, String id) {
@@ -1320,7 +1420,13 @@ class ResolvedLayerEffect {
   /// A kind whose defaults change pixels never is
   /// ([EffectKind.changesNothingAtItsDefaults]): a cel number's letters are
   /// what it does, and what a plugin does at its defaults is the plugin's.
+  ///
+  /// A sound's filter changes none at any value ([EffectKind.filtersSound]):
+  /// what it does is the row's sound's, baked a span at a time.
   bool get isNoOp {
+    if (kind.filtersSound) {
+      return true;
+    }
     if (!kind.changesNothingAtItsDefaults) {
       return false;
     }

@@ -40,29 +40,34 @@ external int _equalize(
   Pointer<Float> out,
 );
 
-/// The doubles one channel's memory takes — the door's `MEMORY_VALUES`
-/// (native/audio_mix equalizer.rs).
+/// The doubles one channel's memory takes in one stage — the door's
+/// `MEMORY_VALUES` (native/audio_mix equalizer.rs).
 const _memoryValues = 16;
 
 /// [samples] — interleaved by [channels], at [rate] — through the
-/// equalizer [settings] give, in order of their start, each channel from
-/// rest at the first sample: what the engine bakes a span by. Empty where
-/// the engine refuses the geometry.
+/// equalizer [stages] give, one after another, each by its settings in
+/// order of their start and each channel from rest at the first sample:
+/// what the engine bakes a span by. Empty where the engine refuses the
+/// geometry.
 Float32List equalizeAudio({
   required Float32List samples,
   required int channels,
   required int rate,
-  required List<AudioEqualizerSetting> settings,
+  required List<List<AudioEqualizerSetting>> stages,
 }) => EqualizerStretches(
   channels: channels,
   rate: rate,
-  settings: settings,
+  stages: stages,
 ).next(samples);
 
 /// A span baked a stretch at a time — one too long to hold, read and
 /// written in pieces: each stretch goes on from the filters' memory where
 /// the one before left it, so the stretches together are the samples
 /// [equalizeAudio] makes of the span at once.
+///
+/// A stage is the engine's equalizer, called once a stretch, the next
+/// stage taking the floats it wrote: the door the engine has, one stage
+/// a call.
 final class EqualizerStretches {
   /// From the span's first sample at rest — or, [from] given, going on from
   /// the span's sample `first`, the filters remembering `memory`: a [kept]
@@ -70,16 +75,20 @@ final class EqualizerStretches {
   EqualizerStretches({
     required this.channels,
     required this.rate,
-    required this.settings,
+    required this.stages,
     ({int first, Float64List memory})? from,
   }) : _memory = from == null
-           ? Float64List(channels <= 0 ? 0 : channels * _memoryValues)
+           ? Float64List(
+               channels <= 0 ? 0 : stages.length * channels * _memoryValues,
+             )
            : Float64List.fromList(from.memory),
        _first = from?.first ?? 0;
 
   final int channels;
   final int rate;
-  final List<AudioEqualizerSetting> settings;
+  final List<List<AudioEqualizerSetting>> stages;
+
+  /// Every stage's memory, the first stage's first.
   final Float64List _memory;
 
   /// The span's sample the next stretch begins at.
@@ -94,13 +103,39 @@ final class EqualizerStretches {
     if (channels <= 0 || rate <= 0 || samples.length % channels != 0) {
       return Float32List(0);
     }
+    final memory = Float64List.fromList(_memory);
+    final each = channels * _memoryValues;
+    var baked = Float32List.fromList(samples);
+    for (final (index, settings) in stages.indexed) {
+      final made = _stage(
+        baked,
+        settings,
+        Float64List.sublistView(memory, index * each, (index + 1) * each),
+      );
+      if (made == null) {
+        return Float32List(0);
+      }
+      baked = made;
+    }
+    _memory.setAll(0, memory);
+    _first += samples.length ~/ channels;
+    return baked;
+  }
+
+  /// [samples] through one stage's [settings], going on from [memory] and
+  /// leaving it there — null where the engine refuses.
+  Float32List? _stage(
+    Float32List samples,
+    List<AudioEqualizerSetting> settings,
+    Float64List memory,
+  ) {
     const valuesEach = audioEqualizerValues;
     final frames = samples.length ~/ channels;
     final input = calloc<Float>(samples.length);
     final output = calloc<Float>(samples.length);
     final starts = calloc<Int64>(settings.length);
     final values = calloc<Double>(settings.length * valuesEach);
-    final memory = calloc<Double>(_memory.length);
+    final held = calloc<Double>(memory.length);
     try {
       input.asTypedList(samples.length).setAll(0, samples);
       for (final (index, setting) in settings.indexed) {
@@ -109,7 +144,7 @@ final class EqualizerStretches {
             .asTypedList(settings.length * valuesEach)
             .setAll(index * valuesEach, setting.equalizer.values);
       }
-      memory.asTypedList(_memory.length).setAll(0, _memory);
+      held.asTypedList(memory.length).setAll(0, memory);
       final ran = _equalize(
         input,
         frames,
@@ -119,18 +154,17 @@ final class EqualizerStretches {
         starts,
         values,
         settings.length,
-        memory,
+        held,
         output,
       );
       if (ran != 1) {
-        return Float32List(0);
+        return null;
       }
-      _memory.setAll(0, memory.asTypedList(_memory.length));
-      _first += frames;
+      memory.setAll(0, held.asTypedList(memory.length));
       return Float32List.fromList(output.asTypedList(samples.length));
     } finally {
       calloc
-        ..free(memory)
+        ..free(held)
         ..free(values)
         ..free(starts)
         ..free(output)

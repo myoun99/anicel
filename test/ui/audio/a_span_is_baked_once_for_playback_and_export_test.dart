@@ -11,6 +11,11 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/ui/export/export_audio_mix.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+
+/// The one row's clip these spans are baked for.
+const aSlot = (row: LayerId('s1'), clip: FrameId('f1'));
 
 /// 🚨A SPAN OF A SOUND IS BAKED THROUGH ITS ROW'S EQUALIZER ONCE, FROM ITS
 /// OWN FIRST SAMPLE, AND PLAYBACK AND AN EXPORT READ THAT ONE BAKE (board
@@ -46,12 +51,13 @@ void main() {
   /// A row's equalizer over a span trimmed [spanOffsetFrames] into the
   /// file, ten frames long, turning darker four frames in.
   ScheduledEqualizer overTheSpan(int spanOffsetFrames) => ScheduledEqualizer(
+    slot: aSlot,
     spanOffsetFrames: spanOffsetFrames,
     spanFrames: 10,
-    settings: const [
+    stages: const [[
       (frame: 0, equalizer: every),
       (frame: 4, equalizer: darker),
-    ],
+    ]],
   );
 
   /// Thirty frames of a well-mixed stereo sound.
@@ -130,12 +136,13 @@ void main() {
       (
         path: 'a.wav',
         equalized: EqualizedSpan(
+          slot: aSlot,
           start: sampleOf(2),
           length: sampleOf(10),
-          settings: [
+          stages: [[
             (start: 0, equalizer: every),
             (start: sampleOf(4), equalizer: darker),
-          ],
+          ]],
         ),
       ),
     ]);
@@ -151,10 +158,10 @@ void main() {
       ),
       channels: 2,
       rate: sampleRate,
-      settings: [
+      stages: [[
         (start: 0, equalizer: every),
         (start: sampleOf(4), equalizer: darker),
-      ],
+      ]],
     );
     // A run from the span's start, and one begun three frames into it —
     // the clip's trim bumped by the lead it clipped, as a window does.
@@ -216,9 +223,10 @@ void main() {
     final source = (
       path: 'a.wav',
       equalized: EqualizedSpan(
+        slot: aSlot,
         start: sampleOf(2),
         length: sampleOf(10),
-        settings: const [(start: 0, equalizer: every)],
+        stages: const [[(start: 0, equalizer: every)]],
       ),
     );
     final exported = await exportSourcesOf(store)(source);
@@ -244,9 +252,10 @@ void main() {
   test('a bake under way is landing; it lands with a notify and is kept',
       () async {
     final span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: sampleOf(4),
-      settings: const [(start: 0, equalizer: every)],
+      stages: const [[(start: 0, equalizer: every)]],
     );
     store.resultFor('a.wav');
     await pumpEventQueue();
@@ -271,12 +280,15 @@ void main() {
   test('another span of the same sound is another bake', () async {
     store.resultFor('a.wav');
     await pumpEventQueue();
+    // Two clips of it, each its own slot — one span of a slot is under
+    // way at a time.
     final spans = [
       for (final start in [0, sampleOf(3)])
         EqualizedSpan(
+          slot: (row: const LayerId('s1'), clip: FrameId('f$start')),
           start: start,
           length: sampleOf(4),
-          settings: const [(start: 0, equalizer: every)],
+          stages: const [[(start: 0, equalizer: every)]],
         ),
     ];
     for (final span in spans) {
@@ -295,9 +307,10 @@ void main() {
 
   test('forgetting the sound forgets its bakes', () async {
     final span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: sampleOf(4),
-      settings: const [(start: 0, equalizer: every)],
+      stages: const [[(start: 0, equalizer: every)]],
     );
     store.resultFor('a.wav');
     await pumpEventQueue();
@@ -323,9 +336,10 @@ void main() {
     );
     addTearDown(slow.dispose);
     const span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: 4,
-      settings: [(start: 0, equalizer: every)],
+      stages: [[(start: 0, equalizer: every)]],
     );
     slow.resultFor('a.wav');
     await pumpEventQueue();
@@ -357,9 +371,10 @@ void main() {
     );
     addTearDown(failing.dispose);
     const span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: 4,
-      settings: [(start: 0, equalizer: every)],
+      stages: [[(start: 0, equalizer: every)]],
     );
     failing.resultFor('a.wav');
     await pumpEventQueue();
@@ -400,9 +415,10 @@ void main() {
     );
     addTearDown(moving.dispose);
     const span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: 4,
-      settings: [(start: 0, equalizer: every)],
+      stages: [[(start: 0, equalizer: every)]],
     );
     moving.resultFor('a.wav');
     await pumpEventQueue();
@@ -432,9 +448,10 @@ void main() {
     );
     addTearDown(once.dispose);
     const span = EqualizedSpan(
+      slot: aSlot,
       start: 0,
       length: 4,
-      settings: [(start: 0, equalizer: every)],
+      stages: [[(start: 0, equalizer: every)]],
     );
     once.resultFor('a.wav');
     await pumpEventQueue();
@@ -459,14 +476,15 @@ void main() {
           channels: 2,
           rate: sampleRate,
           span: const EqualizedSpan(
+            slot: aSlot,
             start: 1,
             length: 9,
-            settings: [
+            stages: [[
               (
                 start: 0,
                 equalizer: AudioEqualizer.none(lowShelf: 250, highShelf: 4000),
               ),
-            ],
+            ]],
           ),
         ),
       );
@@ -480,7 +498,12 @@ void main() {
             samples: Float32List(8),
             channels: 2,
             rate: 0,
-            span: const EqualizedSpan(start: 0, length: 4, settings: []),
+            span: const EqualizedSpan(
+              slot: aSlot,
+              start: 0,
+              length: 4,
+              stages: [],
+            ),
           ),
         ),
         throwsStateError,

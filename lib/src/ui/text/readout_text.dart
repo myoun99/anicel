@@ -39,8 +39,8 @@ String readoutText(num value, {required int decimals, String unit = ''}) {
 
 /// THE number a value column writes — a timeline lane's and a tool
 /// setting's drag readout: every digit of the readout grid
-/// ([CanvasViewport.readoutDecimals]), always. The unit (`%`, `°`, ` px`)
-/// is the column's, so it stays at the call site.
+/// ([CanvasViewport.readoutDecimals]), always. The unit (`%`, `°`, ` px`,
+/// ` Hz`, ` dB`) is the column's, so it stays at the call site.
 ///
 /// 🗣️F-326 (유저 2026-10-09): 「트랜스폼이든 카메라행이든 위치값같은게
 /// 소수점까지 조정가능한 숫자 다 보여줌이라는 규칙에 어긋남. 1218이다가
@@ -55,9 +55,10 @@ String columnValueText(num value) =>
     readoutText(value, decimals: CanvasViewport.readoutDecimals);
 
 /// The number a value column's text holds — [columnValueText] read back,
-/// with or without the column's unit (`%`, `°`, `px`). Null when the text
-/// is not a number. Whatever the column then makes of it (a percent over
-/// 100, a range's clamp, a whole cell count) stays at the call site.
+/// with or without the column's unit (`%`, `°`, `px`, `Hz`, `dB`). Null
+/// when the text is not a number. Whatever the column then makes of it (a
+/// percent over 100, a range's clamp, a whole cell count) stays at the
+/// call site.
 ///
 /// The same law the other way: a number reads the same in every value
 /// column (2026-09-07). ↩️Each column read its own — twelve copies of
@@ -80,7 +81,13 @@ double? columnValueOf(String text) {
 }
 
 double? _bareValueOf(String text) => double.tryParse(
-  text.replaceAll('%', '').replaceAll('°', '').replaceAll('px', '').trim(),
+  text
+      .replaceAll('%', '')
+      .replaceAll('°', '')
+      .replaceAll('px', '')
+      .replaceAll('Hz', '')
+      .replaceAll('dB', '')
+      .trim(),
 );
 
 /// What stands after an angle's whole turns — `1x+90.00°`.

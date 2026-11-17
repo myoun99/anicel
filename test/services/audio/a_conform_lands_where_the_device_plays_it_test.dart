@@ -11,6 +11,11 @@ import 'package:anicel/src/services/audio/audio_equalizer.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/temp_dir.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+
+/// The one row's clip these spans are baked for.
+const aSlot = (row: LayerId('s1'), clip: FrameId('f1'));
 
 /// 🚨A CONFORM LANDS WHERE THE DEVICE PLAYS IT, PLACED BY THE WORKER THAT
 /// MADE IT (conform-landing-copies-on-the-ui-thread).
@@ -135,12 +140,13 @@ void main() {
       channels: 2,
       rate: 48000,
       span: EqualizedSpan(
+        slot: aSlot,
         start: 40,
         length: 300,
-        settings: [
+        stages: [[
           (start: 0, equalizer: _withLowDb(shelf, 6)),
           (start: 120, equalizer: _withLowDb(shelf, -9)),
-        ],
+        ]],
       ),
     );
     final here = runEqualizeHere(request.withSamples(plain));

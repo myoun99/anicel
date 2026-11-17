@@ -52,7 +52,7 @@ void main() {
         samples: sound,
         channels: 2,
         rate: rate,
-        settings: settings,
+        stages: [settings],
       );
       expect(
         fingerprintHex(baked.buffer.asUint8List()),
@@ -69,13 +69,13 @@ void main() {
       samples: sound,
       channels: 2,
       rate: 48000,
-      settings: settings,
+      stages: [settings],
     );
     // Breaks on a setting's start, beside one, and at the very first.
     final stretches = EqualizerStretches(
       channels: 2,
       rate: 48000,
-      settings: settings,
+      stages: [settings],
     );
     final pieces = <double>[];
     for (final (from, to) in [(0, 1), (1, 4800), (4800, 9601), (9601, 20000)]) {
@@ -86,6 +86,66 @@ void main() {
     expect(Float32List.fromList(pieces), whole);
   });
 
+  // 🗣️Q2 design 1 (유저 2026-11-17): 「효과 순서가 소리 순서다(위 → 아래)」
+  // — a row's second equalizer hears what its first made.
+  final darker = <AudioEqualizerSetting>[
+    (start: 0, equalizer: like(every, lowDb: 9, highCut: 3000)),
+    (start: 7000, equalizer: like(every, highDb: -12)),
+  ];
+
+  test('🎯two stages are the first\'s sound through the second', () {
+    final sound = _madeUpSound();
+    final first = equalizeAudio(
+      samples: sound,
+      channels: 2,
+      rate: 48000,
+      stages: [settings],
+    );
+    expect(
+      equalizeAudio(
+        samples: sound,
+        channels: 2,
+        rate: 48000,
+        stages: [settings, darker],
+      ),
+      equalizeAudio(
+        samples: first,
+        channels: 2,
+        rate: 48000,
+        stages: [darker],
+      ),
+    );
+  });
+
+  test('🎯two stages baked a stretch at a time come back as baked at once, '
+      'from a stretch\'s kept memory too', () {
+    final sound = _madeUpSound();
+    final whole = equalizeAudio(
+      samples: sound,
+      channels: 2,
+      rate: 48000,
+      stages: [settings, darker],
+    );
+    final stretches = EqualizerStretches(
+      channels: 2,
+      rate: 48000,
+      stages: [settings, darker],
+    );
+    final pieces = <double>[
+      ...stretches.next(Float32List.sublistView(sound, 0, 2 * 7001)),
+    ];
+    // A bake that goes on from what the first stretch left, as a window
+    // goes on from its checkpoint.
+    final goingOn = EqualizerStretches(
+      channels: 2,
+      rate: 48000,
+      stages: [settings, darker],
+      from: (first: 7001, memory: stretches.kept),
+    );
+    pieces.addAll(goingOn.next(Float32List.sublistView(sound, 2 * 7001)));
+    expect(Float32List.fromList(pieces), whole);
+  });
+
   test('an equalizer of no section hands its samples back as they were', () {
     final sound = Float32List.fromList([0.25, -0.5, 0.75, 1, -1, 0]);
     expect(
@@ -93,7 +153,7 @@ void main() {
         samples: sound,
         channels: 2,
         rate: 48000,
-        settings: const [(start: 0, equalizer: none)],
+        stages: const [[(start: 0, equalizer: none)]],
       ),
       sound,
     );
@@ -107,7 +167,7 @@ void main() {
           samples: sound,
           channels: channels,
           rate: rate,
-          settings: const [],
+          stages: const [[]],
         ),
         isEmpty,
         reason: '$channels channels at $rate',

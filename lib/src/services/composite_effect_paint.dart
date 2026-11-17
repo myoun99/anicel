@@ -243,6 +243,9 @@ _PaintPart _paintPartOf(ResolvedLayerEffect effect, {ui.Rect? paper}) {
     // at the head of a cel's chain or past anything, runs over the picture
     // the chain made before it, read back.
     EffectKind.plugin => _pluginPart(effect, paper),
+    // A sound's filter is no paint: its sample is a no-op, caught above
+    // ([EffectKind.filtersSound]).
+    EffectKind.equalizer => const _NoPart(),
   };
 }
 

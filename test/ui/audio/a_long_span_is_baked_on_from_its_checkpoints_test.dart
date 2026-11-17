@@ -18,6 +18,11 @@ import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 import '../../helpers/stream_windows_read_here.dart';
 import '../../helpers/temp_dir.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+
+/// The one row's clip these spans are baked for.
+const aSlot = (row: LayerId('s1'), clip: FrameId('f1'));
 
 /// 🚨A SPAN TOO LONG TO HOLD IS BAKED THROUGH ITS EQUALIZER A WINDOW AT A
 /// TIME, ON FROM THE CHECKPOINT BEFORE EACH — AND EVERY WINDOW HOLDS WHAT
@@ -55,22 +60,24 @@ void main() {
 
   /// The span three frames into the file, forty long, darker fifteen in.
   const span = ScheduledEqualizer(
+    slot: aSlot,
     spanOffsetFrames: 3,
     spanFrames: 40,
-    settings: [
+    stages: [[
       (frame: 0, equalizer: bright),
       (frame: 15, equalizer: darker),
-    ],
+    ]],
   );
   const spanStart = 6000;
   const spanEnd = 86000;
   const equalized = EqualizedSpan(
+    slot: aSlot,
     start: spanStart,
     length: spanEnd - spanStart,
-    settings: [
+    stages: [[
       (start: 0, equalizer: bright),
       (start: 30000, equalizer: darker),
-    ],
+    ]],
   );
 
   late Directory directory;
@@ -96,7 +103,7 @@ void main() {
       samples: Float32List.sublistView(decoded, 2 * spanStart, 2 * spanEnd),
       channels: 2,
       rate: sampleRate,
-      settings: equalized.settings,
+      stages: equalized.stages,
     );
   });
 
@@ -322,7 +329,7 @@ void main() {
     resident.equalizedAt(
       'a',
       sampleRate,
-      const EqualizedSpan(start: 0, length: 100, settings: []),
+      const EqualizedSpan(slot: aSlot, start: 0, length: 100, stages: []),
     );
     expect(resident.isLanding('a', sampleRate), isTrue, reason: 'bake');
     baking.complete(Float32List(200));

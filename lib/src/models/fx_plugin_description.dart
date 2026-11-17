@@ -238,7 +238,10 @@ final class FxPluginDescription {
   static Map<String, Object?> _jsonOf(EffectParameterSpec spec) {
     final head = {'id': spec.id, 'label': spec.label};
     return switch (spec.unit) {
-      EffectParameterUnit.number || EffectParameterUnit.pixels => {
+      EffectParameterUnit.number ||
+      EffectParameterUnit.pixels ||
+      EffectParameterUnit.hertz ||
+      EffectParameterUnit.decibels => {
         ...head,
         'kind': 'number',
         'default': spec.defaultValue,

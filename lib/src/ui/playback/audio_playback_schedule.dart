@@ -10,14 +10,18 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'dart:collection';
 import 'dart:math' as math;
 
+import '../../core/collection_equality.dart' show listsMatch;
 import '../../models/se_sound.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/timeline_exposure.dart';
 import '../../services/audio/audio_equalizer.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/conform_pcm_stream.dart';
@@ -53,13 +57,15 @@ class ScheduledAudioClip {
   /// The ROW's sound ([SeSound]) is laid in HERE, so no consumer ever
   /// re-consults the layer: a keyed volume becomes the entry's [volume]
   /// line, read off the row at the frames the entry sounds — [clippedLead]
-  /// frames into the span — and its total multiplies into the [gain].
+  /// frames into the span — and its total multiplies into the [gain]; its
+  /// equalizers come as [equalizer], over the whole span.
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
     required int endFrameExclusive,
     required int clippedLead,
     required SeSound sound,
+    ScheduledEqualizer? equalizer,
   }) {
     final first = span.startFrame + clippedLead;
     return ScheduledAudioClip(
@@ -76,6 +82,7 @@ class ScheduledAudioClip {
               frames: endFrameExclusive - startFrame,
             )
           : const [],
+      equalizer: equalizer,
     );
   }
 
@@ -133,9 +140,10 @@ class ScheduledAudioClip {
       'gain: $gain, pan: $pan, volume: $volume, equalizer: $equalizer)';
 }
 
-/// The row's equalizer over the WHOLE span an entry is of, in frames: the
+/// The row's equalizers over the WHOLE span an entry is of, in frames: the
 /// span's own trim — the frame of the file it begins at — its length, and
-/// each setting from the frame of the span it takes over at.
+/// each equalizer's settings from the frame of the span they take over at,
+/// in the row's chain's order ([EqualizedSpan.stages]).
 ///
 /// The whole span, not the part a run plays: it is baked from its first
 /// sample (board audio-fx-grows-like-the-pros ③), so a run begun inside it
@@ -146,28 +154,37 @@ class ScheduledEqualizer {
   const ScheduledEqualizer({
     required this.spanOffsetFrames,
     required this.spanFrames,
-    required this.settings,
+    required this.stages,
+    required this.slot,
   });
 
   final int spanOffsetFrames;
   final int spanFrames;
-  final List<({int frame, AudioEqualizer equalizer})> settings;
+  final List<List<({int frame, AudioEqualizer equalizer})>> stages;
+
+  /// The row's clip it is baked for ([EqualizedSpan.slot]).
+  final EqualizerSlot slot;
 
   @override
   bool operator ==(Object other) =>
       other is ScheduledEqualizer &&
       other.spanOffsetFrames == spanOffsetFrames &&
       other.spanFrames == spanFrames &&
-      listEquals(other.settings, settings);
+      other.slot == slot &&
+      listsMatch(other.stages, stages, listEquals);
 
   @override
-  int get hashCode =>
-      Object.hash(spanOffsetFrames, spanFrames, Object.hashAll(settings));
+  int get hashCode => Object.hash(
+    spanOffsetFrames,
+    spanFrames,
+    slot,
+    Object.hashAll([for (final stage in stages) Object.hashAll(stage)]),
+  );
 
   @override
   String toString() =>
       'ScheduledEqualizer(spanOffsetFrames: $spanOffsetFrames, '
-      'spanFrames: $spanFrames, settings: $settings)';
+      'spanFrames: $spanFrames, stages: $stages, slot: $slot)';
 }
 
 /// [sound]'s volume over the [frames] an entry sounds from the row's frame
@@ -337,7 +354,57 @@ ScheduledAudioClip? _spanInWindow(
     endFrameExclusive: endFrameExclusive,
     clippedLead: clippedLead,
     sound: layer.seSound,
+    equalizer: _equalizersOver(span, layer),
   );
+}
+
+/// [layer]'s equalizers ([EffectKind.equalizer]) over the whole of [span],
+/// in its chain's order — null where none is switched on.
+///
+/// Each is read at every frame of the span where it is keyed — a key may
+/// ease, and a setting holds till the next — and once where it is not.
+ScheduledEqualizer? _equalizersOver(SeAudioSpan span, Layer layer) {
+  final stages = [
+    for (final effect in layer.effects)
+      if (effect.enabled && effect.kind == EffectKind.equalizer)
+        _equalizerSettings(effect, span, layer.fxBlocks),
+  ];
+  return stages.isEmpty
+      ? null
+      : ScheduledEqualizer(
+          spanOffsetFrames: span.clip.offsetFrames,
+          spanFrames: span.lengthFrames,
+          stages: stages,
+          slot: (row: layer.id, clip: span.clip.frameId),
+        );
+}
+
+/// [effect]'s settings over [span], from the frame of the span each takes
+/// over at — a frame whose sample is the frame's before is no new one.
+List<({int frame, AudioEqualizer equalizer})> _equalizerSettings(
+  LayerEffect effect,
+  SeAudioSpan span,
+  SplayTreeMap<int, TimelineExposure>? blocks,
+) {
+  AudioEqualizer at(int frame) => audioEqualizerOf(
+    sampleLayerEffectAt(
+      effect,
+      frameIndex: span.startFrame + frame,
+      blocks: blocks,
+      worn: null,
+    ),
+  );
+  final settings = [(frame: 0, equalizer: at(0))];
+  if (!effect.parameters.values.any((value) => value.isAnimated)) {
+    return settings;
+  }
+  for (var frame = 1; frame < span.lengthFrames; frame += 1) {
+    final equalizer = at(frame);
+    if (equalizer != settings.last.equalizer) {
+      settings.add((frame: frame, equalizer: equalizer));
+    }
+  }
+  return settings;
 }
 
 /// One source a mix reads: a file's conform, or a span of it baked through
@@ -421,12 +488,18 @@ EqualizedSpan? _equalizedSpan(
     start: start,
     length:
         rate.frameToSample(first + equalizer.spanFrames, sampleRate) - start,
-    settings: [
-      for (final setting in equalizer.settings)
-        (
-          start: rate.frameToSample(first + setting.frame, sampleRate) - start,
-          equalizer: setting.equalizer,
-        ),
+    slot: equalizer.slot,
+    stages: [
+      for (final stage in equalizer.stages)
+        [
+          for (final setting in stage)
+            (
+              start:
+                  rate.frameToSample(first + setting.frame, sampleRate) -
+                  start,
+              equalizer: setting.equalizer,
+            ),
+        ],
     ],
   );
 }

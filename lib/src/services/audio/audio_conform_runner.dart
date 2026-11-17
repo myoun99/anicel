@@ -370,7 +370,7 @@ Float32List runEqualizeHere(EqualizeRequest request) {
     ),
     channels: channels,
     rate: request.rate,
-    settings: request.span.settings,
+    stages: request.span.stages,
   );
   if (baked.length != (end - start) * channels) {
     throw StateError(
