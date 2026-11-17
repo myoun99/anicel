@@ -9,6 +9,8 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
@@ -406,7 +408,7 @@ final class ClipImportDoor {
       }
 
       var baked = 0;
-      await _decodeEach(
+      await decodeEach(
         work,
         atOnce: workersFor(Platform.numberOfProcessors, ceiling: 8),
         decoded: (item) async {
@@ -451,11 +453,12 @@ final class ClipImportDoor {
   /// left in F-608 ③ for this one ([TvppImportDoor.decodeEach]). The two are
   /// the same walk over different work; a third door that fans out makes
   /// them one.
-  static Future<void> _decodeEach(
-    List<_ClipWork> work, {
+  @visibleForTesting
+  static Future<void> decodeEach<W>(
+    List<W> work, {
     required int atOnce,
-    required Future<Object?> Function(_ClipWork item) decoded,
-    required Future<void> Function(_ClipWork item, Object? decoded) landed,
+    required Future<Object?> Function(W item) decoded,
+    required Future<void> Function(W item, Object? decoded) landed,
     required bool Function() stopped,
   }) async {
     final turns = Turns(atOnce);
