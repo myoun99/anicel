@@ -30,18 +30,12 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import '../audio/sound_cannot_play.dart';
 
-/// One point of a scheduled sound's volume line: at [frame] — counted from
-/// the entry's own start — the line passes [gain].
+/// One point of a line a scheduled sound hands the mixer: at [frame] —
+/// counted from the entry's own start — the line passes [gain]. The
+/// volume's line, and each pan side's (audio-fx-grows-like-the-pros-Q7).
 /// Linear between points and held past the ends, as the mixer's envelope
-/// is; an empty line is unity.
-typedef ScheduledVolumePoint = ({int frame, double gain});
-
-/// One point of a scheduled sound's pan line: at [frame] — counted from the
-/// entry's own start — the sound stands at [pan], left −1 to right +1. The
-/// mixer draws its two SIDES straight between points (equal power at every
-/// point, [equalPowerPanGains]), held past the ends; an empty line is the
-/// entry's one [ScheduledAudioClip.pan].
-typedef ScheduledPanPoint = ({int frame, double pan});
+/// is.
+typedef ScheduledGainPoint = ({int frame, double gain});
 
 /// A clip laid out on a run's frame axis, end clamped at the run's end.
 class ScheduledAudioClip {
@@ -53,8 +47,9 @@ class ScheduledAudioClip {
     this.gain = 1.0,
     this.pan = 0.0,
     this.volume = const [],
+    this.panLeftLine = const [],
+    this.panRightLine = const [],
     this.equalizer,
-    this.panLine = const [],
   });
 
   /// ONE SPAN, LAID ON AN OUTPUT AXIS — the mapping the playback walk and
@@ -64,11 +59,12 @@ class ScheduledAudioClip {
   ///
   /// The ROW's sound ([SeSound]) is laid in HERE, so no consumer ever
   /// re-consults the layer: a keyed volume becomes the entry's [volume]
-  /// line and a keyed pan its [panLine], read off the row at the frames the
-  /// entry sounds — [clippedLead] frames into the span — and its total
-  /// multiplies into the [gain]; its equalizers come as [equalizer], over
-  /// the whole span. As it is HEARD ([SeSound.heard]): its group switched
-  /// off, its keys and its pan are not.
+  /// line and a keyed pan its two sides' lines ([panLeftLine],
+  /// [panRightLine]), read off the row at the frames the entry sounds —
+  /// [clippedLead] frames into the span — and its total multiplies into
+  /// the [gain]; its equalizers come as [equalizer], over the whole span.
+  /// As it is HEARD ([SeSound.heard]): its group switched off, its keys
+  /// and its pan are not.
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
@@ -80,6 +76,8 @@ class ScheduledAudioClip {
     final heard = sound.heard;
     final first = span.startFrame + clippedLead;
     final frames = endFrameExclusive - startFrame;
+    List<ScheduledGainPoint> line(double Function(double time) at) =>
+        _lineOf(at, from: first, frames: frames);
     return ScheduledAudioClip(
       filePath: span.clip.filePath,
       startFrame: startFrame,
@@ -87,11 +85,12 @@ class ScheduledAudioClip {
       offsetFrames: clippedLead + span.clip.offsetFrames,
       gain: span.clip.gain * heard.totalVolume,
       pan: heard.panAt(first.toDouble()),
-      volume: heard.isKeyed
-          ? _volumeLine(heard, from: first, frames: frames)
+      volume: heard.isKeyed ? line(heard.volumeAt) : const [],
+      panLeftLine: heard.isPanKeyed
+          ? line((time) => equalPowerPanGains(heard.panAt(time)).left)
           : const [],
-      panLine: heard.isPanKeyed
-          ? _panLine(heard, from: first, frames: frames)
+      panRightLine: heard.isPanKeyed
+          ? line((time) => equalPowerPanGains(heard.panAt(time)).right)
           : const [],
       equalizer: equalizer,
     );
@@ -109,17 +108,21 @@ class ScheduledAudioClip {
   final double gain;
 
   /// The row's pan where the entry begins, -1..1 equal-power — the whole
-  /// entry's while [panLine] is empty; applied by the device mixer path
-  /// only.
+  /// entry's while its sides' lines are empty; applied by the device mixer
+  /// path only.
   final double pan;
 
-  /// The row's keyed volume along this entry ([ScheduledVolumePoint]) —
-  /// empty while the row's volume does not change.
-  final List<ScheduledVolumePoint> volume;
+  /// The row's keyed volume along this entry — empty while the row's
+  /// volume does not change.
+  final List<ScheduledGainPoint> volume;
 
-  /// The row's keyed pan along this entry ([ScheduledPanPoint]) — empty
-  /// while the row's pan does not change (Q7).
-  final List<ScheduledPanPoint> panLine;
+  /// The left side of the row's keyed pan along this entry
+  /// ([equalPowerPanGains] at each point) — empty while the row's pan does
+  /// not change (Q7).
+  final List<ScheduledGainPoint> panLeftLine;
+
+  /// The right side's, as [panLeftLine] is the left's.
+  final List<ScheduledGainPoint> panRightLine;
 
   /// The row's equalizer over the span this entry is of — null while the
   /// row has none.
@@ -135,7 +138,8 @@ class ScheduledAudioClip {
       other.gain == gain &&
       other.pan == pan &&
       listEquals(other.volume, volume) &&
-      listEquals(other.panLine, panLine) &&
+      listEquals(other.panLeftLine, panLeftLine) &&
+      listEquals(other.panRightLine, panRightLine) &&
       other.equalizer == equalizer;
 
   @override
@@ -147,16 +151,17 @@ class ScheduledAudioClip {
     gain,
     pan,
     Object.hashAll(volume),
+    Object.hashAll(panLeftLine),
+    Object.hashAll(panRightLine),
     equalizer,
-    Object.hashAll(panLine),
   );
 
   @override
   String toString() =>
       'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
       'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
-      'gain: $gain, pan: $pan, volume: $volume, panLine: $panLine, '
-      'equalizer: $equalizer)';
+      'gain: $gain, pan: $pan, volume: $volume, panLeftLine: $panLeftLine, '
+      'panRightLine: $panRightLine, equalizer: $equalizer)';
 }
 
 /// The row's equalizers over the WHOLE span an entry is of, in frames: the
@@ -206,24 +211,29 @@ class ScheduledEqualizer {
       'spanFrames: $spanFrames, stages: $stages, slot: $slot)';
 }
 
-/// [sound]'s volume over the [frames] an entry sounds from the row's frame
-/// [from], as the entry's line: the value at every frame from its first to
-/// its end — a line between frames, as the mixer draws it — less every
-/// point that stands on the line its neighbours draw, so a keyed ramp is
-/// its two ends.
+/// [at] — a row's value at a time on its frames — over the [frames] an
+/// entry sounds from the row's frame [from], as the entry's line: the value
+/// at every frame from its first to its end — a line between frames, as
+/// the mixer draws it — less every point that stands on the line its
+/// neighbours draw, so a keyed ramp is its two ends. The volume's, and each
+/// pan side's (Q7).
 ///
 /// ⚠️Every frame, not every key: a key may ease, and the mixer's line is
 /// straight, so a curve between two keys is met at each frame it passes.
-List<ScheduledVolumePoint> _volumeLine(
-  SeSound sound, {
+/// A pan's sides bend under equal power between its keys, so a moving pan
+/// keeps its frames; one that holds still is its run's two ends.
+/// ↩️The pan's own line stood apart, of pans thinned where they held
+/// still, while the mixer drew the sides of one pan point to the next.
+List<ScheduledGainPoint> _lineOf(
+  double Function(double time) at, {
   required int from,
   required int frames,
 }) {
   final points = [
-    for (var at = 0; at <= frames; at += 1)
-      (frame: at, gain: sound.volumeAt((from + at) * 1.0)),
+    for (var frame = 0; frame <= frames; frame += 1)
+      (frame: frame, gain: at((from + frame) * 1.0)),
   ];
-  final line = <ScheduledVolumePoint>[];
+  final line = <ScheduledGainPoint>[];
   for (var index = 0; index < points.length; index += 1) {
     final point = points[index];
     if (line.isNotEmpty && index + 1 < points.length) {
@@ -239,34 +249,6 @@ List<ScheduledVolumePoint> _volumeLine(
     line.add(point);
   }
   return line;
-}
-
-/// [sound]'s pan over the [frames] an entry sounds from the row's frame
-/// [from], as the entry's pan line: the pan at every frame from its first
-/// to its end, less every point inside a run that holds still.
-///
-/// ⚠️Only a still run thins: the mixer draws a pan's two SIDES straight
-/// between points, and equal power bends them, so a point on a moving
-/// pan's straight line is still a point — a sweep from left to right drawn
-/// as its two ends would sink 3 dB in the middle.
-List<ScheduledPanPoint> _panLine(
-  SeSound sound, {
-  required int from,
-  required int frames,
-}) {
-  final points = [
-    for (var at = 0; at <= frames; at += 1)
-      (frame: at, pan: sound.panAt((from + at) * 1.0)),
-  ];
-  bool holdsStill(int index) =>
-      index > 0 &&
-      index + 1 < points.length &&
-      points[index - 1].pan == points[index].pan &&
-      points[index + 1].pan == points[index].pan;
-  return [
-    for (var index = 0; index < points.length; index += 1)
-      if (!holdsStill(index)) points[index],
-  ];
 }
 
 /// The frames a file covers at [rate], read off [durationSecondsFor] —
@@ -482,6 +464,15 @@ AudioMixSchedule audioMixScheduleFrom({
   required ProjectFrameRate rate,
   required int sampleRate,
 }) {
+  // A line on the entry's frames as the mixer's envelope, on its samples —
+  // the volume's, and each pan side's.
+  List<AudioEnvelopePoint> envelopeOf(List<ScheduledGainPoint> line) => [
+    for (final point in line)
+      AudioEnvelopePoint(
+        sample: rate.frameToSample(point.frame, sampleRate),
+        gain: point.gain,
+      ),
+  ];
   final sourceIndexOf = <AudioMixSourceOf, int>{};
   final sources = <AudioMixSourceOf>[];
   final clips = <AudioMixClip>[];
@@ -504,20 +495,9 @@ AudioMixSchedule audioMixScheduleFrom({
         gain: clip.gain,
         panLeft: pan.left,
         panRight: pan.right,
-        envelope: [
-          for (final point in clip.volume)
-            AudioEnvelopePoint(
-              sample: rate.frameToSample(point.frame, sampleRate),
-              gain: point.gain,
-            ),
-        ],
-        panLine: [
-          for (final point in clip.panLine)
-            AudioPanPoint.at(
-              rate.frameToSample(point.frame, sampleRate),
-              point.pan,
-            ),
-        ],
+        envelope: envelopeOf(clip.volume),
+        panLeftLine: envelopeOf(clip.panLeftLine),
+        panRightLine: envelopeOf(clip.panRightLine),
       ),
     );
   }

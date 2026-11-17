@@ -60,8 +60,6 @@ external int _latency();
     Int32,
     Pointer<QaAudioEnvelopeKeyStruct>,
     Int32,
-    Pointer<QaAudioPanKeyStruct>,
-    Int32,
   )
 >(symbol: 'qa_audio_device_set_schedule')
 external int _setSchedule(
@@ -71,8 +69,6 @@ external int _setSchedule(
   int sourceCount,
   Pointer<QaAudioEnvelopeKeyStruct> keys,
   int keyCount,
-  Pointer<QaAudioPanKeyStruct> pans,
-  int panCount,
 );
 
 @Native<Pointer<Float> Function(Int64)>(symbol: 'qa_audio_buffer_new')
@@ -471,8 +467,6 @@ final class QaAudioDevice {
             sources.length,
             arrays.envelopeArray,
             arrays.envelopeTotal,
-            arrays.panArray,
-            arrays.panTotal,
           ) !=
           0;
     } finally {

@@ -29,30 +29,6 @@ class AudioEnvelopePoint {
   final double gain;
 }
 
-/// One point of a clip's pan line (audio-fx-grows-like-the-pros-Q7) —
-/// mirrors Rust's `audio_mix::PanKey`: at [sample] (clip-local) the clip's
-/// two sides are [left] and [right]. Linear between points, held past the
-/// ends; an empty line is the clip's one [AudioMixClip.panLeft] and
-/// [AudioMixClip.panRight].
-class AudioPanPoint {
-  const AudioPanPoint({
-    required this.sample,
-    required this.left,
-    required this.right,
-  });
-
-  /// The point where a sound stands at [pan] at [sample] — its sides by
-  /// [equalPowerPanGains], worked out here once, as the clip's one pan's.
-  factory AudioPanPoint.at(int sample, double pan) {
-    final (:left, :right) = equalPowerPanGains(pan);
-    return AudioPanPoint(sample: sample, left: left, right: right);
-  }
-
-  final int sample;
-  final double left;
-  final double right;
-}
-
 /// One scheduled clip on the timeline — mirrors the C `qa_audio_clip`.
 class AudioMixClip {
   const AudioMixClip({
@@ -67,7 +43,8 @@ class AudioMixClip {
     this.panRight = 1.0,
     this.fadeCurve = 0,
     this.envelope = const [],
-    this.panLine = const [],
+    this.panLeftLine = const [],
+    this.panRightLine = const [],
   });
 
   final int sourceIndex;
@@ -100,10 +77,14 @@ class AudioMixClip {
   /// flattens every clip's points into one shared array for the C.
   final List<AudioEnvelopePoint> envelope;
 
-  /// The pan line, sorted by sample ([AudioPanPoint]); empty = the one
-  /// [panLeft] and [panRight] the whole clip through. The FFI layer
-  /// flattens every clip's points into one shared array, as the envelope's.
-  final List<AudioPanPoint> panLine;
+  /// The left side as a line, sorted by sample (audio-fx-grows-like-the-
+  /// pros-Q7): a keyed pan's left side at each of its points, read as the
+  /// [envelope] is. Empty = the one [panLeft] the whole clip through. The
+  /// FFI layer lays it in the envelope's shared array.
+  final List<AudioEnvelopePoint> panLeftLine;
+
+  /// The right side's line, as [panLeftLine] is the left's.
+  final List<AudioEnvelopePoint> panRightLine;
 
   /// This clip re-pointed at [sourceIndex]. NOTHING else changes.
   ///
@@ -125,7 +106,8 @@ class AudioMixClip {
     panRight: panRight,
     fadeCurve: fadeCurve,
     envelope: envelope,
-    panLine: panLine,
+    panLeftLine: panLeftLine,
+    panRightLine: panRightLine,
   );
 }
 
@@ -245,39 +227,24 @@ double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
   return volume;
 }
 
-/// The clip's two pan sides at one timeline position: its pan line's there
-/// — linear between points, held past either end — or, with no line, its
-/// one [AudioMixClip.panLeft] and [AudioMixClip.panRight]. Mirrors Rust's
-/// `clip_sides` expression for expression.
-/// The envelope's law ([audioEnvelopeAt]) on two sides: ⛔kept apart while
-/// they are two (the rule of three — CLAUDE.md).
+/// The clip's two pan sides at one timeline position (audio-fx-grows-like-
+/// the-pros-Q7): each side's line read as the envelope is
+/// ([audioEnvelopeAt]) — straight between its points, held past either end
+/// — or, with none, its one [AudioMixClip.panLeft] and
+/// [AudioMixClip.panRight]. Mirrors Rust's `clip_sides`.
 ({double left, double right}) audioClipSidesAt(
   AudioMixClip clip,
   int positionSample,
 ) {
-  final points = clip.panLine;
-  if (points.isEmpty) {
-    return (left: clip.panLeft, right: clip.panRight);
-  }
   final position = positionSample - clip.startSample;
-  if (position <= points.first.sample) {
-    return (left: points.first.left, right: points.first.right);
-  }
-  if (position >= points.last.sample) {
-    return (left: points.last.left, right: points.last.right);
-  }
-  for (var index = 0; index < points.length - 1; index += 1) {
-    final a = points[index];
-    final b = points[index + 1];
-    if (position < b.sample) {
-      final t = (position - a.sample) / (b.sample - a.sample).toDouble();
-      return (
-        left: a.left + (b.left - a.left) * t,
-        right: a.right + (b.right - a.right) * t,
-      );
-    }
-  }
-  return (left: points.last.left, right: points.last.right);
+  return (
+    left: clip.panLeftLine.isEmpty
+        ? clip.panLeft
+        : audioEnvelopeAt(clip.panLeftLine, position),
+    right: clip.panRightLine.isEmpty
+        ? clip.panRight
+        : audioEnvelopeAt(clip.panRightLine, position),
+  );
 }
 
 /// A mono sound laid on two speakers: each side at -3 dB, before its pan

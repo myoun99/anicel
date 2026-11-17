@@ -322,6 +322,45 @@ PropertyTrack<T> laneResetAt<T>(
       lane.withKey(frame, value, outgoing: outgoing);
 }
 
+/// [lane] put back to [value] at each of [frames] ([laneResetAt]) — at
+/// every one, or, [keyedFramesOnly], at the keys it holds there alone —
+/// the one walk every group's Reset takes. An unkeyed lane already shows
+/// its rest everywhere and comes back as it is: a Reset never authors
+/// animation (R5, 유저 2026-08-09: 「키를 삭제하진 않고 값만 리셋」).
+///
+/// ↩️Each group walked its own copy — the transform's, the name tag's,
+/// the effect's colour and number, the sound's — until the sound's
+/// second lane made the scan see the fourth (audio-fx-grows-like-the-pros
+/// -Q7).
+PropertyTrack<T> laneResetOver<T>(
+  PropertyTrack<T> lane,
+  Iterable<int> frames,
+  T value, {
+  required KeyValueSpace<T> space,
+  required bool keyedFramesOnly,
+  KeyExit? outgoing,
+  PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
+  keyed,
+}) {
+  if (lane.isEmpty) {
+    return lane;
+  }
+  var next = lane;
+  for (final frame in frames) {
+    if (!keyedFramesOnly || lane.keyAt(frame) != null) {
+      next = laneResetAt(
+        next,
+        frame,
+        value,
+        space: space,
+        outgoing: outgoing,
+        keyed: keyed,
+      );
+    }
+  }
+  return next;
+}
+
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).
 ///
 /// The rule, in the user's words: **키를 삭제하진 않고 값만 리셋**. So this
@@ -358,18 +397,14 @@ TransformTrack? transformTrackWithGroupReset(
     PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
         keyed,
   ]) {
-    // Untouched by design: no keys means the lane already resolves to its
-    // default everywhere.
-    if (lane.isEmpty) {
-      return null;
-    }
-    var next = lane;
-    for (final frame in frames) {
-      if (keyedFramesOnly && lane.keyAt(frame) == null) {
-        continue;
-      }
-      next = laneResetAt(next, frame, value, space: space, keyed: keyed);
-    }
+    final next = laneResetOver(
+      lane,
+      frames,
+      value,
+      space: space,
+      keyedFramesOnly: keyedFramesOnly,
+      keyed: keyed,
+    );
     return next == lane ? null : next;
   }
 

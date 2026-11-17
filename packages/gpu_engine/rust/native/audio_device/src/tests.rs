@@ -12,13 +12,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use audio_mix::{Clip, EnvelopeKey, PanKey, Source};
+use audio_mix::{Clip, EnvelopeKey, Source};
 
 use crate::transport::{MAX_BLOCK, Slot, Transport, mix_slot};
 use crate::*;
 
-type SetSchedule =
-    unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, *const PanKey, i32) -> i32;
+type SetSchedule = unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32) -> i32;
 type Describe = unsafe extern "C" fn(i32, i32, *mut c_char, i32, *mut i32) -> i32;
 type Point = unsafe extern "C" fn(*mut i64) -> i32;
 type Read = unsafe extern "C" fn(*mut f32, i32) -> i32;
@@ -191,8 +190,8 @@ fn a_close_lets_go_of_both_slots() {
     let transport = Transport::new();
     transport.open(48_000, 1);
     let (first, second) = (buffer::new(64), buffer::new(64));
-    assert!(transport.set_schedule(&[], &[mono(first)], &[], &[]));
-    assert!(transport.set_schedule(&[], &[mono(second)], &[], &[]));
+    assert!(transport.set_schedule(&[], &[mono(first)], &[]));
+    assert!(transport.set_schedule(&[], &[mono(second)], &[]));
     assert_eq!((buffer::holds(first), buffer::holds(second)), (1, 2), "premise: the slot the flip left let go");
     transport.close(|| {});
     assert_eq!(buffer::holds(second), 1, "the close lets go of the slot that played");
@@ -208,7 +207,7 @@ fn a_slot_the_callback_has_left_is_freed_while_it_still_runs() {
     let transport = Transport::new();
     transport.open(48_000, 1);
     let (old, new) = (buffer::new(64), buffer::new(64));
-    assert!(transport.set_schedule(&[], &[mono(old)], &[], &[]));
+    assert!(transport.set_schedule(&[], &[mono(old)], &[]));
     transport.play(0, 0, false, 0);
     let blocks = Cell::new(0);
     let freed_in_flight = Cell::new(false);
@@ -222,7 +221,7 @@ fn a_slot_the_callback_has_left_is_freed_while_it_still_runs() {
                 // The control thread replaces the schedule while this block
                 // mixes, and has flipped it before the next block reads.
                 let transport = &transport;
-                scope.spawn(move || assert!(transport.set_schedule(&[], &[mono(new_address as *mut f32)], &[], &[])));
+                scope.spawn(move || assert!(transport.set_schedule(&[], &[mono(new_address as *mut f32)], &[])));
                 assert!(within(|| buffer::holds(new) == 2), "premise: the replacement holds its buffer");
                 thread::sleep(Duration::from_millis(200));
             } else if blocks.get() == 2 {
@@ -275,15 +274,15 @@ fn a_schedule_replaced_mid_block_is_not_freed_under_it() {
     // out, bounded, and leaves the old slot to the next replacement.
     let racer = Racer::new();
     let old = buffer::new(64);
-    assert!(racer.transport.set_schedule(&[], &[mono(old)], &[], &[]));
+    assert!(racer.transport.set_schedule(&[], &[mono(old)], &[]));
     assert_eq!(buffer::holds(old), 2, "premise: its maker and the slot");
     racer.transport.play(0, 0, false, 0);
     racer.between.set(Some(|transport| {
-        assert!(transport.set_schedule(&[], &[], &[], &[]));
+        assert!(transport.set_schedule(&[], &[], &[]));
     }));
     racer.pull(FRAMES);
     assert_eq!(buffer::holds(old), 2, "freed under the block that read it");
-    assert!(racer.transport.set_schedule(&[], &[], &[], &[]));
+    assert!(racer.transport.set_schedule(&[], &[], &[]));
     assert_eq!(buffer::holds(old), 1, "the next replacement frees it");
     buffer::release(old);
     racer.transport.close(|| {});
@@ -436,7 +435,7 @@ impl Schedule {
     /// of `channels`, from `start`.
     fn rust_mix(&self, start: i64, channels: usize, bus: &mut [f64]) {
         // SAFETY: every source holds the samples it reads (`Schedule::new`).
-        unsafe { audio_mix::mix(&self.clips, &self.sources, &self.keys, &[], start, channels, bus) }
+        unsafe { audio_mix::mix(&self.clips, &self.sources, &self.keys, start, channels, bus) }
     }
 
     /// What `mix` and the output stage hand for `frames` from `start`,
@@ -484,7 +483,7 @@ fn a_callback_hands_what_the_mix_bus_mixes_and_clips() {
     for channels in [1usize, 2, 3] {
         let transport = Transport::new();
         transport.open(48_000, channels as i32);
-        assert!(transport.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys, &[]));
+        assert!(transport.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys));
         let lead = 300;
         transport.play(400, 0, false, lead);
         let mut bus = vec![0.0f64; MAX_BLOCK * channels];
@@ -544,7 +543,7 @@ impl Doors {
 
     fn schedule(&self, sources: &[Source]) -> i32 {
         // SAFETY: no clips and no keys; the sources are counted.
-        unsafe { (self.set_schedule)(ptr::null(), 0, sources.as_ptr(), sources.len() as i32, ptr::null(), 0, ptr::null(), 0) }
+        unsafe { (self.set_schedule)(ptr::null(), 0, sources.as_ptr(), sources.len() as i32, ptr::null(), 0) }
     }
 
     /// The holds after each step of one story, the side's own.
@@ -614,10 +613,9 @@ fn a_buffer_let_go_by_every_holder_is_gone() {
 #[test]
 fn a_negative_count_refuses_the_schedule_as_the_cs_did() {
     let _serial = serial();
-    for (clips, sources, keys, pans) in [(-1, 0, 0, 0), (0, -1, 0, 0), (0, 0, -1, 0), (0, 0, 0, -1)] {
+    for (clips, sources, keys) in [(-1, 0, 0), (0, -1, 0), (0, 0, -1)] {
         // SAFETY: refused before anything is read.
-        let set =
-            unsafe { qa_audio_device_set_schedule(ptr::null(), clips, ptr::null(), sources, ptr::null(), keys, ptr::null(), pans) };
+        let set = unsafe { qa_audio_device_set_schedule(ptr::null(), clips, ptr::null(), sources, ptr::null(), keys) };
         assert_eq!(set, 0);
     }
 }
@@ -766,8 +764,6 @@ fn the_null_device_plays_and_stamps_its_clock() {
             schedule.sources.len() as i32,
             schedule.keys.as_ptr(),
             schedule.keys.len() as i32,
-            ptr::null(),
-            0,
         )
     };
     assert_eq!(set, 1);
@@ -967,7 +963,7 @@ fn an_output_that_lost_its_device_plays_on_from_the_default() {
     // A geometry of its own: the one opened again is the transport's.
     assert_eq!(qa_audio_device_open(44_100, 1, 1, -1), 44_100);
     let latency = qa_audio_device_latency_samples();
-    assert!(PLAYBACK.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys, &[]));
+    assert!(PLAYBACK.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys));
     qa_audio_device_play(0, 0, 0, 0);
     assert!(within(|| qa_audio_device_position() > 0), "premise: the run plays");
     let lost = opened(|devices| &devices.playback).expect("premise: an output");

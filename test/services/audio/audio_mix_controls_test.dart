@@ -86,10 +86,15 @@ void main() {
       endSample: 400,
       panLeft: 0.25,
       panRight: 0.75,
-      panLine: [
-        AudioPanPoint(sample: 0, left: 1.0, right: 0.0),
-        AudioPanPoint(sample: 100, left: 0.0, right: 1.0),
-        AudioPanPoint(sample: 200, left: 0.5, right: 0.5),
+      panLeftLine: [
+        AudioEnvelopePoint(sample: 0, gain: 1.0),
+        AudioEnvelopePoint(sample: 100, gain: 0.0),
+        AudioEnvelopePoint(sample: 200, gain: 0.5),
+      ],
+      panRightLine: [
+        AudioEnvelopePoint(sample: 0, gain: 0.0),
+        AudioEnvelopePoint(sample: 100, gain: 1.0),
+        AudioEnvelopePoint(sample: 200, gain: 0.5),
       ],
     );
     expect(
@@ -116,6 +121,21 @@ void main() {
       audioClipSidesAt(lined, 350),
       (left: 0.5, right: 0.5),
       reason: 'held after',
+    );
+    expect(
+      audioClipSidesAt(
+        AudioMixClip(
+          sourceIndex: 0,
+          startSample: 100,
+          endSample: 400,
+          panLeft: 0.25,
+          panRight: 0.75,
+          panLeftLine: lined.panLeftLine,
+        ),
+        125,
+      ),
+      (left: 0.75, right: 0.75),
+      reason: 'each side its own',
     );
   });
 

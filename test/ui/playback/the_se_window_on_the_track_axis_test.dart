@@ -15,6 +15,8 @@ import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
+    show equalPowerPanGains;
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
@@ -308,7 +310,7 @@ void main() {
 
     /// The volume an entry's line passes at [frame] — straight between its
     /// points and held past its ends, as the mixer draws it.
-    double lineAt(List<ScheduledVolumePoint> line, int frame) {
+    double lineAt(List<ScheduledGainPoint> line, int frame) {
       if (frame <= line.first.frame) {
         return line.first.gain;
       }
@@ -343,9 +345,15 @@ void main() {
       expect(entry.volume.first.gain, closeTo(0.5, 1e-9));
       expect(entry.volume.last.gain, closeTo(0.8, 1e-9));
       expect(entry.pan, closeTo(-0.5, 1e-9));
-      expect(entry.panLine.first.pan, closeTo(-0.5, 1e-9));
-      expect(entry.panLine.last.frame, 6);
-      expect(entry.panLine.last.pan, closeTo(-0.2, 1e-9));
+      for (final (line, side) in [
+        (entry.panLeftLine, (double pan) => equalPowerPanGains(pan).left),
+        (entry.panRightLine, (double pan) => equalPowerPanGains(pan).right),
+      ]) {
+        expect(line.first.frame, 0);
+        expect(line.first.gain, closeTo(side(-0.5), 1e-9));
+        expect(line.last.frame, 6);
+        expect(line.last.gain, closeTo(side(-0.2), 1e-9));
+      }
     });
 
     test('an eased key is met at EVERY frame the entry sounds — the mixer\'s '
@@ -382,7 +390,7 @@ void main() {
       ).single;
 
       expect(entry.volume, isEmpty);
-      expect(entry.panLine, isEmpty);
+      expect([...entry.panLeftLine, ...entry.panRightLine], isEmpty);
       expect(entry.pan, 0.0);
     });
   });

@@ -10,7 +10,7 @@ import '../../models/transform_track.dart'
     show argbKeySpace, boolHoldKeySpace, doubleKeySpace;
 import '../text/readout_text.dart' show columnValueOf;
 import 'se_name_tag_lane_policy.dart';
-import 'transform_lane_editing.dart' show laneResetAt;
+import 'transform_lane_editing.dart' show laneResetOver;
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
 /// (AE: keying a property freezes what it currently shows), or removes the
@@ -300,15 +300,14 @@ SeNameTag? seNameTagWithGroupReset(
     T value,
     KeyValueSpace<T> space, {
     KeyExit? out,
-  }) {
-    var track = lane;
-    for (final frame in frames) {
-      if (lane.isNotEmpty && (!keyedFramesOnly || lane.keyAt(frame) != null)) {
-        track = laneResetAt(track, frame, value, space: space, outgoing: out);
-      }
-    }
-    return track;
-  }
+  }) => laneResetOver(
+    lane,
+    frames,
+    value,
+    space: space,
+    keyedFramesOnly: keyedFramesOnly,
+    outgoing: out,
+  );
 
   PropertyTrack<double> number(PropertyTrack<double> lane, double value) =>
       keyed(lane, value, doubleKeySpace);

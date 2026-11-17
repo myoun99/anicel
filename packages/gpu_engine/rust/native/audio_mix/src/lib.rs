@@ -35,7 +35,7 @@ mod tests;
 pub use equalizer::{
     Biquad, EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, Setting, equalize, equalize_on, qa_audio_equalize,
 };
-pub use bus::{Clip, EnvelopeKey, MONO_ON_STEREO, PanKey, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
+pub use bus::{Clip, EnvelopeKey, MONO_ON_STEREO, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
 // `qa_audio_resample` by its path too: the audio crate's tests convert a
 // whole sound through it (타임라인/콘티 2026-11-08), the C's being gone.
 pub use resample::{DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, Resampler, qa_audio_resample, resample_frames, resample_taps};

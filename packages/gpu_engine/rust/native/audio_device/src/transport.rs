@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, Ordering::S
 use std::thread;
 use std::time::Duration;
 
-use audio_mix::{Clip, EnvelopeKey, PanKey, Source};
+use audio_mix::{Clip, EnvelopeKey, Source};
 
 use crate::{buffer, clock};
 
@@ -36,12 +36,10 @@ pub(crate) struct Slot {
     pub(crate) sources: Vec<Source>,
     /// The clips' shared envelope keys.
     pub(crate) keys: Vec<EnvelopeKey>,
-    /// The clips' shared pan keys (audio-fx-grows-like-the-pros-Q7).
-    pub(crate) pans: Vec<PanKey>,
 }
 
 impl Slot {
-    const EMPTY: Slot = Slot { clips: Vec::new(), sources: Vec::new(), keys: Vec::new(), pans: Vec::new() };
+    const EMPTY: Slot = Slot { clips: Vec::new(), sources: Vec::new(), keys: Vec::new() };
 
     fn free(&mut self) {
         buffer::let_go_all(&self.sources);
@@ -70,7 +68,7 @@ pub(crate) type Mixer<'a> = &'a dyn Fn(&Slot, i64, usize, &mut [f64]);
 pub(crate) fn mix_slot(slot: &Slot, start: i64, channels: usize, out: &mut [f64]) {
     // SAFETY: every source of a slot holds the buffer it plays, which
     // holds every sample it reads (`buffer::hold_all`).
-    unsafe { audio_mix::mix(&slot.clips, &slot.sources, &slot.keys, &slot.pans, start, channels, out) }
+    unsafe { audio_mix::mix(&slot.clips, &slot.sources, &slot.keys, start, channels, out) }
 }
 
 /// The transport, shared by the control thread and the device's realtime
@@ -355,7 +353,7 @@ impl Transport {
     /// left it. Every source plays a buffer or nothing, and the slot holds
     /// each buffer it plays, copying no samples; a source naming anything
     /// else, or reading past its buffer, refuses the schedule.
-    pub(crate) fn set_schedule(&self, clips: &[Clip], sources: &[Source], keys: &[EnvelopeKey], pans: &[PanKey]) -> bool {
+    pub(crate) fn set_schedule(&self, clips: &[Clip], sources: &[Source], keys: &[EnvelopeKey]) -> bool {
         // ALWAYS into the standby slot and flipped — even stopped, a just-
         // stopped callback can be mid-block in the active slot for another
         // ~10ms, and the handshake below makes the free safe in every case.
@@ -369,7 +367,7 @@ impl Transport {
         // A bounded wait before may have bailed and left this slot full;
         // freeing it here is what makes that leak heal itself.
         slot.free();
-        let (Some(clips), Some(keys), Some(pans)) = (copied(clips), copied(keys), copied(pans)) else {
+        let (Some(clips), Some(keys)) = (copied(clips), copied(keys)) else {
             buffer::let_go_all(sources);
             return false;
         };
@@ -377,7 +375,7 @@ impl Transport {
             buffer::let_go_all(sources);
             return false;
         };
-        *slot = Slot { clips, sources: copied_sources, keys, pans };
+        *slot = Slot { clips, sources: copied_sources, keys };
         // Publish, then prove the hand-over before freeing the old slot: it
         // is abandoned once the callback has said the NEW one (it reads
         // `active_slot` every block) or is not running at all. A stalled

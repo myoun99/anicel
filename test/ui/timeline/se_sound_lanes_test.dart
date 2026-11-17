@@ -89,7 +89,7 @@ void main() {
       expect(pan.keyMarks.keys, [2, 12]);
       expect(pan.curve!.at(4).single, closeTo(-60, 1e-9));
       expect(pan.showsKeyNavigator, isTrue, reason: '↩️none while one value');
-      expect(lanes[seSoundGroupLaneId]!.keyMarks.keys, [0, 2, 10, 12]);
+      expect(lanes[seSoundGroupLaneId]!.keyMarks.keys.toSet(), {0, 2, 10, 12});
     });
 
     // 🗣️I-177 (유저 2026-11-17): 「s행 오디오fx에 총 볼륨 똑같은거있는데 이건

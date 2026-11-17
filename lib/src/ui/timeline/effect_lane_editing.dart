@@ -25,7 +25,7 @@ import 'property_lane_lens.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import 'transform_lane_editing.dart'
     show
-        laneResetAt,
+        laneResetOver,
         transformLaneLens,
         transformTrackWithGroupReset,
         transformTrackWithLaneKeyToggled,
@@ -263,18 +263,13 @@ List<LayerEffect>? effectsWithGroupReset(
       }
       // A colour has no static value: unkeyed it is already the rest.
       if (effect.colors[spec.id] case final keys?) {
-        var reset = keys;
-        for (final frame in frames) {
-          if (keys.isEmpty || (keyedFramesOnly && keys.keyAt(frame) == null)) {
-            continue;
-          }
-          reset = laneResetAt(
-            reset,
-            frame,
-            spec.defaultValue.toInt(),
-            space: argbKeySpace,
-          );
-        }
+        final reset = laneResetOver(
+          keys,
+          frames,
+          spec.defaultValue.toInt(),
+          space: argbKeySpace,
+          keyedFramesOnly: keyedFramesOnly,
+        );
         if (reset != keys) {
           next = next.withColor(spec.id, reset);
           changed = true;
@@ -293,19 +288,14 @@ List<LayerEffect>? effectsWithGroupReset(
         changed = true;
         continue;
       }
-      var track = parameter.track;
-      for (final frame in frames) {
-        if (keyedFramesOnly && parameter.track.keyAt(frame) == null) {
-          continue;
-        }
-        track = laneResetAt(
-          track,
-          frame,
-          spec.defaultValue,
-          space: spec.keySpace,
-          outgoing: spec.keyExit,
-        );
-      }
+      final track = laneResetOver(
+        parameter.track,
+        frames,
+        spec.defaultValue,
+        space: spec.keySpace,
+        keyedFramesOnly: keyedFramesOnly,
+        outgoing: spec.keyExit,
+      );
       if (track == parameter.track) {
         continue;
       }

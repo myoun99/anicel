@@ -14,8 +14,8 @@
 use std::ptr;
 
 use crate::bus::{
-    Clip, EnvelopeKey, MONO_ON_STEREO, PanKey, Source, qa_audio_bus_to_float, qa_audio_bus_to_int16, qa_audio_clip_sizeof,
-    qa_audio_envelope_key_sizeof, qa_audio_mix, qa_audio_pan_key_sizeof, qa_audio_source_sizeof,
+    Clip, EnvelopeKey, MONO_ON_STEREO, Source, qa_audio_bus_to_float, qa_audio_bus_to_int16, qa_audio_clip_sizeof,
+    qa_audio_envelope_key_sizeof, qa_audio_mix, qa_audio_source_sizeof,
 };
 use crate::resample::{
     DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, Resampler, qa_audio_resample, qa_audio_resample_frames, qa_audio_resample_taps, qa_audio_resampler_close,
@@ -24,7 +24,7 @@ use crate::resample::{
 };
 
 type Mix =
-    unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, *const PanKey, i32, i64, i32, i32, *mut f64);
+    unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, i64, i32, i32, *mut f64);
 
 /// xorshift32.
 struct Dice(u32);
@@ -55,11 +55,8 @@ impl Dice {
 }
 
 #[test]
-fn the_structs_are_laid_out_as_dart_lays_them() {
-    assert_eq!(
-        (qa_audio_clip_sizeof(), qa_audio_source_sizeof(), qa_audio_envelope_key_sizeof(), qa_audio_pan_key_sizeof()),
-        (88, 32, 16, 24)
-    );
+fn the_structs_are_laid_out_as_the_c_laid_them() {
+    assert_eq!((qa_audio_clip_sizeof(), qa_audio_source_sizeof(), qa_audio_envelope_key_sizeof()), (96, 32, 16));
 }
 
 /// A schedule made up from `dice`: the sources' samples, the sources, the
@@ -69,7 +66,6 @@ struct Schedule {
     sources: Vec<Source>,
     clips: Vec<Clip>,
     keys: Vec<EnvelopeKey>,
-    pans: Vec<PanKey>,
 }
 
 impl Schedule {
@@ -114,13 +110,10 @@ impl Schedule {
                 fade_curve: dice.int(0, 3) as i32,
                 envelope_offset: dice.int(-2, keys.len() as i64 + 2) as i32,
                 envelope_count: dice.int(-1, 8) as i32,
-                // No pan line: the dice draw as they drew before the pan
-                // keyed (Q7), so the pinned buses stand.
-                pan_offset: 0,
-                pan_count: 0,
+                ..Clip::default()
             });
         }
-        Schedule { _samples: samples, sources, clips, keys, pans: Vec::new() }
+        Schedule { _samples: samples, sources, clips, keys }
     }
 }
 
@@ -135,8 +128,6 @@ fn mixed(mix: Mix, schedule: &Schedule, start: i64, samples: i32, channels: i32)
             schedule.sources.len() as i32,
             schedule.keys.as_ptr(),
             schedule.keys.len() as i32,
-            schedule.pans.as_ptr(),
-            schedule.pans.len() as i32,
             start,
             samples,
             channels,
@@ -169,15 +160,15 @@ fn a_bus_that_cannot_be_written_is_left_alone_and_no_clips_is_silence() {
     let held = [0.5f32; 64];
     let source = Source { source_start: 0, length: 64, channels: 1, reserved: 0, samples: held.as_ptr() };
     let clip = Clip { gain: 1.0, end_sample: 64, pan_left: 1.0, pan_right: 1.0, ..Clip::default() };
-    let schedule = Schedule { _samples: Vec::new(), sources: vec![source, source], clips: vec![clip], keys: Vec::new(), pans: Vec::new() };
+    let schedule = Schedule { _samples: Vec::new(), sources: vec![source, source], clips: vec![clip], keys: Vec::new() };
     for (samples, channels) in [(0, 2), (-3, 2), (16, 0), (16, -1)] {
         let mut out = [7.0f64; 4];
         // SAFETY: nothing is written for these counts.
-        unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, samples, channels, out.as_mut_ptr()) };
+        unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, samples, channels, out.as_mut_ptr()) };
         assert_eq!(out, [7.0; 4], "{samples} x {channels}");
     }
     // SAFETY: a null bus is refused.
-    unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, 4, 1, ptr::null_mut()) };
+    unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, 4, 1, ptr::null_mut()) };
     let mut out = [7.0f64; 8];
     let (clips, sources) = (schedule.clips.as_ptr(), schedule.sources.as_ptr());
     for (clips, clip_count, sources, source_count) in [
@@ -187,7 +178,7 @@ fn a_bus_that_cannot_be_written_is_left_alone_and_no_clips_is_silence() {
         (clips, 1, sources, -1),
     ] {
         // SAFETY: the counts are within the schedule's.
-        unsafe { qa_audio_mix(clips, clip_count, sources, source_count, ptr::null(), 0, ptr::null(), 0, 0, 4, 2, out.as_mut_ptr()) };
+        unsafe { qa_audio_mix(clips, clip_count, sources, source_count, ptr::null(), 0, 0, 4, 2, out.as_mut_ptr()) };
         assert_eq!(out, [0.0; 8]);
         out = [7.0; 8];
     }
@@ -205,7 +196,7 @@ fn a_mono_source_lies_on_a_stereo_bus_at_minus_3_db_a_side_and_stereo_at_unity()
     let hard_left = Clip { pan_left: std::f64::consts::SQRT_2, pan_right: 0.0, ..center };
     let heard = |clip: Clip, source_index: i32, channels: i32| {
         let clip = Clip { source_index, ..clip };
-        let schedule = Schedule { _samples: Vec::new(), sources: sources.clone(), clips: vec![clip], keys: Vec::new(), pans: Vec::new() };
+        let schedule = Schedule { _samples: Vec::new(), sources: sources.clone(), clips: vec![clip], keys: Vec::new() };
         mixed(qa_audio_mix, &schedule, 0, 4, channels)[..channels as usize].to_vec()
     };
     assert_eq!(MONO_ON_STEREO, 0.7071067811865476, "-3 dB: 20 log10 = {}", 20.0 * MONO_ON_STEREO.log10());
@@ -216,33 +207,51 @@ fn a_mono_source_lies_on_a_stereo_bus_at_minus_3_db_a_side_and_stereo_at_unity()
     assert_eq!(heard(center, 1, 1), [0.5], "stereo on a mono bus");
 }
 
-/// 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
-/// 단다」 — the pan keyed, its line the clip's sides.
-#[test]
-fn a_pan_line_moves_the_sides_straight_between_its_points_and_holds_past_its_ends() {
-    let held = [1.0f32; 16];
-    let source = Source { source_start: 0, length: 8, channels: 2, reserved: 0, samples: held.as_ptr() };
-    let hard = std::f64::consts::SQRT_2;
-    // Hard left at sample 2, hard right at sample 6.
-    let pans = vec![PanKey { sample: 2, left: hard, right: 0.0 }, PanKey { sample: 6, left: 0.0, right: hard }];
-    let clip = Clip { gain: 1.0, end_sample: 8, pan_left: 1.0, pan_right: 1.0, pan_count: 2, ..Clip::default() };
-    let heard = |clip: Clip, channels: i32| {
-        let schedule =
-            Schedule { _samples: Vec::new(), sources: vec![source], clips: vec![clip], keys: Vec::new(), pans: pans.clone() };
-        mixed(qa_audio_mix, &schedule, 0, 8, channels)
-    };
-    let swept: Vec<f64> = (0..8)
-        .flat_map(|at| {
-            let t = ((at as f64 - 2.0) / 4.0).clamp(0.0, 1.0);
-            [hard + (0.0 - hard) * t, 0.0 + (hard - 0.0) * t]
-        })
-        .collect();
-    assert_eq!(heard(clip, 2), swept);
-    assert_eq!(heard(clip, 1), vec![1.0; 8], "a mono bus pans nothing");
-    let gone = Clip { pan_offset: 5, ..clip };
-    assert_eq!(heard(gone, 2), vec![1.0; 16], "a run that is not there is the clip's one pan");
-}
 
+/// A keyed pan (audio-fx-grows-like-the-pros-Q7): each side a run of the
+/// envelope's keys, read as the envelope is — straight between its points,
+/// clip-local, held past its ends — and the clip's one pan with none.
+#[test]
+fn a_pan_side_is_a_run_of_keys_read_as_the_envelope_is() {
+    let held = [1.0f32; 400];
+    let source = Source { source_start: 0, length: 400, channels: 1, reserved: 0, samples: held.as_ptr() };
+    // The left side falls from 1 to 0 over a hundred samples as the right
+    // rises; the clip's one pan, under them, stands at the middle.
+    let keys = vec![
+        EnvelopeKey { sample: 0, gain: 1.0 },
+        EnvelopeKey { sample: 100, gain: 0.0 },
+        EnvelopeKey { sample: 0, gain: 0.0 },
+        EnvelopeKey { sample: 100, gain: 1.0 },
+    ];
+    let swept = Clip {
+        gain: 1.0,
+        start_sample: 50,
+        end_sample: 400,
+        pan_left: 0.5,
+        pan_right: 0.5,
+        pan_left_offset: 0,
+        pan_left_count: 2,
+        pan_right_offset: 2,
+        pan_right_count: 2,
+        ..Clip::default()
+    };
+    let heard = |clip: Clip| {
+        let schedule = Schedule { _samples: Vec::new(), sources: vec![source], clips: vec![clip], keys: keys.clone() };
+        let bus = mixed(qa_audio_mix, &schedule, 0, 400, 2);
+        move |position: usize| (bus[2 * position], bus[2 * position + 1])
+    };
+    let at = heard(swept);
+    let side = MONO_ON_STEREO;
+    assert_eq!(at(10), (0.0, 0.0), "before the clip");
+    assert_eq!(at(50), (side, 0.0), "at its first point, clip-local");
+    assert_eq!(at(75), (0.75 * side, 0.25 * side), "a quarter of the way");
+    assert_eq!(at(150), (0.0, side), "at its last point");
+    assert_eq!(at(399), (0.0, side), "held past it");
+    let plain = heard(Clip { pan_left_count: 0, pan_right_count: 0, ..swept });
+    assert_eq!(plain(75), (0.5 * side, 0.5 * side), "no line: the clip's one pan");
+    let left_alone = heard(Clip { pan_right_count: 0, ..swept });
+    assert_eq!(left_alone(75), (0.75 * side, 0.5 * side), "each side its own");
+}
 /// The values a bus reaches, and its edges.
 fn bus_values() -> Vec<f64> {
     let mut values = vec![

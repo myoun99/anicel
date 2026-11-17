@@ -161,6 +161,19 @@ void main() {
           final pointCount = random.nextInt(5);
           // Points may lie before the clip too — the trimmed-lead shape.
           var at = -6 + random.nextInt(8);
+          final points = [
+            for (var point = 0; point < pointCount; point += 1)
+              (
+                sample: at += 1 + random.nextInt(12),
+                sides: equalPowerPanGains(random.nextDouble() * 2.0 - 1.0),
+              ),
+          ];
+          // Now and then one side keyed alone.
+          final (keepsLeft, keepsRight) = switch (random.nextInt(4)) {
+            0 => (true, false),
+            1 => (false, true),
+            _ => (true, true),
+          };
           final pan = equalPowerPanGains(random.nextDouble() * 2.0 - 1.0);
           clips.add(
             AudioMixClip(
@@ -169,12 +182,21 @@ void main() {
               endSample: start + 1 + random.nextInt(48),
               panLeft: pan.left,
               panRight: pan.right,
-              panLine: [
-                for (var point = 0; point < pointCount; point += 1)
-                  AudioPanPoint.at(
-                    at += 1 + random.nextInt(12),
-                    random.nextDouble() * 2.0 - 1.0,
-                  ),
+              panLeftLine: [
+                if (keepsLeft)
+                  for (final point in points)
+                    AudioEnvelopePoint(
+                      sample: point.sample,
+                      gain: point.sides.left,
+                    ),
+              ],
+              panRightLine: [
+                if (keepsRight)
+                  for (final point in points)
+                    AudioEnvelopePoint(
+                      sample: point.sample,
+                      gain: point.sides.right,
+                    ),
               ],
             ),
           );
