@@ -108,6 +108,23 @@ void main() {
     // ↩️「구워도 풀에 남음」 (09-11): both registered their file.
   });
 
+  // 🗣️F-429: 「1장짜리 그림을 기본 이미지레이어로 자동지정해두지만
+  // 같은창에서 애니메이션레이어로 변경가능」.
+  test('a cut folder\'s picture is born one picture\'s kind — an image — '
+      'until someone picks another', () {
+    const picture = ParsedPicture(name: 'BG', file: '_BG.png');
+    expect(
+      const CutFolderEdits().kindOfPicture(picture),
+      LayerKind.bornOfOnePicture,
+    );
+    expect(
+      CutFolderEdits(
+        kinds: {picture.rowKey: LayerKind.animation},
+      ).kindOfPicture(picture),
+      LayerKind.animation,
+    );
+  });
+
   // 🗣️F-429: 「레이어 타입(이미지,애니메이션)으로서 지정가능하고 그게
   // 인식기준」 — the kind decides the shape, whatever file the row came from.
   test('a placement is a STILL when it is one picture, of a kind that holds '

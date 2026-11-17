@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
@@ -17,6 +19,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerKindDisplayName;
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -254,6 +257,46 @@ void main() {
       final option = await optionOf(tester, s, path, placeOnly: true);
 
       expect(option.cellWordOf(path), said(LayerKind.animation));
+    });
+
+    testWidgets('a PDF\'s ONE page comes in as its row says — an image held '
+        'over the cut, or an animation layer\'s one cel', (tester) async {
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: const [
+          ui.Size(100, 50),
+          ui.Size(100, 50),
+          ui.Size(100, 50),
+        ],
+      );
+      addTearDown(PdfRenderService.debugResetForTests);
+      final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+      await tester.runAsync(
+        () => File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]),
+      );
+      for (final kind in [LayerKind.image, LayerKind.animation]) {
+        final s = session();
+        final before = {
+          for (final layer in s.requireActiveCut.layers) layer.id,
+        };
+        final landed = await tester.runAsync(
+          () => s.importDoors.importPdfFile(
+            path: path,
+            destination: ImportDestination.activeCutLayer,
+            copyIntoProject: false,
+            inFrame: 1,
+            outFrame: 1,
+            pictureKind: kind,
+          ),
+        );
+        expect(landed, isTrue, reason: '$kind');
+        expect(
+          s.requireActiveCut.layers
+              .singleWhere((layer) => !before.contains(layer.id))
+              .kind,
+          kind,
+        );
+      }
+      await tester.pumpAndSettle();
     });
 
     testWidgets('pictures of more than one cannot be an image — they come in '
