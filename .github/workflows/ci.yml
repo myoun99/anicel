@@ -279,10 +279,11 @@ jobs:
   # and since a tested tree stands the master run down (scope's `again`),
   # this job runs on every master push the app changed in, whatever
   # `again` says. It builds the engine the way a shard does, through the
-  # app's build hook under `flutter test` — one file that opens nothing,
-  # since the hook builds for any test — and the action keeps the folder
-  # when the engine's files are new. The same files as a kept build find
-  # the library among its copies and keep nothing new.
+  # app's build hook under a test run — one file that opens nothing, since
+  # the hook builds for any test, run by the plan as every run here is
+  # (a_file_that_needs_impeller_runs_apart_test) — and the action keeps the
+  # folder when the engine's files are new. The same files as a kept build
+  # find the library among its copies and keep nothing new.
   engine-target:
     name: keep the engine build (Linux)
     needs: scope
@@ -304,7 +305,12 @@ jobs:
       - uses: ./.github/actions/rust-engine
         with:
           target: keep
-      - run: flutter test --no-pub test/architecture/the_shards_weigh_files_that_are_there_test.dart
+      - run: |
+          echo test/architecture/the_shards_weigh_files_that_are_there_test.dart \
+            > "$RUNNER_TEMP/engine_target_tests.txt"
+          dart tool/affected_tests.dart \
+            --files-from "$RUNNER_TEMP/engine_target_tests.txt" \
+            --outside-the-line --concurrency 1
 
   android:
     name: Android build

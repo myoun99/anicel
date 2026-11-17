@@ -38,9 +38,10 @@ void main() {
   // and leave the shards building cold.
   test('every test file ci.yml runs by name is in the tree', () {
     final named = [
-      for (final m in RegExp(r'flutter test --no-pub (test/\S+_test\.dart)')
-          .allMatches(File('.github/workflows/ci.yml').readAsStringSync()))
-        m[1]!,
+      for (final line in File('.github/workflows/ci.yml').readAsLinesSync())
+        if (!line.trimLeft().startsWith('#'))
+          for (final m in RegExp(r'test/[\w/]+_test\.dart').allMatches(line))
+            m[0]!,
     ];
     expect(named, isNotEmpty, reason: 'LIVENESS — the engine-target job');
     expect(
