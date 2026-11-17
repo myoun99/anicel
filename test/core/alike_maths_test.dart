@@ -69,14 +69,20 @@ void main() {
 }
 
 /// Radians every way the app turns: -100 to 100 by a 64th, -720° to 720° by
-/// an eighth of a degree, and far turns where the reduction takes its
-/// second and third rounds.
+/// an eighth of a degree, the doubles nearest whole quarter turns, and far
+/// turns, out to where the medium reduction stops.
 Iterable<double> _angles() sync* {
   for (var i = -6400; i <= 6400; i += 1) {
     yield i / 64;
   }
   for (var eighth = -5760; eighth <= 5760; eighth += 1) {
     yield eighth / 8 * math.pi / 180;
+  }
+  // The doubles nearest a quarter turn and its multiples: x less a whole
+  // number of them cancels down to the reduction's third round.
+  for (var quarters = 1; quarters <= 1 << 20; quarters *= 3) {
+    yield quarters * (math.pi / 2);
+    yield -quarters * (math.pi / 2);
   }
   for (final far in [1e3, 12345.678, 1e5, 1e6, 1.5e6]) {
     yield far;
