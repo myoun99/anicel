@@ -476,6 +476,10 @@ fn a_probe_is_paced_by_what_its_turns_add_not_by_its_runs_own_cost() {
     // turns: 4.9 µs a turn.
     assert!((paced / turn - 1.0).abs() < 0.25, "{paced:e} s a turn, for {turn:e}");
     assert_eq!(*asked.borrow(), [256, 256, 1024, 4096, 16384], "grown fourfold till they added 10 ms");
+    // What the last growth added, 4,096 → 16,384 turns, the 2 ms its runs'
+    // own cost fell by in it — not what every growth since the first did.
+    let last = (12_288.0 * turn - 0.002) / 12_288.0;
+    assert!((paced - last).abs() < 1e-12, "{paced:e} s a turn, the last growth's {last:e}");
 }
 
 #[test]
