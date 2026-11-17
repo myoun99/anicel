@@ -77,6 +77,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
+    this.onEditPreset,
     this.mediaFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
@@ -143,6 +144,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// Puts this asset on the timeline — the import window in its PLACE
   /// mode, so the answers are the same ones a fresh import gives.
   final void Function(MediaAsset asset)? onPlaceAsset;
+
+  /// Opens the file's 배치 프리셋 window. Null leaves it off the menu.
+  final void Function(MediaAsset asset)? onEditPreset;
 
   /// Injectable file dialog for a relink; defaults to the platform picker
   /// over every kind the pool registers.
@@ -695,6 +699,14 @@ class MediaPoolPanel extends StatelessWidget {
           keyValue: 'media-asset-menu-place',
           label: AppText.strings.mediaPlace,
           onSelected: () => onPlaceAsset?.call(asset),
+        ),
+      // 🗣️asset-placement-presets Q6 (유저 2026-11-17 「시안대로」): under
+      // 배치, what every placement of the file starts from.
+      if (onEditPreset != null)
+        PanelFlyoutItem(
+          keyValue: 'media-asset-menu-preset',
+          label: AppText.strings.mediaPresetMenu,
+          onSelected: () => onEditPreset?.call(asset),
         ),
       PanelFlyoutItem(
         keyValue: 'media-asset-menu-rename',

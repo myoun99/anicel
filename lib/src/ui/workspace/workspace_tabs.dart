@@ -924,6 +924,14 @@ class _WorkspaceTabs {
                 initialPaths: [asset.path],
                 placeOnly: true,
               ),
+              onEditPreset: (asset) => unawaited(
+                editMediaPreset(
+                  context,
+                  _state.widget.session,
+                  asset,
+                  pictures: _state._views._poolPictures,
+                ),
+              ),
               view: _state._mediaPoolView.value,
               onViewChanged: (view) => _state._mediaPoolView.value = view,
               factsOf: _state.widget.session.mediaPool.mediaFactsOf,

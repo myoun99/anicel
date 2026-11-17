@@ -97,6 +97,7 @@ import 'media/media_asset_drop_target.dart';
 import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_pool_view.dart';
+import 'media/media_preset_flow.dart';
 import 'media/media_pool_pictures.dart';
 import 'media/media_relink_flow.dart';
 import 'media/open_viewer_document.dart' show openViewerDocument;

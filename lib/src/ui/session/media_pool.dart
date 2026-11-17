@@ -244,6 +244,25 @@ class MediaPool {
     _changes.notifyChanged();
   }
 
+  /// [path]'s entry named [name] and placed by [preset] from now on — the
+  /// 배치 프리셋 window's answer, one undo step. What is placed already
+  /// stays as it was placed: a placement copies its preset and never
+  /// follows it (asset-placement-presets, 「놓을 때 복사」).
+  void editMediaPreset(
+    String path, {
+    required String name,
+    required MediaPreset preset,
+  }) {
+    _project.cutCommandCoordinator.updateMediaAssets([
+      for (final asset in mediaAssets)
+        if (asset.path == path)
+          asset.copyWith(name: name, preset: preset)
+        else
+          asset,
+    ], description: 'Edit placement preset');
+    _changes.notifyChanged();
+  }
+
   /// Removes the [path] asset from the pool, and every use of it with it
   /// ([mediaAssetUses]) — ONE undo step. False when the pool holds no such
   /// asset.

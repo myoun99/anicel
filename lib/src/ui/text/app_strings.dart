@@ -1275,6 +1275,10 @@ enum AppStrings {
   String get mediaStereo => _s('mediaStereo');
   String mediaChannels(int count) =>
       _s('mediaChannelsTemplate').replaceAll('{n}', '$count');
+  String get mediaPresetMenu => _s('mediaPresetMenu');
+  String get mediaPresetSpan => _s('mediaPresetSpan');
+  String mediaPresetTitle(String name) =>
+      _s('mediaPresetTitleTemplate').replaceAll('{name}', name);
 
   /// Shown on opening a project written by a build that kept its media in
   /// a sibling folder. `{name}` is that folder.
@@ -3039,6 +3043,9 @@ enum AppStrings {
     'mediaStart': 'Start',
     'mediaEnd': 'End',
     'mediaPagesTemplate': '{n} pp.',
+    'mediaPresetMenu': 'Placement preset…',
+    'mediaPresetSpan': 'Start · End',
+    'mediaPresetTitleTemplate': 'Placement preset — {name}',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stereo',
     'mediaChannelsTemplate': '{n} ch',
@@ -4792,6 +4799,9 @@ enum AppStrings {
     'mediaStart': '開始',
     'mediaEnd': '終了',
     'mediaPagesTemplate': '{n}ページ',
+    'mediaPresetMenu': '配置プリセット…',
+    'mediaPresetSpan': '開始 · 終了',
+    'mediaPresetTitleTemplate': '配置プリセット — {name}',
     'mediaMono': 'モノラル',
     'mediaStereo': 'ステレオ',
     'mediaChannelsTemplate': '{n}ch',
@@ -6748,6 +6758,9 @@ enum AppStrings {
     'mediaStart': '시작',
     'mediaEnd': '끝',
     'mediaPagesTemplate': '{n}쪽',
+    'mediaPresetMenu': '배치 프리셋…',
+    'mediaPresetSpan': '시작 · 끝',
+    'mediaPresetTitleTemplate': '배치 프리셋 — {name}',
     'mediaMono': '모노',
     'mediaStereo': '스테레오',
     'mediaChannelsTemplate': '{n}채널',
@@ -8745,6 +8758,9 @@ enum AppStrings {
     'mediaStart': 'Début',
     'mediaEnd': 'Fin',
     'mediaPagesTemplate': '{n} p.',
+    'mediaPresetMenu': 'Préréglage de placement…',
+    'mediaPresetSpan': 'Début · Fin',
+    'mediaPresetTitleTemplate': 'Préréglage de placement — {name}',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stéréo',
     'mediaChannelsTemplate': '{n} canaux',
@@ -10767,6 +10783,9 @@ enum AppStrings {
     'mediaStart': '开始',
     'mediaEnd': '结束',
     'mediaPagesTemplate': '{n}页',
+    'mediaPresetMenu': '放置预设…',
+    'mediaPresetSpan': '开始 · 结束',
+    'mediaPresetTitleTemplate': '放置预设 — {name}',
     'mediaMono': '单声道',
     'mediaStereo': '立体声',
     'mediaChannelsTemplate': '{n}声道',
