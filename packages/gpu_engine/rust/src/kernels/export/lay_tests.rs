@@ -289,42 +289,42 @@ fn a_frame_whose_row_exceeds_a_binding_is_refused() {
     assert_eq!(last_error(), format!("a row of 148 bytes exceeds a binding of {}", step + 147));
 }
 
-/// A device whose one binding holds 64 KiB — less than the frames these
-/// tests make, as lavapipe's 128 MiB holds less than a bake's frame of
-/// 139,332,960 bytes — and a frame of 200 x 120 made on it, its ground
-/// laid.
+/// A frame of 330 x 200 a device binds 64 KiB of — less than the frame,
+/// its cover or the picture laid over it, as lavapipe's 128 MiB holds less
+/// than a bake's frame of 139,332,960 bytes.
+const SMALL: (Picture, u64) = (Picture { width: 330, height: 200 }, 1 << 16);
+
+/// A frame of [`SMALL`] made on `engine`, its ground laid.
 fn on_a_small_binding(engine: &Engine, lay: &Lay) -> Shown {
-    let frame = Shown::blank(engine, Picture { width: 200, height: 120 })
-        .expect("a frame past a binding");
+    let frame = Shown::blank(engine, SMALL.0).expect("a frame past a binding");
     lay.run(engine, &frame, Source::Solid(WHITE), u16::MAX, None, None).expect("ground");
     frame
 }
 
-const SMALL_BINDING: u64 = 1 << 16;
-
-// A picture of 260 x 110 laid at (-30, 25) — its rows wider than the
-// frame's, so they bound the band — is laid where it lies, and the device
-// refuses no binding.
+// A picture of 400 x 150 laid at (-30, 25) under a whole cover — its rows
+// wider than the frame's, so they bound the band — is laid where it lies,
+// and the device refuses no binding.
 #[test]
 fn a_frame_past_the_device_s_binding_is_made_and_laid() {
     let turn = a_device_of_its_own();
-    let engine = turn.engine_binding(SMALL_BINDING);
+    let engine = turn.engine_binding(SMALL.1);
     let lay = Lay::new();
     let frame = on_a_small_binding(&engine, &lay);
     let word = |x: u32, y: u32| 0xff00_0000 | x << 8 | y;
-    let rgba: Vec<u8> = (0..110)
-        .flat_map(|y| (0..260).map(move |x| word(x, y)))
+    let rgba: Vec<u8> = (0..150)
+        .flat_map(|y| (0..400).map(move |x| word(x, y)))
         .flat_map(u32::to_le_bytes)
         .collect();
-    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 260, height: 110 })
+    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 400, height: 150 })
         .expect("a picture past a binding");
+    let cover = Cover::of(&engine, &[255; 330 * 200], SMALL.0).expect("a cover past a binding");
     let source = Source::Frame { frame: &picture, x: -30, y: 25 };
-    lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
+    lay.run(&engine, &frame, source, u16::MAX, Some(&cover), None).expect("laid");
 
     engine.wait().expect("the device refused no binding");
-    let expected: Vec<u32> = (0..120)
-        .flat_map(|y| (0..200).map(move |x| (x, y)))
-        .map(|(x, y)| if y >= 25 { word(x + 30, y - 25) } else { WHITE })
+    let expected: Vec<u32> = (0..200)
+        .flat_map(|y| (0..330).map(move |x| (x, y)))
+        .map(|(x, y)| if (25..175).contains(&y) { word(x + 30, y - 25) } else { WHITE })
         .collect();
     assert!(le_words(&read_buffer(&engine, &frame.rows)) == expected);
 }
@@ -334,11 +334,10 @@ fn a_frame_past_the_device_s_binding_is_made_and_laid() {
 #[test]
 fn a_frame_past_the_device_s_binding_is_not_converted() {
     let turn = a_device_of_its_own();
-    let engine = turn.engine_binding(SMALL_BINDING);
+    let engine = turn.engine_binding(SMALL.1);
     let frame = on_a_small_binding(&engine, &Lay::new());
-    let picture = Picture { width: 200, height: 120 };
 
-    assert!(Opaque::new().run(&engine, Frame::Shown(&frame), picture).is_none());
-    assert_eq!(last_error(), "a plane of 96000 bytes exceeds a binding of 65536");
+    assert!(Opaque::new().run(&engine, Frame::Shown(&frame), SMALL.0).is_none());
+    assert_eq!(last_error(), "a plane of 264000 bytes exceeds a binding of 65536");
     engine.wait().expect("the device refused no binding");
 }
