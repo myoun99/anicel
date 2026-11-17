@@ -40,6 +40,7 @@ import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart'
     show AudioPeakBucketFold, AudioPeaks;
 import '../playback/audio_recorder.dart';
+import '../playback/voice_take_bake.dart';
 import '../playback/voice_take_processing.dart';
 import '../../services/project_repository.dart';
 import '../audio/audio_conform_store.dart';
@@ -790,8 +791,7 @@ class EditorVoiceRecording {
 
   /// Test hook: stand in for the native RNNoise pass. Null result =
   /// "declined, keep the raw take" — the same contract as the engine's.
-  Float32List? Function(Float32List samples, int channels, int sampleRate)?
-  debugVoiceDenoiser;
+  VoiceDenoiser? debugVoiceDenoiser;
 
   /// RNNoise runs at exactly this rate; capture asks for it when the
   /// suppression toggle is on, and the take conforms once on placement.
@@ -1209,65 +1209,28 @@ class EditorVoiceRecording {
       samples = Float32List(padFloats + samples.length)
         ..setRange(padFloats, padFloats + samples.length, samples);
     }
-    // Suppression first, on the trimmed raw capture (per channel, the
-    // OBS filter order) — the RNNoise round. A declined pass (another rate,
-    // an empty take) keeps the raw take: recording never fails because the
-    // denoiser said no.
-    if (denoise) {
-      final suppressed = (debugVoiceDenoiser ?? _nativeVoiceDenoiser)(
-        samples,
-        recording.channels,
-        recording.sampleRate,
-      );
-      if (suppressed != null) {
-        samples = suppressed;
-      }
-    }
-    // The capture chain (REC1-D): channel fold + baked gain, applied to
-    // the trimmed take — the file holds exactly what the meter showed.
-    final processed = processVoiceTake(
+    final window = punchEndFrame == null ? null : punchEndFrame - anchorFrame;
+    // The take's whole length runs through the chain below once — RNNoise's
+    // FFT and network over every 480 samples among it — so it runs on a
+    // worker and the thread that draws keeps its turns (board
+    // a-voice-take-is-denoised-on-the-ui-isolate), the road a long sound's
+    // windows took ([onAWorker]).
+    final baked = await bakeVoiceTakeOnAWorker((
       samples: samples,
       channels: recording.channels,
+      sampleRate: recording.sampleRate,
       gainDb: gainDb,
       channelMode: channelMode,
-    );
-    samples = processed.samples;
-    final channels = processed.channels;
-    _lastVoiceTakeClipped = processed.clipped;
-    // Whole frames covering the take, so the block window matches what
-    // was actually said (min 1 — a sub-frame take still needs a cell).
-    var lengthFrames = math.max(
-      1,
-      projectFrameRate.framesCoveringExactSeconds(
-        samples.length ~/ channels,
-        recording.sampleRate,
-      ),
-    );
-    final window = punchEndFrame == null ? null : punchEndFrame - anchorFrame;
-    if (window != null) {
-      if (window < 1) {
-        return false;
-      }
-      if (lengthFrames > window) {
-        lengthFrames = window;
-        // The file carries the window alone — capture past the punch-out
-        // is context the performer heard, not part of the take.
-        final windowFloats =
-            projectFrameRate.frameToSample(window, recording.sampleRate) *
-            channels;
-        if (windowFloats > 0 && windowFloats < samples.length) {
-          samples = Float32List.sublistView(samples, 0, windowFloats);
-        }
-      }
+      denoiser: denoise ? (debugVoiceDenoiser ?? _nativeVoiceDenoiser) : null,
+      windowFrames: window,
+      rate: projectFrameRate,
+    ));
+    _lastVoiceTakeClipped = baked.clipped;
+    if (window != null && window < 1) {
+      return false;
     }
-    // A WAV, the file every sound door reads ([wav16Bytes]) — 🪦it was the
-    // conform encoder's output, and no decoder reads that (유저 09-25:
-    // 「녹음중에는 파형 보이는데 녹음끝내면 사라지네」, card `F-178` ⑥).
-    final wav = wav16Bytes(
-      int16PcmOf(samples),
-      sampleRate: recording.sampleRate,
-      channels: channels,
-    );
+    final lengthFrames = baked.lengthFrames;
+    final wav = baked.wav;
     final carry = await _stageRecordingWav(wav, laneName: lane.name);
     if (carry == null) {
       return false;
@@ -1281,7 +1244,7 @@ class EditorVoiceRecording {
       filePath: path,
       takeFrameId: _mintFrameId(lane.id),
       newFrameId: () => _mintFrameId(lane.id),
-      takeClipped: processed.clipped,
+      takeClipped: baked.clipped,
     );
     if (plan == null) {
       return false;
