@@ -291,11 +291,11 @@ List<PropertyLaneRow> propertyLanesForRow({
           expanded: expandedGroupKeys.contains(
             laneGroupKey(layer.id, seSoundGroupLaneId),
           ),
-          volumeAt: source == null
+          soundAt: source == null
               ? null
               : (time) {
                   final at = _sourceAtTime(source, time);
-                  return at.layer.seSound.volumeAt(at.time);
+                  return (sound: at.layer.seSound, time: at.time);
                 },
         ),
         ...layerEffectLanes(),

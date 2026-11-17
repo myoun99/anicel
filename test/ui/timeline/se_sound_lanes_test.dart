@@ -20,7 +20,8 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 ///
 /// Every SE row has a fixed 「오디오」 group, its name tag's sibling: the
 /// Volume, keyed in per cents on the row's own frames like every lane, and
-/// the Pan, one value.
+/// the Pan, keyed as the Volume is — 🗣️audio-fx-grows-like-the-pros-Q7
+/// (유저 2026-11-17): 「音量처럼 키를 단다」. ↩️Q3's one value.
 void main() {
   SeSound ramp() => SeSound(
     volume: PropertyTrack<double>(
@@ -34,7 +35,7 @@ void main() {
       final shut = seSoundPropertyLanes(
         const SeSound(),
         expanded: false,
-        volumeAt: null,
+        soundAt: null,
       );
       expect(shut.map((lane) => lane.laneId), [seSoundGroupLaneId]);
       final header = shut.single;
@@ -50,7 +51,7 @@ void main() {
       final open = seSoundPropertyLanes(
         const SeSound(),
         expanded: true,
-        volumeAt: null,
+        soundAt: null,
       );
       expect(open.map((lane) => lane.laneId), [
         seSoundGroupLaneId,
@@ -58,30 +59,37 @@ void main() {
       ]);
     });
 
-    test('the Volume reads in per cents and keys; the Pan reads its side '
-        'and keys nothing', () {
+    test('the Volume reads in per cents and the Pan its side, both where '
+        'the rail reads the row, and both key — the header shows the union '
+        'of their keys', () {
       final sound = SeSound(
-        pan: -0.3,
-        volume: PropertyTrack<double>(keys: {4: const PropertyKey(0.5)}),
+        pan: PropertyTrack<double>(
+          keys: {2: const PropertyKey(-1.0), 12: const PropertyKey(0.0)},
+        ),
+        volume: PropertyTrack<double>(
+          keys: {0: const PropertyKey(0.0), 10: const PropertyKey(1.0)},
+        ),
       );
       final lanes = {
         for (final lane in seSoundPropertyLanes(
           sound,
           expanded: true,
-          volumeAt: sound.volumeAt,
+          // The rail two frames behind the row's own.
+          soundAt: (time) => (sound: sound, time: time + 2),
         ))
           lane.laneId: lane,
       };
       final volume = lanes[seSoundVolumeLaneId]!;
       final pan = lanes[seSoundPanLaneId]!;
 
-      expect(volume.valueLabel!(4), '50.00%');
-      expect(volume.keyMarks.keys, [4]);
-      expect(volume.curve, isNotNull, reason: 'the graph draws the Volume');
-      expect(lanes[seSoundGroupLaneId]!.keyMarks.keys, [4], reason: 'union');
-      expect(pan.valueLabel!(4), 'L30');
-      expect(pan.keyMarks, isEmpty);
-      expect(pan.showsKeyNavigator, isFalse, reason: 'one value (Q3)');
+      expect(volume.valueLabel!(2), '40.00%');
+      expect(volume.keyMarks.keys, [0, 10]);
+      expect(volume.curve!.at(2).single, closeTo(40, 1e-9));
+      expect(pan.valueLabel!(4), 'L60');
+      expect(pan.keyMarks.keys, [2, 12]);
+      expect(pan.curve!.at(4).single, closeTo(-60, 1e-9));
+      expect(pan.showsKeyNavigator, isTrue, reason: '↩️none while one value');
+      expect(lanes[seSoundGroupLaneId]!.keyMarks.keys, [0, 2, 10, 12]);
     });
 
     // 🗣️I-177 (유저 2026-11-17): 「s행 오디오fx에 총 볼륨 똑같은거있는데 이건
@@ -92,7 +100,7 @@ void main() {
       final lanes = seSoundPropertyLanes(
         const SeSound(totalVolume: 0.4),
         expanded: true,
-        volumeAt: null,
+        soundAt: null,
       );
       expect(lanes.map((lane) => lane.laneId), [
         seSoundGroupLaneId,
@@ -101,15 +109,18 @@ void main() {
       ]);
     });
 
-    test('where the rail has nothing to read the volume in, it shows no '
+    test('where the rail has nothing to read the sound in, its lanes show no '
         'value and no line', () {
-      final volume = seSoundPropertyLanes(
+      final members = seSoundPropertyLanes(
         ramp(),
         expanded: true,
-        volumeAt: null,
-      ).firstWhere((lane) => lane.laneId == seSoundVolumeLaneId);
-      expect(volume.valueLabel, isNull);
-      expect(volume.curve, isNull);
+        soundAt: null,
+      ).where((lane) => !lane.isGroupHeader);
+      expect(members, hasLength(seSoundLaneDisplayOrder.length));
+      for (final lane in members) {
+        expect(lane.valueLabel, isNull, reason: lane.laneId);
+        expect(lane.curve, isNull, reason: lane.laneId);
+      }
     });
 
     test('the Volume holds its per cents as a share inside 0–200 %', () {
@@ -117,6 +128,14 @@ void main() {
       expect(volumeLaneNumbers.held(80), 0.8);
       expect(volumeLaneNumbers.held(250), SeSound.maxVolume);
       expect(volumeLaneNumbers.held(-5), 0.0);
+    });
+
+    test('the Pan holds its per cents as a share inside the two sides, '
+        'whole per cents, as it is typed', () {
+      expect(panLaneNumbers.shown(-0.5), -50);
+      expect(panLaneNumbers.held(37.4), 0.37);
+      expect(panLaneNumbers.held(150), 1.0);
+      expect(panLaneNumbers.held(-150), -1.0);
     });
 
     test('a pan prints as a side and a distance, and reads back the same way '
@@ -147,8 +166,8 @@ void main() {
   });
 
   group('the edits', () {
-    test('the diamond keys what the row plays there, and takes a key away; '
-        'the Pan has none to toggle', () {
+    test('the diamond keys what the row plays there, and takes a key away — '
+        'the Pan as the Volume', () {
       final keyed = seSoundWithLaneKeyToggled(
         ramp(),
         laneId: seSoundVolumeLaneId,
@@ -172,10 +191,29 @@ void main() {
         1.0,
         reason: 'an unkeyed row plays as recorded',
       );
+      final swept = SeSound(
+        pan: PropertyTrack<double>(
+          keys: {0: const PropertyKey(-1.0), 10: const PropertyKey(0.0)},
+        ),
+      );
+      final panKeyed = seSoundWithLaneKeyToggled(
+        swept,
+        laneId: seSoundPanLaneId,
+        frameIndex: 5,
+      )!;
+      expect(panKeyed.pan.keyAt(5)!.value, closeTo(-0.5, 1e-9));
+      expect(
+        seSoundWithLaneKeyToggled(
+          panKeyed,
+          laneId: seSoundPanLaneId,
+          frameIndex: 5,
+        ),
+        swept,
+      );
       expect(
         seSoundWithLaneKeyToggled(
           ramp(),
-          laneId: seSoundPanLaneId,
+          laneId: seSoundGroupLaneId,
           frameIndex: 5,
         ),
         isNull,
@@ -190,8 +228,8 @@ void main() {
       );
     });
 
-    test('a typed Volume KEYS at the frame; a typed Pan is the row\'s one '
-        'value; what is not a number changes nothing', () {
+    test('a typed Volume or Pan KEYS at the frame; what is not a number '
+        'changes nothing', () {
       SeSound? typed(String laneId, String input) =>
           seSoundWithLaneValueEdited(
             const SeSound(),
@@ -203,15 +241,17 @@ void main() {
       expect(typed(seSoundVolumeLaneId, '80%')!.volume.keyAt(3)!.value, 0.8);
       expect(typed(seSoundVolumeLaneId, '250')!.volume.keyAt(3)!.value, 2.0);
       expect(typed(seSoundVolumeLaneId, 'loud'), isNull);
-      expect(typed(seSoundPanLaneId, 'L30'), const SeSound(pan: -0.3));
+      expect(typed(seSoundPanLaneId, 'L30')!.pan.keyAt(3)!.value, -0.3);
       expect(typed(seSoundPanLaneId, 'left'), isNull);
       expect(typed(seSoundGroupLaneId, '50'), isNull);
     });
 
-    test('Reset puts a keyed Volume at 100 % where it stands — keeping its '
-        'keys — and the Pan in the middle', () {
+    test('Reset puts a keyed Volume at 100 % and a keyed Pan in the middle '
+        'where they stand — keeping their keys', () {
       final sound = SeSound(
-        pan: -0.3,
+        pan: PropertyTrack<double>(
+          keys: {0: const PropertyKey(-0.3), 6: const PropertyKey(0.4)},
+        ),
         volume: PropertyTrack<double>(
           keys: {0: const PropertyKey(0.5), 6: const PropertyKey(0.2)},
         ),
@@ -221,40 +261,38 @@ void main() {
       expect(reset.volume.keys.keys, [0, 6]);
       expect(reset.volume.keyAt(6)!.value, 1.0);
       expect(reset.volume.keyAt(0)!.value, 0.5);
-      expect(reset.pan, 0.0);
+      expect(reset.pan.keys.keys, [0, 6]);
+      expect(reset.pan.keyAt(6)!.value, 0.0);
+      expect(reset.pan.keyAt(0)!.value, -0.3);
 
       final spanned = seSoundWithGroupReset(
         sound,
         frameIndexes: [3, 6],
         keyedFramesOnly: true,
       )!;
-      expect(
-        spanned.volume.keys.keys,
-        [0, 6],
-        reason: 'a range resets the keys it covers, and makes none',
-      );
+      for (final lane in [spanned.volume, spanned.pan]) {
+        expect(
+          lane.keys.keys,
+          [0, 6],
+          reason: 'a range resets the keys it covers, and makes none',
+        );
+      }
 
-      expect(
-        seSoundWithGroupReset(
-          const SeSound(pan: 0.4),
-          frameIndexes: [2],
-        ),
-        const SeSound(),
-        reason: 'an unkeyed Volume already plays at 100 %',
-      );
-      // 🗣️I-177: the Total is the S row's bar, no value of this group.
-      expect(
-        seSoundWithGroupReset(
-          const SeSound(pan: 0.4, totalVolume: 0.4),
-          frameIndexes: [2],
-        ),
-        const SeSound(totalVolume: 0.4),
-        reason: 'the Reset leaves the Total as it is',
-      );
       expect(
         seSoundWithGroupReset(const SeSound(), frameIndexes: [2]),
         isNull,
+        reason: 'an unkeyed Volume and Pan already play at their rest',
       );
+      // 🗣️I-177: the Total is the S row's bar, no value of this group.
+      final kept = seSoundWithGroupReset(
+        SeSound(
+          pan: PropertyTrack<double>(keys: {2: const PropertyKey(0.4)}),
+          totalVolume: 0.4,
+        ),
+        frameIndexes: [2],
+      )!;
+      expect(kept.panAt(2), 0.0);
+      expect(kept.totalVolume, 0.4, reason: 'the Reset leaves the Total');
     });
   });
 
@@ -308,52 +346,54 @@ void main() {
       );
     });
 
-    test('🎯a typed Volume keys at the frame, a typed Pan sets the row — '
-        'one undo each, and the row reads them back', () {
+    test('🎯a typed Volume and a typed Pan each key at the frame — one undo '
+        'each, and the row reads them back', () {
       type(seSoundVolumeLaneId, 4, '50');
       type(seSoundPanLaneId, 4, 'L30');
 
       expect(sound().volume.keys.keys, [4]);
       expect(sound().volumeAt(4), 0.5);
-      expect(sound().pan, -0.3);
-      expect(
-        s.laneVerbs.laneValueAt(
-          se.id,
-          seSoundVolumeLaneId,
-          4,
-          frameIsGlobal: true,
-        ),
-        '50.00%',
-      );
-      expect(
-        s.laneVerbs.isLaneKeyedAt(
-          se.id,
-          seSoundVolumeLaneId,
-          4,
-          frameIsGlobal: true,
-        ),
-        isTrue,
-      );
+      expect(sound().pan.keys.keys, [4]);
+      expect(sound().panAt(4), -0.3);
+      for (final (laneId, shown) in [
+        (seSoundVolumeLaneId, '50.00%'),
+        (seSoundPanLaneId, 'L30'),
+      ]) {
+        expect(
+          s.laneVerbs.laneValueAt(se.id, laneId, 4, frameIsGlobal: true),
+          shown,
+        );
+        expect(
+          s.laneVerbs.isLaneKeyedAt(se.id, laneId, 4, frameIsGlobal: true),
+          isTrue,
+          reason: laneId,
+        );
+      }
 
       s.undo();
-      expect(sound().pan, 0.0);
+      expect(sound().isPanKeyed, isFalse);
       expect(sound().volume.keys.keys, [4]);
       s.undo();
       expect(sound(), const SeSound());
     });
 
-    test('the diamond keys the Volume there, and the header\'s Reset puts '
-        'it back at 100 % — one undo', () {
+    test('the diamond keys the Volume and the Pan there, and the header\'s '
+        'Reset puts them back — 100 %, the middle — one undo', () {
       type(seSoundVolumeLaneId, 0, '20');
-      s.laneVerbs.toggleLaneKeyAt(
-        se.id,
-        seSoundVolumeLaneId,
-        8,
-        frameIsGlobal: true,
-        description: 'Key',
-      );
+      type(seSoundPanLaneId, 0, 'R40');
+      for (final laneId in seSoundLaneDisplayOrder) {
+        s.laneVerbs.toggleLaneKeyAt(
+          se.id,
+          laneId,
+          8,
+          frameIsGlobal: true,
+          description: 'Key',
+        );
+      }
       expect(sound().volume.keys.keys, [0, 8]);
       expect(sound().volumeAt(8), closeTo(0.2, 1e-9), reason: 'as it plays');
+      expect(sound().pan.keys.keys, [0, 8]);
+      expect(sound().panAt(8), closeTo(0.4, 1e-9), reason: 'as it plays');
 
       s.selectFrameIndex(8);
       expect(s.laneVerbs.resetsLaneGroup(se.id, seSoundGroupLaneId), isTrue);
@@ -361,30 +401,40 @@ void main() {
       expect(
         s.laneVerbs.resetsLaneGroup(se.id, seSoundGroupLaneId),
         isFalse,
-        reason: 'back at 100 % there, its Reset is out (F-583)',
+        reason: 'back at their rest there, its Reset is out (F-583)',
       );
       expect(sound().volumeAt(8), 1.0);
+      expect(sound().panAt(8), 0.0);
       expect(sound().volume.keys.keys, [0, 8], reason: 'keys are kept');
+      expect(sound().pan.keys.keys, [0, 8], reason: 'keys are kept');
       s.undo();
       expect(sound().volumeAt(8), closeTo(0.2, 1e-9));
+      expect(sound().panAt(8), closeTo(0.4, 1e-9));
     });
 
-    test('a Volume key copied goes down where the press stands, as every '
-        'lane\'s does', () {
+    test('a Volume or a Pan key copied goes down where the press stands, as '
+        'every lane\'s does', () {
       final pill = TimelineToolbarPanelContext(s);
-      type(seSoundVolumeLaneId, 3, '40');
-      s.selectLayer(se.id);
-      s.selectFrameIndex(3);
-      s.standOnRow(LaneRowAddress(se.id, seSoundVolumeLaneId));
-      pill.copyFrame();
-      expect(s.keyClipboard.holdsKeys, isTrue, reason: '⛔전제');
+      for (final (laneId, typed) in [
+        (seSoundVolumeLaneId, '40'),
+        (seSoundPanLaneId, 'L40'),
+      ]) {
+        type(laneId, 3, typed);
+        s.selectLayer(se.id);
+        s.selectFrameIndex(3);
+        s.standOnRow(LaneRowAddress(se.id, laneId));
+        pill.copyFrame();
+        expect(s.keyClipboard.holdsKeys, isTrue, reason: '⛔전제');
 
-      s.selectFrameIndex(9);
-      s.standOnRow(LaneRowAddress(se.id, seSoundVolumeLaneId));
-      pill.pasteIndependentFrame();
+        s.selectFrameIndex(9);
+        s.standOnRow(LaneRowAddress(se.id, laneId));
+        pill.pasteIndependentFrame();
+      }
 
       expect(sound().volume.keys.keys, [3, 9]);
       expect(sound().volume.keyAt(9)!.value, closeTo(0.4, 1e-9));
+      expect(sound().pan.keys.keys, [3, 9]);
+      expect(sound().pan.keyAt(9)!.value, closeTo(-0.4, 1e-9));
     });
 
     // 🗣️audio-fx-grows-like-the-pros-Q4 note 「뭐든 fx라면 있어야」 · -Q6
@@ -409,7 +459,7 @@ void main() {
       expect(header().groupEnabled, isFalse);
       expect(s.laneVerbs.isLaneGroupOn(se.id, seSoundGroupLaneId), isFalse);
       expect(sound().volume.keys.keys, [4], reason: 'kept');
-      expect(sound().pan, -0.3, reason: 'kept');
+      expect(sound().pan.keys.keys, [4], reason: 'kept');
       expect(s.effectsAndFx.layerFxState(se.id), isNot(LayerFxState.on));
 
       s.effectsAndFx.toggleLayerFx(se.id);

@@ -35,6 +35,11 @@ pub struct Clip {
     pub envelope_offset: i32,
     /// 0 = unity.
     pub envelope_count: i32,
+    /// The clip's run of the shared pan key array (audio-fx-grows-like-the-
+    /// pros-Q7), as the envelope's.
+    pub pan_offset: i32,
+    /// 0 = `pan_left` and `pan_right` the whole clip through.
+    pub pan_count: i32,
 }
 
 /// A block of decoded samples, interleaved by channel. `source_start` is
@@ -59,6 +64,17 @@ pub struct Source {
 pub struct EnvelopeKey {
     pub sample: i64,
     pub gain: f64,
+}
+
+/// One point of a clip's pan line (audio-fx-grows-like-the-pros-Q7):
+/// `sample` clip-local, the two sides Dart worked out there — equal power
+/// at every point, straight between them, held past the ends.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PanKey {
+    pub sample: i64,
+    pub left: f64,
+    pub right: f64,
 }
 
 /// A mono sound laid on two speakers: each side at -3 dB, before its pan
@@ -109,11 +125,44 @@ fn envelope_at(keys: &[EnvelopeKey], position: i64) -> f64 {
     last.gain
 }
 
+/// The run of `keys` an offset and a count name, when it is there — the
+/// envelope's and the pan line's alike.
+fn run_of<T>(offset: i32, count: i32, keys: &[T]) -> Option<&[T]> {
+    let offset = usize::try_from(offset).ok()?;
+    let count = usize::try_from(count).ok().filter(|&count| count > 0)?;
+    keys.get(offset..offset.checked_add(count)?)
+}
+
 /// The clip's run of `keys`, when it names one that is there.
 fn envelope_of<'k>(clip: &Clip, keys: &'k [EnvelopeKey]) -> Option<&'k [EnvelopeKey]> {
-    let offset = usize::try_from(clip.envelope_offset).ok()?;
-    let count = usize::try_from(clip.envelope_count).ok().filter(|&count| count > 0)?;
-    keys.get(offset..offset.checked_add(count)?)
+    run_of(clip.envelope_offset, clip.envelope_count, keys)
+}
+
+/// The clip's two pan sides at timeline `position_sample`: its pan line's
+/// there — straight between points, held past either end — or, with no
+/// line, its one `pan_left` and `pan_right`. Mirrors the Dart reference's
+/// `audioClipSidesAt` expression for expression.
+fn clip_sides(clip: &Clip, pans: &[PanKey], position_sample: i64) -> (f64, f64) {
+    let Some(line) = run_of(clip.pan_offset, clip.pan_count, pans) else {
+        return (clip.pan_left, clip.pan_right);
+    };
+    // A run is never empty (`run_of`).
+    let (first, last) = (line[0], line[line.len() - 1]);
+    let position = position_sample - clip.start_sample;
+    if position <= first.sample {
+        return (first.left, first.right);
+    }
+    if position >= last.sample {
+        return (last.left, last.right);
+    }
+    for pair in line.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        if position < b.sample {
+            let t = (position - a.sample) as f64 / (b.sample - a.sample) as f64;
+            return (a.left + (b.left - a.left) * t, a.right + (b.right - a.right) * t);
+        }
+    }
+    (last.left, last.right)
 }
 
 /// The clip's volume at timeline `position_sample`. ⛔Not clamped to
@@ -155,6 +204,7 @@ pub unsafe fn mix(
     clips: &[Clip],
     sources: &[Source],
     keys: &[EnvelopeKey],
+    pans: &[PanKey],
     start_sample: i64,
     out_channels: usize,
     out: &mut [f64],
@@ -177,7 +227,6 @@ pub unsafe fn mix(
         // SAFETY: the caller's contract.
         let samples = unsafe { slice::from_raw_parts(source.samples, length * channels) };
         let spread = if channels == 1 { MONO_ON_STEREO } else { 1.0 };
-        let (left, right) = (clip.pan_left * spread, clip.pan_right * spread);
         for position in clip.start_sample.max(start_sample)..clip.end_sample.min(block_end) {
             let source_index = clip.source_offset + (position - clip.start_sample);
             let Ok(offset) = usize::try_from(source_index - source.source_start) else {
@@ -187,6 +236,8 @@ pub unsafe fn mix(
                 continue;
             }
             let volume = clip_volume(clip, keys, position);
+            let (left, right) = clip_sides(clip, pans, position);
+            let (left, right) = (left * spread, right * spread);
             let frame = &samples[offset * channels..][..channels];
             let at = (position - start_sample) as usize * out_channels;
             for (channel, destination) in out[at..at + out_channels].iter_mut().enumerate() {
@@ -258,6 +309,11 @@ pub extern "C" fn qa_audio_envelope_key_sizeof() -> i32 {
     size_of::<EnvelopeKey>() as i32
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_audio_pan_key_sizeof() -> i32 {
+    size_of::<PanKey>() as i32
+}
+
 /// [`mix`] for C: `sample_count` x `out_channels` doubles into `out`,
 /// untouched when there is no bus to write.
 ///
@@ -273,6 +329,8 @@ pub unsafe extern "C" fn qa_audio_mix(
     source_count: i32,
     envelope_keys: *const EnvelopeKey,
     envelope_key_count: i32,
+    pan_keys: *const PanKey,
+    pan_key_count: i32,
     start_sample: i64,
     sample_count: i32,
     out_channels: i32,
@@ -291,7 +349,8 @@ pub unsafe extern "C" fn qa_audio_mix(
         let clips = slice_or_empty(clips, clip_count);
         let sources = slice_or_empty(sources, source_count);
         let keys = slice_or_empty(envelope_keys, envelope_key_count);
-        mix(clips, sources, keys, start_sample, channels, out);
+        let pans = slice_or_empty(pan_keys, pan_key_count);
+        mix(clips, sources, keys, pans, start_sample, channels, out);
     }
 }
 

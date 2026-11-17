@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering::SeqCst};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 
-use audio_mix::{Clip, EnvelopeKey, Source, slice_or_empty};
+use audio_mix::{Clip, EnvelopeKey, PanKey, Source, slice_or_empty};
 
 use backend::{Backend, Built, Context, Direction, Running};
 use capture::Capture;
@@ -357,20 +357,23 @@ pub unsafe extern "C" fn qa_audio_device_set_schedule(
     source_count: i32,
     envelope_keys: *const EnvelopeKey,
     envelope_key_count: i32,
+    pan_keys: *const PanKey,
+    pan_key_count: i32,
 ) -> i32 {
     let _devices = devices();
-    if clip_count < 0 || source_count < 0 || envelope_key_count < 0 {
+    if clip_count < 0 || source_count < 0 || envelope_key_count < 0 || pan_key_count < 0 {
         return 0;
     }
     // SAFETY: the caller's contract.
-    let (clips, sources, keys) = unsafe {
+    let (clips, sources, keys, pans) = unsafe {
         (
             slice_or_empty(clips, clip_count),
             slice_or_empty(sources, source_count),
             slice_or_empty(envelope_keys, envelope_key_count),
+            slice_or_empty(pan_keys, pan_key_count),
         )
     };
-    i32::from(PLAYBACK.set_schedule(clips, sources, keys))
+    i32::from(PLAYBACK.set_schedule(clips, sources, keys, pans))
 }
 
 #[unsafe(no_mangle)]

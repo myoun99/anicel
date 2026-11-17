@@ -5,6 +5,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_audio_spans.dart';
 import 'package:anicel/src/models/se_sound.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
+    show equalPowerPanGains;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 void main() {
@@ -34,7 +36,8 @@ void main() {
       expect(ntsc.sampleToFrame(1601, 48000), 0);
     });
 
-    test('carries trim, gain and the volume line into sample units', () {
+    test('carries trim, gain, the volume line and the pan line into sample '
+        'units', () {
       const rate = ProjectFrameRate.fps24;
       final converted = audioMixScheduleFrom(
         schedule: const [
@@ -45,6 +48,7 @@ void main() {
             offsetFrames: 5,
             gain: 0.5,
             volume: [(frame: 0, gain: 0.0), (frame: 3, gain: 0.8)],
+            panLine: [(frame: 0, pan: -1.0), (frame: 3, pan: 0.0)],
           ),
         ],
         rate: rate,
@@ -57,6 +61,15 @@ void main() {
       expect(clip.gain, 0.5);
       expect([for (final point in clip.envelope) point.sample], [0, 3 * 2000]);
       expect([for (final point in clip.envelope) point.gain], [0.0, 0.8]);
+      expect([for (final point in clip.panLine) point.sample], [0, 3 * 2000]);
+      expect(
+        [
+          for (final point in clip.panLine)
+            (left: point.left, right: point.right),
+        ],
+        [equalPowerPanGains(-1), equalPowerPanGains(0)],
+        reason: 'each point\'s two sides, worked out once',
+      );
     });
 
     test('shares one source per distinct path, in first-appearance order', () {
@@ -130,7 +143,7 @@ void main() {
       lengthFrames: 8,
     );
     final sound = SeSound(
-      pan: -0.5,
+      pan: PropertyTrack<double>(keys: {2: const PropertyKey(-0.5)}),
       totalVolume: 0.5,
       volume: PropertyTrack<double>(
         keys: {2: const PropertyKey(0.0), 6: const PropertyKey(1.0)},
@@ -146,9 +159,54 @@ void main() {
     final off = scheduled(sound.copyWith(enabled: false));
     expect(off.gain, 0.75, reason: 'the Total still answers');
     expect(off.pan, 0.0);
+    expect(off.panLine, isEmpty);
     expect(off.volume, isEmpty);
     final on = scheduled(sound);
     expect(on.pan, -0.5);
+    expect(on.panLine, isNotEmpty);
     expect(on.volume, isNotEmpty);
+  });
+
+  // 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
+  // 단다」.
+  test('🎯a keyed pan rides the entry as a line read at every frame it '
+      'sounds, from where it begins, a still run kept by its ends', () {
+    final span = SeAudioSpan(
+      clip: AudioClip(filePath: 'a.wav', frameId: const FrameId('f')),
+      clipIndex: 0,
+      startFrame: 2,
+      lengthFrames: 8,
+    );
+    final sound = SeSound(
+      pan: PropertyTrack<double>(
+        keys: {2: const PropertyKey(-1.0), 6: const PropertyKey(1.0)},
+      ),
+    );
+    ScheduledAudioClip scheduled({required int lead}) =>
+        ScheduledAudioClip.ofSpan(
+          span,
+          startFrame: 2 + lead,
+          endFrameExclusive: 10,
+          clippedLead: lead,
+          sound: sound,
+        );
+
+    final whole = scheduled(lead: 0);
+    expect(whole.pan, -1.0);
+    expect(whole.panLine, [
+      (frame: 0, pan: -1.0),
+      (frame: 1, pan: -0.5),
+      (frame: 2, pan: 0.0),
+      (frame: 3, pan: 0.5),
+      (frame: 4, pan: 1.0),
+      (frame: 8, pan: 1.0),
+    ]);
+    final clipped = scheduled(lead: 3);
+    expect(clipped.pan, 0.5, reason: 'where the entry begins');
+    expect(clipped.panLine, [
+      (frame: 0, pan: 0.5),
+      (frame: 1, pan: 1.0),
+      (frame: 5, pan: 1.0),
+    ]);
   });
 }

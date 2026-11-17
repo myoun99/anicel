@@ -322,10 +322,13 @@ void main() {
       return line.last.gain;
     }
 
-    test('🎯a window opening mid-sound reads the volume on the TRACK\'s '
-        'frames — where the ramp has climbed to, not where it began', () {
+    test('🎯a window opening mid-sound reads the volume and the pan on the '
+        'TRACK\'s frames — where each ramp has climbed to, not where it '
+        'began', () {
       final sound = SeSound(
-        pan: -0.5,
+        pan: PropertyTrack<double>(
+          keys: {0: const PropertyKey(-1.0), 20: const PropertyKey(0.0)},
+        ),
         volume: PropertyTrack<double>(
           keys: {0: const PropertyKey(0.0), 20: const PropertyKey(1.0)},
         ),
@@ -339,7 +342,10 @@ void main() {
       expect([for (final point in entry.volume) point.frame], [0, 6]);
       expect(entry.volume.first.gain, closeTo(0.5, 1e-9));
       expect(entry.volume.last.gain, closeTo(0.8, 1e-9));
-      expect(entry.pan, -0.5);
+      expect(entry.pan, closeTo(-0.5, 1e-9));
+      expect(entry.panLine.first.pan, closeTo(-0.5, 1e-9));
+      expect(entry.panLine.last.frame, 6);
+      expect(entry.panLine.last.pan, closeTo(-0.2, 1e-9));
     });
 
     test('an eased key is met at EVERY frame the entry sounds — the mixer\'s '
@@ -369,14 +375,15 @@ void main() {
     test('an unkeyed row lays no line — the entry plays as recorded', () {
       final entry = schedule(
         project: soundedWith(
-          const SeSound(pan: 0.25),
+          const SeSound(),
           at: (start: 2, length: 3),
         ),
         window: window(trackStart: 0, frames: 10),
       ).single;
 
       expect(entry.volume, isEmpty);
-      expect(entry.pan, 0.25);
+      expect(entry.panLine, isEmpty);
+      expect(entry.pan, 0.0);
     });
   });
 }

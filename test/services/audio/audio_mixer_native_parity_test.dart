@@ -135,6 +135,74 @@ void main() {
       }
     });
 
+    // audio-fx-grows-like-the-pros-Q7: a keyed pan's line, its sides drawn
+    // straight between its points. Its own seed, so the layouts above keep
+    // theirs.
+    test('randomized pan lines stay bit-identical', () {
+      final native = requireNative();
+      final random = Random(20261118);
+      final data = Float32List(2 * 64);
+      for (var i = 0; i < data.length; i += 1) {
+        data[i] = random.nextDouble() * 2.0 - 1.0;
+      }
+      final sources = [
+        AudioMixSource(samples: data, channels: 2),
+        AudioMixSource(
+          samples: Float32List.sublistView(data, 0, 64),
+          channels: 1,
+        ),
+      ];
+
+      for (var round = 0; round < 200; round += 1) {
+        final clips = <AudioMixClip>[];
+        final clipCount = 1 + random.nextInt(3);
+        for (var index = 0; index < clipCount; index += 1) {
+          final start = random.nextInt(32) - 8;
+          final pointCount = random.nextInt(5);
+          // Points may lie before the clip too — the trimmed-lead shape.
+          var at = -6 + random.nextInt(8);
+          final pan = equalPowerPanGains(random.nextDouble() * 2.0 - 1.0);
+          clips.add(
+            AudioMixClip(
+              sourceIndex: random.nextInt(2),
+              startSample: start,
+              endSample: start + 1 + random.nextInt(48),
+              panLeft: pan.left,
+              panRight: pan.right,
+              panLine: [
+                for (var point = 0; point < pointCount; point += 1)
+                  AudioPanPoint.at(
+                    at += 1 + random.nextInt(12),
+                    random.nextDouble() * 2.0 - 1.0,
+                  ),
+              ],
+            ),
+          );
+        }
+
+        final startSample = random.nextInt(40) - 8;
+        final sampleCount = 1 + random.nextInt(48);
+        final outChannels = 1 + random.nextInt(2);
+        expectIdentical(
+          native.mix(
+            clips: clips,
+            sources: sources,
+            startSample: startSample,
+            sampleCount: sampleCount,
+            outChannels: outChannels,
+          ),
+          mixAudioReference(
+            clips: clips,
+            sources: sources,
+            startSample: startSample,
+            sampleCount: sampleCount,
+            outChannels: outChannels,
+          ),
+          what: 'round $round',
+        );
+      }
+    });
+
     test('a long timeline position does not drift', () {
       // Sample-exact at any distance from zero is the mixer's whole
       // promise. A float position would have lost bits long before here.

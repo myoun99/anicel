@@ -341,7 +341,8 @@ void main() {
   });
 
   test('🎯a span over the name tag\'s Size and the Volume makes keys in both '
-      'homes, and the 「오디오」 header stands for its Volume — one undo', () {
+      'homes, and the 「오디오」 header stands for its Volume and its Pan — '
+      'one undo', () {
     final s = session();
     final se = taggedSe(
       s,
@@ -357,6 +358,11 @@ void main() {
     s.laneVerbs.createLaneKeysForSelection(lane);
 
     expect(volumeOf(s).keys.keys, [5]);
+    expect(
+      s.activeTrack.seLayers.first.seSound.pan.keys.keys,
+      [5],
+      reason: 'the header stands for the Pan too (Q7)',
+    );
     expect(volumeOf(s).keyAt(5)!.value, 1.0, reason: 'as recorded');
     expect(tagKeysOf(s).fontSize.keys.keys, [3, 5]);
     s.undo();
@@ -364,16 +370,32 @@ void main() {
     expect(tagKeysOf(s).fontSize.keys.keys, [3], reason: 'one step');
   });
 
-  test('a span over the Pan alone makes no key — it is one value', () {
+  // 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
+  // 단다」. ↩️A span over the Pan made no key while it was one value.
+  test('🎯a span over the Pan makes keys there as the Volume\'s does, and '
+      'Delete takes them — one undo each', () {
     final s = session();
-    final se = soundedSe(s, const SeSound(pan: -0.5));
-    final lane = span(se, [seSoundPanLaneId], 2, 4);
-    s.laneRangeSelection.value = lane;
-    final depth = s.historyManager.undoCount;
+    final se = soundedSe(
+      s,
+      SeSound(pan: PropertyTrack<double>(keys: {3: const PropertyKey(-0.5)})),
+    );
+    PropertyTrack<double> panOf() => s.activeTrack.seLayers.first.seSound.pan;
+    final made = span(se, [seSoundPanLaneId], 5, 7);
+    s.laneRangeSelection.value = made;
 
-    s.laneVerbs.createLaneKeysForSelection(lane);
-    expect(s.activeTrack.seLayers.first.seSound, const SeSound(pan: -0.5));
-    expect(s.historyManager.undoCount, depth, reason: 'nothing to undo');
+    s.laneVerbs.createLaneKeysForSelection(made);
+    expect(panOf().keys.keys, [3, 5, 6]);
+    expect(panOf().keyAt(5)!.value, -0.5, reason: 'as it plays');
+
+    final taken = span(se, [seSoundPanLaneId], 2, 6);
+    s.laneRangeSelection.value = taken;
+    expect(s.laneVerbs.removeLaneKeysForSelection(taken), isTrue);
+    expect(panOf().keys.keys, [6]);
+
+    s.undo();
+    expect(panOf().keys.keys, [3, 5, 6]);
+    s.undo();
+    expect(panOf().keys.keys, [3]);
   });
 
   test('the key window names the Volume\'s keys', () {

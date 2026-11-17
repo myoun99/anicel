@@ -22,6 +22,9 @@ external int _sourceSizeof();
 @Native<Int32 Function()>(symbol: 'qa_audio_envelope_key_sizeof')
 external int _envelopeKeySizeof();
 
+@Native<Int32 Function()>(symbol: 'qa_audio_pan_key_sizeof')
+external int _panKeySizeof();
+
 @Native<
   Void Function(
     Pointer<QaAudioClipStruct>,
@@ -29,6 +32,8 @@ external int _envelopeKeySizeof();
     Pointer<QaAudioSourceStruct>,
     Int32,
     Pointer<QaAudioEnvelopeKeyStruct>,
+    Int32,
+    Pointer<QaAudioPanKeyStruct>,
     Int32,
     Int64,
     Int32,
@@ -43,6 +48,8 @@ external void _mix(
   int sourceCount,
   Pointer<QaAudioEnvelopeKeyStruct> keys,
   int keyCount,
+  Pointer<QaAudioPanKeyStruct> pans,
+  int panCount,
   int startSample,
   int sampleCount,
   int outChannels,
@@ -75,7 +82,8 @@ external void _busToInt16(Pointer<Double> bus, int count, Pointer<Int16> out);
 bool qaAudioStructLayoutsMatch() =>
     _clipSizeof() == sizeOf<QaAudioClipStruct>() &&
     _sourceSizeof() == sizeOf<QaAudioSourceStruct>() &&
-    _envelopeKeySizeof() == sizeOf<QaAudioEnvelopeKeyStruct>();
+    _envelopeKeySizeof() == sizeOf<QaAudioEnvelopeKeyStruct>() &&
+    _panKeySizeof() == sizeOf<QaAudioPanKeyStruct>();
 
 /// FFI binding for the engine's audio mixer (2B).
 ///
@@ -139,6 +147,8 @@ final class QaAudioNative {
         sources.length,
         arrays.envelopeArray,
         arrays.envelopeTotal,
+        arrays.panArray,
+        arrays.panTotal,
         startSample,
         sampleCount,
         outChannels,
@@ -215,8 +225,19 @@ int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
   return total;
 }
 
-/// The engine's schedule layout, allocated and filled once: the clip array, the
-/// source array, and the ONE flattened envelope key array beside them.
+/// How many pan keys [clips] carry between them, as [qaAudioEnvelopeTotal]
+/// counts the envelope's.
+int qaAudioPanTotal(List<AudioMixClip> clips) {
+  var total = 0;
+  for (final clip in clips) {
+    total += clip.panLine.length;
+  }
+  return total;
+}
+
+/// The engine's schedule layout, allocated and filled once: the clip array,
+/// the source array, and the ONE flattened envelope key array and ONE
+/// flattened pan key array beside them.
 ///
 /// ⛔BOTH FFI PATHS HAND THE ENGINE THIS EXACT LAYOUT — the device's
 /// schedule and the one-shot mixer — and each used to allocate it out
@@ -236,9 +257,11 @@ final class QaAudioScheduleArrays {
     List<AudioMixClip> clips,
     List<AudioMixSource> sources,
   ) {
-    // Every clip's envelope points flatten into ONE shared array; the
-    // clips reference their slice by offset/count (mirrors the engine's layout).
+    // Every clip's envelope points flatten into ONE shared array, and its
+    // pan points into another; the clips reference their slices by
+    // offset/count (mirrors the engine's layout).
     final envelopeTotal = qaAudioEnvelopeTotal(clips);
+    final panTotal = qaAudioPanTotal(clips);
     final arrays = QaAudioScheduleArrays._(
       clipArray: calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length),
       sourceArray: calloc<QaAudioSourceStruct>(
@@ -248,11 +271,14 @@ final class QaAudioScheduleArrays {
         envelopeTotal <= 0 ? 1 : envelopeTotal,
       ),
       envelopeTotal: envelopeTotal,
+      panArray: calloc<QaAudioPanKeyStruct>(panTotal <= 0 ? 1 : panTotal),
+      panTotal: panTotal,
     );
     qaAudioWriteClips(
       clips: clips,
       clipArray: arrays.clipArray,
       envelopeArray: arrays.envelopeArray,
+      panArray: arrays.panArray,
     );
     return arrays;
   }
@@ -262,12 +288,16 @@ final class QaAudioScheduleArrays {
     required this.sourceArray,
     required this.envelopeArray,
     required this.envelopeTotal,
+    required this.panArray,
+    required this.panTotal,
   });
 
   final Pointer<QaAudioClipStruct> clipArray;
   final Pointer<QaAudioSourceStruct> sourceArray;
   final Pointer<QaAudioEnvelopeKeyStruct> envelopeArray;
   final int envelopeTotal;
+  final Pointer<QaAudioPanKeyStruct> panArray;
+  final int panTotal;
 
   /// Writes [source]'s struct at [index], pointed at [samples] — a device
   /// buffer for the device path, a Dart-owned buffer for the mixer's.
@@ -280,8 +310,9 @@ final class QaAudioScheduleArrays {
     target.samples = samples;
   }
 
-  /// Frees the three arrays in reverse allocation order.
+  /// Frees the four arrays in reverse allocation order.
   void free() {
+    calloc.free(panArray);
     calloc.free(envelopeArray);
     calloc.free(sourceArray);
     calloc.free(clipArray);
@@ -289,7 +320,7 @@ final class QaAudioScheduleArrays {
 }
 
 /// Copies [clips] into [clipArray] and flattens their envelopes into
-/// [envelopeArray], returning how many keys were written.
+/// [envelopeArray] and their pan lines into [panArray].
 ///
 /// ⛔BOTH FFI PATHS HAND THE ENGINE THIS EXACT LAYOUT — the device's
 /// schedule and the one-shot mixer — and each used to write it out itself,
@@ -300,8 +331,10 @@ void qaAudioWriteClips({
   required List<AudioMixClip> clips,
   required Pointer<QaAudioClipStruct> clipArray,
   required Pointer<QaAudioEnvelopeKeyStruct> envelopeArray,
+  required Pointer<QaAudioPanKeyStruct> panArray,
 }) {
   var envelopeCursor = 0;
+  var panCursor = 0;
   for (var index = 0; index < clips.length; index += 1) {
     final clip = clips[index];
     final target = clipArray[index];
@@ -317,14 +350,24 @@ void qaAudioWriteClips({
     target.fadeCurve = clip.fadeCurve;
     target.envelopeOffset = envelopeCursor;
     target.envelopeCount = clip.envelope.length;
+    target.panOffset = panCursor;
+    target.panCount = clip.panLine.length;
     for (final point in clip.envelope) {
       final key = envelopeArray[envelopeCursor];
       key.sample = point.sample;
       key.gain = point.gain;
       envelopeCursor += 1;
     }
+    for (final point in clip.panLine) {
+      final key = panArray[panCursor];
+      key.sample = point.sample;
+      key.left = point.left;
+      key.right = point.right;
+      panCursor += 1;
+    }
   }
 }
+
 /// Mirrors the engine's `qa_audio_clip`: doubles, then int64s, then an even
 /// number of int32s — natural alignment with no implicit padding on any
 /// supported ABI. The loader cross-checks `sizeof` before enabling the
@@ -354,6 +397,10 @@ final class QaAudioClipStruct extends Struct {
   external int envelopeOffset;
   @Int32()
   external int envelopeCount;
+  @Int32()
+  external int panOffset;
+  @Int32()
+  external int panCount;
 }
 
 /// Mirrors the engine's `qa_audio_envelope_key`.
@@ -362,6 +409,17 @@ final class QaAudioEnvelopeKeyStruct extends Struct {
   external int sample;
   @Double()
   external double gain;
+}
+
+/// Mirrors the engine's `audio_mix::PanKey` (audio-fx-grows-like-the-pros-
+/// Q7).
+final class QaAudioPanKeyStruct extends Struct {
+  @Int64()
+  external int sample;
+  @Double()
+  external double left;
+  @Double()
+  external double right;
 }
 
 /// Mirrors the engine's `qa_audio_source`.

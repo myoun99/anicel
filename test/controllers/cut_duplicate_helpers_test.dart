@@ -214,7 +214,7 @@ void main() {
               lanesExpanded: true,
               expandedLaneGroups: const {'transform-group'},
               seSound: SeSound(
-                pan: -0.6,
+                pan: PropertyTrack<double>(keys: {5: const PropertyKey(-0.6)}),
                 volume: PropertyTrack<double>(
                   keys: {3: const PropertyKey(0.4)},
                 ),
@@ -254,7 +254,7 @@ void main() {
         expect(copy.collapsed, isTrue);
         expect(copy.lanesExpanded, isTrue);
         expect(copy.expandedLaneGroups, {'transform-group'});
-        expect(copy.seSound.pan, -0.6);
+        expect(copy.seSound.pan.keyAt(5)!.value, -0.6);
         expect(copy.seSound.volumeAt(3), 0.4);
         expect(copy.seNameTag, isNotNull);
         expect(copy.effects.single.parameterOf('blurriness').value, 7);

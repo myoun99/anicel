@@ -143,11 +143,12 @@ class TrackSeWindow {
     );
   }
 
-  /// The row's volume keys on the local axis (I-140) — its total and its pan
-  /// are one value each and have no frame to move.
-  SeSound _rebasedSound(SeSound sound) => cutStartFrame == 0 || !sound.isKeyed
+  /// The row's volume and pan keys on the local axis (I-140 · Q7) — its
+  /// total is one value and has no frame to move.
+  SeSound _rebasedSound(SeSound sound) =>
+      cutStartFrame == 0 || (!sound.isKeyed && !sound.isPanKeyed)
       ? sound
-      : sound.copyWith(volume: _shift(sound.volume));
+      : sound.copyWith(volume: _shift(sound.volume), pan: _shift(sound.pan));
 
   /// ONE lane's keys moved onto the local axis — the primitive every rebase
   /// below is made of.

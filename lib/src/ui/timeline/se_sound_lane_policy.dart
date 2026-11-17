@@ -41,15 +41,20 @@ bool laneIsSeSound(String? laneId) =>
 
 /// The sound group's lane table: where each member's keys live on the row's
 /// sound — the sound's twin of `seNameTagLaneLens`, and the group's arm of
-/// every lane verb over a span. The Volume alone: the Pan is ONE value
-/// (I-140-Q3 「이번엔 한 값」), so it holds no keys to reach. Null for the
-/// header and for any id that is not a member lane.
+/// every lane verb over a span. Null for the header and for any id that is
+/// not a member lane. ↩️The Volume alone, while the Pan was one value
+/// (I-140-Q3), till audio-fx-grows-like-the-pros-Q7 「音量처럼 키를 단다」.
 PropertyLaneLens<SeSound, Object?>? seSoundLaneLens(String laneId) =>
     switch (laneId) {
       seSoundVolumeLaneId => PropertyLaneLens<SeSound, double>(
         get: (sound) => sound.volume,
         set: (sound, lane) => sound.copyWith(volume: lane),
         numbers: volumeLaneNumbers,
+      ),
+      seSoundPanLaneId => PropertyLaneLens<SeSound, double>(
+        get: (sound) => sound.pan,
+        set: (sound, lane) => sound.copyWith(pan: lane),
+        numbers: panLaneNumbers,
       ),
       _ => null,
     };
@@ -65,6 +70,14 @@ double _percentOf(double share) => share * 100;
 
 double _shareOf(double percent) =>
     (percent / 100).clamp(0.0, SeSound.maxVolume).toDouble();
+
+/// How the Pan lane reads its numbers: held left −1 to right +1, shown in
+/// signed per cents — whole ones, as the lane prints them (`panLaneText`:
+/// a lane holds the numbers it writes, F-488).
+const LaneNumbers panLaneNumbers = (shown: _percentOf, held: _panShareOf);
+
+double _panShareOf(double percent) =>
+    percent.round().clamp(-100, 100) / 100;
 
 /// Whether [name] is already used by member lane [laneId] in [sound] — the
 /// read a rename does before it commits, as `seNameTagLaneUsesName` is a
@@ -115,23 +128,37 @@ double? panOfLaneText(String text) {
   return ((side ?? 1) * percent).round().clamp(-100, 100) / 100;
 }
 
+/// Where a sound lane reads its row at [time] on the rail: the row's sound
+/// there, at the time on that sound's own frames.
+typedef SeSoundAt = ({SeSound sound, double time}) Function(double time);
+
 /// The lane rows for one SE row's sound: the header, and its members while
-/// the group is twirled open. [volumeAt] reads the row's volume at a time
-/// on the rail — null where the rail has nothing to read it in, which hides
-/// the value and the line with it.
+/// the group is twirled open. [soundAt] reads the row's sound at a time on
+/// the rail — null where the rail has nothing to read it in, which hides
+/// the values and the lines with it.
 List<PropertyLaneRow> seSoundPropertyLanes(
   SeSound sound, {
   required bool expanded,
-  required double Function(double time)? volumeAt,
+  required SeSoundAt? soundAt,
 }) {
   final volume = sound.volume;
+  final pan = sound.pan;
+  double Function(double time)? read(double Function(SeSound, double) of) =>
+      soundAt == null
+      ? null
+      : (time) {
+          final at = soundAt(time);
+          return of(at.sound, at.time);
+        };
+  final volumeAt = read((row, time) => row.volumeAt(time));
+  final panAt = read((row, time) => row.panAt(time));
   return [
     PropertyLaneRow(
       laneId: seSoundGroupLaneId,
       label: AppText.strings.tlAudioGroup,
       // The members' key union, the summary every group header shows.
-      keyMarks: unionKeyMarks([keyMarksOf(volume)]),
-      keyNames: unionKeyNames([volume]),
+      keyMarks: unionKeyMarks([keyMarksOf(volume), keyMarksOf(pan)]),
+      keyNames: unionKeyNames([volume, pan]),
       showsKeyNavigator: false,
       isGroupHeader: true,
       groupExpanded: expanded,
@@ -153,8 +180,8 @@ List<PropertyLaneRow> seSoundPropertyLanes(
             : (frame) =>
                   '${columnValueText(_percentOf(volumeAt(frame.toDouble())))}%',
         scrubValue: scrubSeSoundVolume,
-        // The group is the row's audio fx: its one line takes an effect's
-        // first parameter's colour, as a Blur's width does.
+        // The group is the row's audio fx: its lines take an effect's
+        // parameters' colours, in order, as a Blur's do.
         curve: volumeAt == null
             ? null
             : (
@@ -167,11 +194,22 @@ List<PropertyLaneRow> seSoundPropertyLanes(
       PropertyLaneRow(
         laneId: seSoundPanLaneId,
         label: AppText.strings.audioPanLabel,
-        keyMarks: const {},
-        // One value (I-140-Q3): nothing to key, so no ◀ ◆ ▶.
-        showsKeyNavigator: false,
-        valueLabel: (_) => panLaneText(sound.pan),
+        // Keyed as the Volume is (Q7). ↩️One value (I-140-Q3): nothing to
+        // key, no ◀ ◆ ▶.
+        keyMarks: keyMarksOf(pan),
+        keyNames: pan.namedKeysByFrame,
+        valueLabel: panAt == null
+            ? null
+            : (frame) => panLaneText(panAt(frame.toDouble())),
         scrubValue: scrubSeSoundPan,
+        curve: panAt == null
+            ? null
+            : (
+                parts: [LaneCurvePalette.effectParameter(1)],
+                at: (time) => [_percentOf(panAt(time))],
+                sides: pan.sidesByFrame,
+                way: null,
+              ),
       ),
     ],
   ];
