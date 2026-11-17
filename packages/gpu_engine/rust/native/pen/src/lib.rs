@@ -274,3 +274,21 @@ pub unsafe extern "C" fn qa_pen_points_take(x: f64, y: f64, out: *mut f64, cap: 
 pub extern "C" fn qa_pen_points_passed() -> u64 {
     points::book().passed()
 }
+
+/// How many messages' points did not all reach the book, by why
+/// (`points::Lost`, in its order), into `out`: the count written, at
+/// most `room`.
+///
+/// # Safety
+/// `out` is null or `room` writable `u64`s.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_pen_points_lost(out: *mut u64, room: usize) -> usize {
+    if out.is_null() {
+        return 0;
+    }
+    let lost = points::book().lost();
+    let count = lost.len().min(room);
+    // SAFETY: see the function's contract.
+    unsafe { std::slice::from_raw_parts_mut(out, count) }.copy_from_slice(&lost[..count]);
+    count
+}

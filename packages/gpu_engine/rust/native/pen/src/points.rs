@@ -85,6 +85,28 @@ pub(crate) const MOST_BATCHES: usize = 256;
 /// pen at 240 points a second.
 pub(crate) const MOST_POINTS: usize = 512;
 
+/// 🚨WHY A MESSAGE'S POINTS DID NOT ALL REACH THE BOOK (H59 법 A — counted
+/// first, before anything is done of them, card
+/// pen-points-are-taken-off-the-ui-thread): each a message whose line has
+/// a stretch the OS saw and no stroke got, read loud beside the batches
+/// [`Book::passed`] by ([`Book::lost`]). Counted where the reader knows it
+/// and the book cuts — one count a way, in this order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Lost {
+    /// The OS kept no more before them: Windows' mouse history full
+    /// (`GetMouseMovePointsEx`'s 64), every move in it newer than the
+    /// one written last.
+    Full,
+    /// The history could not be read — the message's own point alone. A
+    /// mouse move Windows made and keeps none of reads so too.
+    Unread,
+    /// Past [`MOST_POINTS`]: the oldest went.
+    Cut,
+}
+
+/// How many ways a message's points are lost ([`Lost`]).
+pub(crate) const LOSSES: usize = 3;
+
 pub(crate) struct Book {
     batches: VecDeque<Batch>,
     /// The points a Runner has handed of a message it has not ended
@@ -95,6 +117,9 @@ pub(crate) struct Book {
     /// pushed out for room. The app reads it loud: each is a message whose
     /// points the stroke did not get.
     passed: u64,
+    /// The messages whose points did not all reach the book, by why
+    /// ([`Lost`]).
+    lost: [u64; LOSSES],
 }
 
 static BOOK: Mutex<Book> = Mutex::new(Book::EMPTY);
@@ -105,8 +130,12 @@ pub(crate) fn book() -> MutexGuard<'static, Book> {
 }
 
 impl Book {
-    pub(crate) const EMPTY: Self =
-        Self { batches: VecDeque::new(), gathered: Vec::new(), passed: 0 };
+    pub(crate) const EMPTY: Self = Self {
+        batches: VecDeque::new(),
+        gathered: Vec::new(),
+        passed: 0,
+        lost: [0; LOSSES],
+    };
 
     /// A point of the message a Runner is handing over a point at a time:
     /// Android's, which JNI hands numbers.
@@ -122,9 +151,13 @@ impl Book {
         self.write(Batch { contact, handed, points });
     }
 
-    /// Writes a message's batch, its newest [`MOST_POINTS`] points.
+    /// Writes a message's batch, its newest [`MOST_POINTS`] points — the
+    /// one place a batch is cut, and counted ([`Lost::Cut`]).
     pub(crate) fn write(&mut self, mut batch: Batch) {
         let over = batch.points.len().saturating_sub(MOST_POINTS);
+        if over > 0 {
+            self.lose(Lost::Cut);
+        }
         batch.points.drain(..over);
         if self.batches.len() == MOST_BATCHES {
             self.batches.pop_front();
@@ -156,5 +189,16 @@ impl Book {
     /// How many batches were passed by ([`Book::passed`]).
     pub(crate) fn passed(&self) -> u64 {
         self.passed
+    }
+
+    /// A message whose points did not all reach the book, for `why`.
+    pub(crate) fn lose(&mut self, why: Lost) {
+        self.lost[why as usize] += 1;
+    }
+
+    /// How many messages' points did not all reach the book, by why, in
+    /// [`Lost`]'s order.
+    pub(crate) fn lost(&self) -> [u64; LOSSES] {
+        self.lost
     }
 }

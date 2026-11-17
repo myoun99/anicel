@@ -1,7 +1,8 @@
 //! What a mouse message hands on of the moves `GetMouseMovePointsEx` keeps,
 //! on answers worked out here (I-110 · F-600).
 
-use crate::points_win::{Move, moves_since};
+use crate::points::Lost;
+use crate::points_win::{Move, mouse_lost, moves_since};
 
 /// The message's own move: the newest of every history here.
 const OWN: Move = (50, 0, 105);
@@ -40,6 +41,25 @@ fn a_move_of_the_written_ones_millisecond_before_it_is_newer() {
         moves_since((60, 0, 104), &history, Some((40, 0, 103))),
         [(60, 0, 104), (50, 0, 103)],
     );
+}
+
+#[test]
+fn a_full_history_handed_on_whole_lost_the_moves_before_it() {
+    let written = Some((0, 0, 1));
+    assert_eq!(mouse_lost(64, 64, written), Some(Lost::Full));
+    assert_eq!(mouse_lost(64, 63, written), None, "the move written was in it");
+    assert_eq!(mouse_lost(12, 12, written), None, "a history not full kept them all");
+}
+
+#[test]
+fn a_history_unread_lost_what_came_before_the_message() {
+    assert_eq!(mouse_lost(-1, 1, Some((0, 0, 1))), Some(Lost::Unread));
+}
+
+#[test]
+fn the_first_move_of_all_loses_nothing() {
+    assert_eq!(mouse_lost(64, 64, None), None);
+    assert_eq!(mouse_lost(-1, 1, None), None);
 }
 
 #[test]

@@ -35,6 +35,9 @@ external int _take(double x, double y, Pointer<Double> out, int cap);
 @Native<Uint64 Function()>(symbol: 'qa_pen_points_passed')
 external int _passed();
 
+@Native<Size Function(Pointer<Uint64>, Size)>(symbol: 'qa_pen_points_lost')
+external int _lost(Pointer<Uint64> out, int room);
+
 /// THE POINTS THE OS SAW (H56) — the book a platform's reader writes each
 /// message's points into before Flutter hears of the message, read here by
 /// the point the message's datum is handed at.
@@ -99,4 +102,25 @@ abstract final class QaPenPoints {
   /// How many messages' points no datum was paired with — each a message
   /// whose points no stroke got.
   static int get passed => debugTake != null ? 0 : _passed();
+
+  /// How many messages' points did not all reach the book, by why
+  /// (points.rs `Lost`): the mouse's history [full], a history [unread],
+  /// a batch [cut] — each a stretch of a line the OS saw and no stroke
+  /// got (H59 법 A: counted first).
+  static ({int full, int unread, int cut}) get lost {
+    if (debugTake != null) {
+      return (full: 0, unread: 0, cut: 0);
+    }
+    final out = malloc<Uint64>(_losses);
+    try {
+      final count = _lost(out, _losses);
+      int at(int why) => why < count ? out[why] : 0;
+      return (full: at(0), unread: at(1), cut: at(2));
+    } finally {
+      malloc.free(out);
+    }
+  }
+
+  /// The ways a message's points are lost (points.rs `LOSSES`).
+  static const int _losses = 3;
 }

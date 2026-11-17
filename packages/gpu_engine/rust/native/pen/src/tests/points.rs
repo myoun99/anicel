@@ -1,7 +1,7 @@
 //! The book of the points the OS saw, and how a datum is paired with its
 //! batch, on answers worked out here.
 
-use crate::points::{Batch, Book, MOST_BATCHES, MOST_POINTS, Point};
+use crate::points::{Batch, Book, LOSSES, Lost, MOST_BATCHES, MOST_POINTS, Point};
 
 /// A message's batch: its points at `xs` along y 0, one microsecond apart
 /// from `from`, handed to Flutter at the last of them — of contact 1.
@@ -93,6 +93,25 @@ fn a_batch_keeps_its_newest_points() {
     let kept = book.take((*many.last().expect("many"), 0.0)).expect("kept");
     assert_eq!(kept.len(), MOST_POINTS);
     assert_eq!(kept[0].x, 3.0, "the oldest three left out");
+}
+
+#[test]
+fn a_batch_cut_is_counted_lost_and_a_whole_one_is_not() {
+    let mut book = Book::EMPTY;
+    book.write(batch(0, &[1.0, 2.0]));
+    assert_eq!(book.lost(), [0; LOSSES]);
+    let many: Vec<f64> = (0..MOST_POINTS + 1).map(|x| x as f64).collect();
+    book.write(batch(0, &many));
+    assert_eq!(book.lost(), [0, 0, 1], "one message cut, whatever it lost");
+}
+
+#[test]
+fn a_loss_is_counted_by_its_why() {
+    let mut book = Book::EMPTY;
+    book.lose(Lost::Full);
+    book.lose(Lost::Full);
+    book.lose(Lost::Unread);
+    assert_eq!(book.lost(), [2, 1, 0]);
 }
 
 #[test]

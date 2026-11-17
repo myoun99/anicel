@@ -624,7 +624,10 @@ class _InspectorCard extends StatelessWidget {
                     ' echo=${InputInspector.echoes}'
                     // H56: and the messages whose points the OS saw
                     // no datum took — each a stretch of a line lost.
-                    ' passed=${QaPenPoints.passed}',
+                    ' passed=${QaPenPoints.passed}'
+                    // H59 법 A: and those whose points did not all
+                    // reach the book, by why.
+                    ' lost=${_lostSaid(QaPenPoints.lost)}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
@@ -645,3 +648,8 @@ class _InspectorCard extends StatelessWidget {
     );
   }
 }
+
+/// What the point book lost ([QaPenPoints.lost]), by why, as the strip
+/// says it.
+String _lostSaid(({int full, int unread, int cut}) lost) =>
+    'full ${lost.full} unread ${lost.unread} cut ${lost.cut}';

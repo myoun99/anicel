@@ -33,7 +33,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-use crate::points::{Batch, MOST_POINTS, Point, book};
+use crate::points::{Batch, Lost, Point, book};
 
 /// The mouse's name among the contacts: past every pointer id, which is
 /// a word.
@@ -55,6 +55,9 @@ const PEN_OR_TOUCH: isize = 0xFF51_5700;
 const SIGNATURE: isize = 0xFFFF_FF00;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// How many moves `GetMouseMovePointsEx` keeps, the most it hands.
+const MOUSE_HISTORY: i32 = 64;
 
 /// A mouse move as `GetMouseMovePointsEx` keeps it: where, in screen
 /// pixels, and when, on the message clock (milliseconds, which wraps).
@@ -150,10 +153,13 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
     if unsafe { GetPointerInfo(id, &mut info) }.is_err() {
         return;
     }
-    let mut count = info.historyCount.clamp(1, MOST_POINTS as u32);
+    // All the OS keeps: the book cuts a batch, and counts it (`Book::write`).
+    let mut count = info.historyCount.max(1);
     let mut history = vec![POINTER_INFO::default(); count as usize];
+    let mut unread = false;
     // SAFETY: room for `count` entries.
     if unsafe { GetPointerInfoHistory(id, &mut count, Some(history.as_mut_ptr())) }.is_err() {
+        unread = info.historyCount > 1;
         history = vec![info];
         count = 1;
     }
@@ -182,7 +188,11 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
         .collect();
     let handed = in_view(view, of(l));
     let handed = (f64::from(handed.x), f64::from(handed.y));
-    book().write(Batch { contact: u64::from(id), handed, points });
+    let mut book = book();
+    if unread {
+        book.lose(Lost::Unread);
+    }
+    book.write(Batch { contact: u64::from(id), handed, points });
 }
 
 /// `point` with the pressure the pen's `reading` gives — the one reading
@@ -213,7 +223,7 @@ fn mouse(view: HWND, l: LPARAM) {
     // SAFETY: asked while the message is handled.
     let time = unsafe { GetMessageTime() } as u32;
     let asked = MOUSEMOVEPOINT { x: screen.x & 0xFFFF, y: screen.y & 0xFFFF, time, dwExtraInfo: 0 };
-    let mut moves = [MOUSEMOVEPOINT::default(); 64];
+    let mut moves = [MOUSEMOVEPOINT::default(); MOUSE_HISTORY as usize];
     let size = size_of::<MOUSEMOVEPOINT>() as u32;
     // SAFETY: the move asked and a buffer of 64.
     let found = unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) };
@@ -224,6 +234,7 @@ fn mouse(view: HWND, l: LPARAM) {
         .map(|at| (signed(at.x), signed(at.y), at.time))
         .collect();
     let moves = moves_since((screen.x, screen.y, time), &history, *written);
+    let lost = mouse_lost(found, moves.len(), *written);
     *written = Some((screen.x, screen.y, time));
     let points = moves
         .iter()
@@ -235,7 +246,25 @@ fn mouse(view: HWND, l: LPARAM) {
         })
         .collect();
     let handed = (f64::from(client.x), f64::from(client.y));
-    book().write(Batch { contact: MOUSE, handed, points });
+    let mut book = book();
+    if let Some(why) = lost {
+        book.lose(why);
+    }
+    book.write(Batch { contact: MOUSE, handed, points });
+}
+
+/// What a mouse message lost before the book ([`Lost`]), its history
+/// `found` and `handed_on` of it ([`moves_since`]) after `written`: the
+/// history full and every move in it handed on — the moves before it
+/// went —, or none read. Nothing where nothing was written yet: the
+/// first move of all has nothing before it to lose.
+pub(crate) fn mouse_lost(found: i32, handed_on: usize, written: Option<Move>) -> Option<Lost> {
+    written?;
+    match found {
+        ..0 => Some(Lost::Unread),
+        MOUSE_HISTORY if handed_on == MOUSE_HISTORY as usize => Some(Lost::Full),
+        _ => None,
+    }
 }
 
 /// 🚨THE MOVES A MOUSE MESSAGE HANDS ON (I-110 · F-600): `history` — the
