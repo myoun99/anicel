@@ -26,11 +26,16 @@ class MediaAssetDragChip extends StatelessWidget {
     super.key,
     required this.kind,
     required this.name,
+    this.path,
     this.verdict,
   });
 
   final MediaAssetKind kind;
   final String name;
+
+  /// The file's path, where its type wears a picture of its own
+  /// ([mediaAssetKindIcon]).
+  final String? path;
   final ValueListenable<bool?>? verdict;
 
   @override
@@ -45,7 +50,7 @@ class MediaAssetDragChip extends StatelessWidget {
   }
 
   Widget _chip({required bool refused}) => DragChip(
-    items: [(icon: mediaAssetKindIcon(kind), label: name)],
+    items: [(icon: mediaAssetKindIcon(kind, path: path), label: name)],
     refused: refused,
   );
 }

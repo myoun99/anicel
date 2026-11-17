@@ -74,15 +74,25 @@ class CutFolderEdits {
       return kindOfLayer(parsed, parsed.baseOf(layer)!);
     }
     final picked = kinds[layer.rowKey];
-    return picked != null && holds(picked, layer.cells.length)
-        ? picked
-        : LayerKind.animation;
+    return picked == null
+        ? LayerKind.animation
+        : holding(picked, layer.cells.length);
   }
 
   /// Whether a row of [cels] cels can come in as [kind]: an image layer
   /// holds ONE cel a cut by definition ([LayerKind.holdsSingleCel]).
   static bool holds(LayerKind kind, int cels) =>
       !kind.holdsSingleCel || cels == 1;
+
+  /// [picked], for a layer of [cels] cels where it [holds] that many — an
+  /// animation where it does not.
+  ///
+  /// ⛔ONE answer for the three that ask it: a cut folder's row
+  /// ([kindOfLayer]), the import window's one-picture row, and the media
+  /// pool's preset (asset-placement-presets Q4) — each spelled it until the
+  /// third came.
+  static LayerKind holding(LayerKind picked, int cels) =>
+      holds(picked, cels) ? picked : LayerKind.animation;
 
   /// Whether [layer] comes in as its symbol's attach row: a correction
   /// does, wherever its symbol goes, until 「커스텀」 sends it somewhere of

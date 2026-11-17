@@ -455,6 +455,21 @@ class MediaAsset {
   /// Detected page count (pdf kind).
   final int? pageCount;
 
+  /// How many pictures the file holds, as far as the pool knows — a still's
+  /// one, a GIF's or a movie's frames, a PDF's pages; null for a sound, and
+  /// for a movie whose count was never read.
+  ///
+  /// 🚨ONE COUNT for every surface that asks how much of a file a placement
+  /// places — the drag's silhouette and the pool's lengths
+  /// (asset-placement-presets Q4). The silhouette counted [frameCount]
+  /// alone, so a pooled PDF drew one cell over a row its pages filled.
+  int? get pictures => switch (kind) {
+    MediaAssetKind.image => frameCount ?? 1,
+    MediaAssetKind.video => frameCount,
+    MediaAssetKind.pdf => pageCount,
+    MediaAssetKind.audio => null,
+  };
+
   /// What the entry is placed with until a placement answers otherwise.
   final MediaPreset preset;
 

@@ -1,5 +1,6 @@
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart';
+import '../audio/audio_conform_runner.dart' show openAudioSource;
 import '../pdf/pdf_render_service.dart';
 import 'held_viewer_document.dart';
 import 'image_viewer_document.dart';
@@ -61,6 +62,37 @@ Future<MediaFacts?> readMediaFacts(
       case MediaAssetKind.audio:
         return null;
     }
+  } on Object {
+    return null;
+  }
+}
+
+/// What a list says of a file's SOUND without decoding it: the rate it was
+/// made at and how many channels it has — a sound's own, or a movie's
+/// soundtrack (the media pool's 오디오 정보, asset-placement-presets Q4).
+typedef SoundFacts = ({int sampleRate, int channels});
+
+/// What the media pool has read of a file beyond its entry — its picture's
+/// [MediaFacts] and its [SoundFacts], each null where it has none.
+typedef MediaPoolFacts = ({MediaFacts? picture, SoundFacts? sound});
+
+/// [path]'s [SoundFacts], off the decoder opened on the bytes [hold] answers
+/// for it and let go at once — the door a conform is made through
+/// ([openAudioSource]), so a sound says here what its conform will read.
+/// Null for a file with no sound this build can open.
+Future<SoundFacts?> readSoundFacts(String path, HoldMediaBytes hold) async {
+  try {
+    return await readOnHeldBytes(hold, path, (source) async {
+      final sound = openAudioSource(source);
+      if (sound == null) {
+        return null;
+      }
+      try {
+        return (sampleRate: sound.sampleRate, channels: sound.channels);
+      } finally {
+        sound.close();
+      }
+    });
   } on Object {
     return null;
   }

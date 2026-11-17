@@ -113,9 +113,15 @@ void main() {
     );
 
     expect(find.text('발소리'), findsOneWidget);
-    // The subtitle now leads with which one it is (유저 2026-08-31), so the
-    // path rides behind it rather than standing alone.
-    expect(find.textContaining(foot), findsOneWidget);
+    // Its place is on hover — a linked file's line says what it is, its
+    // size and its date in columns, and no longer the path in their stead
+    // (asset-placement-presets Q4: the second line spread into columns).
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is AppTooltip && widget.message == foot,
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('Linked'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('media-asset-missing-$foot')),
@@ -261,7 +267,8 @@ void main() {
 
     final pen = await tester.startGesture(
       tester.getCenter(
-        find.byKey(const ValueKey<String>('media-asset-row-C:/snd/s0.wav')),
+        // On its name, which stays in view however wide the line runs.
+        find.text('s0.wav'),
       ),
       kind: PointerDeviceKind.stylus,
     );

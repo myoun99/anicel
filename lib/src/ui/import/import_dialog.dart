@@ -3616,14 +3616,12 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// The kind [path]'s row comes in as: its answer, as far as the pictures
-  /// it keeps allow ([CutFolderEdits.holds]) — the door lays it so
+  /// it keeps allow ([CutFolderEdits.holding]) — the door lays it so
   /// (`placesAStill`), as the cut folder lays its rows (F-429).
-  LayerKind _pictureKindOf(String path) {
-    final picked = _settingsFor(path).pictureKind;
-    return CutFolderEdits.holds(picked, _picturesKept(path) ?? 1)
-        ? picked
-        : LayerKind.animation;
-  }
+  LayerKind _pictureKindOf(String path) => CutFolderEdits.holding(
+    _settingsFor(path).pictureKind,
+    _picturesKept(path) ?? 1,
+  );
 
   /// The room a place is said in, whatever the layer is named (🗣️F-582-Q1,
   /// 유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 · 넘치면 생략 ·

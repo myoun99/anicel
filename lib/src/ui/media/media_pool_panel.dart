@@ -7,6 +7,8 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../../models/se_take_placement.dart' show placedSoundBlockOf;
+import '../../services/media/media_facts.dart' show MediaPoolFacts;
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/app_confirm_dialog.dart'
@@ -22,7 +24,6 @@ import '../dialogs/folder_pick_flow.dart';
 
 import '../text/app_strings.dart';
 import '../text/text_measure.dart';
-import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart' show AppWindowActionEmphasis;
 import '../widgets/overflow_scrollers.dart';
@@ -32,8 +33,11 @@ import '../widgets/static_raster.dart';
 import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_kind_icon.dart';
-import 'media_asset_pool_state.dart';
 import 'media_drop_verdict.dart';
+import 'media_pool_list.dart';
+import 'media_pool_view.dart';
+import 'media_pool_words.dart';
+import '../timeline/se_name_tag_lane_preview.dart';
 import '../input/control_press_claim.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
@@ -75,6 +79,11 @@ class MediaPoolPanel extends StatelessWidget {
     this.storedBytes = const <String, int>{},
     this.conformBytes = const <String, int>{},
     this.onRelinkMissing,
+    this.view = const MediaPoolView(),
+    this.onViewChanged,
+    this.factsOf = _nothingRead,
+    this.soundFramesOf = _nothingHeard,
+    this.framesPerSecond = 24,
   });
 
   final List<MediaAsset> assets;
@@ -165,6 +174,27 @@ class MediaPoolPanel extends StatelessWidget {
   /// Empty for every non-audio asset, and for audio nobody has played yet.
   final Map<String, int> conformBytes;
 
+  /// How the pool shows its files — a line each or big pictures, each as
+  /// it is or as its preset places it ([MediaPoolView]).
+  final MediaPoolView view;
+
+  /// Asks for another [view] — the two buttons right of the ＋. Null keeps
+  /// the view as it is, the buttons with nothing to do.
+  final ValueChanged<MediaPoolView>? onViewChanged;
+
+  /// What the session has read of a file beyond its entry — its picture's
+  /// size, its sound's rate and channels — null while it has not.
+  final MediaPoolFacts? Function(String path) factsOf;
+
+  /// How many project frames a sound lasts, where its conform is held.
+  final int? Function(String path) soundFramesOf;
+
+  /// The project's counting base, which a length is told in.
+  final int framesPerSecond;
+
+  static MediaPoolFacts? _nothingRead(String path) => null;
+  static int? _nothingHeard(String path) => null;
+
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
   /// platforms — relinking to a copy that the next cache sweep deletes is
@@ -194,99 +224,8 @@ class MediaPoolPanel extends StatelessWidget {
     onRelinkAsset(path, next, grants);
   }
 
-  /// `55 MB + 1.2 GB · 08-12 19:41` — as much of it as is known.
-  ///
-  /// 🪦The example used to read `2.1 MB`, which [byteSizeLabel] never
-  /// produces: megabytes are whole there and only gigabytes carry a
-  /// decimal.
-  ///
-  /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
-  /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
-  /// For a carried asset that is what it occupies compressed — in the
-  /// project file, or in the staging area before the first save. The
-  /// import dialog still shows the file's own length, and correctly:
-  /// nothing has been compressed yet at that point.
-  ///
-  /// ⛔[MediaAsset.identity] is the FALLBACK, not the answer. It is the
-  /// length the file had when it was registered — which for a compressed
-  /// asset matches nothing on any disk — and it stays untouched because
-  /// relink uses it to tell one `A1.png` from another.
-  ///
-  /// The date comes from the session's sweep, and neither number makes a
-  /// row touch the disk to draw itself.
-  String _subtitleFor(MediaAsset asset) {
-    final parts = <String>[];
-    // 🚨★★★**WHICH ONE IT IS, FIRST.** 유저 2026-08-31: 「해당 파일이
-    // 품어진 상태인지 참조인지 모르겠음. **그걸 텍스트로 적어두고**」.
-    //
-    // Every other fact on this line — the size, the date — reads the same
-    // whether the project owns the bytes or merely points at them, and
-    // that is the one difference that decides what happens when the
-    // original moves. It leads because it is the row's subject, not a
-    // detail of it.
-    parts.add(mediaAssetPoolState(asset));
-    final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
-    // 🚨The CONFORM, asked for by name (유저 2026-08-30: 「가시화정책에 따라
-    // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」). It is several
-    // times the sound itself and was invisible per-asset until now.
-    //
-    // ⛔`+` and nothing else. It says「and this much more」, which is
-    // exactly what a conform is, and a word here would be the explanatory
-    // caption this app does not put under things.
-    //
-    // ⚠️ONE part, not two. The parts below are joined with `·`, which
-    // separates KINDS of fact — a size from a date. The conform is not
-    // another kind of fact; it is more of the same one, and `55 MB · +
-    // 660 MB` reads as a list of two sizes rather than as a total.
-    final conform = conformBytes[asset.path];
-    if (bytes != null && bytes > 0) {
-      parts.add(
-        conform != null && conform > 0
-            ? '${byteSizeLabel(bytes)} + ${byteSizeLabel(conform)}'
-            : byteSizeLabel(bytes),
-      );
-    } else if (conform != null && conform > 0) {
-      parts.add('+ ${byteSizeLabel(conform)}');
-    }
-    final date = _dateOf(asset);
-    if (date != null) {
-      parts.add(date);
-    }
-    // Nothing known yet (a fresh pool before the first sweep): the path is
-    // better than an empty line.
-    //
-    // ⚠️Counted against ONE, not zero. The carried/linked word above always
-    // lands, so「empty」stopped being reachable the moment it was added —
-    // and a row that said only「Linked」would have dropped the path a fresh
-    // pool has nothing else to show. Never a carried row's ([_placeOnHover]).
-    if (parts.length == 1 && !asset.carried) {
-      parts.add(asset.path);
-    }
-    return parts.join(' · ');
-  }
-
-  /// The date [asset]'s row shows, `MM-DD hh:mm` — null where none is known.
-  ///
-  /// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
-  /// 띄운다」): a carried file's date is the one its carry recorded — the
-  /// bytes the project holds do not change when the original does.
-  /// ↩️It read the original's date now, edited or gone.
-  String? _dateOf(MediaAsset asset) {
-    final modified = switch (asset.carriedAs) {
-      final carried? => carried.modified,
-      null => modifiedTimes[asset.path],
-    };
-    if (modified == null) {
-      return null;
-    }
-    return '${modified.month.toString().padLeft(2, '0')}-'
-        '${modified.day.toString().padLeft(2, '0')} '
-        '${modified.hour.toString().padLeft(2, '0')}:'
-        '${modified.minute.toString().padLeft(2, '0')}';
-  }
-
-  /// [subtitle], with where the file lies on hover — on a row whose file
-  /// lives outside the project.
+  /// [name], with where the file lies on hover — on a line whose file lives
+  /// outside the project.
   ///
   /// 🗣️F-589 (유저 11-13: 「품었는데 이거 필요한지?」): a carried file's
   /// bytes are the project's, and nothing the person does with it goes to
@@ -296,9 +235,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// asset's key, which nothing shows. ↩️The hover named the path on every
   /// row since 2c5176b0f (08-30), when size and date took its place on the
   /// line — nobody asked for it on a carried row.
-  Widget _placeOnHover(MediaAsset asset, Widget subtitle) => asset.carried
-      ? subtitle
-      : AppTooltip(message: asset.path, child: subtitle);
+  Widget _placeOnHover(MediaAsset asset, Widget name) => asset.carried
+      ? name
+      : AppTooltip(message: asset.path, child: name);
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
     final name = await showDialog<String>(
@@ -507,6 +446,8 @@ class MediaPoolPanel extends StatelessWidget {
 
   Widget _body(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final strings = AppText.strings;
+    final changeView = onViewChanged;
     return Column(
       key: const ValueKey<String>('media-browser-panel'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -521,12 +462,40 @@ class MediaPoolPanel extends StatelessWidget {
                 // The window it opens, by that window's own title: the pool
                 // once held sound only, and 「오디오 불러오기」 outlived it
                 // (유저 10-09).
-                tooltip: AppText.strings.imImport,
+                tooltip: strings.imImport,
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,
               ),
               const Spacer(),
+              // 🗣️asset-placement-presets Q6 (유저 2026-11-17): 「시안대로 —
+              // 위 툴바(＋ 줄 오른쪽)」. The preset face is a state, lit as
+              // every on button is; the shape button draws the view a press
+              // goes to.
+              AppIconButton(
+                keyValue: 'media-view-presets',
+                tooltip: strings.mediaViewPresets,
+                icon: const Icon(Icons.style_outlined),
+                isSelected: view.presets,
+                onPressed: changeView == null
+                    ? null
+                    : () => changeView(view.copyWith(presets: !view.presets)),
+              ),
+              AppIconButton(
+                keyValue: 'media-view-icons',
+                tooltip: view.icons
+                    ? strings.mediaViewList
+                    : strings.mediaViewIcons,
+                icon: Icon(
+                  view.icons
+                      ? Icons.view_list_outlined
+                      : Icons.grid_view_outlined,
+                ),
+                onPressed: changeView == null
+                    ? null
+                    : () => changeView(view.copyWith(icons: !view.icons)),
+              ),
+              const SizedBox(width: 4),
             ],
           ),
         ),
@@ -541,218 +510,235 @@ class MediaPoolPanel extends StatelessWidget {
               ? Padding(
                   padding: const EdgeInsets.all(8),
                   child: EmptyStateText(
-                    AppText.strings.mediaPoolEmpty,
+                    strings.mediaPoolEmpty,
                     key: const ValueKey<String>('media-browser-empty'),
                     place: EmptyStatePlace.list,
                   ),
                 )
-              : ListView.builder(
-                  itemCount: assets.length,
-                  itemBuilder: (context, index) =>
-                      _assetRow(context, colorScheme, assets[index]),
+              : MediaPoolList(
+                  assets: assets,
+                  columns: view.presets
+                      ? _words.presetColumns()
+                      : _words.fileColumns(),
+                  nameLabel: strings.commonNameField,
+                  nameOf: _nameOf,
+                  lineOf: _lineOf,
                 ),
         ),
       ],
     );
   }
 
-  Widget _assetRow(
-    BuildContext context,
-    ColorScheme colorScheme,
-    MediaAsset asset,
-  ) {
-    final exists = !missingPaths.contains(asset.path);
-    final uses = usesOf(asset.path);
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        children: [
-          if (exists) Icon(
-                  mediaAssetKindIcon(asset.kind),
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
-                ) else AppTooltip(
-                  message: AppText.strings.mpFileMissing,
-                  child: Icon(
-                    key: ValueKey<String>('media-asset-missing-${asset.path}'),
-                    Icons.error_outline,
-                    size: 16,
-                    color: colorScheme.error,
-                  ),
-                ),
-          const SizedBox(width: 6),
-          Expanded(
-            // The double-click zone is the NAME AREA only: a double-tap
-            // recognizer over the whole row would hold the menu button's
-            // taps in the gesture arena for the double-tap window.
-            child: GestureDetector(
-              onDoubleTap: onOpenAsset == null
-                  ? null
-                  : () => onOpenAsset!(asset),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The NAME and its EXTENSION apart, as the import window's
-                  // table shows a file (유저 2026-09-12: 「풀에서 이름이랑
-                  // 확장자 나누고」): the name is what gets cut short, the
-                  // extension never is.
-                  Row(
-                    children: [
-                      Flexible(
-                        child: EllipsisText(
-                          asset.name,
-                          maxLines: 1,
-                          style: _nameLine,
-                        ),
-                      ),
-                      Text(
-                        mediaFileNameParts(asset.path).extension,
-                        maxLines: 1,
-                        style: _nameLine.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // SIZE and DATE, not the path. The path was here because
-                  // it was what the pool knew; what a person scanning a
-                  // pool actually asks is how big a file is and whether it
-                  // is the one they exported an hour ago. The path is one
-                  // hover away and no longer the only thing on offer.
-                  _placeOnHover(
-                    asset,
-                    EllipsisText(
-                      _subtitleFor(asset),
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // F-118 — the mark is a way to WHERE: 「해당 버튼 누르면 공용창
-          // 띄워서 어디서 쓰는지 리스트로 표시하도록」. On a row nothing uses
-          // it stays in its place, dimmed with nothing to open (「없다가
-          // 생기는 UI 금지」), so the name does not move when the last use
-          // goes — and its tooltip names what it opens, which is true of both.
-          AppIconButton(
-            keyValue: 'media-asset-in-use-${asset.path}',
-            tooltip: AppText.strings.mediaUsesHeading,
-            icon: const Icon(Icons.link),
-            size: AppIconButtonSize.micro,
-            onPressed: uses.isEmpty ? null : () => _showUses(context, asset),
-          ),
-          // R6 #4: the shared flyout. These rows had no `height` at all, so
-          // they came out at Material's `kMinInteractiveDimension` — 48px
-          // beside the app's 32.
-          PanelFlyoutTrigger(
-            key: ValueKey<String>('media-asset-menu-${asset.path}'),
-            tooltip: AppText.strings.mediaActions,
-            entriesBuilder: () => [
-              if (onOpenAsset != null)
-                PanelFlyoutItem(
-                  keyValue: 'media-asset-menu-open',
-                  label: AppText.strings.mediaOpenInViewer,
-                  onSelected: () => onOpenAsset?.call(asset),
-                ),
-              if (onOpenAssetInSubViewer != null)
-                PanelFlyoutItem(
-                  keyValue: 'media-asset-menu-open-sub',
-                  label: AppText.strings.mediaOpenInSubViewer,
-                  onSelected: () => onOpenAssetInSubViewer?.call(asset),
-                ),
-              // The pool's way onto the timeline. A row can be DRAGGED
-              // there too, but a menu entry is what a tablet hand and a
-              // long list want — and it is the only route that exists at
-              // all until the timeline grows its drop targets.
-              if (onPlaceAsset != null)
-                PanelFlyoutItem(
-                  keyValue: 'media-asset-menu-place',
-                  label: AppText.strings.mediaPlace,
-                  onSelected: () => onPlaceAsset?.call(asset),
-                ),
-              PanelFlyoutItem(
-                keyValue: 'media-asset-menu-rename',
-                label: AppText.strings.commonRename,
-                onSelected: () => _rename(context, asset),
-              ),
-              PanelFlyoutItem(
-                keyValue: 'media-asset-menu-relink',
-                label: AppText.strings.mediaRelink,
-                onSelected: () => _relink(context, asset.path),
-              ),
-              // The other half of importing by reference: the moment the
-              // user decides the project should own this file after all.
-              //
-              // 🪦It used to be offered on EVERY row, on the grounds that
-              // hiding it would change the menu's shape「for a reason the
-              // user cannot see」. 유저 2026-08-31 removed that ground and
-              // asked for both halves together: 「그걸 텍스트로 적어두고
-              // **품어진 파일이면 프로젝트 파일에 품기 안뜨도록**」. The
-              // row now SAYS which one it is, so the reason is on screen —
-              // and an item whose only possible answer is「nothing to do」
-              // is not a verb.
-              if (!asset.carried)
-                PanelFlyoutItem(
-                  keyValue: 'media-asset-menu-promote',
-                  label: AppText.strings.mediaRegisterInProject,
-                  onSelected: () => _promote(context, asset),
-                ),
-              // 🚨What compression took away, handed back on demand. A
-              // conform stopped being a WAV on 2026-08-30 and the user
-              // accepted that trade naming this as the replacement:
-              // 「압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」.
-              //
-              // ⛔On every row, like promote above and for the same reason:
-              // a menu that changes shape per row is a menu the user cannot
-              // learn. An asset with no audio answers so out loud.
-              PanelFlyoutItem(
-                keyValue: 'media-asset-menu-export-wav',
-                label: AppText.strings.mediaExportWav,
-                onSelected: () => _exportWav(context, asset),
-              ),
-              PanelFlyoutItem(
-                keyValue: 'media-asset-menu-remove',
-                label: AppText.strings.mediaRemove,
-                onSelected: () => _remove(context, asset),
-              ),
-            ],
-            child: const Icon(Icons.more_vert, size: 16),
-          ),
-        ],
-      ),
-    );
+  /// What the lines say column by column, from what the session holds.
+  MediaPoolWords get _words => MediaPoolWords(
+    framesPerSecond: framesPerSecond,
+    storedBytes: storedBytes,
+    conformBytes: conformBytes,
+    modifiedTimes: modifiedTimes,
+    factsOf: factsOf,
+    soundFramesOf: soundFramesOf,
+  );
 
-    // The row IS the drag source: dropping it on an SE block links the
-    // sound to that block's frame. It lifts on the first move for every
-    // device (F-126, [OwningDraggable]).
-    return OwningDraggable<MediaAssetDragData>(
+  /// The pinned part of [asset]'s line: what it is, its name — or what its
+  /// preset places, in the preset face — and the two buttons on it.
+  Widget _nameOf(BuildContext context, MediaAsset asset) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final uses = usesOf(asset.path);
+    return Row(
+      children: [
+        const SizedBox(width: 8),
+        _markOf(asset, colorScheme),
+        const SizedBox(width: 6),
+        Expanded(
+          // The double-click zone is the NAME AREA only: a double-tap
+          // recognizer over the whole line would hold the menu button's
+          // taps in the gesture arena for the double-tap window.
+          child: GestureDetector(
+            onDoubleTap: onOpenAsset == null ? null : () => onOpenAsset!(asset),
+            behavior: HitTestBehavior.opaque,
+            child: view.presets
+                ? _presetFaceOf(asset)
+                : _placeOnHover(asset, _fileNameOf(asset, colorScheme)),
+          ),
+        ),
+        // F-118 — the mark is a way to WHERE: 「해당 버튼 누르면 공용창
+        // 띄워서 어디서 쓰는지 리스트로 표시하도록」. On a line nothing uses
+        // it stays in its place, dimmed with nothing to open (「없다가
+        // 생기는 UI 금지」), so the name does not move when the last use
+        // goes — and its tooltip names what it opens, which is true of both.
+        AppIconButton(
+          keyValue: 'media-asset-in-use-${asset.path}',
+          tooltip: AppText.strings.mediaUsesHeading,
+          icon: const Icon(Icons.link),
+          size: AppIconButtonSize.micro,
+          onPressed: uses.isEmpty ? null : () => _showUses(context, asset),
+        ),
+        _menuOf(context, asset),
+      ],
+    );
+  }
+
+  /// The line's first mark: what the file is — by its type in the file
+  /// face, by the layer its preset makes in the preset face — or that it is
+  /// missing, in the same place in both.
+  Widget _markOf(MediaAsset asset, ColorScheme colorScheme) {
+    if (missingPaths.contains(asset.path)) {
+      return AppTooltip(
+        message: AppText.strings.mpFileMissing,
+        child: Icon(
+          key: ValueKey<String>('media-asset-missing-${asset.path}'),
+          Icons.error_outline,
+          size: 16,
+          color: colorScheme.error,
+        ),
+      );
+    }
+    return Icon(
+      view.presets
+          ? _words.kindIconOf(asset)
+          : mediaAssetKindIcon(asset.kind, path: asset.path),
+      size: 16,
+      color: colorScheme.onSurfaceVariant,
+    );
+  }
+
+  /// The NAME and its EXTENSION apart, as the import window's table shows a
+  /// file (유저 2026-09-12: 「풀에서 이름이랑 확장자 나누고」): the name is
+  /// what gets cut short, the extension never is.
+  Widget _fileNameOf(MediaAsset asset, ColorScheme colorScheme) => Row(
+    children: [
+      Flexible(child: EllipsisText(asset.name, maxLines: 1, style: _nameLine)),
+      Text(
+        mediaFileNameParts(asset.path).extension,
+        maxLines: 1,
+        style: _nameLine.copyWith(color: colorScheme.onSurfaceVariant),
+      ),
+    ],
+  );
+
+  /// What [asset]'s preset places, in the preset face (시안 ①): a sound's
+  /// block as the timeline draws it, in miniature — its name tag and its
+  /// words — and a picture's layer by the name it is born with.
+  Widget _presetFaceOf(MediaAsset asset) {
+    if (asset.kind == MediaAssetKind.audio) {
+      final block = placedSoundBlockOf(asset, named: asset.name);
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: SeNameTagLanePreview(
+          key: ValueKey<String>('media-asset-preset-block-${asset.path}'),
+          name: block.seName,
+          line: block.words,
+        ),
+      );
+    }
+    return EllipsisText(
+      mediaAssetNameFor(asset, asset.path),
+      maxLines: 1,
+      style: _nameLine,
+    );
+  }
+
+  /// The line's actions — R6 #4: the shared flyout, at the line's height.
+  Widget _menuOf(BuildContext context, MediaAsset asset) => PanelFlyoutTrigger(
+    key: ValueKey<String>('media-asset-menu-${asset.path}'),
+    tooltip: AppText.strings.mediaActions,
+    padding: const EdgeInsets.all(4),
+    entriesBuilder: () => [
+      if (onOpenAsset != null)
+        PanelFlyoutItem(
+          keyValue: 'media-asset-menu-open',
+          label: AppText.strings.mediaOpenInViewer,
+          onSelected: () => onOpenAsset?.call(asset),
+        ),
+      if (onOpenAssetInSubViewer != null)
+        PanelFlyoutItem(
+          keyValue: 'media-asset-menu-open-sub',
+          label: AppText.strings.mediaOpenInSubViewer,
+          onSelected: () => onOpenAssetInSubViewer?.call(asset),
+        ),
+      // The pool's way onto the timeline. A line can be DRAGGED there too,
+      // but a menu entry is what a tablet hand and a long list want.
+      if (onPlaceAsset != null)
+        PanelFlyoutItem(
+          keyValue: 'media-asset-menu-place',
+          label: AppText.strings.mediaPlace,
+          onSelected: () => onPlaceAsset?.call(asset),
+        ),
+      PanelFlyoutItem(
+        keyValue: 'media-asset-menu-rename',
+        label: AppText.strings.commonRename,
+        onSelected: () => _rename(context, asset),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'media-asset-menu-relink',
+        label: AppText.strings.mediaRelink,
+        onSelected: () => _relink(context, asset.path),
+      ),
+      // The other half of importing by reference: the moment the user
+      // decides the project should own this file after all.
+      //
+      // 🪦It used to be offered on EVERY row, on the grounds that hiding it
+      // would change the menu's shape「for a reason the user cannot see」.
+      // 유저 2026-08-31 removed that ground and asked for both halves
+      // together: 「그걸 텍스트로 적어두고 **품어진 파일이면 프로젝트 파일에
+      // 품기 안뜨도록**」. The line now SAYS which one it is, so the reason is
+      // on screen — and an item whose only possible answer is「nothing to
+      // do」is not a verb.
+      if (!asset.carried)
+        PanelFlyoutItem(
+          keyValue: 'media-asset-menu-promote',
+          label: AppText.strings.mediaRegisterInProject,
+          onSelected: () => _promote(context, asset),
+        ),
+      // 🚨What compression took away, handed back on demand. A conform
+      // stopped being a WAV on 2026-08-30 and the user accepted that trade
+      // naming this as the replacement: 「압축해제시켜서 내보내기 기능
+      // 만들면 되는거아닌가?」.
+      //
+      // ⛔On every line, like promote above and for the same reason: a menu
+      // that changes shape per line is a menu the user cannot learn. An
+      // asset with no audio answers so out loud.
+      PanelFlyoutItem(
+        keyValue: 'media-asset-menu-export-wav',
+        label: AppText.strings.mediaExportWav,
+        onSelected: () => _exportWav(context, asset),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'media-asset-menu-remove',
+        label: AppText.strings.mediaRemove,
+        onSelected: () => _remove(context, asset),
+      ),
+    ],
+    child: const Icon(Icons.more_vert, size: 16),
+  );
+
+  /// [line] as a drag source: dropping it on an SE block links the sound to
+  /// that block's frame, and on a row places the file there. It lifts on the
+  /// first move for every device (F-126, [OwningDraggable]).
+  Widget _lineOf(MediaAsset asset, Widget line) => Builder(
+    builder: (context) => OwningDraggable<MediaAssetDragData>(
       key: ValueKey<String>('media-asset-row-${asset.path}'),
       data: MediaAssetDragData(path: asset.path, name: asset.name),
       // 🚨The chip hangs at the POINTER, and a drop target depends on it:
       // the only position a target is given is `details.offset`, which is
       // the pointer minus this anchor. Anchored to the child instead — the
-      // default — that offset is short by however far into this row the
+      // default — that offset is short by however far into this line the
       // grab happened, and the timeline's layer row would name a frame up
-      // to a row's width off. It also reads better: a small chip that
+      // to a line's width off. It also reads better: a small chip that
       // follows the finger rather than one hanging off to the left.
       dragAnchorStrategy: pointerDragAnchorStrategy,
       // The chip is built in the drag overlay, which the verdict's scope
-      // does not reach — so the row hands it the channel from here.
+      // does not reach — so the line hands it the channel from here.
       feedback: MediaAssetDragChip(
         kind: asset.kind,
         name: asset.name,
+        path: asset.path,
         verdict: MediaDropVerdictScope.maybeOf(context),
       ),
-      childWhenDragging: Opacity(opacity: 0.4, child: row),
-      child: row,
-    );
-  }
+      childWhenDragging: Opacity(opacity: 0.4, child: line),
+      child: line,
+    ),
+  );
 }
 
 class _RenameMediaDialog extends StatelessWidget {

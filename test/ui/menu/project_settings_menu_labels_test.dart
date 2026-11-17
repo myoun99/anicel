@@ -8,12 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
+import 'package:anicel/src/ui/text/sample_rate_label.dart';
 
 void main() {
   test('a sample rate reads in kilohertz', () {
-    expect(ProjectSettingsMenu.audioSampleRateLabel(48000), '48kHz');
-    expect(ProjectSettingsMenu.audioSampleRateLabel(96000), '96kHz');
-    expect(ProjectSettingsMenu.audioSampleRateLabel(44100), '44.1kHz');
+    expect(sampleRateLabel(48000), '48kHz');
+    expect(sampleRateLabel(96000), '96kHz');
+    expect(sampleRateLabel(44100), '44.1kHz');
   });
 
   test('the audio presets are film, music, and the high rate', () {

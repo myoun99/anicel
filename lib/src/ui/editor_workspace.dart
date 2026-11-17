@@ -96,6 +96,7 @@ import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
 import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
+import 'media/media_pool_view.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'media/viewer_ink.dart';
@@ -667,6 +668,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// chip's ban (「불가능 = 칩의 금지 표시」). One per workspace, because one
   /// drag is in flight at a time.
   final ValueNotifier<bool?> _mediaDropVerdict = ValueNotifier<bool?>(null);
+
+  /// How the media pool shows its files — a line each or big pictures, each
+  /// as it is or as its preset places it (🗣️asset-placement-presets Q4 ·
+  /// Q6). Kept with the window, so a pool docked elsewhere or built again
+  /// shows what it showed.
+  final ValueNotifier<MediaPoolView> _mediaPoolView =
+      ValueNotifier<MediaPoolView>(const MediaPoolView());
 
   // 🪦The memory warning and the resume used to be heard HERE — 「the
   // workspace hosts the observer because its lifetime IS the session being
@@ -1912,6 +1920,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _unbindSession(widget.session);
     _foldedStoryboard.dispose();
     _mediaDropVerdict.dispose();
+    _mediaPoolView.dispose();
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.

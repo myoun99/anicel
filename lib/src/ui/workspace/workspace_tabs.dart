@@ -865,6 +865,10 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state.widget.session.mediaPool.sheetPhotoWrites,
+              // The pool's columns: a file's facts as they are read, and how
+              // the pool shows its files.
+              _state.widget.session.mediaPool.mediaFactsRead,
+              _state._mediaPoolView,
             ]),
             builder: (context, _) => MediaPoolPanel(
               assets: _state.widget.session.mediaPool.mediaAssets,
@@ -920,6 +924,22 @@ class _WorkspaceTabs {
                 initialPaths: [asset.path],
                 placeOnly: true,
               ),
+              view: _state._mediaPoolView.value,
+              onViewChanged: (view) => _state._mediaPoolView.value = view,
+              factsOf: _state.widget.session.mediaPool.mediaFactsOf,
+              // A sound's length where its conform is held — never asking
+              // for one (`heldPeaksFor`).
+              soundFramesOf: (path) => _state.widget.session.audioConformStore
+                  .heldPeaksFor(path)
+                  ?.durationFrames(
+                    _state.widget.session.projectSettings.projectFrameRate,
+                  ),
+              framesPerSecond: _state
+                  .widget
+                  .session
+                  .projectSettings
+                  .projectFrameRate
+                  .countingBase,
             ),
           ),
         );

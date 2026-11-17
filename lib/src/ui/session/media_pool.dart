@@ -35,6 +35,7 @@ import '../../services/import/media_import_planner.dart'
 import '../../services/media/media_asset_uses.dart';
 import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/media_facts.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/project_lookup.dart' show requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
@@ -517,6 +518,78 @@ class MediaPool {
   Map<String, DateTime> get mediaModifiedTimes => _mediaModifiedTimes;
   Map<String, DateTime> _mediaModifiedTimes = const <String, DateTime>{};
 
+  /// What the pool's columns say of each file beyond what its entry keeps —
+  /// its picture's size, its sound's rate and channels
+  /// (🗣️asset-placement-presets Q4, 유저 2026-11-17: 「프리미어처럼」): read
+  /// the first time a line asks, one file after another, and kept for the
+  /// session. Null while it is not read.
+  ///
+  /// The import window's resolution column asks the same of a file it lists
+  /// ([readMediaFacts], F-375) — the reading is one, the keeping is each
+  /// list's own.
+  ///
+  /// ⛔Never at registration: a file comes in by many doors, and a fact one
+  /// of them forgot to read would be a column some files say and others do
+  /// not. Asked by the list, it is asked of every file the list shows.
+  MediaPoolFacts? mediaFactsOf(String path) {
+    final read = _mediaFacts[path];
+    if (read == null && _mediaFactsAsked.add(path)) {
+      _mediaFactReads = _mediaFactReads.then((_) => _readMediaFacts(path));
+    }
+    return read;
+  }
+
+  final Map<String, MediaPoolFacts> _mediaFacts = {};
+  final Set<String> _mediaFactsAsked = {};
+  Future<void> _mediaFactReads = Future<void>.value();
+
+  /// Heard each time a file's facts come in ([mediaFactsOf]) — the pool's
+  /// list redraws on it, not the whole session.
+  Listenable get mediaFactsRead => _mediaFactsRead;
+  final ValueNotifier<int> _mediaFactsRead = ValueNotifier<int>(0);
+
+  Future<void> _readMediaFacts(String path) async {
+    final kind = _kindInThePool(path);
+    if (kind == null) {
+      // Gone before its turn came: asked again if it comes back.
+      _mediaFactsAsked.remove(path);
+      return;
+    }
+    final hold = _file.holdMediaBytes;
+    final picture = kind == MediaAssetKind.audio
+        ? null
+        : await readMediaFacts(kind, path, hold);
+    final sound = switch (kind) {
+      MediaAssetKind.audio || MediaAssetKind.video => await readSoundFacts(
+        path,
+        hold,
+      ),
+      MediaAssetKind.image || MediaAssetKind.pdf => null,
+    };
+    if (!_mediaFactsAsked.contains(path)) {
+      // Forgotten while it was read: its file changed under the read.
+      return;
+    }
+    _mediaFacts[path] = (picture: picture, sound: sound);
+    _mediaFactsRead.value += 1;
+  }
+
+  MediaAssetKind? _kindInThePool(String path) {
+    for (final asset in mediaAssets) {
+      if (asset.path == path) {
+        return asset.kind;
+      }
+    }
+    return null;
+  }
+
+  /// [path]'s facts are read again at the next ask — its file was written
+  /// since they were read ([refreshMediaExistence]).
+  void _forgetMediaFacts(String path) {
+    _mediaFacts.remove(path);
+    _mediaFactsAsked.remove(path);
+  }
+
   /// The pool the last sweep walked — the list itself, which every change
   /// of the pool replaces.
   List<MediaAsset>? _sweptPool;
@@ -568,6 +641,13 @@ class MediaPool {
       } on Object {
         // Present but unreadable — a network share mid-reconnect. The row
         // shows no date rather than a wrong one.
+      }
+    }
+    // A file written since its facts were read says them again.
+    for (final MapEntry(key: path, value: at) in modified.entries) {
+      final before = _mediaModifiedTimes[path];
+      if (before != null && before != at) {
+        _forgetMediaFacts(path);
       }
     }
     if (setEquals(missing, _missingMediaPaths) &&

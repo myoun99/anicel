@@ -247,10 +247,17 @@ class AudioConformStore extends ChangeNotifier {
   }
 
   /// The waveform for [sourcePath], computed from the conformed PCM.
-  AudioPeaks? peaksFor(String sourcePath) {
-    final entry = resultFor(sourcePath);
-    return entry != null && entry.isUsable ? entry.peaks : null;
-  }
+  AudioPeaks? peaksFor(String sourcePath) => _peaksOf(resultFor(sourcePath));
+
+  /// The waveform for [sourcePath] where its conform is already held —
+  /// ⛔never asking for one, as [peaksFor] does: a list that tells every
+  /// sound's length (the media pool's, asset-placement-presets Q4) must
+  /// not start a decode of each.
+  AudioPeaks? heldPeaksFor(String sourcePath) =>
+      _peaksOf(_entries[sourcePath]);
+
+  static AudioPeaks? _peaksOf(ConformResult? entry) =>
+      entry != null && entry.isUsable ? entry.peaks : null;
 
   /// The clip length in seconds — an EXACT sample count over the rate.
   double? durationSecondsFor(String sourcePath) {

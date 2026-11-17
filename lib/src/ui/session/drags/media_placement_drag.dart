@@ -267,14 +267,14 @@ class MediaPlacementDrag {
     }
   }
 
-  /// How many cells [path] would become: the file's frames — the pool's
-  /// own count of them — as many as its preset places
-  /// ([MediaPreset.spanOf]), the span the import window starts its row
-  /// from. So the row drawn here is the row that appears. A file with no
-  /// count is one cell: a still is one picture.
+  /// How many cells [path] would become: the file's pictures — the pool's
+  /// own count of them ([MediaAsset.pictures]), a PDF's pages as well — as
+  /// many as its preset places ([MediaPreset.spanOf]), the span the import
+  /// window starts its row from. So the row drawn here is the row that
+  /// appears. A file with no count is one cell.
   int? _cellsFor(String path) {
     final asset = _assetFor(path);
-    final frames = asset?.frameCount;
+    final frames = asset?.pictures;
     return asset == null || frames == null || frames < 1
         ? 1
         : asset.preset.spanOf(frames).count;

@@ -70,16 +70,7 @@ class ProjectFrameRate {
   double get approximateFps => numerator / denominator;
 
   /// `24 fps`, `23.976 fps` — trailing zeros trimmed.
-  String get label {
-    if (isInteger) {
-      return '$numerator fps';
-    }
-    final text = approximateFps.toStringAsFixed(3);
-    final trimmed = text
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
-    return '$trimmed fps';
-  }
+  String get label => framesPerSecondLabel(approximateFps);
 
   /// What ffmpeg wants for `-framerate` / `-r`: it takes the fraction
   /// directly, so an NTSC export is exact rather than 23.976-rounded.
@@ -244,6 +235,18 @@ String secondsPlusFramesLabel(int frames, int framesPerSecond) {
     framesPerSecond,
   );
   return '$seconds+$left';
+}
+
+/// `24 fps`, `23.976 fps` — a rate as every surface says it, trailing zeros
+/// trimmed: a project's ([ProjectFrameRate.label]) and a movie's own, which
+/// the decoder hands over as a number (the media pool's 비디오 정보,
+/// asset-placement-presets Q4).
+String framesPerSecondLabel(double fps) {
+  final trimmed = fps
+      .toStringAsFixed(3)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+  return '$trimmed fps';
 }
 
 /// A running time the way a conte's cover prints it — minutes, seconds and

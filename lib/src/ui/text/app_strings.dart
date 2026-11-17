@@ -1258,6 +1258,24 @@ enum AppStrings {
   String get mediaCarriedState => _s('mediaCarriedState');
   String get mediaReferencedState => _s('mediaReferencedState');
 
+  /// The media pool's two view buttons right of its ＋ — and the columns its
+  /// list shows (🗣️asset-placement-presets Q4 · Q6, 유저 2026-11-17).
+  String get mediaViewPresets => _s('mediaViewPresets');
+  String get mediaViewIcons => _s('mediaViewIcons');
+  String get mediaViewList => _s('mediaViewList');
+  String get mediaLength => _s('mediaLength');
+  String get mediaVideoFacts => _s('mediaVideoFacts');
+  String get mediaAudioFacts => _s('mediaAudioFacts');
+  String get mediaKindOfLayer => _s('mediaKindOfLayer');
+  String get mediaStart => _s('mediaStart');
+  String get mediaEnd => _s('mediaEnd');
+  String mediaPages(int count) =>
+      _s('mediaPagesTemplate').replaceAll('{n}', '$count');
+  String get mediaMono => _s('mediaMono');
+  String get mediaStereo => _s('mediaStereo');
+  String mediaChannels(int count) =>
+      _s('mediaChannelsTemplate').replaceAll('{n}', '$count');
+
   /// Shown on opening a project written by a build that kept its media in
   /// a sibling folder. `{name}` is that folder.
   ///
@@ -3011,6 +3029,19 @@ enum AppStrings {
     'mediaExportWavNoAudio': 'This asset has no audio to export.',
     'mediaCarriedState': 'In the project',
     'mediaReferencedState': 'Linked',
+    'mediaViewPresets': 'Preset view',
+    'mediaViewIcons': 'Icon view',
+    'mediaViewList': 'List view',
+    'mediaLength': 'Duration',
+    'mediaVideoFacts': 'Video',
+    'mediaAudioFacts': 'Audio',
+    'mediaKindOfLayer': 'Kind',
+    'mediaStart': 'Start',
+    'mediaEnd': 'End',
+    'mediaPagesTemplate': '{n} pp.',
+    'mediaMono': 'Mono',
+    'mediaStereo': 'Stereo',
+    'mediaChannelsTemplate': '{n} ch',
     'projectLegacyAssetsFolder':
         'This project still has a {name} folder beside it. Nothing writes '
         'there any more — save once and its media moves inside the project '
@@ -4751,6 +4782,19 @@ enum AppStrings {
     'mediaExportWavNoAudio': 'この素材には書き出せる音声がありません。',
     'mediaCarriedState': 'プロジェクト内',
     'mediaReferencedState': 'リンク',
+    'mediaViewPresets': 'プリセット表示',
+    'mediaViewIcons': 'アイコン表示',
+    'mediaViewList': 'リスト表示',
+    'mediaLength': 'デュレーション',
+    'mediaVideoFacts': 'ビデオ情報',
+    'mediaAudioFacts': 'オーディオ情報',
+    'mediaKindOfLayer': '種類',
+    'mediaStart': '開始',
+    'mediaEnd': '終了',
+    'mediaPagesTemplate': '{n}ページ',
+    'mediaMono': 'モノラル',
+    'mediaStereo': 'ステレオ',
+    'mediaChannelsTemplate': '{n}ch',
     'projectLegacyAssetsFolder':
         'このプロジェクトの隣にまだ {name} フォルダーがあります。'
         'もう使われません — 一度保存すると中のメディアはプロジェクト'
@@ -6694,6 +6738,19 @@ enum AppStrings {
     'mediaExportWavNoAudio': '이 소재에는 내보낼 오디오가 없습니다.',
     'mediaCarriedState': '품음',
     'mediaReferencedState': '참조',
+    'mediaViewPresets': '프리셋 보기',
+    'mediaViewIcons': '아이콘 보기',
+    'mediaViewList': '리스트 보기',
+    'mediaLength': '길이',
+    'mediaVideoFacts': '비디오 정보',
+    'mediaAudioFacts': '오디오 정보',
+    'mediaKindOfLayer': '종류',
+    'mediaStart': '시작',
+    'mediaEnd': '끝',
+    'mediaPagesTemplate': '{n}쪽',
+    'mediaMono': '모노',
+    'mediaStereo': '스테레오',
+    'mediaChannelsTemplate': '{n}채널',
     'projectLegacyAssetsFolder':
         '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
         '한 번 저장하면 안의 미디어가 프로젝트 파일로 들어가고, 그 뒤엔 폴더를 지워도 됩니다.',
@@ -8678,6 +8735,19 @@ enum AppStrings {
     'mediaExportWavNoAudio': "Cet élément n'a pas d'audio à exporter.",
     'mediaCarriedState': 'Dans le projet',
     'mediaReferencedState': 'Lié',
+    'mediaViewPresets': 'Vue des préréglages',
+    'mediaViewIcons': 'Vue en icônes',
+    'mediaViewList': 'Vue en liste',
+    'mediaLength': 'Durée',
+    'mediaVideoFacts': 'Vidéo',
+    'mediaAudioFacts': 'Audio',
+    'mediaKindOfLayer': 'Type',
+    'mediaStart': 'Début',
+    'mediaEnd': 'Fin',
+    'mediaPagesTemplate': '{n} p.',
+    'mediaMono': 'Mono',
+    'mediaStereo': 'Stéréo',
+    'mediaChannelsTemplate': '{n} canaux',
     'projectLegacyAssetsFolder':
         "Ce projet a encore un dossier {name} à côté de lui. Plus rien n'y "
         'est écrit — enregistrez une fois et ses médias passent dans le '
@@ -10687,6 +10757,19 @@ enum AppStrings {
     'mediaExportWavNoAudio': '此素材没有可导出的音频。',
     'mediaCarriedState': '在项目内',
     'mediaReferencedState': '链接',
+    'mediaViewPresets': '预设视图',
+    'mediaViewIcons': '图标视图',
+    'mediaViewList': '列表视图',
+    'mediaLength': '时长',
+    'mediaVideoFacts': '视频信息',
+    'mediaAudioFacts': '音频信息',
+    'mediaKindOfLayer': '类型',
+    'mediaStart': '开始',
+    'mediaEnd': '结束',
+    'mediaPagesTemplate': '{n}页',
+    'mediaMono': '单声道',
+    'mediaStereo': '立体声',
+    'mediaChannelsTemplate': '{n}声道',
     'projectLegacyAssetsFolder':
         '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'
         '其中的媒体会进入项目文件，之后即可删除该文件夹。',
