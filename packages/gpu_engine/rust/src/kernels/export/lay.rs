@@ -4,13 +4,15 @@
 //! picture cut at the canvas's edge, what is drawn over it, a track's
 //! units and a fade. `lay.wgsl` has the law.
 
+use std::ops::Range;
+
 use super::{Picture, Pipelines, Read, Shown};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, buffer_holds, encode, fits, flat, plane, room, rows_a_binding, whole,
-    words_bound, words_buffer,
+    Encoded, ISQRT_WGSL, bands, buffer_holds, encode, fits, flat, plane, room, whole, words_bound,
+    words_buffer,
 };
 
 /// How much of what is laid each pixel of a frame takes: a byte each, four
@@ -188,14 +190,6 @@ impl Lay {
             return Some(());
         }
         let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
-        let source_stride = rows.map(|_| stride);
-        let most = rows_a_band((room, step), onto.stride, source_stride)?;
-        let bands: Vec<(u32, u32)> = (y0..y0 + height)
-            .step_by(most as usize)
-            .map(|top| (top, top.saturating_add(most).min(y0 + height)))
-            .collect();
-        let groups = |(top, bottom): (u32, u32)| (width.div_ceil(64), bottom - top);
-        fits(engine, &[], bands.iter().map(|&band| groups(band)))?;
         // The words of a plane `stride` words a row that rows `top` to
         // `bottom` hold from `left` on, `width` of each.
         let words_of = |stride: u32, (left, top, bottom): (u32, u32, u32)| {
@@ -203,28 +197,40 @@ impl Lay {
                 (u64::from(stride), u64::from(left), u64::from(top), u64::from(bottom - 1));
             top * stride + left..last * stride + left + u64::from(width)
         };
+        // The words of the frame laid onto, of the source — none where it
+        // lays a colour — and of the cover — none where it takes none — a
+        // band of the frame's rows lies on: a cover's a byte a pixel of the
+        // frame's, four a word.
+        let planes = |band: Range<u32>| {
+            let onto_words = words_of(onto.stride, (x0, band.start, band.end));
+            let source_top = sy + (band.start - y0);
+            let source = rows.map(|_| words_of(stride, (sx, source_top, source_top + band.len() as u32)));
+            let cover = cover.map(|_| onto_words.start / 4..onto_words.end.div_ceil(4));
+            (onto_words, source, cover)
+        };
+        let bands = bands(y0..y0 + height, 1, (room, step), |band| {
+            let (onto, source, cover) = planes(band);
+            [Some(onto), source, cover].into_iter().flatten().collect()
+        })?;
+        let groups = |band: &Range<u32>| (width.div_ceil(64), band.end - band.start);
+        fits(engine, &[], bands.iter().map(groups))?;
         // A binding the pass reads nothing of where it lays a colour, or
         // takes no cover.
         let nothing = plane(engine, "export lay nothing", 4);
         let mut params = Vec::new();
         let mut bound = Vec::new();
-        for &(top, bottom) in &bands {
-            let (onto_bound, onto_base) =
-                words_bound(&onto.rows, words_of(onto.stride, (x0, top, bottom)), step);
+        for band in &bands {
+            let (top, bottom) = (band.start, band.end);
+            let (onto_words, source_words, cover_words) = planes(band.clone());
+            let (onto_bound, onto_base) = words_bound(&onto.rows, onto_words, step);
             let source_top = sy + (top - y0);
-            let (rows_bound, source_base) = match rows {
-                Some(rows) => {
-                    let band = (sx, source_top, source_top + (bottom - top));
-                    words_bound(rows, words_of(stride, band), step)
-                }
-                None => (nothing.as_entire_binding(), 0),
+            let (rows_bound, source_base) = match (rows, source_words) {
+                (Some(rows), Some(words)) => words_bound(rows, words, step),
+                _ => (nothing.as_entire_binding(), 0),
             };
-            let (cover_bound, cover_base) = match cover {
-                Some(cover) => {
-                    let pixels = words_of(onto.stride, (x0, top, bottom));
-                    words_bound(&cover.bytes, pixels.start / 4..pixels.end.div_ceil(4), step)
-                }
-                None => (nothing.as_entire_binding(), 0),
+            let (cover_bound, cover_base) = match (cover, cover_words) {
+                (Some(cover), Some(words)) => words_bound(&cover.bytes, words, step),
+                _ => (nothing.as_entire_binding(), 0),
             };
             let words = [
                 stride,
@@ -233,7 +239,7 @@ impl Lay {
                 top,
                 width,
                 bottom - top,
-                sx.wrapping_sub(source_base as u32),
+                sx,
                 source_top,
                 u32::from(opacity),
                 solid,
@@ -241,7 +247,7 @@ impl Lay {
                 u32::from(cover.is_some()),
                 onto_base as u32,
                 cover_base as u32,
-                0,
+                source_base as u32,
                 0,
             ];
             params.push(words_buffer(engine, "export lay params", &words, wgpu::BufferUsages::UNIFORM));
@@ -252,7 +258,7 @@ impl Lay {
             .iter()
             .zip(bound)
             .zip(&bands)
-            .map(|((params, planes), &band)| {
+            .map(|((params, planes), band)| {
                 let mut entries = whole(&[(0, params)]);
                 entries.extend(
                     planes.map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource }),
@@ -263,20 +269,6 @@ impl Lay {
         encode(engine, &passes);
         Some(())
     }
-}
-
-/// The most rows a pass lays where one binding of `room` bytes, begun on a
-/// multiple of `step`, holds each plane's: the frame's, `onto_stride`
-/// words a row, and the source's, `source_stride` where it reads one. A
-/// cover's rows need no count of their own: a byte a pixel, they are a
-/// quarter of the frame's, which a binding holds.
-fn rows_a_band((room, step): (u64, u64), onto_stride: u32, source_stride: Option<u32>) -> Option<u32> {
-    let row_bytes = |stride: u32| u64::from(stride) * 4;
-    let mut most = rows_a_binding(room, step, row_bytes(onto_stride))?;
-    if let Some(stride) = source_stride {
-        most = most.min(rows_a_binding(room, step, row_bytes(stride))?);
-    }
-    Some(u32::try_from(most).unwrap_or(u32::MAX))
 }
 
 /// The pixels of `onto` a pass may lay — [left, top, right, bottom) — all

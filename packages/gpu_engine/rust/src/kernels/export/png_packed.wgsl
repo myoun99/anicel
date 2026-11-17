@@ -10,5 +10,7 @@ override PIXEL_BYTES: u32 = 3u;
 
 fn row_byte(y: u32, i: u32) -> u32 {
   let at = y * params.width * PIXEL_BYTES + i;
-  return (source[at / 4u] >> (at % 4u * 8u)) & 0xffu;
+  // A pass binds the rows it reads, from the word `params.frame_base`
+  // (png.wgsl).
+  return (source[at / 4u - params.frame_base] >> (at % 4u * 8u)) & 0xffu;
 }

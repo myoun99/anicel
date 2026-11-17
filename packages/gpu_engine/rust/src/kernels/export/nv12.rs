@@ -1,7 +1,9 @@
 //! A movie's frame as NV12, for its encoder (gpu-export-path ①a) —
 //! `nv12.wgsl` has the law and why each number is the one it is.
 
-use super::{Frame, Picture, Pipelines, out_plane, submit};
+use std::ops::Range;
+
+use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
 use crate::device::Engine;
 use crate::fail;
 
@@ -74,20 +76,30 @@ impl Nv12 {
         shape.check()?;
         let picture = shape.picture();
         frame.holds(picture)?;
-        let params = [
-            frame.stride(picture),
-            shape.src_width,
-            shape.src_height,
-            shape.width,
-            shape.height,
-            shape.y_stride,
-            0,
-            0,
-        ];
-        let groups = ((shape.y_stride / 4).div_ceil(16), (shape.height / 2).div_ceil(8));
-        let out = out_plane(engine, "nv12 out", shape.bytes(), groups)?;
-        let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &out, groups)?;
+        let out = out_plane(engine, "nv12 out", shape.bytes())?;
+        // A row of invocations is a row of 2 × 2 blocks: two of the
+        // picture's rows, none past its last. Eight rows a workgroup.
+        let width = u64::from(picture.width);
+        let pixels = |rows: Range<u32>| {
+            let row = |block: u32| u64::from(block * 2).min(u64::from(picture.height));
+            row(rows.start) * width..row(rows.end) * width
+        };
+        let whole = 0..out.size() / 4;
+        let dispatch = Dispatch { rows: shape.height / 2, unit: 8, across: (shape.y_stride / 4).div_ceil(16) };
+        convert(
+            engine,
+            self.pipelines.of(engine, frame),
+            (frame.buffer(), &out),
+            dispatch,
+            |rows| [frame.words(picture, pixels(rows)), whole.clone()],
+            |first_row, [frame_base, _]| {
+                // Inside u32: a word of a frame the shader indexes.
+                let frame_base = frame_base as u32;
+                let Nv12Shape { src_width, src_height, width, height, y_stride } = shape;
+                let stride = frame.stride(picture);
+                vec![stride, src_width, src_height, width, height, y_stride, frame_base, first_row]
+            },
+        )?;
         Some(out)
     }
 }

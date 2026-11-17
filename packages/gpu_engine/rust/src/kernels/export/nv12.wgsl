@@ -35,8 +35,13 @@ struct Params {
   // Bytes from one Y row to the next — and one CbCr row to the next: a
   // multiple of 4, at least the width.
   y_stride: u32,
-  pad0: u32,
-  pad1: u32,
+  // The word of the frame its binding begins on (frame.wgsl,
+  // frame_shown.wgsl take it off), and the first row of blocks this band
+  // puts: a pass binds the rows it reads (`convert`, mod.rs). The out is
+  // bound whole: its Y and CbCr rows lie apart, and an encoder's frame of
+  // 8K is 50 MB of it.
+  frame_base: u32,
+  first_row: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -74,8 +79,9 @@ fn red_difference(c: vec3<i32>) -> u32 {
 // and the one word of CbCr their two 2 x 2 blocks share.
 @compute @workgroup_size(16, 8)
 fn nv12_pass(@builtin(global_invocation_id) id: vec3<u32>) {
+  let block = params.first_row + id.y;
   let x = id.x * 4u;
-  let y = id.y * 2u;
+  let y = block * 2u;
   if (x >= params.y_stride || y >= params.height) {
     return;
   }
@@ -90,7 +96,7 @@ fn nv12_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   nv12[(y + 1u) * row + id.x] = bottom;
   let left = rgb_at(x, y);
   let right = rgb_at(x + 2u, y);
-  nv12[(params.height + id.y) * row + id.x] = blue_difference(left)
+  nv12[(params.height + block) * row + id.x] = blue_difference(left)
     | (red_difference(left) << 8u)
     | (blue_difference(right) << 16u)
     | (red_difference(right) << 24u);

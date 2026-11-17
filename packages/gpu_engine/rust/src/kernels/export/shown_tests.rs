@@ -4,9 +4,9 @@
 //! it takes a run's tiles as they are.
 
 use super::tests::{frame, mixed, rig};
-use super::{Frame, Nv12Shape, Picture, Shown};
+use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Straight};
 use crate::device::Engine;
-use crate::testing::read_buffer;
+use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 
 /// 37 x 21: a row of 148 bytes, which the copy starts 256 apart — a read
 /// that took the picture's width for its stride would read other pixels.
@@ -66,14 +66,25 @@ pub(super) fn shown_on(
     Shown::of(engine, &texture, Picture { width, height }).expect("shown")
 }
 
+/// Every pass, compiled on the device that runs it.
+type Passes<'a> = (&'a Nv12, &'a OverGround, &'a Clear, &'a Opaque, &'a PngFilter, &'a Straight);
+
 /// What each pass puts for `picture` in `frame`, in one list: NV12, the
 /// picture over a ground and cut over it, its clear bits, whether it is
-/// opaque, its PNG rows of four and of three bytes a pixel, and its pixels
-/// straight.
+/// opaque, its PNG rows of four and of three bytes a pixel, its pixels
+/// straight, and the PNG rows of those.
 fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
     let rig = rig();
-    let engine = rig.engine;
-    let read = |out: Option<wgpu::Buffer>| read_buffer(engine, &out.expect("the pass runs"));
+    let passes = (&rig.nv12, &rig.over_ground, &rig.clear, &rig.opaque, &rig.png, &rig.straight);
+    every_pass_on(rig.engine, passes, frame, picture)
+}
+
+/// [`every_pass`] of `passes`, on `engine`.
+fn every_pass_on(engine: &Engine, passes: Passes, frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
+    let (nv12, over_ground, clear, opaque, png, straight) = passes;
+    let read = |out: Option<wgpu::Buffer>| {
+        read_buffer(engine, &out.unwrap_or_else(|| panic!("the pass runs: {}", last_error())))
+    };
     let (width, height) = (picture.width.next_multiple_of(2), picture.height.next_multiple_of(2));
     let shape = Nv12Shape {
         src_width: picture.width,
@@ -82,17 +93,91 @@ fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
         height,
         y_stride: width.next_multiple_of(4),
     };
-    let rgb = rig.over_ground.run(engine, frame, picture, [9, 99, 199], None).expect("over ground");
+    let rgb = over_ground.run(engine, frame, picture, [9, 99, 199], None).expect("over ground");
+    let rgba = straight.run(engine, frame, picture).expect("straight");
     vec![
-        read(rig.nv12.run(engine, frame, shape)),
+        read(nv12.run(engine, frame, shape)),
         read_buffer(engine, &rgb),
-        read(rig.over_ground.run(engine, frame, picture, [9, 99, 199], Some(128))),
-        read(rig.clear.run(engine, frame, picture, 128)),
-        read(rig.opaque.run(engine, frame, picture)),
-        read(rig.png.rgba(engine, frame, picture)),
-        read(rig.png.packed(engine, &rgb, picture, 3)),
-        read(rig.straight.run(engine, frame, picture)),
+        read(over_ground.run(engine, frame, picture, [9, 99, 199], Some(128))),
+        read(clear.run(engine, frame, picture, 128)),
+        read(opaque.run(engine, frame, picture)),
+        read(png.rgba(engine, frame, picture)),
+        read(png.packed(engine, &rgb, picture, 3)),
+        read_buffer(engine, &rgba),
+        read(png.packed(engine, &rgba, picture, 4)),
     ]
+}
+
+/// A picture of 480 x 400 on a device that binds 512 KiB: less than its
+/// frame shown (2,048 bytes a row) or uploaded (1,920), than a run's tiles
+/// of it (four rows of four, 1 MiB), and than what the passes over the
+/// ground, straight and of PNG rows put and read — so each binds them a
+/// band of rows at a time. Two rows of tiles, 256 KiB each, it holds: a
+/// PNG row's filters read the row above it, which lies on the row of tiles
+/// above where it begins one.
+const BANDED: (Picture, u64) = (Picture { width: 480, height: 400 }, 512 << 10);
+
+// On a device whose binding holds less than a frame, every pass puts what
+// one that binds the frame whole puts — a run's tiles, a frame shown from
+// an RGBA surface and a BGRA one, and one uploaded, its rows its width
+// apart — and the device refuses no binding (board
+// conversions-bind-a-frame-past-the-device-limit, 2026-11-17).
+#[test]
+fn every_pass_puts_a_frame_past_a_binding_as_it_puts_one_bound_whole() {
+    let (picture, rig) = (BANDED.0, rig());
+    let (width, height) = (picture.width, picture.height);
+    let pixel = mixed(9);
+    let rgba: Vec<u8> = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .flat_map(|(x, y)| pixel(x, y).to_le_bytes())
+        .collect();
+    let frames = |engine: &Engine| {
+        [
+            FrameOf::Tiles(super::tests::frame_on(engine, (width, height), PAST, &pixel)),
+            FrameOf::Shown(shown_on(engine, (width, height), false, &pixel)),
+            FrameOf::Shown(shown_on(engine, (width, height), true, &pixel)),
+            FrameOf::Shown(Shown::uploaded(engine, &rgba, picture).expect("uploaded")),
+        ]
+    };
+    let whole: Vec<_> = frames(rig.engine).iter().map(|frame| every_pass(frame.frame(), picture)).collect();
+
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(BANDED.1);
+    let own = (Nv12::new(), OverGround::new(), Clear::new(), Opaque::new(), PngFilter::new(), Straight::new());
+    let passes = (&own.0, &own.1, &own.2, &own.3, &own.4, &own.5);
+    for (at, frame) in frames(&engine).iter().enumerate() {
+        assert!(every_pass_on(&engine, passes, frame.frame(), picture) == whole[at], "frame {at}");
+    }
+    engine.wait().expect("the device refused no binding");
+}
+
+/// A frame a test made, which a pass is handed as a [`Frame`].
+enum FrameOf {
+    Tiles(wgpu::Buffer),
+    Shown(Shown),
+}
+
+impl FrameOf {
+    fn frame(&self) -> Frame<'_> {
+        match self {
+            Self::Tiles(tiles) => Frame::Tiles(tiles),
+            Self::Shown(shown) => Frame::Shown(shown),
+        }
+    }
+}
+
+// Where a binding holds less than a row a pass reads or puts, the pass is
+// refused, with why — not bound past.
+#[test]
+fn a_pass_whose_row_exceeds_a_binding_is_refused() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(1 << 16);
+    let picture = Picture { width: 20_000, height: 2 };
+    let frame = Shown::blank(&engine, picture).expect("a frame past a binding");
+
+    assert!(Straight::new().run(&engine, Frame::Shown(&frame), picture).is_none());
+    assert_eq!(last_error(), "a row of a pass binds 80000 bytes, past a binding of 65536");
+    engine.wait().expect("the device refused no binding");
 }
 
 // A picture whose every pixel is opaque or clear is the same word straight

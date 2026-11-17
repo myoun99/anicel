@@ -64,7 +64,7 @@ use crate::device::{CompilerTurn, Engine, KernelSource};
 
 pub(crate) use counted::Counted;
 pub(crate) use dispatch::{
-    Encoded, aligned, buffer_holds, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
+    Encoded, aligned, bands, buffer_holds, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
     rows_a_binding, tiles_a_page, tiles_a_pass, whole, words_bound, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};

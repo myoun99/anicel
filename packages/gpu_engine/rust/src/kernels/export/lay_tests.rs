@@ -4,7 +4,7 @@
 
 use super::shown_tests::{shown, shown_on};
 use super::tests::rig;
-use super::{Clear, Cover, Frame, Lay, Opaque, Picture, Shown, Source};
+use super::{Clear, Cover, Frame, Lay, Picture, Shown, Source};
 use crate::device::Engine;
 use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
@@ -276,17 +276,22 @@ fn a_frame_past_a_binding_is_laid_a_band_of_rows_at_a_time() {
     assert!(baked_in(step + 3 * 256) == baked_in(room(engine)));
 }
 
-// Where a binding holds less than a row of the frame, the lay is refused,
-// not bound past.
+// Where a binding holds less than a row of the frame — counted from where
+// the device lets the binding begin, at or before the row — the lay is
+// refused, not bound past: rows of 37 words, 148 bytes, the second's
+// binding begun at the first's.
 #[test]
 fn a_frame_whose_row_exceeds_a_binding_is_refused() {
     let rig = rig();
     let step = u64::from(rig.engine.device().limits().min_storage_buffer_offset_alignment);
+    assert!(step > 148, "⛔premise: the second row begins inside the first step");
     let frame = Shown::blank(rig.engine, Picture { width: 37, height: 2 }).expect("blank");
     let ground = (&frame, Source::Solid(WHITE));
 
-    assert!(rig.lay.laid_by(rig.engine, ground, (u16::MAX, None, None), step + 147).is_none());
-    assert_eq!(last_error(), format!("a row of 148 bytes exceeds a binding of {}", step + 147));
+    assert!(rig.lay.laid_by(rig.engine, ground, (u16::MAX, None, None), 147).is_none());
+    assert_eq!(last_error(), "a row of a pass binds 148 bytes, past a binding of 147");
+    assert!(rig.lay.laid_by(rig.engine, ground, (u16::MAX, None, None), 200).is_none());
+    assert_eq!(last_error(), "a row of a pass binds 296 bytes, past a binding of 200");
 }
 
 /// A frame of 330 x 200 a device binds 64 KiB of — less than the frame,
@@ -336,47 +341,6 @@ fn a_frame_past_the_device_s_binding_is_made_and_laid() {
         })
         .collect();
     assert!(le_words(&read_buffer(&engine, &frame.rows)) == expected);
-}
-
-// A conversion reads a frame whole, so one past a binding is refused, with
-// why, before it is bound — not bound past.
-#[test]
-fn a_frame_past_the_device_s_binding_is_not_converted() {
-    let turn = a_device_of_its_own();
-    let engine = turn.engine_binding(SMALL.1);
-    let frame = on_a_small_binding(&engine, &Lay::new());
-
-    assert!(Opaque::new().run(&engine, Frame::Shown(&frame), SMALL.0).is_none());
-    assert_eq!(last_error(), "a plane of 264000 bytes exceeds a binding of 65536");
-    engine.wait().expect("the device refused no binding");
-}
-
-// The clear bits of a frame read a band of rows at a time are the bits of
-// it read whole: a frame uploaded, its rows its width apart, and a frame
-// shown, 64 words apart for 37 pixels — four rows a binding, so a row of
-// words a pass, each binding begun where the device lets it. Where a
-// binding holds one row, it is refused, not bound past.
-#[test]
-fn a_frame_read_for_its_clear_bits_a_band_at_a_time_reads_as_whole() {
-    let rig = rig();
-    let step = u64::from(rig.engine.device().limits().min_storage_buffer_offset_alignment);
-    let word = |x: u32, y: u32| {
-        let alpha = (x * 7 + y * 13) % 256;
-        alpha << 24 | alpha / 2
-    };
-    let picture = Picture { width: 37, height: 23 };
-    for frame in [uploaded(37, 23, word), shown(37, 23, false, word)] {
-        let row_bytes = u64::from(frame.stride) * 4;
-        let bits = |room| {
-            let at = (picture, 128);
-            let bits = rig.clear.run_by(rig.engine, Frame::Shown(&frame), at, room);
-            bits.map(|bits| read_buffer(rig.engine, &bits))
-        };
-
-        assert!(bits(step + 4 * row_bytes).expect("bits") == bits(room(rig.engine)).expect("bits"));
-        assert!(bits(step + row_bytes).is_none());
-        assert_eq!(last_error(), format!("a row of 64 clear bits exceeds a binding of {}", step + row_bytes));
-    }
 }
 
 // On a device whose binding holds less than the frame, the frame is read

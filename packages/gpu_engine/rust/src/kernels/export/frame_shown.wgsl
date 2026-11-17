@@ -4,13 +4,23 @@
 // the app shows is (premultiply.wgsl), red the low byte, or blue where the
 // surface is laid BGRA (`FRAME_BGRA`, set where the pass is compiled).
 // The three reads frame.wgsl gives for a run's tiles, on these rows.
+//
+// A pass binds the rows it reads, not the frame whole (board
+// conversions-bind-a-frame-past-the-device-limit, 2026-11-17): its binding
+// begins on the frame's word `params.frame_base` (`convert`, mod.rs), taken
+// off every word here.
 
 override FRAME_BGRA: bool = false;
 
 @group(0) @binding(1) var<storage, read> frame: array<u32>;
 
+// Pixel (x, y)'s word in the rows bound.
+fn shown_word(x: u32, y: u32) -> u32 {
+  return y * params.stride + x - params.frame_base;
+}
+
 fn frame_premultiplied(x: u32, y: u32) -> u32 {
-  let word = frame[y * params.stride + x];
+  let word = frame[shown_word(x, y)];
   if (!FRAME_BGRA) {
     return word;
   }
@@ -18,7 +28,7 @@ fn frame_premultiplied(x: u32, y: u32) -> u32 {
 }
 
 fn frame_alpha(x: u32, y: u32) -> u32 {
-  return frame[y * params.stride + x] >> 24u;
+  return frame[shown_word(x, y)] >> 24u;
 }
 
 // The premultiplied pixel made straight: each colour byte times 255 over

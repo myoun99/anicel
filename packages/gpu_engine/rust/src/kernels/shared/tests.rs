@@ -5,17 +5,18 @@
 //! complement result", and the machine's integer operators ARE that
 //! definition, not a second spelling of any kernel's formula.
 
+use std::ops::Range;
 use std::sync::OnceLock;
 
 
 use super::pages::NO_PAGE;
 use super::{
-    Encoded, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL,
+    Encoded, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, bands,
     encode, fits, flat, page_table, pipeline, rows_a_binding, runs, tiles_a_pass, whole,
 };
 use crate::device::Engine;
 use crate::kernels::warp::{Boxed, Warp, Window};
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{assert_pinned, first_engine, last_error, read_buffer};
 
 // cases.wgsl's ids.
 const ADD: u32 = 0;
@@ -1184,6 +1185,31 @@ fn a_binding_holds_the_rows_that_fit_past_a_step() {
     assert!(rows_a_binding(355, 256, 100).is_none());
     assert!(rows_a_binding(100, 256, 1).is_none());
     assert_eq!(rows_a_binding(1_000, 256, 0), Some(u64::MAX));
+}
+
+// A band grows while what it binds of each plane fits, each counted from
+// the multiple of the step its binding begins on — worked by hand: rows of
+// 25 words (100 bytes), and of 50 (200).
+#[test]
+fn a_band_takes_the_rows_every_plane_s_binding_holds() {
+    let narrow = |band: Range<u32>| u64::from(band.start) * 25..u64::from(band.end) * 25;
+    let wide = |band: Range<u32>| u64::from(band.start) * 50..u64::from(band.end) * 50;
+    // Rows 0-9 bind 1,000 bytes from 0. Row 10 begins at byte 1,000, its
+    // binding at 768: rows 10-13, 632.
+    assert_eq!(bands(0..14, 1, (1_000, 256), |band| vec![narrow(band)]), Some(vec![0..10, 10..14]));
+    // Four rows a step: 0-7 bind 800, 0-11 would 1,200; from 8, the
+    // binding begins at 768, and the last unit is the two rows left.
+    assert_eq!(bands(0..14, 4, (1_000, 256), |band| vec![narrow(band)]), Some(vec![0..8, 8..14]));
+    // The wider plane bounds them: 0-1 bind 400 of it; 2 begins at byte
+    // 400, bound from 256 (344); 3 at 600, from 512 (288).
+    let both = |band: Range<u32>| vec![narrow(band.clone()), wide(band)];
+    assert_eq!(bands(0..4, 1, (500, 256), both), Some(vec![0..2, 2..3, 3..4]));
+    // A plane a band reads nothing of binds a word.
+    assert_eq!(bands(0..3, 1, (4, 256), |_| vec![0..0]), Some(vec![0..3]));
+    assert!(bands(0..4, 1, (99, 256), |band| vec![narrow(band)]).is_none());
+    assert_eq!(last_error(), "a row of a pass binds 100 bytes, past a binding of 99");
+    assert!(bands(0..8, 4, (399, 256), |band| vec![narrow(band)]).is_none());
+    assert_eq!(last_error(), "4 rows of a pass bind 400 bytes, past a binding of 399");
 }
 
 /// A kernel of its own for a test: no other asks for these sources, so the

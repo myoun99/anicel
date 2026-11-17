@@ -20,7 +20,7 @@
 //! Each kernel reads its picture through three reads — straight,
 //! premultiplied, its alpha — that `frame.wgsl` gives on a run's output
 //! tiles and `frame_shown.wgsl` on a frame as the screen shows it
-//! ([`Frame`]), and runs as one pass over it ([`submit`]).
+//! ([`Frame`]), and runs over it a band of rows at a time ([`convert`]).
 
 pub(crate) mod abi;
 mod clear;
@@ -45,14 +45,15 @@ pub(crate) use over_ground::OverGround;
 pub(crate) use png::PngFilter;
 pub(crate) use straight::Straight;
 
+use std::ops::Range;
 use std::sync::OnceLock;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, buffer_holds, encode, fits, flat, kept_or_made, pipeline_with, plane,
-    whole, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, bands, buffer_holds, encode, fits, flat, kept_or_made, pipeline_with,
+    plane, room, whole, words_bound, words_buffer,
 };
 
 /// The three reads on a run's output tiles.
@@ -99,6 +100,28 @@ impl Frame<'_> {
         match self {
             Self::Tiles(_) => picture.tiles().0,
             Self::Shown(shown) => shown.stride,
+        }
+    }
+
+    /// The words of the frame that `pixels` of `picture` — counted row
+    /// after row across it — lie on: a frame shown's rows between, a run's
+    /// rows of tiles. None for none.
+    fn words(&self, picture: Picture, pixels: Range<u64>) -> Range<u64> {
+        if pixels.is_empty() {
+            return 0..0;
+        }
+        let width = u64::from(picture.width);
+        let (first, last) = (pixels.start, pixels.end - 1);
+        match self {
+            Self::Shown(shown) => {
+                let word = |at: u64| at / width * u64::from(shown.stride) + at % width;
+                word(first)..word(last) + 1
+            }
+            Self::Tiles(_) => {
+                let tile_row = |at: u64| at / width / u64::from(TILE);
+                let words = u64::from(picture.tiles().0) * TILE_TEXELS;
+                tile_row(first) * words..(tile_row(last) + 1) * words
+            }
         }
     }
 
@@ -273,38 +296,70 @@ fn holds(frame: &wgpu::Buffer, (columns, rows): (u32, u32)) -> Option<()> {
     Some(())
 }
 
-/// A new plane of `bytes` for a pass that runs in `groups` (across, down)
-/// to put in — none, with why, unless the device binds the one and
-/// reaches the other.
-fn out_plane(engine: &Engine, label: &str, bytes: u64, groups: (u32, u32)) -> Option<wgpu::Buffer> {
-    fits(engine, &[bytes], [groups].into_iter())?;
+/// A new plane of `bytes` for a pass to put in, bound a band at a time
+/// ([`convert`]) — none, with why, where the device makes no buffer of it.
+fn out_plane(engine: &Engine, label: &str, bytes: u64) -> Option<wgpu::Buffer> {
+    buffer_holds(engine, bytes)?;
     Some(plane(engine, label, bytes))
 }
 
-/// Runs `pipeline` over `frame` in `groups` (across, down) and submits the
-/// work; the caller waits. Its binding 0 is `params`, 1 the frame and 2
-/// `out` — the export's own bindings, on the shared plumbing. None, with
-/// why, where a binding does not hold the frame whole: a conversion reads
-/// it so (board the-engine-binds-a-plane-past-the-device-limit,
-/// 2026-11-17 — a frame is made past a binding, and only the lay pass
-/// binds it a band at a time).
-fn submit(
+/// How a conversion's invocations run: their rows, the rows a workgroup
+/// takes, and its workgroups across.
+#[derive(Clone, Copy)]
+struct Dispatch {
+    rows: u32,
+    unit: u32,
+    across: u32,
+}
+
+/// Runs a conversion's `pipeline` and submits the work; the caller waits.
+/// Binding 0 is its params, 1 the plane it reads — a frame, or bytes that
+/// lie packed — and 2 the plane it puts: the export's own bindings, on the
+/// shared plumbing. Its rows run in bands ([`bands`]), each binding of the
+/// two only the words `words` names for its rows and handed `params` of its
+/// first row and the words its two bindings begin on. None, with why, where
+/// one workgroup's rows do not fit a binding, or a band's workgroups a
+/// dispatch.
+///
+/// 🚨A CONVERSION BINDS THE ROWS IT READS AND PUTS, NOT ITS PLANES WHOLE
+/// (board conversions-bind-a-frame-past-the-device-limit, 2026-11-17): a
+/// frame of the user's canvas, 7751×4396, is 136 MB — past the 128 MiB a
+/// binding holds on lavapipe, the least a Vulkan device may hold.
+fn convert(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
-    params: &[u32],
-    frame: &wgpu::Buffer,
-    out: &wgpu::Buffer,
-    groups: (u32, u32),
+    (read, out): (&wgpu::Buffer, &wgpu::Buffer),
+    Dispatch { rows, unit, across }: Dispatch,
+    words: impl Fn(Range<u32>) -> [Range<u64>; 2],
+    params: impl Fn(u32, [u64; 2]) -> Vec<u32>,
 ) -> Option<()> {
-    fits(engine, &[frame.size()], std::iter::empty())?;
-    let params = words_buffer(engine, "export params", params, wgpu::BufferUsages::UNIFORM);
-    encode(
-        engine,
-        &[Encoded {
-            pipeline,
-            bound: whole(&[(0, &params), (1, frame), (2, out)]),
-            groups: flat(groups),
-        }],
-    );
+    let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+    let bands = bands(0..rows, unit, (room(engine), step), |band| words(band).to_vec())?;
+    let groups = |band: &Range<u32>| (across, (band.end - band.start).div_ceil(unit));
+    fits(engine, &[], bands.iter().map(groups))?;
+    // A plane a band reads nothing of is bound a word, as a binding holds
+    // something.
+    let something = |words: Range<u64>| if words.is_empty() { 0..1 } else { words };
+    let mut uniforms = Vec::new();
+    let mut bound = Vec::new();
+    for band in &bands {
+        let [read_words, out_words] = words(band.clone()).map(something);
+        let (read_given, read_base) = words_bound(read, read_words, step);
+        let (out_given, out_base) = words_bound(out, out_words, step);
+        let words = params(band.start, [read_base, out_base]);
+        uniforms.push(words_buffer(engine, "export params", &words, wgpu::BufferUsages::UNIFORM));
+        bound.push([(1, read_given), (2, out_given)]);
+    }
+    let passes: Vec<Encoded> = uniforms
+        .iter()
+        .zip(bound)
+        .zip(&bands)
+        .map(|((uniform, planes), band)| {
+            let mut entries = whole(&[(0, uniform)]);
+            entries.extend(planes.map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource }));
+            Encoded { pipeline, bound: entries, groups: flat(groups(band)) }
+        })
+        .collect();
+    encode(engine, &passes);
     Some(())
 }

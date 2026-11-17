@@ -2,9 +2,10 @@
 //! the law; `png_rgba.wgsl` and `png_packed.wgsl` where a row's bytes come
 //! from.
 
+use std::ops::Range;
 use std::sync::OnceLock;
 
-use super::{Frame, Picture, Pipelines, out_plane, submit};
+use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{kept_or_made, pipeline_with};
@@ -55,7 +56,11 @@ impl PngFilter {
         picture.check()?;
         frame.holds(picture)?;
         let pipeline = self.rgba.of(engine, frame);
-        Self::run(engine, pipeline, frame.buffer(), frame.stride(picture), picture, 4)
+        let width = u64::from(picture.width);
+        let read = |rows: Range<u32>| {
+            frame.words(picture, u64::from(rows.start) * width..u64::from(rows.end) * width)
+        };
+        Self::run(engine, pipeline, (frame.buffer(), frame.stride(picture), read), picture, 4)
     }
 
     /// [`Self::rgba`] for a PNG whose bytes lie packed in `bytes`,
@@ -76,7 +81,11 @@ impl PngFilter {
         if bytes.size() < needed {
             return fail(format!("its bytes take {needed}; the buffer has {}", bytes.size()));
         }
-        Self::run(engine, pipeline, bytes, 0, picture, pixel_bytes)
+        let row = u64::from(picture.width) * u64::from(pixel_bytes);
+        let read = |rows: Range<u32>| {
+            u64::from(rows.start) * row / 4..(u64::from(rows.end) * row).div_ceil(4)
+        };
+        Self::run(engine, pipeline, (bytes, 0, read), picture, pixel_bytes)
     }
 
     /// The packed pass of `pixel_bytes` a pixel, compiled once — none for
@@ -101,18 +110,33 @@ impl PngFilter {
         self.packed_pipeline(engine, 4);
     }
 
+    /// The filter pass over `picture`, its rows from `source` — `stride`
+    /// the frame's, and `read` the words of it a run of rows lies on — at
+    /// `pixel_bytes` a pixel. A row's filters read the row above it too, so
+    /// a band binds that row with its own.
     fn run(
         engine: &Engine,
         pipeline: &wgpu::ComputePipeline,
-        source: &wgpu::Buffer,
-        stride: u32,
+        (source, stride, read): (&wgpu::Buffer, u32, impl Fn(Range<u32>) -> Range<u64>),
         picture: Picture,
         pixel_bytes: u32,
     ) -> Option<wgpu::Buffer> {
-        let params = [stride, picture.width, picture.height, picture.png_row_words(pixel_bytes)];
-        let groups = (1, picture.height);
-        let out = out_plane(engine, "png filter out", picture.png_bytes(pixel_bytes), groups)?;
-        submit(engine, pipeline, &params, source, &out, groups)?;
+        let row_words = picture.png_row_words(pixel_bytes);
+        let out = out_plane(engine, "png filter out", picture.png_bytes(pixel_bytes))?;
+        let per_row = u64::from(row_words);
+        let puts = |rows: &Range<u32>| u64::from(rows.start) * per_row..u64::from(rows.end) * per_row;
+        convert(
+            engine,
+            pipeline,
+            (source, &out),
+            Dispatch { rows: picture.height, unit: 1, across: 1 },
+            |rows| [read(rows.start.saturating_sub(1)..rows.end), puts(&rows)],
+            |first_row, [read_base, out_base]| {
+                // Inside u32: words of planes the shader indexes.
+                let (read_base, out_base) = (read_base as u32, out_base as u32);
+                vec![stride, picture.width, picture.height, row_words, read_base, first_row, out_base, 0]
+            },
+        )?;
         Some(out)
     }
 }

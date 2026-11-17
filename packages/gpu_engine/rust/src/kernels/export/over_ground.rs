@@ -3,7 +3,9 @@
 //! alpha cut (①c) — `over_ground.wgsl` has the law and why each number is
 //! the one it is.
 
-use super::{Frame, Picture, Pipelines, out_plane, submit};
+use std::ops::Range;
+
+use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
 use crate::device::Engine;
 
 impl Picture {
@@ -51,20 +53,33 @@ impl OverGround {
         picture.check()?;
         frame.holds(picture)?;
         let row_groups = picture.width.div_ceil(4);
-        let params = [
-            frame.stride(picture),
-            picture.width,
-            picture.height,
-            row_groups,
+        let out = out_plane(engine, "over ground out", picture.rgb_words_bytes())?;
+        // A row of invocations asks for its runs' pixels, four a run and
+        // three words out, run on across the picture's rows.
+        let per_row = u64::from(row_groups);
+        let runs = |rows: &Range<u32>| u64::from(rows.start) * per_row..u64::from(rows.end) * per_row;
+        let pixels = |runs: Range<u64>| runs.start * 4..(runs.end * 4).min(picture.pixels());
+        let puts = |runs: Range<u64>| runs.start * 3..(runs.end * 3).min(out.size() / 4);
+        let colour = [
             u32::from_le_bytes([ground[0], ground[1], ground[2], 0]),
             cut.map_or(NO_CUT, u32::from),
-            0,
-            0,
         ];
-        let groups = (row_groups.div_ceil(64), picture.height);
-        let out = out_plane(engine, "over ground out", picture.rgb_words_bytes(), groups)?;
-        let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &out, groups)?;
+        let dispatch = Dispatch { rows: picture.height, unit: 1, across: row_groups.div_ceil(64) };
+        convert(
+            engine,
+            self.pipelines.of(engine, frame),
+            (frame.buffer(), &out),
+            dispatch,
+            |rows| [frame.words(picture, pixels(runs(&rows))), puts(runs(&rows))],
+            |first_row, [frame_base, out_base]| {
+                // Inside u32: words of planes the shader indexes.
+                let (frame_base, out_base) = (frame_base as u32, out_base as u32);
+                let (width, height) = (picture.width, picture.height);
+                let [ground, cut] = colour;
+                let shape = [frame.stride(picture), width, height, row_groups, ground, cut];
+                [&shape[..], &[frame_base, first_row, out_base, 0, 0, 0]].concat()
+            },
+        )?;
         Some(out)
     }
 }

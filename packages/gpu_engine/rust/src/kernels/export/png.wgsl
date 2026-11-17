@@ -30,6 +30,15 @@ struct Params {
   height: u32,
   // Words a row of the out takes: its filter's byte and its own.
   row_words: u32,
+  // The word of the source its binding begins on (frame.wgsl,
+  // frame_shown.wgsl or png_packed.wgsl take it off), the first row this
+  // band puts, and the word of the out its binding begins on: a pass binds
+  // the rows it reads — a row's own and the one above — and puts
+  // (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
+  out_base: u32,
+  pad0: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -113,7 +122,7 @@ fn png_filter_pass(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_index) lane: u32,
 ) {
-  let y = group.y;
+  let y = params.first_row + group.y;
   let stride = params.width * PIXEL_BYTES;
   var sums = array<u32, 5>(0u, 0u, 0u, 0u, 0u);
   for (var i = lane; i < stride; i += GROUP) {
@@ -141,6 +150,6 @@ fn png_filter_pass(
       }
       word |= byte << (k * 8u);
     }
-    rows[y * params.row_words + w] = word;
+    rows[y * params.row_words + w - params.out_base] = word;
   }
 }

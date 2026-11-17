@@ -15,7 +15,15 @@ struct Params {
   // The picture.
   width: u32,
   height: u32,
+  // The word of the frame its binding begins on (frame.wgsl,
+  // frame_shown.wgsl take it off), the first row this band puts, and the
+  // word of the out its binding begins on: a pass binds the rows it reads
+  // and puts (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
+  out_base: u32,
   pad0: u32,
+  pad1: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -24,8 +32,9 @@ struct Params {
 // One invocation, one pixel.
 @compute @workgroup_size(64)
 fn straight_pass(@builtin(global_invocation_id) id: vec3<u32>) {
-  if (id.x >= params.width || id.y >= params.height) {
+  let y = params.first_row + id.y;
+  if (id.x >= params.width || y >= params.height) {
     return;
   }
-  rgba[id.y * params.width + id.x] = frame_straight(id.x, id.y);
+  rgba[y * params.width + id.x - params.out_base] = frame_straight(id.x, y);
 }

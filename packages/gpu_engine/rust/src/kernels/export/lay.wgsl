@@ -38,13 +38,14 @@ struct Params {
   // 1: `cover` holds a byte a pixel of the frame laid onto, four a word,
   // the low byte first — how much of the source each pixel takes.
   covered: u32,
-  // The word of the frame laid onto, and of the cover, its binding begins
-  // on: a pass binds the band of rows it lays, not the frame whole (board
-  // the-engine-binds-a-plane-past-the-device-limit, 2026-11-17). The
-  // source's is taken off `sx`, wrapping where it passes it.
+  // The word of the frame laid onto, of the cover, and of the source, its
+  // binding begins on: a pass binds the band of rows it lays, not the
+  // frame whole (board the-engine-binds-a-plane-past-the-device-limit,
+  // 2026-11-17). frame_shown.wgsl takes the source's off its reads, as
+  // every pass's.
   onto_base: u32,
   cover_base: u32,
-  pad2: u32,
+  frame_base: u32,
   pad3: u32,
 }
 

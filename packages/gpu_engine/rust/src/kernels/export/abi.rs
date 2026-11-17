@@ -20,7 +20,7 @@ use super::{
 use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::Composited;
-use crate::kernels::shared::{Counted, fits};
+use crate::kernels::shared::{Counted, buffer_holds};
 use crate::platform::Surface;
 
 /// The export's passes, compiled ahead by the app once what a hand needs
@@ -736,7 +736,7 @@ fn straight_bytes(engine: &Engine, rgba: &[u8], picture: Picture) -> Option<wgpu
     if rgba.len() as u64 != bytes {
         return fail(format!("a {}x{} picture is {bytes} bytes, not {}", picture.width, picture.height, rgba.len()));
     }
-    fits(engine, &[bytes], std::iter::empty())?;
+    buffer_holds(engine, bytes)?;
     Some(engine.filled("png straight bytes", rgba, wgpu::BufferUsages::STORAGE))
 }
 

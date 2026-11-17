@@ -42,6 +42,14 @@ struct Params {
   ground: u32,
   // Where the alpha is cut; past 255, nowhere — its shades are laid.
   cut: u32,
+  // The word of the frame its binding begins on (frame.wgsl,
+  // frame_shown.wgsl take it off), the first row of runs this band puts,
+  // and the word of the out its binding begins on: a pass binds the rows
+  // it reads and puts (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
+  out_base: u32,
+  pad0: u32,
   pad1: u32,
   pad2: u32,
 }
@@ -100,7 +108,7 @@ fn over_ground_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= params.row_groups) {
     return;
   }
-  let run = id.y * params.row_groups + id.x;
+  let run = (params.first_row + id.y) * params.row_groups + id.x;
   let first = run * 4u;
   // A run past the picture's last has its words past the buffer, and a
   // store out of bounds may land anywhere in it (WGSL, invalid memory
@@ -112,7 +120,7 @@ fn over_ground_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   let b = pixel(first + 1u);
   let c = pixel(first + 2u);
   let d = pixel(first + 3u);
-  let at = run * 3u;
+  let at = run * 3u - params.out_base;
   rgb[at] = a.r | (a.g << 8u) | (a.b << 16u) | (b.r << 24u);
   rgb[at + 1u] = b.g | (b.b << 8u) | (c.r << 16u) | (c.g << 24u);
   rgb[at + 2u] = c.b | (d.r << 8u) | (d.g << 16u) | (d.b << 24u);

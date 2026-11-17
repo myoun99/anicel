@@ -1,8 +1,9 @@
 //! Whether a frame is opaque, so its PDF picture goes without alpha
 //! (gpu-export-path ①d) — `opaque.wgsl` has the law.
 
-use super::{Frame, Picture, Pipelines, submit};
+use super::{Dispatch, Frame, Picture, Pipelines, convert};
 use crate::device::Engine;
+use crate::kernels::composite::TILE;
 use crate::kernels::shared::words_buffer;
 
 /// The opaque pass.
@@ -24,14 +25,28 @@ impl Opaque {
     pub(crate) fn run(&self, engine: &Engine, frame: Frame, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
         frame.holds(picture)?;
-        let params = [frame.stride(picture), picture.width, picture.height, 0];
-        // No `fits`: the answer is a word, and its groups are the picture's
-        // tiles — a frame a binding holds has fewer than a dispatch reaches
-        // (2 GB is 32,768 tiles).
         let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
         let answer = words_buffer(engine, "opaque answer", &[255], usage);
-        let pipeline = self.pipelines.of(engine, frame);
-        submit(engine, pipeline, &params, frame.buffer(), &answer, picture.tiles())?;
+        // A workgroup a tile: a row of them is a row of tiles, the picture's
+        // rows it covers whole across.
+        let (across, tile_rows) = picture.tiles();
+        let (width, side) = (u64::from(picture.width), u64::from(TILE));
+        let pixels = |rows: std::ops::Range<u32>| {
+            let bottom = (u64::from(rows.end) * side).min(u64::from(picture.height));
+            u64::from(rows.start) * side * width..bottom * width
+        };
+        convert(
+            engine,
+            self.pipelines.of(engine, frame),
+            (frame.buffer(), &answer),
+            Dispatch { rows: tile_rows, unit: 1, across },
+            |rows| [frame.words(picture, pixels(rows)), 0..1],
+            |first_row, [frame_base, _]| {
+                // Inside u32: a word of a frame the shader indexes.
+                let frame_base = frame_base as u32;
+                vec![frame.stride(picture), picture.width, picture.height, frame_base, first_row, 0, 0, 0]
+            },
+        )?;
         Some(answer)
     }
 }

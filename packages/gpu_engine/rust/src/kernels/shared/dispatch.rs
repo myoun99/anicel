@@ -106,6 +106,45 @@ pub(crate) fn words_bound(
     (range(buffer, start..end), start / 4)
 }
 
+/// `rows` of a pass's invocations in bands, each as many `unit`s of rows —
+/// a workgroup's — as one binding of `room` bytes, begun on a multiple of
+/// `step`, holds of every plane the band binds: `planes` the words each
+/// lies on for a band of rows, as [`words_bound`] binds them. None, with
+/// why, where one unit's do not fit.
+///
+/// 🚨ONE LAW FOR HOW MANY ROWS A BAND TAKES (board
+/// conversions-bind-a-frame-past-the-device-limit, 2026-11-17): a band
+/// grows while what it would bind fits — each pass says only which words
+/// its rows lie on. ↩️The lay and the clear bits counted their rows by sums
+/// of their own, one proved apart from the other's.
+pub(crate) fn bands(
+    rows: Range<u32>,
+    unit: u32,
+    (room, step): (u64, u64),
+    planes: impl Fn(Range<u32>) -> Vec<Range<u64>>,
+) -> Option<Vec<Range<u32>>> {
+    // An empty plane is bound a word, as a binding holds something.
+    let binds = |words: &Range<u64>| words.end.max(words.start + 1) * 4 - words.start * 4 / step * step;
+    let held = |band: Range<u32>| planes(band).iter().map(binds).max().unwrap_or(0);
+    let next = |end: u32| end.saturating_add(unit).min(rows.end);
+    let mut bands = Vec::new();
+    let mut start = rows.start;
+    while start < rows.end {
+        let mut end = next(start);
+        let first = held(start..end);
+        if first > room {
+            let rows = if unit == 1 { "a row of a pass binds".to_owned() } else { format!("{unit} rows of a pass bind") };
+            return fail(format!("{rows} {first} bytes, past a binding of {room}"));
+        }
+        while end < rows.end && held(start..next(end)) <= room {
+            end = next(end);
+        }
+        bands.push(start..end);
+        start = end;
+    }
+    Some(bands)
+}
+
 /// Whether the device makes a buffer of `bytes` — none, with why, where
 /// not. A plane only made, copied or bound a part at a time asks this,
 /// not [`fits`]: a buffer holds more than one binding of it does (board

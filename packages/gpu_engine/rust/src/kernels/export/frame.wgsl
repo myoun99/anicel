@@ -7,6 +7,10 @@
 // A pass reads its picture through the three reads below alone, which
 // frame_shown.wgsl gives for a frame as the screen shows it: what each
 // pass makes of a pixel is one law whichever picture it is handed.
+//
+// A pass binds the rows of tiles it reads, as frame_shown.wgsl has why:
+// its binding begins on the frame's word `params.frame_base`, taken off
+// every read here.
 
 @group(0) @binding(1) var<storage, read> frame: array<u32>;
 
@@ -16,7 +20,7 @@ fn frame_word(columns: u32, x: u32, y: u32) -> u32 {
 }
 
 fn frame_straight(x: u32, y: u32) -> u32 {
-  return frame[frame_word(params.stride, x, y)];
+  return frame[frame_word(params.stride, x, y) - params.frame_base];
 }
 
 fn frame_premultiplied(x: u32, y: u32) -> u32 {

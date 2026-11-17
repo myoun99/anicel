@@ -19,7 +19,9 @@ struct Params {
   // The picture's first word in `rows`: its plane's among a plug-in's
   // layers, one after another.
   first: u32,
-  pad0: u32,
+  // The tiles' word their binding begins on, which frame.wgsl takes off a
+  // read: 0, the tiles bound whole.
+  frame_base: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;

@@ -61,13 +61,23 @@ fn mix(mut h: u32) -> u32 {
 /// The composite's output tiles for a `width` x `height` picture, asked
 /// row by row from its top-left tile; [`PAST`] where a tile runs past it.
 pub(super) fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
-    frame_past(width, height, PAST, pixel)
+    frame_on(rig().engine, (width, height), PAST, pixel)
 }
 
 /// [`frame`] with `past` where a tile runs past the picture.
 fn frame_past(
     width: u32,
     height: u32,
+    past: u32,
+    pixel: impl Fn(u32, u32) -> u32,
+) -> wgpu::Buffer {
+    frame_on(rig().engine, (width, height), past, pixel)
+}
+
+/// [`frame_past`] on `engine`.
+pub(super) fn frame_on(
+    engine: &Engine,
+    (width, height): (u32, u32),
     past: u32,
     pixel: impl Fn(u32, u32) -> u32,
 ) -> wgpu::Buffer {
@@ -80,7 +90,7 @@ fn frame_past(
             words[at as usize] = pixel(x, y);
         }
     }
-    rig().engine.filled(
+    engine.filled(
         "test frame",
         &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
         wgpu::BufferUsages::STORAGE,

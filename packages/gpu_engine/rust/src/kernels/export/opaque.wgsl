@@ -18,7 +18,14 @@ struct Params {
   // The picture.
   width: u32,
   height: u32,
+  // The word of the frame its binding begins on (frame.wgsl,
+  // frame_shown.wgsl take it off), and the first row of tiles this band
+  // asks: a pass binds the rows it reads (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
   pad0: u32,
+  pad1: u32,
+  pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -39,7 +46,7 @@ fn opaque_pass(
   var alpha = 255u;
   for (var texel = local; texel < TILE_TEXELS; texel += 64u) {
     let x = tile.x * TILE_SIDE + texel % TILE_SIDE;
-    let y = tile.y * TILE_SIDE + texel / TILE_SIDE;
+    let y = (params.first_row + tile.y) * TILE_SIDE + texel / TILE_SIDE;
     // Past the picture a tile holds what no page shows.
     if (x < params.width && y < params.height) {
       alpha &= frame_alpha(x, y);
