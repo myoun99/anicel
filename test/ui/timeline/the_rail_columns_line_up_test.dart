@@ -221,17 +221,18 @@ void main() {
     });
   }
 
-  // 🗣️F-606 (유저 2026-11-16): 「s행의 사운드 조절 막대, 너무 작아서 3 다음
-  // 9로밖에 조절안되서 … 사운드막대를 지금의 1.5배로 늘리고, 그거에 맞춰서
-  // 블렌드 열이 늘어나도록」. ↩️F-577's 「불투명도막대랑 완전 동일한
-  // 디자인/크기」 — the bar's length too, until its 200 wanted more.
+  // 🗣️F-577 (유저 2026-11-10): 「불투명도막대랑 완전 동일한 디자인/크기」 —
+  // and again I-177 (11-17): 「총볼륨 크기 키운거 되돌림. 전처럼
+  // 불투명도막대랑 같은길이」. ↩️Half again the bar along the rail from F-606
+  // (11-16) till then.
   // In every language the program speaks: the column grows by its widest
-  // mode, and the Total by half again the bar's 「100」 (F-606).
+  // mode, and holds the speaker and the Total whole.
   for (final language in AppLanguage.values) {
     for (final scale in [1.0, 1.5, 2.0]) {
-      testWidgets('$language at $scale×: the Total is the opacity bar half '
-          'again along the rail and as tall, the speaker the eye\'s size, '
-          'both whole in the blend column', (tester) async {
+      testWidgets('$language at $scale×: the Total is the opacity bar\'s '
+          'size, the speaker the eye\'s, both whole in the blend column', (
+        tester,
+      ) async {
         AppText.settings.value = AppLanguageSettings(programLanguage: language);
         addTearDown(
           () => AppText.settings.value = const AppLanguageSettings(),
@@ -239,8 +240,7 @@ void main() {
         await pumpRail(tester, scale: scale);
         final total = part(tester, 'total-volume', sound);
         final bar = part(tester, 'opacity', sound);
-        expect(total.width, closeTo(1.5 * bar.width, 0.01));
-        expect(total.height, bar.height);
+        expect(total.size, bar.size);
         expect(
           part(tester, 'mute', sound).size,
           part(tester, 'visibility', sound).size,

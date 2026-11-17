@@ -463,8 +463,9 @@ void main() {
     // window under that. 680 → 622 (F-409, 2026-10-20): the names gave a
     // third up and the rail is 461, so the view kept its forty. 622
     // → 530 (heavy-tests-timeline, 2026-10-25): the panel's own width,
-    // which that window laid between its side docks.
-    final s = await _pump(tester, frames: 600, width: 530);
+    // which that window laid between its side docks. 530 → 510 (I-177,
+    // 2026-11-17): the rail is 441, so the view keeps what it had.
+    final s = await _pump(tester, frames: 600, width: 510);
     await _pinTheBlur(tester, s);
 
     final view = tester.getRect(

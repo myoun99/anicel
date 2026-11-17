@@ -124,7 +124,12 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// And through F-606 (2026-11-16): the column took 20 more for the Total
 /// half again as long, and every row's name gave them — 🗣️F-606-Q1 (유저
 /// 2026-11-16): 「이름 칸에서 낸다」, asked against the rail growing by 20.
-const double timelineLayerControlsWidth = 385 + layerLaneValueHandsWidth;
+/// 461 → 441 (I-177, 유저 2026-11-17): the Total back to the opacity bar's
+/// length and the column back to 66 — 「다만 레이어 이름 길이는 전에 애초에
+/// 길었으니 지금 줄어든길이대로 좋음. 더 줄일 가능성조차있음」: the name keeps
+/// what it gave, and the rail is the 20 narrower. ⚠️That the rail is what
+/// narrows is this lane's reading of 「이름은 지금 길이대로」, not their word.
+const double timelineLayerControlsWidth = 365 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth

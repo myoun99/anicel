@@ -507,14 +507,9 @@ Widget? _plateIn(Axis axis, Widget? plate) => plate == null
 
 /// How long a plate stands in a [column] that long: the column less the
 /// chip gap [_plateIn] gives it — the opacity bar's own length in its
-/// column.
+/// column, which the S row's Total keeps in the blend column (F-577 ·
+/// I-177; ↩️half again it, F-606).
 double layerRailPlateLength(double column) => column - layerControlChipGap;
-
-/// How long an S row's Total stands where the opacity column is [opacity]
-/// wide: the opacity bar's length ([layerRailPlateLength]) half again
-/// ([layerTotalVolumeBarScale], F-606), in the blend column.
-double layerTotalVolumeLength(double opacity) =>
-    layerTotalVolumeBarScale * layerRailPlateLength(opacity);
 
 /// The trailing run's slots, in the order [layerRailTrailingCells] emits
 /// them. Naming them lets a host LOCATE a column instead of re-adding the

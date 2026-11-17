@@ -307,19 +307,16 @@ const double layerOpacitySlotWidth = 44;
 /// 66 → 86 (F-606, 유저 2026-11-16: 「s행의 사운드 조절 막대, 너무 작아서
 /// 3 다음 9로밖에 조절안되서 … 사운드막대를 지금의 1.5배로 늘리고, 그거에
 /// 맞춰서 블렌드 열이 늘어나도록. 즉 합성모드도 긴 이름 많으니까 이름 더
-/// 많이보이는 결과가 되도록」): the Total stands half again the opacity
-/// bar's length ([layerTotalVolumeBarScale]), and the column is the speaker,
-/// that and a chip gap — on every row, the column being one. The chip takes
-/// the 20 it gains.
-const double layerBlendSlotWidth =
-    layerGraphSlotWidth +
-    layerTotalVolumeBarScale * (layerOpacitySlotWidth - layerControlChipGap) +
-    layerControlChipGap;
-
-/// How much longer an S row's Total stands along the rail than the opacity
-/// bar ([layerBlendSlotWidth]): half again — the bar's length serves a
-/// 100, and the Total runs to 200 (F-606).
-const double layerTotalVolumeBarScale = 1.5;
+/// 많이보이는 결과가 되도록」): the Total stood half again the opacity
+/// bar's length, and the column was the speaker, that and a chip gap — on
+/// every row, the column being one. The chip took the 20 it gained.
+///
+/// 86 → 66 (I-177, 유저 2026-11-17: 「불투명도랑 총볼륨 이렇게 세부조정
+/// 가능해지니 총볼륨 크기 키운거 되돌림. 전처럼 불투명도막대랑 같은길이.
+/// 그에따라 블렌드열 좁아지는거 인지하고있음. 그걸원하는거임」): a double
+/// click in the bar types its number now, so the Total is the opacity bar
+/// again, at that bar's own length, and the column with it.
+const double layerBlendSlotWidth = layerOpacitySlotWidth + layerGraphSlotWidth;
 
 /// The rail's columns that hold WORDS — the opacity bar's digits, the
 /// blend chip's mode and a lane's value boxes ([layerLaneValueSlotWidth])
@@ -366,11 +363,11 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
         FieldSlider.widthGrowthIn(context, const ['100']),
     // As much wider as its widest word — and so never narrower than an S
     // row's speaker and Total ([layerBlendSlotWidth]): its widest word is
-    // wider than the bar's 「100」 by more than half, so it grows by more
-    // than the Total does — half again the bar's growth (F-606).
-    // 🔬2026-11-16, every language at 1–2× (the_rail_columns_line_up_test);
-    // 2026-11-11 against the bar's growth alone, 1–3×. ↩️A floor of the
-    // bar's growth stood here and never bound.
+    // wider than the bar's 「100」, so it grows more than the bar does.
+    // 🔬2026-11-11, en · ja · ko · fr · zh-Hans at 1–3×: never less, equal
+    // at 1×. ↩️A floor of the bar's growth stood here and never bound.
+    // ↩️Half again the bar's growth while the Total stood half again the
+    // bar (F-606, 2026-11-16 → I-177, 11-17).
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:

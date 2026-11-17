@@ -9,8 +9,8 @@ import 'berth_row.dart';
 
 /// How thick a rail row's bar stands where [context] shows it: 18 at 1×,
 /// and its digits' growth ([FieldSlider.growthIn], text-scale-rail-rows).
-/// The opacity bar's and the S row's Total's — one bar, one thickness
-/// (F-577), the Total the longer (F-606).
+/// The opacity bar's and the S row's Total's — one bar, one size (F-577 ·
+/// I-177; ↩️the Total the longer, F-606).
 double layerRailBarHeightIn(BuildContext context) =>
     18 + FieldSlider.growthIn(context);
 
@@ -35,6 +35,7 @@ Widget layerOpacityField({
     axis: axis,
     value: value,
     height: layerRailBarHeightIn(context),
+    typesOnDoubleClick: true,
     onChanged: (opacity) => onChanged(layerIdNow(context, layer.id), opacity),
     onChangeEnd: onChangeEnd == null
         ? null
@@ -68,8 +69,10 @@ Widget layerOpacityField({
 ///
 /// 🗣️F-606 (유저 2026-11-16): 「불투명도는 최대 100이라 지금막대 길이로
 /// 충분하지만 사운드는 최대200이라 더 길어야한다고 판단. 사운드막대를 지금의
-/// 1.5배로」 — the bar's look and thickness, half again its length
-/// ([layerTotalVolumeLength]).
+/// 1.5배로」 — the bar's look and thickness, half again its length.
+/// ↩️I-177 (유저 2026-11-17): 「불투명도랑 총볼륨 이렇게 세부조정 가능해지니
+/// 총볼륨 크기 키운거 되돌림. 전처럼 불투명도막대랑 같은길이」 — a double
+/// click in it types the number, so it is the opacity bar's length again.
 ///
 /// It writes on RELEASE, as the window's did: a write is an undo step and
 /// re-uploads the whole live audio schedule. The bar shows the drag
@@ -85,6 +88,7 @@ Widget layerTotalVolumeField({
     axis: axis,
     value: layer.seSound.totalVolume.clamp(0.0, SeSound.maxVolume).toDouble(),
     height: layerRailBarHeightIn(context),
+    typesOnDoubleClick: true,
     percents: (SeSound.maxVolume * 100).round(),
     onChanged: (_) {},
     onChangeEnd: (share) => onChangeEnd(layerIdNow(context, layer.id), share),

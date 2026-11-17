@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
+import '../input/second_click_window.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
 import '../text/readout_text.dart';
@@ -80,6 +82,13 @@ typedef FieldSliderLevel = ({double value, Color color});
 /// ↩️It types again, never on a tap of the bar: through its pencil since
 /// 2026-10-10 ([ValuePencil]), and through its readout's press where its
 /// readout stands for the pencil (I-135).
+/// ↩️And on a DOUBLE click in the bar, where the bar says so
+/// ([typesOnDoubleClick] — a rail row's opacity and an S row's Total, I-177,
+/// 유저 2026-11-17). That is not the editor above come back: it holds no
+/// tap hostage. Each click sets the value the moment it comes, as every
+/// tap here does, and the second opens the pad besides
+/// ([SecondClickWindow]) — 「더블클릭하더라도 일반클릭이랑 동일하게
+/// 다른규칙두지말고 값 변경된거」.
 class FieldSlider extends StatefulWidget implements NamesItself {
   const FieldSlider({
     super.key,
@@ -109,6 +118,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   }) : levels = null,
        floor = null,
        setElsewhere = false,
+       typesOnDoubleClick = false,
        assert(max > min, 'max must exceed min'),
        assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
@@ -167,6 +177,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        levels = null,
        floor = null,
        setElsewhere = false,
+       typesOnDoubleClick = false,
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
@@ -223,6 +234,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.upright = false,
     this.readout,
     this.stepsRun,
+    this.typesOnDoubleClick = false,
     int percents = 100,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
@@ -296,6 +308,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.setElsewhere = false,
   }) : min = 0,
        displayScale = 1,
+       typesOnDoubleClick = false,
        valueTextBuilder = null,
        restingAccent = null,
        label = null,
@@ -386,6 +399,20 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// that could be set and is not now, and it dims
   /// ([_FieldSliderState._asDrawn]).
   final bool setElsewhere;
+
+  /// Whether a double click in the bar types its number — the number pad
+  /// under it, as its pencil opens ([_FieldSliderState._beginTyping]).
+  ///
+  /// 🗣️I-177 (유저 2026-11-17): 「레이어의 불투명도/오디오막대만 추가기능.
+  /// 막대 안에서 더블클릭하면 수동편집가능하게. 아래에 공용 넘버패드ui
+  /// 열어서. 콘티,타임라인/x시트패널 동일. 레이어의 불투명도랑 총볼륨막대만」
+  /// — so it is a bar's to say, and those two say it
+  /// (`layer_opacity_field.dart`); every other bar is as it was. Each click
+  /// of the two sets the value as any click does, and the pad opens after
+  /// the second: 「더블클릭하더라도 일반클릭이랑 동일하게 다른규칙두지말고 값
+  /// 변경된거 … 언두로 되돌리면됨」. No press waits on it, and none is undone
+  /// ([SecondClickWindow]).
+  final bool typesOnDoubleClick;
 
   /// Whether the bar is drawn at full strength.
   bool get _lit => onChanged != null || setElsewhere;
@@ -985,7 +1012,35 @@ class _FieldSliderState extends State<FieldSlider> {
   @override
   void dispose() {
     widget.readout?._letGo(_beginTyping);
+    _secondClick.dispose();
     super.dispose();
+  }
+
+  /// Whether the press under way is the second click of a double click
+  /// ([FieldSlider.typesOnDoubleClick]).
+  final _secondClick = SecondClickWindow();
+
+  /// The bar's own pointer, as its grip hears it ([_RenderFieldSliderGrip]):
+  /// a press let go inside the bar is a click (the one predicate,
+  /// [pointerIsStillOn]), and the second of two opens the number pad — once
+  /// the frame that shows the value the click set is up, so the pad opens
+  /// on it.
+  void _pointed(PointerEvent event) {
+    switch (event) {
+      case PointerDownEvent():
+        _secondClick.pressed();
+      case PointerUpEvent(:final position)
+          when pointerIsStillOn(context, position):
+        if (_secondClick.clicked()) {
+          WidgetsBinding.instance
+            ..addPostFrameCallback((_) {
+              if (mounted) {
+                unawaited(_beginTyping());
+              }
+            })
+            ..ensureVisualUpdate();
+        }
+    }
   }
 
   /// A typed number, in the units the bar writes ([FieldSlider
@@ -1275,6 +1330,7 @@ class _FieldSliderState extends State<FieldSlider> {
         // is not also taken by the canvas layer above it.
         onWheel: (event) =>
             handleWheelUnlessScrolling(event, context, _handleWheel),
+        onPointer: widget.typesOnDoubleClick ? _pointed : null,
         child: bar,
       ),
     );
@@ -2016,6 +2072,7 @@ class _FieldSliderGrip extends OwningAxisGrip {
     required this.cursor,
     required this.semantics,
     required this.onWheel,
+    required this.onPointer,
     required super.child,
   });
 
@@ -2026,6 +2083,10 @@ class _FieldSliderGrip extends OwningAxisGrip {
 
   final PointerSignalEventListener onWheel;
 
+  /// What the bar's box hears of a pointer, as it comes — for a bar that types
+  /// on a double click ([FieldSlider.typesOnDoubleClick]); null for the rest.
+  final ValueChanged<PointerEvent>? onPointer;
+
   @override
   _RenderFieldSliderGrip createRenderObject(BuildContext context) =>
       _RenderFieldSliderGrip(
@@ -2033,6 +2094,7 @@ class _FieldSliderGrip extends OwningAxisGrip {
           semantics: semantics,
           textDirection: Directionality.maybeOf(context),
           onWheel: onWheel,
+          onPointer: onPointer,
         )
         ..wear(this);
 
@@ -2046,7 +2108,8 @@ class _FieldSliderGrip extends OwningAxisGrip {
       ..cursor = cursor
       ..properties = semantics
       ..textDirection = Directionality.maybeOf(context)
-      ..onWheel = onWheel;
+      ..onWheel = onWheel
+      ..onPointer = onPointer;
   }
 }
 
@@ -2058,6 +2121,7 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
     required SemanticsProperties semantics,
     required TextDirection? textDirection,
     required this.onWheel,
+    required this.onPointer,
   }) : _cursor = cursor {
     // A bar's [Semantics] said only these: a boundary round its own node.
     initSemanticsAnnotations(
@@ -2072,6 +2136,8 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
   }
 
   PointerSignalEventListener onWheel;
+
+  ValueChanged<PointerEvent>? onPointer;
 
   @override
   MouseCursor get cursor => _cursor;
@@ -2100,5 +2166,6 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
     if (event is PointerSignalEvent) {
       onWheel(event);
     }
+    onPointer?.call(event);
   }
 }

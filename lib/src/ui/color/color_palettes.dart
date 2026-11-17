@@ -30,6 +30,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/settings_file_export.dart';
 import '../input/control_press_claim.dart';
+import '../input/second_click_window.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../theme/disabled_ink.dart';
@@ -373,7 +374,7 @@ class _Place extends StatefulWidget {
   final void Function(int from)? onTraded;
 
   /// A double click: the colour's own window, anchored on the place —
-  /// the second of two presses ([_PlaceState._secondPressWindow]); the
+  /// the second of two presses ([_PlaceState._secondClick]); the
   /// first picks, as any press does.
   final void Function(BuildContext anchor)? onEdit;
 
@@ -393,31 +394,34 @@ class _PlaceState extends State<_Place> {
 
   /// A press while the previous one's [kDoubleTapTimeout] still runs IS
   /// the second click of a double click — the dock splitter's reading
-  /// (`dock_edge_splitter.dart`). ⛔Not a double tap on the ink: under the
+  /// ([SecondClickWindow]). ⛔Not a double tap on the ink: under the
   /// claim, a live tap is rejected the moment the hand moves, and on a
   /// press that does not move it fires a second time
   /// (`every_button_claims_its_press_test`).
-  Timer? _secondPressWindow;
+  final _secondClick = SecondClickWindow();
 
   void _press() {
     if (_carried) {
       return;
     }
     final onEdit = widget.onEdit;
-    if (onEdit != null && (_secondPressWindow?.isActive ?? false)) {
-      _secondPressWindow!.cancel();
+    if (onEdit == null) {
+      widget.onPressed?.call();
+      return;
+    }
+    // The claim fires on the lift alone: the press lands and comes up a
+    // click in one moment here, and the window runs lift to lift.
+    _secondClick.pressed();
+    if (_secondClick.clicked()) {
       onEdit(context);
       return;
     }
     widget.onPressed?.call();
-    if (onEdit != null) {
-      _secondPressWindow = Timer(kDoubleTapTimeout, () {});
-    }
   }
 
   @override
   void dispose() {
-    _secondPressWindow?.cancel();
+    _secondClick.dispose();
     super.dispose();
   }
 

@@ -1,10 +1,10 @@
 import 'app_tooltip.dart';
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
+import '../input/second_click_window.dart';
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart' show acrossBox, partAlong;
@@ -229,37 +229,23 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   ///
   /// ⇒ A press that lands on the grip while the previous one's
   /// [kDoubleTapTimeout] is still running IS the second tap, and its lift
-  /// fires. No distance is compared — a press that wandered is still the
-  /// press it was, the same answer the claim gives a button.
-  Timer? _secondPressWindow;
-  bool _secondPress = false;
+  /// fires ([SecondClickWindow] — this grip's reading, every such control's
+  /// since I-177). No distance is compared — a press that wandered is still
+  /// the press it was, the same answer the claim gives a button.
+  final _secondClick = SecondClickWindow();
 
-  void _pressDown(PointerDownEvent event) {
-    _secondPress = _secondPressWindow?.isActive ?? false;
-    _secondPressWindow?.cancel();
-  }
+  void _pressDown(PointerDownEvent event) => _secondClick.pressed();
 
   void _pressUp(PointerUpEvent event) {
     final onDoubleTap = widget.onDoubleTap;
-    if (onDoubleTap == null) {
-      return;
-    }
-    if (_secondPress) {
-      _secondPress = false;
+    if (onDoubleTap != null && _secondClick.clicked()) {
       onDoubleTap();
-      return;
     }
-    _secondPressWindow = Timer(kDoubleTapTimeout, () {});
-  }
-
-  void _pressCancel(PointerCancelEvent event) {
-    _secondPress = false;
-    _secondPressWindow?.cancel();
   }
 
   @override
   void dispose() {
-    _secondPressWindow?.cancel();
+    _secondClick.dispose();
     super.dispose();
   }
 
@@ -284,7 +270,6 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
           behavior: HitTestBehavior.opaque,
           onPointerDown: _pressDown,
           onPointerUp: _pressUp,
-          onPointerCancel: _pressCancel,
           child: acrossBox(
             widget.axis,
             DockEdgeSplitter.thickness,

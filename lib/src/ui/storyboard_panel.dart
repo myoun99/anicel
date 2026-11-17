@@ -896,7 +896,12 @@ class StoryboardPanel extends StatefulWidget {
   // 2026-11-16 (F-606): it took 20 more for the Total half again as long.
   // The number stays with the timeline's again, and the name gives them
   // (F-606-Q1, 유저: 「이름 칸에서 낸다」).
-  static const double _trackLabelWidth = 461;
+  //
+  // 461 → 441 (I-177, 유저 2026-11-17): the Total back to the opacity bar's
+  // length and the column with it, and the name keeps what it gave
+  // (「레이어 이름 길이는 … 지금 줄어든길이대로 좋음」) — the same number as
+  // the timeline's again.
+  static const double _trackLabelWidth = 441;
 
   /// Which optional columns this rail's rows keep — the host's answer every
   /// row and the legend above them read ([layerRailTrailingCells]): an
