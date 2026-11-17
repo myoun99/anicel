@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -138,6 +140,42 @@ class PillStrip extends StatelessWidget {
           words.size(label).width;
     }
     return width;
+  }
+
+  /// The least width an EVEN strip of [labels] lays every word whole at
+  /// ([PillStrip.even]): its pills share the width evenly, so each share
+  /// holds the widest word with its padding — and, but for the first, the
+  /// hairline before it — and the strip its box's edge. [glyphs] where its
+  /// pills show glyphs for their words ([PillItem.icon]).
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
+  /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 — the
+  /// width the tool settings' least width reads its control column by.
+  ///
+  /// ⚠️It reads what [build] lays out, as [naturalWidthIn] does, and
+  /// `test/ui/widgets/a_strip_measures_as_it_lays_out_test.dart` holds the
+  /// two together in every language.
+  static double evenWidthIn(
+    BuildContext context,
+    List<String> labels, {
+    bool glyphs = false,
+  }) {
+    final theme = Theme.of(context);
+    final words = TextMeasure(
+      context,
+      DefaultTextStyle.of(context).style.merge(Pill._wordStyleOf(theme)),
+    );
+    var share = 0.0;
+    for (final (index, label) in labels.indexed) {
+      final face = glyphs ? _glyphSize : words.size(label).width;
+      final before = index == 0 ? 0.0 : Pill._hairlineOf(theme).width;
+      share = math.max(share, face + _sharePadding.horizontal + before);
+    }
+    final edge = FieldSlider.frameOf(FieldSlider.defaultHeight, enabled: true)
+        .edge
+        .dimensions
+        .horizontal;
+    return edge + labels.length * share;
   }
 
   /// The outline an across or down strip stands in.

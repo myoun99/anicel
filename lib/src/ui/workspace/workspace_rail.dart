@@ -941,6 +941,7 @@ class _WorkspaceRail {
       EditorWorkspace.railWidthKey(right: room.right),
       room.right ? -delta : delta,
       fallback: room.width,
+      minExtent: _state._railWidthFloor(right: room.right),
       maxExtent: room.dragCeiling,
     );
     return room.right ? -used : used;

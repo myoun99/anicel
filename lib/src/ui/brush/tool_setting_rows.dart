@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart' show ControlPressClaim;
@@ -41,6 +43,32 @@ abstract final class ToolSettingColumns {
 
   /// Between the name and the control, and between two cells of a control.
   static const double gap = ToolSettingsSection.rowGap;
+
+  /// The least row that leaves [control] to its control column beside an
+  /// [end] column — the name column's law ([nameIn]) read backwards.
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
+  /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 —
+  /// 「좁을 때의 모양은 지금과 같다」: the name keeps its share at that width
+  /// too, so the row is wider than its floor's name alone would make it.
+  static double rowFor({required double control, required double end}) {
+    final rest = gap + control + end;
+    // The name is its share held between a floor and a ceiling, so the
+    // rest of the row is the least of those three answers that holds.
+    return math.min(
+      math.max(rest / (1 - _nameShare), rest + _nameFloor),
+      rest + _nameCeiling,
+    );
+  }
+
+  /// The least width a panel lays its rows in so that the widest of its
+  /// [controls] stands whole — [chrome] being what the panel spends across
+  /// beside its rows (its inset, its scrollbar's lane).
+  static double panelFor({
+    required double chrome,
+    required Iterable<double> controls,
+    double end = FieldSlider.handsReach,
+  }) => chrome + rowFor(control: controls.fold(0.0, math.max), end: end);
 }
 
 /// How wide the END column stands in the rows under it — a value's hands
@@ -275,6 +303,15 @@ class ToolSettingChoiceRow<T> extends StatelessWidget {
   /// What a press on [answer] does; null where that answer is refused —
   /// the pill keeps its place and loses its tap.
   final VoidCallback? Function(T answer) onPick;
+
+  /// How wide the control column has to be for [answers] to stand whole
+  /// ([PillStrip.evenWidthIn]).
+  static double widthIn<T>(
+    BuildContext context,
+    List<({T value, String key, String label})> answers,
+  ) => PillStrip.evenWidthIn(context, [
+    for (final answer in answers) answer.label,
+  ]);
 
   @override
   Widget build(BuildContext context) => ToolSettingRow(

@@ -2168,7 +2168,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// reach: an unbounded parent, or a dock too small to pay every section's
   /// floor at once.
   // No panel insists on a WIDTH any more — see [_defaultRegionMinWidth] for
-  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off.
+  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off. The
+  // tool settings' RAIL does ([_railWidthFloor]): the rail stops, and the
+  // panel still draws at its slot's width.
 
   double? _minContentHeightFor(String tabId) => switch (tabId) {
     // NOT one number for this tab: the x-sheet is the timeline toggled on
@@ -2202,6 +2204,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return 0;
     }
     return panelGroupFloorExtent([for (final tabId in tabs) _tabs.tabFor(tabId)]);
+  }
+
+  /// The width a rail is neither dragged nor drawn under while one of its
+  /// groups holds the tool settings — what they need
+  /// ([ToolSettingsPanel.minPanelWidthIn]) and the splitter's band their
+  /// group keeps them off ([DockSplitterEdges]). Null for a rail without
+  /// them.
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
+  /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 —
+  /// ⛔held in ANY group of the rail, open or shut, shown or behind another
+  /// tab: opening or picking it must not move the rail.
+  double? _railWidthFloor({required bool right}) {
+    const tabId = EditorWorkspace.brushSettingsTabId;
+    final at = _layout.locateTab(tabId);
+    if (at == null || !_rail._railGroups(right: right).contains(at.dockId)) {
+      return null;
+    }
+    final grid = DeviceGrid.of(context);
+    final spared = _tabs.tabFor(tabId).sparesSplitters
+        ? grid.position(DockEdgeSplitter.thickness)
+        : 0.0;
+    // A floor the words need is a clearance: landing short cuts one.
+    return grid.clearance(ToolSettingsPanel.minPanelWidthIn(context) + spared);
   }
 
   bool _bottomDockCollapsed = false;
@@ -2858,8 +2884,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       gaps: gaps,
       minCentreWidth: minCenterWidth,
     );
-    leftWidth = math.min(leftWidth, ceiling);
-    rightWidth = math.min(rightWidth, ceiling);
+    // The tool settings' floor before the ceiling: a window too narrow for
+    // both gives the canvas its room first.
+    leftWidth = math.min(
+      math.max(leftWidth, _railWidthFloor(right: false) ?? 0),
+      ceiling,
+    );
+    rightWidth = math.min(
+      math.max(rightWidth, _railWidthFloor(right: true) ?? 0),
+      ceiling,
+    );
     // ⛔The proportional squeeze that stood here is GONE.
     // It scaled BOTH sides by one factor whenever the pair
     // overflowed, which is the other half of 「한쪽을

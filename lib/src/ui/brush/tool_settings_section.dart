@@ -63,6 +63,11 @@ class ToolSettingsSection extends StatelessWidget {
   /// The inset every tool's settings are read at.
   static const EdgeInsets inset = EdgeInsets.all(12);
 
+  /// What a section spends across beside its rows where [context] lays it
+  /// out: its [inset], and the lane of its bar where it [scrolls].
+  static double chromeIn(BuildContext context, {bool scrolls = true}) =>
+      inset.horizontal + (scrolls ? ContentScrollbar.laneIn(context) : 0);
+
   /// The space under a row — and across one, between its name and its
   /// control and between a pair's two cells. The brush's settings set the
   /// rhythm first, and every tool reads at it (tool-settings-panel-tidy, 유저
