@@ -202,7 +202,7 @@ class TimelineBarMenus {
       // dimmed by the gate, never hidden.
       PanelFlyoutHeader(AppText.strings.tlEffectsOfSound),
       for (final kind in effectKindsAddedAlone)
-        if (kind.filtersSound) _addEffectItem(holder, kind),
+        if (kind.filtersSound) _addEffectItem(session, holder, kind),
       const PanelFlyoutDivider(),
       PanelFlyoutHeader(AppText.strings.tlEffectsOfPicture),
       // ⛔EVERY KIND IS LISTED, ALWAYS; the ones this row cannot take are
@@ -211,25 +211,10 @@ class TimelineBarMenus {
       // and shrank under the pointer would make the artist look for an
       // entry that is simply not there today.
       for (final kind in effectKindsAddedAlone)
-        if (!kind.filtersSound) _addEffectItem(holder, kind),
+        if (!kind.filtersSound) _addEffectItem(session, holder, kind),
       ..._plugins(holder),
     ];
   }
-
-  /// The entry that adds an effect of [kind] to [holder]'s chain — dimmed
-  /// where its gate refuses (`EffectsAndFx.canAddEffect`).
-  PanelFlyoutItem _addEffectItem(EffectChainHolder? holder, EffectKind kind) =>
-      PanelFlyoutItem(
-        keyValue: 'add-effect-${kind.jsonValue}',
-        label: editorActionLabel(addEffectActionId(kind)),
-        shortcuts: [addEffectActionId(kind)],
-        icon: Icons.auto_fix_high_outlined,
-        enabled:
-            holder != null && session.effectsAndFx.canAddEffect(holder, kind),
-        onSelected: holder == null
-            ? null
-            : () => session.effectsAndFx.addEffect(holder, kind),
-      );
 
   /// The plugins this device has installed (I-132), under their own
   /// heading — each added as an effect of it, and deleted off the device
@@ -647,3 +632,20 @@ class TimelineBarMenus {
     );
   }
 }
+
+/// The entry that adds an effect of [kind] to [holder]'s chain on
+/// [session] — dimmed where its gate refuses (`EffectsAndFx.canAddEffect`).
+PanelFlyoutItem _addEffectItem(
+  EditorSessionManager session,
+  EffectChainHolder? holder,
+  EffectKind kind,
+) => PanelFlyoutItem(
+  keyValue: 'add-effect-${kind.jsonValue}',
+  label: editorActionLabel(addEffectActionId(kind)),
+  shortcuts: [addEffectActionId(kind)],
+  icon: Icons.auto_fix_high_outlined,
+  enabled: holder != null && session.effectsAndFx.canAddEffect(holder, kind),
+  onSelected: holder == null
+      ? null
+      : () => session.effectsAndFx.addEffect(holder, kind),
+);

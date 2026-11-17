@@ -740,7 +740,6 @@ final class _DerivedSound {
     _kickOnce(
       sourcePath,
       key,
-      hold,
       () => _store._equalizeRunner(
         EqualizeRequest(
           samples: samples,
@@ -774,7 +773,6 @@ final class _DerivedSound {
     _kickOnce(
       sourcePath,
       key,
-      hold,
       () => _checkpointsOnAWorker(reader, span),
       (made) => (_checkpoints[sourcePath] ??= {})[span] = made,
     );
@@ -824,22 +822,22 @@ final class _DerivedSound {
   }
 
   /// [making] [sourcePath]'s span at [key] from the conform it holds now,
-  /// for [hold] — kept by [keep] as it lands, while the slot still holds
+  /// for its slot's hold — kept by [keep] as it lands, while the slot holds
   /// that file. One under way a slot: the one asked meanwhile is kicked
   /// when the store is asked again after this one lands.
   void _kickOnce<T>(
     String sourcePath,
     (int, EqualizedSpan) key,
-    _SlotHold hold,
     Future<T> Function() making,
     void Function(T made) keep,
   ) {
+    final at = (key.$2.slot, key.$1);
+    final hold = _holds[at]!;
     final pending = (sourcePath, key.$1, key.$2);
     if (hold.underWay != null || !_equalizePending.add(pending)) {
       return;
     }
     hold.underWay = key;
-    final at = (key.$2.slot, key.$1);
     unawaited(
       _land(sourcePath, _store._entries[sourcePath]!, making, (
         keep: (T made) {

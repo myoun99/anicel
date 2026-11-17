@@ -134,10 +134,12 @@ void main() {
     });
 
     test('a picture row and the V row refuse the sound kind', () {
-      final drawing = session.requireActiveCut.layers.firstWhere(
-        (layer) => layer.kind == LayerKind.animation,
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+      expect(
+        session.activeLayer?.kind,
+        LayerKind.animation,
+        reason: 'fixture: standing on a drawing row',
       );
-      session.selectLayer(drawing.id);
       expect(
         session.effectsAndFx.canAddEffectToActiveLayer(EffectKind.equalizer),
         isFalse,
