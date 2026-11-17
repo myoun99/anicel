@@ -1476,7 +1476,8 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     }
     final sample = sampleLayerEffectAt(
       effect,
-      fxReadFrame(effect.basis, blocks, frameIndex),
+      frameIndex: frameIndex,
+      blocks: blocks,
       worn: worn,
     );
     if (sample.isNoOp) {
@@ -1487,38 +1488,54 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
   return resolved.isEmpty ? const [] : frozenList(resolved);
 }
 
-/// [effect] sampled at [frameIndex] — every lane, whether or not the
-/// sample changes a pixel ([resolveLayerEffectsAt] drops the ones that do
-/// not, and the switched-off ones) — worn as [worn] says.
+/// [effect] sampled for what shows at [frameIndex] on a row whose blocks
+/// are [blocks] — at the frame its basis reads its keys at ([fxReadFrame])
+/// — every lane, whether or not the sample changes a pixel
+/// ([resolveLayerEffectsAt] drops the ones that do not, and the
+/// switched-off ones), worn as [worn] says.
+///
+/// 🚨★**THE ONE SAMPLER — the chain's, the After Effects script's and the
+/// canvas box's.** A box asks where an effect STANDS, and a radial blur of
+/// no Amount stands somewhere all the same. ↩️The box took the chain's
+/// answer (`resolveLayerEffectsAt(…).single`), which drops what changes no
+/// pixel: a radial blur freshly added threw where its centre was asked,
+/// and the release build's grey error box veiled the canvas over a cross
+/// no drag could take (a-radial-blur-centre-lane-veils-the-canvas).
+/// ⛔[blocks] is REQUIRED for [resolveLayerEffectsAt]'s reason.
 ResolvedLayerEffect sampleLayerEffectAt(
-  LayerEffect effect,
-  int frameIndex, {
+  LayerEffect effect, {
+  required int frameIndex,
+  required SplayTreeMap<int, TimelineExposure>? blocks,
   required EffectWorn? worn,
-}) => ResolvedLayerEffect(
-  kind: effect.kind,
-  plugin: effect.plugin,
-  values: [
-    for (final spec in effect.specs)
-      spec.clamp(effectValueAt(effect, spec, frameIndex.toDouble())),
-  ],
-  stand: effect.kind.drawsItsOwnPicture
-      ? effectStandAt(effect.stand, frameIndex.toDouble())
-      : null,
-  points: {
-    for (final MapEntry(key: id, value: keys) in effect.points.entries)
-      id: effectPointAt(keys, frameIndex.toDouble()),
-  },
-  layers: effect.layers,
-  frame: effect.plugin == null ? null : frameIndex,
-  worn: switch ((effect.plugin, worn)) {
-    (_?, (:final owner, :final wearer)) => (
-      owner: owner,
-      effect: effect.id,
-      wearer: wearer,
-    ),
-    _ => null,
-  },
-);
+}) {
+  final read = fxReadFrame(effect.basis, blocks, frameIndex);
+  final time = read.toDouble();
+  return ResolvedLayerEffect(
+    kind: effect.kind,
+    plugin: effect.plugin,
+    values: [
+      for (final spec in effect.specs)
+        spec.clamp(effectValueAt(effect, spec, time)),
+    ],
+    stand: effect.kind.drawsItsOwnPicture
+        ? effectStandAt(effect.stand, time)
+        : null,
+    points: {
+      for (final MapEntry(key: id, value: keys) in effect.points.entries)
+        id: effectPointAt(keys, time),
+    },
+    layers: effect.layers,
+    frame: effect.plugin == null ? null : read,
+    worn: switch ((effect.plugin, worn)) {
+      (_?, (:final owner, :final wearer)) => (
+        owner: owner,
+        effect: effect.id,
+        wearer: wearer,
+      ),
+      _ => null,
+    },
+  );
+}
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the
 /// blur question the folder-buffer decision and the dirty-bounds math ask.

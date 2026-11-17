@@ -36,7 +36,12 @@ void main() {
   void tell(FxPluginOutcomes outcomes, int frame, {required bool failed}) =>
       outcomes.toldFor(
         (owner: row, effect: effect.id, wearer: row),
-        sampleLayerEffectAt(effect, frame, worn: null),
+        sampleLayerEffectAt(
+          effect,
+          frameIndex: frame,
+          blocks: null,
+          worn: null,
+        ),
         cut: const CutId('c'),
         frame: frame,
       )(failed: failed);
@@ -153,7 +158,7 @@ void main() {
 
     plugins.outcomes.toldFor(
       (owner: track.id, effect: fx.id, wearer: track.id),
-      sampleLayerEffectAt(fx, 0, worn: null),
+      sampleLayerEffectAt(fx, frameIndex: 0, blocks: null, worn: null),
       cut: textToolCutId,
       frame: 0,
     )(failed: true);

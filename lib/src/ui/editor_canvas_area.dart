@@ -1451,12 +1451,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final space = _shownThrough(
       session.frameVerbs.layerCanvasPoseSample(row.id),
     );
-    final resolved = resolveLayerEffectsAt(
-      effects: [boxed.effect],
+    final resolved = sampleLayerEffectAt(
+      boxed.effect,
       frameIndex: at.frame,
       blocks: row.fxBlocks,
       worn: (owner: row.id, wearer: row.id),
-    ).single;
+    );
     final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture
         ? _effectPictureBox(
