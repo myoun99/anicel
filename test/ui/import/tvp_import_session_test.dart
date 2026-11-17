@@ -309,7 +309,7 @@ void main() {
       for (final fraction in told)
         if (fraction > 0.5) fraction,
     ];
-    expect(told.first, 0, reason: 'the bar is there from the start');
+    expect(told.first, 0, reason: 'the read tells it before its first piece');
     expect(told, contains(0.5), reason: 'the file read whole');
     expect(baked, hasLength(1), reason: 'one cel, then the stop');
     expect(baked.single, lessThan(1), reason: 'of more than one');

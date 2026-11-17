@@ -127,6 +127,7 @@ void main() {
       'window never comes up', (tester) async {
     final path = await projectNamed(tester, 'Cut 12.anicel');
     final projects = await pumpApp(tester);
+    final told = watchTheBar(tester);
 
     await drop(tester, [path]);
     expect(find.byType(ImportDialog), findsNothing);
@@ -136,6 +137,12 @@ void main() {
     expect(spelled(projects.active.projectFile.path!), path);
     expect(find.byType(ImportDialog), findsNothing);
     expect(pluginsNotHere, findsNothing, reason: 'it wears none');
+    expect(
+      told,
+      [0, 1],
+      reason: 'the bar is the bytes the open reads — none, then all '
+          '(F-608-Q2); a project of no cel reads its document alone',
+    );
   });
 
   testWidgets('a project wearing a plugin this device has not is told so '

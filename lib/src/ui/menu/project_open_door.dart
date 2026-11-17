@@ -232,7 +232,6 @@ final class ProjectOpenDoor {
     CloudWait wait,
     void Function(double) report,
   ) async {
-    report(0);
     final source = await FolderPicker.materializeOpenedFile(
       path,
       within: null,
@@ -404,7 +403,6 @@ final class ProjectOpenDoor {
     CloudWait wait,
     void Function(double) report,
   ) async {
-    report(0);
     final read = await conversion.read(
       path,
       wait,
