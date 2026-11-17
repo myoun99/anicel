@@ -51,15 +51,26 @@ pub(super) const MOST_IN_A_BATCH: usize = 16;
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Batches {
     size: usize,
+    /// What a batch is held to ([`Batches::within`]).
+    budget: Duration,
 }
 
 impl Default for Batches {
     fn default() -> Self {
-        Self { size: 1 }
+        Self::within(CHUNK_BUDGET)
     }
 }
 
 impl Batches {
+    /// Batches held to `budget`: a chunk's at its whole share in every run
+    /// ([`Default`]); another only where a test counts the waits apart
+    /// from the clock — 🔬the crate's debug run, a thousand tests at once,
+    /// came back past a chunk's budget: 73 waits for 512 chunks where
+    /// alone there were some forty (11-17).
+    pub(super) fn within(budget: Duration) -> Self {
+        Self { size: 1, budget }
+    }
+
     /// How many chunks the next batch takes.
     pub(super) fn size(&self) -> usize {
         self.size
@@ -67,9 +78,9 @@ impl Batches {
 
     /// The batch just read back `took`, from its first submit to its cut.
     pub(super) fn took(&mut self, took: Duration) {
-        if took * 2 <= CHUNK_BUDGET {
+        if took * 2 <= self.budget {
             self.size = (self.size * 2).min(MOST_IN_A_BATCH);
-        } else if took > CHUNK_BUDGET {
+        } else if took > self.budget {
             self.size = (self.size / 2).max(1);
         }
     }
@@ -177,7 +188,7 @@ fn turn_time(engine: &Engine, plugin: &Plugin, side: usize, mut turns: u32) -> O
             values: &values,
         };
         let started = Instant::now();
-        match plugin.run(engine, &frame, &mut output, u64::MAX)? {
+        match plugin.run(engine, &frame, &mut output, u64::MAX, Batches::default())? {
             Ok(()) => Some(started.elapsed().as_secs_f64()),
             Err(_) => fail("the probe was cut"),
         }

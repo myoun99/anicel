@@ -83,7 +83,7 @@ impl Plugin {
     #[cfg(test)]
     pub(crate) fn render(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32]) -> Option<Result<(), Cut>> {
         let most = self.most(engine, frame)?;
-        self.run(engine, frame, output, most)
+        self.run(engine, frame, output, most, Batches::default())
     }
 
     /// Runs the render over `frame`'s output into `output` — its pixels as
@@ -93,8 +93,15 @@ impl Plugin {
     /// run cut leaves `output` as it was. The run from words — what the
     /// pace's probe times ([`pace`]) and the tests hold to the CPU's: the
     /// app's runs are over a chain's tiles ([`Self::render_tiled`]), the
-    /// chunks one loop for both ([`Self::chunked`]).
-    fn run(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32], most: u64) -> Option<Result<(), Cut>> {
+    /// chunks one loop for both ([`Self::chunked`]), in `batches`.
+    fn run(
+        &self,
+        engine: &Engine,
+        frame: &Frame<'_>,
+        output: &mut [u32],
+        most: u64,
+        batches: Batches,
+    ) -> Option<Result<(), Cut>> {
         let bindings = self.kernel.bindings();
         let words: Vec<Cow<[u32]>> = bindings
             .iter()
@@ -107,7 +114,7 @@ impl Plugin {
             .zip(&words)
             .map(|(bound, words)| words_buffer(engine, bound.name, words, usage(bound)))
             .collect();
-        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most)? {
+        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most, batches)? {
             return Some(Err(cut));
         }
         if let Some(at) = bindings.iter().position(|bound| bound.name == OUTPUT) {
@@ -177,7 +184,8 @@ impl Plugin {
                 self.tiles.rows_of(engine, row, read, planes, (area * slot as u64) as u32);
             }
         }
-        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most)? {
+        let batches = Batches::default();
+        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most, batches)? {
             return Some(Err(cut));
         }
         let made = match buffer(OUTPUT) {
@@ -204,7 +212,7 @@ impl Plugin {
 
     /// Dispatches the render over `groups` with `bindings`' `buffers`, in
     /// chunks of `most` workgroups at most, each a submit of its own, the
-    /// cut read once a batch of them ([`Batches`]): a run cut stops at the
+    /// cut read once a batch of them (`batches`): a run cut stops at the
     /// end of its batch — a chunk after the cut enters with no share (the
     /// prelude's `anicel_host_enter`) and ends at its first charge. One
     /// loop whichever pictures the run is handed.
@@ -223,13 +231,13 @@ impl Plugin {
         buffers: &[wgpu::Buffer],
         groups: [u32; 2],
         most: u64,
+        mut batches: Batches,
     ) -> Option<Result<(), Cut>> {
         let bound: Vec<_> = bindings.iter().zip(buffers).map(|(bound, buffer)| (bound.number, buffer)).collect();
         let buffer = |name: &str| bindings.iter().position(|bound| bound.name == name).map(|at| &buffers[at]);
         let framed = buffer(FRAME).expect("every render reads its frame as it enters");
         let cut = buffer(CUT).expect("every render reads the cut as it enters");
         let mut left = chunks(groups, most).into_iter().peekable();
-        let mut batches = Batches::default();
         while left.peek().is_some() {
             let began = Instant::now();
             // A write is laid at the next submit, ahead of its work.

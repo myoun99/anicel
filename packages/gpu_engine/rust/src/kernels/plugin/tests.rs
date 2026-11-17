@@ -306,7 +306,7 @@ fn both_of(kernel: Kernel, given: &Given, most: u64) -> [(Vec<u32>, Result<(), C
     let cpu_cut = kernel.render(&frame, &mut cpu);
     let plugin = Plugin::open(engine, kernel).unwrap_or_else(|why| panic!("the device refused: {why}"));
     let mut gpu = start;
-    let gpu_cut = plugin.run(engine, &frame, &mut gpu, most).expect("the device ran it");
+    let gpu_cut = plugin.run(engine, &frame, &mut gpu, most, Batches::default()).expect("the device ran it");
     [(gpu, gpu_cut), (cpu, cpu_cut)]
 }
 
@@ -407,6 +407,13 @@ fn a_batch_doubles_while_its_chunks_come_back_quick_and_halves_when_slow() {
     assert_eq!(after(CHUNK_BUDGET + Duration::from_micros(1)), 8, "past it: halved");
     let slow: Vec<_> = (0..5).map(|_| after(3 * CHUNK_BUDGET)).collect();
     assert_eq!(slow, [4, 2, 1, 1, 1], "one at the least");
+    let mut held = Batches::within(Duration::from_secs(1));
+    held.took(Duration::from_millis(400));
+    assert_eq!(held.size(), 2, "held to its own budget, not a chunk's");
+    held.took(Duration::from_millis(600));
+    assert_eq!(held.size(), 2, "within it but not half: as it was");
+    held.took(Duration::from_millis(1001));
+    assert_eq!(held.size(), 1);
 }
 
 #[test]
@@ -416,13 +423,16 @@ fn a_quick_run_in_many_chunks_waits_for_the_device_a_batch_at_a_time() {
     let engine = first_engine();
     let plugin = Plugin::open(engine, open(IDS).expect("opened")).expect("compiled");
     let mut output = hashed(64 * 64, 3);
+    // Held to a budget no wait passes, however loaded the machine: the
+    // waits are the batches' alone.
+    let quick = Batches::within(Duration::MAX);
     let waits = gpu_engine_waits_here();
-    let run = plugin.run(engine, &given.frame(), &mut output, 1).expect("the device ran it");
+    let run = plugin.run(engine, &given.frame(), &mut output, 1, quick).expect("the device ran it");
     let waited = gpu_engine_waits_here() - waits;
     assert_eq!(run, Ok(()));
-    // Batches of 1, 2, 4, 8 and then 16 where they come back quick, and
-    // the output read: some forty — 513 were it a wait a chunk.
-    assert!(waited < 64, "{waited} waits for 512 chunks");
+    // Batches of 1, 2, 4 and 8, then 31 of 16 and the last one, and the
+    // output read — 513 were it a wait a chunk.
+    assert_eq!(waited, 4 + 31 + 1 + 1, "waits for 512 chunks");
 }
 
 #[test]
