@@ -55,6 +55,20 @@ struct Params {
 
 // A premultiplied word on the blend family's scale: straight, 16 bits a
 // channel. No alpha is no colour.
+//
+// 🚨THE COMPOSITE'S LAW, NOT A SECOND ONE (board
+// the-engine-lays-a-picture-over-by-two-laws, measured 11-17 on the
+// Surface): a frame's pictures are laid by blend_laid, as the plan's rows
+// are. Laid over each other they still part from the rows by a step or two
+// where both are see-through — 39,869 of 65,536 pixels, every alpha over
+// every alpha — because what this reads is premultiplied bytes: a picture
+// the app rasters, and the frame between pictures. A byte of colour times
+// a small alpha keeps less than the byte, so this division finds the
+// straight colour only to the nearest one that premultiplies to it, where
+// the pool hands the composite c * 257 whole. In colours the bytes hold
+// whole the two lay every pixel alike (lay_tests
+// the_export_lays_a_picture_by_the_composite_s_law). ⛔Not to be evened
+// out by a law of its own: the step is lost before the law runs.
 fn widened(word: u32) -> vec4<u32> {
   let alpha = word >> 24u;
   if (alpha == 0u) {

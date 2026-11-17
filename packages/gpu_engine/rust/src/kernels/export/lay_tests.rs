@@ -6,6 +6,10 @@ use super::shown_tests::{shown, shown_on};
 use super::tests::rig;
 use super::{Clear, Cover, Lay, Picture, Shown, Source};
 use crate::device::Engine;
+use crate::kernels::blend::mode::NORMAL;
+use crate::kernels::composite::tests::{Pool, mix, pixel_at, rig as composite_rig, row};
+use crate::kernels::composite::{NO_EDGE, Plan, WHOLE};
+use crate::kernels::shared::tests::premultiplied;
 use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 
@@ -367,4 +371,73 @@ fn a_frame_past_the_device_s_binding_is_read_for_its_clear_bits() {
         }
     }
     assert!(le_words(&read_buffer(&engine, &bits)) == expected);
+}
+
+/// Straight, at `alpha`, its channels each 0 or 255 as `seed` falls at
+/// (`x`, `y`): a colour its premultiplied bytes hold whole — 255 · a / 255
+/// is a, which divides back to 255.
+fn whole_colour(seed: u32, (x, y): (u32, u32), alpha: u32) -> u32 {
+    if alpha == 0 {
+        return 0;
+    }
+    let h = mix(seed ^ (x << 8 | y).wrapping_mul(0x9e37_79b9));
+    let rgb: u32 = (0..3).filter(|c| h >> c & 1 == 1).map(|c| 0xff << (c * 8)).sum();
+    rgb | alpha << 24
+}
+
+// Every alpha laid over every alpha — the lower picture's x, the upper's
+// y — in colours whose premultiplied bytes hold them whole: the export lays
+// the two as the plan stacks two rows in NORMAL, shown premultiplied, on
+// every pixel. 🔬Measured 11-17 on the Surface (board
+// the-engine-lays-a-picture-over-by-two-laws): in colours of any byte the
+// two part on 39,869 of the 65,536 pixels, by 2 at most — the bytes' round
+// trip, which this leaves out (lay.wgsl `widened` has why).
+#[test]
+fn the_export_lays_a_picture_by_the_composite_s_law() {
+    let side = 256;
+    let lower = |x: u32, y: u32| whole_colour(1, (x, y), x);
+    let upper = |x: u32, y: u32| whole_colour(2, (x, y), y);
+    let pixels: Vec<(u32, u32)> =
+        (0..side).flat_map(|y| (0..side).map(move |x| (x, y))).collect();
+
+    let frame = blank(side, side, 0);
+    for each in [&lower as &dyn Fn(u32, u32) -> u32, &upper] {
+        let straight: Vec<u32> = pixels.iter().map(|&(x, y)| each(x, y)).collect();
+        let premultiplied_words = premultiplied(&straight);
+        let shown = uploaded(side, side, |x, y| premultiplied_words[(y * side + x) as usize]);
+        lay(&frame, &shown, (0, 0), u16::MAX, None);
+    }
+
+    let stacked = composite_rig();
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(|x, y| lower(x as u32, y as u32), (0, 0), (2, 2), |_, _| Some(0)),
+        pool.drawn(|x, y| upper(x as u32, y as u32), (0, 0), (2, 2), |_, _| Some(1)),
+    ];
+    let pages = pool.upload(stacked.engine);
+    let steps = [row(0, (0, 0), WHOLE, NORMAL), row(1, (0, 0), WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: &pages,
+        sets: &sets,
+        keys: &[],
+        matrices: &[],
+        chains: &[],
+        steps: &steps,
+        mask: None,
+    };
+    let tiles = [(0, 0), (1, 0), (0, 1), (1, 1)];
+    let done = stacked
+        .composite
+        .run(stacked.engine, &plan, &tiles, NO_EDGE, stacked.composite.widest())
+        .expect("composite");
+    let out = read_buffer(stacked.engine, &done.out);
+    let shown: Vec<u32> = pixels
+        .iter()
+        .map(|&(x, y)| u32::from_le_bytes(pixel_at(&out, &tiles, x as i32, y as i32)))
+        .collect();
+
+    let laid = words(&frame);
+    let screen = premultiplied(&shown);
+    let parted = laid.iter().zip(&screen).filter(|(l, s)| l != s).count();
+    assert_eq!(parted, 0, "pixels the export lays otherwise than the plan stacks");
 }
