@@ -501,7 +501,7 @@ void main() {
           session.repository.requireProject().tracks.single.seLayers.single
               .effects;
       session.selectLayer(const LayerId('s1'));
-      session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.equalizer);
       _select(session, [
         LaneRowAddress(
           const LayerId('s1'),
@@ -514,8 +514,8 @@ void main() {
       pill.duplicate();
 
       expect([for (final effect in seEffects()) effect.kind], [
-        EffectKind.blur,
-        EffectKind.blur,
+        EffectKind.equalizer,
+        EffectKind.equalizer,
       ]);
     });
 

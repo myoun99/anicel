@@ -213,14 +213,15 @@ void main() {
           for (final effect in layer.effects) effect.kind,
     ];
 
-    test('every kind it can hold is lit, a cel number not — and the add '
+    test('every kind it can hold is lit, a cel number and a sound filter '
+        'not — and the add '
         'lands on the track, not on the row the timeline holds', () {
       final session = standingAt(const TrackRowAddress(trackId), 3);
       final storyboard = StoryboardToolbarPanelContext(session);
       for (final kind in effectKindsAddedAlone) {
         expect(
           addOf(session, storyboard, kind).enabled,
-          !kind.drawsItsOwnPicture,
+          !kind.drawsItsOwnPicture && !kind.filtersSound,
           reason: '$kind',
         );
       }

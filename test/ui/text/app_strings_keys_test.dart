@@ -1180,6 +1180,8 @@ void main() {
     'syncedWith': (s) => s.syncedWith,
     'linkWindowUnsync': (s) => s.linkWindowUnsync,
     'tlEffects': (s) => s.tlEffects,
+    'tlEffectsOfSound': (s) => s.tlEffectsOfSound,
+    'tlEffectsOfPicture': (s) => s.tlEffectsOfPicture,
     'tlAddEffectTemplate': (s) => s.tlAddEffectTemplate,
     'tlDropIntoFolderTemplate': (s) => s.tlDropIntoFolderTemplate,
     'tlDropOutOfFolder': (s) => s.tlDropOutOfFolder,
