@@ -436,7 +436,7 @@ pub(super) fn grown(outline: &[Command], by: f64) -> Vec<Command> {
         let normals: Vec<(f64, f64)> = (0..count)
             .map(|edge| {
                 let ((x0, y0), (x1, y1)) = (corners[edge], corners[(edge + 1) % count]);
-                let length = (x1 - x0).hypot(y1 - y0);
+                let length = libm::hypot(x1 - x0, y1 - y0);
                 ((y1 - y0) / length * out, (x0 - x1) / length * out)
             })
             .collect();
@@ -481,7 +481,7 @@ fn flattened(contour: &[Command]) -> Vec<(f64, f64)> {
     let xy = |point: Vector| (f64::from(point.x), f64::from(point.y));
     let mut corners: Vec<(f64, f64)> = Vec::new();
     let mut add = |corner: (f64, f64)| {
-        if corners.last().is_none_or(|&(x, y)| (x - corner.0).hypot(y - corner.1) > SAME) {
+        if corners.last().is_none_or(|&(x, y)| libm::hypot(x - corner.0, y - corner.1) > SAME) {
             corners.push(corner);
         }
     };
@@ -495,7 +495,7 @@ fn flattened(contour: &[Command]) -> Vec<(f64, f64)> {
             Command::QuadTo(control, to) => {
                 let (p0, c, p1) = (last, xy(control), xy(to));
                 // A quadratic is off its chord by a quarter of its bend over the steps squared.
-                let bend = (p0.0 - 2.0 * c.0 + p1.0).hypot(p0.1 - 2.0 * c.1 + p1.1);
+                let bend = libm::hypot(p0.0 - 2.0 * c.0 + p1.0, p0.1 - 2.0 * c.1 + p1.1);
                 let steps = (bend / 4.0 / OFF).sqrt().ceil().max(1.0) as usize;
                 for step in 1..=steps {
                     let t = step as f64 / steps as f64;
@@ -507,9 +507,8 @@ fn flattened(contour: &[Command]) -> Vec<(f64, f64)> {
             Command::CurveTo(first, second, to) => {
                 let (p0, c0, c1, p1) = (last, xy(first), xy(second), xy(to));
                 // A cubic, by three quarters of its larger bend.
-                let bend = (p0.0 - 2.0 * c0.0 + c1.0)
-                    .hypot(p0.1 - 2.0 * c0.1 + c1.1)
-                    .max((c0.0 - 2.0 * c1.0 + p1.0).hypot(c0.1 - 2.0 * c1.1 + p1.1));
+                let bend = libm::hypot(p0.0 - 2.0 * c0.0 + c1.0, p0.1 - 2.0 * c0.1 + c1.1)
+                    .max(libm::hypot(c0.0 - 2.0 * c1.0 + p1.0, c0.1 - 2.0 * c1.1 + p1.1));
                 let steps = (0.75 * bend / OFF).sqrt().ceil().max(1.0) as usize;
                 for step in 1..=steps {
                     let t = step as f64 / steps as f64;
@@ -525,7 +524,7 @@ fn flattened(contour: &[Command]) -> Vec<(f64, f64)> {
             Command::Close => {}
         }
     }
-    if corners.len() > 1 && corners.first().zip(corners.last()).is_some_and(|(a, b)| (a.0 - b.0).hypot(a.1 - b.1) <= SAME) {
+    if corners.len() > 1 && corners.first().zip(corners.last()).is_some_and(|(a, b)| libm::hypot(a.0 - b.0, a.1 - b.1) <= SAME) {
         corners.pop();
     }
     corners
