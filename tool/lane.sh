@@ -3,6 +3,7 @@
 #
 #   bash tool/lane.sh open  <name>     a worktree + branch off master, ready to run
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
+#   bash tool/lane.sh land  <name> <name>…   a bundle: stacked, the gates once (A BUNDLE)
 #   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
 #   bash tool/lane.sh crate <name>     run the GPU engine crate's tests in the lane
 #   bash tool/lane.sh furnish <dir>    a worktree that is not a lane, made ready to run as `open` makes one
@@ -1312,15 +1313,28 @@ cmd_land() {
   # ⛔NOTHING LANDS ON AN AWAY MACHINE. Its master is a copy of the trunk;
   # a merge into it would be a second trunk that no other machine has.
   away && die "nothing lands on an away machine ($MACHINE) — \`send\` the lane to the trunk's"
-  local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
-  name="$(lane_named "$name")" || exit 1
-  local p; p="$(lane_path "$name")"
-  require_worktree "$p"
+  [ $# -gt 0 ] || die "land needs a name"
+  local name p names=()
+  for name in "$@"; do
+    name="$(lane_named "$name")" || exit 1
+    p="$(lane_path "$name")"
+    require_worktree "$p"
+    names+=("$name")
+  done
 
   land_turn
 
-  lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
+  for name in "${names[@]}"; do
+    p="$(lane_path "$name")"
+    lane_is_clean "$p" || die "uncommitted changes in work/$name — commit them first
   A '??' line is a file nobody added; it does NOT travel with the merge."
+  done
+  if [ "${#names[@]}" -gt 1 ]; then
+    land_bundle "${names[@]}"
+    return
+  fi
+  name="${names[0]}"
+  p="$(lane_path "$name")"
 
   # MEASURED ONCE: the gates passed on this very commit, and the trunk has
   # not moved from under it — the tree that merges is the tree that was
@@ -1354,13 +1368,21 @@ cmd_land() {
 
   git -C "$ROOT" merge --ff-only "work/$name" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
   echo "lane: merged work/$name -> $(git -C "$ROOT" log --oneline -1)"
+  lanes_landed "$name"
+}
 
-  # rm, and not `git worktree remove`, as `drop` says why.
-  rm -rf "$p" 2>/dev/null
-  git -C "$ROOT" worktree prune
-  git -C "$ROOT" branch -d "work/$name" 2>/dev/null
-  # The stamp was for the lane that just merged; the name is free again.
-  git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
+# What follows a merge, for each lane named that master now holds — one
+# `land`'s lane, or the lanes of a bundle's stack (A BUNDLE, below).
+lanes_landed() {
+  local name gone
+  for name in "$@"; do
+    # rm, and not `git worktree remove`, as `drop` says why.
+    rm -rf "$(lane_path "$name")" 2>/dev/null
+    git -C "$ROOT" worktree prune
+    git -C "$ROOT" branch -d "work/$name" 2>/dev/null
+    # The stamp was for the lane that just merged; the name is free again.
+    git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
+  done
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
   # ⛔NOBODY IS THERE TO ANSWER A LOGIN. A land runs unattended, and with no
   # saved login git-credential-manager waited for one: the land never
@@ -1379,12 +1401,152 @@ cmd_land() {
   # it looks in is the mirror's. Gone before the trunk was there, the lane
   # read as one nobody took (card
   # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
-  local gone
-  for gone in "sent/$name" "gated/$name" "work/$name"; do
-    mirror_git push --quiet "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+  for name in "$@"; do
+    for gone in "sent/$name" "gated/$name" "work/$name"; do
+      mirror_git push --quiet "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+    done
   done
   # A package missing here is the next open's to name.
   resolve_packages "$ROOT" >/dev/null 2>&1 || true
+}
+
+# 🧺A BUNDLE: `land <a> <b> …` (card queued-lanes-land-under-one-gate, 관제
+# 2026-11-17 for 유저 「할수있는거 최대한하자」). The landing chain gated its
+# lanes one at a time: four took 58 minutes that day, 7 to 22 a lane. As a
+# merge queue's batch does (Google's TAP, Uber's SubmitQueue, GitHub's merge
+# queue) and master_check's wide run: each lane is rebased onto the one
+# before it, so the last holds them all, and ONE run of the gates on it
+# stands for the stack. Green, master fast-forwards to it. Red, the stack is
+# halved — the gates run on the middle lane, which holds every lane up to it
+# — down to the first lane whose stack is red: the lanes before it land, it
+# is refused, and the lanes after it are bundled again without it. A lane
+# that does not rebase onto the ones before it is left out as it was, to
+# land alone, where its conflict is resolved.
+# The refusals hold for every lane of it — 1 (each is a worktree), 2 (none
+# is removed before the merge that holds it), 4 (master moves last), 7 (each
+# is unmoved since its stack was measured) — and 3 and 8 for the stack,
+# which is what merges. ⚠️A stamp is for a lane on the trunk alone, not for
+# a stack: a bundle measures every lane in it.
+# Its exit is 0 when every lane landed, and 1 when one was refused or left
+# out; the last lines say which.
+
+# The bundle being landed: each lane, the commit its own commits sit on, the
+# commit it held when the land began, and the one its stack was measured at.
+BUNDLE=() BELOW=() ORIG=() HEADS=() LANDED=() REFUSED=() LEFT_OUT=()
+
+land_bundle() {
+  local name first t
+  for name in "$@"; do
+    BUNDLE+=("$name")
+    BELOW+=("$(git -C "$ROOT" merge-base "$TRUNK" "work/$name")")
+    ORIG+=("$(git -C "$ROOT" rev-parse "work/$name")")
+  done
+  echo "lane: a bundle of ${#BUNDLE[@]} — ${BUNDLE[*]}"
+  while [ "${#BUNDLE[@]}" -gt 0 ]; do
+    stack_bundle
+    [ "${#BUNDLE[@]}" -gt 0 ] || break
+    t=$(( ${#BUNDLE[@]} - 1 ))
+    if stack_is_green "$t"; then
+      land_stack "$t"
+      break
+    fi
+    first_red
+    first=$FIRST_RED
+    [ "$first" -eq 0 ] || land_stack $(( first - 1 ))
+    REFUSED+=("${BUNDLE[$first]}")
+    echo "lane: work/${BUNDLE[$first]} is red on the lanes before it — refused; its gates' logs: $(lane_path "${BUNDLE[$first]}")/build"
+    # The lanes after it, bundled again: their own commits sit on its.
+    BUNDLE=("${BUNDLE[@]:$(( first + 1 ))}")
+    BELOW=("${BELOW[@]:$(( first + 1 ))}")
+    ORIG=("${ORIG[@]:$(( first + 1 ))}")
+  done
+  echo "lane: landed — ${LANDED[*]:-none}"
+  [ "${#REFUSED[@]}" -eq 0 ] || echo "lane: refused, red — ${REFUSED[*]}"
+  [ "${#LEFT_OUT[@]}" -eq 0 ] || echo "lane: left out, a conflict — ${LEFT_OUT[*]}"
+  [ "${#REFUSED[@]}" -eq 0 ] && [ "${#LEFT_OUT[@]}" -eq 0 ] || exit 1
+}
+
+# Rebases each lane of the bundle onto the one before it, the first onto the
+# trunk: its own commits alone, the ones over BELOW. A lane that does not
+# rebase is put back as it was and leaves the bundle (LEFT_OUT) — back to
+# the commit it held, for a stack it sat on may since have been refused.
+stack_bundle() {
+  local i name p base
+  local kept=() below=() orig=() heads=()
+  base="$(git -C "$ROOT" rev-parse "$TRUNK")"
+  for i in "${!BUNDLE[@]}"; do
+    name="${BUNDLE[$i]}"
+    p="$(lane_path "$name")"
+    require_worktree "$p"
+    if git -C "$p" rebase --onto "$base" "${BELOW[$i]}" >/dev/null 2>&1; then
+      kept+=("$name")
+      below+=("$base")
+      orig+=("${ORIG[$i]}")
+      base="$(git -C "$p" rev-parse HEAD)"
+      heads+=("$base")
+    else
+      git -C "$p" rebase --abort >/dev/null 2>&1
+      git -C "$p" reset -q --hard "${ORIG[$i]}"
+      LEFT_OUT+=("$name")
+      echo "lane: work/$name does not rebase onto the lanes before it — left out, as it was; land it alone, where the conflict is resolved"
+    fi
+  done
+  BUNDLE=(${kept[@]+"${kept[@]}"})
+  BELOW=(${below[@]+"${below[@]}"})
+  ORIG=(${orig[@]+"${orig[@]}"})
+  HEADS=(${heads[@]+"${heads[@]}"})
+}
+
+# Whether the gates are green on the stack up to the lane at $1 of the
+# bundle — that lane as it is checked out. Red is a gate's own refusal (3 or
+# 8); a gate that could not run at all stops the land, for halving would
+# only refuse every lane in turn.
+stack_is_green() {
+  local name="${BUNDLE[$1]}" p out rc=0
+  p="$(lane_path "$name")"
+  out="$(mktemp "${TMPDIR:-/tmp}/lane-stack.XXXXXX")"
+  echo "lane: the gates on the stack up to work/$name ($(( $1 + 1 )) of the bundle's lanes)"
+  ( gates "$name" "$p" land ) >"$out" 2>&1 || rc=$?
+  still_landing
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$out"
+    return 0
+  fi
+  if ! grep -q "analyze is not clean\|the architecture gate is red\|crate's tests are red\|ran no test in\|has not downloaded every package" "$out"; then
+    cat "$out" >&2
+    rm -f "$out"
+    die "the gates could not run on the stack up to work/$name — nothing more of the bundle lands"
+  fi
+  tail -5 "$out"
+  rm -f "$out"
+  return 1
+}
+
+# The first lane of the bundle whose stack is red, into FIRST_RED, the whole
+# stack being red: halved down, a green stack moving the search past it. The
+# search ends just past the last green it measured, so the lanes before the
+# one it names stand on a stack measured green — never on one it guessed.
+first_red() {
+  local lo=0 hi=$(( ${#BUNDLE[@]} - 1 )) mid
+  while [ "$lo" -lt "$hi" ]; do
+    mid=$(( (lo + hi) / 2 ))
+    if stack_is_green "$mid"; then lo=$(( mid + 1 )); else hi=$mid; fi
+  done
+  FIRST_RED=$lo
+}
+
+# Lands the lanes of the bundle up to the one at $1, whose stack was
+# measured green: refusal 7 for each, master to the last, and then each
+# leaves as a land's lane does.
+land_stack() {
+  local i
+  for (( i = 0; i <= $1; i++ )); do
+    unmoved_since "$(lane_path "${BUNDLE[$i]}")" "${HEADS[$i]}" land
+  done
+  git -C "$ROOT" merge --ff-only "work/${BUNDLE[$1]}" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
+  echo "lane: merged ${BUNDLE[*]:0:$(( $1 + 1 ))} -> $(git -C "$ROOT" log --oneline -1)"
+  lanes_landed "${BUNDLE[@]:0:$(( $1 + 1 ))}"
+  LANDED+=("${BUNDLE[@]:0:$(( $1 + 1 ))}")
 }
 
 { case "${1:-}" in
@@ -1402,5 +1564,5 @@ cmd_land() {
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
-  *) sed -n '2,18p' "$0"; exit 2 ;;
+  *) sed -n '2,19p' "$0"; exit 2 ;;
 esac; exit; }

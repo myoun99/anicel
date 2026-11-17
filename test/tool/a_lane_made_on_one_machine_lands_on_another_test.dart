@@ -448,8 +448,15 @@ void main() {
 
     test('🚨a landed lane leaves the mirror — its offer, its stamp and its '
         'copy — after the merge, and without asking for a login', () {
-      final land = lane.codeOf('cmd_land');
-      final merged = at(land, 'merge --ff-only');
+      final command = lane.codeOf('cmd_land');
+      expect(
+        at(command, r'lanes_landed "$name"'),
+        greaterThan(at(command, 'merge --ff-only')),
+        reason: 'what follows the merge is the one function a bundle runs '
+            'too (A BUNDLE)',
+      );
+      final land = lane.codeOf('lanes_landed');
+      final merged = at(land, r'branch -d "work/$name"');
       final names = at(
         land,
         r'for gone in "sent/$name" "gated/$name" "work/$name"; do',

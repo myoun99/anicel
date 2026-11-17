@@ -174,6 +174,7 @@ case "${LANE_TEST_FLUTTER:-ok}" in
   commit) [ "$1" = analyze ] && { echo x >> during.txt; git add during.txt; git commit -q -m "during the gates"; } ;;
   together) [ "$1" = analyze ] && { sleep 3; echo "$(basename "$PWD") analyze done" >> "$LANE_TEST_LOG"; } ;;
   red_arch) [ "$1" = test ] && { echo "[E] the red one"; exit 1; } ;;
+  red_with) [ "$1" = analyze ] && [ -f breaks.txt ] && exit 1 ;;
 esac
 exit 0
 EOF
@@ -901,6 +902,45 @@ quiet "$E/home" open z3; commit "$HW/lane-z3" z3.txt "z3"
 O=$(cd "$E/home" && timeout 120 bash tool/lane.sh land z3 2>&1)
 has "a killed waiter's ticket holds no one back" "$O" "merged work/z3"
 check "and goes" "$(ls "$T.line" 2>/dev/null | wc -l | tr -d ' ')" 0
+
+say "1 A BUNDLE: the lanes queued together stack, and the gates run once on the top — a lane that conflicts is left out as it was, and a red one is found by halving, refused, and the lanes after it land without it"
+for n in 1 2 3; do quiet "$E/home" open "b$n"; commit "$HW/lane-b$n" "b$n.txt" "b$n"; done
+G0=$(gates_run)
+O=$(out "$E/home" land b1 b2 b3)
+has "three lanes land together" "$O" "merged b1 b2 b3"
+has "and say so" "$O" "[exit 0]"
+check "under one run of the gates" "$(( $(gates_run) - G0 ))" 2
+check "in their order, master at the last" "$(git -C "$E/home" log --format=%s -3 master | tr '\n' ' ')" "b3 b2 b1 "
+check "and none of them is left" "$(ls -d "$HW"/lane-b* 2>/dev/null | wc -l | tr -d ' ')" 0
+quiet "$E/home" open c1; commit "$HW/lane-c1" c.txt "c1's c"
+quiet "$E/home" open c2; commit "$HW/lane-c2" c.txt "c2's c"
+quiet "$E/home" open c3; commit "$HW/lane-c3" c3.txt "c3"
+C2=$(git -C "$HW/lane-c2" rev-parse HEAD)
+O=$(out "$E/home" land c1 c2 c3)
+has "a lane that conflicts with the ones before it is left out" "$O" "left out, a conflict — c2"
+has "the others land" "$O" "landed — c1 c3"
+has "and the land says not all of them did" "$O" "[exit 1]"
+check "the one left out is as it was" "$(git -C "$HW/lane-c2" rev-parse HEAD)" "$C2"
+check "and clean" "$(git -C "$HW/lane-c2" status --porcelain | wc -l | tr -d ' ')" 0
+quiet "$E/home" drop c2
+quiet "$E/home" open r1; commit "$HW/lane-r1" r1.txt "r1"
+quiet "$E/home" open r2; commit "$HW/lane-r2" breaks.txt "r2 breaks the build"
+quiet "$E/home" open r3; commit "$HW/lane-r3" r3.txt "r3"
+quiet "$E/home" open r4; commit "$HW/lane-r4" r4.txt "r4"
+G0=$(gates_run)
+O=$(LANE_TEST_FLUTTER=red_with out "$E/home" land r1 r2 r3 r4)
+has "the red lane is found and refused" "$O" "refused, red — r2"
+has "the lanes before it and after it land" "$O" "landed — r1 r3 r4"
+has "and the land says not all of them did" "$O" "[exit 1]"
+check "master holds them, and not the red one" \
+  "$(git -C "$E/home" log --format=%s -3 master | tr '\n' ' ')" "r4 r3 r1 "
+check "nor its file" "$([ -e "$E/home/breaks.txt" ] && echo there || echo gone)" gone
+# The top (red), the halves down to r2 (r2 red, r1 green), then r3 and r4
+# again without it: four runs of the gates, two runs each.
+check "found by halving: four runs of the gates in all" "$(( $(gates_run) - G0 ))" 8
+check "the red lane stays, on the lane that landed before it" \
+  "$(git -C "$HW/lane-r2" rev-parse HEAD~1)" "$(git -C "$E/home" rev-parse master~2)"
+check "with its own commit alone" "$(git -C "$HW/lane-r2" log --format=%s master..HEAD | tr '\n' ' ')" "r2 breaks the build "
 
 echo
 echo "== $FAILS failed"

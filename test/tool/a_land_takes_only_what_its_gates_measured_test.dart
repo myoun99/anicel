@@ -542,7 +542,11 @@ void main() {
         'dropped, leave no stamp for a later lane of that name', () {
       const gone = r'update-ref -d "$(gate_ref "$name")"';
       final land = codeOf('cmd_land');
-      expect(at(land, gone), greaterThan(at(land, 'merge --ff-only')));
+      expect(
+        at(land, r'lanes_landed "$name"'),
+        greaterThan(at(land, 'merge --ff-only')),
+      );
+      expect(at(codeOf('lanes_landed'), gone), isNot(-1));
       expect(at(codeOf('cmd_drop'), gone), isNot(-1));
     });
 
