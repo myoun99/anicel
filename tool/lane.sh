@@ -276,6 +276,36 @@ require_worktree() {
 # the directories all sit side by side.
 lane_path() { echo "$LANES/lane-${1//\//-}"; }
 
+# A LANE WHOSE PATH THE ENGINE'S LINK CANNOT REACH IS REFUSED BEFORE IT IS
+# MADE (card a-long-lane-name-breaks-the-engine-link, 저장 2026-11-17).
+# The app's build hook builds the GPU engine in the trunk's
+# rust/target-hook through a junction it stands in the lane while the
+# build runs, `<hook output>/target` (packages/gpu_engine/hook/
+# target_link.dart), and link.exe opens each dependency by that path: on
+# the Surface a lane named 30 characters made it 261, and the link died
+# with LNK1104 — which reads like a full disk and is not one. Rust itself
+# reads past 259; link.exe does not, so the deepest file it opens is what
+# counts: the longest path under the folder's `deps` (100 characters on the
+# main PC that day: x86_64-pc-windows-msvc/release/deps/libwasmtime_
+# internal_jit_icache_coherence-<hash>.rmeta). ⚖️Measured from the folder
+# each time rather than a number of characters written here — the users'
+# folders differ from machine to machine, and a dependency's name can grow.
+# A machine whose folder is not there yet has built nothing to measure, and
+# opens as before. Only Windows has the 259.
+fits_the_link() {
+  local p="$1" hook deepest reach
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *) return 0 ;; esac
+  hook="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)/packages/gpu_engine/rust/target-hook"
+  [ -d "$hook" ] || return 0
+  deepest=$(cd "$hook" && find . -path '*/deps/*' -print \
+    | awk '{ l = length($0) - 2; if (l > m) m = l } END { print m + 0 }')
+  # <lane>/.dart_tool/hooks_runner/shared/gpu_engine/build/<10>/target/<deepest>
+  reach=$(( ${#p} + 49 + 10 + 8 + deepest ))
+  [ "$reach" -le 259 ] && return 0
+  die "a lane at $p would put the engine's deepest link input $reach characters deep — Windows' link.exe stops at 259 (LNK1104).
+  Pick a name $(( reach - 259 )) character(s) shorter."
+}
+
 # Where a lane's gate stamp is kept on this machine: the commit `gate` saw
 # every gate pass on (MEASURED ONCE, above). ⛔Not under refs/heads — it is
 # no branch, and `backup`, `list` and the lanes' own patterns must never
@@ -322,6 +352,7 @@ cmd_open() {
   cmd_sweep >/dev/null
   local p; p="$(lane_path "$name")"
   [ -e "$p" ] && die "already there: $p (pick another name — reusing a path mixes the old build cache in)"
+  fits_the_link "$p"
   git -C "$ROOT" worktree add "$p" -b "work/$name" "$TRUNK" >/dev/null || die "worktree add failed"
   furnish "$p"
   echo "$p"
@@ -741,6 +772,7 @@ cmd_receive() {
   local p; p="$(lane_path "$name")"
   cmd_sweep >/dev/null
   [ -e "$p" ] && die "already there: $p (drop it first to take the lane again)"
+  fits_the_link "$p"
   git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name" \
     && die "a branch work/$name is already here (drop it first to take the lane again)"
   mirror_git fetch --quiet "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
