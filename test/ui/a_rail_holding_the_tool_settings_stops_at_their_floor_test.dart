@@ -102,6 +102,13 @@ void main() {
     expect(widthOf(tester, toolSettingsGroupId), atTheFloorOf(floor));
     expectWordsWhole(tester);
 
+    // The GRIP stopped there, not only the drawing: the way back out moves
+    // the edge from the first pixel (유저 R4 #13 — a grip that banked travel
+    // past a floor followed the cursor late and short).
+    final held = widthOf(tester, toolSettingsGroupId);
+    await pull(tester, library, 40);
+    expect(widthOf(tester, toolSettingsGroupId), closeTo(held + 40, 1));
+
     // The right rail's inner edge is its left one.
     await pull(tester, rightRail, 250);
     expect(widthOf(tester, rightRail), lessThan(floor));
