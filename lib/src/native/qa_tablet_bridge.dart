@@ -205,8 +205,9 @@ class QaTabletBridge {
   /// app window yet.
   bool open({required Duration within}) => _open(within.inMilliseconds) != 0;
 
-  /// Drains the driver's queue and hands over the newest packets not
-  /// handed yet, the oldest first (empty list when idle/closed).
+  /// Hands over the newest packets heard and not handed yet, the oldest
+  /// first — asking the driver nothing: the reader's own thread drains its
+  /// queue (empty list when idle/closed).
   List<QaTabletPacket> poll() {
     final count = _poll(_pollBuffer, _pollCapacity);
     if (count <= 0) {

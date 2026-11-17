@@ -7,16 +7,20 @@
 //! - wintab32.dll is loaded DYNAMICALLY; a machine without a driver is a
 //!   normal, silent state (`qat_available` 0) — never a link error.
 //! - The packet queue is drained without CXO_MESSAGES (no message pump
-//!   dependency) into the packets heard ([`Heard`]), by Dart's poll and by
-//!   the mouse reader at each move (points_win.rs), which gives each of its
-//!   points the pressure of the packet nearest it in time.
+//!   dependency) into the packets heard ([`Heard`]) by the reader's own
+//!   thread ([`DRAIN_EVERY`]), and by a message that presses
+//!   (points_win.rs). Dart's poll reads what was heard, and so do the
+//!   points' readers (points_win.rs), which give each point the pen or a
+//!   mouse made the pressure of the packet nearest it in time.
 //! - The Wintab structs and constants are declared here (the vendor header
 //!   set is not in the Windows SDK; the LOGCONTEXT layout and the PK_*
 //!   serialization order are stable, documented ABI).
 
 use std::collections::VecDeque;
 use std::ffi::c_void;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
@@ -49,8 +53,24 @@ const TPS_QUEUE_ERR: u32 = 0x0002;
 ///
 /// ↩️It was 128: at a pen's 200 Hz, 0.64 s — and a UI thread held longer
 /// than that (a plugin's frames held it over a second, 11-17) lost every
-/// packet between. 1024 is five seconds of them.
+/// packet between. 1024 is five seconds of them. 🔬The main PC's Wacom
+/// driver refuses 1024 and took 128 (11-18) — its queue is the reader's
+/// own thread's to drain, never held up by the UI's ([`DRAIN_EVERY`]).
 pub(crate) const QUEUE: usize = 1024;
+
+/// How long the reader's own thread waits between drains of the queue.
+///
+/// 🚨THE APP'S THREAD NEVER WAITS ON THE DRIVER (F-600 · H61, 2026-11-18): a
+/// call into Wacom's wintab32 goes to its service and back — 🔬main PC, a
+/// context opened on a window never shown: WTPacketsGet took 246–251 µs at
+/// the median whatever it was asked for, 117 µs of it the calling thread's
+/// CPU, and as long from another thread. Drained at each ask, a mouse's
+/// sample under Wintab spent 1.5–1.75 ms of the UI thread — six or seven
+/// asks of it: its pressure, lean and twist, and whether the pen is down —
+/// where the standard service spends nothing, and a mouse hands on 16–64
+/// samples a frame. Every 4 ms a pen's packet of every 5 ms (200 Hz) is
+/// heard before the message drawn at it is read, for ~3% of one core.
+const DRAIN_EVERY: Duration = Duration::from_millis(4);
 
 /// AXIS: a device axis's range, unit and resolution.
 #[repr(C)]
@@ -318,24 +338,65 @@ impl Heard {
 struct Opened {
     context: *mut c_void,
     scales: Scales,
-    /// How far from a mouse move a packet may be to give it its pressure:
-    /// the app's own window for a fresh packet.
+    /// How far from a point a packet may be to give it its pressure: the
+    /// app's own window for a fresh packet.
     within: u32,
-    /// Room for the whole queue: one drain takes all of it.
-    room: Vec<Packet>,
     heard: Heard,
 }
 
-impl Opened {
-    /// Takes every packet the driver has queued into what was heard.
-    fn drain(&mut self, driver: &Driver) {
-        // SAFETY: the open context and room for QUEUE packets.
-        let got = unsafe { (driver.packets_get)(self.context, QUEUE as i32, self.room.as_mut_ptr()) };
-        // ⛔A DRIVER IS NOT TRUSTED PAST WHAT IT WAS ASKED FOR: the C read on
-        // past its 64 for a count it was handed (native-memory-safety).
-        let got = (got.max(0) as usize).min(QUEUE);
-        self.heard.hear(&self.room[..got]);
+/// The open context's queue, and room for the whole of it: what drains it
+/// — the reader's own thread, a press ([`drain`]) — takes it in turn, and
+/// hears what it took before the next takes any, so the packets heard keep
+/// the driver's order.
+struct Drain {
+    driver: Driver,
+    context: *mut c_void,
+    room: Vec<Packet>,
+    /// The reader's own thread, gone once the drain is taken away.
+    thread: Option<JoinHandle<()>>,
+}
+
+// SAFETY: a context handle and the driver's entry points, only ever used
+// under the lock — 🔬the driver answers a context's drain from a thread
+// that did not open it as it answers the one that did (11-18).
+unsafe impl Send for Drain {}
+
+static DRAIN: Mutex<Option<Drain>> = Mutex::new(None);
+
+fn drain_lock() -> MutexGuard<'static, Option<Drain>> {
+    DRAIN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Takes every packet the driver has queued into what was heard; false with
+/// no context open. Under the drain's lock first, the tablet's after it.
+fn drain_once() -> bool {
+    let mut drain = drain_lock();
+    let Some(drain) = drain.as_mut() else {
+        return false;
+    };
+    // SAFETY: the open context and room for QUEUE packets.
+    let got = unsafe { (drain.driver.packets_get)(drain.context, QUEUE as i32, drain.room.as_mut_ptr()) };
+    // ⛔A DRIVER IS NOT TRUSTED PAST WHAT IT WAS ASKED FOR: the C read on
+    // past its 64 for a count it was handed (native-memory-safety).
+    let got = (got.max(0) as usize).min(QUEUE);
+    if got > 0
+        && let Some(opened) = tablet().opened.as_mut()
+    {
+        opened.heard.hear(&drain.room[..got]);
     }
+    true
+}
+
+/// Drains the queue now: a message that presses, whose point and buttons
+/// are read before the reader's own thread drains again.
+///
+/// 🚨THE PEN'S CONTACT IS HEARD AT ITS PRESS (H43, 2026-09-26): read off a
+/// drain a whole wait behind, the packet the app took was, as often as
+/// not, the pen still HOVERING — pressure 0, tip up. The first dab was
+/// stamped with that, and a press whose buttons were read off it did not
+/// draw at all; the contact packet was already in the driver's queue.
+pub(crate) fn drain() {
+    drain_once();
 }
 
 struct Tablet {
@@ -441,22 +502,30 @@ pub(crate) fn open(within: u32) -> bool {
     let pressure = driver.info::<Axis>(WTI_DEVICES, DVC_NPRESSURE);
     let orientation = driver.info::<[Axis; 3]>(WTI_DEVICES, DVC_ORIENTATION);
     let scales = Scales::of(pressure, orientation);
+    tablet.opened = Some(Opened { context: opened, scales, within, heard: Heard::default() });
+    drop(tablet);
     let room = vec![Packet::default(); QUEUE];
-    tablet.opened = Some(Opened { context: opened, scales, within, room, heard: Heard::default() });
+    *drain_lock() = Some(Drain { driver, context: opened, room, thread: None });
+    let thread = std::thread::Builder::new().name("wintab drain".to_owned()).spawn(|| {
+        while drain_once() {
+            std::thread::sleep(DRAIN_EVERY);
+        }
+    });
+    if let (Ok(thread), Some(drain)) = (thread, drain_lock().as_mut()) {
+        drain.thread = Some(thread);
+    }
     true
 }
 
-/// Drains the queue and hands `out` the newest of the packets not handed
-/// yet ([`Heard::hand`]), a record of 8 floats each ([`Scales::record`]) for
-/// as many whole records as it holds. The record count; 0 with nothing new,
-/// or no context open.
+/// Hands `out` the newest of the packets heard and not handed yet
+/// ([`Heard::hand`]), a record of 8 floats each ([`Scales::record`]) for as
+/// many whole records as it holds — asking the driver nothing. The record
+/// count; 0 with nothing new, or no context open.
 pub(crate) fn poll(out: &mut [f32]) -> usize {
     let mut tablet = tablet();
-    let tablet = &mut *tablet;
-    let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.as_mut()) else {
+    let Some(opened) = tablet.opened.as_mut() else {
         return 0;
     };
-    opened.drain(&driver);
     let scales = opened.scales;
     let mut handed = 0;
     for (packet, record) in opened.heard.hand(out.len() / 8).zip(out.chunks_exact_mut(8)) {
@@ -467,17 +536,15 @@ pub(crate) fn poll(out: &mut [f32]) -> usize {
 }
 
 /// The driver's pressure, 0..1, at each of `times` on the message clock —
-/// the packet's nearest it within the window the context opened with
+/// the packet heard nearest it within the window the context opened with
 /// ([`Heard::near`]) — and NaN where no packet is; all NaN while no context
-/// is open. The queue drained first, and how far its newest packet is
-/// behind the message being handled, at `message`, noted.
+/// is open. Asks the driver nothing; notes how far the newest packet heard
+/// is behind the message being handled, at `message`.
 pub(crate) fn pressures_at(message: u32, times: &[u32]) -> Vec<f64> {
     let mut tablet = tablet();
-    let tablet = &mut *tablet;
-    let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.as_mut()) else {
+    let Some(opened) = tablet.opened.as_mut() else {
         return vec![f64::NAN; times.len()];
     };
-    opened.drain(&driver);
     opened.heard.behind(message);
     let (heard, scales, within) = (&opened.heard, opened.scales, opened.within);
     let pressure = |time| heard.near(time, within).map_or(f64::NAN, |packet| scales.pressure_of(packet));
@@ -493,9 +560,17 @@ pub(crate) fn heard() -> Option<(u32, Option<i32>)> {
     Some((heard.overflowed, heard.gap))
 }
 
+/// Closes the context: what was heard let go of, the drain taken away and
+/// its thread gone — no call into the driver left on its context — before
+/// the driver is told.
 pub(crate) fn close() {
-    let mut tablet = tablet();
-    if let (Some(driver), Some(opened)) = (tablet.driver, tablet.opened.take()) {
+    let opened = tablet().opened.take();
+    let drain = drain_lock().take();
+    if let Some(thread) = drain.and_then(|drain| drain.thread) {
+        let _ = thread.join();
+    }
+    let driver = tablet().driver;
+    if let (Some(driver), Some(opened)) = (driver, opened) {
         // SAFETY: the context this opened, closed once.
         let _ = unsafe { (driver.close)(opened.context) };
     }

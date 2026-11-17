@@ -43,23 +43,28 @@ pub(crate) struct Point {
     pub(crate) pressure: f64,
     pub(crate) tilt: f64,
     pub(crate) orientation: f64,
+    /// The tablet DRIVER's pressure, 0..1, at the point's own moment — the
+    /// Wintab packet nearest it (wintab.rs) — where the point is the pen's
+    /// or a mouse's (a pen the OS hands over as a mouse) and a Wintab
+    /// context is open; NaN elsewhere.
+    pub(crate) driven: f64,
 }
 
 /// The numbers a point is handed to the app as ([`Point::words`]).
-pub(crate) const POINT_WORDS: usize = 6;
+pub(crate) const POINT_WORDS: usize = 7;
 
 impl Point {
     /// A point the OS says nothing of but where and when.
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) fn at(x: f64, y: f64, micros: i64) -> Self {
-        Self { x, y, micros, pressure: f64::NAN, tilt: f64::NAN, orientation: f64::NAN }
+        Self { x, y, micros, pressure: f64::NAN, tilt: f64::NAN, orientation: f64::NAN, driven: f64::NAN }
     }
 
     /// The point as the app reads it (`qa_pen_points_take`): x, y, its time
     /// in microseconds — whole, below 2⁵³ for 285 years of a clock — the
-    /// pressure, the tilt and the orientation.
+    /// pressure, the tilt, the orientation and the driver's pressure.
     pub(crate) fn words(&self) -> [f64; POINT_WORDS] {
-        [self.x, self.y, self.micros as f64, self.pressure, self.tilt, self.orientation]
+        [self.x, self.y, self.micros as f64, self.pressure, self.tilt, self.orientation, self.driven]
     }
 }
 

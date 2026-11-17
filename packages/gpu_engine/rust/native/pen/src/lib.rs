@@ -6,7 +6,7 @@
 //! and what its HID report says (Raw Input — `qpr_*`), which Dart's bridge
 //! (lib/src/native/qa_tablet_bridge.dart) binds there alone, in the GPU
 //! engine's library that carries this crate. Each half keeps the C's ABI —
-//! `qat_abi_version` 2, `qpr_abi_version` 3 — the one the bridge reads
+//! `qat_abi_version` 3, `qpr_abi_version` 3 — the one the bridge reads
 //! (tests.rs holds them to its).
 //!
 //! On Apple: the PEN LEDGER (`qa_pen_ledger_*`, H43) — what UIKit or AppKit
@@ -83,7 +83,8 @@ pub extern "C" fn qat_open(within_ms: i32) -> i32 {
     i32::from(wintab::open(within_ms.max(0) as u32))
 }
 
-/// Drains the queue and hands `out` the newest packets not handed yet as
+/// Hands `out` the newest packets heard and not handed yet — the reader's
+/// own thread drains the driver's queue, and this asks it nothing — as
 /// records of 8 floats — pressure 0..1, bearing, altitude, time in ms,
 /// buttons, oriented, twist, twisted (see `wintab::Scales::record`) — at
 /// most `cap` of them. The record count; 0 with nothing new, or no context

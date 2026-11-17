@@ -9,11 +9,12 @@ import '../../models/app_input_settings.dart';
 /// tablet backend, as a PRESSURE SIDECAR:
 ///
 /// Flutter's pointer events keep driving position and every gesture; this
-/// service polls the DRIVER's packet queue (through [QaTabletBridge]) and
-/// holds the freshest contact pressure/tilt. The brush canvas consults
-/// [freshPacket] per pointer sample — so a pen the OS misreports
-/// (as touch, or as mouse with Ink unchecked) still paints with the
-/// driver's full pressure.
+/// service is handed the packets the reader heard of the DRIVER's queue
+/// (through [QaTabletBridge] — the reader's own thread drains it) and holds
+/// the freshest contact pressure/tilt. The brush canvas reads a point's own
+/// driver pressure first and [freshPacket] otherwise — so a pen the OS
+/// misreports (as touch, or as mouse with Ink unchecked) still paints with
+/// the driver's full pressure.
 ///
 /// Lifecycle: [bind] once at app start — the service follows
 /// [AppInput.settings] (`tabletService == wintab` starts polling, anything
@@ -23,9 +24,9 @@ class WintabPenService {
 
   static final WintabPenService instance = WintabPenService._();
 
-  /// Poll cadence: drivers report 133–200Hz, and the queue the reader asks
-  /// the driver for holds five seconds of them — 8ms drains far ahead of
-  /// loss.
+  /// How often the packets heard are taken: drivers report 133–200Hz, and
+  /// the reader's own thread drains the driver's queue every 4 ms
+  /// (native/pen wintab.rs) — a take asks the driver nothing.
   static const Duration pollInterval = Duration(milliseconds: 8);
 
   /// A pressure sample older than this no longer overrides pointer events
@@ -236,13 +237,19 @@ class WintabPenService {
   /// the caller to use the pointer event's own reading.
   /// [PenSidecars.freshReading] reads a pressure off it.
   ///
-  /// 🚨DRAINS THE QUEUE FIRST (H43, 2026-09-26). The canvas asks at the
-  /// pen's DOWN as well as along the stroke, and the poll timer can be a
-  /// whole [pollInterval] behind: the packet it last took was, as often as
-  /// not, the pen still HOVERING — pressure 0, tip up. The first dab was
-  /// stamped with that, and a press whose buttons were read off it did not
-  /// draw at all. The contact packet was already in the driver's queue; it
-  /// just had not been taken yet.
+  /// Takes what was heard first: the poll timer can be a whole
+  /// [pollInterval] behind.
+  ///
+  /// 🚨THE CONTACT IS HEARD AT THE PRESS (H43, 2026-09-26). The canvas asks at
+  /// the pen's DOWN as well as along the stroke: the packet last taken was,
+  /// as often as not, the pen still HOVERING — pressure 0, tip up. The first
+  /// dab was stamped with that, and a press whose buttons were read off it
+  /// did not draw at all. A message that presses drains the driver's queue
+  /// before Flutter hears it (native/pen points_win.rs).
+  ///
+  /// ↩️This asked the driver itself (09-26 – 11-18): 🔬a quarter of a
+  /// millisecond a call, and a mouse's sample made six or seven of them —
+  /// under Wintab alone (F-600).
   QaTabletPacket? freshPacket({DateTime? now}) {
     if (_timer == null) {
       return null;

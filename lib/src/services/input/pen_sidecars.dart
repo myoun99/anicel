@@ -84,10 +84,11 @@ abstract final class PenSidecars {
     return null;
   }
 
-  /// The driver-side reading of [event]: the pressure its own point
-  /// carried where the platform's reader paired it with the driver
-  /// ([PenPath.drivenPressureOf] — a pen the OS hands over as a mouse), and
-  /// the freshest reading otherwise ([freshReading]).
+  /// The driver-side reading of [event]: the pressure the driver gave its
+  /// own point where the platform's reader paired them
+  /// ([PenPath.drivenPressureOf] — a pen's point or a mouse's, whatever the
+  /// OS hands it over as), and the freshest reading otherwise
+  /// ([freshReading]).
   ///
   /// 🚨THE POINT'S OWN READING FIRST (pen-points-are-taken-off-the-ui-thread,
   /// 2026-11-17): the freshest packet is the pen NOW. After a stall every

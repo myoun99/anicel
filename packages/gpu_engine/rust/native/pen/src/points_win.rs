@@ -11,7 +11,10 @@
 //!
 //! Each batch is handed where the embedder hands Flutter the message's
 //! point: the message's screen pixels put in the view (`ScreenToClient`)
-//! for a pointer, the message's own client pixels for the mouse.
+//! for a pointer, the message's own client pixels for the mouse. A pen's
+//! points and a mouse's take the tablet driver's pressure at each one's own
+//! milliseconds where a Wintab context is open, by one law
+//! ([`wintab::pressures_at`]).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
@@ -28,8 +31,9 @@ use windows::Win32::UI::Input::Pointer::{
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowExW, GetMessageExtraInfo, GetMessageTime, PT_PEN, WM_MOUSEMOVE, WM_NCDESTROY,
-    WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
+    FindWindowExW, GetMessageExtraInfo, GetMessageTime, PT_PEN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
+    WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERUP,
+    WM_POINTERUPDATE, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_XBUTTONDBLCLK, WM_XBUTTONDOWN,
 };
 use windows::core::w;
 
@@ -56,6 +60,20 @@ const PEN_OR_TOUCH: isize = 0xFF51_5700;
 const SIGNATURE: isize = 0xFFFF_FF00;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// The messages that press: a pen's or a finger's, and each of the mouse's
+/// buttons — a double click's second press with them.
+const PRESSES: [u32; 9] = [
+    WM_POINTERDOWN,
+    WM_LBUTTONDOWN,
+    WM_LBUTTONDBLCLK,
+    WM_RBUTTONDOWN,
+    WM_RBUTTONDBLCLK,
+    WM_MBUTTONDOWN,
+    WM_MBUTTONDBLCLK,
+    WM_XBUTTONDOWN,
+    WM_XBUTTONDBLCLK,
+];
 
 /// How many moves `GetMouseMovePointsEx` keeps, the most it hands.
 const MOUSE_HISTORY: i32 = 64;
@@ -97,6 +115,17 @@ unsafe extern "system" fn heard(
     _: usize,
     _: usize,
 ) -> LRESULT {
+    hear(view, message, w, l);
+    // SAFETY: the message as it came, on to the embedder's handler.
+    unsafe { DefSubclassProc(view, message, w, l) }
+}
+
+/// What the view's `message` writes in the book — the tablet driver's
+/// queue drained first where it presses ([`wintab::drain`]).
+pub(crate) fn hear(view: HWND, message: u32, w: WPARAM, l: LPARAM) {
+    if PRESSES.contains(&message) {
+        wintab::drain();
+    }
     match message {
         WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP => pointer(view, w, l),
         // SAFETY: asked while the message is handled, as the doc requires.
@@ -110,8 +139,6 @@ unsafe extern "system" fn heard(
         }
         _ => {}
     }
-    // SAFETY: the message as it came, on to the embedder's handler.
-    unsafe { DefSubclassProc(view, message, w, l) }
 }
 
 /// The message's own point, as `l` carries it: signed words.
@@ -145,8 +172,8 @@ fn micros_of(count: u64) -> i64 {
     (count as i128 * 1_000_000 / i128::from(frequency.max(1))) as i64
 }
 
-/// A pointer message's points: its history, the oldest first, each with
-/// the pen's readings where it is a pen.
+/// A pointer message's points: its history, the oldest first
+/// ([`points_of`]).
 fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
     let id = (w.0 & 0xFFFF) as u32;
     let mut info = POINTER_INFO::default();
@@ -171,22 +198,7 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
         // SAFETY: room for `pen_count` entries.
         && unsafe { GetPointerPenInfoHistory(id, &mut pen_count, Some(pens.as_mut_ptr())) }.is_ok()
         && pen_count as usize == history.len();
-    let now = now_micros();
-    let points = history
-        .iter()
-        .zip(&pens)
-        .rev()
-        .map(|(entry, reading)| {
-            let at = in_view(view, entry.ptPixelLocation);
-            let micros = if entry.PerformanceCount == 0 {
-                now - since_message(entry.dwTime)
-            } else {
-                micros_of(entry.PerformanceCount)
-            };
-            let point = Point::at(f64::from(at.x), f64::from(at.y), micros);
-            if pen { read(point, reading) } else { point }
-        })
-        .collect();
+    let points = points_of(view, &history, pen.then_some(pens.as_slice()));
     let handed = in_view(view, of(l));
     let handed = (f64::from(handed.x), f64::from(handed.y));
     let mut book = book();
@@ -194,6 +206,41 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
         book.lose(Lost::Unread);
     }
     book.write(Batch { contact: u64::from(id), handed, points });
+}
+
+/// A pointer message's `history`, the newest first, as its points, the
+/// oldest first: each with the pen's `readings` where it is a pen that gave
+/// them, and each a pen's with the tablet driver's pressure at its own
+/// milliseconds where a Wintab context is open ([`wintab::pressures_at`]) —
+/// as a mouse's are ([`mouse`]).
+///
+/// 🚨PAIRED BY ITS OWN MILLISECONDS, AS A MOUSE'S IS (H61, 2026-11-18): a pen
+/// the OS reads (Windows Ink on) took the pressure of the driver's NEWEST
+/// packet as the app read each of its points, and so did every point of a
+/// message the busy thread merged — the stroke's pressure went in steps.
+/// ⛔Not a finger's: the driver's packets are the pen's.
+pub(crate) fn points_of(view: HWND, history: &[POINTER_INFO], readings: Option<&[POINTER_PEN_INFO]>) -> Vec<Point> {
+    let now = now_micros();
+    let times: Vec<u32> = history.iter().map(|entry| entry.dwTime).collect();
+    // SAFETY: asked while the message is handled.
+    let driven = wintab::pressures_at(unsafe { GetMessageTime() } as u32, &times);
+    history
+        .iter()
+        .zip(driven)
+        .enumerate()
+        .rev()
+        .map(|(at, (entry, driven))| {
+            let place = in_view(view, entry.ptPixelLocation);
+            let micros = if entry.PerformanceCount == 0 {
+                now - since_message(entry.dwTime)
+            } else {
+                micros_of(entry.PerformanceCount)
+            };
+            let point = Point::at(f64::from(place.x), f64::from(place.y), micros);
+            let point = readings.map_or(point, |readings| read(point, &readings[at]));
+            if entry.pointerType == PT_PEN { Point { driven, ..point } } else { point }
+        })
+        .collect()
 }
 
 /// `point` with the pressure the pen's `reading` gives — the one reading
@@ -255,7 +302,7 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
         .map(|(&(x, y, at_time), pressure)| {
             let at = in_view(view, POINT { x, y });
             let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
-            Point { pressure, ..Point::at(f64::from(at.x), f64::from(at.y), micros) }
+            Point { driven: pressure, ..Point::at(f64::from(at.x), f64::from(at.y), micros) }
         })
         .collect();
     let handed = (f64::from(client.x), f64::from(client.y));

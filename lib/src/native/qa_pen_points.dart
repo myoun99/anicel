@@ -14,7 +14,10 @@ import 'gpu_engine_asset.dart';
 /// One point the OS saw of a contact (H56): where in the view's physical
 /// pixels, when on the clock Flutter stamps that platform's pointer data
 /// by, and what a pointer datum carries of the pen in a datum's own units —
-/// null where the reader gives none, and the message's own datum says it.
+/// null where the reader gives none, and the message's own datum says it —
+/// and the tablet driver's pressure at its moment, 0..1, where the reader
+/// paired a pen's or a mouse's point with the driver's packet (points.rs
+/// `Point::driven`).
 typedef OsPoint = ({
   double x,
   double y,
@@ -22,6 +25,7 @@ typedef OsPoint = ({
   double? pressure,
   double? tilt,
   double? orientation,
+  double? driven,
 });
 
 @Native<Int32 Function()>(symbol: 'qa_pen_points_start')
@@ -48,7 +52,7 @@ external int _lost(Pointer<Uint64> out, int room);
 /// with no order between them.
 abstract final class QaPenPoints {
   /// The numbers a point is handed as (points.rs `POINT_WORDS`).
-  static const int _words = 6;
+  static const int _words = 7;
 
   static bool _started = false;
 
@@ -86,21 +90,31 @@ abstract final class QaPenPoints {
     final out = malloc<Double>(count * _words);
     try {
       final read = _taken(out, count);
-      double? given(double word) => word.isNaN ? null : word;
-      return [
-        for (var at = 0; at < read * _words; at += _words)
-          (
-            x: out[at],
-            y: out[at + 1],
-            at: Duration(microseconds: out[at + 2].toInt()),
-            pressure: given(out[at + 3]),
-            tilt: given(out[at + 4]),
-            orientation: given(out[at + 5]),
-          ),
-      ];
+      return pointsOf(out.asTypedList(read * _words));
     } finally {
       malloc.free(out);
     }
+  }
+
+  /// The points [words] hand, [_words] numbers each as the book writes them
+  /// (points.rs `Point::words`): x, y, the time in microseconds, the
+  /// pressure, the tilt, the orientation and the driver's pressure — NaN
+  /// read as none.
+  @visibleForTesting
+  static List<OsPoint> pointsOf(List<double> words) {
+    double? given(double word) => word.isNaN ? null : word;
+    return [
+      for (var at = 0; at + _words <= words.length; at += _words)
+        (
+          x: words[at],
+          y: words[at + 1],
+          at: Duration(microseconds: words[at + 2].toInt()),
+          pressure: given(words[at + 3]),
+          tilt: given(words[at + 4]),
+          orientation: given(words[at + 5]),
+          driven: given(words[at + 6]),
+        ),
+    ];
   }
 
   /// How many messages' points no datum was paired with — each a message

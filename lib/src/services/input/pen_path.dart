@@ -37,10 +37,10 @@ abstract final class PenPath {
     'the points the OS saw',
   );
 
-  /// The pressure a MOUSE's point carried, by the event made at it — what
-  /// the mouse's range of nothing cannot ([drivenPressureOf]).
+  /// The tablet driver's pressure at a point, by the event made at it
+  /// ([drivenPressureOf]).
   static final Expando<double> _driven = Expando<double>(
-    "a mouse point's pressure",
+    "the driver's pressure at a point",
   );
 
   /// Pairs [event], made of [datum] at [ratio] physical pixels a logical
@@ -65,6 +65,7 @@ abstract final class PenPath {
           pressure: point.pressure,
           tilt: point.tilt,
           orientation: point.orientation,
+          driven: point.driven,
         ),
     ];
   }
@@ -92,21 +93,23 @@ abstract final class PenPath {
     var before = original.position - original.delta;
     for (final point in points) {
       final at = _at(original, point, before);
-      final pressure = point.pressure;
-      if (pressure != null && original.kind == PointerDeviceKind.mouse) {
-        _driven[at] = pressure;
-      }
+      _driven[at] = point.driven;
       made.add(at.transformed(event.transform));
       before = at.position;
     }
     return made;
   }
 
-  /// The pressure, 0..1, the point [event] was made at carried where it is
-  /// a MOUSE's — or null. A mouse's points carry one where the platform's
-  /// reader read it for that moment: on Windows, the tablet driver's packet
-  /// nearest the move (native/pen points_win.rs) — a pen the OS hands over
-  /// as a mouse.
+  /// The tablet driver's pressure, 0..1, at the point [event] was made at —
+  /// or null. A pen's point and a mouse's carry one where the platform's
+  /// reader paired it with the driver: on Windows, the Wintab packet nearest
+  /// the point's own moment (native/pen points_win.rs), one law for a pen
+  /// the OS reads and one it hands over as a mouse.
+  ///
+  /// ↩️A mouse's alone (e3816f34f – H61, 2026-11-18): a pen the OS reads
+  /// (Windows Ink on) took the driver's NEWEST packet at every point the
+  /// app read of it, and every point of a message the busy thread merged
+  /// had the same — the stroke's pressure went in steps.
   static double? drivenPressureOf(PointerEvent event) =>
       _driven[event.original ?? event];
 

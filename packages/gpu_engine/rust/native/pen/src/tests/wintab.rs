@@ -7,10 +7,12 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use windows::Win32::Foundation::{HMODULE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
+use windows::Win32::Foundation::POINT;
+use windows::Win32::UI::Input::Pointer::POINTER_INFO;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, RegisterClassW,
-    SW_SHOWNOACTIVATE, ShowWindow, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
-    WS_EX_TOOLWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, PT_PEN, PT_TOUCH,
+    RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_LBUTTONDOWN, WNDCLASSW, WS_EX_NOACTIVATE,
+    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
@@ -177,8 +179,10 @@ struct Reading {
 }
 
 /// What `reader` answers and asks the driver as `script` plays: its name
-/// into rooms of none to a hundred characters, opened twice, polled for
-/// records `polls` at a time, closed twice.
+/// into rooms of none to a hundred characters, opened twice, the queue
+/// drained as a press drains it ([`wintab::drain`]) — so what was queued is
+/// heard whenever the reader's own thread drains —, polled for records
+/// `polls` at a time, closed twice.
 fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Reading {
     driver.play(script);
     // SAFETY: each export of its declaration, with the room it is told of.
@@ -191,6 +195,7 @@ fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Read
             names.push((length, room));
         }
         let opened = [(reader.open)(150), (reader.open)(150)];
+        wintab::drain();
         let polls = polls
             .iter()
             .map(|&cap| {
@@ -240,7 +245,11 @@ fn told(reading: &Reading) -> Vec<String> {
         format!("the system's but {}", changed.join(" "))
     };
     told.push(format!("context {context}"));
-    told.push(format!("asked {:?}", &seen.asked[..seen.asks.clamp(0, 8) as usize]));
+    // How many times it was asked is the reader's own thread's to say: what
+    // each drain asked for, told once.
+    let mut asked = seen.asked[..seen.asks.clamp(0, 8) as usize].to_vec();
+    asked.dedup();
+    told.push(format!("asked {asked:?}"));
     told
 }
 
@@ -387,7 +396,7 @@ fn the_context_asked_for_is_the_systems_observing_alongside_it() {
     asked.0[PACKET_MODE] = 0; // absolute
     asked.0[MOVE_MASK] = 0x15C6;
     assert_eq!(seen.context, asked);
-    assert_eq!(told(&reading), tells(&[&INSTALLED, &["opened [1, 1]"], &OPENED_ONCE, &["asked []"]]));
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &["opened [1, 1]"], &OPENED_ONCE, &["asked [1024]"]]));
 }
 
 #[test]
@@ -446,8 +455,8 @@ fn a_pen_that_leans_and_turns() {
     let reading = read(driver, RUST, &script, &[0, 100, 1]);
     let counts: Vec<_> = reading.polls.iter().map(|(count, _)| *count).collect();
     assert_eq!(counts, [0, 5, 0], "none asked, all five, none new");
-    let asked = &reading.seen.asked[..reading.seen.asks as usize];
-    assert_eq!(asked, &[1024, 1024], "each drain asks for the whole queue");
+    let asked = &reading.seen.asked[..reading.seen.asks.clamp(0, 8) as usize];
+    assert!(!asked.is_empty() && asked.iter().all(|&size| size == 1024), "each drain asks for the whole queue");
     let records = &reading.polls[1].1;
     let want = [(1024.0 * (1.0 / 2047.0)) as f32, 90.0, 0.5, 123_456.0, 3.0, 1.0, 270.0, 1.0];
     assert_eq!(records[..8], bits(want), "answers worked out here");
@@ -465,7 +474,7 @@ fn a_pen_that_leans_and_turns() {
          [0.0004885198, 0.2, 0.0033333334, 123456.0, 3.0, 1.0, 4.0, 1.0]] +768",
         "poll 0 [] +16",
     ];
-    let asked = ["asked [1024, 1024]"];
+    let asked = ["asked [1024]"];
     assert_eq!(told(&reading), tells(&[&INSTALLED, &polled, &OPENED_ONCE, &asked]));
 }
 
@@ -666,6 +675,7 @@ fn a_mouse_move_is_given_the_pressure_of_the_packet_nearest_it() {
     // SAFETY: room for an int.
     let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
     assert_eq!((crate::qat_open(20), gapped), (1, 0), "no gap before a message");
+    wintab::drain();
     let pressures = wintab::pressures_at(1030, &[1004, 1016, 1040, 1041, 980, 979]);
     let scale = |pressure: f64| pressure * (1.0 / 1000.0);
     let want = [scale(100.0), scale(300.0), scale(300.0), f64::NAN, scale(100.0), f64::NAN];
@@ -688,7 +698,7 @@ fn the_overflows_the_driver_said_are_counted_from_the_opening() {
     let overflowed = Packet { status: 0x2, ..queued(1000, 100) };
     driver.play(&installed(&[overflowed, queued(1001, 100), overflowed]));
     assert_eq!(crate::qat_open(150), 1);
-    let _ = wintab::pressures_at(1001, &[]);
+    wintab::drain();
     assert_eq!(crate::qat_overflowed(), 2);
     crate::qat_close();
     assert_eq!(crate::qat_overflowed(), 0, "none open");
@@ -707,6 +717,7 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
     };
     driver.play(&script);
     assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
     // A place no mouse is: no history of it kept, the message's own move
     // alone.
     let far: i16 = -20_000;
@@ -715,6 +726,105 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
     crate::points_win::mouse(window.0, LPARAM(words));
     crate::qat_close();
     let points = crate::points::book().take((f64::from(far), f64::from(far)));
-    let pressures: Vec<f64> = points.expect("the message's").iter().map(|point| point.pressure).collect();
-    assert_eq!(pressures, [250.0 * (1.0 / 1000.0)]);
+    let points = points.expect("the message's");
+    let driven: Vec<f64> = points.iter().map(|point| point.driven).collect();
+    assert_eq!(driven, [250.0 * (1.0 / 1000.0)]);
+    assert!(points[0].pressure.is_nan(), "a mouse says no pressure of its own");
+}
+
+/// Polls of up to eight records until one is handed, for two seconds at
+/// most: their count.
+fn handed_soon() -> i32 {
+    let mut room = [0.0f32; 64];
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        // SAFETY: room for eight records.
+        let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+        if count > 0 || std::time::Instant::now() > deadline {
+            return count;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn the_reader_s_own_thread_hears_the_queue_unasked() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100), queued(1004, 200)]));
+    assert_eq!(crate::qat_open(150), 1);
+    let count = handed_soon();
+    crate::qat_close();
+    assert_eq!(count, 2, "heard with no poll, no move and no press draining it");
+}
+
+#[test]
+fn a_poll_and_a_point_ask_the_driver_nothing() {
+    // 🔬A call into the driver is a quarter of a millisecond (F-600): the
+    // app's thread reads what was heard.
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100)]));
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    let before = driver.seen().asks;
+    let began = std::time::Instant::now();
+    let mut room = [0.0f32; 64];
+    for _ in 0..1000 {
+        // SAFETY: room for eight records.
+        let _ = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+        let _ = wintab::pressures_at(1001, &[1000, 1001]);
+    }
+    let thread_drains = began.elapsed().as_millis() / 4 + 2;
+    let asks = driver.seen().asks - before;
+    crate::qat_close();
+    assert!(i128::from(asks) <= thread_drains as i128, "{asks} asks in a thousand polls and points");
+}
+
+#[test]
+fn a_press_drains_the_queue_before_its_point_is_read() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    let script = installed(&[]);
+    driver.play(&script);
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    // The pen touches down: its packet is queued as the press comes.
+    driver.play(&installed(&[queued(1000, 900)]));
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let mut room = [0.0f32; 64];
+    // SAFETY: room for eight records.
+    let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+    crate::qat_close();
+    assert_eq!(count, 1, "the contact heard at the press, not a drain later");
+}
+
+#[test]
+fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    let script = Script {
+        has_pressure: true,
+        pressure: axis(0, 1000),
+        ..installed(&[queued(1000, 100), queued(1010, 200), queued(1020, 300)])
+    };
+    driver.play(&script);
+    assert_eq!(crate::qat_open(20), 1);
+    wintab::drain();
+    let entry = |kind, time| POINTER_INFO {
+        pointerType: kind,
+        dwTime: time,
+        ptPixelLocation: POINT { x: -20_000, y: -20_000 },
+        PerformanceCount: 1,
+        ..POINTER_INFO::default()
+    };
+    // The newest first, as the OS keeps a pointer's history.
+    let history = [entry(PT_PEN, 1019), entry(PT_PEN, 1004), entry(PT_PEN, 900)];
+    let points = crate::points_win::points_of(window.0, &history, None);
+    let finger = crate::points_win::points_of(window.0, &[entry(PT_TOUCH, 1019)], None);
+    crate::qat_close();
+    let driven: Vec<u64> = points.iter().map(|point| point.driven.to_bits()).collect();
+    let want = [f64::NAN, 100.0 * (1.0 / 1000.0), 300.0 * (1.0 / 1000.0)];
+    assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each its nearest within 20 ms");
+    assert!(finger[0].driven.is_nan(), "a finger is not the pen");
 }

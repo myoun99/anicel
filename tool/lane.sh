@@ -856,7 +856,7 @@ host_triple() {
 # What the crate's tests answer to: the crate, the fx SDK its fx tests build
 # (sdk/fx — the spec crate and the example), and what they read from
 # outside the crate's tree — the ledger, the movies and the letters'
-# clusters in test/fixtures, the fonts the app ships, and two Dart files a
+# clusters in test/fixtures, the fonts the app ships, and three Dart files a
 # pin holds the Rust to. A lane that changed any of it pays refusal 8
 # (crate_gate), and a green is kept for all of it (crate_input).
 # 🗣️ONE LIST FOR BOTH (관제 2026-11-14, a-land-runs-the-crate-tests-the-
@@ -868,6 +868,7 @@ host_triple() {
 # it is here (a_land_takes_only_what_its_gates_measured_test.dart walks
 # them).
 CRATE_INPUTS=(packages/gpu_engine/rust sdk/fx test/fixtures assets/fonts
+  lib/src/native/qa_pen_points.dart
   lib/src/native/qa_tablet_bridge.dart
   lib/src/services/audio/audio_resample_stream.dart)
 

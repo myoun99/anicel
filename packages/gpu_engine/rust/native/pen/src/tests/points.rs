@@ -151,8 +151,17 @@ fn a_point_the_os_says_nothing_more_of_reads_none_for_the_pen() {
 
 #[test]
 fn a_point_is_handed_to_the_app_where_when_and_as_the_pen_read() {
-    let point = Point { pressure: 0.5, tilt: 0.25, orientation: -1.5, ..Point::at(1.5, 2.25, 7) };
-    assert_eq!(point.words(), [1.5, 2.25, 7.0, 0.5, 0.25, -1.5]);
+    let point = Point { pressure: 0.5, tilt: 0.25, orientation: -1.5, driven: 0.75, ..Point::at(1.5, 2.25, 7) };
+    assert_eq!(point.words(), [1.5, 2.25, 7.0, 0.5, 0.25, -1.5, 0.75]);
     // A performance counter's microseconds a day after boot stay whole.
     assert_eq!(Point::at(0.0, 0.0, 86_400_000_001).words()[2], 86_400_000_001.0);
+}
+
+#[test]
+fn the_app_reads_a_point_in_as_many_numbers_as_it_is_handed() {
+    let dart = include_str!("../../../../../../../lib/src/native/qa_pen_points.dart");
+    let declared = "static const int _words = ";
+    let line = dart.lines().map(str::trim_start).find(|line| line.starts_with(declared)).expect(declared);
+    let words: usize = line[declared.len()..].trim_end_matches(';').parse().expect(line);
+    assert_eq!(words, POINT_WORDS, "qa_pen_points.dart reads a point as the book writes it");
 }

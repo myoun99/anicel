@@ -64,8 +64,9 @@ void main() {
   );
 
   testWidgets(
-    'a pen the OS hands over as a mouse lays each point at the pressure the '
-    "driver gave it, as a stylus lays its own — not the newest packet's",
+    'a pen lays each point at the pressure the driver gave it — handed over '
+    'as a mouse or read by the OS — as a stylus lays its own: not the newest '
+    "packet's",
     (tester) async {
       final stylus = await _line(
         tester,
@@ -83,6 +84,13 @@ void main() {
         tester,
         _pressureAndSpeed,
         _stroke(PointerDeviceKind.mouse),
+        driven: true,
+      );
+      final inked = await _line(
+        tester,
+        _pressureAndSpeed,
+        _stroke(PointerDeviceKind.stylus),
+        driven: true,
       );
       // The poll timer must die before the binding's pending-timer check.
       wintab.debugReset();
@@ -92,7 +100,8 @@ void main() {
         hasLength(greaterThan(2)),
         reason: 'a line of the points\' own pressures',
       );
-      expect(_look(mouse), _look(stylus));
+      expect(_look(mouse), _look(stylus), reason: 'Windows Ink off');
+      expect(_look(inked), _look(stylus), reason: 'Windows Ink on (H61)');
     },
   );
 
@@ -271,14 +280,19 @@ List<Object?> _look(List<BrushDab> dabs) => [
     (dab.center.x, dab.center.y, dab.size, dab.opacity, dab.pressure, dab.speed),
 ];
 
+/// What the OS reads of a pen whose driver says another pressure.
+const double _osAside = 0.15;
+
 /// Draws [events] on a fresh canvas — each event paired, as the door pairs
 /// a datum, with the points the OS saw of its message — and returns the
-/// line's dabs.
+/// line's dabs. Each point's pressure is the OS's own, or, [driven], the
+/// tablet driver's, the OS reading a pen at [_osAside] and a mouse at none.
 Future<List<BrushDab>> _line(
   WidgetTester tester,
   BrushEditCanvasInputSettings settings,
-  List<_Event> events,
-) async {
+  List<_Event> events, {
+  bool driven = false,
+}) async {
   final results = <List<BrushDab>>[];
   final cel = BitmapSurface(
     canvasSize: const CanvasSize(width: 160, height: 32),
@@ -311,9 +325,14 @@ Future<List<BrushDab>> _line(
             x: canvasGlobalOffset(tester, point.at).dx,
             y: canvasGlobalOffset(tester, point.at).dy,
             at: point.time,
-            pressure: point.force,
+            pressure: !driven
+                ? point.force
+                : made.kind == PointerDeviceKind.mouse
+                ? null
+                : _osAside,
             tilt: null,
             orientation: null,
+            driven: driven ? point.force : null,
           ),
       ];
       PenPath.arrived(

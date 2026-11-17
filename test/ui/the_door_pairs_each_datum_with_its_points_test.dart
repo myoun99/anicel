@@ -31,15 +31,16 @@ void main() {
   void book(
     Offset handed,
     List<({Offset at, Duration time, double? force})> points,
-    List<Offset> asked,
-  ) {
+    List<Offset> asked, {
+    List<double?> driven = const [],
+  }) {
     QaPenPoints.debugTake = (x, y) {
       asked.add(Offset(x, y));
       if (Offset(x, y) != handed) {
         return null;
       }
       return [
-        for (final point in points)
+        for (final (index, point) in points.indexed)
           (
             x: point.at.dx,
             y: point.at.dy,
@@ -47,6 +48,7 @@ void main() {
             pressure: point.force,
             tilt: null,
             orientation: null,
+            driven: index < driven.length ? driven[index] : null,
           ),
       ];
     };
@@ -160,8 +162,8 @@ void main() {
   });
 
   testWidgets(
-    "a mouse's points carry their pressure beside the event — its range "
-    'measures none — and a stylus\'s in it',
+    "a point's driver pressure rides beside its event, a mouse's and a "
+    "stylus's alike — a mouse's range measures none",
     (tester) async {
       final heard = <PointerEvent>[];
       await tester.pumpWidget(
@@ -182,7 +184,7 @@ void main() {
         (at: const Offset(500, 380), time: const Duration(milliseconds: 31), force: 0.25),
         (at: const Offset(560, 390), time: const Duration(milliseconds: 35), force: null),
         (at: handed, time: const Duration(milliseconds: 39), force: 0.75),
-      ], []);
+      ], [], driven: [0.2, null, 0.7]);
       List<double?> driven(PointerDeviceKind kind) {
         heard.clear();
         final buttons = kind == PointerDeviceKind.mouse ? kPrimaryButton : 0;
@@ -208,9 +210,9 @@ void main() {
         return [for (final event in heard) PenPath.drivenPressureOf(event)];
       }
 
-      expect(driven(PointerDeviceKind.mouse), [0.25, null, 0.75]);
+      expect(driven(PointerDeviceKind.mouse), [0.2, null, 0.7]);
       expect(heard.first.original, isNotNull, reason: 'heard in its frame');
-      expect(driven(PointerDeviceKind.stylus), [null, null, null]);
+      expect(driven(PointerDeviceKind.stylus), [0.2, null, 0.7]);
     },
   );
 
