@@ -293,6 +293,29 @@ void main() {
     );
   });
 
+  test('🎯a pose lane is read live where the tag holds it — its key, as '
+      'the rail\'s sweep asks (F-475)', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    expect(
+      s.laneVerbs.isLaneKeyedAt(seLayerId, 'rotation', 0, frameIsGlobal: false),
+      isTrue,
+    );
+    expect(
+      s.laneVerbs.isLaneKeyedAt(seLayerId, 'rotation', 5, frameIsGlobal: false),
+      isFalse,
+    );
+  });
+
   test('🎯a pose edit hands the header a new row and the tag\'s own lanes '
       'the ones they had — a tag never typed included', () {
     final s = session();
