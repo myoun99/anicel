@@ -79,7 +79,8 @@ void main() {
     ],
   );
 
-  // Each sheet's strata, its host with its ink, and one of its surfaces to
+  // Each sheet's baked strata — every one but the ink, which the engine
+  // shows (F-215) —, its host with its ink, and one of its surfaces to
   // write on through the session's history.
   final sheets =
       <
@@ -91,7 +92,7 @@ void main() {
       >[
         (
           sheet: 'timesheet',
-          strata: {SheetStratum.form, SheetStratum.content, SheetStratum.ink},
+          strata: {SheetStratum.form, SheetStratum.content},
           mount: () {
             final ink = TimesheetInkController();
             addTearDown(ink.dispose);
@@ -113,7 +114,11 @@ void main() {
         ),
         (
           sheet: 'conte',
-          strata: SheetStratum.values.toSet(),
+          strata: {
+            SheetStratum.form,
+            SheetStratum.content,
+            SheetStratum.picture,
+          },
           mount: () {
             final ink = ConteInkController();
             addTearDown(ink.dispose);
@@ -140,7 +145,7 @@ void main() {
         ),
         (
           sheet: 'envelope',
-          strata: {SheetStratum.form, SheetStratum.content, SheetStratum.ink},
+          strata: {SheetStratum.form, SheetStratum.content},
           mount: () {
             final ink = CutEnvelopeInkController();
             addTearDown(ink.dispose);
@@ -252,7 +257,8 @@ void main() {
       );
     });
 
-    // A photo put on the ink is ink's (I-97): its print is the ink's own.
+    // A photo put on the ink is ink's (I-97): it shows with the ink, on the
+    // engine's screen over the strata — no stratum prints either.
     for (final (what, write) in <(String, void Function(_Written written))>[
       (
         'a stroke',
@@ -273,39 +279,39 @@ void main() {
         ),
       ),
     ]) {
-      testWidgets('${sheet.sheet}: $what, and its undo, re-record the ink '
-          'alone', (tester) async {
+      testWidgets('${sheet.sheet}: $what, and its undo, re-record no '
+          'stratum', (tester) async {
         final (rebakes, written) = await mount(tester);
-        expect(await rebakes(() => write(written)), only({SheetStratum.ink}));
-        expect(await rebakes(session.undo), only({SheetStratum.ink}));
+        expect(await rebakes(() => write(written)), only(const {}));
+        expect(await rebakes(session.undo), only(const {}));
       });
     }
 
     testWidgets('${sheet.sheet}: the brush switched on and off re-records '
-        'the ink alone', (tester) async {
+        'nothing', (tester) async {
       final (rebakes, _) = await mount(tester);
-      // The windows a live brush shows stand down in the print, and come
-      // back to it.
-      expect(
-        await rebakes(() => brushAllowed.value = true),
-        only({SheetStratum.ink}),
-      );
-      expect(
-        await rebakes(() => brushAllowed.value = false),
-        only({SheetStratum.ink}),
-      );
+      // F-215: the switch mounts the views that take the pen and changes no
+      // pixel — the ink shows on its screen either way.
+      expect(await rebakes(() => brushAllowed.value = true), only(const {}));
+      expect(await rebakes(() => brushAllowed.value = false), only(const {}));
     });
 
-    testWidgets('${sheet.sheet}: the ink stands down while the pen is down, '
-        'and bakes again after', (tester) async {
+    testWidgets('${sheet.sheet}: a stroke stands no stratum down, and its '
+        'pen-up bakes none again', (tester) async {
       await mount(tester);
       brushAllowed.value = true;
       await tester.pumpAndSettle();
-      StandDownReason ink() => tester
-          .renderObjectList<RenderStaticRaster>(_rastersOf(sheet.sheet))
-          .singleWhere((raster) => raster.debugLabel == '${sheet.sheet}-ink')
-          .standDown;
-      expect(ink(), StandDownReason.none, reason: 'fixture: baking');
+      final strata = {
+        for (final stratum in sheet.strata) '${sheet.sheet}-${stratum.name}',
+      };
+      List<RenderStaticRaster> baked() => [
+        for (final raster in tester.renderObjectList<RenderStaticRaster>(
+          _rastersOf(sheet.sheet),
+        ))
+          if (strata.contains(raster.debugLabel)) raster,
+      ];
+      expect(baked(), hasLength(strata.length), reason: 'fixture');
+      final before = [for (final raster in baked()) raster.captureCount];
 
       // The middle of the top window that takes the pen, where it lands.
       final layer = tester.widget<SheetInkLayer>(find.byType(SheetInkLayer));
@@ -324,11 +330,14 @@ void main() {
         isTrue,
         reason: 'fixture: the pen is down on the sheet\'s ink',
       );
-      expect(ink(), StandDownReason.disabled);
+      expect(
+        [for (final raster in baked()) raster.standDown],
+        everyElement(StandDownReason.none),
+      );
 
       await pen.up();
       await tester.pumpAndSettle();
-      expect(ink(), StandDownReason.none);
+      expect([for (final raster in baked()) raster.captureCount], before);
     });
 
     testWidgets('${sheet.sheet}: a drag re-records nothing, and the values '
@@ -448,18 +457,14 @@ void main() {
       final (rebakes, _) = await mount(tester);
       expect(
         await rebakes(images.notifyListeners),
-        // Every sheet's ink prints the photos laid on it, from their pool
-        // files (I-97).
+        // The photos laid on a sheet's ink show with it, on the engine's
+        // screen over the strata (I-97) — no stratum prints them.
         only(switch (sheet.sheet) {
           // The logo is a value; the cover's picture is a picture.
-          'conte' => {
-            SheetStratum.content,
-            SheetStratum.picture,
-            SheetStratum.ink,
-          },
-          'timesheet' => {SheetStratum.ink},
+          'conte' => {SheetStratum.content, SheetStratum.picture},
+          'timesheet' => const {},
           // The logo and the 도장 are values.
-          _ => {SheetStratum.content, SheetStratum.ink},
+          _ => {SheetStratum.content},
         }),
       );
     });
@@ -494,14 +499,13 @@ void main() {
           ),
         );
         expect(rebaked[SheetStratum.form], 1);
-        expect(rebaked[SheetStratum.ink], 0);
       });
     }
   }
 }
 
 /// The block at the cut's start is written on: its band prints, and a live
-/// brush's window over it is what stands the print down.
+/// brush's window over it is where the pen lands.
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
   id: LayerId('$cutId-sb'),
   name: 'SB',

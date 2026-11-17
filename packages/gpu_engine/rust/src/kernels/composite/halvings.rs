@@ -96,13 +96,17 @@ fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
 }
 
 /// A picture kept in the pictures' pool (`pool::Pictures`): its tiles over
-/// the pixels `extent`, [left, top, right, bottom), each in a slot held for
-/// it — a halving stage, and the canvas's composite the screen reads
-/// (screen.rs). Dropped, it lets its slots go; the pages stay made for the
-/// next picture.
+/// the pixels `extent`, [left, top, right, bottom), that anything is laid
+/// on, each in a slot held for it — a halving stage, and the canvas's
+/// composite the screen reads (screen.rs). A tile nothing is laid on is
+/// none ([`Plan::lays_on`]), and shows as nothing. Dropped, it lets its
+/// slots go; the pages stay made for the next picture.
 ///
 /// ↩️On pages of its own till 2026-11-13, made with it and gone with it:
-/// `Pictures` says what that cost.
+/// `Pictures` says what that cost. ↩️Every tile of `extent` till 2026-11-18
+/// (the-screen-premultiplies-ram-tiles-to-show-them (A)): a sheet's ink
+/// window on a screen of its own kept its whole cel — a page at 300 dpi,
+/// tens of MB — for the few tiles a pen wrote on.
 pub(crate) struct Kept {
     pictures: Pictures,
     /// What names the pages its tiles go to first, as a cel's does.
@@ -186,7 +190,10 @@ impl Kept {
         for tile in kept.set.grid() {
             match shared(tile) {
                 Some(at) => theirs.push((tile, at)),
-                None => made.push(tile),
+                // A tile nothing lays on is none: kept as nothing, shown as
+                // nothing.
+                None if plan.lays_on(tile) => made.push(tile),
+                None => {}
             }
         }
         let held: Vec<TileAt> = theirs.iter().map(|&(_, at)| at).collect();
@@ -217,11 +224,12 @@ impl Kept {
         self.set.tiles.iter().flatten().copied()
     }
 
-    /// `plan` composited again over the kept tiles `stale` names, each in a
-    /// fresh slot and the slot it had let go — a held tile is never written
-    /// over (pool/mod.rs): a picture laid over this one may hold it
-    /// ([`Kept::made_over`]) —, the rest kept as they are; those tiles'
-    /// pixels, where it names any.
+    /// `plan` composited again over its tiles `stale` names: each the plan
+    /// lays anything on in a fresh slot and the slot it had let go — a held
+    /// tile is never written over (pool/mod.rs): a picture laid over this
+    /// one may hold it ([`Kept::made_over`]) —, each it lays nothing on let
+    /// go and kept as none; the rest kept as they are. Those tiles' pixels
+    /// — every one that changed —, where it names any.
     pub(crate) fn made_again(
         &mut self,
         engine: &Engine,
@@ -230,11 +238,23 @@ impl Kept {
         stale: impl Fn((i32, i32)) -> bool,
         budget: Budget,
     ) -> Option<Option<[i64; 4]>> {
-        let (tiles, had): (Vec<(i32, i32)>, Vec<TileAt>) =
-            self.set.placed_under(None).filter(|&(tile, _)| stale(tile)).unzip();
+        let stale: Vec<(i32, i32)> =
+            self.set.grid().into_iter().filter(|&tile| stale(tile)).collect();
+        let (laid, bare): (Vec<_>, Vec<_>) =
+            stale.into_iter().partition(|&tile| plan.lays_on(tile));
+        // A tile kept that nothing lays on now is let go; one not kept stays
+        // none, as it was.
+        let kept_at = |(column, row): (i32, i32)| Some(((column, row), self.set.at(column, row)?));
+        let emptied: Vec<((i32, i32), TileAt)> = bare.into_iter().filter_map(kept_at).collect();
+        for &(tile, _) in &emptied {
+            self.set.unplace(tile);
+        }
+        self.pictures.release(emptied.iter().map(|&(_, at)| at));
+        self.pages = self.pictures.pages_of(self.places());
         // A run puts no more than a page of the pool takes.
-        let per_run = self.pictures.slots(engine)?;
-        for (some, had) in tiles.chunks(per_run).zip(had.chunks(per_run)) {
+        for some in laid.chunks(self.pictures.slots(engine)?) {
+            let had: Vec<TileAt> =
+                some.iter().filter_map(|&(column, row)| self.set.at(column, row)).collect();
             let (fresh, pages) = self.pictures.fresh(engine, self.cel, some.len())?;
             let onto = Placed { pages: &pages, at: &fresh };
             if composite.run_onto(engine, plan, some, self.extent, onto, budget).is_none() {
@@ -244,11 +264,12 @@ impl Kept {
             for (&tile, &at) in some.iter().zip(&fresh) {
                 self.set.place(tile, at);
             }
-            self.pictures.release(had.iter().copied());
+            self.pictures.release(had.into_iter());
             self.pages = self.pictures.pages_of(self.places());
         }
         let side = i64::from(TILE);
-        Some(tiles.iter().fold(None, |sum, &(column, row)| {
+        let changed = laid.iter().chain(emptied.iter().map(|(tile, _)| tile));
+        Some(changed.fold(None, |sum, &(column, row)| {
             let (x, y) = (i64::from(column) * side, i64::from(row) * side);
             Some(joined(sum, [x, y, x + side, y + side]))
         }))

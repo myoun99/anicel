@@ -70,6 +70,11 @@ bool drawsAmong<T>(Set<T>? named, T one) => named?.contains(one) ?? true;
 /// 패널은 다 통일해줘」). The paper rides with the form: both change only
 /// with the sheet's shape. An export that paints a page whole paints it in
 /// the same order.
+///
+/// The panels bake every stratum but the ink: the engine shows it on a
+/// screen of its own over them (`SheetInkScreens`, F-215), so a stroke
+/// rebakes nothing and the ink shows the same with the brush on or off.
+/// An export prints it in its place all the same.
 enum SheetStratum {
   form({SheetPaintLayer.paper, SheetPaintLayer.form}),
   content({SheetPaintLayer.content}),

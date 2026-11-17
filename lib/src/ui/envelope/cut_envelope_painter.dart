@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
@@ -15,7 +14,6 @@ import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import 'cut_envelope_ink.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet/sheet_line.dart';
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
@@ -25,8 +23,7 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// Paints a cut envelope. The panel and every export share it, so what is
 /// on screen IS the page — the timesheet's rule.
-class CutEnvelopePainter extends CustomPainter
-    with RepaintOnProps, SheetInkOnScreen {
+class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   const CutEnvelopePainter({
     required this.layout,
     required this.source,
@@ -37,9 +34,7 @@ class CutEnvelopePainter extends CustomPainter
     this.imageFor,
     this.inkImageFor,
     this.inkPhotosFor,
-    this.inkSurfaceFor,
     this.inkOwner,
-    this.liveInkKeys = const {},
     // The ink store: a landed stroke (or an async-composed display image)
     // must repaint the sheet even though none of the compared fields
     // changed.
@@ -63,18 +58,15 @@ class CutEnvelopePainter extends CustomPainter
   /// it, exactly like the timesheet and conte painters. Null keeps the
   /// fit-to-size behaviour the exports use, where the canvas already IS
   /// the paper.
-  @override
   final CanvasViewport? viewport;
 
   /// The view's DPR — the SAME one the host snapped with, so
   /// [applyViewportTransform]'s own snap is a no-op here rather than a
   /// second, coarser rounding.
-  @override
   final double effectiveRatio;
 
   /// Resolves a media asset path to a decoded image (the logo, and the
   /// files the ink's photos are drawn from — I-97).
-  @override
   final SheetImageLookup? imageFor;
 
   /// The ink raster for a box — for an EXPORT, which has no view to draw
@@ -85,21 +77,9 @@ class CutEnvelopePainter extends CustomPainter
   /// raster — each drawn from its file by [imageFor].
   final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
-  /// The ink surface for a box ON SCREEN, printed as the brush's live
-  /// window paints it ([SheetInkOnScreen], F-215).
-  @override
-  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
-
   /// The cut this envelope is of — its boxes' ink is keyed to it
   /// ([envelopeInkWindows]) — or null where no ink prints.
   final CutId? inkOwner;
-
-  /// Keys a LIVE input window is already showing: the painter skips them so
-  /// translucent ink never composites twice. Everything else is drawn here
-  /// — which is the only reason ink is visible at all in the boxes too
-  /// small (or too far off screen) to mount a window.
-  @override
-  final Set<BrushFrameKey> liveInkKeys;
 
   bool _draws(SheetPaintLayer layer) =>
       drawsSheetLayer(layers, layer);
@@ -134,14 +114,6 @@ class CutEnvelopePainter extends CustomPainter
       _paintInk(canvas, grid);
     }
     canvas.restore();
-    // On screen the ink is the stratum's last, and drawn out of paper
-    // space: as the live windows draw it (F-215).
-    final owner = inkOwner;
-    if (owner != null && _draws(SheetPaintLayer.ink)) {
-      printInkAsLive(canvas, size, [
-        for (final window in envelopeInkWindows(layout, owner)) window.mark,
-      ]);
-    }
   }
 
   void _paintForm(Canvas canvas, Color ink) {
@@ -248,9 +220,6 @@ class CutEnvelopePainter extends CustomPainter
       return;
     }
     for (final window in envelopeInkWindows(layout, owner)) {
-      if (liveInkKeys.contains(window.key)) {
-        continue;
-      }
       paintSheetInkWindow(
         canvas,
         rasterFor?.call(window.key),
@@ -309,7 +278,7 @@ class CutEnvelopePainter extends CustomPainter
     // Mounting a window HIDES that box's baked ink here; unmounting shows
     // it again. Miss this and a stroke stays doubled (or missing) until
     // something else happens to repaint.
-    _draws(SheetPaintLayer.ink) ? (inkOwner, BySet(liveInkKeys)) : null,
+    _draws(SheetPaintLayer.ink) ? inkOwner : null,
   );
 }
 

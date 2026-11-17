@@ -24,7 +24,8 @@ import '../brush/brush_canvas_panel.dart'
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
+import '../sheet/sheet_ink_layer.dart'
+    show SheetInkStrokes, SheetPictureWindow, SheetWindow;
 import '../sheet/sheet_photo_drop.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
@@ -227,6 +228,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ActiveStrokeOverlayModel _strokeOf(String picture) =>
       _strokes.putIfAbsent(picture, ActiveStrokeOverlayModel.new);
 
+  /// The bands' strokes in flight, by window — the pen's views write them
+  /// and the pages' ink screens show them ([SheetInkStrokes]), so they are
+  /// held here, above both, as the pictures' are.
+  final SheetInkStrokes _inkStrokes = SheetInkStrokes();
+
   // The cells with no block — picture and band — take the pen or refuse it
   // as the canvas's 「프레임 자동 생성」 says, so the page is laid again when
   // it flips.
@@ -285,6 +291,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     for (final stroke in _strokes.values) {
       stroke.dispose();
     }
+    _inkStrokes.dispose();
     super.dispose();
   }
 
@@ -604,17 +611,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// the stack's own space, so the pen is heard on every page on screen.
   Widget _book(BuildContext context, CanvasViewport viewport, Size box) {
     final (source, pages) = _resolveSheet();
-    final stack = _stackOf(pages);
-    final ratio = EffectiveDevicePixelRatio.of(context);
-    final shown = [
-      for (final index in stack.pagesMeeting(
-        canvasRectShown(viewport, box),
-      ))
-        (
-          page: pages[index],
-          at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),
-        ),
-    ];
+    final shown = _pagesShown(
+      pages,
+      viewport,
+      box,
+      EffectiveDevicePixelRatio.of(context),
+    );
     final ink = _inkMount(shown);
     final awaited = _awaitingPrints ? widget.thumbnails : null;
     final pictures = ink != null
@@ -640,8 +642,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
               pictureFor: _pictureFor,
               onSelectCell: _selectCell,
               wordsRefusalOf: _wordsRefusalOf,
-              drawing: _drawing,
-              strokeHold: _strokeHold,
+              // Drawing while the pen's views are mounted, through windows.
+              drawing: ink != null,
+              inkWindows: conteInkWindows(
+                (ink?.pages ?? shown)[index].page,
+                unwrittenInkIdOf: ink == null ? null : _unwrittenInkIdOf,
+              ),
+              inkStrokes: _inkStrokes,
               imageFor: widget.imageFor,
               imageRepaint: widget.imageRepaint,
               picturesLanded: _picturesLandedOn(shown[index].page),
@@ -661,6 +668,24 @@ class _ConteTabHostState extends State<ConteTabHost> {
         if (awaited != null) _waitFor(awaited),
       ],
     );
+  }
+
+  /// The pages of [pages] a panel of [box] meets through [viewport], each
+  /// with its corner on the device's pixels at [ratio].
+  List<ConteShownPage> _pagesShown(
+    List<ContePageLayout> pages,
+    CanvasViewport viewport,
+    Size box,
+    double ratio,
+  ) {
+    final stack = _stackOf(pages);
+    return [
+      for (final index in stack.pagesMeeting(canvasRectShown(viewport, box)))
+        (
+          page: pages[index],
+          at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),
+        ),
+    ];
   }
 
   /// A pool picture dropped on the pages on screen is a photo in the band
@@ -819,6 +844,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
+        strokes: _inkStrokes,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
         pictureWindows: _pictureWindowsOf(ink.pages, pictures),

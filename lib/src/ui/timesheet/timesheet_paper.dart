@@ -11,6 +11,7 @@ import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
 import '../sheet/paper_writes.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
+import '../sheet/sheet_ink_layer.dart' show SheetInkStrokesHold;
 import '../sheet/sheet_photo_drop.dart';
 import 'timesheet_document_painter.dart';
 import 'timesheet_header_edit_layer.dart';
@@ -73,85 +74,106 @@ class TimesheetPaper extends StatelessWidget {
     final inkController = this.inkController;
     final inkTool = this.inkTool;
     final drawing = inkController != null && inkTool != null;
-    return Stack(
-      children: [
-        // The sheet paints in strata (UI-R10 #9, the PSD layering live):
-        // the printed FORM below, the CONTENT above, the saved INK over
-        // both — each re-recorded only when what it prints changes.
-        //
-        // Each stratum is baked rather than merely boundaried. This panel
-        // measured 13.1 ms/frame of raster — 47% of the whole app's — while
-        // sitting perfectly still, because a boundary stops the UI thread
-        // re-RECORDING and does nothing about the GPU re-EXECUTING. The
-        // form alone is ~334 lines and ~111 text paragraphs of B4 sheet at
-        // every frame the app happens to produce.
-        Positioned.fill(
-          child: TimesheetStrata(
-            layout: layout,
-            viewport: viewport,
-            words: timesheetWordsIn(
-              session.languageSettings.value.notationLanguage,
-            ),
-            dragPreview: session.dragPreview,
-            cutId: cutId,
-            stroking: strokeHold,
-            ink: inkController == null
-                ? null
-                : (controller: inkController, live: drawing),
-            imageFor: imageFor,
-            imageRepaint: imageRepaint,
-          ),
-        ),
-        // Under the ink windows: reachable exactly when the brush is off
-        // (the switch doubles as the edit-mode switch).
-        Positioned.fill(
-          child: TimesheetHeaderEditLayer(
-            key: const ValueKey<String>('timesheet-header-edit-layer'),
-            layout: layout,
-            viewport: viewport,
-            onMemoCommitted: (page, side, memo) =>
-                session.cutVerbs.updateCutNote(
-                  cutId: cutId,
-                  page: page,
-                  side: side,
-                  note: memo,
-                ),
-            headerCommits: _headerCommits(),
-          ),
-        ),
-        if (drawing)
+    return SheetInkStrokesHold(
+      builder: (context, strokes) => Stack(
+        children: [
+          // The sheet paints in strata (UI-R10 #9, the PSD layering live):
+          // the printed FORM below, the CONTENT above, the saved INK over
+          // both — each re-recorded only when what it prints changes.
+          //
+          // Each stratum is baked rather than merely boundaried. This panel
+          // measured 13.1 ms/frame of raster — 47% of the whole app's — while
+          // sitting perfectly still, because a boundary stops the UI thread
+          // re-RECORDING and does nothing about the GPU re-EXECUTING. The
+          // form alone is ~334 lines and ~111 text paragraphs of B4 sheet at
+          // every frame the app happens to produce.
           Positioned.fill(
-            // The tool-state boundary (R18 UI-3): the brush reaches only
-            // this small overlay — the sheet document above never rebuilds
-            // for it — and since H40 ② (2026-09-24) not even the overlay
-            // does: its windows read the brush when a stroke starts.
-            child: TimesheetInkLayer(
-              key: const ValueKey<String>('timesheet-ink-layer'),
-              controller: inkController,
+            child: TimesheetStrata(
               layout: layout,
-              cutId: cutId,
-              brushToolState: inkTool,
-              historyManager: session.historyManager,
               viewport: viewport,
-              strokeActive: strokeHold,
-              cacheInvalidationSink: cacheInvalidationSink,
+              words: timesheetWordsIn(
+                session.languageSettings.value.notationLanguage,
+              ),
+              dragPreview: session.dragPreview,
+              cutId: cutId,
               imageFor: imageFor,
               imageRepaint: imageRepaint,
-              photoHold: session.sheetPhotoHold,
             ),
           ),
-        // A pool picture dropped on a page is its photo (I-97).
-        if (inkController != null)
+          // Its ink over them, the brush on or off (F-215): the switch mounts
+          // the windows that take strokes, above the header's editors.
+          if (inkController != null)
+            Positioned.fill(
+              child: TimesheetInkScreens(
+                key: const ValueKey<String>('timesheet-ink-screens'),
+                controller: inkController,
+                layout: layout,
+                cutId: cutId,
+                viewport: viewport,
+                surfaceOf: (window) => inkController.shownSurfaceFor(
+                  null,
+                  window.key,
+                  drawing: drawing,
+                ),
+                strokes: strokes,
+                imageFor: imageFor,
+                imageRepaint: imageRepaint,
+                photoHold: session.sheetPhotoHold,
+              ),
+            ),
+          // Under the ink windows: reachable exactly when the brush is off
+          // (the switch doubles as the edit-mode switch).
           Positioned.fill(
-            child: SheetPhotoDrop(
-              session: session,
-              ink: inkController,
-              windows: () => timesheetInkWindows(layout: layout, cutId: cutId),
+            child: TimesheetHeaderEditLayer(
+              key: const ValueKey<String>('timesheet-header-edit-layer'),
+              layout: layout,
               viewport: viewport,
-              cacheInvalidationSink: cacheInvalidationSink,
+              onMemoCommitted: (page, side, memo) =>
+                  session.cutVerbs.updateCutNote(
+                    cutId: cutId,
+                    page: page,
+                    side: side,
+                    note: memo,
+                  ),
+              headerCommits: _headerCommits(),
             ),
           ),
-      ],
+          if (drawing)
+            Positioned.fill(
+              // The tool-state boundary (R18 UI-3): the brush reaches only
+              // this small overlay — the sheet document above never rebuilds
+              // for it — and since H40 ② (2026-09-24) not even the overlay
+              // does: its windows read the brush when a stroke starts.
+              child: TimesheetInkLayer(
+                key: const ValueKey<String>('timesheet-ink-layer'),
+                controller: inkController,
+                layout: layout,
+                cutId: cutId,
+                brushToolState: inkTool,
+                historyManager: session.historyManager,
+                viewport: viewport,
+                strokeActive: strokeHold,
+                cacheInvalidationSink: cacheInvalidationSink,
+                imageFor: imageFor,
+                imageRepaint: imageRepaint,
+                strokes: strokes,
+                photoHold: session.sheetPhotoHold,
+              ),
+            ),
+          // A pool picture dropped on a page is its photo (I-97).
+          if (inkController != null)
+            Positioned.fill(
+              child: SheetPhotoDrop(
+                session: session,
+                ink: inkController,
+                windows: () =>
+                    timesheetInkWindows(layout: layout, cutId: cutId),
+                viewport: viewport,
+                cacheInvalidationSink: cacheInvalidationSink,
+              ),
+            ),
+        ],
+      ),
     );
   }
 

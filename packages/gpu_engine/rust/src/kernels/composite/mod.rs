@@ -225,30 +225,38 @@ impl TileSet {
             .collect()
     }
 
-    /// The grid's tile at `column`, `row` placed at `at`. Nothing for a
+    /// The grid's tile `tile` placed at `at`. Nothing for a
     /// tile past the grid.
-    fn place(&mut self, (column, row): (i32, i32), at: TileAt) {
-        let (c, r) = (column - self.x0, row - self.y0);
-        if c >= 0 && r >= 0 && (c as u32) < self.columns && (r as u32) < self.rows {
-            self.tiles[(r as u32 * self.columns + c as u32) as usize] = Some(at);
+    fn place(&mut self, tile: (i32, i32), at: TileAt) {
+        if let Some(index) = self.index_of(tile) {
+            self.tiles[index] = Some(at);
+        }
+    }
+
+    /// The grid's tile `tile` placed nowhere again. Nothing for
+    /// a tile past the grid.
+    fn unplace(&mut self, tile: (i32, i32)) {
+        if let Some(index) = self.index_of(tile) {
+            self.tiles[index] = None;
         }
     }
 
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
+        self.tiles[self.index_of((column, row))?]
+    }
+
+    /// Where in `tiles` the grid's tile at `column`, `row` is — none past
+    /// the grid.
+    fn index_of(&self, (column, row): (i32, i32)) -> Option<usize> {
         let (c, r) = (column - self.x0, row - self.y0);
         if c < 0 || r < 0 || c as u32 >= self.columns || r as u32 >= self.rows {
             return None;
         }
-        self.tiles[(r as u32 * self.columns + c as u32) as usize]
+        Some((r as u32 * self.columns + c as u32) as usize)
     }
 
     /// The tiles of the set under the pixels `[left, top, right, bottom)`,
-    /// or all of them for `None`.
-    fn under(&self, pixels: Option<[i64; 4]>) -> impl Iterator<Item = TileAt> + '_ {
-        self.placed_under(pixels).map(|(_, at)| at)
-    }
-
-    /// `under`'s tiles, each at its column and row, row after row.
+    /// or all of them for `None`, each at its column and row, row after row.
     fn placed_under(
         &self,
         pixels: Option<[i64; 4]>,
@@ -269,6 +277,21 @@ impl TileSet {
         (top..bottom)
             .flat_map(move |row| (left..right).map(move |column| (column as i32, row as i32)))
             .filter_map(|(column, row)| Some(((column, row), self.at(column, row)?)))
+    }
+
+    /// `placed_under`'s tiles a row of the set posed by `map` reads for the
+    /// output tile at `column`, `row` — all of them where `map` lands no
+    /// rectangle there ([`ResampleMap::reads`]): what the walk lays a row
+    /// from ([`lay`]), and what a kept picture is made of
+    /// ([`Plan::lays_on`]).
+    fn read_for(
+        &self,
+        map: ResampleMap,
+        (column, row): (i32, i32),
+    ) -> impl Iterator<Item = ((i32, i32), TileAt)> + '_ {
+        let side = i64::from(TILE);
+        let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+        self.placed_under(map.reads(x0, y0, x0 + side, y0 + side))
     }
 }
 
@@ -465,6 +488,42 @@ pub(crate) struct Plan<'a> {
     pub(crate) chains: &'a [Chained<'a>],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
+}
+
+impl Plan<'_> {
+    /// Whether the plan may lay anything on the output tile at `tile`: a
+    /// row where its pose reads a stored tile for it — the walk lays it
+    /// nowhere else ([`lay`]) —, a solid where its rectangle meets it, a
+    /// buffer's open and its plain close nowhere of their own; and, for
+    /// want of telling where, everywhere a step may put what it read
+    /// elsewhere or nothing at all: a chain, a buffer closed as a row or
+    /// through a matrix, a buffer opened on the one under it made whole, a
+    /// range mark. A tile it lays nothing on composites to nothing.
+    pub(crate) fn lays_on(&self, tile: (i32, i32)) -> bool {
+        self.steps.iter().any(|step| match *step {
+            Step::Row {
+                set, chain: None, map, ..
+            } => self.sets.get(set).is_none_or(|set| set.read_for(map, tile).next().is_some()),
+            Step::Solid { rect, .. } => meets(tile, rect),
+            Step::Open
+            | Step::CloseAtop
+            | Step::Close {
+                matrix: None,
+                chain: None,
+                ..
+            } => false,
+            _ => true,
+        })
+    }
+}
+
+/// Whether the tile at `column`, `row` holds a pixel of `rect`, [left, top,
+/// right, bottom) — none for an empty one.
+pub(crate) fn meets((column, row): (i32, i32), rect: [i32; 4]) -> bool {
+    let side = i64::from(TILE);
+    let (x, y) = (i64::from(column) * side, i64::from(row) * side);
+    let [left, top, right, bottom] = rect.map(i64::from);
+    left < right && top < bottom && left < x + side && x < right && top < y + side && y < bottom
 }
 
 /// Where a run's last pass puts its pixels.
@@ -980,7 +1039,6 @@ impl Composite {
         tiles: &[(i32, i32)],
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Laid>)> {
-        let side = i64::from(TILE);
         let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut gathered = Vec::with_capacity(laid.len());
@@ -996,8 +1054,7 @@ impl Composite {
             let (Some((_, &(column, row))), None) = (live.next(), live.next()) else {
                 return fail("a step past a pass's pages is one output tile's");
             };
-            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
-            let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
+            let under = plan.sets[*set].read_for(*map, (column, row));
             // Row after row, as the set they make holds them.
             let read: Vec<(i32, i32)> = under.map(|(place, _)| place).collect();
             // ⚠️No test reaches this refusal (관제 11-06 21:18 asked why): a
@@ -1749,7 +1806,6 @@ fn lay(
     page_count: usize,
     pages_per_pass: usize,
 ) -> Option<Vec<Laid>> {
-    let side = i64::from(TILE);
     let mut laid = Vec::new();
     for step in steps {
         let Step::Row { set, map, .. } = *step else {
@@ -1762,10 +1818,9 @@ fn lay(
         };
         // The pages each output tile reads.
         let mut reads: Vec<Vec<u16>> = Vec::with_capacity(tiles.len());
-        for &(column, row) in tiles {
-            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+        for &tile in tiles {
             let mut read: Vec<u16> = Vec::new();
-            for at in sets[set].under(map.reads(x0, y0, x0 + side, y0 + side)) {
+            for (_, at) in sets[set].read_for(map, tile) {
                 if usize::from(at.page) >= page_count {
                     return fail(format!("tile set {set} names page {}", at.page));
                 }

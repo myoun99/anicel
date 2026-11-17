@@ -8,7 +8,6 @@ import '../../core/color_matrix.dart'
     show luminanceB, luminanceG, luminanceR;
 import '../../core/contain_rect.dart' show containFit;
 import '../../core/page_stack.dart';
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_size.dart';
@@ -51,7 +50,6 @@ import '../timeline/timeline_frame_ruler_painter.dart'
 import '../timeline/timeline_glyph_cache.dart' show timelineWordSetOnto;
 import '../repaint_props.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet/sheet_line.dart';
 import '../sheet_painting.dart'
     show
@@ -692,8 +690,7 @@ int _halfStartFrame(TimesheetDocument document, TimesheetPage page, int half) =>
 /// strikethrough and the playhead row — under the panel viewport transform
 /// (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-class TimesheetDocumentPainter extends CustomPainter
-    with RepaintOnProps, SheetInkOnScreen {
+class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
@@ -708,8 +705,6 @@ class TimesheetDocumentPainter extends CustomPainter
     this.ink = const [],
     this.inkImageFor,
     this.inkPhotosFor,
-    this.inkSurfaceFor,
-    this.liveInkKeys = const {},
     this.imageFor,
     Listenable? inkRepaint,
     Listenable? imageRepaint,
@@ -730,19 +725,8 @@ class TimesheetDocumentPainter extends CustomPainter
   /// raster — each drawn from its file by [imageFor].
   final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
-  /// A window's ink surface ON SCREEN, printed as the brush's live window
-  /// paints it ([SheetInkOnScreen], F-215).
-  @override
-  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
-
-  /// Keys a LIVE brush window is already showing: skipped here, so
-  /// translucent ink never composites twice.
-  @override
-  final Set<BrushFrameKey> liveInkKeys;
-
   /// The pool files the ink's photos are drawn from (I-97); a landed decode
   /// repaints through `imageRepaint`.
-  @override
   final SheetImageLookup? imageFor;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
@@ -750,7 +734,6 @@ class TimesheetDocumentPainter extends CustomPainter
   /// export, which has no viewport, says here how many of its pixels a
   /// unit of the sheet is — what its photos are sampled for (I-97).
   /// Defaulting to 1.0 keeps every focused test unchanged.
-  @override
   final double effectiveRatio;
 
   /// The accent at the moment this painter was BUILT.
@@ -769,7 +752,6 @@ class TimesheetDocumentPainter extends CustomPainter
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
-  @override
   final CanvasViewport? viewport;
 
   /// The words the sheet prints, in the NOTATION language (UI-R10 #7) —
@@ -985,15 +967,11 @@ class TimesheetDocumentPainter extends CustomPainter
     }
 
     canvas.restore();
-    // On screen the ink is the stratum's last, and drawn out of document
-    // space: as the live windows draw it (F-215).
-    if (_draws(SheetPaintLayer.ink)) {
-      printInkAsLive(canvas, size, ink);
-    }
   }
 
-  /// The handwriting, pen over paper: each window's surface where its
-  /// placement lays it, but for the windows a live brush view is showing.
+  /// The handwriting, pen over paper, for an export: each window's raster
+  /// where its placement lays it. The panel shows its ink on the engine
+  /// (`TimesheetInkScreens`).
   ///
   /// ⛔The sheet printed no ink of its own: the writing showed only through
   /// the brush's windows, which mount with the brush switch on — so with
@@ -1010,9 +988,6 @@ class TimesheetDocumentPainter extends CustomPainter
       return;
     }
     for (final window in ink) {
-      if (liveInkKeys.contains(window.key)) {
-        continue;
-      }
       paintSheetInkWindow(
         canvas,
         rasterFor?.call(window.key),
@@ -1243,13 +1218,9 @@ class TimesheetDocumentPainter extends CustomPainter
     ByIdentity(dragPreview),
   );
 
-  /// The ink's windows by value — the walk is rebuilt every build — and
-  /// which of them a live brush view shows: mounting a window HIDES that
-  /// key's baked ink here, unmounting shows it again.
-  Object get _inkInputs => (
-    ByList([for (final window in ink) (window.key, window.placement)]),
-    BySet(liveInkKeys),
-  );
+  /// The ink's windows by value — the walk is rebuilt every build.
+  Object get _inkInputs =>
+      ByList([for (final window in ink) (window.key, window.placement)]);
 }
 
 /// The sheet's PLAYHEAD row highlight as its own repaint-only layer

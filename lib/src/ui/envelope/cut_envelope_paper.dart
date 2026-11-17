@@ -88,108 +88,121 @@ class CutEnvelopePaper extends StatelessWidget {
         ? const <SheetInkWindow>[]
         : envelopeInkWindows(layout, owner);
     final inking = inkController != null && inkTool != null;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // ONE gate, read by both the input layer and the painter: a box
-        // whose window is mounted draws itself, and every other box's
-        // saved ink is baked by the painter.
-        final mounted = inking
-            ? mountedEnvelopeInkWindows(windows, viewport, constraints.biggest)
-            : const <SheetInkWindow>[];
-        CutEnvelopePainter painterOf(
-          SheetStratum stratum, {
-          Listenable? repaint,
-        }) => CutEnvelopePainter(
-          layout: layout,
-          source: source,
-          face: appFaceOf(DefaultTextStyle.of(context).style),
-          viewport: viewport,
-          effectiveRatio: EffectiveDevicePixelRatio.of(context),
-          layers: stratum.layers,
-          imageFor: imageFor,
-          inkOwner: owner,
-          inkSurfaceFor: inkController == null
-              ? null
-              : (key) => inkController.surfaceFor(null, key),
-          liveInkKeys: {for (final window in mounted) window.key},
-          repaint: repaint,
-        );
-        return Stack(
-          children: [
-            Positioned.fill(
-              // Baked, not merely isolated — see the note on the conte
-              // page. The ink stands down while the pen is down, when it
-              // changes on every sample.
-              child: SheetStrata(
-                sheet: 'envelope',
-                painters: {
-                  SheetStratum.form: painterOf(SheetStratum.form),
-                  // A landed logo — nothing the painter compares changes
-                  // for it.
-                  SheetStratum.content: painterOf(
-                    SheetStratum.content,
-                    repaint: imageRepaint,
-                  ),
-                  // The ink, and a landed decode of a photo it holds
-                  // (I-97).
-                  if (inkController != null)
-                    SheetStratum.ink: painterOf(
-                      SheetStratum.ink,
-                      repaint: Listenable.merge([inkController, imageRepaint]),
+    return SheetInkStrokesHold(
+      builder: (context, strokes) => LayoutBuilder(
+        builder: (context, constraints) {
+          // ONE gate: the boxes whose windows take strokes now.
+          final mounted = inking
+              ? mountedEnvelopeInkWindows(
+                  windows,
+                  viewport,
+                  constraints.biggest,
+                )
+              : const <SheetInkWindow>[];
+          final drawn = {for (final window in mounted) window.key};
+          CutEnvelopePainter painterOf(
+            SheetStratum stratum, {
+            Listenable? repaint,
+          }) => CutEnvelopePainter(
+            layout: layout,
+            source: source,
+            face: appFaceOf(DefaultTextStyle.of(context).style),
+            viewport: viewport,
+            effectiveRatio: EffectiveDevicePixelRatio.of(context),
+            layers: stratum.layers,
+            imageFor: imageFor,
+            repaint: repaint,
+          );
+          return Stack(
+            children: [
+              Positioned.fill(
+                // Baked, not merely isolated — see the note on the conte
+                // page.
+                child: SheetStrata(
+                  sheet: 'envelope',
+                  painters: {
+                    SheetStratum.form: painterOf(SheetStratum.form),
+                    // A landed logo — nothing the painter compares changes
+                    // for it.
+                    SheetStratum.content: painterOf(
+                      SheetStratum.content,
+                      repaint: imageRepaint,
                     ),
-                },
-                liveNow: (stratum) =>
-                    stratum == SheetStratum.ink && strokeHold.value,
-                liveChanges: strokeHold,
-              ),
-            ),
-            // Under the ink windows: reachable exactly when the brush is off
-            // (the switch doubles as the edit-mode switch), as on the
-            // timesheet. A bare form prints nothing of a cut's to type into.
-            if (owner != null)
-              Positioned.fill(
-                child: CutEnvelopeEditLayer(
-                  key: const ValueKey<String>('cut-envelope-edit-layer'),
-                  layout: layout,
-                  source: source,
-                  viewport: viewport,
-                  commitOf: (value) => _commitOf(value, owner),
+                  },
                 ),
               ),
-            if (inking)
-              Positioned.fill(
-                // The tool-state boundary: the brush reaches only this
-                // overlay, so a tool switch never reprints the sheet — and
-                // since H40 ② (2026-09-24) not even the overlay rebuilds
-                // for it: its windows read the brush when a stroke starts.
-                child: CutEnvelopeInkOverlay(
-                  key: const ValueKey<String>('cut-envelope-ink-layer'),
-                  controller: inkController,
-                  windows: mounted,
-                  brushToolState: inkTool,
-                  historyManager: session.historyManager,
-                  viewport: viewport,
-                  strokeActive: strokeHold,
-                  cacheInvalidationSink: cacheInvalidationSink,
-                  imageFor: imageFor,
-                  imageRepaint: imageRepaint,
-                  photoHold: session.sheetPhotoHold,
+              // Its ink over them, the brush on or off (F-215): a box whose
+              // window takes strokes shows what its view draws on.
+              if (inkController != null && owner != null)
+                Positioned.fill(
+                  child: SheetInkScreens(
+                    key: const ValueKey<String>('cut-envelope-ink-screens'),
+                    windows: windows,
+                    keyPrefix: 'envelope',
+                    viewport: viewport,
+                    surfaceOf: (window) => inkController.shownSurfaceFor(
+                      null,
+                      window.key,
+                      drawing: drawn.contains(window.key),
+                    ),
+                    strokes: strokes,
+                    inkChanges: inkController,
+                    imageFor: imageFor,
+                    imageRepaint: imageRepaint,
+                    photoHold: session.sheetPhotoHold,
+                  ),
                 ),
-              ),
-            // A pool picture dropped on a box is its photo (I-97).
-            if (inkController != null && owner != null)
-              Positioned.fill(
-                child: SheetPhotoDrop(
-                  session: session,
-                  ink: inkController,
-                  windows: () => windows,
-                  viewport: viewport,
-                  cacheInvalidationSink: cacheInvalidationSink,
+              // Under the ink windows: reachable exactly when the brush is
+              // off (the switch doubles as the edit-mode switch), as on the
+              // timesheet. A bare form prints nothing of a cut's to type
+              // into.
+              if (owner != null)
+                Positioned.fill(
+                  child: CutEnvelopeEditLayer(
+                    key: const ValueKey<String>('cut-envelope-edit-layer'),
+                    layout: layout,
+                    source: source,
+                    viewport: viewport,
+                    commitOf: (value) => _commitOf(value, owner),
+                  ),
                 ),
-              ),
-          ],
-        );
-      },
+              if (inking)
+                Positioned.fill(
+                  // The tool-state boundary: the brush reaches only this
+                  // overlay, so a tool switch never reprints the sheet —
+                  // and since H40 ② (2026-09-24) not even the overlay
+                  // rebuilds for it: its windows read the brush when a
+                  // stroke starts.
+                  child: CutEnvelopeInkOverlay(
+                    key: const ValueKey<String>('cut-envelope-ink-layer'),
+                    controller: inkController,
+                    windows: mounted,
+                    brushToolState: inkTool,
+                    historyManager: session.historyManager,
+                    viewport: viewport,
+                    strokeActive: strokeHold,
+                    strokes: strokes,
+                    cacheInvalidationSink: cacheInvalidationSink,
+                    imageFor: imageFor,
+                    imageRepaint: imageRepaint,
+                    photoHold: session.sheetPhotoHold,
+                  ),
+                ),
+              // A pool picture dropped on a box is its photo (I-97).
+              if (inkController != null && owner != null)
+                Positioned.fill(
+                  child: SheetPhotoDrop(
+                    session: session,
+                    ink: inkController,
+                    windows: () => windows,
+                    viewport: viewport,
+                    cacheInvalidationSink: cacheInvalidationSink,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 

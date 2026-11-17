@@ -54,6 +54,7 @@ void main() {
     late TimesheetInkController controller;
     late HistoryManager history;
     late ValueNotifier<bool> strokeActive;
+    late SheetInkStrokes strokes;
     late List<bool> holds;
     late List<SheetInkWindow> windows;
 
@@ -93,6 +94,8 @@ void main() {
       history = HistoryManager();
       strokeActive = ValueNotifier<bool>(false);
       addTearDown(strokeActive.dispose);
+      strokes = SheetInkStrokes();
+      addTearDown(strokes.dispose);
       holds = <bool>[];
       strokeActive.addListener(() => holds.add(strokeActive.value));
       windows = timesheetInkWindows(
@@ -127,6 +130,7 @@ void main() {
                         historyManager: history,
                         viewport: CanvasViewport(),
                         strokeActive: strokeActive,
+                        strokes: strokes,
                       ),
                     ],
                   ),
@@ -340,6 +344,7 @@ void main() {
                     viewport: CanvasViewport(),
                     brushToolState: ValueNotifier(BrushToolState.defaults),
                     strokeActive: strokeActive,
+                    strokes: strokes,
                     history: history.gestures,
                     inkChanges: controller,
                     sessionStateFor: (window) =>
@@ -554,6 +559,8 @@ void main() {
     final history = HistoryManager();
     final strokeActive = ValueNotifier<bool>(false);
     addTearDown(strokeActive.dispose);
+    final strokes = SheetInkStrokes();
+    addTearDown(strokes.dispose);
     final windows = envelopeInkWindows(layout, cutId);
     await tester.binding.setSurfaceSize(const Size(440, 440));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -572,6 +579,7 @@ void main() {
                 historyManager: history,
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
+                strokes: strokes,
               ),
             ),
           ),

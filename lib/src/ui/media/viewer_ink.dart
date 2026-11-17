@@ -1,8 +1,6 @@
-import 'package:flutter/foundation.dart'
-    show ValueListenable, listEquals, setEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -14,7 +12,6 @@ import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
-import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
 
@@ -50,10 +47,6 @@ class ViewerInkController extends SheetInkController<CanvasSize> {
   @override
   BrushFrameStore storeFor(CanvasSize plane) => _store;
 
-  /// [key]'s ink as the viewer prints it ([surfaceFor]) — one store holds
-  /// every plane's, so the key alone finds it.
-  BitmapSurface? surfaceOf(BrushFrameKey key) =>
-      _store.bakedSurfaceOrNull(key);
 
   @override
   void dispose() {
@@ -102,6 +95,7 @@ class ViewerInkOverlay extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
+    required this.strokes,
     this.cacheInvalidationSink,
   });
 
@@ -119,6 +113,9 @@ class ViewerInkOverlay extends StatelessWidget {
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
+  /// Forwarded to [SheetInkLayer.strokes].
+  final SheetInkStrokes strokes;
+
   final CacheInvalidationSink? cacheInvalidationSink;
 
   @override
@@ -128,6 +125,7 @@ class ViewerInkOverlay extends StatelessWidget {
     viewport: viewport,
     brushToolState: brushToolState,
     strokeActive: strokeActive,
+    strokes: strokes,
     history: historyManager.gestures,
     inkChanges: controller,
     sessionStateFor: (window) =>
@@ -140,50 +138,4 @@ class ViewerInkOverlay extends StatelessWidget {
       cacheInvalidationSink: cacheInvalidationSink,
     ),
   );
-}
-
-/// Prints the saved ink of the pages a viewer shows, as the live windows
-/// draw it ([printSheetInkAsLive]) — every sheet's print, over the page.
-/// A page whose window is mounted ([liveInkKeys]) is drawn by it instead.
-class ViewerInkPainter extends CustomPainter with SheetInkOnScreen {
-  ViewerInkPainter({
-    required this.windows,
-    required this.viewport,
-    required this.effectiveRatio,
-    required this.inkSurfaceFor,
-    required this.liveInkKeys,
-    super.repaint,
-  });
-
-  final List<SheetInkWindow> windows;
-
-  @override
-  final CanvasViewport viewport;
-
-  @override
-  final double effectiveRatio;
-
-  @override
-  final BitmapSurface? Function(BrushFrameKey key) inkSurfaceFor;
-
-  @override
-  final Set<BrushFrameKey> liveInkKeys;
-
-  /// A viewer's ink holds no photos (I-97 is the sheets').
-  @override
-  SheetImageLookup? get imageFor => null;
-
-  @override
-  void paint(Canvas canvas, Size size) => printInkAsLive(canvas, size, [
-    for (final window in windows) window.mark,
-  ]);
-
-  @override
-  bool shouldRepaint(ViewerInkPainter oldDelegate) =>
-      !listEquals(oldDelegate.windows.map((w) => w.mark).toList(), [
-        for (final window in windows) window.mark,
-      ]) ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.effectiveRatio != effectiveRatio ||
-      !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
 }

@@ -1116,7 +1116,14 @@ void main() {
   /// is `_filter` (eleven) now, of `qa_audio_filter` — the ONE door every
   /// sound filter takes, its kind first, so the compressor brought no door
   /// of its own. The count did not move.
-  const wideSignatures = 453;
+  ///
+  /// ⚠️453 → 452 on 2026-11-18 (board
+  /// the-screen-premultiplies-ram-tiles-to-show-them, F-215): the frame
+  /// feed's `_show` and its two feeds took a record, `_OnTheTexture` — the
+  /// viewport, the device's ratio and the texture's corner travel together
+  /// as one placing on the texture. 🔬`clean_code_diff` against master
+  /// (`96c3a5d3a`) names `FramePictureViewState._show` gone and none added.
+  const wideSignatures = 452;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

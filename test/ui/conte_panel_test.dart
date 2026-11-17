@@ -432,6 +432,8 @@ void main() {
     final historyManager = HistoryManager();
     final strokeActive = ValueNotifier<bool>(false);
     addTearDown(strokeActive.dispose);
+    final strokes = SheetInkStrokes();
+    addTearDown(strokes.dispose);
 
     await tester.binding.setSurfaceSize(
       Size(metrics.pageWidth + 40, metrics.pageHeight + 40),
@@ -456,6 +458,7 @@ void main() {
                 // viewport every painter takes.
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
+                strokes: strokes,
               ),
             ),
           ),
@@ -526,6 +529,8 @@ void main() {
     final historyManager = HistoryManager();
     final strokeActive = ValueNotifier<bool>(false);
     addTearDown(strokeActive.dispose);
+    final strokes = SheetInkStrokes();
+    addTearDown(strokes.dispose);
     await tester.binding.setSurfaceSize(
       Size(metrics.pageWidth + 40, metrics.pageHeight + 40),
     );
@@ -545,6 +550,7 @@ void main() {
                 historyManager: historyManager,
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
+                strokes: strokes,
               ),
             ),
           ),

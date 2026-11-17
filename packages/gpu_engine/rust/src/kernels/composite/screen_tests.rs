@@ -5,6 +5,7 @@
 
 use super::{Screen, meets};
 use crate::device::gpu_engine_waits_here;
+use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
@@ -32,11 +33,20 @@ fn laid<'a>(pages: &'a [wgpu::Buffer], set: &'a TileSet) -> Plan<'a> {
 /// `pixel` over the canvas, nothing past it, composited whole in one run:
 /// what every kept canvas of it is held to.
 fn composited_whole(pixel: impl Fn(i32, i32) -> u32) -> Vec<u8> {
-    let Rig { engine, composite } = rig();
     let (pages, set, _) = composite_of(pixel, CANVAS);
+    run_over_the_page(&laid(&pages, &set))
+}
+
+/// The page's tiles, row after row: every output tile of a run over it.
+fn page_tiles() -> Vec<(i32, i32)> {
     let size = (CANVAS.0.div_ceil(TILE) as i32, CANVAS.1.div_ceil(TILE) as i32);
-    let tiles: Vec<(i32, i32)> = (0..size.1).flat_map(|row| (0..size.0).map(move |column| (column, row))).collect();
-    let done = composite.run(engine, &laid(&pages, &set), &tiles, PAGE, composite.widest()).expect("run");
+    (0..size.1).flat_map(|row| (0..size.0).map(move |column| (column, row))).collect()
+}
+
+/// `plan` composited over every tile of the page in one run.
+fn run_over_the_page(plan: &Plan) -> Vec<u8> {
+    let Rig { engine, composite } = rig();
+    let done = composite.run(engine, plan, &page_tiles(), PAGE, composite.widest()).expect("run");
     read_buffer(engine, &done.out)
 }
 
@@ -662,4 +672,126 @@ fn the_screen_is_r1_through_the_camera_over_r1_laying_a_turned_row() {
         let scale = camera.scale;
         assert!(shown_by(&mut screen, camera) == by_r1, "at {scale}");
     }
+}
+
+/// A canvas kept over the page as a run over every tile of it puts it: its
+/// tiles' bytes where it keeps them, nothing where it keeps none.
+fn kept_over_the_page(kept: &Kept) -> Vec<u8> {
+    let bytes = kept_bytes(kept);
+    let mut placed = bytes.chunks(TILE_BYTES as usize);
+    let nothing = vec![0; TILE_BYTES as usize];
+    let tiles = &kept.as_tiles().set.tiles;
+    assert_eq!(tiles.len(), page_tiles().len(), "the premise: a canvas over the page");
+    tiles
+        .iter()
+        .flat_map(|tile| tile.map_or(&nothing[..], |_| placed.next().expect("its bytes")).to_vec())
+        .collect()
+}
+
+/// `pixel`'s row over the canvas, nothing past it, with a tile where
+/// `inked` says and none elsewhere: a sheet's ink, a few tiles a pen wrote
+/// on.
+fn inked_where(
+    pixel: impl Fn(i32, i32) -> u32,
+    inked: impl Fn(i32, i32) -> bool,
+) -> (Vec<wgpu::Buffer>, TileSet) {
+    let within = |x: i32, y: i32| x < CANVAS.0 as i32 && y < CANVAS.1 as i32;
+    let pixel = |x, y| if within(x, y) { pixel(x, y) } else { 0 };
+    let mut pool = Pool::default();
+    let size = (CANVAS.0.div_ceil(TILE), CANVAS.1.div_ceil(TILE));
+    let set = pool.drawn(pixel, (0, 0), size, |column, row| inked(column, row).then_some(0));
+    (pool.upload(rig().engine), set)
+}
+
+/// Which of a tile set's tiles are there, row after row.
+fn there(set: &TileSet) -> Vec<bool> {
+    set.tiles.iter().map(Option::is_some).collect()
+}
+
+// A canvas keeps no tile nothing lays on — its row's tiles alone, a
+// checker of them — and is the canvas composited all the same: nothing
+// where it keeps none. Shown, magnified and under 1/16 alike, it is the
+// row shown by halvings of its own — onto a surface that showed another
+// canvas the frame before, so nothing of that stays where it keeps no
+// tile.
+#[test]
+fn a_canvas_keeps_no_tile_nothing_lays_on_and_shows_nothing_there() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let (pages, set) = inked_where(noise(41), |column, row| (column + row) % 2 == 0);
+    let plan = laid(&pages, &set);
+    let pictures = Pictures::sized(15).expect("a pool");
+    let kept = kept_in(&pictures, &plan);
+    assert_eq!(there(kept.as_tiles().set), there(&set));
+    assert_eq!(kept.bytes(), 8 * TILE_BYTES, "8 of 15 tiles");
+    assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
+
+    let (full_pages, full_set, _) = composite_of(noise(17), CANVAS);
+    let mut full = Screen::new(PAGE, 1.0).expect("screen");
+    full.compose(engine, composite, &laid(&full_pages, &full_set), PAGE, budget).expect("compose");
+    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    screen.compose(engine, composite, &plan, PAGE, budget).expect("compose");
+    for camera in [camera(0.4, (1.0, 0.0), (3.0, 2.0)), camera(0.03, (1.0, 0.0), (20.75, 18.0))] {
+        let texture = surface(SCREEN, wgpu::TextureFormat::Rgba8Unorm);
+        let whole = [0, 0, SCREEN.0, SCREEN.1];
+        full.show(engine, composite, camera, &texture, whole, budget).expect("the frame before");
+        screen.show(engine, composite, camera, &texture, whole, budget).expect("show");
+        let shown = engine.read_texture(&texture).expect("read the surface back");
+        assert!(shown == halvings_show(Tiles { pages: &pages, set: &set }, camera), "{}", camera.scale);
+    }
+}
+
+// Made again, a canvas takes a tile a change first lays on and lets go of
+// one a change leaves nothing on — its slot free for the one taken — and
+// is then the changed canvas composited anew; both tiles' pixels are where
+// it changed. A tile marked that nothing lays on, before or after, stays
+// none and changed nothing.
+#[test]
+fn a_canvas_made_again_takes_a_tile_first_laid_on_and_lets_go_of_one_left_bare() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let before = |column, row| (column + row) % 2 == 0;
+    let (pages, set) = inked_where(noise(41), before);
+    let pictures = Pictures::sized(15).expect("a pool");
+    let mut kept = kept_in(&pictures, &laid(&pages, &set));
+    let idle = idle_of(&pictures);
+    // (1, 0) is inked now and (0, 0) wiped; (3, 0) was bare and stays so.
+    let after = move |column, row| (column, row) != (0, 0) && (before(column, row) || (column, row) == (1, 0));
+    let (pages, set) = inked_where(noise(41), after);
+    let plan = laid(&pages, &set);
+    let stale = |tile| [(0, 0), (1, 0), (3, 0)].contains(&tile);
+    let made = kept.made_again(engine, composite, &plan, stale, budget).expect("made again");
+    assert_eq!(made, Some([0, 0, 256, 128]), "both tiles changed, the bare one did not");
+    assert_eq!(there(kept.as_tiles().set), there(&set));
+    assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
+    assert_eq!(kept.bytes(), 8 * TILE_BYTES);
+    assert_eq!(idle_of(&pictures), idle, "a slot taken, a slot let go");
+}
+
+// A solid lays the tiles its rectangle meets — the paper under a cut's
+// rows — and a buffer opened and closed around the rows lays nothing of
+// its own: a canvas keeps those and its row's one tile, and is the canvas
+// composited.
+#[test]
+fn a_solid_lays_the_tiles_it_meets_and_a_buffer_lays_nothing_of_its_own() {
+    let (pages, set) = inked_where(noise(41), |column, row| (column, row) == (4, 2));
+    let steps = [
+        Step::Solid {
+            colour: 0xffff_ffff,
+            rect: [10, 10, 140, 100],
+        },
+        Step::Open,
+        row(ResampleMap::moved(0, 0)),
+        Step::Close {
+            opacity: 65535,
+            mode: NORMAL,
+            matrix: None,
+            chain: None,
+        },
+    ];
+    let plan = plan(Tiles { pages: &pages, set: &set }, &steps);
+    let kept = kept_in(&Pictures::sized(15).expect("a pool"), &plan);
+    let held: Vec<(i32, i32)> = kept.as_tiles().set.placed_under(None).map(|(tile, _)| tile).collect();
+    assert_eq!(held, [(0, 0), (1, 0), (4, 2)]);
+    assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
 }

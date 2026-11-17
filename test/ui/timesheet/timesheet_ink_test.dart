@@ -12,6 +12,8 @@ import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart'
+    show SheetInkStrokes;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
@@ -183,6 +185,8 @@ void main() {
       final historyManager = HistoryManager();
       final strokeActive = ValueNotifier<bool>(false);
       addTearDown(strokeActive.dispose);
+      final strokes = SheetInkStrokes();
+      addTearDown(strokes.dispose);
       final documentSize = layout.documentSize;
 
       await tester.binding.setSurfaceSize(
@@ -206,6 +210,7 @@ void main() {
                   historyManager: historyManager,
                   viewport: CanvasViewport(),
                   strokeActive: strokeActive,
+                  strokes: strokes,
                 ),
               ),
             ),

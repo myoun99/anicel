@@ -23,6 +23,7 @@ class LiveCelScreen extends StatefulWidget {
     required this.painter,
     required this.viewport,
     this.placement,
+    required this.panel,
   });
 
   /// The cel [painter] draws.
@@ -32,18 +33,43 @@ class LiveCelScreen extends StatefulWidget {
   /// and the stroke in flight over it ([BitmapSurfacePainter.overlayModel]).
   final BitmapSurfacePainter painter;
 
-  /// The cel's pixels to the screen.
+  /// The cel's pixels to this screen's box.
   final CanvasViewport viewport;
 
   /// Where the cel is laid in its own pixels before [viewport] shows it —
   /// none where it lies as it is.
   final LayerPlacement? placement;
 
+  /// Where the panel lies over this screen's box, in the box's own space:
+  /// what of the cel the screen holds ([_holdsOver]). The box is the
+  /// window's own, laid with the paper — so a pan moves it, and draws
+  /// nothing.
+  final Rect panel;
+
+  /// Whether a window at [box] on a panel of [panel] — the panel's space —
+  /// is worth a screen: within the margin a screen spares past the panel's
+  /// edge ([_screenMargin]), so one comes up before it is seen.
+  static bool meets(Rect box, Size panel, double devicePixelRatio) =>
+      box.overlaps(
+        (Offset.zero & panel).inflate(_screenMargin / devicePixelRatio),
+      );
+
   @override
   State<LiveCelScreen> createState() => _LiveCelScreenState();
+
+  /// What the engine keeps for every cel shown so, on the screens of all
+  /// of them up now ([EngineStackScreen.bytes]): no store keeps them, so
+  /// the census reads them here.
+  static int get keptBytes => _LiveCelScreenState._up.fold(
+    0,
+    (sum, state) => sum + (state._laidOn?.screen.bytes ?? 0),
+  );
 }
 
 class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
+  /// The screens up now, for what they keep ([LiveCelScreen.keptBytes]).
+  static final Set<_LiveCelScreenState> _up = {};
+
   late StackedFrame _frame = _stood();
 
   /// The screen the cel is laid on, and the engine tools it was made with
@@ -71,6 +97,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
   @override
   void initState() {
     super.initState();
+    _up.add(this);
     if (appEngineFrameToolsOpen == null) {
       unawaited(
         appEngineFrameTools.then<void>(
@@ -106,6 +133,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
 
   @override
   void dispose() {
+    _up.remove(this);
     _place?.says(this, waits: false);
     ShownCels.instance.hide(this);
     _laidOn?.screen.free();
@@ -168,11 +196,10 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
   void _show(
     StackedFrame? frame,
     GpuTarget target,
-    (int, int) size, {
-    required CanvasViewport viewport,
-    required double devicePixelRatio,
-    required (int, int) corner,
-  }) {
+    (int, int) size,
+    _OnTheTexture on,
+  ) {
+    final (:viewport, :devicePixelRatio, :corner) = on;
     final screen = _screen();
     if (_held == null) {
       final lay = _wholeLays += 1;
@@ -248,6 +275,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
       cutAtCanvas: null,
       viewport: widget.viewport,
       devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+      panel: widget.panel,
       repaint: Listenable.merge([_repaint, _frame.changes]),
       overlays: null,
       together: null,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
@@ -219,6 +220,14 @@ final class _DrawnAsItStands {
   bool whole = false;
 }
 
+/// How a frame screen's box lays its frame on its texture: the view through
+/// `viewport` at `devicePixelRatio`, its corner on the texel `corner`.
+typedef _OnTheTexture = ({
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  (int, int) corner,
+});
+
 /// What a frame screen's box ([_RenderFrameScreen]) asks, in its paint, of
 /// what hands it its frames — a frame's picture view ([FramePictureView]),
 /// or a cel's live screen ([LiveCelScreen]). The box is one: how a frame
@@ -234,16 +243,13 @@ abstract interface class _FrameFeed {
   bool _hasAFrame(StackedFrame? asItStands);
 
   /// The frame as it is drawn now — [frame] where no picture is shown —
-  /// through [viewport] at [devicePixelRatio] onto [target] of [size]
-  /// texels, the view's corner on its texel [corner].
+  /// onto [target] of [size] texels, laid [on] it.
   void _show(
     StackedFrame? frame,
     GpuTarget target,
-    (int, int) size, {
-    required CanvasViewport viewport,
-    required double devicePixelRatio,
-    required (int, int) corner,
-  });
+    (int, int) size,
+    _OnTheTexture on,
+  );
 
   /// Tells the place the frame is shown in whether the engine keeps it
   /// from the screen at this paint — [refused] where the paint's lay met
@@ -1071,17 +1077,15 @@ class _FramePictureViewState extends State<FramePictureView>
   /// What [_RenderFrameScreen] asks of this view in its paint.
   ///
   /// The frame as it is drawn now — what [frame] stands for where no
-  /// picture is shown — through [viewport] at [devicePixelRatio] onto
-  /// [target] of [size] texels, the view's corner on its texel [corner].
+  /// picture is shown — onto [target] of [size] texels, laid [on] it.
   @override
   void _show(
     StackedFrame? frame,
     GpuTarget target,
-    (int, int) size, {
-    required CanvasViewport viewport,
-    required double devicePixelRatio,
-    required (int, int) corner,
-  }) {
+    (int, int) size,
+    _OnTheTexture on,
+  ) {
+    final (:viewport, :devicePixelRatio, :corner) = on;
     final shown = _drawnPicture;
     if (shown != null) {
       shown.show(
@@ -1232,6 +1236,7 @@ class _FramePictureViewState extends State<FramePictureView>
     cutAtCanvas: widget.cutAtCanvas,
     viewport: widget.viewport,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+    panel: null,
     repaint: Listenable.merge([_repaint, _liveChanges]),
     overlays: widget.carriesTheOverlays
         ? PictureUpViewScope.maybeOf(context)
@@ -1264,6 +1269,63 @@ const int _screenMargin = 128;
 /// ([EngineScreenTexture]), and what that spares is room too.
 const int _screenRoom = 3 * _screenMargin;
 
+/// The step a cel's window's screen is rounded up to, in device pixels
+/// ([_holdsOver]): a box a few pixels across is not held in a texture a
+/// canvas's step on a side. One a zoom grows past its texture stands on
+/// what it outgrew till the next shows ([EngineScreenTexture.replaced]).
+const int _windowSideStep = 64;
+
+/// What of a box its screen holds, in the box's device pixels: the [rect]
+/// a frame is laid around ([EngineScreenTexture.windowOf]), the [margin]
+/// past it the frame drawn last spares to serve a view panned since
+/// ([_RenderFrameScreen._servedByTheFrameDrawnLast]), and the sides its
+/// texture is opened at ([wanted]).
+typedef _ScreenHolds = ({Rect rect, int margin, (int, int) wanted});
+
+/// A box of [sides] that is the panel's: held whole, a pan uncovering its
+/// edge.
+_ScreenHolds _holdsWhole((int, int) sides) {
+  final (width, height) = sides;
+  return (
+    rect: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    margin: _screenMargin,
+    wanted: (width + _screenRoom, height + _screenRoom),
+  );
+}
+
+/// A cel's window of [sides] with the [panel] lying over it where it does
+/// ([LiveCelScreen]): along an axis the panel and [_screenMargin] past its
+/// edges take in, the box held whole — a pan moves it with the paper and
+/// asks for nothing — and along a longer one, what lies within them, its
+/// texture no wider.
+///
+/// ↩️Held as the panel's box is, every window's screen was a texture the
+/// panel's size, a step and the room to pan round it — for a band of the
+/// conte's a few rows high, or a box of the envelope's among dozens
+/// (board the-screen-premultiplies-ram-tiles-to-show-them).
+_ScreenHolds _holdsOver((int, int) sides, Rect panel) {
+  final around = panel.inflate(_screenMargin.toDouble());
+  (double, double) along(int side, double from, double to) {
+    if (side <= to - from) {
+      return (0, side.toDouble());
+    }
+    final start = from.clamp(0, side).toDouble();
+    return (start, to.clamp(start, side).toDouble());
+  }
+
+  final (width, height) = sides;
+  final (left, right) = along(width, around.left, around.right);
+  final (top, bottom) = along(height, around.top, around.bottom);
+  return (
+    rect: Rect.fromLTRB(left, top, right, bottom),
+    margin: 0,
+    wanted: (
+      math.min(width, around.width.ceil()),
+      math.min(height, around.height.ceil()),
+    ),
+  );
+}
+
 /// What a frame of a view's screen was drawn for: the view it was drawn
 /// through, as every painter under it snaps it ([renderSnappedViewport]),
 /// and the texel of the screen the view's corner stood on.
@@ -1279,6 +1341,7 @@ class _FrameScreen extends LeafRenderObjectWidget {
     required this.cutAtCanvas,
     required this.viewport,
     required this.devicePixelRatio,
+    required this.panel,
     required this.repaint,
     required this.overlays,
     required this.together,
@@ -1294,6 +1357,11 @@ class _FrameScreen extends LeafRenderObjectWidget {
   final double devicePixelRatio;
   final Listenable repaint;
 
+  /// Where the panel lies over this box, in the box's own space, where the
+  /// box is a cel's window on the panel's paper ([LiveCelScreen]) — what of
+  /// it a frame holds ([_holdsOver]); null where the box is the panel's.
+  final Rect? panel;
+
   /// The clock of what is drawn over the canvas, where this box carries it
   /// ([FramePictureView.carriesTheOverlays]).
   final PictureUpView? overlays;
@@ -1308,7 +1376,7 @@ class _FrameScreen extends LeafRenderObjectWidget {
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderFrameScreen(view)..takeFrom(this);
+      _RenderFrameScreen(view, windowed: panel != null)..takeFrom(this);
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) =>
@@ -1346,9 +1414,13 @@ class _FrameScreen extends LeafRenderObjectWidget {
 /// follows the hand. A pan makes nothing again — the same picture, seen
 /// from another place (관제 2026-11-15).
 class _RenderFrameScreen extends RenderBox implements StandingPicture {
-  _RenderFrameScreen(this._view);
+  _RenderFrameScreen(this._view, {required bool windowed})
+    : _windowed = windowed;
 
   final _FrameFeed _view;
+
+  /// Whether this box is a cel's window's ([_FrameScreen.panel]).
+  final bool _windowed;
 
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => attached,
@@ -1365,7 +1437,18 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       behind ? markNeedsPaint() : _showWhatIsUp();
       _tellTheOverlays();
     },
+    sideStep: _windowed ? _windowSideStep : null,
+    replaced: _standOn,
   );
+
+  /// [outgrown] — the texture this box's picture was seen through, which
+  /// it has grown past — stands in till the one opened in its place shows
+  /// a frame ([_standIn]): that one shows nothing till then.
+  void _standOn(ScreenTexture outgrown) {
+    final standIn = _standIn;
+    _standIn = outgrown;
+    unawaited(standIn?.free());
+  }
 
   /// The clock of what is drawn over the canvas, where this box carries it.
   PictureUpView? _overlays;
@@ -1380,8 +1463,9 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// picture is the canvas's own, on its paper ([PicturesLeftUp]).
   PicturesLeftUp? _leftUp;
 
-  /// The canvas's picture another screen left up, stood on till this box
-  /// has put one up ([PicturesLeftUp]).
+  /// What is stood on till this box has put a picture up: the canvas's
+  /// that another screen left up ([PicturesLeftUp]), or the texture this
+  /// box grew past ([_standOn]).
   ScreenTexture? _standIn;
 
   /// Whether this box's own texture shows a frame.
@@ -1578,6 +1662,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
         screen.cutAtCanvas != _cutAtCanvas ||
         screen.devicePixelRatio != _devicePixelRatio;
     final moved = !identical(screen.viewport, _viewportOrNull);
+    final shifted = screen.panel != _panel;
     if (screen.devicePixelRatio != _devicePixelRatio) {
       markNeedsLayout();
     }
@@ -1588,6 +1673,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     _viewportOrNull = screen.viewport;
     _viewport = screen.viewport;
     _devicePixelRatio = screen.devicePixelRatio;
+    _panel = screen.panel;
     if (!identical(screen.overlays, _overlays)) {
       if (attached) {
         _overlays?.letGoOf(this);
@@ -1597,7 +1683,13 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     }
     _together = screen.together;
     _leftUp = screen.leftUp;
-    if (changed || (moved && !_servedByTheFrameDrawnLast)) {
+    // Where the panel lies over a window moves what it holds, not what is
+    // drawn on it: a texture to hold that, and a frame where the one drawn
+    // last does not.
+    if (shifted && hasSize) {
+      _wantAsHeld();
+    }
+    if (changed || ((moved || shifted) && !_servedByTheFrameDrawnLast)) {
       markNeedsPaint();
     } else if (moved) {
       // The view alone, and the frame drawn last serves it yet: painted to
@@ -1612,6 +1704,10 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   }
 
   CanvasViewport? _viewportOrNull;
+
+  /// Where the panel lies over this box, where it is a cel's window's
+  /// ([_FrameScreen.panel]).
+  Rect? _panel;
 
   @override
   bool get isRepaintBoundary => true;
@@ -1652,9 +1748,35 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   @override
   void performResize() {
     super.performResize();
-    final (width, height) = _sidesInDevicePixels;
-    _shownThrough.wanted = (width + _screenRoom, height + _screenRoom);
+    _wantAsHeld();
+  }
+
+  /// Asks for a texture as big as what the box holds wants
+  /// ([_ScreenHolds.wanted]).
+  void _wantAsHeld() {
+    _shownThrough.wanted = _holds.wanted;
     unawaited(_shownThrough.open());
+  }
+
+  /// What of this box its frames hold: the box whole where it is the
+  /// panel's ([_holdsWhole]), and where it is a cel's window, what the
+  /// panel over it takes in ([_holdsOver]).
+  _ScreenHolds get _holds {
+    final sides = _sidesInDevicePixels;
+    final panel = _panel;
+    if (panel == null) {
+      return _holdsWhole(sides);
+    }
+    final ratio = _devicePixelRatio;
+    return _holdsOver(
+      sides,
+      Rect.fromLTRB(
+        panel.left * ratio,
+        panel.top * ratio,
+        panel.right * ratio,
+        panel.bottom * ratio,
+      ),
+    );
   }
 
   /// This box's sides, in whole device pixels.
@@ -1664,14 +1786,10 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   );
 
   /// The texel of [texture] this box's corner stands on: what the texture
-  /// spares of the box, half to either side
+  /// spares of what the box holds ([_holds]), half to either side
   /// ([EngineScreenTexture.windowOf]).
   (int, int) _cornerOn(ScreenTexture texture) {
-    final (width, height) = _sidesInDevicePixels;
-    final window = EngineScreenTexture.windowOf(
-      texture,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    );
+    final window = EngineScreenTexture.windowOf(texture, _holds.rect);
     return (-window.left.toInt(), -window.top.toInt());
   }
 
@@ -1682,8 +1800,8 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// 않고」). Whether the frame drawn last — up, or still on the GPU
   /// ([ScreenTexture.drawnLastFor]) — serves the view as it stands: drawn
   /// through this view a whole number of device pixels of pan away, and
-  /// the box still within what it holds, [_screenMargin] to spare on
-  /// every side.
+  /// what the box holds still within it ([_holds]), its margin to spare
+  /// on every side.
   /// ↩️Every step of a pan asked the engine for a frame, a body on its
   /// thread behind whatever else it had been handed.
   ///
@@ -1713,12 +1831,12 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     if ((pannedX - movedX).abs() > 1e-6 || (pannedY - movedY).abs() > 1e-6) {
       return false;
     }
-    final (width, height) = _sidesInDevicePixels;
+    final (:rect, :margin, wanted: _) = _holds;
     final (left, top) = (movedX - cornerX, movedY - cornerY);
-    return left <= -_screenMargin &&
-        top <= -_screenMargin &&
-        left + texture.width >= width + _screenMargin &&
-        top + texture.height >= height + _screenMargin;
+    return left <= rect.left - margin &&
+        top <= rect.top - margin &&
+        left + texture.width >= rect.right + margin &&
+        top + texture.height >= rect.bottom + margin;
   }
 
   /// What a frame drawn now, the view's corner on the texel [corner], is
@@ -1760,14 +1878,11 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     final corner = _cornerOn(_shownThrough.texture!);
     try {
       final layer = _shownThrough.presented(
-        (next, size) => _view._show(
-          _asItStands,
-          next,
-          size,
+        (next, size) => _view._show(_asItStands, next, size, (
           viewport: _viewport,
           devicePixelRatio: _devicePixelRatio,
           corner: corner,
-        ),
+        )),
         drawnFor: _drawnFor(corner),
         place: _placeAt(offset),
         upTogether: _together?.joined,

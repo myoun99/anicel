@@ -19,6 +19,7 @@ import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../editor_session_manager.dart';
+import '../playback/frame_picture_view.dart' show LiveCelScreen;
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
 import '../widgets/static_raster.dart';
@@ -344,6 +345,9 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // in slots of a pool's pages, and the slots a picture let go stay
     // on the GPU till the pages are given back
     // (engine-pictures-keep-to-pool-pages) — the app's, so once.
+    // And a cel drawn on live on a screen of its own — a sheet's ink
+    // window's (`LiveCelScreen`) —, which no store keeps: the app's, so
+    // once.
     MemoryCensusItem(
       id: 'framePictures',
       bytes:
@@ -352,7 +356,8 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
                 session.renderCaches.framePictureStore.estimatedBytes +
                 session.playbackRig.framePictures.heldBytes,
           ) +
-          EnginePictures.idlePictureBytes,
+          EnginePictures.idlePictureBytes +
+          LiveCelScreen.keptBytes,
       detail: sum(
         (session) => session.renderCaches.framePictureStore.pinnedBytes,
       ),

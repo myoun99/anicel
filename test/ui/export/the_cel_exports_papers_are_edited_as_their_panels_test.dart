@@ -30,7 +30,6 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
@@ -50,6 +49,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_paper.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_screen_shows_ink.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -304,21 +304,17 @@ void main() {
     final written = layer.windows.firstWhere(
       (window) => ink.hasInkFor(null, window.key),
     );
-    bool viewHoldsInk() => !tester
-        .widget<BrushEditCanvasView>(
-          find.descendant(
-            of: keyed('${layer.keyPrefix}-ink-${written.id}'),
-            matching: find.byType(BrushEditCanvasView),
-          ),
-        )
-        .surface
-        .holdsNothing;
+    bool viewHoldsInk() => aScreenShowsInkOf(tester, written.key);
 
     expect(viewHoldsInk(), isTrue, reason: 'the pen lifted, the stroke stays');
 
     session.undo();
     await tester.pump();
-    expect(viewHoldsInk(), isFalse, reason: 'undone, it is gone from the view');
+    expect(
+      viewHoldsInk(),
+      isFalse,
+      reason: 'undone, it is gone from its screen',
+    );
 
     session.redo();
     await tester.pump();

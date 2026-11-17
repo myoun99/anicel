@@ -13,7 +13,7 @@ use crate::device::Engine;
 use crate::fail;
 
 use super::halvings::{Camera, Halvings, Kept};
-use super::{Budget, Composite, Plan, TILE};
+use super::{Budget, Composite, Plan, meets};
 
 /// A canvas's screen: its composite over the pixels it covers once one is
 /// laid — the page and what lies past it, a frame's world — and the
@@ -117,13 +117,4 @@ impl Screen {
         };
         self.halvings.show(engine, composite, canvas.as_tiles(), camera, target, rect, budget)
     }
-}
-
-/// Whether the tile at `column`, `row` holds a pixel of `rect`, [left, top,
-/// right, bottom) — none for an empty one.
-fn meets((column, row): (i32, i32), rect: [i32; 4]) -> bool {
-    let side = i64::from(TILE);
-    let (x, y) = (i64::from(column) * side, i64::from(row) * side);
-    let [left, top, right, bottom] = rect.map(i64::from);
-    left < right && top < bottom && left < x + side && x < right && top < y + side && y < bottom
 }

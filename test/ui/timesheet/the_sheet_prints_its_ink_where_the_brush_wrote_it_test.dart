@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -67,11 +66,8 @@ void main() {
     final windows = timesheetInkWindows(layout: layout, cutId: cutId);
     final size = layout.documentSize;
     final stride = size.width.ceil();
-    // The red channel [at] on the sheet's ink stratum, with [live] keys
-    // shown by a live brush window instead.
-    Future<int Function(Offset at)> printed({
-      Set<BrushFrameKey> live = const {},
-    }) async {
+    // The red channel [at] on the sheet's printed ink — an export's.
+    Future<int Function(Offset at)> printed() async {
       final recorder = ui.PictureRecorder();
       TimesheetDocumentPainter(
         words: timesheetWordsIn(AppLanguage.en),
@@ -81,7 +77,6 @@ void main() {
         layers: const {SheetPaintLayer.ink},
         ink: [for (final window in windows) window.mark],
         inkImageFor: (key) => key == first ? ink : null,
-        liveInkKeys: live,
       ).paint(ui.Canvas(recorder), size);
       final drawn = recorder.endRecording();
       final pixels = (await tester.runAsync(() async {
@@ -105,12 +100,6 @@ void main() {
       red(layout.pageRect(1).topLeft + written + middle),
       0,
       reason: 'the next page\'s paper is its own',
-    );
-    expect(
-      (await printed(live: {first}))(onFirst),
-      0,
-      reason: 'a window a live brush view shows is its own: the baked ink '
-          'stands down, or translucent ink composites twice',
     );
   });
 }

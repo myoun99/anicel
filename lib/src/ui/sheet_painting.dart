@@ -503,7 +503,6 @@ class SheetMarkImages {
     this.imageFor,
     this.inkImageFor,
     this.inkPhotosFor,
-    this.liveInkKeys = const {},
   });
 
   final SheetPictureLookup? pictureFor;
@@ -516,10 +515,6 @@ class SheetMarkImages {
   /// The photos laid on a window's ink (I-97), for an export — beside its
   /// raster ([inkImageFor]), from the same surface.
   final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
-
-  /// Keys a LIVE input window is already showing: skipped, so translucent
-  /// ink never composites twice.
-  final Set<BrushFrameKey> liveInkKeys;
 }
 
 /// The face a sheet sets its words in.
@@ -651,14 +646,11 @@ class _SheetCanvas {
   }
 
   /// A window's ink, for an export: its photos and its raster, out of the
-  /// pictures over it — but for a window a live view is showing. The screen
-  /// hands neither, and prints its ink as the live windows draw it.
+  /// pictures over it. The screen hands neither: the engine shows its ink
+  /// (`SheetInkScreens`).
   void _ink(SheetInk ink) {
     final images = printer.images;
     final key = ink.key;
-    if (images.liveInkKeys.contains(key)) {
-      return;
-    }
     final raster = images.inkImageFor?.call(key);
     final photos = images.inkPhotosFor?.call(key) ?? const <CelPhoto>[];
     if (raster == null && photos.isEmpty) {

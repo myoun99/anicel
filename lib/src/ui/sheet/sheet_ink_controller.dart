@@ -140,8 +140,8 @@ abstract class SheetInkController<P> extends ChangeNotifier {
       storeFor(plane).celHasRenderableContent(key);
 
   /// A window's ink as the sheet shows it on screen: the baked surface
-  /// itself, which the sheet's painter prints as the brush's live window
-  /// paints it (`printSheetInkAsLive`, F-215). ↩️It was the surface's tiles
+  /// itself, which the engine lays on the ink's screen with the brush off
+  /// (`SheetInkScreens`, F-215). ↩️It was the surface's tiles
   /// composed into one raster here and kept until the surface changed
   /// (`displayImageFor`) — drawn `medium` in paper space, the soft and
   /// shifted ink the brush switch gave away.
@@ -161,6 +161,18 @@ abstract class SheetInkController<P> extends ChangeNotifier {
   /// (the header's story). With nothing in flight there is nothing to guard.
   BitmapSurface? surfaceFor(P plane, BrushFrameKey key) =>
       storeFor(plane).bakedSurfaceOrNull(key);
+
+  /// What [key]'s window shows on screen ([SheetInkScreens.surfaceOf]):
+  /// while the sheet takes strokes ([drawing]), the surface its view draws
+  /// on, so a pen-up shows what the view drew; else the baked one
+  /// ([surfaceFor]).
+  BitmapSurface? shownSurfaceFor(
+    P plane,
+    BrushFrameKey key, {
+    required bool drawing,
+  }) => drawing
+      ? sessionStateFor(plane, key).canvasState.currentSurface
+      : surfaceFor(plane, key);
 
   @override
   void dispose() {

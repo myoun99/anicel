@@ -45,7 +45,6 @@ import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasActiveLayerRow, CanvasStackRow, waitsForItsPlugins;
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
@@ -191,6 +190,8 @@ void main() {
       history = HistoryManager();
       final strokeActive = ValueNotifier<bool>(false);
       addTearDown(strokeActive.dispose);
+      final strokes = SheetInkStrokes();
+      addTearDown(strokes.dispose);
       final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
       addTearDown(brush.dispose);
       // The picture's live stroke, let go after the views drawing into it
@@ -227,6 +228,7 @@ void main() {
                   historyManager: history,
                   viewport: CanvasViewport(),
                   strokeActive: strokeActive,
+                  strokes: strokes,
                   pictures: cels,
                   pictureWindows: [picture.window],
                   unwrittenInkIdOf: bandOf,
@@ -505,14 +507,10 @@ void main() {
         page,
         unwrittenInkIdOf: bandOf,
       ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
-      bool viewHoldsInk() => !tester
-          .widget<BrushEditCanvasView>(
-            find.descendant(
-              of: find.byKey(ValueKey<String>('conte-ink-${row.id}')),
-              matching: find.byType(BrushEditCanvasView),
-            ),
-          )
-          .surface
+      // What the band's screen shows while the brush is on — the page's
+      // ink screens ask the controller this ([SheetInkScreens]).
+      bool viewHoldsInk() => !ink
+          .shownSurfaceFor(null, row.key, drawing: true)!
           .holdsNothing;
 
       expect(viewHoldsInk(), isTrue, reason: 'the pen lifted, it stays');
