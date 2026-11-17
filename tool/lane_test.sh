@@ -308,13 +308,14 @@ mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/hom
 # works out the crates a build takes, with the bracket reading it cuts a
 # cfg by.
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
-  "$(dirname "${BASH_SOURCE[0]}")/machine_folder.sh" "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
+  "$(dirname "${BASH_SOURCE[0]}")/machine_folder.sh" "$(dirname "${BASH_SOURCE[0]}")/measure_window.sh" \
+  "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
   "$(dirname "${BASH_SOURCE[0]}")/source_brackets.dart" "$E/home/tool/"
 # And the packages the app does not depend on, with one to resolve.
 cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/machine_folder.sh tool/cargo_turn.sh \
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/machine_folder.sh tool/measure_window.sh tool/cargo_turn.sh \
   tool/crates_for_host.dart tool/source_brackets.dart tool/resolve_packages.sh \
   packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first

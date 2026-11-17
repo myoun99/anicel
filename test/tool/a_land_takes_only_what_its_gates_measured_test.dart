@@ -294,7 +294,7 @@ void main() {
 
       final room = codeOf('room_first');
       expect(
-        between(room, at(room, 'until seen='), at(room, 'sleep 20')),
+        between(room, at(room, 'until ! words='), at(room, 'sleep 20')),
         isTrue,
         reason: 'waiting for room',
       );

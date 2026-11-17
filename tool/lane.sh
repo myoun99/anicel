@@ -221,6 +221,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="$ROOT/.claude/worktrees"
 TRUNK=master
 . "$ROOT/tool/machine_folder.sh"
+. "$ROOT/tool/measure_window.sh"
 # THE MIRROR. ⛔Not a second trunk, and `.githooks/pre-push` lets it through
 # ungated precisely because it runs no CI.
 # ↩️Until 2026-10-07 this said 「nothing is ever pulled from it」. 유저 that
@@ -1082,15 +1083,26 @@ still_landing() {
 # run that takes one of the four places.
 # ⛔An instrument that cannot measure launches nothing: 「no answer」 is not
 # 「room」.
+# 🪟Nor while the machine's measurement window is open (card
+# a-quiet-window-drains-in-minutes, 2026-11-17 — tool/measure_window.dart):
+# asked in the same loop as the room, so a window that opens while the
+# gates wait for room holds them too. Gates already running run to their
+# end; the crate's cargo after them waits in cargo_turn.sh.
 room_first() {
-  local flag= seen rc told=
+  local flag= seen= rc words= told=
   [ "$1" = land ] && flag=--land
-  until seen="$(bash "$ROOT/tool/run.sh" flutter_room ${flag:+"$flag"} 2>&1)"; do
+  until ! words="$(window_words)" \
+    && seen="$(bash "$ROOT/tool/run.sh" flutter_room ${flag:+"$flag"} 2>&1)"; do
     rc=$?
-    [ "$rc" -eq 1 ] || die "the machine's room could not be measured — nothing was launched
+    if [ -n "$words" ]; then
+      [ "$told" = window ] || echo "lane: $words"
+      told=window
+    else
+      [ "$rc" -eq 1 ] || die "the machine's room could not be measured — nothing was launched
   $seen"
-    [ -n "$told" ] || echo "lane: no room for the gates yet ($seen) — waiting"
-    told=1
+      [ "$told" = room ] || echo "lane: no room for the gates yet ($seen) — waiting"
+      told=room
+    fi
     still_landing
     sleep 20
   done

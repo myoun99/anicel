@@ -8,6 +8,9 @@
 //   bash tool/run.sh test_queue timeout 300 flutter test <files…>
 //   bash tool/run.sh test_queue --list                  who runs, who waits
 //   bash tool/run.sh test_queue --usage [hours]         how much stood free
+//   bash tool/run.sh test_queue --window <minutes> <who…>
+//                    a measurement window: nothing new starts till it closes
+//                    (`--window close`, or its deadline — measure_window.dart)
 //
 // `affected_tests` takes its turn here by itself — a session that runs it
 // waits for nothing else first.
@@ -50,6 +53,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'flutter_room.dart';
+import 'measure_window.dart';
 import 'process_tree.dart';
 import 'test_seconds.dart';
 
@@ -950,6 +954,7 @@ class Turn {
     ];
     int? stood;
     var roomless = false;
+    MeasureWindow? waitedFor;
     while (true) {
       // A ticket swept in the instant between being made and being locked
       // stands nowhere; it takes another at the back.
@@ -957,21 +962,35 @@ class Turn {
         _ticket = Ticket.take(folder, _what, first: first)
           ..waiting(files, work: work);
       }
+      // 🪟While the machine's measurement window is open no run takes
+      // suites, whatever its turn (measure_window.dart) — every run waits
+      // where it stands, and says what it waits for.
+      final window = openWindow(folder);
+      if (window != null) {
+        if (window != waitedFor) say('test_queue: ${waitingFor(window)}');
+        waitedFor = window;
+        stood = null;
+        await Future<void>.delayed(lookAgain);
+        continue;
+      }
+      waitedFor = null;
       final line = standings();
       final machine = machineSuitesOf(folder);
       if (suitesToRun(_ticket!.name, line, asked: asked, machine: machine) !=
           null) {
         if (await room()) {
           // Asked again under the lock: the line may have moved while the
-          // machine was measured, and what is taken is said before the lock
-          // goes.
+          // machine was measured — or a window opened — and what is taken is
+          // said before the lock goes.
           final suites = _deciding(folder, () {
-            final now = suitesToRun(
-              _ticket!.name,
-              standings(),
-              asked: asked,
-              machine: machineSuitesOf(folder),
-            );
+            final now = openWindow(folder) != null
+                ? null
+                : suitesToRun(
+                    _ticket!.name,
+                    standings(),
+                    asked: asked,
+                    machine: machineSuitesOf(folder),
+                  );
             if (now != null) {
               _ticket!.running(now, files, work: work);
               noteUsage(folder);
@@ -1255,6 +1274,8 @@ Future<void> main(List<String> args) async {
       stdout.writeln('(this machine names no folder for the line)');
       return;
     }
+    final window = openWindow(line);
+    if (window != null) stdout.writeln(windowIsOpen(window));
     describeLine(line).forEach(stdout.writeln);
     return;
   }
@@ -1280,9 +1301,14 @@ Future<void> main(List<String> args) async {
     );
     return;
   }
+  if (args.isNotEmpty && args.first == '--window') {
+    exitCode = windowCommand(line, args.sublist(1), describe: describeLine);
+    return;
+  }
   if (args.isEmpty) {
     stderr.writeln(
-      'usage: bash tool/run.sh test_queue <command…> | --list | --usage [hours]',
+      'usage: bash tool/run.sh test_queue <command…> | --list | '
+      '--usage [hours] | --window [<minutes> <who…> | close]',
     );
     exitCode = 2;
     return;

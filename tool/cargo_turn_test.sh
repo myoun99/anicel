@@ -17,7 +17,9 @@
 # the turn goes to the waiter that came first, and a killed waiter holds no
 # one back (2026-11-14) · before the turn is let go, each crate keeps its
 # last 8 builds in every folder of builds, and what was just built, a crate
-# of one build, `build/` and the hook's copies stay (the same day).
+# of one build, `build/` and the hook's copies stay (the same day) · a
+# cargo waits out the machine's measurement window holding no place, and
+# the hook's --hold does not wait (2026-11-17).
 #
 # usage: bash tool/cargo_turn_test.sh
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,9 +29,16 @@ STAGE="$TMP/stage"
 LANE="$TMP/lane"
 LOG="$TMP/calls"
 mkdir -p "$STAGE/tool" "$TMP/bin"
-cp "$HERE/cargo_turn.sh" "$STAGE/tool/"
+cp "$HERE/cargo_turn.sh" "$HERE/machine_folder.sh" "$HERE/measure_window.sh" \
+  "$STAGE/tool/"
 git -C "$STAGE" init -q
-git -C "$STAGE" -c user.name=t -c user.email=t@t add tool/cargo_turn.sh
+git -C "$STAGE" -c user.name=t -c user.email=t@t add tool/cargo_turn.sh \
+  tool/machine_folder.sh tool/measure_window.sh
+# The machine's folder, the run's own: a measurement window open on this
+# machine is not this run's to wait for.
+export LOCALAPPDATA="$TMP/cache"
+WINDOW="$TMP/cache/anicel/test_queue/window"
+mkdir -p "${WINDOW%/*}"
 git -C "$STAGE" -c user.name=t -c user.email=t@t commit -qm stage
 git -C "$STAGE" worktree add -q "$LANE" 2>/dev/null
 cat > "$TMP/bin/cargo" <<CARGO
@@ -249,6 +258,35 @@ check "a target's folder in the hook's floors too, after a --hold" \
     && [ "$(ls "$HD" | grep -c '^\(lib\)\?fx-')" -eq 32 ]; echo $?)"
 check "and the hook's copies are not touched" \
   "$([ -e "$H/copies/0123456789abcdef/key/engine.dll" ]; echo $?)"
+
+# 10. The machine's measurement window (tool/measure_window.dart): a cargo
+# waits it out, says so, and holds no place meanwhile; the hook's --hold
+# does not wait; a window past its deadline is closed.
+: > "$LOG"
+closes=$(( $(date +%s) + 4 ))
+printf '%s\t%s\n' "$closes" "브러시 측정" > "$WINDOW"
+(cd "$STAGE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh build) 2>"$TMP/window.err" &
+sleep 1
+check "a cargo waiting for the window holds no place in the line" \
+  "$([ -z "$(ls "$TURN.line")" ]; echo $?)"
+{ sleep 0.5; } | (cd "$LANE" && bash tool/cargo_turn.sh --hold) >/dev/null 2>&1
+held_at=$(date +%s)
+wait
+started=$(awk '$1 == "start" { print substr($3, 1, 10); exit }' "$LOG")
+check "the hook's --hold takes the turn inside the window" \
+  "$([ "$held_at" -lt "$closes" ]; echo $?)"
+check "a cargo starts once the window has closed" \
+  "$([ -n "$started" ] && [ "$started" -ge "$closes" ]; echo $?)"
+check "and says what it waited for, and whose" \
+  "$(grep -q '기다리는 중 — 측정 창(브러시 측정 · [0-9][0-9]:[0-9][0-9]까지)' \
+    "$TMP/window.err"; echo $?)"
+: > "$LOG"
+printf '%s\t%s\n' "$(( $(date +%s) - 1 ))" "지난 창" > "$WINDOW"
+(cd "$STAGE" && FAKE_SECONDS=0 timeout 4 bash tool/cargo_turn.sh build) \
+  2>"$TMP/past.err"
+check "a window past its deadline holds nothing" \
+  "$(grep -q ' build$' "$LOG" && ! grep -q '측정 창' "$TMP/past.err"; echo $?)"
+rm -f "$WINDOW"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

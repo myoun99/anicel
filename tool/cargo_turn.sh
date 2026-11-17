@@ -103,9 +103,19 @@
 # then, and costs that checkout one build.
 # ⚠️A TEST BINARY'S PDB GOES WITH IT: a dump from a binary past the floor
 # cannot be read after. Copy the pdb out before the next turn to keep it.
+#
+# 🪟THE MACHINE'S MEASUREMENT WINDOW (card a-quiet-window-drains-in-minutes,
+# 2026-11-17 — tool/measure_window.dart says what it is): while it is open
+# a cargo does not take the turn, and one that holds it runs to its end. A
+# cargo that waits for it holds NO PLACE in the line meanwhile — so a hook
+# behind it is not held back — and stands at the line's end once it
+# closes. ⛔NOT `--hold`: the engine's build hook builds inside a `flutter`
+# command already under way, and a batch that runs has to be able to end.
 # ⚠️No `set -u`: the Mac's bash 3.2 calls an empty "$@" unbound.
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$TOOL_DIR/machine_folder.sh"
+. "$TOOL_DIR/measure_window.sh"
 COMMON="$(git -C "$TOOL_DIR" rev-parse --path-format=absolute --git-common-dir)" || {
   echo "cargo_turn: $TOOL_DIR is not in a git checkout" >&2
   exit 2
@@ -147,10 +157,19 @@ fi
 
 LINE="$TURN.line"
 mkdir -p "$LINE"
-TICKET="$(date +%s)-$$"
-: >"$LINE/$TICKET"
-# shellcheck disable=SC2064
-trap "rm -f '$LINE/$TICKET'" EXIT
+take_ticket() {
+  TICKET="$(date +%s)-$$"
+  : >"$LINE/$TICKET"
+}
+take_ticket
+# Single quotes: the ticket is taken again after a measurement window.
+trap 'rm -f "$LINE/$TICKET"' EXIT
+
+# Whether this run waits for the machine's measurement window
+# (tool/measure_window.sh): every cargo but the hook's, while it is open.
+HOLD=
+[ "$1" = --hold ] && HOLD=1
+in_the_window() { [ -z "$HOLD" ] && window_words >/dev/null; }
 
 # The oldest ticket in the line at $1 of a waiter that lives; a dead
 # waiter's goes.
@@ -205,16 +224,30 @@ floor_shared_target() {
 }
 
 told=
-until [ "$(first_in_line "$LINE")" = "$TICKET" ] && mkdir "$TURN" 2>/dev/null; do
-  holder="$(cat "$TURN/pid" 2>/dev/null || true)"
-  if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
-    || [ -n "$(find "$TURN" -maxdepth 0 -mmin +$STALE_MINUTES 2>/dev/null)" ]; then
-    rm -rf "$TURN"
-    continue
-  fi
-  if [ -z "$told" ]; then
-    echo "cargo_turn: the shared target is held ($(cat "$TURN/what" 2>/dev/null || echo 'by the line before this run')) — waiting" >&2
-    told=1
+waited=
+until [ "$(first_in_line "$LINE")" = "$TICKET" ] && ! in_the_window && mkdir "$TURN" 2>/dev/null; do
+  if in_the_window; then
+    # Out of the line while the window is open, so that no hook behind this
+    # run is held back by it; back in at the line's end once it closes.
+    rm -f "$LINE/$TICKET"
+    [ -n "$waited" ] || echo "cargo_turn: $(window_words)" >&2
+    waited=1
+  else
+    if [ ! -f "$LINE/$TICKET" ]; then
+      take_ticket
+      waited=
+      continue
+    fi
+    holder="$(cat "$TURN/pid" 2>/dev/null || true)"
+    if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
+      || [ -n "$(find "$TURN" -maxdepth 0 -mmin +$STALE_MINUTES 2>/dev/null)" ]; then
+      rm -rf "$TURN"
+      continue
+    fi
+    if [ -z "$told" ]; then
+      echo "cargo_turn: the shared target is held ($(cat "$TURN/what" 2>/dev/null || echo 'by the line before this run')) — waiting" >&2
+      told=1
+    fi
   fi
   # A land that waits here is alive: its turn is not one to take over
   # (lane.sh, still_landing).
