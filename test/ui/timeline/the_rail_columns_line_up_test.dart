@@ -256,6 +256,16 @@ void main() {
     }
   }
 
+  // 🗣️I-177 (유저 2026-11-17): 「다만 레이어 이름 길이는 전에 애초에
+  // 길었으니 지금 줄어든길이대로 좋음」 — the 20 the blend column gives back
+  // narrow the rail, not widen the name: a picture row's name keeps the
+  // room F-606 (11-16) left it.
+  testWidgets('a row\'s name keeps the room it had when the Total went back '
+      'to the bar\'s length', (tester) async {
+    await pumpRail(tester);
+    expect(part(tester, 'name', picture).width, 143);
+  });
+
   testWidgets('a member lane stands its navigator right after the section '
       'band (「이거 다 왼쪽정렬로 왼쪽에 붙어있도록」)', (tester) async {
     final lane = PropertyLaneRow(
