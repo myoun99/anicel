@@ -18,6 +18,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
+import 'package:anicel/src/models/sound_preset.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/working_panel.dart';
@@ -59,6 +60,7 @@ final barRows = [
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
+  for (final preset in SoundPreset.values) soundPresetActionId(preset),
   for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
 ];
 
@@ -154,6 +156,7 @@ void main() {
         reason: 'a button of the pill, not a row of a menu',
       );
       expect(ids.sublist(theSwitch + 1), [
+        for (final preset in SoundPreset.values) soundPresetActionId(preset),
         for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
       ]);
     });

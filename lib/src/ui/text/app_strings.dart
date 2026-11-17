@@ -136,6 +136,11 @@ enum AppStrings {
   String effectKindName(String key, String fallback) =>
       _values['effectKind.$key'] ?? fallback;
 
+  /// A sound preset's name, by its key (`SoundPreset.jsonValue`) — the
+  /// English its enum keeps where a table has none.
+  String soundPresetName(String key, String fallback) =>
+      _values['soundPreset.$key'] ?? fallback;
+
   /// An effect parameter's lane name, by the id its spec carries — F-37
   /// (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도 한국어로」), on the
   /// contract [effectKindName] follows.
@@ -1107,6 +1112,7 @@ enum AppStrings {
   String get linkWindowUnsync => _s('linkWindowUnsync');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlEffects => _s('tlEffects');
+  String get tlEffectPresets => _s('tlEffectPresets');
   String get tlEffectsOfSound => _s('tlEffectsOfSound');
   String get tlEffectsOfPicture => _s('tlEffectsOfPicture');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
@@ -3888,6 +3894,7 @@ enum AppStrings {
     'linkWindowUnsync': 'Unsync',
     'tlResetGroup': 'Reset (keeps keys)',
     'tlEffects': 'Effects',
+    'tlEffectPresets': 'Presets',
     'tlEffectsOfSound': 'Audio',
     'tlEffectsOfPicture': 'Video',
     'tlAddEffectTemplate': 'Add {name}',
@@ -4701,6 +4708,10 @@ enum AppStrings {
     'effectKind.celNumber': 'セル番号',
     'effectKind.equalizer': 'イコライザー',
     'effectKind.compressor': 'コンプレッサー',
+    'soundPreset.dialogue': 'セリフ',
+    'soundPreset.music': '音楽',
+    'soundPreset.soundEffects': '効果音',
+    'soundPreset.ambience': '環境音',
     'effectKind.plugin': 'プラグイン',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
@@ -5847,6 +5858,7 @@ enum AppStrings {
     'linkWindowUnsync': '同期を解除',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlEffects': 'エフェクト',
+    'tlEffectPresets': 'プリセット',
     'tlEffectsOfSound': '音声',
     'tlEffectsOfPicture': '映像',
     'tlAddEffectTemplate': '{name}を追加',
@@ -6664,6 +6676,10 @@ enum AppStrings {
     'effectKind.celNumber': '셀 번호',
     'effectKind.equalizer': '이퀄라이저',
     'effectKind.compressor': '컴프레서',
+    'soundPreset.dialogue': '대사',
+    'soundPreset.music': '음악',
+    'soundPreset.soundEffects': '효과음',
+    'soundPreset.ambience': '환경음',
     'effectKind.plugin': '플러그인',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
@@ -7803,6 +7819,7 @@ enum AppStrings {
     'linkWindowUnsync': '동기 해제',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlEffects': '이펙트',
+    'tlEffectPresets': '프리셋',
     'tlEffectsOfSound': '오디오',
     'tlEffectsOfPicture': '영상',
     'tlAddEffectTemplate': '{name} 추가',
@@ -8673,6 +8690,10 @@ enum AppStrings {
     'effectKind.celNumber': 'Numéro de cellulo',
     'effectKind.equalizer': 'Égaliseur',
     'effectKind.compressor': 'Compresseur',
+    'soundPreset.dialogue': 'Dialogue',
+    'soundPreset.music': 'Musique',
+    'soundPreset.soundEffects': 'Effets sonores',
+    'soundPreset.ambience': 'Ambiance',
     'effectKind.plugin': 'Plug-in',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
@@ -9908,6 +9929,7 @@ enum AppStrings {
     'linkWindowUnsync': 'Désynchroniser',
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlEffects': 'Effets',
+    'tlEffectPresets': 'Préréglages',
     'tlEffectsOfSound': 'Audio',
     'tlEffectsOfPicture': 'Vidéo',
     'tlAddEffectTemplate': 'Ajouter {name}',
@@ -10704,6 +10726,10 @@ enum AppStrings {
     'effectKind.celNumber': '赛璐珞编号',
     'effectKind.equalizer': '均衡器',
     'effectKind.compressor': '压缩器',
+    'soundPreset.dialogue': '对白',
+    'soundPreset.music': '音乐',
+    'soundPreset.soundEffects': '音效',
+    'soundPreset.ambience': '环境音',
     'effectKind.plugin': '插件',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
@@ -11780,6 +11806,7 @@ enum AppStrings {
     'linkWindowUnsync': '取消同步',
     'tlResetGroup': '重置（保留关键帧）',
     'tlEffects': '效果',
+    'tlEffectPresets': '预设',
     'tlEffectsOfSound': '音频',
     'tlEffectsOfPicture': '视频',
     'tlAddEffectTemplate': '添加{name}',

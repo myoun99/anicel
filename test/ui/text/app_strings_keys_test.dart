@@ -1193,6 +1193,7 @@ void main() {
     'syncedWith': (s) => s.syncedWith,
     'linkWindowUnsync': (s) => s.linkWindowUnsync,
     'tlEffects': (s) => s.tlEffects,
+    'tlEffectPresets': (s) => s.tlEffectPresets,
     'tlEffectsOfSound': (s) => s.tlEffectsOfSound,
     'tlEffectsOfPicture': (s) => s.tlEffectsOfPicture,
     'tlAddEffectTemplate': (s) => s.tlAddEffectTemplate,
