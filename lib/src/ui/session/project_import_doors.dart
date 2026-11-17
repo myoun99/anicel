@@ -265,6 +265,10 @@ class ProjectImportDoors {
     /// — a big file's copy is the long wait of a carried placement
     /// (F-494).
     void Function(double fraction)? onCarrying,
+
+    /// Hears the file read in, as 0–1 ([readHeldMediaBytes]) — a picture
+    /// from the cloud comes down inside this read (F-608-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -274,7 +278,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await readHeldMediaBytes(_holdBytes, path);
+      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
     } on Object {
       return false;
     }
@@ -572,6 +576,10 @@ class ProjectImportDoors {
     MediaFitMode fit = MediaFitMode.born,
     int? lengthFrames,
     ImportLayerSpot? spot,
+
+    /// Hears the document read in, as 0–1 ([readHeldMediaBytes]) — a big
+    /// stack from the cloud comes down inside this read (F-608-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     // Same order as the image path: the destination gate runs before any
     // read, so a refused import never has pixels to leak.
@@ -581,7 +589,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await readHeldMediaBytes(_holdBytes, path);
+      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
     } on Object {
       return null;
     }

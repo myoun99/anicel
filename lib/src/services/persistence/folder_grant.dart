@@ -24,7 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
 import '../../core/path_names.dart';
-import '../../core/progress_share.dart';
+import '../../core/piece_read.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
@@ -1152,12 +1152,8 @@ abstract final class FolderPicker {
         }
         return (debugReadPiece ?? _readPiece)(file, into, from, to);
       },
-      read: (done, length) {
-        if (done > 0) {
-          wait.arrived();
-        }
-        onRead?.call(doneShare(done, length));
-      },
+      arrived: wait.arrived,
+      onRead: onRead,
     ).whenComplete(file.close);
     try {
       if (!await wait.outlast(reading)) {
@@ -1171,30 +1167,22 @@ abstract final class FolderPicker {
     return (path: source.path, staged: source.staged, bytes: await reading);
   }
 
-  /// How much one read of [readOpenedFile] asks for — the size of one
-  /// arrival.
-  static const int _piece = 4 << 20;
-
-  /// [length] bytes, [_piece] at a time — [read] told how many are in
-  /// before the first piece and after each one.
+  /// The bytes [length] says, read a piece at a time by [readInto] — each
+  /// piece [arrived], and [onRead] told how much is in ([PieceRead]).
   static Future<Uint8List> _readInPieces({
     required Future<int> Function() length,
     required Future<int> Function(Uint8List into, int from, int to) readInto,
-    required void Function(int done, int length) read,
+    required void Function() arrived,
+    void Function(double fraction)? onRead,
   }) async {
-    final bytes = Uint8List(await length());
-    read(0, bytes.length);
-    var at = 0;
-    while (at < bytes.length) {
-      final to = at + _piece < bytes.length ? at + _piece : bytes.length;
-      final got = await readInto(bytes, at, to);
-      if (got <= 0) {
+    final read = PieceRead(await length(), onRead: onRead);
+    while (!read.done) {
+      if (!read.took(await readInto(read.bytes, read.from, read.to))) {
         throw const FileSystemException('파일이 제 길이보다 먼저 끝났습니다');
       }
-      at += got;
-      read(at, bytes.length);
+      arrived();
     }
-    return bytes;
+    return read.bytes;
   }
 
   static Future<int> _readPiece(

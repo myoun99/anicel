@@ -1849,6 +1849,7 @@ enum AppStrings {
   /// written out, a file's bytes carried in, its cels rasterized.
   String get imStepRecoding => _s('imStepRecoding');
   String get imStepWritingSpan => _s('imStepWritingSpan');
+  String get imStepReading => _s('imStepReading');
   String get imStepCarrying => _s('imStepCarrying');
   String get imStepRasterizing => _s('imStepRasterizing');
   String get imFolderGone => _s('imFolderGone');
@@ -3397,6 +3398,7 @@ enum AppStrings {
     'imStatusNothing': 'Nothing imported.',
     'imStepRecoding': 'Re-encoding the trimmed movie…',
     'imStepWritingSpan': 'Writing the trimmed span to a file…',
+    'imStepReading': 'Reading the file…',
     'imStepCarrying': 'Keeping the file inside the project…',
     'imStepRasterizing': 'Rasterizing into cels…',
     'imFolderGone': 'That folder is gone.',
@@ -5196,6 +5198,7 @@ enum AppStrings {
     'imStatusNothing': '何もインポートされませんでした。',
     'imStepRecoding': 'トリミングした動画を再エンコード中…',
     'imStepWritingSpan': '切り出した範囲をファイルに書き出し中…',
+    'imStepReading': 'ファイルを読み込み中…',
     'imStepCarrying': 'ファイルをプロジェクトに埋め込み中…',
     'imStepRasterizing': 'セルにラスタライズ中…',
     'imFolderGone': 'そのフォルダーは見つかりません。',
@@ -7128,6 +7131,7 @@ enum AppStrings {
     'imStatusNothing': '임포트된 것이 없습니다.',
     'imStepRecoding': '잘라 낸 동영상을 다시 인코딩하는 중…',
     'imStepWritingSpan': '잘라 낸 구간을 파일로 쓰는 중…',
+    'imStepReading': '파일을 읽는 중…',
     'imStepCarrying': '파일을 프로젝트에 품는 중…',
     'imStepRasterizing': '셀로 래스터라이즈하는 중…',
     'imFolderGone': '그 폴더가 없어졌습니다.',
@@ -9201,6 +9205,7 @@ enum AppStrings {
     'imStatusNothing': 'Rien n’a été importé.',
     'imStepRecoding': 'Réencodage de la vidéo découpée…',
     'imStepWritingSpan': 'Écriture de la plage découpée dans un fichier…',
+    'imStepReading': 'Lecture du fichier…',
     'imStepCarrying': 'Intégration du fichier au projet…',
     'imStepRasterizing': 'Pixellisation en cellulos…',
     'imFolderGone': 'Ce dossier n’existe plus.',
@@ -11089,6 +11094,7 @@ enum AppStrings {
     'imStatusNothing': '没有导入任何内容。',
     'imStepRecoding': '正在重新编码裁剪后的视频…',
     'imStepWritingSpan': '正在将裁剪的范围写入文件…',
+    'imStepReading': '正在读取文件…',
     'imStepCarrying': '正在将文件内嵌到项目…',
     'imStepRasterizing': '正在栅格化为赛璐珞…',
     'imFolderGone': '该文件夹已不存在。',

@@ -423,6 +423,33 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🗣️F-608-Q2: importCutFolder tells how far it is as one bar '
+      '— each scan an even share of it, and within that share the scan '
+      'read in', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final told = <double>[];
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_075_gen';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}A2.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        onProgress: told.add,
+      );
+    });
+
+    expect(
+      told,
+      [0, 0.5, 0.5, 1],
+      reason: 'A1 read from none of it to all of it, the first half; A2 the '
+          'second',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('importCutFolder lands a correction as its base\'s SYNCED '
       'attach row — the pixels on the mirror of the cel it corrects, the '
       'other mirrors empty — and leaves the archived subfolder out',

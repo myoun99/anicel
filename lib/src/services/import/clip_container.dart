@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../../core/progress_share.dart';
+import '../../core/piece_read.dart';
 
 /// Thrown when a file cannot be read as a CLIP STUDIO PAINT document.
 class ClipFormatException implements Exception {
@@ -107,8 +106,7 @@ final class ClipContainer {
 }
 
 /// The bytes at [place] in [file], read a piece at a time — [onRead] told
-/// how much of them is in, as their 0–1, before the first piece and after
-/// each one.
+/// how much of them is in ([PieceRead]).
 ///
 /// 🗣️F-608-Q2 (유저 2026-11-17: 「내려받는중에 퍼센테이지가 조금이라도
 /// 안느는게 문제」): a file in the cloud comes down inside this read — the
@@ -119,23 +117,14 @@ Uint8List readClipPlace(
   ClipPlace place, {
   void Function(double fraction)? onRead,
 }) {
-  final bytes = Uint8List(place.length);
+  final read = PieceRead(place.length, onRead: onRead);
   file.setPositionSync(place.offset);
-  onRead?.call(doneShare(0, place.length));
-  var at = 0;
-  while (at < place.length) {
-    final to = math.min(at + _piece, place.length);
-    final got = file.readIntoSync(bytes, at, to);
-    if (got <= 0) {
+  while (!read.done) {
+    if (!read.took(file.readIntoSync(read.bytes, read.from, read.to))) {
       throw ClipFormatException(
         'the file ends inside the data at ${place.offset}',
       );
     }
-    at += got;
-    onRead?.call(doneShare(at, place.length));
   }
-  return bytes;
+  return read.bytes;
 }
-
-/// How much one read of [readClipPlace] asks for.
-const int _piece = 4 << 20;

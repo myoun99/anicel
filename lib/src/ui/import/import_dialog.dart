@@ -239,6 +239,11 @@ class _FileReport {
   void cutting(double fraction, MediaAssetKind kind) =>
       _in(_Stretch.cut, _cuttingStep(kind), fraction);
 
+  /// [fraction] of the file read in ([readHeldMediaBytes]) — a picture from
+  /// the cloud comes down inside this read (F-608-Q2).
+  void reading(double fraction) =>
+      _in(_Stretch.read, AppText.strings.imStepReading, fraction);
+
   /// [fraction] of the file's bytes held ([MediaPool.holdCarriedBytes]).
   void carrying(double fraction) =>
       _in(_Stretch.carry, AppText.strings.imStepCarrying, fraction);
@@ -263,7 +268,7 @@ class _FileReport {
 
 /// What a placed file goes through that takes long enough to name, in the
 /// order its door runs them ([_FileReport]).
-enum _Stretch { cut, carry, rasterize }
+enum _Stretch { cut, read, carry, rasterize }
 
 /// What the pool's batches tell back while they run ([_registerFiles]).
 ///
@@ -1856,7 +1861,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
       edits: _folderEditsToRun,
-      onProgress: (baked, total) => report(doneShare(baked, total)),
+      onProgress: report,
     );
     if (folderWarnings == null) {
       tally.warn(AppText.strings.imCutFolderUnreadable);
@@ -2249,7 +2254,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeMovie(into, path, fileReport, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
-      return _expandPsd(into, path, tally);
+      return _expandPsd(into, path, tally, fileReport);
     }
     if (_runKeptOf(path) != null) {
       return _placeRun(into, path, tally, fileReport);
@@ -2293,6 +2298,7 @@ class _ImportDialogState extends State<ImportDialog> {
     spot: into.spot,
     sourcePath: sourcePath,
     onCarrying: fileReport.carrying,
+    onReading: fileReport.reading,
   );
 
   /// [path]'s numbered run as its span keeps it ([_runKeptOf]): two
@@ -2538,12 +2544,14 @@ class _ImportDialogState extends State<ImportDialog> {
     _Landing into,
     String path,
     _ImportTally tally,
+    _FileReport fileReport,
   ) async {
     final expanded = await into.session.importDoors.importPsdExpanded(
       path: path,
       destination: into.settings.into,
       fit: into.settings.fit,
       spot: into.spot,
+      onReading: fileReport.reading,
     );
     if (expanded == null) {
       _warnOf(tally, path, AppText.strings.imPsdNoLayers);

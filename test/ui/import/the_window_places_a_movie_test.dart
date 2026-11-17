@@ -726,8 +726,8 @@ void main() {
         AppText.strings.imStepCarrying,
         '',
       ]);
-      // The cut the first of a placed file's three stretches.
-      expectOneBar(counted, [1 / 9, 2 / 9, 1 / 3, 1]);
+      // The cut the first of a placed file's four stretches.
+      expectOneBar(counted, [1 / 12, 1 / 6, 1 / 4, 1]);
     });
   });
 

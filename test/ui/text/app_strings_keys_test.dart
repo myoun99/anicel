@@ -791,6 +791,7 @@ void main() {
     'imStatusNothing': (s) => s.imStatusNothing,
     'imStepRecoding': (s) => s.imStepRecoding,
     'imStepWritingSpan': (s) => s.imStepWritingSpan,
+    'imStepReading': (s) => s.imStepReading,
     'imStepCarrying': (s) => s.imStepCarrying,
     'imStepRasterizing': (s) => s.imStepRasterizing,
     'imFolderGone': (s) => s.imFolderGone,

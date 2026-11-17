@@ -160,7 +160,7 @@ void main() {
   });
 
   testWidgets('🗣️F-494: the window\'s line names what a file is going '
-      'through — a carried file\'s bytes held — and lets go once it is '
+      'through — a picture read in, its bytes held — and lets go once it is '
       'through (「하고있는 과정을 투명하게」)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -176,14 +176,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     final lines = watchTheLine(tester);
+    final counted = watchTheBar(tester);
     await pumpPastTheWaitWindow(tester);
 
     expect(
       lines,
-      ['', AppText.strings.imStepCarrying, ''],
-      reason: 'a row carries its file at first (seedImportSettings), so the '
-          'one long thing this file goes through is its bytes being held',
+      [
+        '',
+        AppText.strings.imStepReading,
+        AppText.strings.imStepCarrying,
+        '',
+      ],
+      reason: 'a picture is read in whole — one in the cloud comes down '
+          'inside that read (F-608-Q2) — and a row carries its file at '
+          'first (seedImportSettings), so its bytes are held after',
     );
+    // The read the first of a placed file's three stretches still to come.
+    expectOneBar(counted, [0, 1 / 3, 1]);
   });
 
   testWidgets('single files import with destination/fit defaults filled — '
@@ -964,6 +973,27 @@ void main() {
 
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
       expect(cellText(tester, 'file', psd), 'Keep');
+    });
+
+    testWidgets('🗣️F-608-Q2: an expanded PSD is read in under the window\'s '
+        'line — a stack in the cloud comes down inside that read', (
+      tester,
+    ) async {
+      final psd = await tester.runAsync(() => writePsd('BG.psd'));
+      await pump(tester, [psd!]);
+      expect(
+        await settleAsync(tester, () => tester.importPreviewImage != null),
+        isTrue,
+        reason: 'shown, its preview has been read and let go',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      final lines = watchTheLine(tester);
+      await pumpPastTheWaitWindow(tester);
+
+      expect(lines, ['', AppText.strings.imStepReading, '']);
     });
 
     // ↩️The 넣을 곳 column went with them (09-11); it stands now, 「미디어」

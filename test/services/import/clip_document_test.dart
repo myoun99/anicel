@@ -1440,6 +1440,19 @@ void main() {
     expect(told, [0, (4 << 20) / length, (8 << 20) / length, 1]);
   });
 
+  test('a place the file ends inside is a format error, never short '
+      'bytes', () {
+    final path = '${folder.path}/short.bin';
+    File(path).writeAsBytesSync(Uint8List(10));
+    final file = File(path).openSync();
+    addTearDown(file.closeSync);
+
+    expect(
+      () => readClipPlace(file, (offset: 3, length: 20)),
+      throwsA(isA<ClipFormatException>()),
+    );
+  });
+
   test('a file whose database holds no canvas is refused', () {
     final database = databaseBytes(
       (db) => db.execute('CREATE TABLE Unrelated(a INTEGER)'),
