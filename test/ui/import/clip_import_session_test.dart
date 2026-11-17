@@ -81,11 +81,14 @@ void main() {
   /// [masked] gives BG a mask that is on, standing 5 across from BG's
   /// top-left: it hides all it covers, and past its edges shows all — its
   /// blocks held, or not in the file.
+  ///
+  /// [clearBg] leaves BG's picture with no ink.
   String writeClip({
     bool troubled = false,
     _Strokes? strokes,
     bool papered = false,
     _Masked? masked,
+    bool clearBg = false,
   }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
@@ -94,7 +97,7 @@ void main() {
       rows: 1,
     );
     final externals = <String, List<int>>{
-      externalId(1): square(0, 10, (200, 0, 0)),
+      externalId(1): square(0, clearBg ? 0 : 10, (200, 0, 0)),
       externalId(2): square(0, 4, (0, 0, 200)),
       externalId(3): square(0, 6, (0, 200, 0)),
       externalId(4): square(0, 8, (200, 200, 200)),
@@ -520,6 +523,25 @@ void main() {
     expect(alphaAt(27, 37), 255);
     expect(alphaAt(19, 30), 0);
     expect(alphaAt(28, 38), 0);
+  });
+
+  test('a picture with no ink leaves its cel as one never drawn on — '
+      'nothing baked, and no picture of it kept for the screen', () async {
+    final opened = await openedClip(writeClip(clearBg: true));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    final key = session.brushFrameKeyForCut(cut, bg.id, bg.frames.single.id);
+    final store = session.renderCaches.brushFrameStore;
+
+    expect(store.bakedSurfaceOrNull(key), isNull);
+    expect(
+      store.displayCacheOrNull(key),
+      isNull,
+      reason: 'the store drops an empty picture it is given, but keeps the '
+          'screen\'s copy of it — so an empty one is never given',
+    );
   });
 
   test('what cannot be drawn is said by name — a grey layer, a picture its '
