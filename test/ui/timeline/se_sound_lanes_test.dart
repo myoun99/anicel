@@ -437,6 +437,31 @@ void main() {
       expect(sound().pan.keyAt(9)!.value, closeTo(-0.4, 1e-9));
     });
 
+    // 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
+    // 「숫자끼리는 숫자 그대로」 — the number a lane shows, held as the lane it
+    // goes on holds a number typed.
+    test('a Volume key goes on the Pan as the per cent it shows, held inside '
+        'the two sides — and a Pan key on the Volume as its own', () {
+      final pill = TimelineToolbarPanelContext(s);
+      type(seSoundVolumeLaneId, 3, '150');
+      type(seSoundPanLaneId, 5, 'R40');
+      s.selectLayer(se.id);
+      void carried(String from, int at, String onto, int to) {
+        s.selectFrameIndex(at);
+        s.standOnRow(LaneRowAddress(se.id, from));
+        pill.copyFrame();
+        s.selectFrameIndex(to);
+        s.standOnRow(LaneRowAddress(se.id, onto));
+        pill.pasteIndependentFrame();
+      }
+
+      carried(seSoundVolumeLaneId, 3, seSoundPanLaneId, 9);
+      carried(seSoundPanLaneId, 5, seSoundVolumeLaneId, 12);
+
+      expect(sound().pan.keyAt(9)!.value, 1.0, reason: '150 is R100 at most');
+      expect(sound().volume.keyAt(12)!.value, closeTo(0.4, 1e-9));
+    });
+
     // 🗣️audio-fx-grows-like-the-pros-Q4 note 「뭐든 fx라면 있어야」 · -Q6
     // 「音量 키 · パン 을 건너뛴다」.
     test('🎯the header wears an fx switch as every fx group does: off, the '

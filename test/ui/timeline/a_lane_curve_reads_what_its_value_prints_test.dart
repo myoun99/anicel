@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/camera_pose_resolver.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -20,7 +21,7 @@ import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
-    show seSoundGroupLaneId;
+    show seSoundGroupLaneId, seSoundPanLaneId, seSoundVolumeLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,6 +74,7 @@ void main() {
       laneGroupKey(row.id, transformGroupHeaderLane.laneId),
       laneGroupKey(row.id, effectGroupLaneId(grade.id)),
       laneGroupKey(row.id, seNameTagGroupLaneId),
+      laneGroupKey(row.id, seSoundGroupLaneId),
     },
     valueSourceAt: source ?? (frame) => (layer: row, frame: frame),
     poseCentre: canvas,
@@ -245,6 +247,38 @@ void main() {
 
     expect(rotation.curve!.at(2.5).single, closeTo(25, 1e-9));
     expect(rotation.valueLabel!(2), '0x+20.00°');
+  });
+
+  test('a projection reads an S row\'s sound on the frames it is read off — '
+      'the Volume\'s and the Pan\'s alike (audio-fx-grows-like-the-pros-Q7)',
+      () {
+    // A track's SE row, read in a cut that starts at 10.
+    final source = Layer(
+      id: const LayerId('track-se'),
+      name: 'S',
+      kind: LayerKind.se,
+      frames: const [],
+      seSound: SeSound(
+        volume: PropertyTrack<double>().withKey(10, 0).withKey(14, 1),
+        pan: PropertyTrack<double>().withKey(10, -1).withKey(14, 1),
+      ),
+    );
+    final lanes = lanesOf(
+      Layer(
+        id: const LayerId('s'),
+        name: 'S',
+        kind: LayerKind.se,
+        frames: const [],
+      ),
+      source: (frame) => (layer: source, frame: frame + 10),
+    );
+    final volume = laneOf(lanes, seSoundVolumeLaneId);
+    final pan = laneOf(lanes, seSoundPanLaneId);
+
+    expect(volume.curve!.at(2.5).single, closeTo(62.5, 1e-9));
+    expect(volume.valueLabel!(2), '50.00%');
+    expect(pan.curve!.at(2.5).single, closeTo(25, 1e-9));
+    expect(pan.valueLabel!(3), 'R50');
   });
 
   test('each number is drawn in its own colour — a point across and down, '
