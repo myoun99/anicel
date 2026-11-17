@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../core/alike_maths.dart';
 import '../core/argb_channels.dart';
 import '../core/color_matrix.dart';
 import '../models/canvas_size.dart';
@@ -416,8 +417,8 @@ _PaintPart _directionalBlurPart(ResolvedLayerEffect effect) {
   final radians = effect.parameter('direction') * math.pi / 180;
   return _StepPart(
     directionalBlurPasses(
-      dx: math.sin(radians),
-      dy: -math.cos(radians),
+      dx: alikeSin(radians),
+      dy: -alikeCos(radians),
       length: length,
     ),
     // Half the line each way, and the texel a sample at its end reads.
@@ -468,8 +469,8 @@ _PaintPart _radialBlurPart(ResolvedLayerEffect effect, ui.Rect? paper) {
     // the ray outward — and the texel a sample at its end reads.
     reach:
         (spin
-            ? 2 * farthest * math.sin(math.min(across / 2, math.pi) / 2)
-            : farthest * (math.exp(across / 2) - 1)) +
+            ? 2 * farthest * alikeSin(math.min(across / 2, math.pi) / 2)
+            : farthest * (alikeExp(across / 2) - 1)) +
         1,
   );
 }

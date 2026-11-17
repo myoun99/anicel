@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/alike_maths.dart';
 import 'shaded_passes.dart';
 
 /// The most taps one pass takes — the engine's line blur's bound (line.rs's
@@ -25,10 +26,15 @@ const int lineBoxTapsAPass = 32;
       (most == null || passes < most)) {
     passes += 1;
   }
-  final taps = (math.pow(length, 1 / passes) as double).ceil().clamp(
-    1,
-    lineBoxTapsAPass,
-  );
+  // The fewest taps whose passes-th power reaches the length: the ceiling
+  // of its passes-th root, found by whole powers — exact on every device.
+  // ↩️It was `pow(length, 1 / passes)`'s ceiling, the device's libm's: at
+  // a cube (1331 = 11³) its last bit decides 11 or 12 (board
+  // linux-libm-hands-the-engine-other-last-bits).
+  var taps = 1;
+  while (taps < lineBoxTapsAPass && math.pow(taps, passes) < length) {
+    taps += 1;
+  }
   return (passes: passes, taps: taps);
 }
 
@@ -72,7 +78,7 @@ List<LineBoxPass> radialBlurPasses({
   // or the ray — from its pixel drawn in, to the one it reads out farthest.
   final length = spin
       ? across * farthest
-      : farthest * (math.exp(across) - 1);
+      : farthest * (alikeExp(across) - 1);
   final (:passes, :taps) = lineBoxPlan(length, most: draft ? 1 : null);
   final spacing = across / math.pow(taps, passes);
   return [

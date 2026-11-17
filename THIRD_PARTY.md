@@ -81,6 +81,17 @@ the connection round (2026-11-08) the C amalgamation it was ported from
 was vendored at `packages/qa_native/src/third_party/zstd/`, with the same
 `LICENSE`; the crate's `lib.rs` keeps how it was made.
 
+### fdlibm (ported to Dart)
+
+`lib/src/core/alike_maths.dart` is a port of FreeBSD msun's `k_sin.c`,
+`k_cos.c`, `e_rem_pio2.c`, `s_sin.c`, `s_cos.c` and `e_exp.c`, by way of
+the `libm` crate **0.2.16** the GPU engine calls — a sine, a cosine and an
+exponential the same to the last bit on every device. Sun Microsystems'
+notices (1993, 2004: "freely granted, provided that this notice is
+preserved") head the file, and are bundled at
+`assets/licenses/LICENSE-fdlibm.txt` and shown in the app's About ▸
+licenses screen.
+
 > When native third-party sources are vendored into `native/` (or into a
 > platform plugin package), each one gets an entry here with: what it is,
 > where it came from, its version/commit, and its license text or a path

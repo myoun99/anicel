@@ -13,11 +13,14 @@ import '../helpers/pinned_fingerprints.dart';
 /// 🧭관제 (connection-round-checklist I Ⓒ①, 2026-11-07): what the app works
 /// out with a cos, a sin, an exp or a pow and hands the engine — a
 /// directional blur's steps, a radial blur's turns, scales and maps, a
-/// hue's colour matrix — is the platform's libm's, which may differ by
-/// device in a last bit (gpu-int-spec-canvas 대조 필요 ①). Past the
-/// engine's own rounding such a bit can move a pixel, and under a pow's
-/// ceiling the number of taps. So each is pinned bit for bit in the one
-/// ledger: a device whose libm differs fails here, by which of the three,
+/// hue's colour matrix — was the platform's libm's, which may differ by
+/// device in a last bit (gpu-int-spec-canvas 대조 필요 ①), and did: Linux's
+/// handed other bits than the Windows rows were pinned on (board
+/// linux-libm-hands-the-engine-other-last-bits). Past the engine's own
+/// rounding such a bit can move a pixel, and under a pow's ceiling the
+/// number of taps. So they are `alike_maths.dart`'s now, IEEE's own
+/// operations alone, and each is pinned bit for bit in the one ledger: a
+/// device that rounds them otherwise fails here, by which of the three,
 /// before a picture shows it.
 ///
 /// Every value as its IEEE double, little-endian, in the order written —

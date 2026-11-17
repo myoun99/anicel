@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../core/alike_maths.dart';
+
 import '../core/color_matrix.dart' show luminanceB, luminanceG, luminanceR;
 
 /// One raster of a step a fragment shader draws ([ShadedEffect]): the whole
@@ -56,9 +58,9 @@ final class LineBoxPass extends ShadedPass {
   /// where x goes, then where y goes — the identity on a line, whose taps
   /// turn and grow by nothing.
   List<double> _mapOf(double taps) {
-    final scale = math.exp(grow * taps);
+    final scale = alikeExp(grow * taps);
     final angle = turn * taps;
-    final (cos, sin) = (math.cos(angle) * scale, math.sin(angle) * scale);
+    final (cos, sin) = (alikeCos(angle) * scale, alikeSin(angle) * scale);
     return [cos, sin, -sin, cos];
   }
 
@@ -158,7 +160,7 @@ typedef IrisRows = ({
 })
 irisTurnsOf({required int sides, required double rotation}) {
   (double, double) turn(double radians) =>
-      (math.cos(radians), math.sin(radians));
+      (alikeCos(radians), alikeSin(radians));
   final halfSide = math.pi / sides;
   return (
     rotation: turn(rotation),

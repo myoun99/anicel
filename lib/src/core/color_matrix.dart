@@ -14,6 +14,8 @@ library;
 
 import 'dart:math' as math;
 
+import 'alike_maths.dart';
+
 /// The 4×5 identity — "this effect changes nothing".
 const List<double> identityColorMatrix = <double>[
   // dart format off
@@ -142,8 +144,8 @@ List<double> brightnessContrastMatrix({
 /// chroma plane).
 List<double> hueRotationMatrix(double degrees) {
   final radians = degrees * math.pi / 180;
-  final cosine = math.cos(radians);
-  final sine = math.sin(radians);
+  final cosine = alikeCos(radians);
+  final sine = alikeSin(radians);
   double term(double weight, double cosineWeight, double sineWeight) =>
       weight + cosine * cosineWeight + sine * sineWeight;
   return <double>[

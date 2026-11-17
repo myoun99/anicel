@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
+import 'alike_maths.dart';
+
 /// The cosine of a turn of [degrees], EXACT at the quarter turns — see
 /// [turnSin] for the pair and the reason.
 double turnCos(double degrees) {
   final quarter = _exactQuarterTurn(degrees);
   return quarter == null
-      ? math.cos(degrees * math.pi / 180)
+      ? alikeCos(degrees * math.pi / 180)
       : _quarterCos[quarter];
 }
 
@@ -28,7 +30,7 @@ double turnCos(double degrees) {
 double turnSin(double degrees) {
   final quarter = _exactQuarterTurn(degrees);
   return quarter == null
-      ? math.sin(degrees * math.pi / 180)
+      ? alikeSin(degrees * math.pi / 180)
       : _quarterSin[quarter];
 }
 

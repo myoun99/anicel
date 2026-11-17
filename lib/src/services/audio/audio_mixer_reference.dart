@@ -16,6 +16,8 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/alike_maths.dart';
+
 /// One volume-envelope point (AUDIO-PRO R1) — mirrors the C
 /// `qa_audio_envelope_key`: at [sample] (clip-local, from the clip's
 /// start) the envelope passes [gain]. Linear between points, held past
@@ -60,8 +62,8 @@ class AudioMixClip {
   final int fadeOutSamples;
 
   /// Per-output-side pan factors, PRECOMPUTED here in Dart (see
-  /// [equalPowerPanGains]) so the C never calls trig — a libm sin/cos can
-  /// differ from Dart's by an ulp and break byte parity. Applied on a
+  /// [equalPowerPanGains]) so the engine never calls trig — a libm sin/cos
+  /// can differ from Dart's by an ulp and break byte parity. Applied on a
   /// stereo bus only; unity leaves the mix untouched.
   final double panLeft;
   final double panRight;
@@ -109,13 +111,15 @@ class AudioMixClip {
 /// pan. ↩️Center-unity was once held for the platform-player fallback,
 /// which could not pan; that path went with the user's 2026-10-16 「대체
 /// 재생을 안 쓰고」. Computed ONCE per clip here so every mixer
-/// implementation consumes identical doubles.
+/// implementation consumes identical doubles — [alikeCos] and [alikeSin]'s,
+/// so every device hands the engine the same ones too (board
+/// linux-libm-hands-the-engine-other-last-bits).
 ({double left, double right}) equalPowerPanGains(double pan) {
   final clamped = pan < -1.0 ? -1.0 : (pan > 1.0 ? 1.0 : pan);
   final angle = (clamped + 1.0) * math.pi / 4.0;
   return (
-    left: math.cos(angle) * math.sqrt2,
-    right: math.sin(angle) * math.sqrt2,
+    left: alikeCos(angle) * math.sqrt2,
+    right: alikeSin(angle) * math.sqrt2,
   );
 }
 

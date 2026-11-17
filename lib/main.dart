@@ -162,6 +162,13 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield licenceEntry(const [
       'Zstandard',
     ], await rootBundle.loadString('assets/licenses/LICENSE-zstd.txt'));
+    // FreeBSD msun's sine, cosine and exponential, ported into the app's
+    // Dart (lib/src/core/alike_maths.dart) so every device works them out
+    // alike: Sun's notice asks to be preserved — the engine's `libm` crate
+    // carries it in its own text below, the Dart port in this one.
+    yield licenceEntry(const [
+      'fdlibm',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-fdlibm.txt'));
     // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
     // beside it on Windows: one entry for the three licence texts its zip
     // carries, since the zip does not say which file each covers
