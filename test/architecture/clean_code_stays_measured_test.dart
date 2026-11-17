@@ -1087,7 +1087,19 @@ void main() {
   /// 🔬`clean_code_diff` against master (`d8b474794`) names that one.
   /// ⛔Not bundled to fit: a scrub and a typed number are two answers, and
   /// the affine's and a point's differ in both.
-  const wideSignatures = 451;
+  ///
+  /// ⚠️451 → 452 on 2026-11-17, one named as the rule above asks (F-608 ④
+  /// — 유저 「이런 임포트관련은 클튜등도 문제있을수있으니 확인」):
+  /// `ClipImportDoor.decodeEach` (five) is the .clip door's walk over its
+  /// pictures as the .tvpp door's `decodeEach` (five) is over its cels — a
+  /// worker free takes the next, a picture lands as it is decoded, and a
+  /// stop is heard as one lands — and its parameters are that walk's: the
+  /// work, how many at once, how one is decoded, how it lands, and whether
+  /// a stop was asked. 🔬`clean_code_diff` against master (`eefe2bcdb`)
+  /// names that one added and nothing gone. ⛔Not bundled to fit: the two
+  /// are one walk over different work, kept apart till a third door fans
+  /// out (3의 규칙) — and the one they then become takes these five.
+  const wideSignatures = 452;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
