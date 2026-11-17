@@ -86,15 +86,16 @@ void main() {
       expect(vector.renderRequests, [(0, 320, 160)], reason: 'drawn any size');
     });
 
-    testWidgets('a file that cannot be opened is asked once, however often '
-        'its box is drawn', (tester) async {
+    testWidgets('a file that cannot be opened is asked once, at whatever '
+        'width or frame its box asks next', (tester) async {
       final pictures = poolOf({});
       addTearDown(pictures.dispose);
-      for (var draw = 0; draw < 3; draw += 1) {
-        expect(pictures.pictureOf(still, page: 0, width: 160), isNull);
+      // A panel resized asks every width anew, a cursor every frame.
+      for (final (page, width) in [(0, 160), (0, 170), (3, 170)]) {
+        expect(pictures.pictureOf(movie, page: page, width: width), isNull);
         await settle(tester);
       }
-      expect(opened, [still.path]);
+      expect(opened, [movie.path]);
     });
 
     testWidgets('no more than two files stay open, the one drawn from '
