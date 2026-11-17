@@ -62,6 +62,7 @@ class CanvasFloorInsets extends InheritedWidget {
     this.rightRailBand,
     this.bottomOverlaySpan = 0,
     this.leftPill,
+    this.leftPillBeside,
     required super.child,
   });
 
@@ -125,6 +126,25 @@ class CanvasFloorInsets extends InheritedWidget {
   /// it. It is cover to framing as that strip was (F-346).
   final CanvasEdgePill? leftPill;
 
+  /// Whether [leftPill] stood past the left rail when it was last seated on
+  /// this floor (`_LeftEdgeSeat`) — the floor's to keep, as it keeps the
+  /// pill: whichever panel lies here reads it and tells it.
+  ///
+  /// 🗣️F-607 ② (유저 2026-11-16): 「타임시트패널 전환할때 팬이 오른쪽으로
+  /// 튕기는느낌? 1프레임?」 — framing counts the pill's band past the rail
+  /// ([leftPill]), and is read before the layout that seats it. Each panel
+  /// kept the answer itself, so one laid on the floor framed its first
+  /// frame without it and stood again a frame later: 🔬32 px to the right,
+  /// the timesheet laid from the top strip at 1600×1000 (2026-11-17). The
+  /// floor seats every panel's pill in the same room (F-607 ①), so what
+  /// the last one learned is the next one's answer from its first frame.
+  /// ⚠️Not the pan before a zoom (F-601): that one had landed, and this
+  /// still stood a frame apart.
+  ///
+  /// Null where nothing keeps it — a floor built by hand: the panel keeps
+  /// its own then (`BrushCanvasPanel`).
+  final ValueNotifier<bool>? leftPillBeside;
+
   /// The cover for the floor [context] sits on, or null when it is not the
   /// floor at all.
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
@@ -136,7 +156,8 @@ class CanvasFloorInsets extends InheritedWidget {
       oldWidget.leftRailBand != leftRailBand ||
       oldWidget.rightRailBand != rightRailBand ||
       oldWidget.bottomOverlaySpan != bottomOverlaySpan ||
-      oldWidget.leftPill != leftPill;
+      oldWidget.leftPill != leftPill ||
+      oldWidget.leftPillBeside != leftPillBeside;
 }
 
 /// The stage's outer two surfaces, published ONCE by the shell for the

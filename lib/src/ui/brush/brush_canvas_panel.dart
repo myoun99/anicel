@@ -1712,6 +1712,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
     _viewportState._listenedViewport = null;
     _viewportState._ownViewport.dispose();
+    _ownPillBeside.dispose();
     // The reader's page is the owner's too, for the same reason.
     _bookState.unbind();
     // A mid-stroke teardown must release the session's warm hold — a
@@ -2479,13 +2480,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Whether the left pill stood past the left rail when it was last laid
   /// out — what its seat decided ([_LeftEdgeSeat]), kept because framing is
   /// read before the layout that places it.
-  bool _leftPillBesideRail = false;
+  ///
+  /// 🚨THE FLOOR'S TO KEEP ([CanvasFloorInsets.leftPillBeside], F-607 ②): a
+  /// panel laid on the floor frames its first frame with what the panel
+  /// before it learned there, the floor seating every panel's pill in one
+  /// room. ↩️Each panel kept it, and one laid from the top strip framed its
+  /// first frame without it — a frame 32 px to the left of where it stood
+  /// next. A floor built with none: this panel's own, as `viewportNotifier`
+  /// is an owner's or the panel's.
+  ValueNotifier<bool> get _pillBeside =>
+      _floor?.leftPillBeside ?? _ownPillBeside;
+
+  final ValueNotifier<bool> _ownPillBeside = ValueNotifier<bool>(false);
+
+  bool get _leftPillBesideRail => _pillBeside.value;
 
   void _rememberLeftPillBeside(bool beside) {
     if (beside == _leftPillBesideRail) {
       return;
     }
-    _leftPillBesideRail = beside;
+    _pillBeside.value = beside;
     // Learned in a layout, after this frame's build framed the view with
     // the answer before it: the next build frames with this one.
     WidgetsBinding.instance.addPostFrameCallback((_) {

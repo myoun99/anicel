@@ -1965,6 +1965,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     // After the bridge lets go: its relay listens to it.
     _brushValuesOnStrip.dispose();
+    _floorPillBeside.dispose();
     _railToolsOnly.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2281,6 +2282,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
   /// workspace and the floor inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
+
+  /// Whether the floor's pill stood past the left rail when it was last
+  /// seated ([CanvasFloorInsets.leftPillBeside]) — kept here, with the
+  /// floor, so a panel laid on it frames its first frame with it (F-607 ②).
+  final ValueNotifier<bool> _floorPillBeside = ValueNotifier<bool>(false);
 
   /// Whether the tool strip holds its tools alone — false, the default,
   /// stands the shortcut buttons above them
@@ -3255,6 +3261,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   width: BrushValuesPill.widthIn(context),
                   child: BrushValuesPill(brushTool: _brushTool),
                 ),
+          // F-607 ②: where the pill stood, kept for whoever lies here next.
+          leftPillBeside: _floorPillBeside,
           child: floor!,
         ),
         child: floor,
