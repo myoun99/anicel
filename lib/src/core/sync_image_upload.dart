@@ -26,9 +26,22 @@ abstract interface class PictureBytes {
 /// Premultiplied rgba rows held in a list, as the door reads them
 /// ([pictureOf]).
 final class PremultipliedRows implements PictureBytes {
-  PremultipliedRows(this._premultiplied, this.width, this.height);
+  PremultipliedRows(this._premultiplied, this.width, this.height)
+    : _given = false;
+
+  /// Rows handed over for one read, no one else holding them: read
+  /// straight, they are made straight where they lie, not copied first.
+  ///
+  /// 🔬A test's screen is drawn through the door as each frame of it is
+  /// laid, from bytes it has just read back and lets go after: 2026-11-17,
+  /// main PC, the top strip test's file straightened its screens in 110 s
+  /// of its 386, and in 40 s once the copy before it went (board
+  /// ci-heaviest-files-draw-on-the-cpu).
+  PremultipliedRows.given(this._premultiplied, this.width, this.height)
+    : _given = true;
 
   final Uint8List _premultiplied;
+  final bool _given;
 
   @override
   final int width;
@@ -37,8 +50,11 @@ final class PremultipliedRows implements PictureBytes {
   final int height;
 
   @override
-  T readStraight<T>(T Function(Uint8List straight) use) =>
-      use(straightRgbaFor(_premultiplied));
+  T readStraight<T>(T Function(Uint8List straight) use) => use(
+    _given
+        ? straightRgbaInPlace(_premultiplied)
+        : straightRgbaFor(_premultiplied),
+  );
 
   @override
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
@@ -174,42 +190,46 @@ bool _probe() {
 /// Fully transparent runs are left undrawn (a fresh picture is transparent
 /// already); every other run is one non-antialiased rect in the run's
 /// straight colour, which Skia premultiplies exactly once.
+///
+/// A run is told a pixel at a time, its four bytes compared as one word
+/// ([_wordsOf]). 🔬2026-11-17, main PC: a test's screen is drawn through
+/// here as each frame of it is laid, and the top strip test's file spent
+/// 48 s of its 386 in this loop a byte at a time, 42 s a word at a time
+/// (board ci-heaviest-files-draw-on-the-cpu).
 ui.Image _rasterizedStraight(Uint8List straight, int width, int height) {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
   final paint = ui.Paint()
     ..isAntiAlias = false
     ..style = ui.PaintingStyle.fill;
-  var offset = 0;
+  final words = _wordsOf(straight, width * height);
+  var at = 0;
   for (var y = 0; y < height; y += 1) {
-    var x = 0;
-    while (x < width) {
+    final rowStart = at;
+    final rowEnd = at + width;
+    while (at < rowEnd) {
+      final word = words[at];
+      final start = at;
+      at += 1;
+      while (at < rowEnd && words[at] == word) {
+        at += 1;
+      }
+      final offset = start * 4;
       final a = straight[offset + 3];
       if (a == 0) {
-        x += 1;
-        offset += 4;
         continue;
       }
-      final r = straight[offset];
-      final g = straight[offset + 1];
-      final b = straight[offset + 2];
-      final start = x;
-      x += 1;
-      offset += 4;
-      while (x < width &&
-          straight[offset] == r &&
-          straight[offset + 1] == g &&
-          straight[offset + 2] == b &&
-          straight[offset + 3] == a) {
-        x += 1;
-        offset += 4;
-      }
-      paint.color = ui.Color.fromARGB(a, r, g, b);
+      paint.color = ui.Color.fromARGB(
+        a,
+        straight[offset],
+        straight[offset + 1],
+        straight[offset + 2],
+      );
       canvas.drawRect(
         ui.Rect.fromLTWH(
-          start.toDouble(),
+          (start - rowStart).toDouble(),
           y.toDouble(),
-          (x - start).toDouble(),
+          (at - start).toDouble(),
           1,
         ),
         paint,
@@ -223,3 +243,10 @@ ui.Image _rasterizedStraight(Uint8List straight, int width, int height) {
     picture.dispose();
   }
 }
+
+/// [bytes]' first [count] pixels, a word each — over the same memory where
+/// it lies on a word's bound, else over a copy.
+Uint32List _wordsOf(Uint8List bytes, int count) =>
+    bytes.offsetInBytes % 4 == 0
+    ? bytes.buffer.asUint32List(bytes.offsetInBytes, count)
+    : Uint8List.fromList(bytes).buffer.asUint32List(0, count);

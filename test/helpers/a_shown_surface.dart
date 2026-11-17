@@ -61,7 +61,7 @@ Layer screenDrawnAsAPicture({
     );
   }
   final image = pictureOf(
-    PremultipliedRows(surface.read(), surface.width, surface.height),
+    PremultipliedRows.given(surface.read(), surface.width, surface.height),
   );
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImageRect(
