@@ -69,7 +69,8 @@ void main() {
     final session = await pumpStoryboard(tester);
     final se = session.activeTrack.seLayers.first.id.value;
     await tapNamed(tester, 'storyboard-lane-toggle-$se');
-    await tapNamed(tester, 'storyboard-lane-group-toggle-$se-transform-group');
+    // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+    await tapNamed(tester, 'storyboard-lane-group-toggle-$se-name-tag-group');
     final value = 'storyboard-lane-value-$se-rotation';
     final before = label(tester, value);
 

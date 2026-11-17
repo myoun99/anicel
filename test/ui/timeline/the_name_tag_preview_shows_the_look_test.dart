@@ -352,8 +352,19 @@ void main() {
       'fills, centred across the row (R5 #7)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // The name box alone: since the fold gave the blend column to the pose's
+    // basis chip (audio-fx-grows-like-the-pros-Q4) the region is 88px, and
+    // the test's font — a square per letter — runs the two samples to 89,
+    // so the dialogue gives way and the preview fills it. ↩️With the
+    // dialogue sample till 2026-11-18.
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _sRowProject())),
+      MaterialApp(
+        home: HomePage(
+          initialProject: _sRowProject(
+            tag: const SeNameTag(showLine: false),
+          ),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     final toggle = find.named('timeline-lane-toggle-${_seId.value}').first;
@@ -403,8 +414,8 @@ RenderObject _linesOver(WidgetTester tester, String text) =>
 const _seId = LayerId('tag-se');
 
 /// A cut with one drawing row and a track S row — the name tag lives on
-/// the S row's lanes.
-Project _sRowProject() => Project(
+/// the S row's lanes, wearing [tag] where one is given.
+Project _sRowProject({SeNameTag? tag}) => Project(
   id: const ProjectId('tag-project'),
   name: 'Tag',
   createdAt: DateTime.utc(2026, 9, 29),
@@ -433,6 +444,7 @@ Project _sRowProject() => Project(
           id: _seId,
           name: 'S1',
           kind: LayerKind.se,
+          seNameTag: tag,
           frames: [
             Frame(
               id: const FrameId('tag-voice'),

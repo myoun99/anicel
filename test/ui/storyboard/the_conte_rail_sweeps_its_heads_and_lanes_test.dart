@@ -812,7 +812,8 @@ void main() {
         'storyboard-lane-group-toggle-$conteRow-transform-group',
       );
       await tap(tester, 'storyboard-lane-toggle-t2-s1');
-      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-transform-group');
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-name-tag-group');
       session.selectCut(const CutId('c'));
       await tester.pumpAndSettle();
       final start = diamond(conteRow, 'position');
