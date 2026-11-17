@@ -30,10 +30,19 @@ import '../../services/cel_text_laying.dart';
 /// again — each step met then draws what its plugin made, in the order the
 /// steps were met ([_recording]).
 ///
-/// ⛔ONE STAGE A ROUND. A plugin over another's picture meets its input
-/// only once the inner one has run, and nothing here can tell which steps
-/// a missed one feeds: so the first step missed in a round is the one run,
-/// every later one met again in the next.
+/// ⛔ONE STAGE A ROUND — AND EVERY STEP FED BY NONE WITH IT. A plugin
+/// over another's picture meets its input only once the inner one has
+/// run, and nothing here can tell which steps a missed one feeds: so the
+/// first step missed in a round is run, and of the later ones only a
+/// step whose input the plan says is made of a row's own surface
+/// ([PluginStepSource] — no step's picture in it but one that has run)
+/// runs with it; every other is met again in the next.
+/// ↩️The first alone till 11-17: a plugin worn by several rows ran a
+/// round a row, the frame recorded and composited again at each —
+/// 🔬main PC, the measuring scene, a plugin on a row others wear: 36
+/// of 85 pictures made ahead took 2–7 rounds, 264 composites for the
+/// 85, the band filled in 10.6–12.2 s against 6.9–7.5 s with it off
+/// (검증/서피스 saw the plug-in row cost +6.5 s of CPU, 11-17).
 ///
 /// ⛔Only a route that can wait asks through these ([recordedThrough]); any
 /// other that meets a plugin's step draws it as if off — so a screen that
@@ -186,12 +195,14 @@ final class FxPluginStages implements PluginSteps {
 
   /// Runs the step the last [_recording] missed first — every step before
   /// it was met again and had run: its input through its plugin, and the
-  /// picture it made held for the next.
+  /// picture it made held for the next — and every later one it met fed
+  /// by none ([_Stage.fedByNone]).
   Future<void> _resolve() async {
-    for (final stage in _stages) {
-      if (!stage.ran) {
+    var first = true;
+    for (final stage in _stages.take(_met)) {
+      if (!stage.ran && (first || stage.fedByNone)) {
+        first = false;
         await stage.run();
-        return;
       }
     }
   }
@@ -282,7 +293,7 @@ final class FxPluginStages implements PluginSteps {
         before: before,
       )),
     };
-    final asked = _Stage(step, input, kept: kept);
+    final asked = _Stage(step, input, kept: kept, fedByNone: from != null);
     final there = at < _stages.length ? _stages[at] : null;
     if (there != null && there.ran && there.step == step) {
       asked.dispose();
@@ -327,12 +338,22 @@ final class _KeptStep {
 
 /// A plugin's step as a recording met it: its input, held until it is run.
 final class _Stage {
-  _Stage(this.step, PluginStepInput input, {_KeptStep? kept})
-    : _input = input,
-      _kept = kept;
+  _Stage(
+    this.step,
+    PluginStepInput input, {
+    _KeptStep? kept,
+    this.fedByNone = false,
+  }) : _input = input,
+       _kept = kept;
 
   /// The step it is: a recording that meets an equal one meets it again.
   final _StepAsked step;
+
+  /// Whether what it reads is made of a row's own surface, as the plan
+  /// said ([PluginStepSource]) — no step's picture in it but one that
+  /// has run: its input is whole in the round it is met, whatever was
+  /// missed before it.
+  final bool fedByNone;
 
   ResolvedLayerEffect get effect => step.effect;
   ui.Rect get paper => step.paper;

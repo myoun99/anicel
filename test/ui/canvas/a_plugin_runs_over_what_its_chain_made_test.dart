@@ -475,6 +475,44 @@ void main() {
     expect(handedAt(second, 1, 0), red);
   });
 
+  test('🚨plugins on rows side by side run in one round, each over its '
+      'own row (the plugin card, 11-17: a round a row was a frame '
+      'recorded and composited again at each)', () async {
+    final left = ShiftingFxPlugin(by: 1);
+    final right = ShiftingFxPlugin(by: 2);
+    final steps = [plugin(left), plugin(right)];
+    var rounds = 0;
+    late List<List<int>> leftRow;
+    late List<List<int>> rightRow;
+
+    await FxPluginStages.recordedThrough(() {
+      rounds += 1;
+      leftRow = rowOf(
+        aRowLaidOnce(
+          composite,
+          letters,
+          source(),
+          [steps.first],
+          plugins: waiting(),
+        ),
+      );
+      rightRow = rowOf(
+        aRowLaidOnce(
+          composite,
+          letters,
+          source(),
+          [steps.last],
+          plugins: waiting(),
+        ),
+      );
+    }, discard: (_) {});
+
+    expect(rounds, 2, reason: 'one round to meet them, one to lay them');
+    expect((left.renders, right.renders), (1, 1));
+    expect(leftRow[1], red);
+    expect(rightRow[2], red);
+  });
+
   test('a plugin that fails is laid as if off, and asked no more', () async {
     final runner = ShiftingFxPlugin(by: 2, fails: true);
     var rounds = 0;
