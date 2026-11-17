@@ -19,7 +19,7 @@ const CALL: &str = concat!("thread::", "scope(");
 const HOME: &str = "device.rs";
 
 /// The files that do and are no body's wait, each with why.
-const LEDGER: [(&str, &str); 2] = [
+const LEDGER: [(&str, &str); 3] = [
     (
         "kernels/shared/mod.rs",
         "a plugin's compile, on a thread for its stack — inside a thread of the engine's for \
@@ -29,6 +29,12 @@ const LEDGER: [(&str, &str); 2] = [
         "kernels/shared/one_device_turn.rs",
         "the devices' turn's own test: a second test's thread, which takes the turn the first \
          holds — a test's threads, no verb's body, in a file no `tests.rs`",
+    ),
+    (
+        "platform/windows.rs",
+        "the DXIL cache's tests: two engines that ask for one new kernel at once, and a compile \
+         beside a turn another process holds — a test's threads, no verb's body, in a file no \
+         `tests.rs`",
     ),
 ];
 
