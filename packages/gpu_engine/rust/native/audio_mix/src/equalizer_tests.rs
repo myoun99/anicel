@@ -3,7 +3,7 @@
 //! alternating sign, a sine at a cut's corner — and its samples pinned in
 //! the ledger, so another device bakes the same bits.
 
-use super::{Equalizer, Setting, equalize};
+use super::{EQUALIZER_VALUES, Equalizer, Setting, equalize, qa_audio_equalize};
 
 const RATE: f64 = 48_000.0;
 
@@ -156,4 +156,49 @@ fn a_made_up_sound_is_baked_as_pinned() {
         let bytes: Vec<u8> = baked.iter().flat_map(|s| s.to_le_bytes()).collect();
         ledger::assert_pinned(&format!("audio_mix/equalizer-at-{}", rate as u32), &bytes);
     }
+}
+
+// The door the app calls: the same samples as [`equalize`], and none on
+// geometry it cannot read.
+#[test]
+fn the_c_door_bakes_what_equalize_does() {
+    let sound: Vec<f32> = (0..2 * 6_000).map(|i| ((i * 31) % 997) as f32 / 500.0 - 1.0).collect();
+    let settings = [
+        Setting { start: 0, equalizer: Equalizer { low_cut: 120.0, high_db: 4.0, ..NONE } },
+        Setting { start: 2_500, equalizer: Equalizer { high_cut: 8_000.0, low_db: -6.0, ..NONE } },
+    ];
+    let starts: Vec<i64> = settings.iter().map(|s| s.start).collect();
+    let values: Vec<f64> = settings
+        .iter()
+        .flat_map(|s| {
+            let e = s.equalizer;
+            [e.low_cut, e.high_cut, e.low_shelf, e.low_db, e.high_shelf, e.high_db]
+        })
+        .collect();
+    assert_eq!(values.len(), settings.len() * EQUALIZER_VALUES);
+    let mut out = vec![0.0_f32; sound.len()];
+    // SAFETY: every pointer is to as many as it is said to hold.
+    let ran = unsafe {
+        qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr())
+    };
+    assert_eq!(ran, 1);
+    assert_eq!(out, equalize(&sound, 2, RATE, &settings));
+    // SAFETY: null pointers and bad counts are what it refuses.
+    let refused = unsafe {
+        [
+            qa_audio_equalize(std::ptr::null(), 6_000, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
+            qa_audio_equalize(sound.as_ptr(), 6_000, 0, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
+            qa_audio_equalize(sound.as_ptr(), 6_000, 2, 0, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
+            qa_audio_equalize(sound.as_ptr(), -1, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
+            qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, std::ptr::null(), values.as_ptr(), 2, out.as_mut_ptr()),
+        ]
+    };
+    assert_eq!(refused, [0; 5]);
+    // No setting: the samples as they were.
+    let mut plain = vec![0.0_f32; sound.len()];
+    // SAFETY: as above, with no settings to read.
+    let none = unsafe {
+        qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, std::ptr::null(), std::ptr::null(), 0, plain.as_mut_ptr())
+    };
+    assert_eq!((none, plain), (1, sound));
 }

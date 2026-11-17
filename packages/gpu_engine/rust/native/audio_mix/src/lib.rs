@@ -32,7 +32,7 @@ mod resample;
 #[cfg(test)]
 mod tests;
 
-pub use equalizer::{Biquad, Equalizer, Setting, equalize};
+pub use equalizer::{Biquad, EQUALIZER_VALUES, Equalizer, Setting, equalize, equalize_into, qa_audio_equalize};
 pub use bus::{Clip, EnvelopeKey, MONO_ON_STEREO, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
 // `qa_audio_resample` by its path too: the audio crate's tests convert a
 // whole sound through it (타임라인/콘티 2026-11-08), the C's being gone.

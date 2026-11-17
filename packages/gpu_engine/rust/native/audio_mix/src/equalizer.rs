@@ -170,17 +170,26 @@ pub struct Setting {
 /// left out passes its sample on and remembers it, so one that comes in
 /// later starts from what it would have seen.
 pub fn equalize(samples: &[f32], channels: usize, rate: f64, settings: &[Setting]) -> Vec<f32> {
+    let mut out = vec![0.0; samples.len()];
+    equalize_into(samples, channels, rate, settings, &mut out);
+    out
+}
+
+/// [`equalize`] written into `out`, as long as `samples`: a long sound is
+/// held once more, not twice.
+pub fn equalize_into(samples: &[f32], channels: usize, rate: f64, settings: &[Setting], out: &mut [f32]) {
     assert!(channels > 0 && samples.len() % channels == 0, "whole frames of {channels} channels");
+    assert_eq!(out.len(), samples.len(), "an out as long as the samples");
     let mut memories = vec![[Memory::default(); 4]; channels];
-    let mut out = Vec::with_capacity(samples.len());
     let mut next = 0;
     let mut current = [None; 4];
-    for (frame, at) in samples.chunks_exact(channels).zip(0_i64..) {
+    let frames = samples.chunks_exact(channels).zip(out.chunks_exact_mut(channels));
+    for ((frame, written), at) in frames.zip(0_i64..) {
         while next < settings.len() && settings[next].start <= at {
             current = sections(&settings[next].equalizer, rate);
             next += 1;
         }
-        for (&sample, memory) in frame.iter().zip(memories.iter_mut()) {
+        for ((&sample, memory), slot) in frame.iter().zip(memories.iter_mut()).zip(written.iter_mut()) {
             let mut x = f64::from(sample);
             for (section, kept) in current.iter().zip(memory.iter_mut()) {
                 x = match section {
@@ -191,10 +200,72 @@ pub fn equalize(samples: &[f32], channels: usize, rate: f64, settings: &[Setting
                     }
                 };
             }
-            out.push(x as f32);
+            *slot = x as f32;
         }
     }
-    out
+}
+
+/// The floats a setting takes in [`qa_audio_equalize`]'s `values`, in
+/// [`Equalizer`]'s order: low cut, high cut, low shelf, low dB, high
+/// shelf, high dB.
+pub const EQUALIZER_VALUES: usize = 6;
+
+/// [`equalize_into`] for C: `samples` — `frames` x `channels` floats at
+/// `rate` — into `out`, as many, through `count` settings, each a start in
+/// `starts` and [`EQUALIZER_VALUES`] floats in `values`. 1 when it ran, 0
+/// on bad geometry, `out` then untouched.
+///
+/// # Safety
+/// `samples` and `out` are null or point at `frames` x `channels` floats,
+/// `starts` at `count` integers and `values` at `count` x
+/// [`EQUALIZER_VALUES`] floats.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn qa_audio_equalize(
+    samples: *const f32,
+    frames: i64,
+    channels: i32,
+    rate: i32,
+    starts: *const i64,
+    values: *const f64,
+    count: i32,
+    out: *mut f32,
+) -> i32 {
+    let (Ok(frames), Ok(channels), Ok(count)) =
+        (usize::try_from(frames), usize::try_from(channels), usize::try_from(count))
+    else {
+        return 0;
+    };
+    let unset = samples.is_null() || out.is_null() || (count > 0 && (starts.is_null() || values.is_null()));
+    if unset || channels == 0 || rate <= 0 {
+        return 0;
+    }
+    // SAFETY: the caller's contract.
+    let (samples, out, starts, values) = unsafe {
+        (
+            std::slice::from_raw_parts(samples, frames * channels),
+            std::slice::from_raw_parts_mut(out, frames * channels),
+            if count == 0 { &[][..] } else { std::slice::from_raw_parts(starts, count) },
+            if count == 0 { &[][..] } else { std::slice::from_raw_parts(values, count * EQUALIZER_VALUES) },
+        )
+    };
+    let settings: Vec<Setting> = starts
+        .iter()
+        .zip(values.chunks_exact(EQUALIZER_VALUES))
+        .map(|(&start, v)| Setting {
+            start,
+            equalizer: Equalizer {
+                low_cut: v[0],
+                high_cut: v[1],
+                low_shelf: v[2],
+                low_db: v[3],
+                high_shelf: v[4],
+                high_db: v[5],
+            },
+        })
+        .collect();
+    equalize_into(samples, channels, f64::from(rate), &settings, out);
+    1
 }
 
 #[cfg(test)]
