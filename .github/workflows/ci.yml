@@ -256,18 +256,55 @@ jobs:
       # app's build hook) needs an adapter, and this runner has no GPU:
       # lavapipe, Mesa's Vulkan on the CPU, which gpu-engine.yml's Linux
       # job runs the engine's own tests on. Every test that reaches the
-      # engine runs here — the Windows shards leave them to these three
+      # engine runs here — the Windows shards leave them to these six
       # (유저 gpu-engine-skeleton-Q16, below).
       # (Readied by the action, with why it lends /dev/udmabuf and raises its
       # limit on one buffer.)
       - uses: ./.github/actions/lavapipe
+      # From the engine build master's engine-target job kept, rather than
+      # cold (the action says how the key chooses).
       - uses: ./.github/actions/rust-engine
+        with:
+          target: restore
       # The project's green rule: the exit code decides, never the tail.
       - name: Run tests against the engine this run built
         uses: ./.github/actions/test-shard
         with:
           total: 6
           index: ${{ matrix.shard }}
+
+  # 🦀THE ENGINE BUILD THE LINUX SHARDS START FROM (card
+  # ci-shards-build-the-engine-cold, 2026-11-17). A pull request's cache is
+  # its own, so only a master push can leave one every later run reads —
+  # and since a tested tree stands the master run down (scope's `again`),
+  # this job runs on every master push the app changed in, whatever
+  # `again` says. It builds the engine the way a shard does, through the
+  # app's build hook under `flutter test` — one file that opens nothing,
+  # since the hook builds for any test — and the action keeps the folder
+  # when the engine's files are new. The same files as a kept build find
+  # the library among its copies and keep nothing new.
+  engine-target:
+    name: keep the engine build (Linux)
+    needs: scope
+    if: github.event_name == 'push' && needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+      - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
+        with:
+          target: keep
+      - run: flutter test --no-pub test/architecture/the_shards_weigh_files_that_are_there_test.dart
 
   android:
     name: Android build

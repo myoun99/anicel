@@ -6,6 +6,16 @@ description: >
   builds packages/gpu_engine through its build hook (hook/build.dart), as
   every one does once the app depends on the engine.
 
+inputs:
+  target:
+    description: >
+      What becomes of the hook's target folder (packages/gpu_engine/rust/
+      target-hook): empty builds from cold, `restore` starts from this OS's
+      kept one, `keep` starts from it and keeps what the job built when the
+      engine's files read differently from every kept one.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -17,7 +27,7 @@ runs:
       working-directory: packages/gpu_engine/rust
       run: rustup show
     # The crates.io downloads, every job of an OS alike: the whole lock is
-    # 57 MB of .crate files (2026-11-07). ⛔Not the hook's target folder —
+    # 57 MB of .crate files (2026-11-07). ↩️⛔Not the hook's target folder —
     # 492 MB a build (x64 Windows release, measured the same day) for each
     # OS and Android ABI, against 0.7 GB the repository's 10 GB of caches
     # had left: it would push the Flutter SDKs out, and a cold engine build
@@ -56,3 +66,39 @@ runs:
     - if: runner.os == 'Linux'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+    # 🦀THE HOOK'S TARGET FOLDER, WHERE `target` ASKS FOR IT (card
+    # ci-shards-build-the-engine-cold, 관제 2026-11-17 for 유저 「여기서 더
+    # 하고싶어서」). The ⛔ above weighed a cold build under two minutes;
+    # then each Linux test shard of run 44026201673 spent 4.9 min between
+    # its first batch's start and its first test, the Windows ones 7, where
+    # the seedless 11-06 shards spent 14-20 s — Wasmtime's cold build, on
+    # the shards that decide the run.
+    #
+    # Two ways back from cold, by the key:
+    # - the same engine files (the hook's and the crate's, every file the
+    #   hook reads but the target folders) restore the whole folder, and the
+    #   hook finds its library among the folder's copies, which it matches
+    #   by what the files read — no cargo at all;
+    # - other engine files restore the newest folder of the same lock and
+    #   toolchain, so the crates.io crates (Wasmtime, wgpu) are built
+    #   already. A fresh checkout's files are newer than any build, so cargo
+    #   builds the engine's own crates again either way.
+    #
+    # One writer, master's (ci.yml's engine-target job): a pull request's
+    # cache is that request's alone. Linux only for now — its shards are the
+    # run's length; the Windows shards end inside it, and an OS's folder is
+    # most of a gigabyte against the 10 GB the repository's caches share.
+    - if: inputs.target == 'restore'
+      uses: actions/cache/restore@v4
+      with:
+        path: packages/gpu_engine/rust/target-hook
+        key: engine-target-${{ runner.os }}-${{ hashFiles('packages/gpu_engine/rust/Cargo.lock', 'packages/gpu_engine/rust/rust-toolchain.toml') }}-${{ hashFiles('packages/gpu_engine/hook/**', 'packages/gpu_engine/rust/**', '!packages/gpu_engine/rust/target*/**') }}
+        restore-keys: |
+          engine-target-${{ runner.os }}-${{ hashFiles('packages/gpu_engine/rust/Cargo.lock', 'packages/gpu_engine/rust/rust-toolchain.toml') }}-
+    - if: inputs.target == 'keep'
+      uses: actions/cache@v4
+      with:
+        path: packages/gpu_engine/rust/target-hook
+        key: engine-target-${{ runner.os }}-${{ hashFiles('packages/gpu_engine/rust/Cargo.lock', 'packages/gpu_engine/rust/rust-toolchain.toml') }}-${{ hashFiles('packages/gpu_engine/hook/**', 'packages/gpu_engine/rust/**', '!packages/gpu_engine/rust/target*/**') }}
+        restore-keys: |
+          engine-target-${{ runner.os }}-${{ hashFiles('packages/gpu_engine/rust/Cargo.lock', 'packages/gpu_engine/rust/rust-toolchain.toml') }}-

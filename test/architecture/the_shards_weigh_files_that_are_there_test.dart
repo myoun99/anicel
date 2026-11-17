@@ -31,4 +31,24 @@ void main() {
       reason: 'a renamed file leaves the deal on nothing',
     );
   });
+
+  // The engine build the Linux shards start from is made by ci.yml's
+  // engine-target job running one test file (ci-shards-build-the-engine-
+  // cold, 2026-11-17): a rename of that file would turn master's run red
+  // and leave the shards building cold.
+  test('every test file ci.yml runs by name is in the tree', () {
+    final named = [
+      for (final m in RegExp(r'flutter test --no-pub (test/\S+_test\.dart)')
+          .allMatches(File('.github/workflows/ci.yml').readAsStringSync()))
+        m[1]!,
+    ];
+    expect(named, isNotEmpty, reason: 'LIVENESS — the engine-target job');
+    expect(
+      [
+        for (final path in named)
+          if (!File(path).existsSync()) path,
+      ],
+      isEmpty,
+    );
+  });
 }
