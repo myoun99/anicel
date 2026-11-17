@@ -665,6 +665,28 @@ void main() {
     );
   });
 
+  testWidgets('a size the hand set on a brush of a library as it ships is '
+      'something for the library reset to put back (F-583 · I-176)', (
+    tester,
+  ) async {
+    await pumpWithPresets(tester);
+    final one = onScreen(tester)[0];
+    await pick(tester, one);
+    expect(panel(tester).canResetLibrary!(), isFalse, reason: '⛔premise');
+    final own = size(tester);
+
+    await setSizeAt(tester, 0.8);
+    expect(size(tester), isNot(own), reason: '⛔premise: the hand set it');
+
+    expect(panel(tester).canResetLibrary!(), isTrue);
+    await fromTheMenu(tester, 'Reset brush library');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(panel(tester).canResetLibrary!(), isFalse);
+  });
+
   // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저
   // 2026-10-01): 「아날로그가 아닌 일반수채등 질감이 없어야하는게 아직있거든?
   // … 초기화가 설마 텍스처항목은 초기화안하나?」 — F-181 again. Its pin read

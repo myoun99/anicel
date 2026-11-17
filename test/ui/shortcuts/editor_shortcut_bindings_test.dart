@@ -190,6 +190,19 @@ void main() {
     );
   });
 
+  test('a touch gesture recorded over the preset, with no key, is as much '
+      'to reset as a key', () {
+    final bindings = EditorShortcutBindings();
+    addTearDown(bindings.dispose);
+    expect(bindings.resetAllChanges, isFalse, reason: '⛔premise');
+
+    bindings.setTouchGesture(EditorActionIds.undo, null);
+
+    expect(bindings.resetAllChanges, isTrue);
+    bindings.resetAll();
+    expect(bindings.resetAllChanges, isFalse);
+  });
+
   // 🗣️I-158 (유저 2026-11-04): 「펜(Y)이런식으로 이 텍스트를 버튼으로
   // 만들어서, 이걸로 할당하는 기능 … 그거 버튼누르면 올가미채우기의 키가
   // 사라지는식으로」.
