@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:anicel/src/ui/widgets/setting_source_button.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」.
 ///
@@ -116,14 +117,10 @@ void main() {
     // The reset at the graph's head says the same (I-176): out while the
     // line is straight (F-583), in the accent once it bends.
     final reset = find.byKey(const ValueKey<String>('pen-response-reset'));
-    Color? resetInk() {
-      final word = tester.widget(
-        find.descendant(of: reset, matching: find.anyText()).first,
-      );
-      return word is Text
-          ? word.style?.color
-          : (word as RichText).text.style?.color;
-    }
+    Color? resetInk() => tester
+        .widget<Text>(find.descendant(of: reset, matching: find.anyText()))
+        .style
+        ?.color;
     expect(resetInk(), isNot(AppColors.accent));
     expect(tester.widget<InkWell>(reset).onTap, isNull);
     await pullTheMiddleUp(tester, 0.3);

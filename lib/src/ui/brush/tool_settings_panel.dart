@@ -1488,7 +1488,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final flipVertical = canEdit
         ? () => commands?.flipTransform(horizontal: false)
         : null;
-    final reset = commands?.canResetTransform ?? false
+    final reset = canEdit && (commands?.canResetTransform ?? false)
         ? () => commands?.resetTransform()
         : null;
     final section = ToolSettingsFolds.listen(
