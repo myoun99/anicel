@@ -171,20 +171,46 @@ pub struct Setting {
 /// later starts from what it would have seen.
 pub fn equalize(samples: &[f32], channels: usize, rate: f64, settings: &[Setting]) -> Vec<f32> {
     let mut out = vec![0.0; samples.len()];
-    equalize_into(samples, channels, rate, settings, &mut out);
+    let mut memory = vec![0.0; channels * MEMORY_VALUES];
+    equalize_on(samples, channels, rate, settings, 0, &mut memory, &mut out);
     out
 }
 
-/// [`equalize`] written into `out`, as long as `samples`: a long sound is
-/// held once more, not twice.
-pub fn equalize_into(samples: &[f32], channels: usize, rate: f64, settings: &[Setting], out: &mut [f32]) {
+/// The doubles one channel's memory takes in [`equalize_on`]: each of its
+/// four sections' two inputs and two outputs before, in order.
+pub const MEMORY_VALUES: usize = 16;
+
+/// [`equalize`] for the stretch of a span that begins at its sample
+/// `first`: `memory` — `channels` x [`MEMORY_VALUES`] doubles, all 0 at
+/// the span's first sample — is what the stretch before left each
+/// channel's sections, and what this one leaves them. A span too long to
+/// hold is baked a stretch at a time, into the samples it would be at once.
+pub fn equalize_on(
+    samples: &[f32],
+    channels: usize,
+    rate: f64,
+    settings: &[Setting],
+    first: i64,
+    memory: &mut [f64],
+    out: &mut [f32],
+) {
     assert!(channels > 0 && samples.len() % channels == 0, "whole frames of {channels} channels");
     assert_eq!(out.len(), samples.len(), "an out as long as the samples");
-    let mut memories = vec![[Memory::default(); 4]; channels];
+    assert_eq!(memory.len(), channels * MEMORY_VALUES, "a memory for each channel");
+    let mut memories: Vec<[Memory; 4]> = memory
+        .chunks_exact(MEMORY_VALUES)
+        .map(|channel| {
+            let mut sections = [Memory::default(); 4];
+            for (kept, v) in sections.iter_mut().zip(channel.chunks_exact(4)) {
+                *kept = Memory { x1: v[0], x2: v[1], y1: v[2], y2: v[3] };
+            }
+            sections
+        })
+        .collect();
     let mut next = 0;
     let mut current = [None; 4];
     let frames = samples.chunks_exact(channels).zip(out.chunks_exact_mut(channels));
-    for ((frame, written), at) in frames.zip(0_i64..) {
+    for ((frame, written), at) in frames.zip(first..) {
         while next < settings.len() && settings[next].start <= at {
             current = sections(&settings[next].equalizer, rate);
             next += 1;
@@ -203,6 +229,9 @@ pub fn equalize_into(samples: &[f32], channels: usize, rate: f64, settings: &[Se
             *slot = x as f32;
         }
     }
+    for (kept, v) in memories.iter().flatten().zip(memory.chunks_exact_mut(4)) {
+        v.copy_from_slice(&[kept.x1, kept.x2, kept.y1, kept.y2]);
+    }
 }
 
 /// The floats a setting takes in [`qa_audio_equalize`]'s `values`, in
@@ -210,15 +239,19 @@ pub fn equalize_into(samples: &[f32], channels: usize, rate: f64, settings: &[Se
 /// shelf, high dB.
 pub const EQUALIZER_VALUES: usize = 6;
 
-/// [`equalize_into`] for C: `samples` — `frames` x `channels` floats at
-/// `rate` — into `out`, as many, through `count` settings, each a start in
-/// `starts` and [`EQUALIZER_VALUES`] floats in `values`. 1 when it ran, 0
-/// on bad geometry, `out` then untouched.
+/// [`equalize_on`] for C: `samples` — `frames` x `channels` floats at
+/// `rate`, the span's from its sample `first` — into `out`, as many,
+/// through `count` settings, each a start in `starts` and
+/// [`EQUALIZER_VALUES`] floats in `values`, going on from `memory` and
+/// leaving it for the next stretch; a null `memory` starts from rest and
+/// keeps nothing. 1 when it ran, 0 on bad geometry, `out` and `memory`
+/// then untouched.
 ///
 /// # Safety
 /// `samples` and `out` are null or point at `frames` x `channels` floats,
-/// `starts` at `count` integers and `values` at `count` x
-/// [`EQUALIZER_VALUES`] floats.
+/// `starts` at `count` integers, `values` at `count` x [`EQUALIZER_VALUES`]
+/// floats and `memory`, unless null, at `channels` x [`MEMORY_VALUES`]
+/// doubles.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn qa_audio_equalize(
@@ -226,9 +259,11 @@ pub unsafe extern "C" fn qa_audio_equalize(
     frames: i64,
     channels: i32,
     rate: i32,
+    first: i64,
     starts: *const i64,
     values: *const f64,
     count: i32,
+    memory: *mut f64,
     out: *mut f32,
 ) -> i32 {
     let (Ok(frames), Ok(channels), Ok(count)) =
@@ -249,6 +284,14 @@ pub unsafe extern "C" fn qa_audio_equalize(
             if count == 0 { &[][..] } else { std::slice::from_raw_parts(values, count * EQUALIZER_VALUES) },
         )
     };
+    let mut from_rest = Vec::new();
+    let memory = if memory.is_null() {
+        from_rest.resize(channels * MEMORY_VALUES, 0.0);
+        &mut from_rest[..]
+    } else {
+        // SAFETY: the caller's contract.
+        unsafe { std::slice::from_raw_parts_mut(memory, channels * MEMORY_VALUES) }
+    };
     let settings: Vec<Setting> = starts
         .iter()
         .zip(values.chunks_exact(EQUALIZER_VALUES))
@@ -264,7 +307,7 @@ pub unsafe extern "C" fn qa_audio_equalize(
             },
         })
         .collect();
-    equalize_into(samples, channels, f64::from(rate), &settings, out);
+    equalize_on(samples, channels, f64::from(rate), &settings, first, memory, out);
     1
 }
 

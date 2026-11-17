@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
+import 'package:anicel/src/services/audio/audio_equalizer.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/temp_dir.dart';
@@ -123,6 +124,38 @@ void main() {
     expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
   });
 
+  test('🎯each span baked through its equalizer is one too, the conform it '
+      'is cut from read where it lies', () async {
+    final device = openNull();
+    final plain = runConformHere(aSound()).samples!;
+    final from = device.newSamples(plain.length)!..setAll(0, plain);
+    const shelf = AudioEqualizer.none(lowShelf: 250, highShelf: 4000);
+    final request = EqualizeRequest(
+      samples: from,
+      channels: 2,
+      rate: 48000,
+      span: EqualizedSpan(
+        start: 40,
+        length: 300,
+        settings: [
+          (start: 0, equalizer: _withLowDb(shelf, 6)),
+          (start: 120, equalizer: _withLowDb(shelf, -9)),
+        ],
+      ),
+    );
+    final here = runEqualizeHere(request.withSamples(plain));
+    debugWorkersRunHere = false;
+
+    final baking = equalizingInto(() => device)(request);
+    expect(device.debugHoldsOf(from), 2, reason: 'lent to the worker');
+    final baked = await baking;
+
+    expect(baked, hasLength(2 * 300));
+    expect(baked, here);
+    expect(device.debugHoldsOf(baked), 1);
+    expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
+  });
+
   group('lendToAWorker', () {
     test('lends the buffer a made list lies in, held while the work runs',
         () async {
@@ -210,3 +243,13 @@ void main() {
     expect(made, isEmpty);
   });
 }
+
+AudioEqualizer _withLowDb(AudioEqualizer shelf, double lowDb) =>
+    AudioEqualizer(
+      lowCut: shelf.lowCut,
+      highCut: shelf.highCut,
+      lowShelf: shelf.lowShelf,
+      lowDb: lowDb,
+      highShelf: shelf.highShelf,
+      highDb: shelf.highDb,
+    );

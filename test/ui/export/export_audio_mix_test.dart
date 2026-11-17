@@ -222,7 +222,7 @@ void main() {
       sampleRate: 48000,
       resolveSource: (_) async =>
           fail('a streamable source must never be loaded whole'),
-      resolveStreamReader: (_) => reader,
+      resolveStreamReader: (_) async => (reader: reader, equalized: null),
       outputPath: streamedPath,
     );
 
@@ -249,8 +249,8 @@ void main() {
       rate: rate,
       totalFrames: 10,
       sampleRate: 48000,
-      resolveSource: (filePath) async =>
-          filePath == 'ok' ? constantSource(0.5, 48000) : null,
+      resolveSource: (source) async =>
+          source.path == 'ok' ? constantSource(0.5, 48000) : null,
       outputPath: path,
       log: (_) {},
     );

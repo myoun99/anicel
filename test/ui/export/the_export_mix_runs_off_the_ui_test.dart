@@ -99,9 +99,12 @@ void main() {
         onResolved?.call();
         return AudioMixSource(samples: resident, channels: 1);
       },
-      resolveStreamReader: (path) => path == 'streamed'
-          ? ConformPcmStreamReader.open(conformPath)
-          : null,
+      resolveStreamReader: (source) async {
+        final reader = source.path == 'streamed'
+            ? ConformPcmStreamReader.open(conformPath)
+            : null;
+        return reader == null ? null : (reader: reader, equalized: null);
+      },
       outputPath: path,
       device: () => device,
     );

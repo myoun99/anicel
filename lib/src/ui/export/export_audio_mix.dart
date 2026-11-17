@@ -26,29 +26,97 @@ import '../../native/qa_audio_device.dart'
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/audio/equalized_stream.dart';
 import '../../services/media/media_byte_source.dart' show MediaFileBytes;
+import '../audio/audio_conform_store.dart';
 import '../playback/audio_playback_schedule.dart'
-    show AudioMixSchedule, ScheduledAudioClip, audioMixScheduleFrom;
+    show
+        AudioMixSchedule,
+        AudioMixSourceOf,
+        ScheduledAudioClip,
+        audioMixScheduleFrom;
 
-/// Resolves one source's conformed PCM (at the mix's own sample rate), or
-/// null when it cannot be had — that clip renders silent, the export goes
-/// on (a missing sound must not kill a deadline render; the log says so).
+/// Resolves one source's PCM — a file's conform, or a span of it baked
+/// through its equalizer, the bake playback reads — at the mix's own
+/// sample rate, or null when it cannot be had: that clip renders silent,
+/// the export goes on (a missing sound must not kill a deadline render; the
+/// log says so).
 typedef ExportAudioSourceResolver =
-    Future<AudioMixSource?> Function(String filePath);
+    Future<AudioMixSource?> Function(AudioMixSourceOf source);
+
+/// [store]'s PCM for each source of an export mix, at the project's rate:
+/// a file's conform, or a span of it baked through its equalizer — the bake
+/// playback reads (board audio-fx-grows-like-the-pros ③), awaited where it
+/// is still on its way.
+ExportAudioSourceResolver exportSourcesOf(AudioConformStore store) =>
+    (source) async {
+      final entry = await store.ensureFor(source.path);
+      if (entry == null || !entry.isUsable || entry.samples == null) {
+        return null;
+      }
+      final equalized = source.equalized;
+      final samples = equalized == null
+          ? entry.samples
+          : await store.ensureEqualizedFor(
+              source.path,
+              store.projectSampleRate,
+              equalized,
+            );
+      return samples == null
+          ? null
+          : AudioMixSource(
+              samples: samples,
+              channels: entry.channels,
+              sourceStart: equalized?.start ?? 0,
+            );
+    };
+
+/// A DISK-BACKED source as an export streams it: its conform's reader, and
+/// its span's equalizer where it has one — the checkpoints playback's
+/// windows are baked from ([readStreamedWindow]).
+typedef ExportAudioStream = ({
+  ConformPcmStreamReader reader,
+  EqualizedStream? equalized,
+});
 
 /// Resolves a DISK-BACKED source (AUDIO-PRO R6): a long conform whose PCM
 /// was never resident. The render then reads it block by block instead of
 /// asking [ExportAudioSourceResolver] to produce the whole file — which
 /// for a thirty-minute track would mean holding the memory streaming
-/// exists to avoid.
+/// exists to avoid. Null for a source that is not streamed, or whose
+/// span's checkpoints are not coming.
 typedef ExportAudioStreamResolver =
-    ConformPcmStreamReader? Function(String filePath);
+    Future<ExportAudioStream?> Function(AudioMixSourceOf source);
+
+/// [store]'s stream of each disk-backed source of an export mix — through
+/// its span's checkpoints where it has an equalizer, awaited where they
+/// are still on their way: what playback streams it through.
+ExportAudioStreamResolver exportStreamsOf(AudioConformStore store) =>
+    (source) async {
+      final reader = store.isStreaming(source.path)
+          ? store.streamReaderFor(source.path)
+          : null;
+      final equalized = source.equalized;
+      if (reader == null || equalized == null) {
+        return reader == null ? null : (reader: reader, equalized: null);
+      }
+      final checkpoints = await store.ensureEqualizerCheckpointsFor(
+        source.path,
+        equalized,
+      );
+      return checkpoints == null
+          ? null
+          : (
+              reader: reader,
+              equalized: (span: equalized, checkpoints: checkpoints),
+            );
+    };
 
 /// One clip whose PCM is read from disk a block at a time, with the source
 /// slot it refreshes (AUDIO-PRO R6).
 typedef _StreamedClip = ({
   AudioMixClip clip,
-  ConformPcmStreamReader reader,
+  ExportAudioStream stream,
   int slot,
 });
 
@@ -159,22 +227,22 @@ class _ExportMixWriter {
   /// False = nothing audible came back, and the caller writes no file.
   Future<bool> bindSources() async {
     final residentByOriginal = <int, int>{};
-    final readerByOriginal = <int, ConformPcmStreamReader>{};
-    for (var index = 0; index < mix.sourcePaths.length; index += 1) {
-      final path = mix.sourcePaths[index];
+    final streamByOriginal = <int, ExportAudioStream>{};
+    for (final (index, source) in mix.sources.indexed) {
+      final path = source.path;
       // Disk-backed first (AUDIO-PRO R6): a streaming conform is read block
       // by block below — asking the resolver for the whole file would hold
       // exactly the memory streaming exists to avoid. Its conform is
       // project-rate PCM, so a mix at any other rate falls through to the
       // resolver (which resamples, at full residency — the honest cost of
       // that rare setup).
-      final reader = resolveStreamReader?.call(path);
-      if (reader != null && reader.sampleRate == sampleRate) {
-        readerByOriginal[index] = reader;
+      final stream = await resolveStreamReader?.call(source);
+      if (stream != null && stream.reader.sampleRate == sampleRate) {
+        streamByOriginal[index] = stream;
         continue;
       }
-      final source = await resolveSource(path);
-      if (source == null) {
+      final resolved = await resolveSource(source);
+      if (resolved == null) {
         log?.call(
           '[export audio] no decodable source for $path — that clip renders '
           'silent',
@@ -182,14 +250,14 @@ class _ExportMixWriter {
         continue;
       }
       residentByOriginal[index] = _sources.length;
-      _sources.add(source);
+      _sources.add(resolved);
     }
-    // ⚠️THE ONLY EMPTY OUTCOME. Every path in `mix.sourcePaths` was put
+    // ⚠️THE ONLY EMPTY OUTCOME. Every source in `mix.sources` was put
     // there BY a clip (`audioMixScheduleFrom` walks the schedule), so once
     // one path resolves, the loop below binds at least one clip. The
     // `clips.isEmpty` check that used to follow it could not fire — no
     // test could kill it, which is how it was found.
-    if (_sources.isEmpty && readerByOriginal.isEmpty) {
+    if (_sources.isEmpty && streamByOriginal.isEmpty) {
       return false;
     }
     for (final clip in mix.clips) {
@@ -198,17 +266,20 @@ class _ExportMixWriter {
         _clips.add(clip.pointedAt(resident));
         continue;
       }
-      final reader = readerByOriginal[clip.sourceIndex];
-      if (reader == null) {
+      final stream = streamByOriginal[clip.sourceIndex];
+      if (stream == null) {
         continue; // unresolvable: renders silent, already logged
       }
       final slot = _sources.length;
       _sources.add(
-        AudioMixSource(samples: Float32List(0), channels: reader.channels),
+        AudioMixSource(
+          samples: Float32List(0),
+          channels: stream.reader.channels,
+        ),
       );
       final rebuilt = clip.pointedAt(slot);
       _clips.add(rebuilt);
-      _streamed.add((clip: rebuilt, reader: reader, slot: slot));
+      _streamed.add((clip: rebuilt, stream: stream, slot: slot));
     }
     return true;
   }
@@ -389,10 +460,17 @@ void _refillStreamedSources(
     final to =
         clip.sourceOffset +
         (position + count - clip.startSample).clamp(0, clipLength);
-    final window = each.reader.readWindow(from, to - from);
+    final window = readStreamedWindow(
+      (
+        reader: each.stream.reader,
+        start: from,
+        count: to - from,
+        equalized: each.stream.equalized,
+      ),
+    );
     sources[each.slot] = AudioMixSource(
       samples: window.samples,
-      channels: each.reader.channels,
+      channels: each.stream.reader.channels,
       sourceStart: window.startSample,
     );
   }

@@ -39,7 +39,7 @@ void main() {
   test('🚨no device is REFUSED — the caller keeps the schedule that is '
       'still playing', () {
     final window = windowHolding(
-      const AudioMixSchedule(clips: [], sourcePaths: []),
+      const AudioMixSchedule(clips: [], sources: []),
     );
     expect(upload(window), isA<OutputRefused>());
   });
@@ -51,14 +51,14 @@ void main() {
   test('an empty mix with no device is still refused — the device is '
       'checked before anything downstream is asked to work it out', () {
     final window = windowHolding(
-      const AudioMixSchedule(clips: [], sourcePaths: []),
+      const AudioMixSchedule(clips: [], sources: []),
     );
     expect(upload(window, centerSample: 480000), isA<OutputRefused>());
   });
 
   test('⛔a failed upload leaves the window exactly where it was', () {
     final window = windowHolding(
-      const AudioMixSchedule(clips: [], sourcePaths: []),
+      const AudioMixSchedule(clips: [], sources: []),
     );
     for (final centre in [0, 48000, 4800000]) {
       expect(

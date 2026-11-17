@@ -15,7 +15,6 @@ import '../../models/export_format_selection.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../../models/import/import_warning.dart' show ImportWarning;
-import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
@@ -3584,16 +3583,8 @@ class ExportDialogState extends State<ExportDialog> {
       rate: _session.projectSettings.projectFrameRate,
       totalFrames: plan.length,
       sampleRate: store.projectSampleRate,
-      resolveSource: (filePath) async {
-        final entry = await store.ensureFor(filePath);
-        final samples = entry != null && entry.isUsable ? entry.samples : null;
-        if (samples == null) {
-          return null;
-        }
-        return AudioMixSource(samples: samples, channels: entry!.channels);
-      },
-      resolveStreamReader: (filePath) =>
-          store.isStreaming(filePath) ? store.streamReaderFor(filePath) : null,
+      resolveSource: exportSourcesOf(store),
+      resolveStreamReader: exportStreamsOf(store),
       outputPath: path,
       log: debugPrint,
     );

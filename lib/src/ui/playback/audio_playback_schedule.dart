@@ -18,8 +18,10 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
+import '../../services/audio/audio_equalizer.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/audio/equalized_stream.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import '../audio/sound_cannot_play.dart';
@@ -40,6 +42,7 @@ class ScheduledAudioClip {
     this.gain = 1.0,
     this.pan = 0.0,
     this.volume = const [],
+    this.equalizer,
   });
 
   /// ONE SPAN, LAID ON AN OUTPUT AXIS — the mapping the playback walk and
@@ -95,6 +98,10 @@ class ScheduledAudioClip {
   /// empty while the row's volume does not change.
   final List<ScheduledVolumePoint> volume;
 
+  /// The row's equalizer over the span this entry is of — null while the
+  /// row has none.
+  final ScheduledEqualizer? equalizer;
+
   @override
   bool operator ==(Object other) =>
       other is ScheduledAudioClip &&
@@ -104,7 +111,8 @@ class ScheduledAudioClip {
       other.offsetFrames == offsetFrames &&
       other.gain == gain &&
       other.pan == pan &&
-      listEquals(other.volume, volume);
+      listEquals(other.volume, volume) &&
+      other.equalizer == equalizer;
 
   @override
   int get hashCode => Object.hash(
@@ -115,13 +123,51 @@ class ScheduledAudioClip {
     gain,
     pan,
     Object.hashAll(volume),
+    equalizer,
   );
 
   @override
   String toString() =>
       'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
       'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
-      'gain: $gain, pan: $pan, volume: $volume)';
+      'gain: $gain, pan: $pan, volume: $volume, equalizer: $equalizer)';
+}
+
+/// The row's equalizer over the WHOLE span an entry is of, in frames: the
+/// span's own trim — the frame of the file it begins at — its length, and
+/// each setting from the frame of the span it takes over at.
+///
+/// The whole span, not the part a run plays: it is baked from its first
+/// sample (board audio-fx-grows-like-the-pros ③), so a run begun inside it
+/// plays what one begun before it would. [audioMixScheduleFrom] turns it
+/// into the [EqualizedSpan] a bake is of.
+@immutable
+class ScheduledEqualizer {
+  const ScheduledEqualizer({
+    required this.spanOffsetFrames,
+    required this.spanFrames,
+    required this.settings,
+  });
+
+  final int spanOffsetFrames;
+  final int spanFrames;
+  final List<({int frame, AudioEqualizer equalizer})> settings;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScheduledEqualizer &&
+      other.spanOffsetFrames == spanOffsetFrames &&
+      other.spanFrames == spanFrames &&
+      listEquals(other.settings, settings);
+
+  @override
+  int get hashCode =>
+      Object.hash(spanOffsetFrames, spanFrames, Object.hashAll(settings));
+
+  @override
+  String toString() =>
+      'ScheduledEqualizer(spanOffsetFrames: $spanOffsetFrames, '
+      'spanFrames: $spanFrames, settings: $settings)';
 }
 
 /// [sound]'s volume over the [frames] an entry sounds from the row's frame
@@ -294,15 +340,20 @@ ScheduledAudioClip? _spanInWindow(
   );
 }
 
+/// One source a mix reads: a file's conform, or a span of it baked through
+/// its row's equalizer ([AudioConformStore.equalizedAt]).
+typedef AudioMixSourceOf = ({String path, EqualizedSpan? equalized});
+
 /// The frame schedule converted to mixer samples: [clips] index into
-/// [sourcePaths] via `sourceIndex` (one entry per DISTINCT file, in first-
-/// appearance order — the caller loads each path's PCM once and uploads it
-/// once, however many clips share it).
+/// [sources] via `sourceIndex` — one entry per DISTINCT source, in first-
+/// appearance order, so the caller loads each one's PCM once and uploads it
+/// once. A file's conform is one source however many clips share it; a
+/// span baked through its equalizer is a source of its own.
 class AudioMixSchedule {
-  const AudioMixSchedule({required this.clips, required this.sourcePaths});
+  const AudioMixSchedule({required this.clips, required this.sources});
 
   final List<AudioMixClip> clips;
-  final List<String> sourcePaths;
+  final List<AudioMixSourceOf> sources;
 }
 
 /// Converts [schedule] to sample positions at [sampleRate].
@@ -317,13 +368,17 @@ AudioMixSchedule audioMixScheduleFrom({
   required ProjectFrameRate rate,
   required int sampleRate,
 }) {
-  final sourceIndexByPath = <String, int>{};
-  final sourcePaths = <String>[];
+  final sourceIndexOf = <AudioMixSourceOf, int>{};
+  final sources = <AudioMixSourceOf>[];
   final clips = <AudioMixClip>[];
   for (final clip in schedule) {
-    final sourceIndex = sourceIndexByPath.putIfAbsent(clip.filePath, () {
-      sourcePaths.add(clip.filePath);
-      return sourcePaths.length - 1;
+    final source = (
+      path: clip.filePath,
+      equalized: _equalizedSpan(clip.equalizer, rate, sampleRate),
+    );
+    final sourceIndex = sourceIndexOf.putIfAbsent(source, () {
+      sources.add(source);
+      return sources.length - 1;
     });
     final pan = equalPowerPanGains(clip.pan);
     clips.add(
@@ -345,7 +400,35 @@ AudioMixSchedule audioMixScheduleFrom({
       ),
     );
   }
-  return AudioMixSchedule(clips: clips, sourcePaths: sourcePaths);
+  return AudioMixSchedule(clips: clips, sources: sources);
+}
+
+/// [equalizer]'s span in samples at [sampleRate]: each of its frames of the
+/// file to the first sample belonging to it, as the clip's own trim is —
+/// so a setting takes over on the sample a run begun at its frame plays
+/// first.
+EqualizedSpan? _equalizedSpan(
+  ScheduledEqualizer? equalizer,
+  ProjectFrameRate rate,
+  int sampleRate,
+) {
+  if (equalizer == null) {
+    return null;
+  }
+  final first = equalizer.spanOffsetFrames;
+  final start = rate.frameToSample(first, sampleRate);
+  return EqualizedSpan(
+    start: start,
+    length:
+        rate.frameToSample(first + equalizer.spanFrames, sampleRate) - start,
+    settings: [
+      for (final setting in equalizer.settings)
+        (
+          start: rate.frameToSample(first + setting.frame, sampleRate) - start,
+          equalizer: setting.equalizer,
+        ),
+    ],
+  );
 }
 
 /// Where the disk window sits and how far it reaches, in device samples.
@@ -376,21 +459,40 @@ _residentSources({
   final byMixIndex = <int, int>{};
   final cannotPlay = <String, SoundCannotPlay>{};
   var landing = false;
-  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
-    final path = mix.sourcePaths[index];
-    final why = conformStore.cannotPlayAt(path, deviceRate);
+  for (final (index, source) in mix.sources.indexed) {
+    final path = source.path;
+    final equalized = source.equalized;
+    final why = conformStore.cannotPlayAt(
+      path,
+      deviceRate,
+      equalized: equalized,
+    );
     if (why != null) {
       cannotPlay[path] = why;
       continue;
     }
     if (conformStore.isStreaming(path)) {
-      continue; // windowed per clip by the caller
+      // Windowed per clip by the caller — through the span's checkpoints
+      // where it has an equalizer, which a run waits for as for a bake.
+      if (equalized != null &&
+          conformStore.equalizerCheckpointsFor(path, equalized) == null) {
+        landing = true;
+      }
+      continue;
     }
-    final samples = conformStore.samplesAtRate(path, deviceRate);
+    final samples = equalized == null
+        ? conformStore.samplesAtRate(path, deviceRate)
+        : conformStore.equalizedAt(path, deviceRate, equalized);
     final entry = conformStore.resultFor(path);
     if (samples != null && entry != null && entry.isUsable) {
       byMixIndex[index] = sources.length;
-      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+      sources.add(
+        AudioMixSource(
+          samples: samples,
+          channels: entry.channels,
+          sourceStart: equalized?.start ?? 0,
+        ),
+      );
     } else {
       landing = true;
     }
@@ -405,14 +507,6 @@ _residentSources({
   return (sources: sources, byMixIndex: byMixIndex, cannotPlay: cannotPlay);
 }
 
-/// One streamed clip's window: [count] samples per channel from [start] of
-/// [reader]'s conform — what an upload reads for that clip, on a worker.
-typedef StreamWindowRead = ({
-  ConformPcmStreamReader reader,
-  int start,
-  int count,
-});
-
 /// The window a streamed source [clip] needs right now: trailing behind
 /// the playhead and leading in front of it, clamped into the clip's own
 /// span (and, by the reader, into the file).
@@ -420,6 +514,7 @@ StreamWindowRead _streamWindowRead(
   AudioMixClip clip, {
   required ConformPcmStreamReader reader,
   required _StreamWindow at,
+  required EqualizedStream? equalized,
 }) {
   final clipLength = clip.endSample - clip.startSample;
   final positionInClip = (at.centerSample - clip.startSample).clamp(
@@ -432,7 +527,12 @@ StreamWindowRead _streamWindowRead(
     clip.sourceOffset + clipLength,
     sourceAt + at.aheadSamples,
   );
-  return (reader: reader, start: windowStart, count: windowEnd - windowStart);
+  return (
+    reader: reader,
+    start: windowStart,
+    count: windowEnd - windowStart,
+    equalized: equalized,
+  );
 }
 
 /// A device upload: the clips, pointed at their sources, and whether any of
@@ -534,7 +634,8 @@ WindowedUploadPlan? planWindowedMixUpload({
     aheadSamples: aheadSeconds * deviceRate,
   );
   for (final clip in mix.clips) {
-    final path = mix.sourcePaths[clip.sourceIndex];
+    final source = mix.sources[clip.sourceIndex];
+    final path = source.path;
     if (!conformStore.isStreaming(path)) {
       final mapped = resident.byMixIndex[clip.sourceIndex];
       if (mapped != null) {
@@ -547,7 +648,23 @@ WindowedUploadPlan? planWindowedMixUpload({
     }
     final reader = conformStore.streamReaderFor(path)!;
     clips.add(clip.pointedAt(resident.sources.length + reads.length));
-    reads.add(_streamWindowRead(clip, reader: reader, at: at));
+    final equalized = source.equalized;
+    reads.add(
+      _streamWindowRead(
+        clip,
+        reader: reader,
+        at: at,
+        equalized: equalized == null
+            ? null
+            : (
+                span: equalized,
+                checkpoints: conformStore.equalizerCheckpointsFor(
+                  path,
+                  equalized,
+                )!,
+              ),
+      ),
+    );
   }
   return WindowedUploadPlan._(
     clips: clips,

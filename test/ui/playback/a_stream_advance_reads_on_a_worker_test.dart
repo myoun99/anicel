@@ -14,6 +14,8 @@ import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
+import 'package:anicel/src/services/audio/equalized_stream.dart'
+    show StreamWindowRead;
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
@@ -225,7 +227,12 @@ void main() {
     final device = openNull();
     final (store, _) = await streamingStore();
     final reader = planAround(store, mixOf(['a']), 5000).reads.single.reader;
-    final past = (reader: reader, start: reader.length + 10, count: 100);
+    final past = (
+      reader: reader,
+      start: reader.length + 10,
+      count: 100,
+      equalized: null,
+    );
     final made = <int>[];
     final hands = (
       make: (int floats) {

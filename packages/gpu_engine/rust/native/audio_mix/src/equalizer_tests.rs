@@ -3,7 +3,7 @@
 //! alternating sign, a sine at a cut's corner — and its samples pinned in
 //! the ledger, so another device bakes the same bits.
 
-use super::{EQUALIZER_VALUES, Equalizer, Setting, equalize, qa_audio_equalize};
+use super::{EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, Setting, equalize, equalize_on, qa_audio_equalize};
 
 const RATE: f64 = 48_000.0;
 
@@ -158,8 +158,33 @@ fn a_made_up_sound_is_baked_as_pinned() {
     }
 }
 
-// The door the app calls: the same samples as [`equalize`], and none on
-// geometry it cannot read.
+// A span baked a stretch at a time, each stretch going on from the memory
+// the one before left, is the span baked at once — wherever the stretches
+// break, a setting's start among them.
+#[test]
+fn a_span_baked_a_stretch_at_a_time_is_the_span_baked_at_once() {
+    let sound: Vec<f32> = (0..2 * 20_000).map(|i| ((i * 7_919) % 2_001) as f32 / 1_000.0 - 1.0).collect();
+    let settings = [
+        Setting { start: 0, equalizer: Equalizer { low_cut: 80.0, high_db: 3.0, ..NONE } },
+        Setting { start: 7_000, equalizer: Equalizer { high_cut: 6_000.0, low_db: 6.0, ..NONE } },
+        Setting { start: 13_000, equalizer: NONE },
+        Setting { start: 13_001, equalizer: Equalizer { low_cut: 300.0, high_db: -9.0, ..NONE } },
+    ];
+    let whole = equalize(&sound, 2, RATE, &settings);
+    for breaks in [vec![0, 20_000], vec![0, 1, 6_999, 7_000, 13_000, 13_001, 20_000], vec![0, 9_999, 19_999, 20_000]] {
+        let mut memory = vec![0.0; 2 * MEMORY_VALUES];
+        let mut stretched = vec![0.0_f32; sound.len()];
+        for pair in breaks.windows(2) {
+            let (from, to) = (2 * pair[0], 2 * pair[1]);
+            equalize_on(&sound[from..to], 2, RATE, &settings, pair[0] as i64, &mut memory, &mut stretched[from..to]);
+        }
+        assert_eq!(stretched, whole, "broken at {breaks:?}");
+    }
+}
+
+// The door the app calls: the same samples as [`equalize`] from rest, and
+// as [`equalize_on`] going on from a memory, which it leaves as that does;
+// none on geometry it cannot read.
 #[test]
 fn the_c_door_bakes_what_equalize_does() {
     let sound: Vec<f32> = (0..2 * 6_000).map(|i| ((i * 31) % 997) as f32 / 500.0 - 1.0).collect();
@@ -176,21 +201,50 @@ fn the_c_door_bakes_what_equalize_does() {
         })
         .collect();
     assert_eq!(values.len(), settings.len() * EQUALIZER_VALUES);
-    let mut out = vec![0.0_f32; sound.len()];
-    // SAFETY: every pointer is to as many as it is said to hold.
-    let ran = unsafe {
-        qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr())
+    let door = |samples: &[f32], first: i64, memory: *mut f64, out: &mut [f32]| {
+        // SAFETY: every pointer is to as many as it is said to hold.
+        unsafe {
+            qa_audio_equalize(
+                samples.as_ptr(),
+                (samples.len() / 2) as i64,
+                2,
+                48_000,
+                first,
+                starts.as_ptr(),
+                values.as_ptr(),
+                2,
+                memory,
+                out.as_mut_ptr(),
+            )
+        }
     };
-    assert_eq!(ran, 1);
+    let mut out = vec![0.0_f32; sound.len()];
+    assert_eq!(door(&sound, 0, std::ptr::null_mut(), &mut out), 1);
     assert_eq!(out, equalize(&sound, 2, RATE, &settings));
+
+    // From a memory: the second half of the sound, going on from the first.
+    let (head, tail) = sound.split_at(2 * 3_000);
+    let mut kept = vec![0.0; 2 * MEMORY_VALUES];
+    equalize_on(head, 2, RATE, &settings, 0, &mut kept, &mut vec![0.0; head.len()]);
+    let mut by_rust = kept.clone();
+    let mut expected = vec![0.0_f32; tail.len()];
+    equalize_on(tail, 2, RATE, &settings, 3_000, &mut by_rust, &mut expected);
+    let mut by_door = kept.clone();
+    let mut through = vec![0.0_f32; tail.len()];
+    assert_eq!(door(tail, 3_000, by_door.as_mut_ptr(), &mut through), 1);
+    assert_eq!((through, by_door), (expected, by_rust));
+
     // SAFETY: null pointers and bad counts are what it refuses.
     let refused = unsafe {
+        let s = sound.as_ptr();
+        let o = out.as_mut_ptr();
+        let m = std::ptr::null_mut();
         [
-            qa_audio_equalize(std::ptr::null(), 6_000, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
-            qa_audio_equalize(sound.as_ptr(), 6_000, 0, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
-            qa_audio_equalize(sound.as_ptr(), 6_000, 2, 0, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
-            qa_audio_equalize(sound.as_ptr(), -1, 2, 48_000, starts.as_ptr(), values.as_ptr(), 2, out.as_mut_ptr()),
-            qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, std::ptr::null(), values.as_ptr(), 2, out.as_mut_ptr()),
+            qa_audio_equalize(std::ptr::null(), 6_000, 2, 48_000, 0, starts.as_ptr(), values.as_ptr(), 2, m, o),
+            qa_audio_equalize(s, 6_000, 0, 48_000, 0, starts.as_ptr(), values.as_ptr(), 2, m, o),
+            qa_audio_equalize(s, 6_000, 2, 0, 0, starts.as_ptr(), values.as_ptr(), 2, m, o),
+            qa_audio_equalize(s, -1, 2, 48_000, 0, starts.as_ptr(), values.as_ptr(), 2, m, o),
+            qa_audio_equalize(s, 6_000, 2, 48_000, 0, std::ptr::null(), values.as_ptr(), 2, m, o),
         ]
     };
     assert_eq!(refused, [0; 5]);
@@ -198,7 +252,18 @@ fn the_c_door_bakes_what_equalize_does() {
     let mut plain = vec![0.0_f32; sound.len()];
     // SAFETY: as above, with no settings to read.
     let none = unsafe {
-        qa_audio_equalize(sound.as_ptr(), 6_000, 2, 48_000, std::ptr::null(), std::ptr::null(), 0, plain.as_mut_ptr())
+        qa_audio_equalize(
+            sound.as_ptr(),
+            6_000,
+            2,
+            48_000,
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            std::ptr::null_mut(),
+            plain.as_mut_ptr(),
+        )
     };
     assert_eq!((none, plain), (1, sound));
 }

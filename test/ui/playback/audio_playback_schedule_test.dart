@@ -70,7 +70,10 @@ void main() {
         rate: rate,
         sampleRate: 48000,
       );
-      expect(converted.sourcePaths, ['b.wav', 'a.wav']);
+      expect(converted.sources, [
+        (path: 'b.wav', equalized: null),
+        (path: 'a.wav', equalized: null),
+      ]);
       expect(
         converted.clips.map((clip) => clip.sourceIndex).toList(),
         [0, 1, 0],

@@ -24,9 +24,11 @@ import 'dart:typed_data';
 import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_device.dart';
+import '../../native/qa_audio_equalizer.dart';
 import '../../native/qa_audio_resampler.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
+import 'audio_equalizer.dart' show EqualizedSpan;
 import 'audio_decode_stream.dart';
 
 /// One conform request — every field a sendable value so the whole thing
@@ -94,7 +96,7 @@ Future<ConformResult> runConformInIsolate(ConformRequest request) =>
 /// may hand back 44.1k however nicely 48k was asked for), so the sources
 /// have to meet the device where it is. Sendable values only, same as
 /// [ConformRequest].
-class ResampleRequest {
+class ResampleRequest implements _PcmFromPcm<ResampleRequest> {
   const ResampleRequest({
     required this.samples,
     required this.channels,
@@ -102,12 +104,14 @@ class ResampleRequest {
     required this.outputRate,
   });
 
+  @override
   final Float32List samples;
   final int channels;
   final int inputRate;
   final int outputRate;
 
   /// This conversion of [samples] instead.
+  @override
   ResampleRequest withSamples(Float32List samples) => ResampleRequest(
     samples: samples,
     channels: channels,
@@ -124,107 +128,201 @@ typedef ResampleRunner = Future<Float32List> Function(ResampleRequest request);
 Future<Float32List> runResampleInIsolate(ResampleRequest request) =>
     Isolate.run(() => runResampleHere(request));
 
+/// One span of already-conformed PCM through its row's equalizer — what
+/// playback and an export both read of an equalized span (board
+/// audio-fx-grows-like-the-pros ③). [samples] are the whole conform at
+/// [rate]; [span] says which of them, baked from rest at its first.
+/// Sendable values only, same as [ConformRequest].
+class EqualizeRequest implements _PcmFromPcm<EqualizeRequest> {
+  const EqualizeRequest({
+    required this.samples,
+    required this.channels,
+    required this.rate,
+    required this.span,
+  });
+
+  @override
+  final Float32List samples;
+  final int channels;
+  final int rate;
+  final EqualizedSpan span;
+
+  /// This bake of [samples] instead.
+  @override
+  EqualizeRequest withSamples(Float32List samples) => EqualizeRequest(
+    samples: samples,
+    channels: channels,
+    rate: rate,
+    span: span,
+  );
+}
+
+/// How a store bakes a span; production is [runEqualizeInIsolate], tests
+/// substitute a synchronous fake.
+typedef EqualizeRunner = Future<Float32List> Function(EqualizeRequest request);
+
+/// The production bake runner.
+Future<Float32List> runEqualizeInIsolate(EqualizeRequest request) =>
+    Isolate.run(() => runEqualizeHere(request));
+
+/// A job that makes PCM out of PCM already conformed — a conversion to the
+/// device's rate, a span through its equalizer — so the samples it reads
+/// can be lent to its worker where they lie ([_pcmFromPcmInto]).
+abstract interface class _PcmFromPcm<R extends _PcmFromPcm<R>> {
+  Float32List get samples;
+  R withSamples(Float32List samples);
+}
+
+/// What a worker hands back: its result, less its PCM where that was
+/// placed in the device's buffers, and where — at 0 where it was not.
+typedef _Landed<T> = ({T result, int address, int floats});
+
 /// The production runner, its PCM placed where [device] plays it — or, with
 /// no device, [runConformInIsolate]'s.
 ///
 /// 🚨THE PCM THE DEVICE PLAYS LIVES IN THE DEVICE FROM THE MOMENT IT LANDS
-/// (play-press-first-frame-stall, 10-15). A conform's samples, and each
-/// rate they were converted to ([resamplingInto]), are placed there ONCE,
-/// and every schedule after names them without a copy. ↩️They stayed in
-/// Dart memory, and every upload — each press, seek and streaming advance —
-/// copied every resident sound into the device again, however many takes a
-/// project had.
-///
-/// 🚨PLACED BY THE WORKER THAT MADE THEM (conform-landing-copies-on-the-ui-
-/// thread): it fills a buffer of the device's own, and this isolate adopts
-/// it as it lands — here, the one place, so no buffer is left that nobody
-/// holds. ↩️The store copied them in as they landed (`placeForPlayback`),
-/// on the thread that draws: two minutes of stereo is 46 MB, and an
-/// unsaved project's sound is held whole however long it is.
+/// (play-press-first-frame-stall, 10-15). A conform's samples, each rate
+/// they were converted to ([resamplingInto]) and each span baked through
+/// its equalizer ([equalizingInto]) are placed there ONCE, and every
+/// schedule after names them without a copy. ↩️They stayed in Dart memory,
+/// and every upload — each press, seek and streaming advance — copied every
+/// resident sound into the device again, however many takes a project had.
 ConformRunner conformingInto(QaAudioDevice? Function() device) =>
-    (request) async {
-      final into = device();
-      if (into == null) {
-        return runConformInIsolate(request);
-      }
-      final landed = await _conformOnAWorker(request);
-      return landed.address == 0
-          ? landed.result
-          : landed.result.withSamples(
-              into.adoptSamples(landed.address, landed.floats),
-            );
-    };
+    (request) => _landedWhereTheDevicePlays(
+      device(),
+      plainly: () => runConformInIsolate(request),
+      worked: (_) => _conformOnAWorker(request),
+      withAdopted: (result, adopted) => result.withSamples(adopted),
+    );
 
 /// The production resample runner, its PCM placed as [conformingInto]
-/// places a conform's.
+/// places a conform's, the conform it converts lent to its worker
+/// ([_pcmFromPcmInto]).
+ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
+    (request) => _pcmFromPcmInto(
+      device(),
+      request,
+      plainly: runResampleInIsolate,
+      here: runResampleHere,
+    );
+
+/// The production bake runner, placed and lent as [resamplingInto]'s.
+EqualizeRunner equalizingInto(QaAudioDevice? Function() device) =>
+    (request) => _pcmFromPcmInto(
+      device(),
+      request,
+      plainly: runEqualizeInIsolate,
+      here: runEqualizeHere,
+    );
+
+/// 🚨THE ONE WAY PCM MADE ON A WORKER LANDS WHERE THE DEVICE PLAYS IT: with
+/// no device [into], [plainly]; with one, [worked] makes it on a worker that
+/// places its PCM in the device's buffers ([_placedOnTheWorker]), and this
+/// isolate adopts it as it lands, put back into its result by
+/// [withAdopted] — here, the one place, so no buffer is left that nobody
+/// holds.
 ///
-/// 🚨THE CONFORM IT CONVERTS IS READ WHERE IT LIES (resample-request-copies-
+/// 🚨PLACED BY THE WORKER THAT MADE THEM (conform-landing-copies-on-the-ui-
+/// thread): ↩️the store copied them in as they landed
+/// (`placeForPlayback`), on the thread that draws: two minutes of stereo
+/// is 46 MB, and an unsaved project's sound is held whole however long it
+/// is.
+///
+/// ↩️The conform's runner and the conversion's each spelled it (the
+/// one-algorithm ledger's 86 → 87), until the equalizer's bake came as the
+/// third kind of PCM landing here, which merged the three.
+Future<T> _landedWhereTheDevicePlays<T>(
+  QaAudioDevice? into, {
+  required Future<T> Function() plainly,
+  required Future<_Landed<T>> Function(QaAudioDevice into) worked,
+  required T Function(T result, Float32List adopted) withAdopted,
+}) async {
+  if (into == null) {
+    return plainly();
+  }
+  final landed = await worked(into);
+  return landed.address == 0
+      ? landed.result
+      : withAdopted(
+          landed.result,
+          into.adoptSamples(landed.address, landed.floats),
+        );
+}
+
+/// [request]'s job, landed as [_landedWhereTheDevicePlays] lands PCM.
+///
+/// 🚨THE CONFORM IT READS IS READ WHERE IT LIES (resample-request-copies-
 /// the-conform-to-the-worker): the conform's samples are a buffer of the
 /// device's, lent to the worker by address for as long as it works
 /// ([QaAudioDevice.lendToAWorker]). ↩️The request carried them, and a
 /// message copies what it carries — on the thread that draws, a sound's
 /// whole PCM once more for each sound a device at another rate asks for.
-ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
-    (request) async {
-      final into = device();
-      if (into == null) {
-        return runResampleInIsolate(request);
-      }
-      final landed = await into.lendToAWorker(
-        request.samples,
-        (lent) => _resampleOnAWorker(
-          lent == null ? request : request.withSamples(Float32List(0)),
-          lent,
-        ),
-      );
-      return landed.address == 0
-          ? landed.samples
-          : into.adoptSamples(landed.address, landed.floats);
-    };
+Future<Float32List> _pcmFromPcmInto<R extends _PcmFromPcm<R>>(
+  QaAudioDevice? into,
+  R request, {
+  required Future<Float32List> Function(R request) plainly,
+  required Float32List Function(R request) here,
+}) => _landedWhereTheDevicePlays(
+  into,
+  plainly: () => plainly(request),
+  worked: (into) => into.lendToAWorker(
+    request.samples,
+    (lent) => _fromLentOnAWorker(
+      lent == null ? request : request.withSamples(Float32List(0)),
+      lent,
+      here,
+    ),
+  ),
+  withAdopted: (_, adopted) => adopted,
+);
 
 /// The workers' jobs, each in a function of its own: [onAWorker] copies
 /// the closure's whole context, and these hold a request and an address.
-Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
-  ConformRequest request,
-) => onAWorker(() {
-  final result = runConformHere(request);
-  final placed = placedWhereTheDevicePlays(
-    result.samples,
-    audioBuffersHere(),
-  );
-  return (
-    result: placed.address == 0 ? result : result.withSamples(null),
-    address: placed.address,
-    floats: placed.floats,
-  );
-});
+Future<_Landed<ConformResult>> _conformOnAWorker(ConformRequest request) =>
+    onAWorker(() {
+      final result = runConformHere(request);
+      return _placedOnTheWorker(
+        result,
+        result.samples,
+        () => result.withSamples(null),
+      );
+    });
 
 /// [lent]: where the samples [request] left out lie, when it left them out.
-Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
-  ResampleRequest request,
+Future<_Landed<Float32List>> _fromLentOnAWorker<R extends _PcmFromPcm<R>>(
+  R request,
   ({int address, int floats})? lent,
+  Float32List Function(R request) here,
 ) => onAWorker(() {
   assert(
     lent == null || request.samples.isEmpty,
-    'a lent conversion carries its samples by address alone',
+    'a lent job carries its samples by address alone',
   );
-  final converted = runResampleHere(
+  final made = here(
     lent == null
         ? request
         : request.withSamples(
             Pointer<Float>.fromAddress(lent.address).asTypedList(lent.floats),
           ),
   );
-  final placed = placedWhereTheDevicePlays(
-    converted,
-    audioBuffersHere(),
-  );
+  return _placedOnTheWorker(made, made, () => Float32List(0));
+});
+
+/// On a worker: [made]'s PCM, [samples], placed where the device plays it
+/// ([placedWhereTheDevicePlays]), and [made] handed back [without] it
+/// where it was placed.
+_Landed<T> _placedOnTheWorker<T>(
+  T made,
+  Float32List? samples,
+  T Function() without,
+) {
+  final placed = placedWhereTheDevicePlays(samples, audioBuffersHere());
   return (
-    samples: placed.address == 0 ? converted : Float32List(0),
+    result: placed.address == 0 ? made : without(),
     address: placed.address,
     floats: placed.floats,
   );
-});
+}
 
 /// [samples] in a buffer [hands] makes, by its address and its floats — or
 /// none, at 0, where there are none or the buffer cannot be made, and the
@@ -253,6 +351,35 @@ Float32List runResampleHere(ResampleRequest request) => resampleAudio(
   inputRate: request.inputRate,
   outputRate: request.outputRate,
 );
+
+/// The bake itself, on whichever isolate this is called from: the span's
+/// samples — those of it the conform holds — through its settings.
+///
+/// Throws where the engine refuses what it was handed, so the store
+/// remembers the bake as failed rather than playing silence for it.
+Float32List runEqualizeHere(EqualizeRequest request) {
+  final channels = request.channels;
+  final frames = channels <= 0 ? 0 : request.samples.length ~/ channels;
+  final start = request.span.start.clamp(0, frames);
+  final end = (request.span.start + request.span.length).clamp(start, frames);
+  final baked = equalizeAudio(
+    samples: Float32List.sublistView(
+      request.samples,
+      start * channels,
+      end * channels,
+    ),
+    channels: channels,
+    rate: request.rate,
+    settings: request.span.settings,
+  );
+  if (baked.length != (end - start) * channels) {
+    throw StateError(
+      'the engine would not bake ${end - start} samples of $channels '
+      'channels at ${request.rate} Hz',
+    );
+  }
+  return baked;
+}
 
 /// [source]'s sound, decoded at its own rate — what a conform starts from,
 /// and what a trimmed sound's piece is cut from.

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, listEquals;
 
 /// A sound row's equalizer at one moment, as the engine bakes a span by it
 /// (native/audio_mix equalizer.rs — board audio-fx-grows-like-the-pros ③):
@@ -75,3 +75,39 @@ typedef AudioEqualizerSetting = ({int start, AudioEqualizer equalizer});
 /// How many values an [AudioEqualizer] hands the engine — its door's
 /// `EQUALIZER_VALUES` (native/audio_mix equalizer.rs).
 const audioEqualizerValues = 6;
+
+/// A span of a sound through its row's equalizer, in samples of the rate
+/// it is baked at: [length] on from the source sample [start], each
+/// setting's start counted from [start].
+///
+/// 🚨WHAT A BAKE IS OF (board audio-fx-grows-like-the-pros ③): the whole
+/// span from its own first sample, never the part a run or an export
+/// starts in — a filter remembers what it heard, so a bake begun anywhere
+/// else would play other samples there. Two that are equal are one bake,
+/// read by playback and an export alike.
+@immutable
+class EqualizedSpan {
+  const EqualizedSpan({
+    required this.start,
+    required this.length,
+    required this.settings,
+  });
+
+  final int start;
+  final int length;
+  final List<AudioEqualizerSetting> settings;
+
+  @override
+  bool operator ==(Object other) =>
+      other is EqualizedSpan &&
+      other.start == start &&
+      other.length == length &&
+      listEquals(other.settings, settings);
+
+  @override
+  int get hashCode => Object.hash(start, length, Object.hashAll(settings));
+
+  @override
+  String toString() =>
+      'EqualizedSpan(start: $start, length: $length, settings: $settings)';
+}

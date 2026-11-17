@@ -46,10 +46,7 @@ void main() {
   ];
 
   test('the engine\'s made-up sound comes back as its test pinned it', () {
-    final sound = Float32List(2 * 20000);
-    for (var i = 0; i < sound.length; i += 1) {
-      sound[i] = _lowBias32(i) / 2147483648.0 - 1.0;
-    }
+    final sound = _madeUpSound();
     for (final rate in [44100, 48000, 96000]) {
       final baked = equalizeAudio(
         samples: sound,
@@ -63,6 +60,30 @@ void main() {
         reason: '$rate Hz',
       );
     }
+  });
+
+  test('baked a stretch at a time, the sound comes back as baked at once',
+      () {
+    final sound = _madeUpSound();
+    final whole = equalizeAudio(
+      samples: sound,
+      channels: 2,
+      rate: 48000,
+      settings: settings,
+    );
+    // Breaks on a setting's start, beside one, and at the very first.
+    final stretches = EqualizerStretches(
+      channels: 2,
+      rate: 48000,
+      settings: settings,
+    );
+    final pieces = <double>[];
+    for (final (from, to) in [(0, 1), (1, 4800), (4800, 9601), (9601, 20000)]) {
+      pieces.addAll(
+        stretches.next(Float32List.sublistView(sound, 2 * from, 2 * to)),
+      );
+    }
+    expect(Float32List.fromList(pieces), whole);
   });
 
   test('an equalizer of no section hands its samples back as they were', () {
@@ -103,4 +124,14 @@ int _lowBias32(int seed) {
   x ^= x >> 15;
   x = (x * 0x846ca68b) & 0xffffffff;
   return x ^ (x >> 16);
+}
+
+/// Two channels of 20,000 samples of a well-mixed u32 to [-1, 1), as the
+/// engine's test makes its sound.
+Float32List _madeUpSound() {
+  final sound = Float32List(2 * 20000);
+  for (var i = 0; i < sound.length; i += 1) {
+    sound[i] = _lowBias32(i) / 2147483648.0 - 1.0;
+  }
+  return sound;
 }

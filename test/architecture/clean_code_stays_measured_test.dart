@@ -1099,7 +1099,19 @@ void main() {
   /// names that one added and nothing gone. ⛔Not bundled to fit: the two
   /// are one walk over different work, kept apart till a third door fans
   /// out (3의 규칙) — and the one they then become takes these five.
-  const wideSignatures = 452;
+  ///
+  /// ⚠️452 → 453 on 2026-11-17, one named as the rule above asks (board
+  /// audio-fx-grows-like-the-pros ③ — 유저 Q2 「시안 1 + 성격 프리셋」, the
+  /// row's equalizer first): `_equalize` (ten) is the `@Native` binding of
+  /// the engine's `qa_audio_equalize`, and its parameters are that C
+  /// door's — the samples, their frames, channels and rate, the span's
+  /// sample they begin at, the settings' starts and values and how many,
+  /// the filters' memory and where the bake goes. 🔬`clean_code_diff`
+  /// against master (`7ec463779`) names that one added and nothing gone.
+  /// ⛔Not bundled to fit: the door is an ABI, and every other function the
+  /// lane added that ran to five took a record instead (the window read,
+  /// the stretch bake's resume, the store's landing).
+  const wideSignatures = 453;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

@@ -62,6 +62,11 @@ class SeSound {
   PropertyTrack<double> get volume => _volume ?? PropertyTrack<double>.empty();
 
   /// The loudest a row is set to — the top of the S row's Total bar.
+  ///
+  /// Kept at 200% by the user's answer to audio-fx-grows-like-the-pros-Q1
+  /// (2026-11-17: 「200% 그대로」). Faders in the pro tools go past unity as
+  /// this does — Logic's and Ableton's to +6 dB, Pro Tools' to +12 dB — and
+  /// 2 is +6 dB.
   static const double maxVolume = 2.0;
 
   /// The volume at [time], a frame or between two — what the lane's value

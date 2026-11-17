@@ -746,6 +746,11 @@ import '../../tool/refactor/clone_scan.dart';
 /// merges the three.
 /// 🔬Measured on the lane over master (`6e22fd0bc`, at 87): none added,
 /// that one gone.
+/// ✅2026-11-17 (audio-fx-grows-like-the-pros ③): the third came — a span
+/// baked through its row's equalizer (`equalizingInto`) — and the three
+/// run through one body now (`_landedWhereTheDevicePlays`), the two that
+/// read a conform lending it to their worker through one more
+/// (`_pcmFromPcmInto`). The count did not move: the pair had left the scan.
 /// 86 → 85 (2026-11-04, fill-gradient — I-160's gradient stamp, the THIRD
 /// body to copy a pixel's three colour bytes by hand). The pair it met at
 /// 41 tokens:

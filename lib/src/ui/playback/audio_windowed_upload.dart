@@ -9,6 +9,8 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
+import '../../services/audio/equalized_stream.dart'
+    show StreamWindowRead, readStreamedWindow;
 import '../audio/audio_conform_store.dart';
 import '../audio/sound_cannot_play.dart';
 import 'audio_playback_schedule.dart';
@@ -444,9 +446,13 @@ LandedStreamWindow? _readInto(
   }
   final buffer = hands.make(floats);
   made.add(buffer);
-  final window = reader.readWindow(
-    at.start,
-    at.count,
+  final window = readStreamedWindow(
+    (
+      reader: reader,
+      start: at.start,
+      count: at.count,
+      equalized: read.equalized,
+    ),
     place: (_) => buffer.asTypedList(floats),
   );
   if (window.samples.length != floats) {
