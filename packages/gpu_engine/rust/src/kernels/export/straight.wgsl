@@ -2,21 +2,19 @@
 // PDF's picture beside its soft mask, a still of four channels — each
 // pixel straight, red first, four bytes a pixel, row after row with
 // nothing between (gpu-export-path ①⑶). The law is the frame's own
-// straight read (`frame_straight`, frame.wgsl and frame_shown.wgsl) — the
+// straight read (`frame_straight`, frame_shown.wgsl) — the
 // one a PNG's rows of four channels take theirs by (png_rgba.wgsl).
 //
-// Needs tile.wgsl and its picture's reads (frame.wgsl or
-// frame_shown.wgsl) before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   width: u32,
   height: u32,
-  // The word of the frame its binding begins on (frame.wgsl,
-  // frame_shown.wgsl take it off), the first row this band puts, and the
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), the first row this band puts, and the
   // word of the out its binding begins on: a pass binds the rows it reads
   // and puts (`convert`, mod.rs).
   frame_base: u32,

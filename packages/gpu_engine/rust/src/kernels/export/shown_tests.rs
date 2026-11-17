@@ -1,10 +1,9 @@
 //! A frame as the screen shows it (gpu-export-path ①⑴): each pass reads
 //! the rows [`Shown`] copies of a surface — premultiplied, RGBA or BGRA —
-//! by the one law it reads a run's tiles by, and takes it straight where
-//! it takes a run's tiles as they are.
+//! by one law, and takes them straight where a writer keeps the alpha.
 
-use super::tests::{frame, mixed, rig};
-use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Straight};
+use super::tests::{mixed, premultiplied, rig};
+use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Straight};
 use crate::device::Engine;
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 
@@ -73,14 +72,14 @@ type Passes<'a> = (&'a Nv12, &'a OverGround, &'a Clear, &'a Opaque, &'a PngFilte
 /// picture over a ground and cut over it, its clear bits, whether it is
 /// opaque, its PNG rows of four and of three bytes a pixel, its pixels
 /// straight, and the PNG rows of those.
-fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
+fn every_pass(frame: &Shown, picture: Picture) -> Vec<Vec<u8>> {
     let rig = rig();
     let passes = (&rig.nv12, &rig.over_ground, &rig.clear, &rig.opaque, &rig.png, &rig.straight);
     every_pass_on(rig.engine, passes, frame, picture)
 }
 
 /// [`every_pass`] of `passes`, on `engine`.
-fn every_pass_on(engine: &Engine, passes: Passes, frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
+fn every_pass_on(engine: &Engine, passes: Passes, frame: &Shown, picture: Picture) -> Vec<Vec<u8>> {
     let (nv12, over_ground, clear, opaque, png, straight) = passes;
     let read = |out: Option<wgpu::Buffer>| {
         read_buffer(engine, &out.unwrap_or_else(|| panic!("the pass runs: {}", last_error())))
@@ -109,16 +108,13 @@ fn every_pass_on(engine: &Engine, passes: Passes, frame: Frame, picture: Picture
 }
 
 /// A picture of 480 x 400 on a device that binds 512 KiB: less than its
-/// frame shown (2,048 bytes a row) or uploaded (1,920), than a run's tiles
-/// of it (four rows of four, 1 MiB), and than what the passes over the
-/// ground, straight and of PNG rows put and read — so each binds them a
-/// band of rows at a time. Two rows of tiles, 256 KiB each, it holds: a
-/// PNG row's filters read the row above it, which lies on the row of tiles
-/// above where it begins one.
+/// frame shown (2,048 bytes a row) or uploaded (1,920), and than what the
+/// passes over the ground, straight and of PNG rows put and read — so each
+/// binds them a band of rows at a time.
 const BANDED: (Picture, u64) = (Picture { width: 480, height: 400 }, 512 << 10);
 
 // On a device whose binding holds less than a frame, every pass puts what
-// one that binds the frame whole puts — a run's tiles, a frame shown from
+// one that binds the frame whole puts — a frame shown from
 // an RGBA surface and a BGRA one, and one uploaded, its rows its width
 // apart — and the device refuses no binding (board
 // conversions-bind-a-frame-past-the-device-limit, 2026-11-17).
@@ -133,20 +129,19 @@ fn every_pass_puts_a_frame_past_a_binding_as_it_puts_one_bound_whole() {
         .collect();
     let frames = |engine: &Engine| {
         [
-            FrameOf::Tiles(super::tests::frame_on(engine, (width, height), PAST, &pixel)),
-            FrameOf::Shown(shown_on(engine, (width, height), false, &pixel)),
-            FrameOf::Shown(shown_on(engine, (width, height), true, &pixel)),
-            FrameOf::Shown(Shown::uploaded(engine, &rgba, picture).expect("uploaded")),
+            shown_on(engine, (width, height), false, &pixel),
+            shown_on(engine, (width, height), true, &pixel),
+            Shown::uploaded(engine, &rgba, picture).expect("uploaded"),
         ]
     };
-    let whole: Vec<_> = frames(rig.engine).iter().map(|frame| every_pass(frame.frame(), picture)).collect();
+    let whole: Vec<_> = frames(rig.engine).iter().map(|frame| every_pass(frame, picture)).collect();
 
     let turn = a_device_of_its_own();
     let engine = turn.engine_binding(BANDED.1);
     let own = (Nv12::new(), OverGround::new(), Clear::new(), Opaque::new(), PngFilter::new(), Straight::new());
     let passes = (&own.0, &own.1, &own.2, &own.3, &own.4, &own.5);
     for (at, frame) in frames(&engine).iter().enumerate() {
-        assert!(every_pass_on(&engine, passes, frame.frame(), picture) == whole[at], "frame {at}");
+        assert!(every_pass_on(&engine, passes, frame, picture) == whole[at], "frame {at}");
     }
     engine.wait().expect("the device refused no binding");
 }
@@ -162,28 +157,13 @@ fn whether_a_frame_past_a_binding_is_opaque_is_asked_of_every_band() {
     let answer = |clear: Option<(u32, u32)>| {
         let pixel = |x, y| if Some((x, y)) == clear { 0 } else { 0xff00_0000 | x };
         let shown = shown_on(&engine, (picture.width, picture.height), false, pixel);
-        let out = opaque.run(&engine, Frame::Shown(&shown), picture).expect("opaque");
+        let out = opaque.run(&engine, &shown, picture).expect("opaque");
         read_buffer(&engine, &out)[0]
     };
 
     assert_eq!(answer(None), 255);
     assert_eq!(answer(Some((7, picture.height - 1))), 0);
     engine.wait().expect("the device refused no binding");
-}
-
-/// A frame a test made, which a pass is handed as a [`Frame`].
-enum FrameOf {
-    Tiles(wgpu::Buffer),
-    Shown(Shown),
-}
-
-impl FrameOf {
-    fn frame(&self) -> Frame<'_> {
-        match self {
-            Self::Tiles(tiles) => Frame::Tiles(tiles),
-            Self::Shown(shown) => Frame::Shown(shown),
-        }
-    }
 }
 
 // Where a binding holds less than a row a pass reads or puts, the pass is
@@ -195,26 +175,28 @@ fn a_pass_whose_row_exceeds_a_binding_is_refused() {
     let picture = Picture { width: 20_000, height: 2 };
     let frame = Shown::blank(&engine, picture).expect("a frame past a binding");
 
-    assert!(Straight::new().run(&engine, Frame::Shown(&frame), picture).is_none());
+    assert!(Straight::new().run(&engine, &frame, picture).is_none());
     assert_eq!(last_error(), "a row of a pass binds 80000 bytes, past a binding of 65536");
     engine.wait().expect("the device refused no binding");
 }
 
-// A picture whose every pixel is opaque or clear is the same word straight
-// and premultiplied: so a shown frame's passes are a run's of the same
-// picture, byte for byte — its rows read where they lie, its colours where
-// a BGRA surface lays them.
+// A frame shown from a surface — RGBA or BGRA, its rows on the copy's
+// stride — is the same picture uploaded, its rows its width apart: every
+// pass puts the same bytes of both, its rows read where they lie and its
+// colours where a BGRA surface lays them.
 #[test]
-fn every_pass_reads_a_shown_frame_as_it_reads_a_run_of_its_picture() {
+fn every_pass_reads_a_shown_frame_as_it_reads_the_picture_uploaded() {
     let picture = Picture { width: WIDTH, height: HEIGHT };
-    let pixel = |x, y| {
-        let word = mixed(5)(x, y);
-        if word & 0x0100_0000 == 0 { 0 } else { word | 0xff00_0000 }
-    };
-    let run = every_pass(Frame::Tiles(&frame(WIDTH, HEIGHT, pixel)), picture);
+    let pixel = premultiplied(5);
+    let rgba: Vec<u8> = (0..HEIGHT)
+        .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
+        .flat_map(|(x, y)| pixel(x, y).to_le_bytes())
+        .collect();
+    let uploaded = Shown::uploaded(rig().engine, &rgba, picture).expect("uploaded");
+    let wanted = every_pass(&uploaded, picture);
     for bgra in [false, true] {
-        let shown = shown(WIDTH, HEIGHT, bgra, pixel);
-        assert_eq!(every_pass(Frame::Shown(&shown), picture), run, "bgra {bgra}");
+        let shown = shown(WIDTH, HEIGHT, bgra, &pixel);
+        assert_eq!(every_pass(&shown, picture), wanted, "bgra {bgra}");
     }
 }
 
@@ -225,7 +207,7 @@ fn straight(pixel: u32) -> Vec<u8> {
     let rig = rig();
     let picture = Picture { width: 1, height: 1 };
     let shown = shown(1, 1, false, |_, _| pixel);
-    let out = rig.png.rgba(rig.engine, Frame::Shown(&shown), picture).expect("png rgba");
+    let out = rig.png.rgba(rig.engine, &shown, picture).expect("png rgba");
     read_buffer(rig.engine, &out)[..5].to_vec()
 }
 
@@ -257,7 +239,7 @@ fn every_alpha_makes_its_colours_straight_by_the_law() {
         let c = colours(x, y);
         u32::from_le_bytes([c as u8, (x + 1 - c) as u8, (c / 3) as u8, (x + 1) as u8])
     });
-    let out = rig.over_ground.run(rig.engine, Frame::Shown(&shown), picture, [7, 7, 7], Some(1));
+    let out = rig.over_ground.run(rig.engine, &shown, picture, [7, 7, 7], Some(1));
     let rgb = read_buffer(rig.engine, &out.expect("over ground"));
     let law = |c: u32, a: u32| ((c * 255 + a / 2) / a).min(255) as u8;
     for y in 0..4 {
@@ -284,7 +266,7 @@ fn the_straight_pass_makes_every_pixel_straight_by_the_law() {
         let c = colours(x, y);
         u32::from_le_bytes([c as u8, (x + 1 - c) as u8, (c / 3) as u8, (x + 1) as u8])
     });
-    let out = rig.straight.run(rig.engine, Frame::Shown(&shown), picture);
+    let out = rig.straight.run(rig.engine, &shown, picture);
     let rgba = read_buffer(rig.engine, &out.expect("straight"));
     assert_eq!(rgba.len() as u64, picture.rgba_bytes());
     let law = |c: u32, a: u32| ((c * 255 + a / 2) / a).min(255) as u8;
@@ -296,7 +278,7 @@ fn the_straight_pass_makes_every_pixel_straight_by_the_law() {
         }
     }
     let one = self::shown(1, 1, false, |_, _| 0xc864_0032);
-    let pixel = rig.straight.run(rig.engine, Frame::Shown(&one), Picture { width: 1, height: 1 });
+    let pixel = rig.straight.run(rig.engine, &one, Picture { width: 1, height: 1 });
     assert_eq!(read_buffer(rig.engine, &pixel.expect("straight"))[..4], straight(0xc864_0032)[1..]);
 }
 
@@ -306,11 +288,11 @@ fn the_straight_pass_makes_every_pixel_straight_by_the_law() {
 fn a_shown_frame_reads_each_alpha_where_it_lies() {
     let rig = rig();
     let one = shown(1, 1, false, |_, _| 0x6432_0a05);
-    let bits = rig.clear.run(rig.engine, Frame::Shown(&one), Picture { width: 1, height: 1 }, 128);
+    let bits = rig.clear.run(rig.engine, &one, Picture { width: 1, height: 1 }, 128);
     assert_eq!(read_buffer(rig.engine, &bits.expect("clear"))[0] & 1, 1);
     let opaque = shown(WIDTH, HEIGHT, true, |x, y| mixed(3)(x, y) | 0xff00_0000);
     let picture = Picture { width: WIDTH, height: HEIGHT };
-    let answer = read_buffer(rig.engine, &rig.opaque.run(rig.engine, Frame::Shown(&opaque), picture).expect("opaque"));
+    let answer = read_buffer(rig.engine, &rig.opaque.run(rig.engine, &opaque, picture).expect("opaque"));
     assert_eq!(answer[..4], [255, 0, 0, 0]);
 }
 
@@ -332,9 +314,9 @@ fn a_pass_that_takes_a_pixel_straight_takes_the_shown_one_straight() {
     let picture = Picture { width: 1, height: 1 };
     let shown = shown(1, 1, false, |_, _| 0xc864_0032);
     let shape = Nv12Shape { src_width: 1, src_height: 1, width: 2, height: 2, y_stride: 4 };
-    let nv12 = read_buffer(rig.engine, &rig.nv12.run(rig.engine, Frame::Shown(&shown), shape).expect("nv12"));
+    let nv12 = read_buffer(rig.engine, &rig.nv12.run(rig.engine, &shown, shape).expect("nv12"));
     assert_eq!(nv12[0], 45);
-    let cut = rig.over_ground.run(rig.engine, Frame::Shown(&shown), picture, [255, 255, 255], Some(128));
+    let cut = rig.over_ground.run(rig.engine, &shown, picture, [255, 255, 255], Some(128));
     assert_eq!(read_buffer(rig.engine, &cut.expect("over ground"))[..3], [64, 0, 128]);
 }
 
@@ -345,7 +327,7 @@ fn over_the_ground_a_shown_pixel_is_laid_as_it_is_premultiplied() {
     let rig = rig();
     let shown = shown(1, 1, false, |_, _| 0xc864_0032);
     let picture = Picture { width: 1, height: 1 };
-    let out = rig.over_ground.run(rig.engine, Frame::Shown(&shown), picture, [255, 255, 255], None);
+    let out = rig.over_ground.run(rig.engine, &shown, picture, [255, 255, 255], None);
     assert_eq!(read_buffer(rig.engine, &out.expect("over ground"))[..3], [105, 55, 155]);
 }
 
@@ -355,6 +337,6 @@ fn a_picture_the_surface_does_not_hold_is_refused() {
     let rig = rig();
     let shown = shown(WIDTH, HEIGHT, false, |_, _| 0);
     let tall = Picture { width: WIDTH, height: HEIGHT + 1 };
-    assert!(rig.opaque.run(rig.engine, Frame::Shown(&shown), tall).is_none());
+    assert!(rig.opaque.run(rig.engine, &shown, tall).is_none());
     assert_eq!(crate::testing::last_error(), "a 37x22 picture is not in a 37x21 frame");
 }

@@ -4,9 +4,9 @@
 
 use std::sync::OnceLock;
 
-use super::{Clear, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Straight};
+use super::shown_tests::shown;
+use super::{Clear, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Straight};
 use crate::device::Engine;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, last_error, read_buffer};
 
 pub(super) struct Rig {
@@ -45,9 +45,6 @@ const RED: u32 = 0xff00_00ff;
 const BLUE: u32 = 0xffff_0000;
 const BLACK: u32 = 0xff00_0000;
 const WHITE: u32 = 0xffff_ffff;
-/// What a tile holds past the picture: a pixel no picture of these tests
-/// has, so a read of it shows.
-const PAST: u32 = 0xff12_3456;
 
 /// A well-mixed u32 (lowbias32), for pictures no formula here can predict.
 fn mix(mut h: u32) -> u32 {
@@ -58,43 +55,10 @@ fn mix(mut h: u32) -> u32 {
     h ^ (h >> 16)
 }
 
-/// The composite's output tiles for a `width` x `height` picture, asked
-/// row by row from its top-left tile; [`PAST`] where a tile runs past it.
-pub(super) fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
-    frame_on(rig().engine, (width, height), PAST, pixel)
-}
-
-/// [`frame`] with `past` where a tile runs past the picture.
-fn frame_past(
-    width: u32,
-    height: u32,
-    past: u32,
-    pixel: impl Fn(u32, u32) -> u32,
-) -> wgpu::Buffer {
-    frame_on(rig().engine, (width, height), past, pixel)
-}
-
-/// [`frame_past`] on `engine`.
-pub(super) fn frame_on(
-    engine: &Engine,
-    (width, height): (u32, u32),
-    past: u32,
-    pixel: impl Fn(u32, u32) -> u32,
-) -> wgpu::Buffer {
-    let (columns, rows) = (width.div_ceil(TILE), height.div_ceil(TILE));
-    let mut words = vec![past; (u64::from(columns * rows) * TILE_TEXELS) as usize];
-    for y in 0..height {
-        for x in 0..width {
-            let tile = (y / TILE) * columns + x / TILE;
-            let at = u64::from(tile) * TILE_TEXELS + u64::from((y % TILE) * TILE + x % TILE);
-            words[at as usize] = pixel(x, y);
-        }
-    }
-    engine.filled(
-        "test frame",
-        &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-        wgpu::BufferUsages::STORAGE,
-    )
+/// A `width` x `height` frame shown, laid RGBA, holding `pixel` — a
+/// premultiplied word, red the low byte ([`shown`]).
+pub(super) fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> Shown {
+    shown(width, height, false, pixel)
 }
 
 /// The picture in its smallest encoder frame: even sides, rows of whole
@@ -110,9 +74,9 @@ fn shape(src_width: u32, src_height: u32) -> Nv12Shape {
     }
 }
 
-fn nv12(frame: &wgpu::Buffer, shape: Nv12Shape) -> Vec<u8> {
+fn nv12(frame: &Shown, shape: Nv12Shape) -> Vec<u8> {
     let Rig { engine, nv12, .. } = rig();
-    let out = nv12.run(engine, Frame::Tiles(frame), shape).expect("nv12");
+    let out = nv12.run(engine, frame, shape).expect("nv12");
     read_buffer(engine, &out)
 }
 
@@ -190,25 +154,27 @@ fn a_blocks_colour_is_its_top_left_pixels() {
     assert_eq!(sample(&bytes, shape, 1, 1), (41, 90, 240));
 }
 
-// The law reads no alpha: a clear red is red's numbers.
+// The law reads no alpha: red at half, premultiplied — straight, red
+// whole — is red's numbers.
 #[test]
 fn alpha_is_not_read() {
     let shape = shape(2, 2);
-    let bytes = nv12(&frame(2, 2, |_, _| RED & 0x00ff_ffff), shape);
+    let bytes = nv12(&frame(2, 2, |_, _| 0x8000_0080), shape);
     assert_eq!(sample(&bytes, shape, 0, 0), (82, 90, 240));
 }
 
-// A 3 x 3 picture in a 4 x 4 frame with rows of 8: the fourth column and
-// row are white, as are the four bytes of each row past the width — never
-// what the tile holds there. The block at (2, 2) has its top-left in the
-// picture, so it keeps red's colour.
+// A 3 x 3 picture of a 4 x 4 red frame, in an encoder's frame of 4 x 4
+// with rows of 8: the fourth column and row are white, as are the four
+// bytes of each row past the width — never what the frame holds there.
+// The block at (2, 2) has its top-left in the picture, so it keeps red's
+// colour.
 #[test]
-fn past_the_picture_is_white_whatever_the_tile_holds() {
+fn past_the_picture_is_white_whatever_the_frame_holds() {
     let shape = Nv12Shape {
         y_stride: 8,
         ..shape(3, 3)
     };
-    let bytes = nv12(&frame(3, 3, |_, _| RED), shape);
+    let bytes = nv12(&frame(4, 4, |_, _| RED), shape);
     assert_eq!(bytes.len(), 8 * 4 * 3 / 2);
     for y in 0..4 {
         for x in 0..8 {
@@ -220,25 +186,6 @@ fn past_the_picture_is_white_whatever_the_tile_holds() {
     assert_eq!(sample(&bytes, shape, 4, 0), (235, 128, 128), "the stride's block");
 }
 
-// Pixels on either side of a tile's edge, in both directions, land where
-// the picture has them: a red column at x = 128 and a red row at y = 128.
-#[test]
-fn the_frame_is_read_across_its_tiles() {
-    let shape = shape(130, 130);
-    let cross = |x, y| if x == 128 || y == 128 { RED } else { WHITE };
-    let bytes = nv12(&frame(130, 130, cross), shape);
-    for (x, y, luma) in [
-        (127, 5, 235),
-        (128, 5, 82),
-        (129, 5, 235),
-        (5, 127, 235),
-        (5, 128, 82),
-        (129, 129, 235),
-    ] {
-        assert_eq!(sample(&bytes, shape, x, y).0, luma, "({x}, {y})");
-    }
-}
-
 // ---- The ledger ----
 
 /// A picture of any colours and alphas.
@@ -246,8 +193,18 @@ pub(super) fn mixed(seed: u32) -> impl Fn(u32, u32) -> u32 {
     move |x, y| mix(seed ^ mix(x ^ mix(y)))
 }
 
-// 197 x 131: odd sides padded to 198 x 132, rows of 200, two tiles each
-// way; 256 x 128: exact tiles, no padding.
+/// [`mixed`] premultiplied, as a frame shown holds its pixels: each colour
+/// at most its alpha.
+pub(super) fn premultiplied(seed: u32) -> impl Fn(u32, u32) -> u32 {
+    let pixel = mixed(seed);
+    move |x, y| {
+        let [red, green, blue, alpha] = pixel(x, y).to_le_bytes();
+        u32::from_le_bytes([red.min(alpha), green.min(alpha), blue.min(alpha), alpha])
+    }
+}
+
+// 197 x 131: odd sides padded to 198 x 132, rows of 200; 256 x 128: no
+// padding.
 #[test]
 fn every_device_writes_the_pinned_nv12() {
     for (width, height, y_stride) in [(197, 131, 200), (256, 128, 256)] {
@@ -256,7 +213,7 @@ fn every_device_writes_the_pinned_nv12() {
             ..shape(width, height)
         };
         let id = format!("export/nv12-{width}x{height}-stride{y_stride}");
-        assert_pinned(&id, &nv12(&frame(width, height, mixed(7)), shape));
+        assert_pinned(&id, &nv12(&frame(width, height, premultiplied(7)), shape));
     }
 }
 
@@ -272,7 +229,7 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
         Nv12Shape { y_stride: 6, ..shape(4, 4) },
         Nv12Shape { width: 6, y_stride: 4, ..shape(4, 4) },
     ] {
-        assert!(nv12.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
+        assert!(nv12.run(engine, &frame, bad).is_none(), "{bad:?}");
     }
 }
 
@@ -280,13 +237,13 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
 
 /// The bytes the pass writes for a `width` x `height` picture over
 /// `ground`: its RGB, then zeros to the last whole word.
-fn over_ground(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
+fn over_ground(frame: &Shown, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
     cut_over_ground(frame, width, height, ground, None)
 }
 
 /// [`over_ground`] with the alpha `cut`.
 fn cut_over_ground(
-    frame: &wgpu::Buffer,
+    frame: &Shown,
     width: u32,
     height: u32,
     ground: [u8; 3],
@@ -298,7 +255,7 @@ fn cut_over_ground(
         ..
     } = rig();
     let out = over_ground
-        .run(engine, Frame::Tiles(frame), Picture { width, height }, ground, cut)
+        .run(engine, frame, Picture { width, height }, ground, cut)
         .expect("over ground");
     read_buffer(engine, &out)
 }
@@ -309,47 +266,42 @@ fn rgb_at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 3] {
     [bytes[at], bytes[at + 1], bytes[at + 2]]
 }
 
-// ---- By hand, from the law (`_overGround` after the engine's premultiply) ----
+// ---- By hand, from the law (`_overGround`) ----
 
-// Opaque: p = round(c·255 / 255) = c and nothing of the ground. 200 is one
-// the premultiply's second term carries: t = 51128, t >> 8 = 199, and
-// (51128 + 199) >> 8 = 200.
+// Opaque: p = c and nothing of the ground.
 #[test]
 fn an_opaque_pixel_is_its_own_colour() {
     let bytes = over_ground(&frame(1, 1, |_, _| 0xff1e_c80a), 1, 1, [1, 2, 3]);
     assert_eq!(bytes, [10, 200, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
-// Clear: p = (0 + 128) >> 8 = 0, and the ground whole — g·255 / 255 = g —,
-// whatever colour the clear pixel keeps.
+// Clear: nothing of it, and the ground whole — g·255 / 255 = g.
 #[test]
 fn a_clear_pixel_is_the_ground() {
-    let bytes = over_ground(&frame(1, 1, |_, _| 0x00ff_ffff), 1, 1, [12, 34, 56]);
+    let bytes = over_ground(&frame(1, 1, |_, _| 0), 1, 1, [12, 34, 56]);
     assert_eq!(rgb_at(&bytes, 1, 0, 0), [12, 34, 56]);
 }
 
-// White at 128: t = 255·128 + 128 = 32768, p = (32768 + 128) >> 8 = 128.
-// Over black that is all; over white, + 255·127 / 255 = 127. Red at 128
-// over white: 128 + 127 for red, 0 + 127 for green and blue.
+// White at 128, premultiplied: p = 128. Over black that is all; over
+// white, + 255·127 / 255 = 127. Red at 128 over white: 128 + 127 for red,
+// 0 + 127 for green and blue.
 #[test]
 fn half_a_colour_takes_half_the_ground() {
-    let halves = frame(2, 1, |x, _| if x == 0 { 0x80ff_ffff } else { 0x8000_00ff });
+    let halves = frame(2, 1, |x, _| if x == 0 { 0x8080_8080 } else { 0x8000_0080 });
     assert_eq!(rgb_at(&over_ground(&halves, 2, 1, [0, 0, 0]), 2, 0, 0), [128, 128, 128]);
     let white = over_ground(&halves, 2, 1, [255, 255, 255]);
     assert_eq!(rgb_at(&white, 2, 0, 0), [255, 255, 255]);
     assert_eq!(rgb_at(&white, 2, 1, 0), [255, 127, 127]);
 }
 
-// Over a ground of red 100:
-// - black at 1: p = 0, and 100·254 / 255 = 99.6 floors to 99;
-// - 127 at 2: p = round(254 / 255) = 1 (t = 382, (382 + 1) >> 8), and
-//   100·253 / 255 = 99.2 floors to 99;
-// - 127 at 1: p = round(127 / 255) = 0 (t = 255, 255 >> 8).
+// Over a ground of red 100, the ground's part floors:
+// - black at 1: 100·254 / 255 = 99.6, so 99;
+// - 1 at 2: 1 + 100·253 / 255 = 1 + 99.2, so 100.
 #[test]
-fn the_premultiply_rounds_and_the_ground_floors() {
-    let pixels = [0x0100_0000, 0x027f_7f7f, 0x017f_7f7f];
-    let bytes = over_ground(&frame(3, 1, |x, _| pixels[x as usize]), 3, 1, [100, 0, 0]);
-    assert_eq!(bytes[..9], [99, 0, 0, 100, 1, 1, 99, 0, 0]);
+fn the_ground_floors() {
+    let pixels = [0x0100_0000, 0x0201_0101];
+    let bytes = over_ground(&frame(2, 1, |x, _| pixels[x as usize]), 2, 1, [100, 0, 0]);
+    assert_eq!(bytes[..6], [99, 0, 0, 100, 1, 1]);
 }
 
 // ---- The bytes' order ----
@@ -373,34 +325,14 @@ fn runs_of_four_pixels_fill_whole_words_across_rows() {
     assert_eq!(bytes, wanted);
 }
 
-// Pixels on either side of a tile's edge, in both directions, land where
-// the picture has them: a red column at x = 128 and a red row at y = 128.
-// 130 is no multiple of 4, so most runs here cross a row.
-#[test]
-fn over_the_ground_reads_the_frame_across_its_tiles() {
-    let cross = |x, y| if x == 128 || y == 128 { RED } else { WHITE };
-    let bytes = over_ground(&frame(130, 130, cross), 130, 130, [0, 0, 0]);
-    for (x, y, rgb) in [
-        (127, 5, [255, 255, 255]),
-        (128, 5, [255, 0, 0]),
-        (129, 5, [255, 255, 255]),
-        (5, 127, [255, 255, 255]),
-        (5, 128, [255, 0, 0]),
-        (129, 129, [255, 255, 255]),
-    ] {
-        assert_eq!(rgb_at(&bytes, 130, x, y), rgb, "({x}, {y})");
-    }
-}
-
 // ---- The ledger ----
 
-// 197 x 131: two tiles each way, and 25,807 pixels — a last run of three;
-// 256 x 128: exact tiles and runs.
+// 197 x 131: 25,807 pixels — a last run of three; 256 x 128: exact runs.
 #[test]
 fn every_device_writes_the_pinned_over_ground() {
     for (width, height) in [(197, 131), (256, 128)] {
         let picture = Picture { width, height };
-        let bytes = over_ground(&frame(width, height, mixed(11)), width, height, [0x12, 0x80, 0xed]);
+        let bytes = over_ground(&frame(width, height, premultiplied(11)), width, height, [0x12, 0x80, 0xed]);
         let id = format!("export/over-ground-{width}x{height}");
         assert_pinned(&id, &bytes[..picture.rgb_bytes() as usize]);
     }
@@ -421,17 +353,17 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(over_ground.run(engine, Frame::Tiles(&frame), bad, [0, 0, 0], None).is_none(), "{bad:?}");
+        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0], None).is_none(), "{bad:?}");
     }
 }
 
 // ==== Opaque ====
 
 /// The pass's answer for the `width` x `height` picture in `frame`.
-fn opaque(frame: &wgpu::Buffer, width: u32, height: u32) -> u32 {
+fn opaque(frame: &Shown, width: u32, height: u32) -> u32 {
     let Rig { engine, opaque, .. } = rig();
     let out = opaque
-        .run(engine, Frame::Tiles(frame), Picture { width, height })
+        .run(engine, frame, Picture { width, height })
         .expect("opaque");
     let bytes = read_buffer(engine, &out);
     u32::from_le_bytes(bytes[..4].try_into().unwrap())
@@ -443,10 +375,10 @@ fn opaque_mixed(x: u32, y: u32) -> u32 {
 }
 
 // 197 x 131: two tiles each way, so four groups answer. Past the picture
-// the tiles are clear, as the composite leaves them — and not read.
+// the frame's rows are clear — and not read.
 #[test]
 fn a_picture_whose_every_pixel_is_opaque_is_opaque() {
-    assert_eq!(opaque(&frame_past(197, 131, 0, opaque_mixed), 197, 131), 255);
+    assert_eq!(opaque(&frame(197, 131, opaque_mixed), 197, 131), 255);
 }
 
 // One pixel at 254 in each tile, and at each end of a tile's texels: the
@@ -458,13 +390,13 @@ fn one_pixel_short_of_opaque_anywhere_is_not_opaque() {
             let pixel = opaque_mixed(x, y);
             if (x, y) == at { pixel & 0xfeff_ffff } else { pixel }
         };
-        assert!(opaque(&frame_past(197, 131, 0, picture), 197, 131) < 255, "{at:?}");
+        assert!(opaque(&frame(197, 131, picture), 197, 131) < 255, "{at:?}");
     }
 }
 
 #[test]
 fn a_clear_pixel_is_not_opaque() {
-    assert!(opaque(&frame(1, 1, |_, _| 0x00ff_ffff), 1, 1) < 255);
+    assert!(opaque(&frame(1, 1, |_, _| 0), 1, 1) < 255);
 }
 
 #[test]
@@ -476,7 +408,7 @@ fn an_empty_picture_or_a_short_frame_is_not_asked() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(opaque.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
+        assert!(opaque.run(engine, &frame, bad).is_none(), "{bad:?}");
     }
 }
 
@@ -487,28 +419,28 @@ fn an_empty_picture_or_a_short_frame_is_not_asked() {
 // it is clear, so the ground, whose place the GIF's clear colour takes.
 #[test]
 fn a_gif_lays_a_half_covered_pixel_whole_and_one_under_half_clear() {
-    let pixels = [0x8000_00ff, 0x7f00_00ff];
+    let pixels = [0x8000_0080, 0x7f00_007f];
     let frame = frame(2, 1, |x, _| pixels[x as usize]);
     let bytes = cut_over_ground(&frame, 2, 1, [255, 255, 255], Some(128));
     assert_eq!(bytes[..6], [255, 0, 0, 255, 255, 255]);
 }
 
 // Cut at 0, no pixel is under it: a GIF that keeps no clear colour takes
-// each pixel's own colour — a clear one's (30, 10, 20) too.
+// each pixel's own colour — a clear one's, black, too, not the ground's.
 #[test]
 fn cut_at_nothing_every_pixel_is_its_own_colour() {
-    let pixels = [0x0014_0a1e, 0x8000_00ff];
+    let pixels = [0, 0x8000_0080];
     let frame = frame(2, 1, |x, _| pixels[x as usize]);
     let bytes = cut_over_ground(&frame, 2, 1, [99, 99, 99], Some(0));
-    assert_eq!(bytes[..6], [30, 10, 20, 255, 0, 0]);
+    assert_eq!(bytes[..6], [0, 0, 0, 255, 0, 0]);
 }
 
 /// The clear bits the pass writes for a `width` x `height` picture cut at
 /// `cut`, a word of 32 pixels each.
-fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32> {
+fn clear_bits(frame: &Shown, width: u32, height: u32, cut: u8) -> Vec<u32> {
     let Rig { engine, clear, .. } = rig();
     let out = clear
-        .run(engine, Frame::Tiles(frame), Picture { width, height }, cut)
+        .run(engine, frame, Picture { width, height }, cut)
         .expect("clear");
     read_buffer(engine, &out)
         .chunks_exact(4)
@@ -521,42 +453,19 @@ fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32
 #[test]
 fn a_pixel_under_the_cut_is_clear() {
     let alphas = [127, 128, 0, 255];
-    let frame = frame(4, 1, |x, _| alphas[x as usize] << 24 | 0x00ff_ffff);
+    let frame = frame(4, 1, |x, _| alphas[x as usize] * 0x0101_0101);
     assert_eq!(clear_bits(&frame, 4, 1, 128), [0b0101]);
     assert_eq!(clear_bits(&frame, 4, 1, 1), [0b0100]);
 }
 
 // 6 x 6: 36 pixels, clear where the count is a multiple of 3 — bits 0, 3,
 // …, 30 of the first word, and of the second bit 1 (pixel 33) alone,
-// though the tile is clear past the picture's last pixel.
+// though the frame's rows are clear past the picture's last pixel.
 #[test]
 fn clear_bits_run_in_the_picture_order_across_rows() {
     let picture = |x: u32, y: u32| if (y * 6 + x) % 3 == 0 { 0 } else { WHITE };
-    let frame = frame_past(6, 6, 0, picture);
+    let frame = frame(6, 6, picture);
     assert_eq!(clear_bits(&frame, 6, 6, 128), [0x4924_9249, 0b10]);
-}
-
-// A clear column at x = 128 and a clear row at y = 128, read where the
-// picture has them, on either side of a tile's edge.
-#[test]
-fn clear_bits_read_the_frame_across_its_tiles() {
-    let cross = |x, y| if x == 128 || y == 128 { 0 } else { WHITE };
-    let words = clear_bits(&frame(130, 130, cross), 130, 130, 128);
-    let clear = |x: u32, y: u32| {
-        let index = y * 130 + x;
-        words[(index / 32) as usize] >> (index % 32) & 1 == 1
-    };
-    for (x, y, wanted) in [
-        (127, 5, false),
-        (128, 5, true),
-        (129, 5, false),
-        (5, 127, false),
-        (5, 128, true),
-        (128, 129, true),
-        (129, 129, false),
-    ] {
-        assert_eq!(clear(x, y), wanted, "({x}, {y})");
-    }
 }
 
 // 197 x 131, cut at 128: its colours and its clear bits — 25,807 pixels,
@@ -565,7 +474,7 @@ fn clear_bits_read_the_frame_across_its_tiles() {
 fn every_device_writes_the_pinned_gif() {
     let (width, height) = (197, 131);
     let picture = Picture { width, height };
-    let frame = frame(width, height, mixed(11));
+    let frame = frame(width, height, premultiplied(11));
     let rgb = cut_over_ground(&frame, width, height, [0, 0, 0], Some(128));
     assert_pinned("export/gif-rgb-197x131", &rgb[..picture.rgb_bytes() as usize]);
     let words = clear_bits(&frame, width, height, 128);
@@ -582,7 +491,7 @@ fn clear_refuses_an_empty_picture_or_a_short_frame() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(clear.run(engine, Frame::Tiles(&frame), bad, 128).is_none(), "{bad:?}");
+        assert!(clear.run(engine, &frame, bad, 128).is_none(), "{bad:?}");
     }
 }
 
@@ -602,22 +511,22 @@ fn png_rows(out: &[u8], picture: Picture, pixel_bytes: u32) -> Vec<Vec<u8>> {
 
 /// The filtered out of a PNG of four channels, the `width` x `height`
 /// picture in `frame`.
-fn png_rgba(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<u8> {
+fn png_rgba(frame: &Shown, width: u32, height: u32) -> Vec<u8> {
     let Rig { engine, png, .. } = rig();
     let out = png
-        .rgba(engine, Frame::Tiles(frame), Picture { width, height })
+        .rgba(engine, frame, Picture { width, height })
         .expect("png rgba");
     read_buffer(engine, &out)
 }
 
 /// [`png_rgba`]'s rows, as [`png_rows`] has them.
-fn png_rgba_rows(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<Vec<u8>> {
+fn png_rgba_rows(frame: &Shown, width: u32, height: u32) -> Vec<Vec<u8>> {
     png_rows(&png_rgba(frame, width, height), Picture { width, height }, 4)
 }
 
 /// The filtered out of a PNG of three channels: the picture in `frame`
 /// over `ground`.
-fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
+fn png_rgb(frame: &Shown, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
     let Rig {
         engine,
         over_ground,
@@ -626,17 +535,24 @@ fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Ve
     } = rig();
     let picture = Picture { width, height };
     let rgb = over_ground
-        .run(engine, Frame::Tiles(frame), picture, ground, None)
+        .run(engine, frame, picture, ground, None)
         .expect("over ground");
     let out = png.packed(engine, &rgb, picture, 3).expect("png rgb");
     read_buffer(engine, &out)
 }
 
-/// A picture whose rows are `rows` of red: the other channels 0, so their
-/// bytes are 0 under every filter, and its alpha `alpha`.
-fn reds(rows: &'static [&'static [u32]], alpha: u32) -> wgpu::Buffer {
-    let width = rows[0].len() as u32;
-    frame(width, rows.len() as u32, move |x, y| alpha << 24 | rows[y as usize][x as usize])
+/// The words of a picture whose rows are `rows` of red: the other channels
+/// 0, so their bytes are 0 under every filter, and its alpha `alpha`.
+fn reds(rows: &'static [&'static [u32]], alpha: u32) -> impl Fn(u32, u32) -> u32 {
+    move |x, y| alpha << 24 | rows[y as usize][x as usize]
+}
+
+/// The rows of a PNG of four channels of [`reds`] with no alpha — handed
+/// over packed, as a frame shown holds no colour where it holds no alpha
+/// (frame_shown.wgsl).
+fn clear_reds(rows: &'static [&'static [u32]]) -> Vec<Vec<u8>> {
+    let picture = Picture { width: rows[0].len() as u32, height: rows.len() as u32 };
+    packed_rows(&packed_rgba(picture.width, picture.height, reds(rows, 0)), picture)
 }
 
 // ---- By hand, from the law (png.wgsl's head) ----
@@ -661,7 +577,7 @@ fn a_flat_picture_is_under_sub_and_then_up() {
 #[test]
 fn a_tie_of_all_five_is_none_and_avg_wins_between_two() {
     static ROWS: [&[u32]; 2] = [&[0, 150], &[50, 100]];
-    let rows = png_rgba_rows(&reds(&ROWS, 0), 2, 2);
+    let rows = clear_reds(&ROWS);
     assert_eq!(rows[0], [0, 0, 0, 0, 0, 150, 0, 0, 0]);
     assert_eq!(rows[1], [3, 50, 0, 0, 0, 0, 0, 0, 0]);
 }
@@ -682,7 +598,7 @@ static PAETH_ROWS: [&[u32]; 2] = [&[50, 50, 128], &[10, 10, 50]];
 // byte read as signed: as it is, Sub would win.
 #[test]
 fn paeth_wins_where_it_takes_each_of_its_three() {
-    let rows = png_rgba_rows(&reds(&PAETH_ROWS, 0), 3, 2);
+    let rows = clear_reds(&PAETH_ROWS);
     assert_eq!(rows[0], [1, 50, 0, 0, 0, 0, 0, 0, 0, 78, 0, 0, 0]);
     assert_eq!(rows[1], [4, 216, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
@@ -702,7 +618,7 @@ fn paeth_wins_where_it_takes_each_of_its_three() {
 #[test]
 fn paeth_breaks_a_tie_to_the_earlier() {
     static ROWS: [&[u32]; 2] = [&[50, 60, 50, 30], &[30, 30, 60, 30]];
-    let rows = png_rgba_rows(&reds(&ROWS, 0), 4, 2);
+    let rows = clear_reds(&ROWS);
     assert_eq!(rows[0], [1, 50, 0, 0, 0, 10, 0, 0, 0, 246, 0, 0, 0, 236, 0, 0, 0]);
     assert_eq!(rows[1], [4, 236, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0]);
 }
@@ -713,7 +629,7 @@ fn paeth_breaks_a_tie_to_the_earlier() {
 #[test]
 fn three_channels_take_the_same_filters_a_pixel_three_bytes_on() {
     let rows = png_rows(
-        &png_rgb(&reds(&PAETH_ROWS, 0xff), 3, 2, [1, 2, 3]),
+        &png_rgb(&frame(3, 2, reds(&PAETH_ROWS, 0xff)), 3, 2, [1, 2, 3]),
         Picture { width: 3, height: 2 },
         3,
     );
@@ -721,42 +637,14 @@ fn three_channels_take_the_same_filters_a_pixel_three_bytes_on() {
     assert_eq!(rows[1], [4, 216, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
-// White with a red column at x = 128 and a red row at y = 128, read
-// across the frame's tiles:
-// - the top row: Sub 4 + 2 + 2 — white, then red − white and white − red
-//   by the column —, under None's 518 and Up's;
-// - 127 is 126 again, so Up, nothing;
-// - 128, red under white: Sub 2, its first pixel alone, under Up's 258;
-// - 129, white under red: Paeth 6 — b on the first pixel, a after, so
-//   only where the column turns — under Sub's 8.
-#[test]
-fn png_rows_read_the_frame_across_its_tiles() {
-    let cross = |x, y| if x == 128 || y == 128 { RED } else { WHITE };
-    let rows = png_rgba_rows(&frame(130, 130, cross), 130, 130);
-    let row = |filter: u8, pixels: &[(usize, [u8; 4])]| {
-        let mut row = vec![0; 1 + 130 * 4];
-        row[0] = filter;
-        for &(x, bytes) in pixels {
-            row[1 + x * 4..5 + x * 4].copy_from_slice(&bytes);
-        }
-        row
-    };
-    let turn = (128, [0, 1, 1, 0]);
-    let back = (129, [0, 255, 255, 0]);
-    assert_eq!(rows[0], row(1, &[(0, [255; 4]), turn, back]));
-    assert_eq!(rows[127], row(2, &[]));
-    assert_eq!(rows[128], row(1, &[(0, [255, 0, 0, 255])]));
-    assert_eq!(rows[129], row(4, &[(0, [0, 255, 255, 0]), turn, back]));
-}
-
 // ---- The ledger ----
 
-// 197 x 131: two tiles each way; a row of four channels is 788 bytes and
-// its out 792, of three 591 and 592.
+// 197 x 131: a row of four channels is 788 bytes and its out 792, of three
+// 591 and 592.
 #[test]
 fn every_device_writes_the_pinned_png_rows() {
     let (width, height) = (197, 131);
-    let frame = frame(width, height, mixed(11));
+    let frame = frame(width, height, premultiplied(11));
     assert_pinned("export/png-rgba-197x131", &png_rgba(&frame, width, height));
     let rgb = png_rgb(&frame, width, height, [0x12, 0x80, 0xed]);
     assert_pinned("export/png-rgb-197x131", &rgb);
@@ -778,10 +666,10 @@ fn png_refuses_an_empty_picture_or_a_short_source() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(png.rgba(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
+        assert!(png.rgba(engine, &frame, bad).is_none(), "{bad:?}");
     }
     let rgb = over_ground
-        .run(engine, Frame::Tiles(&frame), Picture { width: 4, height: 4 }, [0, 0, 0], None)
+        .run(engine, &frame, Picture { width: 4, height: 4 }, [0, 0, 0], None)
         .expect("over ground");
     for bad in [
         Picture { width: 0, height: 4 },
@@ -811,14 +699,19 @@ fn packed_rows(bytes: &[u8], picture: Picture) -> Vec<Vec<u8>> {
 }
 
 // The law reads a picture's bytes wherever they lie: straight RGBA handed
-// over packed is filtered as the same picture in a run's tiles is — any
-// colours, any alphas, a side no tile's or word's.
+// over packed is filtered as the same picture shown is — any colours,
+// every pixel opaque or clear, so straight and premultiplied are one word,
+// and a side no word's.
 #[test]
 fn packed_rgba_is_filtered_as_the_same_picture_in_a_frame() {
     let (width, height) = (37, 21);
     let picture = Picture { width, height };
-    let bytes = packed_rgba(width, height, mixed(5));
-    assert_eq!(packed_rows(&bytes, picture), png_rgba_rows(&frame(width, height, mixed(5)), width, height));
+    let pixel = |x, y| {
+        let word = mixed(5)(x, y);
+        if word & 0x0100_0000 == 0 { 0 } else { word | 0xff00_0000 }
+    };
+    let bytes = packed_rgba(width, height, pixel);
+    assert_eq!(packed_rows(&bytes, picture), png_rgba_rows(&frame(width, height, pixel), width, height));
 }
 
 // A pixel whose alpha is not whole keeps it: (10, 20, 30, 128) alone is
@@ -858,8 +751,8 @@ fn a_picture_taller_than_a_dispatch_reaches_is_refused() {
     } = rig();
     let height = engine.device().limits().max_compute_workgroups_per_dimension + 1;
     let tall = Picture { width: 1, height };
-    let frame = frame(1, height, |_, _| WHITE);
-    assert!(over_ground.run(engine, Frame::Tiles(&frame), tall, [0, 0, 0], None).is_none());
-    assert!(clear.run(engine, Frame::Tiles(&frame), tall, 128).is_none());
-    assert!(png.rgba(engine, Frame::Tiles(&frame), tall).is_none());
+    let frame = Shown::uploaded(engine, &WHITE.to_le_bytes().repeat(height as usize), tall).expect("uploaded");
+    assert!(over_ground.run(engine, &frame, tall, [0, 0, 0], None).is_none());
+    assert!(clear.run(engine, &frame, tall, 128).is_none());
+    assert!(png.rgba(engine, &frame, tall).is_none());
 }

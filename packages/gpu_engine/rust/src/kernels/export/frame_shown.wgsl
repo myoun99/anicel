@@ -3,7 +3,7 @@
 // one row to the next (`Shown`, mod.rs) — premultiplied, as every surface
 // the app shows is (premultiply.wgsl), red the low byte, or blue where the
 // surface is laid BGRA (`FRAME_BGRA`, set where the pass is compiled).
-// The three reads frame.wgsl gives for a run's tiles, on these rows.
+// Each pass reads its picture through the three reads below alone.
 //
 // A pass binds the rows it reads, not the frame whole (board
 // conversions-bind-a-frame-past-the-device-limit, 2026-11-17): its binding

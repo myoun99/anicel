@@ -25,9 +25,9 @@ fn export() -> &'static Export {
     unsafe { &*(made as *const Export) }
 }
 
-/// A run's output tiles for a picture of any colours and alphas.
-fn ran() -> Composited {
-    Composited { out: frame(WIDTH, HEIGHT, mixed(11)), passes: 0 }
+/// A frame shown of a picture of any colours and alphas.
+fn ran() -> Shown {
+    frame(WIDTH, HEIGHT, mixed(11))
 }
 
 /// All the bytes of `readout`, mapped and copied out as one row; the
@@ -60,30 +60,15 @@ fn picture() -> Picture {
 
 // ---- Each call is its pass ----
 
-// The five words in the order the call names them: picture, frame, rows —
-// each other than the rest, so two put in each other's place is a frame the
-// picture does not fit, or other rows.
-#[test]
-fn nv12_puts_the_frame_its_five_words_shape() {
-    let (frame, Rig { engine, nv12, .. }) = (ran(), rig());
-    let words = [WIDTH, HEIGHT, 38, 22, 44];
-    // SAFETY: all are live, made on `engine`; `words` holds five.
-    let readout = unsafe { gpu_engine_export_nv12(export(), *engine, &frame, words.as_ptr()) };
-    let shape = Nv12Shape { src_width: WIDTH, src_height: HEIGHT, width: 38, height: 22, y_stride: 44 };
-    let bytes = read_out(readout);
-    assert_eq!(bytes.len(), 44 * 22 * 3 / 2);
-    assert_eq!(bytes, put(nv12.run(engine, Frame::Tiles(&frame.out), shape), shape.bytes()));
-}
-
 // Red is the ground's low byte and blue its third; the fourth is no colour.
 #[test]
 fn over_ground_lays_the_ground_red_first() {
     let (frame, Rig { engine, over_ground, .. }) = (ran(), rig());
-    let want = put(over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [0x32, 0x64, 0xc8], None), picture().rgb_bytes());
+    let want = put(over_ground.run(engine, &frame, picture(), [0x32, 0x64, 0xc8], None), picture().rgb_bytes());
     assert_eq!(want.len(), (WIDTH * HEIGHT * 3) as usize, "three bytes a pixel, nothing between rows");
     for ground in [0x00c8_6432, 0xffc8_6432] {
         // SAFETY: all are live, made on `engine`.
-        let readout = unsafe { gpu_engine_export_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, ground, -1) };
+        let readout = unsafe { gpu_engine_export_shown_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, ground, -1) };
         assert_eq!(read_out(readout), want, "{ground:#x}");
     }
 }
@@ -94,9 +79,9 @@ fn over_ground_lays_the_ground_red_first() {
 fn over_ground_cuts_where_it_is_asked() {
     let (frame, Rig { engine, over_ground, .. }) = (ran(), rig());
     for (cut, as_run) in [(-1, None), (0, Some(0)), (200, Some(200)), (255, Some(255))] {
-        let want = put(over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [9, 99, 199], as_run), picture().rgb_bytes());
+        let want = put(over_ground.run(engine, &frame, picture(), [9, 99, 199], as_run), picture().rgb_bytes());
         // SAFETY: all are live, made on `engine`.
-        let readout = unsafe { gpu_engine_export_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0xc7_6309, cut) };
+        let readout = unsafe { gpu_engine_export_shown_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0xc7_6309, cut) };
         assert_eq!(read_out(readout), want, "cut {cut}");
     }
 }
@@ -106,45 +91,25 @@ fn over_ground_refuses_a_cut_that_is_no_alpha() {
     let frame = ran();
     for cut in [-2, 256] {
         // SAFETY: all are live, made on `engine`.
-        let readout = unsafe { gpu_engine_export_over_ground(export(), rig().engine, &frame, WIDTH, HEIGHT, 0, cut) };
+        let readout = unsafe { gpu_engine_export_shown_over_ground(export(), rig().engine, &frame, WIDTH, HEIGHT, 0, cut) };
         assert!(readout.is_null(), "cut {cut}");
         assert_eq!(last_error(), format!("a cut is an alpha or -1, not {cut}"));
     }
 }
 
-#[test]
-fn clear_marks_what_its_pass_marks() {
-    let (frame, Rig { engine, clear, .. }) = (ran(), rig());
-    let want = put(clear.run(engine, Frame::Tiles(&frame.out), picture(), 131), picture().clear_bytes());
-    assert_eq!(want.len(), (WIDTH * HEIGHT).div_ceil(32) as usize * 4);
-    // SAFETY: all are live, made on `engine`.
-    let readout = unsafe { gpu_engine_export_clear(export(), *engine, &frame, WIDTH, HEIGHT, 131) };
-    assert_eq!(read_out(readout), want);
-}
-
 // The answer is one word: 255 for a picture all opaque, less for one that
-// is not — the run's own pictures, both.
+// is not — both pictures shown.
 #[test]
 fn opaque_answers_in_one_word() {
     let Rig { engine, opaque, .. } = rig();
-    for (composited, all) in [(ran(), false), (Composited { out: frame(WIDTH, HEIGHT, |_, _| 0xff12_3456), passes: 0 }, true)] {
-        let want = put(opaque.run(engine, Frame::Tiles(&composited.out), picture()), 4);
+    for (shown, all) in [(ran(), false), (frame(WIDTH, HEIGHT, |_, _| 0xff12_3456), true)] {
+        let want = put(opaque.run(engine, &shown, picture()), 4);
         // SAFETY: all are live, made on `engine`.
-        let readout = unsafe { gpu_engine_export_opaque(export(), *engine, &composited, WIDTH, HEIGHT) };
+        let readout = unsafe { gpu_engine_export_shown_opaque(export(), *engine, &shown, WIDTH, HEIGHT) };
         let bytes = read_out(readout);
         assert_eq!(bytes, want);
         assert_eq!(u32::from_le_bytes(bytes.try_into().expect("a word")) == 255, all);
     }
-}
-
-#[test]
-fn png_rgba_filters_what_its_pass_filters() {
-    let (frame, Rig { engine, png, .. }) = (ran(), rig());
-    let want = put(png.rgba(engine, Frame::Tiles(&frame.out), picture()), picture().png_bytes(4));
-    assert_eq!(want.len(), HEIGHT as usize * 152, "37 x 4 + 1 bytes a row, filled out to 152");
-    // SAFETY: all are live, made on `engine`.
-    let readout = unsafe { gpu_engine_export_png_rgba(export(), *engine, &frame, WIDTH, HEIGHT) };
-    assert_eq!(read_out(readout), want);
 }
 
 // What over_ground put is the RGB rows' source as it stands on the GPU,
@@ -152,11 +117,11 @@ fn png_rgba_filters_what_its_pass_filters() {
 #[test]
 fn png_rgb_filters_over_grounds_rows() {
     let (frame, Rig { engine, over_ground, png, .. }) = (ran(), rig());
-    let rgb = over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [5, 6, 7], None).expect("over ground");
+    let rgb = over_ground.run(engine, &frame, picture(), [5, 6, 7], None).expect("over ground");
     let want = put(png.packed(engine, &rgb, picture(), 3), picture().png_bytes(3));
     assert_eq!(want.len(), HEIGHT as usize * 112, "37 x 3 + 1 bytes a row, filled out to 112");
     // SAFETY: all are live, made on `engine`.
-    let source = unsafe { gpu_engine_export_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0x07_0605, -1) };
+    let source = unsafe { gpu_engine_export_shown_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0x07_0605, -1) };
     for mapped in [false, true] {
         if mapped {
             // SAFETY: `source` is live, made on `engine`.
@@ -203,20 +168,20 @@ fn a_frame_its_pass_refuses_reads_out_nothing() {
     let frame = ran();
     let words = [WIDTH, HEIGHT, 37, 22, 40];
     // SAFETY: all are live, made on `engine`; `words` holds five.
-    let readout = unsafe { gpu_engine_export_nv12(export(), rig().engine, &frame, words.as_ptr()) };
+    let readout = unsafe { gpu_engine_export_shown_nv12(export(), rig().engine, &frame, words.as_ptr()) };
     assert!(readout.is_null());
     assert_eq!(last_error(), "an encoder's frame is even and not empty, not 37x22");
 }
 
 // ---- The readout ----
 
-/// The PNG rows of the run's picture, mapped: 21 rows of 152 bytes.
+/// The PNG rows of the picture shown, mapped: 21 rows of 152 bytes.
 fn mapped_rows() -> (*mut Readout, Vec<u8>) {
     let (frame, engine) = (ran(), rig().engine);
     // SAFETY: all are live, made on `engine`.
-    let whole = read_out(unsafe { gpu_engine_export_png_rgba(export(), engine, &frame, WIDTH, HEIGHT) });
+    let whole = read_out(unsafe { gpu_engine_export_shown_png_rgba(export(), engine, &frame, WIDTH, HEIGHT) });
     // SAFETY: all are live, made on `engine`.
-    let readout = unsafe { gpu_engine_export_png_rgba(export(), engine, &frame, WIDTH, HEIGHT) };
+    let readout = unsafe { gpu_engine_export_shown_png_rgba(export(), engine, &frame, WIDTH, HEIGHT) };
     // SAFETY: `readout` is live, made on `engine`.
     assert!(unsafe { gpu_engine_readout_map(engine, readout) }, "{}", last_error());
     (readout, whole)
@@ -293,7 +258,7 @@ fn rows_past_the_bytes_read_out_are_refused() {
 fn rows_are_read_only_once_mapped() {
     let frame = ran();
     // SAFETY: all are live, made on `engine`.
-    let readout = unsafe { gpu_engine_export_opaque(export(), rig().engine, &frame, WIDTH, HEIGHT) };
+    let readout = unsafe { gpu_engine_export_shown_opaque(export(), rig().engine, &frame, WIDTH, HEIGHT) };
     let mut word = [0u8; 4];
     // SAFETY: `readout` is live and `word` holds its four bytes.
     unsafe {
@@ -344,7 +309,7 @@ fn each_shown_call_is_its_pass_on_the_surfaces_picture() {
     // SAFETY: `surface` is live, made on `engine`.
     let texture = unsafe { &(*surface).texture };
     let ours = Shown::of(engine, texture, picture()).expect("shown");
-    let frame = Frame::Shown(&ours);
+    let frame = &ours;
     // SAFETY: all are live, made on `engine`.
     let shown = unsafe { gpu_engine_export_shown(*engine, surface, WIDTH, HEIGHT) };
     assert!(!shown.is_null(), "{}", last_error());

@@ -1,8 +1,7 @@
 // A PNG of four channels takes the frame straight (`frame_straight`):
 // RGBA, red the low byte of a pixel's word — a row's bytes in the PNG's own
 // order.
-// Needs tile.wgsl and its picture's reads (frame.wgsl or
-// frame_shown.wgsl) before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 const PIXEL_BYTES: u32 = 4u;
 

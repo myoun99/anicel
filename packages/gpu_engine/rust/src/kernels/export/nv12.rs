@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
 use crate::fail;
 
@@ -72,7 +72,7 @@ impl Nv12 {
     /// Converts the picture in `frame` and submits the work; the caller
     /// waits. Returns the buffer the NV12 bytes are in
     /// ([`Nv12Shape::bytes`] of them), to be copied out for reading.
-    pub(crate) fn run(&self, engine: &Engine, frame: Frame, shape: Nv12Shape) -> Option<wgpu::Buffer> {
+    pub(crate) fn run(&self, engine: &Engine, frame: &Shown, shape: Nv12Shape) -> Option<wgpu::Buffer> {
         shape.check()?;
         let picture = shape.picture();
         frame.holds(picture)?;
@@ -89,14 +89,14 @@ impl Nv12 {
         convert(
             engine,
             self.pipelines.of(engine, frame),
-            (frame.buffer(), &out),
+            (&frame.rows, &out),
             dispatch,
             |rows| [frame.words(picture, pixels(rows)), whole.clone()],
             |first_row, [frame_base, _]| {
                 // Inside u32: a word of a frame the shader indexes.
                 let frame_base = frame_base as u32;
                 let Nv12Shape { src_width, src_height, width, height, y_stride } = shape;
-                let stride = frame.stride(picture);
+                let stride = frame.stride;
                 vec![stride, src_width, src_height, width, height, y_stride, frame_base, first_row]
             },
         )?;

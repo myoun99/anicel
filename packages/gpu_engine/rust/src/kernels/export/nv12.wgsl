@@ -19,12 +19,10 @@
 //
 // The picture's alpha is not read, as the law reads none.
 //
-// Needs tile.wgsl and its picture's reads (frame.wgsl or
-// frame_shown.wgsl) before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   src_width: u32,
@@ -35,8 +33,8 @@ struct Params {
   // Bytes from one Y row to the next — and one CbCr row to the next: a
   // multiple of 4, at least the width.
   y_stride: u32,
-  // The word of the frame its binding begins on (frame.wgsl,
-  // frame_shown.wgsl take it off), and the first row of blocks this band
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), and the first row of blocks this band
   // puts: a pass binds the rows it reads (`convert`, mod.rs). The out is
   // bound whole: its Y and CbCr rows lie apart, and an encoder's frame of
   // 8K is 50 MB of it.

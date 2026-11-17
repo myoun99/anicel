@@ -5,11 +5,10 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::shared::{Encoded, Kernel, PREMULTIPLY_WGSL, TILE_WGSL, encode, plane, whole, words_buffer};
+use crate::kernels::shared::{Encoded, Kernel, TILE_WGSL, encode, plane, whole, words_buffer};
 
-/// The tile read the export's passes read their frame by: one law for
-/// where a pixel of a chain's tiles lies.
-const FRAME_WGSL: &str = include_str!("../export/frame.wgsl");
+/// The read of a chain's tiles: one law for where a pixel of them lies.
+const FRAME_WGSL: &str = include_str!("frame.wgsl");
 const TILES_WGSL: &str = include_str!("tiles.wgsl");
 
 /// The invocations a side of the passes' workgroups.
@@ -31,7 +30,7 @@ pub(crate) struct Tiles {
 
 impl Tiles {
     pub(crate) fn of(engine: &Engine) -> Self {
-        let sources = [TILE_WGSL, PREMULTIPLY_WGSL, FRAME_WGSL, TILES_WGSL];
+        let sources = [TILE_WGSL, FRAME_WGSL, TILES_WGSL];
         Self {
             rows_of: Kernel::of(engine, &sources, "plugin_rows_of_tiles"),
             tiles_of: Kernel::of(engine, &sources, "plugin_tiles_of_rows"),

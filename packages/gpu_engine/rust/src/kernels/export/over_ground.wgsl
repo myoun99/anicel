@@ -8,12 +8,10 @@
 // still_image_encoders.dart): a premultiplied channel p over the ground's
 // g is p + g·(255 − a) / 255, the division flooring. The app reads p from
 // Flutter's premultiplied bytes, as a frame the screen shows holds them
-// (frame_shown.wgsl); a run's frame is straight, so its p is the engine's
-// own premultiply first — the shared `premultiply8` (premultiply.wgsl,
-// the app's `premultiplyRgbaInPlace`), round(c·a / 255) (frame.wgsl).
-// An opaque pixel is its own colour — p = c and nothing of the
-// ground —, as the app's branch for it says. Integers only: a float step
-// may be fused or reassociated on one device and not another (fill.wgsl).
+// (frame_shown.wgsl). An opaque pixel is its own colour — p = c and
+// nothing of the ground —, as the app's branch for it says. Integers
+// only: a float step may be fused or reassociated on one device and not
+// another (fill.wgsl).
 // p <= a and g·(255 − a) / 255 <= 255 − a, so the sum is a byte.
 //
 // A GIF takes its colours the same way, with its alpha cut (①c): its
@@ -25,12 +23,11 @@
 // takes the place of. Cut at 0, none is under it and every pixel is its
 // own colour — a GIF that keeps no clear colour.
 //
-// Needs tile.wgsl, premultiply.wgsl and its picture's reads (frame.wgsl
-// or frame_shown.wgsl) before it.
+// Needs tile.wgsl, premultiply.wgsl and its picture's reads
+// (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   width: u32,
@@ -42,10 +39,10 @@ struct Params {
   ground: u32,
   // Where the alpha is cut; past 255, nowhere — its shades are laid.
   cut: u32,
-  // The word of the frame its binding begins on (frame.wgsl,
-  // frame_shown.wgsl take it off), the first row of runs this band puts,
-  // and the word of the out its binding begins on: a pass binds the rows
-  // it reads and puts (`convert`, mod.rs).
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), the first row of runs this band puts, and the word of
+  // the out its binding begins on: a pass binds the rows it reads and
+  // puts (`convert`, mod.rs).
   frame_base: u32,
   first_row: u32,
   out_base: u32,

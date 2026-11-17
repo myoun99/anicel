@@ -5,7 +5,7 @@
 
 use std::ops::Range;
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
 
 impl Picture {
@@ -45,7 +45,7 @@ impl OverGround {
     pub(crate) fn run(
         &self,
         engine: &Engine,
-        frame: Frame,
+        frame: &Shown,
         picture: Picture,
         ground: [u8; 3],
         cut: Option<u8>,
@@ -68,7 +68,7 @@ impl OverGround {
         convert(
             engine,
             self.pipelines.of(engine, frame),
-            (frame.buffer(), &out),
+            (&frame.rows, &out),
             dispatch,
             |rows| [frame.words(picture, pixels(runs(&rows))), puts(runs(&rows))],
             |first_row, [frame_base, out_base]| {
@@ -76,7 +76,7 @@ impl OverGround {
                 let (frame_base, out_base) = (frame_base as u32, out_base as u32);
                 let (width, height) = (picture.width, picture.height);
                 let [ground, cut] = colour;
-                let shape = [frame.stride(picture), width, height, row_groups, ground, cut];
+                let shape = [frame.stride, width, height, row_groups, ground, cut];
                 [&shape[..], &[frame_base, first_row, out_base, 0, 0, 0]].concat()
             },
         )?;

@@ -5,7 +5,7 @@
 use std::ops::Range;
 use std::sync::OnceLock;
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{kept_or_made, pipeline_with};
@@ -52,7 +52,7 @@ impl PngFilter {
     /// `frame` — and submits the work; the caller waits. Returns the buffer
     /// of the rows, [`Picture::png_row_bytes`] apart, each its filter's
     /// byte and its own under it.
-    pub(crate) fn rgba(&self, engine: &Engine, frame: Frame, picture: Picture) -> Option<wgpu::Buffer> {
+    pub(crate) fn rgba(&self, engine: &Engine, frame: &Shown, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
         frame.holds(picture)?;
         let pipeline = self.rgba.of(engine, frame);
@@ -60,7 +60,7 @@ impl PngFilter {
         let read = |rows: Range<u32>| {
             frame.words(picture, u64::from(rows.start) * width..u64::from(rows.end) * width)
         };
-        Self::run(engine, pipeline, (frame.buffer(), frame.stride(picture), read), picture, 4)
+        Self::run(engine, pipeline, (&frame.rows, frame.stride, read), picture, 4)
     }
 
     /// [`Self::rgba`] for a PNG whose bytes lie packed in `bytes`,

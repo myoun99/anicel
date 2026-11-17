@@ -4,7 +4,7 @@
 // read), and a plug-in reads and writes one row after row (fx_wgsl's
 // prelude.wgsl) — a pass each way on the device, so neither the plug-in's
 // spec nor its CPU run knows of tiles, and no picture leaves the GPU.
-// Needs tile.wgsl, premultiply.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and frame.wgsl before it.
 
 struct Params {
   // The tiles' step from one row of tiles to the next (frame.wgsl's).

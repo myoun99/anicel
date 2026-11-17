@@ -8,18 +8,16 @@
 // group's word, the group's word into the answer — AND gives the same
 // whatever order a device takes them in.
 //
-// Needs tile.wgsl and its picture's reads (frame.wgsl or
-// frame_shown.wgsl) before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   width: u32,
   height: u32,
-  // The word of the frame its binding begins on (frame.wgsl,
-  // frame_shown.wgsl take it off), and the first row of tiles this band
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), and the first row of tiles this band
   // asks: a pass binds the rows it reads (`convert`, mod.rs).
   frame_base: u32,
   first_row: u32,

@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use super::{Picture, Pipelines, Read, Shown};
+use super::{Picture, Pipelines, Shown};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
@@ -168,10 +168,10 @@ impl Lay {
                 cover.width, cover.height, onto.width, onto.height
             ));
         }
-        let (rows, read, stride, [x0, y0, width, height, sx, sy], solid, colour) = match source {
+        let (rows, bgra, stride, [x0, y0, width, height, sx, sy], solid, colour) = match source {
             Source::Frame { frame, x, y } => (
                 Some(&frame.rows),
-                Read::Shown { bgra: frame.bgra },
+                frame.bgra,
                 frame.stride,
                 overlap(region(onto, within), (frame.width, frame.height), (x, y)),
                 0,
@@ -179,7 +179,7 @@ impl Lay {
             ),
             Source::Solid(colour) => (
                 None,
-                Read::Shown { bgra: false },
+                false,
                 0,
                 overlap(region(onto, within), (onto.width, onto.height), (0, 0)),
                 1,
@@ -253,7 +253,7 @@ impl Lay {
             params.push(words_buffer(engine, "export lay params", &words, wgpu::BufferUsages::UNIFORM));
             bound.push([(1, rows_bound), (2, onto_bound), (3, cover_bound)]);
         }
-        let pipeline = self.pipelines.reading(engine, read);
+        let pipeline = self.pipelines.reading(engine, bgra);
         let passes: Vec<Encoded> = params
             .iter()
             .zip(bound)

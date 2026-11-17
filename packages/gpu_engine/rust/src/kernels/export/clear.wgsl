@@ -7,12 +7,10 @@
 // Pixel i is bit i % 32 of word i / 32, counted row after row with nothing
 // between, as the colours are.
 //
-// Needs tile.wgsl and its picture's reads (frame.wgsl or
-// frame_shown.wgsl) before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   width: u32,
@@ -22,8 +20,8 @@ struct Params {
   row_words: u32,
   // A pixel whose alpha is under it is clear.
   cut: u32,
-  // The word of the frame its binding begins on (frame.wgsl,
-  // frame_shown.wgsl take it off), and the first row of words this band
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), and the first row of words this band
   // puts: a pass binds the rows its pixels lie on (`convert`, mod.rs).
   frame_base: u32,
   first_row: u32,

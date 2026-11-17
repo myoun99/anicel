@@ -1,7 +1,7 @@
 //! The export's conversions before the readback (gpu-export-path ①, 저장):
-//! a frame the composite left in its output tiles, turned on the GPU into
-//! the bytes its writer takes, so fewer cross to the CPU — the readback
-//! was the largest single cost (960×540: 27 ms against the encoder's 5.5).
+//! a frame as the screen shows it, turned on the GPU into the bytes its
+//! writer takes, so fewer cross to the CPU — the readback was the largest
+//! single cost (960×540: 27 ms against the encoder's 5.5).
 //!
 //! - `nv12` — a movie's frame for its encoder (①a).
 //! - `over_ground` — a still's frame over its format's background, for the
@@ -18,8 +18,14 @@
 //!   (①⑶).
 //!
 //! Each kernel reads its picture through three reads — straight,
-//! premultiplied, its alpha — that `frame.wgsl` gives on a run's output
-//! tiles and `frame_shown.wgsl` on a frame as the screen shows it
+//! premultiplied, its alpha — that `frame_shown.wgsl` gives on a frame as
+//! the screen shows it ([`Shown`]), and runs over it a band of rows at a
+//! time ([`convert`]).
+//!
+//! ↩️Till 2026-11-17 a pass read a run's output tiles too (`frame.wgsl`,
+//! now the plug-ins'), each conversion a call for either: no call of the
+//! app's reached the tiles' after 4f10d408f, and they went (card
+//! the-export-s-tile-entries-have-no-caller).
 //! ([`Frame`]), and runs over it a band of rows at a time ([`convert`]).
 
 pub(crate) mod abi;
@@ -50,95 +56,14 @@ use std::sync::OnceLock;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
+use crate::kernels::composite::TILE;
 use crate::kernels::shared::{
     Encoded, PREMULTIPLY_WGSL, TILE_WGSL, bands, buffer_holds, encode, fits, flat, kept_or_made, pipeline_with,
     plane, room, whole, words_bound, words_buffer,
 };
 
-/// The three reads on a run's output tiles.
-const FRAME_WGSL: &str = include_str!("frame.wgsl");
-
 /// The three reads on a frame as the screen shows it.
 const FRAME_SHOWN_WGSL: &str = include_str!("frame_shown.wgsl");
-
-/// The picture a pass converts.
-#[derive(Clone, Copy)]
-pub(crate) enum Frame<'a> {
-    /// A run's output tiles for it, asked row by row from its top-left
-    /// tile: straight.
-    Tiles(&'a wgpu::Buffer),
-    /// A frame as the screen shows it.
-    Shown(&'a Shown),
-}
-
-/// How a pass reads its picture: each is a pipeline of its own.
-#[derive(Clone, Copy)]
-enum Read {
-    Tiles,
-    Shown { bgra: bool },
-}
-
-impl Frame<'_> {
-    fn read(&self) -> Read {
-        match self {
-            Self::Tiles(_) => Read::Tiles,
-            Self::Shown(shown) => Read::Shown { bgra: shown.bgra },
-        }
-    }
-
-    /// What the pass binds its picture as.
-    fn buffer(&self) -> &wgpu::Buffer {
-        match self {
-            Self::Tiles(tiles) => tiles,
-            Self::Shown(shown) => &shown.rows,
-        }
-    }
-
-    /// The pass's `stride`: tiles a row, or words.
-    fn stride(&self, picture: Picture) -> u32 {
-        match self {
-            Self::Tiles(_) => picture.tiles().0,
-            Self::Shown(shown) => shown.stride,
-        }
-    }
-
-    /// The words of the frame that `pixels` of `picture` — counted row
-    /// after row across it — lie on: a frame shown's rows between, a run's
-    /// rows of tiles. None for none.
-    fn words(&self, picture: Picture, pixels: Range<u64>) -> Range<u64> {
-        if pixels.is_empty() {
-            return 0..0;
-        }
-        let width = u64::from(picture.width);
-        let (first, last) = (pixels.start, pixels.end - 1);
-        match self {
-            Self::Shown(shown) => {
-                let word = |at: u64| at / width * u64::from(shown.stride) + at % width;
-                word(first)..word(last) + 1
-            }
-            Self::Tiles(_) => {
-                let tile_row = |at: u64| at / width / u64::from(TILE);
-                let words = u64::from(picture.tiles().0) * TILE_TEXELS;
-                tile_row(first) * words..(tile_row(last) + 1) * words
-            }
-        }
-    }
-
-    /// None, with why, unless the frame holds `picture`.
-    fn holds(&self, picture: Picture) -> Option<()> {
-        match self {
-            Self::Tiles(tiles) => holds(tiles, picture.tiles()),
-            Self::Shown(shown) if picture.width > shown.width || picture.height > shown.height => {
-                fail(format!(
-                    "a {}x{} picture is not in a {}x{} frame",
-                    picture.width, picture.height, shown.width, shown.height
-                ))
-            }
-            Self::Shown(_) => Some(()),
-        }
-    }
-}
 
 /// A frame as the screen shows it, for the export's passes
 /// (gpu-export-path ①⑴): a surface's texels copied on the GPU into rows a
@@ -202,15 +127,36 @@ impl Shown {
         engine.queue.submit([encoder.finish()]);
         Some(Self { rows, stride: row / 4, width, height, bgra })
     }
+
+    /// The words of the frame that `pixels` of `picture` — counted row
+    /// after row across it — lie on: its rows between. None for none.
+    fn words(&self, picture: Picture, pixels: Range<u64>) -> Range<u64> {
+        if pixels.is_empty() {
+            return 0..0;
+        }
+        let width = u64::from(picture.width);
+        let word = |at: u64| at / width * u64::from(self.stride) + at % width;
+        word(pixels.start)..word(pixels.end - 1) + 1
+    }
+
+    /// None, with why, unless the frame holds `picture`.
+    fn holds(&self, picture: Picture) -> Option<()> {
+        if picture.width > self.width || picture.height > self.height {
+            return fail(format!(
+                "a {}x{} picture is not in a {}x{} frame",
+                picture.width, picture.height, self.width, self.height
+            ));
+        }
+        Some(())
+    }
 }
 
-/// A pass's pipelines, one a [`Read`]: compiled ahead for the reads a
-/// frame the app hands a pass takes ([`Self::warm`]), and where it is
-/// first asked for the rest.
+/// A pass's pipelines, one for a frame laid RGBA and one for a frame laid
+/// BGRA: compiled ahead for the frames the app hands a pass
+/// ([`Self::warm`]), and where one is first asked till then.
 struct Pipelines {
     own: &'static [&'static str],
     entry: &'static str,
-    tiles: OnceLock<wgpu::ComputePipeline>,
     rgba: OnceLock<wgpu::ComputePipeline>,
     bgra: OnceLock<wgpu::ComputePipeline>,
 }
@@ -220,7 +166,6 @@ impl Pipelines {
         Self {
             own,
             entry,
-            tiles: OnceLock::new(),
             rgba: OnceLock::new(),
             bgra: OnceLock::new(),
         }
@@ -228,29 +173,24 @@ impl Pipelines {
 
     /// Compiles the pass for the frames the export makes and for frames
     /// shown on surfaces laid `bgra` or not, so a frame the app hands it
-    /// waits for no compile. ⛔Not for a run's tiles: no verb the app
-    /// binds hands a pass those.
+    /// waits for no compile.
     fn warm(&self, engine: &Engine, bgra: bool) {
-        self.reading(engine, Read::Shown { bgra: false });
+        self.reading(engine, false);
         if bgra {
-            self.reading(engine, Read::Shown { bgra: true });
+            self.reading(engine, true);
         }
     }
 
     /// The pipeline that reads its picture as `frame` is read.
-    fn of(&self, engine: &Engine, frame: Frame) -> &wgpu::ComputePipeline {
-        self.reading(engine, frame.read())
+    fn of(&self, engine: &Engine, frame: &Shown) -> &wgpu::ComputePipeline {
+        self.reading(engine, frame.bgra)
     }
 
-    /// The pipeline that reads its picture by `read`.
-    fn reading(&self, engine: &Engine, read: Read) -> &wgpu::ComputePipeline {
-        let (compiled, reads, bgra) = match read {
-            Read::Tiles => (&self.tiles, FRAME_WGSL, false),
-            Read::Shown { bgra: false } => (&self.rgba, FRAME_SHOWN_WGSL, false),
-            Read::Shown { bgra: true } => (&self.bgra, FRAME_SHOWN_WGSL, true),
-        };
+    /// The pipeline that reads a frame laid `bgra` or not.
+    fn reading(&self, engine: &Engine, bgra: bool) -> &wgpu::ComputePipeline {
+        let compiled = if bgra { &self.bgra } else { &self.rgba };
         kept_or_made(compiled, || {
-            let sources = [&[TILE_WGSL, PREMULTIPLY_WGSL, reads], self.own].concat();
+            let sources = [&[TILE_WGSL, PREMULTIPLY_WGSL, FRAME_SHOWN_WGSL], self.own].concat();
             let constants: &[(&str, f64)] = if bgra { &[("FRAME_BGRA", 1.0)] } else { &[] };
             pipeline_with(engine, &sources, self.entry, constants)
         })
@@ -281,19 +221,6 @@ impl Picture {
         }
         Some(())
     }
-}
-
-/// None, with why, unless `frame` holds the tiles — a row of them, rows —
-/// its picture is in.
-fn holds(frame: &wgpu::Buffer, (columns, rows): (u32, u32)) -> Option<()> {
-    let needed = u64::from(columns * rows) * TILE_TEXELS * 4;
-    if frame.size() < needed {
-        return fail(format!(
-            "{columns}x{rows} tiles take {needed} bytes; the frame has {}",
-            frame.size()
-        ));
-    }
-    Some(())
 }
 
 /// A new plane of `bytes` for a pass to put in, bound a band at a time

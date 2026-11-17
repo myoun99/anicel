@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
 
 impl Picture {
@@ -28,7 +28,7 @@ impl Straight {
     /// Makes the picture in `frame` straight, and submits the work; the
     /// caller waits. Returns the buffer of its pixels
     /// ([`Picture::rgba_bytes`] of them), red first.
-    pub(crate) fn run(&self, engine: &Engine, frame: Frame, picture: Picture) -> Option<wgpu::Buffer> {
+    pub(crate) fn run(&self, engine: &Engine, frame: &Shown, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
         frame.holds(picture)?;
         let out = out_plane(engine, "straight out", picture.rgba_bytes())?;
@@ -39,13 +39,13 @@ impl Straight {
         convert(
             engine,
             self.pipelines.of(engine, frame),
-            (frame.buffer(), &out),
+            (&frame.rows, &out),
             dispatch,
             |rows| [frame.words(picture, pixels(rows.clone())), pixels(rows)],
             |first_row, [frame_base, out_base]| {
                 // Inside u32: words of planes the shader indexes.
                 let (frame_base, out_base) = (frame_base as u32, out_base as u32);
-                let stride = frame.stride(picture);
+                let stride = frame.stride;
                 vec![stride, picture.width, picture.height, frame_base, first_row, out_base, 0, 0]
             },
         )?;

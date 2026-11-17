@@ -4,7 +4,7 @@
 
 use super::shown_tests::{shown, shown_on};
 use super::tests::rig;
-use super::{Clear, Cover, Frame, Lay, Picture, Shown, Source};
+use super::{Clear, Cover, Lay, Picture, Shown, Source};
 use crate::device::Engine;
 use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
@@ -139,9 +139,9 @@ fn a_frame_laid_is_read_by_the_conversions() {
     lay(&frame, &uploaded(2, 2, |_, _| RED), (1, 0), u16::MAX, None);
     let picture = Picture { width: 5, height: 2 };
 
-    let opaque = rig.opaque.run(rig.engine, Frame::Shown(&frame), picture).expect("opaque");
+    let opaque = rig.opaque.run(rig.engine, &frame, picture).expect("opaque");
     assert_eq!(read_buffer(rig.engine, &opaque)[..4], 255u32.to_le_bytes());
-    let rgb = rig.over_ground.run(rig.engine, Frame::Shown(&frame), picture, [0, 0, 0], None);
+    let rgb = rig.over_ground.run(rig.engine, &frame, picture, [0, 0, 0], None);
     let rgb = read_buffer(rig.engine, &rgb.expect("over ground"));
     assert_eq!(rgb[..9], [255, 255, 255, 255, 0, 0, 255, 0, 0]);
 }
@@ -357,7 +357,7 @@ fn a_frame_past_the_device_s_binding_is_read_for_its_clear_bits() {
         .expect("a picture past a binding");
     let source = Source::Frame { frame: &picture, x: -30, y: 25 };
     lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
-    let bits = Clear::new().run(&engine, Frame::Shown(&frame), SMALL.0, 128).expect("clear bits");
+    let bits = Clear::new().run(&engine, &frame, SMALL.0, 128).expect("clear bits");
 
     engine.wait().expect("the device refused no binding");
     let mut expected = vec![0u32; (330 * 200usize).div_ceil(32)];

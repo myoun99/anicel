@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert, out_plane};
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
 
 impl Picture {
@@ -36,7 +36,7 @@ impl Clear {
     /// refused past lavapipe's 128 MiB until a pass bound the rows it reads
     /// ([`convert`]; board conversions-bind-a-frame-past-the-device-limit,
     /// 2026-11-17).
-    pub(crate) fn run(&self, engine: &Engine, frame: Frame, picture: Picture, cut: u8) -> Option<wgpu::Buffer> {
+    pub(crate) fn run(&self, engine: &Engine, frame: &Shown, picture: Picture, cut: u8) -> Option<wgpu::Buffer> {
         picture.check()?;
         frame.holds(picture)?;
         let row_words = picture.width.div_ceil(32);
@@ -52,13 +52,13 @@ impl Clear {
         convert(
             engine,
             self.pipelines.of(engine, frame),
-            (frame.buffer(), &out),
+            (&frame.rows, &out),
             dispatch,
             |rows| [frame.words(picture, pixels(rows)), bits.clone()],
             |first_row, [frame_base, _]| {
                 // Inside u32: a word of a frame the shader indexes.
                 let frame_base = frame_base as u32;
-                let (stride, cut) = (frame.stride(picture), u32::from(cut));
+                let (stride, cut) = (frame.stride, u32::from(cut));
                 vec![stride, picture.width, picture.height, row_words, cut, frame_base, first_row, 0]
             },
         )?;

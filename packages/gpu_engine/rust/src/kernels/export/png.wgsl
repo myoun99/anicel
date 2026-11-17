@@ -22,16 +22,15 @@
 // (png_rgba.wgsl or png_packed.wgsl).
 
 struct Params {
-  // The frame's step from one row to the next (frame.wgsl,
-  // frame_shown.wgsl).
+  // The frame's step from one row to the next (frame_shown.wgsl).
   stride: u32,
   // The picture.
   width: u32,
   height: u32,
   // Words a row of the out takes: its filter's byte and its own.
   row_words: u32,
-  // The word of the source its binding begins on (frame.wgsl,
-  // frame_shown.wgsl or png_packed.wgsl take it off), the first row this
+  // The word of the source its binding begins on (frame_shown.wgsl
+  // or png_packed.wgsl take it off), the first row this
   // band puts, and the word of the out its binding begins on: a pass binds
   // the rows it reads — a row's own and the one above — and puts
   // (`convert`, mod.rs).

@@ -36,9 +36,10 @@ use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
     gpu_engine_export_cover, gpu_engine_export_cover_free, gpu_engine_export_free, gpu_engine_export_new,
-    gpu_engine_export_opaque, gpu_engine_export_shown,
+    gpu_engine_export_shown, gpu_engine_export_shown_opaque,
     gpu_engine_export_shown_free, gpu_engine_readout_free,
 };
+use crate::kernels::export::{Picture, Shown};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new};
 use crate::kernels::flood::abi::{
@@ -175,10 +176,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             gives_back(name, made, gpu_engine_export_free)
         }),
         ("gpu_engine_readout_free", |name| {
+            let frame = Shown::blank(first_engine(), Picture { width: 1, height: 1 }).expect("a frame");
             // SAFETY: the engine is live.
-            let (export, frame) = (unsafe { gpu_engine_export_new(first_engine()) }, composited());
+            let export = unsafe { gpu_engine_export_new(first_engine()) };
             // SAFETY: all are live, made on the engine.
-            let made = unsafe { gpu_engine_export_opaque(export, first_engine(), &frame, 1, 1) };
+            let made = unsafe { gpu_engine_export_shown_opaque(export, first_engine(), &frame, 1, 1) };
             gives_back(name, made, gpu_engine_readout_free);
             // SAFETY: `export` is live.
             unsafe { gpu_engine_export_free(export) };

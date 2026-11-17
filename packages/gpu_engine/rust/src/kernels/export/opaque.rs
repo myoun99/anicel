@@ -1,7 +1,7 @@
 //! Whether a frame is opaque, so its PDF picture goes without alpha
 //! (gpu-export-path ①d) — `opaque.wgsl` has the law.
 
-use super::{Dispatch, Frame, Picture, Pipelines, convert};
+use super::{Dispatch, Picture, Pipelines, Shown, convert};
 use crate::device::Engine;
 use crate::kernels::composite::TILE;
 use crate::kernels::shared::words_buffer;
@@ -22,7 +22,7 @@ impl Opaque {
     /// submits the work; the caller waits. Returns the buffer of the
     /// answer, one little-endian u32: 255 when every pixel is, less when
     /// one is not.
-    pub(crate) fn run(&self, engine: &Engine, frame: Frame, picture: Picture) -> Option<wgpu::Buffer> {
+    pub(crate) fn run(&self, engine: &Engine, frame: &Shown, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
         frame.holds(picture)?;
         let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
@@ -38,13 +38,13 @@ impl Opaque {
         convert(
             engine,
             self.pipelines.of(engine, frame),
-            (frame.buffer(), &answer),
+            (&frame.rows, &answer),
             Dispatch { rows: tile_rows, unit: 1, across },
             |rows| [frame.words(picture, pixels(rows)), 0..1],
             |first_row, [frame_base, _]| {
                 // Inside u32: a word of a frame the shader indexes.
                 let frame_base = frame_base as u32;
-                vec![frame.stride(picture), picture.width, picture.height, frame_base, first_row, 0, 0, 0]
+                vec![frame.stride, picture.width, picture.height, frame_base, first_row, 0, 0, 0]
             },
         )?;
         Some(answer)
