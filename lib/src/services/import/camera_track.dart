@@ -218,7 +218,11 @@ const _Way _straight = (
 
 /// The value held from the key on, AE's Hold — what CLIP STUDIO's
 /// `Constant` plays.
-const _Way _held = (leaving: KeyExit.hold, arriving: KeySide.linear, bend: null);
+const _Way _held = (
+  leaving: KeyExit.hold,
+  arriving: KeySide.linear,
+  bend: null,
+);
 
 /// A handle that reaches nowhere: the side of a key a bent way does not
 /// leave or reach it by.
@@ -474,7 +478,9 @@ typedef _Bend = ({CanvasPoint ahead, CanvasPoint behind});
 /// start read more finely — each value's parameter read again as the
 /// curve's nearest point (Newton, as Schneider's fit does) and the ease
 /// started from how far along the curve each value stands — changed no
-/// key on blu and moved its worst miss by 1e-7px (measured 2026-11-17).
+/// key on blu and moved its worst miss by 1e-7px (measured 2026-11-17);
+/// nor did the ease fitted from straight handles, or from influences of a
+/// half (its worst miss 0.94px → 0.96px; by 1e-6px).
 /// The even pace's own fit is not such a start: without it blu's
 /// position came in on eight keys, not six.
 List<_Way> _bentWays(
@@ -566,8 +572,15 @@ List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
 /// the way's two keys — that passes nearest the values between in space,
 /// each at the parameter of how far along the line through them it stands
 /// ([_controlsNearest]): where [_bentWays]' own fit starts from. Null where
-/// fewer than two values stand between, which two controls cannot be read
-/// from, or where every value stands at one point.
+/// no one cubic comes nearest them — as where every value stands at one
+/// point — and where fewer than two values stand between.
+///
+/// 🚨ONE VALUE BETWEEN SAYS NO BEND. Its two numbers cannot read a way's
+/// four handle numbers; the solve still answers where rounding leaves its
+/// one-point normal equations short of singular, and a fit from that answer
+/// laid a bend the file never drew — a three-frame turn came in on its two
+/// ends, a handle 400px out (measured 2026-11-17). Its middle frame keeps
+/// its key.
 (Offset, Offset)? _nearestCurve(List<CanvasPoint> values, int from, int to) {
   if (to - from < 3) {
     return null;
@@ -583,9 +596,6 @@ List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
   for (final point in [...between, end]) {
     along.add(along.last + (point - last).distance);
     last = point;
-  }
-  if (along.last <= 0) {
-    return null;
   }
   return _controlsNearest(start, end, between, [
     for (var index = 1; index <= between.length; index += 1)

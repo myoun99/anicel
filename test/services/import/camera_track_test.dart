@@ -262,6 +262,20 @@ void main() {
     expectPlaysBack(poses, camera);
   });
 
+  test('🚨a turn of one frame keeps its key: one value between says no '
+      'bend', () {
+    // Rounding leaves the one-point solve an answer here, 400px out.
+    final poses = baked(
+      3,
+      (f) => f == 1 ? pose(113.7, 211.9) : pose(100 + 50.0 * f, 80),
+    );
+    final camera = keyed(poses);
+
+    expect(camera.keyframes.keys, [0, 1, 2]);
+    expect(camera.track.position.keys[0]!.path, isA<StraightPath>());
+    expectPlaysBack(poses, camera);
+  });
+
   test('a key stands on every frame the file keys — even where one straight '
       'way through it would do (유저 10-09: 「구조적으론 원본 그대로를 '
       '원해」)', () {
