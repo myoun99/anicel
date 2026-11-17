@@ -433,6 +433,11 @@ fn a_quick_run_in_many_chunks_waits_for_the_device_a_batch_at_a_time() {
     // Batches of 1, 2, 4 and 8, then 31 of 16 and the last one, and the
     // output read — 513 were it a wait a chunk.
     assert_eq!(waited, 4 + 31 + 1 + 1, "waits for 512 chunks");
+    // Held to one no batch keeps: a wait a chunk, as before batches.
+    let none = Batches::within(Duration::ZERO);
+    let waits = gpu_engine_waits_here();
+    plugin.run(engine, &given.frame(), &mut output, 1, none).expect("the device ran it").expect("not cut");
+    assert_eq!(gpu_engine_waits_here() - waits, 512 + 1, "a wait a chunk");
 }
 
 #[test]
