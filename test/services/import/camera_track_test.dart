@@ -198,9 +198,20 @@ void main() {
     expect(coarser.keys[0]!.outgoing, isA<EaseSide>(), reason: '0.05px');
   });
 
-  test('a way out and back by a pixel is one straight way — no ease bends a '
-      'way that ends where it starts, and the pixel is as far as it may '
-      'be', () {
+  test('a way out and back by as far as it may be is one straight way on a '
+      'lane that walks no path — no ease bends a way that ends where it '
+      'starts, and the tolerance is as far as it may be — and on a path it '
+      'bends out and back', () {
+    // 0.04° at the middle frame, none at either end: the turn's tolerance.
+    final turning = baked(
+      25,
+      (f) => pose(100, 80, turn: 0.04 * (1 - math.pow((f - 12) / 12, 2))),
+    );
+    final rotation = keyed(turning).track.rotation;
+
+    expect(rotation.keys.keys, [0, 24]);
+    expect(rotation.keys[0]!.outgoing, KeySide.linear);
+
     final poses = baked(
       25,
       (f) => pose(100 + math.sin(math.pi * f / 24), 80),
@@ -208,7 +219,11 @@ void main() {
     final position = keyed(poses).track.position;
 
     expect(position.keys.keys, [0, 24]);
-    expect(position.keys[0]!.outgoing, KeySide.linear);
+    expect(
+      position.keys[0]!.path,
+      isA<SplitPath>(),
+      reason: 'the path goes out to 101 and comes back to 100',
+    );
     expectPlaysBack(poses, keyed(poses));
   });
 
@@ -428,6 +443,13 @@ void main() {
         rotation: const [],
       ),
     ).anchorPoint;
+
+    expect(
+      lane.keys.keys,
+      [0, 24],
+      reason: 'one way, bent round the quarter as the anchor turns it',
+    );
+    expect(lane.keys[0]!.path, isA<SplitPath>());
 
     anchors.forEach((frame, anchor) {
       final shown = resolveAnchorTrackAtTime(lane, frame.toDouble())!;

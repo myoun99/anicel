@@ -92,6 +92,19 @@ final class CubicWalk {
     return (lo + f) / _steps;
   }
 
+  /// How far along it, as a share of its way, the point at its parameter
+  /// [u] stands — [parameterAt] undone; [u] itself for the straight line.
+  double wayAtParameter(double u) {
+    final lengths = _lengths;
+    if (lengths == null || lengths[_steps] <= 0) {
+      return u;
+    }
+    final at = u.clamp(0.0, 1.0) * _steps;
+    final lo = math.min(at.floor(), _steps - 1);
+    final along = lengths[lo] + (lengths[lo + 1] - lengths[lo]) * (at - lo);
+    return along / lengths[_steps];
+  }
+
   /// The even step of the parameter the point [s] of the way falls in, and
   /// how far into it.
   ({int lo, double f}) _stepAt(double s) {

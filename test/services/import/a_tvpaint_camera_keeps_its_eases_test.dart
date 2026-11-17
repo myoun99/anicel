@@ -131,6 +131,73 @@ void main() {
     expectPlaysAsBaked(camera, baked);
   });
 
+  /// 🗣️Card `tvp-camera-keys-only-where-needed` (유저 2026-11-17: 「원본tvp에
+  /// 비해서 카메라키가 너무 많은데 … 필요한 키만으로 구현할수있지않나」).
+  test('🎯a pan along a path TVPaint\'s handles bend is its two keys and the '
+      'path between them bent as TVPaint bends it — not a key wherever a '
+      'straight line leaves it', () {
+    final from = point(0, 100);
+    final to = point(24, 1100, flags: 1);
+    final points = [
+      TvppCameraPoint(
+        x: from.x,
+        y: from.y,
+        rotationDegrees: 0,
+        zoomFactor: 1,
+        sizeX: 1920,
+        sizeY: 1080,
+        instant: from.instant,
+        flags: from.flags,
+        bezierBeforeX: 0,
+        bezierBeforeY: 0,
+        bezierAfterX: 200,
+        bezierAfterY: -400,
+      ),
+      TvppCameraPoint(
+        x: to.x,
+        y: to.y,
+        rotationDegrees: 0,
+        zoomFactor: 1,
+        sizeX: 1920,
+        sizeY: 1080,
+        instant: to.instant,
+        flags: to.flags,
+        bezierBeforeX: -200,
+        bezierBeforeY: 400,
+        bezierAfterX: 0,
+        bezierAfterY: 0,
+      ),
+    ];
+    final baked = bakeTvppCamera(
+      points,
+      TvppCameraChannels(
+        position: [straight, straight],
+        rotation: [straight, straight],
+        zoom: [straight, straight],
+        size: [straight, straight],
+      ),
+      frameCount: 25,
+    );
+    final camera = planTvpCamera(
+      camera: TvpCamera(
+        width: 1920,
+        height: 1080,
+        keyedOn: tvppCameraKeyFrames(points),
+        positions: baked,
+      ),
+      frameCount: 25,
+    );
+    final position = camera.track.position;
+
+    expect(position.keys.keys, [0, 24]);
+    expect(
+      position.keys[0]!.path,
+      isA<SplitPath>(),
+      reason: 'it leaves along TVPaint\'s handle, up and to the right',
+    );
+    expectPlaysAsBaked(camera, baked);
+  });
+
   test('each channel on its own keys: the zoom and the turn TVPaint keys '
       'only on the first key are one key each, however the position '
       'moves', () {
