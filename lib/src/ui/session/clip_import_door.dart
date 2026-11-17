@@ -265,12 +265,15 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   );
 }
 
-/// One picture to bake, the cut it lands in, what its pixels come out of,
-/// and where that is in the file — and the mask it is baked through, with
-/// where that mask's blocks are.
+/// One picture to bake, the cut it lands in and the wall of the store its
+/// cel is laid in — what a worker cuts the picture at, and what the cel then
+/// says it stands behind — what its pixels come out of, and where that is
+/// in the file — and the mask it is baked through, with where that mask's
+/// blocks are.
 typedef _ClipWork = ({
   ClipCelBake bake,
   Cut cut,
+  PasteboardWall wall,
   _ClipSource source,
   List<ClipPlace> places,
   ({ClipBakedMask mask, ClipPlace place})? mask,
@@ -500,11 +503,13 @@ final class ClipImportDoor {
   ) {
     final work = <_ClipWork>[];
     final turned = <int>{};
+    final reach = _renderCaches.brushFrameStore.pasteboardReach;
     for (final bake in plan.bakes) {
       final cut = _project.cutById(bake.cutId);
       if (cut == null) {
         continue;
       }
+      final wall = cut.canvasSize.pasteboardAt(reach);
       // A vector layer is drawn from its strokes, however few: the render
       // it keeps beside them has no blocks in the file.
       if (bake.source.kind == ClipLayerKind.vector) {
@@ -518,6 +523,7 @@ final class ClipImportDoor {
         work.add((
           bake: bake,
           cut: cut,
+          wall: wall,
           source: const _Strokes(),
           places: [...places.nonNulls],
           mask: _maskOf(bake, container, warnings),
@@ -536,6 +542,7 @@ final class ClipImportDoor {
         work.add((
           bake: bake,
           cut: cut,
+          wall: wall,
           source: _Letters([
             for (final one in drawn) (text: one.text, picture: one.picture),
           ]),
@@ -565,6 +572,7 @@ final class ClipImportDoor {
       work.add((
         bake: bake,
         cut: cut,
+        wall: wall,
         source: _StoredPicture(picture),
         places: [blocks],
         mask: _maskOf(bake, container, warnings),
@@ -604,8 +612,7 @@ final class ClipImportDoor {
     ClipCelTarget at(int left, int top) => (
       left: left,
       top: top,
-      canvasWidth: item.cut.canvasSize.width,
-      canvasHeight: item.cut.canvasSize.height,
+      wall: item.wall,
       alpha: item.bake.alpha,
       tileSize: defaultCelTileSize,
     );
@@ -694,7 +701,7 @@ final class ClipImportDoor {
     bakeCelSurface(
       _renderCaches.brushFrameStore,
       _keyOf(item),
-      laidCelSurface(decoded),
+      laidCelSurface(decoded, standsBehind: item.wall.reach),
     );
   }
 
@@ -708,7 +715,7 @@ final class ClipImportDoor {
     bakeCelTiles(
       _renderCaches.brushFrameStore,
       _keyOf(item),
-      item.cut.canvasSize,
+      item.wall,
       tiles,
     );
   }
@@ -738,7 +745,7 @@ final class ClipImportDoor {
       if (plate == null) {
         setHere = true;
         try {
-          plate = await _plateSetHere(text.content, item.cut.canvasSize);
+          plate = await _plateSetHere(text.content, item.wall);
         } on Object catch (error) {
           warnings.add(_unreadable(item.bake, '$error'));
           continue;
@@ -762,15 +769,20 @@ final class ClipImportDoor {
     bakeCelSurface(
       _renderCaches.brushFrameStore,
       _keyOf(item),
-      BitmapSurface(canvasSize: item.cut.canvasSize, texts: texts),
+      BitmapSurface(
+        canvasSize: item.wall.canvas,
+        pasteboardReach: item.wall.reach,
+        texts: texts,
+      ),
     );
   }
 
-  /// [content]'s plate as this app sets it — once the faces it is set in
-  /// that are on their way have arrived, as the text tool waits for them.
+  /// [content]'s plate as this app sets it, behind [wall] — once the faces
+  /// it is set in that are on their way have arrived, as the text tool
+  /// waits for them.
   Future<Map<TileCoord, BitmapTile>> _plateSetHere(
     CelTextContent content,
-    CanvasSize canvas,
+    PasteboardWall wall,
   ) async {
     final arriving = celTextFacesArriving(content);
     if (arriving != null) {
@@ -780,10 +792,7 @@ final class ClipImportDoor {
     try {
       return await bakeCelTextPlate(
         layout,
-        // Cut at the wall of the store it is laid in.
-        pasteboard: canvas.pasteboardAt(
-          _renderCaches.brushFrameStore.pasteboardReach,
-        ),
+        pasteboard: wall,
         tileSize: defaultCelTileSize,
       );
     } finally {

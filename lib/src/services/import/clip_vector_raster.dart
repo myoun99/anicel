@@ -15,8 +15,6 @@ import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
-import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../native/app_gpu_engine.dart' show appGpuComposite, appGpuEngine;
 import '../../native/engine_tile_ledger.dart';
@@ -183,7 +181,7 @@ final _pen = const BrushShape().withCurve(
   BrushPressureCurve(const [BrushCurvePoint(0, 0), BrushCurvePoint(1, 1)]),
 );
 
-/// [bodies] — a vector layer's data — drawn on [target]'s canvas with the
+/// [bodies] — a vector layer's data — drawn on [target]'s cel with the
 /// layer's strokes moved by [offset] (its `LayerOffset`: the strokes are
 /// stored in the layer's own pixels), as the cel's tiles; and how many
 /// records were of a kind this reader does not draw.
@@ -200,7 +198,7 @@ final _pen = const BrushShape().withCurve(
 /// the C brush, its blur and its span batch had in the app.
 ///
 /// Each stroke lands as the brush lays a stroke ([_withStroke]: piled up,
-/// then laid once at its opacity) on the canvas and no further, and the
+/// then laid once at its opacity) inside its wall and no further, and the
 /// picture lands where it lies through the layer's alpha and [mask]
 /// ([_throughTheLayer]): its tiles the engine's alone.
 ///
@@ -237,11 +235,8 @@ Future<({Map<TileCoord, BitmapTile> tiles, int unread})> clipVectorTiles(
   ClipStoredMask? mask,
 }) async {
   var surface = BitmapSurface(
-    canvasSize: CanvasSize(
-      width: target.canvasWidth,
-      height: target.canvasHeight,
-    ),
-    pasteboardReach: PasteboardReach.none,
+    canvasSize: target.wall.canvas,
+    pasteboardReach: target.wall.reach,
     tileSize: target.tileSize,
   );
   GpuEngine? drawnOn;
@@ -330,20 +325,21 @@ Future<Map<TileCoord, BitmapTile>> _throughTheLayer(
   }
 }
 
-/// The canvas pixels [tiles] — of [target]'s grid — reach, the canvas's
-/// alone: [left, top, right, bottom).
+/// The canvas pixels [tiles] — of [target]'s grid — reach inside its wall:
+/// [left, top, right, bottom).
 ({int left, int top, int right, int bottom}) _reachOf(
   Iterable<TileCoord> tiles,
   ClipCelTarget target,
 ) {
   final side = target.tileSize;
+  final wall = target.wall;
   final xs = [for (final tile in tiles) tile.x];
   final ys = [for (final tile in tiles) tile.y];
   return (
-    left: math.max(0, xs.reduce(math.min) * side),
-    top: math.max(0, ys.reduce(math.min) * side),
-    right: math.min(target.canvasWidth, (xs.reduce(math.max) + 1) * side),
-    bottom: math.min(target.canvasHeight, (ys.reduce(math.max) + 1) * side),
+    left: math.max(wall.left, xs.reduce(math.min) * side),
+    top: math.max(wall.top, ys.reduce(math.min) * side),
+    right: math.min(wall.rightExclusive, (xs.reduce(math.max) + 1) * side),
+    bottom: math.min(wall.bottomExclusive, (ys.reduce(math.max) + 1) * side),
   );
 }
 

@@ -9,6 +9,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
@@ -179,11 +181,14 @@ void main() {
     // The app's grid — the one the engine lays on.
     const side = 128;
 
-    ClipCelTarget canvas({double alpha = 1, int across = 64}) => (
+    ClipCelTarget canvas({
+      double alpha = 1,
+      int across = 64,
+      PasteboardReach reach = PasteboardReach.none,
+    }) => (
       left: 0,
       top: 0,
-      canvasWidth: across,
-      canvasHeight: 64,
+      wall: CanvasSize(width: across, height: 64).pasteboardAt(reach),
       alpha: alpha,
       tileSize: side,
     );
@@ -412,6 +417,74 @@ void main() {
       expect(drawn.tiles, isEmpty);
       expect(drawn.unread, 1);
       expect(readBack, isEmpty, reason: 'the picture is the canvas\'s alone');
+    });
+
+    // 🗣️clip-cels-cut-at-the-canvas-Q1 (유저 2026-11-17): 「벽까지 담는다 —
+    // 앱의 다른 셀과 같은 자리」.
+    test('🎯with a pasteboard, a stroke past the paper lands up to its wall '
+        'and no further', () async {
+      // A quarter's wall stands 16 left of a 64-wide paper.
+      final drawn = await clipVectorTiles(
+        [
+          vectorStrokeBytes([(-40, 10, 1), (-8, 10, 1)], radius: 3),
+        ],
+        (x: 0, y: 0),
+        canvas(reach: PasteboardReach.quarter),
+      );
+
+      expect(drawn.tiles.keys, [TileCoord(x: -1, y: 0)]);
+      // The tile left of the paper: its column 128 + x is the canvas's x.
+      expect(pixel(drawn.tiles, 128 - 12, 10).$4, greaterThan(0));
+      expect(pixel(drawn.tiles, 128 - 16, 10).$4, greaterThan(0));
+      expect(
+        pixel(drawn.tiles, 128 - 17, 10).$4,
+        0,
+        reason: 'past the wall, where the stroke still runs',
+      );
+    });
+
+    test('a mask that shows what lies past its box shows it past the paper '
+        'too, on every side', () async {
+      // The mask's box is the paper, hiding all of it; past its edges its
+      // fill shows everything. A quarter's wall stands 16 past each edge.
+      final drawn = await clipVectorTiles(
+        [
+          body([
+            vectorStrokeBytes([(-12, 30, 1), (75, 30, 1)], radius: 3),
+            vectorStrokeBytes([(-10, -12, 1), (-10, 75, 1)], radius: 3),
+          ]),
+        ],
+        (x: 0, y: 0),
+        canvas(reach: PasteboardReach.quarter),
+        mask: (
+          attribute: offscreenAttributeBytes(
+            width: 64,
+            height: 64,
+            columns: 1,
+            rows: 1,
+            colourChannels: 0,
+            fill: 1,
+          ),
+          blocks: blockRecordsBytes({0: Uint8List(256 * 256)}),
+          left: 0,
+          top: 0,
+        ),
+      );
+      int alphaAt(int x, int y) {
+        final tile = drawn.tiles[TileCoord(
+          x: (x / side).floor(),
+          y: (y / side).floor(),
+        )];
+        return tile == null
+            ? 0
+            : tile.pixels[((y % side) * side + x % side) * 4 + 3];
+      }
+
+      expect(alphaAt(30, 30), 0, reason: 'the mask hides the paper');
+      expect(alphaAt(-3, 30), greaterThan(0), reason: 'left of the paper');
+      expect(alphaAt(70, 30), greaterThan(0), reason: 'right of it');
+      expect(alphaAt(-10, -8), greaterThan(0), reason: 'above it');
+      expect(alphaAt(-10, 70), greaterThan(0), reason: 'below it');
     });
 
     // 🗣️clip-vector-import-draws-with-the-c-brush-Q1 (유저 2026-11-11), and

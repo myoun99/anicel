@@ -3,6 +3,8 @@ library;
 
 import 'dart:async';
 
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
@@ -52,8 +54,10 @@ void main() {
       (
         left: 0,
         top: 0,
-        canvasWidth: 60,
-        canvasHeight: 40,
+        wall: const CanvasSize(
+          width: 60,
+          height: 40,
+        ).pasteboardAt(PasteboardReach.none),
         alpha: 1,
         tileSize: 20,
       ),

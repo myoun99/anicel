@@ -2,8 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/mask_into_alpha.dart';
-import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
@@ -116,14 +116,13 @@ typedef ClipStoredMask = ({
   int top,
 });
 
-/// Where a picture is baked: its top-left on a [canvasWidth] ×
-/// [canvasHeight] canvas, in tiles of [tileSize], its alpha times [alpha] —
-/// the bake that keeps a fainter cel fainter.
+/// Where a picture is baked: its top-left on a cel behind [wall] — the
+/// pasteboard of the store the cel is laid in — in tiles of [tileSize], its
+/// alpha times [alpha]: the bake that keeps a fainter cel fainter.
 typedef ClipCelTarget = ({
   int left,
   int top,
-  int canvasWidth,
-  int canvasHeight,
+  PasteboardWall wall,
   double alpha,
   int tileSize,
 });
@@ -149,35 +148,37 @@ AnicelLaidCel? clipCelLaid(
   if (mask != null) {
     _bakeMask(picture, target, mask);
   }
-  return _laidOnCanvas(picture, target);
+  return _laidBehindWall(picture, target);
 }
 
-/// [picture] — straight RGBA, its own to change — laid on [target]'s canvas
-/// at its alpha: the canvas's part of it, cut into the cel's tiles by the
-/// cutter every picture a file holds is cut by ([TileCutter]). What falls
-/// off the canvas is not laid, and a tile with no ink is not there at all —
-/// the shape the drawing store gives an empty tile.
+/// [picture] — straight RGBA, its own to change — laid on [target]'s cel
+/// at its alpha: the part of it inside the cel's pasteboard wall, cut into
+/// the cel's tiles by the cutter every picture a file holds is cut by
+/// ([TileCutter]). What falls past the wall is not laid, and a tile with no
+/// ink is not there at all — the shape the drawing store gives an empty
+/// tile.
 ///
 /// 🚨ONE CUTTER (F-608 ④, 2026-11-17). ↩️Till then it cut tiles of its own
 /// (`_celTilesOf` · `_tileOf`) — [TileCutter]'s walk written a second time:
 /// the rows of the picture's part on the canvas copied into tiles, a tile
 /// left clear dropped — into tiles of the Dart heap, which the door then
 /// copied again to bake.
-AnicelLaidCel _laidOnCanvas(
+///
+/// 🗣️CUT AT THE WALL, NOT AT THE CANVAS (clip-cels-cut-at-the-canvas-Q1,
+/// 유저 2026-11-17: 「벽까지 담는다 — 앱의 다른 셀과 같은 자리」). ↩️Till
+/// then it cut at the canvas, while the same file's texts were cut at the
+/// wall: a picture CLIP STUDIO kept past the paper was not on the
+/// pasteboard, and moving the layer did not bring it back.
+AnicelLaidCel _laidBehindWall(
   ({Uint8List rgba, int width, int height}) picture,
   ClipCelTarget target,
 ) {
   final size = target.tileSize;
-  final canvas = DirtyRegion.fromXYWH(
-    x: 0,
-    y: 0,
-    width: target.canvasWidth,
-    height: target.canvasHeight,
-  );
+  final wall = target.wall;
   final layout = (
-    canvas: CanvasSize(width: target.canvasWidth, height: target.canvasHeight),
+    canvas: wall.canvas,
     tileSize: size,
-    tiles: canvas.tileRange(tileSize: size),
+    tiles: wall.tileRange(size),
     laid: null,
   );
   final on = DirtyRegion.fromXYWH(
@@ -185,7 +186,7 @@ AnicelLaidCel _laidOnCanvas(
     y: target.top,
     width: picture.width,
     height: picture.height,
-  ).intersection(canvas);
+  ).intersection(wall.region);
   if (on == null) {
     return laidCelOf(layout, []);
   }

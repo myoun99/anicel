@@ -1095,17 +1095,21 @@ bool _copiesPixels(LayerPlacement placement) =>
     placement.ty == placement.ty.truncateToDouble();
 
 /// Bakes [tiles] — a picture as a cel's own tiles, by their place on the
-/// grid — as [key]'s cel on a [canvas]-size picture: a .clip's vector
-/// layer, its tiles the engine's as it landed them (`clipVectorTiles`).
+/// grid — as [key]'s cel behind [wall]: a .clip's vector layer, its tiles
+/// the engine's as it landed them (`clipVectorTiles`) inside that wall.
 void bakeCelTiles(
   BrushFrameStore store,
   BrushFrameKey key,
-  CanvasSize canvas,
+  PasteboardWall wall,
   Map<TileCoord, BitmapTile> tiles,
 ) => bakeCelSurface(
   store,
   key,
-  BitmapSurface(canvasSize: canvas, tiles: tiles),
+  BitmapSurface(
+    canvasSize: wall.canvas,
+    pasteboardReach: wall.reach,
+    tiles: tiles,
+  ),
 );
 
 /// Bakes [surface] as [key]'s cel — the exact donation pair the drawing

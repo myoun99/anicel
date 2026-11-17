@@ -6,6 +6,8 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/import/clip_vector_raster.dart';
 
@@ -32,8 +34,10 @@ void main() {
   const canvas = (
     left: 0,
     top: 0,
-    canvasWidth: 64,
-    canvasHeight: 64,
+    wall: PasteboardWall(
+      CanvasSize(width: 64, height: 64),
+      PasteboardReach.none,
+    ),
     alpha: 1.0,
     tileSize: 128,
   );

@@ -13,7 +13,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart';
@@ -83,12 +85,15 @@ void main() {
   /// blocks held, or not in the file.
   ///
   /// [clearBg] leaves BG's picture with no ink.
+  ///
+  /// [bgAt] is where BG's top-left stands.
   String writeClip({
     bool troubled = false,
     _Strokes? strokes,
     bool papered = false,
     _Masked? masked,
     bool clearBg = false,
+    (int, int) bgAt = (120, 50),
   }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
@@ -175,7 +180,7 @@ void main() {
       for (final row in <List<Object?>>[
         [1, '', 256, 1, 0, '', 0, 0, bottom, 0, 0, 0],
         if (papered) [12, 'paper', 1584, 0, 0, '', 0, 0, 0, 2, 0, 0],
-        [2, 'BG', 1, 0, 0, uuidBg, 120, 50, 0, 3, 100, 0],
+        [2, 'BG', 1, 0, 0, uuidBg, bgAt.$1, bgAt.$2, 0, 3, 100, 0],
         [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, onTopOfA, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
         [5, 'under', 1, 0, 0, '', 0, 0, 0, 6, 101, 0],
@@ -542,6 +547,32 @@ void main() {
       reason: 'the store drops an empty picture it is given, but keeps the '
           'screen\'s copy of it — so an empty one is never given',
     );
+  });
+
+  // 🗣️clip-cels-cut-at-the-canvas-Q1 (유저 2026-11-17): 「벽까지 담는다 —
+  // 앱의 다른 셀과 같은 자리」.
+  test('🎯a picture past the paper is kept on the pasteboard, as the app\'s '
+      'other cels are', () async {
+    // BG stands at (-30, 50): its 10 × 10 square of ink, -30 … -21 across,
+    // lies wholly left of the paper.
+    final opened = await openedClip(writeClip(bgAt: (-30, 50)));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    final store = session.renderCaches.brushFrameStore;
+    final surface = store.bakedSurfaceOrNull(
+      session.brushFrameKeyForCut(cut, bg.id, bg.frames.single.id),
+    )!;
+
+    expect(store.pasteboardReach, PasteboardReach.whole);
+    expect(surface.tiles.keys, [TileCoord(x: -1, y: 0)]);
+    // The tile left of the paper: its column 128 + x is the canvas's x.
+    int alphaAt(int x, int y) =>
+        surface.tiles.values.single.pixels[(y * 128 + 128 + x) * 4 + 3];
+    expect(alphaAt(-30, 50), 255);
+    expect(alphaAt(-21, 59), 255);
+    expect(alphaAt(-31, 50), 0);
   });
 
   test('what cannot be drawn is said by name — a grey layer, a picture its '

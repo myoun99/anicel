@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
@@ -11,10 +13,10 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'clip_test_builder.dart';
 
 /// A CLIP STUDIO picture as the app's cel (card `csp-clip-import-analysis`):
-/// straight RGBA in canvas place, what falls off the canvas dropped, a
-/// fainter cel's alpha baked, and a dropped picture placed where its
-/// transform puts it — cut by the cutter every picture a file holds is cut
-/// by (F-608 ④).
+/// straight RGBA in canvas place, what falls past the cel's pasteboard wall
+/// dropped — the paper's edge when the pasteboard is off — a fainter cel's
+/// alpha baked, and a dropped picture placed where its transform puts it —
+/// cut by the cutter every picture a file holds is cut by (F-608 ④).
 void main() {
   /// A colour picture of two blocks side by side: red counts the picture's
   /// x, green its y.
@@ -35,10 +37,11 @@ void main() {
     }),
   );
 
-  /// The RGBA [cel] holds at canvas ([x], [y]), or null when no tile holds
-  /// that pixel.
+  /// The RGBA [cel] holds at canvas ([x], [y]) — past the paper too — or
+  /// null when no tile holds that pixel.
   List<int>? pixelAt(BitmapSurface cel, int x, int y) {
-    final tile = cel.tiles[TileCoord(x: x ~/ 128, y: y ~/ 128)];
+    final tile =
+        cel.tiles[TileCoord(x: (x / 128).floor(), y: (y / 128).floor())];
     if (tile == null) {
       return null;
     }
@@ -51,8 +54,9 @@ void main() {
     for (final coord in cel.tiles.keys) (coord.x, coord.y),
   };
 
-  /// [stored] baked at ([left], [top]) on a [width] × [height] canvas, in
-  /// tiles of 128 — the cel it lays, adopted.
+  /// [stored] baked at ([left], [top]) on a [width] × [height] canvas whose
+  /// pasteboard reaches [reach] — the paper alone unless asked — in tiles of
+  /// 128: the cel it lays, adopted behind that wall.
   BitmapSurface? bake(
     ({Uint8List attribute, Uint8List blocks}) stored, {
     int left = 0,
@@ -60,16 +64,16 @@ void main() {
     int width = 300,
     int height = 200,
     double alpha = 1,
+    PasteboardReach reach = PasteboardReach.none,
   }) {
     final laid = clipCelLaid(stored.attribute, stored.blocks, (
       left: left,
       top: top,
-      canvasWidth: width,
-      canvasHeight: height,
+      wall: CanvasSize(width: width, height: height).pasteboardAt(reach),
       alpha: alpha,
       tileSize: 128,
     ));
-    return laid == null ? null : laidCelSurface(laid);
+    return laid == null ? null : laidCelSurface(laid, standsBehind: reach);
   }
 
   test('🎯the picture lands where it stands, the part off the canvas '
@@ -158,6 +162,61 @@ void main() {
     expect(bake(picture(), top: -300)!.tiles, isEmpty);
   });
 
+  /// 🗣️clip-cels-cut-at-the-canvas-Q1 (유저 2026-11-17): 「벽까지 담는다 —
+  /// 앱의 다른 셀과 같은 자리」. The tests above stand on a paper with the
+  /// pasteboard off, where the wall is the paper's edge.
+  group('🎯cut at the pasteboard wall, as the app\'s other cels are', () {
+    /// A 256² paper whose pasteboard reaches [reach].
+    BitmapSurface bakePast(int left, int top, PasteboardReach reach) =>
+        bake(
+          picture(),
+          left: left,
+          top: top,
+          width: 256,
+          height: 256,
+          reach: reach,
+        )!;
+
+    test('the part past the paper is kept to the wall\'s last pixel, and '
+        'nothing past it', () {
+      // A quarter's wall stands at -64 and 320 on both axes.
+      final cel = bakePast(-100, 0, PasteboardReach.quarter);
+
+      expect(pixelAt(cel, -64, 5), [36, 5, 7, 255], reason: 'picture 36, 5');
+      expect(
+        pixelAt(cel, -65, 5),
+        [0, 0, 0, 0],
+        reason: 'one column past the wall',
+      );
+      expect(pixelAt(cel, -1, 5), [99, 5, 7, 255], reason: 'picture 99, 5');
+      expect({for (final (x, _) in placesOf(cel)) x}, {-1, 0, 1});
+    });
+
+    test('past the right and bottom edges too', () {
+      final cel = bakePast(200, 200, PasteboardReach.quarter);
+
+      expect(
+        pixelAt(cel, 319, 319),
+        [119, 119, 7, 255],
+        reason: 'the wall\'s last pixel — picture 119, 119',
+      );
+      expect(pixelAt(cel, 320, 300), [0, 0, 0, 0]);
+      expect(pixelAt(cel, 300, 320), [0, 0, 0, 0]);
+    });
+
+    test('a wider pasteboard keeps more of it', () {
+      expect(
+        pixelAt(bakePast(-100, 0, PasteboardReach.whole), -100, 5),
+        [0, 5, 7, 255],
+        reason: 'the picture\'s first column, inside a wall 256 out',
+      );
+    });
+
+    test('a picture wholly past the wall lays nothing', () {
+      expect(bakePast(-400, 0, PasteboardReach.quarter).tiles, isEmpty);
+    });
+  });
+
   group('🎯through its mask, as Photoshop\'s is baked (보드 the-clip-import-'
       'leaves-masks-and-locks-unsaid)', () {
     /// A one-byte mask of [width] × [height] standing at ([left], [top]):
@@ -205,8 +264,10 @@ void main() {
         (
           left: 4,
           top: 6,
-          canvasWidth: 300,
-          canvasHeight: 200,
+          wall: const CanvasSize(
+            width: 300,
+            height: 200,
+          ).pasteboardAt(PasteboardReach.none),
           alpha: 1,
           tileSize: 128,
         ),
