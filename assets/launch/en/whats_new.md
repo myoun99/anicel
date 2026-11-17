@@ -19,6 +19,7 @@
 - **Alt+wheel zoom** — on the timeline, X-sheet and conte panel, Alt+wheel zooms the frames in and out. A two-finger zoom holds the spot between the fingers.
 - **Cut list** — the legend's first cell shows the current cut's name; press it to open a list of cuts, where cuts can be renamed too.
 - **Sound row equalizer** — a sound row's Fx menu offers an Equalizer (Low Cut, High Cut, Low, High), and playback and export sound the same. The Fx menu is split into Audio and Video sections, the one a row does not use dimmed; a sound row takes audio fx only.
+- **Sound row compressor** — the Audio section of a sound row's Fx menu gains a Compressor (Threshold, Ratio, Attack, Release, Makeup). Just added, it leaves the sound unchanged.
 - **Media pool views** — buttons right of the media pool's ＋ pick a list view or an icon view. The list view keeps the names pinned at the left while columns such as Duration, Video and Audio scroll sideways; the icon view shows big thumbnails, and moving the cursor across a movie shows the frame under it. "Preset view" shows each file's placement preset (kind, start, end, duration) instead of the file.
 - **Placement presets** — from a pool file's menu, Place ▸ "Placement preset" opens a window to set where the file starts and ends when placed, a picture's name and fit, and a sound block's name tag and words. The import window and drag-and-drop start from them. A file of a single picture can come in as an animation layer too.
 
