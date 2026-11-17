@@ -27,10 +27,11 @@ typedef OsPoint = ({
 @Native<Int32 Function()>(symbol: 'qa_pen_points_start')
 external int _start();
 
-@Native<Int32 Function(Double, Double, Pointer<Double>, Int32)>(
-  symbol: 'qa_pen_points_take',
-)
-external int _take(double x, double y, Pointer<Double> out, int cap);
+@Native<Int32 Function(Double, Double)>(symbol: 'qa_pen_points_take')
+external int _take(double x, double y);
+
+@Native<Size Function(Pointer<Double>, Size)>(symbol: 'qa_pen_points_taken')
+external int _taken(Pointer<Double> out, int room);
 
 @Native<Uint64 Function()>(symbol: 'qa_pen_points_passed')
 external int _passed();
@@ -46,15 +47,16 @@ external int _lost(Pointer<Uint64> out, int room);
 /// ([QaPenLedger]): a channel message and a pointer event travel two queues
 /// with no order between them.
 abstract final class QaPenPoints {
-  /// The most points a batch keeps (points.rs `MOST_POINTS`).
-  static const int _mostPoints = 512;
-
   /// The numbers a point is handed as (points.rs `POINT_WORDS`).
   static const int _words = 6;
 
   /// Where the native side writes a batch — one, for the life of the
-  /// process: the door reads one datum's at a time, on the UI isolate.
-  static final Pointer<Double> _out = malloc<Double>(_mostPoints * _words);
+  /// process, grown to the most points a batch has had: the door reads
+  /// one datum's at a time, on the UI isolate.
+  static Pointer<Double> _out = malloc<Double>(_room * _words);
+
+  /// How many points [_out] holds.
+  static int _room = 256;
 
   static bool _started = false;
 
@@ -81,10 +83,16 @@ abstract final class QaPenPoints {
     if (override != null) {
       return override(x, y);
     }
-    final count = _take(x, y, _out, _mostPoints);
+    final count = _take(x, y);
     if (count < 0) {
       return null;
     }
+    if (count > _room) {
+      malloc.free(_out);
+      _room = count;
+      _out = malloc<Double>(_room * _words);
+    }
+    _taken(_out, count);
     double? given(double word) => word.isNaN ? null : word;
     return [
       for (var at = 0; at < count * _words; at += _words)
@@ -104,23 +112,23 @@ abstract final class QaPenPoints {
   static int get passed => debugTake != null ? 0 : _passed();
 
   /// How many messages' points did not all reach the book, by why
-  /// (points.rs `Lost`): the mouse's history [full], a history [unread],
-  /// a batch [cut] — each a stretch of a line the OS saw and no stroke
-  /// got (H59 법 A: counted first).
-  static ({int full, int unread, int cut}) get lost {
+  /// (points.rs `Lost`): the mouse's history [full], a history [unread]
+  /// — each a stretch of a line the OS saw and no stroke got (H59 법 A:
+  /// counted first). The book itself keeps every point a reader writes.
+  static ({int full, int unread}) get lost {
     if (debugTake != null) {
-      return (full: 0, unread: 0, cut: 0);
+      return (full: 0, unread: 0);
     }
     final out = malloc<Uint64>(_losses);
     try {
       final count = _lost(out, _losses);
       int at(int why) => why < count ? out[why] : 0;
-      return (full: at(0), unread: at(1), cut: at(2));
+      return (full: at(0), unread: at(1));
     } finally {
       malloc.free(out);
     }
   }
 
   /// The ways a message's points are lost (points.rs `LOSSES`).
-  static const int _losses = 3;
+  static const int _losses = 2;
 }

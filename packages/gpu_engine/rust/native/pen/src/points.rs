@@ -81,16 +81,13 @@ pub(crate) struct Batch {
 /// from its message's reading to its datum's.
 pub(crate) const MOST_BATCHES: usize = 256;
 
-/// The most points a batch keeps, the newest: a stall of two seconds of a
-/// pen at 240 points a second.
-pub(crate) const MOST_POINTS: usize = 512;
-
 /// 🚨WHY A MESSAGE'S POINTS DID NOT ALL REACH THE BOOK (H59 법 A — counted
 /// first, before anything is done of them, card
 /// pen-points-are-taken-off-the-ui-thread): each a message whose line has
 /// a stretch the OS saw and no stroke got, read loud beside the batches
 /// [`Book::passed`] by ([`Book::lost`]). Counted where the reader knows it
-/// and the book cuts — one count a way, in this order.
+/// — one count a way, in this order. The book itself keeps every point a
+/// reader writes ([`Book::write`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Lost {
     /// The OS kept no more before them: Windows' mouse history full
@@ -100,12 +97,10 @@ pub(crate) enum Lost {
     /// The history could not be read — the message's own point alone. A
     /// mouse move Windows made and keeps none of reads so too.
     Unread,
-    /// Past [`MOST_POINTS`]: the oldest went.
-    Cut,
 }
 
 /// How many ways a message's points are lost ([`Lost`]).
-pub(crate) const LOSSES: usize = 3;
+pub(crate) const LOSSES: usize = 2;
 
 pub(crate) struct Book {
     batches: VecDeque<Batch>,
@@ -151,14 +146,13 @@ impl Book {
         self.write(Batch { contact, handed, points });
     }
 
-    /// Writes a message's batch, its newest [`MOST_POINTS`] points — the
-    /// one place a batch is cut, and counted ([`Lost::Cut`]).
-    pub(crate) fn write(&mut self, mut batch: Batch) {
-        let over = batch.points.len().saturating_sub(MOST_POINTS);
-        if over > 0 {
-            self.lose(Lost::Cut);
-        }
-        batch.points.drain(..over);
+    /// Writes a message's batch, every point of it.
+    ///
+    /// ↩️A batch kept its newest 512 points till 11-17 — H56's guess at a
+    /// stall of two seconds of a 240 Hz pen — and the rest was counted lost
+    /// (`Lost::Cut`): no one asked for the cut (H59 법 A, card
+    /// pen-points-are-taken-off-the-ui-thread).
+    pub(crate) fn write(&mut self, batch: Batch) {
         if self.batches.len() == MOST_BATCHES {
             self.batches.pop_front();
             self.passed += 1;

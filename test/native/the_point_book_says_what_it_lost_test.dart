@@ -6,6 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// none in a process no reader wrote in.
 void main() {
   test('the point book says what it lost, by why — none yet', () {
-    expect(QaPenPoints.lost, (full: 0, unread: 0, cut: 0));
+    expect(QaPenPoints.lost, (full: 0, unread: 0));
   });
 }

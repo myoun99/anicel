@@ -243,29 +243,52 @@ pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_end(
     points::book().end(contact as u64, (x, y));
 }
 
-/// The points of the datum Flutter was handed at (`x`, `y`), in the shape
-/// the embedder hands it (`points::Batch::handed`), into `out` — the oldest
-/// first, `points::POINT_WORDS` numbers each (`points::Point::words`), the
-/// newest `cap` where there are more. Their count; -1 where no batch ends
-/// there.
+/// The batch [`qa_pen_points_take`] took last, till the app reads it
+/// ([`qa_pen_points_taken`]).
+static TAKEN: std::sync::Mutex<Vec<points::Point>> = std::sync::Mutex::new(Vec::new());
+
+fn taken() -> std::sync::MutexGuard<'static, Vec<points::Point>> {
+    TAKEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Takes the points of the datum Flutter was handed at (`x`, `y`), in the
+/// shape the embedder hands it (`points::Batch::handed`) — every point the
+/// reader wrote of its message —, and holds them for
+/// [`qa_pen_points_taken`]: their count; -1 where no batch ends there.
 ///
-/// # Safety
-/// `out` is null or `POINT_WORDS * cap` writable `f64`s.
+/// ↩️It wrote the newest `cap` into the app's buffer, which held 512 —
+/// H56's guess at a stall of two seconds of a 240 Hz pen — and the book cut
+/// every batch to as many: no one asked for the cut (H59 법 A, card
+/// pen-points-are-taken-off-the-ui-thread, 11-17).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qa_pen_points_take(x: f64, y: f64, out: *mut f64, cap: i32) -> i32 {
+pub extern "C" fn qa_pen_points_take(x: f64, y: f64) -> i32 {
     let Some(points) = points::book().take((x, y)) else {
         return -1;
     };
-    if out.is_null() || cap <= 0 {
+    let count = points.len() as i32;
+    *taken() = points;
+    count
+}
+
+/// The points [`qa_pen_points_take`] took last, into `out` — the oldest
+/// first, `points::POINT_WORDS` numbers each (`points::Point::words`), at
+/// most `room` of them —, let go of here: their count.
+///
+/// # Safety
+/// `out` is null or `POINT_WORDS * room` writable `f64`s.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_pen_points_taken(out: *mut f64, room: usize) -> usize {
+    let points = std::mem::take(&mut *taken());
+    if out.is_null() {
         return 0;
     }
-    let kept = &points[points.len().saturating_sub(cap as usize)..];
+    let count = points.len().min(room);
     // SAFETY: see the function's contract.
-    let out = unsafe { std::slice::from_raw_parts_mut(out, points::POINT_WORDS * kept.len()) };
-    for (words, point) in out.chunks_exact_mut(points::POINT_WORDS).zip(kept) {
+    let out = unsafe { std::slice::from_raw_parts_mut(out, points::POINT_WORDS * count) };
+    for (words, point) in out.chunks_exact_mut(points::POINT_WORDS).zip(&points) {
         words.copy_from_slice(&point.words());
     }
-    kept.len() as i32
+    count
 }
 
 /// How many messages' batches no datum was paired with

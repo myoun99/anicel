@@ -1,7 +1,7 @@
 //! The book of the points the OS saw, and how a datum is paired with its
 //! batch, on answers worked out here.
 
-use crate::points::{Batch, Book, LOSSES, Lost, MOST_BATCHES, MOST_POINTS, Point};
+use crate::points::{Batch, Book, LOSSES, Lost, MOST_BATCHES, POINT_WORDS, Point, book};
 
 /// A message's batch: its points at `xs` along y 0, one microsecond apart
 /// from `from`, handed to Flutter at the last of them — of contact 1.
@@ -85,24 +85,41 @@ fn of_two_batches_that_end_alike_the_older_is_the_datum_s() {
     assert_eq!(xs(&book.take((2.0, 0.0)).expect("then the newer")), [3.0, 2.0]);
 }
 
+// A stall of eight seconds of a 240 Hz pen: the book cut a batch to its
+// newest 512 till 11-17, which no one asked for.
 #[test]
-fn a_batch_keeps_its_newest_points() {
+fn a_batch_keeps_every_point_however_long_the_stall() {
     let mut book = Book::EMPTY;
-    let many: Vec<f64> = (0..MOST_POINTS + 3).map(|x| x as f64).collect();
+    let many: Vec<f64> = (0..2000).map(|x| x as f64).collect();
     book.write(batch(0, &many));
     let kept = book.take((*many.last().expect("many"), 0.0)).expect("kept");
-    assert_eq!(kept.len(), MOST_POINTS);
-    assert_eq!(kept[0].x, 3.0, "the oldest three left out");
+    assert_eq!(xs(&kept), many);
+    assert_eq!(book.lost(), [0; LOSSES], "nothing lost");
 }
 
 #[test]
-fn a_batch_cut_is_counted_lost_and_a_whole_one_is_not() {
-    let mut book = Book::EMPTY;
-    book.write(batch(0, &[1.0, 2.0]));
-    assert_eq!(book.lost(), [0; LOSSES]);
-    let many: Vec<f64> = (0..MOST_POINTS + 1).map(|x| x as f64).collect();
-    book.write(batch(0, &many));
-    assert_eq!(book.lost(), [0, 0, 1], "one message cut, whatever it lost");
+fn the_app_reads_every_point_of_a_batch_it_takes_however_many() {
+    // A place no other case hands at: the book is the app's one.
+    let handed = (-4321.25, 9876.5);
+    let mut last: Vec<_> = (0..1500).map(|at| Point::at(at as f64, handed.1, at)).collect();
+    last.push(Point::at(handed.0, handed.1, 1500));
+    book().write(Batch { contact: 7, handed, points: last.clone() });
+
+    let count = crate::qa_pen_points_take(handed.0, handed.1);
+    let mut out = vec![0.0; POINT_WORDS * count as usize];
+    // SAFETY: room for `count` points.
+    let read = unsafe { crate::qa_pen_points_taken(out.as_mut_ptr(), count as usize) };
+
+    assert_eq!(count, 1501);
+    assert_eq!(read, 1501);
+    // Bit for bit: a point the OS says nothing more of reads NaN.
+    let bits = |words: &[f64]| words.iter().map(|word| word.to_bits()).collect::<Vec<_>>();
+    let words: Vec<f64> = last.iter().flat_map(|point| point.words()).collect();
+    assert_eq!(bits(&out), bits(&words));
+    let mut again = vec![0.0; POINT_WORDS];
+    // SAFETY: room for one point.
+    let after = unsafe { crate::qa_pen_points_taken(again.as_mut_ptr(), 1) };
+    assert_eq!(after, 0, "read once, let go of");
 }
 
 #[test]
@@ -111,7 +128,7 @@ fn a_loss_is_counted_by_its_why() {
     book.lose(Lost::Full);
     book.lose(Lost::Full);
     book.lose(Lost::Unread);
-    assert_eq!(book.lost(), [2, 1, 0]);
+    assert_eq!(book.lost(), [2, 1]);
 }
 
 #[test]

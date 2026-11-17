@@ -651,5 +651,5 @@ class _InspectorCard extends StatelessWidget {
 
 /// What the point book lost ([QaPenPoints.lost]), by why, as the strip
 /// says it.
-String _lostSaid(({int full, int unread, int cut}) lost) =>
-    'full ${lost.full} unread ${lost.unread} cut ${lost.cut}';
+String _lostSaid(({int full, int unread}) lost) =>
+    'full ${lost.full} unread ${lost.unread}';
