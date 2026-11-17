@@ -50,14 +50,6 @@ abstract final class QaPenPoints {
   /// The numbers a point is handed as (points.rs `POINT_WORDS`).
   static const int _words = 6;
 
-  /// Where the native side writes a batch — one, for the life of the
-  /// process, grown to the most points a batch has had: the door reads
-  /// one datum's at a time, on the UI isolate.
-  static Pointer<Double> _out = malloc<Double>(_room * _words);
-
-  /// How many points [_out] holds.
-  static int _room = 256;
-
   static bool _started = false;
 
   /// Replaces the native book in tests — the test binding runs on no
@@ -87,24 +79,28 @@ abstract final class QaPenPoints {
     if (count < 0) {
       return null;
     }
-    if (count > _room) {
-      malloc.free(_out);
-      _room = count;
-      _out = malloc<Double>(_room * _words);
+    if (count == 0) {
+      return const [];
     }
-    _taken(_out, count);
-    double? given(double word) => word.isNaN ? null : word;
-    return [
-      for (var at = 0; at < count * _words; at += _words)
-        (
-          x: _out[at],
-          y: _out[at + 1],
-          at: Duration(microseconds: _out[at + 2].toInt()),
-          pressure: given(_out[at + 3]),
-          tilt: given(_out[at + 4]),
-          orientation: given(_out[at + 5]),
-        ),
-    ];
+    // As many as the batch has, however many: the book keeps every point.
+    final out = malloc<Double>(count * _words);
+    try {
+      final read = _taken(out, count);
+      double? given(double word) => word.isNaN ? null : word;
+      return [
+        for (var at = 0; at < read * _words; at += _words)
+          (
+            x: out[at],
+            y: out[at + 1],
+            at: Duration(microseconds: out[at + 2].toInt()),
+            pressure: given(out[at + 3]),
+            tilt: given(out[at + 4]),
+            orientation: given(out[at + 5]),
+          ),
+      ];
+    } finally {
+      malloc.free(out);
+    }
   }
 
   /// How many messages' points no datum was paired with — each a message
