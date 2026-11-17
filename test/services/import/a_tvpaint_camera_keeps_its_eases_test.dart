@@ -195,6 +195,11 @@ void main() {
       isA<SplitPath>(),
       reason: 'it leaves along TVPaint\'s handle, up and to the right',
     );
+    expect(
+      position.keys[0]!.outgoing,
+      KeySide.linear,
+      reason: 'TVPaint\'s straight ramp: an even pace along the bent path',
+    );
     expectPlaysAsBaked(camera, baked);
   });
 

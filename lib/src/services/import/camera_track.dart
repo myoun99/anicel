@@ -462,17 +462,21 @@ final class _LaneKeys<T> {
 /// ([SplitPath]).
 typedef _Bend = ({CanvasPoint ahead, CanvasPoint behind});
 
-/// How many times [_nearestCurve] reads each value's parameter on the
-/// curve again and fits the curve to them — only where [_bentWays]' own
-/// fit starts from.
-const int _bendRounds = 8;
-
 /// The ways a path may bend from [values]' [from] to its [to] — at an even
 /// pace, and eased — each the handles, and the pace, whose play comes
 /// nearest the values between on their [frames], by least squares
 /// ([_LeastSquares]): played as the app plays a lane that walks a path,
 /// [segmentProgress] along a [CubicWalk], from the curve nearest the values
-/// in space ([_nearestCurve]). None where no curve is read.
+/// in space ([_nearestCurve]) — the even pace first, and the ease from
+/// it. None where no curve is read.
+///
+/// ⛔The fit by play is what lays the way; where it starts from is not. A
+/// start read more finely — each value's parameter read again as the
+/// curve's nearest point (Newton, as Schneider's fit does) and the ease
+/// started from how far along the curve each value stands — changed no
+/// key on blu and moved its worst miss by 1e-7px (measured 2026-11-17).
+/// The even pace's own fit is not such a start: without it blu's
+/// position came in on eight keys, not six.
 List<_Way> _bentWays(
   List<CanvasPoint> values,
   List<int> frames,
@@ -514,27 +518,20 @@ List<_Way> _bentWays(
     return misses;
   }
 
-  final handles = [
-    curve.leaving.dx - start.dx,
-    curve.leaving.dy - start.dy,
-    curve.arriving.dx - end.dx,
-    curve.arriving.dy - end.dy,
-  ];
-  final even = _LeastSquares(
-    missesOf,
-    _finiteNumbers,
-  ).nearestFrom(handles).numbers;
-  final (leaving, arriving) = _NearestEase(
-    times: times,
-    shares: curve.shares,
-  ).sides();
+  final (leaving, arriving) = curve;
+  final even = _LeastSquares(missesOf, _finiteNumbers).nearestFrom([
+    leaving.dx - start.dx,
+    leaving.dy - start.dy,
+    arriving.dx - end.dx,
+    arriving.dy - end.dy,
+  ]).numbers;
   final eased = _LeastSquares(missesOf, _handlesAndPaceWithinReach)
       .nearestFrom([
-        ...handles,
-        leaving.influence,
-        leaving.speed,
-        arriving.influence,
-        arriving.speed,
+        ...even,
+        EaseSide.easeInfluence,
+        1,
+        EaseSide.easeInfluence,
+        1,
       ])
       .numbers;
   return [
@@ -565,20 +562,13 @@ List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
   return handles == null || pace == null ? null : [...handles, ...pace];
 }
 
-/// The cubic from [values]' [from] to its [to] — the way's two keys — that
-/// passes nearest the values between in space, by least squares: its two
-/// inner controls fitted to each value's parameter on it, read first as
-/// how far along the line through them the value stands and then, again,
-/// as the parameter of the curve's point nearest it (Newton) — Schneider's
-/// fit of a digitized curve — and how far along it, as a share of its
-/// length, each value stands. Null where fewer than two values stand
-/// between, which two controls cannot be read from, or where every value
-/// stands at one point.
-({Offset leaving, Offset arriving, List<double> shares})? _nearestCurve(
-  List<CanvasPoint> values,
-  int from,
-  int to,
-) {
+/// The two inner controls of the cubic from [values]' [from] to its [to] —
+/// the way's two keys — that passes nearest the values between in space,
+/// each at the parameter of how far along the line through them it stands
+/// ([_controlsNearest]): where [_bentWays]' own fit starts from. Null where
+/// fewer than two values stand between, which two controls cannot be read
+/// from, or where every value stands at one point.
+(Offset, Offset)? _nearestCurve(List<CanvasPoint> values, int from, int to) {
   if (to - from < 3) {
     return null;
   }
@@ -597,30 +587,10 @@ List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
   if (along.last <= 0) {
     return null;
   }
-  var parameters = [
+  return _controlsNearest(start, end, between, [
     for (var index = 1; index <= between.length; index += 1)
       along[index] / along.last,
-  ];
-  late (Offset, Offset) controls;
-  for (var round = 0; round < _bendRounds; round += 1) {
-    final fitted = _controlsNearest(start, end, between, parameters);
-    if (fitted == null) {
-      return null;
-    }
-    controls = fitted;
-    final curve = (start, controls.$1, controls.$2, end);
-    parameters = [
-      for (final (index, point) in between.indexed)
-        _nearerParameter(curve, point, parameters[index]),
-    ];
-  }
-  final (leaving, arriving) = controls;
-  final walk = CubicWalk(start, leaving, arriving, end);
-  return (
-    leaving: leaving,
-    arriving: arriving,
-    shares: [for (final u in parameters) walk.wayAtParameter(u)],
-  );
+  ]);
 }
 
 /// The two inner controls of the cubic from [start] to [end] that comes
@@ -662,34 +632,6 @@ List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
   return (Offset(xs[0], ys[0]), Offset(xs[1], ys[1]));
 }
 
-/// [u] moved one Newton step towards the parameter of [curve]'s point
-/// nearest [point], kept on the curve.
-double _nearerParameter(
-  (Offset, Offset, Offset, Offset) curve,
-  Offset point,
-  double u,
-) {
-  final (p0, p1, p2, p3) = curve;
-  final v = 1 - u;
-  final off =
-      p0 * (v * v * v) +
-      p1 * (3 * v * v * u) +
-      p2 * (3 * v * u * u) +
-      p3 * (u * u * u) -
-      point;
-  final slope =
-      (p1 - p0) * (3 * v * v) +
-      (p2 - p1) * (6 * v * u) +
-      (p3 - p2) * (3 * u * u);
-  final turn = (p2 - p1 * 2 + p0) * (6 * v) + (p3 - p2 * 2 + p1) * (6 * u);
-  final rate = _dotOf(slope, slope) + _dotOf(off, turn);
-  if (rate == 0) {
-    return u;
-  }
-  return (u - _dotOf(off, slope) / rate).clamp(0.0, 1.0);
-}
-
-double _dotOf(Offset a, Offset b) => a.dx * b.dx + a.dy * b.dy;
 
 Offset _offsetOf(CanvasPoint point) => Offset(point.x, point.y);
 
