@@ -204,5 +204,9 @@ void main() {
     expect(signed(red), signed(red));
     expect(signed(red), isNot(signed(null)));
     expect(signed(red), isNot(signed(0xFF00FF00)));
+    // The group's own equality, too: a frame's signature parts on the
+    // hash first and would hide one that forgot it.
+    expect(signed(red).nodes.single, signed(red).nodes.single);
+    expect(signed(red).nodes.single, isNot(signed(null).nodes.single));
   });
 }
