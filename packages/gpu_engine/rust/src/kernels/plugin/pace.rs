@@ -28,6 +28,53 @@ use crate::fail;
 /// it is far under Windows' ~2 s reset.
 pub(super) const CHUNK_BUDGET: Duration = Duration::from_millis(100);
 
+/// The most chunks one batch takes, however quick they come back: a run
+/// whose spend leaps from next to nothing to its whole share keeps the
+/// engine's own work waiting behind a batch for no more than this many
+/// [`CHUNK_BUDGET`]s — each chunk is still a submit of its own, so no
+/// submit keeps the device past one.
+pub(super) const MOST_IN_A_BATCH: usize = 16;
+
+/// How many of a run's chunks go to the device before its cut is read
+/// (`Plugin::chunked`): one at first, twice as many after a batch that
+/// came back within half a [`CHUNK_BUDGET`], half as many after one that
+/// took longer than one. So a batch keeps the engine's own work waiting
+/// behind it no longer than one chunk at its whole share may: a plug-in
+/// that spends next to nothing waits for the device a few times a
+/// picture, a dear one's chunks go one at a time.
+///
+/// ⚠️What a batch took is timed from its first submit to its cut read —
+/// a wait's own round trip in it, whatever the chunks cost: 🔬a chunk of
+/// a few pixels came back in 3–7 ms in the crate's tests (11-17), where
+/// the app's waited 0.36 ms. A budget of a few ms never let a batch grow
+/// there.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Batches {
+    size: usize,
+}
+
+impl Default for Batches {
+    fn default() -> Self {
+        Self { size: 1 }
+    }
+}
+
+impl Batches {
+    /// How many chunks the next batch takes.
+    pub(super) fn size(&self) -> usize {
+        self.size
+    }
+
+    /// The batch just read back `took`, from its first submit to its cut.
+    pub(super) fn took(&mut self, took: Duration) {
+        if took * 2 <= CHUNK_BUDGET {
+            self.size = (self.size * 2).min(MOST_IN_A_BATCH);
+        } else if took > CHUNK_BUDGET {
+            self.size = (self.size / 2).max(1);
+        }
+    }
+}
+
 /// What a timed probe run reaches before its turns stop doubling: long
 /// enough that a submit's cost and the timer's are lost in it.
 const STEP: Duration = Duration::from_millis(10);

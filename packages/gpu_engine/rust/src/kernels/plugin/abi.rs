@@ -219,8 +219,8 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
 /// or the device failed (the last error says). The values and moment are
 /// as `gpu_engine_plugin_reach` takes them; each pixel's share is `share`,
 /// however many there are — for a plugin opened not to be cut, what its
-/// chunks are sized for alone. ⚠️Waits for the GPU a chunk at a time, the
-/// cut read after each: the app asks it on a worker.
+/// chunks are sized for alone. ⚠️Waits for the GPU a batch of chunks at a
+/// time, the cut read after each: the app asks it on a worker.
 ///
 /// 🗣️an-endless-plugin-stalls-the-app-Q19 (유저 2026-11-10 16:36): 「화소
 /// 하나의 몫으로 고정하고, 그리기를 덩어리로 나눠 넘긴다」 — ↩️the share was

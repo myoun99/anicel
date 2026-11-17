@@ -13,8 +13,8 @@
 //! device finishes within a budget were each to spend its whole share
 //! ([`pace`]), so no plugin keeps the device past it; the counted render
 //! sees the ids of one dispatch of the whole (fx_wgsl's count.rs), its
-//! chunk's first group in the frame. The cut is read after each chunk, and
-//! a run cut stops there.
+//! chunk's first group in the frame. The cut is read once a batch of
+//! chunks ([`pace::Batches`]), and a run cut stops at the end of its batch.
 
 pub(crate) mod abi;
 #[cfg(test)]
@@ -25,6 +25,7 @@ mod tests;
 mod tiles;
 
 use std::borrow::Cow;
+use std::time::Instant;
 
 use fx_wgsl::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, INPUT, Kernel, OUTPUT, RENDER, ROWS};
 
@@ -34,6 +35,7 @@ use crate::kernels::shared::{
     Encoded, encode, fits, le_bytes, le_words, pipeline_or_why, plane, whole, words_buffer,
 };
 
+use pace::Batches;
 pub(crate) use pace::Pace;
 pub(crate) use tiles::Tiled;
 use tiles::Tiles;
@@ -201,8 +203,19 @@ impl Plugin {
     }
 
     /// Dispatches the render over `groups` with `bindings`' `buffers`, in
-    /// chunks of `most` workgroups at most, the cut read after each: a run
-    /// cut stops there. One loop whichever pictures the run is handed.
+    /// chunks of `most` workgroups at most, each a submit of its own, the
+    /// cut read once a batch of them ([`Batches`]): a run cut stops at the
+    /// end of its batch — a chunk after the cut enters with no share (the
+    /// prelude's `anicel_host_enter`) and ends at its first charge. One
+    /// loop whichever pictures the run is handed.
+    ///
+    /// ↩️The cut was read after every chunk till 11-17: a plug-in that
+    /// spends next to nothing waited for the device as many times as its
+    /// picture had chunks — 🔬main PC, the measuring scene with the
+    /// fixture's invert on a row others wear, the band filled: 176 renders
+    /// waited p50 33 times each (p90 48), 11.9 ms each on the engine's
+    /// thread, where the band with the plug-in off waited 41 times in all
+    /// (a-plugin-step-is-keyed-by-a-moment-it-may-not-read, 11-17).
     fn chunked(
         &self,
         engine: &Engine,
@@ -215,13 +228,21 @@ impl Plugin {
         let buffer = |name: &str| bindings.iter().position(|bound| bound.name == name).map(|at| &buffers[at]);
         let framed = buffer(FRAME).expect("every render reads its frame as it enters");
         let cut = buffer(CUT).expect("every render reads the cut as it enters");
-        for (first, size) in chunks(groups, most) {
-            engine.queue.write_buffer(framed, 4 * CHUNK_WORD as u64, &le_bytes(&first));
-            let groups = (size[0], size[1], 1);
-            encode(engine, &[Encoded { pipeline: &self.pipeline, bound: whole(&bound), groups }]);
+        let mut left = chunks(groups, most).into_iter().peekable();
+        let mut batches = Batches::default();
+        while left.peek().is_some() {
+            let began = Instant::now();
+            // A write is laid at the next submit, ahead of its work.
+            for (first, size) in left.by_ref().take(batches.size()) {
+                engine.queue.write_buffer(framed, 4 * CHUNK_WORD as u64, &le_bytes(&first));
+                let groups = (size[0], size[1], 1);
+                let chunk = Encoded { pipeline: &self.pipeline, bound: whole(&bound), groups };
+                encode(engine, &[chunk]);
+            }
             if le_words(&engine.read_buffer(cut)?)[0] != 0 {
                 return Some(Err(Cut));
             }
+            batches.took(began.elapsed());
         }
         Some(Ok(()))
     }

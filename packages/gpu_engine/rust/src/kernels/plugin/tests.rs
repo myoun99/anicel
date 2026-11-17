@@ -4,9 +4,12 @@
 //! same counted module — the CPU's is the run the chain's plan asks the
 //! reach of anyway (fx_wgsl's run.rs), and what it computes is WGSL's.
 
+use std::time::Duration;
+
 use fx_wgsl::{Cut, Frame, Kernel, open, open_uncut};
 
-use super::{Pace, Plugin, Tiled};
+use super::{Batches, Pace, Plugin, Tiled};
+use crate::device::gpu_engine_waits_here;
 use crate::kernels::chain::tests::put_over;
 use crate::kernels::composite::TILE;
 use crate::kernels::effects::blur::TileRect;
@@ -386,6 +389,40 @@ fn a_chunk_holds_what_finishes_within_the_budget_at_the_whole_share() {
     assert_eq!(pace.chunk(100_000_000, 256), 10, "a lane alone takes 0.64 s: as many as finish with it");
     assert_eq!(pace.chunk(0, 256), pace.chunk(1, 256), "a share of none is spent as one");
     assert_eq!(Pace::new(1.0, 1.0).chunk(u32::MAX, 256), 1, "one group at the least");
+}
+
+#[test]
+fn a_batch_doubles_while_its_chunks_come_back_quick_and_halves_when_slow() {
+    use super::pace::{CHUNK_BUDGET, MOST_IN_A_BATCH};
+    let mut batches = Batches::default();
+    assert_eq!(batches.size(), 1, "one chunk at first");
+    let mut after = |took: Duration| {
+        batches.took(took);
+        batches.size()
+    };
+    let quick: Vec<_> = (0..6).map(|_| after(CHUNK_BUDGET / 2)).collect();
+    assert_eq!(quick, [2, 4, 8, 16, 16, 16], "doubled up to the most");
+    assert_eq!(MOST_IN_A_BATCH, 16);
+    assert_eq!(after(CHUNK_BUDGET), 16, "within a chunk's budget but not half: as it was");
+    assert_eq!(after(CHUNK_BUDGET + Duration::from_micros(1)), 8, "past it: halved");
+    let slow: Vec<_> = (0..5).map(|_| after(3 * CHUNK_BUDGET)).collect();
+    assert_eq!(slow, [4, 2, 1, 1, 1], "one at the least");
+}
+
+#[test]
+fn a_quick_run_in_many_chunks_waits_for_the_device_a_batch_at_a_time() {
+    // 64 × 64 is 16 × 32 of IDS' groups of 4 × 2: 512 chunks of one.
+    let given = Given::new([64, 64], 0, &[]);
+    let engine = first_engine();
+    let plugin = Plugin::open(engine, open(IDS).expect("opened")).expect("compiled");
+    let mut output = hashed(64 * 64, 3);
+    let waits = gpu_engine_waits_here();
+    let run = plugin.run(engine, &given.frame(), &mut output, 1).expect("the device ran it");
+    let waited = gpu_engine_waits_here() - waits;
+    assert_eq!(run, Ok(()));
+    // Batches of 1, 2, 4, 8 and then 16 where they come back quick, and
+    // the output read: some forty — 513 were it a wait a chunk.
+    assert!(waited < 64, "{waited} waits for 512 chunks");
 }
 
 #[test]
