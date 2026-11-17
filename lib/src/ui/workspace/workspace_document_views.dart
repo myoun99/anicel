@@ -82,6 +82,14 @@ class _WorkspaceDocumentViews {
   /// switch and would drop their images each time.
   late SheetImageCache _sheetImages;
 
+  /// The media pool's icon view's pictures (asset-placement-presets Q6) —
+  /// here, not in the tab, for the reason [_sheetImages] is: the tabs are
+  /// rebuilt on every panel switch.
+  late MediaPoolPictures _poolPictures;
+
+  /// Where [_poolPictures] tells the census what it holds.
+  static const String _poolCensusKey = 'media-pool';
+
   /// The three sheets' ink — each controller over the project on screen's
   /// stores, made again for each project that comes on screen
   /// ([bindSession]).
@@ -135,6 +143,21 @@ class _WorkspaceDocumentViews {
     session.memoryPressureTicks.addListener(
       _sheetImages.respondToMemoryPressure,
     );
+    _poolPictures = MediaPoolPictures(
+      // A pooled file opens as the viewer opens it. A sound draws its held
+      // waveform in its box and never comes here.
+      open: (asset) => openViewerDocument(
+        asset.kind,
+        asset.path,
+        hold: hold,
+        soundPeaks: (_) async => null,
+      ),
+      onHeldBytesChanged: (bytes) =>
+          caches.viewerRasterBytesByViewer[_poolCensusKey] = bytes,
+    );
+    session.memoryPressureTicks.addListener(
+      _poolPictures.respondToMemoryPressure,
+    );
   }
 
   /// Lets the ink controllers and [session]'s images go — the stores stay
@@ -150,6 +173,11 @@ class _WorkspaceDocumentViews {
     );
     // The cache reports the zero to [session].
     _sheetImages.dispose();
+    session.memoryPressureTicks.removeListener(
+      _poolPictures.respondToMemoryPressure,
+    );
+    _poolPictures.dispose();
+    session.renderCaches.viewerRasterBytesByViewer.remove(_poolCensusKey);
   }
 
   /// Disposes every notifier the views own; the workspace's `dispose` calls

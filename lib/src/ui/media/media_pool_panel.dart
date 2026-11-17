@@ -7,6 +7,8 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../../models/project_frame_rate.dart';
+import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../models/se_take_placement.dart' show placedSoundBlockOf;
 import '../../services/media/media_facts.dart' show MediaPoolFacts;
 import '../../services/persistence/file_type_groups.dart';
@@ -35,6 +37,8 @@ import 'media_asset_drag_data.dart';
 import 'media_asset_kind_icon.dart';
 import 'media_drop_verdict.dart';
 import 'media_pool_list.dart';
+import 'media_pool_icons.dart';
+import 'media_pool_pictures.dart';
 import 'media_pool_view.dart';
 import 'media_pool_words.dart';
 import '../timeline/se_name_tag_lane_preview.dart';
@@ -82,8 +86,9 @@ class MediaPoolPanel extends StatelessWidget {
     this.view = const MediaPoolView(),
     this.onViewChanged,
     this.factsOf = _nothingRead,
-    this.soundFramesOf = _nothingHeard,
-    this.framesPerSecond = 24,
+    this.soundOf = _nothingHeard,
+    this.frameRate = ProjectFrameRate.fps24,
+    this.pictures,
   });
 
   final List<MediaAsset> assets;
@@ -186,14 +191,19 @@ class MediaPoolPanel extends StatelessWidget {
   /// size, its sound's rate and channels — null while it has not.
   final MediaPoolFacts? Function(String path) factsOf;
 
-  /// How many project frames a sound lasts, where its conform is held.
-  final int? Function(String path) soundFramesOf;
+  /// A sound's waveform where its conform is held — never asking for one:
+  /// how long it lasts in the list, its picture in the icon view.
+  final AudioPeaks? Function(String path) soundOf;
 
-  /// The project's counting base, which a length is told in.
-  final int framesPerSecond;
+  /// The project's rate, which a length is told in.
+  final ProjectFrameRate frameRate;
+
+  /// Where the icon view's pictures come from. Null draws each box by its
+  /// file's kind alone.
+  final MediaPoolPictures? pictures;
 
   static MediaPoolFacts? _nothingRead(String path) => null;
-  static int? _nothingHeard(String path) => null;
+  static AudioPeaks? _nothingHeard(String path) => null;
 
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
@@ -515,6 +525,20 @@ class MediaPoolPanel extends StatelessWidget {
                     place: EmptyStatePlace.list,
                   ),
                 )
+              : view.icons
+              ? MediaPoolIcons(
+                  assets: assets,
+                  pictures: pictures,
+                  markOf: (asset) => _markOf(asset, colorScheme),
+                  badgeOf: view.presets ? _words.spanWord : _words.lengthWord,
+                  captionOf: (context, asset) => Padding(
+                    padding: const EdgeInsets.only(left: 2),
+                    child: _captionOf(context, asset),
+                  ),
+                  tileOf: _lineOf,
+                  soundOf: soundOf,
+                  frameRate: frameRate,
+                )
               : MediaPoolList(
                   assets: assets,
                   columns: view.presets
@@ -531,24 +555,32 @@ class MediaPoolPanel extends StatelessWidget {
 
   /// What the lines say column by column, from what the session holds.
   MediaPoolWords get _words => MediaPoolWords(
-    framesPerSecond: framesPerSecond,
+    framesPerSecond: frameRate.countingBase,
     storedBytes: storedBytes,
     conformBytes: conformBytes,
     modifiedTimes: modifiedTimes,
     factsOf: factsOf,
-    soundFramesOf: soundFramesOf,
+    soundFramesOf: (path) => soundOf(path)?.durationFrames(frameRate),
   );
 
   /// The pinned part of [asset]'s line: what it is, its name — or what its
   /// preset places, in the preset face — and the two buttons on it.
-  Widget _nameOf(BuildContext context, MediaAsset asset) {
+  Widget _nameOf(BuildContext context, MediaAsset asset) => Row(
+    children: [
+      const SizedBox(width: 8),
+      _markOf(asset, Theme.of(context).colorScheme),
+      const SizedBox(width: 6),
+      Expanded(child: _captionOf(context, asset)),
+    ],
+  );
+
+  /// The line's name — or what its preset places — and the two buttons on
+  /// it: the list's name cell after its mark, and an icon box's caption.
+  Widget _captionOf(BuildContext context, MediaAsset asset) {
     final colorScheme = Theme.of(context).colorScheme;
     final uses = usesOf(asset.path);
     return Row(
       children: [
-        const SizedBox(width: 8),
-        _markOf(asset, colorScheme),
-        const SizedBox(width: 6),
         Expanded(
           // The double-click zone is the NAME AREA only: a double-tap
           // recognizer over the whole line would hold the menu button's

@@ -927,19 +927,12 @@ class _WorkspaceTabs {
               view: _state._mediaPoolView.value,
               onViewChanged: (view) => _state._mediaPoolView.value = view,
               factsOf: _state.widget.session.mediaPool.mediaFactsOf,
-              // A sound's length where its conform is held — never asking
+              // A sound's waveform where its conform is held — never asking
               // for one (`heldPeaksFor`).
-              soundFramesOf: (path) => _state.widget.session.audioConformStore
-                  .heldPeaksFor(path)
-                  ?.durationFrames(
-                    _state.widget.session.projectSettings.projectFrameRate,
-                  ),
-              framesPerSecond: _state
-                  .widget
-                  .session
-                  .projectSettings
-                  .projectFrameRate
-                  .countingBase,
+              soundOf: _state.widget.session.audioConformStore.heldPeaksFor,
+              frameRate:
+                  _state.widget.session.projectSettings.projectFrameRate,
+              pictures: _state._views._poolPictures,
             ),
           ),
         );
