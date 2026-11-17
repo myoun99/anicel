@@ -33,13 +33,15 @@
 - **Lignes de calque** — créer un dossier avec plusieurs calques sélectionnés les y range. Détacher agit sur tous les calques sélectionnés. Un nouveau calque attaché s'ajoute juste au-dessus ou au-dessous de la ligne où vous êtes, et le bouton de repli des calques attachés se divise en une moitié haute et une moitié basse. Un dossier replié se colle replié.
 - **Légende** — le solo par étiquette de couleur choisit par étiquette seule, quelle que soit la prise. Le bouton de timeline de la légende du conte a la taille d'un nom de ligne.
 - **SE** — l'étiquette SE sur le canevas réunit son nom et son type dans une seule case. Le nom et la réplique d'un bloc SE tiennent sur une ligne, et Entrée ferme la fenêtre avec « OK ». La feuille de temps ne grise plus les lignes vides de la colonne SE.
-- **Lignes de son** — la case de fusion porte un bouton haut-parleur et une barre de volume global (jusqu'à 200). L'opacité d'une ligne de son s'affiche sur le canevas pendant le glissement.
+- **Lignes de son** — la case de fusion porte un bouton haut-parleur et une barre de volume global (jusqu'à 200). L'opacité d'une ligne de son s'affiche sur le canevas pendant le glissement. Le volume global se règle par cette seule barre : la piste « Volume global » du groupe fx audio a disparu.
+- **Saisir la valeur d'une barre** — double-cliquez sur la barre d'opacité d'une ligne ou sur la barre de volume global d'une ligne de son : un pavé numérique s'ouvre dessous pour taper la valeur. Le conte, la timeline et la feuille d'exposition se comportent de même.
 - **La timeline pendant la lecture** — les boutons comme la pilule d'image ne changent plus pendant la lecture. Survolez la ligne rouge d'un bloc qui dépasse le bord d'un plan : une infobulle en donne la raison.
 - **Fenêtre des raccourcis clavier** — la fenêtre est plus grande, et sous « Canevas › Outils » chaque outil est suivi de ses sous-outils. La barre de défilement ne recouvre plus les boutons de réinitialisation. Dans le préréglage TVPaint, Alt-glisser déplace la vue et Ctrl+Alt-glisser la fait tourner.
 - **Pilule de pinceau sur les panneaux d'arrière-plan** — avec la visionneuse principale ou une feuille en arrière-plan, la même pilule de pinceau que sur le canevas se tient au même endroit.
 - **Outil de découpe** — choisissez « Affichage » ou « Calque » sous « Référence ». « Affichage » découpe tous les calques visibles tels qu'ils s'affichent.
 - **Outil de remplissage** — en maintenant l'appui et en bougeant, le damier glisse avec le curseur.
 - **Valeurs par défaut de l'import** — les images entrent à leur taille d’origine. Des options longues n'élargissent plus la fenêtre d'import. Réimporter un fichier du même nom prévisualise et importe le nouveau fichier. Les fichiers intégrés de la médiathèque montrent leur date d'intégration au lieu d'un chemin.
+- **Pourcentage à l'ouverture et à l'import** — à l'ouverture d'un projet comme à l'import depuis la fenêtre d'import, le pourcentage avance avec la part du fichier déjà lue. La barre ne reste plus figée pendant qu'un fichier descend du cloud, et un fichier .anicel affiche son pourcentage dès le début.
 - **Cadence** — 23,976 i/s porte la mention « Recommandé ».
 - **Export** — l'aperçu vidéo montre la même image que le fichier écrit. Enregistrer sous (PNG) imprime la trajectoire de caméra, les repères et la pelure d'oignon comme sur le canevas. L'onglet Cellulos a toujours une barre de défilement pour les dossiers de calques, et exporte les feuilles de temps de tous les plans liés.
 - **Étiquettes de couleur** — l'étape « Décors » disparaît. Les étiquettes de papier commencent par le papier du LO et prennent la couleur de leur étape, et un nouveau calque image naît à la couleur du LO.
@@ -53,6 +55,9 @@
 - **Déplacer la vue** — les surimpressions comme le cadre de caméra suivent l'image quand vous déplacez ou zoomez. Pendant une transformation, le contour de la sélection suit les bords des pixels.
 - **Pipette** — appuyer sur Alt au milieu d'un glissement ne passe à la pipette qu'à la fin du glissement.
 - **Mode clair** — la couleur de fond autour du canevas ne change pas en mode clair.
+- **Caméras TVPaint** — une caméra TVPaint qui suit un chemin courbe arrive avec autant de clés que le fichier en a. Auparavant, une clé tombait toutes les quelques images là où le chemin s'incurvait.
+- **Transformer de grandes images** — une sélection plus grande que ce que la carte graphique traite d'un coup se transforme quand même avec l'outil de transformation, grille comprise.
+- **Enregistrement de voix** — la réduction de bruit et le traitement du volume se font sur un autre fil d'exécution à l'arrêt de l'enregistrement : l'écran ne se fige plus à la fin d'une longue prise.
 
 ## Corrections
 
@@ -85,6 +90,10 @@
 - Ouvrir un fichier TVPaint à plusieurs clips affichait un faux avertissement.
 - Le fantôme de pelure d'oignon d'une ligne à numéros de cellulo perdait son numéro.
 - Les images et les calques vectoriels d'un fichier CLIP STUDIO étaient coupés au bord du canevas : une image posée au-delà n'apparaissait pas sur le fond, et déplacer le calque ne la ramenait pas.
+- Dans un plan dont une ligne porte un plug-in fx, l'écran se figeait à répétition plus d'une seconde pendant la préparation des images pour la lecture.
+- Un trait au stylet tracé pendant un long gel de l'écran perdait son début.
+- En tamponnant une image retournée avec l'outil de découpe, le fantôme suivait le curseur avec retard.
+- À la largeur minimale du panneau des réglages de l'outil, les lettres des boutons d'anticrénelage se chevauchaient et débordaient de leur case.
 - La lecture d'une vidéo s'arrêtait juste après un retour en arrière, le son exporté en MP4 perdait son tout début une fois rouvert, et les couleurs des vidéos exportées sous Windows étaient mal lues.
 - Sous Windows, une vidéo comptait deux images de trop, et un saut affichait l'image située deux images plus tôt.
 - Importer un JPEG aux informations de taille fausses fermait l'application.

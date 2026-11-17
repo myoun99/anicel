@@ -33,13 +33,15 @@
 - **Layer rows** — make a folder with several layers picked and they go into it. Detach acts on every picked layer. A new attach layer lands just above or below the row you stand on, and the attach fold button is split into an upper and a lower half. A folded folder pastes folded.
 - **Legend** — a color label solo picks by label alone, whatever the take. The conte legend's timeline button reads at the same size as a row's name.
 - **SE** — an SE name tag on the canvas holds its name and type in one box. An SE block's name and line are single lines, and Enter closes the window with "OK". The timesheet no longer shades the empty rows of the SE column.
-- **Sound rows** — the blend cell holds a speaker button and a total volume bar (up to 200). A sound row's opacity shows on the canvas while you drag it.
+- **Sound rows** — the blend cell holds a speaker button and a total volume bar (up to 200). A sound row's opacity shows on the canvas while you drag it. The total volume is this bar alone: the "Total volume" lane in the audio fx group is gone.
+- **Typing a bar's value** — double-click a row's opacity bar or a sound row's total volume bar and a number pad opens under it to type the value. The conte, the timeline and the X-sheet all work alike.
 - **The timeline during playback** — buttons such as the frame pill no longer change while playing. Hover the red line of a block that crosses a cut's edge and a tooltip tells why.
 - **Keyboard shortcuts window** — the window is larger, and under "Canvas › Tools" each tool is followed by its sub-tools. The scrollbar no longer overlaps the reset buttons. In the TVPaint preset, Alt-drag moves the view and Ctrl+Alt-drag turns it.
 - **Brush pill on background panels** — with the main viewer or a sheet laid as the background, the same brush pill as the canvas's stands in the same place.
 - **Cut tool** — choose "Display" or "Layer" under "Reference". "Display" cuts every visible layer just as it shows.
 - **Fill tool** — holding down and moving slides the checker pattern along with the cursor.
 - **Import defaults** — pictures come in at their original size. Long options no longer widen the import window. Importing a file of the same name again previews and brings in the new file. Kept files in the media pool show the date they were kept instead of a path.
+- **Percent while opening and importing** — opening a project, or importing from the import window, the percent grows with how much of the file has been read. The bar no longer stands still while a file comes down from the cloud, and a .anicel file shows its percent from the start.
 - **Frame rate** — 23.976 fps is marked "Recommended".
 - **Export** — the video preview shows the same picture as the file it writes. Save As (PNG) prints the camera path, guides and onion skin as the canvas shows them. The Cels tab always has a scrollbar for layer folders, and exports the timesheets of every linked cut.
 - **Color labels** — the "Art" process is gone. Paper labels start from the LO paper and take their stage's color, and a new image layer starts in the LO color.
@@ -53,6 +55,9 @@
 - **Moving the view** — overlays such as the camera frame move together with the picture when you pan or zoom. While transforming, a selection's outline follows the pixel edges.
 - **Eyedropper** — pressing Alt in the middle of a drag switches to the eyedropper only once the drag ends.
 - **Light mode** — the background color around the canvas stays as it is in light mode.
+- **TVPaint cameras** — a TVPaint camera moving along a curved path comes in with only as many keys as the file has. Before, a key landed every few frames wherever the path bent.
+- **Transforming large pictures** — a selection larger than the graphics card can handle at once can still be transformed with the transform tool, mesh included.
+- **Voice recording** — noise suppression and the volume pass run on another thread when recording stops, so the screen no longer freezes at the end of a long take.
 
 ## Fixed
 
@@ -85,6 +90,10 @@
 - Opening a TVPaint file with several clips showed a false warning.
 - The onion skin ghost of a row with cel numbers left the number out.
 - A CLIP STUDIO file's pictures and vector layers were cut at the canvas edge, so a picture kept past the canvas never showed on the pasteboard and moving the layer did not bring it back.
+- In a cut with an fx plugin on a row, the screen kept stalling for over a second while pictures were prepared ahead for playback.
+- A pen stroke drawn while the screen was frozen for a long time lost its beginning.
+- Stamping a flipped picture with the cut tool, the ghost lagged behind the cursor.
+- At the tool settings panel's narrowest width, the anti-alias buttons' letters overlapped and spilled out of their cell.
 - Reading a video stopped right after rewinding it, sound exported to MP4 lost its first moment when opened again, and colors of videos exported on Windows were read wrong.
 - On Windows, a video's frame count came out two too many, and a jump showed the picture from two frames before.
 - Importing a JPEG with false size information closed the app.
