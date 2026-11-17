@@ -22,8 +22,14 @@ struct Params {
   row_words: u32,
   // A pixel whose alpha is under it is clear.
   cut: u32,
-  pad0: u32,
-  pad1: u32,
+  // The word of a frame shown its binding begins on, and the first row of
+  // words this pass puts: a pass reads the rows its pixels lie on, not the
+  // frame whole (board conversions-bind-a-frame-past-the-device-limit,
+  // 2026-11-17). The word is taken off a pixel's x, wrapping where it
+  // passes it — frame_shown.wgsl counts y × stride + x; 0 for a run's
+  // tiles, read whole.
+  frame_base: u32,
+  first_row: u32,
   pad2: u32,
 }
 
@@ -38,7 +44,7 @@ fn clear_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= params.row_words) {
     return;
   }
-  let word = id.y * params.row_words + id.x;
+  let word = (params.first_row + id.y) * params.row_words + id.x;
   let first = word * 32u;
   let pixels = params.width * params.height;
   // Past the buffer, as over_ground.wgsl has why.
@@ -49,7 +55,10 @@ fn clear_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var bit = 0u; bit < 32u; bit += 1u) {
     let index = first + bit;
     if (index < pixels) {
-      let alpha = frame_alpha(index % params.width, index / params.width);
+      let alpha = frame_alpha(
+        index % params.width - params.frame_base,
+        index / params.width,
+      );
       if (alpha < params.cut) {
         bits |= 1u << bit;
       }

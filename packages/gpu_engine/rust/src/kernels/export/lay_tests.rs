@@ -4,7 +4,7 @@
 
 use super::shown_tests::{shown, shown_on};
 use super::tests::rig;
-use super::{Cover, Frame, Lay, Opaque, Picture, Shown, Source};
+use super::{Clear, Cover, Frame, Lay, Opaque, Picture, Shown, Source};
 use crate::device::Engine;
 use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
@@ -349,4 +349,58 @@ fn a_frame_past_the_device_s_binding_is_not_converted() {
     assert!(Opaque::new().run(&engine, Frame::Shown(&frame), SMALL.0).is_none());
     assert_eq!(last_error(), "a plane of 264000 bytes exceeds a binding of 65536");
     engine.wait().expect("the device refused no binding");
+}
+
+// The clear bits of a frame read a band of rows at a time are the bits of
+// it read whole: a frame uploaded, its rows its width apart, and a frame
+// shown, 64 words apart for 37 pixels — four rows a binding, so a row of
+// words a pass, each binding begun where the device lets it. Where a
+// binding holds one row, it is refused, not bound past.
+#[test]
+fn a_frame_read_for_its_clear_bits_a_band_at_a_time_reads_as_whole() {
+    let rig = rig();
+    let step = u64::from(rig.engine.device().limits().min_storage_buffer_offset_alignment);
+    let word = |x: u32, y: u32| {
+        let alpha = (x * 7 + y * 13) % 256;
+        alpha << 24 | alpha / 2
+    };
+    let picture = Picture { width: 37, height: 23 };
+    for frame in [uploaded(37, 23, word), shown(37, 23, false, word)] {
+        let row_bytes = u64::from(frame.stride) * 4;
+        let bits = |room| {
+            let at = (picture, 128);
+            let bits = rig.clear.run_by(rig.engine, Frame::Shown(&frame), at, room);
+            bits.map(|bits| read_buffer(rig.engine, &bits))
+        };
+
+        assert!(bits(step + 4 * row_bytes).expect("bits") == bits(room(rig.engine)).expect("bits"));
+        assert!(bits(step + row_bytes).is_none());
+        assert_eq!(last_error(), format!("a row of 64 clear bits exceeds a binding of {}", step + row_bytes));
+    }
+}
+
+// On a device whose binding holds less than the frame, the frame is read
+// for its clear bits: a picture laid over nothing, rows 25 to 175 of 200 —
+// every pixel off them is clear — and the device refuses no binding.
+#[test]
+fn a_frame_past_the_device_s_binding_is_read_for_its_clear_bits() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(SMALL.1);
+    let lay = Lay::new();
+    let frame = Shown::blank(&engine, SMALL.0).expect("a frame past a binding");
+    let rgba = vec![255; 400 * 150 * 4];
+    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 400, height: 150 })
+        .expect("a picture past a binding");
+    let source = Source::Frame { frame: &picture, x: -30, y: 25 };
+    lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
+    let bits = Clear::new().run(&engine, Frame::Shown(&frame), SMALL.0, 128).expect("clear bits");
+
+    engine.wait().expect("the device refused no binding");
+    let mut expected = vec![0u32; (330 * 200usize).div_ceil(32)];
+    for at in 0..330 * 200 {
+        if !(25..175).contains(&(at / 330)) {
+            expected[at / 32] |= 1 << (at % 32);
+        }
+    }
+    assert!(le_words(&read_buffer(&engine, &bits)) == expected);
 }
