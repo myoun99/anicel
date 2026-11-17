@@ -94,6 +94,7 @@
 - A pen stroke drawn while the screen was frozen for a long time lost its beginning.
 - Stamping a flipped picture with the cut tool, the ghost lagged behind the cursor.
 - At the tool settings panel's narrowest width, the anti-alias buttons' letters overlapped and spilled out of their cell.
+- After the graphics card restarted, a second notice still asked you to restart the app.
 - Reading a video stopped right after rewinding it, sound exported to MP4 lost its first moment when opened again, and colors of videos exported on Windows were read wrong.
 - On Windows, a video's frame count came out two too many, and a jump showed the picture from two frames before.
 - Importing a JPEG with false size information closed the app.

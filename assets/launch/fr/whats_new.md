@@ -94,6 +94,7 @@
 - Un trait au stylet tracé pendant un long gel de l'écran perdait son début.
 - En tamponnant une image retournée avec l'outil de découpe, le fantôme suivait le curseur avec retard.
 - À la largeur minimale du panneau des réglages de l'outil, les lettres des boutons d'anticrénelage se chevauchaient et débordaient de leur case.
+- Après le redémarrage de la carte graphique, une seconde notification demandait encore de redémarrer l'application.
 - La lecture d'une vidéo s'arrêtait juste après un retour en arrière, le son exporté en MP4 perdait son tout début une fois rouvert, et les couleurs des vidéos exportées sous Windows étaient mal lues.
 - Sous Windows, une vidéo comptait deux images de trop, et un saut affichait l'image située deux images plus tôt.
 - Importer un JPEG aux informations de taille fausses fermait l'application.
