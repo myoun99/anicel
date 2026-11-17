@@ -108,6 +108,12 @@ impl DeviceTurn {
     pub(crate) fn engine(&self) -> Engine {
         Engine::open_first().expect("these tests need a GPU adapter")
     }
+
+    /// [`Self::engine`], one binding holding no more than `room` bytes
+    /// ([`Engine::open_first_binding`]).
+    pub(crate) fn engine_binding(&self, room: u64) -> Engine {
+        Engine::open_first_binding(room).expect("these tests need a GPU adapter")
+    }
 }
 
 /// The turn for a device of the calling test's own — waited for while

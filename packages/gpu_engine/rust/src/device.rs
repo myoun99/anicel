@@ -454,19 +454,48 @@ impl Engine {
     /// Opens on the platform's first adapter: the tests', cargo's and
     /// `flutter test`'s alike, where no Flutter names one.
     pub(crate) fn open_first() -> Option<Self> {
+        Self::first_within(most_storage)
+    }
+
+    /// [`Self::open_first`], one binding holding no more than `room` bytes:
+    /// a test's device that binds as little as lavapipe's 128 MiB does, of
+    /// planes a test makes (board
+    /// the-engine-binds-a-plane-past-the-device-limit, 2026-11-17 — the CI
+    /// found a plane bound past it, and every device here binds more).
+    #[cfg(test)]
+    pub(crate) fn open_first_binding(room: u64) -> Option<Self> {
+        Self::first_within(|adapter| wgpu::Limits {
+            max_storage_buffer_binding_size: room,
+            ..most_storage(adapter)
+        })
+    }
+
+    fn first_within(limits: impl FnOnce(&wgpu::Adapter) -> wgpu::Limits) -> Option<Self> {
         let instance = platform::instance();
         match platform::adapters(&instance).into_iter().next() {
-            Some(adapter) => Self::on(instance, adapter),
+            Some(adapter) => {
+                let limits = limits(&adapter);
+                Self::within(instance, adapter, limits)
+            }
             None => fail("no adapter"),
         }
     }
 
     pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
+        let limits = most_storage(&adapter);
+        Self::within(instance, adapter, limits)
+    }
+
+    fn within(
+        instance: wgpu::Instance,
+        adapter: wgpu::Adapter,
+        required_limits: wgpu::Limits,
+    ) -> Option<Self> {
         let required_features = adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE;
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("gpu_engine"),
             required_features,
-            required_limits: most_storage(&adapter),
+            required_limits,
             ..Default::default()
         });
         match pollster::block_on(request) {
