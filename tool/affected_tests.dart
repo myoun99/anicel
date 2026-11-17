@@ -66,7 +66,7 @@ import 'test_seconds.dart';
 /// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the
-/// assets the pubspec bundles reach every suite with no import edge to them
+/// faces the pubspec bundles reach every suite with no import edge to them
 /// (↩️as the C engine's sources did, behind FFI, till they went —
 /// 2026-11-13 — and the shaders it bundled, till the Flutter chain's went —
 /// the-flutter-fx-chain-is-a-second-chain); and
@@ -84,6 +84,12 @@ import 'test_seconds.dart';
 /// only `windows/runner/` ran all 2,561 files — eighty minutes of five
 /// suites, with eleven runs waiting behind it. A suite that reads a
 /// platform file as text is still chosen, by [selectTests], like any scan.
+///
+/// ↩️NOR THE REST OF `assets/` (2026-11-17, card a-words-only-asset-runs-
+/// every-test): three lines of the update notice ran all 3,289 files. The
+/// notice and the licences are read by the code that names their keys and
+/// by the scans that spell them, and [selectTests] chooses those
+/// (`Reaches`); only the faces stay ([kEveryTestReadsUnder]).
 const _runEverything = <String>[
   ...kEveryTestReads,
   ...kEveryTestReadsUnder,

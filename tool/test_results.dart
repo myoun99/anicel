@@ -46,9 +46,24 @@ const kEveryTestReads = [
   kTestConfig,
 ];
 
-/// Folders every test may read without naming them: the assets the pubspec
-/// bundles into every test. ↩️And the shaders it bundled (`shaders/`), till
-/// the Flutter chain's went (the-flutter-fx-chain-is-a-second-chain).
+/// Folders every test may read without naming them: the faces the pubspec
+/// bundles. Kept whole rather than chased to their readers (관제 11-17, the
+/// card below): a face is named by the app's theme, handed to the engine,
+/// listed in the font manifest every run's bundle carries and loaded by the
+/// tests that lay out letters (test/helpers/app_faces.dart) — a change to
+/// one moves glyphs nearly everywhere. ↩️And the shaders it bundled
+/// (`shaders/`), till the Flutter chain's went
+/// (the-flutter-fx-chain-is-a-second-chain).
+///
+/// ↩️Till 2026-11-17 the whole of `assets/` (card a-words-only-asset-runs-
+/// every-test): three lines of the update notice ran all 3,289 files in 38
+/// batches, the landing before it the same, and the brush lane's
+/// measurement waited behind them — the notice changes with every bundle
+/// now. The notice and the licences are read by the code that names them
+/// (`launch_notice.dart`, `main.dart`: an asset key under `assets/` is a
+/// read, [Reaches]) and by the scans that spell them, so a change to one
+/// runs those — the platform folders' law (유저 10-20,
+/// tests-crowd-the-machine-Q6 「전부」): only what EVERY test reads stays.
 ///
 /// ⛔Not `packages/`. `packages/gpu_engine` is read by the suites that reach
 /// its bindings (import_graph.dart, `Reaches` — since 2026-11-07 the app
@@ -62,7 +77,7 @@ const kEveryTestReads = [
 /// the land's (tool/lane.sh, refusal 8). ↩️From then `packages/qa_native/`
 /// stood here alone — the C engine, behind FFI where no import edge
 /// reached it — till that package went (2026-11-13).
-const kEveryTestReadsUnder = ['assets/'];
+const kEveryTestReadsUnder = ['assets/fonts/'];
 
 const kTestConfig = 'test/flutter_test_config.dart';
 

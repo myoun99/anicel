@@ -89,11 +89,19 @@ Set<String> pathsReadAsText(String source) => {
 /// files (2026-11-07): four
 /// scans read workflows by path, and a change to one ran none of them — the
 /// GPU engine's job split that day was 「no test reaches」.
+/// 🆕And the bundled assets (2026-11-17, card a-words-only-asset-runs-every-
+/// test): every suite read all of `assets/` unnamed till then, and a scan
+/// of the licences or the update notice reads them by path — the one way
+/// it is chosen for a change to them now ([kAssetsRoot]).
 const kTextRoots = [
   'lib', 'test', 'tool', //
   'android', 'ios', 'linux', 'macos', 'windows',
-  'packages', '.github',
+  'packages', '.github', 'assets',
 ];
+
+/// Where the assets the pubspec bundles live: what the app's code hands
+/// `rootBundle` is a path under it, spelled as it is in the checkout.
+const kAssetsRoot = 'assets/';
 
 final _textRoot = kTextRoots.map(RegExp.escape).join('|');
 
@@ -240,6 +248,14 @@ class Reaches {
   /// of `tool_choice.dart` once made every test that reaches it read all
   /// of `tool/` (10-20, 392 files for a change to one tool). A package's
   /// shipped code is the app's too.
+  ///
+  /// 🆕But an asset it names by its key (2026-11-17, card a-words-only-
+  /// asset-runs-every-test): what the app hands `rootBundle` is read
+  /// wherever it runs, a test's run too — `main.dart`'s licences,
+  /// `launch_notice.dart`'s `'assets/launch/$language/…'` — and since
+  /// `assets/` is no longer every suite's (`kEveryTestReadsUnder`), it is
+  /// how the tests that show the notice are chosen for a change to it. Only
+  /// under [kAssetsRoot], so the word stays a word everywhere else.
   Reach of(String start) => _of.putIfAbsent(start, () {
     final files = {start, ...closureOf(start, imports, within: within)};
     return (
@@ -248,7 +264,9 @@ class Reaches {
         for (final file in files)
           if (pathPackageOf(file) != null)
             ..._nativeOf(file)
-          else if (!file.startsWith('lib/'))
+          else if (file.startsWith('lib/'))
+            ..._textsOf(file).where((path) => path.startsWith(kAssetsRoot))
+          else
             ..._textsOf(file),
       },
     );

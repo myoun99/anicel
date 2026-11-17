@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/affected_tests.dart'
     show forcesFullRun, kNearConfigImports, kNearImports, selectTests;
 import '../../tool/import_graph.dart'
-    show buildImportGraph, kGraphRoots, pathsReadAsText;
+    show Reaches, buildImportGraph, kGraphRoots, pathsReadAsText;
 
 /// 🚨★★★A SOURCE SCAN RUNS WHEN WHAT IT READS CHANGES.
 ///
@@ -300,6 +300,47 @@ void main() {
       pathsReadAsText("File('android/app/build.gradle.kts')"),
       {'android/app/build.gradle.kts'},
     );
+  });
+
+  test('🚨a word of the update notice runs the tests that show it, not every '
+      'suite — and a face still runs every suite', () {
+    // 관제 11-17 (a-words-only-asset-runs-every-test): three lines of
+    // whats_new.md ran all 3,289 files in 38 batches while `assets/` stood
+    // in the blanket, and the notice changes with every bundle. The faces
+    // stay (the card's law); the notice and the licences are chosen by the
+    // code that names their keys, as a platform folder by its scans.
+    const notice = 'assets/launch/ko/whats_new.md';
+    const licence = 'assets/licenses/LICENSE-zstd.txt';
+    expect(forcesFullRun(notice), isFalse);
+    expect(forcesFullRun(licence), isFalse);
+    expect(forcesFullRun('assets/fonts/NanumGothic-Regular.ttf'), isTrue);
+    const shows = 'test/services/launch_notice_test.dart';
+    const credits = 'test/every_bundled_license_is_shown_test.dart';
+    const other = 'test/ui/the_close_button_asks_the_app_test.dart';
+    Set<String> chosenFor(String changed) => selectTests(
+      changed: {changed},
+      tests: [shows, credits, other],
+      // The notice test reaches the code that builds the notice's key —
+      // `'assets/launch/${language.name}/…'`, read up to its interpolation.
+      imports: {
+        shows: {'lib/src/services/launch_notice.dart'},
+      },
+      read: (path) => File(path).readAsStringSync(),
+    );
+    expect(chosenFor(notice), {shows});
+    expect(chosenFor(licence), {credits}, reason: 'the scan spells the folder');
+  });
+
+  test('a literal in the app\'s code is a word — but an asset key under '
+      '`assets/` is a read', () {
+    const code = r"load('assets/launch/$lang/x.md'); final k = 'tool';";
+    final reach = Reaches(
+      {
+        'test/a_test.dart': {'lib/a.dart'},
+      },
+      (path) => path == 'lib/a.dart' ? code : '',
+    ).of('test/a_test.dart');
+    expect(reach.prefixes, {'assets/launch/'});
   });
 
   // ↩️A pin stood here for the C engine's sources — every suite in the

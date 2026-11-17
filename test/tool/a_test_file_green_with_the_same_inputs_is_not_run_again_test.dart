@@ -157,7 +157,8 @@ void main() {
       'test/a_test.dart': "import 'helper.dart';",
       'test/helper.dart': "import 'package:anicel/x.dart';\n"
           "final scan = Directory('lib/src/scanned');",
-      'lib/x.dart': '',
+      // The app's code: its asset key is a read, its other words are not.
+      'lib/x.dart': r"load('assets/launch/$language/n.md'); final t = 'tool';",
       'test/flutter_test_config.dart': "import 'package:anicel/c.dart';",
       'lib/c.dart': '',
     };
@@ -167,6 +168,9 @@ void main() {
       'lib/src/scanned/two.png',
       'lib/src/other.dart',
       'assets/fonts/f.ttf',
+      'assets/launch/ko/n.md',
+      'assets/licenses/l.txt',
+      'tool/run.sh',
       'packages/gpu_engine/rust/src/e.rs',
       'pubspec.lock',
     ];
@@ -180,19 +184,25 @@ void main() {
       read: (path) => sources[path] ?? '',
     );
 
-    test('a test reads itself, what its imports reach, and what any of them '
-        'reads as text', () {
+    test('a test reads itself, what its imports reach, what any of them '
+        'reads as text — and the assets the app\'s code it reaches names by '
+        'their keys', () {
       expect(inputs().of('test/a_test.dart'), {
         'test/a_test.dart',
         'test/helper.dart',
         'lib/x.dart',
         'lib/src/scanned/one.dart',
         'lib/src/scanned/two.png',
+        'assets/launch/ko/n.md',
       });
     });
 
-    test('every test reads the package, its assets and the test config '
-        'with its reach — and no package beside the app, unnamed', () {
+    /// ↩️Till 2026-11-17 every test read all of `assets/` (card
+    /// a-words-only-asset-runs-every-test) — the update notice's words keyed
+    /// every green and ran every file.
+    test('every test reads the package, its faces and the test config '
+        'with its reach — and no package beside the app, nor the other '
+        'assets, unnamed', () {
       expect(inputs().everyTest, {
         'pubspec.yaml',
         'pubspec.lock',
@@ -415,6 +425,7 @@ void main() {
       // A shell a test reads as text (유저 10-20 Q6).
       expect(canBeAnInput('windows/runner/flutter_window.cpp'), isTrue);
       expect(canBeAnInput('pubspec.lock'), isTrue);
+      expect(canBeAnInput('assets/launch/ko/whats_new.md'), isTrue);
       expect(canBeAnInput('packages/gpu_engine/rust/src/e.rs'), isTrue);
       expect(canBeAnInput('단축키/a.txt'), isFalse);
       expect(canBeAnInput('README.md'), isFalse);
