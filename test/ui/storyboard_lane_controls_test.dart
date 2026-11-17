@@ -421,8 +421,10 @@ void main() {
     );
   });
 
-  testWidgets('the S-row chevron twirls down its 「오디오」 group plus its OWN '
-      'Transform group on the active cut\'s slot layer', (tester) async {
+  testWidgets('the S-row chevron twirls down its 「오디오」 group plus its name '
+      'tag, which holds its transform, on the active cut\'s slot layer', (
+    tester,
+  ) async {
     await _pumpPanel(tester, project: _project());
 
     expect(
@@ -448,21 +450,20 @@ void main() {
       ),
       findsOneWidget,
     );
-    // F-101: the timeline's own list — the Name Tag group sits between the
-    // 「오디오」 group and the Transform group, collapsed like it.
+    // F-101: the timeline's own list — the Name Tag group under the
+    // 「오디오」 group, collapsed like it, the transform's lanes its members
+    // (audio-fx-grows-like-the-pros-Q3 · Q4): no Transform group of its own.
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-lane-label-lane-se-name-tag-group'),
       ),
       findsOneWidget,
     );
-
-    // The sound leads; the Transform group header sits BELOW it, collapsed.
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-lane-label-lane-se-transform-group'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-position')),
@@ -470,7 +471,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
+      find.named('storyboard-lane-group-toggle-lane-se-name-tag-group'),
     );
     await tester.pumpAndSettle();
     for (final laneId in [
@@ -508,7 +509,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
+      find.named('storyboard-lane-group-toggle-lane-se-name-tag-group'),
     );
     await tester.pumpAndSettle();
 
@@ -544,7 +545,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
+      find.named('storyboard-lane-group-toggle-lane-se-name-tag-group'),
     );
     await tester.pumpAndSettle();
 

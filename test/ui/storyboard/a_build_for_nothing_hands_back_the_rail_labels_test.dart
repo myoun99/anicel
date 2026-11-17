@@ -768,11 +768,12 @@ void main() {
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });
 
-  /// The twirl that opens the Transform group of the lanes now open.
-  final transformGroupTwirl = find.byWidgetPredicate(
+  /// The twirl that opens the S row's name tag of the lanes now open — the
+  /// group its transform's lanes are members of
+  /// (audio-fx-grows-like-the-pros-Q3 · Q4).
+  final nameTagTwirl = find.byWidgetPredicate(
     (widget) =>
-        widget is LayerFoldTwirl &&
-        widget.name.endsWith('-transform-group'),
+        widget is LayerFoldTwirl && widget.name.endsWith('-name-tag-group'),
   );
 
   /// ↩️It read the S row's label itself, kept whole while its wrapper was
@@ -789,7 +790,7 @@ void main() {
     final head = tester.widget(headIn(seLabel));
     final open = wrapper(tester, seLabel).rowExtent;
 
-    await tester.tap(transformGroupTwirl.first);
+    await tester.tap(nameTagTwirl.first);
     await tester.pump();
 
     expect(tester.widget(headIn(seLabel)), same(head), reason: 'kept');

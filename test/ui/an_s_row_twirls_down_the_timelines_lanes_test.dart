@@ -28,11 +28,12 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
-    show seNameTagGroupLaneId;
+    show seNameTagGroupLaneId, seNameTagSizeLaneId;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/roll_rows_until_built.dart';
 
 /// 🚨F-101 (유저 2026-09-12): 「스토리보드패널 se랑 타임라인패널 se랑 통일
 /// 안되어있음. 뭐냐면 타임라인패널 se엔 네임태그등 fx 있는데 스토리보드패널엔
@@ -268,7 +269,7 @@ void main() {
         .onPressed;
     expect(reset(), isNull, reason: 'at rest at the playhead');
 
-    session.laneRangeSelection.value = TimelineLaneSelection(
+    session.laneRangeSelection.value = const TimelineLaneSelection(
       layerId: _seId,
       laneId: seNameTagGroupLaneId,
       startIndex: 8,
@@ -290,14 +291,23 @@ void main() {
     Finder chain(String panel) => find.byKey(
       ValueKey<String>('$panel-lane-value-link-${_seId.value}-scale'),
     );
-    // The Scale lane is inside the row's name tag, whose pose it is.
+    // The Scale lane is inside the row's name tag, whose pose it is — under
+    // the tag's own lanes, past the view: rolled to.
     Future<void> openTransform(String panel) async {
-      if (chain(panel).evaluate().isEmpty) {
-        await _pressNamed(
-          tester,
-          '$panel-lane-group-toggle-${_seId.value}-name-tag-group',
-        );
+      final toggle = '$panel-lane-group-toggle-${_seId.value}-name-tag-group';
+      final open = find.byKey(
+        ValueKey<String>(
+          '$panel-lane-label-${_seId.value}-$seNameTagSizeLaneId',
+        ),
+      );
+      if (open.evaluate().isEmpty) {
+        await _pressNamed(tester, toggle);
       }
+      await rollRowsUntilBuilt(
+        tester,
+        chain(panel),
+        inRowsOf: find.named(toggle),
+      );
     }
 
     await _pressNamed(tester, 'timeline-lane-toggle-${_seId.value}');

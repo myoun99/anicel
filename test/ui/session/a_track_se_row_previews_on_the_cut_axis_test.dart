@@ -14,8 +14,8 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
     show timelineLanesForLayer;
-import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 
 /// A DRAG PREVIEWS A TRACK-SE ROW ON THE CUT'S AXIS.
 ///
@@ -102,7 +102,7 @@ void main() {
       layer: shown,
       session: session,
       expandedGroupKeys: {
-        laneGroupKey(se.id, transformGroupHeaderLane.laneId),
+        laneGroupKey(se.id, seNameTagGroupLaneId),
       },
     );
     final rotation = lanes.singleWhere((lane) => lane.laneId == 'rotation');

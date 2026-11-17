@@ -144,15 +144,18 @@ Finder _laneLabel(String laneId) =>
     find.byKey(ValueKey<String>('timeline-lane-label-lane-cam-layer-$laneId'));
 
 /// Twirls a layer's Transform GROUP open (R4: default collapsed — member
-/// lanes only render after the group header toggle). No-op while the
-/// header is absent (layer twirl-down closed).
+/// lanes only render after the group header toggle) — [group], which on an
+/// S row is its name tag, whose members the transform's lanes are
+/// (audio-fx-grows-like-the-pros-Q3 · Q4). No-op while the header is absent
+/// (layer twirl-down closed).
 Future<void> _expandTransformGroup(
   WidgetTester tester,
   String layerId, {
   String keyPrefix = 'timeline',
+  String group = 'transform-group',
 }) async {
   final toggle = find.named(
-    '$keyPrefix-lane-group-toggle-$layerId-transform-group',
+    '$keyPrefix-lane-group-toggle-$layerId-$group',
   );
   if (toggle.evaluate().isEmpty) {
     return;
@@ -711,7 +714,7 @@ void main() {
 
       final groupHeader = find.byKey(
         const ValueKey<String>(
-          'timeline-lane-label-lane-se-layer-transform-group',
+          'timeline-lane-label-lane-se-layer-name-tag-group',
         ),
       );
       final audioLabel = find.byKey(
@@ -722,13 +725,18 @@ void main() {
       expect(groupHeader, findsOneWidget);
       expect(audioLabel, findsOneWidget);
       // R4 ordering: the sound leads the SE twirl-down (its 「오디오」 group,
-      // I-140), the Transform group sits BELOW it (collapsed by default).
+      // I-140), its name tag BELOW it (collapsed by default) — the
+      // transform's lanes its members (audio-fx-grows-like-the-pros-Q3 · Q4).
       expect(
         tester.getTopLeft(audioLabel).dy,
         lessThan(tester.getTopLeft(groupHeader).dy),
       );
 
-      await _expandTransformGroup(tester, 'lane-se-layer');
+      await _expandTransformGroup(
+        tester,
+        'lane-se-layer',
+        group: 'name-tag-group',
+      );
       final positionLabel = find.byKey(
         const ValueKey<String>('timeline-lane-label-lane-se-layer-position'),
       );

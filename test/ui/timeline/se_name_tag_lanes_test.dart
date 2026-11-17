@@ -13,6 +13,7 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -289,5 +290,38 @@ void main() {
       s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
       isTrue,
     );
+  });
+
+  test('🎯a pose edit hands the header a new row and the tag\'s own lanes '
+      'the ones they had — a tag never typed included', () {
+    final s = session();
+    addTearDown(s.dispose);
+    final before = seRow(s);
+    expect(before.seNameTag, isNull, reason: '⛔전제');
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    final after = seRow(s);
+    expect(
+      identical(
+        laneRowSlice(before, seNameTagGroupLaneId),
+        laneRowSlice(after, seNameTagGroupLaneId),
+      ),
+      isFalse,
+      reason: 'the header shows the pose\'s keys beside the tag\'s',
+    );
+    for (final laneId in seNameTagLaneDisplayOrder) {
+      expect(
+        identical(laneRowSlice(before, laneId), laneRowSlice(after, laneId)),
+        isTrue,
+        reason: '$laneId shows what it showed',
+      );
+    }
   });
 }

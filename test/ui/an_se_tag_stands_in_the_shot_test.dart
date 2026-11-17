@@ -41,7 +41,9 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
     show timelineLanesForLayer;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show formatTransformLaneValue, transformGroupHeaderLane;
+    show formatTransformLaneValue;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 
 import '../helpers/named_finders.dart';
 
@@ -211,7 +213,7 @@ void main() {
       layer: s.layerById(se.id)!,
       session: s,
       expandedGroupKeys: {
-        laneGroupKey(se.id, transformGroupHeaderLane.laneId),
+        laneGroupKey(se.id, seNameTagGroupLaneId),
       },
     );
     final position = lanes.singleWhere((lane) => lane.laneId == 'position');
@@ -246,7 +248,7 @@ void main() {
     );
 
     expect(
-      s.laneVerbs.resetLaneGroup(se.id, transformGroupHeaderLane.laneId),
+      s.laneVerbs.resetLaneGroup(se.id, seNameTagGroupLaneId),
       isTrue,
     );
 
@@ -304,14 +306,13 @@ void main() {
     // the label's text is what means 「stand here」.
     final header = find.byKey(
       ValueKey<String>(
-        'timeline-lane-label-${se.id.value}-'
-        '${transformGroupHeaderLane.laneId}',
+        'timeline-lane-label-${se.id.value}-$seNameTagGroupLaneId',
       ),
     );
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.descendant(of: header, matching: find.text('Transform')),
+      find.descendant(of: header, matching: find.text('Name Tag')),
       warnIfMissed: false,
     );
     await tester.pumpAndSettle();

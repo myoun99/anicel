@@ -287,7 +287,8 @@ void main() {
   });
 
   test('a header heads a graph where its lanes stand as one — Transform\'s, '
-      'each effect\'s and an S row\'s 「오디오」 (I-140: its audio fx)', () {
+      'each effect\'s, an S row\'s 「오디오」 (I-140: its audio fx) and its name '
+      'tag, which holds its pose (audio-fx-grows-like-the-pros-Q3 · Q4)', () {
     final se = Layer(
       id: const LayerId('se'),
       name: 'SE',
@@ -303,7 +304,7 @@ void main() {
         effectGroupLaneId(grade.id): true,
         transformGroupHeaderLane.laneId: true,
         seSoundGroupLaneId: true,
-        seNameTagGroupLaneId: false,
+        seNameTagGroupLaneId: true,
       },
     );
     expect(

@@ -152,7 +152,7 @@ void main() {
       final standing = session.activeCutGlobalStartFrame + 3;
       await _tapVisible(
         tester,
-        find.named('timeline-lane-group-toggle-$se-transform-group'),
+        find.named('timeline-lane-group-toggle-$se-name-tag-group'),
       );
       Finder diamond(String laneId) => find.byKey(
         ValueKey<String>('timeline-lane-key-toggle-$se-$laneId'),
@@ -197,7 +197,7 @@ void main() {
       final standing = session.activeCutGlobalStartFrame + 3;
       await _tapVisible(
         tester,
-        find.named('timeline-lane-group-toggle-$se-transform-group'),
+        find.named('timeline-lane-group-toggle-$se-name-tag-group'),
       );
       Finder diamond(String laneId) => find.byKey(
         ValueKey<String>('timeline-lane-key-toggle-$se-$laneId'),
@@ -236,7 +236,7 @@ void main() {
       await _tapVisible(tester, find.named('storyboard-lane-toggle-$se'));
       await _tapVisible(
         tester,
-        find.named('storyboard-lane-group-toggle-$se-transform-group'),
+        find.named('storyboard-lane-group-toggle-$se-name-tag-group'),
       );
       Finder diamond(String laneId) => find.byKey(
         ValueKey<String>('storyboard-lane-key-toggle-$se-$laneId'),

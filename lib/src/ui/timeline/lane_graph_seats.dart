@@ -219,13 +219,10 @@ LaneGraphLine? laneGraphLineAmong(
   if (pinned == null) {
     return null;
   }
-  for (final layer in rows) {
-    if (layer.id != pinned.layerId) {
-      continue;
-    }
+  for (final layer in rows.where((row) => row.id == pinned.layerId)) {
+    final group = laneGroupOf(pinned.laneId, kind: layer.kind);
     final lanes = lanesOf(layer, {
-      if (laneGroupOf(pinned.laneId, kind: layer.kind) case final group?)
-        laneGroupKey(layer.id, group),
+      if (group != null) laneGroupKey(layer.id, group),
     });
     for (final lane in lanes) {
       if (lane.laneId == pinned.laneId && lane.curve != null) {

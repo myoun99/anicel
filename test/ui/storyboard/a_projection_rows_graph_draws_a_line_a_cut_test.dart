@@ -39,6 +39,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
         LaneGraphPicture,
         TimelineLaneGraph,
         TimelineLaneGraphPainter;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -61,12 +63,15 @@ import '../../helpers/storyboard_host.dart';
 ///
 /// Cuts a [0, 24) and b [24, 48), four frames of gap, then c [52, 64). a's
 /// camera keys 0 and 12, b's 2 and 6 — each one's Rotation eased out of its
-/// first; c's none. An S row beside them, twirled to its Transform group.
+/// first; c's none. An S row beside them, twirled to its name tag.
 void main() {
   const trackId = TrackId('t1');
   const aCam = LayerId('a-cam');
   const s1 = LayerId('s1');
   final transform = transformGroupHeaderLane.laneId;
+  // An S row's pose group: its name tag (audio-fx-grows-like-the-pros-Q3 ·
+  // Q4).
+  const pose = seNameTagGroupLaneId;
   final cameraRow = trackCameraRowId(trackId);
   final inHand = laneGroupKey(aCam, transform);
   final cameraGraph = laneGroupKey(cameraRow, transform);
@@ -134,7 +139,7 @@ void main() {
               0: const TimelineExposure.drawing(FrameId('s1-f'), length: 8),
             },
             lanesExpanded: true,
-            expandedLaneGroups: {transform},
+            expandedLaneGroups: {pose},
           ),
         ],
       ),
@@ -298,7 +303,7 @@ void main() {
     tester,
   ) async {
     final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
-    final seGraph = laneGroupKey(s1, transform);
+    final seGraph = laneGroupKey(s1, pose);
     SessionRowButtonPresses(session).toggleLaneGraph(seGraph);
     await tester.pumpAndSettle();
     final pin = 'storyboard-lane-pin-${cameraRow.value}-position';
@@ -709,7 +714,7 @@ void main() {
       timeline: {
         0: TimelineExposure.drawing(FrameId('${id.value}-f'), length: 8),
       },
-      expandedLaneGroups: {if (open) transform},
+      expandedLaneGroups: {if (open) pose},
       transformTrack: TransformTrack.empty().copyWith(
         rotation: PropertyTrack<double>().withKey(4, 0).withKey(10, 30),
       ),
@@ -729,7 +734,7 @@ void main() {
       ),
       twirl: 's1',
     );
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     SessionRowButtonPresses(session)
       ..toggleLaneGraph(key)
       ..toggleLanePin(laneGroupKey(s2, 'rotation'));
