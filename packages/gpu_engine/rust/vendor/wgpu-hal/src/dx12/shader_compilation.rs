@@ -179,9 +179,10 @@ impl DxcCompilers {
     }
 
     /// What DXC makes of `source`: what an earlier compile kept on disk
-    /// where all that is asked is the same, else compiled on a compiler no
-    /// other compile holds — one of [`Self::spare`], or `make`'s where none
-    /// is — and kept.
+    /// where all that is asked is the same — waiting for it where another
+    /// process compiles it now ([`super::dxil_cache::DxilCache::turn`]) —
+    /// else compiled on a compiler no other compile holds — one of
+    /// [`Self::spare`], or `make`'s where none is — and kept.
     #[allow(clippy::too_many_arguments)]
     fn compile(
         &self,
@@ -202,9 +203,14 @@ impl DxcCompilers {
                     .chain([source.as_bytes()]),
             )
         });
-        if let Some(dxil) = asked.as_ref().and_then(|asked| device.dxil_cache.read(asked)) {
-            return Ok(super::CompiledShader::Precompiled(dxil));
-        }
+        // Held till what DXC made is kept, or the compile fails.
+        let _turn = match asked.as_ref().map(|asked| device.dxil_cache.turn(asked)) {
+            Some(super::dxil_cache::Turn::Kept(dxil)) => {
+                return Ok(super::CompiledShader::Precompiled(dxil));
+            }
+            Some(super::dxil_cache::Turn::Compile(turn)) => turn,
+            None => None,
+        };
         let compiler = {
             let mut spare = self.spare.lock();
             match spare.pop() {

@@ -692,6 +692,160 @@ fn main() { out[0] = 7u; }
         let _ = std::fs::remove_dir_all(&folder);
     }
 
+    /// What `WRITES_SEVEN` is kept as, made by an engine of its own in a
+    /// folder of its own: (its file's name, its bytes).
+    fn seven_as_kept(turn: &DeviceTurn, name: &str) -> (std::ffi::OsString, Vec<u8>) {
+        let folder = kept_in(name);
+        let _ = pipeline(&keeping(turn, &folder), &[WRITES_SEVEN], "main");
+        let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
+            panic!("one file is kept");
+        };
+        let kept = (path.file_name().expect("a name").to_owned(), std::fs::read(&path).expect("the file"));
+        let _ = std::fs::remove_dir_all(&folder);
+        kept
+    }
+
+    /// A turn on `WRITES_SEVEN` in `folder` — as another process takes it
+    /// as it compiles — held by the file this gives, till it is deleted.
+    fn a_turn_on_seven(folder: &std::path::Path, kept_as: &std::ffi::OsStr) -> std::path::PathBuf {
+        std::fs::create_dir_all(folder).expect("the folder");
+        let turn = folder.join(kept_as).with_extension("turn");
+        std::fs::File::create_new(&turn).expect("the turn");
+        turn
+    }
+
+    /// What an engine keeping its shaders in `folder` makes of
+    /// `WRITES_SEVEN` on a thread of its own, the main thread waiting
+    /// `meanwhile` and running `then` before it hears: (the compiles the
+    /// folder answered, what the kernel wrote).
+    fn seven_beside(
+        turn: &DeviceTurn,
+        folder: &std::path::Path,
+        meanwhile: std::time::Duration,
+        then: impl FnOnce(),
+    ) -> (u64, u32) {
+        let engine = keeping(turn, folder);
+        std::thread::scope(|scope| {
+            let compiling = scope.spawn(|| pipeline(&engine, &[WRITES_SEVEN], "main"));
+            std::thread::sleep(meanwhile);
+            then();
+            let compiled = compiling.join().expect("the compile");
+            (found(&engine), first_word(&engine, &compiled))
+        })
+    }
+
+    // 🚨A kernel another process compiles now is waited for — what it
+    // keeps handed — not compiled beside it: a new kernel is compiled once
+    // on a machine (board two-tests-spend-the-wait-windows-minute-under-load).
+    #[test]
+    fn a_kernel_another_compiles_now_is_waited_for() {
+        let turn = a_device_of_its_own();
+        let (kept_as, bytes) = seven_as_kept(&turn, "waited_made");
+        let folder = kept_in("waited");
+        let held = a_turn_on_seven(&folder, &kept_as);
+        let (found, word) = seven_beside(&turn, &folder, std::time::Duration::from_millis(500), || {
+            let beside = folder.join("beside.tmp");
+            std::fs::write(&beside, &bytes).expect("kept by the other");
+            std::fs::rename(&beside, folder.join(&kept_as)).expect("under its name");
+            std::fs::remove_file(&held).expect("the other lets go");
+        });
+        assert_eq!(found, 1, "handed what the other kept, not compiled again");
+        assert_eq!(word, 7);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// `WRITES_SEVEN` after a long run of sums: a kernel DXC takes a while
+    /// over, as a real one does — long past a waiter's look (`TURN_LOOK`).
+    /// The sums start from the buffer and are written where the buffer
+    /// held a 1 — it holds a 0 — so DXC can drop none of them.
+    fn seven_slowly() -> String {
+        let sums = "    x = x * 1664525u + 1013904223u;\n".repeat(SLOW_SUMS);
+        format!(
+            "@group(0) @binding(0) var<storage, read_write> out: array<u32>;
+@compute @workgroup_size(1)
+fn main() {{
+    var x = out[0];
+{sums}    out[0] = select(7u, x, out[0] == 1u);
+}}"
+        )
+    }
+
+    /// 🔬2026-11-17 (this machine, debug): an engine of its own made it in
+    /// 180 ms, the next one handed it in 62 — the turn held some 120 ms,
+    /// twelve looks.
+    const SLOW_SUMS: usize = 400;
+
+    // Two engines that ask for a new kernel at once — two processes' suites
+    // as a run starts — compile it once: the turn is held through the
+    // compile, whichever comes second waiting for it or reading it after.
+    // 🧪On a kernel DXC takes long over: on a quick one, a turn let go as
+    // the compile starts passed too — the second engine's look came after
+    // the first had kept it.
+    #[test]
+    fn two_engines_asking_for_a_new_kernel_at_once_compile_it_once() {
+        let turn = a_device_of_its_own();
+        let folder = kept_in("at_once");
+        let (one, other) = (keeping(&turn, &folder), keeping(&turn, &folder));
+        let both = std::sync::Barrier::new(2);
+        let slowly = seven_slowly();
+        let words = std::thread::scope(|scope| {
+            let [one, other] = [&one, &other].map(|engine| {
+                let (both, slowly) = (&both, slowly.as_str());
+                scope.spawn(move || {
+                    both.wait();
+                    first_word(engine, &pipeline(engine, &[slowly], "main"))
+                })
+            });
+            (one.join().expect("one"), other.join().expect("the other"))
+        });
+        assert_eq!(words, (7, 7));
+        assert_eq!(found(&one) + found(&other), 1, "compiled by one, handed to the other");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // A turn let go with nothing kept — its compile failed, its process
+    // ended — is taken: the kernel compiled here, kept, and the turn gone.
+    #[test]
+    fn a_turn_let_go_with_nothing_kept_is_taken() {
+        let turn = a_device_of_its_own();
+        let (kept_as, _) = seven_as_kept(&turn, "let_go_made");
+        let folder = kept_in("let_go");
+        let held = a_turn_on_seven(&folder, &kept_as);
+        let (found, word) = seven_beside(&turn, &folder, std::time::Duration::from_millis(300), || {
+            std::fs::remove_file(&held).expect("let go");
+        });
+        assert_eq!((found, word), (0, 7), "compiled here");
+        let kept = kept_files(&folder).into_iter().map(|(path, _)| path).collect::<Vec<_>>();
+        assert_eq!(kept, [folder.join(&kept_as)], "kept, and the turn gone with its holder");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // A turn taken longer ago than a compile stands — its holder gone
+    // without letting it go, the power cut — is not waited for: compiled
+    // past, as with no turn.
+    #[test]
+    fn a_turn_past_its_standing_is_not_waited_for() {
+        let turn = a_device_of_its_own();
+        let (kept_as, _) = seven_as_kept(&turn, "stale_made");
+        let folder = kept_in("stale");
+        let held = a_turn_on_seven(&folder, &kept_as);
+        let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let file = std::fs::File::options().write(true).open(&held).expect("the turn");
+        file.set_modified(an_hour_ago).expect("its age");
+        drop(file);
+        // On a thread let go of where it waits on: a wait for a turn that is
+        // never let go of ends this test, not the run.
+        let engine = keeping(&turn, &folder);
+        let (heard, hear) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let compiled = pipeline(&engine, &[WRITES_SEVEN], "main");
+            let _ = heard.send((found(&engine), first_word(&engine, &compiled)));
+        });
+        let compiled = hear.recv_timeout(std::time::Duration::from_secs(10)).expect("not waited for");
+        assert_eq!(compiled, (0, 7), "compiled here");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
     // A folder past what it may hold lets go of what was used longest ago,
     // as a device starts to keep its shaders there.
     #[test]

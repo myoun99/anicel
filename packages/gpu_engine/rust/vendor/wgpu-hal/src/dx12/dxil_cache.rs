@@ -18,10 +18,11 @@
 use alloc::vec::Vec;
 use std::{
     fs,
-    io::Write as _,
+    io::{ErrorKind, Write as _},
+    os::windows::fs::OpenOptionsExt as _,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use parking_lot::RwLock;
@@ -40,6 +41,32 @@ const HEAD: usize = 32;
 /// 50 files, 2,567,829 bytes (Surface Pro 11, 11-13): this holds some 25
 /// such sets, so the builds before an update are let go a few later.
 const MOST_BYTES: u64 = 64 << 20;
+
+/// How old a turn another holds ([`DxilCache::turn`]) may be and still be
+/// waited for: past it, its holder is taken to have gone without letting
+/// it go — the power cut as it compiled — and this one compiles past it.
+///
+/// ⚠️Estimated, not measured: a compile of the app's is a second or so of
+/// one core (the Surface Pro 11's blur brush, ten kernels, 7.1–7.4 s), and
+/// a test's patience with the wait window is a minute.
+const TURN_STANDS: Duration = Duration::from_secs(30);
+
+/// How long a compile waits between two looks at another's turn.
+const TURN_LOOK: Duration = Duration::from_millis(10);
+
+/// `FILE_FLAG_DELETE_ON_CLOSE`: a turn's file goes when its holder lets go
+/// of it — closing it, or ending, however it ends.
+const GOES_WITH_ITS_HOLDER: u32 = 0x0400_0000;
+
+/// What a compile of what was asked comes to ([`DxilCache::turn`]).
+pub(super) enum Turn {
+    /// What DXC made of it before — in this process or in another.
+    Kept(Vec<u8>),
+    /// Compiled here — and by no other process that keeps its shaders in
+    /// the same folder, where this holds the turn: till it is let go,
+    /// after what DXC made is kept.
+    Compile(Option<fs::File>),
+}
 
 /// A device's folder for what DXC made — none till one is named.
 #[derive(Default)]
@@ -74,6 +101,58 @@ impl DxilCache {
         }
         self.found.fetch_add(1, Ordering::Relaxed);
         Some(dxil.to_vec())
+    }
+
+    /// What DXC made of `asked` before, else the turn to compile it: while
+    /// another process holds it, this one waits for what that one keeps,
+    /// rather than compiling the same beside it.
+    ///
+    /// 🚨★**A NEW KERNEL IS COMPILED ONCE ON A MACHINE, NOT ONCE A PROCESS.**
+    /// 🔬Main PC, 17–18 test suites at once (brush/rendering, 11-13, board
+    /// two-tests-spend-the-wait-windows-minute-under-load): with nothing in
+    /// the folder each suite compiled every kernel at once beside the rest,
+    /// and the Drive test's open window stood 60.8 s, against 5.9 s with
+    /// the folder full. A lane that changes a kernel meets its first run
+    /// so, the folder holding the kernel as it was.
+    /// 🔬With the turn (timeline/conte, 11-17, main PC): nine copies of the
+    /// Drive test sharing one folder of their own, empty, nine suites beside
+    /// another run's nine — their first open windows 29.9–45.7 s, each
+    /// making all twenty compiles itself, and 19.5–23.4 s, each waiting for
+    /// one another's. ⚠️What is left is the twenty one after another, as each
+    /// suite asks for them in the same order: a lane's first run still
+    /// waits for its new kernels, though no longer once for each suite.
+    ///
+    /// A turn is a file beside the kernel's, made where none is and gone
+    /// with its holder ([`GOES_WITH_ITS_HOLDER`]). Where the folder cannot
+    /// make one, this compiles with no turn, as it did before.
+    pub(super) fn turn(&self, asked: &[u8]) -> Turn {
+        let Some(turn) = self.path(asked).map(|path| path.with_extension("turn")) else {
+            return Turn::Compile(None);
+        };
+        loop {
+            if let Some(dxil) = self.read(asked) {
+                return Turn::Kept(dxil);
+            }
+            let taken = fs::File::options()
+                .write(true)
+                .create_new(true)
+                .custom_flags(GOES_WITH_ITS_HOLDER)
+                .open(&turn);
+            match taken {
+                Ok(held) => return Turn::Compile(Some(held)),
+                Err(error)
+                    if error.kind() == ErrorKind::AlreadyExists && held_for(&turn, TURN_STANDS) =>
+                {
+                    std::thread::sleep(TURN_LOOK);
+                }
+                // A turn its holder never let go of, a turn going this very
+                // moment, or a folder that makes none: compiled with no
+                // turn, as before — a compile twice over at worst. One left
+                // where it stands is past by the first compile, whose kernel
+                // is read from then on.
+                Err(_) => return Turn::Compile(None),
+            }
+        }
     }
 
     /// Keeps `dxil`, what DXC made of `asked`, for the next to ask —
@@ -135,6 +214,15 @@ fn kept_dxil<'a>(file: &'a [u8], asked: &[u8]) -> Option<&'a [u8]> {
     }
     let (kept_asked, dxil) = file[HEAD..].split_at(asked.len());
     (kept_asked == asked && fnv1a(dxil) == word(24)).then_some(dxil)
+}
+
+/// Whether the turn at `path` was taken less than `stands` ago — or is
+/// gone already, which the next look finds.
+fn held_for(path: &Path, stands: Duration) -> bool {
+    let Ok(taken) = fs::metadata(path).and_then(|meta| meta.modified()) else {
+        return true;
+    };
+    taken.elapsed().map_or(true, |age| age < stands)
 }
 
 /// Deletes the files of `folder` used longest ago till it holds no more
