@@ -190,20 +190,19 @@ void main() {
     Finder box(MediaAsset asset) =>
         find.byKey(ValueKey<String>('media-pool-box-${asset.path}'));
 
+    /// What draws [asset]'s picture in its box — inside the well's edge.
+    Finder face(MediaAsset asset) => find.descendant(
+      of: box(asset),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_PicturePainter',
+      ),
+    );
+
     /// The page [asset]'s box draws now.
     int pageDrawn(WidgetTester tester, MediaAsset asset) {
-      final painter = tester
-          .widget<CustomPaint>(
-            find.descendant(
-              of: box(asset),
-              matching: find.byWidgetPredicate(
-                (widget) =>
-                    widget is CustomPaint &&
-                    widget.painter.runtimeType.toString() == '_PicturePainter',
-              ),
-            ),
-          )
-          .painter;
+      final painter = tester.widget<CustomPaint>(face(asset)).painter;
       // ignore: avoid_dynamic_calls
       return (painter! as dynamic).page as int;
     }
@@ -217,15 +216,15 @@ void main() {
       return mouse;
     }
 
-    testWidgets('each file is a box over its name, drawn at the box\'s width '
-        'and dragged as its line is', (tester) async {
+    testWidgets('each file is a box over its name, drawn at the width it '
+        'shows at and dragged as its line is', (tester) async {
       await pump(tester);
       expect(find.text('walk'), findsOneWidget);
       expect(
         find.byKey(ValueKey<String>('media-asset-row-${movie.path}')),
         findsOneWidget,
       );
-      final width = tester.getSize(box(movie)).width;
+      final width = tester.getSize(face(movie)).width;
       expect(
         files[movie.path]!.renderRequests.first.$2,
         (width * tester.view.devicePixelRatio).round(),

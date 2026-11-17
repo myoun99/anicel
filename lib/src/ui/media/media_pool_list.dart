@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/media_asset.dart';
 import '../input/pen_friendly_scroll_controller.dart';
 import '../input/scroller_press_hold.dart';
-import '../panels/panel_scrollbar.dart';
 import '../text/text_measure.dart';
-import '../theme/app_scroll_behavior.dart' show UnbarredScrollable;
 import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
 import '../widgets/ellipsis_text.dart';
@@ -54,10 +52,10 @@ final class MediaPoolColumn {
 /// 한줄로 컴팩트하게」 · 「이름칸은 고정되고 그 오른쪽 상세들은 가로스크롤되는
 /// 프리미어방식」).
 ///
-/// ONE SURFACE SCROLLED TWO WAYS, as `OverflowScrollers` is: the lines scroll
-/// down under the head, and the whole sideways — with the names pinned at
-/// the view's left edge ([_PinnedLeft]), so what scrolls out from under them
-/// is the columns alone.
+/// ONE SURFACE SCROLLED TWO WAYS, as `OverflowScrollers` is: the lines
+/// scroll down under the head, and the columns sideways under a view that
+/// stays — the names in it pinned, so what scrolls out from under them is
+/// the columns alone.
 class MediaPoolList extends StatefulWidget {
   const MediaPoolList({
     super.key,
@@ -141,63 +139,35 @@ class _MediaPoolListState extends State<MediaPoolList> {
   @override
   Widget build(BuildContext context) {
     final widths = _widths(context);
-    final lineHeight = timelineLayerRowHeightIn(context);
     final columnsWidth = widths.fold(0.0, (sum, width) => sum + width);
     return LayoutBuilder(
       builder: (context, room) {
         final nameWidth = math.min(MediaPoolList.nameWidth, room.maxWidth);
-        return PanelScrollbar(
-          controller: _down,
-          axis: Axis.vertical,
-          child: SingleChildScrollView(
-            controller: _across,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: math.max(room.maxWidth, nameWidth + columnsWidth),
-              height: room.maxHeight,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        // 🚨THE COLUMNS SCROLL, THE VIEW DOES NOT: a window as wide as the
+        // view rides the sideways scroll's offset, and only the columns in
+        // it move. So the lines' own scroll is as wide as the view, and its
+        // bar — the scroll behaviour's, as every bar is — stands at the
+        // view's edge, not at the columns' end; and a line is pressed where
+        // it is drawn. ↩️The whole surface scrolled sideways under a name
+        // translated back: the list's bar went off-screen with the columns,
+        // and was hand-placed at the edge to stay (which only the behaviour
+        // may do).
+        return SingleChildScrollView(
+          controller: _across,
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: math.max(room.maxWidth, nameWidth + columnsWidth),
+            height: room.maxHeight,
+            child: ListenableBuilder(
+              listenable: _across,
+              builder: (context, _) => Stack(
                 children: [
-                  SizedBox(
-                    height: MediaPoolList.headHeight,
-                    child: _line(
-                      nameWidth,
-                      widths,
-                      name: _head(widget.nameLabel),
-                      cells: [
-                        for (final column in widget.columns)
-                          _head(column.label, end: column.numeric),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    // This scroll's bar stands at the view's edge (above),
-                    // not at the columns' end, which is off-screen as often
-                    // as not.
-                    child: UnbarredScrollable(
-                      child: ListView.builder(
-                        controller: _down,
-                        padding: EdgeInsets.zero,
-                        itemExtent: lineHeight,
-                        itemCount: widget.assets.length,
-                        itemBuilder: (context, index) {
-                          final asset = widget.assets[index];
-                          return widget.lineOf(
-                            asset,
-                            _line(
-                              nameWidth,
-                              widths,
-                              name: widget.nameOf(context, asset),
-                              cells: [
-                                for (final column in widget.columns)
-                                  _cell(column, asset),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                  Positioned(
+                    left: _offset,
+                    top: 0,
+                    bottom: 0,
+                    width: room.maxWidth,
+                    child: _window(context, nameWidth, widths),
                   ),
                 ],
               ),
@@ -208,34 +178,92 @@ class _MediaPoolListState extends State<MediaPoolList> {
     );
   }
 
+  /// How far the columns are scrolled sideways.
+  double get _offset => _across.hasClients && _across.positions.length == 1
+      ? _across.offset
+      : 0;
+
+  /// What the view shows: the heads, and every file's line under them.
+  Widget _window(BuildContext context, double nameWidth, List<double> widths) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: MediaPoolList.headHeight,
+            child: _line(
+              nameWidth,
+              widths,
+              name: _head(widget.nameLabel),
+              cells: [
+                for (final column in widget.columns)
+                  _head(column.label, end: column.numeric),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              controller: _down,
+              padding: EdgeInsets.zero,
+              itemExtent: timelineLayerRowHeightIn(context),
+              itemCount: widget.assets.length,
+              itemBuilder: (context, index) {
+                final asset = widget.assets[index];
+                return widget.lineOf(
+                  asset,
+                  _line(
+                    nameWidth,
+                    widths,
+                    name: widget.nameOf(context, asset),
+                    cells: [
+                      for (final column in widget.columns)
+                        _cell(column, asset),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+
   /// One line — the head and every file's alike, so a head stands over
-  /// exactly the cells it names. The name goes last, so it is drawn over the
-  /// columns scrolled under it.
+  /// exactly the cells it names: the name where it is, the columns right of
+  /// it moved by the sideways scroll.
   Widget _line(
     double nameWidth,
     List<double> widths, {
     required Widget name,
     required List<Widget> cells,
-  }) => Stack(
+  }) => Row(
     children: [
-      Positioned(
-        left: nameWidth,
-        top: 0,
-        bottom: 0,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var index = 0; index < cells.length; index += 1)
-              SizedBox(width: widths[index], child: cells[index]),
-          ],
+      SizedBox(
+        width: nameWidth,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border(right: BorderSide(color: AppColors.hairline)),
+          ),
+          child: name,
         ),
       ),
-      Positioned(
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: nameWidth,
-        child: _PinnedLeft(across: _across, child: name),
+      Expanded(
+        child: ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.centerLeft,
+            maxWidth: double.infinity,
+            child: Transform.translate(
+              offset: Offset(-_offset, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < cells.length; index += 1)
+                    SizedBox(width: widths[index], child: cells[index]),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     ],
   );
@@ -276,35 +304,6 @@ class _MediaPoolListState extends State<MediaPoolList> {
                   Flexible(child: word),
                 ],
               ),
-      ),
-    );
-  }
-}
-
-/// [child] held at the view's left edge while the line under it scrolls
-/// sideways — drawn over what scrolls under it, and pressed where it is
-/// drawn.
-class _PinnedLeft extends StatelessWidget {
-  const _PinnedLeft({required this.across, required this.child});
-
-  final ScrollController across;
-  final Widget child;
-
-  double get _offset =>
-      across.hasClients && across.positions.length == 1 ? across.offset : 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: across,
-      builder: (context, pinned) =>
-          Transform.translate(offset: Offset(_offset, 0), child: pinned),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border(right: BorderSide(color: AppColors.hairline)),
-        ),
-        child: child,
       ),
     );
   }

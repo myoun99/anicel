@@ -60,6 +60,7 @@ const ledger = <String, Why>{
   "media/media_pool_panel.dart | 'media-asset-menu-open'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-open-sub'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-place'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-preset'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-promote'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-relink'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-remove'": Why.declined,

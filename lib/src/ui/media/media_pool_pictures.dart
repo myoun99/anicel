@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_memory.dart';
+import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../../services/media/viewer_document.dart';
 import 'shown_rasters.dart';
 import 'viewer_raster_budget.dart';
@@ -208,3 +209,24 @@ class MediaPoolPictures extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// [image] — a pool picture ([MediaPoolPictures.pictureOf]) — drawn over
+/// [onto], [opacity] of it: the icon view's box, and the 배치 프리셋
+/// window's canvas, where what overflows it is drawn faint.
+///
+/// ⛔ONE DRAW for the two. A thumbnail owns its quality on its own paint
+/// (`layer_image_draw_contract_test`): resampled smooth, as a picture shown
+/// smaller than its pixels is.
+void paintPoolPicture(
+  ui.Canvas canvas,
+  ui.Image image,
+  ui.Rect onto, {
+  double opacity = 1,
+}) => canvas.drawImageRect(
+  image,
+  ui.Offset.zero & ui.Size(image.width.toDouble(), image.height.toDouble()),
+  onto,
+  ui.Paint()
+    ..filterQuality = ui.FilterQuality.medium
+    ..color = alphaOnly(opacity),
+);

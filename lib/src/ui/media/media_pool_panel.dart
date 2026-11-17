@@ -366,11 +366,12 @@ class MediaPoolPanel extends StatelessWidget {
   /// never the extension — and a word's width is measured, not guessed.
   static const double _minBodyWidth = 132;
 
-  /// The toolbar row plus its rule — below this the body has no room for
-  /// its own fixed parts and would overflow, the same rule
-  /// [_minBodyWidth] states for the other axis (R9 #17 hit it: the tool
-  /// rail's narrowing reflowed the docks and squeezed this panel).
-  static const double _minBodyHeight = 37;
+  /// The toolbar row plus its rule, and the list's head plus its rule —
+  /// below this the body has no room for its own fixed parts and would
+  /// overflow, the same rule [_minBodyWidth] states for the other axis (R9
+  /// #17 hit it: the tool rail's narrowing reflowed the docks and squeezed
+  /// this panel).
+  static const double _minBodyHeight = 37 + MediaPoolList.headHeight + 1;
 
   /// A row's name line — its name and its extension — and what
   /// [_extensionRoom] measures the extensions in.
@@ -460,101 +461,111 @@ class MediaPoolPanel extends StatelessWidget {
 
   Widget _body(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final strings = AppText.strings;
-    final changeView = onViewChanged;
     return Column(
       key: const ValueKey<String>('media-browser-panel'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: 36,
-          child: Row(
-            children: [
-              const SizedBox(width: 4),
-              AppIconButton(
-                keyValue: 'media-import-button',
-                // The window it opens, by that window's own title: the pool
-                // once held sound only, and 「오디오 불러오기」 outlived it
-                // (유저 10-09).
-                tooltip: strings.imImport,
-                // 「＋가 있는 모든 곳, 공통적으로」.
-                icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
-                onPressed: onImportRequested,
-              ),
-              const Spacer(),
-              // 🗣️asset-placement-presets Q6 (유저 2026-11-17): 「시안대로 —
-              // 위 툴바(＋ 줄 오른쪽)」. The preset face is a state, lit as
-              // every on button is; the shape button draws the view a press
-              // goes to.
-              AppIconButton(
-                keyValue: 'media-view-presets',
-                tooltip: strings.mediaViewPresets,
-                icon: const Icon(Icons.style_outlined),
-                isSelected: view.presets,
-                onPressed: changeView == null
-                    ? null
-                    : () => changeView(view.copyWith(presets: !view.presets)),
-              ),
-              AppIconButton(
-                keyValue: 'media-view-icons',
-                tooltip: view.icons
-                    ? strings.mediaViewList
-                    : strings.mediaViewIcons,
-                icon: Icon(
-                  view.icons
-                      ? Icons.view_list_outlined
-                      : Icons.grid_view_outlined,
-                ),
-                onPressed: changeView == null
-                    ? null
-                    : () => changeView(view.copyWith(icons: !view.icons)),
-              ),
-              const SizedBox(width: 4),
-            ],
-          ),
-        ),
+        _toolbar(),
         const Divider(height: 1),
         _missingBanner(colorScheme),
-        Expanded(
-          child: assets.isEmpty
-              // 유저 2026-09-15: 「공용 위젯 하나 + 짧은 한 줄」 — the usage
-              // sentence that followed went (「설명 문구 금지」), and the line
-              // moved from the middle to where the first row would be
-              // (「내용이 올 자리에」).
-              ? Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: EmptyStateText(
-                    strings.mediaPoolEmpty,
-                    key: const ValueKey<String>('media-browser-empty'),
-                    place: EmptyStatePlace.list,
-                  ),
-                )
-              : view.icons
-              ? MediaPoolIcons(
-                  assets: assets,
-                  pictures: pictures,
-                  markOf: (asset) => _markOf(asset, colorScheme),
-                  badgeOf: view.presets ? _words.spanWord : _words.lengthWord,
-                  captionOf: (context, asset) => Padding(
-                    padding: const EdgeInsets.only(left: 2),
-                    child: _captionOf(context, asset),
-                  ),
-                  tileOf: _lineOf,
-                  soundOf: soundOf,
-                  frameRate: frameRate,
-                )
-              : MediaPoolList(
-                  assets: assets,
-                  columns: view.presets
-                      ? _words.presetColumns()
-                      : _words.fileColumns(),
-                  nameLabel: strings.commonNameField,
-                  nameOf: _nameOf,
-                  lineOf: _lineOf,
-                ),
-        ),
+        Expanded(child: _content(colorScheme)),
       ],
     );
+  }
+
+  /// The ＋, and right of it the two view buttons.
+  Widget _toolbar() {
+    final strings = AppText.strings;
+    final changeView = onViewChanged;
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          AppIconButton(
+            keyValue: 'media-import-button',
+            // The window it opens, by that window's own title: the pool
+            // once held sound only, and 「오디오 불러오기」 outlived it
+            // (유저 10-09).
+            tooltip: strings.imImport,
+            // 「＋가 있는 모든 곳, 공통적으로」.
+            icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
+            onPressed: onImportRequested,
+          ),
+          const Spacer(),
+          // 🗣️asset-placement-presets Q6 (유저 2026-11-17): 「시안대로 —
+          // 위 툴바(＋ 줄 오른쪽)」. The preset face is a state, lit as
+          // every on button is; the shape button draws the view a press
+          // goes to.
+          AppIconButton(
+            keyValue: 'media-view-presets',
+            tooltip: strings.mediaViewPresets,
+            icon: const Icon(Icons.style_outlined),
+            isSelected: view.presets,
+            onPressed: changeView == null
+                ? null
+                : () => changeView(view.copyWith(presets: !view.presets)),
+          ),
+          AppIconButton(
+            keyValue: 'media-view-icons',
+            tooltip: view.icons
+                ? strings.mediaViewList
+                : strings.mediaViewIcons,
+            icon: Icon(
+              view.icons
+                  ? Icons.view_list_outlined
+                  : Icons.grid_view_outlined,
+            ),
+            onPressed: changeView == null
+                ? null
+                : () => changeView(view.copyWith(icons: !view.icons)),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  /// The files as the view shows them — or the line that says there are
+  /// none, where the first would be.
+  Widget _content(ColorScheme colorScheme) {
+    final strings = AppText.strings;
+    return assets.isEmpty
+        // 유저 2026-09-15: 「공용 위젯 하나 + 짧은 한 줄」 — the usage
+        // sentence that followed went (「설명 문구 금지」), and the line
+        // moved from the middle to where the first row would be
+        // (「내용이 올 자리에」).
+        ? Padding(
+            padding: const EdgeInsets.all(8),
+            child: EmptyStateText(
+              strings.mediaPoolEmpty,
+              key: const ValueKey<String>('media-browser-empty'),
+              place: EmptyStatePlace.list,
+            ),
+          )
+        : view.icons
+        ? MediaPoolIcons(
+            assets: assets,
+            pictures: pictures,
+            markOf: (asset) => _markOf(asset, colorScheme),
+            badgeOf: view.presets ? _words.spanWord : _words.lengthWord,
+            captionOf: (context, asset) => Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: _captionOf(context, asset),
+            ),
+            tileOf: _lineOf,
+            soundOf: soundOf,
+            frameRate: frameRate,
+          )
+        : MediaPoolList(
+            assets: assets,
+            columns: view.presets
+                ? _words.presetColumns()
+                : _words.fileColumns(),
+            nameLabel: strings.commonNameField,
+            nameOf: _nameOf,
+            lineOf: _lineOf,
+          );
   }
 
   /// What the lines say column by column, from what the session holds.

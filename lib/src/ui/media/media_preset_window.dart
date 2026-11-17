@@ -142,69 +142,11 @@ class _MediaPresetWindowState extends State<MediaPresetWindow> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppText.strings;
     final asset = widget.asset;
-    final spanEditor = widget.spanEditor;
     return InstanceEditDialogShell(
-      title: strings.mediaPresetTitle(asset.name),
+      title: AppText.strings.mediaPresetTitle(asset.name),
       titleIcon: mediaAssetKindIcon(asset.kind, path: asset.path),
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppWindowField(
-            label: _sound ? strings.seNameLabel : strings.commonNameField,
-            child: TextField(
-              key: const ValueKey<String>('media-preset-name'),
-              controller: _name,
-              onSubmitted: (_) => _submit(),
-              inputFormatters: typedText(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (_sound)
-            AppWindowField(
-              label: strings.seDialogueLabel,
-              emphasized: true,
-              child: TextField(
-                key: const ValueKey<String>('media-preset-words'),
-                controller: _words,
-                autofocus: true,
-                onSubmitted: (_) => _submit(),
-                inputFormatters: typedText(),
-              ),
-            )
-          else
-            Row(
-              children: [
-                if (_onePicture) ...[
-                  Expanded(child: _kindField(strings)),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(child: _fitField(strings)),
-              ],
-            ),
-          if (spanEditor != null && !_onePicture) ...[
-            const SizedBox(height: 12),
-            AppWindowField(
-              label: strings.mediaPresetSpan,
-              child: SizedBox(
-                height: 220,
-                child: spanEditor(
-                  _preset.inFrame,
-                  _preset.outFrame,
-                  (inFrame, outFrame) => setState(
-                    () => _preset = _preset.copyWith(
-                      inFrame: inFrame,
-                      outFrame: outFrame,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+      body: _fields(AppText.strings),
       preview: _sound
           ? InstanceEditPreview.se(
               axis: Axis.horizontal,
@@ -224,6 +166,76 @@ class _MediaPresetWindowState extends State<MediaPresetWindow> {
               pictures: widget.pictures,
             ),
       onSubmit: _submit,
+    );
+  }
+
+  /// The window's fields: the name — a sound's tag — then a sound's words
+  /// or a picture's kind and fit, then the span.
+  Widget _fields(AppStrings strings) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      AppWindowField(
+        label: _sound ? strings.seNameLabel : strings.commonNameField,
+        child: TextField(
+          key: const ValueKey<String>('media-preset-name'),
+          controller: _name,
+          onSubmitted: (_) => _submit(),
+          inputFormatters: typedText(),
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (_sound)
+        AppWindowField(
+          label: strings.seDialogueLabel,
+          emphasized: true,
+          child: TextField(
+            key: const ValueKey<String>('media-preset-words'),
+            controller: _words,
+            autofocus: true,
+            onSubmitted: (_) => _submit(),
+            inputFormatters: typedText(),
+          ),
+        )
+      else
+        Row(
+          children: [
+            if (_onePicture) ...[
+              Expanded(child: _kindField(strings)),
+              const SizedBox(width: 12),
+            ],
+            Expanded(child: _fitField(strings)),
+          ],
+        ),
+      ?_spanField(strings),
+    ],
+  );
+
+  /// Start and end, where the file has a span — the import window's IN/OUT
+  /// over it ([MediaPresetWindow.spanEditor]).
+  Widget? _spanField(AppStrings strings) {
+    final spanEditor = widget.spanEditor;
+    if (spanEditor == null || _onePicture) {
+      return null;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: AppWindowField(
+        label: strings.mediaPresetSpan,
+        child: SizedBox(
+          height: 220,
+          child: spanEditor(
+            _preset.inFrame,
+            _preset.outFrame,
+            (inFrame, outFrame) => setState(
+              () => _preset = _preset.copyWith(
+                inFrame: inFrame,
+                outFrame: outFrame,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -386,14 +398,7 @@ class _FitPainter extends CustomPainter {
       );
       return;
     }
-    paper.drawImageRect(
-      image,
-      Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
-      laid,
-      Paint()
-        ..filterQuality = FilterQuality.medium
-        ..color = Color.fromRGBO(0, 0, 0, opacity),
-    );
+    paintPoolPicture(paper, image, laid, opacity: opacity);
   }
 
   @override

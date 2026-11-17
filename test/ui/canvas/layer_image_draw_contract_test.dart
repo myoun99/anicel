@@ -388,7 +388,11 @@ void main() {
 /// cels are stacked on the engine as the canvas stacks rows
 /// (`ExportFrameRenderer.frameOfCels`), not drawn one over another on a
 /// Flutter canvas.
-const int _knownRawDraws = 18;
+/// **19** on 2026-11-18 (asset-placement-presets Q6): +1 in
+/// media/media_pool_pictures — a pool picture drawn into the icon view's
+/// box and the 배치 프리셋 window's canvas (`paintPoolPicture`, one draw for
+/// the two): a thumbnail that owns its quality on its own paint.
+const int _knownRawDraws = 19;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

@@ -7,8 +7,6 @@ import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../audio/waveform_painter.dart';
 import '../input/pen_friendly_scroll_controller.dart';
-import '../panels/panel_scrollbar.dart';
-import '../theme/app_scroll_behavior.dart' show UnbarredScrollable;
 import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
 import 'media_asset_kind_icon.dart';
@@ -90,62 +88,59 @@ class _MediaPoolIconsState extends State<MediaPoolIcons> {
           1,
           ((room.maxWidth - gap) / (MediaPoolIcons.narrowest + gap)).floor(),
         );
-        final boxWidth = math.max(
-          1.0,
-          (room.maxWidth - gap * (across + 1)) / across,
-        );
-        final boxHeight = boxWidth / MediaPoolPictures.aspect;
-        return PanelScrollbar(
+        final boxHeight =
+            math.max(1.0, (room.maxWidth - gap * (across + 1)) / across) /
+            MediaPoolPictures.aspect;
+        // Its bar is the scroll behaviour's, as every bar is.
+        return GridView.builder(
           controller: _down,
-          axis: Axis.vertical,
-          child: UnbarredScrollable(
-            child: GridView.builder(
-              controller: _down,
-              padding: const EdgeInsets.all(gap),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: across,
-                mainAxisSpacing: gap,
-                crossAxisSpacing: gap,
-                mainAxisExtent: boxHeight + captionHeight,
-              ),
-              itemCount: widget.assets.length,
-              itemBuilder: (context, index) {
-                final asset = widget.assets[index];
-                return widget.tileOf(
-                  asset,
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: boxHeight,
-                        child: _MediaPoolBox(
-                          key: ValueKey<String>(
-                            'media-pool-box-${asset.path}',
-                          ),
-                          asset: asset,
-                          pictures: widget.pictures,
-                          mark: widget.markOf(asset),
-                          badge: widget.badgeOf(asset),
-                          sound: asset.kind == MediaAssetKind.audio
-                              ? widget.soundOf(asset.path)
-                              : null,
-                          frameRate: widget.frameRate,
-                        ),
-                      ),
-                      SizedBox(
-                        height: captionHeight,
-                        child: widget.captionOf(context, asset),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+          padding: const EdgeInsets.all(gap),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: across,
+            mainAxisSpacing: gap,
+            crossAxisSpacing: gap,
+            mainAxisExtent: boxHeight + captionHeight,
           ),
+          itemCount: widget.assets.length,
+          itemBuilder: (context, index) =>
+              _tile(context, widget.assets[index], boxHeight, captionHeight),
         );
       },
     );
   }
+
+  /// [asset]'s box over its name cell, dragged out as its line is.
+  Widget _tile(
+    BuildContext context,
+    MediaAsset asset,
+    double boxHeight,
+    double captionHeight,
+  ) => widget.tileOf(
+    asset,
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: boxHeight,
+          child: _MediaPoolBox(
+            key: ValueKey<String>('media-pool-box-${asset.path}'),
+            asset: asset,
+            pictures: widget.pictures,
+            mark: widget.markOf(asset),
+            badge: widget.badgeOf(asset),
+            sound: asset.kind == MediaAssetKind.audio
+                ? widget.soundOf(asset.path)
+                : null,
+            frameRate: widget.frameRate,
+          ),
+        ),
+        SizedBox(
+          height: captionHeight,
+          child: widget.captionOf(context, asset),
+        ),
+      ],
+    ),
+  );
 }
 
 /// One file's picture box, and the frame under the cursor while it crosses.
@@ -174,6 +169,11 @@ class _MediaPoolBox extends StatefulWidget {
 class _MediaPoolBoxState extends State<_MediaPoolBox> {
   /// The page the box draws — its first, or the one under the cursor.
   int _page = 0;
+
+  /// Between the box's edge and its picture: the box's rounded corners are
+  /// filled, not clipped — the pool is drawn as a still region, which is
+  /// not clipped (`SuperellipseClip`) — so the picture keeps off them.
+  static const double _inset = 2;
 
   /// How many frames a cursor crosses — a movie's or a GIF's, a file that
   /// plays (Q6); none for a still, a PDF's pages or a sound.
@@ -205,19 +205,20 @@ class _MediaPoolBoxState extends State<_MediaPoolBox> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final ground = colorScheme.surfaceContainerHighest;
+    final ground = Theme.of(context).colorScheme.surfaceContainerHighest;
     final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     return LayoutBuilder(
       builder: (context, room) => MouseRegion(
         onHover: (event) => _follow(event.localPosition, room.maxWidth),
         onExit: (_) => _leave(),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppShapes.wellRadius),
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: ground,
+            shape: AppShapes.container(AppShapes.wellRadius),
+          ),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ColoredBox(color: ground),
               Center(
                 child: Icon(
                   mediaAssetKindIcon(
@@ -228,27 +229,32 @@ class _MediaPoolBoxState extends State<_MediaPoolBox> {
                   color: AppColors.textDim,
                 ),
               ),
-              _face(ground, devicePixelRatio, room.maxWidth),
-              Positioned(left: 4, top: 4, child: _chip(widget.mark)),
-              Positioned(
-                right: 4,
-                bottom: 4,
-                child: _chip(
-                  Text(
-                    widget.badge,
-                    style: const TextStyle(
-                      fontSize: 10.5,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(_inset),
+                child: _face(
+                  ground,
+                  devicePixelRatio,
+                  room.maxWidth - 2 * _inset,
                 ),
               ),
+              Positioned(left: 4, top: 4, child: _chip(widget.mark)),
+              Positioned(right: 4, bottom: 4, child: _badge()),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _badge() => _chip(
+    Text(
+      widget.badge,
+      style: const TextStyle(
+        fontSize: 10.5,
+        fontFeatures: [FontFeature.tabularFigures()],
+      ),
+    ),
+  );
 
   /// The file's picture over the kind it is — drawn when it is in.
   Widget _face(Color ground, double devicePixelRatio, double width) {
@@ -287,9 +293,9 @@ class _MediaPoolBoxState extends State<_MediaPoolBox> {
   }
 
   Widget _chip(Widget child) => DecoratedBox(
-    decoration: BoxDecoration(
+    decoration: ShapeDecoration(
       color: AppColors.surface.withValues(alpha: 0.85),
-      borderRadius: BorderRadius.circular(AppShapes.wellRadius),
+      shape: AppShapes.container(AppShapes.wellRadius),
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -333,11 +339,10 @@ class _PicturePainter extends CustomPainter {
     canvas.drawRect(box, Paint()..color = ground);
     final source = Size(image.width.toDouble(), image.height.toDouble());
     final fitted = applyBoxFit(BoxFit.contain, source, size);
-    canvas.drawImageRect(
+    paintPoolPicture(
+      canvas,
       image,
-      Offset.zero & fitted.source,
       Alignment.center.inscribe(fitted.destination, box),
-      Paint()..filterQuality = FilterQuality.medium,
     );
   }
 

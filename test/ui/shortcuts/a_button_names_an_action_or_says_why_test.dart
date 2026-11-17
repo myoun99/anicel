@@ -247,6 +247,10 @@ const ledger = <String, Why>{
   "envelope/cut_envelope_tab_host.dart | 'envelope-format-button'":
       Why.declined,
   "media/media_pool_panel.dart | 'media-import-button'": Why.declined,
+  // The pool's two view buttons (asset-placement-presets Q6): a way of
+  // looking at the panel, as the import button is a way into it.
+  "media/media_pool_panel.dart | 'media-view-icons'": Why.declined,
+  "media/media_pool_panel.dart | 'media-view-presets'": Why.declined,
   "timesheet_tab_host.dart | 'timesheet-format-button'": Why.declined,
   "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'":
       Why.declined,
