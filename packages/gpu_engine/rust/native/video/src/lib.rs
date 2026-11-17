@@ -20,3 +20,7 @@ pub mod decode;
 // every Apple piece of the engine (connection round, H).
 pub mod export;
 pub mod hardware_law;
+// What Windows' writer and reader ask of a movie box — read on every
+// machine that runs the tests.
+#[cfg(any(windows, test))]
+mod movie_box;

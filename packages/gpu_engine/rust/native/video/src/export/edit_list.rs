@@ -16,10 +16,11 @@
 
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::Range;
 use std::path::Path;
 
 use media::iso_box::{self, Atom};
+
+use crate::movie_box::{self, length, length_field, scale, track};
 
 /// Writes into the movie at `path` that its sound starts `lead` frames in
 /// and plays `kept` frames from there — frames at `rate`. None, and nothing
@@ -27,19 +28,9 @@ use media::iso_box::{self, Atom};
 pub(super) fn mark_the_lead(path: &Path, rate: i64, lead: i64, kept: i64) -> Option<()> {
     let mut file = OpenOptions::new().read(true).write(true).open(path).ok()?;
     let length = file.metadata().ok()?.len();
-    let mut at = 0;
-    let size = loop {
-        let mut head = [0u8; 16];
-        let have = (length - at).min(16) as usize;
-        file.seek(SeekFrom::Start(at)).ok()?;
-        file.read_exact(&mut head[..have]).ok()?;
-        let head = iso_box::head(&head[..have])?;
-        let size = head.size_in(length - at)?;
-        if &head.kind == b"moov" {
-            break size;
-        }
-        at += size;
-    };
+    let (at, size) = movie_box::moov_in(length, |at, head| {
+        file.seek(SeekFrom::Start(at)).is_ok() && file.read_exact(head).is_ok()
+    })?;
     // ⛔Only a movie box that closes the file grows where it stands: the
     // sample tables say where each chunk is from the file's start (`stco`),
     // and a movie box before the samples would push every one of them. The
@@ -64,7 +55,7 @@ pub(super) fn mark_the_lead(path: &Path, rate: i64, lead: i64, kept: i64) -> Opt
 /// has a list already, or a header is not there to read and write.
 fn marked(moov: &[u8], rate: i64, lead: i64, kept: i64) -> Option<Vec<u8>> {
     let movie = iso_box::atom(moov, 0, moov.len())?;
-    let trak = sound_track(moov, &movie)?;
+    let trak = track(moov, &movie, b"soun")?;
     if iso_box::find(moov, trak.body, trak.end, &[b"edts"]).is_some() {
         return None;
     }
@@ -91,51 +82,6 @@ fn marked(moov: &[u8], rate: i64, lead: i64, kept: i64) -> Option<Vec<u8>> {
     let mvhd = iso_box::find(&out, movie.body, movie.end, &[b"mvhd"])?;
     set_length(&mut out, &mvhd, longest)?;
     Some(out)
-}
-
-/// The first track of `movie` whose media says it is sound (its `hdlr`'s
-/// handler, `soun`).
-///
-/// ⚠️The sound decoder asks the same of a file it reads box by box
-/// (native/audio `start.rs`, `first_sound`). Two readers — a third is the
-/// time to make them one.
-fn sound_track(moov: &[u8], movie: &Atom) -> Option<Atom> {
-    iso_box::atoms(moov, movie.body, movie.end).filter(|atom| &atom.kind == b"trak").find(|trak| {
-        iso_box::find(moov, trak.body, trak.end, &[b"mdia", b"hdlr"])
-            .is_some_and(|hdlr| hdlr.end - hdlr.body >= 12 && &moov[hdlr.body + 8..hdlr.body + 12] == b"soun")
-    })
-}
-
-/// Where a movie's (`mvhd`), a track's (`tkhd`) or a media's (`mdhd`)
-/// header says how long it runs: after its version and flags, its two dates
-/// — 64 bits each in version 1, as the length is — and one thing more: a
-/// movie's or a media's time scale, a track's id and the reserved word
-/// after it.
-///
-/// ⚠️The sound decoder reads the time scale off the same layout
-/// (native/audio `start.rs`, `time_scale`). Two readers — a third is the
-/// time to make them one.
-fn length_field(bytes: &[u8], header: &Atom) -> Option<Range<usize>> {
-    let wide = *bytes.get(header.body)? == 1;
-    let (dates, width) = if wide { (16, 8) } else { (8, 4) };
-    let more = if &header.kind == b"tkhd" { 8 } else { 4 };
-    let at = header.body + 4 + dates + more;
-    (at + width <= header.end).then_some(at..at + width)
-}
-
-/// A movie's or a media's time scale: the word before its length. None for
-/// a scale of 0, which counts nothing.
-fn scale(bytes: &[u8], header: &Atom) -> Option<u32> {
-    let length = length_field(bytes, header)?;
-    let scale = u32::from_be_bytes(bytes[length.start - 4..length.start].try_into().ok()?);
-    (scale > 0).then_some(scale)
-}
-
-fn length(bytes: &[u8], header: &Atom) -> Option<u64> {
-    let field = &bytes[length_field(bytes, header)?];
-    let mut wide = [0u8; 8];
-    wide[8 - field.len()..].copy_from_slice(field);
-    Some(u64::from_be_bytes(wide))
 }
 
 /// None where the header's field is too narrow to say `ticks`.
@@ -190,24 +136,10 @@ fn edit(played: u64, lead: u64) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use oracle::TempFile;
 
     use super::*;
-
-    /// A file of this checkout's own test fixtures.
-    fn fixture(name: &str) -> Vec<u8> {
-        let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
-        let path = PathBuf::from(crate_dir).join("../../../../../test/fixtures").join(name);
-        std::fs::read(&path).unwrap_or_else(|why| panic!("{}: {why}", path.display()))
-    }
-
-    /// The movie box of `movie`, whole.
-    fn moov_of(movie: &[u8]) -> &[u8] {
-        let moov = iso_box::find(movie, 0, movie.len(), &[b"moov"]).expect("a movie box");
-        &movie[moov.at..moov.end]
-    }
+    use crate::movie_box::{fixture, moov_of};
 
     /// The tracks of `moov`, a whole movie box, in its order.
     fn tracks(moov: &[u8]) -> Vec<Atom> {

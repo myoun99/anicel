@@ -10,6 +10,7 @@
 
 use std::ffi::CStr;
 
+use media::iso_box;
 use media::media_foundation::span_stream;
 use media::span::Span;
 use windows::Win32::Media::MediaFoundation::*;
@@ -20,6 +21,7 @@ use windows::core::{GUID, PCWSTR};
 use super::{Opened, PAST_THE_END, Pixels, Rate, Why, frame_ticks, sample_reaches, ticks_at};
 use crate::colour::media_foundation::colours_of;
 use crate::colour::{self, Colours, Decoded};
+use crate::movie_box;
 
 pub const SUPPORTED: bool = true;
 
@@ -34,6 +36,12 @@ const TAIL_READS: usize = 100_000;
 /// How many samples a read walks toward its frame before it gives up.
 const WALK: usize = 600;
 
+/// The largest movie box read whole to find where the pictures start
+/// ([`pictures_start`]). A box that says it is larger is not read: it is
+/// the memory, not the movie, that it would cost. ⚠️Estimated, not
+/// measured: three hours at 60 a second keep their tables in tens of MiB.
+const MOVIE_BOX_READ: u64 = 256 << 20;
+
 const VIDEO: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 
 /// The platform's own state for one movie: the reader, the size it stores, and
@@ -42,6 +50,9 @@ pub struct Reader {
     reader: IMFSourceReader,
     stored: (usize, usize),
     layout: Layout,
+    /// Where the pictures start on the reader's clock ([`pictures_start`]):
+    /// frame 0's stamp, which every time asked of it is counted from.
+    start: i64,
 }
 
 /// How Media Foundation lays a decoded frame out — read again whenever the
@@ -141,8 +152,10 @@ impl Reader {
         // and counted, that is a frame with no picture in it (유저 2026-08-31
         // 「72프레임짜리 비디오인데 73프레임째의 빈 화면」). The video's own
         // samples say where it ends; ⛔where they do not, the presentation
-        // keeps the old count rather than none.
-        let length = if video_end > 0 { video_end } else { presentation };
+        // keeps the old count rather than none. Their end is on the reader's
+        // clock, and the movie runs from where its pictures start there.
+        let start = pictures_start(path, span);
+        let length = if video_end > 0 { video_end - start } else { presentation };
         let opened = Opened {
             stored_width: width as i32,
             stored_height: height as i32,
@@ -156,9 +169,18 @@ impl Reader {
         };
         let stored = (width as usize, height as usize);
         let layout = Layout::of(&current, stored);
-        Ok((Reader { reader, stored, layout }, opened))
+        Ok((Reader { reader, stored, layout, start }, opened))
     }
 
+    /// Moves the reader to `index`'s time on the movie's own clock — never
+    /// past it: the read walks on to its picture by its stamp.
+    ///
+    /// 🚨**NOT TO THE STAMP THE PICTURE WEARS** ([`pictures_start`]). The
+    /// stamps run late by where the pictures start, and the presentation's
+    /// length does not: a seek past that length is refused (🔬2026-11-17,
+    /// `0xC00D36E5` for 1.0417 s in a 1 s movie two frames late), and its
+    /// last two frames could not be asked for. At the movie's own time the
+    /// seek lands no later than the picture, a keyframe before it.
     pub fn reposition(&mut self, index: i64, rate: (i32, i32)) -> Result<(), Why> {
         let position = position(ticks_at(index, TICKS, rate));
         // ⚠️Its answer is not asked, as the C did not: a seek Media
@@ -172,7 +194,7 @@ impl Reader {
     /// Walks forward to the picture for `index` and writes it at the stored
     /// size, as NV12 padded even ([`Self::copy_nv12`]).
     pub fn read(&mut self, index: i64, rate: (i32, i32), out: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
-        let target = ticks_at(index, TICKS, rate);
+        let target = self.start + ticks_at(index, TICKS, rate);
         let frame = frame_ticks(TICKS, rate);
         for _ in 0..WALK {
             let (mut flags, mut stamp, mut sample) = (0, 0, None);
@@ -251,6 +273,47 @@ fn presentation(reader: &IMFSourceReader) -> i64 {
         let duration = &duration.Anonymous.Anonymous;
         if duration.vt == VT_UI8 { duration.Anonymous.uhVal as i64 } else { 0 }
     }
+}
+
+/// Where the pictures start on the reader's clock, in 100 ns: where the
+/// video track's edit list says its media starts
+/// ([`movie_box::media_start`]). 0 where the movie says nothing, or is not
+/// an ISO or QuickTime movie.
+///
+/// 🚨★★★**MEDIA FOUNDATION PLAYS NO EDIT LIST** (card
+/// video-frame-count-two-past, measured 2026-11-17 on the main PC as the
+/// Surface saw it 11-07): a movie x264 wrote with its B-frames stores its
+/// first picture two frames into its media and its list says so, and every
+/// stamp the reader handed back was two frames late — 240 frames counted
+/// 242, and a frame read after a jump was the one two before it (120 showed
+/// 118). The sound is read so too (native/audio `os/media_foundation.rs`:
+/// an edit list's 1,024 came back as 1,024 frames before the sound), and
+/// where it starts is the file's to say there as here.
+fn pictures_start(path: &CStr, span: Option<(i64, i64, bool)>) -> i64 {
+    let said = || -> Option<i64> {
+        let mut movie = match span {
+            Some((offset, length, framed)) => Span::open(path, offset, length, framed)?,
+            None => {
+                let length = std::fs::metadata(media::path::file(path)?).ok()?.len();
+                Span::open(path, 0, i64::try_from(length).ok()?, false)?
+            }
+        };
+        let read_at = |movie: &mut Span, at: u64, out: &mut [u8]| movie.read(at as i64, out) == Some(out.len());
+        let (at, size) = movie_box::moov_in(movie.size() as u64, |at, head| read_at(&mut movie, at, head))?;
+        if size > MOVIE_BOX_READ {
+            return None;
+        }
+        let mut moov = vec![0u8; size as usize];
+        if !read_at(&mut movie, at, &mut moov) {
+            return None;
+        }
+        let whole = iso_box::atom(&moov, 0, moov.len())?;
+        let trak = movie_box::track(&moov, &whole, b"vide")?;
+        let scale = movie_box::scale(&moov, &iso_box::find(&moov, trak.body, trak.end, &[b"mdia", b"mdhd"])?)?;
+        let ticks = i128::from(movie_box::media_start(&moov, &trak)?) * i128::from(TICKS);
+        i64::try_from((ticks + i128::from(scale / 2)) / i128::from(scale)).ok()
+    };
+    said().unwrap_or(0)
 }
 
 /// Where the VIDEO ends, in 100 ns: the end of its last sample, read from a
