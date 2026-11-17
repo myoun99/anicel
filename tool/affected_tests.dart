@@ -946,6 +946,7 @@ Future<int> _runTests(
   final moved = <String>{};
   final unkeyed = <String>{};
   final unrun = <String>[];
+  final slow = <SlowTest>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
@@ -1004,6 +1005,7 @@ Future<int> _runTests(
 
     await runAll(selected, (i, report, result) {
       runsOf[i] = _recordBatch(report, cache);
+      slow.addAll(_slowIn(report));
       skipped += result.skipped;
       if (result.exitCode != 0) {
         exits[i] = result.exitCode;
@@ -1135,6 +1137,8 @@ Future<int> _runTests(
     _sayReds(redsTo, reds);
   }
 
+  _warnSlow(slow, onGitHub: Platform.environment['GITHUB_ACTIONS'] == 'true');
+
   // A batch that exits non-zero having run NOTHING is not a test failure,
   // and reading it as one costs an hour. It happened on this tool's first
   // day in anger: an over-long command line made cmd.exe refuse to launch
@@ -1224,6 +1228,49 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
       // The temp folder's to clear.
     }
   }
+}
+
+/// The tests of [report] that took a minute ([slowTests]); none when it
+/// cannot be read — [_recordBatch] has said so.
+List<SlowTest> _slowIn(File report) {
+  try {
+    return slowTests(report.readAsStringSync(), root: Directory.current.path);
+  } on FileSystemException {
+    return const [];
+  }
+}
+
+/// 🆕Says each test of [slow] — a WARNING, never a red (card
+/// a-slow-test-cannot-creep, 2026-11-17; [kSlowTest] has why a minute).
+/// On CI each is a warning of the run as well ([githubWarning]): a shard's
+/// log is read by no one while its job is green.
+void _warnSlow(List<SlowTest> slow, {required bool onGitHub}) {
+  if (slow.isEmpty) return;
+  final slowest = [...slow]..sort((a, b) => b.ms.compareTo(a.ms));
+  _report('⚠️${slow.length} test(s) took ${kSlowTest.inSeconds} s or more — '
+      'a warning, not a red. A wait for what cannot come looks like this '
+      '(test/helpers/poll_until.dart, `waitPatience`):');
+  for (final test in slowest) {
+    _report('  ${_seconds(test.ms)} s  ${test.path}: ${test.name}');
+  }
+  if (onGitHub) slowest.map(githubWarning).forEach(stdout.writeln);
+}
+
+int _seconds(int ms) => (ms / 1000).round();
+
+/// [test] as a GitHub Actions workflow command, which the run's page lists
+/// as a warning on the test's file. Escaped as the runner reads it: `%`,
+/// CR and LF in the message, and `:` and `,` too in a property.
+String githubWarning(SlowTest test) {
+  String data(String text) => text
+      .replaceAll('%', '%25')
+      .replaceAll('\r', '%0D')
+      .replaceAll('\n', '%0A');
+  String property(String text) =>
+      data(text).replaceAll(':', '%3A').replaceAll(',', '%2C');
+  return '::warning file=${property(test.path)},'
+      'title=${property('a test of ${_seconds(test.ms)} s')}'
+      '::${data(test.name)}';
 }
 
 /// Says out loud when tests were skipped, and what usually causes it here.
@@ -1409,33 +1456,11 @@ class BatchSilence {
 /// finished, each as `<test file>: <test name>`; a suite still loading is
 /// not one.
 List<String> stillRunning(String report) {
-  final paths = <int, String>{};
-  final open = <int, ({int suite, String name})>{};
-  for (final line in const LineSplitter().convert(report)) {
-    final Object? event;
-    try {
-      event = jsonDecode(line);
-    } on FormatException {
-      continue;
-    }
-    if (event is! Map<String, dynamic>) continue;
-    switch (event['type']) {
-      case 'suite':
-        final suite = event['suite'] as Map<String, dynamic>;
-        paths[suite['id'] as int] = '${suite['path']}'.replaceAll('\\', '/');
-      case 'testStart':
-        final test = event['test'] as Map<String, dynamic>;
-        final name = test['name'] as String;
-        if (!name.startsWith('loading ')) {
-          open[test['id'] as int] = (suite: test['suiteID'] as int, name: name);
-        }
-      case 'testDone':
-        open.remove(event['testID']);
-    }
-  }
+  final read = readReport(report);
   return [
-    for (final test in open.values)
-      '${paths[test.suite] ?? '?'}: ${test.name}',
+    for (final test in read.tests)
+      if (test.end == null && !test.isLoading)
+        '${read.paths[test.suite] ?? '?'}: ${test.name}',
   ];
 }
 
