@@ -263,10 +263,14 @@ check "and the hook's copies are not touched" \
 # waits it out, says so, and holds no place meanwhile; the hook's --hold
 # does not wait; a window past its deadline is closed.
 : > "$LOG"
-closes=$(( $(date +%s) + 4 ))
+closes=$(( $(date +%s) + 10 ))
 printf '%s\t%s\n' "$closes" "브러시 측정" > "$WINDOW"
 (cd "$STAGE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh build) 2>"$TMP/window.err" &
-sleep 1
+# Until it says it waits — a script's start on a loaded machine is seconds.
+for _ in $(seq 40); do
+  grep -q '측정 창' "$TMP/window.err" && break
+  sleep 0.2
+done
 check "a cargo waiting for the window holds no place in the line" \
   "$([ -z "$(ls "$TURN.line")" ]; echo $?)"
 { sleep 0.5; } | (cd "$LANE" && bash tool/cargo_turn.sh --hold) >/dev/null 2>&1
