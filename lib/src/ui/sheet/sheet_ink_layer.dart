@@ -34,6 +34,7 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../playback/frame_picture_view.dart' show LiveCelScreen;
 import '../session/sheet_photo_hold.dart';
 import '../sheet_painting.dart'
     show
@@ -229,6 +230,19 @@ class SheetInkWindow extends SheetWindow {
       ..translateByDouble(left, 0, 0, 1)
       ..scaleByDouble(stretch, 1, 1, 1)
       ..translateByDouble(-left, 0, 0, 1);
+  }
+
+  /// The same stretch in the cel's own pixels ([viewLaidBy] lays it on the
+  /// screen): as many times as wide from the surface pixel at the window's
+  /// left edge — where the engine lays the cel ([LiveCelScreen]), resampled
+  /// once. Null where it is not stretched.
+  LayerPlacement? get celLaidBy {
+    final stretch = placement.stretch;
+    if (stretch == 1) {
+      return null;
+    }
+    final left = placement.origin.dx;
+    return LayerPlacement(stretch, 0, 0, 1, left * (1 - stretch), 0);
   }
 
   /// The panel transform composed with where surface pixel (0, 0) lies on
@@ -811,6 +825,18 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   static ShiftLine _aShiftLine() =>
       ShiftLine(held: CanvasTouchContacts.shiftIsHeld);
 
+  /// Each ink window's live stroke, by window — the one its view draws
+  /// into and its screen shows ([LiveCelScreen]). Held HERE, above both:
+  /// let go when this layer is, after every view and screen under it (the
+  /// conte's pictures' law, `ConteTabHost._strokes`).
+  final Map<String, ActiveStrokeOverlayModel> _strokes = {};
+
+  /// Each ink window's cel as its screen shows it, by window — the painter
+  /// kept while the window's surface is the one it was made over: one
+  /// handed anew is a frame stood anew on its screen.
+  final Map<String, ({BitmapSurface over, BitmapSurfacePainter painter})>
+  _shownCels = {};
+
   /// Where the sheet's panel asks what takes a shape (F-420).
   SheetShapeTargets? _shapeTargets;
 
@@ -833,6 +859,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   @override
   void dispose() {
     _shapeTargets?.stopAnswering(_shapeAnswer);
+    for (final stroke in _strokes.values) {
+      stroke.dispose();
+    }
     for (final line in _shiftLines.values) {
       line.letGo();
     }
@@ -994,6 +1023,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// A window gone takes its hand for a shape with it too, once no view of
   /// it holds one up — and its line.
   void _releaseWindowsGone(Set<String> mountedIds) {
+    _shownCels.removeWhere((id, _) => !mountedIds.contains(id));
     _shapeShows.removeWhere(
       (id, hand) => hand.now == null && !mountedIds.contains(id),
     );
@@ -1119,7 +1149,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       owns: (position) => _takesStrokes && _owns(window, position),
       yieldsTo: shown.yieldsTo,
       // Its photos under its ink (I-97), each on a boundary of its own: a
-      // stroke repaints the view and not them. ⛔Both always — a child that
+      // stroke repaints its ink and not them. ⛔All always — a child that
       // came and went would remount the view.
       child: Stack(
         fit: StackFit.expand,
@@ -1129,6 +1159,8 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
               child: _laid(window, _photos(context, window)),
             ),
           ),
+          // Its ink over them, on the engine; ⛔always, as they are.
+          IgnorePointer(child: _inkOf(window)),
           RepaintBoundary(child: _laid(window, _view(window, region))),
         ],
       ),
@@ -1160,10 +1192,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       // The sheet paper is painted below this stack; an opaque
       // background here would cover it.
       showTransparentBackground: false,
-      // The canvas's MERGED pairing: a surface painted in its place in a
-      // composite leaves its view input only.
-      overlayModel: window.overlay,
-      paintsContent: window.overlay == null,
+      // Input only, whatever it draws on: an ink window's cel is shown by
+      // its screen ([_inkOf]) and a picture's by its cut's composite, each
+      // from the stroke the view writes into.
+      overlayModel: _strokeOf(window),
+      paintsContent: false,
       // F-420: the shape tool's drag lands what it traced in this view.
       shapeShow: _shapeShows.putIfAbsent(window.id, ViewHand.new),
       shiftLine: _shiftLines.putIfAbsent(window.id, _aShiftLine),
@@ -1173,6 +1206,40 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       ),
       onSourceStrokeCommitted: (strokeData) =>
           _land(window, keeps, strokeData),
+    );
+  }
+
+  /// The stroke [window]'s view writes into: a picture's own
+  /// ([SheetPictureWindow.overlay]), else the one this layer holds for it.
+  ActiveStrokeOverlayModel _strokeOf(SheetWindow window) =>
+      window.overlay ??
+      _strokes.putIfAbsent(window.id, ActiveStrokeOverlayModel.new);
+
+  /// [window]'s own ink, shown by the engine on a screen of its own
+  /// ([LiveCelScreen]) through the window's ink viewport, its stretch laid
+  /// in the cel ([SheetInkWindow.celLaidBy]) — nothing for a picture, whose
+  /// cel its cut's composite shows.
+  Widget _inkOf(SheetWindow window) {
+    if (window is! SheetInkWindow) {
+      return const SizedBox.shrink();
+    }
+    final surface = widget.sessionStateFor(window).canvasState.currentSurface;
+    final kept = _shownCels[window.id];
+    final painter = kept != null && identical(kept.over, surface)
+        ? kept.painter
+        : BitmapSurfacePainter(
+            surface: surface,
+            overlayModel: _strokeOf(window),
+            showTransparentBackground: false,
+            lineage: window.key.cel,
+          );
+    _shownCels[window.id] = (over: surface, painter: painter);
+    return LiveCelScreen(
+      key: ValueKey<String>('${widget.keyPrefix}-ink-screen-${window.id}'),
+      cel: window.key,
+      painter: painter,
+      viewport: window.inkViewport(widget.viewport),
+      placement: window.celLaidBy,
     );
   }
 
