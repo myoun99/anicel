@@ -77,15 +77,6 @@ void main() {
       'where it stands after', (tester) async {
     await pumpApp(tester);
     await carrySheetsToTheTopStrip(tester);
-    final floor = tester.widget<CanvasFloorInsets>(
-      find.byType(CanvasFloorInsets),
-    );
-    expect(
-      floor.leftPillBeside?.value,
-      isTrue,
-      reason: 'the pill stands past the rail here — else a frame framed '
-          'without it would stand where it stands anyway',
-    );
 
     for (final (slot, sheet) in [
       (1, 'timesheet'),
@@ -105,5 +96,13 @@ void main() {
       expect(first, isNotEmpty, reason: '$sheet paints a paper');
       expect(first, standing, reason: sheet);
     }
+
+    // And not for nothing: the pill stands past the rail here, which the
+    // floor learned — else a frame framed without it would stand where it
+    // stands anyway.
+    final floor = tester.widget<CanvasFloorInsets>(
+      find.byType(CanvasFloorInsets),
+    );
+    expect(floor.leftPillBeside?.value, isTrue);
   });
 }
