@@ -337,13 +337,13 @@ fn convert(
     let bands = bands(0..rows, unit, (room(engine), step), |band| words(band).to_vec())?;
     let groups = |band: &Range<u32>| (across, (band.end - band.start).div_ceil(unit));
     fits(engine, &[], bands.iter().map(groups))?;
-    // A plane a band reads nothing of is bound a word, as a binding holds
-    // something.
-    let something = |words: Range<u64>| if words.is_empty() { 0..1 } else { words };
+    // No band reads or puts nothing (mutant V21, 11-17): rows past a
+    // picture's pixels add no word to a plane, so `bands` keeps them in the
+    // band before them, and the first band begins on the picture's first.
     let mut uniforms = Vec::new();
     let mut bound = Vec::new();
     for band in &bands {
-        let [read_words, out_words] = words(band.clone()).map(something);
+        let [read_words, out_words] = words(band.clone());
         let (read_given, read_base) = words_bound(read, read_words, step);
         let (out_given, out_base) = words_bound(out, out_words, step);
         let words = params(band.start, [read_base, out_base]);
