@@ -88,6 +88,19 @@ void main() {
       }
     });
 
+    // 🚨Board a-flipped-piece-is-reordered-at-every-ghost-move: the stamp's
+    // ghost asks for its piece at every move of the hand, and a piece and
+    // its pose never change — so the piece is re-ordered once, and a new
+    // pose is a new piece with a re-order of its own.
+    test('a flipped piece is re-ordered once, however often it is asked', () {
+      final piece = _piece(flipHorizontal: true);
+      expect(identical(piece.flippedImage(), piece.flippedImage()), isTrue);
+
+      final turned = piece.copyWith(flipVertical: true);
+      expect(_reds(turned.flippedImage()), [4, 3, 2, 1]);
+      expect(_reds(piece.flippedImage()), [2, 1, 4, 3]);
+    });
+
     test('scale is a percent of the cut size and never rounds to zero', () {
       expect(_piece().stampWidth, 2);
       expect(_piece(scalePercent: 250).stampWidth, 5);
