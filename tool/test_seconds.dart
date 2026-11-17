@@ -209,9 +209,11 @@ String _fromRoot(String path, String prefix) =>
 /// such waits, each one test of 60 s and more — and one that comes back
 /// says nothing unless the run says it. Per TEST, from the report's own
 /// testStart → testDone, not per file from a machine's record: a file's
-/// time is many tests and one machine's, a test of a minute is a minute
-/// anywhere. 🔬The reports this machine still held that day (134 batches,
-/// 126,700 tests): 30 tests of a minute or more, most of them 61–79 s.
+/// time is many tests. ⚠️BUT A CROWDED MACHINE STRETCHES A TEST TOO, so
+/// one named is one to run alone, not yet a wait. 🔬The reports this
+/// machine still held that day (134 batches, 126,700 tests): 30 tests of a
+/// minute or more, most of them 61–79 s — and the one of them run alone
+/// (layer_delete_test's cancel, 67 s in a batch) took 5 s, its file whole.
 const kSlowTest = Duration(seconds: 60);
 
 /// A test that took [kSlowTest] or more ([slowTests]).

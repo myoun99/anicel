@@ -1249,7 +1249,8 @@ void _warnSlow(List<SlowTest> slow, {required bool onGitHub}) {
   final slowest = [...slow]..sort((a, b) => b.ms.compareTo(a.ms));
   _report('⚠️${slow.length} test(s) took ${kSlowTest.inSeconds} s or more — '
       'a warning, not a red. A wait for what cannot come looks like this '
-      '(test/helpers/poll_until.dart, `waitPatience`):');
+      '(`waitPatience`, test/helpers/poll_until.dart), and so does a '
+      'crowded machine — run one alone to tell which:');
   for (final test in slowest) {
     _report('  ${_seconds(test.ms)} s  ${test.path}: ${test.name}');
   }
