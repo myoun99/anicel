@@ -134,6 +134,31 @@ void main() {
         );
       }
     });
+
+    test('a preset is each of its fields: changed in any one, it is another '
+        'preset', () {
+      const preset = MediaPreset(
+        inFrame: 2,
+        outFrame: 5,
+        fit: MediaFitMode.stretch,
+        seName: 'A',
+        dialogue: '쾅',
+      );
+      final changed = [
+        preset.copyWith(inFrame: 3),
+        preset.copyWith(outFrame: 6),
+        preset.copyWith(outFrame: null),
+        preset.copyWith(fit: MediaFitMode.contain),
+        preset.copyWith(seName: 'B'),
+        preset.copyWith(seName: null),
+        preset.copyWith(dialogue: '탕'),
+        preset.copyWith(dialogue: null),
+      ];
+      for (final other in changed) {
+        expect(other, isNot(preset), reason: '${other.toJson()}');
+      }
+      expect(preset.copyWith(), preset, reason: 'what is not given is kept');
+    });
     test('🚨the default name is the file name WITHOUT its extension — the '
         'name a placement gives its rows (유저 2026-09-12)', () {
       expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot');
