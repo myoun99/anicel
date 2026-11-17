@@ -68,7 +68,24 @@ int get debugDeviceEnteredHere => rust.deviceEnteredHere();
 /// ([GpuEngine.opening]): it holds its message alone.
 base class GpuRefused extends StateError {
   GpuRefused(super.message);
+
+  /// Whether it was refused because the device of the engine that refused
+  /// it is gone ([GpuEngine.isGone]) — whichever engine that was: one the
+  /// app has let go of refuses so as well, for a job that ends after.
+  ///
+  /// 🚨READ FROM ITS WORDS, NOT A FIELD (board
+  /// a-late-refusal-of-a-let-go-engine-shows-the-restart-window,
+  /// 2026-11-17): a refusal reaches the app as its message alone — from a
+  /// caller's last error, a body handed over unwaited, a done, and an
+  /// isolate's send — and the engine says a gone device in one place, in
+  /// these words (rust/src/device.rs, `Refusals::told`), which each of
+  /// those carries on.
+  bool get ofAGoneDevice => message.contains(_aGoneDevice);
 }
+
+/// What the engine says of a device that is gone, wherever it says it
+/// ([GpuRefused.ofAGoneDevice]).
+const _aGoneDevice = 'the graphics device is gone';
 
 /// WHY A DEVICE WENT, as far as its engine can tell ([GpuEngine.wentBy]):
 /// what the app says of it to the person once it stands on another.

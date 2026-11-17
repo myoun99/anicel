@@ -80,11 +80,17 @@ void main() {
 
     expect(
       refusedReading(pool, stored),
-      isA<GpuReadFailed>().having(
-        (refused) => refused.message,
-        'why',
-        startsWith('the graphics device is gone: '),
-      ),
+      isA<GpuReadFailed>()
+          .having(
+            (refused) => refused.message,
+            'why',
+            startsWith('the graphics device is gone: '),
+          )
+          .having(
+            (refused) => refused.ofAGoneDevice,
+            'says its device is gone',
+            isTrue,
+          ),
     );
     expect(engine.isGone, isTrue);
 

@@ -207,6 +207,12 @@ impl Refusals {
 
     /// Fails by what the device refused: that it is gone, or else the error
     /// noted — told here, and noted no more.
+    ///
+    /// ⚠️THE PACKAGE READS `the graphics device is gone` (lib/gpu_engine.dart,
+    /// `GpuRefused.ofAGoneDevice` — board
+    /// a-late-refusal-of-a-let-go-engine-shows-the-restart-window): the app
+    /// tells a refusal of an engine it has let go from one of the engine
+    /// it stands on by them, and a refusal reaches it as its words alone.
     fn told(&self) -> Option<()> {
         let mut kept = self.kept();
         if let Some(why) = &kept.gone {

@@ -45,8 +45,10 @@ import 'app_kernels_ahead.dart' show openTheAppsEngineAgain;
 /// ([openedAnother], [wentBy]) — 🗣️유저 2026-11-11
 /// (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1): 「그래픽 장치가 다시
 /// 시작되었다고 알린다」 · 「그래픽장치가 왜 다시시작되었는지는 알수있게」.
-/// What is refused while it does is that one loss, and said by no window.
-/// Each device that goes is one such opening (관제 2026-11-13 10:11: 「두
+/// What is refused while it does is that one loss, and said by no window —
+/// and so is what the engine let go of refuses after it stands on the
+/// next, a job on it that ended late ([GpuRefused.ofAGoneDevice]). Each
+/// device that goes is one such opening (관제 2026-11-13 10:11: 「두
 /// 번째 손실은 새 사건이다」).
 ///
 /// ⚖️BUT NOT WITHIN [openAnotherApart] OF THE LAST OPENING. A device that
@@ -130,7 +132,17 @@ abstract final class EngineRefusals {
       return;
     }
     if (!appGpuEngineIsGone) {
-      _tellOnce(error.runtimeType);
+      // 🚨A GONE DEVICE'S REFUSAL HEARD WHILE THE APP STANDS ON ONE THAT IS
+      // NOT IS THE ENGINE LET GO'S, AND TOLD OF NO MORE (board
+      // a-late-refusal-of-a-let-go-engine-shows-the-restart-window,
+      // 2026-11-17): a job on it that ends after the app opened the next —
+      // an import's cut, a bake, a save's read — was told as a refusal of
+      // the app's, its window asking for a restart after the app had said
+      // it started again. The app opens no engine but its own, so a device
+      // gone under one it stands on makes that one gone.
+      if (!error.ofAGoneDevice) {
+        _tellOnce(error.runtimeType);
+      }
     } else if (_mayOpenAnother) {
       _opensAnother = true;
       scheduleMicrotask(_letGoAndOpenAnother);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -124,6 +125,35 @@ void main() {
       reason: 'asked of the engine that went, before it was let go',
     );
     expect(tellings, 0);
+
+    // The device the app stands on is there: what it refuses is told.
+    await heard(GpuRefused('no room'));
+    expect((asked, startedAgain, tellings), (1, 1, 1));
+  });
+
+  // 🗣️a-late-refusal-of-a-let-go-engine-shows-the-restart-window: a job on
+  // the engine let go that ends after the app stands on the next — an
+  // import's cut, a bake, a save's read — is refused as it ends, and the
+  // app has said it started again: two answers of the user's say once
+  // (gpu-canonical-store-Q14 · (C3)-Q1).
+  test('a refusal of the device that went, heard once the app stands on '
+      'another — a job of the engine let go, ending late — is told of no '
+      'more: the app said it started again, and says nothing else', () async {
+    opening(openAppGpuEngine);
+    final gone = theAppsDeviceGone();
+    await heardTillTheNextIsOpen(GpuReadFailed('a read'));
+    expect((asked, startedAgain, tellings), (1, 1, 0), reason: '⛔premise');
+    expect(isTheAppsEngine(gone), isFalse, reason: '⛔premise: let go');
+
+    Object? late;
+    try {
+      GpuStampPicture(gone, Uint8List(4), 1, 1).pixels();
+    } on GpuRefused catch (refused) {
+      late = refused;
+    }
+    expect(late, isA<GpuReadFailed>(), reason: '⛔premise: refused');
+    await heard(late!);
+    expect((asked, startedAgain, tellings), (1, 1, 0));
 
     // The device the app stands on is there: what it refuses is told.
     await heard(GpuRefused('no room'));
