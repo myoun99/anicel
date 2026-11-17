@@ -5,6 +5,18 @@
 //!
 //! ⚠️Every test that can stand runs under [`within`]: a change that waited
 //! on a stood thread would otherwise hang the test run instead of failing.
+//!
+//! 🚨TWO WINDOWS, AND THE SHORT ONE ONLY WHERE A STAND IS THE POINT (card
+//! a-wrongly-ended-reader-is-seen-closed-before-it-answers, 2026-11-17). A
+//! window is two things at once: how long a test waits to call a reader
+//! stood, and how long a fake that answers at once has to be heard in. An
+//! ask where nothing stands takes [`PATIENT`], which no busy machine makes
+//! an at-once answer late against; [`STALL`] is for the asks that must see
+//! a stand, and the at-once answer after it. ↩️One window of 100 ms till
+//! then: a landing gate's release run, 62 test binaries side by side, heard
+//! the fake's 「the end」 later than that, the read took the stand's road,
+//! and the first reader was let go rather than closed — red, though the
+//! code did as it says.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -15,8 +27,15 @@ use super::super::{PAST_THE_END, Pixels, Shape, Why};
 use crate::colour::Colours;
 use super::{Pull, Reading, SPARES, STOPPED, Wanted, chosen, kept, read};
 
-/// The watch's window here — short, so a stall is seen in a tenth of a second.
-const STALL: Duration = Duration::from_millis(100);
+/// The watch's window where a stand is the point — a stand is seen in a
+/// second, and the at-once answer of the fresh reader after it has as long.
+/// ↩️100 ms till 2026-11-17 (the module's note): ten times it.
+const STALL: Duration = Duration::from_secs(1);
+
+/// The window of an ask where nothing stands: far past any at-once answer,
+/// so those tests read no clock — and longer than every [`within`] limit,
+/// so a change that made one stand fails there rather than waiting here.
+const PATIENT: Duration = Duration::from_secs(30);
 
 /// A 2 × 1 movie of ten frames: eight bytes a picture.
 const SHAPE: Shape = Shape {
@@ -149,15 +168,15 @@ fn an_answer_is_copied_out_and_the_thread_is_kept() {
     let mut reading = Some(reading);
     let mut out = [0u8; 8];
     let moved = Wanted { index: 3, reposition: true, inside: true };
-    read(&mut reading, &moved, &mut out, STALL, no_reopen).expect("answered");
+    read(&mut reading, &moved, &mut out, PATIENT, no_reopen).expect("answered");
     assert_eq!(out, [7; 8]);
-    read(&mut reading, &frame_3(), &mut out, STALL, no_reopen).expect("answered");
+    read(&mut reading, &frame_3(), &mut out, PATIENT, no_reopen).expect("answered");
     assert_eq!((out, probe.repositions()), ([9; 8], 1), "positioned: no second reposition");
 }
 
 #[test]
 fn a_read_that_stands_is_asked_again_of_a_fresh_reader() {
-    within(Duration::from_secs(5), || {
+    within(Duration::from_secs(10), || {
         let (stand, _held) = standing(1);
         let mut reading = Some(reading_of(vec![stand]).0);
         let (fresh, fresh_probe) = reading_of(vec![Step::Paint(5), Step::Paint(6)]);
@@ -166,16 +185,16 @@ fn a_read_that_stands_is_asked_again_of_a_fresh_reader() {
         read(&mut reading, &frame_3(), &mut out, STALL, || Ok(fresh)).expect("the fresh reader answered");
         let took = began.elapsed();
         assert_eq!(out, [5; 8]);
-        assert!(took >= STALL && took < Duration::from_secs(2), "seen as stood, and not waited on: {took:?}");
+        assert!(took >= STALL && took < STALL * 4, "seen as stood, and not waited on: {took:?}");
         assert_eq!(fresh_probe.repositions(), 1, "a fresh reader is moved to the frame first");
-        read(&mut reading, &frame_3(), &mut out, STALL, no_reopen).expect("the fresh reader is the movie's now");
+        read(&mut reading, &frame_3(), &mut out, PATIENT, no_reopen).expect("the fresh reader is the movie's now");
         assert_eq!(out, [6; 8]);
     });
 }
 
 #[test]
 fn a_fresh_reader_that_stands_too_stops_the_movie() {
-    within(Duration::from_secs(5), || {
+    within(Duration::from_secs(10), || {
         let ((first, _held), (second, _held_too)) = (standing(1), standing(2));
         let mut reading = Some(reading_of(vec![first]).0);
         let fresh = reading_of(vec![second]).0;
@@ -198,7 +217,7 @@ fn the_end_said_inside_the_movie_is_asked_again_and_the_first_reader_closed() {
         let mut reading = Some(first);
         let fresh = reading_of(vec![Step::Paint(4)]).0;
         let mut out = [0u8; 8];
-        read(&mut reading, &frame_3(), &mut out, STALL, || Ok(fresh)).expect("the fresh reader answered");
+        read(&mut reading, &frame_3(), &mut out, PATIENT, || Ok(fresh)).expect("the fresh reader answered");
         assert_eq!(out, [4; 8]);
         assert!(first_probe.dropped(), "the reader that answered wrongly is closed, not left on its thread");
     });
@@ -209,7 +228,7 @@ fn the_end_said_past_the_movie_is_the_answer() {
     let (reading, _) = reading_of(vec![Step::End]);
     let mut reading = Some(reading);
     let past = Wanted { index: 10, reposition: false, inside: false };
-    let ended = read(&mut reading, &past, &mut [0u8; 8], STALL, no_reopen);
+    let ended = read(&mut reading, &past, &mut [0u8; 8], PATIENT, no_reopen);
     assert_eq!(ended.map_err(String::from), Err(PAST_THE_END.to_string()));
     assert!(reading.is_some(), "the reader stays: it told the truth");
 }
@@ -218,7 +237,7 @@ fn the_end_said_past_the_movie_is_the_answer() {
 fn a_refusal_is_the_answer() {
     let (reading, _) = reading_of(vec![Step::Refuse("no picture reached that frame")]);
     let mut reading = Some(reading);
-    let refused = read(&mut reading, &frame_3(), &mut [0u8; 8], STALL, no_reopen);
+    let refused = read(&mut reading, &frame_3(), &mut [0u8; 8], PATIENT, no_reopen);
     assert_eq!(refused.map_err(String::from), Err("no picture reached that frame".to_string()));
     assert!(reading.is_some());
 }
@@ -226,8 +245,10 @@ fn a_refusal_is_the_answer() {
 #[test]
 fn a_long_walk_that_keeps_answering_is_not_a_stall() {
     // A window eight calls wide, so a busy machine's late sleep is not a
-    // stall; the walk is two and a half windows long.
-    let stall = Duration::from_millis(400);
+    // stall; the walk is two and a half windows long. ↩️A window of 400 ms
+    // of its own till 2026-11-17 — the module's [`STALL`] now, the margin
+    // every stand test is given.
+    let stall = STALL;
     let walk = Step::Walk { calls: 20, each: stall / 8, paint: 3 };
     let (reading, _) = reading_of(vec![walk]);
     let mut reading = Some(reading);
@@ -240,7 +261,7 @@ fn a_long_walk_that_keeps_answering_is_not_a_stall() {
 
 #[test]
 fn a_thread_let_go_never_writes_the_callers_picture_and_closes_its_reader_when_it_wakes() {
-    within(Duration::from_secs(5), || {
+    within(Duration::from_secs(10), || {
         let (stand, go) = standing(0xEE);
         let (first, first_probe) = reading_of(vec![stand]);
         let mut reading = Some(first);
@@ -250,7 +271,7 @@ fn a_thread_let_go_never_writes_the_callers_picture_and_closes_its_reader_when_i
         assert!(!first_probe.dropped(), "the stood reader is still held by its call");
         go.send(()).expect("the stood call is still waiting");
         let began = Instant::now();
-        while !first_probe.dropped() && began.elapsed() < Duration::from_secs(2) {
+        while !first_probe.dropped() && began.elapsed() < Duration::from_secs(5) {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(first_probe.dropped(), "once its call came back it let go of the reader itself");
@@ -262,20 +283,20 @@ fn a_thread_let_go_never_writes_the_callers_picture_and_closes_its_reader_when_i
 fn a_close_lets_go_of_the_reader_before_it_returns() {
     let (reading, probe) = reading_of(vec![Step::Paint(1)]);
     let mut reading = Some(reading);
-    read(&mut reading, &frame_3(), &mut [0u8; 8], STALL, no_reopen).expect("answered");
+    read(&mut reading, &frame_3(), &mut [0u8; 8], PATIENT, no_reopen).expect("answered");
     drop(reading);
     assert!(probe.dropped(), "closed, not still closing — a file let go after the close returns stays locked");
 }
 
 #[test]
 fn a_reopen_that_fails_says_why_and_the_movie_stops() {
-    within(Duration::from_secs(5), || {
+    within(Duration::from_secs(10), || {
         let (stand, _held) = standing(1);
         let mut reading = Some(reading_of(vec![stand]).0);
         let mut out = [0u8; 8];
         let failed = read(&mut reading, &frame_3(), &mut out, STALL, || Err("that movie could not be read".into()));
         assert_eq!(failed.map_err(String::from), Err("that movie could not be read".to_string()));
-        let again = read(&mut reading, &frame_3(), &mut out, STALL, no_reopen);
+        let again = read(&mut reading, &frame_3(), &mut out, PATIENT, no_reopen);
         assert_eq!(again.map_err(String::from), Err(STOPPED.to_string()));
     });
 }
@@ -284,7 +305,7 @@ fn a_reopen_that_fails_says_why_and_the_movie_stops() {
 fn the_end_said_again_by_the_fresh_reader_stops_the_movie() {
     let mut reading = Some(reading_of(vec![Step::End]).0);
     let fresh = reading_of(vec![Step::End]).0;
-    let stopped = read(&mut reading, &frame_3(), &mut [0u8; 8], STALL, || Ok(fresh));
+    let stopped = read(&mut reading, &frame_3(), &mut [0u8; 8], PATIENT, || Ok(fresh));
     assert_eq!(stopped.map_err(String::from), Err(STOPPED.to_string()));
     assert!(reading.is_none());
 }
