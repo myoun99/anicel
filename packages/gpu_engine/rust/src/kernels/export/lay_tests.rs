@@ -4,7 +4,8 @@
 
 use super::shown_tests::shown;
 use super::tests::rig;
-use super::{Cover, Frame, Lay, Picture, Shown, Source};
+use super::{Cover, Frame, Lay, Opaque, Picture, Shown, Source};
+use crate::device::Engine;
 use crate::kernels::shared::{gpu_engine_kernels_built_here, le_words, room};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 
@@ -288,32 +289,56 @@ fn a_frame_whose_row_exceeds_a_binding_is_refused() {
     assert_eq!(last_error(), format!("a row of 148 bytes exceeds a binding of {}", step + 147));
 }
 
-// On a device whose binding holds 64 KiB — less than a frame of 200 x 120
-// and the picture of 180 x 110 laid over it, as lavapipe's 128 MiB holds
-// less than a bake's frame of 139,332,960 bytes — both are made and laid,
-// and the device refuses no binding.
+/// A device whose one binding holds 64 KiB — less than the frames these
+/// tests make, as lavapipe's 128 MiB holds less than a bake's frame of
+/// 139,332,960 bytes — and a frame of 200 x 120 made on it, its ground
+/// laid.
+fn on_a_small_binding(engine: &Engine, lay: &Lay) -> Shown {
+    let frame = Shown::blank(engine, Picture { width: 200, height: 120 })
+        .expect("a frame past a binding");
+    lay.run(engine, &frame, Source::Solid(WHITE), u16::MAX, None, None).expect("ground");
+    frame
+}
+
+const SMALL_BINDING: u64 = 1 << 16;
+
+// A picture of 260 x 110 laid at (-30, 25) — its rows wider than the
+// frame's, so they bound the band — is laid where it lies, and the device
+// refuses no binding.
 #[test]
 fn a_frame_past_the_device_s_binding_is_made_and_laid() {
     let turn = a_device_of_its_own();
-    let engine = turn.engine_binding(1 << 16);
+    let engine = turn.engine_binding(SMALL_BINDING);
     let lay = Lay::new();
-    let (width, height) = (200, 120);
-    let frame = Shown::blank(&engine, Picture { width, height }).expect("a frame past a binding");
-    lay.run(&engine, &frame, Source::Solid(WHITE), u16::MAX, None, None).expect("ground");
+    let frame = on_a_small_binding(&engine, &lay);
     let word = |x: u32, y: u32| 0xff00_0000 | x << 8 | y;
     let rgba: Vec<u8> = (0..110)
-        .flat_map(|y| (0..180).map(move |x| word(x, y)))
+        .flat_map(|y| (0..260).map(move |x| word(x, y)))
         .flat_map(u32::to_le_bytes)
         .collect();
-    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 180, height: 110 })
+    let picture = Shown::uploaded(&engine, &rgba, Picture { width: 260, height: 110 })
         .expect("a picture past a binding");
-    let source = Source::Frame { frame: &picture, x: -20, y: 25 };
+    let source = Source::Frame { frame: &picture, x: -30, y: 25 };
     lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
 
     engine.wait().expect("the device refused no binding");
-    let expected: Vec<u32> = (0..height)
-        .flat_map(|y| (0..width).map(move |x| (x, y)))
-        .map(|(x, y)| if x < 160 && y >= 25 { word(x + 20, y - 25) } else { WHITE })
+    let expected: Vec<u32> = (0..120)
+        .flat_map(|y| (0..200).map(move |x| (x, y)))
+        .map(|(x, y)| if y >= 25 { word(x + 30, y - 25) } else { WHITE })
         .collect();
     assert!(le_words(&read_buffer(&engine, &frame.rows)) == expected);
+}
+
+// A conversion reads a frame whole, so one past a binding is refused, with
+// why, before it is bound — not bound past.
+#[test]
+fn a_frame_past_the_device_s_binding_is_not_converted() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(SMALL_BINDING);
+    let frame = on_a_small_binding(&engine, &Lay::new());
+    let picture = Picture { width: 200, height: 120 };
+
+    assert!(Opaque::new().run(&engine, Frame::Shown(&frame), picture).is_none());
+    assert_eq!(last_error(), "a plane of 96000 bytes exceeds a binding of 65536");
+    engine.wait().expect("the device refused no binding");
 }

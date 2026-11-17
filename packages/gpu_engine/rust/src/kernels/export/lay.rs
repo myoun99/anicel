@@ -189,7 +189,7 @@ impl Lay {
         }
         let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
         let source_stride = rows.map(|_| stride);
-        let most = rows_a_band((room, step), onto.stride, source_stride, cover.is_some())?;
+        let most = rows_a_band((room, step), onto.stride, source_stride)?;
         let bands: Vec<(u32, u32)> = (y0..y0 + height)
             .step_by(most as usize)
             .map(|top| (top, top.saturating_add(most).min(y0 + height)))
@@ -267,19 +267,14 @@ impl Lay {
 
 /// The most rows a pass lays where one binding of `room` bytes, begun on a
 /// multiple of `step`, holds each plane's: the frame's, `onto_stride`
-/// words a row; the source's, `source_stride` where it reads one; and the
-/// cover's, a byte a pixel of the frame, where one is given.
-fn rows_a_band(
-    (room, step): (u64, u64),
-    onto_stride: u32,
-    source_stride: Option<u32>,
-    covered: bool,
-) -> Option<u32> {
-    let words = |stride: u32| u64::from(stride) * 4;
-    let planes = [Some(words(onto_stride)), source_stride.map(words), covered.then_some(u64::from(onto_stride))];
-    let mut most = u64::MAX;
-    for row_bytes in planes.into_iter().flatten() {
-        most = most.min(rows_a_binding(room, step, row_bytes)?);
+/// words a row, and the source's, `source_stride` where it reads one. A
+/// cover's rows need no count of their own: a byte a pixel, they are a
+/// quarter of the frame's, which a binding holds.
+fn rows_a_band((room, step): (u64, u64), onto_stride: u32, source_stride: Option<u32>) -> Option<u32> {
+    let row_bytes = |stride: u32| u64::from(stride) * 4;
+    let mut most = rows_a_binding(room, step, row_bytes(onto_stride))?;
+    if let Some(stride) = source_stride {
+        most = most.min(rows_a_binding(room, step, row_bytes(stride))?);
     }
     Some(u32::try_from(most).unwrap_or(u32::MAX))
 }
