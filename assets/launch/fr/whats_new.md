@@ -18,6 +18,7 @@
 - **Aperçu des retouches de couleur** — Binariser, Supprimer la couleur et Conserver la couleur ont un bouton d'aperçu : le résultat s'affiche sur le canevas avant de l'appliquer.
 - **Zoom Alt+molette** — dans la timeline, la feuille d'exposition et le panneau de conte, Alt+molette agrandit et réduit les images. Le zoom à deux doigts garde le point entre les doigts.
 - **Liste des plans** — la première case de la légende montre le nom du plan actuel ; appuyez dessus pour ouvrir la liste des plans, où l'on peut aussi les renommer.
+- **Égaliseur des lignes de son** — le menu Fx d'une ligne de son propose un Égaliseur (Coupe-bas, Coupe-haut, Graves, Aigus), et la lecture comme l'export sonnent pareil. Le menu Fx se divise en sections Audio et Vidéo, celle qu'une ligne n'utilise pas étant grisée ; une ligne de son ne prend que des fx audio.
 
 ## Améliorations
 

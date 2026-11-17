@@ -18,6 +18,7 @@
 - **Color edit preview** — Binarize, Delete color and Keep color have a preview button, so you see the result on the canvas before running it.
 - **Alt+wheel zoom** — on the timeline, X-sheet and conte panel, Alt+wheel zooms the frames in and out. A two-finger zoom holds the spot between the fingers.
 - **Cut list** — the legend's first cell shows the current cut's name; press it to open a list of cuts, where cuts can be renamed too.
+- **Sound row equalizer** — a sound row's Fx menu offers an Equalizer (Low Cut, High Cut, Low, High), and playback and export sound the same. The Fx menu is split into Audio and Video sections, the one a row does not use dimmed; a sound row takes audio fx only.
 
 ## Improved
 
