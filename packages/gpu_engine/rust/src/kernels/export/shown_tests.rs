@@ -151,6 +151,26 @@ fn every_pass_puts_a_frame_past_a_binding_as_it_puts_one_bound_whole() {
     engine.wait().expect("the device refused no binding");
 }
 
+// On a device that binds less than a frame, whether every pixel is opaque
+// is asked of every band: an opaque frame is, and one clear pixel on its
+// last row tells.
+#[test]
+fn whether_a_frame_past_a_binding_is_opaque_is_asked_of_every_band() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(BANDED.1);
+    let (picture, opaque) = (BANDED.0, Opaque::new());
+    let answer = |clear: Option<(u32, u32)>| {
+        let pixel = |x, y| if Some((x, y)) == clear { 0 } else { 0xff00_0000 | x };
+        let shown = shown_on(&engine, (picture.width, picture.height), false, pixel);
+        let out = opaque.run(&engine, Frame::Shown(&shown), picture).expect("opaque");
+        read_buffer(&engine, &out)[0]
+    };
+
+    assert_eq!(answer(None), 255);
+    assert_eq!(answer(Some((7, picture.height - 1))), 0);
+    engine.wait().expect("the device refused no binding");
+}
+
 /// A frame a test made, which a pass is handed as a [`Frame`].
 enum FrameOf {
     Tiles(wgpu::Buffer),
