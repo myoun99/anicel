@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/copy_with_sentinel.dart';
 import '../core/frozen_collections.dart';
 import '../core/path_names.dart' show fileNameOfPath, pathHash;
 import 'media_identity.dart';
@@ -173,6 +174,101 @@ enum MediaFitMode {
   static const MediaFitMode born = none;
 }
 
+/// What a pool entry is PLACED with until a placement answers otherwise —
+/// the file's placement preset (배치 프리셋). A placement copies it as it is
+/// made and never follows it after: a preset changed later shows a badge
+/// and a sync, and moves nothing by itself.
+///
+/// 🗣️7월 29일 상담 (유저안 채택, memory `import-system-design.md` §6-l ·
+/// §6-z10): 「에셋 = 배치 기본값 / 인스턴스 = 실제 값」. 🗣️유저 2026-11-17
+/// (card 「파일마다 배치 기본값」-Q4): the end is never past the file's
+/// last frame — a span is a [KeptSpan], as every trim is.
+///
+/// Every field at its default is the answer every placement started with
+/// before presets: the whole file, [MediaFitMode.born], a sound's block
+/// named [placedSoundNameTag] with the entry's name for its words.
+///
+/// ⛔WHAT A PLACED THING KEEPS FOR ITSELF IS NOT HERE: a sound's gain,
+/// fades and volume keys are the clip's (§6-z10's boundary) — one truth.
+final class MediaPreset {
+  const MediaPreset({
+    this.inFrame = 0,
+    this.outFrame,
+    this.fit = MediaFitMode.born,
+    this.seName,
+    this.dialogue,
+  });
+
+  /// The span placed, as the import window's IN/OUT says one — source
+  /// frames or pages, a sound's in project frames on its own clock
+  /// (`ImportFileSettings.inFrame`); [outFrame] null is the last.
+  final int inFrame;
+  final int? outFrame;
+
+  /// How a placed picture meets the cut's canvas.
+  final MediaFitMode fit;
+
+  /// A placed sound's block: its name tag — [placedSoundNameTag] when null
+  /// — and its words, the entry's name when null ([soundWordsFor]).
+  final String? seName;
+  final String? dialogue;
+
+  MediaPreset copyWith({
+    int? inFrame,
+    Object? outFrame = copyWithSentinel,
+    MediaFitMode? fit,
+    Object? seName = copyWithSentinel,
+    Object? dialogue = copyWithSentinel,
+  }) => MediaPreset(
+    inFrame: inFrame ?? this.inFrame,
+    outFrame: identical(outFrame, copyWithSentinel)
+        ? this.outFrame
+        : outFrame as int?,
+    fit: fit ?? this.fit,
+    seName: identical(seName, copyWithSentinel)
+        ? this.seName
+        : seName as String?,
+    dialogue: identical(dialogue, copyWithSentinel)
+        ? this.dialogue
+        : dialogue as String?,
+  );
+
+  /// Only what differs from the start — an entry nobody set a preset for
+  /// writes none.
+  Map<String, Object> toJson() => {
+    if (inFrame != 0) 'in': inFrame,
+    'out': ?outFrame,
+    if (fit != MediaFitMode.born) 'fit': fit.name,
+    'seName': ?seName,
+    'dialogue': ?dialogue,
+  };
+
+  factory MediaPreset.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) {
+      return const MediaPreset();
+    }
+    return MediaPreset(
+      inFrame: json['in'] as int? ?? 0,
+      outFrame: json['out'] as int?,
+      fit: MediaFitMode.values.asNameMap()[json['fit']] ?? MediaFitMode.born,
+      seName: json['seName'] as String?,
+      dialogue: json['dialogue'] as String?,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is MediaPreset &&
+      other.inFrame == inFrame &&
+      other.outFrame == outFrame &&
+      other.fit == fit &&
+      other.seName == seName &&
+      other.dialogue == dialogue;
+
+  @override
+  int get hashCode => Object.hash(inFrame, outFrame, fit, seName, dialogue);
+}
+
 /// One entry of the project's media pool (the Premiere/Resolve-style
 /// browser): a file the project references, under a user-facing display
 /// name.
@@ -183,28 +279,20 @@ enum MediaFitMode {
 /// AND on every referencing clip in one undo step (the Resolve offline →
 /// relink flow); nothing else about the link model changes.
 ///
-/// ⛔NO PLACEMENT PRESET HERE YET — it comes back whole, with the screen
-/// that edits it. ↩️From 07-30 (`98f529fc1`) an entry held three placement
-/// defaults — `offsetFrames`, `lengthFrames`, `fitMode` (JSON `offset` ·
-/// `length` · `fit`) — the model's half of the placement preset the user
-/// adopted on 07-29: 「asset = placement defaults, instance = actual
-/// values」, copied into a placement as it is made, a badge and a sync
-/// button once a preset changes (the design: memory
-/// `import-system-design.md` §6-l · §6-z10). Only the fields were built.
-/// No placement was ever seeded from one and nothing wrote the offset or
-/// the length. The fit had one reader, and not as a preset: from 09-12
-/// (`6b8a57f62`) a row showing a file asked its entry for 「the fit the
-/// row was placed with」, until the reference kept its own pose (I-68,
-/// 10-10 `23ac00114`). After that it was stamped with whatever the window
-/// answered the first time the file came in and read by nobody — a second
-/// 「default fit」 beside [MediaFitMode.born], waiting to come alive the
-/// day somebody read it.
-/// 🗣️유저 2026-11-10 (card `the-fit-stored-on-an-asset-is-read-by-nobody`
-/// -Q1): 「지금은 지운다 — 프리셋은 고치는 화면을 만들 때 같이 만든다」 ·
-/// 「나중에 만들예정이긴함」. So the three are gone, not forgotten: they
-/// return together with the reader, the badge and the screen (card
-/// 「파일마다 배치 기본값(맞춤 · 시작 · 길이)」) — ⛔not one field at a
-/// time, and not from the §6-z10 table alone.
+/// [preset] is what the entry is PLACED with ([MediaPreset]) — the
+/// placement preset the user adopted on 07-29. ↩️From 07-30 (`98f529fc1`)
+/// an entry held three placement defaults — `offsetFrames`, `lengthFrames`,
+/// `fitMode` (JSON `offset` · `length` · `fit`) — and only the fields were
+/// built: no placement was seeded from one, nothing wrote the offset or the
+/// length, and the fit, read by nobody after I-68 (10-10, `23ac00114`),
+/// was a second 「default fit」 beside [MediaFitMode.born], waiting to come
+/// alive the day somebody read it. 🗣️유저 2026-11-10 (card
+/// `the-fit-stored-on-an-asset-is-read-by-nobody`-Q1): 「지금은 지운다 —
+/// 프리셋은 고치는 화면을 만들 때 같이 만든다」 · 「나중에 만들예정이긴함」.
+/// So it came back WHOLE, with its readers, the screen that edits it and
+/// the badge that says a placement differs (card 「파일마다 배치 기본값」)
+/// — ⛔not one field at a time. The old words are not read back: a span is
+/// the import window's IN/OUT now, not an offset and a length.
 ///
 /// [sourcePath] says where a COPY came from (§6-g).
 ///
@@ -233,7 +321,7 @@ class MediaAsset {
     this.sourceFps,
     this.frameCount,
     this.pageCount,
-    this.dialogue,
+    this.preset = const MediaPreset(),
   }) : path = normalizedMediaPath(path);
 
   /// Absolute file path — the pool key clips reference — in the one
@@ -341,9 +429,8 @@ class MediaAsset {
   /// Detected page count (pdf kind).
   final int? pageCount;
 
-  /// SE dialogue seed (audio kind only — §6-z10's boundary: instance
-  /// truth like gain/fades stays on [AudioClip]).
-  final String? dialogue;
+  /// What the entry is placed with until a placement answers otherwise.
+  final MediaPreset preset;
 
   MediaAsset copyWith({
     String? path,
@@ -355,7 +442,7 @@ class MediaAsset {
     double? sourceFps,
     int? frameCount,
     int? pageCount,
-    String? dialogue,
+    MediaPreset? preset,
   }) {
     return MediaAsset(
       path: path ?? this.path,
@@ -367,7 +454,7 @@ class MediaAsset {
       sourceFps: sourceFps ?? this.sourceFps,
       frameCount: frameCount ?? this.frameCount,
       pageCount: pageCount ?? this.pageCount,
-      dialogue: dialogue ?? this.dialogue,
+      preset: preset ?? this.preset,
     );
   }
 
@@ -386,7 +473,8 @@ class MediaAsset {
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
     if (pageCount != null) 'pageCount': pageCount,
-    if (dialogue != null) 'dialogue': dialogue,
+    if (preset.toJson() case final written when written.isNotEmpty)
+      'preset': written,
   };
 
   /// The stored name — except the one a build before 2026-09-12 wrote by
@@ -423,7 +511,7 @@ class MediaAsset {
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
       pageCount: json['pageCount'] as int?,
-      dialogue: json['dialogue'] as String?,
+      preset: MediaPreset.fromJson(json['preset']),
     );
   }
 
@@ -440,7 +528,7 @@ class MediaAsset {
           other.sourceFps == sourceFps &&
           other.frameCount == frameCount &&
           other.pageCount == pageCount &&
-          other.dialogue == dialogue;
+          other.preset == preset;
 
   @override
   int get hashCode => Object.hash(
@@ -453,7 +541,7 @@ class MediaAsset {
     sourceFps,
     frameCount,
     pageCount,
-    dialogue,
+    preset,
   );
 
   @override

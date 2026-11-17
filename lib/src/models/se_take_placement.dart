@@ -4,6 +4,7 @@ import 'audio_clip.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'media_asset.dart';
 import 'timeline_empty_gaps.dart';
 import 'timeline_exposure.dart';
 
@@ -127,6 +128,19 @@ SeTakePlacement? planSeTakePlacement({
 /// 이름을 SE(SE 고정. 타임시트에 캐릭터가 아니라 사운드 작성시 진짜로
 /// SE라고 씀)」).
 const placedSoundNameTag = 'SE';
+
+/// The name tag and the words a placed sound's block is born with: what
+/// [entry]'s preset says ([MediaPreset.seName] · [MediaPreset.dialogue]),
+/// else [placedSoundNameTag] and [named] — the name the placement names
+/// what it makes with ([mediaAssetNameFor]). On an SE row a block's words
+/// are its frame's name.
+({String seName, String words}) placedSoundBlockOf(
+  MediaAsset? entry, {
+  required String named,
+}) => (
+  seName: entry?.preset.seName ?? placedSoundNameTag,
+  words: entry?.preset.dialogue ?? named,
+);
 
 /// The first of [rows], in their own order — the one order every panel
 /// draws — with no block anywhere in [startFrame, startFrame +

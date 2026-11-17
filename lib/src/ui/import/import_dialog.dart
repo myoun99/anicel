@@ -504,7 +504,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// learn to ignore (08-12). So the row holds the two questions apart.
   bool _registersOnly(String path) =>
       widget.poolOnly ||
-      ((_settings[path] ?? _seed).intoPool && _poolAnswers(path));
+      ((_settings[path] ?? _seedFor(path)).intoPool && _poolAnswers(path));
 
   /// Whether 「미디어」 is still an answer for [path]: a file the pool does
   /// not hold — one it holds has nothing left to register, so it is placed
@@ -563,9 +563,9 @@ class _ImportDialogState extends State<ImportDialog> {
   ImportFileSettings _settingsFor(String path) {
     final kind = mediaAssetKindForPath(path);
     final resolved = resolvedImportSettings(
-      // Untouched rows answer with their seed ([_seed]) — without a movie's
+      // Untouched rows answer with their seed ([_seedFor]) — without a movie's
       // sound on a picture row's frames.
-      _settings[path] ?? _seed,
+      _settings[path] ?? _seedFor(path),
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing(path),
@@ -697,7 +697,7 @@ class _ImportDialogState extends State<ImportDialog> {
     };
     setState(() {
       for (final path in readItself.keys) {
-        _settings[path] = change(_settings[path] ?? _seed);
+        _settings[path] = change(_settings[path] ?? _seedFor(path));
       }
     });
     // An answer that moves where the window reads a row — this project's
@@ -716,6 +716,19 @@ class _ImportDialogState extends State<ImportDialog> {
   /// pressing Bake on a movie also turned its Link into Keep — one column
   /// changed under a press in another.
   ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
+
+  /// What an untouched row of [path] answers: [_seed], with the span and
+  /// the fit the pool entry's PRESET says when the pool holds [path]
+  /// ([MediaPreset]) — a placement copies its file's preset as it is made,
+  /// and the row is where the window asks what the placement is.
+  ImportFileSettings _seedFor(String path) => switch (_poolEntryFor(path)) {
+    MediaAsset(:final preset) => _seed.copyWith(
+      inFrame: preset.inFrame,
+      outFrame: preset.outFrame,
+      fit: preset.fit,
+    ),
+    null => _seed,
+  };
 
   /// The file names of each folder a picked picture lives in, read ONCE.
   final Map<String, List<String>?> _folderNames = {};
@@ -1271,7 +1284,7 @@ class _ImportDialogState extends State<ImportDialog> {
     for (final file in media) {
       final path = cutFolderFilePath(folder, file);
       _files.add(path);
-      _settings[path] = _seed.copyWith(intoPool: true);
+      _settings[path] = _seedFor(path).copyWith(intoPool: true);
       _probe(path);
     }
     _leftOut = _leftOutOf(parsed);
@@ -1329,7 +1342,8 @@ class _ImportDialogState extends State<ImportDialog> {
   /// Whether the file row at [path] comes in — its own answer
   /// ([ImportFileSettings.imports]), given for the pictures it brings too
   /// ([_setSettings]).
-  bool _fileComesIn(String path) => (_settings[path] ?? _seed).imports;
+  bool _fileComesIn(String path) =>
+      (_settings[path] ?? _seedFor(path)).imports;
 
   /// Whether the folder's cut lands on the press — unless every row of it
   /// that brings something is switched off, which leaves nothing of it to

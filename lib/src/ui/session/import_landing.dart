@@ -525,6 +525,12 @@ class ImportLanding {
           timeline: const {},
           kind: LayerKind.se,
         );
+    // The file's preset names the block — a pooled file's; one the pool
+    // has not seen yet starts as every placed sound does.
+    final block = placedSoundBlockOf(
+      _project.repository.requireProject().mediaAssetByPath(arrival.source),
+      named: arrival.displayName,
+    );
     final plan = planSeTakePlacement(
       layer: row,
       startFrame: start,
@@ -532,8 +538,8 @@ class ImportLanding {
       filePath: arrival.source,
       takeFrameId: _frameIds.mintFrameId(row.id),
       newFrameId: () => _frameIds.mintFrameId(row.id),
-      name: arrival.displayName,
-      seName: placedSoundNameTag,
+      name: block.words,
+      seName: block.seName,
       offsetFrames: offsetFrames,
     );
     if (plan == null) {

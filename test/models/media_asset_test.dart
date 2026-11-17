@@ -71,16 +71,16 @@ void main() {
     // 🗣️유저 2026-11-10 (card `the-fit-stored-on-an-asset-is-read-by-nobody`
     // -Q1): 「지금은 지운다 — 프리셋은 고치는 화면을 만들 때 같이 만든다」.
     // ↩️An entry kept `offset` · `length` · `fit` (07-30), read by nobody.
-    test('🚨an entry keeps no placement default: a file that wrote one '
-        'opens, and the word is not written back — so the format\'s number '
-        'did not move for it', () {
+    // The preset came back whole, under a word of its own.
+    test('🚨the old placement words are not read: a file that wrote them '
+        'opens with no preset, and they are not written back', () {
       final written = {
         'path': '/a/bg.png',
         'name': 'bg',
         'kind': 'image',
         'offset': 3,
         'length': 24,
-        'fit': 'none',
+        'fit': 'stretch',
       };
       final opened = MediaAsset.fromJson(written);
 
@@ -89,11 +89,51 @@ void main() {
         MediaAsset(path: '/a/bg.png', name: 'bg', kind: MediaAssetKind.image),
         reason: 'the entry a file without the words reads as',
       );
-      expect(opened.toJson().keys, isNot(contains('offset')));
-      expect(opened.toJson().keys, isNot(contains('length')));
-      expect(opened.toJson().keys, isNot(contains('fit')));
+      expect(opened.preset, const MediaPreset());
+      expect(
+        opened.toJson().keys,
+        isNot(anyOf(contains('offset'), contains('length'), contains('fit'))),
+      );
     });
 
+    test('a preset round-trips, and only what differs from where every '
+        'placement starts is written', () {
+      final asset = MediaAsset(
+        path: '/a/door.wav',
+        name: 'door',
+        preset: const MediaPreset(
+          inFrame: 2,
+          outFrame: 5,
+          fit: MediaFitMode.stretch,
+          seName: 'A',
+          dialogue: '쾅',
+        ),
+      );
+      expect(MediaAsset.fromJson(asset.toJson()), asset);
+      expect(
+        asset,
+        isNot(asset.copyWith(preset: const MediaPreset())),
+        reason: 'a preset changed is the entry changed — the undo sees it',
+      );
+      expect(asset.toJson()['preset'], {
+        'in': 2,
+        'out': 5,
+        'fit': 'stretch',
+        'seName': 'A',
+        'dialogue': '쾅',
+      });
+      for (final start in const [
+        MediaPreset(),
+        MediaPreset(fit: MediaFitMode.born),
+      ]) {
+        expect(
+          MediaAsset(path: '/a/door.wav', name: 'door', preset: start)
+              .toJson()
+              .keys,
+          isNot(contains('preset')),
+        );
+      }
+    });
     test('🚨the default name is the file name WITHOUT its extension — the '
         'name a placement gives its rows (유저 2026-09-12)', () {
       expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot');
