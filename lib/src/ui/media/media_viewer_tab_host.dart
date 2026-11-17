@@ -741,6 +741,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }
+    // Its sound is conformed now, before any press — as a project's are at
+    // its open and a pool import's at the import
+    // ([AudioConformStore.warmPaths]): a movie picked here or come back
+    // with a bookmark came through neither, and its first press waited
+    // for the whole of its sound (🔬11-18, card viewer-first-play-stalls,
+    // test VM: a 60 s 1080p24 movie's first page turned 5.4 s after the
+    // first press, 0.1 s after the second).
+    final sound = _soundPath;
+    if (sound != null) {
+      _sound.conformStore.warmPaths([sound]);
+    }
     // ONE landing for every medium: open a document, or say why not. The
     // three arms this replaces differed only in HOW they opened and in
     // which field they parked the result — the guards against a stale

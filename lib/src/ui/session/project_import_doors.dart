@@ -898,7 +898,7 @@ class ProjectImportDoors {
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
-          await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
+          await _conforms.ensurePeaksFor(_pool.importSoundOf(source)) !=
               null;
       // A baked picture leaves the file nothing to be for — unless its
       // sound lands beside it, which reads the file ([placementRegisters]).
@@ -2011,7 +2011,7 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final source = _pool.importAudioFile(path);
+    final source = _pool.importSoundOf(path);
     final peaks = await _conforms.ensurePeaksFor(source);
     if (peaks == null) {
       return false;

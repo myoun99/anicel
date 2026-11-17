@@ -37,7 +37,8 @@ import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_facts.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../services/project_lookup.dart'
+    show mediaKindCanCarrySound, requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -873,7 +874,7 @@ class MediaPool {
   /// bytes INSIDE the archive, so the choice is recorded as
   /// [MediaAsset.carried] — where a choice belongs — instead of being
   /// smuggled into the path and read back off it later.
-  String importAudioFile(String sourcePath) {
+  String importSoundOf(String sourcePath) {
     final effectivePath = normalizedMediaPath(sourcePath);
     // Fresh conform + waveform budget: on a re-import the file may have
     // changed on disk. (A byte-identical reused copy re-fingerprints
@@ -911,8 +912,14 @@ class MediaPool {
       if (kind == null) {
         continue;
       }
-      if (kind == MediaAssetKind.audio) {
-        importAudioFile(source);
+      // ⛔It asks [mediaKindCanCarrySound] — what a project's open warms by
+      // and what the viewer plays by — so a movie's soundtrack is conformed
+      // here as a sound file's is. ↩️It asked for audio alone, from the
+      // import's first cut (07-30) before the conform could hear a movie:
+      // a movie's first play in the viewer then waited for the whole of its
+      // sound (card viewer-first-play-stalls).
+      if (mediaKindCanCarrySound(kind)) {
+        importSoundOf(source);
       }
       if (!known.add(source)) {
         continue;
