@@ -99,6 +99,12 @@ void main() {
     expect(second.twistDegrees, 270);
   });
 
+  test('with no Wintab context open its queue says nothing: no gap from a '
+      'mouse message, no overflow', () {
+    final pen = QaTabletBridge.instanceOrNull!;
+    expect((pen.clockGap(), pen.overflowed()), (null, 0));
+  }, skip: windowsOnly);
+
   test('a Raw Input record says the tilt and the twist only when the '
       'report carried them', () {
     final posed = Float32List.fromList([1, 7, 12.5, -30, 1, 135, 1]);

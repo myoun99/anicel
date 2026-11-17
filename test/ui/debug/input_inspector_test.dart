@@ -1,7 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
+
+import '../../helpers/fake_tablet_bridge.dart';
 
 /// PEN-1: the input inspector — the pen program's diagnosis overlay.
 void main() {
@@ -48,6 +52,27 @@ void main() {
       findsNothing,
     );
     expect(InputInspector.visible.value, isFalse);
+  });
+
+  testWidgets('the strip says how far the driver\'s newest packet ran '
+      'behind the mouse, and what its queue lost', (tester) async {
+    final service = WintabPenService.instance;
+    addTearDown(service.debugReset);
+    service.debugBridge = FakeTabletBridge();
+    service.start();
+    service.freshPacket();
+    service.debugInjectPacket(
+      const QaTabletPacket(pressure: 0.4, timeMs: 0, buttons: 1),
+    );
+    InputInspector.visible.value = true;
+    await tester.pumpWidget(harness());
+
+    String said(String key) =>
+        tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
+    expect(said('input-inspector-wintab'), 'wt p=0.40');
+    expect(said('input-inspector-touch-count'), endsWith(' wt gap=7 over=3'));
+    // The poll timer must die before the binding's pending-timer check.
+    service.debugReset();
   });
 
   testWidgets('records kinds live — a stylus drag shows as stylus rows', (

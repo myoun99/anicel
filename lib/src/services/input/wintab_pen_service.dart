@@ -53,6 +53,11 @@ class WintabPenService {
   /// now). Null = the real DLL.
   List<QaTabletPacket> Function()? debugPollOverride;
 
+  /// Test hook: the bridge the service opens, polls and asks — null = the
+  /// engine's own ([QaTabletBridge.instanceOrNull]).
+  @visibleForTesting
+  QaTabletBridge? debugBridge;
+
   /// The freshest driver packet (null until one arrives) — the input
   /// inspector renders this line when live.
   final ValueNotifier<QaTabletPacket?> latest = ValueNotifier<QaTabletPacket?>(
@@ -122,7 +127,7 @@ class WintabPenService {
     if (_timer != null) {
       return;
     }
-    _bridge ??= QaTabletBridge.instanceOrNull;
+    _bridge ??= debugBridge ?? QaTabletBridge.instanceOrNull;
     if (debugPollOverride == null && (_bridge == null || !_bridge!.available)) {
       return; // No driver — stay idle (the standard graceful absence).
     }
@@ -271,6 +276,7 @@ class WintabPenService {
       _settingsListener = null;
     }
     debugPollOverride = null;
+    debugBridge = null;
     debugClockOverride = null;
     persistSettings = null;
     autoDemoted.value = false;

@@ -507,12 +507,7 @@ class _InspectorCard extends StatelessWidget {
                                 padding: const EdgeInsets.only(left: 6),
                                 child: Text(
                                   'wt p='
-                                  '${packet.pressure.toStringAsFixed(2)}'
-                                  // How far the driver's newest packet ran
-                                  // behind the mouse message, and the
-                                  // overflows its queue said: a pkTime on
-                                  // another clock pairs no mouse point.
-                                  '${_wintabHeard()}',
+                                  '${packet.pressure.toStringAsFixed(2)}',
                                   key: const ValueKey<String>(
                                     'input-inspector-wintab',
                                   ),
@@ -632,7 +627,12 @@ class _InspectorCard extends StatelessWidget {
                     ' passed=${QaPenPoints.passed}'
                     // H59 법 A: and those whose points did not all
                     // reach the book, by why.
-                    ' lost=${_lostSaid(QaPenPoints.lost)}',
+                    ' lost=${_lostSaid(QaPenPoints.lost)}'
+                    // And while the tablet driver's stream is open, how far
+                    // its newest packet ran behind the mouse message and
+                    // the overflows its queue said: a pkTime on another
+                    // clock pairs no mouse point with the driver.
+                    '${_wintabHeard()}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
@@ -660,7 +660,7 @@ String _wintabHeard() {
   final heard = WintabPenService.instance.heard();
   return heard == null
       ? ''
-      : ' gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
+      : ' wt gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
 }
 
 /// What the point book lost ([QaPenPoints.lost]), by why, as the strip
