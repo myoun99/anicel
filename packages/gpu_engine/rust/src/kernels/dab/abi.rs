@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
 use super::landing::{self, Asked, Laid, Over};
+use super::mix::{Ground, Step};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
@@ -69,7 +70,47 @@ pub struct DabSpec {
     region: [i32; 4],
     /// Red, green, blue, alpha, from the low byte.
     colour: u32,
-    _pad: u32,
+    /// The mixing step whose colour it lays in place of `colour`
+    /// (`Mixing`), [`NO_STEP`] for none.
+    mix: u32,
+}
+
+/// `DabSpec::mix` of a dab that lays its own colour.
+const NO_STEP: u32 = u32::MAX;
+
+/// A mixing brush's step as the app hands one over, field by field
+/// `Step`'s.
+#[repr(C)]
+pub struct StepSpec {
+    centre: [f64; 2],
+    radius: f64,
+    refill: f64,
+    laid: f64,
+    density: f64,
+    take: f64,
+    share: f64,
+    pick: f64,
+    /// Red, green, blue, alpha, from the low byte.
+    colour: u32,
+    /// 1 for a dry brush.
+    dry: u32,
+}
+
+impl StepSpec {
+    fn step(&self) -> Step {
+        Step {
+            centre: self.centre,
+            radius: self.radius,
+            colour: self.colour.to_le_bytes(),
+            refill: self.refill,
+            laid: self.laid,
+            density: self.density,
+            take: self.take,
+            share: self.share,
+            pick: self.pick,
+            dry: self.dry != 0,
+        }
+    }
 }
 
 /// The profile `spec` names, if its tip is round.
@@ -243,14 +284,55 @@ pub unsafe extern "C" fn gpu_engine_stroke_clear(stroke: *mut Stroke, engine: *c
     })
 }
 
+/// Hands a mixing brush's `steps`, `count` of them, `first` the first's
+/// place in the stroke's chain, to run with the next pile:
+/// `Stroke::hand_steps`. Writes the column and row of each ground tile
+/// they read to `coordinates` — the ones the next pile is told the cel's
+/// tile under — and gives how many; -1 on failure, see the last error.
+///
+/// # Safety
+/// `stroke` and `engine` are live, the stroke made on it; `steps` holds
+/// `count`; `coordinates` has room for 128 × `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stroke_hand_steps(
+    stroke: *mut Stroke,
+    engine: *const Engine,
+    steps: *const StepSpec,
+    count: usize,
+    first: u32,
+    coordinates: *mut i32,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (stroke, engine, specs) =
+        unsafe { (&mut *stroke, &*engine, std::slice::from_raw_parts(steps, count)) };
+    engine.on_thread(|| {
+        let steps: Vec<Step> = specs.iter().map(StepSpec::step).collect();
+        let Some(ground) = stroke.hand_steps(&steps, first) else {
+            return -1;
+        };
+        // SAFETY: see the function's contract — a step reads 64 tiles at most.
+        let out = unsafe { std::slice::from_raw_parts_mut(coordinates, 2 * ground.len()) };
+        for (&(column, row), at) in ground.iter().zip(out.chunks_exact_mut(2)) {
+            at.copy_from_slice(&[column, row]);
+        }
+        ground.len() as isize
+    })
+}
+
 /// Piles `dabs`, `count` of them, in their order, over the paper — `paper`,
 /// null for none, at `paper_scale` px a texel, 高さ where `paper_height` —
 /// with a second tip shown by `second_mode` at `second_density` where that
-/// is not -1. False on failure; see the last error.
+/// is not -1. The steps handed run first where `under` is not null —
+/// `ground` words, the cel's tile under each ground tile they read as a
+/// tile set names one, on `pool`'s pages copied by `composite` — and
+/// colour each dab whose `mix` names one: `Stroke::pile_mixed`. False on
+/// failure; see the last error.
 ///
 /// # Safety
 /// `stroke` and `engine` are live, the stroke made on it; `dabs` holds
-/// `count`, each as `DabSpec` says; `paper` is live or null.
+/// `count`, each as `DabSpec` says; `paper` is live or null; where
+/// `under` is not null it holds `ground`, and `composite` and `pool` are
+/// live, on `engine`.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_stroke_pile(
@@ -263,6 +345,10 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
     paper_height: bool,
     second_mode: i32,
     second_density: f64,
+    composite: *const Composite,
+    pool: *const Pool,
+    under: *const u32,
+    ground: usize,
 ) -> bool {
     // SAFETY: see the function's contract.
     let (stroke, engine, specs) =
@@ -271,8 +357,54 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
         // SAFETY: see the function's contract.
         let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
         let second = (second_mode != -1).then_some((second_mode as u32, second_density));
+        let colours: Vec<(usize, u32)> = specs
+            .iter()
+            .enumerate()
+            .filter(|(_, spec)| spec.mix != NO_STEP)
+            .map(|(index, spec)| (index, spec.mix))
+            .collect();
+        // SAFETY: see the function's contract.
+        let under: Option<Vec<Option<TileAt>>> = (!under.is_null()).then(|| {
+            let words = unsafe { std::slice::from_raw_parts(under, ground) };
+            words.iter().map(|&word| TileAt::of_word(word)).collect()
+        });
+        // SAFETY: see the function's contract.
+        let tools = under.as_ref().map(|under| unsafe { (&*composite, (*pool).pages(), under) });
+        let mixed = tools.map(|(executor, pages, under)| {
+            (Ground { executor, pages, under }, colours.as_slice())
+        });
         // SAFETY: a spec is as `DabSpec` says.
-        unsafe { with_dabs(specs, |dabs| stroke.pile(engine, dabs, paper.as_ref(), second).is_some()) }
+        unsafe {
+            with_dabs(specs, |dabs| {
+                stroke.pile_mixed(engine, dabs, paper.as_ref(), second, mixed).is_some()
+            })
+        }
+    })
+}
+
+/// Writes the colour each of `stroke`'s first `count` mixing steps laid,
+/// ARGB, to `out`: `Stroke::mixed`, read back. False on failure; see the
+/// last error.
+///
+/// # Safety
+/// `stroke` and `engine` are live, the stroke made on it; `out` has room
+/// for `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stroke_mixed(
+    stroke: *const Stroke,
+    engine: *const Engine,
+    out: *mut u32,
+    count: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (stroke, engine) = unsafe { (&*stroke, &*engine) };
+    engine.on_thread(|| {
+        let Some(colours) = stroke.mixed(engine, count) else {
+            return false;
+        };
+        // SAFETY: see the function's contract.
+        unsafe { std::slice::from_raw_parts_mut(out, count) }.copy_from_slice(&colours);
+        true
     })
 }
 

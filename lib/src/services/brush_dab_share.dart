@@ -104,6 +104,9 @@ Float64List? eveningTableOf(BrushDab dab) {
 /// the swatch read these numbers through [evenedLaid], the engine's kernel
 /// is handed the same table by the dab's plan (`dab_even`, dab.wgsl), so
 /// they agree and no pixel pays a power.
+/// ↩️Bar one since 11-17: how far a mixing step lifts its ground is raised
+/// to its share on the engine (`mix_picked_up`, mix.wgsl) — the ground's
+/// pull is known only there, once a step, never a pixel.
 Float64List eveningTableFor(double share) {
   final last = _lastTable;
   if (last != null && share == _lastShare) {

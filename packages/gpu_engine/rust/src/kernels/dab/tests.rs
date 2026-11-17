@@ -115,7 +115,8 @@ fn pile_into(
         .collect();
     let engine = first_engine();
     let pages = (&buffers.planes[..], &buffers.view[..]);
-    kernel.pile_by(engine, &stroke, dabs, (paper, second.as_ref()), pages, kept.per_pass)?;
+    let papers = (paper, second.as_ref());
+    kernel.pile_by(engine, &stroke, dabs, papers, pages, kept.per_pass, None)?;
     Some(buffers)
 }
 
@@ -1165,7 +1166,8 @@ fn a_tile_past_the_strokes_pages_is_refused() {
         };
         let (planes, view, levels) = (pages(planes), pages(view), pages(levels));
         let second = Second { plane: &levels, mode: MULTIPLY, density: 1.0 };
-        let piled = kernel.pile(engine, &stroke, &[dab], None, Some(&second), (&planes, &view));
+        let pages = (&planes[..], &view[..]);
+        let piled = kernel.pile(engine, &stroke, &[dab], None, Some(&second), pages, None);
         (piled.is_some(), planes.iter().all(|page| words(page).iter().all(|&word| word == 0)))
     };
     assert_eq!(piles(1, 2, 2), (false, true));

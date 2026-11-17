@@ -1,48 +1,36 @@
 import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
-import '../core/argb_channels.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_shape.dart';
 import 'brush_dab_share.dart';
 import 'brush_pressure_dynamics.dart';
 
-/// The colour already on the cel under a dab, as the mixer needs it.
-///
-/// [coverage] is how much of the sampled area was actually painted, 0..1 —
-/// mixing on bare canvas must not drag the reservoir toward the transparent
-/// pixels' RGB (which is black), so an empty ground contributes nothing.
-class BrushGroundSample {
-  const BrushGroundSample({required this.rgb, required this.coverage});
-
-  /// Straight (un-premultiplied) 0xRRGGBB of the painted pixels.
-  final int rgb;
-
-  /// Painted fraction of the sampled area, 0..1.
-  final double coverage;
-
-  static const BrushGroundSample empty = BrushGroundSample(
-    rgb: 0,
-    coverage: 0.0,
-  );
-}
-
-/// Reads the ground under a dab centred at ([x], [y]) with radius [radius].
-typedef BrushGroundColorSampler =
-    BrushGroundSample Function(double x, double y, double radius);
-
-/// Resolves the colour a mixing brush actually deposits, one dab at a time.
+/// Makes each dab of a mixing brush a step of the stroke's chain — the
+/// colour it deposits is the engine's to resolve, one dab at a time.
 ///
 /// Clip Studio's 밑바탕 혼색 and Photoshop's Mixer Brush are one model: the
 /// brush carries a reservoir of paint, each dab lifts colour from the canvas
-/// into it, then puts a blend of the two back down. Both are reproduced by
-/// resolving the deposit colour AT PLACEMENT and baking it into the dab —
-/// the rasterizers never learn about mixing, the parity suites stay intact,
-/// and undo/redo replays the stored dabs byte-identically.
+/// into it, then puts a blend of the two back down. The deposit colour is
+/// resolved AT PLACEMENT, a step a dab, and laid as the dab's own colour —
+/// the dab kernel never learns about mixing — and pen-up bakes it into the
+/// dabs the stroke keeps, so the commit, undo replay and the .anicel lay
+/// the stored dabs byte-identically ([BrushDab.mixedAs]).
 ///
-/// One reservoir lives per stroke, so it must be fed dabs in stroke order.
-/// That ordering is now load-bearing: the rasterizers may never reorder or
+/// One reservoir lives per stroke, so the steps run in stroke order. That
+/// ordering is load-bearing: the rasterizers may never reorder or
 /// parallelise dabs within a stroke.
+///
+/// ↩️THE GROUND IS READ ON THE ENGINE (board
+/// `the-mixing-brush-reads-a-whole-tile-back-for-its-ground`, 11-17; 🗣️유저
+/// 「cpu로하는거 최대한 전부 gpu로 · 진짜 cpu가 빠를수밖에 없는거만 cpu로」):
+/// till then this resolved the colour itself, reading an 8×8 grid of the
+/// cel under each dab — and a tile the engine had made was read back whole
+/// the first time a dab met it, a wait for all the GPU had been handed
+/// (the stroke's own dabs among it), and kept on the CPU besides. What
+/// stays here is what does not read the ground: the brush's curves and
+/// dice, made in the stroke's order as before. The walk — the ground, the
+/// reservoir — is the engine's (gpu_engine `mix.wgsl`).
 class BrushGroundColorMixer {
   BrushGroundColorMixer({required this.shape, this.random});
 
@@ -53,29 +41,17 @@ class BrushGroundColorMixer {
   /// skipped.
   final math.Random? random;
 
-  /// The paint currently on the brush. Null until the first dab seeds it
-  /// from the brush colour.
-  ///
-  /// ⚠️UNROUNDED: a dab moves it by a fraction of a stamp's pull, and at a
-  /// low 물감량 that is a fraction of a level — rounded each dab, it
-  /// rounded back, and a wet watercolour that crossed red stayed red to
-  /// the end of the stroke (measured 2026-10-30: 125 → 125 over twenty of
-  /// its widths). Only what a dab lays is rounded.
-  _Paint? _reservoir;
-
-  /// How much paint a DRY brush holds, 0..1 — one whose paint amount is 0
-  /// carries no drawing colour, only what it picked up ([apply]).
-  double _held = 0.0;
+  /// The next step's place in the stroke's chain.
+  int _steps = 0;
 
   bool get isActive => shape.picksUpGround;
 
-  /// Returns [dabs] with their deposit colours resolved.
+  /// Returns [dabs], each naming its step of the chain ([BrushDab.mix]).
   ///
-  /// [sample] reads the composite as of the START of this batch. A dab does
-  /// not see the dabs beside it in the same batch — the rasterizer works a
-  /// pointer-move at a time and forcing a rasterize per dab would undo that
-  /// batching. The reservoir still carries across every dab, which is what
-  /// actually produces the smear.
+  /// A step reads the cel as it stood when the stroke began, under the dab
+  /// where it lands — after the dynamics, which move it. It does not see
+  /// the stroke's own dabs; the reservoir carries across every dab, which
+  /// is what actually produces the smear.
   ///
   /// 🗣️THE BRUSH COMES BACK TO ITS OWN COLOUR (gouache card Q3 = c, Q8 = a,
   /// 2026-10-24: fitted to the user's Clip Studio strokes — 유채 · 진한 수채 ·
@@ -106,65 +82,43 @@ class BrushGroundColorMixer {
   /// carries what it picked up as thick as it was, thinning over bare
   /// canvas at the pickup's rate. 絵の具濃度 is the drawing colour's, and it
   /// carries none.
-  List<BrushDab> apply(
-    List<BrushDab> dabs, {
-    required BrushGroundColorSampler sample,
-  }) {
+  /// ⚠️DRY IS THE BRUSH'S, NOT THE DAB'S — my reading, not the user's: a
+  /// 絵の具量 its curve presses down to 0 is a loaded brush laying none of
+  /// its own colour this dab, still laying what it carries at its 絵の具濃度;
+  /// only a 絵の具量 set to 0 makes the 수채 섞기 that lays nothing on bare
+  /// canvas.
+  List<BrushDab> apply(List<BrushDab> dabs) {
     if (!isActive || dabs.isEmpty) {
       return dabs;
     }
-    final stretch = shape.colorStretch.clamp(0.0, 1.0);
-    final pickPerStamp = (1.0 - stretch) * _pickPerStamp;
-
-    final mixed = <BrushDab>[];
-    for (final dab in dabs) {
-      final sourceArgb = dab.color;
-      final drawing = _Paint.of(sourceArgb);
-      final ground = sample(dab.center.x, dab.center.y, dab.size / 2.0);
-      // ⚠️DRY IS THE BRUSH'S, NOT THE DAB'S — my reading, not the user's: a
-      // 絵の具量 its curve presses down to 0 is a loaded brush laying none
-      // of its own colour this dab, still laying what it carries at its
-      // 絵の具濃度; only a 絵の具量 set to 0 makes the 수채 섞기 that lays
-      // nothing on bare canvas.
-      final (:deposit, :thickness) = shape.paintAmount > 0.0
-          ? _laidLoaded(dab, drawing, ground, pickPerStamp)
-          : _laidDry(dab, drawing, ground, pickPerStamp);
-      final alpha = (argbAlpha(sourceArgb) * thickness).round().clamp(0, 255);
-      mixed.add(dab.copyWith(color: (alpha << 24) | deposit.rgb));
-    }
-    return mixed;
+    return [
+      for (final dab in dabs)
+        dab.copyWith(mix: _isDry ? _step(dab) : _loaded(dab)),
+    ];
   }
 
-  /// What a loaded brush lays at [dab] over [ground] — the reservoir picks
-  /// the ground up and is refilled with [drawing] by the dab's 絵の具量, and
-  /// lays at its 絵の具濃度 ([apply]).
-  _Laid _laidLoaded(
-    BrushDab dab,
-    _Paint drawing,
-    BrushGroundSample ground,
-    double pickPerStamp,
-  ) {
+  /// A brush with no 絵の具量 of its own ([apply]).
+  bool get _isDry => !(shape.paintAmount > 0.0);
+
+  /// What a whole stamp lifts of the ground: less the further 색 늘이기
+  /// draws a picked-up colour out.
+  double get _pick =>
+      (1.0 - shape.colorStretch.clamp(0.0, 1.0)) * _pickPerStamp;
+
+  /// A loaded brush's step at [dab]: the ground it lifts a whole stamp
+  /// [_pick] of, refilled with the drawing colour by the dab's 絵の具量 and
+  /// laid at its 絵の具濃度 ([apply]).
+  BrushDabMix _loaded(BrushDab dab) {
     final amount = _ofDab(
       dab,
       BrushPressureTarget.paintAmount,
       shape.paintAmount,
     );
-    var carried = _reservoir ?? drawing;
-    // Bare canvas has no colour to lift; the brush keeps what it holds.
-    if (ground.coverage > 0.0) {
-      carried = carried.towards(
-        _Paint.of(ground.rgb),
-        _pickedUp(dab, pickPerStamp * ground.coverage),
-      );
-    }
-    carried = carried.towards(
-      drawing,
-      _pickedUp(dab, amount * amount * _refillPerStamp),
-    );
-    _reservoir = carried;
-    return (
-      deposit: carried.towards(drawing, amount * _drawingLaid),
-      thickness: _ofDab(
+    return _step(
+      dab,
+      refill: _pickedUp(dab, amount * amount * _refillPerStamp),
+      laid: amount * _drawingLaid,
+      density: _ofDab(
         dab,
         BrushPressureTarget.paintDensity,
         shape.paintDensity,
@@ -172,25 +126,29 @@ class BrushGroundColorMixer {
     );
   }
 
-  /// What a dry brush lays at [dab] over [ground] — what it picked up, as
-  /// thick as it holds it ([apply]).
-  _Laid _laidDry(
-    BrushDab dab,
-    _Paint drawing,
-    BrushGroundSample ground,
-    double pickPerStamp,
-  ) {
-    final take = _pickedUp(dab, pickPerStamp);
-    final held = _held + (ground.coverage - _held) * take;
-    if (held > 0.0) {
-      final lifted = _Paint.of(ground.rgb);
-      _reservoir = (_reservoir ?? lifted).towards(
-        lifted,
-        ground.coverage * take / held,
-      );
-    }
-    _held = held;
-    return (deposit: _reservoir ?? drawing, thickness: held);
+  /// [dab]'s step of the stroke: a loaded brush's [refill], [laid] and
+  /// [density] ([_loaded]); a dry brush's what it picks up of the ground
+  /// a whole stamp lifting [_pick] of it.
+  BrushDabMix _step(
+    BrushDab dab, {
+    double refill = 0.0,
+    double laid = 0.0,
+    double density = 0.0,
+  }) {
+    final pick = _pick;
+    return BrushDabMix(
+      step: _steps++,
+      center: dab.center,
+      radius: dab.size / 2.0,
+      color: dab.color,
+      refill: refill,
+      laid: laid,
+      density: density,
+      take: _isDry ? _pickedUp(dab, pick) : 0.0,
+      share: stampShareOf(dab),
+      pick: pick,
+      dry: _isDry,
+    );
   }
 
   /// [target]'s setting for [dab]: the brush's [base], through the curves
@@ -202,9 +160,6 @@ class BrushGroundColorMixer {
         1.0,
       );
 }
-
-/// What a dab lays: the colour, and how thick of its alpha.
-typedef _Laid = ({_Paint deposit, double thickness});
 
 /// What a whole stamp lifts of the ground at 色延び 0 ([BrushGroundColorMixer]
 /// — fitted to the user's Clip Studio strokes).
@@ -218,9 +173,12 @@ const double _refillPerStamp = 0.12;
 /// 絵の具量 1, fitted with [_pickPerStamp].
 const double _drawingLaid = 0.3;
 
-/// How far [dab] moves the reservoir — toward the ground it lifts, or the
-/// drawing colour it is refilled with — where a whole stamp would move it
-/// by [pull]: its share of that stamp ([stampShareOf]).
+/// How far [dab] moves the reservoir — toward the drawing colour it is
+/// refilled with, or a dry brush toward the ground it lifts — where a whole
+/// stamp would move it by [pull]: its share of that stamp ([stampShareOf]).
+/// The engine moves it toward the ground a loaded brush lifts by the same
+/// law, from the step's share (`mix.wgsl`'s `mix_picked_up`) — that pull is
+/// the ground's.
 ///
 /// 🚨THE STRETCH DRAGS AS FAR AT EVERY SPACING — the flow's law, through the
 /// flow's own numbers (유저 2026-10-01 「엔진이 쌓임을 환산 — 크기와 무관하게
@@ -233,42 +191,4 @@ const double _drawingLaid = 0.3;
 double _pickedUp(BrushDab dab, double pull) {
   final share = stampShareOf(dab);
   return share >= 1.0 ? pull : evenedLaid(eveningTableFor(share), pull);
-}
-
-/// A colour on the brush, 0..255 a channel and unrounded
-/// ([BrushGroundColorMixer._reservoir]).
-final class _Paint {
-  const _Paint(this.red, this.green, this.blue);
-
-  _Paint.of(int rgb)
-    : this(
-        argbRed(rgb).toDouble(),
-        argbGreen(rgb).toDouble(),
-        argbBlue(rgb).toDouble(),
-      );
-
-  final double red;
-  final double green;
-  final double blue;
-
-  /// This moved [t] of the way to [to], channel by channel.
-  _Paint towards(_Paint to, double t) {
-    if (t <= 0.0) {
-      return this;
-    }
-    if (t >= 1.0) {
-      return to;
-    }
-    return _Paint(
-      red + (to.red - red) * t,
-      green + (to.green - green) * t,
-      blue + (to.blue - blue) * t,
-    );
-  }
-
-  /// 0xRRGGBB, each channel rounded.
-  int get rgb {
-    int channel(double value) => value.round().clamp(0, 255);
-    return (channel(red) << 16) | (channel(green) << 8) | channel(blue);
-  }
 }

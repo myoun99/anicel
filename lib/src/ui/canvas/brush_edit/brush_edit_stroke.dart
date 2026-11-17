@@ -294,9 +294,6 @@ class _BrushEditStroke {
       random: math.Random(dice + 6),
     );
     _state._groundMixer = mixer.isActive ? mixer : null;
-    _state._groundSampler = _state._groundMixer == null
-        ? null
-        : bitmapSurfaceGroundSampler(_state.widget.celNow());
     _state._collectedDabs.clear();
   }
 
@@ -714,7 +711,9 @@ class _BrushEditStroke {
     if (rasterizer == null) {
       return;
     }
-    final sourceDabs = List.of(_state._collectedDabs);
+    // A mixing brush's dabs lay the colours the engine resolved, as their
+    // own from here on: every road that lays them again reads those.
+    final sourceDabs = rasterizer.mixedAsResolved(_state._collectedDabs);
     // Where the line went last — through the lock, the stabiliser's catch-up
     // and the tool's waypoints alike — and so where the next line from the
     // last stroke starts (I-119).
@@ -886,7 +885,6 @@ class _BrushEditStroke {
     _state._symmetryTransforms = const [];
     // The reservoir is per stroke: a new stroke starts with a clean brush.
     _state._groundMixer = null;
-    _state._groundSampler = null;
     _state._stabilizer = null;
     _state._drawn = null;
     _state._collectedDabs.clear();

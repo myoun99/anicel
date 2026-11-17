@@ -32,7 +32,6 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_in_and_out_along.dart';
-import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
 import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
 import '../../services/fill_gradient.dart' show FillGradientOptions;
@@ -539,16 +538,11 @@ class _InteractiveBrushEditCanvasViewState
   /// wander the spacing.
   BrushDab? _previousBaseDab;
 
-  /// Ground-colour mixing state for the stroke in flight, or null when the
-  /// brush paints its own colour flat. Holds the reservoir, so it must see
-  /// the dabs in stroke order.
+  /// Ground-colour mixing for the stroke in flight, or null when the brush
+  /// paints its own colour flat: it numbers the stroke's steps, so it must
+  /// see the dabs in stroke order. The ground they read is the cel as it
+  /// stood when the stroke began ([BrushLiveStrokeRasterizer.mixOver]).
   BrushGroundColorMixer? _groundMixer;
-
-  /// Reads the cel as it stood when the stroke began. A stroke cannot change
-  /// what is under it mid-flight from the mixer's point of view: the live
-  /// tiles are rasterized a pointer-move at a time, so sampling them would
-  /// race the batch that produced them.
-  BrushGroundColorSampler? _groundSampler;
 
   /// The pen's stroke's 손떨림 보정 (F-418): made at pointer-down from the
   /// brush's own, none when it steadies nothing; pen positions run through
@@ -943,14 +937,8 @@ class _InteractiveBrushEditCanvasViewState
   /// Resolves the colour a mixing brush deposits, after the dynamics have
   /// settled each dab's final position — scatter moves dabs, and the ground
   /// has to be read where the dab actually lands.
-  List<BrushDab> _withGroundMixing(List<BrushDab> dabs) {
-    final mixer = _groundMixer;
-    final sampler = _groundSampler;
-    if (mixer == null || sampler == null) {
-      return dabs;
-    }
-    return mixer.apply(dabs, sample: sampler);
-  }
+  List<BrushDab> _withGroundMixing(List<BrushDab> dabs) =>
+      _groundMixer?.apply(dabs) ?? dabs;
 
   // ── pressure and the stamp: their own object ────────────────────────
   //
@@ -997,6 +985,10 @@ class _InteractiveBrushEditCanvasViewState
     // same cel the overlay pre-blends against ([_BrushEditStroke._openOverlay]).
     if (settings.blurs) {
       _liveRasterizer!.blurOver(surface);
+    }
+    // A mixing brush reads the same cel under its dabs, on the engine.
+    if (settings.shape.picksUpGround) {
+      _liveRasterizer!.mixOver(surface);
     }
   }
 

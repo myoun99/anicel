@@ -35,6 +35,7 @@
 pub(crate) mod abi;
 pub(crate) mod blur;
 pub(crate) mod landing;
+pub(crate) mod mix;
 pub(crate) mod stamp;
 pub(crate) mod stroke;
 #[cfg(test)]
@@ -48,6 +49,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
+use mix::MixRun;
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, sixteen_bit, whole,
 };
@@ -57,6 +59,9 @@ const TILE: i32 = 128;
 const HEAD_WORDS: usize = 7;
 const TILE_WORDS: usize = 7;
 const DAB_WORDS: usize = 29;
+/// Where a record's colour is, its alpha the word after (dab.wgsl's
+/// DAB_COLOUR, DAB_NORM): what a mixing brush's run puts (`mix`).
+const COLOUR_AT: u32 = 7;
 const NO_TABLE: u32 = u32::MAX;
 /// pile.wgsl's: the plan, the run, then the pages — of the planes, of their
 /// view and of the second plane, as many of each.
@@ -386,6 +391,10 @@ impl Dabs {
     /// bytes: `planes` two words a pixel and `view` one, a tile at its page
     /// and slot of each. Submits the work, the caller waits. A dab's pixels
     /// on a tile not among `tiles` are the caller's to have given.
+    ///
+    /// A mixing brush's steps run first, where `mix` has them, and colour
+    /// the records of the dabs it names ([`mix::Mixes::run`]) — run where
+    /// no dab reaches a tile as well: the reservoir is a chain.
     pub(crate) fn pile(
         &mut self,
         engine: &Engine,
@@ -394,9 +403,11 @@ impl Dabs {
         paper: Option<&Paper>,
         second: Option<&Second>,
         (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
+        mix: Option<MixRun>,
     ) -> Option<()> {
         let pages_per_pass = self.widest.planes.per_pass();
-        self.pile_by(engine, tiles, dabs, (paper, second), (planes, view), pages_per_pass)
+        let (pages, papers) = ((planes, view), (paper, second));
+        self.pile_by(engine, tiles, dabs, papers, pages, pages_per_pass, mix)
     }
 
     /// `pile`, a pass binding no more than `pages_per_pass` pages of each —
@@ -410,9 +421,17 @@ impl Dabs {
         (paper, second): (Option<&Paper>, Option<&Second>),
         (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
         pages_per_pass: usize,
+        mix: Option<MixRun>,
     ) -> Option<()> {
+        let colours = || mix.iter().flat_map(|mix| mix.colours);
+        if let Some(&(dab, _)) = colours().find(|(dab, _)| *dab >= dabs.len()) {
+            return fail(format!("a mixing step colours dab {dab} of {}", dabs.len()));
+        }
         if tiles.is_empty() {
-            return Some(());
+            return match mix {
+                Some(mix) => mix.mixes.run(engine, mix.mixing, mix.ground, None),
+                None => Some(()),
+            };
         }
         on_pages(tiles, planes)?;
         on_pages(tiles, view)?;
@@ -444,7 +463,10 @@ impl Dabs {
         // (blur.rs).
         let stride = engine.device().limits().min_uniform_buffer_offset_alignment as usize / 4;
         let runs_at = Cell::new(0);
+        let records = Cell::new(Vec::new());
         let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
+            let place = |&(dab, step): &(usize, u32)| (plan.record_at(dab) + COLOUR_AT, step);
+            records.set(colours().map(place).collect());
             let ks_at = plan.end();
             let at = (ks_at + ks.len()).next_multiple_of(stride);
             runs_at.set(at);
@@ -456,6 +478,9 @@ impl Dabs {
             }
             Some(words)
         })?;
+        if let Some(mix) = mix {
+            mix.mixes.run(engine, mix.mixing, mix.ground, Some((plan, &records.take())))?;
+        }
         let dispatches: Vec<Encoded> = runs
             .iter()
             .enumerate()

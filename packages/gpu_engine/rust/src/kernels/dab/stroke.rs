@@ -12,6 +12,11 @@
 //! a page takes a device tens of ms to make (11-08), a pause at each
 //! pen-down were they made anew.
 //!
+//! A mixing brush's stroke runs its steps before each pile (dab/mix.rs):
+//! the steps the app hands are run with the next pile, over the ground
+//! tiles the app found the cel's for, and the stroke keeps the book —
+//! the reservoir and what each step laid — till it is cleared.
+//!
 //! A blur stroke keeps its picture on the same pages (dab/blur.rs: 「the
 //! picture is the stroke's planes」): the cel where the stroke has been,
 //! each dab rewriting it. It has nothing to pile and no view, and what it
@@ -26,6 +31,7 @@ use std::collections::hash_map::Entry;
 
 use super::blur::{Blurs, Cover, blurs_anything, window_of};
 use super::landing::{self, Asked, Laid, Over, box_of, under_of};
+use super::mix::{Ground, MixRun, Mixes, Mixing, Step};
 use super::{Dab, Dabs, Paper, Second, StrokeTile};
 use crate::device::Engine;
 use crate::fail;
@@ -54,6 +60,8 @@ pub(crate) struct Stroke {
     /// The tiles the last `reach_blur` gave a slot: what its `rub` makes
     /// the picture of.
     met: Vec<StrokeTile>,
+    mixes: Mixes,
+    mixing: Mixing,
 }
 
 impl Stroke {
@@ -68,6 +76,8 @@ impl Stroke {
             levels: Vec::new(),
             tiles: HashMap::new(),
             met: Vec::new(),
+            mixes: Mixes::new(engine),
+            mixing: Mixing::default(),
         })
     }
 
@@ -87,6 +97,36 @@ impl Stroke {
         paper: Option<&Paper>,
         second: Option<(u32, f64)>,
     ) -> Option<()> {
+        self.pile_mixed(engine, dabs, paper, second, None)
+    }
+
+    /// Hands a mixing brush's `steps`, `first` the first's place in the
+    /// stroke's chain, to run with the next pile: the ground tiles they
+    /// read, the ones the caller finds the cel's for ([`Stroke::pile_mixed`]).
+    pub(crate) fn hand_steps(&mut self, steps: &[Step], first: u32) -> Option<&[(i32, i32)]> {
+        self.mixing.hand(steps, first)
+    }
+
+    /// The colour each of the stroke's first `count` mixing steps laid,
+    /// ARGB — read back, the caller waits.
+    pub(crate) fn mixed(&self, engine: &Engine, count: usize) -> Option<Vec<u32>> {
+        self.mixing.read(engine, count)
+    }
+
+    /// [`Stroke::pile`], the steps handed run first over `mixed`'s ground —
+    /// the cel's tile under each tile they read — and colouring the dabs it
+    /// names by their index with the step each takes.
+    pub(crate) fn pile_mixed(
+        &mut self,
+        engine: &Engine,
+        dabs: &[Dab],
+        paper: Option<&Paper>,
+        second: Option<(u32, f64)>,
+        mixed: Option<(Ground, &[(usize, u32)])>,
+    ) -> Option<()> {
+        if mixed.is_none() && self.mixing.waits() {
+            return fail("mixing steps were handed, and no ground for them");
+        }
         self.reach(engine, dabs);
         if second.is_some() {
             make_pages(engine, &mut self.levels, self.planes.len(), TILE_BYTES, "stroke levels");
@@ -95,7 +135,14 @@ impl Stroke {
         let plane = self.levels.as_slice();
         let second = second.map(|(mode, density)| Second { plane, mode, density });
         let pages = (self.planes.as_slice(), self.view.as_slice());
-        self.dabs.pile(engine, &tiles, dabs, paper, second.as_ref(), pages)
+        let mixes = &self.mixes;
+        let mix = mixed.map(|(ground, colours)| MixRun {
+            mixes,
+            mixing: &mut self.mixing,
+            ground,
+            colours,
+        });
+        self.dabs.pile(engine, &tiles, dabs, paper, second.as_ref(), pages, mix)
     }
 
     /// Gives a tile to every coordinate `dabs` reach that has none, making
@@ -245,6 +292,7 @@ impl Stroke {
             engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         clear_written(&mut encoder, &self.planes, self.tiles.len(), PLANE_TILE_BYTES);
         clear_written(&mut encoder, &self.levels, self.tiles.len(), TILE_BYTES);
+        self.mixing.clear(&mut encoder);
         engine.queue.submit([encoder.finish()]);
         self.tiles.clear();
     }

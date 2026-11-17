@@ -160,7 +160,33 @@ final class DabSpec extends Struct {
   @Uint32()
   external int colour;
   @Uint32()
-  external int pad;
+  external int mix;
+}
+
+/// `StepSpec` (rust/src/kernels/dab/abi.rs), field by field.
+final class StepSpec extends Struct {
+  @Double()
+  external double centreX;
+  @Double()
+  external double centreY;
+  @Double()
+  external double radius;
+  @Double()
+  external double refill;
+  @Double()
+  external double laid;
+  @Double()
+  external double density;
+  @Double()
+  external double take;
+  @Double()
+  external double share;
+  @Double()
+  external double pick;
+  @Uint32()
+  external int colour;
+  @Uint32()
+  external int dry;
 }
 
 /// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs).
@@ -2303,6 +2329,10 @@ external void strokeClear(Pointer<Stroke> stroke, Pointer<Engine> engine);
     Bool,
     Int32,
     Double,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Pointer<Uint32>,
+    Size,
   )
 >(symbol: 'gpu_engine_stroke_pile')
 external bool strokePile(
@@ -2315,6 +2345,39 @@ external bool strokePile(
   bool paperHeight,
   int secondMode,
   double secondDensity,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  Pointer<Uint32> under,
+  int ground,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<StepSpec>,
+    Size,
+    Uint32,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_stroke_hand_steps')
+external int strokeHandSteps(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<StepSpec> steps,
+  int count,
+  int first,
+  Pointer<Int32> coordinates,
+);
+
+@Native<
+  Bool Function(Pointer<Stroke>, Pointer<Engine>, Pointer<Uint32>, Size)
+>(symbol: 'gpu_engine_stroke_mixed')
+external bool strokeMixed(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Uint32> out,
+  int count,
 );
 
 @Native<

@@ -920,6 +920,7 @@ final class GpuDab {
     this.roundness = 1,
     this.evening,
     this.density,
+    this.mixStep,
   });
 
   final double centreX;
@@ -959,7 +960,67 @@ final class GpuDab {
 
   /// How much of the paper it takes, where it meets the paper.
   final double? density;
+
+  /// The mixing step whose colour it lays in place of [colour]
+  /// ([GpuMixStep] — the stroke's chain, from 0), or none.
+  final int? mixStep;
 }
+
+/// A mixing brush's step as the stroke runs it
+/// (rust/src/kernels/dab/mix.rs `Step`): where its dab reads the ground
+/// — [centreX], [centreY], [radius] — and what the brush's curves and
+/// dice made of its paint (`BrushGroundColorMixer`).
+final class GpuMixStep {
+  const GpuMixStep({
+    required this.centreX,
+    required this.centreY,
+    required this.radius,
+    required this.colour,
+    required this.refill,
+    required this.laid,
+    required this.density,
+    required this.take,
+    required this.share,
+    required this.pick,
+    required this.dry,
+  });
+
+  final double centreX;
+  final double centreY;
+  final double radius;
+
+  /// The drawing colour: red, green, blue and alpha, from the low byte.
+  final int colour;
+
+  /// A loaded brush's refill toward the drawing colour, the share of it
+  /// laid over what it carries, and its thickness.
+  final double refill;
+  final double laid;
+  final double density;
+
+  /// A dry brush's pickup.
+  final double take;
+
+  /// The share of a whole stamp it is, and what a whole one lifts.
+  final double share;
+  final double pick;
+
+  /// A brush with no paint of its own.
+  final bool dry;
+}
+
+/// A pile's mixing ([GpuStroke.pile]): the steps met since the last —
+/// [first] the first's place in the stroke's chain —, and the cel they
+/// read, [under] telling the cel's tile at each ground tile asked, in
+/// the order asked, null where the cel has none — on [pool], copied by
+/// [composite].
+typedef GpuMixing = ({
+  GpuComposite composite,
+  GpuPool pool,
+  List<GpuMixStep> steps,
+  int first,
+  List<GpuTile?> Function(List<({int column, int row})> ground) under,
+});
 
 /// What a landed tile is beside the one under it
 /// (rust/src/kernels/write/mod.rs `Change`).
@@ -1111,7 +1172,32 @@ Pointer<rust.DabSpec> _specsOf(Arena arena, List<GpuDab> dabs) {
       ..top = dab.top
       ..right = dab.right
       ..bottom = dab.bottom
-      ..colour = dab.colour;
+      ..colour = dab.colour
+      ..mix = dab.mixStep ?? _noStep;
+  }
+  return specs;
+}
+
+/// `DabSpec::mix` of a dab that lays its own colour (abi.rs `NO_STEP`).
+const _noStep = 0xFFFFFFFF;
+
+/// [steps] as the stroke reads them, held by [arena].
+Pointer<rust.StepSpec> _stepsOf(Arena arena, List<GpuMixStep> steps) {
+  final specs = arena<rust.StepSpec>(_held(steps.length));
+  for (var at = 0; at < steps.length; at++) {
+    final step = steps[at];
+    specs[at]
+      ..centreX = step.centreX
+      ..centreY = step.centreY
+      ..radius = step.radius
+      ..refill = step.refill
+      ..laid = step.laid
+      ..density = step.density
+      ..take = step.take
+      ..share = step.share
+      ..pick = step.pick
+      ..colour = step.colour
+      ..dry = step.dry ? 1 : 0;
   }
   return specs;
 }
@@ -1150,6 +1236,11 @@ class GpuStroke {
   /// texel, 高さ where [paperHeight] — with a second tip shown by
   /// [secondMode] at [secondDensity] where the stroke has one. Submits the
   /// work.
+  ///
+  /// A mixing brush's [mixing] runs first — its steps over the cel, in
+  /// their order, the stroke's reservoir carried from the pile before —
+  /// and each dab that names a step ([GpuDab.mixStep]) lays the colour
+  /// that step resolved ([mixed] reads them back).
   void pile(
     List<GpuDab> dabs, {
     GpuDabTexture? paper,
@@ -1157,7 +1248,11 @@ class GpuStroke {
     bool paperHeight = false,
     int? secondMode,
     double secondDensity = 1,
+    GpuMixing? mixing,
   }) => using((arena) {
+    final ground = mixing == null ? null : _groundOf(arena, mixing);
+    final composite = mixing?.composite;
+    final pool = mixing?.pool;
     if (!rust.strokePile(
       _stroke,
       _engine._engine,
@@ -1168,9 +1263,58 @@ class GpuStroke {
       paperHeight,
       secondMode ?? -1,
       secondDensity,
+      composite == null ? nullptr : _engine._its(composite)._composite,
+      pool == null ? nullptr : _engine._its(pool)._pool,
+      ground?.under ?? nullptr,
+      ground?.count ?? 0,
     )) {
       throw GpuRefused(_lastError());
     }
+  });
+
+  /// [mixing]'s steps handed to the stroke, and the cel's tile under each
+  /// ground tile they read, as the pile takes them.
+  ({Pointer<Uint32> under, int count}) _groundOf(
+    Arena arena,
+    GpuMixing mixing,
+  ) {
+    final steps = mixing.steps;
+    if (steps.isEmpty) {
+      return (under: arena<Uint32>(1), count: 0);
+    }
+    // A step reads 64 tiles at most.
+    final coordinates = arena<Int32>(128 * steps.length);
+    final count = rust.strokeHandSteps(
+      _stroke,
+      _engine._engine,
+      _stepsOf(arena, steps),
+      steps.length,
+      mixing.first,
+      coordinates,
+    );
+    if (count < 0) {
+      throw GpuRefused(_lastError());
+    }
+    final found = mixing.under([
+      for (var at = 0; at < count; at++)
+        (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
+    ]);
+    final under = arena<Uint32>(_held(count));
+    for (var at = 0; at < count; at++) {
+      final tile = found[at];
+      under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+    }
+    return (under: under, count: count);
+  }
+
+  /// The colour each of the stroke's first [count] mixing steps laid,
+  /// ARGB — read back: the caller waits for all the GPU was handed.
+  List<int> mixed(int count) => using((arena) {
+    final out = arena<Uint32>(_held(count));
+    if (!rust.strokeMixed(_stroke, _engine._engine, out, count)) {
+      throw GpuRefused(_lastError());
+    }
+    return List.of(out.asTypedList(count));
   });
 
   /// Rubs [rubs], in their order, into the blur brush's picture on this

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../core/rgba_premultiply.dart';
 import '../core/sync_image_upload.dart';
@@ -213,6 +214,80 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _blurBase = base;
   }
 
+  /// The cel a MIXING brush's steps read under their dabs — set by
+  /// [mixOver] before the first dab, as [_blurBase] is; null for a brush
+  /// that lays its own colour flat. The engine reads it where a step's
+  /// points are ([_pileOnEngine]).
+  BitmapSurface? _mixBase;
+
+  /// The steps the call's dabs named that no pile has run, in their
+  /// order ([BrushDab.mix]).
+  final List<GpuMixStep> _mixSteps = [];
+
+  /// How many of the stroke's steps have been handed to the engine.
+  int _mixStepsTaken = 0;
+
+  /// Makes this stroke a mixing brush's over [base], the cel as the
+  /// stroke finds it: the ground its steps read.
+  void mixOver(BitmapSurface base) {
+    assert(
+      base.tileSize == tileSize,
+      'the ground is read on the cel grid, which is the stroke grid',
+    );
+    _mixBase = base;
+  }
+
+  /// [dabs] — this stroke's, as they were laid — each laying the colour
+  /// the engine resolved for its mixing step as its own
+  /// ([BrushDab.mixedAs]); a copy of them where none names one. Reads the
+  /// steps' colours back: the caller waits for all the GPU was handed —
+  /// as pen-up does already, for the landing it compares.
+  List<BrushDab> mixedAsResolved(List<BrushDab> dabs) {
+    final stroke = _engineStroke;
+    if (stroke == null || _mixStepsTaken == 0) {
+      return List.of(dabs);
+    }
+    final colours = stroke.mixed(_mixStepsTaken);
+    return [
+      for (final dab in dabs)
+        switch (dab.mix) {
+          null => dab,
+          final mix => dab.mixedAs(colours[mix.step]),
+        },
+    ];
+  }
+
+  /// [mix]'s step, handed to the engine with the call's pile where none
+  /// before it has been: a step's dabs — its own and a symmetry's
+  /// copies — come in its order, and every one runs, whether its dabs
+  /// lay anything or not: the reservoir is a chain.
+  void _takeStep(BrushDabMix? mix) {
+    if (mix == null || mix.step < _mixStepsTaken) {
+      return;
+    }
+    assert(mix.step == _mixStepsTaken, 'a mixing step was skipped');
+    _mixSteps.add(
+      GpuMixStep(
+        centreX: mix.center.x,
+        centreY: mix.center.y,
+        radius: mix.radius,
+        colour:
+            argbRed(mix.color) |
+            argbGreen(mix.color) << 8 |
+            argbBlue(mix.color) << 16 |
+            argbAlpha(mix.color) << 24,
+        refill: mix.refill,
+        laid: mix.laid,
+        density: mix.density,
+        take: mix.take,
+        share: mix.share,
+        pick: mix.pick,
+        dry: mix.dry,
+      ),
+    );
+    _mixStepsTaken += 1;
+  }
+
   /// How many times a dab has touched each tile: the revision a tile shown
   /// at a coordinate carries, which pen-up matches to hand the screen's
   /// picture to the committed tile. (Conservative: a dab that writes no
@@ -260,6 +335,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _tileCoords.clear();
     _tileRevisions.clear();
     _blurBase = null;
+    _mixBase = null;
+    _mixSteps.clear();
+    _mixStepsTaken = 0;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
@@ -407,8 +485,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       _textures[mask] ??= GpuDabTexture(mask.alphaNormalized, mask.size);
   static final Expando<GpuDabTexture> _textures = Expando('dab textures');
 
-  /// [plan] as the engine piles it.
-  GpuDab _gpuDabOf(BrushDabPlan plan) {
+  /// [plan] as the engine piles it — laying the colour of [mixStep] where
+  /// it names one.
+  GpuDab _gpuDabOf(BrushDabPlan plan, {int? mixStep}) {
     final tip = plan.tip;
     final profile = tip.profile;
     final mask = tip.tipMask;
@@ -448,37 +527,58 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       roundness: 1.0 / tip.inverseRoundness,
       evening: plan.evening,
       density: plan.textureMask == null ? null : plan.textureDensity,
+      mixStep: mixStep,
     );
   }
 
   /// The call's dabs on the engine, together: before anything reads the
   /// tiles they touched.
   void _pileOnEngine() {
-    if (_engineDabs.isEmpty && _engineRubs.isEmpty) {
+    if (_engineDabs.isEmpty && _engineRubs.isEmpty && _mixSteps.isEmpty) {
       return;
     }
-    final first = _engineDabsOf!;
-    final mask = first.textureMask;
+    final first = _engineDabsOf;
+    final mask = first?.textureMask;
     final paper = mask == null ? null : _textureOf(mask);
     final stroke = _engineStroke ??= EngineStrokes.take();
     final blurBase = _blurBase;
     if (blurBase != null) {
-      _rubOnEngine(stroke, blurBase, first, paper);
+      _rubOnEngine(stroke, blurBase, first!, paper);
     } else {
-      final dual = first.dual;
-      stroke.pile(
-        _engineDabs,
-        paper: paper,
-        paperScale: first.textureScale,
-        paperHeight: first.textureMode == BrushTextureMode.height,
-        secondMode: dual == null
-            ? null
-            : separableBlendModeNativeId(dual.compositeMode),
-        secondDensity: dual?.density ?? 1,
-      );
+      final mixBase = _mixBase;
+      final ledger = EngineTileLedger.instance;
+      ledger.held((hold) {
+        final dual = first?.dual;
+        stroke.pile(
+          _engineDabs,
+          paper: paper,
+          paperScale: first?.textureScale ?? 1,
+          paperHeight: first?.textureMode == BrushTextureMode.height,
+          secondMode: dual == null
+              ? null
+              : separableBlendModeNativeId(dual.compositeMode),
+          secondDensity: dual?.density ?? 1,
+          mixing: mixBase == null
+              ? null
+              : (
+                  composite: appGpuComposite,
+                  pool: ledger.pool,
+                  steps: _mixSteps,
+                  first: _mixStepsTaken - _mixSteps.length,
+                  under: (ground) => hold.slotsOfThose(
+                    EngineTileLedger.landedCel,
+                    [
+                      for (final (:column, :row) in ground)
+                        mixBase.tileAt(TileCoord(x: column, y: row)),
+                    ],
+                  ),
+                ),
+        );
+      });
     }
     _engineDabs.clear();
     _engineRubs.clear();
+    _mixSteps.clear();
     _engineDabsOf = null;
   }
 
@@ -716,6 +816,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return null;
     }
 
+    // Before anything leaves it out: its step runs all the same.
+    _takeStep(dab.mix);
+
     // A dab the selection cannot reach is never accumulated: the mask
     // would zero every pixel of it, so the tiles it would touch hold
     // exactly what they hold without it. That is what keeps one stroke
@@ -748,7 +851,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (plan == null) {
       return null;
     }
-    _engineDabs.add(_gpuDabOf(plan));
+    _engineDabs.add(_gpuDabOf(plan, mixStep: dab.mix?.step));
     _engineDabsOf ??= plan;
     for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
       for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {

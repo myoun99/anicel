@@ -3,9 +3,11 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
-import 'package:anicel/src/services/brush_ground_color_mixing.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
+
+import '../helpers/a_mixing_stroke_on_the_engine.dart';
 
 /// 🗣️EVERY MIXING BRUSH DRAGS A BAND IT CROSSES A WAY, AND LETS IT GO
 /// (gouache card Q8, 2026-10-30): the built-ins were picked again for the
@@ -30,11 +32,10 @@ void main() {
     'builtin-blending-stump',
   };
   const blue = 0xFF0000FF;
-  const red = BrushGroundSample(rgb: 0xFF0000, coverage: 1);
 
   /// What [preset] lays, at its own size and spacing, along a blue stroke
   /// that crosses a red band two of its widths wide and runs on over bare
-  /// canvas for twenty — the dabs past the band.
+  /// canvas for twenty — the dabs wholly past the band.
   List<BrushDab> pastTheBand(BrushPreset preset) {
     final s = preset.settings;
     final step = const BrushDabInterpolator().spacingForBrushSize(
@@ -42,11 +43,18 @@ void main() {
       s.spacing,
     );
     final band = 2 * s.size;
-    final laid = BrushGroundColorMixer(shape: s.shape).apply(
+    final y = s.size;
+    final canvas = CanvasSize(
+      width: (23 * s.size).ceil(),
+      height: (2 * s.size).ceil(),
+    );
+    final ground = aGroundOf(canvas, (x, _) => x < band ? 0xFFFF0000 : 0);
+    final stroke = AMixingStroke(s.shape, ground: ground);
+    final laid = stroke.lay(
       [
         for (var x = 0.0; x <= 22 * s.size; x += step)
           BrushDab(
-            center: CanvasPoint(x: x, y: 0),
+            center: CanvasPoint(x: x, y: y),
             color: blue,
             size: s.size,
             opacity: 1,
@@ -58,11 +66,11 @@ void main() {
             pathStep: x == 0 ? null : step,
           ),
       ],
-      sample: (x, _, _) => x < band ? red : BrushGroundSample.empty,
     );
+    stroke.end();
     return [
       for (final dab in laid)
-        if (dab.center.x >= band) dab,
+        if (dab.center.x - dab.size / 2 >= band) dab,
     ];
   }
 
