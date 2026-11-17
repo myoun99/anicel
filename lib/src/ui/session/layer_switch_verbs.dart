@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_sound.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_clip_command.dart';
@@ -80,6 +81,25 @@ class LayerSwitchVerbs {
   /// the history listener re-uploads a live mix — no refresh of its own.
   void toggleLayerMuted(LayerId layerId) {
     _controllers.layerController.toggleLayerMuted(layerId);
+    _changes.notifyChanged();
+  }
+
+  /// An SE row's Total ([SeSound.totalVolume]) set to [share] — the S row's
+  /// Total bar, its one door (🗣️I-177, [SeSound]); the row found on any
+  /// track, one undo step, as the lane path commits its sound.
+  void setLayerTotalVolume(LayerId layerId, double share) {
+    final project = _project.repository.requireProject();
+    final row = layerAnywhereOrNull(project, layerId);
+    if (row == null || row.kind != LayerKind.se) {
+      return;
+    }
+    _project.cutCommandCoordinator.setSeSound(
+      layerId: layerId,
+      seSound: row.seSound.copyWith(
+        totalVolume: share.clamp(0.0, SeSound.maxVolume).toDouble(),
+      ),
+      description: 'Set total volume',
+    );
     _changes.notifyChanged();
   }
 

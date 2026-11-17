@@ -19,8 +19,6 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
-    show seSoundTotalVolumeLaneId;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
@@ -187,21 +185,15 @@ void main() {
     expect(_seLayer(repository).muted, isFalse);
   });
 
-  // 🗣️I-145 (유저 2026-10-30) Q1 「따로 한 값 — 두 입구」, and F-577: the
-  // second door is the bar beside the speaker.
-  group('the Total bar is the row\'s Total — the 「오디오」 group\'s lane', () {
+  // F-577: the bar beside the speaker. 🗣️I-177 (유저 2026-11-17): 「이건 s행의
+  // 막대로서만 있도록. fx값으로선 존재안함」 — the Total's one door.
+  // ↩️I-145-Q1 「따로 한 값 — 두 입구」: the 「오디오」 group's lane was the
+  // other.
+  group('the Total bar is the row\'s Total, its one door', () {
     final bar = find.named('timeline-layer-total-volume-sea-voice');
 
-    String lane(EditorSessionManager session) => session.laneVerbs
-        .laneValueAt(
-          _seLayerId,
-          seSoundTotalVolumeLaneId,
-          0,
-          frameIsGlobal: true,
-        )!;
-
     testWidgets('🎯a drag moves the bar and writes at the release alone, '
-        'as one undo, and the lane reads what it wrote', (tester) async {
+        'as one undo', (tester) async {
       final semantics = tester.ensureSemantics();
       final session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
@@ -234,11 +226,6 @@ void main() {
       final total = _seLayer(session.repository).seSound.totalVolume;
       expect(total, lessThan(1.0));
       expect(tester.widget<FieldSlider>(bar).value, total);
-      expect(
-        lane(session),
-        '${(total * 100).toStringAsFixed(2)}%',
-        reason: 'one field, two doors',
-      );
 
       session.undo();
       await tester.pumpAndSettle();
@@ -270,21 +257,11 @@ void main() {
       expect(SeSound.maxVolume, 2.0, reason: 'CONTROL: 200%');
     });
 
-    testWidgets('a value typed into the lane stands on the bar', (
-      tester,
-    ) async {
+    testWidgets('a Total past 100% stands on the bar', (tester) async {
       final session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
       await pumpTimelineHostOn(tester, session, surface: const Size(1400, 600));
-      session.laneVerbs.setLaneValueAt(
-        _seLayerId,
-        seSoundTotalVolumeLaneId,
-        3,
-        '150',
-        frameIsGlobal: true,
-        description: 'Type',
-        scaleLinked: false,
-      );
+      session.layerSwitches.setLayerTotalVolume(_seLayerId, 1.5);
       await tester.pumpAndSettle();
       expect(
         tester.widget<FieldSlider>(bar).value,

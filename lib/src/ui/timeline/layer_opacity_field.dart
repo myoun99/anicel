@@ -64,8 +64,9 @@ Widget layerOpacityField({
 ///
 /// 🗣️F-577 (유저 2026-11-10): 「총 볼륨 막대 둠. 연필이나 +, -버튼은
 /// 필요없음. 불투명도막대랑 완전 동일한 디자인/크기」. ↩️It was the speaker
-/// window's bar (I-145-Q1 「따로 한 값 — 두 입구」); the row holds it now, and
-/// its 「오디오」 group's lane is still the other door.
+/// window's bar (I-145-Q1 「따로 한 값 — 두 입구」); the row holds it now.
+/// 🗣️I-177 (유저 2026-11-17 「s행의 막대로서만 있도록」): it is the Total's
+/// one door. ↩️Its 「오디오」 group's lane was the other.
 ///
 /// 🗣️F-606 (유저 2026-11-16): 「불투명도는 최대 100이라 지금막대 길이로
 /// 충분하지만 사운드는 최대200이라 더 길어야한다고 판단. 사운드막대를 지금의

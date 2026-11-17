@@ -1021,7 +1021,6 @@ enum AppStrings {
 
   String get tlAudioGroup => _s('tlAudioGroup');
   String get tlSoundVolume => _s('tlSoundVolume');
-  String get tlSoundTotalVolume => _s('tlSoundTotalVolume');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlReferenceGroup => _s('tlReferenceGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -3791,7 +3790,6 @@ enum AppStrings {
     'tlSelectedLayers': 'Selected layers',
     'tlAudioGroup': 'Audio',
     'tlSoundVolume': 'Volume',
-    'tlSoundTotalVolume': 'Total volume',
     'tlNameTagGroup': 'Name Tag',
     'tlReferenceGroup': 'Reference',
     'tlTransformGroup': 'Transform',
@@ -5715,7 +5713,6 @@ enum AppStrings {
     'tlSelectedLayers': '選択したレイヤー',
     'tlAudioGroup': '音声',
     'tlSoundVolume': '音量',
-    'tlSoundTotalVolume': '全体の音量',
     'tlNameTagGroup': 'ネームタグ',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': 'トランスフォーム',
@@ -7642,7 +7639,6 @@ enum AppStrings {
     'tlSelectedLayers': '선택한 레이어',
     'tlAudioGroup': '오디오',
     'tlSoundVolume': '볼륨',
-    'tlSoundTotalVolume': '총 볼륨',
     'tlNameTagGroup': '이름표',
     'tlReferenceGroup': '참조',
     'tlTransformGroup': '변형',
@@ -9720,7 +9716,6 @@ enum AppStrings {
     'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioGroup': 'Audio',
     'tlSoundVolume': 'Volume',
-    'tlSoundTotalVolume': 'Volume global',
     'tlNameTagGroup': 'Étiquette',
     'tlReferenceGroup': 'Référence',
     'tlTransformGroup': 'Transformation',
@@ -11563,7 +11558,6 @@ enum AppStrings {
     'tlSelectedLayers': '所选图层',
     'tlAudioGroup': '音频',
     'tlSoundVolume': '音量',
-    'tlSoundTotalVolume': '总音量',
     'tlNameTagGroup': '名字条',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': '变换',

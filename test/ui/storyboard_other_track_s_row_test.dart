@@ -70,8 +70,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(_row(s, _other).muted, isTrue);
 
-    // I-145: the bar writes through the lane's own verb, which finds the
-    // row on any track.
+    // The bar's verb (`setLayerTotalVolume`, I-177) finds the row on any
+    // track. ↩️It wrote through the 「오디오」 group's lane verb.
     await tester.drag(
       find.named('storyboard-layer-total-volume-${_other.value}'),
       const Offset(-20, 0),

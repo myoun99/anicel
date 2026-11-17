@@ -16,16 +16,20 @@ import 'property_lane_model.dart';
 /// no reorder to offer, and its lane ids are plain names: a row has one
 /// sound. ↩️The SE row's waveform lane stood here, a strip of its blocks'
 /// sounds the row's own band already draws (「중복되니까 없애고」).
+///
+/// 🗣️I-177 (유저 2026-11-17): 「s행 오디오fx에 총 볼륨 똑같은거있는데 이건
+/// s행의 막대로서만 있도록. fx값으로선 존재안함」 — the Total is the S row's
+/// bar alone (`layerTotalVolumeField`), not one of this group's values.
+/// ↩️Its 「全体の音量」 lane stood here, the second door of I-145-Q1 「따로
+/// 한 값 — 두 입구」.
 const String seSoundGroupLaneId = 'sound-group';
 
 /// The member lane ids, in display order.
 const String seSoundVolumeLaneId = 'sound:volume';
-const String seSoundTotalVolumeLaneId = 'sound:total';
 const String seSoundPanLaneId = 'sound:pan';
 
 const List<String> seSoundLaneDisplayOrder = [
   seSoundVolumeLaneId,
-  seSoundTotalVolumeLaneId,
   seSoundPanLaneId,
 ];
 
@@ -37,9 +41,8 @@ bool laneIsSeSound(String? laneId) =>
 
 /// The sound group's lane table: where each member's keys live on the row's
 /// sound — the sound's twin of `seNameTagLaneLens`, and the group's arm of
-/// every lane verb over a span. The Volume alone: the Total and the Pan are
-/// ONE value each (I-145-Q1, I-140-Q3 「이번엔 한 값」), so they hold no keys
-/// to reach. Null for the
+/// every lane verb over a span. The Volume alone: the Pan is ONE value
+/// (I-140-Q3 「이번엔 한 값」), so it holds no keys to reach. Null for the
 /// header and for any id that is not a member lane.
 PropertyLaneLens<SeSound, Object?>? seSoundLaneLens(String laneId) =>
     switch (laneId) {
@@ -158,16 +161,6 @@ List<PropertyLaneRow> seSoundPropertyLanes(
               ),
       ),
       PropertyLaneRow(
-        laneId: seSoundTotalVolumeLaneId,
-        label: AppText.strings.tlSoundTotalVolume,
-        keyMarks: const {},
-        // One value (I-145-Q1), the speaker's window's bar: nothing to key.
-        showsKeyNavigator: false,
-        valueLabel: (_) =>
-            '${columnValueText(_percentOf(sound.totalVolume))}%',
-        scrubValue: scrubSeSoundVolume,
-      ),
-      PropertyLaneRow(
         laneId: seSoundPanLaneId,
         label: AppText.strings.audioPanLabel,
         keyMarks: const {},
@@ -180,9 +173,8 @@ List<PropertyLaneRow> seSoundPropertyLanes(
   ];
 }
 
-/// The Volume — or the Total, read alike — scrubbed by a drag on its
-/// readout, at the rate every number lane scrubs at ([scrubbedNumber]),
-/// held inside 0–200 %.
+/// The Volume scrubbed by a drag on its readout, at the rate every number
+/// lane scrubs at ([scrubbedNumber]), held inside 0–200 %.
 String? scrubSeSoundVolume(String currentLabel, Offset dragDelta) {
   final percent = columnValueOf(currentLabel);
   if (percent == null) {

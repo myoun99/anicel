@@ -23,6 +23,11 @@ import 'transform_track.dart' show doubleKeySpace;
 /// second door is the S row's Total bar in the rail's blend column now —
 /// the opacity bar's own look — and the speaker is a mute toggle alone.
 ///
+/// 🗣️I-177 (유저 2026-11-17): 「s행 오디오fx에 총 볼륨 똑같은거있는데 이건
+/// s행의 막대로서만 있도록. fx값으로선 존재안함」 — ONE door now: the S
+/// row's Total bar. The group's lane is gone, and the group's Reset leaves
+/// the Total as it is. The value itself is the same one value.
+///
 /// ↩️The speaker's mixer held a gain and a pan of the row that nothing could
 /// key, and each sound kept fades, a fade curve and a volume envelope of its
 /// own: this is the one place a row's sound is shaped now. What a BLOCK
@@ -46,7 +51,8 @@ class SeSound {
   final double pan;
 
   /// The whole row's level over its keyed [volume], a share of the sound
-  /// (1 = 100%, up to [maxVolume]) — one value, nothing to key (I-145-Q1).
+  /// (1 = 100%, up to [maxVolume]) — one value, nothing to key (I-145-Q1),
+  /// set by the S row's Total bar alone (I-177).
   final double totalVolume;
 
   final PropertyTrack<double>? _volume;

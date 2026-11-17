@@ -1136,7 +1136,6 @@ void main() {
     'tlRasterizeFxTemplate': (s) => s.tlRasterizeFxTemplate,
     'tlAudioGroup': (s) => s.tlAudioGroup,
     'tlSoundVolume': (s) => s.tlSoundVolume,
-    'tlSoundTotalVolume': (s) => s.tlSoundTotalVolume,
     'tlNameTagGroup': (s) => s.tlNameTagGroup,
     'tlReferenceGroup': (s) => s.tlReferenceGroup,
     'tlTransformGroup': (s) => s.tlTransformGroup,
