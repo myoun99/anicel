@@ -91,7 +91,7 @@
 - Opening a TVPaint file with several clips showed a false warning.
 - The onion skin ghost of a row with cel numbers left the number out.
 - A CLIP STUDIO file's pictures and vector layers were cut at the canvas edge, so a picture kept past the canvas never showed on the pasteboard and moving the layer did not bring it back.
-- In a cut with an fx plugin on a row, the screen kept stalling for over a second while pictures were prepared ahead for playback.
+- In a cut with an fx plugin on a row, the screen kept stalling for over a second while pictures were baked ahead for playback, and the baking ahead itself took long.
 - A pen stroke drawn while the screen was frozen for a long time lost its beginning.
 - Stamping a flipped picture with the cut tool, the ghost lagged behind the cursor.
 - At the tool settings panel's narrowest width, the anti-alias buttons' letters overlapped and spilled out of their cell.

@@ -91,7 +91,7 @@
 - Ouvrir un fichier TVPaint à plusieurs clips affichait un faux avertissement.
 - Le fantôme de pelure d'oignon d'une ligne à numéros de cellulo perdait son numéro.
 - Les images et les calques vectoriels d'un fichier CLIP STUDIO étaient coupés au bord du canevas : une image posée au-delà n'apparaissait pas sur le fond, et déplacer le calque ne la ramenait pas.
-- Dans un plan dont une ligne porte un plug-in fx, l'écran se figeait à répétition plus d'une seconde pendant la préparation des images pour la lecture.
+- Dans un plan dont une ligne porte un plug-in fx, l'écran se figeait à répétition plus d'une seconde pendant la préparation des images pour la lecture, et cette préparation elle-même prenait du temps.
 - Un trait au stylet tracé pendant un long gel de l'écran perdait son début.
 - En tamponnant une image retournée avec l'outil de découpe, le fantôme suivait le curseur avec retard.
 - À la largeur minimale du panneau des réglages de l'outil, les lettres des boutons d'anticrénelage se chevauchaient et débordaient de leur case.
