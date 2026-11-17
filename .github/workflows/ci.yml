@@ -134,6 +134,52 @@ jobs:
           fi
           echo "again=$again" >> "$GITHUB_OUTPUT"
           echo "again=$again"
+      # ⏱️WHAT EACH TEST FILE TOOK LAST TIME (ci-shards-dealt-by-measured-
+      # seconds, 2026-11-17): the shards deal their files by it
+      # (tool/test_shard.dart). Fetched HERE, once, and handed to every
+      # shard as one artifact — a shard that fetched for itself could catch
+      # a run that finished in between and deal other piles than its
+      # neighbours, and then a file runs twice or not at all.
+      #
+      # Each OS from the last run that left its shards' records, whatever
+      # its event: a master push a pull request already passed stands down
+      # (above), so nearly every run that tests is a bundle PR's. ⛔Nothing
+      # here fails the run: no record, an API that does not answer, an
+      # expired artifact — each leaves the OS's file empty, and its shards
+      # deal by size as they did before records.
+      - if: steps.again.outputs.again != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          out="$RUNNER_TEMP/shard-times"
+          mkdir -p "$out"
+          for os in Linux Windows; do
+            : > "$out/$os.tsv"
+            run=$(gh api \
+              "repos/${{ github.repository }}/actions/artifacts?name=test-times-$os-0&per_page=10" \
+              --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id // empty' \
+              2>/dev/null)
+            if [ -z "$run" ]; then
+              echo "$os: no run left a record — its shards deal by size"
+              continue
+            fi
+            got="$RUNNER_TEMP/got-$os"
+            gh run download "$run" -R "${{ github.repository }}" \
+              -p "test-times-$os-*" -D "$got" \
+              || echo "$os: run $run's records could not be fetched"
+            find "$got" -name test_times.tsv -exec cat {} + 2>/dev/null \
+              | LC_ALL=C sort > "$out/$os.tsv"
+            echo "$os: $(wc -l < "$out/$os.tsv") files timed by run $run"
+          done
+      - if: steps.again.outputs.again != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: shard-times
+          path: ${{ runner.temp }}/shard-times/
+          retention-days: 1
+          overwrite: true
 
   # ↩️A job stood here that compiled the C core with gcc and clang on
   # Linux — a third compiler on a different OS, the fastest way to catch
@@ -272,6 +318,7 @@ jobs:
         with:
           total: 6
           index: ${{ matrix.shard }}
+          times-artifact: shard-times
 
   # 🦀THE ENGINE BUILD THE LINUX SHARDS START FROM (card
   # ci-shards-build-the-engine-cold, 2026-11-17). A pull request's cache is
@@ -437,6 +484,7 @@ jobs:
         with:
           total: 6
           index: ${{ matrix.shard }}
+          times-artifact: shard-times
           # 🗣️유저 gpu-engine-skeleton-Q16 (2026-11-07) 「윈도 샤드는 엔진에
           # 닿는 시험을 리눅스에 맡긴다」: this runner has no GPU, and the one
           # adapter the GPU engine opens on it, WARP, never finishes the

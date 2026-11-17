@@ -18,6 +18,14 @@ inputs:
       deal. Empty leaves out nothing.
     required: false
     default: ''
+  times-artifact:
+    description: >
+      The artifact this run's scope job left the record of CI's last run in
+      (ci.yml) — `<os>.tsv`, each test file's milliseconds. The shard deals
+      by it and leaves its own times for the next run. Empty deals by size
+      alone and leaves nothing.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -39,6 +47,11 @@ runs:
         key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
         restore-keys: |
           testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-
+    - if: inputs.times-artifact != ''
+      uses: actions/download-artifact@v5
+      with:
+        name: ${{ inputs.times-artifact }}
+        path: ${{ runner.temp }}/shard-times
     - shell: bash
       run: |
         set -euo pipefail
@@ -47,86 +60,45 @@ runs:
         # the measured spread was still 1.64x (224s to 362s), so one
         # unlucky shard decided the round while the others sat finished.
         #
-        # So weight each file and pack longest-first into the lightest
-        # shard. The weight is the file's SIZE, not a recorded duration:
-        # a checked-in timings table is more accurate on the day it is
-        # generated and wrong every day after, and it goes stale silently
-        # — the failure mode is a slow shard, which looks exactly like
-        # normal. Size is 86% as good and cannot rot, because it is
-        # measured from the tree being tested.
+        # So weigh each file and pack longest-first into the lightest
+        # shard — by the milliseconds it took in CI's last run, and by its
+        # size where no run timed it (tool/test_shard.dart, which says why
+        # and how, and test_seconds.dart's `dealt`, the deal this machine's
+        # batches are cut by too). ↩️Till 2026-11-17 by size alone, here in
+        # awk (card ci-shards-dealt-by-measured-seconds).
         #
-        # Every shard job runs this same computation over the same commit
-        # and takes only its own slice, so the deal MUST be deterministic:
-        # hence the explicit sort (size descending, then path) under
-        # LC_ALL=C. If two jobs disagreed, files would silently run twice
-        # or not at all.
-        # Batched wc -c rather than find -printf: -printf is GNU find's
-        # own, and the macOS suite shards (apple.yml) run on BSD find,
-        # which has no such option. One xargs batch keeps this at three
-        # processes — a per-file loop measured 2+ minutes on a Windows
-        # runner's fork costs. The awk drops xargs' per-batch "total"
-        # rows and BSD wc's column padding while keeping any spaces in
-        # the path itself.
-        find test -name '*_test.dart' -print0 \
-          | xargs -0 wc -c \
-          | awk '{sz=$1; $1=""; sub(/^ /, "");
-                  if ($0 != "total") printf "%s\t%s\n", sz, $0}' \
-          | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
-        # A test that opens the app weighs three times its size
-        # (ci-takes-an-hour-on-lavapipe, measured 2026-11-17 on the three
-        # Linux shards of run 44026201673): those 385 files of 2,209 timed
-        # took 62% of the time — 1,348 ms a KB against 188 for the rest —
-        # since every test in one pumps the whole workspace. Against the
-        # time each file took, size alone correlates 0.44, size x3 for these
-        # 0.53 (x2 0.52, x5 0.51, x7 0.49). ⚖️NOT the tests that reach the
-        # GPU engine, the split the Windows shards leave out: 76% of the
-        # files reach it, the size deal had already spread them evenly (810,
-        # 852, 826 of the three shards), and weighing them lowered the
-        # correlation to 0.42. Still read from the tree, never a recorded
-        # duration, for the reason above.
-        dart tool/tests_reaching_files.dart \
-          lib/src/ui/home_page.dart lib/src/ui/editor_workspace.dart \
-          > "$RUNNER_TEMP/opens_the_app.txt"
-        awk -F'\t' 'NR == FNR { app[$0]; next }
-                    { printf "%d\t%s\n", ($2 in app) ? $1 * 3 : $1, $2 }' \
-          "$RUNNER_TEMP/opens_the_app.txt" "$RUNNER_TEMP/weighted.txt" \
-          | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/reweighted.txt"
-        mv "$RUNNER_TEMP/reweighted.txt" "$RUNNER_TEMP/weighted.txt"
-        echo "$(wc -l < "$RUNNER_TEMP/opens_the_app.txt") test files open" \
-          "the app — weighed x3"
+        # Every shard job runs this same deal over the same commit and the
+        # same record — the scope job fetched it once for all of them — and
+        # takes only its own slice, so the deal MUST be deterministic. If
+        # two jobs disagreed, files would silently run twice or not at all.
+        #
+        # The record is also laid over this runner's own (`seed`), so the
+        # slice's run orders and batches its files by it — longest first.
+        times=()
+        record="$RUNNER_TEMP/shard-times/${{ runner.os }}.tsv"
+        if [ -s "$record" ]; then
+          times=(--times "$record")
+          dart tool/test_shard.dart seed --times "$record"
+        fi
         # Left out before the deal, not after it, so the shards that are
         # left stay even.
+        leave=()
         if [ -n "${{ inputs.leave-out-package }}" ]; then
           dart tool/tests_reaching_package.dart \
             "${{ inputs.leave-out-package }}" > "$RUNNER_TEMP/left_out.txt"
-          awk -F'\t' 'NR == FNR { out[$0]; next } !($2 in out)' \
-            "$RUNNER_TEMP/left_out.txt" "$RUNNER_TEMP/weighted.txt" \
-            > "$RUNNER_TEMP/kept.txt"
-          mv "$RUNNER_TEMP/kept.txt" "$RUNNER_TEMP/weighted.txt"
+          leave=(--leave-out "$RUNNER_TEMP/left_out.txt")
           echo "$(wc -l < "$RUNNER_TEMP/left_out.txt") test files reach" \
             "package:${{ inputs.leave-out-package }} — not run here"
         fi
-        total_files=$(wc -l < "$RUNNER_TEMP/weighted.txt")
-        # `want`, not `index` — index() is a gawk builtin and awk dies with
-        # "cannot use gawk builtin as variable name", which on CI would be
-        # every shard failing at once.
-        awk -v total="${{ inputs.total }}" -v want="${{ inputs.index }}" '
-          BEGIN { for (i = 0; i < total; i++) load[i] = 0 }
-          {
-            lightest = 0
-            for (i = 1; i < total; i++) {
-              if (load[i] < load[lightest]) lightest = i
-            }
-            load[lightest] += $1
-            if (lightest == want) {
-              sub(/^[0-9]+\t/, "")
-              print
-            }
-          }
-        ' "$RUNNER_TEMP/weighted.txt" > "$RUNNER_TEMP/shard_tests.txt"
+        # ${a[@]+"${a[@]}"}: an empty array is "unbound" to the Mac's bash
+        # 3.2 under set -u (apple-nightly runs this too).
+        dart tool/test_shard.dart deal \
+          --total "${{ inputs.total }}" --index "${{ inputs.index }}" \
+          ${times[@]+"${times[@]}"} ${leave[@]+"${leave[@]}"} \
+          > "$RUNNER_TEMP/shard_tests.txt"
         shard_files=$(wc -l < "$RUNNER_TEMP/shard_tests.txt")
         echo "shard ${{ inputs.index }} of ${{ inputs.total }}:" \
-          "$shard_files of $total_files files"
+          "$shard_files files"
         # A selector that matched nothing would otherwise sail through
         # green — the one way sharding could silently drop coverage.
         if [ "$shard_files" -eq 0 ]; then
@@ -163,6 +135,25 @@ runs:
         dart tool/affected_tests.dart \
           --files-from "$RUNNER_TEMP/shard_tests.txt" \
           --outside-the-line --concurrency "$half"
+    # What this slice took, for the next run's deal — kept red or green,
+    # and from a run cut short too: each batch that ended was timed. Only
+    # this slice's files, so the shards' records never overlap and the
+    # scope job's join of them needs no rule for two values of one file.
+    # overwrite: a re-run of a failed shard lands in the same run.
+    - if: always() && inputs.times-artifact != ''
+      shell: bash
+      run: |
+        dart tool/test_shard.dart keep \
+          --files "$RUNNER_TEMP/shard_tests.txt" \
+          --to "$RUNNER_TEMP/test_times.tsv"
+    - if: always() && inputs.times-artifact != ''
+      uses: actions/upload-artifact@v5
+      with:
+        name: test-times-${{ runner.os }}-${{ inputs.index }}
+        path: ${{ runner.temp }}/test_times.tsv
+        retention-days: 14
+        if-no-files-found: ignore
+        overwrite: true
     # One writer per run per OS, and only from master: thirteen shards
     # racing to save the same key would leave twelve "cache already exists"
     # warnings, and a pull request has no business seeding the cache every

@@ -380,19 +380,6 @@ int? workAsked(List<String> command, Map<String, int> known) {
   return filesAsked(command) == null ? null : workOf(files, known);
 }
 
-/// This machine's test times ([readTimes]), or none when it keeps none.
-Map<String, int> timesOnThisMachine() {
-  final folder = machineCacheFolder(Platform.environment);
-  final file = folder == null ? null : File('$folder/test_times.tsv');
-  try {
-    return file != null && file.existsSync()
-        ? readTimes(file.readAsStringSync())
-        : const {};
-  } on FileSystemException {
-    return const {};
-  }
-}
-
 /// [command] as its turn runs it: a `flutter test` holds [suites] suites,
 /// whatever it said; any other command runs as it was given.
 ///

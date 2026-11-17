@@ -504,7 +504,7 @@ Future<void> main(List<String> args) async {
       '${changed.length} changed file(s)'
       '${within == null ? '' : ' within $within import(s) — --wide asks every one'}'
       '${named.isEmpty ? '' : ', with the ${named.length} named'}.');
-  final known = _knownTimes();
+  final known = timesOnThisMachine();
   _report('longest first, by this machine\'s times '
       '(${present.where(known.containsKey).length} of ${present.length} '
       'files timed before).');
@@ -563,23 +563,6 @@ ResultCache? _cacheOr(
   return cache;
 }
 
-/// The file [machineCacheFolder] keeps the times in.
-File? _timesFile() {
-  final folder = machineCacheFolder(Platform.environment);
-  return folder == null ? null : File('$folder/test_times.tsv');
-}
-
-Map<String, int> _knownTimes() {
-  try {
-    final file = _timesFile();
-    return file != null && file.existsSync()
-        ? readTimes(file.readAsStringSync())
-        : const {};
-  } on FileSystemException {
-    return const {};
-  }
-}
-
 /// What a batch's [report] says of each file ([suiteRuns]), with its times
 /// and greens laid over the machine's records ([updatePairs]).
 List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
@@ -591,7 +574,7 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
   }
-  final file = _timesFile();
+  final file = timesRecord(Platform.environment);
   final measured = timesOf(runs);
   try {
     if (file != null && measured.isNotEmpty) {
@@ -952,7 +935,7 @@ Future<int> _runTests(
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
   // takes the suites the line gives it then, by the work still to do. A
   // CI shard takes none ([lineFor], [outsideTheLine]).
-  final known = _knownTimes();
+  final known = timesOnThisMachine();
   var launched = 0;
   Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands

@@ -63,6 +63,25 @@ Map<String, int> timesIn(Map<String, String> pairs) => {
     path: ?int.tryParse(ms),
 };
 
+/// The file this machine keeps its test times in, in [machineCacheFolder] —
+/// or null when [environment] names no such folder.
+File? timesRecord(Map<String, String> environment) {
+  final folder = machineCacheFolder(environment);
+  return folder == null ? null : File('$folder/test_times.tsv');
+}
+
+/// This machine's test times ([readTimes]), or none when it keeps none.
+Map<String, int> timesOnThisMachine() {
+  final file = timesRecord(Platform.environment);
+  try {
+    return file != null && file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const {};
+  } on FileSystemException {
+    return const {};
+  }
+}
+
 /// What a `json` report says of one test file, by its path from the
 /// repository's root with `/`: how long it took from its loading to its
 /// last test, and whether it was green — null for either when the report
@@ -303,18 +322,40 @@ List<List<String>> timedBatches(
   for (var count = (workOf(files, known) / work).ceil().clamp(1, files.length);
       ;
       count++) {
-    final batches = [for (var i = 0; i < count; i++) <String>[]];
-    final load = List.filled(count, 0);
-    for (final file in ordered) {
-      var least = 0;
-      for (var i = 1; i < count; i++) {
-        if (load[i] < load[least]) least = i;
-      }
-      batches[least].add(file);
-      load[least] += known[file] ?? kUntimedFileMs;
-    }
+    final batches = dealt(
+      ordered,
+      count,
+      (file) => known[file] ?? kUntimedFileMs,
+    );
     if (count == files.length || batches.every(fits)) return batches;
   }
+}
+
+/// [ordered] dealt to [count] piles, each file to the pile that holds the
+/// least of [weightOf] so far — the first such pile when two hold the same.
+/// Given longest first ([longestFirst]), this is the longest-processing-time
+/// rule: the heavy files spread first and the light ones even the piles out.
+///
+/// The same deal cuts this machine's batches ([timedBatches]) and CI's
+/// shards (tool/test_shard.dart) — and nothing in it is left to chance, so
+/// every shard that deals the same files by the same weights holds the
+/// same piles.
+List<List<String>> dealt(
+  List<String> ordered,
+  int count,
+  int Function(String file) weightOf,
+) {
+  final piles = [for (var i = 0; i < count; i++) <String>[]];
+  final load = List.filled(count, 0);
+  for (final file in ordered) {
+    var least = 0;
+    for (var i = 1; i < count; i++) {
+      if (load[i] < load[least]) least = i;
+    }
+    piles[least].add(file);
+    load[least] += weightOf(file);
+  }
+  return piles;
 }
 
 bool _anyLength(List<String> batch) => true;

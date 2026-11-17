@@ -2,29 +2,23 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-const _action = '.github/actions/test-shard/action.yml';
+import '../../tool/test_shard.dart';
 
 /// 🚨THE FILES A SHARD WEIGHS BY ARE THERE.
 ///
-/// The test shards weigh the tests that open the app three times their size
-/// (ci-takes-an-hour-on-lavapipe, 2026-11-17), and find them as the tests
-/// that reach the files [_action] names to tool/tests_reaching_files.dart.
-/// A rename of one would stop every shard at its deal on CI — a round of
-/// the bundle PR lost — so the landing's architecture run says it first.
+/// A test file no CI run timed is weighed by its size, three times over if
+/// it opens the app (ci-takes-an-hour-on-lavapipe, 2026-11-17) — found as
+/// the tests that reach [kOpensTheApp] (tool/test_shard.dart). A rename of
+/// one stops every shard at its deal on CI — a round of the bundle PR lost
+/// — so the landing's architecture run says it first. ↩️Till 2026-11-17
+/// the action named them to tool/tests_reaching_files.dart, and this read
+/// the action (card ci-shards-dealt-by-measured-seconds).
 void main() {
-  test('every file the shard action weighs by is in the tree', () {
-    final call = RegExp(
-      r'dart tool/tests_reaching_files\.dart((?:\s*\\?\s*lib/\S+)+)',
-    ).firstMatch(File(_action).readAsStringSync());
-    expect(call, isNotNull, reason: '$_action no longer calls the tool');
-    final named = RegExp(r'lib/\S+')
-        .allMatches(call![1]!)
-        .map((m) => m[0]!)
-        .toList();
-    expect(named, isNotEmpty, reason: 'the scan reads the call');
+  test('every file the shard deal weighs by is in the tree', () {
+    expect(kOpensTheApp, isNotEmpty, reason: 'the scan reads the list');
     expect(
       [
-        for (final path in named)
+        for (final path in kOpensTheApp)
           if (!File(path).existsSync()) path,
       ],
       isEmpty,
