@@ -146,7 +146,7 @@ void main() {
         shell.replaceAll('\r\n', '\n'),
         contains(r'echo "기다리는 중 — 측정 창($who · $(date -d "@$until" +%H:%M'),
       );
-      expect(shell, contains(r'+%H:%M)까지)"'));
+      expect(shell, contains('+%H:%M)까지)"'));
     });
 
     test('the cargo turn waits for it, but not the hook\'s --hold', () {
