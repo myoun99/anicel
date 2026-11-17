@@ -19,6 +19,8 @@
 - **Zoom Alt+molette** — dans la timeline, la feuille d'exposition et le panneau de conte, Alt+molette agrandit et réduit les images. Le zoom à deux doigts garde le point entre les doigts.
 - **Liste des plans** — la première case de la légende montre le nom du plan actuel ; appuyez dessus pour ouvrir la liste des plans, où l'on peut aussi les renommer.
 - **Égaliseur des lignes de son** — le menu Fx d'une ligne de son propose un Égaliseur (Coupe-bas, Coupe-haut, Graves, Aigus), et la lecture comme l'export sonnent pareil. Le menu Fx se divise en sections Audio et Vidéo, celle qu'une ligne n'utilise pas étant grisée ; une ligne de son ne prend que des fx audio.
+- **Vues de la médiathèque** — les boutons à droite du ＋ de la médiathèque choisissent la vue en liste ou la vue en icônes. La vue en liste garde les noms fixés à gauche pendant que les colonnes comme Durée, Vidéo et Audio défilent sur le côté ; la vue en icônes montre de grandes vignettes, et promener le curseur sur une vidéo montre l'image située dessous. « Vue des préréglages » montre le préréglage de placement de chaque fichier (type, début, fin, durée) au lieu du fichier.
+- **Préréglages de placement** — depuis le menu d'un fichier de la médiathèque, Placer ▸ « Préréglage de placement » ouvre une fenêtre pour régler le début et la fin du fichier une fois placé, le nom et l'ajustement d'une image, l'étiquette et les répliques d'un bloc son. La fenêtre d'import et le glisser-déposer partent de ces valeurs. Un fichier d'une seule image peut aussi entrer comme calque d'animation.
 
 ## Améliorations
 
@@ -53,6 +55,7 @@
 - **Lettres** — les numéros de cellulo et les étiquettes SE sont dessinés aussi nets que les images. Le chinois simplifié du conte s'imprime avec la même graisse à l'écran et en PDF.
 - **Fusion de calques image** — des calques image fusionnés restent un calque image.
 - **Le son dans la visionneuse** — un fichier son s'ouvre en deux formes d'onde : le fichier entier et un gros plan autour de la tête de lecture. Appuyez sur l'une ou l'autre pour y aller.
+- **Première lecture dans la visionneuse** — le gel de 1 à 3 secondes au premier appui sur lecture d'une vidéo ouverte dans la visionneuse est raccourci. Il en va de même pour les vidéos importées dans la médiathèque.
 - **Plug-ins fx** — un plug-in qui échoue à dessiner affiche ⚠ en tête de sa ligne. Appliquer un plug-in pour la première fois ne fige plus l'application. « Limite de travail des plug-ins FX externes » dans les Préférences propose des paliers plus lisibles.
 - **Redémarrage du pilote graphique** — les dessins non enregistrés sont conservés quand le pilote redémarre.
 - **Déplacer la vue** — les surimpressions comme le cadre de caméra suivent l'image quand vous déplacez ou zoomez. Pendant une transformation, le contour de la sélection suit les bords des pixels.
