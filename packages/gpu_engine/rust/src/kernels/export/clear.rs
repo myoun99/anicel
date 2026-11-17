@@ -125,16 +125,21 @@ struct Band {
 struct Bands(Vec<Band>);
 
 impl Bands {
-    /// `shown`'s picture in parts whose pixels' rows one binding of `room`
-    /// bytes, begun on a multiple of `step`, holds wherever they start. A
-    /// row of words is 32 pixels to the word, run on across the picture's
-    /// rows; a part's pixels touch a row more than they fill. None, with
-    /// why, where a row of words lies on more rows than a binding holds.
+    /// `shown`'s picture in parts whose pixels one binding of `room` bytes,
+    /// begun on a multiple of `step`, holds wherever they start. A row of
+    /// words is 32 pixels to the word, run on across the picture's rows.
+    /// The frame words a part's pixels lie on are those pixels and the
+    /// stride's gap past each row they cross out of: a part of no more
+    /// than `rows` × width pixels crosses out of `rows` at most, so lies on
+    /// no more than `rows` × stride words, as many rows as a binding holds
+    /// (↩️a spare row was kept for the rows they touch until this sum
+    /// showed it needless, 2026-11-17). None, with why, where a row of
+    /// words is more pixels than a binding's rows.
     fn of(shown: &Shown, picture: Picture, (room, step): (u64, u64)) -> Option<Self> {
         let (width, stride) = (u64::from(picture.width), u64::from(shown.stride));
         let row_pixels = u64::from(picture.width.div_ceil(32)) * 32;
         let rows = rows_a_binding(room, step, stride * 4)?;
-        let per_band = rows.saturating_sub(1).saturating_mul(width) / row_pixels;
+        let per_band = rows.saturating_mul(width) / row_pixels;
         if per_band == 0 {
             return fail(format!("a row of {row_pixels} clear bits exceeds a binding of {room}"));
         }
