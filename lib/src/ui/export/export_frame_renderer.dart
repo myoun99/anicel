@@ -1892,6 +1892,7 @@ class ExportFrameRenderer {
           opacity: row.layer.opacity,
           blendMode: row.layer.blendMode,
           effects: row.effects,
+          tint: null,
         ),
         asOnePicture: meetsAClip(row.cut, row.layer),
       );
@@ -1914,6 +1915,7 @@ class ExportFrameRenderer {
               opacity: laid.paint.opacity,
               blendMode: LayerBlendMode.normal,
               effects: laid.paint.effects,
+              tint: laid.paint.tint,
             ),
           ),
         ),
@@ -2090,8 +2092,12 @@ class ExportFrameRenderer {
   /// [effects] whole and in no blend: the picture a layered file keeps and
   /// lays by the row's own strength and blend ([celGroupRows]), or a clip's
   /// base, whose strength and blend are its group's.
-  static RowPaint _alone(List<ResolvedLayerEffect> effects) =>
-      (opacity: 1, blendMode: LayerBlendMode.normal, effects: effects);
+  static RowPaint _alone(List<ResolvedLayerEffect> effects) => (
+    opacity: 1,
+    blendMode: LayerBlendMode.normal,
+    effects: effects,
+    tint: null,
+  );
 
   /// [stack] — a cel's rows, each as the cel lays it by its paint — as the
   /// canvas stacks rows: each row's cel by its key, its chain run as the

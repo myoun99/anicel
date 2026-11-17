@@ -546,6 +546,32 @@ void main() {
     });
   }
 
+  // 🗣️a-numbered-rows-ghost-resolves-its-chain-unsplit-Q1 a (유저
+  // 2026-11-17): a numbered row's ghost is one picture under its tint —
+  // its group takes the tint last over its colour, as a ghost row does.
+  test('a group\'s tint is taken last over what its chain made, as a ghost '
+      'row takes its own', () {
+    const tint = 0xC03070E0;
+    Uint8List grouped(int? tint) => laid([
+      CompositeGroup<CutFrameCompositeLayer>(
+        children: [row(1)],
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+        effects: [colour],
+        tint: tint,
+      ),
+    ], clear);
+    final asRow = laid([
+      row(1, tint: tint, effects: [colour]),
+    ], clear);
+    int apart(Uint8List one, Uint8List other) => [
+      for (var at = 0; at < one.length; at += 1) (one[at] - other[at]).abs(),
+    ].reduce(math.max);
+
+    expect(apart(grouped(null), asRow), greaterThan(16), reason: 'premise');
+    expect(apart(grouped(tint), asRow), lessThanOrEqualTo(2));
+  });
+
   // A chain past colour: its steps run on the row's own picture — with ink
   // on the pasteboard, a picture that starts left of the paper — or on a
   // buffer's, which a moved row starts off the canvas's corner.

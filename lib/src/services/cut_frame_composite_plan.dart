@@ -396,7 +396,7 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
     frameId: frameId,
     frameIndex: frameIndex,
     opacity: paint.opacity,
-    tint: tint,
+    tint: paint.tint,
     blendMode: paint.blendMode,
     effects: paint.effects,
   );
@@ -1550,15 +1550,25 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
     final ghosts = ghostsOf?.call(layer) ?? const <CutFrameCompositeGhost>[];
     final baseAround = ghosts.isEmpty ? null : _clipBaseAround(cut, layer);
     for (final ghost in ghosts) {
-      final node = CompositeLeaf<CutFrameCompositeRow>(ghost);
+      // Each as its row is laid ([_rowNodes]): a cel number split out of
+      // its chain, as the screen shows the row.
+      List<CompositeNode<CutFrameCompositeRow>> laid({
+        required bool asOnePicture,
+      }) => _rowNodes(cut, layer, ghost, asOnePicture: asOnePicture);
       if (baseAround != null) {
-        addTo(baseAround.folderId, node);
+        for (final node in laid(asOnePicture: false)) {
+          addTo(baseAround.folderId, node);
+        }
         continue;
       }
       switch (clipTargetOf(cut, layer).placed) {
         case ClipPlaced.alone:
-          addTo(layer.folderId, node);
+          for (final node in laid(asOnePicture: false)) {
+            addTo(layer.folderId, node);
+          }
         case ClipPlaced.clipped:
+          // Cut by the base it clips to: one picture.
+          final [node] = laid(asOnePicture: true);
           place(layer, node);
         case ClipPlaced.nowhere:
           break;
@@ -1599,16 +1609,24 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   );
 }
 
-/// [row] — [layer]'s, at a frame — as its nodes in a tree, bottom → top:
-/// its picture, and the letters of a cel number its chain writes
-/// ([celNumberedRow]).
+/// [row] — [layer]'s, at a frame, or a ghost of it — as its nodes in a
+/// tree, bottom → top: its picture, and the letters of a cel number its
+/// chain writes ([celNumberedRow]).
 List<CompositeNode<CutFrameCompositeRow>> _rowNodes(
   Cut cut,
   Layer layer,
   CutFrameCompositeRow row, {
   required bool asOnePicture,
 }) => celNumberedRow(
-  paint: (opacity: row.opacity, blendMode: row.blendMode, effects: row.effects),
+  paint: (
+    opacity: row.opacity,
+    blendMode: row.blendMode,
+    effects: row.effects,
+    tint: switch (row) {
+      CutFrameCompositeGhost(:final tint) => tint,
+      CutFrameCompositeEntry() || CutFrameCompositeLiveRow() => null,
+    },
+  ),
   rowOf: row.withPaint,
   text: celNumberText(
     rowName: layer.name,
@@ -1617,9 +1635,9 @@ List<CompositeNode<CutFrameCompositeRow>> _rowNodes(
       // Drawn on where nothing is exposed yet: the drawing the pen
       // makes, which is born unnamed.
       CutFrameCompositeLiveRow() => null,
-      CutFrameCompositeGhost() => throw StateError(
-        'a row resolves to its own node, never to a ghost',
-      ),
+      // The drawing it ghosts, as the screen names it at its frame.
+      CutFrameCompositeGhost(:final frameId) =>
+        layer.frameById(frameId)?.name,
     },
     kind: layer.kind,
   ),
@@ -1776,13 +1794,17 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
 /// [ghosts] of [cut]'s frame [frameIndex] by themselves, each onion row's in
 /// stack order: what a picture of the screen lays over its frame where they
 /// lie on top — the tree `EditingCanvas.ghostsOverAt` stacks, and a file of
-/// the frame as it is shown (`ExportFrameRenderer.renderAsShown`).
+/// the frame as it is shown (`ExportFrameRenderer.renderAsShown`) — each
+/// as it is laid in place ([_rowNodes]).
 List<CompositeNode<CutFrameCompositeRow>> ghostsAlone({
   required Cut cut,
   required int frameIndex,
   required Iterable<CutFrameCompositeGhost> ghosts,
 }) => readingTheirRows(
-  [for (final ghost in ghosts) CompositeLeaf<CutFrameCompositeRow>(ghost)],
+  [
+    for (final ghost in ghosts)
+      ..._rowNodes(cut, ghost.layer, ghost, asOnePicture: false),
+  ],
   cut: cut,
   frameIndex: frameIndex,
   liveLayerId: null,

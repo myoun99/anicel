@@ -302,7 +302,8 @@ class _TreePlan {
   }
 
   /// [group]'s buffer, closed at its strength in [mode] through its chain
-  /// and its colour, held as what [shows] is.
+  /// and its colour — a ghost's tint last ([CompositeGroup.tint]) — held as
+  /// what [shows] is.
   void _group(
     CompositeGroup<EngineRow> group,
     int mode,
@@ -322,9 +323,23 @@ class _TreePlan {
       opacity: strengthOf(group.opacity),
       mode: mode,
       chain: chain,
-      matrix: _matrixOf(colour),
+      matrix: _matrixOf(_tinted(colour, group.tint)),
     );
   }
+
+  /// [colour] — what a chain's colour folds to — with an onion ghost's
+  /// [tint] LAST, over the finished pixel: the ghost is the row as the
+  /// screen shows it, in the peg's colour (onionTintColorMatrix). A row's
+  /// and a numbered ghost's group's alike.
+  static List<double>? _tinted(List<double>? colour, int? tint) =>
+      switch ((colour, tint)) {
+        (_, null) => colour,
+        (null, final tint?) => onionTintColorMatrix(tint),
+        (final colour?, final tint?) => composeColorMatrices(
+          onionTintColorMatrix(tint),
+          colour,
+        ),
+      };
 
   /// [adjustment]'s scope, closed through its grade at its mix, held as
   /// what [shows] is.
@@ -454,17 +469,7 @@ class _TreePlan {
       // picture ([_row]): only what a hand holds goes in with the cel.
       source: row.held.isEmpty ? row.surface : null,
     );
-    final tint = row.tint;
-    // The tint LAST, over the finished pixel: the ghost is the row as the
-    // screen shows it, in the peg's colour (onionTintColorMatrix).
-    final matrix = _matrixOf(switch ((colour, tint)) {
-      (_, null) => colour,
-      (null, final tint?) => onionTintColorMatrix(tint),
-      (final colour?, final tint?) => composeColorMatrices(
-        onionTintColorMatrix(tint),
-        colour,
-      ),
-    });
+    final matrix = _matrixOf(_tinted(colour, row.tint));
     final opacity = strengthOf(row.opacity);
     if (row.held.isEmpty) {
       plan.row(

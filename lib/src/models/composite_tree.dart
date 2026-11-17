@@ -47,6 +47,7 @@ final class CompositeGroup<L> extends CompositeNode<L> {
     required this.opacity,
     required this.blendMode,
     this.effects = const [],
+    this.tint,
   });
 
   /// Bottom → top; may hold nested groups.
@@ -64,6 +65,13 @@ final class CompositeGroup<L> extends CompositeNode<L> {
   /// to buffer ([folderNeedsCompositeBuffer]): a blur over the group is not
   /// the same picture as a blur over each member.
   final List<ResolvedLayerEffect> effects;
+
+  /// An onion ghost's tint over the finished picture, after [effects] — a
+  /// numbered row's ghost, its letters and the links after its number one
+  /// picture under it, as a ghost row's own tint is taken last
+  /// (`celNumberedRow`, `onionTintColorMatrix`). Null for every other
+  /// group.
+  final int? tint;
 }
 
 /// An ADJUSTMENT layer's SCOPE (R6b): everything composited below the row,
@@ -315,6 +323,7 @@ CompositeNode<L> clippedOnto<L>(
       :final opacity,
       :final blendMode,
       :final effects,
+      :final tint,
     ) =>
       (
         CompositeGroup<L>(
@@ -322,6 +331,7 @@ CompositeNode<L> clippedOnto<L>(
           opacity: 1,
           blendMode: LayerBlendMode.normal,
           effects: effects,
+          tint: tint,
         ),
         opacity,
         blendMode,
@@ -394,6 +404,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         :final opacity,
         :final blendMode,
         :final effects,
+        :final tint,
       ) =>
         (
           CompositeGroup<L>(
@@ -401,6 +412,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
             opacity: opacity,
             blendMode: blendMode,
             effects: effects,
+            tint: tint,
           ),
           blendMode,
         ),
@@ -452,12 +464,18 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
       CompositeLeaf<L>(:final payload) => CompositeLeaf<L>(
         paintedNormal(payload),
       ),
-      CompositeGroup<L>(:final children, :final opacity, :final effects) =>
+      CompositeGroup<L>(
+        :final children,
+        :final opacity,
+        :final effects,
+        :final tint,
+      ) =>
         CompositeGroup<L>(
           children: children,
           opacity: opacity,
           blendMode: LayerBlendMode.normal,
           effects: effects,
+          tint: tint,
         ),
       CompositeClip<L>(:final base, :final scope, :final opacity) =>
         CompositeClip<L>(
@@ -561,6 +579,7 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
       :final opacity,
       :final blendMode,
       :final effects,
+      :final tint,
     ) =>
       reading(
         CompositeGroup<L>(
@@ -568,6 +587,7 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
           opacity: opacity,
           blendMode: blendMode,
           effects: effects,
+          tint: tint,
         ),
         effects,
         null,
@@ -703,6 +723,7 @@ class _Fold<L, M> {
           :final opacity,
           :final blendMode,
           :final effects,
+          :final tint,
         ):
           final mapped = fold(children);
           if (mapped.isEmpty) {
@@ -715,6 +736,7 @@ class _Fold<L, M> {
               opacity: opacity,
               blendMode: blendMode,
               effects: chains(effects),
+              tint: tint,
             ),
           );
         case CompositeAdjustment<L>(

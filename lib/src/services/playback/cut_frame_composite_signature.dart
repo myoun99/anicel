@@ -178,6 +178,7 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
     required this.opacity,
     required this.blendMode,
     List<ResolvedLayerEffect> effects = const [],
+    this.tint,
   }) : children = List.unmodifiable(children),
        effects = List.unmodifiable(effects);
 
@@ -190,12 +191,18 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
   /// edit invalidates the composite exactly as its blend/opacity does.
   final List<ResolvedLayerEffect> effects;
 
+  /// A numbered ghost's tint over the group ([CompositeGroup.tint]) — the
+  /// picture of a frame with its ghosts is keyed by it as by a ghost row's
+  /// own ([CompositeLayerSignature.tint]).
+  final int? tint;
+
   @override
   CompositeNodeSignature get asItsPicture => CompositeGroupSignature(
     children: children,
     opacity: 1,
     blendMode: blendMode,
     effects: effects,
+    tint: tint,
   );
 
   @override
@@ -204,6 +211,7 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
       other is CompositeGroupSignature &&
           other.opacity == opacity &&
           other.blendMode == blendMode &&
+          other.tint == tint &&
           listEquals(other.effects, effects) &&
           listEquals(other.children, children);
 
@@ -211,6 +219,7 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
   int get hashCode => Object.hash(
     opacity,
     blendMode,
+    tint,
     Object.hashAll(effects),
     Object.hashAll(children),
   );
@@ -218,7 +227,7 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
   @override
   String toString() =>
       'CompositeGroupSignature(opacity: $opacity, blendMode: $blendMode, '
-      'effects: $effects, children: $children)';
+      'effects: $effects, tint: $tint, children: $children)';
 }
 
 /// An ADJUSTMENT scope's identity (R6b): what the row filters, plus the
@@ -580,12 +589,14 @@ List<CompositeNodeSignature> _nodeSignaturesOf(
         :final opacity,
         :final blendMode,
         :final effects,
+        :final tint,
       ) =>
         CompositeGroupSignature(
           children: _nodeSignaturesOf(children),
           opacity: opacity,
           blendMode: blendMode,
           effects: effects,
+          tint: tint,
         ),
       CompositeAdjustment(:final children, :final effects, :final mix) =>
         CompositeAdjustmentSignature(
