@@ -817,6 +817,9 @@ final class _DerivedSound {
   /// ran — another carry, a rate that moved — would otherwise get the old
   /// sound back. ↩️The conversion spelled this out on its own; the
   /// equalizer's bake and its checkpoints made it three.
+  /// 🚨A FAILURE TOO (저장's read of the bake, 11-17): remembered against
+  /// the entry it failed on, it would stop the next entry's — never let go
+  /// of with a carry that moved — for the session.
   Future<void> _land<T>(
     String sourcePath,
     ConformResult entry,
@@ -824,18 +827,18 @@ final class _DerivedSound {
     _Landing<T> landing,
   ) async {
     final store = _store;
+    bool madeOfWhatIsHeld() =>
+        !store._disposed && identical(store._entries[sourcePath], entry);
     try {
       final made = await making();
-      if (store._disposed || !identical(store._entries[sourcePath], entry)) {
-        return;
+      if (madeOfWhatIsHeld()) {
+        landing.keep(made);
       }
-      landing.keep(made);
     } on Object catch (error) {
-      if (store._disposed) {
-        return;
+      if (madeOfWhatIsHeld()) {
+        landing.failed();
+        store._log('[AudioConformStore] ${landing.saying(error)}');
       }
-      landing.failed();
-      store._log('[AudioConformStore] ${landing.saying(error)}');
     } finally {
       if (!store._disposed) {
         landing.settled();

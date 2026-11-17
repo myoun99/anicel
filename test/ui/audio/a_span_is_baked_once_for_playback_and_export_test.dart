@@ -385,6 +385,72 @@ void main() {
     );
   });
 
+  test('a bake that failed on a conform let go of does not stop the next '
+      'conform\'s', () async {
+    final first = Completer<Float32List>();
+    var tries = 0;
+    final moving = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => conformed(),
+      equalizeRunner: (request) {
+        tries += 1;
+        return tries == 1 ? first.future : Future.value(Float32List(8));
+      },
+      log: (_) {},
+    );
+    addTearDown(moving.dispose);
+    const span = EqualizedSpan(
+      start: 0,
+      length: 4,
+      settings: [(start: 0, equalizer: every)],
+    );
+    moving.resultFor('a.wav');
+    await pumpEventQueue();
+    moving.equalizedAt('a.wav', sampleRate, span);
+    moving.invalidate('a.wav');
+    moving.resultFor('a.wav');
+    await pumpEventQueue();
+
+    first.completeError(StateError('its file went away'));
+    await pumpEventQueue();
+    moving.equalizedAt('a.wav', sampleRate, span);
+    await pumpEventQueue();
+    expect(tries, 2, reason: 'the failure was of the conform let go of');
+    expect(moving.equalizedAt('a.wav', sampleRate, span), isNotNull);
+  });
+
+  test('forgetting the sound lets a bake that failed be tried again', () async {
+    var tries = 0;
+    final once = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => conformed(),
+      equalizeRunner: (request) async {
+        tries += 1;
+        return tries == 1 ? throw StateError('refused') : Float32List(8);
+      },
+      log: (_) {},
+    );
+    addTearDown(once.dispose);
+    const span = EqualizedSpan(
+      start: 0,
+      length: 4,
+      settings: [(start: 0, equalizer: every)],
+    );
+    once.resultFor('a.wav');
+    await pumpEventQueue();
+    once.equalizedAt('a.wav', sampleRate, span);
+    await pumpEventQueue();
+    expect(once.equalizedAt('a.wav', sampleRate, span), isNull);
+
+    once.invalidate('a.wav');
+    once.resultFor('a.wav');
+    await pumpEventQueue();
+    once.equalizedAt('a.wav', sampleRate, span);
+    await pumpEventQueue();
+    expect(tries, 2);
+    expect(once.equalizedAt('a.wav', sampleRate, span), isNotNull);
+  });
+
   group('runEqualizeHere', () {
     test('bakes only the samples of the span the conform holds', () {
       final baked = runEqualizeHere(
