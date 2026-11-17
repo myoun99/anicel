@@ -1080,8 +1080,9 @@ class LaneVerbs {
 
   /// A group header's switch, whichever group the header names: the
   /// Transform's — a header leading it ([headerLeadsTransform]) — is the
-  /// row's own field (R8), an effect's is that effect's eyeball (R6),
-  /// and a group with no switch does nothing.
+  /// row's own field (R8), the 音声 group's its sound's ([SeSound.enabled],
+  /// audio-fx-grows-like-the-pros-Q6), an effect's that effect's eyeball
+  /// (R6), and a group with no switch does nothing.
   ///
   /// One dispatch for every rail that draws a header. The timeline host held
   /// it alone, so the storyboard's S rows had no switch to press (F-101).
@@ -1092,6 +1093,17 @@ class LaneVerbs {
   }) {
     if (headerLeadsTransform(headerLaneId)) {
       _effectsAndFx.toggleLayerTransformFx(layerId);
+      return;
+    }
+    if (headerLaneId == seSoundGroupLaneId) {
+      final layer = laneVerbLayerFor(layerId);
+      if (layer != null && layer.kind == LayerKind.se) {
+        _commitLaneSeSound(
+          layer,
+          layer.seSound.copyWith(enabled: !layer.seSound.enabled),
+          description: description,
+        );
+      }
       return;
     }
     final effectId = parseEffectLaneId(headerLaneId)?.effectId;
@@ -1149,6 +1161,9 @@ class LaneVerbs {
     }
     if (headerLeadsTransform(headerLaneId)) {
       return layer.transformEnabled;
+    }
+    if (headerLaneId == seSoundGroupLaneId) {
+      return layer.kind == LayerKind.se ? layer.seSound.enabled : null;
     }
     final effectId = parseEffectLaneId(headerLaneId)?.effectId;
     for (final effect in layer.effects) {

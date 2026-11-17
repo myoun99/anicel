@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
+import '../../services/commands/update_layer_se_sound_command.dart';
 import '../../services/commands/update_layer_transform_enabled_command.dart';
 import '../../services/commands/update_track_effects_command.dart';
 import '../timeline/effect_lane_editing.dart'
@@ -222,8 +223,9 @@ class EffectsAndFx {
     }
   }
 
-  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
-  /// plus every effect's own switch, read as one answer for the layer-label
+  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled]),
+  /// an S row's 音声 switch ([SeSound.enabled]) and every effect's own
+  /// switch, read as one answer for the layer-label
   /// button — AE's fx column, and a MASTER over the per-group switches
   /// (user, 2026-07-30: "통합토글버튼").
   ///
@@ -237,6 +239,7 @@ class EffectsAndFx {
     }
     final switches = <bool>[
       if (layer.kind.hasTransformFxSwitch) layer.transformEnabled,
+      if (layer.kind == LayerKind.se) layer.seSound.enabled,
       for (final effect in layer.effects) effect.enabled,
     ];
     if (switches.isEmpty) {
@@ -324,6 +327,20 @@ class EffectsAndFx {
         )
       : null;
 
+  /// The 音声 group's switch of an S row ([SeSound.enabled]) set to
+  /// [enabled] — null where the row has none or it reads so already.
+  UpdateLayerSeSoundCommand? _soundSwitch(
+    Layer layer, {
+    required bool enabled,
+  }) => layer.kind == LayerKind.se && layer.seSound.enabled != enabled
+      ? UpdateLayerSeSoundCommand(
+          repository: _project.repository,
+          layerId: layer.id,
+          seSound: layer.seSound.copyWith(enabled: enabled),
+          description: enabled ? 'Apply sound FX' : 'Bypass sound FX',
+        )
+      : null;
+
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
     final commands = <Command>[];
@@ -333,6 +350,10 @@ class EffectsAndFx {
       final transform = _transformSwitch(layer, enabled: enabled);
       if (transform != null) {
         commands.add(transform);
+      }
+      final sound = _soundSwitch(layer, enabled: enabled);
+      if (sound != null) {
+        commands.add(sound);
       }
       if (layer.effects.isEmpty) {
         continue;

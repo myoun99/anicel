@@ -6,6 +6,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/se_sound_lane_editing.dart';
@@ -40,8 +41,9 @@ void main() {
       expect(header.isGroupHeader, isTrue);
       expect(
         header.groupEnabled,
-        isNull,
-        reason: 'a FIXED group has no bypass — the row speaker mutes it',
+        isTrue,
+        reason: 'its fx switch, as every fx group\'s — ↩️none, 「the row '
+            'speaker mutes it」, till audio-fx-grows-like-the-pros-Q6',
       );
       expect(header.showsKeyNavigator, isFalse);
 
@@ -383,6 +385,39 @@ void main() {
 
       expect(sound().volume.keys.keys, [3, 9]);
       expect(sound().volume.keyAt(9)!.value, closeTo(0.4, 1e-9));
+    });
+
+    // 🗣️audio-fx-grows-like-the-pros-Q4 note 「뭐든 fx라면 있어야」 · -Q6
+    // 「音量 키 · パン 을 건너뛴다」.
+    test('🎯the header wears an fx switch as every fx group does: off, the '
+        'keys and the pan stay, the row\'s master reads it and sets it', () {
+      type(seSoundVolumeLaneId, 4, '50');
+      type(seSoundPanLaneId, 4, 'L30');
+      PropertyLaneRow header() => timelineLanesForLayer(
+        layer: s.activeTrack.seLayers.firstWhere((row) => row.id == se.id),
+        session: s,
+        expandedGroupKeys: {},
+      ).firstWhere((lane) => lane.laneId == seSoundGroupLaneId);
+      expect(header().groupEnabled, isTrue);
+
+      s.laneVerbs.toggleLaneGroupEnabled(
+        se.id,
+        seSoundGroupLaneId,
+        description: 'Toggle',
+      );
+      expect(sound().enabled, isFalse);
+      expect(header().groupEnabled, isFalse);
+      expect(s.laneVerbs.isLaneGroupOn(se.id, seSoundGroupLaneId), isFalse);
+      expect(sound().volume.keys.keys, [4], reason: 'kept');
+      expect(sound().pan, -0.3, reason: 'kept');
+      expect(s.effectsAndFx.layerFxState(se.id), isNot(LayerFxState.on));
+
+      s.effectsAndFx.toggleLayerFx(se.id);
+      s.effectsAndFx.toggleLayerFx(se.id);
+      expect(sound().enabled, isTrue, reason: 'the master turns it on');
+      s.effectsAndFx.toggleLayerFx(se.id);
+      expect(sound().enabled, isFalse, reason: 'and off');
+      expect(s.effectsAndFx.layerFxState(se.id), LayerFxState.off);
     });
   });
 }

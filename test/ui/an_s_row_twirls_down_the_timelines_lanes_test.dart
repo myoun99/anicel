@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagSizeLaneId;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../helpers/app_icon_button_probe.dart';
@@ -191,8 +193,9 @@ void main() {
     );
   });
 
-  testWidgets('the S row\'s name tag header switch bypasses the row\'s '
-      'transform, as the timeline\'s does', (tester) async {
+  testWidgets('the S row\'s name tag header switch is the name tag fx\'s — '
+      'the row\'s transform switch, folded in — as the timeline\'s is',
+      (tester) async {
     await _openApp(tester);
     final session = tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
@@ -218,6 +221,32 @@ void main() {
       isFalse,
       reason: 'the header wears the timeline\'s switch, and it switches',
     );
+  });
+
+  testWidgets('the S row\'s 音声 header wears the same fx switch, and it '
+      'switches the row\'s sound (Q6)', (tester) async {
+    await _openApp(tester);
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    bool soundOn() => session.repository
+        .requireProject()
+        .tracks
+        .single
+        .seLayers
+        .single
+        .seSound
+        .enabled;
+    expect(soundOn(), isTrue);
+
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
+    await _pressNamed(
+      tester,
+      'storyboard-lane-group-fx-${_seId.value}-$seSoundGroupLaneId',
+    );
+
+    expect(soundOn(), isFalse);
   });
 
   testWidgets('the S row\'s name tag header picks what it reads its keys '

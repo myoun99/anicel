@@ -176,13 +176,15 @@ Map<int, KeyMark> seNameTagLaneKeyMarks(SeNameTagTrack keys, String laneId) {
 }
 
 /// The name tag's POSE — the S row's transform, which moves its tag: its
-/// keys, its switch, the basis it reads them by and its member lanes.
+/// keys, the fx's switch, the basis it reads them by and its member lanes.
 ///
 /// 🗣️audio-fx-grows-like-the-pros-Q3 (유저 2026-11-17 「기존 변형fx는
-/// 없애고 이름표fx안에 편입」) and -Q4 (「이름표 머리로 옮긴다」: the switch
-/// turns the transform lanes alone off, the basis chip reads them alone):
-/// an S row's transform is no group of its own — its lanes are the name
-/// tag's members, and its switch and chip stand on the name tag's header.
+/// 없애고 이름표fx안에 편입」) and -Q4 (「이름표 머리로 옮긴다」): an S
+/// row's transform is no group of its own — its lanes are the name tag's
+/// members, and its switch and chip stand on the name tag's header. The
+/// chip reads the pose's lanes alone; the switch is the name tag fx's
+/// (-Q5 「이름표 전체를 끈다」: off, the tag is not drawn at all —
+/// `resolveSeNameTagsAt`).
 typedef SeNameTagPose = ({
   TransformTrack track,
   bool enabled,
@@ -221,7 +223,8 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
       isGroupHeader: true,
       groupExpanded: expanded,
       headsAGraph: true,
-      // The pose's switch and basis chip ([SeNameTagPose], Q4).
+      // The name tag fx's switch and the pose's basis chip
+      // ([SeNameTagPose], Q4 · Q5).
       // ↩️It wore none — 「a fixed group has nothing to turn off」 — until
       // Q4's note: 「애초에 이름표fx에 fx버튼이 없던게 버그아닌가? … 뭐든
       // fx라면 있어야한다고생각」.

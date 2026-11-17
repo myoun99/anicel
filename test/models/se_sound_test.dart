@@ -49,6 +49,11 @@ void main() {
     expect(const SeSound().toJson(), isEmpty);
     expect(const SeSound(pan: 0.5).toJson().keys, ['pan']);
     expect(SeSound.fromJson(const {}), const SeSound());
+    expect(
+      SeSound.fromJson(const SeSound(enabled: false).toJson()),
+      const SeSound(enabled: false),
+      reason: 'its switch off is kept',
+    );
   });
 
   // 🗣️I-145-Q1 (유저 2026-10-30): 「따로 한 값 — 두 입구」.

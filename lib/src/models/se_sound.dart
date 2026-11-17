@@ -43,6 +43,7 @@ class SeSound {
   const SeSound({
     this.pan = 0.0,
     this.totalVolume = 1.0,
+    this.enabled = true,
     PropertyTrack<double>? volume,
   }) : _volume = volume;
 
@@ -54,6 +55,19 @@ class SeSound {
   /// (1 = 100%, up to [maxVolume]) — one value, nothing to key (I-145-Q1),
   /// set by the S row's Total bar alone (I-177).
   final double totalVolume;
+
+  /// The 音声 group's fx switch — off, the row plays its volume keys and
+  /// its pan as though it had none: its sounds' own gain, from the centre,
+  /// the keys kept for when it is on again ([heard]). The row's total and
+  /// its speaker's mute still answer.
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros-Q6 (유저 2026-11-17): 「音量 키 · パン 을
+  /// 건너뛴다」 — 「적용안하니 기본값이라는 느낌? 변형도 그렇잖아」.
+  final bool enabled;
+
+  /// This sound as the mix plays it: itself, or — its switch off — its
+  /// total alone ([enabled]).
+  SeSound get heard => enabled ? this : SeSound(totalVolume: totalVolume);
 
   final PropertyTrack<double>? _volume;
 
@@ -81,16 +95,19 @@ class SeSound {
   SeSound copyWith({
     double? pan,
     double? totalVolume,
+    bool? enabled,
     PropertyTrack<double>? volume,
   }) => SeSound(
     pan: pan ?? this.pan,
     totalVolume: totalVolume ?? this.totalVolume,
+    enabled: enabled ?? this.enabled,
     volume: volume ?? _volume,
   );
 
   Map<String, dynamic> toJson() => {
     if (pan != 0.0) 'pan': pan,
     if (totalVolume != 1.0) 'totalVolume': totalVolume,
+    if (!enabled) 'enabled': false,
     if (isKeyed) 'volume': volume.toJson((v) => v),
   };
 
@@ -98,6 +115,7 @@ class SeSound {
     pan: (json['pan'] as num?)?.toDouble() ?? 0.0,
     totalVolume: ((json['totalVolume'] as num?)?.toDouble() ?? 1.0)
         .clamp(0.0, maxVolume),
+    enabled: json['enabled'] as bool? ?? true,
     volume: json['volume'] is List
         ? PropertyTrack.fromJson(
             json['volume'] as List?,
@@ -112,8 +130,9 @@ class SeSound {
       other is SeSound &&
           other.pan == pan &&
           other.totalVolume == totalVolume &&
+          other.enabled == enabled &&
           other.volume == volume;
 
   @override
-  int get hashCode => Object.hash(pan, totalVolume, volume);
+  int get hashCode => Object.hash(pan, totalVolume, enabled, volume);
 }

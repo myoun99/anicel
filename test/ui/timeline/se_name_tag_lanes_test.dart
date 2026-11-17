@@ -190,8 +190,9 @@ void main() {
     );
   });
 
-  test('🎯the header\'s switch is the pose\'s, and its basis chip — the '
-      'tag\'s own lanes keep showing (Q4: 「스위치는 변형 레인만 끈다」)', () {
+  test('🎯the header\'s switch is the name tag fx\'s — the row\'s transform '
+      'switch, folded in (Q5: 「이름표 전체를 끈다」) — and its basis chip the '
+      'pose\'s', () {
     final s = session();
     addTearDown(s.dispose);
     expect(s.laneVerbs.isLaneGroupOn(seLayerId, seNameTagGroupLaneId), isTrue);

@@ -153,9 +153,9 @@ class ResolvedSeNameTag {
 /// The tags visible at the TRACK's frame [shown] — the axis the rows
 /// are keyed on — in the rows' own order (first row drawn first).
 ///
-/// A row contributes nothing when its eye is off, when no SE block covers
-/// the frame, or when the covering block carries no writing at all — an
-/// empty red box would say less than nothing.
+/// A row contributes nothing when its eye or its name tag fx is off, when
+/// no SE block covers the frame, or when the covering block carries no
+/// writing at all — an empty red box would say less than nothing.
 ///
 /// ↩️It took a cut's start and a frame of the cut and added the two. Where
 /// a cut's own frames stand on the track is not this function's to know —
@@ -183,7 +183,13 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
   final tags = <ResolvedSeNameTag>[];
   for (var rowIndex = 0; rowIndex < trackSeLayers.length; rowIndex += 1) {
     final layer = trackSeLayers[rowIndex];
-    if (!layer.isVisible) {
+    // 🗣️Q5 (유저 2026-11-17, audio-fx-grows-like-the-pros): 「이름표 전체를
+    // 끈다」 — the name tag fx's switch takes the whole tag off, as any fx
+    // switched off is gone. Its switch is the row's transform switch: Q3
+    // folded the transform fx into the name tag fx, so the one fx keeps
+    // the one switch (a field of the tag's own beside it would leave the
+    // old switch a state no button reaches, freezing a pose).
+    if (!layer.isVisible || !layer.transformEnabled) {
       continue;
     }
     final covering = coveringDrawingBlockAt(layer.timeline, globalFrame);

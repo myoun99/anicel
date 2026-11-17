@@ -241,9 +241,13 @@ void main() {
     );
   });
 
-  test('🎯its fx switch bypasses its transform as a layer\'s does — the '
-      'pose and the animated opacity, never the row\'s own (F-387)', () {
-    final bypassed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+  // 🗣️audio-fx-grows-like-the-pros-Q5 (유저 2026-11-17): 「이름표 전체를
+  // 끈다」. ↩️It bypassed the tag's pose and its animated opacity alone,
+  // the tag still drawn (F-387), till the transform fx was folded into the
+  // name tag fx (-Q3) and its switch with it.
+  test('🎯its name tag fx switched off draws no tag at all; on, the tag '
+      'stands where its pose puts it', () {
+    final off = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
       opacity: 0.8,
       transformEnabled: false,
       transformTrack: TransformTrack.empty().copyWith(
@@ -254,11 +258,8 @@ void main() {
         opacity: PropertyTrack<double>().withKey(0, 0.5),
       ),
     );
-    final tag = resolve([bypassed]).single;
-
-    expect(tag.inShot, const LayerPlacement.identity());
-    expect(tag.opacity, closeTo(0.8, 1e-9));
-    final on = resolve([bypassed.copyWith(transformEnabled: true)]).single;
+    expect(resolve([off]), isEmpty);
+    final on = resolve([off.copyWith(transformEnabled: true)]).single;
     expect(inTheShot(on), CanvasPoint(x: 400, y: 900), reason: 'on, it is');
     expect(on.opacity, closeTo(0.4, 1e-9));
   });

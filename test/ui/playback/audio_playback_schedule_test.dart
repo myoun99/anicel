@@ -114,4 +114,41 @@ void main() {
       (frame: 8, gain: 1.0),
     ], reason: 'the keys stay the keys');
   });
+
+  // 🗣️audio-fx-grows-like-the-pros-Q6 (유저 2026-11-17): 「音量 키 · パン 을
+  // 건너뛴다」.
+  test('🎯a sound switched off plays its Total alone — its keys and its pan '
+      'passed by, kept for when it is on', () {
+    final span = SeAudioSpan(
+      clip: AudioClip(
+        filePath: 'a.wav',
+        frameId: const FrameId('f'),
+        gain: 1.5,
+      ),
+      clipIndex: 0,
+      startFrame: 2,
+      lengthFrames: 8,
+    );
+    final sound = SeSound(
+      pan: -0.5,
+      totalVolume: 0.5,
+      volume: PropertyTrack<double>(
+        keys: {2: const PropertyKey(0.0), 6: const PropertyKey(1.0)},
+      ),
+    );
+    ScheduledAudioClip scheduled(SeSound sound) => ScheduledAudioClip.ofSpan(
+      span,
+      startFrame: 2,
+      endFrameExclusive: 10,
+      clippedLead: 0,
+      sound: sound,
+    );
+    final off = scheduled(sound.copyWith(enabled: false));
+    expect(off.gain, 0.75, reason: 'the Total still answers');
+    expect(off.pan, 0.0);
+    expect(off.volume, isEmpty);
+    final on = scheduled(sound);
+    expect(on.pan, -0.5);
+    expect(on.volume, isNotEmpty);
+  });
 }

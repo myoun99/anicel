@@ -135,7 +135,11 @@ List<PropertyLaneRow> seSoundPropertyLanes(
       showsKeyNavigator: false,
       isGroupHeader: true,
       groupExpanded: expanded,
-      // NO bypass switch: the row's speaker already mutes it.
+      // Its fx switch, as every fx group's ([SeSound.enabled]).
+      // ↩️It wore none — 「the row's speaker already mutes it」 — until
+      // audio-fx-grows-like-the-pros-Q4's note (「뭐든 fx라면 있어야」) and
+      // -Q6: off is the keys and the pan passed by, not a second mute.
+      groupEnabled: sound.enabled,
       headsAGraph: true,
     ),
     if (expanded) ...[

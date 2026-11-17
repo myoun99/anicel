@@ -58,7 +58,9 @@ class ScheduledAudioClip {
   /// re-consults the layer: a keyed volume becomes the entry's [volume]
   /// line, read off the row at the frames the entry sounds — [clippedLead]
   /// frames into the span — and its total multiplies into the [gain]; its
-  /// equalizers come as [equalizer], over the whole span.
+  /// equalizers come as [equalizer], over the whole span. As it is HEARD
+  /// ([SeSound.heard]): its group switched off, its keys and its pan are
+  /// not.
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
@@ -67,17 +69,18 @@ class ScheduledAudioClip {
     required SeSound sound,
     ScheduledEqualizer? equalizer,
   }) {
+    final heard = sound.heard;
     final first = span.startFrame + clippedLead;
     return ScheduledAudioClip(
       filePath: span.clip.filePath,
       startFrame: startFrame,
       endFrameExclusive: endFrameExclusive,
       offsetFrames: clippedLead + span.clip.offsetFrames,
-      gain: span.clip.gain * sound.totalVolume,
-      pan: sound.pan,
-      volume: sound.isKeyed
+      gain: span.clip.gain * heard.totalVolume,
+      pan: heard.pan,
+      volume: heard.isKeyed
           ? _volumeLine(
-              sound,
+              heard,
               from: first,
               frames: endFrameExclusive - startFrame,
             )
