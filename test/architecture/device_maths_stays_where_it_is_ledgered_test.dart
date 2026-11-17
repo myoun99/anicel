@@ -124,12 +124,6 @@ const _callsTheDevices = <String, (int, String)>{
   'lib/src/ui/color/color_wheel_panel.dart': (5, _aHand),
   'lib/src/ui/editor_canvas_area.dart': (1, _aHand),
   'lib/src/ui/panels/panel_flash.dart': (1, _theScreen),
-  'lib/src/ui/playback/voice_take_processing.dart': (
-    1,
-    'NOT YET ALIKE — a microphone\'s gain from its decibels, by the '
-        'device\'s pow: a take may part two devices in a last bit (on that '
-        'board card\'s list)',
-  ),
   'lib/src/ui/session/editor_voice_recording.dart': (
     2,
     'a cue beep played out of the speaker — never mixed, recorded or '

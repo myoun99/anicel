@@ -24,6 +24,10 @@ void main() {
     expect(out.samples[1], closeTo(-0.4988, 0.001));
   });
 
+  test('REC1-D: 0 dB is exactly one — a raw take keeps every bit', () {
+    expect(micGainFactor(0), 1.0);
+  });
+
   test('REC1-D: gain past the ceiling clamps and flags the clip', () {
     final out = processVoiceTake(
       samples: Float32List.fromList([0.5]),
