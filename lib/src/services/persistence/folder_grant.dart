@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
 import '../../core/path_names.dart';
+import '../../core/progress_share.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
@@ -1119,10 +1120,20 @@ abstract final class FolderPicker {
   /// A door that can be stopped waits as long as the file takes, and one
   /// that cannot keeps [_backstop] — the rule each door wrote out beside its
   /// own call.
+  ///
+  /// [onRead] is told how much of the file is in, as its 0–1 — before the
+  /// first piece and after every one: the reading stretch of the window's
+  /// bar.
+  /// 🗣️THE PERCENT FOLLOWS THE BYTES (F-608-Q2, 유저 2026-11-17: 「그냥
+  /// 통일적으로 심플하게 퍼센테이지만 근본적으로 늘면됨 … 내려받는중에
+  /// 퍼센테이지가 조금이라도 안느는게 문제」). ↩️Till then a door's bar
+  /// moved only as its cels were baked, so it stood still for as long as the
+  /// file took to come down.
   static Future<({String path, bool staged, Uint8List bytes})> readOpenedFile(
     String path, {
     WaitReport? onWaiting,
     bool Function()? isCancelled,
+    void Function(double fraction)? onRead,
   }) async {
     final wait = _Wait(
       within: isCancelled == null ? _backstop : null,
@@ -1141,7 +1152,12 @@ abstract final class FolderPicker {
         }
         return (debugReadPiece ?? _readPiece)(file, into, from, to);
       },
-      arrived: wait.arrived,
+      read: (done, length) {
+        if (done > 0) {
+          wait.arrived();
+        }
+        onRead?.call(doneShare(done, length));
+      },
     ).whenComplete(file.close);
     try {
       if (!await wait.outlast(reading)) {
@@ -1159,13 +1175,15 @@ abstract final class FolderPicker {
   /// arrival.
   static const int _piece = 4 << 20;
 
-  /// [length] bytes, [_piece] at a time, each piece an arrival.
+  /// [length] bytes, [_piece] at a time — [read] told how many are in
+  /// before the first piece and after each one.
   static Future<Uint8List> _readInPieces({
     required Future<int> Function() length,
     required Future<int> Function(Uint8List into, int from, int to) readInto,
-    required void Function() arrived,
+    required void Function(int done, int length) read,
   }) async {
     final bytes = Uint8List(await length());
+    read(0, bytes.length);
     var at = 0;
     while (at < bytes.length) {
       final to = at + _piece < bytes.length ? at + _piece : bytes.length;
@@ -1174,7 +1192,7 @@ abstract final class FolderPicker {
         throw const FileSystemException('파일이 제 길이보다 먼저 끝났습니다');
       }
       at += got;
-      arrived();
+      read(at, bytes.length);
     }
     return bytes;
   }

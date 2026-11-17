@@ -5,6 +5,7 @@ import 'package:flutter/material.dart'
     show Builder, MaterialApp, Scaffold, Text, TextButton, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId;
 import 'package:anicel/src/models/canvas_point.dart';
@@ -477,7 +478,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('app-progress-cancel')));
     await pumpPastTheWaitWindow(tester);
 
-    expect(told, [0.25], reason: 'one picture of four, then the stop');
+    // The bar's first half is the file read; its second the bake
+    // (F-608-Q2).
+    expect(
+      [
+        for (final fraction in told)
+          if (fraction > 0.5) fraction,
+      ],
+      [0.5 + 0.25 / 2],
+      reason: 'one picture of four, then the stop',
+    );
+    expect(told, contains(0.5), reason: 'the database read whole');
     expect(
       projects.sessions,
       hasLength(1),
@@ -493,6 +504,25 @@ void main() {
       isNull,
       reason: 'a stop is not a kill',
     );
+  });
+
+  /// F-608-Q2 (유저 2026-11-17: 「내려받는중에 퍼센테이지가 조금이라도
+  /// 안느는게 문제」).
+  test('the read crosses on the road production takes — a worker of its '
+      'own — and the bar hears its database come in', () async {
+    debugWorkersRunHere = false;
+    addTearDown(() => debugWorkersRunHere = true);
+    final told = <double>[];
+
+    final read = await readClipProject(
+      clipPath: writeClip(),
+      isCancelled: () => false,
+      onRead: told.add,
+    );
+
+    expect(read, isNotNull);
+    expect(told, isNotEmpty);
+    expect(told.first, 0);
   });
 
   test('a picture lands where it stands on the canvas', () async {

@@ -411,10 +411,14 @@ class TvppProjectRead {
 
 /// Reads the TVPaint project at [tvppPath] and converts it into the project
 /// it opens as — or null when it is not readable as one ([TvppProjectRead]).
+///
+/// [onRead] is told how much of the file is in as it is read
+/// ([FolderPicker.readOpenedFile]).
 Future<TvppProjectRead?> readTvppProject({
   required String tvppPath,
   WaitReport? onWaiting,
   bool Function()? isCancelled,
+  void Function(double fraction)? onRead,
 }) async {
   // A read failure THROWS (FileSystemException, out of the
   // materializer) and only a parse failure answers null — the door
@@ -426,6 +430,7 @@ Future<TvppProjectRead?> readTvppProject({
     tvppPath,
     onWaiting: onWaiting,
     isCancelled: isCancelled,
+    onRead: onRead,
   );
   if (parsed == null) {
     return null;
@@ -534,10 +539,12 @@ _readTvppStructure(
   String tvppPath, {
   WaitReport? onWaiting,
   bool Function()? isCancelled,
+  void Function(double fraction)? onRead,
 }) async {
   final read = await FolderPicker.readOpenedFile(
     tvppPath,
     onWaiting: onWaiting,
+    onRead: onRead,
     isCancelled: isCancelled,
   );
   final source = (path: read.path, staged: read.staged);

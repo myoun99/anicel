@@ -1416,6 +1416,30 @@ void main() {
     ));
   });
 
+  /// F-608-Q2 (유저 2026-11-17): 「내려받는중에 퍼센테이지가 조금이라도
+  /// 안느는게 문제」.
+  test('🎯a place is read a piece at a time, and says how much of it is in '
+      'before the first piece and after every one', () {
+    final path = '${folder.path}/big.bin';
+    const length = 9 << 20;
+    File(path).writeAsBytesSync(
+      Uint8List(length + 3)..[length + 2] = 7,
+    );
+    final told = <double>[];
+    final file = File(path).openSync();
+    addTearDown(file.closeSync);
+
+    final bytes = readClipPlace(
+      file,
+      (offset: 3, length: length),
+      onRead: told.add,
+    );
+
+    expect(bytes.length, length);
+    expect(bytes.last, 7, reason: 'the place\'s own last byte');
+    expect(told, [0, (4 << 20) / length, (8 << 20) / length, 1]);
+  });
+
   test('a file whose database holds no canvas is refused', () {
     final database = databaseBytes(
       (db) => db.execute('CREATE TABLE Unrelated(a INTEGER)'),

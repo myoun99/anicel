@@ -102,6 +102,36 @@ void main() {
     expect(asked, 2, reason: 'the first piece, and the one that was held');
   });
 
+  /// F-608-Q2 (유저 2026-11-17): 「내려받는중에 퍼센테이지가 조금이라도
+  /// 안느는게 문제」.
+  test('🎯the read says how much of the file is in — before the first piece '
+      'and after every one, so the window\'s percent moves while the file '
+      'comes down', () async {
+    final path = file('drive.tvpp', const [1, 2, 3, 4, 5, 6]);
+    final told = <double>[];
+    final held = Completer<void>();
+    final third = Completer<void>();
+    FolderPicker.debugReadPiece = (file, into, from, to) async {
+      if (from == 2) {
+        third.complete();
+        await held.future;
+      }
+      return oneByte(file, into, from);
+    };
+
+    final reading = FolderPicker.readOpenedFile(
+      path,
+      onRead: told.add,
+      isCancelled: () => false,
+    );
+    await third.future;
+    expect(told, [0, 1 / 6, 2 / 6], reason: 'two pieces in, the third held');
+    held.complete();
+    await reading;
+
+    expect(told, [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1]);
+  });
+
   test('a file that ends before its length is a read error, never short '
       'bytes', () async {
     final path = file('cut-short.tvpp', const [1, 2, 3]);

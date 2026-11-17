@@ -3,6 +3,7 @@ import 'dart:io' show FileSystemException;
 import 'package:flutter/material.dart';
 
 import '../../core/path_names.dart' show fileNameOfPath;
+import '../../core/progress_share.dart' show runShare;
 import '../../models/import/import_warning.dart';
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -56,7 +57,7 @@ ProjectPick? projectPickOf(FolderGrant grant) {
   return (path: path, folderBookmark: grant.bookmark, placed: false);
 }
 
-/// How far a bake has come, 0 … 1.
+/// How far a read or a bake has come, 0 … 1.
 typedef _Progress = void Function(double fraction);
 
 /// What a converting door hands back: the project the file becomes, and
@@ -80,7 +81,12 @@ final class _Conversion {
     required this.noticeKey,
   });
 
-  final Future<_Converted?> Function(String path, CloudWait wait) read;
+  final Future<_Converted?> Function(
+    String path,
+    CloudWait wait,
+    _Progress onRead,
+  )
+  read;
   final String Function() notOne;
   final String noticeKey;
 }
@@ -89,11 +95,12 @@ final class _Conversion {
 /// them for the window and the drop).
 final _conversions = <String, _Conversion>{
   'tvpp': _Conversion(
-    read: (path, wait) async {
+    read: (path, wait, onRead) async {
       final read = await readTvppProject(
         tvppPath: path,
         onWaiting: wait.report,
         isCancelled: wait.isCancelled,
+        onRead: onRead,
       );
       if (read == null) {
         return null;
@@ -112,11 +119,12 @@ final _conversions = <String, _Conversion>{
     noticeKey: 'tvpp-import-warnings-notice',
   ),
   'clip': _Conversion(
-    read: (path, wait) async {
+    read: (path, wait, onRead) async {
       final read = await readClipProject(
         clipPath: path,
         onWaiting: wait.report,
         isCancelled: wait.isCancelled,
+        onRead: onRead,
       );
       if (read == null) {
         return null;
@@ -186,7 +194,7 @@ final class ProjectOpenDoor {
     try {
       opened = await _openBehindWindow<
         ({EditorSessionManager session, bool staged})
-      >(context, (wait, _) => _readProject(path, wait));
+      >(context, (wait, report) => _readProject(path, wait, report));
     } on Object catch (error) {
       // The archive's own complaint — a file that would not parse.
       if (context.mounted) {
@@ -222,14 +230,18 @@ final class ProjectOpenDoor {
   Future<({EditorSessionManager session, bool staged})> _readProject(
     String path,
     CloudWait wait,
+    void Function(double) report,
   ) async {
+    report(0);
     final source = await FolderPicker.materializeOpenedFile(
       path,
       within: null,
       onWaiting: wait.report,
       isCancelled: wait.isCancelled,
     );
-    // The bytes are here; the read that follows is the app's own.
+    // The materializer is done with the file. A drive that says nothing of
+    // a file the cloud still holds (F-608 ①) brings it down inside the read
+    // that follows — so the bar is that read's bytes (F-608-Q2).
     wait.ended();
     final read = await readProjectFile(
       source.path,
@@ -237,6 +249,7 @@ final class ProjectOpenDoor {
       // and a session reading its own file has nowhere else.
       bindTo: source.staged ? path : null,
       isCancelled: wait.isCancelled,
+      onRead: report,
     );
     final session = projects.prepare(read.project);
     try {
@@ -380,6 +393,10 @@ final class ProjectOpenDoor {
   /// The file read as [conversion] reads it, and the session born for the
   /// project it became with every picture baked into it — not in a tab
   /// yet, the .anicel open's reason. Null when the file is not one.
+  ///
+  /// Its bar is two even stretches ([runShare]): the file read — by its
+  /// bytes, so it moves while the file comes down (F-608-Q2) — and then
+  /// its pictures baked.
   Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
   _convert(
     String path,
@@ -387,7 +404,12 @@ final class ProjectOpenDoor {
     CloudWait wait,
     void Function(double) report,
   ) async {
-    final read = await conversion.read(path, wait);
+    report(0);
+    final read = await conversion.read(
+      path,
+      wait,
+      (fraction) => report(runShare(fraction, from: 0, to: 0.5)),
+    );
     if (read == null) {
       return null;
     }
@@ -396,7 +418,7 @@ final class ProjectOpenDoor {
       final warnings = await read.bake(session, (fraction) {
         // Baking has started, so the waiting line has nothing left to say.
         wait.ended();
-        report(fraction);
+        report(runShare(fraction, from: 0.5, to: 1));
       });
       return (session: session, warnings: warnings);
     } on Object {

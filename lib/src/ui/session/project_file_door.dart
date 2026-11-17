@@ -1304,12 +1304,19 @@ class ProjectFileRead {
 ///
 /// [bindTo] is where saves go when [filePath] is not the project's own
 /// address ([ProjectFileDoor.settle]).
+///
+/// [onRead] is told how much of what the open reads is in
+/// ([AnicelFileService.open]): the window's bar, while the file comes down.
 Future<ProjectFileRead> readProjectFile(
   String filePath, {
   String? bindTo,
   bool Function()? isCancelled,
+  void Function(double fraction)? onRead,
 }) async {
-  final result = await const AnicelFileService().open(filePath: filePath);
+  final result = await const AnicelFileService().open(
+    filePath: filePath,
+    onRead: onRead,
+  );
   // The read is the wait, and nothing has been made of it yet: a press on
   // the wait window's Cancel during it is honoured HERE, before a bookmark
   // is handed back to the OS — past this line the project is resolved and

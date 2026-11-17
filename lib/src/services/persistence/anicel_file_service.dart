@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
@@ -1713,6 +1714,10 @@ class AnicelFileService {
     );
   }
 
+  /// How much of a cel's entry an open reads first for its head — more
+  /// only where the head says it is longer.
+  static const int _celHeadRead = 4096;
+
   /// Opens [filePath].
   ///
   /// 🪦It took a recovery `overlayPath` to lay over the base until
@@ -1720,13 +1725,17 @@ class AnicelFileService {
   /// merged in here so the caller never had to know which file a cel came
   /// from. The autosave tick saves the project file itself now, so there is
   /// no delta to merge and no stamp to refuse.
+  ///
+  /// [onRead] is told how much of what it reads is in — the project's
+  /// entry, then each cel's head — as its 0–1, on this isolate.
   Future<AnicelOpenResult> open({
     required String filePath,
+    void Function(double fraction)? onRead,
   }) async {
     // Everything off the UI isolate; only the project + small refs come
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
-    final (:document, :cels) = await Isolate.run(() {
+    final (:document, :cels) = await onAWorkerReporting(onRead, (report) {
       // A save that died partway opens as the last one that finished (plus,
       // if it died committing, what it had fully written). The file stays
       // torn on disk until the next save — which the service forces down
@@ -1737,6 +1746,18 @@ class AnicelFileService {
       if (projectEntry == null) {
         throw const FormatException('Not an Anicel project (.anicel).');
       }
+      final celEntries = [
+        for (final entry in layout.entries)
+          if (entry.name.endsWith('.celz')) entry,
+      ];
+      // What this read reads of the file — the project's entry and each
+      // cel's head — counted for the window's bar (F-608-Q2).
+      final budget = celEntries.fold(
+        projectEntry.length,
+        (sum, entry) => sum + math.min(entry.length, _celHeadRead),
+      );
+      var done = 0;
+      report(doneShare(done, budget));
       final raf = File(filePath).openSync();
       try {
         raf.setPositionSync(projectEntry.dataOffset);
@@ -1751,14 +1772,13 @@ class AnicelFileService {
             raf.readSync(projectEntry.length),
           ),
         );
+        done += projectEntry.length;
+        report(doneShare(done, budget));
         final cels = <BrushFrameKey, AnicelCelFileRef>{};
-        for (final entry in layout.entries) {
-          if (!entry.name.endsWith('.celz')) {
-            continue;
-          }
+        for (final entry in celEntries) {
           raf.setPositionSync(entry.dataOffset);
           var headerBytes = raf.readSync(
-            entry.length < 4096 ? entry.length : 4096,
+            math.min(entry.length, _celHeadRead),
           );
           // A cel's photo index can outgrow the first read (I-97) — many
           // photos, or long paths — and its head says how long it is.
@@ -1777,6 +1797,8 @@ class AnicelFileService {
             photoPaths: header.photoPaths,
             showsSomething: header.showsSomething,
           );
+          done += math.min(entry.length, _celHeadRead);
+          report(doneShare(done, budget));
         }
         return (document: document, cels: cels);
       } finally {

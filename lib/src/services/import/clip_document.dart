@@ -349,13 +349,17 @@ final class ClipDocument {
 
 /// [path]'s structure: its embedded database, read as every SQLite file
 /// the app reads from bytes is ([readSqliteBytes]) — its copy made in
-/// [scratch].
-ClipDocument readClipDocument(String path, {required Directory scratch}) {
+/// [scratch], [onRead] told how much of it is in ([readClipPlace]).
+ClipDocument readClipDocument(
+  String path, {
+  required Directory scratch,
+  void Function(double fraction)? onRead,
+}) {
   final file = File(path).openSync();
   try {
     final container = ClipContainer.indexOf(file);
     return readSqliteBytes(
-      readClipPlace(file, container.database),
+      readClipPlace(file, container.database, onRead: onRead),
       (database) => _DocumentReader(database, file, container).read(),
       within: scratch,
     );

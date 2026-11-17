@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/on_a_worker.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
@@ -96,10 +97,14 @@ final class ClipProjectRead {
 /// The embedded database is read on a worker (a large file's is tens of
 /// megabytes); its copy waits in this run's room, not the system's temp,
 /// and goes the moment it is read.
+///
+/// [onRead] is told how much of the database is in as it is read
+/// ([readClipPlace]): the window's bar, while the file comes down.
 Future<ClipProjectRead?> readClipProject({
   required String clipPath,
   WaitReport? onWaiting,
   bool Function()? isCancelled,
+  void Function(double fraction)? onRead,
 }) async {
   final source = await FolderPicker.materializeOpenedFile(
     clipPath,
@@ -109,7 +114,7 @@ Future<ClipProjectRead?> readClipProject({
   );
   final scratch = Directory(SessionScratch.volatileFolder())
     ..createSync(recursive: true);
-  final document = await _readStructure(source.path, scratch.path);
+  final document = await _readStructure(source.path, scratch.path, onRead);
   if (document == null) {
     if (source.staged) {
       unawaited(
@@ -211,19 +216,27 @@ Future<Map<String, String>> _takeSoundsOut(
 }
 
 /// The structure of the file at [path], read on a worker of its own — or
-/// null when it is not a CLIP STUDIO file.
+/// null when it is not a CLIP STUDIO file — [onRead] told how much of its
+/// database is in, on this isolate ([onAWorkerReporting]).
 ///
 /// ⛔ITS OWN FUNCTION, so the worker carries the two paths and nothing
 /// else: `Isolate.run` copies the closure's whole context chain (the .tvpp
 /// door's measured lesson).
-Future<ClipDocument?> _readStructure(String path, String scratch) =>
-    Isolate.run(() {
-      try {
-        return readClipDocument(path, scratch: Directory(scratch));
-      } on ClipFormatException {
-        return null;
-      }
-    });
+Future<ClipDocument?> _readStructure(
+  String path,
+  String scratch,
+  void Function(double fraction)? onRead,
+) => onAWorkerReporting(onRead, (report) {
+  try {
+    return readClipDocument(
+      path,
+      scratch: Directory(scratch),
+      onRead: report,
+    );
+  } on ClipFormatException {
+    return null;
+  }
+});
 
 /// The project [plan] makes of [document]: its timelines' cuts on one
 /// track — each with the camera the plan gave it — its rate, and its
