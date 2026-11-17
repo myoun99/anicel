@@ -199,9 +199,10 @@ void main() {
             startAlong(axis, tile.onto) +
             (pixel - startAlong(axis, tile.from)) / scale;
         final picture = tile.picture.picture;
-        final pixelsAcross = axis == Axis.horizontal
-            ? picture.height
-            : picture.width;
+        final pixelsAcross = extentAcross(
+          axis,
+          Size(picture.width.toDouble(), picture.height.toDouble()),
+        );
 
         var fractional = 0;
         for (final grip in grips) {

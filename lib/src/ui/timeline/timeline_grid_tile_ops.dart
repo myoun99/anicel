@@ -206,8 +206,9 @@ class TimelineGridTileOpWriter {
   }
 
   /// A grip in [box] (PIXELS, converted to q8 here), its right angle in the
-  /// corner [cornerMask] names, cut by the paper's [corner] and its round
-  /// end [bleed] wider ([TimelineGridTileOp.grip]).
+  /// corner [cornerMask] names, cut by the paper's corner and its round end
+  /// the bleed wider ([round], as `blockEdgeGripPath` takes it;
+  /// [TimelineGridTileOp.grip]).
   ///
   /// ⛔A GRIP THE GPU ENGINE'S GRID PASS REFUSES IS REFUSED HERE, as
   /// [rrectFill]'s corner is: a side of 8192 pixels or more, a corner below
@@ -215,13 +216,13 @@ class TimelineGridTileOpWriter {
   /// Throws [ArgumentError].
   void grip(
     Rect box, {
-    required double corner,
-    required double bleed,
+    required ({double paperCorner, double bleed}) round,
     required int cornerMask,
     required int rgba,
   }) {
+    final (:paperCorner, :bleed) = round;
     final (w, h) = (timelineGridQ8(box.width), timelineGridQ8(box.height));
-    final r = timelineGridQ8(corner);
+    final r = timelineGridQ8(paperCorner);
     final b = timelineGridQ8(bleed);
     if (2 * w >= _mostGripSideQ9 ||
         2 * h >= _mostGripSideQ9 ||
@@ -230,10 +231,10 @@ class TimelineGridTileOpWriter {
         b < 0 ||
         !const {1, 2, 4, 8}.contains(cornerMask)) {
       throw ArgumentError(
-        'a grip $box with a corner of $corner px, a bleed of $bleed px, in '
-        'corner $cornerMask: the grid takes none of 8192 px or more across, '
-        'no corner below square or past 64 px, no bleed below none, one '
-        'corner',
+        'a grip $box with a corner of $paperCorner px, a bleed of $bleed '
+        'px, in corner $cornerMask: the grid takes none of 8192 px or more '
+        'across, no corner below square or past 64 px, no bleed below none, '
+        'one corner',
       );
     }
     _words

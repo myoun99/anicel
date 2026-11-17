@@ -1467,8 +1467,7 @@ class TimelineGridTileStore {
           local.right * dpr,
           local.bottom * dpr,
         ),
-        corner: grip.paperCorner * dpr,
-        bleed: 1,
+        round: (paperCorner: grip.paperCorner * dpr, bleed: 1),
         cornerMask: 1 << ((right ? 1 : 0) + (bottom ? 2 : 0)),
         rgba: timelineGridPackRgba(grip.color),
       );
