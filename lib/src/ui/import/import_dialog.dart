@@ -728,15 +728,17 @@ class _ImportDialogState extends State<ImportDialog> {
   /// pool holds [path] ([MediaPreset]) — a placement copies its file's
   /// preset as it is made, and the row is where the window asks what the
   /// placement is.
-  ImportFileSettings _seedFor(String path) => switch (_poolEntryFor(path)) {
-    MediaAsset(:final preset) => _seed.copyWith(
-      inFrame: preset.inFrame,
-      outFrame: preset.outFrame,
-      fit: preset.fit,
-      pictureKind: preset.pictureKind,
-    ),
-    null => _seed,
-  };
+  ImportFileSettings _seedFor(String path) {
+    final preset = _poolEntryFor(path)?.preset;
+    return preset == null
+        ? _seed
+        : _seed.copyWith(
+            inFrame: preset.inFrame,
+            outFrame: preset.outFrame,
+            fit: preset.fit,
+            pictureKind: preset.pictureKind,
+          );
+  }
 
   /// The file names of each folder a picked picture lives in, read ONCE.
   final Map<String, List<String>?> _folderNames = {};
@@ -3561,6 +3563,13 @@ class _ImportDialogState extends State<ImportDialog> {
     if (_placing(path) && _runOf(path) != null) {
       return _OptionAsked.run;
     }
+    // A row its folder names a run for asks the run's question once its
+    // pictures are measured ([_runOf]) — the dash till then, never the kind
+    // of one picture it may turn out not to be: a question that changed
+    // under the person as the sizes came in would be answered for nothing.
+    if (_runPending(path)) {
+      return null;
+    }
     if (_placing(path) && importPathIsPsd(path)) {
       return _OptionAsked.psd;
     }
@@ -3569,6 +3578,13 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     return _asksPictureKind(path) ? _OptionAsked.kind : null;
   }
+
+  /// Whether [path]'s row is placed and its folder names a run for it whose
+  /// pictures are not all measured yet ([_runOf]).
+  bool _runPending(String path) =>
+      _placing(path) &&
+      _namedRunOf(path) != null &&
+      !_measuredRuns.containsKey(normalizedMediaPath(path));
 
   /// Whether [path]'s row is asked what kind of layer its pictures come in
   /// as: a placed picture — a picture file's or a PDF's — that lands as a

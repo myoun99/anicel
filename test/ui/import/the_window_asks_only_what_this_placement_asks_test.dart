@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/path_names.dart' show fileNameOfPath;
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -137,7 +140,9 @@ void main() {
 
   testWidgets('a NEW file placed on the timeline is asked how it is kept, '
       'whether it is baked, where it goes, how it fits and its kind\'s own '
-      'question — a dash, for a plain picture', (tester) async {
+      'question — for a plain picture, the kind of layer it comes in as', (
+    tester,
+  ) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     await open(tester, session(), [png!]);
 
@@ -146,9 +151,11 @@ void main() {
     }
     expect(
       cellWord(tester, 'option', png),
-      '—',
-      reason: 'a plain picture is asked no kind\'s own question — the PSD '
-          'column that stood for one kind is a cell of the 옵션 column now',
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'a plain picture is asked the kind of layer it comes in as, an '
+          'image first (asset-placement-presets Q4, 유저 2026-11-17: 「기본 '
+          '그림한장은 이미지」) — the PSD column that stood for one kind is a '
+          'cell of the 옵션 column too',
     );
     expect(
       cellWord(tester, 'bake', png),

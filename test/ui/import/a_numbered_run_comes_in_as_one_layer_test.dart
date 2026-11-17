@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -26,6 +27,8 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
@@ -126,7 +129,7 @@ void main() {
   }
 
   testWidgets('the row says the run it would bring, and a picture alone in '
-      'its symbol says nothing', (tester) async {
+      'its symbol is asked the kind of one picture', (tester) async {
     final files = await writeFolder(tester);
     await open(
       tester,
@@ -138,7 +141,12 @@ void main() {
       cellText(tester, 'option', files['A1']!),
       AppText.strings.imRunSpan('A1', 'A3', 3),
     );
-    expect(cellText(tester, 'option', files['B1']!), '—');
+    expect(
+      cellText(tester, 'option', files['B1']!),
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'a picture alone in its symbol is one picture, asked the kind '
+          'of layer it comes in as (asset-placement-presets Q4)',
+    );
   });
 
   testWidgets('numbers alone run too: `1` · `2` come in as one layer named by '
@@ -192,7 +200,11 @@ void main() {
       cellText(tester, 'option', files['A5']!),
       AppText.strings.imRunSpan('A4', 'A5', 2),
     );
-    expect(cellText(tester, 'option', files['A3']!), '—');
+    expect(
+      cellText(tester, 'option', files['A3']!),
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'cut off by its size, it is one picture — asked its kind',
+    );
 
     final added = await place(tester, s);
 
