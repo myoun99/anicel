@@ -366,10 +366,22 @@ void main() {
       containsAll(<int>[0, 24]),
       reason: 'the keys of both, on their frames',
     );
+    // ↩️This pinned MORE keys than the two: a way drawn straight between
+    // keys could carry the arc the row's turn swings the picture's middle
+    // along only by keying it on. A way bends along a path now
+    // (tvp-camera-paths, 2026-11-17), so the two keys carry it, every frame
+    // well inside the pixel the user allows (🗣️10-13 「1px 까지 허용」 — the
+    // stray below): a key more stands only where a way would stray by more.
     expect(
-      track.position.keys.length,
-      greaterThan(2),
-      reason: 'the row\'s turn swings the picture\'s middle along an arc',
+      track.position.keys.keys,
+      [0, 24],
+      reason: 'no frame strays by a pixel, so no key more',
+    );
+    expect(
+      [for (final key in track.position.keys.values) key.path.curved],
+      contains(isTrue),
+      reason: 'the row\'s turn swings the picture\'s middle along an arc, '
+          'and the way between the two keys bends along it',
     );
     expect(valuesOf(track.rotation), {0: 0.0, 24: 90.0});
     expect(
