@@ -34,8 +34,10 @@
 - **Layer rows** — make a folder with several layers picked and they go into it. Detach acts on every picked layer. A new attach layer lands just above or below the row you stand on, and the attach fold button is split into an upper and a lower half. A folded folder pastes folded.
 - **Legend** — a color label solo picks by label alone, whatever the take. The conte legend's timeline button reads at the same size as a row's name.
 - **SE** — an SE name tag on the canvas holds its name and type in one box. An SE block's name and line are single lines, and Enter closes the window with "OK". The timesheet no longer shades the empty rows of the SE column.
-- **Sound rows** — the blend cell holds a speaker button and a total volume bar (up to 200). A sound row's opacity shows on the canvas while you drag it. The total volume is this bar alone: the "Total volume" lane in the audio fx group is gone.
+- **Sound rows** — the blend cell holds a speaker button and a total volume bar (up to 200). A sound row's opacity shows on the canvas while you drag it. The total volume is this bar alone: the "Total volume" lane in the Audio group is gone.
 - **Typing a bar's value** — double-click a row's opacity bar or a sound row's total volume bar and a number pad opens under it to type the value. The conte, the timeline and the X-sheet all work alike.
+- **Pan keys** — the Pan in a sound row's Audio group takes keys as the Volume does, and playback and export move the sound left and right along them.
+- **Name Tag group** — a sound row's Transform group now sits inside its Name Tag group. Switching the Name Tag off hides the row's name tag on screen, in playback and in export alike; switching the Audio group off skips the volume keys and the pan and plays the total volume alone.
 - **The timeline during playback** — buttons such as the frame pill no longer change while playing. Hover the red line of a block that crosses a cut's edge and a tooltip tells why.
 - **Keyboard shortcuts window** — the window is larger, and under "Canvas › Tools" each tool is followed by its sub-tools. The scrollbar no longer overlaps the reset buttons. In the TVPaint preset, Alt-drag moves the view and Ctrl+Alt-drag turns it.
 - **Brush pill on background panels** — with the main viewer or a sheet laid as the background, the same brush pill as the canvas's stands in the same place.
