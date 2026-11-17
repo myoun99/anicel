@@ -2,7 +2,7 @@
 //! export makes, and what is laid over it, checked against what the law
 //! gives by hand — never against a CPU copy of it (`kernels/mod.rs`).
 
-use super::shown_tests::shown;
+use super::shown_tests::{shown, shown_on};
 use super::tests::rig;
 use super::{Cover, Frame, Lay, Opaque, Picture, Shown, Source};
 use crate::device::Engine;
@@ -302,8 +302,9 @@ fn on_a_small_binding(engine: &Engine, lay: &Lay) -> Shown {
 }
 
 // A picture of 400 x 150 laid at (-30, 25) under a whole cover — its rows
-// wider than the frame's, so they bound the band — is laid where it lies,
-// and the device refuses no binding.
+// wider than the frame's, so they bound the band — and a surface's copy of
+// 330 x 60 laid at (0, -35) are laid where they lie, and the device
+// refuses no binding.
 #[test]
 fn a_frame_past_the_device_s_binding_is_made_and_laid() {
     let turn = a_device_of_its_own();
@@ -320,11 +321,19 @@ fn a_frame_past_the_device_s_binding_is_made_and_laid() {
     let cover = Cover::of(&engine, &[255; 330 * 200], SMALL.0).expect("a cover past a binding");
     let source = Source::Frame { frame: &picture, x: -30, y: 25 };
     lay.run(&engine, &frame, source, u16::MAX, Some(&cover), None).expect("laid");
+    let texel = |x: u32, y: u32| 0xff00_0000 | (y + 100) << 16 | x % 256;
+    let surface = shown_on(&engine, (330, 60), false, texel);
+    let source = Source::Frame { frame: &surface, x: 0, y: -35 };
+    lay.run(&engine, &frame, source, u16::MAX, None, None).expect("laid");
 
     engine.wait().expect("the device refused no binding");
     let expected: Vec<u32> = (0..200)
         .flat_map(|y| (0..330).map(move |x| (x, y)))
-        .map(|(x, y)| if (25..175).contains(&y) { word(x + 30, y - 25) } else { WHITE })
+        .map(|(x, y)| match y {
+            ..25 => texel(x, y + 35),
+            25..175 => word(x + 30, y - 25),
+            _ => WHITE,
+        })
         .collect();
     assert!(le_words(&read_buffer(&engine, &frame.rows)) == expected);
 }

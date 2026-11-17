@@ -5,6 +5,7 @@
 
 use super::tests::{frame, mixed, rig};
 use super::{Frame, Nv12Shape, Picture, Shown};
+use crate::device::Engine;
 use crate::testing::read_buffer;
 
 /// 37 x 21: a row of 148 bytes, which the copy starts 256 apart — a read
@@ -19,7 +20,16 @@ const PAST: u32 = 0xff12_3456;
 /// RGBA or `bgra`, holding `pixel` — a premultiplied word, red the low
 /// byte — and [`PAST`] beyond the picture; its picture copied.
 pub(super) fn shown(width: u32, height: u32, bgra: bool, pixel: impl Fn(u32, u32) -> u32) -> Shown {
-    let engine = rig().engine;
+    shown_on(rig().engine, (width, height), bgra, pixel)
+}
+
+/// [`shown`], on `engine`.
+pub(super) fn shown_on(
+    engine: &Engine,
+    (width, height): (u32, u32),
+    bgra: bool,
+    pixel: impl Fn(u32, u32) -> u32,
+) -> Shown {
     let size = wgpu::Extent3d {
         width: width + 3,
         height: height + 3,
