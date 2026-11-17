@@ -5,7 +5,7 @@
 
 use std::sync::OnceLock;
 
-use super::{MeshGrid, MeshOwners, affines};
+use super::{MeshGrid, MeshOwners, affines, cut_to_band};
 use crate::device::Engine;
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -293,4 +293,16 @@ fn every_device_gives_the_pinned_owners() {
     assert!(owners.contains(&u32::MAX) && owners.contains(&0) && owners.contains(&11));
     let bytes: Vec<u8> = owners.iter().flat_map(|owner| owner.to_le_bytes()).collect();
     assert_pinned("mesh/owners", &bytes);
+}
+
+// A box is cut to the rows of each band of the output it meets, and to
+// none where it meets none — an output from canvas row 10, a box of 20
+// rows from row 14: rows 4..24 of the output.
+#[test]
+fn a_box_is_cut_to_the_rows_of_each_band_it_meets() {
+    let reach = [3, 14, 7, 20];
+    assert_eq!(cut_to_band(reach, &(0..8), 10), Some([3, 14, 7, 4]));
+    assert_eq!(cut_to_band(reach, &(8..16), 10), Some([3, 18, 7, 8]));
+    assert_eq!(cut_to_band(reach, &(16..24), 10), Some([3, 26, 7, 8]));
+    assert_eq!(cut_to_band(reach, &(24..32), 10), None);
 }

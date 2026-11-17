@@ -164,12 +164,7 @@ impl MeshOwners {
             u64::from(band.start) * u64::from(width)..u64::from(band.end) * u64::from(width)
         };
         let bands = bands(0..height, GROUP, (room(engine), step), |band| vec![words(&band)])?;
-        // A box cut to the rows of `band` — none where it meets none.
-        let cut = |[x, y, w, h]: [i64; 4], band: &Range<u32>| {
-            let low = (y - i64::from(top)).max(i64::from(band.start));
-            let high = (y - i64::from(top) + h).min(i64::from(band.end));
-            (low < high).then_some([x, i64::from(top) + low, w, high - low])
-        };
+        let cut = |reach: [i64; 4], band: &Range<u32>| cut_to_band(reach, band, top);
         // Band by band, the output cleared, then each triangle's box in it.
         let jobs: Vec<(Option<&(&Triangle, [i64; 4])>, [i64; 4], &Range<u32>)> = bands
             .iter()
@@ -235,6 +230,21 @@ impl MeshOwners {
         encode(engine, &encoded);
         Some(owners)
     }
+}
+
+/// `reach` — left, top, width, height on the canvas — cut to the rows of
+/// `band`, counted from the output's `top` row: none where it meets none.
+///
+/// ⚠️THE CUT IS THE BOUND, and no test on a device tells it from none
+/// (mutants W18 · W19, 11-17): a pass binds only its band's rows of the
+/// owners, so a box left whole writes its other rows past the binding —
+/// which DX12 and lavapipe drop, and Metal would clamp onto the band's last
+/// word. Hence the pin on this alone (`mesh::tests`).
+fn cut_to_band(reach: [i64; 4], band: &Range<u32>, top: i32) -> Option<[i64; 4]> {
+    let [x, y, w, h] = reach;
+    let low = (y - i64::from(top)).max(i64::from(band.start));
+    let high = (y - i64::from(top) + h).min(i64::from(band.end));
+    (low < high).then_some([x, i64::from(top) + low, w, high - low])
 }
 
 /// The pixels of `output` — left, top, width, height — that may hold a
