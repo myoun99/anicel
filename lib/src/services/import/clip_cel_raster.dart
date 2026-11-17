@@ -2,13 +2,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/mask_into_alpha.dart';
+import '../../models/canvas_size.dart';
+import '../../models/dirty_region.dart';
+import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
 import 'clip_offscreen.dart';
 import 'clip_placement.dart';
-
-/// One tile of a cel's picture: its place in tiles, and its straight RGBA.
-typedef ClipCelTile = ({int x, int y, Uint8List pixels});
+import 'tile_cutter.dart' show TileCutter, laidCelOf;
 
 /// Where a layer's stored picture is and where its top-left stands.
 ///
@@ -127,12 +128,13 @@ typedef ClipCelTarget = ({
   int tileSize,
 });
 
-/// The picture [attribute] and [blocks] store, as cel tiles on [target]
-/// through [mask] — or null for a picture that is not colour: a grey or
-/// monochrome layer, which this reader does not turn into colour.
+/// The picture [attribute] and [blocks] store, through [mask] and at
+/// [target]'s alpha, laid as a cel on [target] — or null for a picture that
+/// is not colour: a grey or monochrome layer, which this reader does not
+/// turn into colour.
 ///
 /// Pure, so it runs on a worker: the byte lists are all it is given.
-List<ClipCelTile>? clipCelTiles(
+AnicelLaidCel? clipCelLaid(
   Uint8List attribute,
   Uint8List blocks,
   ClipCelTarget target, {
@@ -143,50 +145,86 @@ List<ClipCelTile>? clipCelTiles(
   if (rgba == null) {
     return null;
   }
-  return _celTilesOf(
-    (rgba: rgba, width: shape.width, height: shape.height),
-    target,
-    mask: mask,
-  );
-}
-
-/// [picture] — straight RGBA, its own to change — as cel tiles on
-/// [target], baked through [mask] when there is one: a stored picture once
-/// decoded ([clipCelTiles]).
-///
-/// What falls off the canvas is dropped, and a tile with no ink is not
-/// there at all — the shape the drawing store gives an empty tile.
-List<ClipCelTile> _celTilesOf(
-  ({Uint8List rgba, int width, int height}) picture,
-  ClipCelTarget target, {
-  ClipStoredMask? mask,
-}) {
+  final picture = (rgba: rgba, width: shape.width, height: shape.height);
   if (mask != null) {
     _bakeMask(picture, target, mask);
   }
+  return _laidOnCanvas(picture, target);
+}
+
+/// [picture] — straight RGBA, its own to change — laid on [target]'s canvas
+/// at its alpha: the canvas's part of it, cut into the cel's tiles by the
+/// cutter every picture a file holds is cut by ([TileCutter]). What falls
+/// off the canvas is not laid, and a tile with no ink is not there at all —
+/// the shape the drawing store gives an empty tile.
+///
+/// 🚨ONE CUTTER (F-608 ④, 2026-11-17). ↩️Till then it cut tiles of its own
+/// (`_celTilesOf` · `_tileOf`) — [TileCutter]'s walk written a second time:
+/// the rows of the picture's part on the canvas copied into tiles, a tile
+/// left clear dropped — into tiles of the Dart heap, which the door then
+/// copied again to bake.
+AnicelLaidCel _laidOnCanvas(
+  ({Uint8List rgba, int width, int height}) picture,
+  ClipCelTarget target,
+) {
   final size = target.tileSize;
-  // The picture's part on the canvas, in canvas pixels.
-  final on = (
-    left: math.max(0, target.left),
-    top: math.max(0, target.top),
-    right: math.min(target.canvasWidth, target.left + picture.width),
-    bottom: math.min(target.canvasHeight, target.top + picture.height),
+  final canvas = DirtyRegion.fromXYWH(
+    x: 0,
+    y: 0,
+    width: target.canvasWidth,
+    height: target.canvasHeight,
   );
-  final tiles = <ClipCelTile>[];
-  for (var ty = on.top ~/ size; ty * size < on.bottom; ty += 1) {
-    for (var tx = on.left ~/ size; tx * size < on.right; tx += 1) {
-      final pixels = _tileOf(
-        (rgba: picture.rgba, width: picture.width),
-        target,
-        (x: tx, y: ty),
-        on,
-      );
-      if (pixels != null) {
-        tiles.add((x: tx, y: ty, pixels: pixels));
+  final layout = (
+    canvas: CanvasSize(width: target.canvasWidth, height: target.canvasHeight),
+    tileSize: size,
+    tiles: canvas.tileRange(tileSize: size),
+    laid: null,
+  );
+  final on = DirtyRegion.fromXYWH(
+    x: target.left,
+    y: target.top,
+    width: picture.width,
+    height: picture.height,
+  ).intersection(canvas);
+  if (on == null) {
+    return laidCelOf(layout, []);
+  }
+  final width = on.rightExclusive - on.left;
+  final cut = (left: on.left, top: on.top, tileSize: size, tiles: layout.tiles);
+  return laidCelOf(
+    layout,
+    TileCutter.cutting(cut, width, (row) {
+      for (var y = on.top; y < on.bottomExclusive; y += 1) {
+        final from =
+            ((y - target.top) * picture.width + on.left - target.left) * 4;
+        final pixels = Uint8List.sublistView(
+          picture.rgba,
+          from,
+          from + width * 4,
+        );
+        _atAlpha(pixels, target.alpha);
+        row(y - on.top, pixels);
       }
+    }),
+  );
+}
+
+/// [pixels]' alpha at [alpha], in place — the bake that keeps a fainter cel
+/// fainter. A pixel it leaves with none is no pixel at all: clear, so a tile
+/// of only such pixels is dropped as one the picture left clear.
+void _atAlpha(Uint8List pixels, double alpha) {
+  for (var i = 0; i < pixels.length; i += 4) {
+    final a = (pixels[i + 3] * alpha).round();
+    if (a == 0) {
+      pixels
+        ..[i] = 0
+        ..[i + 1] = 0
+        ..[i + 2] = 0
+        ..[i + 3] = 0;
+    } else {
+      pixels[i + 3] = a;
     }
   }
-  return tiles;
 }
 
 /// [mask] multiplied into [picture]'s alpha where the picture stands on
@@ -288,38 +326,4 @@ ClipMaskPlane? clipMaskPlaneOver(
     width: width,
     height: height,
   );
-}
-
-/// [tile]'s pixels out of [picture] — only where [on], the picture's part
-/// on the canvas, covers it. Null when nothing there has ink.
-Uint8List? _tileOf(
-  ({Uint8List rgba, int width}) picture,
-  ClipCelTarget target,
-  ({int x, int y}) tile,
-  ({int left, int top, int right, int bottom}) on,
-) {
-  final size = target.tileSize;
-  final x0 = tile.x * size;
-  final y0 = tile.y * size;
-  final right = math.min(on.right, x0 + size);
-  final bottom = math.min(on.bottom, y0 + size);
-  final pixels = Uint8List(size * size * 4);
-  var inked = false;
-  for (var y = math.max(on.top, y0); y < bottom; y += 1) {
-    for (var x = math.max(on.left, x0); x < right; x += 1) {
-      final from = ((y - target.top) * picture.width + x - target.left) * 4;
-      final a = (picture.rgba[from + 3] * target.alpha).round();
-      if (a == 0) {
-        continue;
-      }
-      final to = ((y - y0) * size + x - x0) * 4;
-      pixels
-        ..[to] = picture.rgba[from]
-        ..[to + 1] = picture.rgba[from + 1]
-        ..[to + 2] = picture.rgba[from + 2]
-        ..[to + 3] = a;
-      inked = true;
-    }
-  }
-  return inked ? pixels : null;
 }

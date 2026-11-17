@@ -210,7 +210,7 @@ final _pen = const BrushShape().withCurve(
 /// Surface Pro 11, 5–7 on the main PC). ↩️Till 2026-11-16 it was read back
 /// whole (`onAWorkerWithCelCopy`), made a canvas of RGBA on a worker, baked
 /// through the mask there and cut into tiles again as a stored picture is
-/// ([clipCelTiles]) — a canvas's work for each vector layer — which the
+/// (`clipCelTiles`) — a canvas's work for each vector layer — which the
 /// door stored again.
 ///
 /// Throws [ClipFormatException] for strokes that would not read, and the

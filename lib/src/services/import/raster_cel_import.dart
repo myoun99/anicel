@@ -1094,11 +1094,9 @@ bool _copiesPixels(LayerPlacement placement) =>
     placement.tx == placement.tx.truncateToDouble() &&
     placement.ty == placement.ty.truncateToDouble();
 
-/// Bakes [tiles] — a decoded picture as a cel's own tiles, by their place on
-/// the grid ([celTilesOf] makes them of tiles cut on a worker) — as [key]'s
-/// cel on a [canvas]-size picture. The picture they begin as: the doors
-/// that decode a file's own cels (a .tvpp, a .clip — a vector layer's
-/// tiles already the engine's) hand theirs here.
+/// Bakes [tiles] — a picture as a cel's own tiles, by their place on the
+/// grid — as [key]'s cel on a [canvas]-size picture: a .clip's vector
+/// layer, its tiles the engine's as it landed them (`clipVectorTiles`).
 void bakeCelTiles(
   BrushFrameStore store,
   BrushFrameKey key,
@@ -1109,19 +1107,6 @@ void bakeCelTiles(
   key,
   BitmapSurface(canvasSize: canvas, tiles: tiles),
 );
-
-/// [tiles] — cut on a worker, straight RGBA of [defaultCelTileSize] by
-/// their place in tiles — as a cel's own tiles: the picture of a cel
-/// ([bakeCelTiles]), or a text's plate (`CelText.plate`) that a file drew.
-Map<TileCoord, BitmapTile> celTilesOf(
-  List<({int x, int y, Uint8List pixels})> tiles,
-) => {
-  for (final tile in tiles)
-    TileCoord(x: tile.x, y: tile.y): BitmapTile(
-      size: defaultCelTileSize,
-      pixels: tile.pixels,
-    ),
-};
 
 /// Bakes [surface] as [key]'s cel — the exact donation pair the drawing
 /// commit uses (display cache seeds the frame state, then the baked

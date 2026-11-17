@@ -1,15 +1,20 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
+    show laidCelSurface;
 
 import 'clip_test_builder.dart';
 
-/// A CLIP STUDIO picture as the app's cel tiles (card
-/// `csp-clip-import-analysis`): straight RGBA in canvas place, what falls
-/// off the canvas dropped, a fainter cel's alpha baked, and a dropped
-/// picture placed where its transform puts it.
+/// A CLIP STUDIO picture as the app's cel (card `csp-clip-import-analysis`):
+/// straight RGBA in canvas place, what falls off the canvas dropped, a
+/// fainter cel's alpha baked, and a dropped picture placed where its
+/// transform puts it — cut by the cutter every picture a file holds is cut
+/// by (F-608 ④).
 void main() {
   /// A colour picture of two blocks side by side: red counts the picture's
   /// x, green its y.
@@ -30,38 +35,46 @@ void main() {
     }),
   );
 
-  /// The RGBA [tiles] put at canvas ([x], [y]), or null when no tile holds
+  /// The RGBA [cel] holds at canvas ([x], [y]), or null when no tile holds
   /// that pixel.
-  List<int>? pixelAt(List<ClipCelTile> tiles, int x, int y) {
-    for (final tile in tiles) {
-      if (tile.x == x ~/ 128 && tile.y == y ~/ 128) {
-        final at = ((y % 128) * 128 + x % 128) * 4;
-        return tile.pixels.sublist(at, at + 4);
-      }
+  List<int>? pixelAt(BitmapSurface cel, int x, int y) {
+    final tile = cel.tiles[TileCoord(x: x ~/ 128, y: y ~/ 128)];
+    if (tile == null) {
+      return null;
     }
-    return null;
+    final at = ((y % 128) * 128 + x % 128) * 4;
+    return tile.pixels.sublist(at, at + 4);
   }
+
+  /// The tiles [cel] holds, by their place.
+  Set<(int, int)> placesOf(BitmapSurface cel) => {
+    for (final coord in cel.tiles.keys) (coord.x, coord.y),
+  };
+
   /// [stored] baked at ([left], [top]) on a [width] × [height] canvas, in
-  /// tiles of 128.
-  List<ClipCelTile>? bake(
+  /// tiles of 128 — the cel it lays, adopted.
+  BitmapSurface? bake(
     ({Uint8List attribute, Uint8List blocks}) stored, {
     int left = 0,
     int top = 0,
     int width = 300,
     int height = 200,
     double alpha = 1,
-  }) => clipCelTiles(stored.attribute, stored.blocks, (
-    left: left,
-    top: top,
-    canvasWidth: width,
-    canvasHeight: height,
-    alpha: alpha,
-    tileSize: 128,
-  ));
+  }) {
+    final laid = clipCelLaid(stored.attribute, stored.blocks, (
+      left: left,
+      top: top,
+      canvasWidth: width,
+      canvasHeight: height,
+      alpha: alpha,
+      tileSize: 128,
+    ));
+    return laid == null ? null : laidCelSurface(laid);
+  }
 
   test('🎯the picture lands where it stands, the part off the canvas '
       'dropped, in tiles of the cel\'s size', () {
-    final tiles = bake(
+    final cel = bake(
       picture(),
       left: -20,
       top: 250,
@@ -70,18 +83,18 @@ void main() {
     )!;
 
     expect(
-      {for (final tile in tiles) (tile.x, tile.y)},
+      placesOf(cel),
       {(0, 1), (1, 1), (0, 2), (1, 2)},
       reason: 'rows 250 … 299 and columns 0 … 255 — the canvas\'s part only',
     );
-    expect(pixelAt(tiles, 5, 260), [25, 10, 7, 255], reason: 'picture 25, 10');
+    expect(pixelAt(cel, 5, 260), [25, 10, 7, 255], reason: 'picture 25, 10');
     expect(
-      pixelAt(tiles, 255, 299),
+      pixelAt(cel, 255, 299),
       [275 & 0xff, 49, 7, 255],
       reason: 'the second block, red past 255 wrapping as it was drawn',
     );
     expect(
-      pixelAt(tiles, 5, 249),
+      pixelAt(cel, 5, 249),
       [0, 0, 0, 0],
       reason: 'above the picture the tile is empty',
     );
@@ -89,20 +102,60 @@ void main() {
 
   test('a picture standing more than a tile off the canvas\'s left edge '
       'makes no tile out there', () {
-    final tiles = bake(picture(), left: -200)!;
+    final cel = bake(picture(), left: -200)!;
 
     expect(
-      {for (final tile in tiles) tile.x},
+      {for (final (x, _) in placesOf(cel)) x},
       {0},
       reason: 'its last 100 columns are on the canvas; nothing left of 0',
     );
-    expect(pixelAt(tiles, 0, 5), [200, 5, 7, 255], reason: 'picture 200, 5');
+    expect(pixelAt(cel, 0, 5), [200, 5, 7, 255], reason: 'picture 200, 5');
   });
 
   test('a fainter cel is baked fainter, and a tile with no ink is not '
       'there', () {
     expect(pixelAt(bake(picture(), alpha: 0.5)!, 10, 10), [10, 10, 7, 128]);
-    expect(bake(picture(alpha: 0)), isEmpty);
+    expect(bake(picture(alpha: 0))!.tiles, isEmpty);
+  });
+
+  /// 🚨The cutter drops a tile only when NO pixel has alpha, and keeps the
+  /// colour of one that has none — the old cutter of this file wrote such a
+  /// pixel as nothing. A pixel the bake leaves with no alpha is cleared
+  /// before it is cut, so the cel holds what it held.
+  test('🚨a pixel with no alpha is clear, colour and all, beside one with '
+      'ink in its tile — and a bake that leaves none lays no tile', () {
+    final stripes = (
+      attribute: offscreenAttributeBytes(
+        width: 300,
+        height: 200,
+        columns: 2,
+        rows: 1,
+      ),
+      blocks: blockRecordsBytes({
+        for (final n in [0, 1])
+          n: colourBlock(
+            (x, y) => ((n * 256 + x) & 0xff, y & 0xff, 7, x.isOdd ? 255 : 0),
+          ),
+      }),
+    );
+    final cel = bake(stripes)!;
+    expect(pixelAt(cel, 11, 10), [11, 10, 7, 255]);
+    expect(
+      pixelAt(cel, 10, 10),
+      [0, 0, 0, 0],
+      reason: 'its colour is not kept where it has no alpha',
+    );
+
+    expect(
+      bake(picture(alpha: 1), alpha: 0.4)!.tiles,
+      isEmpty,
+      reason: '1 × 0.4 rounds to none',
+    );
+  });
+
+  test('a picture standing wholly off the canvas lays nothing', () {
+    expect(bake(picture(), left: 400)!.tiles, isEmpty);
+    expect(bake(picture(), top: -300)!.tiles, isEmpty);
   });
 
   group('🎯through its mask, as Photoshop\'s is baked (보드 the-clip-import-'
@@ -142,10 +195,11 @@ void main() {
       );
     }
 
-    /// [picture] standing at (4, 6), baked through [mask].
-    List<ClipCelTile>? bakeThrough(ClipStoredMask mask) {
+    /// [picture] standing at (4, 6), baked through [mask] — the cel it
+    /// lays, adopted.
+    BitmapSurface? bakeThrough(ClipStoredMask mask) {
       final stored = picture();
-      return clipCelTiles(
+      final laid = clipCelLaid(
         stored.attribute,
         stored.blocks,
         (
@@ -158,51 +212,52 @@ void main() {
         ),
         mask: mask,
       );
+      return laid == null ? null : laidCelSurface(laid);
     }
 
     test('its alpha times the mask where the mask stands on the canvas — '
         'and past the mask\'s edges, the mask\'s fill', () {
-      final tiles = bakeThrough(
+      final cel = bakeThrough(
         mask(left: 10, top: 20, coverage: (x, y) => x < 32 ? 0 : 128),
       )!;
 
       expect(
-        pixelAt(tiles, 12, 25),
+        pixelAt(cel, 12, 25),
         [0, 0, 0, 0],
         reason: 'the mask\'s (2, 5) hides it',
       );
       expect(
-        pixelAt(tiles, 50, 30),
+        pixelAt(cel, 50, 30),
         [46, 24, 7, 128],
         reason: 'the mask\'s (40, 10) halves it — picture 46, 24',
       );
       expect(
-        pixelAt(tiles, 8, 8),
+        pixelAt(cel, 8, 8),
         [4, 2, 7, 255],
         reason: 'left of the mask its fill shows all',
       );
-      expect(pixelAt(tiles, 80, 30), [76, 24, 7, 255], reason: 'right of it');
+      expect(pixelAt(cel, 80, 30), [76, 24, 7, 255], reason: 'right of it');
     });
 
     test('a mask wider than it is tall stops at its own last row', () {
-      final tiles = bakeThrough(
+      final cel = bakeThrough(
         mask(left: 10, top: 20, height: 16, coverage: (x, y) => 128),
       )!;
 
       expect(
-        pixelAt(tiles, 50, 30),
+        pixelAt(cel, 50, 30),
         [46, 24, 7, 128],
         reason: 'the mask\'s (40, 10) halves it',
       );
       expect(
-        pixelAt(tiles, 50, 40),
+        pixelAt(cel, 50, 40),
         [46, 34, 7, 255],
         reason: 'the mask\'s 16 rows end above it — its fill shows all',
       );
     });
 
     test('where it stores no block it is its fill — 0 hides everything', () {
-      expect(bakeThrough(mask(left: 0, top: 0, fill: 0)), isEmpty);
+      expect(bakeThrough(mask(left: 0, top: 0, fill: 0))!.tiles, isEmpty);
       expect(
         pixelAt(bakeThrough(mask(left: 0, top: 0))!, 20, 20),
         [16, 14, 7, 255],

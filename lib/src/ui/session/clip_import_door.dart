@@ -9,8 +9,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart' show ListExtensions;
-
+import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
@@ -37,7 +36,9 @@ import '../../services/import/clip_import_planner.dart';
 import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
-    show bakeCelSurface, bakeCelTiles, celTilesOf;
+    show bakeCelSurface, bakeCelTiles;
+import '../../services/persistence/brush_drawing_binary_codec.dart'
+    show AnicelLaidCel, freeLaidCel, laidCelSurface;
 import '../../services/persistence/folder_grant.dart'
     show FolderPicker, MaterializeCancelled, WaitReport;
 import '../../services/persistence/provider_documents.dart'
@@ -383,10 +384,9 @@ final class ClipImportDoor {
   }
 
   /// Every picture [read] planned, decoded out of its file and baked into
-  /// the drawings' store, in WAVES the size of the worker pool — read by
-  /// offset one at a time, so the file is never held whole (the .tvpp
-  /// door's reasons: a worker copies what it is given, and a resident file
-  /// scales with the FILE rather than with the work).
+  /// the drawings' store — read by offset, so the file is never held whole
+  /// (the .tvpp door's reasons: a worker copies what it is given, and a
+  /// resident file scales with the FILE rather than with the work).
   Future<void> _bakeEveryCel(
     ClipProjectRead read, {
     required List<ImportWarning> warnings,
@@ -397,38 +397,38 @@ final class ClipImportDoor {
     final reader = await File(source.path).open();
     try {
       final work = _workOf(read._plan, ClipContainer.indexOf(reader), warnings);
-      final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
-      var baked = 0;
-      for (final wave in work.slices(pool)) {
-        Future<Uint8List> read(ClipPlace place) async {
-          await reader.setPosition(place.offset);
-          return reader.read(place.length);
-        }
+      // One read at a time: a seek and a read are two steps, and a turn
+      // that came between them would read another picture's blocks.
+      final reading = Turns(1);
+      Future<Uint8List> bytesAt(ClipPlace place) async {
+        await reader.setPosition(place.offset);
+        return reader.read(place.length);
+      }
 
-        final windows = <List<Uint8List>>[];
-        final masks = <Uint8List?>[];
-        for (final item in wave) {
-          final bytes = <Uint8List>[];
-          for (final place in item.places) {
-            bytes.add(await read(place));
-          }
-          windows.add(bytes);
-          masks.add(switch (item.mask) {
-            final mask? => await read(mask.place),
-            null => null,
-          });
-        }
-        final decoded = await Future.wait([
-          for (var w = 0; w < wave.length; w += 1)
-            _decodeOne(wave[w], windows[w], masks[w]),
-        ]);
-        for (var w = 0; w < wave.length; w += 1) {
-          await _bakeDecoded(decoded[w], wave[w], warnings);
+      var baked = 0;
+      await _decodeEach(
+        work,
+        atOnce: workersFor(Platform.numberOfProcessors, ceiling: 8),
+        decoded: (item) async {
+          final (bytes, mask) = await reading.run(
+            () async => (
+              [for (final place in item.places) await bytesAt(place)],
+              switch (item.mask) {
+                final mask? => await bytesAt(mask.place),
+                null => null,
+              },
+            ),
+          );
+          return _decodeOne(item, bytes, mask);
+        },
+        landed: (item, decoded) async {
+          await _bakeDecoded(decoded, item, warnings);
           baked += 1;
           onProgress?.call(baked / work.length);
-          MaterializeCancelled.throwIf(isCancelled);
-        }
-      }
+        },
+        stopped: () => isCancelled?.call() ?? false,
+      );
+      MaterializeCancelled.throwIf(isCancelled);
     } finally {
       await reader.close();
       if (source.staged) {
@@ -436,6 +436,55 @@ final class ClipImportDoor {
           File(source.path).delete().then<void>((_) {}, onError: (_) {}),
         );
       }
+    }
+  }
+
+  /// Every picture of [work] [decoded], [atOnce] at a time, and handed to
+  /// [landed] as it is: a worker free takes the next. [stopped] is asked
+  /// as a picture lands — a stop is honoured after the picture in hand —
+  /// and once it says so nothing more is decoded, and what is still being
+  /// decoded is given back unlaid.
+  ///
+  /// 🚨A PICTURE LANDS AS IT IS DECODED (F-608 ④, 2026-11-17). ↩️Till then
+  /// the work went in WAVES the size of the pool, and a wave landed when
+  /// its slowest picture was done — the .tvpp door's old shape, which it
+  /// left in F-608 ③ for this one ([TvppImportDoor.decodeEach]). The two are
+  /// the same walk over different work; a third door that fans out makes
+  /// them one.
+  static Future<void> _decodeEach(
+    List<_ClipWork> work, {
+    required int atOnce,
+    required Future<Object?> Function(_ClipWork item) decoded,
+    required Future<void> Function(_ClipWork item, Object? decoded) landed,
+    required bool Function() stopped,
+  }) async {
+    final turns = Turns(atOnce);
+    var halted = false;
+    await Future.wait([
+      for (final item in work)
+        turns.run(() async {
+          if (halted) {
+            return;
+          }
+          final picture = await decoded(item);
+          if (halted) {
+            _giveBack(picture);
+            return;
+          }
+          await landed(item, picture);
+          halted = stopped();
+        }),
+    ]);
+  }
+
+  /// The blocks of a picture decoded and never laid, given back — a stored
+  /// picture's, or a text layer's pictures'.
+  static void _giveBack(Object? decoded) {
+    switch (decoded) {
+      case final AnicelLaidCel laid:
+        freeLaidCel(laid);
+      case final List<Object?> pictures:
+        pictures.forEach(_giveBack);
     }
   }
 
@@ -632,17 +681,23 @@ final class ClipImportDoor {
       );
       return;
     }
-    if (decoded is! List<ClipCelTile>) {
+    if (decoded is! AnicelLaidCel) {
       warnings.add(_unreadable(item.bake, '$decoded'));
       return;
     }
-    _bakeTiles(celTilesOf(decoded), item);
+    if (decoded.tiles.isEmpty) {
+      return;
+    }
+    bakeCelSurface(
+      _renderCaches.brushFrameStore,
+      _keyOf(item),
+      laidCelSurface(decoded),
+    );
   }
 
-  /// [tiles] — the cel's own, as a picture lies in tiles on the canvas's
-  /// grid — as [item]'s cel: a stored picture once cut, a vector layer once
-  /// landed (the engine's alone). None is a picture with no ink: the cel
-  /// stays, empty.
+  /// [tiles] — the cel's own, as a vector layer lies once landed (the
+  /// engine's alone) — as [item]'s cel. None is a picture with no ink: the
+  /// cel stays, empty.
   void _bakeTiles(Map<TileCoord, BitmapTile> tiles, _ClipWork item) {
     if (tiles.isEmpty) {
       return;
@@ -668,8 +723,8 @@ final class ClipImportDoor {
     final drawn = <int, Map<TileCoord, BitmapTile>>{};
     if (decoded case final List<Object?> pictures) {
       for (var k = 0; k < letters.pictures.length; k += 1) {
-        if (pictures[k] case final List<ClipCelTile> tiles) {
-          drawn[letters.pictures[k].text] = celTilesOf(tiles);
+        if (pictures[k] case final AnicelLaidCel laid) {
+          drawn[letters.pictures[k].text] = laidCelSurface(laid).tiles;
         }
       }
     }
@@ -746,7 +801,7 @@ final class ClipImportDoor {
   );
 }
 
-/// One picture decoded on a worker of its own — its tiles, null for a
+/// One picture decoded on a worker of its own — its cel, null for a
 /// picture that is not colour, or the reason it would not decode.
 ///
 /// ⛔ITS OWN FUNCTION, given plain values: the worker is built where
@@ -758,7 +813,7 @@ Future<Object?> _decodeOnWorker(
   ClipCelTarget target,
   ClipStoredMask? mask,
 ) => Isolate.run<Object?>(
-  () => _tilesOf(attribute, blocks, target, mask: mask),
+  () => _laidOf(attribute, blocks, target, mask: mask),
 );
 
 /// Several pictures — a text layer's — decoded on one worker of its own,
@@ -771,21 +826,21 @@ Future<Object?> _readOnWorker(
 ) => Isolate.run<Object?>(
   () => [
     for (var k = 0; k < blocks.length; k += 1)
-      _tilesOf(attributes[k], blocks[k], targets[k]),
+      _laidOf(attributes[k], blocks[k], targets[k]),
   ],
 );
 
-/// The tiles a picture's [attribute] and [blocks] make on [target] through
+/// The cel a picture's [attribute] and [blocks] lay on [target] through
 /// [mask] — null for a picture that is not colour, or the reason it would
 /// not decode.
-Object? _tilesOf(
+Object? _laidOf(
   Uint8List attribute,
   Uint8List blocks,
   ClipCelTarget target, {
   ClipStoredMask? mask,
 }) {
   try {
-    return clipCelTiles(attribute, blocks, target, mask: mask);
+    return clipCelLaid(attribute, blocks, target, mask: mask);
   } on ClipFormatException catch (error) {
     return error;
   } on FormatException catch (error) {

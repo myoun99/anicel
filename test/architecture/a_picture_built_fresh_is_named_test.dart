@@ -102,7 +102,7 @@ void main() {
           'are (`laidCelSurface`); a reference\'s cel a door moves where '
           'none of it lands (`layCelRegion`) — no brush reaches a reference '
           'row, so it holds no texts or photos; and the cel a decoding '
-          'door\'s tiles begin as (`bakeCelTiles` — a .tvpp\'s, a .clip\'s)',
+          'door\'s tiles begin as (`bakeCelTiles` — a .clip vector layer\'s)',
     ),
     'lib/src/ui/canvas/canvas_selection_layer.dart': (
       count: 1,
