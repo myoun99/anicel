@@ -24,6 +24,7 @@
 - **Une application plus légère** — les calculs lourds passent à la carte graphique et à des fils d'exécution séparés : dessiner, remplir, transformer, lire et enregistrer dans un grand plan fige moins l'écran. Le défilement et la lecture de la timeline et du conte sont plus légers, et dès le deuxième lancement la fenêtre « Préparation de l'application » disparaît en une seconde environ.
 - **Mémoire** — ouvrir un grand plan, remplir encore et encore ou dupliquer une timeline ne fait plus autant grimper la mémoire.
 - **Traits à la souris** — un trait tracé à la souris dans une scène lourde traîne moins.
+- **Pinceaux à mélange** — un trait avec le mélange activé accroche moins en passant sur ce qui est déjà peint.
 - **Boutons de réinitialisation** — un bouton de réinitialisation n'est actif que s'il y a quelque chose à rétablir, et il prend alors la couleur d'accent. Les boutons de rotation de la pilule du canevas gardent leur couleur habituelle ; quand la vue est tournée, c'est la réinitialisation de la rotation qui s'allume.
 - **Fenêtre d'attente** — couper, coller, dupliquer, valider une transformation et les retouches de couleur sur plusieurs images passent derrière la fenêtre d'attente ; une seule image se traite aussitôt, sans fenêtre.
 - **Plans liés** — coller un bloc de plan en « Coller lié » crée un plan lié tel qu'il est, durée, clés caméra et conte compris. Les plans liés sont écrits sous le numéro du plan dans l'en-tête de la feuille de temps, et les calques d'un plan lié ne peuvent pas être déliés.
@@ -82,6 +83,8 @@
 - Zoomer après un déplacement de la vue faisait sauter l'image pendant une trame.
 - Dans le préréglage TVPaint, la touche + ne changeait pas la taille du pinceau.
 - Ouvrir un fichier TVPaint à plusieurs clips affichait un faux avertissement.
+- Le fantôme de pelure d'oignon d'une ligne à numéros de cellulo perdait son numéro.
+- Les images et les calques vectoriels d'un fichier CLIP STUDIO étaient coupés au bord du canevas : une image posée au-delà n'apparaissait pas sur le fond, et déplacer le calque ne la ramenait pas.
 - La lecture d'une vidéo s'arrêtait juste après un retour en arrière, le son exporté en MP4 perdait son tout début une fois rouvert, et les couleurs des vidéos exportées sous Windows étaient mal lues.
 - Sous Windows, une vidéo comptait deux images de trop, et un saut affichait l'image située deux images plus tôt.
 - Importer un JPEG aux informations de taille fausses fermait l'application.

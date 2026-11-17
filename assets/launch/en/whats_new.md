@@ -24,6 +24,7 @@
 - **A lighter app** — heavy work has moved to the graphics card and to threads of its own, so drawing, filling, transforming, playing and saving in a large cut stall the screen less. Scrolling and playing the timeline and conte are lighter too, and from the second launch on the "Preparing app" window clears in about a second.
 - **Memory** — opening a large cut, filling over and over, and duplicating a timeline no longer make memory climb so far.
 - **Mouse strokes** — a stroke drawn with the mouse in a heavy scene drags behind less.
+- **Color mixing brushes** — a stroke with color mixing on stalls less as it crosses what is already painted.
 - **Reset buttons** — a reset is on only when there is something to put back, and when on it wears the accent color. The canvas pill's rotate buttons stay their usual color; when the view is turned, the rotation reset lights up instead.
 - **The wait window** — cutting, pasting, duplicating, confirming a transform and color edits across several pictures run behind the wait window; a single picture goes straight through with no window.
 - **Linked cuts** — pasting a cut block linked makes a linked cut as it stands, length, camera keys and conte included. A linked cut's partners are written under its number in the timesheet header, and a linked cut's layers cannot be unlinked.
@@ -82,6 +83,8 @@
 - Zooming after panning made the view jump for one frame.
 - In the TVPaint preset, the + key did not change the brush size.
 - Opening a TVPaint file with several clips showed a false warning.
+- The onion skin ghost of a row with cel numbers left the number out.
+- A CLIP STUDIO file's pictures and vector layers were cut at the canvas edge, so a picture kept past the canvas never showed on the pasteboard and moving the layer did not bring it back.
 - Reading a video stopped right after rewinding it, sound exported to MP4 lost its first moment when opened again, and colors of videos exported on Windows were read wrong.
 - On Windows, a video's frame count came out two too many, and a jump showed the picture from two frames before.
 - Importing a JPEG with false size information closed the app.
