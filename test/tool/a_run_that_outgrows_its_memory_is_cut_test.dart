@@ -154,15 +154,26 @@ void main() {
   });
 
   group("the line's answer", () {
-    test('a cut run answers by name, not as it fell', () async {
+    test('a cut run answers by name, not as it fell — and says what it '
+        'cut', () async {
+      final said = <String>[];
       final watch = watchOf(() => [row(100, parent: 1, gb: 23)], [])..look();
-      expect(await withinMemory(Future.value(1), watch), kOutgrewMemory);
+      expect(
+        await withinMemory(Future.value(1), watch, say: said.add),
+        kOutgrewMemory,
+      );
       expect(kOutgrewMemory, isNot(kTimedOut));
+      expect(said, [
+        'test_queue: flutter_tester.exe (pid 100) reached 23.0 GB, past the '
+            '12.0 GB one process of a test run may commit — cut the run',
+      ]);
     });
 
-    test('a run nothing cut answers for itself', () async {
+    test('a run nothing cut answers for itself, and says nothing', () async {
+      final said = <String>[];
       final watch = watchOf(() => [row(100, parent: 1, gb: 1)], [])..look();
-      expect(await withinMemory(Future.value(3), watch), 3);
+      expect(await withinMemory(Future.value(3), watch, say: said.add), 3);
+      expect(said, isEmpty);
     });
   });
 

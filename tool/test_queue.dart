@@ -475,15 +475,27 @@ Future<int> withinLimit(
 const kOutgrewMemory = 137;
 
 /// What the run answers with [exit], or [kOutgrewMemory] and its name when
-/// [watch] cut it.
-Future<int> withinMemory(Future<int> exit, MemoryWatch watch) async {
+/// [watch] cut it — the name told to [say], the line's error stream unless
+/// a caller listens itself.
+///
+/// 🚨A TEST LISTENS (card test-queue-memory-watch-counts-a-stranger,
+/// 2026-11-17): the fake run of this answer's own test — a tester of
+/// 23 GB, numbered 100, past a cap of 12 — wrote its cut into a real
+/// affected run's log, and was read as the watch cutting a stranger.
+Future<int> withinMemory(
+  Future<int> exit,
+  MemoryWatch watch, {
+  void Function(String line) say = _toStderr,
+}) async {
   final code = await exit;
   watch.stop();
   final outgrew = watch.outgrew;
   if (outgrew == null) return code;
-  stderr.writeln('test_queue: $outgrew — cut the run');
+  say('test_queue: $outgrew — cut the run');
   return kOutgrewMemory;
 }
+
+void _toStderr(String line) => stderr.writeln(line);
 
 /// The tickets in [line] whose runs are alive, by name — [mine] among them
 /// — after taking away every one whose run has [ended].
