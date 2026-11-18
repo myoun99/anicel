@@ -78,10 +78,11 @@ const _asksTheApps = <String, (int, String)>{
         'gone: the app\'s is what it lets go of',
   ),
   'lib/src/native/engine_refusals.dart': (
-    2,
+    3,
     'the door hears a refusal with no engine to it, and what it opens '
-        'another for — and whether the one it opened stands — is the '
-        'engine the app has at that moment',
+        'another for — and whether the one it opened stands, or what a '
+        'save stands on before it begins — is the engine the app has at '
+        'that moment',
   ),
 };
 

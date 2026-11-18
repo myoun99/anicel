@@ -833,6 +833,8 @@ enum AppStrings {
   String get screenWentTitle => _s('screenWentTitle');
   String get screenWentMessage => _s('screenWentMessage');
   String get screenWentSaveAndRestart => _s('screenWentSaveAndRestart');
+  String get screenWentQuitWithoutSaving =>
+      _s('screenWentQuitWithoutSaving');
   String get screenWentNotSaved => _s('screenWentNotSaved');
   String get screenWentNotStarted => _s('screenWentNotStarted');
 
@@ -2946,6 +2948,7 @@ enum AppStrings {
         'open project, then starts the program again with the same '
         'projects.',
     'screenWentSaveAndRestart': 'Save and restart',
+    'screenWentQuitWithoutSaving': 'Quit without saving',
     'screenWentNotSaved':
         'Some projects could not be saved, so the program was not '
         'restarted.',
@@ -4498,6 +4501,7 @@ enum AppStrings {
     'screenWentMessage':
         '画面はこれ以上描画されません。「保存して再起動」を押すと、開いているプロジェクトをすべて保存してから、同じプロジェクトでプログラムを起動し直します。',
     'screenWentSaveAndRestart': '保存して再起動',
+    'screenWentQuitWithoutSaving': '保存せずに終了',
     'screenWentNotSaved': '保存できなかったプロジェクトがあるため、再起動しませんでした。',
     'screenWentNotStarted':
         'プログラムを再起動できませんでした。プロジェクトは保存されています。プログラムを閉じてから起動し直してください。',
@@ -6484,6 +6488,7 @@ enum AppStrings {
     'screenWentMessage':
         '화면은 더 그려지지 않습니다. 「저장하고 다시 시작」을 누르면 열린 프로젝트를 모두 저장한 뒤 같은 프로젝트로 앱을 다시 시작합니다.',
     'screenWentSaveAndRestart': '저장하고 다시 시작',
+    'screenWentQuitWithoutSaving': '저장하지 않고 종료',
     'screenWentNotSaved': '저장하지 못한 프로젝트가 있어 다시 시작하지 않았습니다.',
     'screenWentNotStarted':
         '앱을 다시 시작하지 못했습니다. 프로젝트는 저장되었습니다. 앱을 닫고 다시 시작해 주세요.',
@@ -8514,6 +8519,7 @@ enum AppStrings {
         'enregistre tous les projets ouverts, puis relance le programme '
         'avec les mêmes projets.',
     'screenWentSaveAndRestart': 'Enregistrer et redémarrer',
+    'screenWentQuitWithoutSaving': 'Quitter sans enregistrer',
     'screenWentNotSaved':
         "Certains projets n'ont pas pu être enregistrés : le programme n'a "
         'pas été redémarré.',
@@ -10582,6 +10588,7 @@ enum AppStrings {
     'screenWentMessage':
         '画面已无法继续绘制。点击“保存并重新启动”会保存所有打开的项目，然后用相同的项目重新启动程序。',
     'screenWentSaveAndRestart': '保存并重新启动',
+    'screenWentQuitWithoutSaving': '不保存并退出',
     'screenWentNotSaved': '有项目未能保存，因此没有重新启动程序。',
     'screenWentNotStarted': '无法重新启动程序。项目已保存，请关闭程序后重新启动。',
     'accent1Help': '用于选区、播放头和已启用的开关。',

@@ -133,11 +133,16 @@ bool StartAgainFor(HWND window, const std::vector<std::wstring>& files) {
   }
   ::CloseHandle(started.hThread);
   ::CloseHandle(started.hProcess);
+  // What there was to keep is saved: Dart asks for this only once every
+  // save landed in its file.
+  EndThisProcess();
+  return true;
+}
+
+void EndThisProcess() {
   // ⛔Not by closing the window. The engine's teardown lets go of what drew
   // on the gone device, and on the Surface the first touch of it after the
   // reset ended the process in a FML_CHECK (11-18 15:08) — a crash report
-  // for a restart. What there was to keep is saved: Dart asks for this only
-  // once every save landed in its file.
+  // for an end that was asked for.
   ::TerminateProcess(::GetCurrentProcess(), EXIT_SUCCESS);
-  return true;
 }

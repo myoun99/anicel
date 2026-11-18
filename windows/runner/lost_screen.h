@@ -59,4 +59,10 @@ int AskWithWindows(HWND owner, const std::wstring& title,
 // Returns false, and ends nothing, where the next would not start.
 bool StartAgainFor(HWND window, const std::vector<std::wstring>& files);
 
+// Ends this process where it stands: a restart once the next Anicel
+// started, and Q5's 「저장하지 않고 종료」 — 🗣️a-lost-gpu-leaves-the-window-
+// unpainted-Q5 (유저 2026-11-18): 「버튼하나 더 만들어서 저장하지 않고 종료
+// 추가」.
+void EndThisProcess();
+
 #endif  // RUNNER_LOST_SCREEN_H_

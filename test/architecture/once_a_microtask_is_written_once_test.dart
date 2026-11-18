@@ -84,10 +84,6 @@ void main() {
 const _notAnotherOnce = <String, String>{
   'lib/src/core/once_a_microtask.dart: _asked':
       'the one law — what every other asks',
-  'lib/src/native/engine_refusals.dart: _opensAnother':
-      'no work done once a microtask: the mark stays up while the app lets '
-      'go of the gone engine and opens another, however long that takes, '
-      'and is let go of when it is done',
   'lib/src/ui/input/control_press_claim.dart: _anOwnedLiftIsBeingDispatched':
       'no work put off: the mark IS the answer — that the lift being '
       'dispatched is a control\'s own — read by silentPress for the rest of '

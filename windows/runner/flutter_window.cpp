@@ -162,13 +162,14 @@ constexpr char kOpenHanded[] = "open";
 // watches). The runner says so on this channel — once, the reason Windows
 // gave — and Dart asks the user with Windows' own windows and has the
 // runner start Anicel again for the files it saved
-// (a-lost-gpu-leaves-the-window-unpainted-Q1).
+// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5).
 // test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
 // these literals.
 constexpr char kScreenChannel[] = "anicel/screen";
 constexpr char kScreenWent[] = "went";
 constexpr char kAskWithWindows[] = "askWithWindows";
 constexpr char kStartAgain[] = "startAgain";
+constexpr char kEnd[] = "end";
 // Posted by the watch's thread: the channel speaks on this one.
 constexpr UINT kScreenWentMessage = WM_APP + 0x153;
 
@@ -549,6 +550,10 @@ void FlutterWindow::ListenForTheScreen() {
         if (call.method_name() == kStartAgain) {
           result->Success(
               flutter::EncodableValue(StartAgainFor(GetHandle(), words)));
+          return;
+        }
+        if (call.method_name() == kEnd) {
+          EndThisProcess();
           return;
         }
         result->NotImplemented();

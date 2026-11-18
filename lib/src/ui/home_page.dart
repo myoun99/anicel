@@ -114,7 +114,7 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
 import 'session/app_clipboard.dart';
 import 'session/editor_app_settings.dart';
-import 'session/lost_screen_restart.dart';
+import 'lost_screen_restart.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
@@ -1125,11 +1125,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     _keepsTheWorkOfALostScreen = true;
-    unawaited(keepTheWorkOfALostScreen(context, () => _projects.sessions));
+    unawaited(
+      keepTheWorkOfALostScreen(
+        context,
+        () => _projects.sessions,
+      ).whenComplete(() => _keepsTheWorkOfALostScreen = false),
+    );
   }
 
-  /// Whether the question stands or stood: it is asked once a loss — heard
-  /// by the listener, or found by the launch's own look.
+  /// Whether the question stands now: asked once a loss — heard by the
+  /// listener, or found by the launch's own look — and again at the app
+  /// window's X once it was taken down ([_handleExitRequested]).
   bool _keepsTheWorkOfALostScreen = false;
 
   /// The graphics device started again and the app stands on another
@@ -1951,8 +1957,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// PEN-12 #5: the desktop window-close request routes through the SAME
   /// gate — Cancel keeps the window open.
-  Future<AppExitResponse> _handleExitRequested() async =>
-      await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+  ///
+  /// ⛔Not once the screen's device went ([LostScreen]): the gate's window
+  /// would be drawn on a screen that draws no more. The X asks the loss's
+  /// own question again instead — a-lost-gpu-leaves-the-window-unpainted-Q5
+  /// (유저 2026-11-18, read by 관제 as the card's dismiss): [닫기] takes it
+  /// down, and the X brings it back.
+  Future<AppExitResponse> _handleExitRequested() async {
+    if (LostScreen.hasGone) {
+      _keepTheWorkOfALostScreen();
+      return AppExitResponse.cancel;
+    }
+    return await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+  }
 
   /// Whether the app may close ([_mayLeaveForGood]) — and when it may, its
   /// usage statistics' `app_away` written down first (I-70-Q11, 유저

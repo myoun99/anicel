@@ -18,8 +18,9 @@ void main() {
   final source = File('windows/runner/flutter_window.cpp').readAsStringSync();
   final lost = File('windows/runner/lost_screen.cpp').readAsStringSync();
 
-  test('the runner says the device went on the channel, and hears the ask '
-      'and the start again there — the names spelled as Dart spells them',
+  test('the runner says the device went on the channel, and hears the ask, '
+      'the start again and the end there — the names spelled as Dart '
+      'spells them',
       () {
     expect(
       source,
@@ -34,6 +35,7 @@ void main() {
       source,
       contains('kStartAgain[] = "${LostScreen.startAgainMethod}";'),
     );
+    expect(source, contains('kEnd[] = "${LostScreen.endMethod}";'));
     expect(
       sourceBodyOf(source, 'bool FlutterWindow::OnCreate()'),
       contains('ListenForTheScreen();'),
@@ -48,6 +50,8 @@ void main() {
       'AskWithWindows(GetHandle()',
       'kStartAgain',
       'StartAgainFor(GetHandle(), words)',
+      'kEnd',
+      'EndThisProcess();',
       'GetGraphicsAdapter(&adapter)',
       'kScreenWentMessage',
     ]) {
@@ -76,10 +80,15 @@ void main() {
     final again = sourceBodyOf(lost, 'bool StartAgainFor(');
     final letGo = again.indexOf('RemovePropW(window, kRunningWindowProp)');
     final started = again.indexOf('CreateProcessW(');
-    final ended = again.indexOf('TerminateProcess(');
+    final ended = again.indexOf('EndThisProcess();');
     expect(letGo, greaterThanOrEqualTo(0));
     expect(started, greaterThan(letGo), reason: 'or it is handed the files');
     expect(ended, greaterThan(started));
+    expect(
+      sourceBodyOf(lost, 'void EndThisProcess()'),
+      contains('TerminateProcess(::GetCurrentProcess()'),
+      reason: 'not the window closed: the teardown touches the gone device',
+    );
     final manifest = File(
       'windows/runner/runner.exe.manifest',
     ).readAsStringSync();

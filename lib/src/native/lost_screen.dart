@@ -19,7 +19,9 @@ import 'package:flutter/services.dart';
 ///   and so does every window the save it runs would open: the doors of a
 ///   question, a notice and a wait (`askConfirm`, `showAppNotice`,
 ///   `runWithAppProgress`) read [hasGone];
-/// - Anicel starts again for the files it saved ([startAgainFor]).
+/// - Anicel starts again for the files it saved ([startAgainFor]) — or,
+///   🗣️Q5 (유저 2026-11-18): 「버튼하나 더 만들어서 저장하지 않고 종료
+///   추가」, ends unsaved ([end]).
 ///
 /// The method names are spelled again in `flutter_window.cpp`;
 /// `a_lost_screen_is_heard_from_the_runner_test` reads both.
@@ -28,6 +30,7 @@ abstract final class LostScreen {
   static const wentMethod = 'went';
   static const askMethod = 'askWithWindows';
   static const startAgainMethod = 'startAgain';
+  static const endMethod = 'end';
 
   /// The reason Windows gave for the device going (an HRESULT), once it
   /// went this run — null till then.
@@ -69,6 +72,10 @@ abstract final class LostScreen {
   /// ending nothing, where the next would not start.
   static Future<bool> startAgainFor(List<String> files) async =>
       await channel.invokeMethod<bool>(startAgainMethod, files) ?? false;
+
+  /// Ends Anicel where it stands, nothing saved: the runner ends the
+  /// process without the engine's teardown, which touches the gone device.
+  static Future<void> end() => channel.invokeMethod<void>(endMethod);
 
   /// Test seam: the screen's device gone, as the runner says it.
   @visibleForTesting
