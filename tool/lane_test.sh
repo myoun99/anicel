@@ -941,6 +941,40 @@ check "found by halving: four runs of the gates in all" "$(( $(gates_run) - G0 )
 check "the red lane stays, on the lane that landed before it" \
   "$(git -C "$HW/lane-r2" rev-parse HEAD~1)" "$(git -C "$E/home" rev-parse master~2)"
 check "with its own commit alone" "$(git -C "$HW/lane-r2" log --format=%s master..HEAD | tr '\n' ' ')" "r2 breaks the build "
+# A lane sent stacked on the one before it (관제 2026-11-18 03:35, the name
+# tag fold and the pan keys): its history holds the lower lane's commits as
+# they were sent. The lower lane is rebased first, so those old commits are
+# copies now; laid again on their copies, a later edit of the same lines
+# conflicts with an earlier one — and the stacked lane read as left out.
+# stack <lower> <upper>: a file of lines on the trunk; below, two edits of
+# one of its lines; above, a file of its own. Then the trunk moves within the
+# lines around that edit, so the lower lane's copies differ from it as sent.
+stack() {
+  printf 'a\nb\nc\nd\ne\nf\ng\n' > "$E/home/$1.txt"
+  git -C "$E/home" add "$1.txt"; git -C "$E/home" commit -q -m "$1.txt on the trunk"
+  quiet "$E/home" open "$1"
+  sed -i 's/^b$/B/' "$HW/lane-$1/$1.txt"; git -C "$HW/lane-$1" commit -qam "$1 one"
+  sed -i 's/^B$/BB/' "$HW/lane-$1/$1.txt"; git -C "$HW/lane-$1" commit -qam "$1 two"
+  quiet "$E/home" open "$2"
+  git -C "$HW/lane-$2" reset -q --hard "work/$1"
+  commit "$HW/lane-$2" "$2.txt" "$2"
+  sed -i 's/^e$/E/' "$E/home/$1.txt"; git -C "$E/home" commit -qam "the trunk moves under $1"
+}
+stack s1 s2
+O=$(out "$E/home" land s1 s2)
+has "a lane stacked on the one before it lands with it" "$O" "merged s1 s2"
+has "and says so" "$O" "[exit 0]"
+check "each commit once, in its order" \
+  "$(git -C "$E/home" log --format=%s -4 master | tr '\n' ' ')" "s2 s1 two s1 one the trunk moves under s1 "
+stack t1 t2
+quiet "$E/home" land t1
+check "the lower lane landed first, as a copy" \
+  "$(git -C "$E/home" log --format=%s -1 master)" "t1 two"
+O=$(out "$E/home" land t2)
+has "a stacked lane lands alone after the one below it landed" "$O" "merged work/t2"
+has "and says it laid its own commits alone" "$O" "its own commits alone"
+check "its own commit, once" \
+  "$(git -C "$E/home" log --format=%s -4 master | tr '\n' ' ')" "t2 t1 two t1 one the trunk moves under t1 "
 
 echo
 echo "== $FAILS failed"
