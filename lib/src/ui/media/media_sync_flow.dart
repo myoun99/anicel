@@ -17,7 +17,7 @@ ProjectClock _clockOf(EditorSessionManager session) => (
 );
 
 /// The lengths [asset]'s preset is counted from, as far as [session] has
-/// them in hand — never asking for one: its sound's where its conform is
+/// them in hand — never waiting for one: its sound's where its conform is
 /// held, its pictures' where the pool has read what it needs
 /// ([placedPicturesOf]). The pool's in-use mark and the sync window count
 /// from these alike, so the mark turns into the sync on what the window

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -21,9 +24,16 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
 import 'package:anicel/src/services/media/media_preset_sync.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart'
+    show debugVideoDecodeBackend;
 import 'package:anicel/src/services/project_lookup.dart'
     show requireLayer, requireLayerAnywhere;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/media/media_sync_flow.dart' show syncLengthsOf;
+
+import '../../helpers/fake_video_backend.dart';
+import '../../helpers/stand_in_movie.dart';
+import '../../helpers/temp_dir.dart';
 
 const _take = 'C:/media/take.mp4';
 const _cloud = 'C:/media/cloud.png';
@@ -227,5 +237,52 @@ void main() {
       partsFromItsPreset(project, project.mediaAssets.last, lengths: _known),
       isFalse,
     );
+  });
+
+  test('🐛the sync counts a movie\'s pictures as a placement keeps them — '
+      'in the project\'s frames once the pool has read its rate, none '
+      'before', () async {
+    final dir = Directory.systemTemp.createTempSync('anicel-sync-movie');
+    addTearDown(() => deleteTempQuietly(dir));
+    final take = normalizedMediaPath(
+      (File('${dir.path}${Platform.pathSeparator}take.mp4')
+            ..writeAsBytesSync(standInMovieBytes))
+          .path,
+    );
+    // Fifteen frames of 30 fps are twelve of the project's 24.
+    debugVideoDecodeBackend = FakeVideoBackend(
+      width: 64,
+      height: 36,
+      frameCount: 15,
+      fpsNumerator: 30,
+      fpsDenominator: 1,
+    );
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final asset = MediaAsset(
+      path: take,
+      name: 'take',
+      kind: MediaAssetKind.video,
+      frameCount: 15,
+      preset: _preset,
+    );
+    final session = EditorSessionManager(
+      initialProject: _project().copyWith(mediaAssets: [asset]),
+    );
+    addTearDown(session.dispose);
+    final read = Completer<void>();
+    session.mediaPool.mediaFactsRead.addListener(() {
+      if (!read.isCompleted) {
+        read.complete();
+      }
+    });
+    // The pool's line asks for the file's facts as it shows the file.
+    session.mediaPool.mediaFactsOf(take);
+    expect(
+      syncLengthsOf(session, asset).pictures,
+      isNull,
+      reason: 'its rate not read yet: a length the preset cannot count',
+    );
+    await read.future;
+    expect(syncLengthsOf(session, asset).pictures, 12);
   });
 }
