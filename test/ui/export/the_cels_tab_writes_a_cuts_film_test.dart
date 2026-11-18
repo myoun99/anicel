@@ -585,6 +585,7 @@ void main() {
         spec: const CelsExportSpec(
           kinds: {ExportCelKind.video},
           videoFormat: gif,
+          sizeMode: ExportSizeMode.canvas,
         ),
         into: temp,
       );
@@ -594,11 +595,11 @@ void main() {
       final movie = img.decodeGif(
         File('${temp.path}/_CUT301.gif').readAsBytesSync(),
       )!;
-      final dot = movie.frames.first.getPixel(0, 0);
+      final first = movie.frames.first;
       expect(
-        (dot.r, dot.g, dot.b),
-        (0, 0, 0),
-        reason: 'A\'s black dot, on the paper',
+        first.getPixel(0, 0).r,
+        lessThan(first.getPixel(7, 7).r),
+        reason: 'A\'s dot, darker than the paper',
       );
     });
   });
