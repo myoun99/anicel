@@ -128,28 +128,13 @@ class _BrushEditPressure {
         PenSidecars.isPenKind(event.kind) && range.isFinite && range > 0.0;
     final pointer = measures ? _normalized(event, range) : null;
     if (recorded != null) {
-      return switch (recorded.state) {
-        PenLedgerState.measured => (
-          pressure: AppInput.applyPressureCurve(
-            _platformPressure(recorded.value),
-          ),
-          read: !repeat,
-          from: _PressureFrom.ledger,
-          pointer: pointer,
-        ),
-        PenLedgerState.estimated || PenLedgerState.estimatedFinal => (
-          pressure: AppInput.applyPressureCurve(_uikitForce(event.pressure)),
-          read: !repeat,
-          from: _PressureFrom.ledger,
-          pointer: pointer,
-        ),
-        PenLedgerState.noPressure => (
-          pressure: 1.0,
-          read: true,
-          from: _PressureFrom.ledger,
-          pointer: pointer,
-        ),
-      };
+      final ledger = _ledgerReading(recorded, event, repeat: repeat);
+      return (
+        pressure: ledger.pressure,
+        read: ledger.read,
+        from: _PressureFrom.ledger,
+        pointer: pointer,
+      );
     }
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
@@ -180,6 +165,24 @@ class _BrushEditPressure {
       pointer: pointer,
     );
   }
+
+  /// The pressure the per-event record ([QaPenLedger]) gives [event], by
+  /// how UIKit called it ([pressureOf]).
+  static ({double pressure, bool read}) _ledgerReading(
+    PenLedgerReading recorded,
+    PointerEvent event, {
+    required bool repeat,
+  }) => switch (recorded.state) {
+    PenLedgerState.measured => (
+      pressure: AppInput.applyPressureCurve(_platformPressure(recorded.value)),
+      read: !repeat,
+    ),
+    PenLedgerState.estimated || PenLedgerState.estimatedFinal => (
+      pressure: AppInput.applyPressureCurve(_uikitForce(event.pressure)),
+      read: !repeat,
+    ),
+    PenLedgerState.noPressure => (pressure: 1.0, read: true),
+  };
 
   /// A measuring stylus's pressure as 0..1.
   ///
