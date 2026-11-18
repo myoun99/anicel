@@ -87,6 +87,13 @@ pub(crate) type Move = (i32, i32, u32);
 /// The mouse's newest move written — where the next move's history stops.
 static MOUSE_WRITTEN: Mutex<Option<Move>> = Mutex::new(None);
 
+/// Nothing written yet, as before the first mouse message of all — for a
+/// test, whatever the tests before it in the process wrote.
+#[cfg(test)]
+pub(crate) fn forget_written() {
+    *MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner) = None;
+}
+
 /// Subclasses the Flutter view of the app's window: true from then on.
 /// False where there is no window shown yet, or this is not the thread
 /// that owns it (the embedder runs Dart there — its platform and UI

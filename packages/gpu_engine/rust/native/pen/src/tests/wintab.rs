@@ -1099,6 +1099,10 @@ fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     let mut kept = crate::mouse_kept::Kept::from((there.x - 20, there.y, time), 1_000);
     kept.hear(&[(there.x, there.y, time), (there.x - 10, there.y, time)], 2, 3_000);
     crate::mouse_kept::keep_from(kept);
+    // As the first mouse message of all — nothing written before it, what
+    // the tests before it wrote forgotten: every move kept since the press
+    // is handed on (`handed_on`).
+    crate::points_win::forget_written();
     let word = (far as u16) as isize;
     crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
     crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
