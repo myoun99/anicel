@@ -174,6 +174,66 @@ void main() {
     expect(windowOf(80000, 10000).samples, wholeFrom(80000, spanEnd));
   });
 
+  // 🗣️audio-fx-second-effect-and-presets-Q1 (ノイズ除去): a noise removal
+  // comes out two frames late and remembers each channel's model — a
+  // window reads on past itself, and the checkpoints stand farther apart.
+  test('🎯so is every window of a span through a noise removal: late by '
+      'nothing, its checkpoints weighing a quarter of the sound', () {
+    const cleaned = FilteredSpan(
+      slot: aSlot,
+      start: spanStart,
+      length: spanEnd - spanStart,
+      stages: [
+        [
+          (start: 0, filter: AudioDenoiser(amount: 1)),
+          (start: 30000, filter: AudioDenoiser(amount: 0.4)),
+        ],
+        [(start: 0, filter: bright)],
+      ],
+    );
+    final cleanedWhole = filterAudio(
+      samples: Float32List.sublistView(decoded, 2 * spanStart, 2 * spanEnd),
+      channels: 2,
+      rate: sampleRate,
+      stages: cleaned.stages,
+    );
+    final reader = ConformPcmStreamReader.open(conformPath)!;
+    final checkpoints = filterCheckpointsOf(reader, cleaned)!;
+    final memory = FilterStretches(
+      channels: 2,
+      rate: sampleRate,
+      stages: cleaned.stages,
+    ).kept.length;
+    final spacing = checkpoints.spacing;
+    expect(spacing, 8 * memory ~/ 2, reason: 'a double is two floats');
+    expect(spacing, greaterThan(sampleRate ~/ 4));
+
+    for (final (start, end) in [
+      (spanStart, spanStart + 1),
+      (spanStart + spacing - 1, spanStart + spacing + 1), // across one
+      (35999, 36001), // across a setting's start
+      (spanEnd - 700, spanEnd), // within its lateness of the end
+      (spanEnd - 1, spanEnd),
+    ]) {
+      final window = readStreamedWindow((
+        reader: reader,
+        start: start,
+        count: end - start,
+        filtered: (span: cleaned, checkpoints: checkpoints),
+      ));
+      expect(window.startSample, start, reason: '$start..$end');
+      expect(
+        window.samples,
+        Float32List.sublistView(
+          cleanedWhole,
+          2 * (start - spanStart),
+          2 * (end - spanStart),
+        ),
+        reason: '$start..$end',
+      );
+    }
+  });
+
   test('🎯playback streams the whole span\'s bake, wherever the run begins '
       'in it', () async {
     final store = streamingStore();

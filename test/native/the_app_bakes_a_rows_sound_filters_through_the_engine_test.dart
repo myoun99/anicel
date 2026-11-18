@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/qa_audio_denoiser.dart';
 import 'package:anicel/src/native/qa_audio_filter.dart';
 import 'package:anicel/src/services/audio/sound_filters.dart';
 
@@ -265,6 +266,114 @@ void main() {
         reason: '$channels channels at $rate',
       );
     }
+  });
+
+  // 🗣️audio-fx-second-effect-and-presets-Q1 (유저 2026-11-18): ノイズ除去
+  // as a row's effect — the take's RNNoise through the filters' door.
+  group('a noise removal', () {
+    List<SoundFilterSetting> at(double amount) => [
+      (start: 0, filter: AudioDenoiser(amount: amount)),
+    ];
+
+    test('🎯at its whole amount is the take\'s cleaning one frame on — the '
+        'span late by nothing, read on past its end in silence', () {
+      final sound = _madeUpSound();
+      final baked = filterAudio(
+        samples: sound,
+        channels: 2,
+        rate: 48000,
+        stages: [at(1)],
+      );
+      // The take's road writes a frame's cleaning a frame late.
+      final take = denoiseVoiceTake(
+        samples: Float32List(sound.length + 2 * 960)..setAll(0, sound),
+        channels: 2,
+        sampleRate: 48000,
+      )!;
+      expect(
+        baked,
+        Float32List.sublistView(take, 2 * 480, 2 * 480 + sound.length),
+      );
+      expect(baked, isNot(sound), reason: 'LIVENESS: it cleaned');
+    });
+
+    test('at no amount hands every sample back as it was — alone, and '
+        'before an equalizer', () {
+      final sound = _madeUpSound();
+      expect(
+        filterAudio(samples: sound, channels: 2, rate: 48000, stages: [at(0)]),
+        sound,
+      );
+      expect(
+        filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: 48000,
+          stages: [at(0), settings],
+        ),
+        filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: 48000,
+          stages: [settings],
+        ),
+      );
+    });
+
+    test('between them mixes the sound as it was and the cleaned, by the '
+        'setting its own sample takes', () {
+      final sound = _madeUpSound();
+      Float32List bake(List<SoundFilterSetting> stage) => filterAudio(
+        samples: sound,
+        channels: 2,
+        rate: 48000,
+        stages: [stage],
+      );
+      final cleaned = bake(at(1));
+      final mixed = bake([
+        (start: 0, filter: const AudioDenoiser(amount: 0.25)),
+        (start: 9000, filter: const AudioDenoiser(amount: 1)),
+      ]);
+      for (final i in [0, 1, 2 * 8999 + 1]) {
+        // Mixed in doubles, kept as a float.
+        final expected = Float32List(1)
+          ..[0] = sound[i] * 0.75 + cleaned[i] * 0.25;
+        expect(mixed[i], expected[0], reason: 'sample $i');
+      }
+      expect(
+        Float32List.sublistView(mixed, 2 * 9000),
+        Float32List.sublistView(cleaned, 2 * 9000),
+      );
+    });
+
+    test('is two frames late at the door, and remembers each channel\'s '
+        'model and frames', () {
+      final stretches = FilterStretches(
+        channels: 2,
+        rate: 48000,
+        stages: [at(1), settings],
+      );
+      expect(stretches.latency, 960);
+      expect(stretches.kept, hasLength(2 * 4979 + 2 * 16));
+    });
+
+    // ⛔RNNoise's bands are built around 48 kHz (board
+    // audio-fx-second-effect-and-presets-Q2 asks whether to convert).
+    test('at another rate is refused — the bake comes back empty', () {
+      final sound = _madeUpSound();
+      for (final rate in [44100, 96000]) {
+        expect(
+          filterAudio(
+            samples: sound,
+            channels: 2,
+            rate: rate,
+            stages: [at(1)],
+          ),
+          isEmpty,
+          reason: '$rate Hz',
+        );
+      }
+    });
   });
 }
 

@@ -179,3 +179,28 @@ fn the_takes_it_cannot_denoise_are_refused_untouched() {
         assert_eq!(one, [0.5]);
     }
 }
+
+// A row's noise removal bakes a span a stretch at a time, keeping each
+// channel's model between stretches as doubles: one read back goes on as
+// the one that was kept would have — the model, its memories, its
+// cepstra's place and its last period alike.
+#[test]
+fn a_suppressor_kept_and_read_back_goes_on_as_it_would_have() {
+    use super::{FRAME, Suppressor};
+    let take = voice(40 * FRAME, 7, 0.03);
+    let frames: Vec<[f32; FRAME]> = take.chunks_exact(FRAME).map(|f| f.try_into().unwrap()).collect();
+    let mut whole = Suppressor::at_rest();
+    let expected: Vec<[f32; FRAME]> = frames.iter().map(|f| whole.frame(f)).collect();
+    for cut in [1, 9, 23] {
+        let mut first = Suppressor::at_rest();
+        let mut out: Vec<[f32; FRAME]> = frames[..cut].iter().map(|f| first.frame(f)).collect();
+        let mut kept = vec![0.0; Suppressor::VALUES];
+        first.keep(&mut kept);
+        assert!(kept.iter().any(|&v| v != 0.0), "LIVENESS: something was kept");
+        let mut read_back = Suppressor::kept(&kept);
+        out.extend(frames[cut..].iter().map(|f| read_back.frame(f)));
+        assert_eq!(out, expected, "kept after {cut} frames");
+    }
+    let mut zeros = Suppressor::kept(&vec![0.0; Suppressor::VALUES]);
+    assert_eq!(frames.iter().map(|f| zeros.frame(f)).collect::<Vec<_>>(), expected, "all zeros is at rest");
+}

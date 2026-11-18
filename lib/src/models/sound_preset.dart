@@ -9,13 +9,14 @@ import 'layer_effect.dart';
 /// approved: セリフ · 音楽 · 効果音 · 環境音, each a bundle of the sound's
 /// effects.
 ///
-/// Each bundle is an equalizer then a compressor, the two the app has; the
-/// design's セリフ adds ノイズ除去 first, an effect still to come (board
-/// audio-fx-second-effect-and-presets-Q1). The values are my choice —
-/// common starting points for each kind of sound, not any tool's table
-/// (board line 11-18) — and are changed if the user says so.
+/// Each bundle is an equalizer then a compressor; セリフ's has the design's
+/// ノイズ除去 before them (board audio-fx-second-effect-and-presets-Q1 = 1:
+/// 「ノイズ除去 는 다음 라운드에 효과로 지어 セリフ 에 더한다」). The values are
+/// my choice — common starting points for each kind of sound, not any
+/// tool's table (board lines 11-18) — and are changed if the user says so.
 enum SoundPreset {
-  /// A voice: the rumble under it cut, its presence lifted, its level held.
+  /// A voice: the noise under it taken out, the rumble cut, its presence
+  /// lifted, its level held.
   dialogue('dialogue', label: 'Dialogue'),
 
   /// Music: only what is under hearing cut, turned down gently.
@@ -36,19 +37,25 @@ enum SoundPreset {
   /// Its name in English, the string tables' fallback.
   final String label;
 
-  /// The effects it adds, in the order they sound: an equalizer, then a
-  /// compressor ([EffectKind.filtersSound]), at the values its kind names.
+  /// The effects it adds, in the order they sound: a noise removal for a
+  /// voice, then an equalizer, then a compressor ([EffectKind.filtersSound]),
+  /// at the values its kind names.
   List<LayerEffect> get effects => switch (this) {
-    dialogue => _equalizedAndCompressed(
-      equalizer: {'lowCut': 80, 'highGain': 2},
-      compressor: {
-        'threshold': -20,
-        'ratio': 3,
-        'attack': 5,
-        'release': 80,
-        'makeup': 3,
-      },
-    ),
+    dialogue => [
+      _effectAt('preset-noiseRemoval', EffectKind.noiseRemoval, {
+        'amount': 80,
+      }),
+      ..._equalizedAndCompressed(
+        equalizer: {'lowCut': 80, 'highGain': 2},
+        compressor: {
+          'threshold': -20,
+          'ratio': 3,
+          'attack': 5,
+          'release': 80,
+          'makeup': 3,
+        },
+      ),
+    ],
     music => _equalizedAndCompressed(
       equalizer: {'lowCut': 30, 'highGain': 0},
       compressor: {

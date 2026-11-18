@@ -34,6 +34,50 @@ use frame::{DenoiseState, FRAME_SIZE};
 /// The one rate RNNoise's filterbank and model are built around.
 pub const RATE: i32 = 48_000;
 
+/// The samples one frame of RNNoise hears and gives back — 10 ms at
+/// [`RATE`].
+pub const FRAME: usize = FRAME_SIZE;
+
+/// One channel's RNNoise from frame to frame: the take's (`denoise`) and
+/// a sound row's noise removal (native/audio_mix denoiser.rs — board
+/// audio-fx-second-effect-and-presets, Q1), which bakes a span a stretch
+/// at a time and so keeps it between stretches as doubles
+/// ([`Suppressor::keep`]).
+///
+/// 🚨ONE FRAME'S ROAD FOR BOTH: the scaling in and out is here, so the
+/// row's effect and the take hear a frame alike.
+pub struct Suppressor(DenoiseState);
+
+impl Suppressor {
+    /// The doubles [`Suppressor::keep`] writes.
+    pub const VALUES: usize = DenoiseState::VALUES;
+
+    /// Before its first frame.
+    pub fn at_rest() -> Self {
+        Self(DenoiseState::new())
+    }
+
+    /// The one [`Suppressor::keep`] wrote into `from` — at rest where
+    /// `from` is all zeros. `from` holds at least [`Suppressor::VALUES`].
+    pub fn kept(from: &[f64]) -> Self {
+        Self(DenoiseState::kept(from))
+    }
+
+    /// Writes what it carries into `into`, at least
+    /// [`Suppressor::VALUES`] long.
+    pub fn keep(&self, into: &mut [f64]) {
+        self.0.keep(into);
+    }
+
+    /// `input`, in ±1.0, through RNNoise — which hears 16-bit range, so
+    /// it is scaled in and out: the frame before it comes back, by the
+    /// overlap.
+    pub fn frame(&mut self, input: &[f32; FRAME]) -> [f32; FRAME] {
+        let out = self.0.process_frame(&input.map(|value| value * 32768.0));
+        out.map(|value| value * (1.0 / 32768.0))
+    }
+}
+
 /// Denoises `samples` — interleaved float32 frames of `channels`, in
 /// ±1.0 — in place, each channel through a model of its own; false, with
 /// nothing touched, when the take is not one this can do (another rate,
@@ -49,21 +93,21 @@ pub fn denoise(samples: &mut [f32], channels: usize, sample_rate: i32) -> bool {
     let frames = samples.len() / channels;
     // Every channel's model before the first sample is touched: a failure
     // to make one leaves the take as it was (the C's contract).
-    let mut states: Vec<DenoiseState> = Vec::new();
+    let mut states: Vec<Suppressor> = Vec::new();
     if states.try_reserve_exact(channels).is_err() {
         return false;
     }
-    states.extend((0..channels).map(|_| DenoiseState::new()));
+    states.extend((0..channels).map(|_| Suppressor::at_rest()));
     for (channel, state) in states.iter_mut().enumerate() {
-        for start in (0..frames).step_by(FRAME_SIZE) {
-            let valid = (frames - start).min(FRAME_SIZE);
-            let mut input = [0.0f32; FRAME_SIZE];
+        for start in (0..frames).step_by(FRAME) {
+            let valid = (frames - start).min(FRAME);
+            let mut input = [0.0f32; FRAME];
             for (i, value) in input.iter_mut().enumerate().take(valid) {
-                *value = samples[(start + i) * channels + channel] * 32768.0;
+                *value = samples[(start + i) * channels + channel];
             }
-            let out = state.process_frame(&input);
-            for (i, value) in out.iter().enumerate().take(valid) {
-                samples[(start + i) * channels + channel] = value * (1.0 / 32768.0);
+            let out = state.frame(&input);
+            for (i, &value) in out.iter().enumerate().take(valid) {
+                samples[(start + i) * channels + channel] = value;
             }
         }
     }

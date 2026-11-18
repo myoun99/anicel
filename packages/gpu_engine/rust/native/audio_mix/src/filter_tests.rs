@@ -3,13 +3,15 @@
 //! the kernel does; how many doubles a setting and a memory take; none on
 //! a kind or geometry it cannot read.
 
-use super::{Setting, Walk, qa_audio_filter, qa_audio_filter_memory, qa_audio_filter_values};
+use super::{Setting, Walk, qa_audio_filter, qa_audio_filter_latency, qa_audio_filter_memory, qa_audio_filter_values};
 use crate::compressor::{COMPRESSOR_MEMORY, Compressor, compress, compress_on};
+use crate::denoiser::{DENOISER_LATENCY, Denoiser, denoise, denoise_on, denoiser_memory};
 use crate::equalizer::{MEMORY_VALUES, Equalizer, equalize, equalize_on};
 
 const RATE: f64 = 48_000.0;
 const EQUALIZER: i32 = 0;
 const COMPRESSOR: i32 = 1;
+const DENOISER: i32 = 2;
 
 fn sound() -> Vec<f32> {
     (0..2 * 6_000).map(|i| ((i * 31) % 997) as f32 / 500.0 - 1.0).collect()
@@ -40,10 +42,12 @@ fn door(kind: i32, samples: &[f32], first: i64, (starts, values): (&[i64], &[f64
 
 #[test]
 fn a_setting_and_a_memory_take_what_each_filter_says() {
-    assert_eq!([qa_audio_filter_values(EQUALIZER), qa_audio_filter_values(COMPRESSOR)], [6, 5]);
+    let values = [EQUALIZER, COMPRESSOR, DENOISER].map(|kind| qa_audio_filter_values(kind));
+    assert_eq!(values, [6, 5, 1]);
     assert_eq!(qa_audio_filter_memory(EQUALIZER, 2), 2 * MEMORY_VALUES as i32);
     assert_eq!(qa_audio_filter_memory(COMPRESSOR, 2), COMPRESSOR_MEMORY as i32, "one for every channel");
-    assert_eq!([qa_audio_filter_values(2), qa_audio_filter_memory(2, 2), qa_audio_filter_memory(EQUALIZER, 0)], [0; 3]);
+    assert_eq!(qa_audio_filter_memory(DENOISER, 2), denoiser_memory(2) as i32, "each channel's model");
+    assert_eq!([qa_audio_filter_values(3), qa_audio_filter_memory(3, 2), qa_audio_filter_memory(EQUALIZER, 0)], [0; 3]);
 }
 
 #[test]
@@ -108,6 +112,37 @@ fn the_door_bakes_what_the_compressor_does() {
     assert_eq!(by_door, by_rust);
 }
 
+
+#[test]
+fn the_door_bakes_what_the_noise_removal_does() {
+    let sound = sound();
+    let settings = [Setting { start: 0, value: Denoiser { amount: 1.0 } }, Setting { start: 2_500, value: Denoiser { amount: 0.4 } }];
+    let starts: Vec<i64> = settings.iter().map(|s| s.start).collect();
+    let values: Vec<f64> = settings.iter().map(|s| s.value.amount).collect();
+    let at = (&starts[..], &values[..]);
+    assert_eq!(door(DENOISER, &sound, 0, at, std::ptr::null_mut()), (1, denoise(&sound, 2, &settings)));
+
+    let (head, tail) = sound.split_at(2 * 3_000);
+    let mut kept = vec![0.0; denoiser_memory(2)];
+    denoise_on(head, 2, &settings, 0, &mut kept, &mut vec![0.0; head.len()]);
+    let mut by_rust = kept.clone();
+    let mut expected = vec![0.0_f32; tail.len()];
+    denoise_on(tail, 2, &settings, 3_000, &mut by_rust, &mut expected);
+    let mut by_door = kept;
+    assert_eq!(door(DENOISER, tail, 3_000, at, by_door.as_mut_ptr()), (1, expected));
+    assert_eq!(by_door, by_rust);
+}
+
+// What a bake reads past its span and drops: the noise removal's two
+// frames at RNNoise's rate, none where the door would not bake it or for
+// the filters that are not late.
+#[test]
+fn the_door_says_how_late_each_filter_comes_out() {
+    let late = [EQUALIZER, COMPRESSOR, DENOISER, 3].map(|kind| qa_audio_filter_latency(kind, 48_000));
+    assert_eq!(late, [0, 0, DENOISER_LATENCY as i32, 0]);
+    assert_eq!(qa_audio_filter_latency(DENOISER, 44_100), 0, "a rate it does not bake at");
+    assert_eq!(qa_audio_filter_latency(EQUALIZER, 96_000), 0);
+}
 #[test]
 fn the_door_refuses_what_it_cannot_read() {
     let sound = sound();
@@ -118,7 +153,8 @@ fn the_door_refuses_what_it_cannot_read() {
         let (s, o, m) = (sound.as_ptr(), out.as_mut_ptr(), std::ptr::null_mut());
         let (t, v) = (starts.as_ptr(), values.as_ptr());
         [
-            qa_audio_filter(2, s, 6_000, 2, 48_000, 0, t, v, 1, m, o),
+            qa_audio_filter(3, s, 6_000, 2, 48_000, 0, t, v, 1, m, o),
+            qa_audio_filter(DENOISER, s, 6_000, 2, 44_100, 0, t, v, 1, m, o),
             qa_audio_filter(-1, s, 6_000, 2, 48_000, 0, t, v, 1, m, o),
             qa_audio_filter(EQUALIZER, std::ptr::null(), 6_000, 2, 48_000, 0, t, v, 1, m, o),
             qa_audio_filter(EQUALIZER, s, 6_000, 0, 48_000, 0, t, v, 1, m, o),
@@ -128,7 +164,7 @@ fn the_door_refuses_what_it_cannot_read() {
             qa_audio_filter(COMPRESSOR, s, 6_000, 2, 48_000, 0, t, v, 1, m, std::ptr::null_mut()),
         ]
     };
-    assert_eq!(refused, [0; 8]);
+    assert_eq!(refused, [0; 9]);
     assert!(out.iter().all(|&s| s == 0.0), "out untouched");
     // No setting: the samples as they were, through either filter.
     for kind in [EQUALIZER, COMPRESSOR] {

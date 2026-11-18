@@ -12,6 +12,9 @@ publish = false
 # in the lock as zeno's.
 [dependencies]
 libm = "0.2"
+# The take's RNNoise, which a sound row's noise removal hears frames through
+# (denoiser.rs) — one frame's road for both.
+audio_denoise = { path = "../audio_denoise" }
 
 # The app's ledger (native/ledger), which alone holds the mix bus and the
 # resamplers now the C's are gone.

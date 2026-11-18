@@ -153,6 +153,31 @@ final class AudioCompressor extends SoundFilter {
       'attackMs: $attackMs, releaseMs: $releaseMs, makeupDb: $makeupDb)';
 }
 
+/// A sound row's noise removal at one moment (native/audio_mix
+/// denoiser.rs): [amount], 0 to 1, of the take's RNNoise heard over the
+/// sound as it was. An [amount] of 0 hands the samples back as they were.
+final class AudioDenoiser extends SoundFilter {
+  const AudioDenoiser({required this.amount});
+
+  final double amount;
+
+  @override
+  int get door => 2;
+
+  @override
+  List<double> get values => [amount];
+
+  @override
+  bool operator ==(Object other) =>
+      other is AudioDenoiser && other.amount == amount;
+
+  @override
+  int get hashCode => amount.hashCode;
+
+  @override
+  String toString() => 'AudioDenoiser(amount: $amount)';
+}
+
 /// A filter from [start] — a sample of the span, 0 its first — until the
 /// next one's.
 typedef SoundFilterSetting = ({int start, SoundFilter filter});
@@ -182,6 +207,9 @@ SoundFilter soundFilterOf(ResolvedLayerEffect sample) => switch (sample.kind) {
     attackMs: sample.parameter('attack'),
     releaseMs: sample.parameter('release'),
     makeupDb: sample.parameter('makeup'),
+  ),
+  EffectKind.noiseRemoval => AudioDenoiser(
+    amount: sample.parameter('amount') / 100,
   ),
   EffectKind.brightnessContrast ||
   EffectKind.hueSaturation ||

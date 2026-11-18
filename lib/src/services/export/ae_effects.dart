@@ -49,7 +49,8 @@ AeEffect? aeEffectOf(
     EffectKind.celNumber ||
     EffectKind.plugin ||
     EffectKind.equalizer ||
-    EffectKind.compressor => null,
+    EffectKind.compressor ||
+    EffectKind.noiseRemoval => null,
   };
 }
 

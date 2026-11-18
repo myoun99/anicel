@@ -44,8 +44,8 @@ void main() {
         (item) => item.keyValue == 'add-sound-preset-${preset.jsonValue}',
       );
 
-  test('🎯on an S row, its row adds an equalizer then a compressor at its '
-      'values — one undo takes both away', () {
+  test('🎯on an S row, its row adds a noise removal, an equalizer then a '
+      'compressor at its values — one undo takes them all away', () {
     session.selectLayer(se);
     final row = rowOf(SoundPreset.dialogue);
     expect(row.enabled, isTrue);
@@ -54,10 +54,12 @@ void main() {
 
     final added = seRow().effects;
     expect([for (final effect in added) effect.kind], [
+      EffectKind.noiseRemoval,
       EffectKind.equalizer,
       EffectKind.compressor,
     ]);
-    final (equalizer, compressor) = (added.first, added.last);
+    final [noise, equalizer, compressor] = added;
+    expect(noise.parameterOf('amount').value, 80);
     expect(equalizer.parameterOf('lowCut').value, 80);
     expect(equalizer.parameterOf('highGain').value, 2);
     expect(
@@ -68,8 +70,8 @@ void main() {
       {'threshold': -20, 'ratio': 3, 'attack': 5, 'release': 80, 'makeup': 3},
     );
     expect(
-      equalizer.id,
-      isNot(compressor.id),
+      {for (final effect in added) effect.id},
+      hasLength(3),
       reason: 'each under an id of its own, minted for the row',
     );
 
@@ -112,7 +114,11 @@ void main() {
       final effects = preset.effects;
       expect(
         [for (final effect in effects) effect.kind],
-        [EffectKind.equalizer, EffectKind.compressor],
+        [
+          if (preset == SoundPreset.dialogue) EffectKind.noiseRemoval,
+          EffectKind.equalizer,
+          EffectKind.compressor,
+        ],
         reason: '$preset',
       );
       for (final effect in effects) {
