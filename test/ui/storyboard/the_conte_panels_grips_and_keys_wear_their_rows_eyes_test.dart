@@ -200,6 +200,40 @@ void main() {
     });
   }
 
+  testWidgets('the conte head\'s eye follows its folder\'s, flipped while '
+      'the panel stands: the head kept across the flip wears the eye it '
+      'has in hand (card the-conte-rail-row-holders-are-new-each-pass)', (
+    tester,
+  ) async {
+    final session = await pumpStoryboardHost(
+      tester,
+      film(folderShown: true),
+      pixelsPerFrame: 12,
+    );
+    final eye = find.named('storyboard-layer-visibility-a-conte');
+    bool shown() {
+      final layer = session.repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .first
+          .layers
+          .firstWhere((layer) => layer.id == const LayerId('a-conte'));
+      return RailEyes.of(tester.element(eye), layer).shown;
+    }
+
+    expect(shown(), isTrue, reason: '⛔전제: the folder shows');
+
+    session.layerSwitches.toggleLayerVisibility(shut);
+    await tester.pumpAndSettle();
+    expect(shown(), isFalse, reason: 'its folder hides it');
+
+    session.layerSwitches.toggleLayerVisibility(shut);
+    await tester.pumpAndSettle();
+    expect(shown(), isTrue, reason: 'and shows it again');
+  });
+
   testWidgets('the camera row and its lanes wear each cut\'s own camera\'s '
       'eye — the timeline rail\'s answer for it there', (tester) async {
     Cut cutOf(String id, {required bool cameraShown}) => Cut(
