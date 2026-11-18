@@ -1177,14 +1177,11 @@ class _StoryboardRowsAndLabels {
       key,
       row(committed),
       (ByIdentity(dragPreview), ByIdentity(committed)),
-      (piece) => TimelineDragPreviewRowGate(
+      (_) => TimelineDragPreviewRowGate(
         dragPreview: dragPreview,
         layer: committed,
         useGlobalForm: true,
-        // The row as built for the committed layer, which the gate hands
-        // its builder while no edit is in flight.
-        rowBuilder: (context, layer) =>
-            identical(layer, committed) ? piece : row(layer),
+        rowBuilder: (context, layer) => row(layer),
       ),
     );
   }

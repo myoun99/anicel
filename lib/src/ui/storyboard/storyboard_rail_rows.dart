@@ -3051,23 +3051,16 @@ class _StoryboardRailRows {
         ),
       );
     }
-    // Kept while the row under the のりしろ asked now holds, and what
-    // the builder round it reads: the channel it hears, the cuts it lays
-    // ([_TrackStrip.==]) and the transition row it falls back on.
+    // Kept while the row on the strip as this pass lays it holds, and the
+    // channel its builder hears. The cuts and the transition row it is
+    // laid on reach the row only as its reaches — each holding its cut's
+    // place ([CameraRowReach.entry]) — which the row's facts hold; what it
+    // shows under a drag in flight its builder hears itself.
     final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
     return rows.piece(
       ('cameraStrip', track.id),
-      row(
-        _reachesOn(
-          strip.entries,
-          _transitionRowShown(track, strip, dragPreview),
-        ),
-      ),
-      inputs: (
-        ByIdentity(dragPreview),
-        strip,
-        ByIdentity(strip.transitionRow),
-      ),
+      row(_reachesOn(strip.entries, strip.transitionRow)),
+      inputs: ByIdentity(dragPreview),
       wrap: (_) => _onTheReaches(track, strip, row),
     );
   }
@@ -3086,24 +3079,16 @@ class _StoryboardRailRows {
     final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
     return SlicedListenableBuilder<Layer>(
       listenable: dragPreview,
-      slice: () => _transitionRowShown(track, strip, dragPreview),
+      slice: () =>
+          timelineDragPreviewGlobalLayerFor(
+            dragPreview.value,
+            track.transitionLayer.id,
+          ) ??
+          strip.transitionRow,
       builder: (context, transitionRow) =>
           build(_reachesOn(strip.entries, transitionRow)),
     );
   }
-
-  /// [track]'s transition row as [dragPreview] shows it now — its span's
-  /// own edge drag in flight — else as [strip] carries it.
-  Layer _transitionRowShown(
-    Track track,
-    _TrackStrip strip,
-    ValueListenable<TimelineDragPreview?> dragPreview,
-  ) =>
-      timelineDragPreviewGlobalLayerFor(
-        dragPreview.value,
-        track.transitionLayer.id,
-      ) ??
-      strip.transitionRow;
 
   /// [track]'s camera row as its lanes are drawn from (I-73 ④ⓔ): each cut's
   /// camera, and the camera's lanes ([cameraPropertyLanes]) — valued on the
@@ -3258,13 +3243,7 @@ class _StoryboardRailRows {
         // only showed on release. It resolves the GLOBAL preview form —
         // this strip renders the track axis, not the active-cut clone.
         switch (_state._seDisplayAt(track, slot)) {
-          null => _keptPiece(
-            _state._rowsWindow.globalStripKeep,
-            ('seStrip', track.id, slot),
-            seRow(slot, null),
-            null,
-            (piece) => piece,
-          ),
+          null => seRow(slot, null),
           final globalLayer => _state._rows.keptGlobalStrip(
             ('seStrip', track.id, slot),
             globalLayer,
