@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/build_stamp.dart';
+import '../models/layer_folder.dart';
 import '../native/app_gpu_engine.dart'
     show appGpuEngineIsGone, appGpuEngineWentBy;
 import '../native/lost_screen.dart';
@@ -55,7 +56,7 @@ abstract final class LostScreenEvidence {
             '${cut.canvasSize.width}x${cut.canvasSize.height} '
             '${cut.duration} frames, at frame ${session.currentFrameIndex}, '
             '${cut.layers.length} rows, '
-            '${cut.layers.where((row) => row.isVisible).length} shown',
+            '${cut.layers.where(cut.layers.rowVisible).length} shown',
     ];
   }
 

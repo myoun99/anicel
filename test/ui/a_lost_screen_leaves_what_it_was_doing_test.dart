@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/native/lost_screen.dart';
 import 'package:anicel/src/services/diagnostics/gpu_loss_log.dart';
 import 'package:anicel/src/services/playback/playback_scope.dart';
@@ -59,7 +60,8 @@ void main() {
     expect(playback.isPlaying, isTrue, reason: '⛔전제: it plays');
     expect(log.existsSync(), isFalse, reason: '⛔전제: nothing went yet');
 
-    LostScreen.debugGo(0x887A0006);
+    // As the runner says it: the HRESULT as an int32, so negative here.
+    LostScreen.debugGo(0x887A0006.toSigned(32));
     await tester.pump();
     await tester.pump();
     playback.stop();
@@ -81,7 +83,7 @@ void main() {
         '${cut.canvasSize.width}x${cut.canvasSize.height} '
         '${cut.duration} frames, at frame ${session.currentFrameIndex}, '
         '${cut.layers.length} rows, '
-        '${cut.layers.where((row) => row.isVisible).length} shown',
+        '${cut.layers.where(cut.layers.rowVisible).length} shown',
       ),
     );
 

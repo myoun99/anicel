@@ -84,6 +84,12 @@ const _asksTheApps = <String, (int, String)>{
         'save stands on before it begins — is the engine the app has at '
         'that moment',
   ),
+  'lib/src/ui/lost_screen_evidence.dart': (
+    1,
+    'a lost screen\'s evidence (H63) says what the app\'s engine says at '
+        'the moment the loss is heard — before the save lets it go and '
+        'opens another: the app\'s is the one meant',
+  ),
 };
 
 /// The lines of [source] that read `appGpuEngineIsGone`: not where it is
