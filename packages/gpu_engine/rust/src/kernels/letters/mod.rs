@@ -32,7 +32,6 @@ pub(crate) mod words;
 use glyphs::{Affine, Faces, Paint, Placed, covered};
 
 use crate::device::Engine;
-use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::chain::tiles_of;
 use crate::kernels::composite::{Composite, NO_EDGE, Plan, Step, TILE, TILE_TEXELS, TileAt, TileSet};
@@ -130,22 +129,13 @@ pub(crate) fn set(faces: &Faces, to_grid: Affine, passes: &[Pass]) -> Option<Cov
     Some(Covered { layers, rect })
 }
 
-/// The picture of letters: straight RGBA8 tiles over `rect`, tile after
-/// tile row by row.
-pub(crate) struct Lettered {
-    pub(crate) rect: TileRect,
-    pub(crate) tiles: wgpu::Buffer,
-}
-
-/// `layers`, bottom to top, laid over nothing into the tiles of the one
-/// rectangle that holds every pixel they cover. Submits the work; the
-/// caller waits.
-pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer]) -> Option<Lettered> {
-    let Some(rect) = rect_of(layers) else {
-        return fail("letters that cover no pixel are no row — a plan leaves them out");
-    };
-    let tiles = tiles_of(rect);
-    let (pages, sets) = paged(engine, layers, rect, &tiles)?;
+/// `covered`'s layers, bottom to top, laid over nothing into the tiles of
+/// its rectangle: the picture of letters, straight RGBA8 tiles, tile after
+/// tile row by row. Submits the work; the caller waits.
+pub(crate) fn lettered(engine: &Engine, composite: &Composite, covered: &Covered) -> Option<wgpu::Buffer> {
+    let Covered { layers, rect } = covered;
+    let tiles = tiles_of(*rect);
+    let (pages, sets) = paged(engine, layers, *rect, &tiles)?;
     let steps: Vec<Step> = layers
         .iter()
         .enumerate()
@@ -170,7 +160,7 @@ pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer])
         mask: None,
     };
     let done = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest())?;
-    Some(Lettered { rect, tiles: done.out })
+    Some(done.out)
 }
 
 /// The tiles holding every pixel a layer covers, or `None` for none.

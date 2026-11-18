@@ -8,8 +8,8 @@ use zeno::{Command, Vector};
 use super::glyphs::{
     Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, boxed, by_family, covered, letters, shaped,
 };
-use super::tests::at as pixel_of;
-use super::{Lettered, Pass, lettered, set};
+use super::tests::{Laid, at as pixel_of};
+use super::{Pass, lettered, set};
 use crate::kernels::composite::tests::rig;
 
 pub(super) const IDENTITY: Affine = Affine {
@@ -362,10 +362,11 @@ fn nothing_to_draw_is_no_cover() {
 
 /// `passes`, standing where they are, covered on the CPU ([`set`]) and
 /// laid on the GPU ([`lettered`]).
-fn laid(passes: &[Pass]) -> Lettered {
+fn laid(passes: &[Pass]) -> Laid {
     let rig = rig();
     let covered = set(faces(), IDENTITY, passes).expect("covered");
-    lettered(rig.engine, &rig.composite, &covered.layers).expect("laid")
+    let tiles = lettered(rig.engine, &rig.composite, &covered).expect("laid");
+    Laid { rect: covered.rect, tiles }
 }
 
 #[test]

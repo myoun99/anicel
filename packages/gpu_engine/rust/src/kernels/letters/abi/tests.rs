@@ -178,9 +178,9 @@ fn a_picture_built_call_by_call_is_the_one_built_in_rust() {
         ],
     )
     .expect("covered");
-    let built = lettered(rig.engine, &rig.composite, &covered.layers).expect("laid");
-    let at = built.rect;
-    let built = ([at.x0, at.y0, at.columns as i32, at.rows as i32], read_buffer(rig.engine, &built.tiles));
+    let built = lettered(rig.engine, &rig.composite, &covered).expect("laid");
+    let at = covered.rect;
+    let built = ([at.x0, at.y0, at.columns as i32, at.rows as i32], read_buffer(rig.engine, &built));
     assert_eq!(handed.0, built.0, "the rectangle");
     assert!(handed.1 == built.1, "the pixels");
     assert!(handed.1.chunks_exact(4).any(|pixel| pixel[3] != 0), "LIVENESS: letters were laid");
@@ -209,8 +209,8 @@ fn each_tile_lands_in_its_place_across_and_down() {
     assert_eq!(rect[2..], [3, 2], "⛔premise: three columns of tiles and two rows");
     // SAFETY: `letters` is live, and covered.
     let covered = unsafe { (*letters).covered.clone() }.expect("covered");
-    let laid = lettered(rig.engine, &rig.composite, &covered.layers).expect("laid");
-    let picture = read_buffer(rig.engine, &laid.tiles);
+    let laid = lettered(rig.engine, &rig.composite, &covered).expect("laid");
+    let picture = read_buffer(rig.engine, &laid);
 
     let (_, landed) = read(rig.engine, &rig.composite, letters, rect);
 

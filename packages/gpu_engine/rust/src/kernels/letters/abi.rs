@@ -565,8 +565,8 @@ pub unsafe extern "C" fn gpu_engine_letters_land(
             // device gone and says nothing of it.
             let put = match engine.gone() {
                 true => fail("the device is gone: the letters are laid nowhere"),
-                false => lettered(&engine, composite, &covered.layers)
-                    .and_then(|picture| writing.put_from(&engine, &picture.tiles, tiles)),
+                false => lettered(&engine, composite, &covered)
+                    .and_then(|picture| writing.put_from(&engine, &picture, tiles)),
             };
             told(number, put.is_some());
             put
