@@ -1120,10 +1120,10 @@ class EditorSessionManager extends ChangeNotifier
     standsWithItsPicture.moveTo(
       frame,
       () {
-        if (cutId != activeCutId) {
-          historyManager.places.leave();
-          standing.selectCut(cutId);
-        }
+        // Every door that moves walks off first (I-41) — the cut stood in
+        // too: [Standing.selectCut] keeps it.
+        historyManager.places.leave();
+        standing.selectCut(cutId);
         (stand ?? () => _standOnFrame(frame))();
       },
       inCut: cutId,

@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts, standingPicturesOf;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -11,11 +13,15 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart'
     show nothingOnItsWay, theFrameIsShown;
 import '../../helpers/a_move_lands.dart';
+import '../../helpers/home_page_probes.dart' show showStoryboardPanel;
+import '../../helpers/named_finders.dart';
 import '../../helpers/panel_finders.dart'
     show mainCanvasPanel, visibleCanvasPoint;
 import '../../helpers/settle_async.dart';
@@ -289,6 +295,68 @@ void main() {
       reason: 'bare till its picture comes',
     );
     await theFrameIsShown(tester, within: mainCanvasPanel());
+  });
+
+  testWidgets('a storyboard lane cell double clicked in a cut whose picture '
+      'is still to come keys the cell the move lands on — nothing in the '
+      'cut it waits in (Q3 = stand)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final (:session, :first, :second, opensWith: _) =
+        await inTheFirstOfTwoCuts(tester);
+    final se = session.activeTrack.seLayers.first.id;
+    Set<int> keyed() => session.activeTrack.seLayers
+        .firstWhere((layer) => layer.id == se)
+        .transformTrack
+        .keyedFrames;
+    await showStoryboardPanel(tester);
+    for (final toggle in [
+      'storyboard-lane-toggle-${se.value}',
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      'storyboard-lane-group-toggle-${se.value}-name-tag-group',
+    ]) {
+      await tester.ensureVisible(find.named(toggle));
+      await tester.pumpAndSettle();
+      await tester.tap(find.named(toggle));
+      await tester.pumpAndSettle();
+    }
+    session.standOnRow(
+      LaneRowAddress(se, 'position'),
+      panel: WorkingPanel.storyboard,
+      globalFrameIndex: 0,
+    );
+    await tester.pumpAndSettle();
+    final into = session.trackFrameAxis().entryFor(second)!.startFrame;
+    expect(keyed(), isEmpty, reason: '⛔premise');
+    // The panel's pumps warmed what lies near: none of it kept.
+    session.playbackRig.framePictures.store.letGoUnpinnedWhere((_) => true);
+
+    tester
+        .widget<TimelineLaneFrameRow>(
+          find.descendant(
+            of: find.byType(StoryboardTabHost),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is TimelineLaneFrameRow &&
+                  widget.layer.id == se &&
+                  widget.lane.laneId == 'position',
+            ),
+          ),
+        )
+        .laneRange!
+        .onActivateAt!(se, 'position', into);
+    await tester.pump();
+
+    expect(
+      session.activeCutId,
+      first,
+      reason: '⛔premise: the move waits for its picture',
+    );
+    expect(keyed(), isEmpty, reason: 'the cell opens in its turn');
+    await theMoveLands(tester, session);
+    await tester.pumpAndSettle();
+    expect(session.activeCutId, second);
+    expect(keyed(), {into});
   });
 
   /// The frames [session]'s playhead stands on from now, in turn.
