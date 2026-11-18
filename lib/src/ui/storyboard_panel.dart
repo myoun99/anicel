@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../models/attached_layer_resolve.dart'
     show
         attachArrowPlacement,
+        attachGroupRowsBySide,
         attachRowWearsBaseComposite,
         isSyncedAttachedLayer;
 import '../models/attached_placement.dart' show AttachedPlacement;

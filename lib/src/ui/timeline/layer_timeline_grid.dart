@@ -1166,6 +1166,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       activeLayer: widget.hooks.activeLayer,
       controllers: [_horizontalScrollController, _verticalScrollController],
       layers: widget.layers,
+      attachGroups: widget.hooks.attachGroups,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final viewportHeight = constraints.hasBoundedHeight

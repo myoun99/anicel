@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../services/flutter_test_run.dart';
+import '../models/attached_layer_resolve.dart' show attachGroupRowsBySide;
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';

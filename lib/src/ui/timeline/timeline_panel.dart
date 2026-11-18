@@ -9,7 +9,8 @@ import '../../models/cut_id.dart';
 import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
+import '../../models/attached_layer_resolve.dart'
+    show attachArrowPlacement, attachGroupRowsBySide;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -699,6 +700,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
         attachArrows[layer.id] = placement;
       }
     }
+    // The fold halves read the same order, here for the same reason (I-175).
+    final attachGroups = attachGroupRowsBySide(widget.layers);
     final showToolbar = widget.timelineActionToolbar != null;
 
     // text-scale-rail-rows: the row is as tall as its words need where it
@@ -774,6 +777,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onOpenCameraPath: widget.onOpenCameraPath,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
+      attachGroups: attachGroups,
       onToggleLayerClip: widget.onToggleLayerClip,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,

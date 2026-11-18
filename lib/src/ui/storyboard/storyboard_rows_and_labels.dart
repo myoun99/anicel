@@ -1030,6 +1030,7 @@ class _StoryboardRowsAndLabels {
         for (final MapEntry(:key, :value) in railSidesShownOf(
           layers,
           stack: wears.stack,
+          groups: attachGroupRowsBySide(wears.stack),
         ).entries)
           key: BySet(value),
       }),

@@ -508,7 +508,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
       timelineGroupFoldFor(
         row: row,
-        layers: widget.layers,
+        attachGroups: widget.hooks.attachGroups,
         onToggle: widget.hooks.onToggleGroupFold,
       );
 
@@ -1005,6 +1005,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       activeLayer: widget.hooks.activeLayer,
       controllers: [_frameScrollController, _layerScrollController],
       layers: widget.layers,
+      attachGroups: widget.hooks.attachGroups,
       child: ValueListenableBuilder<double?>(
         valueListenable: _railExtent,
         builder: (context, _, _) => LayoutBuilder(

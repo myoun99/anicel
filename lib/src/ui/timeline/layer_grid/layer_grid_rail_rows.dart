@@ -224,7 +224,7 @@ class _LayerGridRailRows {
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
       timelineGroupFoldFor(
         row: row,
-        layers: _state.widget.layers,
+        attachGroups: _state.widget.hooks.attachGroups,
         onToggle: _state.widget.hooks.onToggleGroupFold,
       );
 

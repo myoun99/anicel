@@ -515,7 +515,7 @@ class _StoryboardRailRows {
         inHand.layer,
         layerIndex: layers.indexOf(inHand.layer),
       ),
-      layers: layers,
+      attachGroups: attachGroupRowsBySide(layers),
       onToggle: _state.widget.onToggleGroupFold,
     );
   }

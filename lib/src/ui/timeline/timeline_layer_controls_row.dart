@@ -32,7 +32,8 @@ import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
-import '../../models/attached_layer_resolve.dart' show groupFoldOpen;
+import '../../models/attached_layer_resolve.dart'
+    show AttachGroups, attachGroupSidesIn, groupFoldOpenOn;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
@@ -1323,7 +1324,7 @@ extension GroupFoldShown on GroupFoldFace {
 /// rule. `one_fold_twirl_test` keeps it the only one.
 ///
 /// [openOn] is the one predicate's answer for a press on a side — null for
-/// a folder's twirl ([groupFoldOpen]) — which the face reads and a sweep
+/// a folder's twirl ([groupFoldOpenOn]) — which the face reads and a sweep
 /// paints by; [onToggle] the host's one verb, told the side.
 typedef TimelineGroupFold = ({
   GroupFoldFace face,
@@ -1331,13 +1332,19 @@ typedef TimelineGroupFold = ({
   void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 });
 
+/// [row]'s fold over [attachGroups], worked out where the model order is
+/// in hand. ↩️It took the rail's own list, which the horizontal rail shows
+/// turned over, so an attach folder above its base read as one below it
+/// and a half appeared on a side with no row (reported by the 캔버스
+/// 베이스 패널 session, 2026-11-19).
 TimelineGroupFold timelineGroupFoldFor({
   required TimelineDisplayRow row,
-  required List<Layer> layers,
+  required AttachGroups attachGroups,
   required void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 }) {
+  final sides = attachGroupSidesIn(attachGroups, row.layer.id);
   bool? openOn(AttachedPlacement? side) =>
-      groupFoldOpen(row.layer, layers, side: side);
+      groupFoldOpenOn(row.layer, sides, side: side);
   return (
     face: row.isFolder
         ? (folder: openOn(null), above: null, below: null)

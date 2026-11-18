@@ -6,6 +6,7 @@ import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/attached_layer_resolve.dart' show AttachGroups;
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
@@ -113,6 +114,7 @@ class TimelineGridHooks {
     this.onOpenCameraPath,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
+    this.attachGroups = const {},
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -407,6 +409,11 @@ class TimelineGridHooks {
   /// here would invert every organizer folder's arrow on this surface
   /// alone.
   final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
+
+  /// Each attach group's rows by side, worked out where the model order is
+  /// in hand, for [attachArrowPlacementOf]'s reason: what a base's fold
+  /// halves show and fold, and whose eyes their colour asks (I-175).
+  final AttachGroups attachGroups;
 
   final ValueChanged<LayerId> onToggleLayerVisibility;
 

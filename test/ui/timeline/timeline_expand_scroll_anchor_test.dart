@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show attachGroupRowsBySide;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -69,6 +71,7 @@ void main() {
                 onToggleLayerTimesheet: (_) {},
                 onLayerMarkSelected: (_, _) {},
                 attachFoldedRowIds: collapsedIds,
+                attachGroups: attachGroupRowsBySide(layers),
                 // The fold takes the base's riders off the rail (I-175).
                 // Read live, as the session is: the fold lives outside
                 // [layers] here, so the base's row is kept whole across it
