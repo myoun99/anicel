@@ -336,8 +336,8 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     // A move kept is at the time it was heard (mouse_kept.rs `Kept::hear`);
     // one read here is timed back from now by its milliseconds.
     let micros = |nth: usize, at_time: u32| match heard.get(nth) {
-        Some(&heard) if history[nth] == moves[nth] => heard,
-        _ => now - i64::from(time.wrapping_sub(at_time)) * 1000,
+        Some(&heard) => heard,
+        None => now - i64::from(time.wrapping_sub(at_time)) * 1000,
     };
     let readings = wintab::readings_at(time, &moves);
     let points = moves

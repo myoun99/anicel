@@ -179,6 +179,13 @@ pub(crate) fn keeping() -> bool {
     kept().is_some()
 }
 
+/// When the history was last read since the press — the press, till the
+/// first read; None while no button is down.
+#[cfg(test)]
+pub(crate) fn read_at() -> Option<i64> {
+    kept().as_ref().map(|kept| kept.read_at)
+}
+
 /// Keeps `kept` as though read since a press, the keeping thread left
 /// asleep.
 #[cfg(test)]

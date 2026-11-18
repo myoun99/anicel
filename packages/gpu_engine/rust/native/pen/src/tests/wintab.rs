@@ -1042,10 +1042,14 @@ fn a_press_drains_the_queue_before_its_point_is_read() {
 fn a_mouse_press_in_the_view_keeps_its_history_till_the_capture_goes() {
     let (_driver, _turn) = driver();
     let window = AppWindow::show();
+    let before = crate::points_win::now_micros();
     crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
-    let pressed = crate::mouse_kept::keeping();
+    let (pressed, read_at) = (crate::mouse_kept::keeping(), crate::mouse_kept::read_at());
+    let after = crate::points_win::now_micros();
     crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
     assert!(pressed, "kept from the press");
+    let read_at = read_at.unwrap_or_default();
+    assert!((before..=after).contains(&read_at), "heard from the press on: {before} ≤ {read_at} ≤ {after}");
     assert!(!crate::mouse_kept::keeping(), "let go with the capture");
 }
 
@@ -1085,9 +1089,10 @@ fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     }
     // SAFETY: the time of the last message this thread took.
     let time = unsafe { GetMessageTime() } as u32;
-    // A place no mouse is: the OS keeps no history of it, and what is kept
-    // since a press there is two moves to it.
-    let far: i16 = -20_000;
+    // A place no mouse is, and no other test's: the OS keeps no history of
+    // it, what is kept since a press there is two moves to it, and no move
+    // another test wrote in the same tick of the message clock is told alike.
+    let far: i16 = -21_000;
     let mut there = POINT { x: far.into(), y: far.into() };
     // SAFETY: the window shown, and a local.
     let _ = unsafe { ClientToScreen(window.0, &mut there) };
