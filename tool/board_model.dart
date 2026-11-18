@@ -451,6 +451,18 @@ const kKinds = <String>{
   'item', 'decision', 'law', 'meta', 'check', 'record', 'build',
 };
 
+/// The `state` a line may carry: the two endings, which the story cannot
+/// overturn. Every other state is the story's to compute from `at`, and one
+/// written by hand is covered by the next line or says what the story does
+/// not. `board_say` refuses the rest before they are written, and
+/// `board_check` names the ones already there — ONE list for both, or the
+/// tool lets through a line the gate then holds every turn on.
+/// 🧪2026-11-18 07:46: a decision written with `"state":"ask"` beside its
+/// `at:"질문"` went through `board_say` and held every session's Stop until
+/// it was acked — a line cannot be mended by appending
+/// (board-say-takes-a-hand-written-state).
+const kWrittenStates = <String>{'archived', 'deleted'};
+
 /// One thing a record said that nobody reads. ⚠️Three fields rather than one
 /// formatted string, because the gate has to ANSWER WITH THEM: the id to
 /// match an ack, the line to be findable, the field to be fixed.

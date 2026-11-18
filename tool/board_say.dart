@@ -77,6 +77,12 @@ String? recordRefusal(Map<String, dynamic> json, int lineNo) {
     return '$lineNo번째 줄: `ts` 를 직접 쓰지 마세요 — 이 도구가 시계를 '
         '읽어서 찍습니다. 지어낸 시각이 이야기의 순서를 망가뜨립니다.';
   }
+  final state = '${json['state'] ?? ''}';
+  if (state.isNotEmpty && !kWrittenStates.contains(state)) {
+    return '$lineNo번째 줄: `state` 「$state」 를 손으로 쓰지 마세요 — 칸은 '
+        '이야기에서 계산됩니다. 카드를 옮기려면 `at` 에 대분류를 적으세요'
+        '(손으로 쓰는 state 는 끝을 뜻하는 ${kWrittenStates.join(' · ')} 뿐).';
+  }
   if (kind != 'meta' && '${json['id'] ?? ''}'.trim().isEmpty) {
     return '$lineNo번째 줄: `id` 가 없습니다 — 보드는 id 없는 줄을 '
         '건너뜁니다(meta 는 예외).';

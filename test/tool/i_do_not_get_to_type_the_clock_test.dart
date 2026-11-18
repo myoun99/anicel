@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/board_model.dart';
 import '../../tool/board_say.dart';
 
 /// 🚨★★★I DO NOT GET TO TYPE `ts`.
@@ -36,6 +37,31 @@ void main() {
       contains('options'),
       reason: 'the fix is in the refusal — the reader lists what it does read',
     );
+  });
+
+  // 🧪2026-11-18 07:46: a decision went in with `"state":"ask"` beside its
+  // `at:"질문"`, and board_check held every session's Stop on it — a line
+  // cannot be mended by appending, so the refusal is the only fix that
+  // costs one message (board-say-takes-a-hand-written-state).
+  test('⛔a `state` of my own is refused — the story computes it', () {
+    final why = recordRefusal({
+      'kind': 'decision',
+      'id': 'W-Q1',
+      'at': '질문',
+      'state': 'ask',
+    }, 1);
+    expect(why, contains('state'));
+    expect(why, contains('`at`'), reason: 'the fix is in the refusal');
+  });
+
+  test('🚨an ending is still written by hand — the gate takes the same two', () {
+    for (final ending in kWrittenStates) {
+      expect(
+        recordRefusal({'kind': 'item', 'id': 'W', 'state': ending}, 1),
+        isNull,
+        reason: ending,
+      );
+    }
   });
 
   test('⛔a kind nobody handles is refused', () {

@@ -460,7 +460,6 @@ Iterable<String> _sectionsTheStoryCannotName(
   DateTime? now,
   String linesSince,
 ) sync* {
-  const knownEndings = {'archived', 'deleted'};
   final byId = {for (final c in cards) c.id: c};
   final unknownStage = <String>[];
   final future = <String>[];
@@ -499,7 +498,7 @@ Iterable<String> _sectionsTheStoryCannotName(
       unknownStage.add('$n:$id($at)');
     }
     final state = line.state;
-    if (state.isNotEmpty && !knownEndings.contains(state)) {
+    if (state.isNotEmpty && !kWrittenStates.contains(state)) {
       handWrittenState.add('$n:$id($state)');
     }
   }
