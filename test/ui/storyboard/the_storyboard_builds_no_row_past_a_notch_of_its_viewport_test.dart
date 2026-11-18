@@ -143,6 +143,49 @@ void main() {
     expectEveryRowShown('at the end');
   });
 
+  // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q2 = 1,
+  // 「칸 뒤 쉬는 프레임에 짓기」): the timeline's walk, the conte's rows.
+  testWidgets('a notch lays no row in its own frame, and the rows the '
+      'window takes in come a row a frame after it', (tester) async {
+    await pumpManyRows(tester);
+    rows(tester).jumpTo(0);
+    await tester.pumpAndSettle();
+    Set<int> built() => builtSeRows(tester).keys.toSet();
+    final before = built();
+
+    rows(tester).jumpTo(timelineRowWindowMargin);
+    await tester.pump();
+    expect(built(), before, reason: 'the notch\'s own frame laid no row');
+
+    final arrivals = <int>[];
+    var now = before;
+    for (var frame = 0; frame < 12; frame += 1) {
+      await tester.pump();
+      final next = built();
+      arrivals.add(next.difference(now).length);
+      now = next;
+    }
+    expect(
+      arrivals.every((count) => count <= 1),
+      isTrue,
+      reason: 'a row a frame: $arrivals',
+    );
+    expect(
+      arrivals.where((count) => count == 1).length,
+      greaterThan(1),
+      reason: 'taken in over the frames after the notch: $arrivals',
+    );
+    final shown = tester.getRect(viewport);
+    final below = notchPast(shown).bottom;
+    expect(
+      builtSeRows(tester).values.where(
+        (row) => row.label.top >= shown.bottom && row.label.top < below,
+      ),
+      isNotEmpty,
+      reason: 'and the window is a notch past the view again',
+    );
+  });
+
   testWidgets('a row stands at one place in the rows whatever the scroll, '
       'its lanes twirled open under it or not, and every row the view '
       'shows is built', (tester) async {

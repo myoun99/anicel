@@ -162,6 +162,57 @@ void main() {
     }
   });
 
+  // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q2 = 1,
+  // 「칸 뒤 쉬는 프레임에 짓기」).
+  testWidgets('a notch lays no row in its own frame, and the rows the '
+      'window takes in come a row a frame after it', (tester) async {
+    await tester.pumpWidget(grid());
+    await tester.pumpAndSettle();
+    var laid = 0;
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget is ValueListenableBuilder<int>) {
+        laid += 1;
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    final before = built();
+    final seen = inView();
+    await wheelBy(tester, 100);
+    expect(
+      inView().difference(seen),
+      isNotEmpty,
+      reason: '⛔전제: the notch brought rows in',
+    );
+    expect(laid, 0, reason: 'the notch\'s own frame laid no row');
+    expect(built(), before);
+
+    final arrivals = <int>[];
+    var now = before;
+    for (var frame = 0; frame < 12; frame += 1) {
+      await tester.pump();
+      final next = built();
+      arrivals.add(next.difference(now).length);
+      now = next;
+    }
+    debugOnRebuildDirtyWidget = null;
+    expect(
+      arrivals.every((count) => count <= 1),
+      isTrue,
+      reason: 'a row a frame: $arrivals',
+    );
+    expect(
+      arrivals.where((count) => count == 1).length,
+      greaterThan(1),
+      reason: 'taken in over the frames after the notch: $arrivals',
+    );
+    expect(
+      builtBelow(tester).length,
+      greaterThanOrEqualTo(3),
+      reason: 'and the window is a notch past the view again',
+    );
+  });
+
   testWidgets('sub-row movement re-windows nothing at all', (tester) async {
     await tester.pumpWidget(grid());
     await tester.pumpAndSettle();

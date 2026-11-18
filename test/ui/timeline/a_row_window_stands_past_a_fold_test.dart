@@ -204,7 +204,10 @@ void main() {
     final inside = laid;
     laid = 0;
     position.jumpTo(position.maxScrollExtent);
-    await tester.pump();
+    // The rows the window takes in are laid in the frames after the move
+    // where every row it shows stands laid (a-timeline-wheel-notch-lays-
+    // out-the-rail-Q2 = 1, [TimelineRowWindowWalk]).
+    await tester.pumpAndSettle();
     final across = laid;
     debugOnRebuildDirtyWidget = null;
 

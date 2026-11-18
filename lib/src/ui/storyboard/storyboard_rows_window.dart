@@ -27,8 +27,12 @@ class _StoryboardRowsWindow {
   /// mid-drag would drop the drag ([HeldRowPin], the timeline's A5).
   final HeldRowPin held = HeldRowPin();
 
-  /// The window the rows were last laid for ([_tokenOf]).
-  int _laid = -1;
+  /// The window the rows are laid in, walked to where the scroll stands
+  /// ([TimelineRowWindowWalk]) — the timeline's rows' law.
+  late final TimelineRowWindowWalk _walk = TimelineRowWindowWalk(
+    view: _view,
+    relay: () => bucket.value += 1,
+  );
 
   /// What the rail keeps of its rows while only the window moves.
   final WindowMoveKeep railKeep = WindowMoveKeep();
@@ -40,7 +44,10 @@ class _StoryboardRowsWindow {
   WindowMoveKeep stripKeepOf(int trackIndex) =>
       _stripKeeps.putIfAbsent(trackIndex, WindowMoveKeep.new);
 
-  void dispose() => bucket.dispose();
+  void dispose() {
+    _walk.dispose();
+    bucket.dispose();
+  }
 
   /// [rows] in a column the window lays again when it moves — this call's
   /// pass, kept by [keep] across the moves ([WindowMoveKeep]); [newPass]
@@ -64,16 +71,15 @@ class _StoryboardRowsWindow {
     );
   }
 
-  /// The scroll moved: the rows are laid again when the window they stand
-  /// in did.
+  /// The scroll moved: the rows are laid again in this frame where a row
+  /// the view shows is not laid, else walked there after it
+  /// ([TimelineRowWindowWalk.moved]).
   ///
-  /// ⚠️Compared against the window last LAID, not against the last one
-  /// heard: a pass that lays other rows moves the windows under a scroll
-  /// that stands still.
+  /// ⚠️Asked of the window last LAID, not of the last one heard: a pass
+  /// that lays other rows moves the windows under a scroll that stands
+  /// still.
   void handleScroll() {
-    final token = _tokenOf(_now());
-    if (token != _laid) {
-      _laid = token;
+    if (_walk.moved()) {
       bucket.value += 1;
     }
   }
@@ -81,18 +87,16 @@ class _StoryboardRowsWindow {
   /// Track [trackIndex]'s rows as this lay lays them, kept by [keep].
   _WindowedRows rowsOf(int trackIndex, WindowMoveKeep keep) {
     final table = _state._railRows.windowTable;
-    final window = _now();
-    _laid = _tokenOf(window);
     return _WindowedRows(
       table,
-      window,
+      _walk.laid(),
       held,
       keep,
       table.firstSlots[trackIndex],
     );
   }
 
-  /// The rows the view stands over now, or null while it has no extent —
+  /// Where the rows' view stands now, or null while it has no extent —
   /// before the panel is laid out, when every row is built.
   ///
   /// ↩️The view is the one this pass lays ([_StoryboardPanelState.
@@ -103,7 +107,7 @@ class _StoryboardRowsWindow {
   /// window again, a grown view's new rows stayed unbuilt until the next
   /// resize (검증/서피스 11-08 01:23, card
   /// the-conte-panel-builds-the-rows-its-window-reaches).
-  TimelineVisibleRange? _now() {
+  TimelineRowView? _view() {
     final edges = _state._railRows.windowTable.edges;
     final controller = _state._verticalController;
     final position = controller.hasClients ? controller.position : null;
@@ -114,20 +118,13 @@ class _StoryboardRowsWindow {
     final scrolled = position != null && position.hasPixels
         ? position.pixels
         : _state._keptLayerAxis?.value ?? 0;
-    return edges.window(
+    return (
+      edges: edges,
       scrollOffset: scrolled
           .clamp(0.0, math.max(0.0, edges.total - viewport))
           .toDouble(),
       viewportExtent: viewport,
     );
-  }
-
-  int _tokenOf(TimelineVisibleRange? window) {
-    if (window == null) {
-      return -1;
-    }
-    final count = _state._railRows.windowTable.edges.count;
-    return window.startIndex * (count + 1) + window.endIndexExclusive;
   }
 }
 

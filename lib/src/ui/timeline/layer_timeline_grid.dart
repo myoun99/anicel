@@ -53,6 +53,7 @@ import 'timeline_layer_controls_row.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_row_edges.dart';
+import 'timeline_row_window_walk.dart';
 import 'row_berths.dart';
 import 'window_move_keep.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
@@ -230,8 +231,33 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// the same shape, on the other axis.
   final ValueNotifier<int> _rowWindowBucket = ValueNotifier<int>(0);
 
-  /// The window the rows were last laid in ([_LayerGridScroll.windowToken]).
-  int _rowWindowLaid = -1;
+  /// The window the rows are laid in, walked to where the scroll stands
+  /// ([TimelineRowWindowWalk]) — a move lays them again through
+  /// [_rowWindowBucket].
+  late final TimelineRowWindowWalk _rowWalk = TimelineRowWindowWalk(
+    view: _rowView,
+    relay: () => _rowWindowBucket.value += 1,
+  );
+
+  /// Where the rows' view stands: over the rows the pass drew, at the
+  /// scroll clamped to them (UI-R9 #9) — none before the pass has laid
+  /// out a view, when every row is built.
+  TimelineRowView? _rowView() {
+    final viewport = _rowViewportExtent;
+    if (viewport <= 0) {
+      return null;
+    }
+    final edges = _drawnEdges;
+    return (
+      edges: edges,
+      scrollOffset: _scroll._effectiveVerticalScrollOffset(
+        requestedOffset: _verticalScrollOffset,
+        viewportHeight: viewport,
+        contentHeight: math.max(edges.total, _metrics.layerRowHeight),
+      ),
+      viewportExtent: viewport,
+    );
+  }
 
   double _verticalScrollOffset = 0;
 
@@ -404,6 +430,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     _frameWindowBucket.removeListener(_rewindowRuler);
     _rulerFrameGeometry.dispose();
     _windowedFrameGeometry.dispose();
+    _rowWalk.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();
     super.dispose();
@@ -627,16 +654,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   _RowWindow _rowWindowFor(
     List<TimelineDisplayRow> rows,
     TimelineRowEdges edges,
-    double bodyViewportHeight,
-    double effectiveVerticalScrollOffset,
   ) {
-    final rowWindow = bodyViewportHeight <= 0
-        ? TimelineVisibleRange(startIndex: 0, endIndexExclusive: rows.length)
-        : edges.window(
-            scrollOffset: effectiveVerticalScrollOffset,
-            viewportExtent: bodyViewportHeight,
-          );
-    _rowWindowLaid = _scroll.windowToken(rowWindow, edges);
+    final rowWindow =
+        _rowWalk.laid() ??
+        TimelineVisibleRange(startIndex: 0, endIndexExclusive: rows.length);
     final windowRows = rows.sublist(
       rowWindow.startIndex,
       rowWindow.endIndexExclusive,
@@ -1073,21 +1094,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                 // surface fed by it must be fed the SAME
                                 // list: the window's indices (the pinned row
                                 // among them) point into it. Cut again
-                                // where the scroll stands each time it
-                                // carries the window — clamped as above.
+                                // each time the window walks ([_rowWalk]).
                                 final window = _RowWindowCut(
                                   drawnEdges,
                                   _rowWindowBucket,
-                                  () => _rowWindowFor(
-                                    drawnRows,
-                                    drawnEdges,
-                                    bodyViewportHeight,
-                                    _scroll._effectiveVerticalScrollOffset(
-                                      requestedOffset: _verticalScrollOffset,
-                                      viewportHeight: bodyViewportHeight,
-                                      contentHeight: verticalContentHeight,
-                                    ),
-                                  ),
+                                  () => _rowWindowFor(drawnRows, drawnEdges),
                                 );
                                 // I-1: the toggle columns a swipe may
                                 // paint down. Read once per pass — the

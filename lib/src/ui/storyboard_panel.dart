@@ -113,6 +113,7 @@ import 'timeline/property_lane_model.dart'
         previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
+import 'timeline/timeline_row_window_walk.dart';
 import 'timeline/timeline_visible_range.dart';
 import 'timeline/held_row_pin.dart';
 import 'timeline/still_row.dart';
