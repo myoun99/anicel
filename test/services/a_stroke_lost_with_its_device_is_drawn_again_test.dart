@@ -251,6 +251,32 @@ void main() {
     );
   });
 
+  // ⏳A blur reads the cel all round each tile it lands: what draws it
+  // again must hold that cel, not the tile under it alone. Till it does a
+  // blur's tiles say nothing, and read as the tiles they landed on
+  // (a_tile_lost_with_its_device_reads_as_what_it_landed_on_test.dart) —
+  // drawn again by the dabs alone they would be paint.
+  test('a blur\'s stroke says nothing yet of how it is drawn again', () {
+    final base = paint();
+    final dabs = [for (final dab in loopBack()) dab.copyWith(blurs: true)];
+    final stroke = rasterizer()
+      ..blurOver(base)
+      ..blendFrom(dabs, from: 0);
+    final promoted = stroke.promoteStrokeTiles(
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+      dabs: dabs,
+    );
+    stroke.clear();
+
+    expect(promoted, isNotEmpty, reason: '⛔premise: the blur rubs the paint');
+    expect([
+      for (final tile in promoted)
+        EngineTileLedger.instance.madeBy(tile.tile),
+    ], everyElement(isNull));
+  });
+
   test('asked for its slot by the ledger of the next engine — as the frame '
       'after asks — a lost tile is stored there drawn again', () {
     final base = paint();
