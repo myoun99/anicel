@@ -356,5 +356,12 @@ void main() {
 
     s.moves.moveTo(0, () => s.frame.value = 0);
     expect(s.frame.value, 0, reason: 'the press handed on holds no move');
+
+    final next = await tester.startGesture(corner + const Offset(50, 10));
+    await next.up();
+    expect(points.skip(4), [
+      'down@50.0/f0',
+      'up@50.0/f0',
+    ], reason: 'a press while no move waits goes straight to the canvas');
   });
 }
