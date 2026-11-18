@@ -179,8 +179,10 @@ void main() {
     manager.dispose();
   });
 
-  test('a device that refuses 48 kHz records CLEAN — the armed snapshot '
-      'drops suppression rather than run the model off-rate', () async {
+  // 🗣️audio-fx-second-effect-and-presets-Q3 = 2 (유저 2026-11-18 23:13):
+  // 「행처럼 — 장치의 레이트로 녹음하고, 잡음 제거만 48 kHz 로 바꿔 돌림」.
+  test('a device that refuses 48 kHz records at its own rate, and the '
+      'take is cleaned at it as a row is', () async {
     final manager = session();
     manager.appSettings.setAudioSyncSettings(
       manager.appSettings.audioSyncSettings.value.copyWith(denoiseVoice: true),
@@ -188,9 +190,9 @@ void main() {
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
 
-    var calls = 0;
-    manager.voiceRecording.debugVoiceDenoiser = (samples, channels, sampleRate) {
-      calls += 1;
+    final rates = <int>[];
+    manager.voiceRecording.debugVoiceDenoiser = (samples, channels, rate) {
+      rates.add(rate);
       return null;
     };
     manager.voiceRecording.debugVoiceRecorderFactory = () => _RateProbeRecorder(
@@ -200,7 +202,7 @@ void main() {
 
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     await manager.voiceRecording.stopVoiceRecordingAndPlace();
-    expect(calls, 0);
+    expect(rates, [44100]);
     manager.dispose();
   });
 }

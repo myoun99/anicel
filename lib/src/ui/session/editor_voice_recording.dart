@@ -923,10 +923,16 @@ class EditorVoiceRecording {
 
   /// Opens the microphone, or null when the device refused to start.
   ///
-  /// Suppression captures at RNNoise's native 48 kHz; the take conforms
-  /// ONCE on placement, like any imported rate. ⛔A device that refused
-  /// 48 kHz records CLEAN — RNNoise has no other rate, and a silently
-  /// resampled pass would be a different promise.
+  /// Suppression asks for RNNoise's native 48 kHz; the take conforms
+  /// ONCE on placement, like any imported rate. A device that refuses
+  /// 48 kHz records at its own rate, and the take is cleaned through the
+  /// conversion to 48 kHz and back, as a sound row's noise removal is.
+  ///
+  /// ↩️🗣️audio-fx-second-effect-and-presets-Q3 = 2 (유저 2026-11-18 23:13):
+  /// 「행처럼 — 장치의 레이트로 녹음하고, 잡음 제거만 48 kHz 로 바꿔 돌림」.
+  /// It was: such a device recorded CLEAN — RNNoise had no other rate, and a
+  /// silently resampled pass would have been a different promise — till the
+  /// row's noise removal was heard at every rate (Q2 = 1).
   ({AudioRecorder recorder, int rate, bool denoise})? _openVoiceRecorder() {
     final device = audioDeviceUnlessTesting();
     final recorder =
@@ -950,7 +956,7 @@ class EditorVoiceRecording {
     return (
       recorder: recorder,
       rate: rate,
-      denoise: wantDenoise && rate == voiceDenoiseCaptureRate,
+      denoise: wantDenoise,
     );
   }
 

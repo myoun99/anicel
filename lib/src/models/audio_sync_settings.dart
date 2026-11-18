@@ -92,8 +92,9 @@ class AudioSyncSettings {
   /// Speech-specific by design: it eats footsteps and props, which is
   /// exactly why this is a toggle — dialogue ON, foley OFF (user
   /// decision). Default OFF: a pristine capture is the safer default.
-  /// When ON, capture runs at 48 kHz (the model's native rate) and the
-  /// take conforms once through the normal pipeline on placement.
+  /// When ON, capture asks for 48 kHz (the model's native rate) — a device
+  /// that refuses it records at its own, cleaned through the conversion —
+  /// and the take conforms once through the normal pipeline on placement.
   final bool denoiseVoice;
 
   /// The app's own consent to the microphone: while it is off nothing
