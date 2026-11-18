@@ -1838,25 +1838,25 @@ final class _FilmRows {
   }
 }
 
-/// What [layer]'s own nodes in [cut] are resolved from besides the frame
-/// ([_ownNodesAt]): the paper, whether it meets a clip, the row whose fx it
-/// wears and the base it rides ([_paintingRowOf]), and each folder above
-/// it with whether that folder meets a clip — whether it buffers
-/// ([folderNeedsCompositeBuffer]). Every other input is a field of one of
-/// these rows.
-List<Object?> _rowReads(Cut cut, Layer layer) {
-  final painting = _paintingRowOf(cut, layer);
-  return [
-    cut.canvasSize,
-    meetsAClip(cut, layer),
-    painting?.carrier,
-    painting?.base,
-    for (final folder in _stackOf(cut).folders.ancestryOf(layer.folderId)) ...[
-      folder,
-      meetsAClip(cut, folder),
-    ],
-  ];
-}
+/// What [layer]'s own nodes in [cut] are resolved from besides the row and
+/// the frame ([_ownNodesAt]): the paper, whether it meets a clip, the base
+/// it rides ([_paintingRowOf]) and each folder above it. Every other input
+/// is a field of one of these rows.
+///
+/// ⛔Not named, as neither can move while these stand (🔬each was a
+/// mutant no test could tell, F-620): the row whose fx it wears — the row
+/// itself or that base ([fxCarrierOf]), by the base's kind
+/// (`ridesTheConte`); and whether a folder above it buffers — on this
+/// route a folder that buffers folds nothing into its members
+/// ([resolveFolderChainAt]), and one that does not has nothing to fold:
+/// no isolating blend and its whole strength
+/// ([folderNeedsCompositeBuffer]).
+List<Object?> _rowReads(Cut cut, Layer layer) => [
+  cut.canvasSize,
+  meetsAClip(cut, layer),
+  _paintingRowOf(cut, layer)?.base,
+  ..._stackOf(cut).folders.ancestryOf(layer.folderId),
+];
 
 /// Whether [a] and [b] are what a row was resolved from both times: its
 /// rows the very same, all else equal.
