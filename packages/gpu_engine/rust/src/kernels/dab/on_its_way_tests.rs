@@ -8,9 +8,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::{
-    DabSpec, NO_STEP, Texture, gpu_engine_dab_texture_free, gpu_engine_dab_texture_new,
+    DabSpec, EVENING_ENTRIES, NO_STEP, Texture, gpu_engine_dab_texture_free, gpu_engine_dab_texture_new,
     gpu_engine_stroke_clear, gpu_engine_stroke_free, gpu_engine_stroke_land,
-    gpu_engine_stroke_land_unwaited, gpu_engine_stroke_new, gpu_engine_stroke_pile,
+    gpu_engine_stroke_land_unwaited, gpu_engine_stroke_new, gpu_engine_stroke_pile, piled,
 };
 use crate::device::{Engine, gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
 use crate::kernels::blend::mode::NORMAL;
@@ -261,38 +261,44 @@ fn a_stroke_s_step_waits_for_no_turn_of_the_engine_s_thread() {
     }
 }
 
-// A pile holds what it was handed (`Piled`): a tip let go of the moment the
-// pile returns, before the engine's thread has run it — its memory taken
-// by a tip of nothing at once — lays as one kept. ⚠️A tip the stroke has
-// not sent yet: a tip is sent once, known again by its id (`placing`), and
-// one sent is not read again.
+// What a pile is handed is its own (`Piled`): each tip and table a spec
+// names is a copy the pile holds, as the app's — the app lets go of its
+// own the moment the pile returns, before the engine's thread has run it
+// — and two specs naming one are handed one copy. ⛔Not pinned by pixels:
+// a pile that read a tip let go of reads whatever its memory holds next,
+// which a test cannot make sure differs (that pin passed with the copy
+// taken away).
 #[test]
-fn a_tip_let_go_of_as_its_pile_returns_lays_as_one_kept() {
-    // SAFETY: the engine is this test's own, live till its close; each tip
-    // is live till it is let go of, and no pile names it after.
-    unsafe {
-        let own = open();
-        let tip = gpu_engine_dab_texture_new(CORNERS.as_ptr(), 2);
-        assert!(!tip.is_null(), "{}", last_error());
-        pile(&own, &[tipped(tip, 8.0, [20.0, 20.0])]);
-        let (_, kept) = land(&own, NO_TILE, WHOLE, std::ptr::null(), Some(711));
-        assert_eq!(done_here(&*own.engine), Ok(()));
-        gpu_engine_stroke_clear(own.stroke, own.engine);
-        gpu_engine_stand_still(own.engine, 500);
-        let again = gpu_engine_dab_texture_new(CORNERS.as_ptr(), 2);
-        pile(&own, &[tipped(again, 8.0, [20.0, 20.0])]);
-        gpu_engine_dab_texture_free(again);
-        let nothing = gpu_engine_dab_texture_new([0.0; 4].as_ptr(), 2);
-        let (_, freed) = land(&own, NO_TILE, WHOLE, std::ptr::null(), Some(712));
-        assert_eq!(done_here(&*own.engine), Ok(()));
-        assert_eq!((was_put(711), was_put(712)), (Some(true), Some(true)));
-        let (kept, freed) = (read(&own, kept), read(&own, freed));
-        assert!(kept.chunks_exact(4).any(|pixel| pixel[3] != 0), "LIVENESS: the tip was laid");
-        assert!(freed == kept, "the tip let go of lays as the one kept");
-        gpu_engine_dab_texture_free(nothing);
-        gpu_engine_dab_texture_free(tip);
-        close(own);
-    }
+fn a_pile_names_copies_of_its_own_of_what_it_was_handed() {
+    // SAFETY: CORNERS holds a side of two squared.
+    let tip = unsafe { gpu_engine_dab_texture_new(CORNERS.as_ptr(), 2) };
+    assert!(!tip.is_null(), "{}", last_error());
+    let (coverage, piling, evening) = ([1.0, 0.5], [0.25, 0.75], vec![0.5; EVENING_ENTRIES]);
+    let round = DabSpec {
+        coverage: coverage.as_ptr(),
+        pile: piling.as_ptr(),
+        entries: 2,
+        evening: evening.as_ptr(),
+        ..square([0, 0, 8, 8], INK)
+    };
+    let specs = [tipped(tip, 8.0, [20.0, 20.0]), tipped(tip, 4.0, [40.0, 40.0]), round];
+    // SAFETY: the tip is live, and each table holds its entries.
+    let piled = unsafe { piled(&specs) };
+    let [first, second, round] = &piled.specs[..] else { panic!("three specs") };
+    let held = |at: *const Texture| piled._textures.iter().any(|kept| std::ptr::eq(&**kept, at));
+    assert!(held(first.texture) && !std::ptr::eq(first.texture, tip.cast_const()), "the tip its own");
+    assert!(std::ptr::eq(first.texture, second.texture), "one tip, one copy");
+    // SAFETY: both are live: the app's till it is let go of below.
+    assert!(unsafe { (*first.texture).words == (*tip).words }, "the copy as the app's");
+    // SAFETY: each copy is held by `piled`, its entries long.
+    let read = |at: *const f64, entries: usize| unsafe { std::slice::from_raw_parts(at, entries) }.to_vec();
+    assert_eq!((read(round.coverage, 2), read(round.pile, 2)), (coverage.to_vec(), piling.to_vec()));
+    assert_eq!(read(round.evening, EVENING_ENTRIES), evening);
+    let copies = [round.coverage, round.pile, round.evening];
+    let theirs = [coverage.as_ptr(), piling.as_ptr(), evening.as_ptr()];
+    assert!(theirs.iter().all(|at| !copies.contains(at)), "the tables its own");
+    // SAFETY: from `gpu_engine_dab_texture_new`, and nothing names it after.
+    unsafe { gpu_engine_dab_texture_free(tip) };
 }
 
 // A landing on its way lays what a waited one lays — over the cel's tile
