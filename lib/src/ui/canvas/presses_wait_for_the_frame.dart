@@ -11,6 +11,8 @@ import '../session/stands_with_its_picture.dart';
 /// them — and goes to the canvas from its first point once the move
 /// lands: drawn on the frame moved to, never on the one shown meanwhile.
 /// The canvas under it takes no press meanwhile, whatever the tool.
+/// Every press, held or not, tells [moves] it came: the steps in line go
+/// with it ([StandsWithItsPicture.aPressCame]).
 ///
 /// 🚨HANDED ON AS ITSELF: the press is let go where it was first taken
 /// (a cancel), and each of its points is handed to the binding again —
@@ -135,6 +137,9 @@ class _PressesWaitForTheFrameState extends State<PressesWaitForTheFrame> {
   }
 
   void _pointer(PointerEvent event) {
+    if (event is PointerDownEvent) {
+      widget.moves?.aPressCame();
+    }
     final held = _held[event.pointer];
     if (held != null) {
       held.add(event);

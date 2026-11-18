@@ -1329,21 +1329,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.brushSizeDown:
         _stepBrushSize(-1);
       case EditorActionIds.framePrevious:
-        _session.frameVerbs.selectPreviousFrame();
-        _session.revealSelection();
+        _stepThePlayhead(_session.frameVerbs.selectPreviousFrame);
       case EditorActionIds.frameNext:
-        _session.frameVerbs.selectNextFrame();
-        _session.revealSelection();
+        _stepThePlayhead(_session.frameVerbs.selectNextFrame);
       // ↩️With a live canvas selection the arrows used to NUDGE it instead —
       // PS arbitration (R16-③). 유저 2026-09-12: 「선택툴 선택한채로
       // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드
       // 싹 삭제」 (F-86).
       case EditorActionIds.drawingPrevious:
-        _session.frameVerbs.flipRow(forward: false);
-        _session.revealSelection();
+        _stepThePlayhead(() => _session.frameVerbs.flipRow(forward: false));
       case EditorActionIds.drawingNext:
-        _session.frameVerbs.flipRow(forward: true);
-        _session.revealSelection();
+        _stepThePlayhead(() => _session.frameVerbs.flipRow(forward: true));
       // 🗣️F-261: the transport's buttons, pressed by key on the panel being
       // worked in — the panel the flip follows (유저 2026-10-02: 「콘티패널에
       // 포커스있으면 플립이 콘티패널기준 작동 … 그거랑 동일하게 법 통일해서
@@ -1615,6 +1611,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _canvasSelectionCommands.invertSelection(pasteboard: wall, reach: reach);
     }
   }
+
+  /// One step of the playhead — a frame, a block — [walk]ed, and the rails
+  /// bring it into view: in line where a move waits for its frame, a key
+  /// held lined up never (`StandsWithItsPicture.step`).
+  void _stepThePlayhead(VoidCallback walk) =>
+      _session.standsWithItsPicture.step(
+        () {
+          walk();
+          _session.revealSelection();
+        },
+        repeated: EditorShortcutManager.actsForARepeat,
+      );
 
   /// One step of the size bar's ± from the keys, where the bar would take
   /// it: the tool in hand's size, and nothing on a tool with none.

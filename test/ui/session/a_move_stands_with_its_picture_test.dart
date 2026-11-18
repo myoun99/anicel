@@ -155,6 +155,63 @@ void main() {
         () => pictures.make(frameAt(frame), shouldAbort: () => false),
       );
 
+  /// A step of the playhead forward, counted from where it stands when it
+  /// is taken: [walked] hears each frame it lands on.
+  void stepOn(
+    StandsWithItsPicture moves,
+    ValueNotifier<int> frame,
+    List<int> walked, {
+    bool repeated = false,
+  }) => moves.step(() {
+    final to = frame.value + 1;
+    moves.moveTo(to, () {
+      walked.add(to);
+      frame.value = to;
+    });
+  }, repeated: repeated);
+
+  /// Lends the real clock alone, no frame built, till [ready] or for good.
+  Future<bool> inRealTime(WidgetTester tester, bool Function() ready) async {
+    for (var beat = 0; beat < 3000 && !ready(); beat += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1)),
+      );
+    }
+    return ready();
+  }
+
+  /// A canvas of [moves] that [took] each point it takes — where it stands
+  /// on the screen.
+  Future<Offset> aCanvasOf(
+    WidgetTester tester,
+    StandsWithItsPicture moves,
+    void Function(PointerEvent event) took,
+  ) async {
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 100,
+            height: 100,
+            child: PressesWaitForTheFrame(
+              moves: moves,
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: took,
+                onPointerMove: took,
+                onPointerUp: took,
+                onPointerCancel: took,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return tester.getTopLeft(find.byType(PressesWaitForTheFrame));
+  }
+
   testWidgets('a move to a frame with no picture stands on the frame shown '
       'till the picture is there, and goes with it', (tester) async {
     final s = aSession();
@@ -293,6 +350,8 @@ void main() {
     s.moves.shownBy(tester);
     var landed = false;
     s.moves.moveTo(1, () => landed = true);
+    final walked = <int>[];
+    stepOn(s.moves, s.frame, walked);
 
     s.cutStood.value = otherCut;
 
@@ -301,6 +360,15 @@ void main() {
       isTrue,
     );
     expect(landed, isFalse);
+    await tester.pump();
+    expect(walked, isEmpty, reason: 'nor is a step in line counted from it');
+    stepOn(s.moves, s.frame, walked);
+    expect(
+      walked,
+      [1],
+      reason: 'and the next step walks from where the session stands now, '
+          'behind no step left in line',
+    );
   });
 
   testWidgets('the last canvas that goes lands the move that waits', (
@@ -310,11 +378,20 @@ void main() {
     await make(tester, s.pictures, 0);
     s.moves.shownBy(tester);
     s.moves.moveTo(1, () => s.frame.value = 1);
+    final walked = <int>[];
+    stepOn(s.moves, s.frame, walked);
 
     s.moves.noLongerShownBy(tester);
 
     expect(s.frame.value, 1);
     expect(s.moves.waitsFor.value, isNull);
+    await tester.pump();
+    expect(
+      walked,
+      isEmpty,
+      reason: 'a step in line is shown one at a time on a canvas, and none '
+          'is left to show it',
+    );
   });
 
   testWidgets('a press while a move waits goes to the canvas from its first '
@@ -326,31 +403,9 @@ void main() {
     void took(PointerEvent event) => points.add(
       '${kindOf(event)}@${event.localPosition.dx}/f${s.frame.value}',
     );
-    await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: Center(
-          child: SizedBox(
-            width: 100,
-            height: 100,
-            child: PressesWaitForTheFrame(
-              moves: s.moves,
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: took,
-                onPointerMove: took,
-                onPointerUp: took,
-                onPointerCancel: took,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final corner = await aCanvasOf(tester, s.moves, took);
     s.moves.moveTo(1, () => s.frame.value = 1);
     await tester.pump();
-    final corner = tester.getTopLeft(find.byType(PressesWaitForTheFrame));
 
     final pen = await tester.startGesture(corner + const Offset(10, 10));
     await pen.moveTo(corner + const Offset(20, 10));
@@ -388,5 +443,113 @@ void main() {
       'down@50.0/f0',
       'up@50.0/f0',
     ], reason: 'a press while no move waits goes straight to the canvas');
+  });
+
+  testWidgets('every step pressed while a move waits is taken, one at a '
+      'time, each from where the one before it lands, once that frame is '
+      'built', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    await make(tester, s.pictures, 2);
+    s.moves.shownBy(tester);
+    final walked = <int>[];
+
+    stepOn(s.moves, s.frame, walked);
+    stepOn(s.moves, s.frame, walked);
+
+    expect(s.moves.waitsFor.value, 1, reason: 'the second waits in line');
+    expect(await inRealTime(tester, () => walked.isNotEmpty), isTrue);
+    expect(
+      walked,
+      [1],
+      reason: 'the frame the first lands on is built before the next is '
+          'taken, its picture there or not',
+    );
+    await tester.pump();
+    expect(walked, [1, 2]);
+    expect(s.frame.value, 2);
+  });
+
+  testWidgets('a step repeated — a key held — is not lined up: it walks as '
+      'the pictures come and stops where the key is let go', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    s.moves.shownBy(tester);
+    final walked = <int>[];
+
+    stepOn(s.moves, s.frame, walked);
+    stepOn(s.moves, s.frame, walked, repeated: true);
+    expect(await settleAsync(tester, () => s.frame.value == 1), isTrue);
+    await tester.pump();
+    await tester.pump();
+    expect(walked, [1], reason: 'the repeat that came while it waited went');
+
+    stepOn(s.moves, s.frame, walked, repeated: true);
+    expect(
+      s.moves.waitsFor.value,
+      2,
+      reason: 'the next repeat once it stands takes the step after it',
+    );
+  });
+
+  testWidgets('a move to a place leaves no step in line', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    s.moves.shownBy(tester);
+    final walked = <int>[];
+    stepOn(s.moves, s.frame, walked);
+    stepOn(s.moves, s.frame, walked);
+
+    s.moves.moveTo(2, () {
+      walked.add(2);
+      s.frame.value = 2;
+    });
+
+    expect(await settleAsync(tester, () => s.frame.value == 2), isTrue);
+    await tester.pump();
+    await tester.pump();
+    expect(walked, [2]);
+  });
+
+  testWidgets('a press on the canvas leaves no step in line, and none is '
+      'lined up while it is held', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    final corner = await aCanvasOf(tester, s.moves, (_) {});
+    final walked = <int>[];
+    stepOn(s.moves, s.frame, walked);
+    stepOn(s.moves, s.frame, walked);
+
+    final pen = await tester.startGesture(corner + const Offset(10, 10));
+    stepOn(s.moves, s.frame, walked);
+    expect(await settleAsync(tester, () => s.frame.value == 1), isTrue);
+    await tester.pump();
+    await tester.pump();
+    await pen.up();
+    await tester.pump();
+
+    expect(walked, [1], reason: 'the pen draws on the frame it came on');
+  });
+
+  testWidgets('a step in line is let go of with the moves', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    final frame = ValueNotifier<int>(0);
+    addTearDown(frame.dispose);
+    final moves = StandsWithItsPicture(
+      pictures: () => s.pictures,
+      cut: () => cut,
+      frame: () => frame.value,
+      placement: () => OnionSkinPlacement.inPlace,
+    )..shownBy(tester);
+    final walked = <int>[];
+    stepOn(moves, frame, walked);
+    stepOn(moves, frame, walked);
+    expect(await inRealTime(tester, () => walked.isNotEmpty), isTrue);
+
+    moves.dispose();
+    await tester.pump();
+
+    expect(walked, [1], reason: 'no step is taken by moves let go of');
   });
 }

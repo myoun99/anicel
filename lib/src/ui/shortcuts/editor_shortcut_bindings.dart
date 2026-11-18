@@ -911,6 +911,16 @@ class EditorShortcutManager extends ShortcutManager {
   /// same way it keeps its letters.
   final KeyEventResult Function(KeyEvent event)? onHoldKey;
 
+  /// The key event the action running now was bound for — null where no
+  /// key runs one: a button, a menu.
+  static KeyEvent? _actingFor;
+
+  /// Whether the action running now runs for a key held — the OS's repeat
+  /// of it, not a press. 🗣️the-standing-canvas-composes-a-frame-twice-
+  /// before-its-picture-Q4 = 1: a step pressed is lined up, a step repeated
+  /// is not (`StandsWithItsPicture.step`).
+  static bool get actsForARepeat => _actingFor is KeyRepeatEvent;
+
   @override
   KeyEventResult handleKeypress(BuildContext context, KeyEvent event) {
     // F-241: every answer goes to the input inspector's `bind` line.
@@ -923,7 +933,14 @@ class EditorShortcutManager extends ShortcutManager {
       KeyTrace.answered(event, 'held');
       return held;
     }
-    final result = super.handleKeypress(context, event);
+    final before = _actingFor;
+    _actingFor = event;
+    final KeyEventResult result;
+    try {
+      result = super.handleKeypress(context, event);
+    } finally {
+      _actingFor = before;
+    }
     if (event is! KeyUpEvent) {
       // ⚠️The engine's record, not the held keys: this says what the
       // manager above just ran, and it reads the record itself.

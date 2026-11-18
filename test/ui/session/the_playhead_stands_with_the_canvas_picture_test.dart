@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/playback/frame_demand.dart'
@@ -133,5 +134,63 @@ void main() {
 
     expect(session.currentFrameIndex, 1);
     expect(session.playheadCursors.cutFrame.value, 1);
+  });
+
+  /// The frames [session]'s playhead stands on from now, in turn.
+  List<int> framesStoodOn(EditorSessionManager session) {
+    final cursor = session.playheadCursors.cutFrame;
+    final stood = <int>[];
+    void moved() => stood.add(cursor.value);
+    cursor.addListener(moved);
+    addTearDown(() => cursor.removeListener(moved));
+    return stood;
+  }
+
+  testWidgets('the flip key pressed twice while a move waits walks two '
+      'frames, each stood on in turn (유저 11-18 14:02, as TVPaint)', (
+    tester,
+  ) async {
+    final session = await twoDrawnFrames(tester);
+    final stood = framesStoodOn(session);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+
+    expect(
+      session.standsWithItsPicture.waitsFor.value,
+      1,
+      reason: 'premise: frame 1 has no picture yet',
+    );
+    expect(session.currentFrameIndex, 0);
+    await theMoveLands(tester, session);
+    expect(
+      await settleAsync(tester, () => session.currentFrameIndex == 2),
+      isTrue,
+      reason: 'the second press is a step of its own',
+    );
+    expect(stood, [1, 2]);
+  });
+
+  testWidgets('the flip key held walks as the pictures come: a repeat '
+      'that comes while a move waits is not lined up (Q4 = 1)', (
+    tester,
+  ) async {
+    final session = await twoDrawnFrames(tester);
+    final stood = framesStoodOn(session);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+    expect(
+      session.standsWithItsPicture.waitsFor.value,
+      1,
+      reason: 'premise: the press waits for frame 1',
+    );
+    await theMoveLands(tester, session);
+    await tester.pump();
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+
+    expect(stood, [1], reason: 'let go, it stands where it came');
   });
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../../models/cut.dart' show Cut;
 import '../../models/cut_id.dart';
@@ -76,10 +77,11 @@ class StandsWithItsPicture {
   void shownBy(Object canvas) => _canvases.add(canvas);
 
   /// [canvas] no longer shows them: a move that waits lands where no other
-  /// canvas does.
+  /// canvas does, and no step in line is shown one at a time any more.
   void noLongerShownBy(Object canvas) {
     _canvases.remove(canvas);
     if (_canvases.isEmpty) {
+      _steps.clear();
       _landTheOneWaiting();
     }
   }
@@ -87,10 +89,92 @@ class StandsWithItsPicture {
   /// A press on the canvas is held, or let go ([_pressHeld]).
   void holdsAPress({required bool held}) => _pressHeld = held;
 
+  /// A press came on the canvas: the steps in line go with it — the pen
+  /// draws on the frame it came on, or the one a move waits for, and the
+  /// playhead does not walk on from under it once it is up.
+  void aPressCame() => _steps.clear();
+
+  /// The steps asked while a move waits or steps are in line, in the order
+  /// they were asked.
+  final List<VoidCallback> _steps = [];
+
+  /// Whether a step in line is being taken: its move is the step's, and
+  /// leaves the steps after it in line.
+  bool _stepping = false;
+
+  /// Whether the next step in line is to be taken after the frame being
+  /// built.
+  bool _stepsOn = false;
+
+  /// 🚨EVERY STEP PRESSED IS A STEP TAKEN, ONE AT A TIME (유저 2026-11-18
+  /// 14:02, as TVPaint's flip keys: 「빠르게 세 번 누르면 하나씩 하나씩
+  /// 바뀌어 기다리면 누른 만큼 움직여 있다」): a step of the playhead from
+  /// where it stands — a frame, a block — [walk]s now where no move waits.
+  /// Where one does, it is in line, and taken where the moves before it
+  /// land, each once the frame it lands on is shown: the frame it is
+  /// counted from is that one. A move to a place ([moveTo], not a step's)
+  /// leaves no step in line.
+  ///
+  /// 🗣️Q4 = 1 (11-18 14:05, 「누르고 있는 동안은 그림이 오는 속도로 걷고,
+  /// 떼면 그 자리에 선다」): a [repeated] step — a key held, the OS's repeats
+  /// of it — is not lined up. One that comes while a move waits goes; the
+  /// next after the move lands takes the step after it.
+  ///
+  /// No step goes under a press held for the frame a move waits for
+  /// ([holdsAPress]) — the playhead never moves under a pen (R15-⑤).
+  ///
+  /// ↩️A step was counted from the frame stood on: two pressed within one
+  /// wait asked for the same frame, and went one.
+  void step(VoidCallback walk, {required bool repeated}) {
+    if (_pressHeld) {
+      return;
+    }
+    if (_waiting == null && _steps.isEmpty) {
+      walk();
+      return;
+    }
+    if (!repeated) {
+      _steps.add(walk);
+    }
+  }
+
+  /// Takes the first step in line, where no move waits.
+  void _takeTheNextStep() {
+    _stepsOn = false;
+    if (_waiting != null || _steps.isEmpty) {
+      return;
+    }
+    final walk = _steps.removeAt(0);
+    _stepping = true;
+    try {
+      walk();
+    } finally {
+      _stepping = false;
+    }
+    if (_waiting == null) {
+      _stepOnAfterTheFrame();
+    }
+  }
+
+  /// The next step in line, once the frame the one before it landed on is
+  /// built: each step's frame is shown.
+  void _stepOnAfterTheFrame() {
+    if (_steps.isEmpty || _stepsOn) {
+      return;
+    }
+    _stepsOn = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) => _takeTheNextStep())
+      ..ensureVisualUpdate();
+  }
+
   /// Moves the playhead to [frame] of the cut stood in: [land] now, where
   /// its pictures are there or nothing shows them; once they are, else.
   /// The move after replaces it.
   void moveTo(int frame, VoidCallback land) {
+    if (!_stepping) {
+      _steps.clear();
+    }
     if (_pressHeld) {
       return;
     }
@@ -173,12 +257,21 @@ class StandsWithItsPicture {
         },
       );
 
+  /// Lands the move that waits, and the steps in line walk on from where it
+  /// does — where it lands: one whose cut was left meanwhile does not, and
+  /// no step is counted from where it would have.
   void _landTheOneWaiting() {
     final waiting = _waiting;
     _letGoOfTheOneWaiting();
-    if (waiting != null && _cut()?.id == waiting.cut) {
-      waiting.land();
+    if (waiting == null) {
+      return;
     }
+    if (_cut()?.id != waiting.cut) {
+      _steps.clear();
+      return;
+    }
+    waiting.land();
+    _stepOnAfterTheFrame();
   }
 
   void _letGoOfTheOneWaiting() {
@@ -187,9 +280,10 @@ class StandsWithItsPicture {
   }
 
   /// Lets go of the move that waits — its making may answer after this —
-  /// and of [waitsFor].
+  /// of the steps in line, and of [waitsFor].
   void dispose() {
     _waiting = null;
+    _steps.clear();
     _waitsFor.dispose();
   }
 }
