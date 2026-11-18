@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart' show IconData;
 
-import '../../models/import/cut_folder_edits.dart';
 import '../../models/kept_span.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
@@ -124,7 +123,7 @@ final class MediaPoolWords {
       MediaPoolColumn(
         id: 'kind',
         label: strings.mediaKindOfLayer,
-        wordOf: (asset) => layerKindDisplayName(kindOf(asset)),
+        wordOf: (asset) => layerKindDisplayName(placedKindOf(asset)),
         iconOf: kindIconOf,
         keepsRoomFor: [
           for (final kind in const [
@@ -254,21 +253,7 @@ final class MediaPoolWords {
         '${two(modified.hour)}:${two(modified.minute)}';
   }
 
-  /// The kind of layer [asset]'s preset places it as: a sound's SE block, and
-  /// a picture's kind as far as the pictures it keeps allow — the import
-  /// window's answer for the same file ([CutFolderEdits.holding], F-429).
-  LayerKind kindOf(MediaAsset asset) {
-    if (asset.kind == MediaAssetKind.audio) {
-      return LayerKind.se;
-    }
-    final pictures = asset.pictures;
-    final kept = pictures == null
-        ? 1
-        : asset.preset.spanOf(pictures).count;
-    return CutFolderEdits.holding(asset.preset.pictureKind, kept);
-  }
-
-  IconData kindIconOf(MediaAsset asset) => layerKindIcon(kindOf(asset));
+  IconData kindIconOf(MediaAsset asset) => layerKindIcon(placedKindOf(asset));
 
   /// How the preset fits a picture to the cut — nothing for a sound.
   String fitWord(MediaAsset asset) => asset.kind == MediaAssetKind.audio

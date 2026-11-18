@@ -159,11 +159,10 @@ void main() {
 
   test('a sound places an SE block; one picture places what its preset '
       'asks, and more than one an animation (F-429)', () {
-    final pool = words();
-    expect(pool.kindOf(asset(sound)), LayerKind.se);
-    expect(pool.kindOf(asset(still)), LayerKind.bornOfOnePicture);
+    expect(placedKindOf(asset(sound)), LayerKind.se);
+    expect(placedKindOf(asset(still)), LayerKind.bornOfOnePicture);
     expect(
-      pool.kindOf(
+      placedKindOf(
         asset(
           still,
           preset: const MediaPreset(pictureKind: LayerKind.animation),
@@ -171,16 +170,16 @@ void main() {
       ),
       LayerKind.animation,
     );
-    expect(pool.kindOf(asset(gif, frameCount: 3)), LayerKind.animation);
+    expect(placedKindOf(asset(gif, frameCount: 3)), LayerKind.animation);
     expect(
-      pool.kindOf(
+      placedKindOf(
         asset(gif, frameCount: 3, preset: const MediaPreset(outFrame: 0)),
       ),
       LayerKind.image,
       reason: 'a preset that keeps one of its pictures places one',
     );
-    expect(pool.kindOf(asset(pdf, pageCount: 1)), LayerKind.image);
-    expect(pool.kindOf(asset(movie, frameCount: 120)), LayerKind.animation);
+    expect(placedKindOf(asset(pdf, pageCount: 1)), LayerKind.image);
+    expect(placedKindOf(asset(movie, frameCount: 120)), LayerKind.animation);
   });
 
   test('a preset\'s start and end count from 1, never past the file, and '

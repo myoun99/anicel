@@ -1,4 +1,6 @@
 import '../../models/canvas_size.dart';
+import '../../models/import/cut_folder_edits.dart' show CutFolderEdits;
+import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show MovieClock, ProjectClock;
 import '../audio/audio_conform_runner.dart' show openAudioSource;
@@ -113,6 +115,24 @@ int? placedPicturesOf(
   }
   return null;
 }
+
+/// How many of [asset]'s pictures its preset keeps ([MediaPreset.spanOf])
+/// — one where the pool does not know how many it holds.
+int keptPicturesOf(MediaAsset asset) {
+  final pictures = asset.pictures;
+  return pictures == null ? 1 : asset.preset.spanOf(pictures).count;
+}
+
+/// The kind of row [asset]'s preset places it as: a sound's SE block, and
+/// a picture's kind as far as the pictures it keeps allow — the import
+/// window's answer for the same file ([CutFolderEdits.holding], F-429).
+///
+/// ⛔ONE answer for the pool's kind column and the sync window's kind
+/// (card 「파일마다 배치 기본값」-Q8): the column spelled it in the pool's
+/// words until the sync asked the same of a placed row.
+LayerKind placedKindOf(MediaAsset asset) => asset.kind == MediaAssetKind.audio
+    ? LayerKind.se
+    : CutFolderEdits.holding(asset.preset.pictureKind, keptPicturesOf(asset));
 
 /// What a list says of a file's SOUND without decoding it: the rate it was
 /// made at and how many channels it has — a sound's own, or a movie's
