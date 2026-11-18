@@ -89,7 +89,7 @@ impl Kept {
             return None;
         }
         let newer = newer_than(history, Some(self.newest));
-        let lost = mouse_lost(found, newer.len(), Some(self.newest)).filter(|why| *why == Lost::Full);
+        let lost = mouse_lost(history, found, Some(self.newest)).filter(|why| *why == Lost::Full);
         let (since, count) = (read_at - self.read_at, newer.len() as i64);
         let heard = newer.iter().rev().zip(1..).map(|(&at, nth)| (at, self.read_at + since * nth / count));
         self.moves.extend(heard);

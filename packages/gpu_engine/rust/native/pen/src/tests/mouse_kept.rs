@@ -82,6 +82,17 @@ fn a_full_history_with_none_of_it_kept_lost_the_moves_before_it() {
     assert_eq!(kept_moves(&kept), moves(37, 100), "what there was, kept");
 }
 
+// 🔬Surface Pro 11, 11-19: a read 218 ms after the one before, at the
+// cursor while moves came, found 63 — every one newer than the newest
+// kept, and none counted lost.
+#[test]
+fn a_read_that_found_fewer_than_64_every_one_newer_lost_the_moves_before_it() {
+    let mut kept = Kept::from(moved(0), 0);
+    let behind_the_newest = &history_at(100)[1..];
+    assert_eq!(kept.hear(behind_the_newest, 63, 1_000), Some(Lost::Full));
+    assert_eq!(kept_moves(&kept), moves(37, 99), "what there was, kept");
+}
+
 #[test]
 fn a_message_takes_the_moves_through_its_own_and_leaves_the_rest() {
     let mut kept = Kept::from(moved(0), 0);

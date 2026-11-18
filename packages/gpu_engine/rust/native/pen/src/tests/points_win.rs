@@ -43,23 +43,41 @@ fn a_move_of_the_written_ones_millisecond_before_it_is_newer() {
     );
 }
 
+/// The `found` moves along a row the OS hands back from the one asked, the
+/// newest first at `newest` milliseconds and each a millisecond before.
+fn found_back(newest: u32, found: u32) -> Vec<Move> {
+    (0..found).map(|back| (newest as i32 - back as i32, 0, newest - back)).collect()
+}
+
+// 🔬Surface Pro 11, 11-19: asked at the cursor while moves come, the OS
+// found 62–63 in most reads — the moves after the one asked are not handed
+// back, and the move written is gone all the same.
 #[test]
-fn a_full_history_handed_on_whole_lost_the_moves_before_it() {
+fn a_history_whose_every_move_found_is_newer_lost_the_moves_before_it() {
     let written = Some((0, 0, 1));
-    assert_eq!(mouse_lost(64, 64, written), Some(Lost::Full));
-    assert_eq!(mouse_lost(64, 63, written), None, "the move written was in it");
-    assert_eq!(mouse_lost(12, 12, written), None, "a history not full kept them all");
+    assert_eq!(mouse_lost(&found_back(200, 64), 64, written), Some(Lost::Full));
+    assert_eq!(mouse_lost(&found_back(200, 63), 63, written), Some(Lost::Full), "asked behind the newest");
+    assert_eq!(mouse_lost(&found_back(200, 12), 12, written), Some(Lost::Full), "asked far behind it");
+}
+
+#[test]
+fn a_history_that_reaches_the_move_written_lost_nothing() {
+    let history = found_back(200, 64);
+    assert_eq!(mouse_lost(&history, 64, Some(history[63])), None, "the move written was in it");
+    assert_eq!(mouse_lost(&history[..12], 12, Some((0, 0, 190))), None, "one older than it was");
+    assert_eq!(mouse_lost(&[OWN], 1, Some(OWN)), None, "the move written, found once more");
+    assert_eq!(mouse_lost(&[], 0, Some(OWN)), None, "none found");
 }
 
 #[test]
 fn a_history_unread_lost_what_came_before_the_message() {
-    assert_eq!(mouse_lost(-1, 1, Some((0, 0, 1))), Some(Lost::Unread));
+    assert_eq!(mouse_lost(&[], -1, Some((0, 0, 1))), Some(Lost::Unread));
 }
 
 #[test]
 fn the_first_move_of_all_loses_nothing() {
-    assert_eq!(mouse_lost(64, 64, None), None);
-    assert_eq!(mouse_lost(-1, 1, None), None);
+    assert_eq!(mouse_lost(&found_back(200, 64), 64, None), None);
+    assert_eq!(mouse_lost(&[], -1, None), None);
 }
 
 #[test]

@@ -222,9 +222,9 @@ pub(crate) const MOST_BATCHES: usize = 256;
 /// reader writes ([`Book::write`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Lost {
-    /// The OS kept no more before them: Windows' mouse history full
-    /// (`GetMouseMovePointsEx`'s 64), every move in it newer than the
-    /// one written last.
+    /// The OS kept no more before them: every move Windows' mouse history
+    /// handed back (`GetMouseMovePointsEx`, from the move asked) newer than
+    /// the one written last (points_win.rs `mouse_lost`).
     Full,
     /// The history could not be read — the message's own point alone. A
     /// mouse move Windows made and keeps none of reads so too.

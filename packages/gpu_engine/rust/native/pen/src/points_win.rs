@@ -329,9 +329,11 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
         Told::Read(history, found) => (history, Vec::new(), Some(found)),
     };
     let mut written = MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
+    // What it lost is the history's, counted before the moves it hands on
+    // are cut from it (`mouse_lost`).
+    let lost = found.and_then(|found| mouse_lost(&history, found, *written));
     let now = now_micros();
     let moves = moves_since(own, &history, *written);
-    let lost = found.and_then(|found| mouse_lost(found, moves.len(), *written));
     *written = Some(own);
     // A move kept is at the time it was heard (mouse_kept.rs `Kept::hear`);
     // one read here is timed back from now by its milliseconds.
@@ -362,16 +364,29 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     book.write(Batch { contact: MOUSE, kind: Kind::Mouse, handed, points });
 }
 
-/// What a mouse message lost before the book ([`Lost`]), its history
-/// `found` and `handed_on` of it ([`moves_since`]) after `written`: the
-/// history full and every move in it handed on — the moves before it
-/// went —, or none read. Nothing where nothing was written yet: the
-/// first move of all has nothing before it to lose.
-pub(crate) fn mouse_lost(found: i32, handed_on: usize, written: Option<Move>) -> Option<Lost> {
+/// What a mouse message lost before the book ([`Lost`]): its `history` —
+/// the `found` moves `GetMouseMovePointsEx` handed back from the one asked,
+/// or its refusal — after `written`. The history ran past the move written
+/// where every move found is newer than it: the moves between went, or
+/// none was read. Nothing where nothing was written yet: the first move of
+/// all has nothing before it to lose.
+///
+/// 🚨EVERY MOVE FOUND NEWER, HOWEVER MANY WERE FOUND (11-19, 관제 —
+/// card pen-points-are-taken-off-the-ui-thread): the OS hands back the
+/// moves from the one asked to the oldest it keeps, so fewer than its 64
+/// are found where moves came after the one asked — not where it keeps
+/// fewer. 🔬Surface Pro 11, 7 kHz: 67–73% of the reads at the cursor
+/// found 62–63, and a read 218 ms after the one before found 63, every
+/// one newer — some 1,800 moves gone, none counted.
+/// ↩️Counted at 64 found alone till then (be2ef07bb, 11-17 — the history
+/// taken to keep fewer only till it fills), off the moves a message hands
+/// on. Counted off the history now: those are the message's own move alone
+/// where none is newer, and one found would be one handed on.
+pub(crate) fn mouse_lost(history: &[Move], found: i32, written: Option<Move>) -> Option<Lost> {
     written?;
     match found {
         ..0 => Some(Lost::Unread),
-        MOUSE_HISTORY if handed_on == MOUSE_HISTORY as usize => Some(Lost::Full),
+        _ if !history.is_empty() && newer_than(history, written).len() == history.len() => Some(Lost::Full),
         _ => None,
     }
 }
