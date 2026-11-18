@@ -38,8 +38,9 @@ import '../../helpers/settle_async.dart';
 /// 유저 2026-10-08: 「재생했는데 재생바는 지나가고있는데 그림이 없어서
 /// 비어있다던가」. Standing still the canvas shows a frame of the cut it
 /// showed as it stands while its picture is made (`FramePictureView
-/// .wholeFrames` off), and one of another cut not at all till then (Q5 =
-/// blank); only a run holds a frame back.
+/// .wholeFrames` off), and one of another cut — or any, on a file just
+/// opened — not at all till then (Q5 · Q7 = blank); only a run holds a
+/// frame back.
 ///
 /// ↩️The canvas stacked a run's frame from its rows' images
 /// (`CanvasLayerStackView.run`), each asked at the level of the view it was
@@ -182,7 +183,8 @@ void main() {
 
   /// The canvas standing still on [cel]'s frame — of [of], or of [cut]: its
   /// picture, made where the view misses it, and drawn as it stands until
-  /// it is there where the view showed a picture of that cut last.
+  /// it is there where the view showed a picture of that cut last, or a
+  /// view showed one of the file's frames (bare on a file just opened, Q7).
   /// ↩️The stack drew its rows' images, until no screen did
   /// (one-picture-per-frame ②-5b-1).
   Future<void> pumpStill(
@@ -421,7 +423,13 @@ void main() {
     final (:run, landings: _) = runOver(pictures);
 
     await pumpStill(tester, run, 'blue');
-    expect(await middle(tester), blue, reason: 'drawn as it stands');
+    await aWhile(tester);
+    expect(
+      await middle(tester),
+      blue,
+      reason: '⛔premise: its picture — the first frame of a file just '
+          'opened stands bare till it comes (Q7)',
+    );
 
     await pumpStill(tester, run, 'red');
     expect(
@@ -432,6 +440,30 @@ void main() {
     await aWhile(tester);
     expect(pictures.has(at('red')), isTrue, reason: 'the view made it');
     expect(await middle(tester), red);
+  });
+
+  testWidgets('🗣️standing still, the first frame of a file just opened '
+      'stands bare till its picture comes — a view made again over a '
+      'project on screen stands as it stood (the-standing-canvas-composes-'
+      'a-frame-twice-before-its-picture-Q7 = blank)', (tester) async {
+    final cache = images();
+    addTearDown(cache.dispose);
+    final pictures = picturesOver(cache);
+    final (:run, landings: _) = runOver(pictures);
+
+    await pumpStill(tester, run, 'blue');
+    expect(await middle(tester), 0, reason: 'bare, not drawn as it stands');
+    await aWhile(tester);
+    expect(pictures.has(at('blue')), isTrue, reason: 'the view made it');
+    expect(await middle(tester), blue, reason: 'its picture came');
+
+    await tester.pumpWidget(const SizedBox());
+    await pumpStill(tester, run, 'red');
+    expect(
+      await middle(tester),
+      red,
+      reason: 'another view, the project on screen: drawn as it stands',
+    );
   });
 
   testWidgets('🗣️standing still, a frame of another cut than the one it '

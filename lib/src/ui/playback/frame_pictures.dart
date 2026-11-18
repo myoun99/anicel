@@ -538,6 +538,19 @@ class FramePictures implements PlaybackPictures {
   /// canvas stands bare for in another cut (`FramePictureView`).
   bool toComeAt(FramePictureKey key) => _stateAt(key) == PictureState.toCome;
 
+  /// Whether a view of these pictures has put a frame on its screen yet.
+  /// Till one has, nothing of the project was there to stand on — a file
+  /// just opened (🗣️the-standing-canvas-composes-a-frame-twice-before-its-
+  /// picture-Q7 = blank, 유저 2026-11-18 「빈 종이로 기다린다」) — and a view
+  /// stands bare till its first frame's picture comes (`FramePictureView`).
+  /// ⛔Not each view's own: a view made again over a screen that showed —
+  /// another engine's, a switch of what it draws — stands as it stood.
+  bool get anyOnScreen => _anyOnScreen;
+  bool _anyOnScreen = false;
+
+  /// A view put a frame on its screen ([anyOnScreen]).
+  void putOnScreen() => _anyOnScreen = true;
+
   PictureState _stateAt(FramePictureKey key) => _isThere(key)
       ? PictureState.there
       : _gaveNothing.containsKey(key)

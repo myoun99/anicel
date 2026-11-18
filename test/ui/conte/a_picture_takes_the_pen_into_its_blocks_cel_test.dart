@@ -903,6 +903,11 @@ void main() {
         fxPlugins: fxPlugins,
       );
       addTearDown(session.dispose);
+      // The editor's canvas put the file's frames on screen: the brush is
+      // not switched on over a file just opened, whose first frame stands
+      // bare till its picture comes (the-standing-canvas-composes-a-frame-
+      // twice-before-its-picture-Q7).
+      session.playbackRig.framePictures.putOnScreen();
       await itsToolsOpen(tester, session.renderCaches.framePictureStore);
       final rows = BrushFrameStore();
       final ink = ConteInkController(rowStore: rows);

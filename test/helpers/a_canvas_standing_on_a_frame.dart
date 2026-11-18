@@ -146,9 +146,9 @@ bool nothingOnItsWay(WidgetTester tester, {Finder? within}) =>
 
 /// Lends both clocks till the frame's picture under [within] has nothing
 /// more on its way ([nothingOnItsWay]), and pumps the frame it shows in —
-/// a canvas stands bare till the picture of a frame of another cut than
-/// the one it showed comes: a cut a command opened (the-standing-canvas-
-/// composes-a-frame-twice-before-its-picture-Q5 = blank).
+/// a canvas stands bare till the picture of a frame of a cut it has not
+/// shown comes: a cut a command opened, or a file (the-standing-canvas-
+/// composes-a-frame-twice-before-its-picture-Q5 · Q7 = blank).
 Future<void> theFrameIsShown(WidgetTester tester, {Finder? within}) async {
   expect(
     await settleAsync(tester, () => nothingOnItsWay(tester, within: within)),

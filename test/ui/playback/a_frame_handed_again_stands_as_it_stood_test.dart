@@ -115,13 +115,18 @@ void main() {
     addTearDown(images.dispose);
     final store = layingNothing ? StoreLayingNothing() : aStoreOfPictures();
     addTearDown(store.dispose);
+    final run = runOver(
+      images,
+      store,
+      canvasSize: canvasSize,
+      stackOf: (_) => treeOf(),
+    );
+    // A file on screen already, not one just opened — whose first frame
+    // stands bare till its picture comes (the-standing-canvas-composes-a-
+    // frame-twice-before-its-picture-Q7).
+    run.pictures.putOnScreen();
     return (
-      run: runOver(
-        images,
-        store,
-        canvasSize: canvasSize,
-        stackOf: (_) => treeOf(),
-      ),
+      run: run,
       live: (
         activeSurfacePainter: BitmapSurfacePainter(
           surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),

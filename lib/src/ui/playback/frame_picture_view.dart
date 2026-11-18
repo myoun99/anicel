@@ -139,10 +139,11 @@ class FramePictureView extends StatefulWidget {
   /// it is, or is drawn as it stands meanwhile from the cels in hand
   /// ([FramePictures.frameAsItStands]) — a canvas that stands, where a row
   /// being drawn on may not wait for its neighbours: a frame of the cut it
-  /// showed last. 🗣️A frame of another cut stands bare till its picture
-  /// comes (the-standing-canvas-composes-a-frame-twice-before-its-picture-
-  /// Q5 = blank, 유저 2026-11-18 「빈 종이로 기다린다」) — a cut a command
-  /// opened: nothing of it was on screen to stand on.
+  /// showed last. 🗣️A frame of a cut nothing of which was there — another
+  /// than the one it showed, or any of a file just opened — stands bare
+  /// till its picture comes (the-standing-canvas-composes-a-frame-twice-
+  /// before-its-picture-Q5 · Q7 = blank, 유저 2026-11-18 「빈 종이로
+  /// 기다린다」): a cut a command opened, or a file.
   ///
   /// ⛔Not one flag with [laysWhatItMisses]: who makes a frame and whether
   /// a frame waits to be whole are two questions, and a track stack's
@@ -291,8 +292,8 @@ class _FramePictureViewState extends State<FramePictureView>
   StackedFrame? _asItStands;
 
   /// The cut of the frame this view put on its screen last — its picture,
-  /// or the frame as it stands ([_show]): a frame of another cut stands
-  /// bare against it ([_standsBare]).
+  /// or the frame as it stands ([_show]); null till it puts one there. A
+  /// frame of another cut stands bare against it ([_standsBare]).
   CutId? _cutOnScreen;
 
   /// The frame as it stands with its live rows ([LiveRows]) — drawn
@@ -475,8 +476,10 @@ class _FramePictureViewState extends State<FramePictureView>
   /// from the screen at this paint, ONE answer for every way it does: its
   /// tools still to be opened; [refused], the paint's own lay met kernels
   /// still to be compiled ([FrameKernelsToCome]); the frame's picture,
-  /// nothing of the frame drawn meanwhile, in a line that stands behind
-  /// such kernels ([EngineFramePictureStore.waitsForKernels]).
+  /// nothing of the frame drawn meanwhile — a view of whole frames, or one
+  /// that stands bare ([_standsBare]: a file just opened, a cut a command
+  /// opened) — in a line that stands behind such kernels
+  /// ([EngineFramePictureStore.waitsForKernels]).
   ///
   /// ⛔Not a frame drawn as it stands while its picture is on its way: it
   /// is on the screen. Nor one that waits for its plugins alone (🗣️관제
@@ -487,7 +490,9 @@ class _FramePictureViewState extends State<FramePictureView>
     waits:
         _store.toolsAreToCome ||
         refused ||
-        (_making != null && !_standsMeanwhile && _store.waitsForKernels),
+        (_making != null &&
+            (!_standsMeanwhile || _standsBare) &&
+            _store.waitsForKernels),
   );
 
   @override
@@ -1097,6 +1102,7 @@ class _FramePictureViewState extends State<FramePictureView>
     _OnTheTexture on,
   ) {
     _cutOnScreen = _showing?.cutId ?? _cutOnScreen;
+    _pictures.putOnScreen();
     final (:viewport, :devicePixelRatio, :corner) = on;
     final shown = _drawnPicture;
     if (shown != null) {
@@ -1200,21 +1206,24 @@ class _FramePictureViewState extends State<FramePictureView>
       _standing.whole && !_waits ? null : _shown;
 
   /// Whether this view stands bare till the picture of its frame comes,
-  /// where it would draw it as it stands: a frame of another cut than the
-  /// one it put on screen last, its picture still to come — nothing of
-  /// that cut was there (Q5 = blank). ⛔Not a page alone, nor a frame given
-  /// up on: there is nothing of them to come, and a move lands on them at
-  /// once ([FramePictures.toComeAt]). ⛔Not its first, a project just
-  /// opened: Q5 asked of a cut a command opens, and a first frame is drawn
-  /// as it stands as it was (asked: the-standing-canvas-composes-a-frame-
-  /// twice-before-its-picture-Q7).
+  /// where it would draw it as it stands: its picture still to come, of a
+  /// cut nothing of which was there — another than the one it put on
+  /// screen last (Q5 = blank), or, before it put one there, any of a
+  /// project none of whose frames a view showed yet: a file just opened
+  /// (🗣️Q7 = blank, 유저 2026-11-18 「빈 종이로 기다린다」,
+  /// [FramePictures.anyOnScreen]). ⛔Not a page alone, nor a frame given up
+  /// on: there is nothing of them to come, and a move lands on them at once
+  /// ([FramePictures.toComeAt]).
   bool get _standsBare {
-    final (showing, onScreen) = (_showing, _cutOnScreen);
-    return _standsMeanwhile &&
-        showing != null &&
-        onScreen != null &&
-        showing.cutId != onScreen &&
-        _pictures.toComeAt(showing);
+    final showing = _showing;
+    if (!_standsMeanwhile || showing == null) {
+      return false;
+    }
+    final onScreen = _cutOnScreen;
+    final nothingThere = onScreen == null
+        ? !_pictures.anyOnScreen
+        : showing.cutId != onScreen;
+    return nothingThere && _pictures.toComeAt(showing);
   }
 
   /// [frame] composed on this view's own screen, where it or its live rows
