@@ -281,7 +281,7 @@ import 'timeline/timeline_cell_exposure_state.dart'
 import 'timeline/timeline_frame_window.dart'
     show timelineFrameWindowReachFor, visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
-    show ByIdentity, ByList, BySet, Kept, KeptPiece, keptWhileSame;
+    show ByIdentity, ByList, BySet, KeptPiece;
 import 'repaint_props.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';

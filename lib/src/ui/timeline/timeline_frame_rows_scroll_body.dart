@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'memo_token.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -228,25 +229,39 @@ class _TimelineFrameRowsScrollBodyState
     laneRange: widget.laneRange,
   );
 
-  /// [row] as this pass built it ([WindowMoveKeep]).
-  Widget _buildRow(TimelineDisplayRow row) =>
-      _keep.row(widget.berths.keyOf(row), () => _rowOf(row));
+  /// [row] as this pass built it, or a pass before while what it is built
+  /// from holds ([WindowMoveKeep]).
+  Widget _buildRow(TimelineDisplayRow row) {
+    final key = widget.berths.keyOf(row);
+    return _keep.row(
+      key,
+      () => (
+        name: 'timeline-row-${row.layer.id}-${_rowNameSuffix(row)}',
+        // 🚨F-244: the row's own size, laid FRESH on every build. It is
+        // what makes the tick layer's constraints tight — and a zoom step
+        // keeps the memo entry below while it moves the content extent, so
+        // a box inside the memo would hold the old width: the row cut short
+        // of its cells. A window move keeps it (③): a zoom step is a build
+        // of the grid, a pass of its own — and the box is a fact of the
+        // row the keep hands back (11-19), so a step builds it again.
+        width: widget.totalFrameContentWidth,
+        height: timelineDisplayRowExtent(row, widget.metrics),
+        row: ByIdentity(_layeredRow(row)),
+      ),
+      (facts) => _rowOf(key, facts),
+    );
+  }
 
-  /// The row built in its berth and named for its layer — a key spelled
-  /// from the layer remade every row's cells on a cut switch (I-57).
-  Widget _rowOf(TimelineDisplayRow row) => Named(
-    'timeline-row-${row.layer.id}-${_rowNameSuffix(row)}',
-    key: widget.berths.keyOf(row),
-    // 🚨F-244: the row's own size, laid FRESH on every build. It is what
-    // makes the tick layer's constraints tight — and a zoom step keeps the
-    // memo entry below while it moves the content extent, so a box inside
-    // the memo would hold the old width: the row cut short of its cells.
-    // A window move keeps it (③): a zoom step is a build of the grid, a
-    // pass of its own.
+  /// The row built in its berth [key] and named for its layer — a key
+  /// spelled from the layer remade every row's cells on a cut switch
+  /// (I-57).
+  Widget _rowOf(RowBerthKey key, _RowFacts facts) => Named(
+    facts.name,
+    key: key,
     child: SizedBox(
-      width: widget.totalFrameContentWidth,
-      height: timelineDisplayRowExtent(row, widget.metrics),
-      child: _layeredRow(row),
+      width: facts.width,
+      height: facts.height,
+      child: facts.row.value,
     ),
   );
 
@@ -280,7 +295,7 @@ class _TimelineFrameRowsScrollBodyState
       rows: widget.rows,
       first: widget.firstRowIndex,
       edges: widget.edges,
-      kept: _keep.row,
+      kept: _keep.ofThePass,
     ),
     _cellsRowGrid,
     cells: _buildRow,
@@ -363,3 +378,13 @@ class _TimelineFrameRowsScrollBodyState
     );
   }
 }
+
+/// What a row of cells is built from: the name it is found by, its box,
+/// and the row in it — its memo's, the same widget while the memo hands
+/// it back.
+typedef _RowFacts = ({
+  String name,
+  double width,
+  double height,
+  ByIdentity<Widget> row,
+});

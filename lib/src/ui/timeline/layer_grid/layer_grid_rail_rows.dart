@@ -133,21 +133,26 @@ class _LayerGridRailRows {
   /// never drift: the row is built in its BERTH ([RowBerths]), which is
   /// what re-matches the pinned element's State when the window returns,
   /// and NAMED for its layer ([Named]) — a key spelled from the layer
-  /// remade every row of the rail on a cut switch (I-57).
+  /// remade every row of the rail on a cut switch (I-57). Kept while what
+  /// it is built from holds ([WindowMoveKeep]): its name, and its row as
+  /// the memo hands it back.
   Widget? _railRowAt(
     List<TimelineDisplayRow> rows,
     _RowWindow window,
     int index,
-  ) => window.edges.extentOf(index) > 0
-      ? _keep.row(
-          window.berths.keyOf(rows[index]),
-          () => Named(
-            _railRowName(rows[index]),
-            key: window.berths.keyOf(rows[index]),
-            child: _railRowMemoized(rows[index], window.berths),
-          ),
-        )
-      : null;
+  ) {
+    if (window.edges.extentOf(index) <= 0) return null;
+    final row = rows[index];
+    final key = window.berths.keyOf(row);
+    return _keep.row(
+      key,
+      () => (
+        name: _railRowName(row),
+        row: ByIdentity(_railRowMemoized(row, window.berths)),
+      ),
+      (facts) => Named(facts.name, key: key, child: facts.row.value),
+    );
+  }
 
   String _railRowName(TimelineDisplayRow row) =>
       'timeline-rail-row-'

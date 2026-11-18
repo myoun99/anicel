@@ -21,7 +21,7 @@ import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'lane_row_slice.dart';
-import 'memo_token.dart' show Kept, keptWhileSame;
+import 'memo_token.dart' show ByIdentity, Kept, keptWhileSame;
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';

@@ -49,6 +49,7 @@ import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
+import 'memo_token.dart' show ByIdentity;
 import 'row_berths.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';

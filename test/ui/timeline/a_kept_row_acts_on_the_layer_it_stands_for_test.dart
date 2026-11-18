@@ -473,6 +473,55 @@ void main() {
         );
         expect(rebuilt.inRows, isEmpty);
       });
+
+      // 🔬Card an-eye-toggle-holds-the-ui-thread (11-19): an eye toggle on
+      // S5_BA cut 352 built the name and the berth of every row the window
+      // held again, on both sides — 84 of its 249 widgets — around rows
+      // their memos handed back whole.
+      testWidgets('a pass that changes one row builds no other row, nor '
+          'the berth it stands in', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1100));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        heard = [];
+        drags = _dragsHeardBy(heard);
+        final hidden = _layersOf(_two);
+        await tester.pumpWidget(
+          _panel(_two, orientation, heard, drags, layers: hidden),
+        );
+        await tester.pumpAndSettle();
+        final shown = [
+          for (final layer in hidden)
+            if (layer.id.value == _two.draw)
+              layer.copyWith(isVisible: true)
+            else
+              layer,
+        ];
+        final rebuilt = _RowRebuilds()..listen();
+        try {
+          await tester.pumpWidget(
+            _panel(_two, orientation, heard, drags, layers: shown),
+          );
+          await tester.pump();
+        } finally {
+          debugOnRebuildDirtyWidget = null;
+        }
+
+        expect(
+          rebuilt.named.where((name) => name.contains(_two.draw)),
+          isNotEmpty,
+          reason: 'LIVENESS: the row whose eye opened is built again',
+        );
+        expect(
+          rebuilt.named.where((name) => !name.contains(_two.draw)),
+          isEmpty,
+          reason: 'every other row is the widget it was, its name with it',
+        );
+        expect(
+          rebuilt.berthsOf.toSet(),
+          {_two.draw},
+          reason: 'only the changed row\'s berths say another layer',
+        );
+      });
     });
   }
 }
@@ -582,10 +631,20 @@ final class _RowRebuilds {
   final Map<String, Set<Type>> inRows = {};
   int berths = 0;
 
+  /// The layer each berth built again stands for.
+  final List<String> berthsOf = [];
+
+  /// The name of each named widget built again.
+  final List<String> named = [];
+
   void listen() {
     debugOnRebuildDirtyWidget = (element, _) {
-      if (element.widget is BerthRow) {
+      if (element.widget case BerthRow(:final layer)) {
         berths += 1;
+        berthsOf.add(layer.id.value);
+      }
+      if (element.widget case Named(:final name?)) {
+        named.add(name);
       }
       element.visitAncestorElements((ancestor) {
         if (ancestor.widget case TimelineLayerControlsRow(:final layer)) {
@@ -618,7 +677,7 @@ Widget _panel(
         substrateGeneration: cut.world,
         frameCursor: _cursor,
         playbackFrameCount: 12,
-        exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+        exposureStateForLayer: _uncovered,
         onSelectLayer: (id) => hear('select', id),
         labelDoubleClick: (id) => () => hear('rename', id),
         onSelectFrame: (_) {},
@@ -663,3 +722,8 @@ Widget _panel(
     ),
   );
 }
+
+/// Every cell uncovered — ONE function for every pump, as a host's own
+/// method is: the cells rows' memos hold while their hooks do.
+TimelineCellExposureState _uncovered(Layer layer, int frameIndex) =>
+    TimelineCellExposureState.uncovered;

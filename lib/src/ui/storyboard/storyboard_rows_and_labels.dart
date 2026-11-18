@@ -11,8 +11,24 @@ class _StoryboardRowsAndLabels {
 
   final _StoryboardPanelState _state;
 
-  /// What the rail keeps of its rows ([_KeptRailRows]).
-  final _KeptRailRows _kept = _KeptRailRows();
+  /// What the rail keeps of its rows (F-244): each row — its label in the
+  /// drag wrapper put on it — held as built while the label's facts and
+  /// what the wrapper is built from hold. A row's address stands through a
+  /// cut crossed, so its wrapper and its label are kept as one; the
+  /// timeline's rail keeps the two apart (`KeptLayerControlsRows`) because
+  /// its berths change address under a kept row.
+  ///
+  /// 🚨I-57 (10-14): every wrapper was built again with the panel on every
+  /// notify and every cut crossed — 🔬64 of a crossing's 330 rebuilds on
+  /// the AMMI OP, each row's gesture layer among them.
+  ///
+  /// It holds the rows of the latest PASS ([railPass]) and no others: a
+  /// row the rail stops drawing lets go of what it was built from at the
+  /// next pass (I-57 ㉣: a memo that let go of nothing held every layer of
+  /// every cut it had shown). Every pass is another, so a row is kept
+  /// while its facts hold and no longer — the windowed rows' keep, laid
+  /// so (`_KeptRailRows` was a keep of its own until 11-19).
+  final WindowMoveKeep _kept = WindowMoveKeep();
 
   /// A lane list's labels — [rowId]'s lanes, row for row with [lanes] —
   /// laid as the table lays the lanes ([_laidLanes]), each made to select
@@ -65,7 +81,7 @@ class _StoryboardRowsAndLabels {
     ]);
   }
 
-  /// [_laneRow], kept while what it is built from holds ([_KeptRailRows]):
+  /// [_laneRow], kept while what it is built from holds ([_kept]):
   /// the label [row] it wraps by identity — a label is kept itself
   /// ([laneLabels]) — the lane, the chain it re-orders, where the lane
   /// stands in it and how far, and the host's half ([_dragInputs]). The
@@ -80,9 +96,9 @@ class _StoryboardRowsAndLabels {
     chain,
     ({PropertyLaneRow lane, int index}) at,
     Widget row,
-  ) => _kept.keep(
+  ) => _kept.row(
     (laneRow: LaneRowAddress(chain.rowId, at.lane.laneId)),
-    (
+    () => (
       ByIdentity(row),
       ByIdentity(at.lane),
       chain.chainId,
@@ -91,7 +107,7 @@ class _StoryboardRowsAndLabels {
       _laneExtentOf(chain.rowId, at.lane),
       _dragInputs,
     ),
-    () => _laneRow(chain, at, row),
+    (_) => _laneRow(chain, at, row),
   );
 
   /// One lane label of [chain]'s row at [at]: a group header re-orders the
@@ -177,7 +193,7 @@ class _StoryboardRowsAndLabels {
       return null;
     }
     // The host's span as it stands at the event: a kept row's wrapper
-    // outlives the build it was made in ([_KeptRailRows]).
+    // outlives the build it was made in ([_kept]).
     return (rowDelta) =>
         _state.widget.onRowSelectionSpan?.call(_state._sheet.rows(), rowDelta);
   }
@@ -225,13 +241,15 @@ class _StoryboardRowsAndLabels {
     _state.widget.onRowSelectionSpan != null,
   );
 
-  /// [build]'s rail rows — every track's — kept as one pass
-  /// ([_KeptRailRows.pass]).
-  List<Widget> railPass(List<Widget> Function() build) => _kept.pass(build);
+  /// [build]'s rail rows — every track's — kept as one pass ([_kept]).
+  List<Widget> railPass(List<Widget> Function() build) {
+    _kept.lay(Object());
+    return build();
+  }
 
   /// [label] in the drag wrapper [wrap] puts on it — the rail's row [key] —
   /// kept while [label]'s facts and [inputs], what [wrap] builds the
-  /// wrapper from, hold ([_KeptRailRows]); wearing, as a head, the layer
+  /// wrapper from, hold ([_kept]); wearing, as a head, the layer
   /// its row has in hand now ([_wearing]), which a kept row may have been
   /// built for another of.
   Widget _keptRow(
@@ -243,10 +261,10 @@ class _StoryboardRowsAndLabels {
     final piece = label.piece;
     // The row is a still region of its own, inside the wrapper [wrap] puts
     // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
-    final row = _kept.keep(
+    final row = _kept.row(
       key,
-      (inputs, piece.runtimeType, piece.facts),
-      () => wrap(stillRow(piece)),
+      () => (inputs, piece.runtimeType, piece.facts),
+      (_) => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
       final wears? => _wearing(wears, row),
@@ -442,7 +460,7 @@ class _StoryboardRowsAndLabels {
     // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
     // (11-08): every label was built again at every pass of the rail — a
     // pick of an S row drew both tracks' fx heads again. A label is kept
-    // ([_KeptRailRows]) by the row's own facts as it stands committed
+    // ([_kept]) by the row's own facts as it stands committed
     // ([TimelineLaneControlsRow.facts]) — the lane by identity, and a list
     // read again is new lanes, so what [follow] reads a lane again from
     // holds while the lane does — by the selection its graph is seated
@@ -465,10 +483,10 @@ class _StoryboardRowsAndLabels {
     // else (the timeline rail's own line).
     return [
       for (final lane in lanes)
-        _kept.keep(
+        _kept.row(
           (laneLabel: LaneRowAddress(carrier.id, lane.laneId)),
-          factsOf(lane),
-          () => follow == null
+          () => factsOf(lane),
+          (_) => follow == null
               ? row(carrier, lane)
               : follow(carrier, lane, row),
         ),
@@ -1239,45 +1257,6 @@ typedef _RailLabel = ({
   KeptPiece piece,
   ({Layer layer, List<Layer> stack})? wears,
 });
-
-/// What the rail keeps of its rows (F-244): each row — its label in the
-/// drag wrapper put on it — held as built while the label's facts and what
-/// the wrapper is built from hold. A row's address stands through a cut
-/// crossed, so its wrapper and its label are kept as one; the timeline's
-/// rail keeps the two apart (`KeptLayerControlsRows`) because its berths
-/// change address under a kept row.
-///
-/// 🚨I-57 (10-14): every wrapper was built again with the panel on every
-/// notify and every cut crossed — 🔬64 of a crossing's 330 rebuilds on the
-/// AMMI OP, each row's gesture layer among them.
-///
-/// It holds the rows of the latest PASS ([pass]) and no others: a row the
-/// rail stops drawing lets go of what it was built from (I-57 ㉣: a memo
-/// that let go of nothing held every layer of every cut it had shown).
-final class _KeptRailRows {
-  Map<Object, Kept<Object?>> _held = {};
-  Map<Object, Kept<Object?>> _before = {};
-
-  /// [build]'s rows, kept as one pass.
-  List<Widget> pass(List<Widget> Function() build) {
-    _before = _held;
-    _held = {};
-    try {
-      return build();
-    } finally {
-      _before = {};
-    }
-  }
-
-  /// The row held for [key] while [facts] are what it was built from, else
-  /// [build]'s, held.
-  Widget keep(Object key, Object? facts, Widget Function() build) {
-    if (_before.remove(key) case final kept?) {
-      _held[key] = kept;
-    }
-    return keptWhileSame(_held, key, facts, build);
-  }
-}
 
 /// A V row's glyph — what its label row shows beside its name
 /// ([storyboardVideoRowName]), and what its chip shows once the row is

@@ -172,7 +172,13 @@ final class _WindowedRows {
           laid.add(SizedBox(height: gap));
           gap = 0;
         }
-        laid.add(_keep.row(first, () => _holdable(head, first, unit())));
+        laid.add(
+          _keep.row(
+            first,
+            () => (head: head, rows: ByList(unit())),
+            (facts) => _holdable(facts.head, first, facts.rows.value),
+          ),
+        );
       } else {
         gap += _table.edges.startOf(last + 1) - _table.edges.startOf(first);
       }
@@ -185,7 +191,8 @@ final class _WindowedRows {
 
   /// [build]'s widget, kept as the rows are while only the window moves —
   /// what stands beside the rows off the pass alone (a section's zone, ④).
-  Widget kept(Object key, Widget Function() build) => _keep.row(key, build);
+  Widget kept(Object key, Widget Function() build) =>
+      _keep.ofThePass(key, build);
 
   bool _builds(int first, int last) => switch (_window) {
     null => true,
