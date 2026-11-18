@@ -451,6 +451,13 @@ impl Pool {
         Stamps { pool: self.id, pages: self.pages.iter().map(of).collect() }
     }
 
+    /// The pool as one that has handed `handed` slots out already: a
+    /// test's, of stamps past a word's reach.
+    #[cfg(test)]
+    pub(crate) fn handed_already(&mut self, handed: u64) {
+        self.handed = handed;
+    }
+
     /// The bytes of the pages made — a page counts whole, its free slots
     /// too, as it stays made, and a page given back its stand-in.
     pub(crate) fn bytes(&self) -> u64 {

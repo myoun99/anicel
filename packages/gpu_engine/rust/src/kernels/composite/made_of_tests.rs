@@ -163,6 +163,24 @@ fn a_tile_stored_where_another_was_let_go_is_told_apart() {
     assert!(kept_bytes(&after) != kept_bytes(&before), "premise: the tiles differ");
 }
 
+// A stamp is told whole: a slot handed out again a word's count of
+// hand-outs later holds another tile, its stamp's low word the one it had.
+#[test]
+fn a_tile_handed_out_a_word_s_count_later_is_told_apart() {
+    let (mut pool, at) = stored(&[tile(1), tile(2), tile(3)]);
+    let frame = Frame::of([at[0], at[1]], at[2]);
+    let before = told(&frame, &pool, (2, 0), PAGE).expect("told");
+    let had = pool.stamps().of(at[2]).expect("stamped");
+    pool.release(at[2]).expect("held");
+    pool.handed_already(had + (1 << 32) - 1);
+    let cel = pool.cel();
+    let again = pool.store(rig().engine, cel, &[&tile(9)]).expect("store");
+    assert_eq!(again, [at[2]], "premise: the slot let go is the one handed out");
+    let has = pool.stamps().of(at[2]).expect("stamped");
+    assert_eq!((has as u32, has >> 32), (had as u32, 1), "premise: the low word it had, a word's count on");
+    assert_ne!(told(&frame, &pool, (2, 0), PAGE), Some(before), "another tile");
+}
+
 // A picture made again where nothing it is made of changed holds every
 // slot it had, and takes none; made again over a row's tile that changed,
 // that tile alone is another slot, the one it had is free, and it weighs
@@ -262,6 +280,28 @@ fn a_telling_differs_by_every_word_a_tile_s_pixels_come_of() {
         }
     });
     assert_ne!(told(&posed, &pool, (0, 0), PAGE), Some(base.clone()), "its pose");
+    // Two poses that read the same stored tiles for the tile: the pose
+    // alone tells them apart.
+    let moved = |by: i32| {
+        frame().with(|frame| {
+            if let Step::Row { map, .. } = &mut frame.steps[1] {
+                *map = ResampleMap::moved(by, 0);
+            }
+        })
+    };
+    let (one, other) = (told(&moved(1), &pool, (0, 0), PAGE), told(&moved(2), &pool, (0, 0), PAGE));
+    assert!(one.is_some() && one != other, "its pose, where what it reads is the same");
+    // One stored tile, a column to either side in its row's grid, under a
+    // pose that reads two columns for the tile: where it lies in the grid
+    // is where its pixels land, and a telling's own word.
+    let lying_at = |column: i32| {
+        let frame = moved(TILE as i32 / 2).with(|frame| {
+            frame.sets[0] = TileSet::from_words(column, 0, 1, 1, &[at[0].word()]);
+        });
+        told(&frame, &pool, (0, 0), PAGE).expect("told")
+    };
+    let (left, here, right) = (lying_at(-1), lying_at(0), lying_at(1));
+    assert!(left != here && here != right && left != right, "the place of the stored tile it reads");
     let matrix = [7; MATRIX_WORDS];
     let through = |words| {
         frame().with(|frame| {
@@ -285,6 +325,7 @@ fn a_telling_differs_by_every_word_a_tile_s_pixels_come_of() {
     let (one, other) = (told(&keyed(vec![vec![1, 2]]), &pool, (0, 0), PAGE), told(&keyed(vec![vec![1], vec![2]]), &pool, (0, 0), PAGE));
     assert!(one.is_some() && one != Some(base.clone()), "a key chain it is keyed by");
     assert_ne!(one, other, "the chain's runs, each its own words");
+    assert_ne!(one, told(&keyed(vec![vec![1, 3]]), &pool, (0, 0), PAGE), "a run's words");
     // A buffer's steps, each by its own words: the rows it holds blend by
     // how it was opened and how it closes.
     let buffered = |open: Step, close: Step, matrix: Option<[u32; MATRIX_WORDS]>| {
