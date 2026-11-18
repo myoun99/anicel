@@ -747,6 +747,7 @@ class _BrushEditStroke {
       base: base,
       mode: blendMode,
       erase: erase,
+      dabs: sourceDabs,
     );
     rasterizer.clear();
     landPromoted(

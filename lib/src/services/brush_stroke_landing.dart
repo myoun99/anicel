@@ -51,6 +51,7 @@ List<PlacedTile> strokeLandedOn(
         mode: BrushBlendMode.color,
         // A stroke is homogeneous: every dab shares the tool's erase mode.
         erase: first?.erase ?? false,
+        dabs: stroke.dabs,
       ))
         (coord: promoted.coord, tile: promoted.tile),
     ];

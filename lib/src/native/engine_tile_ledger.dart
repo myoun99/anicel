@@ -80,6 +80,17 @@ import 'app_gpu_engine.dart';
 /// went: every read of it was refused, a save among them, and what could
 /// be kept of the session was the last save.
 ///
+/// 🚨AND ONE WHOSE LANDING SAID HOW IT IS MADE READS AS ITSELF, MADE AGAIN
+/// ([LandsAgain], [_Slot.made]) — 🗣️유저 2026-11-19
+/// (cel-originals-are-held-twice-in-ram-and-on-the-gpu-Q2): 「픽셀 대신 「한
+/// 일의 기록」을 들고, 잃으면 다시 그린다」. Where the app stands on another
+/// engine by then, the landing is made there once more, over the tile it
+/// landed on — itself made again the same way, where its own copy had not
+/// come — and the last strokes are not gone. Kept as long as the tile it
+/// landed on is: till the copy comes. ⏳The copies still come
+/// ([copyHereABatch]): what a landing with no such word has, and all there
+/// is where no other engine opens.
+///
 /// The pages nobody holds are given back ([respondToMemoryPressure],
 /// [byteBudget] falling under them) — the slots of tiles collected let go
 /// first, their finalizers' messages or not (pool-pages-given-back): a
@@ -356,11 +367,41 @@ final GpuEngine _engine;
     if (slot == null) {
       throw StateError('a tile the engine made was read after it was let go');
     }
-    if (!_reads(() => pool.read([slot.at], into))) {
+    if (!_reads(() => pool.read([slot.at], into)) &&
+        !_makesAgain(slot, into)) {
       _layThePictureUnder(tile, slot, into);
     }
-    // Its bytes are here: the tile it landed on is its to keep no longer.
-    slot.under = null;
+    // Its bytes are here: the tile it landed on is its to keep no longer,
+    // nor how it was made.
+    slot.keepsNothing();
+  }
+
+  /// Whether [slot]'s tile, gone with the device, was made again in
+  /// [into]: its landing once more ([_Slot.made]), over the tile it landed
+  /// on, on the engine the app stands on now.
+  ///
+  /// Not where its landing said nothing of how it is made; nor while the
+  /// app still stands on this ledger's engine ([opened]) — one device went
+  /// within a minute of another (`EngineRefusals.openAnotherApart`), or no
+  /// other opened —, where there is nothing to make it on; nor where the
+  /// making is refused in its turn, that engine's device gone too. Each
+  /// then reads as the picture it landed on ([_layThePictureUnder]).
+  bool _makesAgain(_Slot slot, Pointer<Uint8> into) {
+    final made = slot.made;
+    if (made == null || identical(opened, this)) {
+      return false;
+    }
+    final under = slot.under;
+    try {
+      final (:change, tile: again) = made.by.again([
+        (column: made.column, row: made.row, under: under),
+      ]).single;
+      // The landing left the tile under it as it was: that tile's bytes.
+      _layBytesOf(change == GpuChange.same ? under : again, into);
+      return true;
+    } on GpuRefused {
+      return false;
+    }
   }
 
   /// Whether [read] reads what it asks of the device: not where the device
@@ -402,14 +443,22 @@ final GpuEngine _engine;
   /// A tile of the slot [at], which it now holds: the only copy of its
   /// pixels till they are read here ([BitmapTile.isOnlyOnEngine]), so till
   /// then nothing but its collection or [retire] lets it go — and till then
-  /// it keeps [under], the tile it landed on ([_Slot.under]).
-  BitmapTile _adopted(GpuTile at, {bool? hasInk, BitmapTile? under}) {
+  /// it keeps [under], the tile it landed on ([_Slot.under]), and [made],
+  /// how its landing is made again ([_Slot.made]).
+  BitmapTile _adopted(
+    GpuTile at, {
+    bool? hasInk,
+    BitmapTile? under,
+    _Made? made,
+  }) {
     final tile = BitmapTile.onEngine(
       size: gpuTileSide,
       on: this,
       hasInk: hasInk,
     );
-    _give(tile, at).under = under;
+    _give(tile, at)
+      ..under = under
+      ..made = made;
     return tile;
   }
 
@@ -451,11 +500,16 @@ final GpuEngine _engine;
   /// pages; [compared], [by]'s, says the results' ink is known. A full pool
   /// has room made as [_store]'s is ([_shortAsRoomIsMade]): what is on the
   /// way to the screen has no fallback.
+  ///
+  /// [again] makes the same landing on another engine, where the caller
+  /// can say how ([LandsAgain]): what each tile landed reads as should this
+  /// engine's device go before the tile's bytes are here ([_makesAgain]).
   List<LandedTile> land(
     Object cel,
     List<TileAsk> asks, {
     required LandedBy by,
     bool compared = false,
+    LandsAgain? again,
   }) => held((hold) {
     final under = hold.slotsOfThose(cel, [
       for (final ask in asks) ask.under,
@@ -490,6 +544,9 @@ final GpuEngine _engine;
                   tile,
                   hasInk: compared ? true : null,
                   under: asks[at].under,
+                  made: again == null
+                      ? null
+                      : (by: again, column: asks[at].column, row: asks[at].row),
                 ),
         ),
     ];
@@ -535,7 +592,7 @@ final GpuEngine _engine;
       return;
     }
     slot.out = true;
-    slot.under = null;
+    slot.keepsNothing();
     slot.place.slot = null;
     pool.release(slot.at);
     _slotCount -= 1;
@@ -709,6 +766,12 @@ final GpuEngine _engine;
   /// record once its slot goes, which a test reads off the heap.
   @visibleForTesting
   Object? recordOf(BitmapTile tile) => _slotNow(tile);
+
+  /// How [tile]'s landing is made again, where its slot keeps that
+  /// ([_Slot.made]), or null — a probe of what a tile holds while it waits
+  /// for its bytes, and lets go of once they are here.
+  @visibleForTesting
+  LandsAgain? madeBy(BitmapTile tile) => _slotNow(tile)?.made?.by;
 
   /// The place [tile]'s key has ([BitmapTile.pixelsKey]), or null before
   /// its first store — a probe: a key stored again is in the one it had,
@@ -923,7 +986,7 @@ final GpuEngine _engine;
       // landed on, its device gone ([readInto]).
       if (tile.isOnlyOnEngine) {
         tile.keepBytesHere(bytes);
-        _slotNow(tile)?.under = null;
+        _slotNow(tile)?.keepsNothing();
       }
     });
   }
@@ -1002,7 +1065,7 @@ final GpuEngine _engine;
           tile.keepBytesHere(
             Uint8List.sublistView(bytes, from, from + gpuTileBytes),
           );
-          slot.under = null;
+          slot.keepsNothing();
         }
       }
     } on GpuRefused {
@@ -1161,6 +1224,23 @@ typedef LandedTile = ({GpuChange change, BitmapTile? tile});
 typedef LandedBy =
     List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
 
+/// How a landing is made again once the engine it was made on is gone:
+/// what it laid, as values — nothing of that engine's, which a [LandedBy]
+/// holds.
+///
+/// 🗣️유저 2026-11-19 (cel-originals-are-held-twice-in-ram-and-on-the-gpu-Q2):
+/// 「픽셀 대신 「한 일의 기록」을 들고, 잃으면 다시 그린다」.
+abstract interface class LandsAgain {
+  /// The landing of [asks] — each as it was asked, its `under` the tile it
+  /// landed on — made on the engine the app stands on now: what it makes
+  /// of each, in order. Refused as that engine refuses.
+  List<LandedTile> again(List<TileAsk> asks);
+}
+
+/// How a landed tile's landing is made again, and where the tile lies in
+/// it ([_Slot.made]).
+typedef _Made = ({LandsAgain by, int column, int row});
+
 /// What a key has here for as long as it lives — a tile, or a colour's
 /// block ([BitmapTile.pixelsKey]): the slot it has now — none once a full
 /// pool, a give-back or [EngineTileLedger.retire] let that go, till it is
@@ -1215,6 +1295,18 @@ final class _Slot {
   /// (`EngineTileLedger._layThePictureUnder`). Let go once its bytes are
   /// here, and with the slot.
   BitmapTile? under;
+
+  /// How the landing that made [onlyOnEngine] is made again, where it said
+  /// ([LandsAgain]) — what the tile reads as before [under], should the
+  /// device go with its pixels (`EngineTileLedger._makesAgain`). Kept and
+  /// let go as [under] is.
+  _Made? made;
+
+  /// Its tile's bytes are here: neither is its to keep any longer.
+  void keepsNothing() {
+    under = null;
+    made = null;
+  }
 
   /// Let go already — by its key's finalizer, a full pool or a give-back.
   bool out = false;
