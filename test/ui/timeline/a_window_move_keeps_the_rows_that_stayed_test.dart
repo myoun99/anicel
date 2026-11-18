@@ -397,6 +397,10 @@ void main() {
             unitOf(find.byKey(ValueKey<String>('storyboard-se-row-0-$slot'))),
         ],
         host: find.byType(StoryboardPanel),
+        // An S strip's unit is handed back across a build while its row
+        // is: the row and its gate are kept by what they are built from
+        // (card the-conte-rail-row-holders-are-new-each-pass).
+        keptThroughABuild: true,
       );
     });
   });

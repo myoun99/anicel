@@ -244,14 +244,7 @@ class _StoryboardRowsAndLabels {
   /// [build]'s rail rows — every track's — kept as one pass ([_kept]),
   /// whose rows are all the rail keeps once it is laid: the window's moves
   /// lay labels in no pass of their own.
-  List<Widget> railPass(List<Widget> Function() build) {
-    _kept.lay(Object());
-    try {
-      return build();
-    } finally {
-      _kept.letGo();
-    }
-  }
+  List<Widget> railPass(List<Widget> Function() build) => _kept.pass(build);
 
   /// [label] in the drag wrapper [wrap] puts on it — the rail's row [key] —
   /// kept while [label]'s facts and [inputs], what [wrap] builds the
@@ -264,13 +257,14 @@ class _StoryboardRowsAndLabels {
     Object? inputs,
     Widget Function(Widget label) wrap,
   ) {
-    final piece = label.piece;
     // The row is a still region of its own, inside the wrapper [wrap] puts
     // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
-    final row = _kept.row(
+    final row = _keptPiece(
+      _kept,
       key,
-      () => (inputs, piece.runtimeType, piece.facts),
-      (_) => wrap(stillRow(piece)),
+      label.piece,
+      inputs,
+      (piece) => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
       final wears? => _kept.row(
@@ -1132,9 +1126,8 @@ class _StoryboardRowsAndLabels {
   /// The transition row's strip: the track's spans on the GLOBAL axis, live
   /// through the session's edge-drag form while a grip is held.
   Widget transitionStripRow(Track track, TimelineScale scale) {
-    final committed = track.transitionLayer;
     final height = _state._rowHeights.transition;
-    Widget row(Layer layer) => _StoryboardTransitionRow(
+    KeptPiece row(Layer layer) => _StoryboardTransitionRow(
       trackId: track.id,
       layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
       height: height,
@@ -1156,11 +1149,43 @@ class _StoryboardRowsAndLabels {
     // The SE strips' gate, as is: a grip or a move publishes the row's two
     // forms on the one channel, and this strip — the track axis — draws the
     // GLOBAL one while the cut's rows draw the projection.
-    return TimelineDragPreviewRowGate(
-      dragPreview: _state.widget.dragPreview,
-      layer: committed,
-      useGlobalForm: true,
-      rowBuilder: (context, layer) => row(layer),
+    return keptGlobalStrip(
+      ('transitionStrip', track.id),
+      track.transitionLayer,
+      row,
+    );
+  }
+
+  /// [row] for [committed] — the track-global strip row [key] — in the gate
+  /// that draws it as an edit in flight shows it on the track axis, kept
+  /// across the panel's builds while the row and its gate are what they
+  /// were built from ([_StoryboardRowsWindow.globalStripKeep]). Asked in
+  /// the panel's pass of them ([_StoryboardRailRows.
+  /// _trackGlobalStripRowsByTrack]).
+  ///
+  /// ↩️Built at every build, a new gate round a new row: the strip's unit
+  /// could not be handed back whole (card
+  /// the-conte-rail-row-holders-are-new-each-pass, 11-19).
+  Widget keptGlobalStrip(
+    Object key,
+    Layer committed,
+    KeptPiece Function(Layer layer) row,
+  ) {
+    final dragPreview = _state.widget.dragPreview;
+    return _keptPiece(
+      _state._rowsWindow.globalStripKeep,
+      key,
+      row(committed),
+      (ByIdentity(dragPreview), ByIdentity(committed)),
+      (piece) => TimelineDragPreviewRowGate(
+        dragPreview: dragPreview,
+        layer: committed,
+        useGlobalForm: true,
+        // The row as built for the committed layer, which the gate hands
+        // its builder while no edit is in flight.
+        rowBuilder: (context, layer) =>
+            identical(layer, committed) ? piece : row(layer),
+      ),
     );
   }
 

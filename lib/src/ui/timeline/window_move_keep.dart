@@ -75,4 +75,17 @@ final class WindowMoveKeep {
   /// storyboard rail's labels), so a row the window left and brought back
   /// is built again, not handed back from a pass before (I-57 ㉣).
   void letGo() => _before = {};
+
+  /// [build]'s rows laid as a pass of their own and the rows it left out
+  /// let go of ([letGo]) — for rows a host builds whole once a pass,
+  /// outside the window's lays: the storyboard rail's labels and its
+  /// track-global strips.
+  T pass<T>(T Function() build) {
+    lay(Object());
+    try {
+      return build();
+    } finally {
+      letGo();
+    }
+  }
 }

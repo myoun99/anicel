@@ -40,6 +40,12 @@ class _StoryboardRowsWindow {
   /// What each track's strips keep of theirs, by track.
   final Map<int, WindowMoveKeep> _stripKeeps = {};
 
+  /// What the track-global strips — a track's transition row and its S
+  /// rows — keep across the panel's builds, each a pass of its own
+  /// ([WindowMoveKeep.pass]): built outside the strips' lays (R10-③), they
+  /// are handed in as they were while what each is built from holds.
+  final WindowMoveKeep globalStripKeep = WindowMoveKeep();
+
   /// What track [trackIndex]'s strips keep while only the window moves.
   WindowMoveKeep stripKeepOf(int trackIndex) =>
       _stripKeeps.putIfAbsent(trackIndex, WindowMoveKeep.new);
@@ -128,6 +134,22 @@ class _StoryboardRowsWindow {
   }
 }
 
+/// [piece] in the wrapper [wrap] puts on it, kept by [keep] as its row
+/// [key] while the piece's facts and [inputs] — what [wrap] builds the
+/// wrapper from beside the piece — hold: the rail's rows and the strips'
+/// alike, as a piece keeps its own insides ([KeptPiece]).
+Widget _keptPiece(
+  WindowMoveKeep keep,
+  Object key,
+  KeptPiece piece,
+  Object? inputs,
+  Widget Function(KeptPiece piece) wrap,
+) => keep.row(
+  key,
+  () => (inputs, piece.runtimeType, piece.facts),
+  (_) => wrap(piece),
+);
+
 /// The rail's rows as the window cuts them: [edges] over every track's
 /// [slots], a head row joined with the lanes twirled under it, and where
 /// each track's rows begin among them.
@@ -201,6 +223,15 @@ final class _WindowedRows {
   /// what stands beside the rows off the pass alone (a section's zone, ④).
   Widget kept(Object key, Widget Function() build) =>
       _keep.ofThePass(key, build);
+
+  /// [piece] — a strip's row [key] — in the wrapper [wrap] puts on it,
+  /// kept across passes while it and [inputs] hold ([_keptPiece]).
+  Widget piece(
+    Object key,
+    KeptPiece piece, {
+    Object? inputs,
+    Widget Function(KeptPiece piece)? wrap,
+  }) => _keptPiece(_keep, key, piece, inputs, wrap ?? (piece) => piece);
 
   bool _builds(int first, int last) => switch (_window) {
     null => true,

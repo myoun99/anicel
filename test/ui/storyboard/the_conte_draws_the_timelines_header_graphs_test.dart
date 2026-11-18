@@ -296,7 +296,8 @@ void main() {
       matching: find.byWidgetPredicate(
         (widget) =>
             widget is Listener &&
-            widget.key == ValueKey<TimelineRowAddress>(LayerRowAddress(s1)),
+            widget.key ==
+                const ValueKey<TimelineRowAddress>(LayerRowAddress(s1)),
       ),
     );
     expect(unit, findsOneWidget, reason: '⛔전제: the rail lays the S row');
