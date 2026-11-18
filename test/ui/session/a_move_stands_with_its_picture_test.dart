@@ -155,30 +155,21 @@ void main() {
         () => pictures.make(frameAt(frame), shouldAbort: () => false),
       );
 
-  /// A step of the playhead forward, counted from where it stands when it
-  /// is taken: [walked] hears each frame it lands on.
+  /// A step of the playhead [by] frames, counted from where it stands when
+  /// it is taken: [walked] hears each frame it lands on.
   void stepOn(
     StandsWithItsPicture moves,
     ValueNotifier<int> frame,
     List<int> walked, {
+    int by = 1,
     bool repeated = false,
   }) => moves.step(() {
-    final to = frame.value + 1;
+    final to = frame.value + by;
     moves.moveTo(to, () {
       walked.add(to);
       frame.value = to;
     });
   }, repeated: repeated);
-
-  /// Lends the real clock alone, no frame built, till [ready] or for good.
-  Future<bool> inRealTime(WidgetTester tester, bool Function() ready) async {
-    for (var beat = 0; beat < 3000 && !ready(); beat += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 1)),
-      );
-    }
-    return ready();
-  }
 
   /// A canvas of [moves] that [took] each point it takes — where it stands
   /// on the screen.
@@ -453,21 +444,33 @@ void main() {
     await make(tester, s.pictures, 2);
     s.moves.shownBy(tester);
     final walked = <int>[];
+    var built = 0;
+    tester.binding.addPersistentFrameCallback((_) => built += 1);
+    // The frames built by the time each step landed.
+    final builtBy = <int>[];
+    s.frame.addListener(() => builtBy.add(built));
 
     stepOn(s.moves, s.frame, walked);
     stepOn(s.moves, s.frame, walked);
+    stepOn(s.moves, s.frame, walked, by: -1);
 
-    expect(s.moves.waitsFor.value, 1, reason: 'the second waits in line');
-    expect(await inRealTime(tester, () => walked.isNotEmpty), isTrue);
+    expect(s.moves.waitsFor.value, 1, reason: 'the others wait in line');
+    expect(await settleAsync(tester, () => walked.length == 3), isTrue);
     expect(
       walked,
-      [1],
-      reason: 'the frame the first lands on is built before the next is '
-          'taken, its picture there or not',
+      [1, 2, 1],
+      reason: 'each counted where the one before it landed — the last back '
+          'from 2, its picture there as the second was',
     );
-    await tester.pump();
-    expect(walked, [1, 2]);
-    expect(s.frame.value, 2);
+    expect(
+      [
+        for (final (i, frames) in builtBy.indexed.skip(1))
+          frames - builtBy[i - 1],
+      ],
+      everyElement(greaterThan(0)),
+      reason: 'the frame each lands on is built before the next is taken, '
+          'its picture there or not ($builtBy)',
+    );
   });
 
   testWidgets('a step repeated — a key held — is not lined up: it walks as '
@@ -543,11 +546,16 @@ void main() {
       placement: () => OnionSkinPlacement.inPlace,
     )..shownBy(tester);
     final walked = <int>[];
+    // Let go of as the move lands — a project closed as its frame came.
+    moves.moveTo(1, () {
+      walked.add(1);
+      frame.value = 1;
+      moves.dispose();
+    });
     stepOn(moves, frame, walked);
-    stepOn(moves, frame, walked);
-    expect(await inRealTime(tester, () => walked.isNotEmpty), isTrue);
 
-    moves.dispose();
+    expect(await settleAsync(tester, () => walked.isNotEmpty), isTrue);
+    await tester.pump();
     await tester.pump();
 
     expect(walked, [1], reason: 'no step is taken by moves let go of');

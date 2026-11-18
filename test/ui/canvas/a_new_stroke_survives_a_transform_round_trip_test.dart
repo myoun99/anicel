@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/a_move_lands.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
 import '../../helpers/surface_rgba_in_place.dart';
@@ -231,10 +232,12 @@ void main() {
   }
 
   Future<void> seekTo(WidgetTester tester, int index) async {
-    tester
+    final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session
-        .selectFrameIndex(index);
+      ..selectFrameIndex(index);
+    // It stands with its picture: it waits for the frame's picture to land.
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
   }
 
