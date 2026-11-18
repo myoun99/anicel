@@ -34,10 +34,10 @@ void main() {
     expect(tally.said(), 'path pts=1 1st=- open=0ms max=0ms');
   });
 
-  test('a point with no press before it is the press', () {
+  test('a point with no press before it counts nothing', () {
     final tally = PenPathTally()
       ..take(ms(30))
       ..take(ms(38));
-    expect(tally.said(), 'path pts=2 1st=8ms open=8ms max=8ms');
+    expect(tally.said(), isNull);
   });
 }

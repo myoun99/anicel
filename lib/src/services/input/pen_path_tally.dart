@@ -34,12 +34,11 @@ class PenPathTally {
     _longestWait = Duration.zero;
   }
 
-  /// The contact's next point, at [at].
+  /// The contact's next point, at [at] — nothing before its [press].
   void take(Duration at) {
     final pressed = _pressed;
     final last = _last;
     if (pressed == null || last == null) {
-      press(at);
       return;
     }
     final wait = at - last;
