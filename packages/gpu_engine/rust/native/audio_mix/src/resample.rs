@@ -116,46 +116,29 @@ pub fn resample_frames(input_frames: i64, input_rate: i32, output_rate: i32) -> 
     }
 }
 
-/// What a conversion between two rates runs: its polyphase geometry and
-/// the prototype's taps.
-struct Design {
-    interpolation: i64,
-    decimation: i64,
-    half_length: i64,
-    kernel: Vec<f64>,
+/// What a conversion between two rates reads, and when an output can be
+/// written: its polyphase geometry, without the taps themselves — what
+/// the noise removal sizes its memory and its lateness by (denoiser.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Geometry {
+    pub(crate) interpolation: i64,
+    pub(crate) decimation: i64,
+    pub(crate) half_length: i64,
+    pub(crate) taps: i64,
 }
 
-impl Design {
-    /// None on bad geometry, equal rates among it, or no room for the taps.
-    fn new(input_rate: i32, output_rate: i32, stopband_db: f64, bandwidth: f64) -> Option<Design> {
+impl Geometry {
+    /// None on bad geometry, equal rates among it.
+    pub(crate) fn new(input_rate: i32, output_rate: i32, stopband_db: f64, bandwidth: f64) -> Option<Geometry> {
         let (interpolation, decimation) = ratio(input_rate, output_rate)?;
-        let nyquist = 0.5 / interpolation.max(decimation) as f64;
-        let passband_edge = nyquist * bandwidth;
-        let cutoff = (passband_edge + nyquist) / 2.0;
-        let beta = kaiser_beta(stopband_db);
         let taps = i64::from(resample_taps(input_rate, output_rate, stopband_db, bandwidth));
-        let mut kernel = Vec::new();
-        kernel.try_reserve_exact(taps as usize).ok()?;
-        let center = (taps - 1) as f64 / 2.0;
-        let denominator = bessel_i0(beta);
-        kernel.extend((0..taps).map(|index| {
-            let offset = index as f64 - center;
-            let ratio = offset / center;
-            let inside = 1.0 - ratio * ratio;
-            let window = if inside <= 0.0 { 0.0 } else { bessel_i0(beta * inside.sqrt()) / denominator };
-            2.0 * cutoff * sinc(2.0 * cutoff * offset) * window * interpolation as f64
-        }));
-        Some(Design { interpolation, decimation, half_length: (taps - 1) / 2, kernel })
-    }
-
-    fn taps(&self) -> i64 {
-        self.kernel.len() as i64
+        Some(Geometry { interpolation, decimation, half_length: (taps - 1) / 2, taps })
     }
 
     /// One past the last output frame `total` input frames can write:
     /// every one there is once the input has `ended`, and before that only
     /// those whose every input has arrived.
-    fn ready_end(&self, total: i64, ended: bool) -> i64 {
+    pub(crate) fn ready_end(&self, total: i64, ended: bool) -> i64 {
         let limit = total * self.interpolation / self.decimation;
         if ended {
             return limit;
@@ -167,22 +150,58 @@ impl Design {
         let complete = if reach <= 0 { 0 } else { (reach + self.decimation - 1) / self.decimation };
         complete.min(limit)
     }
+}
+
+/// What a conversion between two rates runs: its geometry and the
+/// prototype's taps.
+pub(crate) struct Design {
+    pub(crate) geometry: Geometry,
+    kernel: Vec<f64>,
+}
+
+impl Design {
+    /// None on bad geometry, equal rates among it, or no room for the taps.
+    pub(crate) fn new(input_rate: i32, output_rate: i32, stopband_db: f64, bandwidth: f64) -> Option<Design> {
+        let geometry = Geometry::new(input_rate, output_rate, stopband_db, bandwidth)?;
+        let Geometry { interpolation, decimation, taps, .. } = geometry;
+        let nyquist = 0.5 / interpolation.max(decimation) as f64;
+        let passband_edge = nyquist * bandwidth;
+        let cutoff = (passband_edge + nyquist) / 2.0;
+        let beta = kaiser_beta(stopband_db);
+        let mut kernel = Vec::new();
+        kernel.try_reserve_exact(taps as usize).ok()?;
+        let center = (taps - 1) as f64 / 2.0;
+        let denominator = bessel_i0(beta);
+        kernel.extend((0..taps).map(|index| {
+            let offset = index as f64 - center;
+            let ratio = offset / center;
+            let inside = 1.0 - ratio * ratio;
+            let window = if inside <= 0.0 { 0.0 } else { bessel_i0(beta * inside.sqrt()) / denominator };
+            2.0 * cutoff * sinc(2.0 * cutoff * offset) * window * interpolation as f64
+        }));
+        Some(Design { geometry, kernel })
+    }
+
+    fn taps(&self) -> i64 {
+        self.kernel.len() as i64
+    }
 
     /// Writes the output frames from `from` on into `out` (as many as it
     /// holds), reading input frames [`first`, `total`) out of `held`.
     ///
     /// ⚠️Every input those outputs read from `first` on is held, and while
-    /// more input may come none reads past `total` ([`Design::ready_end`]):
+    /// more input may come none reads past `total` ([`Geometry::ready_end`]):
     /// an input past the end is skipped, which is right only at the
     /// sound's end.
-    fn run(&self, channels: usize, held: &[f32], first: i64, total: i64, from: i64, out: &mut [f32]) {
+    pub(crate) fn run(&self, channels: usize, held: &[f32], first: i64, total: i64, from: i64, out: &mut [f32]) {
+        let Geometry { interpolation, decimation, half_length, .. } = self.geometry;
         for (at, frame) in out.chunks_exact_mut(channels).enumerate() {
             // + half_length centres the filter on the output instant: the
             // delay compensation, applied here so it never has to be a
             // whole number of output samples.
-            let position = (from + at as i64) * self.decimation + self.half_length;
-            let phase = position % self.interpolation;
-            let base = position / self.interpolation;
+            let position = (from + at as i64) * decimation + half_length;
+            let phase = position % interpolation;
+            let base = position / interpolation;
             for (channel, out) in frame.iter_mut().enumerate() {
                 let mut sum = 0.0;
                 let mut tap = phase;
@@ -192,7 +211,7 @@ impl Design {
                         sum += self.kernel[tap as usize]
                             * f64::from(held[(source - first) as usize * channels + channel]);
                     }
-                    tap += self.interpolation;
+                    tap += interpolation;
                     source -= 1;
                 }
                 *out = sum as f32;
@@ -234,9 +253,9 @@ impl Resampler {
     /// Lets go of the held input no output still to come reads: output
     /// frame f reads back to input (f * M + half - taps) / L + 1.
     fn let_go(&mut self) {
-        let design = &self.design;
-        let reach = self.next * design.decimation + design.half_length - design.taps() + design.interpolation;
-        let lowest = if reach <= 0 { 0 } else { reach / design.interpolation };
+        let geometry = &self.design.geometry;
+        let reach = self.next * geometry.decimation + geometry.half_length - geometry.taps + geometry.interpolation;
+        let lowest = if reach <= 0 { 0 } else { reach / geometry.interpolation };
         let drop = (lowest - self.first).min(self.held_frames());
         if drop <= 0 {
             return;
@@ -266,7 +285,7 @@ impl Resampler {
 
     /// How many output frames [`Resampler::pull`] can write now.
     pub fn ready(&self) -> i64 {
-        let end = self.design.ready_end(self.first + self.held_frames(), self.ended);
+        let end = self.design.geometry.ready_end(self.first + self.held_frames(), self.ended);
         (end - self.next).max(0)
     }
 
@@ -322,7 +341,7 @@ pub unsafe extern "C" fn qa_audio_resample(
     let Some(design) = Design::new(input_rate, output_rate, stopband_db, bandwidth) else {
         return 0;
     };
-    let output_frames = design.ready_end(input_frames, true);
+    let output_frames = design.geometry.ready_end(input_frames, true);
     if output_frames == 0 {
         return 0;
     }

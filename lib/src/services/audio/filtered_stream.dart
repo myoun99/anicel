@@ -36,10 +36,10 @@ final class FilterCheckpoints {
 /// samples.
 ///
 /// 🔬A noise removal remembers each channel's model and frames — about
-/// 5,000 doubles a channel (native/audio_mix denoiser.rs): a checkpoint a
-/// quarter second would weigh three times the sound, about 190 MB for ten
-/// minutes in stereo; this way 0.83 s apart at 48 kHz. An equalizer's and a
-/// compressor's stay a quarter second.
+/// 5,500 doubles a channel at 48 kHz (native/audio_mix denoiser.rs): a
+/// checkpoint a quarter second would weigh three times the sound, about
+/// 200 MB for ten minutes in stereo; this way 0.91 s apart at 48 kHz. An
+/// equalizer's and a compressor's stay a quarter second.
 int filterCheckpointSpacing({
   required int rate,
   required int channels,

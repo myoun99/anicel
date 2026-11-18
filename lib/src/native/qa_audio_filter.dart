@@ -46,12 +46,12 @@ external int _filter(
 @Native<Int32 Function(Int32)>(symbol: 'qa_audio_filter_values')
 external int _valuesOf(int kind);
 
-/// The doubles the filter [kind] remembers over [channels].
-@Native<Int32 Function(Int32, Int32)>(symbol: 'qa_audio_filter_memory')
-external int _memoryOf(int kind, int channels);
+/// The doubles the filter [kind] remembers over [channels] at [rate].
+@Native<Int32 Function(Int32, Int32, Int32)>(symbol: 'qa_audio_filter_memory')
+external int _memoryOf(int kind, int channels, int rate);
 
 /// Samples late what comes out of the filter [kind] is at [rate] — 0 where
-/// it is not late, or does not bake at that rate.
+/// it is not late.
 @Native<Int32 Function(Int32, Int32)>(symbol: 'qa_audio_filter_latency')
 external int _latencyOf(int kind, int rate);
 
@@ -86,9 +86,9 @@ Float32List filterAudio({
 
 /// [samples] — a finished voice take, interleaved by [channels], at
 /// [sampleRate] — with its noise taken out: a sound row's noise removal at
-/// its whole amount ([AudioDenoiser]), on time as a span is. Null where the
-/// engine declines — a rate RNNoise is not built around, nothing to clean
-/// — and the take is kept as it was.
+/// its whole amount ([AudioDenoiser]), on time as a span is — at another
+/// rate than RNNoise's, heard at its own and brought back. Null where there
+/// is nothing to clean or the engine refuses it, the take kept as it was.
 ///
 /// 🚨ONE ROAD (board voice-take-denoise-lands-late): ↩️the take had a door
 /// of its own, which handed each frame back a frame late and read nothing
@@ -128,7 +128,7 @@ final class FilterStretches {
     required this.rate,
     required this.stages,
     ({int first, Float64List memory})? from,
-  }) : _ends = _memoryEnds(stages, channels),
+  }) : _ends = _memoryEnds(stages, channels, rate),
        _first = from?.first ?? 0 {
     _memory = from == null
         ? Float64List(_ends.isEmpty ? 0 : _ends.last)
@@ -256,15 +256,19 @@ final class FilterStretches {
 }
 
 /// Where each of [stages]' memories ends, laid one after another: each as
-/// many doubles as its filter remembers over [channels], none for a stage
-/// of no setting.
-List<int> _memoryEnds(List<List<SoundFilterSetting>> stages, int channels) {
+/// many doubles as its filter remembers over [channels] at [rate], none
+/// for a stage of no setting.
+List<int> _memoryEnds(
+  List<List<SoundFilterSetting>> stages,
+  int channels,
+  int rate,
+) {
   var end = 0;
   return [
     for (final settings in stages)
       end += settings.isEmpty || channels <= 0
           ? 0
-          : _memoryOf(settings.first.filter.door, channels),
+          : _memoryOf(settings.first.filter.door, channels, rate),
   ];
 }
 

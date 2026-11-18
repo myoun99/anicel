@@ -38,7 +38,7 @@ mod resample;
 mod tests;
 
 pub use compressor::{COMPRESSOR_MEMORY, COMPRESSOR_VALUES, Compressor, compress, compress_on};
-pub use denoiser::{DENOISER_LATENCY, DENOISER_VALUES, Denoiser, denoise, denoise_on, denoiser_memory};
+pub use denoiser::{DENOISER_VALUES, Denoiser, denoise, denoise_on, denoiser_latency, denoiser_memory};
 pub use equalizer::{Biquad, EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, equalize, equalize_on};
 pub use filter::{
     Filter, Setting, qa_audio_filter, qa_audio_filter_latency, qa_audio_filter_memory, qa_audio_filter_values,

@@ -7,8 +7,8 @@ import 'package:anicel/src/native/qa_audio_filter.dart';
 /// A voice take's RNNoise round, through the app's door to the engine — a
 /// sound row's noise removal at its whole amount ([_denoise], [_door]):
 /// the model must actually SUPPRESS, the take must come out where it was
-/// said, and the door must honor its refusal contract (48 kHz only, null =
-/// untouched).
+/// said at every rate, and the door must honor its refusal contract
+/// (nothing to clean = null, the take untouched).
 ///
 /// No byte-parity here — there is no Dart reference for a neural model.
 /// The exact floats are the engine crate's ledger rows (`audio_denoise/*`
@@ -65,33 +65,40 @@ void main() {
   // 🎯A TAKE LANDS WHERE IT WAS SAID (board voice-take-denoise-lands-late):
   // RNNoise hands a frame back a frame late, and a take was placed that
   // late — 10 ms. Read on past the take and dropped at its front, a voice
-  // lines up with itself where it went in; the sample before is the
-  // high-pass RNNoise hears through, a phase lead on the voice's lowest
-  // harmonics, not a lateness (the engine's
-  // a_voice_comes_back_a_frame_late measures 479 of RNNoise's 480).
-  test('🎯a voice comes out where it went in — not a frame late', () {
-    final voice = _voice(48000);
-    final cleaned = denoiseVoiceTake(
-      samples: voice,
-      channels: 1,
-      sampleRate: 48000,
-    )!;
-    double along(int lag) {
-      var sum = 0.0;
-      for (var t = 480; t < voice.length - 480; t += 1) {
-        sum += voice[t] * cleaned[t + lag];
+  // lines up with itself where it went in, at RNNoise's rate and through
+  // the conversions at another; the sample before is the high-pass RNNoise
+  // hears through, a phase lead on the voice's lowest harmonics, not a
+  // lateness (the engine's a_voice_comes_back_a_frame_late measures 479 of
+  // RNNoise's 480).
+  test('🎯a voice comes out where it went in — not a frame late, at every '
+      'rate', () {
+    final found = <int, int>{};
+    for (final rate in [48000, 44100, 96000]) {
+      final voice = _voice(rate);
+      final cleaned = denoiseVoiceTake(
+        samples: voice,
+        channels: 1,
+        sampleRate: rate,
+      )!;
+      final reach = rate ~/ 100;
+      double along(int lag) {
+        var sum = 0.0;
+        for (var t = reach; t < voice.length - reach; t += 1) {
+          sum += voice[t] * cleaned[t + lag];
+        }
+        return sum;
       }
-      return sum;
-    }
 
-    var best = (lag: 0, sum: double.negativeInfinity);
-    for (var lag = -480; lag <= 480; lag += 1) {
-      final sum = along(lag);
-      if (sum > best.sum) {
-        best = (lag: lag, sum: sum);
+      var best = (lag: 0, sum: double.negativeInfinity);
+      for (var lag = -reach; lag <= reach; lag += 1) {
+        final sum = along(lag);
+        if (sum > best.sum) {
+          best = (lag: lag, sum: sum);
+        }
       }
+      found[rate] = best.lag;
     }
-    expect(best.lag, -1, reason: 'through $_door');
+    expect(found, {48000: -1, 44100: -1, 96000: -1}, reason: 'via $_door');
   });
 
   test('stereo processes each channel independently — each equals the '
@@ -131,15 +138,21 @@ void main() {
     }
   });
 
-  test('the refusal contract: wrong rate and empty input return null, '
-      'input stays untouched', () {
+  // 🗣️audio-fx-second-effect-and-presets-Q2 = 1 (유저 2026-11-18 21:59):
+  // at another rate the take is heard at RNNoise's own and brought back,
+  // as a row's noise removal is.
+  test('the refusal contract: empty input returns null; at another rate '
+      'the take is cleaned, as a row is — the input untouched either way', () {
     final input = noise(44100);
     final before = Float32List.fromList(input);
-    expect(
-      denoiseVoiceTake(samples: input, channels: 1, sampleRate: 44100),
-      isNull,
+    final cleaned = denoiseVoiceTake(
+      samples: input,
+      channels: 1,
+      sampleRate: 44100,
     );
-    expect(input, before, reason: 'a refusal must not half-process');
+    expect(cleaned, hasLength(input.length));
+    expect(cleaned, isNot(input), reason: 'LIVENESS: cleaned at 44.1 kHz');
+    expect(input, before, reason: 'the take handed in is not written');
     expect(
       denoiseVoiceTake(
         samples: Float32List(0),
@@ -151,16 +164,16 @@ void main() {
   });
 }
 
-/// A voice-like take: harmonics over a pitch gliding 110 → 260 Hz in
-/// syllables, with gaps of silence — the voice of the engine's ledger
-/// takes, without its noise.
-Float32List _voice(int frames) {
-  final out = Float32List(frames);
+/// A second of a voice-like take at [rate]: harmonics over a pitch gliding
+/// 110 → 260 Hz in syllables, with gaps of silence — the voice of the
+/// engine's ledger takes, without its noise.
+Float32List _voice(int rate) {
+  final out = Float32List(rate);
   var phase = 0.0;
-  for (var n = 0; n < frames; n += 1) {
-    final t = n / 48000;
+  for (var n = 0; n < rate; n += 1) {
+    final t = n / rate;
     final pitch = 110 + 150 * (0.5 + 0.5 * math.sin(t * 0.7));
-    phase += 2 * math.pi * pitch / 48000;
+    phase += 2 * math.pi * pitch / rate;
     final syllable = (t * 3.1) % 1;
     if (syllable >= 0.8 && syllable < 0.9) {
       continue;

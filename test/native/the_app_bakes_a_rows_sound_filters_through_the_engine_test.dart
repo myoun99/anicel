@@ -332,25 +332,32 @@ void main() {
         stages: [at(1), settings],
       );
       expect(stretches.latency, 960);
-      expect(stretches.kept, hasLength(2 * 4979 + 2 * 16));
+      // Each channel's model, the frames it holds late, the one it hears
+      // and the cleaned ones waiting to come out; then the equalizer's.
+      expect(stretches.kept, hasLength(2 * (3059 + 960 + 480 + 960) + 2 * 16));
     });
 
-    // ⛔RNNoise's bands are built around 48 kHz (board
-    // audio-fx-second-effect-and-presets-Q2 asks whether to convert).
-    test('at another rate is refused — the bake comes back empty', () {
+    // 🗣️audio-fx-second-effect-and-presets-Q2 = 1 (유저 2026-11-18 21:59):
+    // 「레이트를 바꿔서라도 어디서나」 — at another rate RNNoise hears the
+    // span converted to its own, and the cleaned sound comes back; the
+    // sound as it was is never converted.
+    test('at another rate hands every sample back as it was at no amount '
+        'and cleans at the whole — late by nothing', () {
       final sound = _madeUpSound();
       for (final rate in [44100, 96000]) {
-        expect(
-          filterAudio(
-            samples: sound,
-            channels: 2,
-            rate: rate,
-            stages: [at(1)],
-          ),
-          isEmpty,
-          reason: '$rate Hz',
+        Float32List bake(double amount) => filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: rate,
+          stages: [at(amount)],
         );
+        expect(bake(0), sound, reason: '$rate Hz');
+        final cleaned = bake(1);
+        expect(cleaned, hasLength(sound.length), reason: '$rate Hz');
+        expect(cleaned, isNot(sound), reason: '$rate Hz: LIVENESS');
       }
+      final at44 = FilterStretches(channels: 2, rate: 44100, stages: [at(1)]);
+      expect(at44.latency, 1039, reason: 'two frames and the conversions');
     });
   });
 }

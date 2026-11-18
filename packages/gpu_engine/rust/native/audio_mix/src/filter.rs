@@ -12,7 +12,7 @@
 //! of its own, `qa_audio_equalize`, till the compressor came, 2026-11-18).
 
 use crate::compressor::{COMPRESSOR_MEMORY, COMPRESSOR_VALUES, Compressor, compress_on};
-use crate::denoiser::{DENOISER_LATENCY, DENOISER_VALUES, Denoiser, denoise_on, denoiser_memory};
+use crate::denoiser::{DENOISER_VALUES, Denoiser, denoise_on, denoiser_latency, denoiser_memory};
 use crate::equalizer::{EQUALIZER_VALUES, Equalizer, MEMORY_VALUES, equalize_on};
 
 /// A filter's `value` from `start` — a sample of the span, 0 its first —
@@ -76,53 +76,47 @@ impl Filter {
         }
     }
 
-    /// The doubles its memory takes over `channels`: the equalizer's each
-    /// channel's sections, the compressor's one level for them all, the
-    /// noise removal's each channel's model and frames.
-    pub fn memory(self, channels: usize) -> usize {
+    /// The doubles its memory takes over `channels` at `rate`: the
+    /// equalizer's each channel's sections, the compressor's one level for
+    /// them all, the noise removal's each channel's model, and the samples
+    /// it holds on its road to RNNoise's rate and back.
+    pub fn memory(self, channels: usize, rate: i32) -> usize {
         match self {
             Self::Equalizer => channels * MEMORY_VALUES,
             Self::Compressor => COMPRESSOR_MEMORY,
-            Self::Denoiser => denoiser_memory(channels),
+            Self::Denoiser => denoiser_memory(channels, rate),
         }
     }
 
-    /// Samples late what comes out of it is — the span's sample that many
-    /// before: the noise removal's frames ([`DENOISER_LATENCY`]), none of
-    /// the others'.
-    pub fn latency(self) -> usize {
+    /// Samples late what comes out of it at `rate` is — the span's sample
+    /// that many before: the noise removal's ([`denoiser_latency`]), none
+    /// of the others'.
+    pub fn latency(self, rate: i32) -> usize {
         match self {
             Self::Equalizer | Self::Compressor => 0,
-            Self::Denoiser => DENOISER_LATENCY,
-        }
-    }
-
-    /// Whether it bakes a sound at `rate`: the noise removal at RNNoise's
-    /// alone, the others at any.
-    pub fn hears(self, rate: i32) -> bool {
-        match self {
-            Self::Equalizer | Self::Compressor => true,
-            Self::Denoiser => rate == audio_denoise::RATE,
+            Self::Denoiser => denoiser_latency(rate),
         }
     }
 
     /// `stretch` through this filter by `settings`, each a start and
-    /// [`Filter::values`] doubles, going on from `memory`.
-    fn run(self, stretch: Stretch<'_>, starts: &[i64], values: &[f64], memory: &mut [f64]) {
+    /// [`Filter::values`] doubles, going on from `memory`: false where it
+    /// had no room to run (the noise removal's conversions' taps).
+    fn run(self, stretch: Stretch<'_>, starts: &[i64], values: &[f64], memory: &mut [f64]) -> bool {
         let Stretch { samples, channels, rate, first, out } = stretch;
-        let rate = f64::from(rate);
         match self {
             Self::Equalizer => {
                 let settings = settings_of(starts, values, EQUALIZER_VALUES, Equalizer::of_values);
-                equalize_on(samples, channels, rate, &settings, first, memory, out);
+                equalize_on(samples, channels, f64::from(rate), &settings, first, memory, out);
+                true
             }
             Self::Compressor => {
                 let settings = settings_of(starts, values, COMPRESSOR_VALUES, Compressor::of_values);
-                compress_on(samples, channels, rate, &settings, first, memory, out);
+                compress_on(samples, channels, f64::from(rate), &settings, first, memory, out);
+                true
             }
             Self::Denoiser => {
                 let settings = settings_of(starts, values, DENOISER_VALUES, Denoiser::of_values);
-                denoise_on(samples, channels, &settings, first, memory, out);
+                denoise_on(samples, channels, rate, &settings, first, memory, out)
             }
         }
     }
@@ -149,23 +143,23 @@ pub extern "C" fn qa_audio_filter_values(kind: i32) -> i32 {
     Filter::of(kind).map_or(0, |filter| filter.values() as i32)
 }
 
-/// The doubles the filter `kind`'s memory takes over `channels`; 0 for no
-/// filter or no channel.
+/// The doubles the filter `kind`'s memory takes over `channels` at `rate`;
+/// 0 for no filter, no channel or no rate.
 #[unsafe(no_mangle)]
-pub extern "C" fn qa_audio_filter_memory(kind: i32, channels: i32) -> i32 {
+pub extern "C" fn qa_audio_filter_memory(kind: i32, channels: i32, rate: i32) -> i32 {
     match (Filter::of(kind), usize::try_from(channels)) {
-        (Some(filter), Ok(channels)) if channels > 0 => filter.memory(channels) as i32,
+        (Some(filter), Ok(channels)) if channels > 0 && rate > 0 => filter.memory(channels, rate) as i32,
         _ => 0,
     }
 }
 
 /// Samples late what comes out of the filter `kind` is at `rate`
 /// ([`Filter::latency`]) — what a bake reads past its span and drops at
-/// its front; 0 for no filter, or a rate it does not bake at.
+/// its front; 0 for no filter or no rate.
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_audio_filter_latency(kind: i32, rate: i32) -> i32 {
     match Filter::of(kind) {
-        Some(filter) if filter.hears(rate) => filter.latency() as i32,
+        Some(filter) if rate > 0 => filter.latency(rate) as i32,
         _ => 0,
     }
 }
@@ -175,9 +169,9 @@ pub extern "C" fn qa_audio_filter_latency(kind: i32, rate: i32) -> i32 {
 /// through `count` settings, each a start in `starts` and
 /// [`qa_audio_filter_values`] doubles in `values`, going on from `memory`
 /// and leaving it for the next stretch; a null `memory` starts from rest
-/// and keeps nothing. 1 when it ran, 0 on a kind it does not know, a rate
-/// it does not bake at ([`Filter::hears`]) or geometry it cannot read,
-/// `out` and `memory` then untouched.
+/// and keeps nothing. 1 when it ran, 0 on a kind it does not know,
+/// geometry it cannot read or no room to run ([`Filter::run`]), `out` and
+/// `memory` then untouched.
 ///
 /// # Safety
 /// `samples` and `out` are null or point at `frames` x `channels` floats,
@@ -205,7 +199,7 @@ pub unsafe extern "C" fn qa_audio_filter(
         return 0;
     };
     let unset = samples.is_null() || out.is_null() || (count > 0 && (starts.is_null() || values.is_null()));
-    if unset || channels == 0 || rate <= 0 || !filter.hears(rate) {
+    if unset || channels == 0 || rate <= 0 {
         return 0;
     }
     // SAFETY: the caller's contract.
@@ -219,14 +213,13 @@ pub unsafe extern "C" fn qa_audio_filter(
     };
     let mut from_rest = Vec::new();
     let memory = if memory.is_null() {
-        from_rest.resize(filter.memory(channels), 0.0);
+        from_rest.resize(filter.memory(channels, rate), 0.0);
         &mut from_rest[..]
     } else {
         // SAFETY: the caller's contract.
-        unsafe { std::slice::from_raw_parts_mut(memory, filter.memory(channels)) }
+        unsafe { std::slice::from_raw_parts_mut(memory, filter.memory(channels, rate)) }
     };
-    filter.run(Stretch { samples, channels, rate, first, out }, starts, values, memory);
-    1
+    i32::from(filter.run(Stretch { samples, channels, rate, first, out }, starts, values, memory))
 }
 
 #[cfg(test)]
