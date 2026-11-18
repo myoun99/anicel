@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/media/media_pool_words.dart';
 import 'package:anicel/src/ui/media/media_sync_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart';
 
 final _clap = MediaAsset(path: 'C:/snd/clap.wav', name: 'clap');
 const _words = MediaPoolWords(framesPerSecond: 24);
@@ -130,6 +131,21 @@ void main() {
     expect(partsOf(tester, 2), strings.mediaSyncSame);
     expect(find.text(strings.mediaSyncApply(2)), findsOneWidget);
     expect(find.text(strings.mediaSyncApplyAllOf(2)), findsOneWidget);
+    expect(
+      tester
+          .widget<AppWindowActionButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is AppWindowActionButton &&
+                  widget.action.actionKey ==
+                      const ValueKey<String>('media-sync-apply-all'),
+            ),
+          )
+          .action
+          .emphasis,
+      AppWindowActionEmphasis.second,
+      reason: '시안 ③ draws 「모두 적용」 as the second confirm',
+    );
     final aLine = tester.getSize(
       find.byKey(const ValueKey<String>('media-sync-field-start')),
     );

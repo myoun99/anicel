@@ -87,6 +87,11 @@ enum AppWindowActionEmphasis {
 
   /// Delete and friends — quiet fill, danger ink.
   danger,
+
+  /// Another way to confirm, beside [primary] — the quiet well washed with
+  /// the accent, its word bold. 🗣️유저 2026-11-17 (card 「파일마다 배치
+  /// 기본값」-Q6 「시안대로」): 시안 ③'s 「모두 적용」 between 취소 and 적용.
+  second,
 }
 
 /// The app's ONE window shell.
@@ -454,6 +459,14 @@ class AppWindowActionButton extends StatelessWidget {
     return hint == null ? button : AppTooltip(message: hint, child: button);
   }
 
+  /// What a [AppWindowActionEmphasis.second] action is filled with: the
+  /// quiet action's well with the accent laid over it at 22% — 시안 ③'s
+  /// `color-mix(accent 22%, backdrop)`.
+  static Color secondFill(ColorScheme colorScheme) => Color.alphaBlend(
+    AppColors.accent.withValues(alpha: 0.22),
+    colorScheme.surfaceContainerLowest,
+  );
+
   Widget _body(ColorScheme colorScheme) {
     final label = Text(action.label);
     return switch (action.emphasis) {
@@ -480,6 +493,16 @@ class AppWindowActionButton extends StatelessWidget {
               )
               ? AppColors.accent
               : null,
+        ),
+        child: label,
+      )),
+      AppWindowActionEmphasis.second => ControlPressClaim(onPressed: action.onPressed, child: TextButton(
+        key: action.actionKey,
+        onPressed: silentPress(action.onPressed),
+        autofocus: action.autofocus,
+        style: TextButton.styleFrom(
+          backgroundColor: secondFill(colorScheme),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
         child: label,
       )),

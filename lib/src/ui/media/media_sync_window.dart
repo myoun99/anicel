@@ -130,6 +130,7 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
         AppWindowAction(
           actionKey: const ValueKey<String>('media-sync-apply-all'),
           label: strings.mediaSyncApplyAllOf(parting.length),
+          emphasis: AppWindowActionEmphasis.second,
           onPressed: parting.isEmpty ? null : () => _answer(parting),
         ),
         AppWindowAction(

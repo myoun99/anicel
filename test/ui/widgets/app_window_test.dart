@@ -169,4 +169,56 @@ void main() {
       );
     });
   });
+
+  testWidgets('🗣️시안 ③: a second confirm is the quiet well washed with the '
+      'accent, its word bold — and dead like the rest when it has nothing '
+      'to do', (tester) async {
+    Future<ButtonStyle> styleOf(VoidCallback? onPressed) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppWindow(
+              title: 'Window under test',
+              titleIcon: Icons.tune,
+              onClose: () {},
+              actions: [
+                AppWindowAction(
+                  label: 'All',
+                  actionKey: const ValueKey<String>('action-all'),
+                  emphasis: AppWindowActionEmphasis.second,
+                  onPressed: onPressed,
+                ),
+              ],
+              body: const Text('the body'),
+            ),
+          ),
+        ),
+      );
+      return tester
+          .widget<TextButton>(find.byKey(const ValueKey<String>('action-all')))
+          .style!;
+    }
+
+    final style = await styleOf(() {});
+    final scheme = Theme.of(
+      tester.element(find.byKey(const ValueKey<String>('action-all'))),
+    ).colorScheme;
+    expect(
+      style.backgroundColor?.resolve({}),
+      AppWindowActionButton.secondFill(scheme),
+    );
+    expect(
+      AppWindowActionButton.secondFill(scheme),
+      isNot(scheme.surfaceContainerLowest),
+      reason: 'the wash shows on the quiet well',
+    );
+    expect(style.textStyle?.resolve({})?.fontWeight, FontWeight.w700);
+    await styleOf(null);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey<String>('action-all')))
+          .onPressed,
+      isNull,
+    );
+  });
 }
