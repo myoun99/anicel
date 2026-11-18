@@ -1,6 +1,8 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_exposure.dart';
+import '../project_lookup.dart' show requireLayerAnywhere;
 import '../project_repository.dart';
 import 'link_mirrored_layer_field_command.dart';
 
@@ -30,4 +32,36 @@ class UpdateLayerKindCommand extends LinkMirroredLayerFieldCommand<LayerKind> {
     required LayerId layerId,
     required LayerKind value,
   }) => repository.updateLayerKind(cutId: cutId, layerId: layerId, kind: value);
+
+  /// Each member's lane as it stood before the first execute. The write a
+  /// kind lands in reshapes the lane of a covering kind — an image's row is
+  /// one cell held over its cut (`covering_image_normalize.dart`) — and the
+  /// kind put back alone would leave the lane that shape: an animation's
+  /// row of twelve frames came back from an image as one held over the
+  /// whole cut (card 「파일마다 배치 기본값」-Q8, the sync's kind).
+  Map<LayerId, Map<int, TimelineExposure>>? _lanes;
+
+  @override
+  void execute() {
+    final project = repository.requireProject();
+    _lanes ??= {
+      for (final member in membersOf(project))
+        member.layerId: requireLayerAnywhere(
+          project,
+          member.layerId,
+        ).timeline,
+    };
+    super.execute();
+  }
+
+  @override
+  void undo() {
+    super.undo();
+    for (final MapEntry(key: layerId, value: lane) in _lanes!.entries) {
+      repository.updateLayer(
+        layerId: layerId,
+        update: (layer) => layer.copyWith(timeline: lane),
+      );
+    }
+  }
 }
