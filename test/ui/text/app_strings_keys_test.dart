@@ -738,6 +738,7 @@ void main() {
     'exPresets': (s) => s.exPresets,
     'exQueue': (s) => s.exQueue,
     'exSize': (s) => s.exSize,
+    'exCelSize': (s) => s.exCelSize,
     'exCutSize': (s) => s.exCutSize,
     'exRealSheet': (s) => s.exRealSheet,
     'exCancelled': (s) => s.exCancelled,

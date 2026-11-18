@@ -370,6 +370,7 @@ class CelsExportSpec extends ExportTabSpec {
     this.envelopeImage = paperDocumentFormat,
     this.videoFormat = const ExportFormatSelection(),
     this.videoAudio = true,
+    this.videoSizeMode = ExportSizeMode.camera,
   });
 
   /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」 — 미술 is the
@@ -535,6 +536,15 @@ class CelsExportSpec extends ExportTabSpec {
   /// it — the Sequence tab's switch ([SequenceExportSpec.includeAudio]).
   final bool videoAudio;
 
+  /// The frame a cut's film is written at — 동영상 형식's own 크기: the
+  /// camera's, or the cut's canvas.
+  ///
+  /// 🗣️F-616 (유저 2026-11-19): 「동영상 형식항목에 크기(카메라or캔버스)도
+  /// 넣기. 기존 크기 항목은 셀 크기 라는식으로 이름변경. 셀 크기는 기본값
+  /// 캔버스, 동영상 항목의 크기는 기본값 카메라」. ↩️The film was written at
+  /// the cels' [sizeMode] (I-151 — my call, not the user's).
+  final ExportSizeMode videoSizeMode;
+
   @override
   ExportTab get tab => ExportTab.cels;
 
@@ -562,6 +572,7 @@ class CelsExportSpec extends ExportTabSpec {
     ExportFormatSelection? envelopeImage,
     ExportFormatSelection? videoFormat,
     bool? videoAudio,
+    ExportSizeMode? videoSizeMode,
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
@@ -584,6 +595,7 @@ class CelsExportSpec extends ExportTabSpec {
     envelopeImage: envelopeImage ?? this.envelopeImage,
     videoFormat: videoFormat ?? this.videoFormat,
     videoAudio: videoAudio ?? this.videoAudio,
+    videoSizeMode: videoSizeMode ?? this.videoSizeMode,
   );
 
   /// This spec with [kind] written or not.
@@ -629,6 +641,8 @@ class CelsExportSpec extends ExportTabSpec {
     if (videoFormat != const ExportFormatSelection())
       'videoFormat': videoFormat.toJson(),
     if (!videoAudio) 'videoAudio': false,
+    if (videoSizeMode != ExportSizeMode.camera)
+      'videoSizeMode': videoSizeMode.jsonValue,
   };
 
   static CelsExportSpec fromJson(Map<String, dynamic> json) => CelsExportSpec(
@@ -684,6 +698,7 @@ class CelsExportSpec extends ExportTabSpec {
       _ => const ExportFormatSelection(),
     },
     videoAudio: json['videoAudio'] as bool? ?? true,
+    videoSizeMode: ExportSizeMode.fromJson(json['videoSizeMode']),
   );
 
   static bool _presetJsonWas(Map<String, dynamic> json, Set<String> names) =>
@@ -713,7 +728,8 @@ class CelsExportSpec extends ExportTabSpec {
           other.envelopePaper == envelopePaper &&
           other.envelopeImage == envelopeImage &&
           other.videoFormat == videoFormat &&
-          other.videoAudio == videoAudio;
+          other.videoAudio == videoAudio &&
+          other.videoSizeMode == videoSizeMode;
 
   @override
   int get hashCode => Object.hashAll([
@@ -738,6 +754,7 @@ class CelsExportSpec extends ExportTabSpec {
     envelopeImage,
     videoFormat,
     videoAudio,
+    videoSizeMode,
   ]);
 }
 

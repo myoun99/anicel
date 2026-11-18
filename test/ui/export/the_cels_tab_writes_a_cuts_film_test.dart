@@ -205,7 +205,7 @@ void main() {
   });
 
   testWidgets('🚨ONE run writes the cels and the cut\'s film — the film as '
-      'the Sequence tab writes the cut, at the tab\'s size', (tester) async {
+      'the Sequence tab writes the cut, at its own size', (tester) async {
     final temp = scratch();
     final session = film();
     addTearDown(session.dispose);
@@ -238,8 +238,8 @@ void main() {
     )!;
     expect(
       (movie.width, movie.height),
-      (size.width, size.height),
-      reason: 'the tab\'s size: the canvas',
+      (32, 18),
+      reason: 'its own 크기, by default the camera (F-616)',
     );
     expect(
       [for (final picture in movie.frames) picture.frameDuration ~/ 10]
@@ -353,8 +353,9 @@ void main() {
     );
   });
 
-  testWidgets('the film is as large as the tab\'s size says: through the '
-      'camera, the camera\'s', (tester) async {
+  testWidgets('🗣️F-616: the film is as large as its own 크기 says — the '
+      'camera\'s at first, the canvas\'s once 동영상 형식 picks it; the '
+      'cels\' 셀 크기 does not move it', (tester) async {
     final temp = scratch();
     final session = film();
     addTearDown(session.dispose);
@@ -365,18 +366,31 @@ void main() {
       spec: const CelsExportSpec(
         kinds: {ExportCelKind.video},
         videoFormat: gif,
-        sizeMode: ExportSizeMode.camera,
       ),
       into: temp,
     );
+    expect(
+      state.debugSpecs.cels.sizeMode,
+      ExportSizeMode.canvas,
+      reason: '셀 크기: the canvas',
+    );
+    expect(find.text(AppText.strings.exCelSize), findsOneWidget);
 
     await tester.runAsync(state.export);
     await tester.pump();
-
     final movie = img.decodeGif(
       File('${temp.path}/_CUT301.gif').readAsBytesSync(),
     )!;
-    expect((movie.width, movie.height), (32, 18));
+    expect((movie.width, movie.height), (32, 18), reason: 'the camera\'s');
+
+    await pickFromExportList(
+      tester,
+      'export-film-size',
+      'export-film-size-canvas',
+    );
+    expect(state.debugSpecs.cels.videoSizeMode, ExportSizeMode.canvas);
+    await press(tester, 'export-cels-stand-document-video');
+    expect(tester.exportPreviewDocument!.sizeOf(0), size);
   });
 
   testWidgets('🗣️under the project scope too, a film a CUT: 「셀은 컷마다 '

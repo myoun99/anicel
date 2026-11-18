@@ -198,6 +198,7 @@ enum ExportCaption {
   gifLoop,
   image,
   paper,
+  size,
   layerFx,
   target,
   folders,
@@ -219,6 +220,7 @@ enum ExportCaption {
     gifLoop => strings.exGifLoop,
     image => strings.exImage,
     paper => strings.exPaperLabel,
+    size => strings.exSize,
     layerFx => strings.exApplyLayerFx,
     target => strings.exTarget,
     folders => strings.exFolders,
@@ -1081,6 +1083,7 @@ class ExportSizeModule extends StatelessWidget {
     required this.projectScope,
     required this.enabled,
     required this.onChanged,
+    this.keyPrefix = 'export-size',
   });
 
   final ExportSizeMode sizeMode;
@@ -1089,6 +1092,10 @@ class ExportSizeModule extends StatelessWidget {
   final bool projectScope;
   final bool enabled;
   final ValueChanged<ExportSizeMode> onChanged;
+
+  /// What its keys are named under — `<prefix>`, `<prefix>-<mode>`: the
+  /// cels' size is `export-size`, the film's its own (F-616).
+  final String keyPrefix;
 
   static String summarize(ExportSizeMode mode) =>
       mode == ExportSizeMode.camera
@@ -1120,7 +1127,7 @@ class ExportSizeModule extends StatelessWidget {
   Widget build(BuildContext context) => Align(
     alignment: Alignment.centerLeft,
     child: PanelFlyoutButton(
-      key: const ValueKey<String>('export-size'),
+      key: ValueKey<String>(keyPrefix),
       label: _labelOf(sizeMode),
       enabled: enabled,
       entriesBuilder: () =>
@@ -1130,7 +1137,7 @@ class ExportSizeModule extends StatelessWidget {
           ].asFlyoutValueChoices(
             current: sizeMode,
             choiceOf: (mode) => PanelFlyoutChoice(
-              key: 'export-size-${mode.jsonValue}',
+              key: '$keyPrefix-${mode.jsonValue}',
               label: _labelOf(mode),
             ),
             onPicked: onChanged,

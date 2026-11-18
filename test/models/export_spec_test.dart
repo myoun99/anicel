@@ -69,6 +69,8 @@ void main() {
         'of them', () {
       const spec = CelsExportSpec();
       expect(spec.sizeMode, ExportSizeMode.canvas);
+      // 🗣️F-616: 「셀 크기는 기본값 캔버스, 동영상 항목의 크기는 기본값 카메라」.
+      expect(spec.videoSizeMode, ExportSizeMode.camera);
       // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
       expect(spec.kinds, {
         ExportCelKind.cel,
@@ -103,6 +105,7 @@ void main() {
     test('non-default fields round-trip', () {
       final spec = const CelsExportSpec().copyWith(
         sizeMode: ExportSizeMode.camera,
+        videoSizeMode: ExportSizeMode.canvas,
         naming: const ExportCelNaming(
           frameDigits: 4,
           projectFolder: true,
@@ -124,6 +127,7 @@ void main() {
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
+      expect(restored.videoSizeMode, ExportSizeMode.canvas);
       expect(restored.sheetInk, isTrue);
       expect(restored.viewerSheet, XdtsViewerSheet.ponocSixSeconds);
       expect(restored.xdtsHalves, {XdtsSheetHalf.douga});

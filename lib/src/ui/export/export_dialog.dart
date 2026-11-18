@@ -3195,12 +3195,12 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// A cut's film on the list of [spec], as its preview shows it and its
-  /// file is written: at the tab's size, through its layer FX, in the
-  /// film's own format and with its sound. The size and the FX are the
-  /// tab's: my call, not the user's (I-151).
+  /// file is written: at its own size ([CelsExportSpec.videoSizeMode]),
+  /// through the tab's layer FX, in the film's own format and with its
+  /// sound. The FX is the tab's: my call, not the user's (I-151).
   _FrameRun _cutFilmRun(CelsExportSpec spec) => (
     format: spec.videoFormat,
-    sizeMode: spec.sizeMode,
+    sizeMode: spec.videoSizeMode,
     layerFx: spec.layerFx,
     withSound: spec.videoAudio,
   );
@@ -5018,6 +5018,9 @@ class ExportDialogState extends State<ExportDialog> {
           ),
       ],
       _sizeAccordion(
+        // 🗣️F-616 (유저 2026-11-19): 「기존 크기 항목은 셀 크기 라는식으로
+        // 이름변경」 — the film has a 크기 of its own now. ↩️「크기」.
+        title: AppText.strings.exCelSize,
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
         projectScope: false,
@@ -5251,22 +5254,45 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// 동영상 형식: the movie a cut's film is written as — the Sequence tab's
   /// movies, the same lineup (I-151, 유저 2026-11-03: 「오른쪽 옵션에도
-  /// 동영상 형식 넣고」).
+  /// 동영상 형식 넣고」) — and the frame it is written at, its own 크기
+  /// (F-616, 유저 2026-11-19: 「동영상 형식항목에 크기(카메라or캔버스)도
+  /// 넣기」), offered as the cels' is.
   ExportAccordion _filmFormatAccordion(CelsExportSpec spec) => ExportAccordion(
     title: AppText.strings.exVideoFormat,
-    summary: ExportFormatModule.summarize(spec.videoFormat),
+    summary:
+        '${ExportFormatModule.summarize(spec.videoFormat)} · '
+        '${ExportSizeModule.summarize(spec.videoSizeMode)}',
     expansion: _expansion('video-format'),
-    child: ExportFormatModule(
-      keyPrefix: 'export-film-format',
-      selection: spec.videoFormat,
-      capabilities: ExportFormatCapabilities(
-        stills: const [],
-        video: _videoLineup,
-        videoEnabled: _availability.videoAllowed,
-        videoReason: _availability.videoBlockedReason,
-      ),
-      enabled: !_isExporting,
-      onChanged: (format) => _updateSpec(spec.copyWith(videoFormat: format)),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExportFormatModule(
+          keyPrefix: 'export-film-format',
+          selection: spec.videoFormat,
+          capabilities: ExportFormatCapabilities(
+            stills: const [],
+            video: _videoLineup,
+            videoEnabled: _availability.videoAllowed,
+            videoReason: _availability.videoBlockedReason,
+          ),
+          enabled: !_isExporting,
+          onChanged: (format) =>
+              _updateSpec(spec.copyWith(videoFormat: format)),
+        ),
+        ExportModuleRow(
+          caption: ExportCaption.size,
+          child: ExportSizeModule(
+            keyPrefix: 'export-film-size',
+            sizeMode: spec.videoSizeMode,
+            cameraSize: _session.camera.cameraFrameSize,
+            canvasSizes: {_activeCut.canvasSize},
+            projectScope: false,
+            enabled: !_isExporting,
+            onChanged: (mode) =>
+                _updateSpec(spec.copyWith(videoSizeMode: mode)),
+          ),
+        ),
+      ],
     ),
   );
 
@@ -5435,17 +5461,19 @@ class ExportDialogState extends State<ExportDialog> {
         : (value) => _updateSpec(write(value)),
   );
 
-  /// The Size accordion three tabs offer: one title, one fold key, one
-  /// enabled law. What differs per tab is values — which canvas sizes are
-  /// on the table, whether the scope is the project — the same shape
-  /// [_scopeAccordion] was extracted for.
+  /// The Size accordion three tabs offer: one title — the Cels tab's says
+  /// whose size it is ([title]) — one fold key, one enabled law. What
+  /// differs per tab is values — which canvas sizes are on the table,
+  /// whether the scope is the project — the same shape [_scopeAccordion]
+  /// was extracted for.
   ExportAccordion _sizeAccordion({
+    String? title,
     required ExportSizeMode sizeMode,
     required Set<CanvasSize> canvasSizes,
     required bool projectScope,
     required void Function(ExportSizeMode mode) onChanged,
   }) => ExportAccordion(
-    title: AppText.strings.exSize,
+    title: title ?? AppText.strings.exSize,
     summary: ExportSizeModule.summarize(sizeMode),
     expansion: _expansion('size'),
     child: ExportSizeModule(

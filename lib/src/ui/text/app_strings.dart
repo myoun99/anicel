@@ -1668,6 +1668,7 @@ enum AppStrings {
   String get exPresets => _s('exPresets');
   String get exQueue => _s('exQueue');
   String get exSize => _s('exSize');
+  String get exCelSize => _s('exCelSize');
 
   /// The paper a cut envelope is written on: the cut's own pixels, or the
   /// real envelope's.
@@ -3358,6 +3359,7 @@ enum AppStrings {
     'exPresets': 'Presets',
     'exQueue': 'Queue',
     'exSize': 'Size',
+    'exCelSize': 'Cel size',
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
@@ -5132,6 +5134,7 @@ enum AppStrings {
     'exPresets': 'プリセット',
     'exQueue': 'キュー',
     'exSize': 'サイズ',
+    'exCelSize': 'セルサイズ',
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
@@ -7119,6 +7122,7 @@ enum AppStrings {
     'exPresets': '프리셋',
     'exQueue': '대기열',
     'exSize': '크기',
+    'exCelSize': '셀 크기',
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
@@ -9173,6 +9177,7 @@ enum AppStrings {
     'exPresets': 'Préréglages',
     'exQueue': 'File d\'attente',
     'exSize': 'Taille',
+    'exCelSize': 'Taille des cellulos',
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
@@ -11200,6 +11205,7 @@ enum AppStrings {
     'exPresets': '预设',
     'exQueue': '队列',
     'exSize': '尺寸',
+    'exCelSize': '赛璐珞尺寸',
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
