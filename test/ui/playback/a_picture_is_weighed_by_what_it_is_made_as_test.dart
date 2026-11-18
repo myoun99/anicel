@@ -90,16 +90,21 @@ void main() {
   /// its plan weighs it ahead as six — under the canvas's four, the premise
   /// these tests stand on. The product weighs right; the picture drawn
   /// here was the one thing of its kind a share makes lighter.
-  /// ⏳Ahead, a plan weighs every tile it lays on, shared or not
-  /// (`Kept::tiles_made`, "the most it comes to weigh"): where a picture
-  /// shares, the room is asked for more than it comes to weigh — the next
-  /// change of card F-610, with the pin that counts it.
+  /// ↩️Ahead, a plan weighed every tile it lays on, shared or not, till
+  /// the change after (2026-11-19, `Kept::tiles_made`): it is weighed by
+  /// the tiles its making runs for, and the picture that was drawn here
+  /// is that change's pin ([pastABareCanvas]).
   BitmapSurface onThePasteboard() => inkedAt([
     TileCoord(x: -1, y: -1),
     for (var y = 0; y < 2; y += 1)
       for (var x = 0; x < 2; x += 1) TileCoord(x: x, y: y),
     TileCoord(x: 2, y: 2),
   ]);
+
+  /// Ink on two tiles past a canvas with none on it: six tiles its plan
+  /// lays on — the canvas's four the paper's alone, one tile for the four.
+  BitmapSurface pastABareCanvas() =>
+      inkedAt([TileCoord(x: -1, y: -1), TileCoord(x: 2, y: 2)]);
 
   CanvasLayerImageRequest asItLies() =>
       CanvasLayerImageRequest(frameKey: key, opacity: 1);
@@ -151,6 +156,34 @@ void main() {
         greaterThan(canvasBytes),
         reason: '⛔premise: ink past the canvas',
       );
+    });
+  });
+
+  // 🗣️유저 2026-11-18 (F-610-Q2): 「같은 타일은 한 벌만」 — and the room is
+  // asked for what a picture comes to weigh. ↩️Weighed ahead as every tile
+  // it lays on, this picture was asked room for six tiles and weighed
+  // three (🔬2026-11-19, master red: 393,216 against 196,608).
+  testWidgets('🚨a picture is weighed ahead by the tiles its making comes to '
+      'make — the tiles of its paper alone are one — not by every tile it '
+      'lays on', (tester) async {
+    await tester.runAsync(() async {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key: pastABareCanvas()});
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final tileBytes = canvasBytes ~/ 4;
+
+      await pictures.readIn(picture);
+      final weight = await pictures.bytesToMake(picture);
+      expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
+
+      expect(
+        weight,
+        3 * tileBytes,
+        reason: 'the paper once and the two inked, of the six it lays on',
+      );
+      expect(weight, pictures.weighNew(picture, {}));
     });
   });
 

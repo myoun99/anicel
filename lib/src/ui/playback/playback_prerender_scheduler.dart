@@ -804,29 +804,23 @@ final class _AskedAhead {
         continue;
       }
       spoken.addAll(parts);
-      final asked = _onTheirWay[key] = _OnItsWay(parts);
-      asked.landing = _weighedThenMade(
-        asked,
+      final asked = _onTheirWay[key] = _OnItsWay(
         picture,
-        key: key,
+        parts,
         step: pass.stepAt(look),
-        asking: asking,
       );
+      asked.landing = _weighedThenMade(asked, asking);
     }
   }
 
-  /// [picture], [asked] for ahead at [step], weighed, its room made and
-  /// then made ([askPast]): true when it landed — false with no room for
-  /// it, or for one of its ask ([asking]) before it, and as the walk's own
-  /// compose says.
-  Future<bool> _weighedThenMade(
-    _OnItsWay asked,
-    DemandedPicture picture, {
-    required (CutId, int) key,
-    required int step,
-    required _Asking asking,
-  }) async {
+  /// The picture [asked] for ahead weighed, its room made and then made
+  /// ([askPast]): true when it landed — false with no room for it, or for
+  /// one of its ask ([asking]) before it, and as the walk's own compose
+  /// says.
+  Future<bool> _weighedThenMade(_OnItsWay asked, _Asking asking) async {
     final scheduler = _scheduler;
+    final _OnItsWay(:picture, :step) = asked;
+    final key = (picture.cut.id, picture.frameIndex);
     // ⚠️Weighed by what is in hand, without reading first as the walk's
     // own is: an ask ahead is made so as not to wait. A row whose cel is
     // not read yet is weighed as the canvas, and the room is asked again
@@ -862,13 +856,16 @@ final class _AskedAhead {
   }
 }
 
-/// A picture asked for ahead, on its way ([_AskedAhead]): the parts it
-/// makes, what it was weighed as once its room is made — none till then,
-/// nothing of it is being made —, and its landing.
+/// A picture asked for ahead, on its way ([_AskedAhead]): the picture, the
+/// parts it makes and the step it is wanted at, what it was weighed as once
+/// its room is made — none till then, nothing of it is being made —, and
+/// its landing.
 final class _OnItsWay {
-  _OnItsWay(this.parts);
+  _OnItsWay(this.picture, this.parts, {required this.step});
 
+  final DemandedPicture picture;
   final Set<Object> parts;
+  final int step;
   int bytes = 0;
   late final Future<bool> landing;
 }
