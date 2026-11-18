@@ -1022,6 +1022,10 @@ class _StoryboardRowsAndLabels {
   /// head kept across passes hands its wrapper back while what it shows
   /// holds — and [row] itself.
   ///
+  /// ⚠️The two answers [RailEyes.forLayers] gives, asked as it asks them:
+  /// a third it comes to hand down is a third field here, or a kept head
+  /// wears the old one.
+  ///
   /// ↩️The wrapper was built at every pass, a new [RailEyes] around every
   /// head, so the head's unit could not be handed back whole (card
   /// the-conte-rail-row-holders-are-new-each-pass, 11-19).
