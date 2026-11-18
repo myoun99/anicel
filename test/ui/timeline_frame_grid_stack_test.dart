@@ -35,6 +35,24 @@ void main() {
       expect(positioned.left, 240);
     });
 
+    // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): the marks keep
+    // themselves while what they are drawn from stands. The folded row asks
+    // no のりしろ where none is drawn, so there the cut's length is the one
+    // fact a trim moves.
+    testWidgets('the cut-end line keeps itself for the same cut, and '
+        'follows a new length', (tester) async {
+      TimelineBodyCutEndBoundary line() =>
+          tester.widget(find.byType(TimelineBodyCutEndBoundary));
+      await _pumpFrameGridStack(tester, frameCount: 10);
+      final before = line();
+
+      await _pumpFrameGridStack(tester, frameCount: 10);
+      expect(identical(line(), before), isTrue);
+
+      await _pumpFrameGridStack(tester, frameCount: 14);
+      expect(line().left, 14 * 24);
+    });
+
     // The slot gives the playhead its length along the frames and leaves its
     // thickness to it — read from where it lands, not from the slot's
     // spelling. The test playhead is 200 square, so neither is its own.

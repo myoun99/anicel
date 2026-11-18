@@ -34,6 +34,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler.dart'
+    show TimelineFrameRuler;
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -649,6 +651,10 @@ void main() {
           .position;
 
       final baseWidth = railContentWidth();
+      int rulerFrames() => tester
+          .widget<TimelineFrameRuler>(find.byType(TimelineFrameRuler))
+          .frameEndIndexExclusive;
+      final baseFrames = rulerFrames();
       // IN-RANGE scrolling (what the scrollbar and wheel can reach) never
       // grows the axis: the built cells are the wall.
       for (var hop = 0; hop < 4; hop += 1) {
@@ -669,6 +675,12 @@ void main() {
       }
       final grownWidth = railContentWidth();
       expect(grownWidth, greaterThan(baseWidth));
+      final grownFrames = rulerFrames();
+      expect(
+        grownFrames,
+        greaterThan(baseFrames),
+        reason: 'the ruler is built for the room grown',
+      );
 
       // Scrolling home releases the materialized tail (discrete jump =
       // immediate shrink; the hysteresis only holds sub-viewport
@@ -676,6 +688,11 @@ void main() {
       framePosition().jumpTo(0);
       await tester.pump();
       expect(railContentWidth(), lessThan(grownWidth));
+      expect(
+        rulerFrames(),
+        lessThan(grownFrames),
+        reason: 'and the ruler is built for the room let go',
+      );
     },
   );
 
@@ -1430,6 +1447,29 @@ void main() {
       25,
       reason: 'the scroll walls at the built extent',
     );
+  });
+
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): the ruler keeps
+  // itself while what it draws stands. Where no のりしろ is asked the cut's
+  // length is the one fact a trim moves — the cursor here is one, as the
+  // app's is.
+  testWidgets('a new cut length reaches the ruler\'s end line with no '
+      'のりしろ asked', (tester) async {
+    final cursor = ValueNotifier<int>(0);
+    addTearDown(cursor.dispose);
+    TimelineFrameRuler ruler() =>
+        tester.widget(find.byType(TimelineFrameRuler));
+    await tester.pumpWidget(_grid(playbackFrameCount: 12, frameCursor: cursor));
+    final frames = ruler().frameEndIndexExclusive;
+
+    await tester.pumpWidget(_grid(playbackFrameCount: 16, frameCursor: cursor));
+
+    expect(
+      ruler().frameEndIndexExclusive,
+      frames,
+      reason: '⛔premise: the room the ruler is built for stands',
+    );
+    expect(ruler().playbackFrameCount, 16);
   });
 
   testWidgets('renders cut end boundary after playback frames', (tester) async {
@@ -2459,6 +2499,7 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
 
 Widget _grid({
   int currentFrameIndex = 0,
+  ValueNotifier<int>? frameCursor,
   int playbackFrameCount = 12,
   double width = 900,
   TimelineGridMetrics metrics = _testMetrics,
@@ -2487,7 +2528,7 @@ Widget _grid({
         child: LayerTimelineGrid(
           hooks: TimelineGridHooks(
             activeLayer: ValueNotifier(const LayerId('layer-1')),
-            frameCursor: ValueNotifier<int>(currentFrameIndex),
+            frameCursor: frameCursor ?? ValueNotifier<int>(currentFrameIndex),
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer:
                 exposureStateForLayer ??
