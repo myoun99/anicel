@@ -205,19 +205,29 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
   @override
   ViewerLoudness get loudness => const ViewerLoudness();
 
-  /// Test seam: asks for the page stood on and completes once it has
-  /// landed — called inside `tester.runAsync`, where time is real. (A render
-  /// asked for under a test's faked clock never answers, so what is out is
-  /// turned away and asked again from here.)
+  /// Test seam: asks for the page a move waits for — the page stood on
+  /// where none does — and completes once it has landed: called inside
+  /// `tester.runAsync`, where time is real. (A render asked for under a
+  /// test's faked clock never answers, so what is out is turned away and
+  /// asked again from here; the move that waited for it lands as it is
+  /// turned away, its picture asked here.)
+  ///
+  /// 🔬F-617 (2026-11-19, master red on the Cels tab's film test): ↩️it
+  /// asked for the page stood on alone. A hand's seek to a frame not yet
+  /// drawn stands on the frame shown until its picture comes, and under a
+  /// test's faked clock that picture never came (measured: frame 0 after
+  /// 5 s faked and 3 s real); turned away, the move landed on frame 1 and
+  /// no one asked for its picture (frame 1, nothing drawn).
   @visibleForTesting
   Future<void> debugSettle() async {
     final scale = _rasters.scale;
     if (widget.document == null || scale == null) {
       return;
     }
+    final page = _run.moves.waitsFor.value ?? _page;
     _rasters.turnAway();
     _asks.clear();
-    _rasters.ensureRendered(_page, scale);
+    _rasters.ensureRendered(page, scale);
     while (_asks.isNotEmpty) {
       final out = [..._asks];
       _asks.clear();

@@ -453,12 +453,25 @@ void main() {
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
 
+    final first = tester.exportPreviewImage;
+
     await tester.seekExportPreview(1);
+    // 🔬F-617 (2026-11-19, master red here): a hand's seek to a frame not
+    // yet drawn stands on the frame shown, its picture up, until the
+    // frame's picture comes — and under the test's faked clock it comes
+    // only when settled (measured: frame 0 after 5 s faked and 3 s real).
+    // ↩️This read the frame at once: the playhead went before its picture.
+    expect(tester.exportTransport.currentFrame, 0, reason: 'not drawn yet');
+    expect(tester.exportPreviewImage, same(first));
+
+    await tester.settleExportPreview();
     expect(
       tester.exportTransport.currentFrame,
       1,
       reason: 'a hand on its transport moves the film, not the list',
     );
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(tester.exportPreviewImage, isNot(same(first)));
   });
 
   testWidgets('the film\'s sound is asked where its format has room for it: '
