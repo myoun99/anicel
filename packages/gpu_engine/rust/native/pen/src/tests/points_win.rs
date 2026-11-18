@@ -2,7 +2,7 @@
 //! on answers worked out here (I-110 · F-600).
 
 use crate::points::Lost;
-use crate::points_win::{Move, history_near, mouse_lost, moves_since, told_alike};
+use crate::points_win::{Move, handed_on, history_near, mouse_lost, moves_since, told_alike};
 
 /// The message's own move: the newest of every history here.
 const OWN: Move = (50, 0, 105);
@@ -25,6 +25,22 @@ fn a_history_that_does_not_keep_the_move_written_is_cut_at_its_time() {
 fn the_first_move_of_all_hands_its_own_alone() {
     let history = [OWN, (40, 0, 104), (900, 700, 90)];
     assert_eq!(moves_since(OWN, &history, None), [OWN]);
+}
+
+// 🔬Release, 11-19: the kept-moves test run first of all handed its own
+// move alone, 3 times in 60.
+#[test]
+fn the_first_message_of_all_hands_on_every_move_kept_since_the_press() {
+    let kept = [OWN, (40, 0, 104), (30, 0, 103)];
+    assert_eq!(handed_on(OWN, &kept, None, None), kept);
+    assert_eq!(handed_on(OWN, &kept, Some(3), None), [OWN], "a history read, its own alone");
+}
+
+#[test]
+fn what_was_kept_is_cut_at_the_move_written_as_a_history_is() {
+    let kept = [OWN, (40, 0, 104), (30, 0, 103)];
+    assert_eq!(handed_on(OWN, &kept, None, Some((40, 0, 104))), [OWN]);
+    assert_eq!(handed_on(OWN, &kept, None, Some((20, 0, 102))), kept);
 }
 
 #[test]

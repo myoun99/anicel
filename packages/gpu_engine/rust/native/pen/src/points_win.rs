@@ -333,7 +333,7 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     // are cut from it (`mouse_lost`).
     let lost = found.and_then(|found| mouse_lost(&history, found, *written));
     let now = now_micros();
-    let moves = moves_since(own, &history, *written);
+    let moves = handed_on(own, &history, found, *written);
     *written = Some(own);
     // A move kept is at the time it was heard (mouse_kept.rs `Kept::hear`);
     // one read here is timed back from now by its milliseconds.
@@ -410,6 +410,27 @@ pub(crate) fn mouse_lost(history: &[Move], found: i32, written: Option<Move>) ->
 pub(crate) fn moves_since(own: Move, history: &[Move], written: Option<Move>) -> Vec<Move> {
     let moves = newer_than(history, written);
     if moves.is_empty() { vec![own] } else { moves.to_vec() }
+}
+
+/// The moves a mouse message hands on: its `history` cut as
+/// [`moves_since`] cuts it — `found` moves read of the OS's — or, `found`
+/// None, the moves it took of what was kept since the press
+/// (mouse_kept.rs `Kept::take_through`), the newest first and its `own`
+/// move the first of them, cut the same, and every one where nothing was
+/// written yet: kept from the press on, they go back no further than it,
+/// where a history read goes back its 64 moves with no bound in time.
+///
+/// 🔬Surface Pro 11, 11-19: cut as a history, the first message of all
+/// handed on its own move alone and the moves kept before it went — 3 test
+/// runs in 60 at release, where the kept-moves test was the first to write
+/// a mouse message. ⚠️Not seen in the app: the reader starts at the first
+/// datum Flutter hears, and its first message is a drag's only where no
+/// hover came between.
+pub(crate) fn handed_on(own: Move, history: &[Move], found: Option<i32>, written: Option<Move>) -> Vec<Move> {
+    match (found, written) {
+        (None, None) => history.to_vec(),
+        _ => moves_since(own, history, written),
+    }
 }
 
 /// The moves of `history` — the newest first — newer than `last`: down to
