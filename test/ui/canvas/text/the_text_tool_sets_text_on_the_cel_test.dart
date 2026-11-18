@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/a_move_lands.dart';
 import '../../../helpers/app_shortcuts.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/key_chords.dart';
@@ -600,6 +601,7 @@ void main() {
     await typeText(tester, 'hi');
 
     sessionOf(tester).selectFrameIndex(1);
+    await theMoveLands(tester, sessionOf(tester));
     await pumpFrames(tester);
 
     expect(celOf(tester).texts.single.content.text, 'hi');
@@ -631,6 +633,7 @@ void main() {
       await clickAt(tester, c.dx, c.dy);
       await typeText(tester, 'hi');
       walkOff(session);
+      await theMoveLands(tester, session);
       await pumpFrames(tester);
       // The store's: the canvas the walk took them to may be another size
       // than the cel's, and its session would read the cel blank.
@@ -644,6 +647,7 @@ void main() {
         }
         session.selectLayer(textToolLayerId);
         session.selectFrameIndex(0);
+        await theMoveLands(tester, session);
         await pumpFrames(tester);
       }
       return session;
@@ -673,6 +677,7 @@ void main() {
 
         session.undo();
         await pumpFrames(tester);
+        await theMoveLands(tester, session);
 
         expect(celOf(tester).texts, isEmpty, reason: 'no walk first');
         expect(session.activeCutId, textToolCutId);
@@ -690,6 +695,7 @@ void main() {
 
         session.undo();
         await pumpFrames(tester);
+        await theMoveLands(tester, session);
 
         expect(session.activeCutId, textToolCutId, reason: 'walked back');
         expect(session.standingPlace?.frame, 0);
@@ -698,6 +704,7 @@ void main() {
 
         session.undo();
         await pumpFrames(tester);
+        await theMoveLands(tester, session);
 
         expect(celOf(tester).texts, isEmpty);
       });
@@ -725,6 +732,7 @@ void main() {
       expect(session.activeCutId, isNull, reason: '⛔premise: a gap');
       session.selectCut(textToolCutId);
       session.selectFrameIndex(0);
+      await theMoveLands(tester, session);
       await pumpFrames(tester);
 
       expect([for (final text in celOf(tester).texts) text.content.text], [
@@ -771,6 +779,7 @@ void main() {
       await typeText(tester, 'hi');
       expect(textToolOf(tester).session?.settled, isFalse, reason: 'premise');
       session.selectFrameIndex(1);
+      await theMoveLands(tester, session);
 
       expect(celOf(tester).texts.single.content.text, 'h', reason: 'at once');
       await pumpFrames(tester);
@@ -781,12 +790,14 @@ void main() {
 
       session.undo();
       await pumpFrames(tester);
+      await theMoveLands(tester, session);
 
       expect(session.standingPlace?.frame, 0, reason: 'walked back');
       expect(celOf(tester).texts.single.content.text, 'h');
 
       session.undo();
       await pumpFrames(tester);
+      await theMoveLands(tester, session);
 
       expect(celOf(tester).texts, isEmpty);
     });
@@ -802,6 +813,7 @@ void main() {
     await tester.pump();
 
     sessionOf(tester).selectFrameIndex(1);
+    await theMoveLands(tester, sessionOf(tester));
     await pumpFrames(tester);
     await mouse.moveTo(onScreen(tester, c.dx + 120, c.dy + 90));
     await mouse.up();

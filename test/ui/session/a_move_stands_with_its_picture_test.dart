@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -117,16 +116,13 @@ void main() {
     final pictures = threeFrames();
     final frame = ValueNotifier<int>(0);
     final cutStood = ValueNotifier<Cut>(cut);
-    final landings = ValueNotifier<int>(0);
     final moves = StandsWithItsPicture(
       pictures: () => pictures,
-      landings: landings,
       cut: () => cutStood.value,
       frame: () => frame.value,
       placement: () => OnionSkinPlacement.inPlace,
     );
     addTearDown(moves.dispose);
-    addTearDown(landings.dispose);
     addTearDown(frame.dispose);
     addTearDown(cutStood.dispose);
     return (moves: moves, pictures: pictures, frame: frame, cutStood: cutStood);
@@ -220,6 +216,23 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
     expect(landed, [2], reason: 'a frame passed over is never stood on');
+  });
+
+  testWidgets('a move asked again for the frame it waits for lands as it '
+      'was last asked — a scrub let go of there commits it', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    s.moves.shownBy(tester);
+    final landed = <String>[];
+
+    s.moves.moveTo(1, () => landed.add('scrubbed'));
+    s.moves.moveTo(1, () {
+      landed.add('committed');
+      s.frame.value = 1;
+    });
+
+    expect(await settleAsync(tester, () => s.frame.value == 1), isTrue);
+    expect(landed, ['committed']);
   });
 
   testWidgets('no move goes under a press held for the frame moved to', (

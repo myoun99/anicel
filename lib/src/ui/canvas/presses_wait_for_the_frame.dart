@@ -41,10 +41,6 @@ class _PressesWaitForTheFrameState extends State<PressesWaitForTheFrame> {
   /// Whether the canvas takes no press: a move waits.
   bool _waits = false;
 
-  /// Whether the held presses are being handed on — their own points come
-  /// past this widget again.
-  bool _handing = false;
-
   /// The moves the presses are held for — told when they are handed on,
   /// whichever the canvas stands by then.
   StandsWithItsPicture? _heldFor;
@@ -114,37 +110,31 @@ class _PressesWaitForTheFrameState extends State<PressesWaitForTheFrame> {
     final held = Map.of(_held);
     _held.clear();
     final binding = GestureBinding.instance;
-    _handing = true;
-    try {
-      for (final points in held.values) {
-        final last = points.last;
-        if (last is! PointerUpEvent && last is! PointerCancelEvent) {
-          // Let go where it was first taken: its points to come are the
-          // canvas's.
-          binding.handlePointerEvent(
-            PointerCancelEvent(
-              timeStamp: last.timeStamp,
-              pointer: last.pointer,
-              kind: last.kind,
-              device: last.device,
-              position: last.position,
-              viewId: last.viewId,
-            ),
-          );
-        }
-        points.forEach(binding.handlePointerEvent);
+    // Past this widget again as they go: held no more, and taking the
+    // canvas, so none of them is held a second time.
+    for (final points in held.values) {
+      final last = points.last;
+      if (last is! PointerUpEvent && last is! PointerCancelEvent) {
+        // Let go where it was first taken: its points to come are the
+        // canvas's.
+        binding.handlePointerEvent(
+          PointerCancelEvent(
+            timeStamp: last.timeStamp,
+            pointer: last.pointer,
+            kind: last.kind,
+            device: last.device,
+            position: last.position,
+            viewId: last.viewId,
+          ),
+        );
       }
-    } finally {
-      _handing = false;
+      points.forEach(binding.handlePointerEvent);
     }
     _heldFor?.holdsAPress(held: false);
     _heldFor = null;
   }
 
   void _pointer(PointerEvent event) {
-    if (_handing) {
-      return;
-    }
     final held = _held[event.pointer];
     if (held != null) {
       held.add(event);

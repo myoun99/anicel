@@ -40,20 +40,15 @@ import '../playback/playback_pictures.dart' show PictureState;
 class StandsWithItsPicture {
   StandsWithItsPicture({
     required FramePictures Function() pictures,
-    required Listenable landings,
     required Cut? Function() cut,
     required int Function() frame,
     required OnionSkinPlacement Function() placement,
   }) : _pictures = pictures,
-       _landings = landings,
        _cut = cut,
        _frame = frame,
-       _placement = placement {
-    _landings.addListener(_lookAgain);
-  }
+       _placement = placement;
 
   final FramePictures Function() _pictures;
-  final Listenable _landings;
   final Cut? Function() _cut;
   final int Function() _frame;
   final OnionSkinPlacement Function() _placement;
@@ -173,18 +168,6 @@ class StandsWithItsPicture {
         },
       );
 
-  /// A picture landed: the move that waits lands where all of its are.
-  void _lookAgain() {
-    final waiting = _waiting;
-    final cut = _cut();
-    if (waiting == null || cut == null || cut.id != waiting.cut) {
-      return;
-    }
-    if (_there(cut, waiting.frame)) {
-      _landTheOneWaiting();
-    }
-  }
-
   void _landTheOneWaiting() {
     final waiting = _waiting;
     _letGoOfTheOneWaiting();
@@ -198,8 +181,10 @@ class StandsWithItsPicture {
     _waitsFor.value = null;
   }
 
+  /// Lets go of the move that waits — its making may answer after this —
+  /// and of [waitsFor].
   void dispose() {
-    _landings.removeListener(_lookAgain);
+    _waiting = null;
     _waitsFor.dispose();
   }
 }

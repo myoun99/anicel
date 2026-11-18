@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/a_move_lands.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
 import '../helpers/wait_window.dart' show windowBehind;
@@ -126,6 +127,7 @@ void main() {
     session.selectLayer(row(session).id);
     session.selectFrameIndex(0);
     await tester.pump();
+    await theMoveLands(tester, session);
     return session;
   }
 
@@ -444,6 +446,7 @@ void main() {
     // 3–4 is ONE cel held twice; 5 is empty.
     selectAcross(session, 3, 6);
     session.selectFrameIndex(3);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
 
     await press(tester);
@@ -543,6 +546,7 @@ void main() {
     await holdStamp(tester, squareOf(red), opacity: 0.5);
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     await pasteInPlace(tester);
     expect(
@@ -563,6 +567,7 @@ void main() {
       rgba: blue,
     );
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await holdStamp(tester, squareOf(red), blend: BrushBlendMode.erase);
     final brush = workspaceOf(tester).brushTool!;
     brush.value = brush.value.copyWith(
@@ -599,6 +604,7 @@ void main() {
 
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     final again = workspaceOf(tester).lastStroke!;
     expect(again.canReinput, isTrue);
@@ -646,6 +652,7 @@ void main() {
     marquee(session, null);
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     workspaceOf(tester).lastStroke!.reinput();
     await pumpFrames(tester);
@@ -668,12 +675,14 @@ void main() {
     }
     await holdStamp(tester, squareOf(red), blend: BrushBlendMode.behind);
     session.selectFrameIndex(1);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     await pasteInPlace(tester);
     expect(pixel(session, 'c1', 15, 15), blueRgba, reason: '⛔premise: under');
     expect(pixel(session, 'c1', 25, 15), redRgba, reason: '⛔premise: landed');
 
     session.selectFrameIndex(2);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     workspaceOf(tester).lastStroke!.reinput();
     await pumpFrames(tester);
@@ -756,6 +765,7 @@ void main() {
       final session = workspaceOf(tester).session;
       session.selectLayer(standOn);
       session.selectFrameIndex(0);
+      await theMoveLands(tester, session);
       await pumpFrames(tester);
       await holdStamp(tester, squareOf(red));
       session.frameRangeSelection.value = TimelineFrameRangeSelection(

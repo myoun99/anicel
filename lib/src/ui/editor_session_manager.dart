@@ -1837,7 +1837,8 @@ class EditorSessionManager extends ChangeNotifier
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),
     voiceRecording.dispose,
-    // Off the landings it hears, before the rig that rings them goes.
+    // The move that waits let go of, before the rig that makes its
+    // pictures goes.
     standsWithItsPicture.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -3946,7 +3947,6 @@ class EditorSessionManager extends ChangeNotifier
   /// canvas stands to show them ([StandsWithItsPicture]).
   late final StandsWithItsPicture standsWithItsPicture = StandsWithItsPicture(
     pictures: () => playbackRig.framePictures,
-    landings: playbackRig.prerenderScheduler.landings,
     cut: () => activeCutOrNull,
     frame: () => activeCutControllers.timelineController.currentFrameIndex,
     placement: () => onionSkin.settings.value.placement,

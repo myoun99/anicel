@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/a_move_lands.dart';
+
 /// 🗣️I-55 (유저 2026-10-01): 픽셀 복사 · 픽셀 위 붙여넣기 · 픽셀 아래
 /// 붙여넣기 in the 색 편집 list — 「픽셀복사는 화면 전체(현재 셀의 그림
 /// 존재하는것들 …), 다만 선택도구로 선택한게 있으면 선택된곳만 복사 …
@@ -93,6 +95,7 @@ void main() {
     session.selectLayer(row(session).id);
     session.selectFrameIndex(0);
     await tester.pump();
+    await theMoveLands(tester, session);
     return session;
   }
 
@@ -175,6 +178,7 @@ void main() {
     selectAcross(session, 0, 3);
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
 
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
     final piece = session.appClipboard.pixels.piece!;
@@ -321,6 +325,7 @@ void main() {
 
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteBelow);
     await tester.pump();
     expect(pixel(session, 'c1', 12, 12), blue, reason: 'below: blue stays');
@@ -363,6 +368,7 @@ void main() {
     );
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
     await tester.pump();
     expect(pixel(session, 'c1', 16, 15), red);
@@ -401,6 +407,7 @@ void main() {
     through(const SelectionMaskOptions(featherPx: 6));
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
     await tester.pump();
     expect(pixel(session, 'c1', 20, 20)[3], 255, reason: 'deep inside');
@@ -456,6 +463,7 @@ void main() {
     session.clipboard.copyFrameAtCurrentFrame();
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
     await tester.pump();
 
@@ -474,6 +482,7 @@ void main() {
     // Standing on a blank cel with nothing on the board.
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
     expect(pixels.canRunPixelClipboardVerb(PixelClipboardVerb.copy), isFalse);
     expect(
       pixels.canRunPixelClipboardVerb(PixelClipboardVerb.pasteAbove),
@@ -484,9 +493,11 @@ void main() {
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
     session.selectFrameIndex(0);
     await tester.pump();
+    await theMoveLands(tester, session);
     pixels.runPixelClipboardVerb(PixelClipboardVerb.copy);
     session.selectFrameIndex(1);
     await tester.pump();
+    await theMoveLands(tester, session);
 
     expect(pixels.canRunPixelVerb, isFalse, reason: 'c1 holds no drawing');
     expect(

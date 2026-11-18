@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/a_move_lands.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
 import '../helpers/wait_window.dart' show windowBehind, windowBehindTheTap;
@@ -152,6 +153,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isTrue,
@@ -163,6 +165,7 @@ void main() {
       // measured in the playhead file, nine of twenty-five buttons deep.
       session.frameScrub.scrubFrameIndex(8);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isFalse,
@@ -173,6 +176,7 @@ void main() {
       // And back, so this cannot pass by simply never enabling.
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
   );
@@ -187,6 +191,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       // ⛔The head itself runs nothing — 색 편집 is a category, so a press
       // that also did one of the verbs would be one button answering two
@@ -223,6 +228,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       // Clear Pixels ships Backspace on the registry's keys; the others are
       // bound here the way the shortcut list binds them.
@@ -282,6 +288,7 @@ void main() {
         // seeds from it.
         session.selectFrameIndex(1);
         await tester.pumpAndSettle();
+        await theMoveLands(tester, session);
         final key = session.brushFrameKeyForCut(
           session.requireActiveCut,
           row.id,
@@ -355,6 +362,7 @@ void main() {
       // opened AFTER the ink seeds from it.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       await clearPixelsFromTheHead(tester);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
@@ -366,6 +374,7 @@ void main() {
       // one on every other gate the bar shows.
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
@@ -386,6 +395,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectGlobalFrame(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isTrue,
@@ -396,6 +406,7 @@ void main() {
 
       session.selectGlobalFrame(2);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
@@ -413,6 +424,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       final layer = session.layers.firstWhere((l) => l.id == row.id);
       expect(session.layerStack.celHasContentForLayer(layer, 1), isTrue);
       final before = session.layerStack.celTintRevision.value;
@@ -447,6 +459,7 @@ void main() {
     session.selectLayer(row.id);
     session.selectFrameIndex(1);
     await tester.pumpAndSettle();
+    await theMoveLands(tester, session);
     final key = session.brushFrameKeyForCut(
       session.requireActiveCut,
       row.id,
@@ -556,6 +569,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(session.canUndo, isFalse, reason: '⛔fixture');
 
       await pressTheHead(tester);
