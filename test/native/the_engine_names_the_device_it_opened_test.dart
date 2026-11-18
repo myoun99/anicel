@@ -18,6 +18,7 @@ void main() {
     final name = appGpuEngine.adapterName;
     final memory = appGpuEngine.videoMemory;
     String mb(int? bytes) => bytes == null ? '-' : '${bytes >> 20} MB';
+    // ignore: avoid_print — printing is what this test is for.
     print(
       'engine device: $name · integrated ${memory.integrated} · '
       'used ${mb(memory.used)} · budget ${mb(memory.budget)} · '
