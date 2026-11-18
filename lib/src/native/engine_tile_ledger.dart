@@ -538,12 +538,7 @@ final GpuEngine _engine;
     slot.place.slot = null;
     pool.release(slot.at);
     _slotCount -= 1;
-    _letGoes += 1;
   }
-
-  /// How many slots have been let go ([_letGo]): a grid kept for a map of
-  /// tiles ([_gridOf]) stands while none has been since it was kept.
-  int _letGoes = 0;
 
   /// The pool's cel of each cel asked for, by the name the caller gives it.
   final Map<Object, int> _cels = {};
@@ -731,8 +726,9 @@ final GpuEngine _engine;
   }
 
   /// [TileHold.gridOf]: the grid answered for [tiles] the last time, where
-  /// no slot has been let go since ([_letGoes]) — [hold] then holds its
-  /// keys as they were kept —, else the grid asked anew, and kept.
+  /// none of the slots it answered is out ([_Slot.out]) — [hold] then
+  /// holds its keys as they were kept —, else the grid asked anew, and
+  /// kept.
   ///
   /// 🚨A MAP OF TILES IS ASKED AGAIN AT EVERY PLAN (card
   /// every-plan-asks-every-rows-tile-slots-again): a plan asks every row's
@@ -740,16 +736,22 @@ final GpuEngine _engine;
   /// as its frame's picture is patched and at every frame the band bakes,
   /// and a row that did not change hands over the same map — its
   /// surface's own, which no one writes to. A slot changes only where it
-  /// is let go, so a grid stands till one is. 🔬The test VM, S5_BA cut
-  /// 352 (68 rows), a stroke on a full band: 282 ms of the UI thread's
-  /// 1,566 asking every row's slots, 18% (2026-11-18).
+  /// is let go, or moved to a shell's tile ([_shellOf]) — out, either
+  /// way —, so a grid stands while none of its own is. 🔬The test VM,
+  /// S5_BA cut 352 (68 rows), a stroke on a full band: 282 ms of the UI
+  /// thread's 1,566 asking every row's slots, 18% (2026-11-18).
+  /// ↩️It stood while no slot at all had been let go since (cd6c872a6,
+  /// mine): the tiles a stroke leaves behind are collected as it goes,
+  /// each letting its slot go, so hardly a plan found its grids — 🔬the
+  /// same stroke after it, 159 ms of 1,279 still asking, 118 of them each
+  /// tile's slot (k1279).
   TileGrid _gridOf(
     TileHold hold,
     Object cel,
     Map<TileCoord, BitmapTile> tiles,
   ) {
     final kept = _grids[tiles];
-    if (kept != null && kept.letGoes == _letGoes) {
+    if (kept != null && !kept.slots.any((slot) => slot.out)) {
       hold._keptKeys.add(kept.keys);
       return kept.grid;
     }
@@ -758,10 +760,10 @@ final GpuEngine _engine;
     final y0 = coords.map((coord) => coord.y).reduce(math.min);
     final columns = coords.map((coord) => coord.x).reduce(math.max) - x0 + 1;
     final rows = coords.map((coord) => coord.y).reduce(math.max) - y0 + 1;
-    final slots = _slotsOf(hold, cel, tiles.values.toList());
+    final slots = _heldSlotsOf(hold, cel, tiles.values.toList());
     final grid = List<GpuTile?>.filled(columns * rows, null);
     for (final (at, coord) in coords.indexed) {
-      grid[(coord.y - y0) * columns + coord.x - x0] = slots[at];
+      grid[(coord.y - y0) * columns + coord.x - x0] = slots[at].at;
     }
     final answered = (
       x0: x0,
@@ -770,9 +772,8 @@ final GpuEngine _engine;
       rows: rows,
       tiles: List<GpuTile?>.unmodifiable(grid),
     );
-    // Counted once the store is done: one made room by letting slots go.
     _grids[tiles] = (
-      letGoes: _letGoes,
+      slots: slots,
       keys: Set<Object>.identity()
         ..addAll(tiles.values.map((tile) => tile.pixelsKey)),
       grid: answered,
@@ -788,7 +789,16 @@ final GpuEngine _engine;
   @visibleForTesting
   int debugSlotsAsked = 0;
 
-  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
+  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) =>
+      [for (final slot in _heldSlotsOf(hold, cel, tiles)) slot.at];
+
+  /// The slot of each of [tiles], held by [hold] — stored on [cel]'s pages
+  /// where it has none ([_slotsOf]).
+  List<_Slot> _heldSlotsOf(
+    TileHold hold,
+    Object cel,
+    List<BitmapTile> tiles,
+  ) {
     debugSlotsAsked += tiles.length;
     _refuseOtherGrids(tiles);
     hold._keys.addAll(tiles.map((tile) => tile.pixelsKey));
@@ -801,7 +811,7 @@ final GpuEngine _engine;
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
     }
-    return [for (final tile in tiles) _slotNow(tile)!.at];
+    return [for (final tile in tiles) _slotNow(tile)!];
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
@@ -1264,8 +1274,8 @@ final class _KeptCel {
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for
 /// through it stay till that call returns.
 /// A grid answered for a map of tiles ([EngineTileLedger._gridOf]): the
-/// let-goes counted then, its tiles' keys, and the grid.
-typedef _KeptGrid = ({int letGoes, Set<Object> keys, TileGrid grid});
+/// slots it answered, its tiles' keys, and the grid.
+typedef _KeptGrid = ({List<_Slot> slots, Set<Object> keys, TileGrid grid});
 
 /// What [TileHold.gridOf] answers.
 typedef TileGrid = ({

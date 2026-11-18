@@ -507,6 +507,25 @@ void main() {
     expect(anew.tiles.first, isNotNull);
   });
 
+  // A stroke's tiles are collected as it goes, each letting its slot go
+  // (card every-plan-asks-every-rows-tile-slots-again, k1279).
+  test('a slot of no tile of the map let go leaves its grid answered as it '
+      'was', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tiles = {TileCoord(x: 0, y: 0): tileOf(54)};
+    final other = tileOf(55);
+    ledger.held((hold) => hold.slotsOf(b, [other]));
+    final grid = ledger.held((hold) => hold.gridOf(a, tiles));
+    final asked = ledger.debugSlotsAsked;
+
+    ledger.retire(other);
+    final again = ledger.held((hold) => hold.gridOf(a, tiles));
+
+    expect(ledger.slotOf(other), isNull, reason: 'the premise: let go');
+    expect(ledger.debugSlotsAsked, asked);
+    expect(again.tiles, grid.tiles);
+  });
+
   test('🚨a grid answered as it was kept holds its tiles — a full pool '
       'lets none of them go', () {
     final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
