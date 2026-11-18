@@ -237,6 +237,13 @@ pub(crate) fn hold() -> MutexGuard<'static, Option<Kept>> {
     kept()
 }
 
+/// Sends a read of `history` made `at`, as the receiver sends one — for a
+/// test to hand the UI's thread what was read.
+#[cfg(test)]
+pub(crate) fn sent(history: Vec<Move>, found: i32, at: i64) {
+    let _ = SENT.0.send(Read { history, found, at });
+}
+
 /// The receiver's reads so far, for a test to time its turns by.
 #[cfg(test)]
 pub(crate) static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

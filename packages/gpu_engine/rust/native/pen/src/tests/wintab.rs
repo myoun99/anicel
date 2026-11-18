@@ -1211,6 +1211,45 @@ fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     assert_eq!(times, [2_000, 3_000], "each at when it was heard, not its millisecond");
 }
 
+// 🚨THE RECEIVER ONLY SENDS WHAT IT READ, AND A MESSAGE HEARS IT FIRST, IN
+// THE ORDER READ (pen-receive-threads-are-one): it heard into what was kept
+// itself, under the lock a message takes its moves with.
+#[test]
+fn a_mouse_message_hears_what_the_receiver_sent_before_it_in_the_order_read() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    // SAFETY: the window shown, and a local.
+    unsafe {
+        let _ = PostMessageW(Some(window.0), WM_NULL, WPARAM(0), LPARAM(0));
+        let mut message = MSG::default();
+        let _ = PeekMessageW(&mut message, Some(window.0), 0, 0, PM_REMOVE);
+    }
+    // SAFETY: the time of the last message this thread took.
+    let time = unsafe { GetMessageTime() } as u32;
+    let far: i16 = -21_000;
+    let mut there = POINT { x: far.into(), y: far.into() };
+    // SAFETY: the window shown, and a local.
+    let _ = unsafe { ClientToScreen(window.0, &mut there) };
+    // Nothing sent before this test's press: a read already under way ends.
+    crate::mouse_kept::release();
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    crate::mouse_kept::release();
+    crate::mouse_kept::keep_from(crate::mouse_kept::Kept::from((there.x - 20, there.y, time), 1_000));
+    let at = |dx: i32| (there.x + dx, there.y, time);
+    crate::mouse_kept::sent(vec![at(-10), at(-20)], 2, 2_000);
+    crate::mouse_kept::sent(vec![at(0), at(-10), at(-20)], 3, 3_000);
+    crate::points_win::forget_written();
+    let word = (far as u16) as isize;
+    crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    let at = (f64::from(far), f64::from(far));
+    let points = crate::points::book().take(crate::points::Kind::Mouse, at).expect("the message's");
+    let places: Vec<f64> = points.iter().map(|point| point.x).collect();
+    assert_eq!(places, [f64::from(far) - 10.0, f64::from(far)], "the move read before it, then its own");
+    let times: Vec<i64> = points.iter().map(|point| point.micros).collect();
+    assert_eq!(times, [2_000, 3_000], "each at the read that heard it");
+}
+
 #[test]
 fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
     let (driver, _turn) = driver();
