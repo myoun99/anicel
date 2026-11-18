@@ -124,6 +124,8 @@ import '../../services/layer_pose_matrix.dart' show placedRectBounds;
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
+import '../../core/progress_share.dart';
+import '../../core/screens_turn.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -2260,6 +2262,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               onLiftReverted:
                   _lift.handleLiftReverted,
               confirmLandsOn: () => _lift.confirmLandsOn,
+              confirmAhead: _lift.confirmAhead,
               // R26 #13 follow-up: the implicit
               // whole-picture box frames the
               // cel's tight ink bounds.

@@ -27,13 +27,19 @@ import 'settle_async.dart';
 /// that frame: the window starts its work right after it (`endOfFrame`),
 /// and a stretch that takes no real time — a pool registering small files
 /// — has told all of itself before a test body after `pump()` can listen.
-List<double> watchTheBar(WidgetTester tester) {
+///
+/// [onShare] hears each share as it is told, inside the work that tells it.
+List<double> watchTheBar(
+  WidgetTester tester, {
+  void Function(double share)? onShare,
+}) {
   final told = <double>[];
   _listenFromItsFirstFrame(tester, (window) {
     final progress = window.progress;
     void record() {
       if (progress.value case final fraction?) {
         told.add(fraction);
+        onShare?.call(fraction);
       }
     }
 

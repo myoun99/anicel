@@ -27,6 +27,8 @@ import 'package:anicel/src/services/canvas_selection.dart'
     show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/command.dart' show Command;
+import 'package:anicel/src/services/commands/brush_lift_move_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/stamp_carry.dart' show applyHomography;
 import 'package:anicel/src/services/layer_pose_matrix.dart'
@@ -61,7 +63,8 @@ import '../helpers/placement_reading.dart';
 import '../helpers/the_points_the_os_saw.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
-import '../helpers/wait_window.dart' show stepBehind, windowBehind;
+import '../helpers/wait_window.dart'
+    show expectOneBar, stepBehind, watchTheBar, windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
@@ -153,13 +156,15 @@ void main() {
     // …and where each cel of the ladder's row stands (④). Null = every cel
     // through the standing row's.
     LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf,
+    // The history the panel lands in. Null = a plain one.
+    HistoryManager? withHistory,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
       canvasSize: canvasSize,
     );
-    final history = HistoryManager();
+    final history = withHistory ?? HistoryManager();
     final commands = CanvasSelectionCommands();
     // 🚨★★★**ONE SINK, HELD.** It was built inline in `pumpWith`, so every
     // pump handed the panel a NEW one and nothing outside could tell the
@@ -1916,6 +1921,125 @@ void main() {
       isNonZero,
       reason: '⛔ONE undo takes BOTH cels back, or it was two entries',
     );
+  });
+
+  /// 🗣️F-615 (유저 2026-11-19): 「항상 하듯이 ui안멈추게 뒤에서 돌게?하고
+  /// 대상 프레임 수에 맞춰서 몇퍼센트인지 표시. 말한것들은 다른 진행창뜨는거에
+  /// 다 통일적용」. A confirm over a range works every cel past the one it
+  /// lifted out ahead of its step, behind its window, a cel at a time — and
+  /// the step lands what was worked out.
+  group('🗣️F-615: a confirm over a range works the range out ahead', () {
+    /// Frames two and three drawn at (45,45) beside the fixture's frame one,
+    /// a box opened over frame one with nothing selected and moved by
+    /// (10,5), and [history] the panel lands in.
+    Future<
+      ({
+        BrushFrameEditingCoordinator coordinator,
+        List<BrushFrameKey> keys,
+        CanvasSelectionCommands commands,
+      })
+    >
+    moved(WidgetTester tester, HistoryManager history) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+        withHistory: history,
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+      return (
+        coordinator: env.coordinator,
+        keys: keys,
+        commands: env.commands,
+      );
+    }
+
+    testWidgets('it tells the range\'s share a cel at a time, and its step '
+        'makes none of what was made ahead', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async => env.commands.applyTransform()),
+        isNotNull,
+      );
+      // Frame one is the lift's own; frames two and three, a third each.
+      expectOneBar(told, [2 / 3, 1]);
+      expect(
+        history.derivesAtTheStep,
+        [0, 1, 1],
+        reason:
+            'the step came to frames two and three made — the lifted cel\'s '
+            'own is made in it',
+      );
+      expect(history.derivesAfterIt, [1, 1, 1], reason: 'and made no more');
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+      expect(inkAt(env.coordinator, 45, 45), 0, reason: 'and left nothing');
+    });
+
+    testWidgets('a cel drawn on after it was worked out is worked again '
+        'over what it holds — its new ink moves with the rest', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+      final drawnOn = env.keys[1];
+      var drawn = false;
+
+      watchTheBar(
+        tester,
+        onShare: (share) {
+          // Frame two's share told: it is worked out and made, and the step
+          // has not come. ⚠️Straight into the cel, not by standing on it —
+          // a walk would carry the session off.
+          if (drawn || share < 0.5) {
+            return;
+          }
+          drawn = true;
+          env.coordinator.restoreSurfaceSnapshot(
+            drawnOn,
+            env.coordinator.deriveSurfaceWith([dab(30, 30)], key: drawnOn)!,
+          );
+        },
+      );
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      expect(drawn, isTrue, reason: '⛔premise: drawn on behind the window');
+      expect(
+        history.derivesAtTheStep,
+        [0, 0, 1],
+        reason: 'frame two was worked again in the step, frame three not',
+      );
+      env.coordinator.selectFrame(drawnOn);
+      expect(
+        inkAt(env.coordinator, 40, 35),
+        isNonZero,
+        reason: 'the ink drawn on it moved with the rest of its picture',
+      );
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: '⛔left behind is a landing worked out over the old picture',
+      );
+    });
   });
 
   /// 🚨★★★**H41 — WITH NOTHING SELECTED, EVERY CEL MOVES ITS WHOLE PICTURE.**
@@ -9322,4 +9446,19 @@ void main() {
       }
     });
   });
+}
+
+/// A history that keeps how many landings each move landing of a step had
+/// made as the step came to it, and once it had landed.
+class _StepsKept extends HistoryManager {
+  final derivesAtTheStep = <int>[];
+  final derivesAfterIt = <int>[];
+
+  @override
+  void executeAsOneStep(String description, List<Command> commands) {
+    final landings = commands.whereType<BrushLiftMoveHistoryCommand>();
+    derivesAtTheStep.addAll([for (final one in landings) one.derivesHere]);
+    super.executeAsOneStep(description, commands);
+    derivesAfterIt.addAll([for (final one in landings) one.derivesHere]);
+  }
 }

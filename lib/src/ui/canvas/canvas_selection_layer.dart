@@ -23,6 +23,7 @@ import '../../models/app_input_settings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart' show ShiftLine;
 import '../../services/input/modifier_keys.dart';
@@ -120,6 +121,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.confirmLandsOn,
+    this.confirmAhead,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
@@ -338,6 +340,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// pressed: its wait window's measure (F-566). Null for a host that lands
   /// on the one cel it shows.
   final Iterable<Object> Function()? confirmLandsOn;
+
+  /// 🗣️F-615: the work a confirm of the session [liftToken] has ahead of
+  /// it, given what the open box does to the canvas ([StampCarry]) — asked
+  /// beside [confirmLandsOn] as 확정 is pressed, and worked behind the same
+  /// wait window before the confirm lands. Null for a host with nothing to
+  /// work out ahead.
+  final WorkAhead? Function(int liftToken, StampCarry? carry)? confirmAhead;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -1394,11 +1403,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// every cel of a range or a folder is drawn again (🗣️F-551, 유저
   /// 2026-11-04). A cel's own lands at once (🗣️F-566: 「변형도 셀 하나만
   /// 할때는 진행창안띄움」).
+  ///
+  /// 🗣️F-615: what the confirm works out cel by cel goes ahead of it,
+  /// behind the window, told as a share of the range
+  /// ([CanvasSelectionLayer.confirmAhead]) — the box as it stands when 확정
+  /// is pressed is what the range lands with.
   void _confirmBehindTheWaitWindow() {
+    final ahead = switch (_session) {
+      final session? => widget.confirmAhead?.call(
+        session.token,
+        floatWarp.carry,
+      ),
+      null => null,
+    };
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        (ahead: null, step: _confirmSession),
+        (ahead: ahead, step: _confirmSession),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.confirm),
         ),
