@@ -179,7 +179,7 @@ Map<BrushFrameKey, PieceDab> pieceDabs({
       continue;
     }
     // 🚨ONE LANDING PER PHYSICAL CEL, AND THE MAP IS WHAT SAYS SO — the
-    // form a transform's landings keep (`_landingsPerCel`); 유저's word for
+    // form a transform's landings keep (`landingsPerCel`); 유저's word for
     // this door is 「변형도구처럼」.
     //
     // ↩️A set of the cels ASKED stood beside the map (the paste's older

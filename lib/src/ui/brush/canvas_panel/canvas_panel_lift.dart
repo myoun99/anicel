@@ -29,9 +29,12 @@ part of '../brush_canvas_panel.dart';
 /// is why a seek, a row press and a cut switch were refused for as long as a
 /// box was open (F-116·F-86, 유저: 「타임라인쪽 조작이 안먹힘」).
 class _CanvasPanelLift {
-  _CanvasPanelLift(this._state);
+  _CanvasPanelLift(this._state) : _range = _ConfirmRange(_state);
 
   final _BrushCanvasPanelState _state;
+
+  /// The range a confirm reaches past the session's own cels.
+  final _ConfirmRange _range;
 
   /// The open session, or null when no move is pending.
   _MoveSession? _session;
@@ -76,8 +79,9 @@ class _CanvasPanelLift {
   }
 
   /// The cels a confirm of the open session lands on: the ones it lifted,
-  /// and every one the ladder names beside them ([_landingsPerCel]) — as
-  /// their keys spell them, a cel named twice once. Empty with no session.
+  /// and every one the ladder names beside them
+  /// ([_ConfirmRange.landingsPerCel]) — as their keys spell them, a cel
+  /// named twice once. Empty with no session.
   Iterable<BrushFrameKey> get confirmLandsOn sync* {
     final session = _session;
     if (session == null) {
@@ -148,19 +152,6 @@ class _CanvasPanelLift {
     }
     return session;
   }
-
-  /// The dabs a landing writes, in the order that makes the picture: the
-  /// erase the session has been SHOWING, then the stamp where it ended up.
-  ///
-  /// 🚨★★★**BOTH, AND IN THIS ORDER** — the session's hole was a view, so
-  /// the landing is the first time the cel hears about it at all. Landing
-  /// the stamp alone (which is what this did while the erase was committed
-  /// up front) would leave the original pixels under the moved copy: the
-  /// ink twice, once where it was and once where it went.
-  List<BrushDab> _landingDabs(BrushDab eraseDab, BrushDab stampDab) => [
-    eraseDab,
-    stampDab,
-  ];
 
   /// The landing of [cel]: its erase, then the float it ends with back in
   /// the artwork of the row it was lifted from — the one crossing a landing
@@ -249,6 +240,160 @@ class _CanvasPanelLift {
     );
   }
 
+  /// 🗣️F-615 — the work a confirm of the session [liftToken] has ahead of
+  /// it, over the range it reaches ([_ConfirmRange.ahead]). Null with no
+  /// such session.
+  WorkAhead? confirmAhead(int liftToken, StampCarry? carry) {
+    final session = _session;
+    if (session == null || session.token != liftToken) {
+      return null;
+    }
+    return _range.ahead(session, carry);
+  }
+
+  /// R16-① confirm: lands the move as ONE undo entry whose undo target is
+  /// the picture the session opened on — which is simply each cel as it
+  /// stands, because the session never wrote to any of them.
+  ///
+  /// [stampDabs] is one per float the lift gave the layer, in the order of
+  /// [_MoveSession.cels].
+  void handleLiftConfirmed(
+    int liftToken,
+    List<BrushDab> stampDabs,
+    StampCarry? carry,
+  ) {
+    final coordinator = _state.widget.coordinator;
+    final session = _closeSession(liftToken);
+    if (coordinator == null || session == null) {
+      return;
+    }
+    // The setState rebuilds the interactive view onto the post-confirm
+    // surface (R17-①b: without it the landed stamp stayed invisible until
+    // an unrelated rebuild). Mounted guard: the layer's unmount path
+    // confirms post-frame, possibly after this panel went with it.
+    void run() {
+      final historyManager = _state.widget.historyManager;
+      final doors = _selectionDoors();
+      final landed = <BrushFrameKey, Command>{};
+      for (final (i, cel) in session.cels.indexed) {
+        landed.putIfAbsent(
+          coordinator.frameStore.canonicalKeyOf(cel.key),
+          () => BrushLiftMoveHistoryCommand(
+            coordinator: coordinator,
+            frameKey: cel.key,
+            // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
+            // snapshot taken before the erase and held for the whole
+            // session, outside every budget; there is nothing to take a
+            // snapshot of ahead of time when the session writes nothing.
+            preLiftSurface: coordinator.currentSurfaceOf(cel.key),
+            landingDabs: _landingOf(cel, stampDabs[i]),
+            cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+            // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27:
+            // 「언두 하면 그림만 돌리는게아니라 선택도 이전 선택으로
+            // 되돌리기」 — a transform moves the outline as much as the
+            // drawing, and one confirm has to come back as one undo. It
+            // rides the FIRST cel's landing, once: one outline, one step.
+            //
+            // 🚨★★★**THE SELECTION THE SESSION OPENED WITH, NOT THE ONE
+            // STANDING NOW** (F-231 ②, 유저 2026-09-29: 「언두하면 선택도구
+            // 개미행렬 라인이 과거로 안돌아가고 그것만 남아있는데」). This
+            // read the channel here, at the confirm — after the box had
+            // already moved the region onto the landed pixels — so the undo
+            // "restored" the moved outline and only the pixels went back.
+            regionBefore: i == 0 ? session.userSelection : null,
+            readRegion: i == 0 ? doors.read : null,
+            restoreRegion: i == 0 ? doors.restore : null,
+          ),
+        );
+      }
+      if (historyManager == null) {
+        // Headless hosts (focused tests): every cel lands, none recorded.
+        for (final landing in landed.values) {
+          landing.execute();
+        }
+        return;
+      }
+      historyManager.executeAsOneStep(
+        landed.values.first.description,
+        _range.landingsPerCel(session, landed, carry).values.toList(),
+      );
+    }
+
+    if (_state.mounted) {
+      _state._rebuild(run);
+    } else {
+      run();
+    }
+  }
+
+  /// The selection doors a confirmed move's undo entry keeps for its whole
+  /// life: read the live selection, put one back.
+  ///
+  /// 🚨★★★MADE HERE, AWAY FROM THE LANDING — AND THAT IS THE FIX, NOT A
+  /// TIDY-UP (C-ipad-crash ①, 2026-09-15). A Dart closure keeps the whole
+  /// SCOPE it was made in, not just the names it reads. Written inline in
+  /// [handleLiftConfirmed], these two kept that call's pre-lift picture and
+  /// the landed stamp's RGBA alive for as long as the entry stayed in the
+  /// history — through parking, outside every budget, while
+  /// [BrushLiftMoveHistoryCommand] nulled its own copies and reported zero.
+  /// 🔬A VM heap snapshot after ten ×2 → ×0.5 transforms of a 2000×1400
+  /// picture: 526.9MB of stamps and 70MB of tiles held by nothing but this
+  /// context — the user's 「반복시마다 약 150mb」.
+  /// ⛔Nothing big may be in scope where a closure that outlives the call is
+  /// made; a method whose only local is `this` cannot hold anything else.
+  ({
+    CanvasSelectionRegion? Function() read,
+    void Function(CanvasSelectionRegion? region) restore,
+  })
+  _selectionDoors() => (
+    read: () => _state.widget.selectionCommands?.region,
+    restore: (region) => _state.widget.selectionCommands?.setRegion(region),
+  );
+
+  /// REVERT of a session (R17-①): the picture is already the pre-lift
+  /// picture, so there is nothing to restore and nothing lands in history.
+  ///
+  /// ↩️This used to put a held snapshot back and could FAIL doing it — the
+  /// payload might have been parked to a file that was gone, and then 「the
+  /// picture stays erased and the floating pixels are gone」 (the wager
+  /// 유저 accepted on 09-08). A revert cannot fail any more: dropping a
+  /// view is not an operation that can refuse.
+  void handleLiftReverted(int liftToken) {
+    if (_closeSession(liftToken) == null) {
+      return;
+    }
+    if (_state.mounted) {
+      _state._rebuild(() {});
+    }
+  }
+
+}
+
+/// The dabs a landing writes, in the order that makes the picture: the
+/// erase the session has been SHOWING, then the stamp where it ended up.
+///
+/// 🚨★★★**BOTH, AND IN THIS ORDER** — the session's hole was a view, so
+/// the landing is the first time the cel hears about it at all. Landing
+/// the stamp alone (which is what this did while the erase was committed
+/// up front) would leave the original pixels under the moved copy: the
+/// ink twice, once where it was and once where it went.
+List<BrushDab> _landingDabs(BrushDab eraseDab, BrushDab stampDab) => [
+  eraseDab,
+  stampDab,
+];
+
+/// 🗣️F-615 — the frame range a confirm reaches past the cels its session
+/// lifted: walked once ([_rangeRows]), at the step's pace or a row at a
+/// time behind the wait window ([ahead]).
+///
+/// A collaborator carved out of [_CanvasPanelLift] (2026-11-19) when the
+/// range's work-ahead took it past six hundred lines. It reaches the panel
+/// through `_state`.
+class _ConfirmRange {
+  _ConfirmRange(this._state);
+
+  final _BrushCanvasPanelState _state;
+
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
   ///
@@ -291,7 +436,7 @@ class _CanvasPanelLift {
   /// 「불가능하면 그냥 무시」 is the two nulls: a cel the ladder names but
   /// that yields no lift (nothing in it, nothing under the outline) simply
   /// contributes no landing.
-  Map<BrushFrameKey, Command> _landingsPerCel(
+  Map<BrushFrameKey, Command> landingsPerCel(
     _MoveSession session,
     Map<BrushFrameKey, Command> landed,
     StampCarry? carry,
@@ -326,9 +471,9 @@ class _CanvasPanelLift {
   ///
   /// 🗣️F-615 (유저 2026-11-19): 「항상 하듯이 ui안멈추게 뒤에서 돌게?하고
   /// 대상 프레임 수에 맞춰서 몇퍼센트인지 표시」. The step takes the walk
-  /// whole ([_landingsPerCel]); the work ahead of a confirm behind the wait
+  /// whole ([landingsPerCel]); the work ahead of a confirm behind the wait
   /// window takes it a row at a time, the screen's turn between
-  /// ([confirmAhead]). ⛔One walk at two paces — which rows land, and
+  /// ([ahead]). ⛔One walk at two paces — which rows land, and
   /// through which key, is this function's alone.
   ///
   /// Every row the range names whose cel is still to land, in the range's
@@ -472,20 +617,18 @@ class _CanvasPanelLift {
     );
   }
 
-  /// 🗣️F-615 — the work a confirm of the session [liftToken] has ahead of
-  /// it, asked as 확정 is pressed: every row of the range past the
-  /// session's own cels worked ([_workRow]) and made
-  /// ([BrushLiftMoveHistoryCommand.workAhead]), a row at a time with the
-  /// screen's turn between and the range's share of it told — so the step
-  /// lands what is already made. Null with no such session.
+  /// 🗣️F-615 — the work a confirm of [session] has ahead of it, asked as
+  /// 확정 is pressed: every row of the range past the session's own cels
+  /// worked ([_workRow]) and made ([BrushLiftMoveHistoryCommand.workAhead]),
+  /// a row at a time with the screen's turn between and the range's share
+  /// of it told — so the step lands what is already made.
   ///
   /// ⚠️The range lands with the [carry] the box showed as 확정 was pressed:
   /// the wait window keeps every hand off the box until the step has
   /// landed (`takeBehindTheWaitWindow`).
-  WorkAhead? confirmAhead(int liftToken, StampCarry? carry) {
-    final session = _session;
+  WorkAhead? ahead(_MoveSession session, StampCarry? carry) {
     final coordinator = _state.widget.coordinator;
-    if (session == null || session.token != liftToken || coordinator == null) {
+    if (coordinator == null) {
       return null;
     }
     return (report) async {
@@ -507,123 +650,6 @@ class _CanvasPanelLift {
       }
     };
   }
-
-  /// R16-① confirm: lands the move as ONE undo entry whose undo target is
-  /// the picture the session opened on — which is simply each cel as it
-  /// stands, because the session never wrote to any of them.
-  ///
-  /// [stampDabs] is one per float the lift gave the layer, in the order of
-  /// [_MoveSession.cels].
-  void handleLiftConfirmed(
-    int liftToken,
-    List<BrushDab> stampDabs,
-    StampCarry? carry,
-  ) {
-    final coordinator = _state.widget.coordinator;
-    final session = _closeSession(liftToken);
-    if (coordinator == null || session == null) {
-      return;
-    }
-    // The setState rebuilds the interactive view onto the post-confirm
-    // surface (R17-①b: without it the landed stamp stayed invisible until
-    // an unrelated rebuild). Mounted guard: the layer's unmount path
-    // confirms post-frame, possibly after this panel went with it.
-    void run() {
-      final historyManager = _state.widget.historyManager;
-      final doors = _selectionDoors();
-      final landed = <BrushFrameKey, Command>{};
-      for (final (i, cel) in session.cels.indexed) {
-        landed.putIfAbsent(
-          coordinator.frameStore.canonicalKeyOf(cel.key),
-          () => BrushLiftMoveHistoryCommand(
-            coordinator: coordinator,
-            frameKey: cel.key,
-            // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
-            // snapshot taken before the erase and held for the whole
-            // session, outside every budget; there is nothing to take a
-            // snapshot of ahead of time when the session writes nothing.
-            preLiftSurface: coordinator.currentSurfaceOf(cel.key),
-            landingDabs: _landingOf(cel, stampDabs[i]),
-            cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-            // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27:
-            // 「언두 하면 그림만 돌리는게아니라 선택도 이전 선택으로
-            // 되돌리기」 — a transform moves the outline as much as the
-            // drawing, and one confirm has to come back as one undo. It
-            // rides the FIRST cel's landing, once: one outline, one step.
-            //
-            // 🚨★★★**THE SELECTION THE SESSION OPENED WITH, NOT THE ONE
-            // STANDING NOW** (F-231 ②, 유저 2026-09-29: 「언두하면 선택도구
-            // 개미행렬 라인이 과거로 안돌아가고 그것만 남아있는데」). This
-            // read the channel here, at the confirm — after the box had
-            // already moved the region onto the landed pixels — so the undo
-            // "restored" the moved outline and only the pixels went back.
-            regionBefore: i == 0 ? session.userSelection : null,
-            readRegion: i == 0 ? doors.read : null,
-            restoreRegion: i == 0 ? doors.restore : null,
-          ),
-        );
-      }
-      if (historyManager == null) {
-        // Headless hosts (focused tests): every cel lands, none recorded.
-        for (final landing in landed.values) {
-          landing.execute();
-        }
-        return;
-      }
-      historyManager.executeAsOneStep(
-        landed.values.first.description,
-        _landingsPerCel(session, landed, carry).values.toList(),
-      );
-    }
-
-    if (_state.mounted) {
-      _state._rebuild(run);
-    } else {
-      run();
-    }
-  }
-
-  /// The selection doors a confirmed move's undo entry keeps for its whole
-  /// life: read the live selection, put one back.
-  ///
-  /// 🚨★★★MADE HERE, AWAY FROM THE LANDING — AND THAT IS THE FIX, NOT A
-  /// TIDY-UP (C-ipad-crash ①, 2026-09-15). A Dart closure keeps the whole
-  /// SCOPE it was made in, not just the names it reads. Written inline in
-  /// [handleLiftConfirmed], these two kept that call's pre-lift picture and
-  /// the landed stamp's RGBA alive for as long as the entry stayed in the
-  /// history — through parking, outside every budget, while
-  /// [BrushLiftMoveHistoryCommand] nulled its own copies and reported zero.
-  /// 🔬A VM heap snapshot after ten ×2 → ×0.5 transforms of a 2000×1400
-  /// picture: 526.9MB of stamps and 70MB of tiles held by nothing but this
-  /// context — the user's 「반복시마다 약 150mb」.
-  /// ⛔Nothing big may be in scope where a closure that outlives the call is
-  /// made; a method whose only local is `this` cannot hold anything else.
-  ({
-    CanvasSelectionRegion? Function() read,
-    void Function(CanvasSelectionRegion? region) restore,
-  })
-  _selectionDoors() => (
-    read: () => _state.widget.selectionCommands?.region,
-    restore: (region) => _state.widget.selectionCommands?.setRegion(region),
-  );
-
-  /// REVERT of a session (R17-①): the picture is already the pre-lift
-  /// picture, so there is nothing to restore and nothing lands in history.
-  ///
-  /// ↩️This used to put a held snapshot back and could FAIL doing it — the
-  /// payload might have been parked to a file that was gone, and then 「the
-  /// picture stays erased and the floating pixels are gone」 (the wager
-  /// 유저 accepted on 09-08). A revert cannot fail any more: dropping a
-  /// view is not an operation that can refuse.
-  void handleLiftReverted(int liftToken) {
-    if (_closeSession(liftToken) == null) {
-      return;
-    }
-    if (_state.mounted) {
-      _state._rebuild(() {});
-    }
-  }
-
 }
 
 /// An open move session: the cels it holds lifted, and the selection it was
@@ -679,8 +705,8 @@ class _MoveSession {
 
   /// 🗣️F-615: what each row of the range a confirm reaches lands as, as far
   /// as it has been worked out — a row at a time by the work ahead of a
-  /// confirm behind the wait window ([_CanvasPanelLift.confirmAhead]), and
-  /// whatever is left by its step ([_CanvasPanelLift._landingsPerCel]).
+  /// confirm behind the wait window ([_ConfirmRange.ahead]), and
+  /// whatever is left by its step ([_ConfirmRange.landingsPerCel]).
   /// Keyed by the row's key; a row whose cel lands nothing is kept too, so
   /// it is not worked twice.
   final Map<BrushFrameKey, _RowWork> range = {};
