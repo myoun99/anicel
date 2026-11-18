@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show endAcross, offsetAlong, partAlong;
@@ -36,6 +39,11 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler.dart'
     show TimelineFrameRuler;
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart'
+    show TimelineCutEndDragCallbacks;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -1472,6 +1480,92 @@ void main() {
     expect(ruler().playbackFrameCount, 16);
   });
 
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): ...and each
+  // thing the ruler draws, moved alone on a living grid, builds it again.
+  // ⚠️A fact the ruler drops is a row here that goes red. Its height is its
+  // rows' (`layerRowHeight`), which moves the metrics with it.
+  group('the ruler hears each thing it draws, alone:', () {
+    final trim = TimelineCutEndDragCallbacks(
+      cutId: const CutId('cut-1'),
+      onBegin: () => true,
+      onUpdate: (_) {},
+      onEnd: () {},
+      onCancel: () {},
+    );
+    final moves =
+        <
+          String,
+          Widget Function(
+            ValueNotifier<int> cursor,
+            ValueNotifier<TimelineDragPreview?> channel,
+          )
+        >{
+          'its cell (a zoom)': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            metrics: _testMetrics.copyWith(frameCellWidth: 40),
+          ),
+          'the rate it counts': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            projectFrameRate: const ProjectFrameRate.integer(30),
+          ),
+          'its ready signal': (cursor, channel) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            frameReadySignal: channel,
+          ),
+          'how it counts': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            rulerView: FrameRulerView.secondsPlusFrames,
+          ),
+          'its pages': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            sheetPages: const TimelineRulerPages.every(144),
+          ),
+          'a drag\'s channel': (cursor, channel) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            dragPreview: channel,
+          ),
+          'a trim\'s hooks': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            cutEndDrag: trim,
+          ),
+        };
+    for (final MapEntry(key: name, value: moved) in moves.entries) {
+      testWidgets(name, (tester) async {
+        final cursor = ValueNotifier<int>(0);
+        addTearDown(cursor.dispose);
+        final channel = ValueNotifier<TimelineDragPreview?>(null);
+        addTearDown(channel.dispose);
+        TimelineFrameRuler ruler() =>
+            tester.widget(find.byType(TimelineFrameRuler));
+        Widget still() => _grid(playbackFrameCount: 400, frameCursor: cursor);
+        await tester.pumpWidget(still());
+        final kept = ruler();
+        await tester.pumpWidget(still());
+        expect(
+          identical(ruler(), kept),
+          isTrue,
+          reason: '⛔premise: the same facts keep it',
+        );
+
+        await tester.pumpWidget(moved(cursor, channel));
+
+        expect(
+          ruler().frameEndIndexExclusive,
+          kept.frameEndIndexExclusive,
+          reason: '⛔premise: the room it is built for stands',
+        );
+        expect(identical(ruler(), kept), isFalse);
+      });
+    }
+  });
+
   testWidgets('renders cut end boundary after playback frames', (tester) async {
     await tester.pumpWidget(_grid(playbackFrameCount: 24));
 
@@ -2500,6 +2594,12 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
 Widget _grid({
   int currentFrameIndex = 0,
   ValueNotifier<int>? frameCursor,
+  Listenable? frameReadySignal,
+  ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
+  FrameRulerView rulerView = FrameRulerView.frames,
+  TimelineRulerPages? sheetPages,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
+  TimelineCutEndDragCallbacks? cutEndDrag,
   int playbackFrameCount = 12,
   double width = 900,
   TimelineGridMetrics metrics = _testMetrics,
@@ -2529,6 +2629,12 @@ Widget _grid({
           hooks: TimelineGridHooks(
             activeLayer: ValueNotifier(const LayerId('layer-1')),
             frameCursor: frameCursor ?? ValueNotifier<int>(currentFrameIndex),
+            frameReadySignal: frameReadySignal,
+            projectFrameRate: projectFrameRate,
+            rulerView: rulerView,
+            sheetPages: sheetPages,
+            dragPreview: dragPreview,
+            cutEndDrag: cutEndDrag,
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer:
                 exposureStateForLayer ??
