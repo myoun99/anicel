@@ -133,7 +133,18 @@ pub(crate) const WHOLE: u32 = 65535;
 /// compile a pass binding twenty.
 const OWN_BUFFERS: u32 = 2;
 
-/// Where a stored tile is: a page of the pool, a slot in it.
+/// The bit of a slot's number that says its tile is kept folded
+/// (stored.wgsl's STORED_FOLDED; `kernels/fold` folds one): the rest of
+/// the number is then the granule of the page its words begin at
+/// ([`GRANULE_BYTES`]), not its place among tiles as they are. No page of
+/// tiles as they are has so many slots (`Pool::sized`).
+pub(crate) const FOLDED: u16 = 0x8000;
+/// A granule — what a folded tile's place on its page and its size are
+/// counted in (stored.wgsl's FOLD_GRANULE) — in bytes.
+pub(crate) const GRANULE_BYTES: u64 = 256 * 4;
+
+/// Where a stored tile is: a page of the pool, a slot in it — or, kept
+/// folded, a granule of it ([`FOLDED`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TileAt {
     pub(crate) page: u16,
@@ -151,6 +162,40 @@ impl TileAt {
     /// The tile `word` names ([`Self::word`]) — none for [`NO_TILE`].
     pub(crate) fn of_word(word: u32) -> Option<Self> {
         (word != NO_TILE).then(|| Self { page: (word >> 16) as u16, slot: word as u16 })
+    }
+
+    /// Where on its page the tile's bytes begin, kept as it is — none for
+    /// a folded one ([`FOLDED`]), whose words are no tile's bytes.
+    ///
+    /// ⏳The pool's gather and a picture's placing still spell a slot's
+    /// first byte themselves: no book hands them a folded place yet. Theirs
+    /// to take from here in the lane whose books do (F-610).
+    pub(crate) fn as_it_is(self) -> Option<u64> {
+        (self.slot & FOLDED == 0).then(|| u64::from(self.slot) * TILE_BYTES)
+    }
+
+    /// Where on its page the tile's words begin, kept folded — none for
+    /// one kept as it is.
+    pub(crate) fn folded(self) -> Option<u64> {
+        (self.slot & FOLDED != 0).then(|| u64::from(self.slot ^ FOLDED) * GRANULE_BYTES)
+    }
+
+    /// Fails unless this is a tile's place on one of the pool's `pool`
+    /// pages: its page one of them, and what is surely the tile's — its
+    /// bytes as it is, a folded one's table — within the page.
+    pub(crate) fn stored_on(self, pool: &[wgpu::Buffer]) -> Option<()> {
+        let Some(page) = pool.get(usize::from(self.page)) else {
+            return fail(format!("page {} of a pool of {}", self.page, pool.len()));
+        };
+        let ends = match self.folded() {
+            Some(first) => first + GRANULE_BYTES,
+            None => (u64::from(self.slot) + 1) * TILE_BYTES,
+        };
+        if ends > page.size() {
+            let (slot, page, bytes) = (self.slot, self.page, page.size());
+            return fail(format!("slot {slot:#x} past page {page}'s {bytes} bytes"));
+        }
+        Some(())
     }
 }
 

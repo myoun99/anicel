@@ -61,7 +61,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::device::{Engine, Sent, let_go};
 use crate::fail;
-use crate::kernels::composite::{MadeOf, TILE, TILE_BYTES, TileAt};
+use crate::kernels::composite::{FOLDED, MadeOf, TILE, TILE_BYTES, TileAt};
 use crate::kernels::export::abi::{Readout, readout};
 use crate::kernels::shared::room;
 use crate::kernels::write::Write;
@@ -84,9 +84,12 @@ const MOST_PAGE_BYTES: u64 = 128 << 20;
 // picture's tiles lie on more pages: to be settled from the Surface's
 // probe (H57).
 const MOST_PICTURE_PAGE_BYTES: u64 = 32 << 20;
-/// The slots a page may have and the pages a pool may: a `TileAt` names
-/// each by a u16.
+/// The pages a pool may have: a `TileAt` names each by a u16.
 const MOST_NAMED: usize = u16::MAX as usize + 1;
+/// The slots a page may have: a `TileAt` names each by a u16 under the
+/// bit that says a folded tile's ([`FOLDED`]), so no slot of a tile as it
+/// is reads as a folded one's.
+const MOST_SLOTS: usize = FOLDED as usize;
 
 /// The budget a pool keeps to in place of the OS's till one is set
 /// ([`Pool::set_budget_instead`]): none — the OS's — in the app.
@@ -420,8 +423,8 @@ impl Pool {
     /// A pool of pages of `slots` tiles, `most_pages` pages and
     /// `most_bytes` at most.
     fn sized(slots: usize, most_pages: usize, most_bytes: u64) -> Option<Self> {
-        if !(1..=MOST_NAMED).contains(&slots) {
-            return fail(format!("a page of {slots} tiles; one holds 1 to {MOST_NAMED}"));
+        if !(1..=MOST_SLOTS).contains(&slots) {
+            return fail(format!("a page of {slots} tiles; one holds 1 to {MOST_SLOTS}"));
         }
         let pages = Vec::new();
         Some(Self {

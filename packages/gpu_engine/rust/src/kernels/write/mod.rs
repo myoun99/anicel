@@ -120,7 +120,7 @@ impl Write {
         cut_by(&self.pages, (per_pass, most))?;
         holds(put, places.len())?;
         for at in places.iter().flatten() {
-            stored(pool, at)?;
+            at.stored_on(pool)?;
         }
         // A write of no tiles asks the GPU nothing. Without the return, wgpu
         // makes, copies and maps a buffer of nothing and answers the same, so
@@ -178,20 +178,24 @@ impl Write {
         if !put.usage().contains(wgpu::BufferUsages::COPY_SRC) {
             return fail("the tiles put are no copy's source");
         }
+        let mut copies = Vec::with_capacity(writes.len());
         for &(index, at) in writes {
             holds(put, index + 1)?;
-            stored(pool, &at)?;
-            if !pool[usize::from(at.page)].usage().contains(wgpu::BufferUsages::COPY_DST) {
+            at.stored_on(pool)?;
+            let Some(to) = at.as_it_is() else {
+                return fail(format!("{at:?} is a folded place: it takes no tile as it is"));
+            };
+            let page = &pool[usize::from(at.page)];
+            if !page.usage().contains(wgpu::BufferUsages::COPY_DST) {
                 return fail(format!("page {} is no copy's destination", at.page));
             }
+            copies.push((index as u64 * TILE_BYTES, page, to));
         }
         let mut encoder = engine
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        for &(index, at) in writes {
-            let page = &pool[usize::from(at.page)];
-            let to = u64::from(at.slot) * TILE_BYTES;
-            encoder.copy_buffer_to_buffer(put, index as u64 * TILE_BYTES, page, to, TILE_BYTES);
+        for (from, page, to) in copies {
+            encoder.copy_buffer_to_buffer(put, from, page, to, TILE_BYTES);
         }
         engine.queue.submit([encoder.finish()]);
         Some(())
@@ -206,13 +210,3 @@ fn holds(put: &wgpu::Buffer, tiles: usize) -> Option<()> {
     Some(())
 }
 
-/// Fails unless `at` is a tile's place on one of the pool's `pool` pages.
-fn stored(pool: &[wgpu::Buffer], at: &TileAt) -> Option<()> {
-    let Some(page) = pool.get(usize::from(at.page)) else {
-        return fail(format!("page {} of a pool of {}", at.page, pool.len()));
-    };
-    if (u64::from(at.slot) + 1) * TILE_BYTES > page.size() {
-        return fail(format!("slot {} past page {}'s {} bytes", at.slot, at.page, page.size()));
-    }
-    Some(())
-}

@@ -13,7 +13,7 @@ use crate::device::Engine;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
 use crate::kernels::composite::{
-    Budget, NO_EDGE, Plan, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
+    Budget, FOLDED, NO_EDGE, Plan, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
 };
 use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, room, words_buffer};
 use crate::kernels::write::Write;
@@ -44,8 +44,9 @@ fn a_page_holds_what_a_binding_does_and_no_more_than_128_mib() {
     let pool = Pool::new(engine, u64::MAX).expect("pool");
     assert_eq!(pool.slots() as u64, room(engine).min(128 << 20) / TILE_BYTES);
     assert!(pool.pages().is_empty());
-    // A page has as many slots as a u16 names, and at least one.
-    let named = usize::from(u16::MAX) + 1;
+    // A page has as many slots as a u16 names under the bit that says a
+    // folded tile's, and at least one.
+    let named = usize::from(FOLDED);
     assert!(Pool::sized(0, 1, u64::MAX).is_none());
     assert!(Pool::sized(1, 1, u64::MAX).is_some());
     assert!(Pool::sized(named, 1, u64::MAX).is_some());
