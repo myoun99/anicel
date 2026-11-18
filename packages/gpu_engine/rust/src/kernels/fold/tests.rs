@@ -113,10 +113,14 @@ fn as_they_are(blocks: u32) -> impl Fn(u32) -> u32 {
     move |block| if block < blocks { PIXELS } else { 1 }
 }
 
-/// Nothing but two pixels of ink in one block and one in another.
+/// Nothing but a pixel of ink in the second block — so the table's first
+/// words are not all nothing, and a block of nothing read as words that
+/// lie at the table would not read as nothing —, two in another block
+/// and one in a third.
 fn sparse() -> Vec<u32> {
     let mut words = vec![0; TILE_TEXELS as usize];
-    for (x, y, word) in [(70, 33, 0xff10_2030), (71, 38, 0x8040_5060), (101, 90, 0x0100_00ff)] {
+    let inked = [(9, 2, 0xff00_0001), (70, 33, 0xff10_2030), (71, 38, 0x8040_5060), (101, 90, 0x0100_00ff)];
+    for (x, y, word) in inked {
         words[y * TILE as usize + x] = word;
     }
     words
@@ -275,7 +279,7 @@ fn a_tile_folds_to_its_table_and_its_blocks_least_forms() {
     let most = (MOST_FOLDED_BYTES / 4) as u32;
     assert_eq!(
         folded.sizes,
-        [256, 256, 256 + 256 * 3, 256 + 7 + 4, tile_words(every_count), most],
+        [256, 256, 256 + 256 * 3, 256 + 4 + 7 + 4, tile_words(every_count), most],
         "nothing, one colour, a palette of one, a little ink, every count, the most as they are"
     );
     assert_eq!(tile_words(every_count), 7312);
@@ -366,7 +370,7 @@ fn a_fold_cut_into_smaller_passes_folds_the_same() {
     let at = |page, slot| TileAt { page, slot };
     let all = [at(2, 1), places[4], at(0, 3), at(2, 0), places[5], at(0, 4), places[2]];
     let whole = fold.folded(engine, &stored.pages, &all).expect("fold");
-    assert_eq!(whole.sizes, [267, 7312, 267, 7312, 8192, 7312, 1024]);
+    assert_eq!(whole.sizes, [271, 7312, 271, 7312, 8192, 7312, 1024]);
     let words = read_buffer(engine, &whole.words);
     for cut in [(1, 1), (1, 3), (2, 2), (2, usize::MAX)] {
         let folded = fold.folded_by(engine, &stored.pages, &all, cut).expect("fold");
