@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -376,6 +377,16 @@ void main() {
       await tester.pumpAndSettle();
       before = tester.widget(host);
 
+      session.layerStack.addLayer();
+      await tester.pump();
+      expect(
+        identical(tester.widget(host), before),
+        isFalse,
+        reason: '$tab: a new row\'s cel is printed',
+      );
+      await tester.pumpAndSettle();
+      before = tester.widget(host);
+
       session.updateTimesheetInfo(
         session.timesheetInfo.copyWith(title: 'Titled by $tab'),
       );
@@ -387,6 +398,20 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
+
+    // The form an envelope is printed on is the work's, and nothing
+    // else the envelope prints moves with it.
+    CutEnvelopeTabHost envelope() =>
+        tester.widget<CutEnvelopeTabHost>(find.byType(CutEnvelopeTabHost));
+    final session = envelope().session;
+    final other = envelope().formId == CutEnvelopePresets.digitalId
+        ? CutEnvelopePresets.analogId
+        : CutEnvelopePresets.digitalId;
+    session.updateTimesheetInfo(
+      session.timesheetInfo.copyWith(envelopeFormId: other),
+    );
+    await tester.pump();
+    expect(envelope().formId, other, reason: 'a form picked is printed on');
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
