@@ -121,18 +121,39 @@ void main() {
   test('the preset places what a placement of it lands with — its span\'s '
       'first frame and count, its name tag and words — and nothing it '
       'cannot count before the sound\'s length is known', () {
-    expect(preset, (start: 2, length: 6, nameTag: 'Door', words: 'bang'));
+    expect(preset, (
+      start: 2,
+      length: 6,
+      fit: MediaFitMode.none,
+      kind: LayerKind.se,
+      nameTag: 'Door',
+      words: 'bang',
+    ));
     expect(
       syncPresetOf(
         MediaAsset(path: _clap, name: 'clap'),
         length: 20,
       ),
-      (start: 0, length: 20, nameTag: 'SE', words: 'clap'),
+      (
+        start: 0,
+        length: 20,
+        fit: MediaFitMode.none,
+        kind: LayerKind.se,
+        nameTag: 'SE',
+        words: 'clap',
+      ),
       reason: 'an untouched preset places the whole file as every sound',
     );
     expect(
       syncPresetOf(_project().mediaAssets.single, length: null),
-      (start: null, length: null, nameTag: 'Door', words: 'bang'),
+      (
+        start: null,
+        length: null,
+        fit: MediaFitMode.none,
+        kind: LayerKind.se,
+        nameTag: 'Door',
+        words: 'bang',
+      ),
     );
   });
 

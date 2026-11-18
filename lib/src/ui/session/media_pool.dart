@@ -393,9 +393,10 @@ class MediaPool {
   /// Sets [fields] of each of [places] of the file at [path] to what its
   /// preset places there ([MediaSyncPlace.placed]) — ONE undo step, through
   /// the verbs a person uses on each: the SE window's words and name tag, a
-  /// sound clip's slide and a movie row's offset into its file, and the
-  /// comma edge that lengthens or shortens a block, ripple and all. A field
-  /// the preset cannot count yet stays as it is.
+  /// sound clip's slide and a movie row's offset into its file, the comma
+  /// edge that lengthens or shortens a block, ripple and all, a placed
+  /// picture's size and the layer kind switch. A field the preset cannot
+  /// count yet stays as it is.
   ///
   /// 🗣️유저 2026-11-17 (card 「파일마다 배치 기본값」-Q5): the sync window
   /// picks the fields and the places, and 「모두 적용」 takes every place that
@@ -416,7 +417,7 @@ class MediaPool {
           case final FrameMediaUse use:
             _syncSoundPlace(file, use, place.placed, fields);
           case final RowMediaUse use:
-            _syncMovieRow(use, place.placed, fields);
+            _syncPictureRow(use, place, fields);
           default:
           // No other use is a place a sync sets (`syncPlacesOf`).
         }
@@ -463,33 +464,52 @@ class MediaPool {
     }
   }
 
-  /// A movie's row ([RowMediaUse]): where it starts in its file, through
-  /// the reference's own offset, and its blocks' length.
-  void _syncMovieRow(
+  /// A row showing the file ([RowMediaUse]): a movie's start in its file
+  /// and the picture's placed size, in one write of its reference
+  /// ([resizedTo]); a movie's blocks' length; and the row's kind, through
+  /// the command the layer menu's conte switch writes with (Q8
+  /// same-switch).
+  void _syncPictureRow(
     RowMediaUse use,
-    MediaSyncPreset placed,
+    MediaSyncPlace place,
     Set<MediaSyncField> fields,
   ) {
+    final placed = place.placed;
     Layer row() => requireLayer(
       _project.repository.requireProject(),
       cutId: use.cutId,
       layerId: use.layerId,
     );
-    if (placed.start case final start?
-        when fields.contains(MediaSyncField.start)) {
-      _project.cutCommandCoordinator.updateLayerReferenceOffset(
-        layerId: use.layerId,
-        frameOffset: start,
-        description: 'Sync to placement preset',
-      );
-    }
+    final start = place.starts != null && fields.contains(MediaSyncField.start)
+        ? placed.start
+        : null;
+    final size = fields.contains(MediaSyncField.fit)
+        ? place.size?.placed
+        : null;
+    _project.cutCommandCoordinator.updateLayerReference(
+      layerId: use.layerId,
+      change: (reference) {
+        final started = reference.copyWith(frameOffset: start);
+        return size == null ? started : resizedTo(started, size);
+      },
+      description: 'Sync to placement preset',
+    );
     if (placed.length case final length?
-        when fields.contains(MediaSyncField.length)) {
+        when place.lengths != null && fields.contains(MediaSyncField.length)) {
       _lengthenBlocks(
         _timelineThrough(_project.trackOwningCut(use.cutId)!.id, use.cutId),
         row,
         [for (final MapEntry(key: at) in heldBlocksOf(row())) at],
         length,
+      );
+    }
+    if (place.kind != null &&
+        fields.contains(MediaSyncField.kind) &&
+        place.canSetAt(fields)) {
+      _project.cutCommandCoordinator.updateLayerKind(
+        cutId: use.cutId,
+        layerId: use.layerId,
+        kind: placed.kind,
       );
     }
   }

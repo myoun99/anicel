@@ -53,8 +53,8 @@ MediaReference _reference(String path) => MediaReference(
 
 /// The take placed whole and then cut in two on its row — ten frames from
 /// its start and four more — its sound beside it on an SE row, ten frames
-/// long; and a still on a row of its own, which no sync sets yet (Q8 ·
-/// Q9).
+/// long; and a still on a row of its own — its fit and its kind a sync
+/// sets, its start and its length none.
 Project _project() => Project(
   id: const ProjectId('sync-a-movie'),
   name: 'Sync a movie',
@@ -157,15 +157,19 @@ void main() {
 
   test('a movie\'s places are its row — its offset into the file and its '
       'blocks — and its sound\'s frame, each with what the preset places '
-      'there; a still\'s row is no place yet', () {
+      'there; a still\'s row holds no start and no length', () {
     final places = _placesIn(_project());
     final row = places.singleWhere((place) => place.use is RowMediaUse);
     final sound = places.singleWhere((place) => place.use is FrameMediaUse);
     expect(places, hasLength(2));
     expect(row.starts, [0]);
     expect(row.lengths, [10, 4]);
-    expect(row.fields, {MediaSyncField.start, MediaSyncField.length});
-    expect(row.placed, (start: 2, length: 6, nameTag: 'SE', words: 'take'));
+    expect(row.fields, {
+      MediaSyncField.start,
+      MediaSyncField.length,
+      MediaSyncField.fit,
+    }, reason: 'a movie of no known count is not one picture: no kind');
+    expect((row.placed.start, row.placed.length), (2, 6));
     expect(row.partsFrom(MediaSyncField.values.toSet()), {
       MediaSyncField.start,
       MediaSyncField.length,
@@ -174,7 +178,10 @@ void main() {
       MediaSyncField.start,
       MediaSyncField.length,
     });
-    expect(_placesIn(_project(), path: _cloud), isEmpty);
+    expect(_placesIn(_project(), path: _cloud).single.fields, {
+      MediaSyncField.fit,
+      MediaSyncField.kind,
+    });
     expect(
       _placesIn(_project(), lengths: (sound: 20, pictures: null))
           .singleWhere((place) => place.use is RowMediaUse)

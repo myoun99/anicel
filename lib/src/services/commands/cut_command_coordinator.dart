@@ -25,6 +25,7 @@ import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/media_reference.dart';
 import '../../models/new_row_placement.dart' show newRowPlacement;
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
@@ -94,7 +95,7 @@ import 'update_track_effects_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
-import 'update_layer_reference_offset_command.dart';
+import 'update_layer_reference_command.dart';
 import 'update_layer_se_sound_command.dart';
 import 'update_layer_timeline_command.dart';
 import 'update_layer_transform_enabled_command.dart';
@@ -1269,28 +1270,28 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Sets where in its file a reference row starts showing it
-  /// ([UpdateLayerReferenceOffsetCommand]); one undo step, no-op when
-  /// unchanged.
-  void updateLayerReferenceOffset({
+  /// Sets what a reference row shows of its file — its start in the file,
+  /// where it was placed, its fx — to [change] of it
+  /// ([UpdateLayerReferenceCommand]); one undo step, no-op when unchanged.
+  void updateLayerReference({
     required LayerId layerId,
-    required int frameOffset,
+    required MediaReference Function(MediaReference reference) change,
     String description = 'Edit layer reference',
   }) {
     final layer = _requireLayerAnywhere(layerId);
-    if (layer.mediaReference == null) {
-      throw StateError(
-        'A reference offset belongs on a row that shows a file.',
-      );
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      throw StateError('A reference belongs on a row that shows a file.');
     }
-    _executeIfChanged(
+    final changed = change(reference);
+    _executeIfChanged<Layer, MediaReference?>(
       subject: layer,
-      value: frameOffset,
-      read: (layer) => layer.mediaReference!.frameOffset,
-      command: (_) => UpdateLayerReferenceOffsetCommand(
+      value: changed,
+      read: (layer) => layer.mediaReference,
+      command: (_) => UpdateLayerReferenceCommand(
         repository: repository,
         layerId: layerId,
-        frameOffset: frameOffset,
+        reference: changed,
         description: description,
       ),
     );

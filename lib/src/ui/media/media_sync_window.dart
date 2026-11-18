@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../../services/media/media_preset_sync.dart';
+import '../import/import_file_settings.dart' show importFitLabel;
 import '../text/app_strings.dart';
+import '../timeline/layer_label_controls.dart' show layerKindDisplayName;
+import '../timeline/scale_lane_form.dart' show TwoScales;
 import '../widgets/app_window.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
@@ -22,7 +25,8 @@ typedef MediaSyncAnswer = ({
 /// ([MediaSyncField.asked]); below, every place that uses the file, with
 /// how it parts at the fields on, or 「같음」. 「적용」 sets the places picked
 /// among those that part; 「모두 적용」 every one that parts. A field off is
-/// no difference in the list.
+/// no difference in the list. A place a sync cannot set — an image's kind
+/// for a row of more cels — says how it parts, its ring dead (Q8).
 class MediaSyncWindow extends StatefulWidget {
   const MediaSyncWindow({
     super.key,
@@ -75,6 +79,11 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
   Set<MediaSyncField> _partsOf(int index) =>
       widget.places[index].partsFrom(_fields);
 
+  /// Whether [index]'s place parts at the fields on and a sync can set it
+  /// there ([MediaSyncPlace.canSetAt]).
+  bool _canPick(int index) =>
+      _partsOf(index).isNotEmpty && widget.places[index].canSetAt(_fields);
+
   void _answer(List<int> indices) =>
       Navigator.of(context).pop<MediaSyncAnswer>((
         fields: {..._fields},
@@ -88,8 +97,12 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
       for (var index = 0; index < widget.places.length; index++)
         if (_partsOf(index).isNotEmpty) index,
     ];
-    final picked = [
+    final settable = [
       for (final index in parting)
+        if (_canPick(index)) index,
+    ];
+    final picked = [
+      for (final index in settable)
         if (_picked.contains(index)) index,
     ];
     return AppWindow(
@@ -132,9 +145,9 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
         ),
         AppWindowAction(
           actionKey: const ValueKey<String>('media-sync-apply-all'),
-          label: strings.mediaSyncApplyAllOf(parting.length),
+          label: strings.mediaSyncApplyAllOf(settable.length),
           emphasis: AppWindowActionEmphasis.second,
-          onPressed: parting.isEmpty ? null : () => _answer(parting),
+          onPressed: settable.isEmpty ? null : () => _answer(settable),
         ),
         AppWindowAction(
           actionKey: const ValueKey<String>('media-sync-apply'),
@@ -159,18 +172,21 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
         setState(() => on ? _fields.add(field) : _fields.remove(field)),
   );
 
-  /// A place: where it is, how it parts — or 「같음」, its ring dead — and
-  /// its ring, the same row as a field's.
+  /// A place: where it is, how it parts — or 「같음」 — and its ring, the
+  /// same row as a field's, dead where it is nothing to set
+  /// ([_canPick]).
   Widget _placeLine(int index) {
     final parts = _partsOf(index);
-    final canPick = parts.isNotEmpty;
+    final canPick = _canPick(index);
     return SettingsSwitchRow(
       tileKey: ValueKey<String>('media-sync-place-$index'),
       leading: _nameColumn(
         widget.placeLines[index],
         MediaSyncWindow.placeNameWidth,
       ),
-      label: canPick ? _partsWord(index, parts) : AppText.strings.mediaSyncSame,
+      label: parts.isNotEmpty
+          ? _partsWord(index, parts)
+          : AppText.strings.mediaSyncSame,
       value: canPick && _picked.contains(index),
       onChanged: canPick
           ? (on) => setState(
@@ -197,9 +213,13 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
     ].join(' · ');
   }
 
+  /// A field's name — a start, a length, a fit and a kind as the pool's
+  /// columns name them.
   String _labelOf(MediaSyncField field) => switch (field) {
     MediaSyncField.start => AppText.strings.mediaStart,
     MediaSyncField.length => AppText.strings.mediaLength,
+    MediaSyncField.fit => AppText.strings.imFit,
+    MediaSyncField.kind => AppText.strings.mediaKindOfLayer,
     MediaSyncField.nameTag => AppText.strings.seNameLabel,
     MediaSyncField.words => AppText.strings.seDialogueLabel,
   };
@@ -215,6 +235,8 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
       switch (field) {
         MediaSyncField.start => _startWord(placed.start),
         MediaSyncField.length => _lengthWord(placed.length),
+        MediaSyncField.fit => importFitLabel(placed.fit),
+        MediaSyncField.kind => layerKindDisplayName(placed.kind),
         MediaSyncField.nameTag => _textWord(placed.nameTag),
         MediaSyncField.words => _textWord(placed.words),
       };
@@ -223,11 +245,23 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
   /// clips of one place hold more than one.
   String _heldWordOf(MediaSyncPlace place, MediaSyncField field) =>
       switch (field) {
-        MediaSyncField.start => place.starts.toSet().map(_startWord),
-        MediaSyncField.length => place.lengths.toSet().map(_lengthWord),
+        MediaSyncField.start => {...?place.starts}.map(_startWord),
+        MediaSyncField.length => {...?place.lengths}.map(_lengthWord),
+        MediaSyncField.fit => [_sizeWord(place.size)],
+        MediaSyncField.kind => [
+          if (place.kind case final kind?) layerKindDisplayName(kind),
+        ],
         MediaSyncField.nameTag => [_textWord(place.nameTag ?? '')],
         MediaSyncField.words => [_textWord(place.words ?? '')],
       }.join(', ');
+
+  /// A placed picture's size: the fit it is, or its scale as its size lane
+  /// prints one (`150, 80%`).
+  static String _sizeWord(MediaSyncSize? size) => switch (size) {
+    null => MediaPoolWords.none,
+    (heldFit: final fit?, held: _, placed: _) => importFitLabel(fit),
+    (:final held, heldFit: null, placed: _) => const TwoScales().label(held),
+  };
 
   String _startWord(int? first) =>
       first == null ? MediaPoolWords.none : widget.words.frameWord(first);

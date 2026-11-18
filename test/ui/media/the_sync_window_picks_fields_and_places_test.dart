@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
 import 'package:anicel/src/services/media/media_preset_sync.dart';
 import 'package:anicel/src/services/persistence/cel_places.dart';
+import 'package:anicel/src/ui/import/import_file_settings.dart'
+    show importFitLabel;
 import 'package:anicel/src/ui/media/media_pool_words.dart';
 import 'package:anicel/src/ui/media/media_sync_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
@@ -25,6 +32,8 @@ const _words = MediaPoolWords(
 const MediaSyncPreset _preset = (
   start: 2,
   length: 6,
+  fit: MediaFitMode.none,
+  kind: LayerKind.se,
   nameTag: 'Door',
   words: 'bang',
 );
@@ -195,7 +204,6 @@ void main() {
     expect(answer()?.places, [_places[0], _places[1]]);
   });
 
-
   testWidgets('a movie\'s row holds no name tag and no words — the window '
       'shows the fields its places hold, and says what the preset places '
       'at each, once each where a movie\'s sound and pictures count apart', (
@@ -210,7 +218,14 @@ void main() {
         owner: PlaceOwner('t1'),
         layerName: 'm1',
       ),
-      placed: (start: 2, length: 7, nameTag: 'SE', words: 'clap'),
+      placed: (
+        start: 2,
+        length: 7,
+        fit: MediaFitMode.none,
+        kind: LayerKind.animation,
+        nameTag: 'SE',
+        words: 'clap',
+      ),
       starts: [0],
       lengths: [10],
     );
@@ -248,6 +263,106 @@ void main() {
       reason: 'a place parts from what its own preset places',
     );
   });
+
+  testWidgets('🗣️Q7 · Q8 · Q10: a picture\'s row holds its fit and, where '
+      'its preset keeps one picture, its kind — off to begin; on, each says '
+      'how the row parts, and a row of more cels than an image holds says '
+      'so with its ring dead', (tester) async {
+    /// A row of a still placed 1:1, or at [held], where its preset fits it
+    /// inside the cut at half its size; as an animation where its preset
+    /// places an image, where the sync sets its kind.
+    MediaSyncPlace still(
+      String layer, {
+      int cels = 1,
+      CanvasPoint? held,
+      MediaFitMode? heldFit = MediaFitMode.none,
+      LayerKind? kind = LayerKind.animation,
+    }) => MediaSyncPlace(
+      use: RowMediaUse(
+        cutId: const CutId('c1'),
+        layerId: LayerId(layer),
+        owner: const PlaceOwner('t1'),
+        layerName: layer,
+      ),
+      placed: (
+        start: null,
+        length: null,
+        fit: MediaFitMode.contain,
+        kind: LayerKind.image,
+        nameTag: '',
+        words: '',
+      ),
+      size: (
+        held: held ?? CanvasPoint(x: 1, y: 1),
+        placed: CanvasPoint(x: 0.5, y: 0.5),
+        heldFit: heldFit,
+      ),
+      kind: kind,
+      cels: cels,
+    );
+    final places = [
+      still('p1'),
+      still('p2', cels: 2),
+      still(
+        'p3',
+        held: CanvasPoint(x: 0.8, y: 0.8),
+        heldFit: null,
+        kind: null,
+      ),
+    ];
+    final answer = await open(tester, places: places);
+    final strings = AppText.strings;
+    for (final (field, shown) in [
+      ('start', false),
+      ('length', false),
+      ('fit', true),
+      ('kind', true),
+      ('nameTag', false),
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>('media-sync-field-$field')),
+        shown ? findsOneWidget : findsNothing,
+        reason: field,
+      );
+    }
+    expect(partsOf(tester, 0), strings.mediaSyncSame, reason: 'both off');
+    await press(tester, 'media-sync-field-fit-ring');
+    await press(tester, 'media-sync-field-kind-ring');
+    final fit =
+        '${strings.imFit} ${importFitLabel(MediaFitMode.none)} → '
+        '${importFitLabel(MediaFitMode.contain)}';
+    final kind =
+        '${strings.mediaKindOfLayer} '
+        '${layerKindDisplayName(LayerKind.animation)} → '
+        '${layerKindDisplayName(LayerKind.image)}';
+    expect(partsOf(tester, 0), '$fit · $kind');
+    expect(partsOf(tester, 1), '$fit · $kind');
+    expect(
+      partsOf(tester, 2),
+      '${strings.imFit} '
+      '${const TwoScales().label(CanvasPoint(x: 0.8, y: 0.8))} → '
+      '${importFitLabel(MediaFitMode.contain)}',
+      reason: 'a size no fit is says itself as its size lane prints it',
+    );
+    expect(
+      find.text(strings.mediaSyncPlaces(total: 3, parting: 3)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(strings.mediaSyncApplyAllOf(2)),
+      findsOneWidget,
+      reason: 'p2 holds two cels: an image holds one',
+    );
+    await press(tester, 'media-sync-place-1-ring');
+    await press(tester, 'media-sync-apply-all');
+    expect(answer()?.places, [places[0], places[2]]);
+    expect(answer()?.fields, {
+      ...MediaSyncField.asked,
+      MediaSyncField.fit,
+      MediaSyncField.kind,
+    });
+  });
+
   testWidgets('cancel answers nothing', (tester) async {
     final answer = await open(tester);
     await press(tester, 'media-sync-cancel');
