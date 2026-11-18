@@ -867,8 +867,14 @@ class PixelVerbs {
       _pixelEditing.coordinator != null &&
       _cellsTheLadderNames().isNotEmpty;
 
-  /// The 색 편집 list's clipboard row [verb], pressed.
-  void runPixelClipboardVerb(PixelClipboardVerb verb) {
+  /// The 색 편집 list's clipboard row [verb], pressed — the step it takes,
+  /// with nothing worked out ahead of it, as [pixelVerbStep]'s rows hand
+  /// theirs to the door that stands them behind the wait window.
+  ({WorkAhead? ahead, VoidCallback step}) pixelClipboardVerbStep(
+    PixelClipboardVerb verb,
+  ) => (ahead: null, step: () => _runPixelClipboardVerb(verb));
+
+  void _runPixelClipboardVerb(PixelClipboardVerb verb) {
     if (!canRunPixelClipboardVerb(verb)) {
       return;
     }

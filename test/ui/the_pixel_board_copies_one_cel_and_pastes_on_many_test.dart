@@ -180,7 +180,7 @@ void main() {
     await tester.pump();
     await theMoveLands(tester, session);
 
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     final piece = session.appClipboard.pixels.piece!;
 
     expect(
@@ -243,7 +243,7 @@ void main() {
     hub.addBrushFrameListener(hear);
     addTearDown(() => hub.removeBrushFrameListener(hear));
 
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.cut);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.cut).step();
     await tester.pump();
 
     final piece = session.appClipboard.pixels.piece!;
@@ -292,7 +292,7 @@ void main() {
       'coordinates it came from, as ONE undo', (tester) async {
     final session = await pump(tester);
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
 
     selectAcross(session, 1, 3);
     await tester.pump();
@@ -302,7 +302,7 @@ void main() {
       PixelClipboardVerb.pasteAbove,
     );
     expect(reachesManyBlocks(lands), isTrue, reason: 'two cels of the range');
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
 
     expect(pixel(session, 'c1', 15, 15), red, reason: 'a blank cel takes it');
@@ -319,21 +319,21 @@ void main() {
       'cel already has on top (「위/아래는 합성순서」)', (tester) async {
     final session = await pump(tester);
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     // c1 holds blue over the piece's left half.
     paint(session, 'c1', left: 10, top: 10, right: 15, bottom: 20, rgba: blue);
 
     session.selectFrameIndex(1);
     await tester.pump();
     await theMoveLands(tester, session);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteBelow);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteBelow).step();
     await tester.pump();
     expect(pixel(session, 'c1', 12, 12), blue, reason: 'below: blue stays');
     expect(pixel(session, 'c1', 17, 12), red, reason: 'and red fills in');
 
     session.historyManager.undo();
     await tester.pump();
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
     expect(pixel(session, 'c1', 12, 12), red, reason: 'above: red covers');
   });
@@ -349,7 +349,7 @@ void main() {
         CanvasSelectionShape.rect(left: 10, top: 10, right: 20, bottom: 30),
       ),
     );
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     final piece = session.appClipboard.pixels.piece!;
     expect(piece.originLeft, 10);
     expect(
@@ -369,7 +369,7 @@ void main() {
     session.selectFrameIndex(1);
     await tester.pump();
     await theMoveLands(tester, session);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
     expect(pixel(session, 'c1', 16, 15), red);
     expect(pixel(session, 'c1', 12, 15), clear, reason: 'left of the marquee');
@@ -392,7 +392,7 @@ void main() {
 
     // COPY: the pixel just inside the marquee's right edge.
     through(const SelectionMaskOptions(featherPx: 6));
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     final soft = session.appClipboard.pixels.piece!;
     final edge = (15 * soft.image.width + (29 - soft.originLeft)) * 4 + 3;
     expect(
@@ -403,12 +403,12 @@ void main() {
 
     // PASTE: a hard board, laid through a feathered marquee.
     through(SelectionMaskOptions.none);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     through(const SelectionMaskOptions(featherPx: 6));
     session.selectFrameIndex(1);
     await tester.pump();
     await theMoveLands(tester, session);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
     expect(pixel(session, 'c1', 20, 20)[3], 255, reason: 'deep inside');
     expect(
@@ -431,13 +431,13 @@ void main() {
       bottom: 20,
       rgba: const [255, 0, 0, 128],
     );
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     final exposuresBefore = Map.of(row(session).timeline);
 
     // 3–4 is ONE cel held twice; 5 is empty.
     selectAcross(session, 3, 6);
     await tester.pump();
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
 
     expect(
@@ -457,14 +457,14 @@ void main() {
       'it, and a paste does not use it up', (tester) async {
     final session = await pump(tester);
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     final held = session.appClipboard.pixels.piece;
 
     session.clipboard.copyFrameAtCurrentFrame();
     session.selectFrameIndex(1);
     await tester.pump();
     await theMoveLands(tester, session);
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await tester.pump();
 
     expect(
@@ -494,7 +494,7 @@ void main() {
     session.selectFrameIndex(0);
     await tester.pump();
     await theMoveLands(tester, session);
-    pixels.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    pixels.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     session.selectFrameIndex(1);
     await tester.pump();
     await theMoveLands(tester, session);

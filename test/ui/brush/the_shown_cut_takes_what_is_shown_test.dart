@@ -159,6 +159,7 @@ void main() {
     CanvasSelectionRegion? outline, {
     required bool takeWhatItCuts,
     void Function(CutPieceSlot slot)? betweenAheadAndStep,
+    List<double>? told,
   }) async {
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
@@ -171,7 +172,7 @@ void main() {
         : session.pixelVerbs.cutShown(outline, takeWhatItCuts: takeWhatItCuts);
     final ahead = cut.ahead;
     expect(ahead, isNotNull, reason: 'the picture is work ahead of the step');
-    await tester.runAsync(() => ahead!((_) {}));
+    await tester.runAsync(() => ahead!(told?.add ?? (_) {}));
     betweenAheadAndStep?.call(slot);
     cut.step();
     await tester.pump();
@@ -309,6 +310,7 @@ void main() {
     square(session, b, 100, 10);
     square(session, hidden, 50, 50);
 
+    final told = <double>[];
     final slot = await cutShown(
       tester,
       session,
@@ -318,8 +320,12 @@ void main() {
         expect(slot.piece, isNull, reason: 'the hand waits for the step');
         expect(drawn(session, a) && drawn(session, b), isTrue);
       },
+      told: told,
     );
 
+    // 🗣️F-615: the clear of each shown cel is worked out ahead too, told
+    // cel by cel — 「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」.
+    expect(told, [0.5, 1]);
     expect(slot.piece, isNotNull);
     expect(drawn(session, a), isFalse);
     expect(drawn(session, b), isFalse);

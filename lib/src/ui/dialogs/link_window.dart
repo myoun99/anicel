@@ -124,7 +124,7 @@ class LinkWindow extends StatelessWidget {
                   unawaited(
                     takeBehindTheWaitWindow(
                       navigator.context,
-                      action.step,
+                      (ahead: null, step: action.step),
                       window: AppWaitWindow.working(label),
                       blocks: action.landsOn(),
                     ),

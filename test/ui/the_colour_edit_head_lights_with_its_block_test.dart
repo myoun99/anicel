@@ -158,7 +158,7 @@ void main() {
     }
     final steps = s.historyManager.undoCount;
     verbs.pixelVerbStep(CelPixelVerb.clearPixels).step();
-    verbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    verbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     expect(
       s.historyManager.undoCount,
       steps,

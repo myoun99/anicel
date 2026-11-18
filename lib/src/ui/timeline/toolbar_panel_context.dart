@@ -292,7 +292,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       held == null
           ? takeBehindTheWaitWindow(
               context,
-              press,
+              (ahead: null, step: press),
               window: named,
               blocks: blocks(),
             )
@@ -671,9 +671,12 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       unawaited(
         takeBehindTheWaitWindow(
           context,
-          _pastesCuts
-              ? session.cutClipboard.pasteLinked
-              : session.layerClipboard.pasteRowsLinked,
+          (
+            ahead: null,
+            step: _pastesCuts
+                ? session.cutClipboard.pasteLinked
+                : session.layerClipboard.pasteRowsLinked,
+          ),
           window: window,
           blocks: drawingsPasted,
         ),

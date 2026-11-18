@@ -44,7 +44,7 @@ void main() {
     var steps = 0;
     final taken = takeBehindTheWaitWindow(
       context,
-      () => steps += 1,
+      (ahead: null, step: () => steps += 1),
       window: AppWaitWindow.working('work'),
       blocks: const ['A1', 'A1', 'A1'],
     );
@@ -59,7 +59,7 @@ void main() {
     var steps = 0;
     final taken = takeBehindTheWaitWindow(
       context,
-      () => steps += 1,
+      (ahead: null, step: () => steps += 1),
       window: AppWaitWindow.working('work'),
       blocks: const ['A1', 'B1'],
     );

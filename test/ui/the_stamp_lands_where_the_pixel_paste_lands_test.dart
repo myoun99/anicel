@@ -379,7 +379,7 @@ void main() {
       box: (left: 10, top: 10, right: 25, bottom: 40),
       rgba: blue,
     );
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     // ONE picture in both holders.
     final board = session.appClipboard.pixels.piece!;
     // The range does not hold the cel you stand on, a cel is held twice in
@@ -399,7 +399,7 @@ void main() {
       (PixelClipboardVerb.pasteBelow, BrushBlendMode.behind),
     ]) {
       final before = {for (final cel in cels) cel: celOf(session, cel)};
-      session.pixelVerbs.runPixelClipboardVerb(verb);
+      session.pixelVerbs.pixelClipboardVerbStep(verb).step();
       await tester.pump();
       final pasted = {for (final cel in cels) cel: celOf(session, cel)};
       expect(

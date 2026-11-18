@@ -482,15 +482,14 @@ class TimelineBarMenus {
         onSelected: () => _behindTheWaitWindow(
           context,
           pixelClipboardActionIdFor(verb),
-          () => session.pixelVerbs.runPixelClipboardVerb(verb),
+          session.pixelVerbs.pixelClipboardVerbStep(verb),
           blocks: session.pixelVerbs.pixelClipboardVerbCels(verb),
         ),
       ),
   ];
 
-  /// [run], a row of the colour edit list, behind the wait window under
-  /// [actionId]'s name when it lands on more than one of [blocks] (F-566),
-  /// what it works out [ahead] of itself first (F-615).
+  /// [press], a row of the colour edit list, behind the wait window under
+  /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
   ///
   /// 🗣️I-164: the list's preview is over once a row is chosen — 「그 색 편집
   /// 앵커창 나가면 사라짐」 — and it goes where the row's step lands, so the
@@ -498,20 +497,21 @@ class TimelineBarMenus {
   void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
-    VoidCallback run, {
+    ({WorkAhead? ahead, VoidCallback step}) press, {
     required Iterable<Object> blocks,
-    WorkAhead? ahead,
   }) {
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        () {
-          run();
-          session.pixelVerbPreview.verb = null;
-        },
+        (
+          ahead: press.ahead,
+          step: () {
+            press.step();
+            session.pixelVerbPreview.verb = null;
+          },
+        ),
         window: AppWaitWindow.working(editorActionLabel(actionId)),
         blocks: blocks,
-        ahead: ahead,
       ),
     );
   }
@@ -543,16 +543,12 @@ class TimelineBarMenus {
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
-    onSelected: () {
-      final press = session.pixelVerbs.pixelVerbStep(verb);
-      _behindTheWaitWindow(
-        context,
-        pixelVerbActionIdFor(verb),
-        press.step,
-        blocks: session.pixelVerbs.pixelVerbCellKeys(),
-        ahead: press.ahead,
-      );
-    },
+    onSelected: () => _behindTheWaitWindow(
+      context,
+      pixelVerbActionIdFor(verb),
+      session.pixelVerbs.pixelVerbStep(verb),
+      blocks: session.pixelVerbs.pixelVerbCellKeys(),
+    ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
     knob: _previewed(verb, switch (verb) {

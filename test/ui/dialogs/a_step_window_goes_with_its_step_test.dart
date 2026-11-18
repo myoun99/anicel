@@ -28,7 +28,7 @@ void main() {
                   key: stepKey,
                   onPressed: () => takeBehindTheWaitWindow(
                     context,
-                    () => steps += 1,
+                    (ahead: null, step: () => steps += 1),
                     window: AppWaitWindow.working('work'),
                     // Two blocks: a step that stands behind the window
                     // (F-566).

@@ -44,7 +44,10 @@ Future<void> pasteLinkedAskingFirst(
   LinkedPasteJoins? joins;
   await takeBehindTheWaitWindow(
     context,
-    () => joins = session.clipboard.pasteLinkedAt(place()),
+    (
+      ahead: null,
+      step: () => joins = session.clipboard.pasteLinkedAt(place()),
+    ),
     window: window,
     blocks: session.clipboard.drawingsPastedAt(place()),
   );
@@ -76,9 +79,12 @@ Future<void> pasteLinkedAskingFirst(
           unawaited(
             takeBehindTheWaitWindow(
               context,
-              () => session.clipboard.pasteLinkedAt(
-                place(),
-                joinTakenNames: true,
+              (
+                ahead: null,
+                step: () => session.clipboard.pasteLinkedAt(
+                  place(),
+                  joinTakenNames: true,
+                ),
               ),
               window: window,
               blocks: session.clipboard.drawingsPastedAt(place()),

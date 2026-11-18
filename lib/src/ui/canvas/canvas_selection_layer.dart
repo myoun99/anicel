@@ -1398,7 +1398,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        _confirmSession,
+        (ahead: null, step: _confirmSession),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.confirm),
         ),

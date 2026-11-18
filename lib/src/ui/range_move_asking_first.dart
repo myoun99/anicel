@@ -28,7 +28,10 @@ Future<void> releaseRangeMoveAskingFirst(
   CarriedNameJoins? joins;
   await takeBehindTheWaitWindow(
     context,
-    () => joins = session.rangeMove.endFrameRangeMoveDrag(),
+    (
+      ahead: null,
+      step: () => joins = session.rangeMove.endFrameRangeMoveDrag(),
+    ),
     window: AppWaitWindow.working(AppText.strings.pictureTradeTitle),
     blocks: session.rangeMove.picturesTheReleaseTrades,
   );

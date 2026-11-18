@@ -3275,11 +3275,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        () {
-          if (mounted) {
-            _landStamp((_) => dab);
-          }
-        },
+        (
+          ahead: null,
+          step: () {
+            if (mounted) {
+              _landStamp((_) => dab);
+            }
+          },
+        ),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
         ),

@@ -261,7 +261,7 @@ void main() {
       // The verbs the bar's rows run, by the names the rows call them by.
       for (final verb in const [
         'pixelVerbStep(',
-        'runPixelClipboardVerb(',
+        'pixelClipboardVerbStep(',
         'createCut',
         'createLinkedCutFromActiveCut',
         'detachRows',
