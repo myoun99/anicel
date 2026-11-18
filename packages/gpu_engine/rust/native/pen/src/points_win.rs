@@ -280,20 +280,24 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let _ = unsafe { ClientToScreen(view, &mut screen) };
     // SAFETY: asked while the message is handled.
     let time = unsafe { GetMessageTime() } as u32;
-    let asked = MOUSEMOVEPOINT { x: screen.x & 0xFFFF, y: screen.y & 0xFFFF, time, dwExtraInfo: 0 };
+    let own = (screen.x, screen.y, time);
     let mut moves = [MOUSEMOVEPOINT::default(); MOUSE_HISTORY as usize];
     let size = size_of::<MOUSEMOVEPOINT>() as u32;
-    // SAFETY: the move asked and a buffer of 64.
-    let found = unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) };
+    let found = history_near(own, |(x, y, time)| {
+        let asked = MOUSEMOVEPOINT { x: x & 0xFFFF, y: y & 0xFFFF, time, dwExtraInfo: 0 };
+        // SAFETY: the move asked and a buffer of 64, while the message is
+        // handled.
+        unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) }
+    });
     let mut written = MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
     let now = now_micros();
     let history: Vec<Move> = moves[..found.max(0) as usize]
         .iter()
         .map(|at| (signed(at.x), signed(at.y), at.time))
         .collect();
-    let moves = moves_since((screen.x, screen.y, time), &history, *written);
+    let moves = moves_since(own, &history, *written);
     let lost = mouse_lost(found, moves.len(), *written);
-    *written = Some((screen.x, screen.y, time));
+    *written = Some(own);
     let times: Vec<u32> = moves.iter().map(|&(_, _, at_time)| at_time).collect();
     let pressures = wintab::pressures_at(time, &times);
     let points = moves
@@ -343,12 +347,54 @@ pub(crate) fn mouse_lost(found: i32, handed_on: usize, written: Option<Move>) ->
 ///
 /// A move of the millisecond `written` was in is newer where it comes
 /// before it: a mouse that reports faster than that keeps several there.
+/// The move written is met where it is [`told_alike`].
 pub(crate) fn moves_since(own: Move, history: &[Move], written: Option<Move>) -> Vec<Move> {
     let newer = |at: &&Move| {
-        written.is_some_and(|last| **at != last && at.2.wrapping_sub(last.2) as i32 >= 0)
+        written.is_some_and(|last| !told_alike(**at, last) && at.2.wrapping_sub(last.2) as i32 >= 0)
     };
     let moves: Vec<Move> = history.iter().take_while(newer).copied().collect();
     if moves.is_empty() { vec![own] } else { moves }
+}
+
+/// 🚨ONE MOVE, TOLD TWICE, IS ONE MOVE (H61, 2026-11-18): a pen the OS hands
+/// over as a mouse (Windows Ink off) moves the cursor to a place finer than
+/// a pixel, and the message's point and the history's are each that place
+/// rounded its own way — the same move, a pixel apart. Met as two moves, a
+/// history was cut at no move written: every move of the written one's
+/// millisecond went on again, and the stroke went back over its last 15 ms
+/// and drew it twice (유저 「정기적으로 일정구간에서 스트로크가 2개
+/// 겹쳐지는거같은데」). And the history asked at the message's own point was
+/// not found at all where the two rounded apart.
+///
+/// 🔬Main PC, a pen as a mouse, one stroke of 602 messages (k-h61, 11-18):
+/// the history found 185 times, the move written in it at 0 px 79 times and
+/// at 1 px 106 — never farther; 417 not found. The stroke drawn: 95 of its
+/// 406 points went back over a point drawn already.
+///
+/// Two moves are told alike where they are of one millisecond and a pixel
+/// apart at most on each axis — the places [`around`] gives.
+pub(crate) fn told_alike(a: Move, b: Move) -> bool {
+    around(a).any(|near| near == b)
+}
+
+/// `at`'s place and the places a pixel from it, at its millisecond — its
+/// own first.
+fn around((x, y, time): Move) -> impl Iterator<Item = Move> {
+    const STEPS: [i32; 3] = [0, 1, -1];
+    STEPS.into_iter().flat_map(move |dy| STEPS.into_iter().map(move |dx| (x + dx, y + dy, time)))
+}
+
+/// The history `ask` keeps of `own`, asked at each place [`around`] it till
+/// one is found: how many moves it handed, or its refusal of the last.
+pub(crate) fn history_near(own: Move, mut ask: impl FnMut(Move) -> i32) -> i32 {
+    let mut found = -1;
+    for place in around(own) {
+        found = ask(place);
+        if found > 0 {
+            break;
+        }
+    }
+    found
 }
 
 /// A display point `GetMouseMovePointsEx` gives, as the screen's signed
