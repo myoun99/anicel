@@ -108,8 +108,8 @@ abstract final class PenPath {
 
   /// The tablet driver's pressure, 0..1, at the point [event] was made at —
   /// or null. A pen's point and a mouse's carry one where the platform's
-  /// reader paired it with the driver: on Windows, the Wintab packet nearest
-  /// the point's own moment (native/pen points_win.rs), one law for a pen
+  /// reader paired it with the driver: on Windows, the Wintab packet that
+  /// put the cursor there (native/pen wintab.rs), one law for a pen
   /// the OS reads and one it hands over as a mouse.
   ///
   /// ↩️A mouse's alone (e3816f34f – H61, 2026-11-18): a pen the OS reads

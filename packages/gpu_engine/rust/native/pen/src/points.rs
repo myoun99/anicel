@@ -43,8 +43,8 @@ pub(crate) struct Point {
     pub(crate) pressure: f64,
     pub(crate) tilt: f64,
     pub(crate) orientation: f64,
-    /// The tablet DRIVER's pressure, 0..1, at the point's own moment — the
-    /// Wintab packet nearest it (wintab.rs) — where the point is the pen's
+    /// The tablet DRIVER's pressure, 0..1, of the packet that put the pen
+    /// at the point (wintab.rs `Heard::at`) — where the point is the pen's
     /// or a mouse's (a pen the OS hands over as a mouse) and a Wintab
     /// context is open; NaN elsewhere.
     pub(crate) driven: f64,

@@ -211,20 +211,21 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
 
 /// A pointer message's `history`, the newest first, as its points, the
 /// oldest first: each with the pen's `readings` where it is a pen that gave
-/// them, and each a pen's with the tablet driver's pressure at its own
-/// milliseconds where a Wintab context is open ([`wintab::pressures_at`]) —
-/// as a mouse's are ([`mouse`]).
+/// them, and each a pen's with the tablet driver's pressure of the packet at
+/// its own place where a Wintab context is open ([`wintab::pressures_at`])
+/// — as a mouse's are ([`mouse`]).
 ///
-/// 🚨PAIRED BY ITS OWN MILLISECONDS, AS A MOUSE'S IS (H61, 2026-11-18): a pen
-/// the OS reads (Windows Ink on) took the pressure of the driver's NEWEST
-/// packet as the app read each of its points, and so did every point of a
-/// message the busy thread merged — the stroke's pressure went in steps.
+/// 🚨PAIRED AT ITS OWN POINT, AS A MOUSE'S IS (H61, 2026-11-18): a pen the OS
+/// reads (Windows Ink on) took the pressure of the driver's NEWEST packet as
+/// the app read each of its points, and so did every point of a message the
+/// busy thread merged — the stroke's pressure went in steps.
 /// ⛔Not a finger's: the driver's packets are the pen's.
 pub(crate) fn points_of(view: HWND, history: &[POINTER_INFO], readings: Option<&[POINTER_PEN_INFO]>) -> Vec<Point> {
     let now = now_micros();
-    let times: Vec<u32> = history.iter().map(|entry| entry.dwTime).collect();
+    let moves: Vec<Move> =
+        history.iter().map(|entry| (entry.ptPixelLocation.x, entry.ptPixelLocation.y, entry.dwTime)).collect();
     // SAFETY: asked while the message is handled.
-    let driven = wintab::pressures_at(unsafe { GetMessageTime() } as u32, &times);
+    let driven = wintab::pressures_at(unsafe { GetMessageTime() } as u32, &moves);
     history
         .iter()
         .zip(driven)
@@ -264,15 +265,17 @@ fn since_message(time: u32) -> i64 {
 
 /// A mouse move's points: the moves since the newest written, the oldest
 /// first, each timed back from now by its milliseconds — and each with the
-/// tablet driver's pressure at its milliseconds where a Wintab context is
-/// open ([`wintab::pressures_at`]).
+/// tablet driver's pressure of the packet at its place where a Wintab
+/// context is open ([`wintab::pressures_at`]).
 ///
-/// 🚨PAIRED HERE, BY THE MOVE'S OWN MILLISECONDS: a pen the OS hands over as
-/// a mouse (Windows Ink off) carries no pressure, and the driver's packet
-/// the app read at the event was the NEWEST — after a stall, one taken long
+/// 🚨PAIRED HERE, AT THE MOVE'S OWN POINT: a pen the OS hands over as a
+/// mouse (Windows Ink off) carries no pressure, and the driver's packet the
+/// app read at the event was the NEWEST — after a stall, one taken long
 /// after the move (pen-points-are-taken-off-the-ui-thread). A move's
-/// microseconds are counted back from the message's handling, so the
-/// pairing is made on the clock both are stamped by before that.
+/// microseconds are counted back from the message's handling.
+/// ↩️Paired by the move's own milliseconds till H61 (11-18): the message
+/// clock steps 15.6 ms, and a step's moves took one packet
+/// ([`wintab::Heard::at`]).
 pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let client = of(l);
     let mut screen = client;
@@ -298,8 +301,7 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let moves = moves_since(own, &history, *written);
     let lost = mouse_lost(found, moves.len(), *written);
     *written = Some(own);
-    let times: Vec<u32> = moves.iter().map(|&(_, _, at_time)| at_time).collect();
-    let pressures = wintab::pressures_at(time, &times);
+    let pressures = wintab::pressures_at(time, &moves);
     let points = moves
         .iter()
         .zip(pressures)
@@ -371,10 +373,18 @@ pub(crate) fn moves_since(own: Move, history: &[Move], written: Option<Move>) ->
 /// at 1 px 106 — never farther; 417 not found. The stroke drawn: 95 of its
 /// 406 points went back over a point drawn already.
 ///
-/// Two moves are told alike where they are of one millisecond and a pixel
-/// apart at most on each axis — the places [`around`] gives.
+/// Two moves are told alike where they are of one millisecond and
+/// [`a_pixel_apart`].
 pub(crate) fn told_alike(a: Move, b: Move) -> bool {
-    around(a).any(|near| near == b)
+    a.2 == b.2 && a_pixel_apart((a.0, a.1), (b.0, b.1))
+}
+
+/// Whether two places are one as two tellers round a pen's place: a pixel
+/// apart at most on each axis — the places [`around`] gives. The history and
+/// the message tell a move so ([`told_alike`]), and the driver's packet and
+/// the cursor it put there (`wintab::Heard::at`).
+pub(crate) fn a_pixel_apart((x, y): (i32, i32), b: (i32, i32)) -> bool {
+    around((x, y, 0)).any(|(near_x, near_y, _)| (near_x, near_y) == b)
 }
 
 /// `at`'s place and the places a pixel from it, at its millisecond — its

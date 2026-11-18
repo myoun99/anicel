@@ -11,7 +11,7 @@
 //!   thread ([`DRAIN_EVERY`]), and by a message that presses
 //!   (points_win.rs). Dart's poll reads what was heard, and so do the
 //!   points' readers (points_win.rs), which give each point the pen or a
-//!   mouse made the pressure of the packet nearest it in time.
+//!   mouse made the pressure of the packet that put it there ([`Heard::at`]).
 //! - The Wintab structs and constants are declared here (the vendor header
 //!   set is not in the Windows SDK; the LOGCONTEXT layout and the PK_*
 //!   serialization order are stable, documented ABI).
@@ -21,6 +21,8 @@ use std::ffi::c_void;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
+
+use crate::points_win::{Move, a_pixel_apart};
 
 use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
@@ -308,13 +310,25 @@ impl Heard {
         self.packets.iter().skip(self.packets.len() - handed)
     }
 
-    /// The packet nearest `time` on the message clock, `within` ms of it at
-    /// most — of two as near, the newer.
+    /// The packet that put the cursor where `place` is: of the packets at
+    /// its place as `output` lays them on the screen — a pixel round it at
+    /// most ([`a_pixel_apart`]) — the nearest its time on the message clock,
+    /// `within` ms of it at most; of two as near, the newer.
+    ///
+    /// 🚨BY ITS PLACE, NOT ITS TIME (H61, 2026-11-18): a move's time is the
+    /// message clock's, which steps 15.6 ms — the four moves of a step are
+    /// of one millisecond — and the driver's packets are a millisecond's
+    /// own, one every 4 ms. Paired by time, the moves of a step took one
+    /// packet between them, and the stroke's pressure went in steps (유저
+    /// 「중간중간 필압이 이상한 구간」). The cursor is where a packet put it:
+    /// 🔬main PC, a pen as a mouse, 1,470 moves of three strokes (k-h61):
+    /// 1,466 had a packet at their place, a pixel round at most — 706 at the
+    /// very pixel —, and the packet nearest in time was that one for 544.
     ///
     /// ⚠️Wintab's `pkTime` is read as the message clock's own milliseconds,
     /// as Qt reads it; the input inspector shows how far apart the two run
     /// ([`Heard::behind`]).
-    pub(crate) fn near(&self, time: u32, within: u32) -> Option<&Packet> {
+    pub(crate) fn at(&self, (x, y, time): Move, within: u32, output: Output) -> Option<&Packet> {
         let mut nearest: Option<(u32, &Packet)> = None;
         for packet in self.packets.iter().rev() {
             let after = packet.time.wrapping_sub(time) as i32;
@@ -322,7 +336,8 @@ impl Heard {
                 break; // and every packet before it, older still
             }
             let off = after.unsigned_abs();
-            if off <= within && nearest.is_none_or(|(best, _)| off < best) {
+            let here = a_pixel_apart(output.place_of(packet), (x, y));
+            if here && off <= within && nearest.is_none_or(|(best, _)| off < best) {
                 nearest = Some((off, packet));
             }
         }
@@ -335,12 +350,35 @@ impl Heard {
     }
 }
 
+/// Where an open context lays its packets: its output's origin and extent —
+/// the screen's pixels, for a system context.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Output {
+    pub(crate) origin: [i32; 2],
+    pub(crate) extent: [i32; 2],
+}
+
+impl Output {
+    /// The screen pixel `packet` is at. Wintab's y runs up its output from
+    /// the bottom row where the extent is positive, as a system context's
+    /// is, and down from the top where it is negative.
+    ///
+    /// 🔬Main PC, a system context over a virtual screen 2,880 high (k-h61,
+    /// 11-18): a move at (x, y) had its packet at x and 2,879 − y.
+    pub(crate) fn place_of(&self, packet: &Packet) -> (i32, i32) {
+        let ([_, top], [_, high]) = (self.origin, self.extent);
+        let y = if high < 0 { packet.y } else { top + (high - 1) - (packet.y - top) };
+        (packet.x, y)
+    }
+}
+
 struct Opened {
     context: *mut c_void,
     scales: Scales,
     /// How far from a point a packet may be to give it its pressure: the
     /// app's own window for a fresh packet.
     within: u32,
+    output: Output,
     heard: Heard,
 }
 
@@ -502,7 +540,12 @@ pub(crate) fn open(within: u32) -> bool {
     let pressure = driver.info::<Axis>(WTI_DEVICES, DVC_NPRESSURE);
     let orientation = driver.info::<[Axis; 3]>(WTI_DEVICES, DVC_ORIENTATION);
     let scales = Scales::of(pressure, orientation);
-    tablet.opened = Some(Opened { context: opened, scales, within, heard: Heard::default() });
+    // As the driver took it: it may have changed what it was asked.
+    let output = Output {
+        origin: [context.out_origin[0], context.out_origin[1]],
+        extent: [context.out_extent[0], context.out_extent[1]],
+    };
+    tablet.opened = Some(Opened { context: opened, scales, within, output, heard: Heard::default() });
     drop(tablet);
     let room = vec![Packet::default(); QUEUE];
     *drain_lock() = Some(Drain { driver, context: opened, room, thread: None });
@@ -535,20 +578,21 @@ pub(crate) fn poll(out: &mut [f32]) -> usize {
     handed
 }
 
-/// The driver's pressure, 0..1, at each of `times` on the message clock —
-/// the packet heard nearest it within the window the context opened with
-/// ([`Heard::near`]) — and NaN where no packet is; all NaN while no context
-/// is open. Asks the driver nothing; notes how far the newest packet heard
-/// is behind the message being handled, at `message`.
-pub(crate) fn pressures_at(message: u32, times: &[u32]) -> Vec<f64> {
+/// The driver's pressure, 0..1, at each of `moves` — screen pixels, and the
+/// message clock — of the packet that put the cursor there, within the
+/// window the context opened with ([`Heard::at`]); NaN where no packet did,
+/// and all NaN while no context is open. Asks the driver nothing; notes how
+/// far the newest packet heard is behind the message being handled, at
+/// `message`.
+pub(crate) fn pressures_at(message: u32, moves: &[Move]) -> Vec<f64> {
     let mut tablet = tablet();
     let Some(opened) = tablet.opened.as_mut() else {
-        return vec![f64::NAN; times.len()];
+        return vec![f64::NAN; moves.len()];
     };
     opened.heard.behind(message);
-    let (heard, scales, within) = (&opened.heard, opened.scales, opened.within);
-    let pressure = |time| heard.near(time, within).map_or(f64::NAN, |packet| scales.pressure_of(packet));
-    times.iter().map(|&time| pressure(time)).collect()
+    let (heard, scales, within, output) = (&opened.heard, opened.scales, opened.within, opened.output);
+    let pressure = |at| heard.at(at, within, output).map_or(f64::NAN, |packet| scales.pressure_of(packet));
+    moves.iter().map(|&at| pressure(at)).collect()
 }
 
 /// How many packets said the queue overflowed before them since the

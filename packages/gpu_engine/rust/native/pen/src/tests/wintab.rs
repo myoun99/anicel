@@ -8,6 +8,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use windows::Win32::Foundation::{HMODULE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
 use windows::Win32::Foundation::POINT;
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Input::Pointer::POINTER_INFO;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, PT_PEN, PT_TOUCH,
@@ -16,10 +17,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
-    Axis, Context, MOVE_MASK, OPTIONS, PACKET_DATA, PACKET_MODE, Packet, Script, Seen,
+    Axis, Context, MOVE_MASK, OPTIONS, OUT_EXTENT, OUT_ORIGIN, PACKET_DATA, PACKET_MODE, Packet, Script,
+    Seen,
 };
 
-use crate::wintab::{self, Heard, QUEUE};
+use crate::wintab::{self, Heard, Output, QUEUE};
 
 /// The `qat_*` exports of one reader.
 #[derive(Clone, Copy)]
@@ -572,9 +574,21 @@ fn the_queue_asked_for_halves_till_the_driver_takes_one() {
     }
 }
 
-/// A packet heard at `time` on the message clock, of `pressure`.
+/// A packet heard at `time` on the message clock, of `pressure`, at the
+/// output's (0, 0) — [`HERE`] on [`SCREEN`].
 fn heard_at(time: u32, pressure: u32) -> wintab::Packet {
     wintab::Packet { time, normal_pressure: pressure, ..Default::default() }
+}
+
+/// A system context's output over a screen 100 pixels on a side.
+const SCREEN: Output = Output { origin: [0, 0], extent: [100, 100] };
+
+/// The screen pixel the output's (0, 0) is: its bottom row's first.
+const HERE: (i32, i32) = (0, 99);
+
+/// The pressure of the packet that put the cursor at [`HERE`] at `time`.
+fn here(heard: &Heard, time: u32, within: u32) -> Option<u32> {
+    heard.at((HERE.0, HERE.1, time), within, SCREEN).map(|packet| packet.normal_pressure)
 }
 
 /// What was heard of `packets`, in their order.
@@ -602,8 +616,8 @@ fn what_was_heard_is_handed_the_newest_first_and_once() {
 #[test]
 fn the_most_heard_is_a_queue_s_worth_the_oldest_going_first() {
     let mut heard = hearing(&(1..=QUEUE as u32 + 5).map(|at| heard_at(at, at)).collect::<Vec<_>>());
-    assert_eq!(heard.near(5, 0), None, "the five oldest went");
-    assert_eq!(heard.near(6, 0).map(|packet| packet.time), Some(6));
+    assert_eq!(here(&heard, 5, 0), None, "the five oldest went");
+    assert_eq!(here(&heard, 6, 0), Some(6));
     let all = handed(&mut heard, usize::MAX);
     assert_eq!((all.len(), all[0]), (QUEUE, 6), "a queue's worth handed, and no more");
 }
@@ -616,9 +630,9 @@ fn a_packet_that_says_the_queue_overflowed_is_counted() {
 }
 
 #[test]
-fn a_move_is_given_the_packet_nearest_it_within_the_window() {
+fn a_move_is_given_the_packet_at_its_place_nearest_it_within_the_window() {
     let heard = hearing(&[heard_at(100, 1), heard_at(110, 2), heard_at(120, 3), heard_at(500, 4)]);
-    let near = |time, within| heard.near(time, within).map(|packet| packet.normal_pressure);
+    let near = |time, within| here(&heard, time, within);
     assert_eq!(near(104, 150), Some(1));
     assert_eq!(near(106, 150), Some(2));
     assert_eq!(near(105, 150), Some(2), "of two as near, the newer");
@@ -630,9 +644,47 @@ fn a_move_is_given_the_packet_nearest_it_within_the_window() {
 }
 
 #[test]
+fn a_packet_elsewhere_gives_a_move_nothing_however_near_in_time() {
+    let away = |time, (x, y), pressure| wintab::Packet { x, y, ..heard_at(time, pressure) };
+    let heard = hearing(&[heard_at(100, 1), away(104, (2, 0), 2), away(105, (1, 1), 3)]);
+    assert_eq!(here(&heard, 104, 150), Some(3), "a pixel round its place is its place");
+    assert_eq!(heard.at((0, 97, 104), 150, SCREEN).map(|packet| packet.normal_pressure), Some(3));
+    assert_eq!(heard.at((50, 50, 104), 150, SCREEN), None, "no packet put it there");
+}
+
+#[test]
+fn a_move_of_a_step_of_the_message_clock_takes_the_packet_at_its_own_place() {
+    // 🔬H61, main PC, a pen as a mouse (k-h61, 11-18): moves the history
+    // told at two steps of the message clock (…843 · …859), and the packets
+    // the driver put them with, one every 4 ms — over a virtual screen
+    // −2,560, 0 · 6,200 × 2,880, where a packet's y is 2,879 less the move's.
+    let screen = Output { origin: [-2560, 0], extent: [6200, 2880] };
+    let put = |time, x, y, pressure| wintab::Packet { x, y, ..heard_at(time, pressure) };
+    let heard = hearing(&[
+        put(841, 1174, 713, 8652),
+        put(845, 1165, 711, 8660),
+        put(849, 1157, 709, 8676),
+        put(853, 1149, 707, 8684),
+        put(858, 1142, 705, 8685),
+        put(862, 1134, 704, 8653),
+    ]);
+    let moves = [
+        (1174, 2167, 843),
+        (1166, 2168, 843),
+        (1158, 2170, 843),
+        (1150, 2172, 843),
+        (1142, 2174, 859),
+        (1134, 2176, 859),
+    ];
+    let pressures: Vec<_> =
+        moves.iter().map(|&at| heard.at(at, 150, screen).map(|packet| packet.normal_pressure)).collect();
+    assert_eq!(pressures, [8652, 8660, 8676, 8684, 8685, 8653].map(Some), "each its own packet's");
+}
+
+#[test]
 fn the_message_clock_wraps_for_a_packet_as_for_a_move() {
     let heard = hearing(&[heard_at(u32::MAX - 5, 1), heard_at(4, 2)]);
-    let near = |time| heard.near(time, 150).map(|packet| packet.normal_pressure);
+    let near = |time| here(&heard, time, 150);
     assert_eq!(near(u32::MAX), Some(2), "five either side of the wrap: the newer");
     assert_eq!(near(u32::MAX - 6), Some(1));
     assert_eq!(near(3), Some(2));
@@ -643,7 +695,17 @@ fn a_packet_older_than_the_window_ends_the_search() {
     // The packets run in time: one older than the window has none newer
     // before it.
     let heard = hearing(&[heard_at(300, 1), heard_at(100, 2), heard_at(200, 3)]);
-    assert_eq!(heard.near(300, 50), None);
+    assert_eq!(here(&heard, 300, 50), None);
+}
+
+#[test]
+fn a_system_context_s_y_runs_up_and_a_negative_extent_s_down() {
+    let packet = wintab::Packet { x: 40, y: 50, ..Default::default() };
+    assert_eq!(SCREEN.place_of(&packet), (40, 49));
+    let below = Output { origin: [-2560, 100], extent: [6200, 2880] };
+    assert_eq!(below.place_of(&wintab::Packet { y: 100, ..packet }), (40, 2979), "its bottom row");
+    let down = Output { origin: [0, 0], extent: [100, -100] };
+    assert_eq!(down.place_of(&packet), (40, 50));
 }
 
 #[test]
@@ -658,6 +720,14 @@ fn how_far_the_newest_packet_is_behind_a_message_is_noted() {
     assert_eq!(heard.gap, Some(-10), "a packet newer than the message");
 }
 
+/// A system context whose output's y runs down: a packet's place is the
+/// screen's own pixel.
+fn running_down() -> Context {
+    let mut context = system_context();
+    context.0[OUT_EXTENT + 1] = (-1i32) as u32;
+    context
+}
+
 /// A packet of the fake driver's, at `time` on the message clock, of
 /// `pressure`.
 fn queued(time: u32, pressure: u32) -> Packet {
@@ -665,27 +735,33 @@ fn queued(time: u32, pressure: u32) -> Packet {
 }
 
 #[test]
-fn a_mouse_move_is_given_the_pressure_of_the_packet_nearest_it() {
+fn a_mouse_move_is_given_the_pressure_of_the_packet_at_its_place() {
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
     let packets = [queued(1000, 100), queued(1010, 200), queued(1020, 300)];
-    let script = Script { has_pressure: true, pressure: axis(0, 1000), ..installed(&packets) };
+    // An output 100 high: the fake's packets, at its (40, 50), are the
+    // screen's (40, 49).
+    let mut context = system_context();
+    (context.0[OUT_ORIGIN + 1], context.0[OUT_EXTENT + 1]) = (0, 100);
+    let script = Script { has_pressure: true, pressure: axis(0, 1000), context, ..installed(&packets) };
     driver.play(&script);
     let mut gap = 0;
     // SAFETY: room for an int.
     let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
     assert_eq!((crate::qat_open(20), gapped), (1, 0), "no gap before a message");
     wintab::drain();
-    let pressures = wintab::pressures_at(1030, &[1004, 1016, 1040, 1041, 980, 979]);
+    let at = |time| (40, 49, time);
+    let moves = [at(1004), at(1016), at(1040), at(1041), at(980), at(979), (40, 47, 1010)];
+    let pressures = wintab::pressures_at(1030, &moves);
     let scale = |pressure: f64| pressure * (1.0 / 1000.0);
-    let want = [scale(100.0), scale(300.0), scale(300.0), f64::NAN, scale(100.0), f64::NAN];
+    let want = [scale(100.0), scale(300.0), scale(300.0), f64::NAN, scale(100.0), f64::NAN, f64::NAN];
     let bits = |values: &[f64]| values.iter().map(|value| value.to_bits()).collect::<Vec<_>>();
-    assert_eq!(bits(&pressures), bits(&want), "within the 20 ms the app opened with");
+    assert_eq!(bits(&pressures), bits(&want), "at its place, within the 20 ms the app opened with");
     // SAFETY: room for an int.
     let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
     assert_eq!((gapped, gap, crate::qat_overflowed()), (1, 10, 0));
     crate::qat_close();
-    let closed = wintab::pressures_at(1030, &[1020]);
+    let closed = wintab::pressures_at(1030, &[at(1020)]);
     assert!(closed[0].is_nan(), "no context, no pressure");
     // SAFETY: room for an int.
     assert_eq!(unsafe { crate::qat_clock_gap(&mut gap) }, 0);
@@ -710,17 +786,17 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
     let window = AppWindow::show();
     // SAFETY: the time of the last message this thread took.
     let time = unsafe { GetMessageTime() } as u32;
-    let script = Script {
-        has_pressure: true,
-        pressure: axis(0, 1000),
-        ..installed(&[queued(time.wrapping_sub(3), 250)])
-    };
+    // A place no mouse is: no history of it kept, the message's own move
+    // alone — and the packet that put the cursor there.
+    let far: i16 = -20_000;
+    let mut there = POINT { x: far.into(), y: far.into() };
+    // SAFETY: the window shown, and a local.
+    let _ = unsafe { ClientToScreen(window.0, &mut there) };
+    let put = Packet { x: there.x, y: there.y, ..queued(time.wrapping_sub(3), 250) };
+    let script = Script { has_pressure: true, pressure: axis(0, 1000), context: running_down(), ..installed(&[put]) };
     driver.play(&script);
     assert_eq!(crate::qat_open(150), 1);
     wintab::drain();
-    // A place no mouse is: no history of it kept, the message's own move
-    // alone.
-    let far: i16 = -20_000;
     let word = (far as u16) as isize;
     let words = word | (word << 16);
     crate::points_win::mouse(window.0, LPARAM(words));
@@ -776,7 +852,7 @@ fn a_poll_and_a_point_ask_the_driver_nothing() {
     for _ in 0..1000 {
         // SAFETY: room for eight records.
         let _ = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
-        let _ = wintab::pressures_at(1001, &[1000, 1001]);
+        let _ = wintab::pressures_at(1001, &[(40, 49, 1000), (40, 49, 1001)]);
     }
     let thread_drains = began.elapsed().as_millis() / 4 + 2;
     let asks = driver.seen().asks - before;
@@ -806,10 +882,13 @@ fn a_press_drains_the_queue_before_its_point_is_read() {
 fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
     let (driver, _turn) = driver();
     let window = AppWindow::show();
+    // Each packet where the pen's points are, as the screen counts.
+    let put = |time, pressure| Packet { x: -20_000, y: -20_000, ..queued(time, pressure) };
     let script = Script {
         has_pressure: true,
         pressure: axis(0, 1000),
-        ..installed(&[queued(1000, 100), queued(1010, 200), queued(1020, 300)])
+        context: running_down(),
+        ..installed(&[put(1000, 100), put(1010, 200), put(1020, 300)])
     };
     driver.play(&script);
     assert_eq!(crate::qat_open(20), 1);
@@ -828,6 +907,6 @@ fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
     crate::qat_close();
     let driven: Vec<u64> = points.iter().map(|point| point.driven.to_bits()).collect();
     let want = [f64::NAN, 100.0 * (1.0 / 1000.0), 300.0 * (1.0 / 1000.0)];
-    assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each its nearest within 20 ms");
+    assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each the packet at its place within 20 ms");
     assert!(finger[0].driven.is_nan(), "a finger is not the pen");
 }
