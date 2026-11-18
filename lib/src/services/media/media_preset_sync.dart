@@ -35,8 +35,7 @@ enum MediaSyncField {
   /// What the window starts with: the start and the length. A block's name
   /// tag and words differ from cut to cut as a rule — 시안 ③: 「이름은
   /// 컷마다 다른 게 정상이라 꺼 둔다」 — and a fit and a kind are asked for
-  /// too (Q7 kind-too-off), so the pool's badge says only that one of THESE
-  /// parts from its preset.
+  /// too (Q7 kind-too-off).
   static const Set<MediaSyncField> asked = {start, length};
 }
 
@@ -179,18 +178,6 @@ final class MediaSyncPlace {
 /// and what a placement of its pictures covers (`placedPicturesOf`) — each
 /// null while it is not known.
 typedef MediaSyncLengths = ({int? sound, int? pictures});
-
-/// Whether a place of [entry] in [project] parts from its preset at the
-/// fields the sync window starts with ([MediaSyncField.asked]) — what turns
-/// the pool's in-use mark into its sync (시안 ③: 「프리셋과 다른 곳이 있는
-/// 행의 「쓰는 곳」 버튼이 같은 자리에서 동기화 모양」).
-bool partsFromItsPreset(
-  Project project,
-  MediaAsset entry, {
-  required MediaSyncLengths lengths,
-}) => syncPlacesOf(project, entry, lengths: lengths).any(
-  (place) => place.partsFrom(MediaSyncField.asked).isNotEmpty,
-);
 
 /// Every place [project] places [entry] at that a sync can set, in the
 /// order [mediaAssetUsesOf] lists them — the uses the pool's in-use mark

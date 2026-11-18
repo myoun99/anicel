@@ -19,9 +19,7 @@ ProjectClock _clockOf(EditorSessionManager session) => (
 /// The lengths [asset]'s preset is counted from, as far as [session] has
 /// them in hand — never waiting for one: its sound's where its conform is
 /// held, its pictures' where the pool has read what it needs
-/// ([placedPicturesOf]). The pool's in-use mark and the sync window count
-/// from these alike, so the mark turns into the sync on what the window
-/// then shows.
+/// ([placedPicturesOf]).
 MediaSyncLengths syncLengthsOf(
   EditorSessionManager session,
   MediaAsset asset,
@@ -40,8 +38,8 @@ MediaSyncLengths syncLengthsOf(
 }
 
 /// Opens the sync window over [asset]'s places and sets what it answers —
-/// the pool line's in-use mark when a place parts from the file's preset
-/// ([partsFromItsPreset]). ONE undo step.
+/// the 「동기화」 of the window the pool line's in-use mark opens, for a file
+/// of every kind (card 「파일마다 배치 기본값」-Q11). ONE undo step.
 Future<void> syncMediaPlaces(
   BuildContext context,
   EditorSessionManager session,

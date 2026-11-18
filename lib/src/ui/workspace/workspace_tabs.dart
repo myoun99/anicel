@@ -932,11 +932,6 @@ class _WorkspaceTabs {
                   pictures: _state._views._poolPictures,
                 ),
               ),
-              partsOf: (asset) => partsFromItsPreset(
-                _state.widget.session.repository.requireProject(),
-                asset,
-                lengths: syncLengthsOf(_state.widget.session, asset),
-              ),
               onSync: (asset) => unawaited(
                 syncMediaPlaces(context, _state.widget.session, asset),
               ),

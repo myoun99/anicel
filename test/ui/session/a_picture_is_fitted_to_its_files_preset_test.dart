@@ -120,7 +120,7 @@ void main() {
 
   test('a still\'s row holds its fit — the size it was placed at, and the '
       'one its preset\'s fit makes on the cut — and its kind; it holds no '
-      'start and no length, so the pool\'s mark does not turn for it', () {
+      'start and no length, so it parts at neither', () {
     final project = _project();
     final [one, two] = _placesIn(project);
     expect(one.fields, _fitAndKind);
@@ -132,10 +132,7 @@ void main() {
     expect(one.kind, LayerKind.animation);
     expect(one.placed.kind, LayerKind.image);
     expect(one.partsFrom(MediaSyncField.values.toSet()), _fitAndKind);
-    expect(
-      partsFromItsPreset(project, project.mediaAssets.single, lengths: _known),
-      isFalse,
-    );
+    expect(one.partsFrom(MediaSyncField.asked), isEmpty);
     expect(one.canSetAt(_fitAndKind), isTrue);
     expect(
       two.canSetAt(_fitAndKind),

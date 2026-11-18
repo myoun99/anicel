@@ -221,29 +221,20 @@ void main() {
     );
     expect([for (final clip in sound().audioClips) clip.offsetFrames], [2]);
     expect(sound().timeline[0]?.length, 6);
+    final synced = session.repository.requireProject();
     expect(
-      partsFromItsPreset(
-        session.repository.requireProject(),
-        session.repository.requireProject().mediaAssets.first,
-        lengths: _known,
-      ),
-      isFalse,
+      [
+        for (final place in syncPlacesOf(
+          synced,
+          synced.mediaAssets.first,
+          lengths: _known,
+        ))
+          place.partsFrom(MediaSyncField.asked),
+      ],
+      everyElement(isEmpty),
     );
     session.historyManager.undo();
     expect((movie(), sound()), before);
-  });
-
-  test('the pool\'s mark turns into the sync for a movie whose place '
-      'parts, and stays the way to its uses for a still', () {
-    final project = _project();
-    expect(
-      partsFromItsPreset(project, project.mediaAssets.first, lengths: _known),
-      isTrue,
-    );
-    expect(
-      partsFromItsPreset(project, project.mediaAssets.last, lengths: _known),
-      isFalse,
-    );
   });
 
   test('🐛the sync counts a movie\'s pictures as a placement keeps them — '

@@ -340,6 +340,10 @@ Future<void> showAppNotice(
   /// The lines this notice is ABOUT — see [AppConfirmDialog.details].
   List<NoticeDetails> details = const [],
   Key? windowKey,
+  /// What can be done from here besides closing, before 닫기 — each takes
+  /// the notice down, then does its thing: the uses window's 「동기화」
+  /// (card 「파일마다 배치 기본값」-Q11).
+  List<AppWindowAction> also = const [],
 }) {
   return showDialog<void>(
     context: context,
@@ -351,6 +355,22 @@ Future<void> showAppNotice(
       message: message,
       details: details,
       actions: [
+        for (final action in also)
+          AppWindowAction(
+            label: action.label,
+            actionKey: action.actionKey,
+            emphasis: action.emphasis,
+            tooltip: action.tooltip,
+            autofocus: action.autofocus,
+            resets: action.resets,
+            onPressed: switch (action.onPressed) {
+              null => null,
+              final then => () {
+                Navigator.of(context).pop();
+                then();
+              },
+            },
+          ),
         AppWindowAction(
           label: AppText.strings.commonClose,
           actionKey: const ValueKey<String>('app-notice-close'),

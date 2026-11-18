@@ -263,19 +263,23 @@ void main() {
     expect([for (final clip in row.audioClips) clip.offsetFrames], [0, 2]);
   });
 
-  test('the pool\'s mark turns into the sync where a place parts at its '
-      'start or its length — not before the sound\'s length is known, not '
-      'once every place is synced', () {
-    final project = _project();
-    final clap = project.mediaAssets.single;
-    expect(partsFromItsPreset(project, clap, lengths: _known), isTrue);
-    expect(
-      partsFromItsPreset(
+  test('a place parts at its start or its length — not before the sound\'s '
+      'length is known, not once every place is synced', () {
+    List<Set<MediaSyncField>> partsIn(
+      Project project,
+      MediaSyncLengths lengths,
+    ) => [
+      for (final place in syncPlacesOf(
         project,
-        clap,
-        lengths: (sound: null, pictures: null),
-      ),
-      isFalse,
+        project.mediaAssets.single,
+        lengths: lengths,
+      ))
+        place.partsFrom(MediaSyncField.asked),
+    ];
+    expect(partsIn(_project(), _known), contains(isNotEmpty));
+    expect(
+      partsIn(_project(), (sound: null, pictures: null)),
+      everyElement(isEmpty),
       reason: 'a start and a length the preset cannot count part from '
           'nothing',
     );
@@ -287,14 +291,10 @@ void main() {
       places: placesIn(session.repository.requireProject()),
     );
     expect(
-      partsFromItsPreset(
-        session.repository.requireProject(),
-        clap,
-        lengths: _known,
-      ),
-      isFalse,
-      reason: 'the name tag and the words still part, but the mark counts '
-          'only what the window starts with on',
+      partsIn(session.repository.requireProject(), _known),
+      everyElement(isEmpty),
+      reason: 'the name tag and the words still part, but the sync set what '
+          'the window starts with on',
     );
   });
 }

@@ -31,8 +31,6 @@ import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
-import '../services/media/media_preset_sync.dart'
-    show partsFromItsPreset;
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
