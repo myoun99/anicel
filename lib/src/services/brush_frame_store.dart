@@ -523,12 +523,48 @@ class BrushFrameStore {
   }
 
   /// One bump of [celPixelRevision], naming the revisions left since the
-  /// last in [revisionsLastLeft].
+  /// last in [revisionsLastLeft] — held to the end of [asOneEdit].
   void _announcePixels() {
+    if (_inOneEdit > 0) {
+      _pixelsHeld = true;
+      return;
+    }
     _revisionsLastLeft = Set.unmodifiable(_leaving);
     _leaving.clear();
     celPixelRevision.value += 1;
   }
+
+  /// [edits] — a step that lands its cels one at a time — heard as ONE
+  /// edit: what each cel it writes would announce, its pixels
+  /// ([celPixelRevision]) and its crossing ([celContentRevision]), is
+  /// announced once when it is done, naming every revision it left and
+  /// every cel it crossed. The store's own runs of cels — a canvas resize
+  /// ([adoptCutCanvasSize]), a pasteboard's wall — bump once already.
+  ///
+  /// 🔬F-615 (S5_BA cut 352, a colour delete landing 85 cels): a pixel
+  /// announcement each, every one walking every picture the frames keep
+  /// (`FramePictures.letGoOfLeftRevisions`) — 310 of the landing's 722 ms.
+  T asOneEdit<T>(T Function() edits) {
+    _inOneEdit += 1;
+    try {
+      return edits();
+    } finally {
+      _inOneEdit -= 1;
+      if (_inOneEdit == 0) {
+        if (_pixelsHeld) {
+          _pixelsHeld = false;
+          _announcePixels();
+        }
+        _announceCrossings();
+      }
+    }
+  }
+
+  /// How deep in [asOneEdit] the store is — announcing nothing while in it.
+  int _inOneEdit = 0;
+
+  /// Whether an edit in [asOneEdit] announced its pixels.
+  bool _pixelsHeld = false;
 
   /// Keys last seen holding a picture — the crossing detector's memory.
   final Set<BrushFrameKey> _celsWithContent = {};
@@ -559,9 +595,10 @@ class BrushFrameStore {
   }
 
   /// One bump of [celContentRevision] for every cel crossed since the last
-  /// — none when nothing did — naming them in [celsLastCrossed].
+  /// — none when nothing did — naming them in [celsLastCrossed]; held to
+  /// the end of [asOneEdit].
   void _announceCrossings() {
-    if (_crossing.isEmpty) {
+    if (_crossing.isEmpty || _inOneEdit > 0) {
       return;
     }
     _celsLastCrossed = Set.unmodifiable(_crossing);

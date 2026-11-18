@@ -260,7 +260,7 @@ void main() {
       expect(shell, contains('pressFlyoutRow('), reason: '⛔LIVENESS');
       // The verbs the bar's rows run, by the names the rows call them by.
       for (final verb in const [
-        'runPixelVerb(',
+        'pixelVerbStep(',
         'runPixelClipboardVerb(',
         'createCut',
         'createLinkedCutFromActiveCut',

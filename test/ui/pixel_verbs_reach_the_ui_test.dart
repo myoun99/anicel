@@ -25,7 +25,8 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/a_move_lands.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
-import '../helpers/wait_window.dart' show windowBehind, windowBehindTheTap;
+import '../helpers/wait_window.dart'
+    show expectOneBar, watchTheBar, windowBehind, windowBehindTheTap;
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
 /// + 「버튼 자체도 블록에 따라 활성화 비활성화 제대로 갱신 안되고있어」.
@@ -536,13 +537,42 @@ void main() {
   );
 
   testWidgets(
+    '🗣️F-615: the window over 픽셀 비우기 across blocks tells how many of its '
+    'cels are done — 「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」 — and so do '
+    'its undo and its redo',
+    (tester) async {
+      final session = await pump(tester);
+      await standOnAnInkedCel(tester, session);
+      final row = session.activeLayerId!;
+      // Frames 0 to 2 of the row stood on: three blocks.
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: row,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pumpAndSettle();
+      expect(session.pixelVerbs.pixelVerbCellKeys(), hasLength(3));
+
+      for (final press in [
+        () => clearPixelsFromTheHead(tester),
+        () => windowBehindTheTap(tester, undo),
+        () => windowBehindTheTap(tester, redo),
+      ]) {
+        final told = watchTheBar(tester);
+        expect(await press(), isNotNull);
+        expectOneBar(told, [1 / 3, 2 / 3, 1]);
+      }
+    },
+  );
+
+  testWidgets(
     'F-551: the window is what a step stood behind, not which verb it was — '
     'the same 픽셀 비우기 taken with no window is undone at once',
     (tester) async {
       final session = await pump(tester);
       final drawn = await standOnAnInkedCel(tester, session);
 
-      session.pixelVerbs.runPixelVerb(CelPixelVerb.clearPixels);
+      session.pixelVerbs.pixelVerbStep(CelPixelVerb.clearPixels).step();
       await tester.pumpAndSettle();
       expect(drawn(), isFalse, reason: '⛔fixture: the verb ran');
 

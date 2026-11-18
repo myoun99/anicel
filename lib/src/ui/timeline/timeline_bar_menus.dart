@@ -11,6 +11,7 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../../models/sound_preset.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
+import '../../services/command.dart' show WorkAhead;
 import '../cut_command_group.dart';
 import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
@@ -488,7 +489,8 @@ class TimelineBarMenus {
   ];
 
   /// [run], a row of the colour edit list, behind the wait window under
-  /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
+  /// [actionId]'s name when it lands on more than one of [blocks] (F-566),
+  /// what it works out [ahead] of itself first (F-615).
   ///
   /// 🗣️I-164: the list's preview is over once a row is chosen — 「그 색 편집
   /// 앵커창 나가면 사라짐」 — and it goes where the row's step lands, so the
@@ -498,6 +500,7 @@ class TimelineBarMenus {
     String actionId,
     VoidCallback run, {
     required Iterable<Object> blocks,
+    WorkAhead? ahead,
   }) {
     unawaited(
       takeBehindTheWaitWindow(
@@ -508,6 +511,7 @@ class TimelineBarMenus {
         },
         window: AppWaitWindow.working(editorActionLabel(actionId)),
         blocks: blocks,
+        ahead: ahead,
       ),
     );
   }
@@ -539,12 +543,16 @@ class TimelineBarMenus {
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
-    onSelected: () => _behindTheWaitWindow(
-      context,
-      pixelVerbActionIdFor(verb),
-      () => session.pixelVerbs.runPixelVerb(verb),
-      blocks: session.pixelVerbs.pixelVerbCellKeys(),
-    ),
+    onSelected: () {
+      final press = session.pixelVerbs.pixelVerbStep(verb);
+      _behindTheWaitWindow(
+        context,
+        pixelVerbActionIdFor(verb),
+        press.step,
+        blocks: session.pixelVerbs.pixelVerbCellKeys(),
+        ahead: press.ahead,
+      );
+    },
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
     knob: _previewed(verb, switch (verb) {

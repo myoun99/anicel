@@ -1,6 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/argb_channels.dart';
+import '../../core/progress_share.dart';
+import '../../core/screens_turn.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/pixel_verb_settings.dart';
@@ -45,7 +49,8 @@ class CelPixelTarget {
 /// Redo re-runs the forward pass rather than restoring a post-surface: the
 /// pass is deterministic, so the second run produces the same pixels and
 /// the same recipe as the first.
-class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
+class CelPixelOverwriteCommand
+    implements Command, RetainedBytesCommand, WorksAheadCommand {
   CelPixelOverwriteCommand({
     required this.coordinator,
     required this.targets,
@@ -213,14 +218,17 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     // the second reading equals the first — but only because it IS a
     // reading, and a stale recipe would quietly outlive a canvas resize.
     _applied.clear();
-    for (final (:target, :surface, :restore) in _forwardPasses()) {
-      _applied.add((target: target, restore: restore));
-      coordinator.restoreSurfaceSnapshot(
-        target.key,
-        surface,
-        cacheInvalidationSink: cacheInvalidationSink,
-      );
-    }
+    coordinator.frameStore.asOneEdit(() {
+      for (final (:target, :surface, :restore) in _forwardPasses()) {
+        _applied.add((target: target, restore: restore));
+        coordinator.restoreSurfaceSnapshot(
+          target.key,
+          surface,
+          cacheInvalidationSink: cacheInvalidationSink,
+        );
+      }
+    });
+    _ahead = null;
   }
 
   /// What [execute] would leave each target's cel as, written nowhere — by
@@ -242,34 +250,17 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
   }
 
   /// The forward pass over each cel [targets] reach, as it stands — taken
-  /// as it is walked, so [execute] lands each before the next is read.
+  /// as it is walked, so [execute] lands each before the next is read; the
+  /// pass [workAhead] worked out for a cel, where it was worked out from
+  /// these very pixels.
   Iterable<
     ({CelPixelTarget target, BitmapSurface surface, CelPixelRestore restore})
   >
   _forwardPasses() sync* {
-    final done = <BrushFrameKey>{};
-    for (final target in targets) {
-      final cel = coordinator.frameStore.canonicalKeyOf(target.key);
-      if (!done.add(cel)) {
-        // Already done through another row. The region of the FIRST row
-        // that reached this cel is the one that applies; a linked pair with
-        // different poses is the only way that can even be noticed, and
-        // stack order is the tiebreak everywhere else too.
-        continue;
-      }
+    for (final target in _celsReached()) {
       final before = coordinator.currentSurfaceOf(target.key);
-      final result = overwriteCelPixels(
-        surface: before,
-        channel: channel,
-        walk: celPixelWalkFor(
-          surface: before,
-          region: target.region,
-          options: options,
-        ),
-        value: _value,
-        selector: selector,
-        threshold: threshold,
-      );
+      final result =
+          _taken(target, before, undo: false) ?? _forwardPass(target, before);
       final restore = result.restore;
       if (restore == null) {
         // Nothing under the region — an empty cel, or a selection that
@@ -280,30 +271,164 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     }
   }
 
-  @override
-  void undo() {
-    for (final entry in _applied.reversed) {
-      final target = entry.target;
-      final current = coordinator.currentSurfaceOf(target.key);
-      final result = overwriteCelPixels(
-        surface: current,
-        channel: channel,
-        walk: celPixelWalkFor(
-          surface: current,
-          region: target.region,
-          options: options,
-        ),
-        restore: entry.restore,
-        // The SAME selector: an alpha write preserves RGB, so it picks
-        // exactly the pixels the forward pass picked and the recipe's
-        // positional walk lines up.
-        selector: selector,
-      );
-      coordinator.restoreSurfaceSnapshot(
-        target.key,
-        result.surface,
-        cacheInvalidationSink: cacheInvalidationSink,
-      );
+  /// [targets], each cel once: a cel already reached through another row
+  /// is done. The region of the FIRST row that reached it is the one that
+  /// applies; a linked pair with different poses is the only way that can
+  /// even be noticed, and stack order is the tiebreak everywhere else too.
+  Iterable<CelPixelTarget> _celsReached() sync* {
+    final done = <BrushFrameKey>{};
+    for (final target in targets) {
+      if (done.add(coordinator.frameStore.canonicalKeyOf(target.key))) {
+        yield target;
+      }
     }
   }
+
+  /// The forward pass over [before] — [target]'s cel as it stands.
+  _Pass _forwardPass(CelPixelTarget target, BitmapSurface before) {
+    passesHere += 1;
+    return overwriteCelPixels(
+      surface: before,
+      channel: channel,
+      walk: celPixelWalkFor(
+        surface: before,
+        region: target.region,
+        options: options,
+      ),
+      value: _value,
+      selector: selector,
+      threshold: threshold,
+    );
+  }
+
+  /// [restore] put back over [current] — [target]'s cel as it stands.
+  _Pass _undoPass(
+    CelPixelTarget target,
+    BitmapSurface current,
+    CelPixelRestore restore,
+  ) {
+    passesHere += 1;
+    return overwriteCelPixels(
+      surface: current,
+      channel: channel,
+      walk: celPixelWalkFor(
+        surface: current,
+        region: target.region,
+        options: options,
+      ),
+      restore: restore,
+      // The SAME selector: an alpha write preserves RGB, so it picks
+      // exactly the pixels the forward pass picked and the recipe's
+      // positional walk lines up.
+      selector: selector,
+    );
+  }
+
+  /// How many passes this command has made where it was taken — none that
+  /// [workAhead] worked out and the step took.
+  @visibleForTesting
+  int passesHere = 0;
+
+  /// What [workAhead] last worked out: the passes of the step — [undo]'s,
+  /// or the forward one's — by the cel each was worked out for, with the
+  /// very pixels it was worked out from. Let go of by the step.
+  ({bool undo, Map<BrushFrameKey, _Worked> by})? _ahead;
+
+  /// The pass [workAhead] worked out for [target]'s cel, taken — where it
+  /// was worked out for this direction from [from], these very pixels.
+  /// ⛔So an answer can go stale, and never wrong: a cel drawn on or kept
+  /// anew since is passed where it is taken, as it always was.
+  _Pass? _taken(
+    CelPixelTarget target,
+    BitmapSurface from, {
+    required bool undo,
+  }) {
+    final ahead = _ahead;
+    if (ahead == null || ahead.undo != undo) {
+      return null;
+    }
+    final worked = ahead.by.remove(
+      coordinator.frameStore.canonicalKeyOf(target.key),
+    );
+    return worked != null && identical(worked.from, from) ? worked.made : null;
+  }
+
+  /// Each cel's pass — the step's, or with [undo] its undo's — worked out
+  /// AHEAD of it, one cel at a time with the screen's turn after each
+  /// ([theScreensTurn]), how many of the cels are done told to `report`:
+  /// the step lands each where it would have worked it out ([_taken]). A
+  /// cel kept in a file is thawed first, on a worker
+  /// ([BrushFrameStore.thawAhead]), all of them set off at once.
+  ///
+  /// 🗣️F-615 (유저 2026-11-19): 「여러 블록 색 삭제할때 진행창이 멈춤. 항상
+  /// 하듯이 ui안멈추게 뒤에서 돌게?하고 대상 프레임 수에 맞춰서 몇퍼센트인지
+  /// 표시」 — what it reaches told cel by cel, a cel two rows reach once.
+  /// 🔬S5_BA cut 352, every drawing row over its 36 frames — 85 cels: the
+  /// thaw 374 ms, the pass 1,482 ms (a cel's 7 ms by the median, 171 at
+  /// most), the landing about 375 — every one in a single turn of the UI
+  /// isolate behind a window that could not draw.
+  ///
+  /// ⛔The pass is the engine's (`_overwriteOnEngine`), whose tiles only
+  /// this isolate reaches, so it is not a worker's; the thaw is.
+  @override
+  WorkAhead? workAhead({required bool undo}) => (report) async {
+    final by = <BrushFrameKey, _Worked>{};
+    _ahead = (undo: undo, by: by);
+    final cels = undo
+        ? [for (final entry in _applied.reversed) entry]
+        : [
+            for (final target in _celsReached())
+              (target: target, restore: null),
+          ];
+    final store = coordinator.frameStore;
+    final canvasSize = coordinator.sessionStore.canvasSize;
+    final thawed = [
+      for (final (:target, restore: _) in cels)
+        store.thawAhead(target.key, canvasSize: canvasSize),
+    ];
+    for (final (index, (:target, :restore)) in cels.indexed) {
+      await thawed[index];
+      final from = coordinator.currentSurfaceOf(target.key);
+      final made = restore == null
+          ? _forwardPass(target, from)
+          : _undoPass(target, from, restore);
+      // The landing asks whether the cel still shows anything — the
+      // block's tint (`BrushFrameStore.celHasRenderableContent`) — and a
+      // tile the engine made reads itself back to answer. Asked here, the
+      // answer is the tile's own from now on ([BitmapTile.hasInk]).
+      // 🔬F-615: a delete that cleared S5_BA's 85 cels read them back in
+      // the landing, 310 of its 722 ms.
+      made.surface.showsSomething;
+      by[store.canonicalKeyOf(target.key)] = (from: from, made: made);
+      report(doneShare(index + 1, cels.length));
+      await theScreensTurn();
+    }
+  };
+
+  @override
+  void undo() {
+    coordinator.frameStore.asOneEdit(() {
+      for (final entry in _applied.reversed) {
+        final target = entry.target;
+        final current = coordinator.currentSurfaceOf(target.key);
+        final result =
+            _taken(target, current, undo: true) ??
+            _undoPass(target, current, entry.restore);
+        coordinator.restoreSurfaceSnapshot(
+          target.key,
+          result.surface,
+          cacheInvalidationSink: cacheInvalidationSink,
+        );
+      }
+    });
+    _ahead = null;
+  }
 }
+
+/// A pass over one cel: the cel as it leaves it, and the recipe that
+/// undoes it — null where it touched nothing.
+typedef _Pass = ({BitmapSurface surface, CelPixelRestore? restore});
+
+/// A pass [CelPixelOverwriteCommand.workAhead] worked out: what it [made]
+/// of the very pixels it was worked out [from].
+typedef _Worked = ({BitmapSurface from, _Pass made});

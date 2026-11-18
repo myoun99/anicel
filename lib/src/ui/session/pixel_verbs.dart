@@ -409,17 +409,22 @@ class PixelVerbs {
   /// TVPaint for years.
   ///
   /// One undo step across every cel, however many the ladder named.
-  void runPixelVerb(CelPixelVerb verb) {
-    if (!canRunPixelVerb) {
-      return;
+  ///
+  /// The press: its command built once, as it is pressed, the [step] that
+  /// takes it and the work it has [ahead] of it — each cel's pass, for the
+  /// door that stands it behind the app's wait window
+  /// ([CelPixelOverwriteCommand.workAhead], 🗣️F-615). A press the row
+  /// could not run is a step that does nothing.
+  ({WorkAhead? ahead, VoidCallback step}) pixelVerbStep(CelPixelVerb verb) {
+    final keys = canRunPixelVerb ? pixelVerbCellKeys() : const <Never>[];
+    final command = keys.isEmpty ? null : _commandFor(verb, keys);
+    if (command == null) {
+      return (ahead: null, step: () {});
     }
-    final keys = pixelVerbCellKeys();
-    if (keys.isEmpty) {
-      return;
-    }
-    if (_commandFor(verb, keys) case final command?) {
-      _project.historyManager.execute(command);
-    }
+    return (
+      ahead: command.workAhead(undo: false),
+      step: () => _project.historyManager.execute(command),
+    );
   }
 
   /// What [verb]'s row would do to the cels of [pixelVerbCellKeys] the
@@ -619,7 +624,7 @@ class PixelVerbs {
         key: cut.key,
         read: cut.read,
         // Without the hub the canvas keeps the old composite until you
-        // leave the frame (see [runPixelVerb]).
+        // leave the frame (see [pixelVerbStep]).
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
       ),
     );
@@ -700,18 +705,40 @@ class PixelVerbs {
   /// 삭제불가능한건 삭제안한다거나 그런식」 — a row no verb touches keeps
   /// what it showed.
   ///
-  /// The picture is rendered and cut [ahead], off the press; the [step]
-  /// puts the piece in the hand and takes it off the cels — the shape of
-  /// every step with work ahead of it, for the door that stands them
-  /// behind the app's wait window.
+  /// The picture is rendered and cut [ahead], off the press, and the clear
+  /// of each cel worked out after it ([CelPixelOverwriteCommand.workAhead],
+  /// 🗣️F-615); the [step] puts the piece in the hand and takes it off the
+  /// cels — the shape of every step with work ahead of it, for the door
+  /// that stands them behind the app's wait window.
   ({WorkAhead ahead, VoidCallback step}) cutShown(
     CanvasSelectionRegion? outline, {
     required bool takeWhatItCuts,
   }) {
     _ShownCut? read;
+    CelPixelOverwriteCommand? clear;
     return (
-      ahead: (_) async => read = await _readShown(outline),
-      step: () => _takeShown(read, takeWhatItCuts: takeWhatItCuts),
+      ahead: (report) async {
+        final shown = read = await _readShown(outline);
+        clear = takeWhatItCuts ? _clearOf(shown) : null;
+        await clear?.workAhead(undo: false)?.call(report);
+      },
+      step: () => _takeShown(read, clear),
+    );
+  }
+
+  /// 픽셀 비우기 of [read]'s area off the cels it named — null where it cut
+  /// no piece, or with no coordinator.
+  CelPixelOverwriteCommand? _clearOf(_ShownCut? read) {
+    final coordinator = _pixelEditing.coordinator;
+    if (read == null || read.piece == null || coordinator == null) {
+      return null;
+    }
+    return CelPixelOverwriteCommand.clearPixels(
+      coordinator: coordinator,
+      targets: _targetsFor(read.shown, read.region),
+      // Without the hub the canvas keeps the old composite until you
+      // leave the frame (see [pixelVerbStep]).
+      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
     );
   }
 
@@ -753,30 +780,17 @@ class PixelVerbs {
     );
   }
 
-  /// [read]'s piece into the cut tool's hand and, with [takeWhatItCuts],
-  /// its area off the cels it named.
-  void _takeShown(_ShownCut? read, {required bool takeWhatItCuts}) {
+  /// [read]'s piece into the cut tool's hand and, with a [clear] (「원본
+  /// 삭제」), its area off the cels it named.
+  void _takeShown(_ShownCut? read, CelPixelOverwriteCommand? clear) {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
     cutIntoTheHand(read?.piece, hand);
-    final coordinator = _pixelEditing.coordinator;
-    if (read == null ||
-        read.piece == null ||
-        !takeWhatItCuts ||
-        coordinator == null) {
-      return;
+    if (clear != null) {
+      _project.historyManager.execute(clear);
     }
-    _project.historyManager.execute(
-      CelPixelOverwriteCommand.clearPixels(
-        coordinator: coordinator,
-        targets: _targetsFor(read.shown, read.region),
-        // Without the hub the canvas keeps the old composite until you
-        // leave the frame (see [runPixelVerb]).
-        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
-      ),
-    );
   }
 
   /// The cels the canvas shows at the playhead that a pixel verb may touch,
@@ -959,7 +973,7 @@ class PixelVerbs {
       ground: pieceGround(),
       stamp: stamp,
       // Without the hub the canvas keeps the old composite until you leave
-      // the frame (see [runPixelVerb]).
+      // the frame (see [pixelVerbStep]).
       cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
     );
     _project.historyManager.executeAsOneStep(stamp.description, [

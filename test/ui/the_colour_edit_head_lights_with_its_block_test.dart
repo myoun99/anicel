@@ -157,7 +157,7 @@ void main() {
       expect(verbs.canRunPixelClipboardVerb(verb), isFalse, reason: verb.name);
     }
     final steps = s.historyManager.undoCount;
-    verbs.runPixelVerb(CelPixelVerb.clearPixels);
+    verbs.pixelVerbStep(CelPixelVerb.clearPixels).step();
     verbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
     expect(
       s.historyManager.undoCount,

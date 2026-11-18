@@ -20,17 +20,24 @@ import 'app_progress_dialog.dart';
 /// and redone at once too: no window was up to stamp it with
 /// (`StepWindows`). ↩️F-551-Q1 (「전부 늘 띄운다」) stood every press
 /// behind it.
+///
+/// What the step works out [ahead] of itself runs first behind the window,
+/// its progress the window's — the step's cels one at a time, the screen
+/// its turn between two (🗣️F-615, 유저 2026-11-19: 「ui안멈추게 뒤에서
+/// 돌게?하고 대상 프레임 수에 맞춰서 몇퍼센트인지 표시」). A step taken at
+/// once works out nothing ahead: it works it out as it is taken.
 Future<void> takeBehindTheWaitWindow(
   BuildContext context,
   VoidCallback step, {
   required AppWaitWindow window,
   required Iterable<Object> blocks,
+  WorkAhead? ahead,
 }) {
   if (!reachesManyBlocks(blocks)) {
     step();
     return Future<void>.value();
   }
-  return _standBehind(context, step, window: window);
+  return _standBehind(context, step, window: window, ahead: ahead);
 }
 
 /// A step that first works [ahead] off the UI thread, behind the app's wait
