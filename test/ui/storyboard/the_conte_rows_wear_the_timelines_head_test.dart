@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
 
@@ -639,6 +640,27 @@ void main() {
       await tester.tap(below);
       await tester.pumpAndSettle();
       expect(session.railView.attachFoldedRowIds.value, isEmpty);
+    });
+
+    testWidgets('🚨a half of the conte\'s twirl says in colour whether a row '
+        'on its side shows, flipped by that row\'s eye (I-175) — the head '
+        'kept across the flip wears the sides it has in hand', (
+      tester,
+    ) async {
+      await pumpPanel(tester, film(withRiders: true));
+      final above = named('storyboard-attach-twirl-above-a-conte');
+      final below = named('storyboard-attach-twirl-below-a-conte');
+      final lit = tester.glyphInkOf(above);
+      expect(tester.glyphInkOf(below), lit, reason: '⛔전제: both lit');
+
+      await tester.tap(named('storyboard-layer-visibility-a-over'));
+      await tester.pumpAndSettle();
+      expect(tester.glyphInkOf(above), isNot(lit), reason: 'its side dark');
+      expect(tester.glyphInkOf(below), lit, reason: 'the other side shows');
+
+      await tester.tap(named('storyboard-layer-visibility-a-over'));
+      await tester.pumpAndSettle();
+      expect(tester.glyphInkOf(above), lit, reason: 'and back on');
     });
 
     testWidgets('an attach row\'s eye writes the row at its seat of every '

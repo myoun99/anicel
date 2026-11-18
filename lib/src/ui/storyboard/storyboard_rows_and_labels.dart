@@ -522,15 +522,21 @@ class _StoryboardRowsAndLabels {
   /// commit resolves the row's own track now.
   Widget seLabelRow(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    final hooks = _state.widget.rowDragHooks;
-    if (hooks == null || layer == null) {
+    if (layer == null) {
       return _seLabel(track, slot);
     }
     final label = _seLabelOf(track, slot, layer);
+    final trackId = track.id;
+    final hooks = _state.widget.rowDragHooks;
+    if (hooks == null) {
+      // A rail with no hooks is display-only: the label in no wrapper, kept
+      // as every row of the rail is. ↩️It stood alone, new at every pass
+      // (card the-conte-rail-row-holders-are-new-each-pass).
+      return _keptRow(('se', trackId, slot), label, null, (label) => label);
+    }
     final shown = _seShownNow(track);
     final at = shown.indexWhere((row) => row.id == layer.id);
     final extent = _state._railRows._seRowGroupExtent(track, slot);
-    final trackId = track.id;
     return _keptRow(
       ('se', trackId, slot),
       label,
