@@ -99,9 +99,11 @@ impl Road {
     }
 
     /// The span's samples one channel holds: what comes out late as it
-    /// was, and what the conversion up still reads back.
+    /// was — and so what the conversion up still reads back, for it reads
+    /// back no further than the two conversions read ahead, both in the
+    /// lateness (🧪`what_comes_out_was_made_before_it_at_every_rate`).
     fn held(&self) -> usize {
-        self.latency() + self.up.map_or(0, reach)
+        self.latency()
     }
 
     /// The doubles one channel's memory takes: its suppressor's, the
@@ -113,10 +115,11 @@ impl Road {
     }
 }
 
-/// The samples a conversion's next output reads back, at most, from the
-/// last it has.
+/// The samples below the first it has not had that a conversion's next
+/// output reads back to: an output reads `(taps - 1) / interpolation`
+/// below its base, and the next one's base is never before that sample.
 fn reach(geometry: Geometry) -> usize {
-    (geometry.taps / geometry.interpolation + 2) as usize
+    ((geometry.taps - 1) / geometry.interpolation) as usize
 }
 
 /// Samples late a noise removal's sound comes out at `rate`: two frames

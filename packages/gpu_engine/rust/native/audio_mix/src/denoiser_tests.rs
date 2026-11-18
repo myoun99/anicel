@@ -5,7 +5,7 @@
 //! by [`denoiser_latency`]; a setting taking over at its own sample, and a
 //! span baked a stretch at a time as it is baked at once, at every rate.
 
-use super::{Denoiser, Road, denoise, denoise_on, denoiser_latency, denoiser_memory};
+use super::{Denoiser, Road, denoise, denoise_on, denoiser_latency, denoiser_memory, reach};
 use crate::filter::Setting;
 use crate::resample::{DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, Resampler};
 use audio_denoise::{FRAME, RATE, Suppressor};
@@ -135,6 +135,7 @@ fn what_comes_out_was_made_before_it_at_every_rate() {
     for rate in [8_000, 22_050, 32_000, 44_100, RATE, 88_200, 96_000, 192_000] {
         let road = Road::at(rate);
         let late = road.latency() as i64;
+        assert!(road.up.map_or(0, reach) <= road.held(), "{rate}: the conversion up reads back within what is held");
         for heard in 0..20_000 {
             let out = heard - late;
             assert!(out < road.wet(heard + 1), "{rate}: the sample {out} comes out at {heard}");
@@ -142,6 +143,7 @@ fn what_comes_out_was_made_before_it_at_every_rate() {
         }
     }
     assert_eq!(denoiser_latency(44_100), 1_039, "two frames, and the conversions' reach");
+    assert_eq!(denoiser_latency(96_000), 2_231);
 }
 
 #[test]

@@ -358,6 +358,10 @@ void main() {
       }
       final at44 = FilterStretches(channels: 2, rate: 44100, stages: [at(1)]);
       expect(at44.latency, 1039, reason: 'two frames and the conversions');
+      // Each channel's model, the frames it holds late — as far back as the
+      // conversion up reads —, the one it hears, what the conversion down
+      // reads back, and the cleaned ones waiting: sized at the rate.
+      expect(at44.kept, hasLength(2 * (3059 + 1039 + 480 + 169 + 1039)));
     });
   });
 }
