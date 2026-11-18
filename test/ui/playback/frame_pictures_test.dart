@@ -643,6 +643,55 @@ void main() {
     });
   });
 
+  // 🗣️the-screen-shows-a-frame-the-green-band-leaves-empty (유저
+  // 2026-11-15): a frame a canvas made was on the screen, and the green
+  // band filled there only once the walk moved on — it heard the walk's
+  // progress, and a canvas lays the frame it stands on without the walk.
+  testWidgets('🚨a bar of the frames ready hears where a frame stands move: '
+      'a picture a canvas laid, one let go of, a making given up on, and '
+      'that word let be with the engine', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      addTearDown(pictures.dispose);
+      var told = 0;
+      pictures.standingMoved.addListener(() => told += 1);
+      Future<void> through() => Future<void>.delayed(Duration.zero);
+
+      expect(
+        await pictures.makeShown(
+          [row('a')],
+          at(0),
+          shouldAbort: () => false,
+          keepsNodes: false,
+        ),
+        isTrue,
+      );
+      await through();
+      expect(pictures.standingOf(at(0)).state, PictureState.there);
+      expect(told, isPositive, reason: 'a canvas laid it');
+
+      told = 0;
+      pictures.store.letGo(pictures.keyOf(at(0)));
+      await through();
+      expect(pictures.standingOf(at(0)).state, PictureState.toCome);
+      expect(told, isPositive, reason: 'let go of');
+
+      told = 0;
+      pictures.noteFailure(at(2));
+      expect(told, 0, reason: 'a view may note it as it paints');
+      await through();
+      expect(told, isPositive, reason: 'given up on');
+
+      told = 0;
+      pictures.letGoWithTheirEngine();
+      await through();
+      expect(pictures.standingOf(at(2)).state, PictureState.toCome);
+      expect(told, isPositive, reason: 'no picture went: the word did');
+    });
+  });
+
   test('the budget\'s order: each picture is wanted at the soonest step that '
       'shows it, and a picture no step shows is not wanted at all', () {
     final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));

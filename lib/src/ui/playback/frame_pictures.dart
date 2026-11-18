@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show Listenable, ValueNotifier, visibleForTesting;
 
 import '../../core/lru.dart';
+import '../../core/once_a_microtask.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -272,7 +274,10 @@ class FramePictures implements PlaybackPictures {
   /// the rest.
   void letGoWithTheirEngine() {
     letGoOfNodes();
-    _gaveNothing.clear();
+    if (_gaveNothing.isNotEmpty) {
+      _gaveNothing.clear();
+      _gaveUpTold.ask();
+    }
     store.letGoWithItsTools();
   }
 
@@ -599,8 +604,33 @@ class FramePictures implements PlaybackPictures {
   void noteFailureAt(FramePictureKey key) {
     if (!_isThere(key)) {
       _gaveNothing.keep(key, true);
+      _gaveUpTold.ask();
     }
   }
+
+  /// Tells that what [standingOf] answers of a frame may have moved: a
+  /// picture laid or let go of ([EngineFramePictureStore.laidOrLetGo]), a
+  /// making given up on ([noteFailureAt]) or let be again
+  /// ([letGoWithTheirEngine]), a cel found unreadable, a cel's pixels
+  /// edited — what a bar that counts the frames ready hears (the green
+  /// band).
+  ///
+  /// 🗣️the-screen-shows-a-frame-the-green-band-leaves-empty (유저
+  /// 2026-11-15): a frame a canvas made was on the screen, and the band
+  /// filled there only once the walk moved on. ↩️The band heard the walk's
+  /// progress — the pictures the walk laid and no other: a canvas's and a
+  /// move's ([makeShown]) went into the store unheard.
+  late final Listenable standingMoved = Listenable.merge([
+    store.laidOrLetGo,
+    _gaveUp,
+    layerImages.unreadable.revision,
+    layerImages.frameStore.celPixelRevision,
+  ]);
+
+  /// Bumped once a making given up on is noted, or they are all let be
+  /// again with their engine ([standingMoved]).
+  final ValueNotifier<int> _gaveUp = ValueNotifier<int>(0);
+  late final _gaveUpTold = OnceAMicrotask(() => _gaveUp.value += 1);
 
   /// What the picture will weigh: the tiles the engine keeps of it laid
   /// afresh ([EngineStackScreen.bytesToMake]), where every cel it draws is

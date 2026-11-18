@@ -233,14 +233,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     revision: _session.layerStack.celTintRevision,
   );
 
-  /// Whatever can change a frame's cached-ness — warm progress AND pixel
-  /// edits (composites self-validate by signature, so an edit raises no
-  /// event of its own). The ruler's green bar repaints off this; the
-  /// timeline host carries the identical signal.
-  late final Listenable _frameReadySignal = Listenable.merge([
-    _session.playbackRig.prerenderScheduler.progress,
-    _session.renderCaches.brushFrameStore.celPixelRevision,
-  ]);
+  /// Whatever can move a frame's readiness ([FramePictures.standingMoved]):
+  /// the ruler's green bar repaints off it, as the timeline's does.
+  late final Listenable _frameReadySignal =
+      _session.playbackRig.framePictures.standingMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     (start, end) => storyboardReadyRuns(_session, start, end),
@@ -688,10 +684,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     final colorScheme = Theme.of(context).colorScheme;
     // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
     // moves ride the session's track cursor into the panel's playhead
-    // overlay + ruler; the green bar rides the prerender progress into the
-    // ruler; the counter subscribes to the cursor. Cut crossings during
-    // playback still notify the session (cut follow), which rebuilds the
-    // host from the workspace subscription.
+    // overlay + ruler; the green bar rides what moves a frame's standing
+    // into the ruler; the counter subscribes to the cursor. Cut crossings
+    // during playback still notify the session (cut follow), which
+    // rebuilds the host from the workspace subscription.
     // The panel being worked in owns the frame-axis verbs (user,
     // 2026-08-05): touching the storyboard hands the flip its rail's row,
     // so the arrows count CUTS from here without having to pick a row

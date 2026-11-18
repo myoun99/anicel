@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ChangeNotifier, Listenable;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
@@ -218,6 +219,21 @@ class EngineFramePictureStore<K extends Object> {
   /// of those tools, lets go of it and asks for its frame again.
   Listenable get wentWithItsTools => _went;
   final _News _went = _News();
+
+  /// Tells that a picture was laid into the store, or let go of — once the
+  /// code on its way is through: a screen lets go of one in its paint,
+  /// where a bar that hears it may not be painted again. What a bar that
+  /// counts the frames whose pictures are there hears (the green band,
+  /// `FramePictures.standingMoved`): every picture made comes in here, the
+  /// walk's, a canvas's and a move's alike (the-screen-shows-a-frame-the-
+  /// green-band-leaves-empty).
+  ///
+  /// ⛔Not a picture handed to another key, nor one a step was written
+  /// into ([move], [patch]): that goes with an edit of a cel, which the
+  /// cels tell — told here, a stroke would tell it at every step.
+  Listenable get laidOrLetGo => _laidOrLetGo;
+  final _News _laidOrLetGo = _News();
+  late final _laidOrLetGoTold = OnceAMicrotask(_laidOrLetGo.changed);
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -502,7 +518,13 @@ class EngineFramePictureStore<K extends Object> {
   );
 
   /// Lets go of [key]'s picture.
-  void letGo(K key) => _entries.remove(key)?.picture._letGo();
+  void letGo(K key) {
+    final gone = _entries.remove(key);
+    if (gone != null) {
+      gone.picture._letGo();
+      _laidOrLetGoTold.ask();
+    }
+  }
 
   /// Lets go of [key]'s picture as [letGo] does, unless a screen holds it
   /// ([retainPin]) — as the budget never lets one go ([enforceBudget]).
@@ -542,7 +564,10 @@ class EngineFramePictureStore<K extends Object> {
     for (final entry in _entries.values) {
       entry.picture._letGo();
     }
-    _entries.clear();
+    if (_entries.isNotEmpty) {
+      _entries.clear();
+      _laidOrLetGoTold.ask();
+    }
   }
 
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
@@ -654,6 +679,7 @@ class EngineFramePictureStore<K extends Object> {
         picture._letGo();
       } else {
         _entries[lay.key] = _Entry(picture)..lastUsed = ++_clock;
+        _laidOrLetGoTold.ask();
         lay.done.complete(picture);
       }
     } on Object catch (error, stack) {

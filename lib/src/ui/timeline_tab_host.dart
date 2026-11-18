@@ -186,10 +186,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     revision: _session.layerStack.celTintRevision,
   );
 
-  late final Listenable _frameReadySignal = Listenable.merge([
-    _session.playbackRig.prerenderScheduler.progress,
-    _session.renderCaches.brushFrameStore.celPixelRevision,
-  ]);
+  late final Listenable _frameReadySignal =
+      _session.playbackRig.framePictures.standingMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     _session.playbackRig.playbackCache.playbackReadyRuns,

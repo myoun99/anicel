@@ -263,6 +263,53 @@ void main() {
     expect(store.holds('refused'), isFalse);
   });
 
+  // 🗣️the-screen-shows-a-frame-the-green-band-leaves-empty (유저
+  // 2026-11-15): a frame a canvas made was on the screen, and the green
+  // band filled there only once the walk moved on — it heard the pictures
+  // the walk laid, and no other.
+  test('🚨a picture laid, let go of, or let go with the tools is told — '
+      'once the code on its way is through; ⛔not one moved to another key '
+      'or patched there: a stroke would tell it at every step', () async {
+    final store = storeOf();
+    var told = 0;
+    store.laidOrLetGo.addListener(() => told += 1);
+    Future<void> through() => Future<void>.delayed(Duration.zero);
+
+    await store.lay('a', frameOf(cel(5)));
+    await through();
+    expect(told, 1, reason: 'laid');
+
+    told = 0;
+    expect(store.move(from: 'a', to: 'b'), isTrue, reason: '⛔premise');
+    expect(
+      store.patch(
+        from: 'b',
+        to: 'c',
+        rect: const Rect.fromLTRB(-20, 10, 40, 50),
+        frame: frameOf(cel(5, marked: (-20, 10, 40, 50))),
+      ),
+      isTrue,
+      reason: '⛔premise',
+    );
+    await through();
+    expect(told, 0, reason: 'moved, and patched');
+
+    store.letGo('c');
+    expect(told, 0, reason: 'a view may let go of it as it paints');
+    await through();
+    expect(told, 1, reason: 'let go of');
+
+    await store.lay('d', frameOf(cel(6)));
+    await through();
+    told = 0;
+    store.letGoWithItsTools();
+    await through();
+    expect(told, 1, reason: 'let go with the tools');
+    store.letGoWithItsTools();
+    await through();
+    expect(told, 1, reason: 'nothing held, nothing let go of');
+  });
+
   test('a key a picture moves to while its lay waits answers with that '
       'picture', () async {
     final store = storeOf();
