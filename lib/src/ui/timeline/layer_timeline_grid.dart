@@ -818,13 +818,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     );
     _rulerViewExtent = viewportWidth;
     _rewindowRuler();
-    return _rulerScrubArea(
-      viewportWidth: viewportWidth,
-      headerHeight: headerHeight,
-      content: _rulerFollowing(
-        contentWidth: contentWidth,
-        headerHeight: headerHeight,
-        strip: _rulerStrip(viewportWidth, headerHeight, contentWidth),
+    return TimelineFrameScrubArea(
+      key: const ValueKey<String>('timeline-frame-ruler-scrub-area'),
+      scrub: _rulerScrub,
+      child: SizedBox(
+        key: _rulerScrubViewportKey,
+        width: viewportWidth,
+        height: headerHeight,
+        child: _rulerFollowing(
+          contentWidth: contentWidth,
+          headerHeight: headerHeight,
+          strip: _rulerStrip(viewportWidth, headerHeight, contentWidth),
+        ),
       ),
     );
   }
@@ -917,44 +922,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
         controller: _horizontalScrollController,
         axisDirection: AxisDirection.right,
         child: strip,
-      ),
-    ),
-  );
-
-  /// Where a press on the ruler scrubs: its view, [viewportWidth] wide.
-  Widget _rulerScrubArea({
-    required double viewportWidth,
-    required double headerHeight,
-    required Widget content,
-  }) => Listener(
-    key: const ValueKey<String>('timeline-frame-ruler-scrub-area'),
-    behavior: HitTestBehavior.translucent,
-    onPointerDown: (event) {
-      // R26 #34: a press that pans is the pan's — and a marker's is the
-      // marker's (I-169).
-      if (!rulerPressScrubs(event)) {
-        return;
-      }
-      _rulerScrub.resetTracking();
-      _rulerScrub.pressAt(event.position);
-    },
-    onPointerUp: (_) => _rulerScrub.endScrub(),
-    onPointerCancel: (_) => _rulerScrub.endScrub(),
-    child: GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragStart: (details) {
-        _rulerScrub.pressAt(details.globalPosition);
-      },
-      onHorizontalDragUpdate: (details) {
-        _rulerScrub.dragTo(details.globalPosition);
-      },
-      onHorizontalDragEnd: (_) => _rulerScrub.resetTracking(),
-      onHorizontalDragCancel: _rulerScrub.resetTracking,
-      child: SizedBox(
-        key: _rulerScrubViewportKey,
-        width: viewportWidth,
-        height: headerHeight,
-        child: content,
       ),
     ),
   );

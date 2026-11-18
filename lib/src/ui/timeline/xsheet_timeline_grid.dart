@@ -832,180 +832,158 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     final bodyViewportHeight = geometry.bodyViewportHeight;
     final totalFrameContentHeight = geometry.totalFrameContentHeight;
     final cutEndBoundaryOffset = geometry.cutEndBoundaryOffset;
-    return Listener(
+    return TimelineFrameScrubArea(
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        // R26 #34: a press that pans is the pan's, not a scrub — and a
-        // marker's is the marker's (I-169).
-        if (!rulerPressScrubs(event)) {
-          return;
-        }
-        _railScrub.resetTracking();
-        _railScrub.pressAt(event.position);
-      },
-      onPointerUp: (_) => _railScrub.endScrub(),
-      onPointerCancel: (_) => _railScrub.endScrub(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onVerticalDragStart: (details) {
-          _railScrub.pressAt(details.globalPosition);
-        },
-        onVerticalDragUpdate: (details) {
-          _railScrub.dragTo(details.globalPosition);
-        },
-        onVerticalDragEnd: (_) => _railScrub.resetTracking(),
-        onVerticalDragCancel: _railScrub.resetTracking,
-        child: ClipRect(
-          key: _railScrubViewportKey,
-          child: OverflowBox(
-            alignment: Alignment.topLeft,
-            minHeight: totalFrameContentHeight,
-            maxHeight: totalFrameContentHeight,
-            minWidth: _metrics.layerControlsWidth,
-            maxWidth: _metrics.layerControlsWidth,
-            // Pixels move the TRANSLATE only; the
-            // rail painter windows itself off the
-            // offset (UI-R15 — no bucket rebuild).
-            //
-            // R9 #3 (transposed): the RAW scroll
-            // position, overscroll included —
-            // the clamp is for correcting the
-            // CONTROLLER, not for paint.
-            //
-            // 🚨★★★F-32: THE SAME
-            // CORRECTION THE CELLS GET.
-            //
-            // 유저: 「해당 레이어 영역
-            // 자체가 밀림 … 띠가 살짝
-            // 아래로 2px정도?」 — and it
-            // only happens 「스크롤에
-            // 따라」, which is the tell.
-            //
-            // The frame CELLS scroll
-            // through
-            // [DeviceGridScrollBody],
-            // which cancels the offset's
-            // sub-device-pixel fraction.
-            // This rail moved by a RAW
-            // translate, so it kept that
-            // fraction — 🧪measured at
-            // ratio 1.5: rail 360.0 vs
-            // cells 359.667, a third of a
-            // logical pixel apart, at
-            // rest identical.
-            //
-            // ⛔Not a rounding of its own
-            // here: the correction is
-            // that widget's, and a second
-            // copy of the arithmetic is
-            // how the two drift apart
-            // again the next time either
-            // is touched.
-            //
-            // ↩️F-95: the translate read a
-            // NOTIFIER that a resize past
-            // the end never reached; the
-            // follower reads the position
-            // when it paints.
-            child: ScrollFollower(
-              controller: _frameScrollController,
-              axisDirection: AxisDirection.down,
-              child: Builder(
-                builder: (context) {
-                  return SizedBox(
-                    width: _metrics.layerControlsWidth,
-                    height: totalFrameContentHeight,
-                    child: Stack(
-                      children: [
-                        // SPLIT (shared with the
-                        // horizontal rulers): the
-                        // numbers are static, so a
-                        // seek no longer re-records
-                        // a glyph per frame; the
-                        // tint and the cached bar
-                        // ride the overlay below.
-                        // UI-R15: full bounds — the
-                        // rail painter windows
-                        // itself off the offset.
-                        RepaintBoundary(
-                          child: _XSheetFrameNumberRail(
-                            frameStartIndex: 0,
-                            frameEndIndexExclusive: _frameScroll.renderedFrameCount,
-                            playhead: widget.hooks.frameCursor,
-                            playbackFrameCount: widget.hooks.playbackFrameCount,
-                            leadingFrameSpacerHeight: 0,
-                            trailingFrameSpacerHeight: 0,
-                            metrics: _metrics,
-                            onSelectFrame: _railScrub.selectClampedFrame,
-                            framesPerSecond: _countingFps,
-                            rulerView: widget.hooks.rulerView,
-                            pages: widget.hooks.sheetPages,
-                            windowBucket: _frameWindowBucket,
-                            viewportMainExtent: bodyViewportHeight,
-                            geometry: _windowedFrameGeometry,
-                            markers: widget.hooks.rulerMarkers,
-                          ),
+      scrub: _railScrub,
+      child: ClipRect(
+        key: _railScrubViewportKey,
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minHeight: totalFrameContentHeight,
+          maxHeight: totalFrameContentHeight,
+          minWidth: _metrics.layerControlsWidth,
+          maxWidth: _metrics.layerControlsWidth,
+          // Pixels move the TRANSLATE only; the
+          // rail painter windows itself off the
+          // offset (UI-R15 — no bucket rebuild).
+          //
+          // R9 #3 (transposed): the RAW scroll
+          // position, overscroll included —
+          // the clamp is for correcting the
+          // CONTROLLER, not for paint.
+          //
+          // 🚨★★★F-32: THE SAME
+          // CORRECTION THE CELLS GET.
+          //
+          // 유저: 「해당 레이어 영역
+          // 자체가 밀림 … 띠가 살짝
+          // 아래로 2px정도?」 — and it
+          // only happens 「스크롤에
+          // 따라」, which is the tell.
+          //
+          // The frame CELLS scroll
+          // through
+          // [DeviceGridScrollBody],
+          // which cancels the offset's
+          // sub-device-pixel fraction.
+          // This rail moved by a RAW
+          // translate, so it kept that
+          // fraction — 🧪measured at
+          // ratio 1.5: rail 360.0 vs
+          // cells 359.667, a third of a
+          // logical pixel apart, at
+          // rest identical.
+          //
+          // ⛔Not a rounding of its own
+          // here: the correction is
+          // that widget's, and a second
+          // copy of the arithmetic is
+          // how the two drift apart
+          // again the next time either
+          // is touched.
+          //
+          // ↩️F-95: the translate read a
+          // NOTIFIER that a resize past
+          // the end never reached; the
+          // follower reads the position
+          // when it paints.
+          child: ScrollFollower(
+            controller: _frameScrollController,
+            axisDirection: AxisDirection.down,
+            child: Builder(
+              builder: (context) {
+                return SizedBox(
+                  width: _metrics.layerControlsWidth,
+                  height: totalFrameContentHeight,
+                  child: Stack(
+                    children: [
+                      // SPLIT (shared with the
+                      // horizontal rulers): the
+                      // numbers are static, so a
+                      // seek no longer re-records
+                      // a glyph per frame; the
+                      // tint and the cached bar
+                      // ride the overlay below.
+                      // UI-R15: full bounds — the
+                      // rail painter windows
+                      // itself off the offset.
+                      RepaintBoundary(
+                        child: _XSheetFrameNumberRail(
+                          frameStartIndex: 0,
+                          frameEndIndexExclusive: _frameScroll.renderedFrameCount,
+                          playhead: widget.hooks.frameCursor,
+                          playbackFrameCount: widget.hooks.playbackFrameCount,
+                          leadingFrameSpacerHeight: 0,
+                          trailingFrameSpacerHeight: 0,
+                          metrics: _metrics,
+                          onSelectFrame: _railScrub.selectClampedFrame,
+                          framesPerSecond: _countingFps,
+                          rulerView: widget.hooks.rulerView,
+                          pages: widget.hooks.sheetPages,
+                          windowBucket: _frameWindowBucket,
+                          viewportMainExtent: bodyViewportHeight,
+                          geometry: _windowedFrameGeometry,
+                          markers: widget.hooks.rulerMarkers,
                         ),
-                        Positioned.fill(
-                          child: _buildRailCursorOverlay(geometry),
-                        ),
-                        // 🚨F-244: the two marks
-                        // a drag moves, on a layer
-                        // of their own — as the
-                        // timeline ruler's.
-                        TickOverlay(
-                          children: [
-                            // UI-R18 #14: the rail's
-                            // line follows the live
-                            // trim preview so it
-                            // never splits from the
-                            // body's.
-                            if (widget.hooks.cutEndDrag != null &&
-                                widget.hooks.dragPreview != null)
-                              ValueListenableBuilder<TimelineDragPreview?>(
-                                valueListenable: widget.hooks.dragPreview!,
-                                builder: (context, preview, _) =>
-                                    TimelineRulerCutEndBoundary(
-                                      axis: Axis.vertical,
-                                      left: timelineFrameEdge(
-                                        timelineCutEndPreviewFrameCount(
-                                          preview: preview,
-                                          cutId:
-                                              widget.hooks.cutEndDrag!.cutId,
-                                          playbackFrameCount:
-                                              widget.hooks.playbackFrameCount,
-                                        ),
-                                        _metrics.frameCellWidth,
+                      ),
+                      Positioned.fill(
+                        child: _buildRailCursorOverlay(geometry),
+                      ),
+                      // 🚨F-244: the two marks
+                      // a drag moves, on a layer
+                      // of their own — as the
+                      // timeline ruler's.
+                      TickOverlay(
+                        children: [
+                          // UI-R18 #14: the rail's
+                          // line follows the live
+                          // trim preview so it
+                          // never splits from the
+                          // body's.
+                          if (widget.hooks.cutEndDrag != null &&
+                              widget.hooks.dragPreview != null)
+                            ValueListenableBuilder<TimelineDragPreview?>(
+                              valueListenable: widget.hooks.dragPreview!,
+                              builder: (context, preview, _) =>
+                                  TimelineRulerCutEndBoundary(
+                                    axis: Axis.vertical,
+                                    left: timelineFrameEdge(
+                                      timelineCutEndPreviewFrameCount(
+                                        preview: preview,
+                                        cutId:
+                                            widget.hooks.cutEndDrag!.cutId,
+                                        playbackFrameCount:
+                                            widget.hooks.playbackFrameCount,
                                       ),
+                                      _metrics.frameCellWidth,
                                     ),
-                              )
-                            else
-                              TimelineRulerCutEndBoundary(
-                                axis: Axis.vertical,
-                                left: cutEndBoundaryOffset,
-                              ),
-                            // The のりしろ mark,
-                            // transposed: a length
-                            // below the cut's end,
-                            // riding a drag as the
-                            // timeline ruler's does.
-                            TimelineRulerNoriShiro(
-                              dragPreview: widget.hooks.dragPreview,
-                              cutId: widget.hooks.cutEndDrag?.cutId,
-                              playbackFrameCount:
-                                  widget.hooks.playbackFrameCount,
-                              noriShiro: widget.hooks.noriShiro,
-                              metrics: _metrics,
+                                  ),
+                            )
+                          else
+                            TimelineRulerCutEndBoundary(
                               axis: Axis.vertical,
+                              left: cutEndBoundaryOffset,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                          // The のりしろ mark,
+                          // transposed: a length
+                          // below the cut's end,
+                          // riding a drag as the
+                          // timeline ruler's does.
+                          TimelineRulerNoriShiro(
+                            dragPreview: widget.hooks.dragPreview,
+                            cutId: widget.hooks.cutEndDrag?.cutId,
+                            playbackFrameCount:
+                                widget.hooks.playbackFrameCount,
+                            noriShiro: widget.hooks.noriShiro,
+                            metrics: _metrics,
+                            axis: Axis.vertical,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ),

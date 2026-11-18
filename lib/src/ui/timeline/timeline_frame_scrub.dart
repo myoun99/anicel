@@ -184,3 +184,60 @@ class TimelineFrameScrub {
     );
   }
 }
+
+/// Where a press on a frame strip scrubs [scrub] — the timeline's ruler
+/// across and the X-sheet's rail down, ONE body turned by the scrub's axis.
+///
+/// The pointer layer scrubs on the press itself, so the playhead comes to
+/// the finger at once, taps included, and ends the scrub on the raw up or
+/// cancel wherever the pointer ends up; the drag along the strip only feeds
+/// the moves. R26 #34: a press that pans is the pan's, not a scrub — and a
+/// marker's is the marker's (I-169, [rulerPressScrubs]).
+///
+/// ↩️Each grid carried this body of its own, once with horizontal drags and
+/// once with vertical ones; the clone scan saw the pair when the ruler left
+/// the grid's build (card an-eye-toggle-holds-the-ui-thread, 11-18).
+class TimelineFrameScrubArea extends StatelessWidget {
+  const TimelineFrameScrubArea({
+    super.key,
+    required this.scrub,
+    required this.child,
+  });
+
+  final TimelineFrameScrub scrub;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final across = scrub.axis == Axis.horizontal;
+    void start(DragStartDetails details) =>
+        scrub.pressAt(details.globalPosition);
+    void move(DragUpdateDetails details) =>
+        scrub.dragTo(details.globalPosition);
+    void end(DragEndDetails _) => scrub.resetTracking();
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (!rulerPressScrubs(event)) {
+          return;
+        }
+        scrub.resetTracking();
+        scrub.pressAt(event.position);
+      },
+      onPointerUp: (_) => scrub.endScrub(),
+      onPointerCancel: (_) => scrub.endScrub(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragStart: across ? start : null,
+        onHorizontalDragUpdate: across ? move : null,
+        onHorizontalDragEnd: across ? end : null,
+        onHorizontalDragCancel: across ? scrub.resetTracking : null,
+        onVerticalDragStart: across ? null : start,
+        onVerticalDragUpdate: across ? null : move,
+        onVerticalDragEnd: across ? null : end,
+        onVerticalDragCancel: across ? null : scrub.resetTracking,
+        child: child,
+      ),
+    );
+  }
+}
