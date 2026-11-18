@@ -814,8 +814,14 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
 /// Polls of up to eight records until one is handed, for two seconds at
 /// most: their count.
 fn handed_soon() -> i32 {
+    handed_within(std::time::Duration::from_secs(2))
+}
+
+/// Polls of up to eight records until one is handed, for `most` at most:
+/// their count.
+fn handed_within(most: std::time::Duration) -> i32 {
     let mut room = [0.0f32; 64];
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let deadline = std::time::Instant::now() + most;
     loop {
         // SAFETY: room for eight records.
         let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
@@ -837,27 +843,107 @@ fn the_reader_s_own_thread_hears_the_queue_unasked() {
     assert_eq!(count, 2, "heard with no poll, no move and no press draining it");
 }
 
+/// Longer than any test runs: the reader's own thread, past its first
+/// drain, drains again only where it is woken.
+const ASLEEP: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A driver of `packets` whose output is 100 high: the fake's packets, at
+/// its (40, 50), are the screen's (40, 49).
+fn a_hundred_high(packets: &[Packet]) -> Script {
+    let mut context = system_context();
+    (context.0[OUT_ORIGIN + 1], context.0[OUT_EXTENT + 1]) = (0, 100);
+    Script { has_pressure: true, pressure: axis(0, 1000), context, ..installed(packets) }
+}
+
 #[test]
 fn a_poll_and_a_point_ask_the_driver_nothing() {
     // 🔬A call into the driver is a quarter of a millisecond (F-600): the
     // app's thread reads what was heard.
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
-    driver.play(&installed(&[queued(1000, 100)]));
-    assert_eq!(crate::qat_open(150), 1);
+    driver.play(&a_hundred_high(&[queued(1000, 100)]));
+    assert!(wintab::open_drained_every(150, ASLEEP));
     wintab::drain();
     let before = driver.seen().asks;
-    let began = std::time::Instant::now();
     let mut room = [0.0f32; 64];
     for _ in 0..1000 {
         // SAFETY: room for eight records.
         let _ = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
         let _ = wintab::pressures_at(1001, &[(40, 49, 1000), (40, 49, 1001)]);
     }
-    let thread_drains = began.elapsed().as_millis() / 4 + 2;
     let asks = driver.seen().asks - before;
     crate::qat_close();
-    assert!(i128::from(asks) <= thread_drains as i128, "{asks} asks in a thousand polls and points");
+    assert!(asks <= 1, "{asks} asks in a thousand polls and points — the reader's first drain at most");
+}
+
+#[test]
+fn a_move_whose_packet_is_not_heard_yet_wakes_the_reader() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    // The pen at hand: a packet a moment before the move.
+    driver.play(&a_hundred_high(&[queued(1000, 100)]));
+    assert!(wintab::open_drained_every(150, ASLEEP));
+    // The reader's own first drain hears it, and it sleeps from then.
+    assert_eq!(handed_soon(), 1);
+    // The packet that put the cursor at the move, queued as it moved.
+    driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(1004, 200) }]));
+    let pressures = wintab::pressures_at(1005, &[(60, 49, 1004)]);
+    let count = handed_soon();
+    crate::qat_close();
+    assert!(pressures[0].is_nan(), "not heard at the move");
+    assert_eq!(count, 1, "heard with the reader asleep for the test's length");
+}
+
+#[test]
+fn a_move_with_no_pen_at_hand_wakes_no_reader() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    // The pen last heard two seconds before: a mouse's move is a mouse's.
+    driver.play(&a_hundred_high(&[queued(1000, 100)]));
+    assert!(wintab::open_drained_every(150, ASLEEP));
+    // The reader's own first drain hears it, and it sleeps from then.
+    assert_eq!(handed_soon(), 1);
+    driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(3004, 200) }]));
+    let pressures = wintab::pressures_at(3005, &[(70, 49, 3004)]);
+    let count = handed_within(std::time::Duration::from_millis(200));
+    crate::qat_close();
+    assert!(pressures[0].is_nan());
+    assert_eq!(count, 0, "no drain but the reader's own, asleep");
+}
+
+#[test]
+fn a_move_s_packet_heard_after_its_message_is_its_pressure_as_the_app_reads_it() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    // SAFETY: the time of the last message this thread took.
+    let time = unsafe { GetMessageTime() } as u32;
+    // A place no mouse is: the message's own move alone.
+    let far: i16 = -20_000;
+    let mut there = POINT { x: far.into(), y: far.into() };
+    // SAFETY: the window shown, and a local.
+    let _ = unsafe { ClientToScreen(window.0, &mut there) };
+    let script = |packets: &[Packet]| Script {
+        has_pressure: true,
+        pressure: axis(0, 1000),
+        context: running_down(),
+        ..installed(packets)
+    };
+    // The pen at hand elsewhere: nothing heard at the move's place.
+    driver.play(&script(&[queued(time.wrapping_sub(5), 100)]));
+    assert!(wintab::open_drained_every(150, ASLEEP));
+    wintab::drain();
+    let word = (far as u16) as isize;
+    crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
+    // The packet that put the cursor there, heard after the message.
+    driver.play(&script(&[Packet { x: there.x, y: there.y, ..queued(time.wrapping_sub(1), 250) }]));
+    wintab::drain();
+    let count = crate::qa_pen_points_take(crate::points::Kind::Mouse as i32, f64::from(far), f64::from(far));
+    let mut words = [0.0; crate::points::POINT_WORDS];
+    // SAFETY: room for one point.
+    let read = unsafe { crate::qa_pen_points_taken(words.as_mut_ptr(), 1) };
+    crate::qat_close();
+    assert_eq!((count, read), (1, 1));
+    assert_eq!(words[6], 250.0 * (1.0 / 1000.0), "the driver's pressure, as the point is read");
 }
 
 #[test]
@@ -909,4 +995,8 @@ fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
     let want = [f64::NAN, 100.0 * (1.0 / 1000.0), 300.0 * (1.0 / 1000.0)];
     assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each the packet at its place within 20 ms");
     assert!(finger[0].driven.is_nan(), "a finger is not the pen");
+    let asked: Vec<_> = points.iter().map(|point| point.asked).collect();
+    let at = |time| Some((-20_000, -20_000, time));
+    assert_eq!(asked, [at(900), at(1004), at(1019)], "asked again as the app reads them");
+    assert_eq!(finger[0].asked, None);
 }

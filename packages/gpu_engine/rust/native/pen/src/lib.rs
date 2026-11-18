@@ -288,7 +288,9 @@ fn taken() -> std::sync::MutexGuard<'static, Vec<points::Point>> {
 /// Flutter was handed at (`x`, `y`), in the shape the embedder hands it
 /// (`points::Batch::handed`) — every point the reader wrote of its
 /// message —, and holds them for [`qa_pen_points_taken`]: their count; -1
-/// where no batch of that kind ends there, or no kind has that number.
+/// where no batch of that kind ends there, or no kind has that number. A
+/// point the tablet driver's packet was not heard for at its message is
+/// given it here where it is heard now (wintab.rs `pair`).
 ///
 /// ↩️It wrote the newest `cap` into the app's buffer, which held 512 —
 /// H56's guess at a stall of two seconds of a 240 Hz pen — and the book cut
@@ -299,9 +301,11 @@ pub extern "C" fn qa_pen_points_take(kind: i32, x: f64, y: f64) -> i32 {
     let Some(kind) = points::Kind::named(kind) else {
         return -1;
     };
-    let Some(points) = points::book().take(kind, (x, y)) else {
+    let Some(mut points) = points::book().take(kind, (x, y)) else {
         return -1;
     };
+    #[cfg(windows)]
+    wintab::pair(&mut points);
     let count = points.len() as i32;
     *taken() = points;
     count

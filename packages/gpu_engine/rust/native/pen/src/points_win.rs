@@ -222,16 +222,20 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
 /// ⛔Not a finger's: the driver's packets are the pen's.
 pub(crate) fn points_of(view: HWND, history: &[POINTER_INFO], readings: Option<&[POINTER_PEN_INFO]>) -> Vec<Point> {
     let now = now_micros();
-    let moves: Vec<Move> =
-        history.iter().map(|entry| (entry.ptPixelLocation.x, entry.ptPixelLocation.y, entry.dwTime)).collect();
+    let moves: Vec<Move> = history
+        .iter()
+        .filter(|entry| entry.pointerType == PT_PEN)
+        .map(|entry| (entry.ptPixelLocation.x, entry.ptPixelLocation.y, entry.dwTime))
+        .collect();
     // SAFETY: asked while the message is handled.
     let driven = wintab::pressures_at(unsafe { GetMessageTime() } as u32, &moves);
+    // The pen's, the oldest first, as the points are made.
+    let mut pens = driven.into_iter().zip(moves).rev();
     history
         .iter()
-        .zip(driven)
         .enumerate()
         .rev()
-        .map(|(at, (entry, driven))| {
+        .map(|(at, entry)| {
             let place = in_view(view, entry.ptPixelLocation);
             let micros = if entry.PerformanceCount == 0 {
                 now - since_message(entry.dwTime)
@@ -240,7 +244,10 @@ pub(crate) fn points_of(view: HWND, history: &[POINTER_INFO], readings: Option<&
             };
             let point = Point::at(f64::from(place.x), f64::from(place.y), micros);
             let point = readings.map_or(point, |readings| read(point, &readings[at]));
-            if entry.pointerType == PT_PEN { Point { driven, ..point } } else { point }
+            match (entry.pointerType == PT_PEN).then(|| pens.next()).flatten() {
+                Some((driven, asked)) => Point { driven, asked: Some(asked), ..point },
+                None => point,
+            }
         })
         .collect()
 }
@@ -309,7 +316,11 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
         .map(|(&(x, y, at_time), pressure)| {
             let at = in_view(view, POINT { x, y });
             let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
-            Point { driven: pressure, ..Point::at(f64::from(at.x), f64::from(at.y), micros) }
+            Point {
+                driven: pressure,
+                asked: Some((x, y, at_time)),
+                ..Point::at(f64::from(at.x), f64::from(at.y), micros)
+            }
         })
         .collect();
     let handed = (f64::from(client.x), f64::from(client.y));
