@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/text/app_strings.dart';
 
-/// The export window's Scope module, as a test reaches it. The Cels tab
-/// keeps the module folded until it is asked for, so its pills and its cut
-/// grid are not in the tree to be tapped.
+/// The export window's Scope module, as a test reaches it. It stands open
+/// (F-618 ②); a test that folded it has it opened again, since its pills
+/// and its cut grid are not in the tree to be tapped while it is folded.
 extension ExportScopePick on WidgetTester {
-  /// Opens the Scope module of the tab that is up, where it stands folded.
+  /// Opens the Scope module of the tab that is up where it was folded.
   Future<void> openExportScope() async {
     final pill = find.byKey(const ValueKey<String>('export-scope-project'));
     if (pill.evaluate().isNotEmpty) {

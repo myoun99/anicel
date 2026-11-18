@@ -41,8 +41,6 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart'
-    show ExportAccordion;
 import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
@@ -484,10 +482,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await pickExportStill(tester, ExportStillFormat.png);
-      // The Naming accordion is collapsed by default — open, then edit.
-      await tester.ensureVisible(find.textContaining('Naming'));
-      await tester.tap(find.textContaining('Naming'));
-      await tester.pump();
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('export-naming-base-field')),
       );
@@ -1907,17 +1901,6 @@ void main() {
         'webp': true,
       });
       await switchTab(tester, 'cels');
-      // On the Cels tab the cel format stands folded (the F-289 mock).
-      tester
-          .widget<ExportAccordion>(
-            find.byWidgetPredicate(
-              (widget) =>
-                  widget is ExportAccordion &&
-                  widget.title == AppText.strings.exCelFormat,
-            ),
-          )
-          .onToggle();
-      await tester.pump();
       expect(await listed(), {
         'png': true,
         'jpg': true,

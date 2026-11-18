@@ -431,7 +431,7 @@ void main() {
 
   testWidgets('셀 형식 · 타임시트 형식 · 컷봉투 형식 · 동영상 형식: a module '
       'a kind, there while that kind is written and gone while it is not — '
-      'the cels\' folded, the documents\' open', (tester) async {
+      'every one open (F-618 ②)', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     final state = await pumpCels(
@@ -441,8 +441,8 @@ void main() {
     );
     final strings = AppText.strings;
 
-    expect(find.text('${strings.exCelFormat} — PNG · RGBA'), findsOneWidget);
-    expect(keyed('export-format-file'), findsNothing, reason: 'folded');
+    expect(find.text(strings.exCelFormat), findsOneWidget);
+    expect(keyed('export-format-file'), findsOneWidget, reason: 'open');
     // 🗣️I-151 (유저 2026-11-03): 「그냥 필요없어진 형식설정 번거로우니
     // 없애서 안보이게」. ↩️They stood whatever was written.
     expect(find.text(strings.exTimesheetFormat), findsNothing);

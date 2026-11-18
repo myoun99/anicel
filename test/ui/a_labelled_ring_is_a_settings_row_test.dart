@@ -132,13 +132,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-sequence')));
     await tester.pump();
     final tile = find.byKey(const ValueKey<String>('export-audio-toggle'));
-    if (tile.evaluate().isEmpty) {
-      // A folded accordion titles itself 「Audio — …」.
-      final header = find.textContaining(AppText.strings.exAudio).first;
-      await tester.ensureVisible(header);
-      await tester.tap(header);
-      await tester.pump();
-    }
     final dialog = tester.state<ExportDialogState>(find.byType(ExportDialog));
     final before = dialog.debugSpecs.sequence.includeAudio;
     final label = find.descendant(

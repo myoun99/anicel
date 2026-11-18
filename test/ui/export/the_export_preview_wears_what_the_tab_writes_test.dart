@@ -25,7 +25,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_document.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
@@ -236,12 +235,6 @@ void main() {
     expect(before, isNotNull);
     final shown = tester.exportPreviewDocument!;
 
-    // The options module is folded: its head opens it.
-    final options = find.textContaining(AppText.strings.exOptions);
-    await tester.ensureVisible(options);
-    await tester.pump();
-    await tester.tap(options);
-    await tester.pump();
     final fxOff = keyed('export-apply-fx-off');
     await tester.ensureVisible(fxOff);
     await tester.pump();

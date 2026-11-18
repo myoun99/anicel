@@ -554,28 +554,23 @@ class ExportDialogState extends State<ExportDialog> {
     _celCutFolderFields.show(naming.cutFolderName);
   }
 
-  bool _expandedFor(String id, {bool fallback = false}) =>
-      _expanded['${_tab.jsonValue}:$id'] ?? fallback;
-
-  void _toggleExpanded(String id, {bool fallback = false}) {
-    setState(() {
-      _expanded['${_tab.jsonValue}:$id'] = !_expandedFor(
-        id,
-        fallback: fallback,
-      );
-    });
-  }
-
   /// One panel's expansion, read and toggled from ONE key. Twenty-four
   /// accordions wrote the key twice — once each way — which is two chances
   /// to disagree about which panel is being opened.
-  ({bool expanded, VoidCallback onToggle}) _expansion(
-    String stateKey, {
-    bool open = false,
-  }) => (
-    expanded: _expandedFor(stateKey, fallback: open),
-    onToggle: () => _toggleExpanded(stateKey, fallback: open),
-  );
+  ///
+  /// 🗣️F-618 ② (유저 2026-11-19 01:2x): 「다른 탭도 포함해서 그냥 펼친걸
+  /// 기본값으로? 번복하는거같아서 미안하지만」 — every accordion of every
+  /// tab stands open until the person folds it. ↩️Each had a default of its
+  /// own: the Cels tab's format and size, naming, audio, the layer fx and
+  /// most tabs' scope stood folded (the F-289 mock), the rest open.
+  ({bool expanded, VoidCallback onToggle}) _expansion(String stateKey) {
+    final key = '${_tab.jsonValue}:$stateKey';
+    bool expanded() => _expanded[key] ?? true;
+    return (
+      expanded: expanded(),
+      onToggle: () => setState(() => _expanded[key] = !expanded()),
+    );
+  }
 
   /// A format/scale chip that is DEAD while an export runs. Thirteen sites
   /// wrote that guard out; it is the same law each time — a run in flight
@@ -4100,7 +4095,7 @@ class ExportDialogState extends State<ExportDialog> {
     return ExportAccordion(
       title: AppText.strings.commonNameField,
       summary: _patternPreview(),
-      expansion: _expansion('name', open: true),
+      expansion: _expansion('name'),
       child: ExportFileNameModule(
         controller: field.controller,
         ghost: field.unnamed,
@@ -4324,8 +4319,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// the setting changing under the export it is feeding.
   ///
   /// On the Cels tab it is 「셀 형식」 — one of the formats the tab writes,
-  /// beside the timesheet's, the cut envelope's and the film's — and stands
-  /// folded (drawn so in the F-289 mock).
+  /// beside the timesheet's, the cut envelope's and the film's. ↩️It stood
+  /// folded (drawn so in the F-289 mock); it opens like every accordion
+  /// now ([_expansion]).
   ExportAccordion _formatAccordion({
     required ExportFormatSelection format,
     required ExportFormatCapabilities capabilities,
@@ -4336,7 +4332,7 @@ class ExportDialogState extends State<ExportDialog> {
         ? AppText.strings.exCelFormat
         : AppText.strings.exFormat,
     summary: ExportFormatModule.summarize(format),
-    expansion: _expansion('format', open: _tab != ExportTab.cels),
+    expansion: _expansion('format'),
     reset: reset,
     child: ExportFormatModule(
       selection: format,
@@ -4407,13 +4403,11 @@ class ExportDialogState extends State<ExportDialog> {
                 : spec.sizeMode,
           ),
         ),
-        fold: (key: 'scope', open: true),
       ),
       _sizeAccordion(
         sizeMode: spec.sizeMode,
         canvasSizes: _scopeCanvasSizes(spec.scope),
         projectScope: projectScope,
-        open: true,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       // A movie with nowhere to put sound — a GIF — is not asked it.
@@ -4449,7 +4443,6 @@ class ExportDialogState extends State<ExportDialog> {
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
         projectScope: false,
-        open: true,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _fxAccordion(
@@ -4930,7 +4923,6 @@ class ExportDialogState extends State<ExportDialog> {
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
         projectScope: false,
-        open: false,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _celNamingAccordion(spec),
@@ -5015,7 +5007,7 @@ class ExportDialogState extends State<ExportDialog> {
           ? 'XDTS · ${strings.exXdtsInk} · '
                 '${strings.xdtsViewerSheetName(viewer)}'
           : 'XDTS',
-      expansion: _expansion('sheet-format', open: true),
+      expansion: _expansion('sheet-format'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5096,7 +5088,7 @@ class ExportDialogState extends State<ExportDialog> {
       summary:
           '${ExportPaperFormatModule.summarize(spec.envelopeImage)} · '
           '${cutPaper ? strings.exCutSize : strings.exRealSheet}',
-      expansion: _expansion('envelope-format', open: true),
+      expansion: _expansion('envelope-format'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5142,7 +5134,7 @@ class ExportDialogState extends State<ExportDialog> {
   ExportAccordion _filmFormatAccordion(CelsExportSpec spec) => ExportAccordion(
     title: AppText.strings.exVideoFormat,
     summary: ExportFormatModule.summarize(spec.videoFormat),
-    expansion: _expansion('video-format', open: true),
+    expansion: _expansion('video-format'),
     child: ExportFormatModule(
       keyPrefix: 'export-film-format',
       selection: spec.videoFormat,
@@ -5214,7 +5206,7 @@ class ExportDialogState extends State<ExportDialog> {
         summary: pictured
             ? ExportPaperFormatModule.summarize(spec.image)
             : AppText.strings.exVectorPdf,
-        expansion: _expansion('format', open: true),
+        expansion: _expansion('format'),
         child: ExportPaperFormatModule(
           keyPrefix: 'export-conteformat',
           caption: ExportCaption.format,
@@ -5324,18 +5316,17 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The Size accordion three tabs offer: one title, one fold key, one
   /// enabled law. What differs per tab is values — which canvas sizes are
-  /// on the table, whether the scope is the project, whether it opens by
-  /// default — the same shape [_scopeAccordion] was extracted for.
+  /// on the table, whether the scope is the project — the same shape
+  /// [_scopeAccordion] was extracted for.
   ExportAccordion _sizeAccordion({
     required ExportSizeMode sizeMode,
     required Set<CanvasSize> canvasSizes,
     required bool projectScope,
-    required bool open,
     required void Function(ExportSizeMode mode) onChanged,
   }) => ExportAccordion(
     title: AppText.strings.exSize,
     summary: ExportSizeModule.summarize(sizeMode),
-    expansion: _expansion('size', open: open),
+    expansion: _expansion('size'),
     child: ExportSizeModule(
       sizeMode: sizeMode,
       cameraSize: _session.camera.cameraFrameSize,
@@ -5355,17 +5346,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// The "this cut or the whole film" accordion every tab offers.
   ///
   /// ⛔ONE SCOPE CONTROL. Five tabs wrote out the title, the summarize
-  /// call and the enabled pair; what actually differs is the fold key,
-  /// whether it opens by default, and what rides inside it — the cut grid.
+  /// call and the enabled pair; what actually differs is what rides
+  /// inside it — the cut grid.
   ExportAccordion _scopeAccordion({
     required ExportScopeKind scope,
     required void Function(ExportScopeKind scope) onChanged,
-    ({String key, bool open}) fold = (key: 'scope', open: false),
     Widget? child,
   }) => ExportAccordion(
     title: AppText.strings.exScope,
     summary: ExportScopeModule.summarize(scope),
-    expansion: _expansion(fold.key, open: fold.open),
+    expansion: _expansion('scope'),
     child: ExportScopeModule(
       scope: scope,
       enabled: !_isExporting,

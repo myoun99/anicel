@@ -1448,9 +1448,6 @@ void main() {
     expect(saying(strings.exCutFolderHeld), findsNothing);
     expect(pill(tester, 'export-cel-folder-cut').selected, isFalse);
 
-    await tester.ensureVisible(find.textContaining(strings.exScope));
-    await tester.tap(find.textContaining(strings.exScope));
-    await tester.pump();
     await tapKey(tester, 'export-scope-project');
     final held = pill(tester, 'export-cel-folder-cut');
     expect((held.selected, held.onTap), (true, null));
@@ -1482,10 +1479,6 @@ void main() {
       'excludes both cuts at once', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
-    // The Scope accordion sits collapsed by default — open it.
-    await tester.ensureVisible(find.textContaining(AppText.strings.exScope));
-    await tester.tap(find.textContaining(AppText.strings.exScope));
-    await tester.pump();
     await tapKey(tester, 'export-scope-project');
 
     // In the grid: the Cels list's cut column names the pair's folder too
