@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -21,19 +22,19 @@ const _words = MediaPoolWords(
 );
 
 /// Frames 2 to 7 of the clap, named 「Door」, its words 「bang」.
-const SoundPreset _preset = (
+const MediaSyncPreset _preset = (
   start: 2,
   length: 6,
   nameTag: 'Door',
   words: 'bang',
 );
 
-SoundPlace _place(
+MediaSyncPlace _place(
   String frame, {
   required int start,
   required int length,
   String nameTag = 'SE',
-}) => SoundPlace(
+}) => MediaSyncPlace(
   use: FrameMediaUse(
     trackId: const TrackId('t1'),
     cutId: null,
@@ -46,6 +47,7 @@ SoundPlace _place(
       blockStarts: const [],
     ),
   ),
+  placed: _preset,
   starts: [start],
   lengths: [length],
   nameTag: nameTag,
@@ -66,7 +68,10 @@ final _places = [
 /// 「모두 적용」 takes every place that parts.
 void main() {
   /// Opens the window and answers what it hands back.
-  Future<MediaSyncAnswer? Function()> open(WidgetTester tester) async {
+  Future<MediaSyncAnswer? Function()> open(
+    WidgetTester tester, {
+    List<MediaSyncPlace>? places,
+  }) async {
     MediaSyncAnswer? answer;
     await tester.pumpWidget(
       MaterialApp(
@@ -79,9 +84,11 @@ void main() {
                   context: context,
                   builder: (_) => MediaSyncWindow(
                     asset: _clap,
-                    preset: _preset,
-                    places: _places,
-                    placeLines: const ['S1 · a', 'S1 · b', 'S1 · c'],
+                    places: places ?? _places,
+                    placeLines: [
+                      for (final place in places ?? _places)
+                        'S1 · ${_places.indexOf(place)}',
+                    ],
                     words: _words,
                   ),
                 );
@@ -179,7 +186,7 @@ void main() {
     var answer = await open(tester);
     await press(tester, 'media-sync-place-0-ring');
     await press(tester, 'media-sync-apply');
-    expect(answer()?.fields, SoundSyncField.asked);
+    expect(answer()?.fields, MediaSyncField.asked);
     expect(answer()?.places, [_places[1]]);
 
     answer = await open(tester);
@@ -188,6 +195,59 @@ void main() {
     expect(answer()?.places, [_places[0], _places[1]]);
   });
 
+
+  testWidgets('a movie\'s row holds no name tag and no words — the window '
+      'shows the fields its places hold, and says what the preset places '
+      'at each, once each where a movie\'s sound and pictures count apart', (
+    tester,
+  ) async {
+    /// A movie's row whose pictures cover seven frames where its sound
+    /// covers six.
+    const row = MediaSyncPlace(
+      use: RowMediaUse(
+        cutId: CutId('c1'),
+        layerId: LayerId('m1'),
+        owner: PlaceOwner('t1'),
+        layerName: 'm1',
+      ),
+      placed: (start: 2, length: 7, nameTag: 'SE', words: 'clap'),
+      starts: [0],
+      lengths: [10],
+    );
+    await open(tester, places: [row]);
+    for (final (field, shown) in [
+      ('start', true),
+      ('length', true),
+      ('nameTag', false),
+      ('words', false),
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>('media-sync-field-$field')),
+        shown ? findsOneWidget : findsNothing,
+        reason: field,
+      );
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+    await open(tester, places: [_places.first, row]);
+    const lengthLine = ValueKey<String>('media-sync-field-length');
+    expect(
+      (tester
+                  .widget<ListTile>(
+                    find.byKey(lengthLine),
+                  )
+                  .title!
+              as Text)
+          .data,
+      '${_words.framesWord(_clap, 6)}, ${_words.framesWord(_clap, 7)}',
+    );
+    expect(
+      partsOf(tester, 1),
+      '${AppText.strings.mediaStart} ${_words.frameWord(0)} → '
+      '${_words.frameWord(2)} · ${AppText.strings.mediaLength} '
+      '${_words.framesWord(_clap, 10)} → ${_words.framesWord(_clap, 7)}',
+      reason: 'a place parts from what its own preset places',
+    );
+  });
   testWidgets('cancel answers nothing', (tester) async {
     final answer = await open(tester);
     await press(tester, 'media-sync-cancel');

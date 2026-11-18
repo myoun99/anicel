@@ -9,17 +9,17 @@ import '../widgets/settings_rows.dart';
 import 'media_pool_words.dart';
 
 /// What the sync window answers: the fields to set, at the places to set
-/// them ([MediaPool.syncSoundPlaces]).
+/// them ([MediaPool.syncPlaces]).
 typedef MediaSyncAnswer = ({
-  Set<SoundSyncField> fields,
-  List<SoundPlace> places,
+  Set<MediaSyncField> fields,
+  List<MediaSyncPlace> places,
 });
 
 /// 🗣️THE SYNC WINDOW (유저 2026-11-17, card 「파일마다 배치 기본값」-Q5:
 /// 「동기화 창은 칸과 곳을 둘 다 고른다 · 곳 목록 스크롤 · 「모두 적용」」 —
-/// Q6 「시안대로」, its ③): above, the fields to match, each with the
-/// preset's value — the start and the length on to begin
-/// ([SoundSyncField.asked]); below, every place that uses the file, with
+/// Q6 「시안대로」, its ③): above, the fields its places hold, each with what
+/// the preset places there — the start and the length on to begin
+/// ([MediaSyncField.asked]); below, every place that uses the file, with
 /// how it parts at the fields on, or 「같음」. 「적용」 sets the places picked
 /// among those that part; 「모두 적용」 every one that parts. A field off is
 /// no difference in the list.
@@ -27,15 +27,13 @@ class MediaSyncWindow extends StatefulWidget {
   const MediaSyncWindow({
     super.key,
     required this.asset,
-    required this.preset,
     required this.places,
     required this.placeLines,
     required this.words,
   }) : assert(places.length == placeLines.length, 'a line a place');
 
   final MediaAsset asset;
-  final SoundPreset preset;
-  final List<SoundPlace> places;
+  final List<MediaSyncPlace> places;
 
   /// Each of [places] as the uses window names it (`mediaAssetUseLine`).
   final List<String> placeLines;
@@ -59,16 +57,23 @@ class MediaSyncWindow extends StatefulWidget {
 }
 
 class _MediaSyncWindowState extends State<MediaSyncWindow> {
-  final Set<SoundSyncField> _fields = {...SoundSyncField.asked};
+  final Set<MediaSyncField> _fields = {...MediaSyncField.asked};
 
   /// The places picked, by their index — every one to begin.
   late final Set<int> _picked = {
     for (var index = 0; index < widget.places.length; index++) index,
   };
 
-  /// What [index]'s place parts from the preset at, among the fields on.
-  Set<SoundSyncField> _partsOf(int index) =>
-      widget.places[index].partsFrom(widget.preset, _fields);
+  /// The fields any of the places holds, in the window's order — a movie's
+  /// row has no name tag.
+  late final List<MediaSyncField> _shown = [
+    for (final field in MediaSyncField.values)
+      if (widget.places.any((place) => place.fields.contains(field))) field,
+  ];
+
+  /// What [index]'s place parts from its preset at, among the fields on.
+  Set<MediaSyncField> _partsOf(int index) =>
+      widget.places[index].partsFrom(_fields);
 
   void _answer(List<int> indices) =>
       Navigator.of(context).pop<MediaSyncAnswer>((
@@ -99,9 +104,7 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
           AppWindowField(
             label: strings.mediaSyncFields,
             child: Column(
-              children: [
-                for (final field in SoundSyncField.values) _fieldLine(field),
-              ],
+              children: [for (final field in _shown) _fieldLine(field)],
             ),
           ),
           const SizedBox(height: 12),
@@ -147,10 +150,10 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
   /// app's labelled boolean (`SettingsSwitchRow`: 유저 2026-09-24 「설정 줄
   /// 하나로」, 10-23 F-439-Q1 「링만 컨트롤, 라벨은 글자」), led by what the
   /// row is as the export window's layers are.
-  Widget _fieldLine(SoundSyncField field) => SettingsSwitchRow(
+  Widget _fieldLine(MediaSyncField field) => SettingsSwitchRow(
     tileKey: ValueKey<String>('media-sync-field-${field.name}'),
     leading: _nameColumn(_labelOf(field), MediaSyncWindow.fieldNameWidth),
-    label: _presetWordOf(field),
+    label: _placedWordOf(field),
     value: _fields.contains(field),
     onChanged: (on) =>
         setState(() => on ? _fields.add(field) : _fields.remove(field)),
@@ -183,36 +186,47 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
       SizedBox(width: width, child: EllipsisText(name, maxLines: 1));
 
   /// `시작 1 → 3 · 길이 0:00+4 → 0:00+6` — each field [index]'s place parts
-  /// at, what it holds and what the preset places.
-  String _partsWord(int index, Set<SoundSyncField> parts) => [
-    for (final field in SoundSyncField.values)
-      if (parts.contains(field))
-        '${_labelOf(field)} ${_heldWordOf(widget.places[index], field)} → '
-            '${_presetWordOf(field)}',
-  ].join(' · ');
+  /// at, what it holds and what its preset places.
+  String _partsWord(int index, Set<MediaSyncField> parts) {
+    final place = widget.places[index];
+    return [
+      for (final field in MediaSyncField.values)
+        if (parts.contains(field))
+          '${_labelOf(field)} ${_heldWordOf(place, field)} → '
+              '${_valueWord(place.placed, field)}',
+    ].join(' · ');
+  }
 
-  String _labelOf(SoundSyncField field) => switch (field) {
-    SoundSyncField.start => AppText.strings.mediaStart,
-    SoundSyncField.length => AppText.strings.mediaLength,
-    SoundSyncField.nameTag => AppText.strings.seNameLabel,
-    SoundSyncField.words => AppText.strings.seDialogueLabel,
+  String _labelOf(MediaSyncField field) => switch (field) {
+    MediaSyncField.start => AppText.strings.mediaStart,
+    MediaSyncField.length => AppText.strings.mediaLength,
+    MediaSyncField.nameTag => AppText.strings.seNameLabel,
+    MediaSyncField.words => AppText.strings.seDialogueLabel,
   };
 
-  String _presetWordOf(SoundSyncField field) => switch (field) {
-    SoundSyncField.start => _startWord(widget.preset.start),
-    SoundSyncField.length => _lengthWord(widget.preset.length),
-    SoundSyncField.nameTag => _textWord(widget.preset.nameTag),
-    SoundSyncField.words => _textWord(widget.preset.words),
-  };
+  /// What the preset places at [field] — each value once, where a movie's
+  /// sound and its pictures count their lengths apart.
+  String _placedWordOf(MediaSyncField field) => {
+    for (final place in widget.places)
+      if (place.fields.contains(field)) _valueWord(place.placed, field),
+  }.join(', ');
+
+  String _valueWord(MediaSyncPreset placed, MediaSyncField field) =>
+      switch (field) {
+        MediaSyncField.start => _startWord(placed.start),
+        MediaSyncField.length => _lengthWord(placed.length),
+        MediaSyncField.nameTag => _textWord(placed.nameTag),
+        MediaSyncField.words => _textWord(placed.words),
+      };
 
   /// What [place] holds at [field] — each value once, where blocks or
   /// clips of one place hold more than one.
-  String _heldWordOf(SoundPlace place, SoundSyncField field) =>
+  String _heldWordOf(MediaSyncPlace place, MediaSyncField field) =>
       switch (field) {
-        SoundSyncField.start => place.starts.toSet().map(_startWord),
-        SoundSyncField.length => place.lengths.toSet().map(_lengthWord),
-        SoundSyncField.nameTag => [_textWord(place.nameTag)],
-        SoundSyncField.words => [_textWord(place.words)],
+        MediaSyncField.start => place.starts.toSet().map(_startWord),
+        MediaSyncField.length => place.lengths.toSet().map(_lengthWord),
+        MediaSyncField.nameTag => [_textWord(place.nameTag ?? '')],
+        MediaSyncField.words => [_textWord(place.words ?? '')],
       }.join(', ');
 
   String _startWord(int? first) =>

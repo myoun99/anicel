@@ -16,6 +16,8 @@ import 'package:anicel/src/models/timeline_repeat.dart'
     show rederiveRunBehaviors;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/media/media_asset_uses.dart'
+    show FrameMediaUse;
 import 'package:anicel/src/services/media/media_preset_sync.dart';
 import 'package:anicel/src/services/project_lookup.dart'
     show requireLayerAnywhere;
@@ -96,15 +98,24 @@ Project _project() => Project(
   ],
 );
 
+/// The clap's sound as its conform holds it: twenty frames.
+const MediaSyncLengths _known = (sound: 20, pictures: null);
+
+/// The places [project] plays the clap at, its length [lengths].
+List<MediaSyncPlace> placesIn(
+  Project project, {
+  MediaSyncLengths lengths = _known,
+}) => syncPlacesOf(project, project.mediaAssets.single, lengths: lengths);
+
 /// 🗣️유저 2026-11-17 (card 「파일마다 배치 기본값」-Q5 · Q6 「시안대로」): a
 /// placement copies its file's preset once; a preset changed later is
 /// SYNCED by hand — the window picks the fields and the places.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final preset = soundPresetOf(
+  final preset = syncPresetOf(
     _project().mediaAssets.single,
-    soundFrames: 20,
+    length: 20,
   );
 
   test('the preset places what a placement of it lands with — its span\'s '
@@ -112,44 +123,42 @@ void main() {
       'cannot count before the sound\'s length is known', () {
     expect(preset, (start: 2, length: 6, nameTag: 'Door', words: 'bang'));
     expect(
-      soundPresetOf(
+      syncPresetOf(
         MediaAsset(path: _clap, name: 'clap'),
-        soundFrames: 20,
+        length: 20,
       ),
       (start: 0, length: 20, nameTag: 'SE', words: 'clap'),
       reason: 'an untouched preset places the whole file as every sound',
     );
     expect(
-      soundPresetOf(_project().mediaAssets.single, soundFrames: null),
+      syncPresetOf(_project().mediaAssets.single, length: null),
       (start: null, length: null, nameTag: 'Door', words: 'bang'),
     );
   });
 
   test('each place says where it parts from the preset, among the fields '
       'asked — a block shared by two counts both', () {
-    final places = soundPlacesOf(_project(), _clap);
-    expect([for (final place in places) place.use.frameId], const [
-      FrameId('a'),
-      FrameId('b'),
-    ]);
+    final places = placesIn(_project());
+    expect(
+      [for (final place in places) (place.use as FrameMediaUse).frameId],
+      const [FrameId('a'), FrameId('b')],
+    );
     expect(places.first.lengths, [4, 4]);
     expect(
-      [for (final place in places) place.partsFrom(preset, SoundSyncField.asked)],
+      [for (final place in places) place.partsFrom(MediaSyncField.asked)],
       [
-        {SoundSyncField.start, SoundSyncField.length},
-        {SoundSyncField.length},
+        {MediaSyncField.start, MediaSyncField.length},
+        {MediaSyncField.length},
       ],
     );
     expect(
-      places.last.partsFrom(preset, SoundSyncField.values.toSet()),
-      {SoundSyncField.length, SoundSyncField.nameTag, SoundSyncField.words},
-    );
-    final unknown = soundPresetOf(
-      _project().mediaAssets.single,
-      soundFrames: null,
+      places.last.partsFrom(MediaSyncField.values.toSet()),
+      {MediaSyncField.length, MediaSyncField.nameTag, MediaSyncField.words},
     );
     expect(
-      places.first.partsFrom(unknown, SoundSyncField.asked),
+      placesIn(_project(), lengths: (sound: null, pictures: null))
+          .first
+          .partsFrom(MediaSyncField.asked),
       isEmpty,
       reason: 'a start and a length the preset cannot count part from '
           'nothing',
@@ -166,11 +175,10 @@ void main() {
       const LayerId('s1'),
     );
     final before = row();
-    session.mediaPool.syncSoundPlaces(
+    session.mediaPool.syncPlaces(
       _clap,
-      preset: preset,
-      fields: SoundSyncField.asked,
-      places: soundPlacesOf(session.repository.requireProject(), _clap),
+      fields: MediaSyncField.asked,
+      places: placesIn(session.repository.requireProject()),
     );
     final after = row();
     expect(
@@ -195,12 +203,12 @@ void main() {
       reason: 'the name tag and the words were not asked for',
     );
     expect(
-      soundPlacesOf(session.repository.requireProject(), _clap).map(
-        (place) => place.partsFrom(preset, SoundSyncField.values.toSet()),
+      placesIn(session.repository.requireProject()).map(
+        (place) => place.partsFrom(MediaSyncField.values.toSet()),
       ),
       [
-        {SoundSyncField.nameTag, SoundSyncField.words},
-        {SoundSyncField.nameTag, SoundSyncField.words},
+        {MediaSyncField.nameTag, MediaSyncField.words},
+        {MediaSyncField.nameTag, MediaSyncField.words},
       ],
     );
     session.historyManager.undo();
@@ -211,14 +219,13 @@ void main() {
       'words, where its sound starts — the other place and its sound kept', () {
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);
-    final places = soundPlacesOf(session.repository.requireProject(), _clap);
-    session.mediaPool.syncSoundPlaces(
+    final places = placesIn(session.repository.requireProject());
+    session.mediaPool.syncPlaces(
       _clap,
-      preset: preset,
       fields: const {
-        SoundSyncField.start,
-        SoundSyncField.nameTag,
-        SoundSyncField.words,
+        MediaSyncField.start,
+        MediaSyncField.nameTag,
+        MediaSyncField.words,
       },
       places: [places.last],
     );
@@ -235,41 +242,34 @@ void main() {
     expect([for (final clip in row.audioClips) clip.offsetFrames], [0, 2]);
   });
 
-  test('the pool\'s mark turns into the sync where a place of the SOUND '
-      'parts at its start or its length — not before the sound\'s length is '
-      'known, not once every place is synced, not for a movie (Q7)', () {
+  test('the pool\'s mark turns into the sync where a place parts at its '
+      'start or its length — not before the sound\'s length is known, not '
+      'once every place is synced', () {
     final project = _project();
     final clap = project.mediaAssets.single;
-    expect(soundPartsFromItsPreset(project, clap, soundFrames: 20), isTrue);
+    expect(partsFromItsPreset(project, clap, lengths: _known), isTrue);
     expect(
-      soundPartsFromItsPreset(project, clap, soundFrames: null),
+      partsFromItsPreset(
+        project,
+        clap,
+        lengths: (sound: null, pictures: null),
+      ),
       isFalse,
       reason: 'a start and a length the preset cannot count part from '
           'nothing',
     );
-    expect(
-      soundPartsFromItsPreset(
-        project,
-        clap.copyWith(kind: MediaAssetKind.video),
-        soundFrames: 20,
-      ),
-      isFalse,
-      reason: 'a movie\'s sync is the picture\'s — card 「파일마다 배치 '
-          '기본값」-Q7',
-    );
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);
-    session.mediaPool.syncSoundPlaces(
+    session.mediaPool.syncPlaces(
       _clap,
-      preset: preset,
-      fields: SoundSyncField.asked,
-      places: soundPlacesOf(session.repository.requireProject(), _clap),
+      fields: MediaSyncField.asked,
+      places: placesIn(session.repository.requireProject()),
     );
     expect(
-      soundPartsFromItsPreset(
+      partsFromItsPreset(
         session.repository.requireProject(),
         clap,
-        soundFrames: 20,
+        lengths: _known,
       ),
       isFalse,
       reason: 'the name tag and the words still part, but the mark counts '

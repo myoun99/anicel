@@ -932,14 +932,10 @@ class _WorkspaceTabs {
                   pictures: _state._views._poolPictures,
                 ),
               ),
-              partsOf: (asset) => soundPartsFromItsPreset(
+              partsOf: (asset) => partsFromItsPreset(
                 _state.widget.session.repository.requireProject(),
                 asset,
-                soundFrames: _state.widget.session.audioConformStore
-                    .heldPeaksFor(asset.path)
-                    ?.durationFrames(
-                      _state.widget.session.projectSettings.projectFrameRate,
-                    ),
+                lengths: syncLengthsOf(_state.widget.session, asset),
               ),
               onSync: (asset) => unawaited(
                 syncMediaPlaces(context, _state.widget.session, asset),

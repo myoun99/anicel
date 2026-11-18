@@ -40,7 +40,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_facts.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/project_lookup.dart'
-    show mediaKindCanCarrySound, requireLayerAnywhere;
+    show mediaKindCanCarrySound, requireLayer, requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -390,20 +390,20 @@ class MediaPool {
         trackSeLayers: () => _project.trackById(trackId)?.seLayers ?? const [],
       );
 
-  /// Sets [fields] of each of [places] of the sound at [path] to what
-  /// [preset] places ([soundPresetOf]) — ONE undo step, through the verbs a
-  /// person uses on each: the SE window's words and name tag, the clip's
-  /// slide, and the comma edge that lengthens or shortens a block, ripple
-  /// and all. A field the preset cannot count yet stays as it is.
+  /// Sets [fields] of each of [places] of the file at [path] to what its
+  /// preset places there ([MediaSyncPlace.placed]) — ONE undo step, through
+  /// the verbs a person uses on each: the SE window's words and name tag, a
+  /// sound clip's slide and a movie row's offset into its file, and the
+  /// comma edge that lengthens or shortens a block, ripple and all. A field
+  /// the preset cannot count yet stays as it is.
   ///
   /// 🗣️유저 2026-11-17 (card 「파일마다 배치 기본값」-Q5): the sync window
   /// picks the fields and the places, and 「모두 적용」 takes every place that
   /// parts from the preset.
-  void syncSoundPlaces(
+  void syncPlaces(
     String path, {
-    required SoundPreset preset,
-    required Set<SoundSyncField> fields,
-    required Iterable<SoundPlace> places,
+    required Set<MediaSyncField> fields,
+    required Iterable<MediaSyncPlace> places,
   }) {
     final chosen = places.toList();
     if (chosen.isEmpty || fields.isEmpty) {
@@ -412,7 +412,14 @@ class MediaPool {
     final file = normalizedMediaPath(path);
     _project.historyManager.runAsOneStep('Sync to placement preset', () {
       for (final place in chosen) {
-        _syncSoundPlace(file, place.use, preset, fields);
+        switch (place.use) {
+          case final FrameMediaUse use:
+            _syncSoundPlace(file, use, place.placed, fields);
+          case final RowMediaUse use:
+            _syncMovieRow(use, place.placed, fields);
+          default:
+          // No other use is a place a sync sets (`syncPlacesOf`).
+        }
       }
     });
     _changes.refreshAfterCutCommand();
@@ -422,15 +429,15 @@ class MediaPool {
   void _syncSoundPlace(
     String file,
     FrameMediaUse use,
-    SoundPreset preset,
-    Set<SoundSyncField> fields,
+    MediaSyncPreset placed,
+    Set<MediaSyncField> fields,
   ) {
     final timeline = _timelineThrough(use.trackId, _lensOf(use));
     Layer row() =>
         requireLayerAnywhere(_project.repository.requireProject(), use.layerId);
-    _syncSoundBlockWords(timeline, use, preset, fields);
-    if (preset.start case final start?
-        when fields.contains(SoundSyncField.start)) {
+    _syncSoundBlockWords(timeline, use, placed, fields);
+    if (placed.start case final start?
+        when fields.contains(MediaSyncField.start)) {
       final clips = row().audioClips;
       final slid = [
         for (final clip in clips)
@@ -448,42 +455,83 @@ class MediaPool {
         );
       }
     }
-    if (preset.length case final length?
-        when fields.contains(SoundSyncField.length)) {
-      // Right to left: a block lengthened ripples those after it, never
-      // one before — so each start read here still holds when it is shifted.
-      final starts = [
+    if (placed.length case final length?
+        when fields.contains(MediaSyncField.length)) {
+      _lengthenBlocks(timeline, row, [
         for (final MapEntry(key: at) in blocksShowing(row(), use.frameId)) at,
-      ]..sort((a, b) => b.compareTo(a));
-      for (final at in starts) {
-        timeline.shiftExposureEdge(
-          layerId: use.layerId,
-          blockStartIndex: at,
-          edge: TimelineBlockEdge.end,
-          delta: length - row().timeline[at]!.length!,
-        );
-      }
+      ], length);
     }
   }
 
-  /// [use]'s block's name tag and words as [preset] names them, where
+  /// A movie's row ([RowMediaUse]): where it starts in its file, through
+  /// the reference's own offset, and its blocks' length.
+  void _syncMovieRow(
+    RowMediaUse use,
+    MediaSyncPreset placed,
+    Set<MediaSyncField> fields,
+  ) {
+    Layer row() => requireLayer(
+      _project.repository.requireProject(),
+      cutId: use.cutId,
+      layerId: use.layerId,
+    );
+    if (placed.start case final start?
+        when fields.contains(MediaSyncField.start)) {
+      _project.cutCommandCoordinator.updateLayerReferenceOffset(
+        layerId: use.layerId,
+        frameOffset: start,
+        description: 'Sync to placement preset',
+      );
+    }
+    if (placed.length case final length?
+        when fields.contains(MediaSyncField.length)) {
+      _lengthenBlocks(
+        _timelineThrough(_project.trackOwningCut(use.cutId)!.id, use.cutId),
+        row,
+        [for (final MapEntry(key: at) in heldBlocksOf(row())) at],
+        length,
+      );
+    }
+  }
+
+  /// The blocks of [row] starting at [starts] made [length] long through
+  /// the comma edge a person drags — the end, rippling what follows. Right
+  /// to left: a block lengthened pushes those after it, never one before,
+  /// so each start read here still holds when it is shifted.
+  void _lengthenBlocks(
+    TimelineController timeline,
+    Layer Function() row,
+    List<int> starts,
+    int length,
+  ) {
+    for (final at in starts..sort((a, b) => b.compareTo(a))) {
+      timeline.shiftExposureEdge(
+        layerId: row().id,
+        blockStartIndex: at,
+        edge: TimelineBlockEdge.end,
+        delta: length - row().timeline[at]!.length!,
+      );
+    }
+  }
+
+  /// [use]'s block's name tag and words as [placed] names them, where
   /// [fields] ask for either — the SE window's own commit, the rest of its
   /// fields kept.
   void _syncSoundBlockWords(
     TimelineController timeline,
     FrameMediaUse use,
-    SoundPreset preset,
-    Set<SoundSyncField> fields,
+    MediaSyncPreset placed,
+    Set<MediaSyncField> fields,
   ) {
     final frame = requireLayerAnywhere(
       _project.repository.requireProject(),
       use.layerId,
     ).frames.firstWhere((frame) => frame.id == use.frameId);
-    final words = fields.contains(SoundSyncField.words)
-        ? preset.words
+    final words = fields.contains(MediaSyncField.words)
+        ? placed.words
         : frame.name;
-    final nameTag = fields.contains(SoundSyncField.nameTag)
-        ? preset.nameTag
+    final nameTag = fields.contains(MediaSyncField.nameTag)
+        ? placed.nameTag
         : frame.seName;
     if (words == frame.name && nameTag == frame.seName) {
       return;

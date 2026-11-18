@@ -94,6 +94,7 @@ import 'update_track_effects_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
+import 'update_layer_reference_offset_command.dart';
 import 'update_layer_se_sound_command.dart';
 import 'update_layer_timeline_command.dart';
 import 'update_layer_transform_enabled_command.dart';
@@ -1263,6 +1264,33 @@ class CutCommandCoordinator {
         repository: repository,
         layerId: layerId,
         fx: fx,
+        description: description,
+      ),
+    );
+  }
+
+  /// Sets where in its file a reference row starts showing it
+  /// ([UpdateLayerReferenceOffsetCommand]); one undo step, no-op when
+  /// unchanged.
+  void updateLayerReferenceOffset({
+    required LayerId layerId,
+    required int frameOffset,
+    String description = 'Edit layer reference',
+  }) {
+    final layer = _requireLayerAnywhere(layerId);
+    if (layer.mediaReference == null) {
+      throw StateError(
+        'A reference offset belongs on a row that shows a file.',
+      );
+    }
+    _executeIfChanged(
+      subject: layer,
+      value: frameOffset,
+      read: (layer) => layer.mediaReference!.frameOffset,
+      command: (_) => UpdateLayerReferenceOffsetCommand(
+        repository: repository,
+        layerId: layerId,
+        frameOffset: frameOffset,
         description: description,
       ),
     );

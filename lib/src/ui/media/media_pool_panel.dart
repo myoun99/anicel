@@ -153,7 +153,7 @@ class MediaPoolPanel extends StatelessWidget {
 
   /// Whether a place of the file parts from its preset — the in-use mark
   /// then wears the sync in its own place, and opens [onSync] (시안 ③,
-  /// `soundPartsFromItsPreset`).
+  /// `partsFromItsPreset`).
   final bool Function(MediaAsset asset) partsOf;
 
   /// Opens the file's sync window.
