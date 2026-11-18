@@ -1,5 +1,9 @@
 import 'dart:collection';
 
+import 'package:flutter/foundation.dart' show mapEquals;
+
+import '../../models/block_run_lead_edge.dart';
+import '../../models/block_run_move.dart';
 import '../../models/camera_instruction.dart';
 
 /// Pure edits on an instruction row's span map. Each returns the edited
@@ -25,9 +29,8 @@ MapEntry<int, InstructionEvent>? instructionSpanCovering(
 
 /// Shifts one edge of the span starting at [spanStartIndex] by [delta]
 /// frames. The END edge resizes the span (min length 1, clamped at the
-/// next span's start). The START edge moves the start while the end stays
-/// fixed (clamped at the previous span's end and frame 0). Unlike cel
-/// blocks there is no ripple — instruction spans are independent notes.
+/// next span's start). The START edge is a block's front edge
+/// ([_withLeadEdgeShifted]).
 SplayTreeMap<int, InstructionEvent>? instructionMapWithEdgeShifted(
   SplayTreeMap<int, InstructionEvent> instructions, {
   required int spanStartIndex,
@@ -38,32 +41,58 @@ SplayTreeMap<int, InstructionEvent>? instructionMapWithEdgeShifted(
   if (event == null || delta == 0) {
     return null;
   }
-
-  final next = SplayTreeMap<int, InstructionEvent>.of(instructions);
   if (startEdge) {
-    final previousStart = instructions.lastKeyBefore(spanStartIndex);
-    final minStart = previousStart == null
-        ? 0
-        : previousStart + instructions[previousStart]!.length;
-    final endExclusive = spanStartIndex + event.length;
-    final newStart = (spanStartIndex + delta)
-        .clamp(minStart, endExclusive - 1)
-        .toInt();
-    if (newStart == spanStartIndex) {
-      return null;
-    }
-    next.remove(spanStartIndex);
-    next[newStart] = event.copyWith(length: endExclusive - newStart);
-  } else {
-    final nextStart = instructions.firstKeyAfter(spanStartIndex);
-    final maxLength = nextStart == null ? 1 << 20 : nextStart - spanStartIndex;
-    final newLength = (event.length + delta).clamp(1, maxLength).toInt();
-    if (newLength == event.length) {
-      return null;
-    }
-    next[spanStartIndex] = event.copyWith(length: newLength);
+    return _withLeadEdgeShifted(instructions, spanStartIndex, delta);
   }
-  return next;
+  final nextStart = instructions.firstKeyAfter(spanStartIndex);
+  final maxLength = nextStart == null ? 1 << 20 : nextStart - spanStartIndex;
+  final newLength = (event.length + delta).clamp(1, maxLength).toInt();
+  if (newLength == event.length) {
+    return null;
+  }
+  return SplayTreeMap<int, InstructionEvent>.of(instructions)
+    ..[spanStartIndex] = event.copyWith(length: newLength);
+}
+
+/// The START edge of the span at [spanStartIndex] dragged [delta] frames by
+/// the one rule every block's front edge follows ([planBlockRunLeadEdge]):
+/// its end holds; drawn out, it spends the empty frames in front and then
+/// the span it touches gives frames, down to one (I-21); pulled back past
+/// its last frame, it sweeps on and every span it passes whole is gone
+/// (I-179). Null when nothing moves.
+///
+/// ↩️The start used to stop at the previous span's end and at its own last
+/// frame, "unlike cel blocks there is no ripple — instruction spans are
+/// independent notes" (1c11b5685, an implementation choice). A front edge
+/// is a block's: 「이건 블록을 사용하는거라면 모든것에 법 통일적용 … 그게
+/// 이 앱의 규칙이니까」 (유저 2026-11-19, I-179).
+SplayTreeMap<int, InstructionEvent>? _withLeadEdgeShifted(
+  SplayTreeMap<int, InstructionEvent> instructions,
+  int spanStartIndex,
+  int delta,
+) {
+  final starts = instructions.keys.toList();
+  final events = instructions.values.toList();
+  final lengths = [for (final event in events) event.length];
+  final gaps = leadingGapsOf(starts: starts, lengths: lengths);
+  final layout = planBlockRunLeadEdge(
+    slots: [
+      for (var i = 0; i < events.length; i += 1)
+        (leadingGap: gaps[i], length: lengths[i]),
+    ],
+    targetIndex: starts.indexOf(spanStartIndex),
+    frameDelta: delta,
+  );
+  final newStarts = slotStartsOf([
+    for (var i = 0; i < events.length; i += 1)
+      (leadingGap: layout.leadingGaps[i], length: layout.lengths[i]),
+  ]);
+  final next = SplayTreeMap<int, InstructionEvent>.of({
+    for (var i = 0; i < events.length; i += 1)
+      if (layout.lengths[i] > 0)
+        newStarts[i]: events[i].copyWith(length: layout.lengths[i]),
+  });
+  return mapEquals(next, instructions) ? null : next;
 }
 
 /// Places [event] at [startIndex] on an empty cell, clamping its length at

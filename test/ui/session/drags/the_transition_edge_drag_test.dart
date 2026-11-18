@@ -116,6 +116,24 @@ void main() {
     expect(instructions[6]?.length, 4);
   });
 
+  // I-179 (유저 2026-11-19): 「블록을 사용하는거라면 모든것에 법 통일적용」.
+  test('the START edge pulled back past its span takes it — and the span '
+      'glued in front follows the edge, in one step', () {
+    final session = open(
+      layer: transitionRow({0: span(4), 4: span(6), 12: span(3)}),
+      edge: TimelineBlockEdge.start,
+    );
+
+    session.drag!.update(6);
+    expect(inFlight(session.preview)!.instructions, {
+      0: span(10),
+      12: span(3),
+    });
+
+    session.drag!.commit();
+    expect(session.commits.single.instructions, {0: span(10), 12: span(3)});
+  });
+
   test('commit lands ONE step with its own description, from the drag\'s '
       'stored after-state', () {
     final session = open();
