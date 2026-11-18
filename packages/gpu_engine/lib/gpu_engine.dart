@@ -344,9 +344,10 @@ class GpuEngine {
   GpuDeviceWent get wentBy => GpuDeviceWent.of(rust.engineWentBy(_engine));
 
   /// What this engine submitted that the GPU has not said it finished, the
-  /// oldest first, after the newest it has — a line each: `submit #<n> at
-  /// <µs> <file>:<line> dispatches=<n> groups=<n> unfinished|last-done`,
-  /// its µs on the clock [DateTime.now]'s `microsecondsSinceEpoch` reads.
+  /// oldest first, after the newest it has — a line each:
+  /// `submit #N at MICROS FILE:LINE dispatches=N groups=N STATE`, STATE
+  /// `unfinished` or `last-done` — its MICROS on the clock [DateTime.now]'s
+  /// `microsecondsSinceEpoch` reads.
   /// Asks nothing of the engine's thread or the device: what the app
   /// writes down as a device goes (H63).
   String get unfinishedSubmits => using((arena) {
