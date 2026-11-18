@@ -80,6 +80,80 @@ void main() {
     stroke.clear();
   });
 
+  // 🔬A blur's rubs were 86–118 ms of a stroke on this isolate, its reaches
+  // 3–42 and its landings 24–41 (k1376); a mixing brush's steps 3–54
+  // (k1377).
+  test('🚨a blur\'s step rubs and shows while the engine\'s thread stands '
+      'still — it waits for no turn there', () {
+    final dabs = [
+      dab(64, 64).copyWith(blurs: true),
+      dab(90, 80).copyWith(blurs: true),
+    ];
+    // ⛔premise: the blur's kernels and its pages made — the engine's
+    // thread's work, which stands still below.
+    final stroke = rasterizer()
+      ..blurOver(base)
+      ..blendFrom(dabs.sublist(0, 1), from: 0);
+    shown(stroke);
+    appGpuEngine.debugStandStill(const Duration(seconds: 2));
+    final asked = Stopwatch()..start();
+
+    stroke.blendFrom(dabs, from: 1);
+    final tile = shown(stroke);
+
+    expect(
+      asked.elapsed,
+      lessThan(const Duration(seconds: 1)),
+      reason: 'a wait for the engine\'s thread',
+    );
+    expect(tile, isNotNull, reason: 'LIVENESS: the step is shown');
+    stroke.clear();
+  });
+
+  test('🚨a mixing brush\'s step runs and shows while the engine\'s thread '
+      'stands still — it waits for no turn there', () {
+    BrushDab mixing(double x, double y, int step) => dab(x, y).copyWith(
+      mix: BrushDabMix(
+        step: step,
+        center: CanvasPoint(x: x, y: y),
+        radius: 20,
+        color: 0xFFC86432,
+        refill: 0.12,
+        laid: 0.3,
+        density: 1,
+        take: 0,
+        share: 1,
+        pick: 0.12,
+        dry: false,
+      ),
+    );
+    final dabs = [mixing(64, 64, 0), mixing(90, 80, 1)];
+    // ⛔premise: the stroke's kernels, its book and its pages made — the
+    // engine's thread's work, which stands still below.
+    final stroke = rasterizer()
+      ..mixOver(base)
+      ..blendFrom(dabs.sublist(0, 1), from: 0);
+    shown(stroke);
+    appGpuEngine.debugStandStill(const Duration(seconds: 2));
+    final asked = Stopwatch()..start();
+
+    stroke.blendFrom(dabs, from: 1);
+    final tile = shown(stroke);
+
+    expect(
+      asked.elapsed,
+      lessThan(const Duration(seconds: 1)),
+      reason: 'a wait for the engine\'s thread',
+    );
+    expect(tile, isNotNull, reason: 'LIVENESS: the step is shown');
+    expect(
+      stroke.mixedAsResolved(dabs).map((each) => each.mix),
+      everyElement(isNull),
+      reason: 'LIVENESS: both steps ran and were read back',
+    );
+    stroke.clear();
+  });
+
   // ⚠️Last: a device that is gone is gone for its process.
   test('a picture the engine did not put is shown at no revision it carries '
       '— pen-up hands it to no committed tile', () async {

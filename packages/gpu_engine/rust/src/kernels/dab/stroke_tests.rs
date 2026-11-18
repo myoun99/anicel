@@ -1,9 +1,11 @@
 //! A stroke's tiles on a real GPU: what it makes of a cel, by hand from
 //! what a whole dab of a colour lays.
 
+use std::collections::HashMap;
+
 use super::super::blur::{Blurs, Cover, window_of};
 use super::super::{Dab, Edge, Shape, Turn};
-use super::{Asked, Laid, Stroke, TILES_A_PAGE};
+use super::{Asked, Laid, Stroke, TILES_A_PAGE, ground_of_rubs};
 use crate::device::Engine;
 use crate::kernels::blend::mode::{ERASE, NORMAL};
 use crate::kernels::composite::{Composite, TILE_BYTES, TileAt};
@@ -323,26 +325,20 @@ fn rubbing(region: [i32; 4]) -> (Dab<'static>, u32) {
 const WHOLE_COVER: Cover<'static> = Cover { opacity: WHOLE, mask: None };
 
 impl Fixture {
-    /// Rubs `dabs` over the cel, `under` its tile at a coordinate: the
-    /// coordinates the rub met.
+    /// Rubs `dabs` over the cel, `under` its tile at a coordinate, told of
+    /// every tile the blur reads, as the app tells of them
+    /// ([`ground_of_rubs`]): the coordinates the rub met.
     fn rub(
         &mut self,
         dabs: &[(Dab, u32)],
         under: impl Fn((i32, i32)) -> Option<TileAt>,
     ) -> Vec<(i32, i32)> {
-        let count = self.stroke.reach_blur(self.engine, dabs).expect("a reach");
-        let met: Vec<(i32, i32)> =
-            self.stroke.met().iter().map(|tile| (tile.column, tile.row)).collect();
-        assert_eq!(met.len(), count);
-        let cel: Vec<Option<TileAt>> = met.iter().map(|&coordinate| under(coordinate)).collect();
-        let engine = self.engine;
-        let blurs = self.blurs.get_or_insert_with(|| {
-            // By strips, as a stroke goes once the app has compiled them.
-            Blurs::compile_strips(engine).expect("the strips' kernels");
-            Blurs::new(engine).expect("blurs")
-        });
-        let tools = (blurs, &self.composite, self.pool.pages());
-        self.stroke.rub(self.engine, tools, &cel, dabs, None).expect("a rub");
+        let read = ground_of_rubs(dabs).expect("a blur's ground");
+        let told: HashMap<(i32, i32), Option<TileAt>> =
+            read.iter().map(|&coordinate| (coordinate, under(coordinate))).collect();
+        let tools = (blurs_of(self.engine, &mut self.blurs), &self.composite, self.pool.pages());
+        let met = self.stroke.rub(self.engine, tools, &told, dabs, None).expect("a rub");
+        assert!(met.iter().all(|tile| read.contains(tile)), "it met no tile past what it reads");
         met
     }
 
@@ -362,6 +358,15 @@ impl Fixture {
         let landed = self.land_blur(&[asked(column, row, under)], WHOLE_COVER, false);
         self.read(landed[0].1.expect("a slot"))
     }
+}
+
+/// The blurs the rubs run, compiled the first time they are asked for — by
+/// strips, as a stroke goes once the app has compiled them.
+fn blurs_of<'a>(engine: &Engine, blurs: &'a mut Option<Blurs>) -> &'a mut Blurs {
+    blurs.get_or_insert_with(|| {
+        Blurs::compile_strips(engine).expect("the strips' kernels");
+        Blurs::new(engine).expect("blurs")
+    })
 }
 
 /// `tiles`, sorted: a rub meets them in the order its windows walk.
@@ -416,7 +421,9 @@ fn a_dab_that_blurs_nothing_meets_nothing() {
 fn a_blur_of_no_radius_is_refused() {
     let mut f = fixture();
     let dab = (square([60, 60, 68, 68], RED), 0);
-    assert!(f.stroke.reach_blur(f.engine, &[dab]).is_none());
+    assert!(ground_of_rubs(&[dab]).is_none(), "no ground to tell of");
+    let tools = (blurs_of(f.engine, &mut f.blurs), &f.composite, f.pool.pages());
+    assert!(f.stroke.rub(f.engine, tools, &HashMap::new(), &[dab], None).is_none());
 }
 
 #[test]
@@ -506,13 +513,30 @@ fn a_tile_the_blur_never_read_is_refused() {
 }
 
 #[test]
-fn a_rub_told_of_too_few_tiles_is_refused() {
+fn a_rub_that_meets_a_tile_it_was_told_nothing_of_is_refused() {
     let mut f = fixture();
     let dab = rubbing([60, 60, 68, 68]);
-    assert_eq!(f.stroke.reach_blur(f.engine, &[dab]), Some(1));
-    let mut blurs = Blurs::new(f.engine).expect("blurs");
-    let tools = (&mut blurs, &f.composite, f.pool.pages());
-    assert!(f.stroke.rub(f.engine, tools, &[], &[dab], None).is_none());
+    let tools = (blurs_of(f.engine, &mut f.blurs), &f.composite, f.pool.pages());
+    assert!(f.stroke.rub(f.engine, tools, &HashMap::new(), &[dab], None).is_none());
+    assert!(crate::take_last_error().contains("told nothing of"));
+}
+
+#[test]
+fn a_rub_told_of_a_tile_it_met_before_reads_it_no_more() {
+    let dab = rubbing([124, 10, 128, 20]);
+    // Two rubs, the second told `second` under (1, 0): met by the first,
+    // it is read no more, whatever the second is told.
+    let twice = |second: [u8; 4]| {
+        let mut f = fixture();
+        let (ink, other) = (f.stored(INK), f.stored(second));
+        f.rub(&[dab], |tile| (tile == (1, 0)).then_some(ink));
+        let once = f.finished(0, 0, None);
+        f.rub(&[dab], |tile| (tile == (1, 0)).then_some(other));
+        let after = f.finished(0, 0, None);
+        assert_ne!(once, after, "LIVENESS: the second rub moved it");
+        after
+    };
+    assert_eq!(twice(RED), twice(INK));
 }
 
 #[test]

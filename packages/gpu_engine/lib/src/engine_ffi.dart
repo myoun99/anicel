@@ -2332,8 +2332,12 @@ external void strokeClear(Pointer<Stroke> stroke, Pointer<Engine> engine);
     Bool,
     Int32,
     Double,
+    Pointer<StepSpec>,
+    Size,
+    Uint32,
     Pointer<Composite>,
     Pointer<Pool>,
+    Pointer<Int32>,
     Pointer<Uint32>,
     Size,
   )
@@ -2348,28 +2352,22 @@ external void strokePile(
   bool paperHeight,
   int secondMode,
   double secondDensity,
+  Pointer<StepSpec> steps,
+  int stepCount,
+  int first,
   Pointer<Composite> composite,
   Pointer<Pool> pool,
+  Pointer<Int32> coordinates,
   Pointer<Uint32> under,
   int ground,
 );
 
-@Native<
-  IntPtr Function(
-    Pointer<Stroke>,
-    Pointer<Engine>,
-    Pointer<StepSpec>,
-    Size,
-    Uint32,
-    Pointer<Int32>,
-  )
->(symbol: 'gpu_engine_stroke_hand_steps')
-external int strokeHandSteps(
-  Pointer<Stroke> stroke,
-  Pointer<Engine> engine,
+@Native<Size Function(Pointer<StepSpec>, Size, Pointer<Int32>)>(
+  symbol: 'gpu_engine_mix_ground',
+)
+external int mixGround(
   Pointer<StepSpec> steps,
   int count,
-  int first,
   Pointer<Int32> coordinates,
 );
 
@@ -2522,33 +2520,29 @@ external void blursLetGo(Pointer<Blurs> blurs);
 
 @Native<
   IntPtr Function(
-    Pointer<Stroke>,
-    Pointer<Engine>,
     Pointer<DabSpec>,
     Pointer<Uint32>,
     Size,
+    Pointer<Int32>,
+    Size,
   )
->(symbol: 'gpu_engine_stroke_reach_blur')
-external int strokeReachBlur(
-  Pointer<Stroke> stroke,
-  Pointer<Engine> engine,
+>(symbol: 'gpu_engine_rub_ground')
+external int rubGround(
   Pointer<DabSpec> dabs,
   Pointer<Uint32> radii,
   int count,
+  Pointer<Int32> coordinates,
+  int room,
 );
 
-@Native<Void Function(Pointer<Stroke>, Pointer<Int32>)>(
-  symbol: 'gpu_engine_stroke_met',
-)
-external void strokeMet(Pointer<Stroke> stroke, Pointer<Int32> coordinates);
-
 @Native<
-  Bool Function(
+  Void Function(
     Pointer<Stroke>,
     Pointer<Engine>,
     Pointer<Blurs>,
     Pointer<Composite>,
     Pointer<Pool>,
+    Pointer<Int32>,
     Pointer<Uint32>,
     Size,
     Pointer<DabSpec>,
@@ -2559,14 +2553,15 @@ external void strokeMet(Pointer<Stroke> stroke, Pointer<Int32> coordinates);
     Bool,
   )
 >(symbol: 'gpu_engine_stroke_rub')
-external bool strokeRub(
+external void strokeRub(
   Pointer<Stroke> stroke,
   Pointer<Engine> engine,
   Pointer<Blurs> blurs,
   Pointer<Composite> composite,
   Pointer<Pool> pool,
+  Pointer<Int32> coordinates,
   Pointer<Uint32> under,
-  int met,
+  int ground,
   Pointer<DabSpec> dabs,
   Pointer<Uint32> radii,
   int count,
@@ -2608,6 +2603,43 @@ external int strokeLandBlur(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Blurs>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stroke_land_blur_unwaited')
+external int strokeLandBlurUnwaited(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Blurs> blurs,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  Pointer<MaskPlane> mask,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
 );
 
 @Native<

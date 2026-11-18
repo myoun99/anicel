@@ -1274,36 +1274,35 @@ class GpuStroke {
       paperHeight,
       secondMode ?? -1,
       secondDensity,
+      ground?.steps ?? nullptr,
+      mixing?.steps.length ?? 0,
+      mixing?.first ?? 0,
       composite == null ? nullptr : _engine._its(composite)._composite,
       pool == null ? nullptr : _engine._its(pool)._pool,
+      ground?.coordinates ?? nullptr,
       ground?.under ?? nullptr,
       ground?.count ?? 0,
     );
   });
 
-  /// [mixing]'s steps handed to the stroke, and the cel's tile under each
-  /// ground tile they read, as the pile takes them.
-  ({Pointer<Uint32> under, int count}) _groundOf(
-    Arena arena,
-    GpuMixing mixing,
-  ) {
+  /// [mixing]'s steps as the pile hands them over, each ground tile they
+  /// read — reckoned here of the steps alone (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_mix_ground`), no turn of the engine's waited for — and
+  /// the cel's tile under each.
+  ({
+    Pointer<rust.StepSpec> steps,
+    Pointer<Int32> coordinates,
+    Pointer<Uint32> under,
+    int count,
+  })
+  _groundOf(Arena arena, GpuMixing mixing) {
     final steps = mixing.steps;
-    if (steps.isEmpty) {
-      return (under: arena<Uint32>(1), count: 0);
-    }
+    final specs = _stepsOf(arena, steps);
     // A step reads 64 tiles at most.
-    final coordinates = arena<Int32>(128 * steps.length);
-    final count = rust.strokeHandSteps(
-      _stroke,
-      _engine._engine,
-      _stepsOf(arena, steps),
-      steps.length,
-      mixing.first,
-      coordinates,
-    );
-    if (count < 0) {
-      throw GpuRefused(_lastError());
-    }
+    final coordinates = arena<Int32>(_held(128 * steps.length));
+    final count = steps.isEmpty
+        ? 0
+        : rust.mixGround(specs, steps.length, coordinates);
     final found = mixing.under([
       for (var at = 0; at < count; at++)
         (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
@@ -1313,7 +1312,12 @@ class GpuStroke {
       final tile = found[at];
       under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
     }
-    return (under: under, count: count);
+    return (
+      steps: specs,
+      coordinates: coordinates,
+      under: under,
+      count: count,
+    );
   }
 
   /// The colour each of the stroke's first [count] mixing steps laid,
@@ -1329,14 +1333,19 @@ class GpuStroke {
   /// Rubs [rubs], in their order, into the blur brush's picture on this
   /// stroke, over [paper] as [pile]'s: the tiles their blur reads and the
   /// stroke has not read yet are made first of the cel's, which [under]
-  /// tells of — in the order it is asked, null where the cel has none.
-  /// Submits the work.
+  /// tells of — asked of every tile the blur reads, reckoned here of the
+  /// rubs alone, in the order asked, null where the cel has none. Hands the
+  /// work to the engine's thread, waiting for none of it
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_rub`, has why): a rub
+  /// that fails is told by what reads the stroke next — [landBlur],
+  /// [landBlurOnItsWay].
   void rub(
     GpuBlurs blurs,
     GpuComposite composite,
     GpuPool pool,
     List<GpuRub> rubs, {
-    required List<GpuTile?> Function(List<({int column, int row})> met) under,
+    required List<GpuTile?> Function(List<({int column, int row})> read)
+    under,
     GpuDabTexture? paper,
     double paperScale = 1,
     bool paperHeight = false,
@@ -1346,45 +1355,56 @@ class GpuStroke {
     radii.asTypedList(rubs.length).setAll(0, [
       for (final rub in rubs) rub.radius,
     ]);
-    final met = rust.strokeReachBlur(
-      _stroke,
-      _engine._engine,
-      specs,
-      radii,
-      rubs.length,
-    );
-    if (met < 0) {
-      throw GpuRefused(_lastError());
-    }
-    final coordinates = arena<Int32>(_held(2 * met));
-    rust.strokeMet(_stroke, coordinates);
+    final (:coordinates, :count) = _rubGround(arena, specs, radii, rubs.length);
     final found = under([
-      for (var at = 0; at < met; at++)
+      for (var at = 0; at < count; at++)
         (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
     ]);
-    final words = arena<Uint32>(_held(met));
-    for (var at = 0; at < met; at++) {
+    final words = arena<Uint32>(_held(count));
+    for (var at = 0; at < count; at++) {
       final tile = found[at];
       words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
     }
-    if (!rust.strokeRub(
+    rust.strokeRub(
       _stroke,
       _engine._engine,
       _engine._its(blurs)._blurs,
       _engine._its(composite)._composite,
       _engine._its(pool)._pool,
+      coordinates,
       words,
-      met,
+      count,
       specs,
       radii,
       rubs.length,
       paper?._texture ?? nullptr,
       paperScale,
       paperHeight,
-    )) {
-      throw GpuRefused(_lastError());
-    }
+    );
   });
+
+  /// Every tile the blur of the [count] rubs [specs], at [radii], reads,
+  /// as columns and rows — reckoned here of the rubs alone
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_rub_ground`), no turn of the
+  /// engine's waited for — and how many.
+  static ({Pointer<Int32> coordinates, int count}) _rubGround(
+    Arena arena,
+    Pointer<rust.DabSpec> specs,
+    Pointer<Uint32> radii,
+    int count,
+  ) {
+    var room = 64;
+    while (true) {
+      final coordinates = arena<Int32>(2 * room);
+      final read = _checked(
+        rust.rubGround(specs, radii, count, coordinates, room),
+      );
+      if (read <= room) {
+        return (coordinates: coordinates, count: read);
+      }
+      room = read;
+    }
+  }
 
   /// The picture [rub] left, finished on the tiles [asks]: each pixel of
   /// the cel moved toward it by [opacity] (65535 whole), under [mask] if
@@ -1416,6 +1436,45 @@ class GpuStroke {
       compared,
       places,
       changes,
+    ),
+  );
+
+  /// [landBlur] uncompared — each result [GpuChange.inked], in a fresh slot
+  /// — with no wait for the engine's turn, as [landOnItsWay] lands a
+  /// stroke: the slots are given here, and the picture finished in them on
+  /// the engine's thread, behind its rubs (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_stroke_land_blur_unwaited`, has why). [unput] is called
+  /// where its picture was not put.
+  List<GpuLanded> landBlurOnItsWay(
+    GpuBlurs blurs,
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    GpuMask? mask,
+    required void Function() unput,
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.strokeLandBlurUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(blurs)._blurs,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        cel,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        places,
+        changes,
+        _putsOnTheirWay.told,
+        number,
+      ),
     ),
   );
 

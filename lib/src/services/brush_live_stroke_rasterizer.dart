@@ -439,51 +439,79 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (coords.isEmpty) {
       return const [];
     }
-    final mask = _selectionMask();
     return EngineTileLedger.instance.land(
       EngineTileLedger.landedCel,
       [
         for (final coord in coords)
           (column: coord.x, row: coord.y, under: base.tileAt(coord)),
       ],
-      by: (pool, cel, asked) => switch ((_blurBase, compared)) {
-        // A stroke on its way waits for no turn of the engine's: its frame
-        // waits for nothing (`GpuStroke.landOnItsWay`). The finished one
-        // compares, which waits for the GPU.
-        (null, false) => stroke.landOnItsWay(
-          appGpuComposite,
-          pool,
-          cel,
-          asked,
-          // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-          opacity: (strokeOpacity * 65535).round(),
-          mode: mode,
-          mask: mask,
-          unput: () => _unput(asked),
-        ),
-        (null, true) => stroke.land(
-          appGpuComposite,
-          pool,
-          cel,
-          asked,
-          opacity: (strokeOpacity * 65535).round(),
-          mode: mode,
-          mask: mask,
-          compared: true,
-        ),
-        _ => stroke.landBlur(
-              EngineStrokes.blurs,
-              appGpuComposite,
-              pool,
-              cel,
-              asked,
-          opacity: (strokeOpacity * 65535).round(),
-          mask: mask,
-          compared: compared,
-        ),
-      },
+      // A stroke on its way waits for no turn of the engine's: its frame
+      // waits for nothing (`GpuStroke.landOnItsWay`, a blur's
+      // `GpuStroke.landBlurOnItsWay`). The finished one compares, which
+      // waits for the GPU.
+      by: _blurBase == null
+          ? _landsLaid(stroke, mode, compared: compared)
+          : _landsBlurred(stroke, compared: compared),
       compared: compared,
     );
+  }
+
+  /// The stroke's ceiling, as the engine takes it: ★F-12 — it scales the
+  /// ACCUMULATED stroke, once.
+  int get _ceiling => (strokeOpacity * 65535).round();
+
+  /// How [_landOnEngine] lands a stroke that lays its dabs.
+  LandedBy _landsLaid(GpuStroke stroke, int mode, {required bool compared}) {
+    final opacity = _ceiling;
+    final mask = _selectionMask();
+    return (pool, cel, asked) => compared
+        ? stroke.land(
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+            compared: true,
+          )
+        : stroke.landOnItsWay(
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+            unput: () => _unput(asked),
+          );
+  }
+
+  /// How [_landOnEngine] lands a blur.
+  LandedBy _landsBlurred(GpuStroke stroke, {required bool compared}) {
+    final opacity = _ceiling;
+    final mask = _selectionMask();
+    return (pool, cel, asked) => compared
+        ? stroke.landBlur(
+            EngineStrokes.blurs,
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mask: mask,
+            compared: true,
+          )
+        : stroke.landBlurOnItsWay(
+            EngineStrokes.blurs,
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mask: mask,
+            unput: () => _unput(asked),
+          );
   }
 
   /// What a landing on its way did not put ([GpuStroke.landOnItsWay]):
@@ -628,8 +656,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         appGpuComposite,
         ledger.pool,
         _engineRubs,
-        under: (met) => hold.slotsOfThose(EngineTileLedger.landedCel, [
-          for (final (:column, :row) in met)
+        under: (read) => hold.slotsOfThose(EngineTileLedger.landedCel, [
+          for (final (:column, :row) in read)
             base.tileAt(TileCoord(x: column, y: row)),
         ]),
         paper: paper,

@@ -57,13 +57,10 @@ pub(crate) struct Stroke {
     /// Each tile reached, in the slot the count made it: the slots are taken
     /// in order, so the count says where each page's written ones end.
     tiles: HashMap<(i32, i32), TileAt>,
-    /// The tiles the last `reach_blur` gave a slot: what its `rub` makes
-    /// the picture of.
-    met: Vec<StrokeTile>,
     mixes: Mixes,
     mixing: Mixing,
-    /// Why a pile handed over unwaited failed, the first since the stroke
-    /// was cleared: what reads the stroke next fails by it
+    /// Why a pile or a rub handed over unwaited failed, the first since the
+    /// stroke was cleared: what reads the stroke next fails by it
     /// ([`Stroke::unrefused`]).
     refused: Option<String>,
 }
@@ -79,7 +76,6 @@ impl Stroke {
             view: Vec::new(),
             levels: Vec::new(),
             tiles: HashMap::new(),
-            met: Vec::new(),
             mixes: Mixes::new(engine),
             mixing: Mixing::default(),
             refused: None,
@@ -113,8 +109,8 @@ impl Stroke {
         self.mixing.hand(steps, first)
     }
 
-    /// `why` a pile handed over unwaited failed, kept where it is the first
-    /// since the stroke was cleared.
+    /// `why` a pile or a rub handed over unwaited failed, kept where it is
+    /// the first since the stroke was cleared.
     ///
     /// 🚨THE STROKE'S, NOT THE ENGINE'S: a body that fails is noted for its
     /// caller's next done (`Engine::posted`) — the screen's present, which a
@@ -125,11 +121,11 @@ impl Stroke {
         self.refused.get_or_insert(why);
     }
 
-    /// Fails by why a pile handed over unwaited failed, where one did since
-    /// the stroke was cleared.
+    /// Fails by why a pile or a rub handed over unwaited failed, where one
+    /// did since the stroke was cleared.
     fn unrefused(&self) -> Option<()> {
         match &self.refused {
-            Some(why) => fail(format!("a pile handed over unwaited failed: {why}")),
+            Some(why) => fail(format!("a step handed over unwaited failed: {why}")),
             None => Some(()),
         }
     }
@@ -198,62 +194,55 @@ impl Stroke {
         Some(StrokeTile { column, row, at })
     }
 
-    /// Gives a slot of the picture to every tile the blur of `dabs` — each
-    /// at its box radius — reads and the stroke has none of, making the
-    /// pages they take: the tiles the caller is to find the cel's for
-    /// ([`Stroke::met`]) and hand [`Stroke::rub`]. How many there are; none
-    /// at all, where a radius is none.
-    pub(crate) fn reach_blur(&mut self, engine: &Engine, dabs: &[(Dab, u32)]) -> Option<usize> {
-        let mut met = Vec::new();
-        for window in windows_of(dabs)? {
-            met.extend(tiles_of(window).filter_map(|coordinate| self.given(coordinate)));
-        }
-        self.met = met;
-        let pages = self.tiles.len().div_ceil(TILES_A_PAGE);
-        make_pages(engine, &mut self.planes, pages, PLANE_TILE_BYTES, "stroke planes");
-        Some(self.met.len())
-    }
-
-    /// The tiles the last [`Stroke::reach_blur`] gave a slot.
-    pub(crate) fn met(&self) -> &[StrokeTile] {
-        &self.met
-    }
-
-    /// Makes the picture of the tiles [`Stroke::reach_blur`] gave a slot —
-    /// `under` the cel's tile at each, on the pool's `pages` — and blurs it
-    /// under each of `dabs`, the ones it was given, in their order, over
-    /// `paper`: `Blurs`. Submits the work, the caller waits.
+    /// Rubs `dabs`, in their order, into the picture, over `paper`:
+    /// `Blurs`. Each tile their blur reads that the stroke has not read yet
+    /// is given a slot of the picture — its pages made — and made first of
+    /// the cel's, which `told` tells of: the cel's tile at each coordinate
+    /// the blur may read ([`ground_of_rubs`]), none where it has none. A
+    /// coordinate it met and was told nothing of refuses the rub. Submits
+    /// the work; the coordinates it met, in their order.
+    ///
+    /// 🚨ONE CALL, NOT A REACH AND A RUB (card
+    /// a-stroke-step-waits-for-the-engines-turn, 2026-11-18): the app was
+    /// told which tiles a reach met and then handed the cel's under them,
+    /// so each step of a blur stroke waited for the engine's turn twice —
+    /// 🔬41 rubs of a stroke on S5_BA cut 352, 86–118 ms of the UI's thread
+    /// all told, and 3–42 ms for their reaches (k1376). What the blur reads
+    /// is reckoned of the dabs alone, so the app reckons it first and tells
+    /// of the cel there, and the rub goes to the engine's thread unwaited.
     pub(crate) fn rub(
         &mut self,
         engine: &Engine,
         (blurs, composite, pages): (&mut Blurs, &Composite, &[wgpu::Buffer]),
-        under: &[Option<TileAt>],
+        told: &HashMap<(i32, i32), Option<TileAt>>,
         dabs: &[(Dab, u32)],
         paper: Option<&Paper>,
-    ) -> Option<()> {
-        if under.len() != self.met.len() {
-            return fail(format!(
-                "a rub told of {} tiles under the {} it met",
-                under.len(),
-                self.met.len()
-            ));
-        }
-        let asked: Vec<Asked> = self
-            .met
-            .iter()
-            .zip(under)
-            .map(|(tile, &under)| Asked { column: tile.column, row: tile.row, under })
-            .collect();
-        if !asked.is_empty() {
-            blurs.fill(engine, composite, (pages, &under_of(&asked)?), &self.met, &self.planes)?;
-        }
+    ) -> Option<Vec<(i32, i32)>> {
         let windows = windows_of(dabs)?;
+        let mut met = Vec::new();
+        for &window in &windows {
+            met.extend(tiles_of(window).filter_map(|coordinate| self.given(coordinate)));
+        }
+        let pages_made = self.tiles.len().div_ceil(TILES_A_PAGE);
+        make_pages(engine, &mut self.planes, pages_made, PLANE_TILE_BYTES, "stroke planes");
+        if !met.is_empty() {
+            let asked: Vec<Asked> = met
+                .iter()
+                .map(|tile| {
+                    let under = told.get(&(tile.column, tile.row)).copied();
+                    under.map(|under| Asked { column: tile.column, row: tile.row, under })
+                })
+                .collect::<Option<_>>()
+                .or_else(|| fail("a rub met a tile it was told nothing of"))?;
+            blurs.fill(engine, composite, (pages, &under_of(&asked)?), &met, &self.planes)?;
+        }
         let tiles = reached_by(&self.tiles, windows.into_iter());
-        blurs.blur(engine, &tiles, dabs, paper, &self.planes)
+        blurs.blur(engine, &tiles, dabs, paper, &self.planes)?;
+        Some(met.iter().map(|tile| (tile.column, tile.row)).collect())
     }
 
     /// The picture finished on the tiles `asked`, each result in a fresh
-    /// slot of `cel`: `Blurs::finish`, `landing::put`.
+    /// slot of `cel`: [`Stroke::made_blur`], `landing::put`.
     pub(crate) fn land_blur(
         &self,
         engine: &Engine,
@@ -262,9 +251,27 @@ impl Stroke {
         cover: Cover,
         compared: bool,
     ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        self.unrefused()?;
         if asked.is_empty() {
             return Some(Vec::new());
         }
+        let out = self.made_blur(engine, (blurs, composite, pool.pages()), asked, cover)?;
+        landing::put(engine, (pool, cel), &out, asked, compared.then_some(&self.write))
+    }
+
+    /// The picture finished on the tiles `asked` over the cel, tile after
+    /// tile in their order, as [`Stroke::land_blur`] makes it before it puts
+    /// it — `pages` the pool's as they stood when the places were booked: a
+    /// blur on its way, put on the engine's thread with no wait
+    /// (`gpu_engine_stroke_land_blur_unwaited`). `Blurs::finish`.
+    pub(crate) fn made_blur(
+        &self,
+        engine: &Engine,
+        (blurs, composite, pages): (&Blurs, &Composite, &[wgpu::Buffer]),
+        asked: &[Asked],
+        cover: Cover,
+    ) -> Option<wgpu::Buffer> {
+        self.unrefused()?;
         let tiles: Vec<StrokeTile> = asked
             .iter()
             .map(|ask| {
@@ -274,9 +281,7 @@ impl Stroke {
             .collect::<Option<_>>()
             .or_else(|| fail("a blur asked for a tile it never read"))?;
         let cel_tiles = under_of(asked)?;
-        let cells = (pool.pages(), &cel_tiles);
-        let out = blurs.finish(engine, composite, cells, (&tiles, &self.planes), cover)?;
-        landing::put(engine, (pool, cel), &out, asked, compared.then_some(&self.write))
+        blurs.finish(engine, composite, (pages, &cel_tiles), (&tiles, &self.planes), cover)
     }
 
     /// The stroke's tiles at the coordinates `asked`, in their box, on a
@@ -353,6 +358,22 @@ fn windows_of(dabs: &[(Dab, u32)]) -> Option<Vec<[i32; 4]>> {
         .map(|(dab, radius)| window_of(dab.region, *radius))
         .collect::<Option<_>>()
         .or_else(|| fail("a blur of no radius changes no pixel"))
+}
+
+/// The tiles the blur of `dabs` reads — each dab's window at its box
+/// radius — each once, in the order its windows walk: what the app tells
+/// of the cel under before a rub ([`Stroke::rub`]). Nothing where a radius
+/// is none.
+pub(crate) fn ground_of_rubs(dabs: &[(Dab, u32)]) -> Option<Vec<(i32, i32)>> {
+    let mut read = Vec::new();
+    for window in windows_of(dabs)? {
+        for tile in tiles_of(window) {
+            if !read.contains(&tile) {
+                read.push(tile);
+            }
+        }
+    }
+    Some(read)
 }
 
 /// Makes `pages` of `tile_bytes` tiles, those not made yet.

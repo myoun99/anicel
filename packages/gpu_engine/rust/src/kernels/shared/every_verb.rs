@@ -80,6 +80,8 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_export_png_row_bytes",
             "gpu_engine_composited_bytes",
             "gpu_engine_crc32_update",
+            "gpu_engine_mix_ground",
+            "gpu_engine_rub_ground",
         ],
     ),
     (
@@ -111,7 +113,6 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_plugin_reads_the_moment",
             "gpu_engine_screen_bytes",
             "gpu_engine_stroke_bytes",
-            "gpu_engine_stroke_met",
             "gpu_engine_blurs_by_strips",
             "gpu_engine_blurs_bytes",
             "gpu_engine_selection_masks_bytes",

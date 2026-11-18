@@ -8,10 +8,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::{
-    DabSpec, EVENING_ENTRIES, NO_STEP, Texture, gpu_engine_dab_texture_free, gpu_engine_dab_texture_new,
-    gpu_engine_stroke_clear, gpu_engine_stroke_free, gpu_engine_stroke_land,
-    gpu_engine_stroke_land_unwaited, gpu_engine_stroke_new, gpu_engine_stroke_pile, piled,
+    DabSpec, EVENING_ENTRIES, NO_STEP, StepSpec, Texture, gpu_engine_blurs_free, gpu_engine_blurs_new,
+    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_mix_ground, gpu_engine_rub_ground,
+    gpu_engine_stroke_clear, gpu_engine_stroke_free, gpu_engine_stroke_land, gpu_engine_stroke_land_blur,
+    gpu_engine_stroke_land_blur_unwaited, gpu_engine_stroke_land_unwaited, gpu_engine_stroke_mixed,
+    gpu_engine_stroke_new, gpu_engine_stroke_pile, gpu_engine_stroke_rub, piled,
 };
+use crate::kernels::dab::blur::Blurs;
 use crate::device::{Engine, gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{
@@ -148,6 +151,10 @@ unsafe fn pile(own: &Own, dabs: &[DabSpec]) {
             false,
             -1,
             1.0,
+            null(),
+            0,
+            0,
+            null(),
             null(),
             null(),
             null(),
@@ -352,7 +359,7 @@ fn a_pile_refused_is_told_by_what_reads_the_stroke_next() {
         assert_eq!(was_put(731), Some(false));
         let (landed, _) = land(&own, NO_TILE, WHOLE, std::ptr::null(), None);
         assert_eq!(landed, -1);
-        assert!(last_error().contains("a pile handed over unwaited failed"), "{}", last_error());
+        assert!(last_error().contains("a step handed over unwaited failed"), "{}", last_error());
         gpu_engine_stroke_clear(own.stroke, own.engine);
         pile(&own, &[square([0, 0, 64, 64], INK)]);
         let (landed, at) = land(&own, NO_TILE, WHOLE, std::ptr::null(), Some(732));
@@ -361,6 +368,322 @@ fn a_pile_refused_is_told_by_what_reads_the_stroke_next() {
         assert_eq!(was_put(732), Some(true), "a stroke cleared lands again");
         assert_eq!(pixel(&read(&own, at), 10, 10), INK);
         gpu_engine_dab_texture_free(tip);
+        close(own);
+    }
+}
+
+// --- a blur's step and a mixing brush's ----------------------------------
+
+/// The blurs a rub runs, on `own`'s engine.
+///
+/// # Safety
+/// `own` came from [`open`]; let go of before its close.
+unsafe fn blurs(own: &Own) -> *mut Blurs {
+    // SAFETY: see the function's contract.
+    let blurs = unsafe { gpu_engine_blurs_new(own.engine) };
+    assert!(!blurs.is_null(), "{}", last_error());
+    blurs
+}
+
+/// A tile of the cel, every pixel `pixel`: its slot's word.
+///
+/// # Safety
+/// `own` came from [`open`].
+unsafe fn stored(own: &Own, pixel: [u8; 4]) -> u32 {
+    let tile = pixel.repeat(TILE_BYTES as usize / 4);
+    // SAFETY: see the function's contract.
+    unsafe { (&mut *own.pool).store(&*own.engine, Cel(own.cel), &[&tile]) }.expect("store")[0].word()
+}
+
+/// Rubs a blur dab over `region` at a box radius of 2 into the stroke, the
+/// cel's tile told of at each tile its blur reads — `under` at (1, 0),
+/// none elsewhere — as the app tells of them (`gpu_engine_rub_ground`), or
+/// of none where `told` is false.
+///
+/// # Safety
+/// `own` came from [`open`]; `blurs` from [`blurs`].
+unsafe fn rub(own: &Own, blurs: *mut Blurs, region: [i32; 4], under: u32, told: bool) {
+    let dab = square(region, INK);
+    let radius = 2u32;
+    let mut coordinates = [0i32; 2 * 16];
+    // SAFETY: one dab and one radius; room for 16 tiles.
+    let read = unsafe { gpu_engine_rub_ground(&dab, &radius, 1, coordinates.as_mut_ptr(), 16) };
+    assert!((1..=16).contains(&read), "{}", last_error());
+    let ground = if told { read as usize } else { 0 };
+    let words: Vec<u32> = coordinates[..2 * ground]
+        .chunks_exact(2)
+        .map(|at| if at == [1, 0] { under } else { NO_TILE })
+        .collect();
+    // SAFETY: see the function's contract; each list holds what it says.
+    unsafe {
+        gpu_engine_stroke_rub(
+            own.stroke,
+            own.engine,
+            blurs,
+            own.composite,
+            own.pool,
+            coordinates.as_ptr(),
+            words.as_ptr(),
+            ground,
+            &dab,
+            &radius,
+            1,
+            std::ptr::null(),
+            1.0,
+            false,
+        );
+    }
+}
+
+/// The blur finished on the stroke's tile (0, 0) over nothing, whole, in a
+/// fresh slot: handed over and told as `number` where there is one, else
+/// waited for, uncompared. What it returned, and the slot's word.
+///
+/// # Safety
+/// `own` came from [`open`]; `blurs` from [`blurs`].
+unsafe fn land_blur(own: &Own, blurs: *mut Blurs, number: Option<u64>) -> (isize, u32) {
+    let (asks, under) = ([0, 0], [NO_TILE]);
+    let (mut places, mut changes) = ([NO_TILE], [9u8]);
+    let none = std::ptr::null();
+    // SAFETY: see the function's contract; each list holds one.
+    let landed = unsafe {
+        match number {
+            Some(number) => gpu_engine_stroke_land_blur_unwaited(
+                own.stroke,
+                own.engine,
+                blurs,
+                own.composite,
+                own.pool,
+                own.cel,
+                asks.as_ptr(),
+                under.as_ptr(),
+                1,
+                WHOLE,
+                none,
+                places.as_mut_ptr(),
+                changes.as_mut_ptr(),
+                told,
+                number,
+            ),
+            None => gpu_engine_stroke_land_blur(
+                own.stroke,
+                own.engine,
+                blurs,
+                own.composite,
+                own.pool,
+                own.cel,
+                asks.as_ptr(),
+                under.as_ptr(),
+                1,
+                WHOLE,
+                none,
+                false,
+                places.as_mut_ptr(),
+                changes.as_mut_ptr(),
+            ),
+        }
+    };
+    (landed, places[0])
+}
+
+// A blur stroke's step — its rub and its landing on its way — waits for no
+// turn of the engine's thread: both return while that thread stands still;
+// once it goes on, the picture is told put, the cel it was told of under
+// the blur in it.
+#[test]
+fn a_blur_s_step_waits_for_no_turn_of_the_engine_s_thread() {
+    // SAFETY: the engine is this test's own, live till its close; the
+    // blurs are let go of before it.
+    unsafe {
+        let own = open();
+        let blurs = blurs(&own);
+        let ink = stored(&own, INK);
+        // ⛔premise: the stroke's pages and the blurs' — the engine's
+        // thread's work, which stands still below.
+        rub(&own, blurs, [60, 60, 68, 68], ink, true);
+        let (landed, _) = land_blur(&own, blurs, Some(801));
+        assert_eq!(landed, 1, "{}", last_error());
+        assert_eq!(done_here(&*own.engine), Ok(()));
+        assert_eq!(was_put(801), Some(true), "⛔premise: a landing is told");
+        gpu_engine_stand_still(own.engine, 2_000);
+        let started = Instant::now();
+        rub(&own, blurs, [124, 10, 128, 20], ink, true);
+        let (landed, at) = land_blur(&own, blurs, Some(802));
+        let took = started.elapsed();
+        assert_eq!(landed, 1, "its slot told");
+        assert_eq!(was_put(802), None, "told its slot before its picture was laid");
+        assert!(took < Duration::from_millis(1_000), "the step waited {took:?} for the engine's thread");
+        assert_eq!(done_here(&*own.engine), Ok(()));
+        assert_eq!(was_put(802), Some(true));
+        let tile = read(&own, at);
+        // (127, 15) reads the ink of its six to the right — 108 of 255, as
+        // the stroke's own tests work it by hand
+        // (`a_rub_reads_the_cel_it_met_across_a_tile_edge`).
+        assert!(pixel(&tile, 127, 15)[3].abs_diff(108) <= 1, "{:?}", pixel(&tile, 127, 15));
+        assert_eq!(pixel(&tile, 123, 15), [0; 4], "LIVENESS: not rubbed there");
+        gpu_engine_blurs_free(blurs);
+        close(own);
+    }
+}
+
+// A blur's landing on its way lays what a waited one lays: one road for
+// the picture, only the wait differs.
+#[test]
+fn a_blur_landing_on_its_way_lays_what_a_waited_one_lays() {
+    // SAFETY: as above.
+    unsafe {
+        let own = open();
+        let blurs = blurs(&own);
+        let ink = stored(&own, INK);
+        rub(&own, blurs, [124, 10, 128, 20], ink, true);
+        let (waited_landed, waited) = land_blur(&own, blurs, None);
+        let (landed, on_its_way) = land_blur(&own, blurs, Some(811));
+        assert_eq!((waited_landed, landed), (1, 1), "{}", last_error());
+        assert_eq!(done_here(&*own.engine), Ok(()));
+        assert_eq!(was_put(811), Some(true));
+        let (waited, on_its_way) = (read(&own, waited), read(&own, on_its_way));
+        assert!(on_its_way == waited, "one picture, waited or not");
+        assert_ne!(pixel(&waited, 127, 15)[3], 0, "LIVENESS: the ink blurred in");
+        gpu_engine_blurs_free(blurs);
+        close(own);
+    }
+}
+
+// 🚨A rub that met a tile it was told nothing of is refused as a pile is
+// (`Stroke::refuse`): the caller's next done is not broken by it; the
+// stroke's next landing on its way is told not put, and a waited one
+// fails with the rub's reason.
+#[test]
+fn a_rub_refused_is_told_by_what_reads_the_stroke_next() {
+    // SAFETY: as above.
+    unsafe {
+        let own = open();
+        let blurs = blurs(&own);
+        rub(&own, blurs, [60, 60, 68, 68], NO_TILE, false);
+        assert_eq!(done_here(&*own.engine), Ok(()), "a rub refused leaves the done alone");
+        let (landed, _) = land_blur(&own, blurs, Some(821));
+        assert_eq!(landed, 1, "its slot told: the books are the caller's");
+        assert!(done_here(&*own.engine).is_err(), "the landing not put is told by the next done");
+        assert_eq!(was_put(821), Some(false));
+        let (landed, _) = land_blur(&own, blurs, None);
+        assert_eq!(landed, -1);
+        assert!(last_error().contains("told nothing of"), "{}", last_error());
+        gpu_engine_blurs_free(blurs);
+        close(own);
+    }
+}
+
+/// A loaded brush's step at `centre`, of `radius`, drawing `colour`: the
+/// pickup, refill and laid share of the app's fit (the mixing tests'
+/// `loaded`).
+fn loaded(centre: [f64; 2], radius: f64, colour: [u8; 4]) -> StepSpec {
+    StepSpec {
+        centre,
+        radius,
+        refill: 0.12,
+        laid: 0.3,
+        density: 1.0,
+        take: 0.0,
+        share: 1.0,
+        pick: 0.12,
+        colour: u32::from_le_bytes(colour),
+        dry: 0,
+    }
+}
+
+/// Piles a mixing brush's `steps`, from `first`, with no dab, the cel's
+/// tile told of at each ground tile they read — `under` at (0, 0), none
+/// elsewhere — as the app tells of them (`gpu_engine_mix_ground`), or of
+/// none where `told` is false.
+///
+/// # Safety
+/// `own` came from [`open`].
+unsafe fn pile_steps(own: &Own, steps: &[StepSpec], first: u32, under: u32, told: bool) {
+    let mut coordinates = vec![0i32; 128 * steps.len()];
+    // SAFETY: room for 64 tiles a step.
+    let read = unsafe { gpu_engine_mix_ground(steps.as_ptr(), steps.len(), coordinates.as_mut_ptr()) };
+    let ground = if told { read } else { 0 };
+    let words: Vec<u32> = coordinates[..2 * ground]
+        .chunks_exact(2)
+        .map(|at| if at == [0, 0] { under } else { NO_TILE })
+        .collect();
+    // No dabs, as the host hands none: a list, never a null.
+    let dabs: Vec<DabSpec> = Vec::new();
+    // SAFETY: see the function's contract; each list holds what it says.
+    unsafe {
+        gpu_engine_stroke_pile(
+            own.stroke,
+            own.engine,
+            dabs.as_ptr(),
+            0,
+            std::ptr::null(),
+            1.0,
+            false,
+            -1,
+            1.0,
+            steps.as_ptr(),
+            steps.len(),
+            first,
+            own.composite,
+            own.pool,
+            coordinates.as_ptr(),
+            words.as_ptr(),
+            ground,
+        );
+    }
+}
+
+/// The colour each of the stroke's first `count` steps laid, ARGB, or
+/// none: the reason is the last error.
+///
+/// # Safety
+/// `own` came from [`open`].
+unsafe fn mixed(own: &Own, count: usize) -> Option<Vec<u32>> {
+    let mut out = vec![0u32; count];
+    // SAFETY: `out` holds `count`.
+    unsafe { gpu_engine_stroke_mixed(own.stroke, own.engine, out.as_mut_ptr(), count) }.then_some(out)
+}
+
+// A mixing brush's step waits for no turn of the engine's thread: the pile
+// that runs it returns while that thread stands still — and once it goes
+// on, the step has read the cel it was told of under it.
+#[test]
+fn a_mixing_step_waits_for_no_turn_and_reads_the_cel_it_is_told_of() {
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    // SAFETY: the engine is this test's own, live till its close.
+    unsafe {
+        let own = open();
+        let under = stored(&own, UNDER);
+        // ⛔premise: the mixing book — the engine's thread's work.
+        pile_steps(&own, &[loaded([64.0, 64.0], 10.0, BLUE)], 0, under, true);
+        assert_eq!(done_here(&*own.engine), Ok(()));
+        gpu_engine_stand_still(own.engine, 2_000);
+        let started = Instant::now();
+        pile_steps(&own, &[loaded([64.0, 64.0], 10.0, BLUE)], 1, under, true);
+        let took = started.elapsed();
+        assert!(took < Duration::from_millis(1_000), "the step waited {took:?} for the engine's thread");
+        let colours = mixed(&own, 2).unwrap_or_else(|| panic!("{}", last_error()));
+        let green = |argb: u32| argb.to_be_bytes()[2];
+        assert!(green(colours[1]) > 0, "it lifted the cel's green: {:08x}", colours[1]);
+        gpu_engine_stroke_clear(own.stroke, own.engine);
+        pile_steps(&own, &[loaded([64.0, 64.0], 10.0, BLUE)], 0, NO_TILE, true);
+        let bare = mixed(&own, 1).unwrap_or_else(|| panic!("{}", last_error()));
+        assert_eq!(green(bare[0]), 0, "LIVENESS: over no cel it lifts no green");
+        close(own);
+    }
+}
+
+// 🚨A mixing step that read a tile it was told nothing of is refused as a
+// pile is: what reads the stroke next fails by it.
+#[test]
+fn a_mixing_step_told_nothing_of_its_ground_is_refused() {
+    // SAFETY: the engine is this test's own, live till its close.
+    unsafe {
+        let own = open();
+        pile_steps(&own, &[loaded([64.0, 64.0], 10.0, INK)], 0, NO_TILE, false);
+        assert_eq!(done_here(&*own.engine), Ok(()), "a pile refused leaves the done alone");
+        assert!(mixed(&own, 1).is_none());
+        assert!(last_error().contains("told nothing of"), "{}", last_error());
         close(own);
     }
 }
