@@ -19,8 +19,12 @@ class _BrushEditCelPress {
   /// block is created inside the down event, the rebuild that hands us the
   /// new frame happens after it, and only then is there a surface to ink.
   /// The stroke begins at the position stored here, so the line starts
-  /// where the pen actually landed rather than where it had moved on to.
-  PointerDownEvent? _pendingCelPress;
+  /// where the pen actually landed rather than where it had moved on to —
+  /// and goes on through every move it made while it waited.
+  ///
+  /// 🚨ONE FIELD for the press and its moves: forgetting the press
+  /// forgets its moves with it, so no wait hands its moves to the next.
+  ({PointerDownEvent down, List<PointerMoveEvent> moves})? _pendingCelPress;
 
   /// A mark pressed where it makes its cel first
   /// ([InteractiveBrushEditCanvasView.marksMakeTheirCel]): ask the shell for
@@ -54,26 +58,42 @@ class _BrushEditCelPress {
     if (!(_state.widget.onPressNeedsCel?.call() ?? false)) {
       return false;
     }
-    _pendingCelPress = event;
+    _pendingCelPress = (down: event, moves: []);
     return true;
   }
 
-  /// Begins the held press now that there is somewhere for it to go.
+  /// Begins the held press now that there is somewhere for it to go, and
+  /// hands it the moves it made while it waited.
   ///
   /// ⚠️Called from the MOVE and the UP rather than from a post-frame
   /// callback: those are the next events this listener receives, they carry
   /// the proof that the finger is still down, and they arrive after the
-  /// rebuild for anything but an impossibly fast tap. A move that beats the
-  /// rebuild is simply dropped and the next one tries again — the stroke
-  /// still starts at the DOWN position either way.
-  void resumePressThatMadeTheCel(int pointer) {
+  /// rebuild for anything but an impossibly fast tap.
+  ///
+  /// 🚨A MOVE THAT BEATS THE REBUILD IS KEPT, not dropped: every point the
+  /// OS saw goes into the line (H56, [PenPath]) — and a kept move still
+  /// carries the points its message merged. 🗣️F-611 (유저 2026-11-18,
+  /// 아이폰 1093): 「처음구간이 직선으로 이어짐. 곡선으로 동그라미
+  /// 그렸는데 첫 구간이 동그란선이 아니고 직선임」 — the moves made while
+  /// the cel was being made never reached the line, and the stroke joined
+  /// its DOWN to the first move after the wait with one straight step (a
+  /// circle at 120 Hz held for 12 moves came in to 0.78 of its radius: the
+  /// chord). ↩️「A move that beats the rebuild is simply dropped and the
+  /// next one tries again — the stroke still starts at the DOWN position
+  /// either way.」
+  void resumePressThatMadeTheCel(PointerEvent event) {
     final pending = _pendingCelPress;
-    if (pending == null ||
-        pending.pointer != pointer ||
-        !_state.widget.editable) {
+    if (pending == null || pending.down.pointer != event.pointer) {
+      return;
+    }
+    if (!_state.widget.editable) {
+      if (event is PointerMoveEvent) {
+        pending.moves.add(event);
+      }
       return;
     }
     _pendingCelPress = null;
-    _state._press.pointerDown(pending);
+    _state._press.pointerDown(pending.down);
+    pending.moves.forEach(_state._press.pointerMove);
   }
 }
