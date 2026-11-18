@@ -211,6 +211,14 @@ void main() {
             'the sound — named by its track key — dropped out of the step',
       );
       expect(session.requireActiveCut.duration, 27);
+      final band = session.frameRangeSelection.value;
+      expect(
+        [band?.startIndex, band?.endIndexExclusive],
+        [0, 10],
+        reason: 'F-619: the band follows both rows past the cut\'s refresh, '
+            'the sound brought back from its track key onto the cut\'s axis '
+            'to end where the later of them does',
+      );
 
       session.undo();
       expect(blocksOf(session.layerById(conte)!), [(0, 5), (5, 19)]);

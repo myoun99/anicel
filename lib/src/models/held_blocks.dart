@@ -30,15 +30,16 @@ typedef HeldRun = ({int before, int after});
 List<TimelineDrawingBlock> _realBlocksOf(Layer layer) =>
     drawingBlocks(ghostFreeTimeline(layer));
 
-/// Where the blocks starting at [starts] stand among [layer]'s blocks, or
-/// null when [starts] names none of them.
+/// Where the blocks starting at [starts] — in frame order, as a band's
+/// collectors read them off the timeline — stand among [layer]'s blocks,
+/// or null when [starts] names none of them.
 HeldRun? heldRunOn(Layer layer, List<int> starts) {
   if (starts.isEmpty) {
     return null;
   }
   final keys = [for (final block in _realBlocksOf(layer)) block.startIndex];
-  final first = keys.indexOf(starts.reduce(math.min));
-  final last = keys.indexOf(starts.reduce(math.max));
+  final first = keys.indexOf(starts.first);
+  final last = keys.indexOf(starts.last);
   return first < 0 || last < first
       ? null
       : (before: first, after: keys.length - 1 - last);
