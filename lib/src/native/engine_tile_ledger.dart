@@ -507,8 +507,9 @@ final GpuEngine _engine;
   /// that differs between the two is what [land] takes already ([by]) —
   /// nothing to reconcile and no flag to invent, so the clone ratchet read
   /// the pair as what it was (`one_algorithm_one_place_test`). The engine's
-  /// two doors stay two: each lands a thing of its own (`GpuLettered.land` ·
-  /// `GpuPluginMade.land`).
+  /// two doors stay two: each lands a thing of its own (`GpuLetters.land` ·
+  /// `GpuPluginMade.land`) — the letters' laid on the engine's thread
+  /// unwaited (2026-11-18), the plug-in's waited for.
   Map<TileCoord, BitmapTile> landWhole(
     ({int x0, int y0, int columns, int rows}) rect, {
     required LandedBy by,

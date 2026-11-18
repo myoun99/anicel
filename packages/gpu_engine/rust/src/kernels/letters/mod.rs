@@ -101,19 +101,21 @@ pub(crate) struct Pass {
     pub(crate) shapes: Vec<Placed>,
 }
 
+/// Letters set and laid on the grid, not yet laid in tiles: each pass's
+/// cover a layer, bottom to top, and the rectangle of tiles that holds
+/// every pixel they cover.
+pub(crate) struct Covered {
+    pub(crate) layers: Vec<Layer>,
+    pub(crate) rect: TileRect,
+}
+
 /// `passes`, bottom to top, set in `faces` and laid on the grid by
-/// `to_grid`: each pass's cover ([`covered`]) laid as a layer
-/// ([`lettered`]). Submits the work; the caller waits. `Some(None)` for
-/// passes that cover no pixel — letters of spaces, a row named nothing —:
-/// no picture, which the app lays as nothing, where the walk's plate of
-/// them is clear.
-pub(crate) fn set(
-    engine: &Engine,
-    composite: &Composite,
-    faces: &Faces,
-    to_grid: Affine,
-    passes: &[Pass],
-) -> Option<Option<Lettered>> {
+/// `to_grid`: each pass's cover ([`covered`]) a layer, which [`lettered`]
+/// lays. On the CPU, where it is called: no device is taken in hand.
+/// None for passes that cover no pixel — letters of spaces, a row named
+/// nothing —: no picture, which the app lays as nothing, where the walk's
+/// plate of them is clear.
+pub(crate) fn set(faces: &Faces, to_grid: Affine, passes: &[Pass]) -> Option<Covered> {
     let layers: Vec<Layer> = passes
         .iter()
         .filter_map(|pass| {
@@ -124,10 +126,8 @@ pub(crate) fn set(
             })
         })
         .collect();
-    if rect_of(&layers).is_none() {
-        return Some(None);
-    }
-    lettered(engine, composite, &layers).map(Some)
+    let rect = rect_of(&layers)?;
+    Some(Covered { layers, rect })
 }
 
 /// The picture of letters: straight RGBA8 tiles over `rect`, tile after

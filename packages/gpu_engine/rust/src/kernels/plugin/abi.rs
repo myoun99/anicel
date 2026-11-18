@@ -292,10 +292,9 @@ pub unsafe extern "C" fn gpu_engine_plugin_render_read(
 /// what it made ([`placed`]): the engine's alone, with no wait for the
 /// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
 ///
-/// ⚠️The letters' plate lands so too (`gpu_engine_lettered_land`): the
-/// second picture landed as it lies on the device, its own entry over the
-/// one door. A third (a picture brought in, `EnginePicture`) makes the
-/// three one (rule of three).
+/// ↩️The letters' plate landed so too, its own entry over the one door,
+/// till its laying went to the engine's thread unwaited
+/// (`gpu_engine_letters_land`, 2026-11-18).
 ///
 /// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
 ///

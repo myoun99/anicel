@@ -4210,34 +4210,87 @@ class GpuLetters {
   );
 
   /// The letters set in [faces] and laid on the grid by [toGrid] — the
-  /// layout's space to the grid's — by [composite]; the work submitted.
-  /// Null for letters that cover no pixel.
-  GpuLettered? set(
-    GpuComposite composite,
+  /// layout's space to the grid's —, on this isolate's thread, the CPU's
+  /// work alone: the rectangle of tiles they cover — its first tile's
+  /// column and row, and how many columns and rows of tiles it spans —,
+  /// their covers kept for [land]. Null for letters that cover no pixel.
+  ({int x0, int y0, int columns, int rows})? cover(
     GpuFaces faces,
     List<double> toGrid,
   ) => using((arena) {
     final rect = arena<Int32>(4)..asTypedList(4).fillRange(0, 4, -1);
-    final engine = composite._engine;
-    final lettered = rust.lettersSet(
-      _letters,
-      engine._engine,
-      engine._its(composite)._composite,
-      faces._faces,
-      _floats(arena, _six(toGrid)),
-      rect,
+    _done(
+      rust.lettersCover(
+        _letters,
+        faces._faces,
+        _floats(arena, _six(toGrid)),
+        rect,
+      ),
     );
     final [x0, y0, columns, rows] = rect.asTypedList(4).toList();
-    if (lettered == nullptr) {
-      return columns == 0 ? null : throw GpuRefused(_lastError());
-    }
-    return GpuLettered._(engine, lettered, (
-      x0: x0,
-      y0: y0,
-      columns: columns,
-      rows: rows,
-    ));
+    return columns == 0
+        ? null
+        : (x0: x0, y0: y0, columns: columns, rows: rows);
   });
+
+  /// Gives each tile of what was covered last ([cover]) that [asks] names
+  /// — by its column and row on the grid — a fresh slot of [cel] of
+  /// [pool], and hands the laying of their picture by [composite] and its
+  /// putting there to the engine's thread, this isolate waiting for none
+  /// of it (rust/src/kernels/letters/abi.rs, `gpu_engine_letters_land`,
+  /// has why): the engine's alone, as a landing puts what it made. Each
+  /// landed is [GpuChange.inked]; as many of [asks], the first, as [pool]
+  /// has room for. [unput] is called where their picture was not put.
+  List<GpuLanded> land(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    required void Function() unput,
+  }) {
+    final engine = composite._engine;
+    final number = _numbered++;
+    final landed = _landed(
+      asks,
+      (_, coordinates, _, places, changes) => rust.lettersLand(
+        _letters,
+        engine._engine,
+        engine._its(composite)._composite,
+        engine._its(pool)._pool,
+        cel,
+        coordinates,
+        asks.length,
+        places,
+        changes,
+        _put.nativeFunction,
+        number,
+      ),
+    );
+    if (landed.isNotEmpty) {
+      _laying[number] = unput;
+      _put.keepIsolateAlive = true;
+    }
+    return landed;
+  }
+
+  /// What is called where the picture of a land on its way ([land]) was
+  /// not put, under the number it was handed over by, till it is told of.
+  static final Map<int, void Function()> _laying = {};
+  static int _numbered = 0;
+
+  /// How the engine's thread tells this isolate a land's picture was put,
+  /// by its number and whether it was: one for every land of the isolate,
+  /// kept alive while one is on its way.
+  static final NativeCallable<Void Function(Uint64, Bool)> _put =
+      NativeCallable<Void Function(Uint64, Bool)>.listener(_putThen);
+
+  static void _putThen(int number, bool put) {
+    final unput = _laying.remove(number)!;
+    _put.keepIsolateAlive = _laying.isNotEmpty;
+    if (!put) {
+      unput();
+    }
+  }
 
   void free() => rust.lettersFree(_letters);
 }
@@ -4945,39 +4998,6 @@ void _done(bool done) {
   }
 }
 
-/// A picture of letters set ([GpuLetters.set]): the straight RGBA8 tiles of
-/// [rect] — its first tile's column and row, and how many columns and rows
-/// of tiles it spans — on the GPU.
-class GpuLettered {
-  GpuLettered._(this._engine, this._lettered, this.rect);
-
-  final GpuEngine _engine;
-  final Pointer<rust.Lettered> _lettered;
-  final ({int x0, int y0, int columns, int rows}) rect;
-
-  /// Puts each of its tiles [asks] names — by their column and row on the
-  /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
-  /// puts what it made: the engine's alone, with no wait for the GPU. Each
-  /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
-  /// has room for.
-  List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
-      _landed(
-        asks,
-        (_, coordinates, _, places, changes) => rust.letteredLand(
-          _engine._engine,
-          _lettered,
-          _engine._its(pool)._pool,
-          cel,
-          coordinates,
-          asks.length,
-          places,
-          changes,
-        ),
-      );
-
-  void free() => rust.letteredFree(_lettered);
-}
-
 /// The walked tile whose words start at [at] of [words].
 GpuTileInk _walkedAt(Int32List words, int at) {
   final [column, row, left, top, right, bottom] = words.sublist(
@@ -5364,9 +5384,7 @@ class GpuPluginMade {
   /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
   /// puts what it made: the engine's alone, with no wait for the GPU. Each
   /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
-  /// has room for. ⚠️[GpuLettered.land]'s like: the second picture landed
-  /// as it lies on the device — a third makes the three one (rule of
-  /// three).
+  /// has room for.
   List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
       _landed(
         asks,

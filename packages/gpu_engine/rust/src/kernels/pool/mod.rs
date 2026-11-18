@@ -279,7 +279,7 @@ impl Spare {
 /// A store's write, held apart from its pool for the engine's thread: the
 /// pages as they stood, the places its books gave, and where to say it
 /// failed.
-struct Writing {
+pub(crate) struct Writing {
     pages: Vec<wgpu::Buffer>,
     places: Vec<TileAt>,
     unwritten: Unwritten,
@@ -306,8 +306,20 @@ impl Writing {
             Err(error) => fail(format!("get_mapped_range_mut: {error}")),
         };
         staging.unmap();
-        let writes: Vec<(usize, TileAt)> = self.places.iter().copied().enumerate().collect();
-        copied.and_then(|()| Write::put(engine, &self.pages, &staging, &writes))
+        copied.and_then(|()| self.put_from(engine, &staging, 0..self.places.len()))
+    }
+
+    /// Copies the tiles of `out` — straight RGBA8, tile after tile — that
+    /// `tiles` names, the i-th into the i-th place, by the write path in
+    /// one submit.
+    pub(crate) fn put_from(
+        &self,
+        engine: &Engine,
+        out: &wgpu::Buffer,
+        tiles: impl IntoIterator<Item = usize>,
+    ) -> Option<()> {
+        let writes: Vec<(usize, TileAt)> = tiles.into_iter().zip(self.places.iter().copied()).collect();
+        Write::put(engine, &self.pages, out, &writes)
     }
 
     /// [`Writing::write`], its places said unwritten where it fails.
@@ -497,8 +509,9 @@ impl Pool {
     }
 
     /// The write of tiles into `places`, held apart from the pool: what a
-    /// store hands the engine's thread.
-    fn writing(&self, places: Vec<TileAt>) -> Writing {
+    /// store hands the engine's thread — and a plate of letters
+    /// (`gpu_engine_letters_land`).
+    pub(crate) fn writing(&self, places: Vec<TileAt>) -> Writing {
         Writing { pages: self.buffers.clone(), places, unwritten: self.unwritten.clone() }
     }
 

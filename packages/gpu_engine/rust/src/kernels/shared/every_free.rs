@@ -46,10 +46,9 @@ use crate::kernels::flood::abi::{
     Filled, gpu_engine_flood_filled_free, gpu_engine_flood_picture_free,
     gpu_engine_flood_picture_new, gpu_engine_floods_free, gpu_engine_floods_new,
 };
-use crate::kernels::letters::Lettered;
 use crate::kernels::letters::abi::{
     gpu_engine_faces_file, gpu_engine_faces_free, gpu_engine_faces_handed, gpu_engine_faces_of,
-    gpu_engine_lettered_free, gpu_engine_letters_free, gpu_engine_word_free, gpu_engine_word_new,
+    gpu_engine_letters_free, gpu_engine_word_free, gpu_engine_word_new,
     gpu_engine_letters_new,
 };
 use crate::kernels::letters::glyphs_tests::file;
@@ -107,7 +106,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 40] {
+fn frees() -> [(&'static str, fn(&'static str)); 39] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
@@ -283,11 +282,6 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
         }),
         ("gpu_engine_letters_free", |name| gives_back(name, gpu_engine_letters_new(), gpu_engine_letters_free)),
         ("gpu_engine_word_free", |name| gives_back(name, gpu_engine_word_new(), gpu_engine_word_free)),
-        ("gpu_engine_lettered_free", |name| {
-            let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
-            let made = first_engine().hands(Lettered { rect, tiles: composited().out });
-            gives_back(name, made, gpu_engine_lettered_free)
-        }),
         ("gpu_engine_plugin_made_free", |name| {
             let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
             let made = first_engine().hands(PluginMade { rect, tiles: composited().out });

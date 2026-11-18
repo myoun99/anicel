@@ -184,11 +184,12 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
     ),
     (
         "sets a word in the faces on the CPU, where it is called — which of its letters they have \
-         (`words::whole`), and its coverage (`words::rastered`): the faces are bytes \
+         (`words::whole`), and its coverage (`words::rastered`), and a picture of letters its \
+         covers (`letters::set`, kept for its land to lay): the faces are bytes \
          (`hands_bytes`), their files and what each weight is set in — behind a lock under which \
          nothing waits for the engine's thread — and no device is asked. The paint that asks for \
          a tile's word bakes it (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3)",
-        &["gpu_engine_word_whole", "gpu_engine_word_raster"],
+        &["gpu_engine_word_whole", "gpu_engine_word_raster", "gpu_engine_letters_cover"],
     ),
 ];
 

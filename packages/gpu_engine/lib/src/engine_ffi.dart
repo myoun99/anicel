@@ -49,7 +49,6 @@ final class FacesHanded extends Opaque {}
 
 final class Lettering extends Opaque {}
 
-final class Lettered extends Opaque {}
 
 final class Wording extends Opaque {}
 
@@ -1985,19 +1984,15 @@ external bool lettersRect(
 );
 
 @Native<
-  Pointer<Lettered> Function(
+  Bool Function(
     Pointer<Lettering>,
-    Pointer<Engine>,
-    Pointer<Composite>,
     Pointer<Faces>,
     Pointer<Float>,
     Pointer<Int32>,
   )
->(symbol: 'gpu_engine_letters_set')
-external Pointer<Lettered> lettersSet(
+>(symbol: 'gpu_engine_letters_cover')
+external bool lettersCover(
   Pointer<Lettering> letters,
-  Pointer<Engine> engine,
-  Pointer<Composite> composite,
   Pointer<Faces> faces,
   Pointer<Float> toGrid,
   Pointer<Int32> rect,
@@ -2005,29 +2000,32 @@ external Pointer<Lettered> lettersSet(
 
 @Native<
   IntPtr Function(
+    Pointer<Lettering>,
     Pointer<Engine>,
-    Pointer<Lettered>,
+    Pointer<Composite>,
     Pointer<Pool>,
     Uint32,
     Pointer<Int32>,
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
   )
->(symbol: 'gpu_engine_lettered_land')
-external int letteredLand(
+>(symbol: 'gpu_engine_letters_land')
+external int lettersLand(
+  Pointer<Lettering> letters,
   Pointer<Engine> engine,
-  Pointer<Lettered> lettered,
+  Pointer<Composite> composite,
   Pointer<Pool> pool,
   int cel,
   Pointer<Int32> asks,
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
 );
-
-@Native<Void Function(Pointer<Lettered>)>(symbol: 'gpu_engine_lettered_free')
-external void letteredFree(Pointer<Lettered> lettered);
 
 @Native<Pointer<Plugin> Function(Pointer<Engine>, Pointer<Uint8>, Size, Bool)>(
   symbol: 'gpu_engine_plugin_open',

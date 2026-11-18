@@ -9,7 +9,7 @@ use super::glyphs::{
     Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, boxed, by_family, covered, letters, shaped,
 };
 use super::tests::at as pixel_of;
-use super::{Pass, set};
+use super::{Lettered, Pass, lettered, set};
 use crate::kernels::composite::tests::rig;
 
 pub(super) const IDENTITY: Affine = Affine {
@@ -360,32 +360,31 @@ fn nothing_to_draw_is_no_cover() {
     assert!(covered(faces(), &here(vec![Shape::Rect([320, 320, 320, 320])]), Paint::Fill, IDENTITY).is_none());
 }
 
+/// `passes`, standing where they are, covered on the CPU ([`set`]) and
+/// laid on the GPU ([`lettered`]).
+fn laid(passes: &[Pass]) -> Lettered {
+    let rig = rig();
+    let covered = set(faces(), IDENTITY, passes).expect("covered");
+    lettered(rig.engine, &rig.composite, &covered.layers).expect("laid")
+}
+
 #[test]
 fn passes_are_set_outline_under_fill_on_the_gpu() {
-    let rig = rig();
     let shapes = || vec![Shape::Rect([0, 0, 10 * 64, 10 * 64])];
-    let picture = set(
-        rig.engine,
-        &rig.composite,
-        faces(),
-        IDENTITY,
-        &[
-            Pass {
-                colour: 0xFF20_2020,
-                hard: false,
-                paint: Paint::Stroke { width: 4 * 64 },
-                shapes: here(shapes()),
-            },
-            Pass {
-                colour: 0xFFFF_FFFF,
-                hard: false,
-                paint: Paint::Fill,
-                shapes: here(shapes()),
-            },
-        ],
-    )
-    .flatten()
-    .expect("set");
+    let picture = laid(&[
+        Pass {
+            colour: 0xFF20_2020,
+            hard: false,
+            paint: Paint::Stroke { width: 4 * 64 },
+            shapes: here(shapes()),
+        },
+        Pass {
+            colour: 0xFFFF_FFFF,
+            hard: false,
+            paint: Paint::Fill,
+            shapes: here(shapes()),
+        },
+    ]);
     assert_eq!(pixel_of(&picture, -1, 5), 0xFF20_2020, "outside the fill, the outline");
     assert_eq!(pixel_of(&picture, 1, 5), 0xFFFF_FFFF, "over the outline, the fill");
     assert_eq!(pixel_of(&picture, 5, 5), 0xFFFF_FFFF);
@@ -395,15 +394,14 @@ fn passes_are_set_outline_under_fill_on_the_gpu() {
 #[test]
 fn a_hard_pass_is_cut_on_the_gpu() {
     // Three and a half pixels: the half is 127, under the cut.
-    let rig = rig();
     let pass = |hard: bool| Pass {
         colour: 0xFF20_30D0,
         hard,
         paint: Paint::Fill,
         shapes: here(vec![Shape::Rect([0, 0, 3 * 64 + 32, 64])]),
     };
-    let smooth = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(false)]).flatten().expect("set");
-    let hard = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(true)]).flatten().expect("set");
+    let smooth = laid(&[pass(false)]);
+    let hard = laid(&[pass(true)]);
     assert_eq!(pixel_of(&smooth, 3, 0), 127 << 24 | 0x0020_30D0);
     assert_eq!(pixel_of(&hard, 3, 0), 0);
     assert_eq!(pixel_of(&hard, 2, 0), 0xFF20_30D0);
