@@ -214,16 +214,6 @@ unsafe fn with_rubs<T>(
     }
 }
 
-/// The paper named: `paper`, null for none, at `scale` px a texel, 高さ
-/// where `height`.
-///
-/// # Safety
-/// `paper` is live or null, and outlives what is made of it.
-unsafe fn paper_of<'a>(paper: *const Texture, scale: f64, height: bool) -> Option<Paper<'a>> {
-    // SAFETY: see the function's contract.
-    (!paper.is_null()).then(|| Paper { texture: unsafe { &*paper }, scale, height })
-}
-
 /// A bitmap a dab reads — `side` texels a side, row after row, on 0..=1 —
 /// kept for the piles that read it. Null where the texels don't make one;
 /// see the last error.
