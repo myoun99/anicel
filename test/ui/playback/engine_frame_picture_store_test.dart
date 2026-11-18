@@ -21,6 +21,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
@@ -589,7 +590,45 @@ void main() {
 
     final mixed = cel(5, seedAt: (column) => column == 0 ? 6 : 5);
     expect(shownBy(laid!), laidBy(mixed));
-    expect(store.bytesOf('ghosts'), picture);
+    // A tile is weighed once (F-610): the film's two it holds are the
+    // film's to weigh — ↩️counted in both till 2026-11-18.
+    expect(store.bytesOf('ghosts'), picture ~/ 3, reason: 'its fresh tile');
+    expect(store.bytesOf('film'), picture);
+  });
+
+  // 🗣️유저 2026-11-18 (F-610-Q2 「같은 타일은 한 벌만」): pictures made of the
+  // same hold one tile. Each weighing every tile it held, a cut's forty
+  // pictures read forty times what the GPU kept, and the line let go of
+  // pictures that cost next to nothing.
+  test('🚨a tile pictures of one frame hold is weighed once — by the '
+      'picture that made it, and by the line still once that one is let '
+      'go', () async {
+    final store = storeOf();
+    final frame = frameOf(cel(5));
+    final unowned = EnginePictures.unownedPictureBytes;
+    await store.lay('made', frame);
+    final holding = await store.lay('holding', frame);
+
+    expect(store.bytesOf('made'), picture);
+    expect(store.bytesOf('holding'), 0, reason: 'every tile of it is held');
+    expect(shownBy(holding!), laidBy(cel(5)));
+    expect(store.estimatedBytes - unowned, picture);
+
+    store.letGo('made');
+    expect(
+      await pollUntil(
+        () => EnginePictures.unownedPictureBytes - unowned == picture,
+      ),
+      isTrue,
+      reason: 'the engine lets go of it behind what it was handed',
+    );
+    expect(store.madeBytes, 0, reason: 'no picture weighs them');
+    expect(
+      store.estimatedBytes - unowned,
+      picture,
+      reason: 'held still: the line counts them',
+    );
+    expect(shownBy(holding), laidBy(cel(5)));
   });
 
   test('a frame laid over a film not there is laid whole', () async {

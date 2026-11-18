@@ -20,8 +20,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+
+import '../../helpers/poll_until.dart';
 
 /// THE SESSION'S ENFORCEMENT OF THE PLAYBACK CACHE BUDGET IS MEASURED.
 ///
@@ -37,11 +40,11 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  Cut cut(String id, String frameId) => Cut(
+  Cut cut(String id, String frameId, {CanvasSize canvas = canvasSize}) => Cut(
     id: CutId(id),
     name: id,
     duration: 2,
-    canvasSize: canvasSize,
+    canvasSize: canvas,
     layers: [
       Layer(
         id: LayerId('$id-layer'),
@@ -52,7 +55,10 @@ void main() {
     ],
   );
 
-  EditorSessionManager session({required int budget}) {
+  EditorSessionManager session({
+    required int budget,
+    CanvasSize canvas = canvasSize,
+  }) {
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('budget'),
@@ -63,9 +69,9 @@ void main() {
             id: const TrackId('track'),
             name: 'Video',
             cuts: [
-              cut('cut-1', 'frame-a'),
-              cut('cut-2', 'frame-b'),
-              cut('cut-3', 'frame-c'),
+              cut('cut-1', 'frame-a', canvas: canvas),
+              cut('cut-2', 'frame-b', canvas: canvas),
+              cut('cut-3', 'frame-c', canvas: canvas),
             ],
           ),
         ],
@@ -81,7 +87,13 @@ void main() {
   /// picture is the canvas's size (an empty cel asks for no picture at all).
   /// ⚠️A dab past the edge puts the cel on the pasteboard's tiles, and its
   /// picture is then theirs.
-  void draw(EditorSessionManager s, Cut cut, String layerId, String frameId) {
+  void draw(
+    EditorSessionManager s,
+    Cut cut,
+    String layerId,
+    String frameId, {
+    CanvasSize canvas = canvasSize,
+  }) {
     BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(
         cut,
@@ -90,7 +102,7 @@ void main() {
       ),
       frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
-        canvasSize: canvasSize,
+        canvasSize: canvas,
         tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
@@ -139,10 +151,13 @@ void main() {
 
   /// Draws cut-2's and cut-3's cels and makes their frames: two cuts, two
   /// cels, two pictures — two frames of one exposure would share one.
-  Future<void> twoPictures(EditorSessionManager s) async {
+  Future<void> twoPictures(
+    EditorSessionManager s, {
+    CanvasSize canvas = canvasSize,
+  }) async {
     for (final (id, frameId) in [('cut-2', 'frame-b'), ('cut-3', 'frame-c')]) {
       final cut = s.cutById(CutId(id))!;
-      draw(s, cut, '$id-layer', frameId);
+      draw(s, cut, '$id-layer', frameId, canvas: canvas);
       await make(s, cut);
     }
   }
@@ -210,6 +225,56 @@ void main() {
       s.cacheShare = 0.125;
       expect(pictures.estimatedBytes, 0, reason: 'the premise');
       expect(EnginePictures.idlePictureBytes, 0);
+    });
+  });
+
+  // 🗣️유저 2026-11-18 (F-610-Q2 「같은 타일은 한 벌만」): two cuts of one page
+  // hold the tile their paper alone lies on together, and the picture that
+  // made it weighs it. That one let go, no picture does — and the line and
+  // the memory tab count it all the same, once.
+  testWidgets('🚨a tile whose maker is let go is the line\'s still, and the '
+      'memory tab\'s once', (tester) async {
+    await tester.runAsync(() async {
+      // Two tiles: the dab inks the first, the paper alone lies on the
+      // second.
+      const page = CanvasSize(width: 256, height: 128);
+      const tile = defaultCelTileSize * defaultCelTileSize * 4;
+      final s = session(budget: 1 << 30, canvas: page);
+      final unowned = EnginePictures.unownedPictureBytes;
+      await twoPictures(s, canvas: page);
+      final pictures = s.renderCaches.framePictureStore;
+      final (made, holding) = (
+        keyOf(s, s.cutById(const CutId('cut-2'))!),
+        keyOf(s, s.cutById(const CutId('cut-3'))!),
+      );
+      expect(
+        (pictures.bytesOf(made), pictures.bytesOf(holding)),
+        (2 * tile, tile),
+        reason: 'the premise: the second holds the first\'s paper',
+      );
+
+      pictures.letGo(made);
+      expect(
+        await pollUntil(
+          () => EnginePictures.unownedPictureBytes - unowned == tile,
+        ),
+        isTrue,
+        reason: 'the paper, its maker gone',
+      );
+
+      expect(pictures.madeBytes, tile);
+      expect(pictures.estimatedBytes - unowned, 2 * tile, reason: 'the line');
+      expect(s.playbackRig.framePictures.heldBytes, 0, reason: 'the premise');
+      final taken = collectMemoryCensus([s]);
+      final row = [
+        ...taken.items,
+        ...taken.videoItems,
+      ].firstWhere((item) => item.id == 'framePictures').bytes;
+      expect(
+        row - EnginePictures.idlePictureBytes - unowned,
+        2 * tile,
+        reason: 'the memory tab: the second\'s own tile and the paper, once',
+      );
     });
   });
 }

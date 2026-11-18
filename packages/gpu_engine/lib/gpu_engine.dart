@@ -320,6 +320,14 @@ class GpuEngine {
   /// they are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
+  /// The bytes of the tiles the engine's pictures hold that none of them
+  /// weighs. Screens composed of the same hold one tile for it, weighed by
+  /// the screen that made it ([GpuScreen.bytes]); that one let go while
+  /// others hold the tile, none of them weighs it — these, till the last
+  /// of them lets it go. What a budget and the memory census count beside
+  /// the screens' own bytes; read off no lock, on any thread.
+  int get unownedPictureBytes => rust.picturesUnownedBytes(_engine);
+
   /// Gives back what the engine keeps for pictures nobody holds till it is
   /// [mostIdle] bytes: the pages of their pool with every slot free, the
   /// last first, and then the composite's work buffer — what only makes
@@ -2962,6 +2970,12 @@ class GpuScreen implements _OfAnEngine {
   /// it shows under 1/16 through: what a budget and the memory census weigh
   /// it by. As of the last of its verbs the engine has run: one handed over
   /// is counted by the time its done is told ([compose]).
+  ///
+  /// The tiles it MADE, of those it holds (F-610, 유저 2026-11-18 「같은
+  /// 타일은 한 벌만」): a tile another screen made of the same input — a
+  /// cut's paper, a row no frame of it changes — is held, not made, and is
+  /// that screen's to weigh; nobody's once that one is let go
+  /// ([GpuEngine.unownedPictureBytes]).
   int get bytes => rust.screenBytes(_screen);
 
   /// The bytes of every screen's canvas and halvings the engine keeps: each

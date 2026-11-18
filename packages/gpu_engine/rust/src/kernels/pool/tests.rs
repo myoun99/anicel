@@ -444,6 +444,7 @@ fn a_cel_on_more_pages_than_a_pass_binds_composites_as_in_one_pass() {
             chains: &[],
             steps: &steps,
             mask: None,
+            stamps: None,
         };
         let laid = |pages| {
             let budget = Budget { pages, ..composite.widest() };
@@ -908,7 +909,7 @@ fn the_pictures_pool_holds_all_that_is_asked_or_none() {
     let engine = rig().engine;
     // One page of two tiles, and no page more.
     let pool = Pool::sized(2, 1, u64::MAX).expect("pool");
-    let pictures = Pictures(std::sync::Arc::new(Mutex::new(Some(pool))));
+    let pictures = Pictures::of(pool);
     let cel = pictures.cel(engine).expect("a cel");
     assert!(pictures.fresh(engine, cel, 3).is_none());
     assert!(last_error().contains("makes no page more"), "{}", last_error());
@@ -917,7 +918,7 @@ fn the_pictures_pool_holds_all_that_is_asked_or_none() {
     let free = at(0, 1 - places[0].slot);
     assert!(pictures.hold(engine, &[places[0], free]).is_none());
     assert!(last_error().contains("is free"), "{}", last_error());
-    pictures.release(places.iter().copied());
+    pictures.release(places.iter().copied(), std::iter::empty());
     assert_eq!(pictures.idle_bytes(), 2 * TILE_BYTES, "the hold taken before the refusal");
 }
 
@@ -1191,7 +1192,7 @@ fn a_page_ahead_is_made_while_the_engines_thread_stands_still() {
 /// Where the page made ahead of `pictures`' pool stands ([`ahead`]).
 fn picture_ahead(pictures: &Pictures) -> &'static str {
     let kept = pictures.kept();
-    let pool = kept.as_ref().expect("made by its first picture");
+    let pool = kept.pool.as_ref().expect("made by its first picture");
     // SAFETY: the pool is live while it is kept.
     unsafe { ahead(pool) }
 }
@@ -1214,7 +1215,7 @@ fn the_pictures_pool_makes_its_next_page_ahead_too() {
     let (third, pages) = pictures.fresh(engine, cel, 2).expect("past the page");
     assert_eq!(pages.len(), 2, "premise: on a second page");
     assert_eq!(picture_ahead(&pictures), "unasked", "taken: the one made ahead");
-    pictures.release(first.into_iter().chain(second).chain(third));
+    pictures.release(first.into_iter().chain(second).chain(third), std::iter::empty());
 }
 
 // A picture's page made ahead is no picture's: the memory census counts it
@@ -1232,7 +1233,7 @@ fn a_picture_s_page_made_ahead_is_counted_idle_and_given_back_first() {
     pictures.give_back(engine, TILE_BYTES);
     assert_eq!(picture_ahead(&pictures), "unasked", "let go first");
     assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the slot free on the page a picture is on");
-    pictures.release(places.into_iter());
+    pictures.release(places.into_iter(), std::iter::empty());
 }
 
 // A page still being made ahead when the pool is given back is called off,
@@ -1255,7 +1256,7 @@ fn a_page_being_made_ahead_is_called_off_by_a_give_back() {
     engine.on_pages_thread(|| ());
     assert_eq!(picture_ahead(&pictures), "unasked", "made, and let go where it was made");
     assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the slot free on the page a picture is on");
-    pictures.release(first.into_iter().chain(rest));
+    pictures.release(first.into_iter().chain(rest), std::iter::empty());
 }
 
 // A page made apart from wgpu's allocator ([`crate::platform::committed_buffer`])

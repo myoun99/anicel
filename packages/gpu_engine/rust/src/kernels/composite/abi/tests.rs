@@ -6,13 +6,13 @@
 
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
-use crate::kernels::composite::tests::{mix, pixel_at, rig, surface};
-use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS};
+use crate::kernels::composite::tests::{mix, pixel_at, rig, surface, surface_on};
+use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::mask::tests::masked;
-use crate::kernels::pool::Pool;
+use crate::kernels::pool::{Pool, gpu_engine_pool_release, gpu_engine_pool_store};
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::{done_here, first_engine, last_error, read_buffer, stored};
+use crate::testing::{a_device_of_its_own, done_here, first_engine, last_error, read_buffer, stored};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
@@ -83,7 +83,7 @@ fn ran_in_rust(
     mask: Option<&Mask>,
 ) -> Vec<u8> {
     let (engine, composite) = (rig().engine, &rig().composite);
-    let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask };
+    let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask, stamps: None };
     let out = composite.run(engine, &plan, &OUTPUT, [0, 0, 300, 120], composite.widest()).expect("run");
     read_buffer(engine, &out.out)
 }
@@ -613,9 +613,9 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
         done_here(engine).expect("composed and shown");
         // SAFETY: `laid` is live.
         let planned = unsafe { &*laid };
-        let chains = planned.chained();
-        let laid = planned.plan(pool.pages(), &chains, None);
-        in_rust.compose(engine, composite, &laid, over, composite.widest()).expect("compose");
+        planned
+            .laid(&pool, |laid| in_rust.compose(engine, composite, laid, over, composite.widest()))
+            .expect("compose");
         let want = surface(size, wgpu::TextureFormat::Rgba8Unorm);
         in_rust.show(engine, composite, in_rust_camera, &want, rect, composite.widest()).expect("show");
         assert!(engine.read_texture(&shown) == engine.read_texture(&want), "over {over:?}");
@@ -888,5 +888,161 @@ fn a_read_and_a_put_name_the_plans_tile_sets() {
         }
         gpu_engine_chain_read_free(read);
         gpu_engine_plan_free(plan);
+    }
+}
+
+/// A plan of one row laying the tiles at `at` side by side, whole and
+/// unposed, on `engine`, and the pixels they cover.
+///
+/// # Safety
+/// `engine` is live; the plan is let go of once.
+unsafe fn side_by_side(engine: &Engine, at: &[TileAt]) -> (*mut Planned, [i32; 4]) {
+    let (words, count) = (at.iter().map(|at| at.word()).collect::<Vec<_>>(), at.len() as u32);
+    // SAFETY: the engine is live, and each array holds what its call reads.
+    unsafe {
+        let plan = gpu_engine_plan_new(engine);
+        gpu_engine_plan_set(plan, 0, 0, count, 1, words.as_ptr());
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, count * TILE, TILE, 65535, NORMAL);
+        (plan, [0, 0, (count * TILE) as i32, TILE as i32])
+    }
+}
+
+/// `screen` shown whole, a canvas pixel a pixel, by the C ABI — and, for
+/// `in_rust`, a screen composed of `plan` in Rust shown so: told by
+/// nothing, every tile of it made.
+struct Shown<'a> {
+    engine: &'a Engine,
+    composite: &'a Composite,
+    extent: [i32; 4],
+}
+
+impl Shown<'_> {
+    const CAMERA: [f64; 6] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+
+    fn rect(&self) -> [u32; 4] {
+        [0, 0, self.extent[2] as u32, self.extent[3] as u32]
+    }
+
+    fn surface(&self) -> wgpu::Texture {
+        surface_on(self.engine, (self.extent[2] as u32, self.extent[3] as u32), wgpu::TextureFormat::Rgba8Unorm)
+    }
+
+    /// # Safety
+    /// `screen` is live, made on the engine.
+    unsafe fn by_the_abi(&self, screen: *const ScreenAndBytes) -> Vec<u8> {
+        let (texture, rect) = (self.surface(), self.rect());
+        // SAFETY: every pointer is live; each array holds what its call reads.
+        unsafe {
+            let camera = Self::CAMERA.as_ptr();
+            gpu_engine_screen_show(screen, self.composite, self.engine, camera, 1.0, NEAREST, &texture, rect.as_ptr());
+        }
+        done_here(self.engine).expect("shown");
+        self.engine.read_texture(&texture).expect("read the surface back")
+    }
+
+    fn in_rust(&self, pool: &Pool, plan: &Planned) -> Vec<u8> {
+        let widest = self.composite.widest();
+        let mut screen = Screen::new(self.extent, 1.0).expect("screen");
+        plan.laid(pool, |laid| screen.compose(self.engine, self.composite, laid, self.extent, widest)).expect("compose");
+        let texture = self.surface();
+        let camera = Camera { inverse: Self::CAMERA, scale: 1.0, mode: ResampleMode::Nearest };
+        screen.show(self.engine, self.composite, camera, &texture, self.rect(), widest).expect("show");
+        self.engine.read_texture(&texture).expect("read the surface back")
+    }
+}
+
+// Two screens composed call by call of one plan hold one tile for the same
+// input (F-610): the second weighs nothing, and shows what a screen of the
+// plan made whole in Rust shows — as does a third composed over the first
+// as its film, every tile of it fresh; the first let go, its tiles are
+// counted as nobody's own for as long as another holds them. On an engine
+// of its own: the tests' one keeps every test's pictures.
+#[test]
+fn screens_composed_of_the_same_hold_one_tile_weighed_once() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let mut pool = Pool::new(&engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let at = pool.store(&engine, cel, &[&tile(21, true), &tile(22, false)]).expect("store");
+    // SAFETY: the engine is live through every call, and what is made on
+    // it is let go of once.
+    unsafe {
+        let (plan, extent) = side_by_side(&engine, &at);
+        let shown = Shown { engine: &engine, composite: &composite, extent };
+        let screens = [(); 2].map(|()| gpu_engine_screen_new(&engine, extent.as_ptr(), 1.0));
+        for screen in screens {
+            gpu_engine_screen_compose(screen, &composite, &engine, &pool, plan, extent.as_ptr());
+        }
+        done_here(&engine).expect("composed");
+        let weighed = || {
+            let unowned = gpu_engine_pictures_unowned_bytes(&engine);
+            [gpu_engine_screen_bytes(screens[0]), gpu_engine_screen_bytes(screens[1]), unowned].map(|bytes| bytes / TILE_BYTES)
+        };
+        assert_eq!(weighed(), [2, 0, 0], "the second holds the first's two, and weighs none");
+        assert!(shown.by_the_abi(screens[1]) == shown.in_rust(&pool, &*plan), "against it made whole");
+        let over = gpu_engine_screen_new(&engine, extent.as_ptr(), 1.0);
+        gpu_engine_screen_compose_over(over, screens[0], &composite, &engine, &pool, plan, extent.as_ptr());
+        done_here(&engine).expect("composed over");
+        assert_eq!(gpu_engine_screen_bytes(over), 0, "over a film, a fresh tile made of the same is held as well");
+        assert!(shown.by_the_abi(over) == shown.in_rust(&pool, &*plan), "against it made whole");
+        gpu_engine_screen_free(over);
+        gpu_engine_screen_free(screens[0]);
+        done_here(&engine).expect("let go");
+        assert_eq!(weighed()[1..], [0, 2], "the first let go: its two are nobody's own, held still");
+        gpu_engine_screen_free(screens[1]);
+        done_here(&engine).expect("let go");
+        assert_eq!(gpu_engine_pictures_unowned_bytes(&engine), 0, "nobody holds them");
+        gpu_engine_plan_free(plan);
+    }
+}
+
+extern "C" fn told_nothing(_: u64, _: bool) {}
+
+// A compose is told by the pool's stamps as they stood when it was called
+// (🚨 on `gpu_engine_screen_compose`): a slot it names, let go and stored
+// into again before it runs — the store's put handed over behind it, as
+// the app's is —, is read as it was. The compose called after the store,
+// of the same plan, is told apart from it and shows the tile stored: told
+// by the stamps as they stand when each runs, both would be the one tile.
+#[test]
+fn a_compose_is_told_by_the_stamps_as_it_was_called() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let mut pool = Pool::new(&engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let at = pool.store(&engine, cel, &[&tile(31, true)]).expect("store");
+    let next = tile(32, true);
+    // SAFETY: the engine is live through every call, what is made on it is
+    // let go of once, and `next` outlives the store's put.
+    unsafe {
+        let (plan, extent) = side_by_side(&engine, &at);
+        let shown = Shown { engine: &engine, composite: &composite, extent };
+        let screens = [(); 2].map(|()| gpu_engine_screen_new(&engine, extent.as_ptr(), 1.0));
+        let before = shown.in_rust(&pool, &*plan);
+        // The engine's thread held: what is handed over from here waits
+        // behind this, in its order.
+        let (open, shut) = std::sync::mpsc::channel::<()>();
+        engine.posted(move || shut.recv().ok());
+        gpu_engine_screen_compose(screens[0], &composite, &engine, &pool, plan, extent.as_ptr());
+        assert!(gpu_engine_pool_release(&mut pool, at[0].page, at[0].slot));
+        let (mut page, mut slot) = (u16::MAX, u16::MAX);
+        let tiles = [next.as_ptr()];
+        let stored = gpu_engine_pool_store(&mut pool, &engine, cel.0, tiles.as_ptr(), 1, &mut page, &mut slot, told_nothing, 0);
+        assert_eq!((stored, page, slot), (1, at[0].page, at[0].slot), "premise: the slot let go is handed out again");
+        gpu_engine_screen_compose(screens[1], &composite, &engine, &pool, plan, extent.as_ptr());
+        open.send(()).expect("the engine's thread waits");
+        done_here(&engine).expect("composed");
+        let after = shown.in_rust(&pool, &*plan);
+        assert!(before != after, "premise: the two tiles differ");
+        assert!(shown.by_the_abi(screens[0]) == before, "the first: the tile as it was when it was called");
+        assert!(shown.by_the_abi(screens[1]) == after, "the second: the tile stored since");
+        assert_eq!(screens.map(|screen| gpu_engine_screen_bytes(screen)), [TILE_BYTES; 2], "each its own tile");
+        for screen in screens {
+            gpu_engine_screen_free(screen);
+        }
+        gpu_engine_plan_free(plan);
+        done_here(&engine).expect("let go");
     }
 }

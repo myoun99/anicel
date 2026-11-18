@@ -8,6 +8,7 @@ import '../../core/once_a_microtask.dart';
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
+import '../../native/app_gpu_engine.dart' show EnginePictures;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
@@ -485,8 +486,24 @@ class EngineFramePictureStore<K extends Object> {
     there?.picture._letGo();
   }
 
-  /// The bytes the pictures keep on the GPU.
-  int get estimatedBytes {
+  /// The bytes the pictures keep on the GPU: the tiles they made
+  /// ([madeBytes]), and the tiles they hold that none of them weighs
+  /// ([EnginePictures.unownedPictureBytes]) — what the playback's line
+  /// keeps within, and has room past.
+  ///
+  /// 🗣️유저 2026-11-18 (F-610-Q2 「같은 타일은 한 벌만」): pictures made of
+  /// the same hold one tile, weighed by the picture that made it. That one
+  /// let go while others hold the tile, no picture weighs it; counted here,
+  /// the line still sees every byte its pictures keep. ⚠️The engine's count
+  /// is every store's — another document's orphans too —, so the line may
+  /// let go sooner than it must, never hold past itself.
+  int get estimatedBytes => madeBytes + EnginePictures.unownedPictureBytes;
+
+  /// The bytes of the tiles the pictures made — each picture's own
+  /// ([EngineFramePicture.bytes]), a tile many of them hold counted once.
+  /// What the memory census sums store by store, the tiles no picture
+  /// weighs counted once beside them.
+  int get madeBytes {
     var total = 0;
     for (final entry in _entries.values) {
       total += entry.picture.bytes;

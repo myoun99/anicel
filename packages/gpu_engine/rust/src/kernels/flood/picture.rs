@@ -107,6 +107,7 @@ impl Shown {
                 chains: &[],
                 steps: &[],
                 mask: None,
+                stamps: None,
             };
             return Shown::of(engine, composite, &nothing, extent);
         }
@@ -166,6 +167,7 @@ impl Shown {
             chains: &[],
             steps: &steps,
             mask: None,
+            stamps: None,
         };
         Shown::of(engine, composite, &plan, extent)
     }

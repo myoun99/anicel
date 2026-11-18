@@ -242,6 +242,7 @@ impl Scene {
             chains: &self.chains,
             steps: &self.steps,
             mask: None,
+            stamps: None,
         }
     }
 }
@@ -1740,6 +1741,7 @@ fn a_pass_holds_two_levels_to_depth() {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let run = |levels| {
         let budget = Budget {
@@ -1892,6 +1894,7 @@ fn shown_on(
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     composite.show(engine, &plan, texture, rect, composite.widest()).expect("show");
     engine.read_texture(texture).expect("read the surface back")
@@ -2051,6 +2054,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let texture = surface((TILE, TILE), wgpu::TextureFormat::Rgba8Unorm);
     let whole = [0, 0, TILE, TILE];
@@ -2083,6 +2087,7 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
     let show = |texture: &wgpu::Texture, rect| {
@@ -2394,6 +2399,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let tiles = [(0, 0), (1, 0)];
     let whole = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest());
@@ -2447,6 +2453,7 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
             chains: &[],
             steps,
             mask: None,
+            stamps: None,
         };
         let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], NO_EDGE, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
@@ -2816,6 +2823,7 @@ fn stamped_on_blue(source: &Source, mode: u32) -> (Vec<u8>, [(i32, i32); 2]) {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let tiles = [(0, 0), (1, 0)];
     let budget = composite.widest();

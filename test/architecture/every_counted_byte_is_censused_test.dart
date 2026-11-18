@@ -228,6 +228,13 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
+  'lib/src/ui/playback/engine_frame_picture_store.dart → estimatedBytes':
+      'via:madeBytes — what the playback line weighs its pictures by: the '
+      'tiles they made (madeBytes), which the census sums store by store, '
+      'and the tiles they hold that none of them weighs — the engine\'s '
+      'one count for every store (EnginePictures.unownedPictureBytes), '
+      'which the census adds once. Read here, a second document would '
+      'count it again (F-610)',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,

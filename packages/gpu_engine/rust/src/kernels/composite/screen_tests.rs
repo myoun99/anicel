@@ -275,13 +275,15 @@ fn a_picture_over_a_film_holds_the_films_slots_and_neither_writes_over_them() {
     let mut kept = Kept::made_in(engine, composite, &frame, PAGE, Some(over), &pictures, budget).expect("over");
     let idle = || idle_of(&pictures) / TILE_BYTES;
     assert_eq!((pictures.pages().len(), idle()), (2, 14), "16 slots held of 30");
-    assert_eq!(kept.bytes(), 15 * TILE_BYTES, "a tile shared counts in both");
+    let weighed = |film: &Kept, kept: &Kept| [film.bytes(), kept.bytes(), pictures.unowned_bytes()].map(|bytes| bytes / TILE_BYTES);
+    assert_eq!(weighed(&film, &kept), [15, 1, 0], "a tile shared is weighed once, by the picture that made it");
     let (theirs, its) = (kept_bytes(&film), kept_bytes(&kept));
     let (pages, set, _) = composite_of(noise(31), CANVAS);
     let other = laid(&pages, &set);
     film.made_again(engine, composite, &other, |tile| tile == (1, 0), budget).expect("made again");
     assert!(kept_bytes(&film) != theirs, "the film's tile is made again");
     assert!(kept_bytes(&kept) == its, "the film wrote over a tile the picture holds");
+    assert_eq!(weighed(&film, &kept), [15, 1, 1], "the tile the film let go and the picture holds is nobody's own");
     let theirs = kept_bytes(&film);
     kept.made_again(engine, composite, &frame, |tile| tile == (2, 0), budget).expect("made again");
     let want = composited_whole(|x, y| match tile_of(x, y) {
@@ -291,8 +293,10 @@ fn a_picture_over_a_film_holds_the_films_slots_and_neither_writes_over_them() {
     assert!(kept_bytes(&kept) == want);
     assert!(kept_bytes(&film) == theirs, "the picture wrote over a tile the film holds");
     assert_eq!(idle(), 12, "each tile made again took a slot the other left held");
+    assert_eq!(weighed(&film, &kept), [15, 2, 1]);
     drop(film);
     assert_eq!(idle(), 15, "the film's own three are free");
+    assert_eq!((kept.bytes(), pictures.unowned_bytes()), (2 * TILE_BYTES, 13 * TILE_BYTES), "and the picture's 15 held");
     let next = kept_in(&pictures, &other);
     assert_eq!((pictures.pages().len(), idle()), (2, 15), "and the page made ahead of the next");
     assert!(kept_bytes(&next) == composited_whole(noise(31)));

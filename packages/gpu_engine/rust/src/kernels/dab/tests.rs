@@ -918,6 +918,7 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
             chains: &[],
             steps: &steps,
             mask: None,
+            stamps: None,
         };
         let done = composite.run(engine, &plan, &[(0, 0)], [0, 0, 128, 128], composite.widest());
         let bytes = read_buffer(engine, &done.expect("composite").out);

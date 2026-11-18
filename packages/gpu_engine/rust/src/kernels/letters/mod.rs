@@ -158,6 +158,7 @@ pub(crate) fn lettered(engine: &Engine, composite: &Composite, covered: &Covered
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let done = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest())?;
     Some(done.out)

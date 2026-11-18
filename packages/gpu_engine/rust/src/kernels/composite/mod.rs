@@ -75,6 +75,8 @@ pub(crate) mod abi;
 mod chained_tests;
 pub(crate) mod halvings;
 pub(crate) mod held;
+#[cfg(test)]
+mod made_of_tests;
 mod passes;
 pub(crate) mod screen;
 #[cfg(test)]
@@ -92,6 +94,7 @@ use crate::kernels::chain::{Chain, Chained, Stored, laid_as, tiles_of, with_draw
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::pool::Stamps;
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, kept_or_made, le_bytes, page_table, pipeline_with, room,
@@ -132,7 +135,7 @@ pub(crate) const WHOLE: u32 = 65535;
 const OWN_BUFFERS: u32 = 2;
 
 /// Where a stored tile is: a page of the pool, a slot in it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TileAt {
     pub(crate) page: u16,
     pub(crate) slot: u16,
@@ -488,7 +491,161 @@ pub(crate) struct Plan<'a> {
     pub(crate) chains: &'a [Chained<'a>],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
+    /// What names the bytes of the tiles on `pages` ([`Stamps`]), taken
+    /// with them — none where they are not a pool's as it stood, or nobody
+    /// took them: a picture kept of such a plan is told by nothing
+    /// ([`Plan::made_of`]), and every tile of it is made.
+    pub(crate) stamps: Option<&'a Stamps>,
 }
+
+/// What a picture's tile is made of: every word the pass that makes it is
+/// told by — the pool its rows' tiles are stored in, the part of the
+/// picture's extent on the tile, and the steps laid on it in their order,
+/// each row's with the stamp of every stored tile it reads there
+/// ([`Stamps`]). Two tiles made of the same are the same bytes, so the
+/// pictures' pool keeps one of them (`pool::Pictures`; F-610, 유저
+/// 2026-11-18 「같은 타일은 한 벌만」).
+///
+/// ⛔The words themselves, never a hash of them alone: two tellings taken
+/// for one by chance would show one picture's pixels in another.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct MadeOf(Arc<[u32]>);
+
+/// The word each step of a telling opens with ([`Telling::step`]) — a
+/// step's words are as many as its own say, so no two tellings read alike.
+const TOLD_ROW: u32 = 1;
+const TOLD_SOLID: u32 = 2;
+const TOLD_OPEN: u32 = 3;
+const TOLD_OPEN_OPAQUE: u32 = 4;
+const TOLD_CLOSE: u32 = 5;
+const TOLD_CLOSE_ATOP: u32 = 6;
+/// The word a telling ends on ([`Telling::told`]): a tile a row is laid on
+/// is told with its own place after it — a row's pose reads by where the
+/// tile lies —, and a tile of solids and buffers alone with none: the same
+/// bytes wherever it lies, a page's paper kept once for every tile of it.
+const TOLD_HERE: u32 = 7;
+const TOLD_ANYWHERE: u32 = 8;
+
+/// A telling under way ([`Plan::made_of`]): the words so far of what the
+/// output tile at `tile` is made of, and whether a row is laid on it.
+struct Telling<'a> {
+    stamps: &'a Stamps,
+    tile: (i32, i32),
+    words: Vec<u32>,
+    posed: bool,
+}
+
+impl Telling<'_> {
+    /// The tile's own corner, in the canvas's pixels.
+    fn corner(&self) -> (i64, i64) {
+        let side = i64::from(TILE);
+        (i64::from(self.tile.0) * side, i64::from(self.tile.1) * side)
+    }
+
+    /// The part of `rect` — [left, top, right, bottom) — on the tile, from
+    /// the tile's own corner: all a pass tells a pixel of it inside the
+    /// rectangle by, wherever the tile lies.
+    fn on_tile(&self, rect: [i32; 4]) -> [u32; 4] {
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        let [left, top, right, bottom] = rect.map(i64::from);
+        [left - x, top - y, right - x, bottom - y].map(|edge| edge.clamp(0, side) as u32)
+    }
+
+    /// `step` of `plan` told, as much of it as lies on the tile — none
+    /// where it reads past what a telling names: an effect chain, the
+    /// plan's mask, a buffer closed as a row, a range mark.
+    fn step(&mut self, plan: &Plan, step: &Step) -> Option<()> {
+        match *step {
+            Step::Row { set, keys, chain: None, map, matrix, opacity, mode, masked: false } => {
+                let read = self.read(plan.sets.get(set)?, map)?;
+                // A row that reads no stored tile here is laid nowhere on
+                // the tile ([`Plan::lays_on`]; composite.wgsl's `rowed`).
+                if read.is_empty() {
+                    return Some(());
+                }
+                self.posed = true;
+                self.words.extend([TOLD_ROW, opacity, mode]);
+                self.words.extend(map.words());
+                self.matrix(plan, matrix)?;
+                self.keys(plan, keys)?;
+                self.words.push((read.len() / READ_WORDS) as u32);
+                self.words.extend(read);
+            }
+            Step::Solid { colour, rect } => {
+                if meets(self.tile, rect) {
+                    self.words.extend([TOLD_SOLID, colour]);
+                    self.words.extend(self.on_tile(rect));
+                }
+            }
+            Step::Open => self.words.push(TOLD_OPEN),
+            Step::OpenOpaque => self.words.push(TOLD_OPEN_OPAQUE),
+            Step::CloseAtop => self.words.push(TOLD_CLOSE_ATOP),
+            Step::Close { opacity, mode, matrix, chain: None } => {
+                self.words.extend([TOLD_CLOSE, opacity, mode]);
+                self.matrix(plan, matrix)?;
+            }
+            _ => return None,
+        }
+        Some(())
+    }
+
+    /// The stored tiles a row of `set` posed by `map` reads for the tile,
+    /// [`READ_WORDS`] each: its place in the row and its stamp. None where
+    /// the pose bounds no rectangle — a homography's row reads every tile
+    /// of its set ([`ResampleMap::reads`]), a telling of thousands of
+    /// stamps a tile — or a tile it reads has no stamp.
+    fn read(&self, set: &TileSet, map: ResampleMap) -> Option<Vec<u32>> {
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        map.reads(x, y, x + side, y + side)?;
+        let mut words = Vec::new();
+        for ((column, row), at) in set.read_for(map, self.tile) {
+            let stamp = self.stamps.of(at)?;
+            words.extend([column as u32, row as u32, stamp as u32, (stamp >> 32) as u32]);
+        }
+        Some(words)
+    }
+
+    /// Colour matrix `matrix` of `plan` told, or that a step runs none.
+    fn matrix(&mut self, plan: &Plan, matrix: Option<usize>) -> Option<()> {
+        let Some(matrix) = matrix else {
+            self.words.push(0);
+            return Some(());
+        };
+        self.words.push(1);
+        self.words.extend(plan.matrices.get(matrix)?);
+        Some(())
+    }
+
+    /// Key chain `keys` of `plan` told, run after run, or that a row is
+    /// keyed by none.
+    fn keys(&mut self, plan: &Plan, keys: Option<usize>) -> Option<()> {
+        let Some(keys) = keys else {
+            self.words.push(0);
+            return Some(());
+        };
+        let runs = &plan.keys.get(keys)?.runs;
+        self.words.push(1 + runs.len() as u32);
+        for run in runs {
+            self.words.push(run.len() as u32);
+            self.words.extend(run);
+        }
+        Some(())
+    }
+
+    /// The telling whole ([`TOLD_HERE`]).
+    fn told(mut self) -> MadeOf {
+        match self.posed {
+            true => self.words.extend([TOLD_HERE, self.tile.0 as u32, self.tile.1 as u32]),
+            false => self.words.push(TOLD_ANYWHERE),
+        }
+        MadeOf(self.words.into())
+    }
+}
+
+/// The words a telling names a stored tile a row reads by
+/// ([`Telling::read`]): its column and row in the row's grid, and its
+/// stamp's two.
+const READ_WORDS: usize = 4;
 
 impl Plan<'_> {
     /// Whether the plan may lay anything on the output tile at `tile`: a
@@ -514,6 +671,23 @@ impl Plan<'_> {
             } => false,
             _ => true,
         })
+    }
+
+    /// What the output tile at `tile` of a picture over the pixels
+    /// `extent`, [left, top, right, bottom), is made of ([`MadeOf`]) —
+    /// none where the plan cannot tell: its tiles' stamps not handed with
+    /// it ([`Plan::stamps`]), or a step that reads past what a telling
+    /// names ([`Telling::step`]). Such a tile is made, whatever is kept.
+    pub(crate) fn made_of(&self, tile: (i32, i32), extent: [i32; 4]) -> Option<MadeOf> {
+        let stamps = self.stamps?;
+        let pool = stamps.pool();
+        let mut telling = Telling { stamps, tile, words: vec![pool as u32, (pool >> 32) as u32], posed: false };
+        let inside = telling.on_tile(extent);
+        telling.words.extend(inside);
+        for step in self.steps {
+            telling.step(self, step)?;
+        }
+        Some(telling.told())
     }
 }
 
@@ -818,6 +992,7 @@ impl Composite {
             chains: &[],
             steps: &steps,
             mask: None,
+            stamps: None,
         };
         self.run(engine, &plan, tiles, NO_EDGE, budget)
     }

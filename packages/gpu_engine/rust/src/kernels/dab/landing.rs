@@ -75,6 +75,7 @@ pub(crate) fn made(
         chains: &[],
         steps: &steps,
         mask: laid.mask,
+        stamps: None,
     };
     let tiles: Vec<(i32, i32)> = asked.iter().map(|ask| (ask.column, ask.row)).collect();
     let side = TILE as i32;

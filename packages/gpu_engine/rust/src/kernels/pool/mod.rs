@@ -55,11 +55,13 @@
 #[cfg(test)]
 mod tests;
 
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::device::{Engine, Sent, let_go};
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
+use crate::kernels::composite::{MadeOf, TILE, TILE_BYTES, TileAt};
 use crate::kernels::export::abi::{Readout, readout};
 use crate::kernels::shared::room;
 use crate::kernels::write::Write;
@@ -124,9 +126,56 @@ struct Page {
     free: Vec<u16>,
     /// The cel whose tiles go to it first; none while every slot is free.
     cel: Option<Cel>,
+    /// Each slot's stamp: the pool's count of slots handed out as it was
+    /// handed out last ([`Pool::fresh`]) — 0 for one never handed out.
+    /// Shared with the [`Stamps`] taken of it, and copied where a slot is
+    /// handed out while one of them stands.
+    stamps: Arc<Vec<u64>>,
 }
 
+/// What names the bytes of each tile a pool holds, as they were when it
+/// was taken ([`Pool::stamps`]): a slot's stamp is its alone among every
+/// slot the pool has handed out, and a held tile is never written over, so
+/// two tiles of one stamp are the same bytes — a slot handed out again has
+/// another. What a picture's tile is told by, with the steps laid on it
+/// (composite's `Plan::made_of`): a (page, slot) alone names whatever was
+/// stored there last.
+///
+/// 🗣️F-610 (유저 2026-11-18, in chat: 「셀 원본을 합쳐서 1048 인데 합성 그림이
+/// 6000 인 게 아주 말이 안 되네 … 원본이 있는데 재생 소재를 만들 이유가
+/// 없잖아」, and F-610-Q2 「같은 타일은 한 벌만」): a frame's picture kept a
+/// tile of its own for every tile of its canvas, the ones no frame changes
+/// among them.
+#[derive(Clone)]
+pub(crate) struct Stamps {
+    /// The pool they are of ([`Pool::id`]): a stamp is a slot's alone
+    /// among its own pool's.
+    pool: u64,
+    pages: Vec<Option<Arc<Vec<u64>>>>,
+}
+
+impl Stamps {
+    /// The pool they are of, one number a pool of this process.
+    pub(crate) fn pool(&self) -> u64 {
+        self.pool
+    }
+
+    /// The stamp of the tile at `at`; none where the pool had handed no
+    /// such slot out.
+    pub(crate) fn of(&self, at: TileAt) -> Option<u64> {
+        let page = self.pages.get(usize::from(at.page))?.as_ref()?;
+        page.get(usize::from(at.slot)).copied().filter(|&stamp| stamp != 0)
+    }
+}
+
+/// The pools made so far in this process: the next one's number is one
+/// more ([`Pool::id`]).
+static POOLS: AtomicU64 = AtomicU64::new(0);
+
 pub(crate) struct Pool {
+    /// Its number among the pools of this process, from 1: what its stamps
+    /// are told apart from another pool's by ([`Stamps::pool`]).
+    id: u64,
     buffers: Vec<wgpu::Buffer>,
     /// Each page's slots; none where the page was given back and a tile's
     /// stand-in is its buffer, as a `TileAt` names a page by its place.
@@ -138,6 +187,9 @@ pub(crate) struct Pool {
     /// the OS's where none ([`Pool::set_budget_instead`]).
     budget_instead: Option<u64>,
     cels: u32,
+    /// The slots handed out so far: the next one's stamp is one more
+    /// ([`Stamps`]).
+    handed: u64,
     /// The places a store handed over unwaited held and its write did not
     /// fill ([`Writing::write`]), till its caller asks
     /// ([`gpu_engine_pool_unwritten`]).
@@ -373,6 +425,7 @@ impl Pool {
         }
         let pages = Vec::new();
         Some(Self {
+            id: POOLS.fetch_add(1, Ordering::Relaxed) + 1,
             buffers: Vec::new(),
             pages,
             slots,
@@ -380,6 +433,7 @@ impl Pool {
             most_bytes,
             budget_instead: BUDGET_TILL_ONE_IS_SET,
             cels: 0,
+            handed: 0,
             unwritten: Unwritten::default(),
             ahead: Spare::default(),
         })
@@ -388,6 +442,13 @@ impl Pool {
     /// The pages, as a plan and the write path take them.
     pub(crate) fn pages(&self) -> &[wgpu::Buffer] {
         &self.buffers
+    }
+
+    /// What names the bytes of each tile it holds now ([`Stamps`]): taken
+    /// with the pages, where a plan is laid on them.
+    pub(crate) fn stamps(&self) -> Stamps {
+        let of = |page: &Option<Page>| page.as_ref().map(|page| page.stamps.clone());
+        Stamps { pool: self.id, pages: self.pages.iter().map(of).collect() }
     }
 
     /// The bytes of the pages made — a page counts whole, its free slots
@@ -504,9 +565,11 @@ impl Pool {
             Some(page) => page,
             None => self.claimed(engine, cel)?,
         };
+        self.handed += 1;
         let book = self.pages[page].as_mut().expect("a page found or made is made");
         let slot = book.free.pop().expect("a page found or made has a slot free");
         book.holds[usize::from(slot)] = 1;
+        Arc::make_mut(&mut book.stamps)[usize::from(slot)] = self.handed;
         self.make_a_page_ahead(engine);
         Ok(TileAt { page: page as u16, slot })
     }
@@ -710,6 +773,14 @@ impl Pool {
         }
     }
 
+    /// The holds of the tile at `at` — none where the pool has no such
+    /// slot. ⚠️Said of none as no failure, where [`Pool::holding`] says one:
+    /// a picture let go asks it of every tile it held.
+    fn holds(&self, at: TileAt) -> u32 {
+        let page = self.pages.get(usize::from(at.page)).and_then(Option::as_ref);
+        page.and_then(|page| page.holds.get(usize::from(at.slot)).copied()).unwrap_or(0)
+    }
+
     /// A page for `cel`'s tiles where it has none with a slot free: one of
     /// nobody's, its then; one of another cel's with a slot free; or a new
     /// one, its — where one was given back, made again in its place.
@@ -789,7 +860,8 @@ impl Pool {
         };
         // The first slot first: the one handed out last is first in line.
         let free = (0..self.slots).rev().map(|slot| slot as u16).collect();
-        let book = Some(Page { holds: vec![0; self.slots], free, cel: Some(cel) });
+        let (holds, stamps) = (vec![0; self.slots], Arc::new(vec![0; self.slots]));
+        let book = Some(Page { holds, free, cel: Some(cel), stamps });
         match given_back {
             Some(page) => {
                 self.buffers[page] = buffer;
@@ -939,19 +1011,83 @@ impl Pool {
 /// refuses at no budget of its own, only where the driver does, as a
 /// picture's own buffer was refused.
 #[derive(Clone, Default)]
-pub(crate) struct Pictures(Arc<Mutex<Option<Pool>>>);
+pub(crate) struct Pictures(Arc<Shelf>);
+
+/// What every hand on the pictures' pool shares: its books, and the bytes
+/// of the tiles no picture weighs ([`Told::unowned`]) as the books last
+/// left them — read by a thread that waits for no book
+/// ([`Pictures::unowned_bytes`]).
+#[derive(Default)]
+struct Shelf {
+    books: Mutex<Books>,
+    unowned: AtomicU64,
+}
+
+/// What the pictures' pool keeps: its pages, and which of the tiles on
+/// them a picture need not make ([`Told`]).
+#[derive(Default)]
+struct Books {
+    pool: Option<Pool>,
+    told: Told,
+}
+
+/// ONE TILE FOR THE SAME INPUT (F-610): the pictures' tiles by what each is
+/// made of (composite's `Plan::made_of` — the steps laid on it, and the
+/// stamp of every stored tile they read), so a picture whose tile is made
+/// of what a kept one is holds that one and makes none.
+///
+/// 🗣️유저 2026-11-18 (F-610, in chat): 「셀 원본을 합쳐서 1048 인데 합성 그림이
+/// 6000 인 게 아주 말이 안 되네. 적어도 1048 이거나 그거보단 낮아야 … 그게
+/// 아니라면 원본이 있는데 재생 소재를 만들 이유가 없잖아」 — and F-610-Q2
+/// 「같은 타일은 한 벌만」. 🔬Main PC, a copy of the user's .tvpp (canvas
+/// 7751×4396, 2135 tiles a picture, 27 pictures of one cut, 2026-11-18):
+/// 38.2% of the tiles had the paper alone laid on them and 57.1% one row —
+/// nearly all of it a row no frame of the cut changes —, each kept again
+/// by every frame's picture: 3602.8 MB, where one tile for the same input
+/// is 253.8 MB.
+///
+/// A tile is told for as long as a picture holds it: its last hold gone,
+/// its slot is free and its telling forgotten ([`Pictures::release`]).
+#[derive(Default)]
+struct Told {
+    /// The tile made of each telling.
+    made: HashMap<MadeOf, TileAt>,
+    /// Each such tile's telling: what is forgotten with the tile.
+    of: HashMap<TileAt, MadeOf>,
+    /// The tiles their maker let go while another picture holds them:
+    /// weighed by no picture (halvings.rs, `Kept::bytes` — a picture weighs
+    /// the tiles it made), and kept all the same.
+    unowned: HashSet<TileAt>,
+}
+
+impl Told {
+    /// The tile at `at` is no picture's: told by nothing, nobody's.
+    fn forget(&mut self, at: TileAt) {
+        if let Some(of) = self.of.remove(&at) {
+            self.made.remove(&of);
+        }
+        self.unowned.remove(&at);
+    }
+}
 
 impl Pictures {
-    fn kept(&self) -> MutexGuard<'_, Option<Pool>> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    fn kept(&self) -> MutexGuard<'_, Books> {
+        self.0.books.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// A pool of pages of `slots` tiles, for a test to see a picture go on
     /// to its next page.
     #[cfg(test)]
     pub(crate) fn sized(slots: usize) -> Option<Self> {
-        let pool = Self::unbounded(Pool::sized(slots, MOST_NAMED, u64::MAX)?);
-        Some(Self(Arc::new(Mutex::new(Some(pool)))))
+        Some(Self::of(Self::unbounded(Pool::sized(slots, MOST_NAMED, u64::MAX)?)))
+    }
+
+    /// The pictures kept in `pool`, for a test to say how many pages it
+    /// makes.
+    #[cfg(test)]
+    fn of(pool: Pool) -> Self {
+        let books = Mutex::new(Books { pool: Some(pool), told: Told::default() });
+        Self(Arc::new(Shelf { books, unowned: AtomicU64::new(0) }))
     }
 
     /// `pool` kept to no budget (⛔ above).
@@ -966,11 +1102,22 @@ impl Pictures {
     /// them after ([`Pictures::fresh`]) — a picture dropped on one thread
     /// waits for no run of another's.
     fn with<T>(&self, engine: &Engine, work: impl FnOnce(&mut Pool) -> Option<T>) -> Option<T> {
+        self.told_with(engine, |pool, _| work(pool))
+    }
+
+    /// [`Self::with`], and what the pool's tiles are told by beside it.
+    fn told_with<T>(
+        &self,
+        engine: &Engine,
+        work: impl FnOnce(&mut Pool, &mut Told) -> Option<T>,
+    ) -> Option<T> {
         let mut kept = self.kept();
-        if kept.is_none() {
-            *kept = Some(Self::unbounded(Pool::paged(engine, MOST_PICTURE_PAGE_BYTES, u64::MAX)?));
+        if kept.pool.is_none() {
+            let pool = Pool::paged(engine, MOST_PICTURE_PAGE_BYTES, u64::MAX)?;
+            kept.pool = Some(Self::unbounded(pool));
         }
-        work(kept.as_mut().expect("made above"))
+        let Books { pool, told } = &mut *kept;
+        work(pool.as_mut().expect("made above"), told)
     }
 
     /// A picture's name in the pool ([`Pool::cel`]).
@@ -1024,14 +1171,73 @@ impl Pictures {
         })
     }
 
-    /// One hold fewer of each of `places`: a picture dropped, or its tile
-    /// made again in another slot.
-    pub(crate) fn release(&self, places: impl Iterator<Item = TileAt>) {
-        if let Some(pool) = self.kept().as_mut() {
-            for at in places {
-                pool.release(at);
+    /// One more hold of the tile made of each of `made_of` where one is
+    /// kept, and its place — none where no tile is made of it yet, or it
+    /// is told by nothing ([`Told`]).
+    pub(crate) fn held_as(
+        &self,
+        engine: &Engine,
+        made_of: &[Option<MadeOf>],
+    ) -> Option<Vec<Option<TileAt>>> {
+        self.told_with(engine, |pool, told| {
+            let held = |of: &Option<MadeOf>| {
+                let at = *told.made.get(of.as_ref()?)?;
+                pool.hold(at).map(|()| at)
+            };
+            Some(made_of.iter().map(held).collect())
+        })
+    }
+
+    /// The tiles at `made` — each in a fresh slot, and run onto — told
+    /// from here on by what each is made of: the tile the next picture
+    /// made of the same holds ([`Self::held_as`]). A telling that has its
+    /// tile keeps it.
+    pub(crate) fn kept_as(&self, made: impl Iterator<Item = (MadeOf, TileAt)>) {
+        let mut kept = self.kept();
+        let told = &mut kept.told;
+        for (of, at) in made {
+            if !told.made.contains_key(&of) {
+                told.made.insert(of.clone(), at);
+                told.of.insert(at, of);
             }
         }
+    }
+
+    /// One hold fewer of each of `places`: a picture dropped, or its tile
+    /// made again in another slot — a tile nobody holds then told by
+    /// nothing. `left` are those of them their picture made and holds
+    /// nowhere now: nobody's own from here on, for as long as another
+    /// picture holds one ([`Self::unowned_bytes`]).
+    pub(crate) fn release(
+        &self,
+        places: impl Iterator<Item = TileAt>,
+        left: impl Iterator<Item = TileAt>,
+    ) {
+        let mut kept = self.kept();
+        let Books { pool: Some(pool), told } = &mut *kept else {
+            return;
+        };
+        let places: Vec<TileAt> = places.collect();
+        for &at in &places {
+            pool.release(at);
+        }
+        for at in places {
+            if pool.holds(at) == 0 {
+                told.forget(at);
+            }
+        }
+        told.unowned.extend(left.filter(|&at| pool.holds(at) > 0));
+        self.0.unowned.store(told.unowned.len() as u64 * TILE_BYTES, Ordering::Relaxed);
+    }
+
+    /// The bytes of the tiles pictures hold that none of them weighs — their
+    /// maker gone ([`Told::unowned`]) —, as the last release left them:
+    /// what the budgets and the census weigh beside each picture's own
+    /// (`gpu_engine_pictures_unowned_bytes`). ⚠️Read off no book: the
+    /// thread a frame is built on asks it, and a book may be held while a
+    /// page is made ([`Self::with`]).
+    pub(crate) fn unowned_bytes(&self) -> u64 {
+        self.0.unowned.load(Ordering::Relaxed)
     }
 
     /// Whether this is the pool `other` is: a tile of one is no tile of
@@ -1052,7 +1258,7 @@ impl Pictures {
     /// stands in such a place is read by nothing.
     pub(crate) fn pages_of(&self, places: impl Iterator<Item = TileAt>) -> Vec<wgpu::Buffer> {
         let kept = self.kept();
-        let Some(pages) = kept.as_ref().map(Pool::pages) else {
+        let Some(pages) = kept.pool.as_ref().map(Pool::pages) else {
             return Vec::new();
         };
         let mut on = vec![false; pages.len()];
@@ -1068,7 +1274,7 @@ impl Pictures {
     /// The pool's pages, for a test to count them.
     #[cfg(test)]
     pub(crate) fn pages(&self) -> Vec<wgpu::Buffer> {
-        self.kept().as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
+        self.kept().pool.as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
     }
 
     /// Gives back the pages no picture is on, the last first — the page made
@@ -1078,7 +1284,7 @@ impl Pictures {
     /// and a line that moved under the pictures leaves them their pages
     /// (`gpu_engine_pictures_give_back`).
     pub(crate) fn give_back(&self, engine: &Engine, most_idle: u64) {
-        if let Some(pool) = self.kept().as_mut() {
+        if let Some(pool) = self.kept().pool.as_mut() {
             let held = pool.bytes() - pool.idle_bytes();
             pool.give_back(engine, held.saturating_add(most_idle));
         }
@@ -1094,7 +1300,7 @@ impl Pictures {
     /// — off it, the page would be a share of the GPU's memory no row names
     /// and no warning lets go.
     pub(crate) fn idle_bytes(&self) -> u64 {
-        self.kept().as_ref().map_or(0, |pool| pool.idle_bytes() + pool.ahead_bytes())
+        self.kept().pool.as_ref().map_or(0, |pool| pool.idle_bytes() + pool.ahead_bytes())
     }
 }
 

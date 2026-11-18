@@ -136,6 +136,7 @@ impl Laying {
             chains,
             steps,
             mask,
+            stamps: None,
         }
     }
 

@@ -1203,6 +1203,11 @@ external int keptBytes();
 )
 external int picturesIdleBytes(Pointer<Engine> engine);
 
+@Native<Uint64 Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_pictures_unowned_bytes',
+)
+external int picturesUnownedBytes(Pointer<Engine> engine);
+
 @Native<Void Function(Pointer<Engine>, Uint64)>(
   symbol: 'gpu_engine_pictures_give_back',
 )

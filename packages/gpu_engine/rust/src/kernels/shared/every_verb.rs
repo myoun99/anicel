@@ -28,7 +28,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 11] = [
+const ON_THEIR_CALLERS: [(&str, &str); 12] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
@@ -50,6 +50,12 @@ const ON_THEIR_CALLERS: [(&str, &str); 11] = [
         "the engine's own counts of the pictures' idle slots and its work buffer \
          (`Pictures::idle_bytes`, `Work::bytes`): no device is asked, and the memory census \
          asks it on the UI's thread, which behind a compile would stand",
+    ),
+    (
+        "gpu_engine_pictures_unowned_bytes",
+        "the engine's own count of the pictures' tiles no picture weighs, as the last release \
+         left it (`Pictures::unowned_bytes`): no device is asked, and no book is waited for — \
+         the playback's budget asks it on the UI's thread, where a frame is built",
     ),
     (
         "gpu_engine_unfinished",

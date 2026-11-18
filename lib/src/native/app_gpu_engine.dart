@@ -135,6 +135,12 @@ abstract final class EnginePictures {
   /// Their bytes; none where the app has opened no engine.
   static int get idlePictureBytes => _its.engine?.idlePictureBytes ?? 0;
 
+  /// The bytes of the tiles its pictures hold that none of them weighs
+  /// ([GpuEngine.unownedPictureBytes]); none where the app has opened no
+  /// engine.
+  static int get unownedPictureBytes =>
+      _its.engine?.unownedPictureBytes ?? 0;
+
   /// Gives them back till they are [mostIdle] bytes
   /// ([GpuEngine.givePicturesBackPast]).
   static void giveBackPast(int mostIdle) =>

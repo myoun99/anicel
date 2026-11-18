@@ -348,15 +348,20 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // And a cel drawn on live on a screen of its own — a sheet's ink
     // window's (`LiveCelScreen`) —, which no store keeps: the app's, so
     // once.
+    // And the tiles pictures hold that none of them weighs: pictures made
+    // of the same hold one tile, weighed by the one that made it (F-610,
+    // 유저 2026-11-18 「같은 타일은 한 벌만」), and by none once that one is
+    // let go — the engine's count, so once.
     MemoryCensusItem(
       id: 'framePictures',
       bytes:
           sum(
             (session) =>
-                session.renderCaches.framePictureStore.estimatedBytes +
+                session.renderCaches.framePictureStore.madeBytes +
                 session.playbackRig.framePictures.heldBytes,
           ) +
           EnginePictures.idlePictureBytes +
+          EnginePictures.unownedPictureBytes +
           LiveCelScreen.keptBytes,
       detail: sum(
         (session) => session.renderCaches.framePictureStore.pinnedBytes,
