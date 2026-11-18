@@ -1,12 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
-import 'package:flutter/gestures.dart'
-    show
-        PointerDeviceKind,
-        PointerDownEvent,
-        PointerMoveEvent,
-        PointerUpEvent,
-        kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
