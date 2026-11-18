@@ -7348,7 +7348,7 @@ void main() {
             delta: at - before,
           );
           before = at;
-          QaPenPoints.debugTake = (_, _) => [
+          QaPenPoints.debugTake = (_, _, _) => [
             for (final point in points)
               (
                 x: (origin + point).dx,

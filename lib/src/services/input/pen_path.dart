@@ -44,7 +44,9 @@ abstract final class PenPath {
   );
 
   /// Pairs [event], made of [datum] at [ratio] physical pixels a logical
-  /// one, with the points the platform's reader wrote for its message.
+  /// one, with the points the platform's reader wrote for its message — a
+  /// contact of the datum's own kind's (H61: on Windows the cursor that
+  /// follows a pen writes its own on the pen's pixels).
   /// Every datum a message makes, as it comes in — ahead of every gate,
   /// so a datum kept out still takes its message's points out of the book.
   static void arrived(PointerEvent event, ui.PointerData datum, double ratio) {
@@ -52,7 +54,11 @@ abstract final class PenPath {
       return;
     }
     QaPenPoints.start();
-    final points = QaPenPoints.take(datum.physicalX, datum.physicalY);
+    final points = QaPenPoints.take(
+      datum.kind,
+      datum.physicalX,
+      datum.physicalY,
+    );
     if (points == null || points.isEmpty) {
       return;
     }

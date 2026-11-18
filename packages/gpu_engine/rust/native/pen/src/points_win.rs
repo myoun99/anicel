@@ -37,7 +37,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-use crate::points::{Batch, Lost, Point, book};
+use crate::points::{Batch, Kind, Lost, Point, book};
 use crate::wintab;
 
 /// The mouse's name among the contacts: past every pointer id, which is
@@ -205,7 +205,8 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
     if unread {
         book.lose(Lost::Unread);
     }
-    book.write(Batch { contact: u64::from(id), handed, points });
+    let kind = Kind::of_windows_pointer(info.pointerType.0);
+    book.write(Batch { contact: u64::from(id), kind, handed, points });
 }
 
 /// A pointer message's `history`, the newest first, as its points, the
@@ -310,7 +311,7 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     if let Some(why) = lost {
         book.lose(why);
     }
-    book.write(Batch { contact: MOUSE, handed, points });
+    book.write(Batch { contact: MOUSE, kind: Kind::Mouse, handed, points });
 }
 
 /// What a mouse message lost before the book ([`Lost`]), its history

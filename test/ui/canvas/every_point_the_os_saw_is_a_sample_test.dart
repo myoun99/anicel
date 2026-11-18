@@ -319,7 +319,7 @@ Future<List<BrushDab>> _line(
     final made = event.made(tester);
     final points = event.points;
     if (points != null) {
-      QaPenPoints.debugTake = (_, _) => [
+      QaPenPoints.debugTake = (_, _, _) => [
         for (final point in points)
           (
             x: canvasGlobalOffset(tester, point.at).dx,

@@ -5,6 +5,7 @@
 library;
 
 import 'dart:ffi';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:ffi/ffi.dart' show malloc;
 import 'package:flutter/foundation.dart';
@@ -31,8 +32,8 @@ typedef OsPoint = ({
 @Native<Int32 Function()>(symbol: 'qa_pen_points_start')
 external int _start();
 
-@Native<Int32 Function(Double, Double)>(symbol: 'qa_pen_points_take')
-external int _take(double x, double y);
+@Native<Int32 Function(Int32, Double, Double)>(symbol: 'qa_pen_points_take')
+external int _take(int kind, double x, double y);
 
 @Native<Size Function(Pointer<Double>, Size)>(symbol: 'qa_pen_points_taken')
 external int _taken(Pointer<Double> out, int room);
@@ -59,7 +60,8 @@ abstract final class QaPenPoints {
   /// Replaces the native book in tests — the test binding runs on no
   /// platform that writes one.
   @visibleForTesting
-  static List<OsPoint>? Function(double x, double y)? debugTake;
+  static List<OsPoint>? Function(PointerDeviceKind kind, double x, double y)?
+  debugTake;
 
   /// Starts the platform's reader once there is a window to read
   /// (Windows: the Flutter view's subclass): asked at each datum till it
@@ -71,15 +73,18 @@ abstract final class QaPenPoints {
     _started = _start() != 0;
   }
 
-  /// The points of the datum Flutter was handed at ([x], [y]) — in the
-  /// shape the embedder hands it — the oldest first; null where no reader
-  /// wrote its message's, and the datum's own point is all there is.
-  static List<OsPoint>? take(double x, double y) {
+  /// The points of the datum of [kind] Flutter was handed at ([x], [y]) —
+  /// in the shape the embedder hands it — the oldest first; null where no
+  /// reader wrote its message's, and the datum's own point is all there is.
+  ///
+  /// 🚨Of its own [kind] alone (H61): on Windows the cursor that follows a
+  /// pen writes its batches on the pen's pixels (points.rs `Kind`).
+  static List<OsPoint>? take(PointerDeviceKind kind, double x, double y) {
     final override = debugTake;
     if (override != null) {
-      return override(x, y);
+      return override(kind, x, y);
     }
-    final count = _take(x, y);
+    final count = _take(_numberOf(kind), x, y);
     if (count < 0) {
       return null;
     }
@@ -95,6 +100,16 @@ abstract final class QaPenPoints {
       malloc.free(out);
     }
   }
+
+  /// The number the book names [kind] by (points.rs `Kind`): a pen's two
+  /// ends one kind — the crate holds these numbers to its own.
+  static int _numberOf(PointerDeviceKind kind) => switch (kind) {
+    PointerDeviceKind.touch => 0,
+    PointerDeviceKind.mouse => 1,
+    PointerDeviceKind.stylus || PointerDeviceKind.invertedStylus => 2,
+    PointerDeviceKind.trackpad => 3,
+    PointerDeviceKind.unknown => 4,
+  };
 
   /// The points [words] hand, [_words] numbers each as the book writes them
   /// (points.rs `Point::words`): x, y, the time in microseconds, the

@@ -9,7 +9,9 @@ import android.view.MotionEvent
  * for (Flutter 3.47.4, AndroidTouchProcessor). Each datum's batch is written
  * before the event goes on to Flutter's view — the app hands it here from
  * the view's touch listener — handed where the engine hands Flutter the
- * pointer: `getX`/`getY`, a float made a double.
+ * pointer: `getX`/`getY`, a float made a double — with the pointer's tool,
+ * which the engine names the datum's kind by: the book pairs a datum with
+ * its own kind's batch alone.
  *
  * The data are the engine's own: the pointers each action makes a datum of
  * (a press and a lift the action's pointer; a finger's lift the other
@@ -64,7 +66,12 @@ object PenPoints {
                 if (stylus) event.getAxisValue(MotionEvent.AXIS_TILT, p).toDouble() else Double.NaN,
                 event.getAxisValue(MotionEvent.AXIS_ORIENTATION, p).toDouble(),
             )
-            end(event.getPointerId(p).toLong(), event.getX(p).toDouble(), event.getY(p).toDouble())
+            end(
+                event.getPointerId(p).toLong(),
+                event.getToolType(p),
+                event.getX(p).toDouble(),
+                event.getY(p).toDouble(),
+            )
         }
     }
 
@@ -79,5 +86,5 @@ object PenPoints {
     )
 
     @JvmStatic
-    private external fun end(contact: Long, x: Double, y: Double)
+    private external fun end(contact: Long, tool: Int, x: Double, y: Double)
 }

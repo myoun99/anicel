@@ -68,16 +68,93 @@ impl Point {
     }
 }
 
+/// 🚨WHAT MADE A CONTACT, AS ITS EMBEDDER NAMES A DATUM'S KIND TO FLUTTER
+/// (H61): a datum's batch is one a contact of ITS OWN kind wrote
+/// ([`Book::take`]) — a pen's two ends one kind, as the app reads them.
+///
+/// 🗣️유저 2026-11-18: 「정기적으로 일정구간에서 스트로크가 2개
+/// 겹쳐지는거같은데」. Windows hands a pen over twice: its pointer messages,
+/// and the moves of the cursor that follows it, which carry no pen's
+/// signature and come in as a mouse (F-400) — the two ending on the same
+/// pixel. The book paired by the pixel alone, and a mouse move hands the
+/// cursor's NEWEST place however many of the pen's messages still wait
+/// behind it, so a pen's datum could take the cursor's batch: the cursor's
+/// history, every place the pen had gone since the cursor's last move —
+/// and the stroke drew that stretch over again. ⚠️Read off the code and the
+/// embedder (flutter_window.cc), not yet seen with a pen.
+///
+/// The number each is handed across the FFI by is its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum Kind {
+    Touch = 0,
+    Mouse = 1,
+    Pen = 2,
+    Trackpad = 3,
+    Unknown = 4,
+}
+
+impl Kind {
+    const ALL: [Self; 5] = [Self::Touch, Self::Mouse, Self::Pen, Self::Trackpad, Self::Unknown];
+
+    /// The kind the app names a datum by (`qa_pen_points_take`) — none for
+    /// a number no kind has.
+    pub(crate) fn named(number: i32) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| *kind as i32 == number)
+    }
+
+    /// A Windows pointer's, by its `POINTER_INFO.pointerType`, as
+    /// flutter_window.cc names the datum (Flutter 3.47.4): a finger, a pen
+    /// and a touchpad by theirs, every other a mouse. The mouse's own moves
+    /// are a mouse's.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn of_windows_pointer(pointer_type: i32) -> Self {
+        match pointer_type {
+            2 => Self::Touch,    // PT_TOUCH
+            3 => Self::Pen,      // PT_PEN
+            5 => Self::Trackpad, // PT_TOUCHPAD
+            _ => Self::Mouse,
+        }
+    }
+
+    /// A `UITouch`'s, by its `type`, as FlutterViewController.mm names the
+    /// datum (`DeviceKindFromTouchType`): a finger direct or not a touch,
+    /// the Pencil a pen, a pointer a mouse, any other a touch.
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(crate) fn of_uikit_touch(touch_type: isize) -> Self {
+        match touch_type {
+            2 => Self::Pen,   // UITouchTypePencil
+            3 => Self::Mouse, // UITouchTypeIndirectPointer
+            _ => Self::Touch,
+        }
+    }
+
+    /// An Android pointer's, by `MotionEvent.getToolType`, as
+    /// AndroidTouchProcessor.java names the datum
+    /// (`getPointerDeviceTypeForToolType`): the eraser a pen's other end,
+    /// a tool it does not know unknown.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn of_android_tool(tool: i32) -> Self {
+        match tool {
+            1 => Self::Touch,     // TOOL_TYPE_FINGER
+            2 | 4 => Self::Pen,   // TOOL_TYPE_STYLUS · TOOL_TYPE_ERASER
+            3 => Self::Mouse,     // TOOL_TYPE_MOUSE
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// A message's points, the newest last, and where the embedder hands
 /// Flutter its point — in the shape the embedder hands it (Windows: the
 /// message's whole screen pixels, put in the view; iOS: `locationInView`,
 /// not the finer place; Android: `getX`/`getY`): the key a datum is paired
-/// with its batch by, compared exactly. And the OS's own name of the
-/// contact (a pointer's id; the mouse's one): what a pairing passes by
-/// is the earlier messages of that contact alone.
+/// with its batch by, compared exactly, among its [`Kind`]'s. And the OS's
+/// own name of the contact (a pointer's id; the mouse's one): what a
+/// pairing passes by is the earlier messages of that contact alone.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Batch {
     pub(crate) contact: u64,
+    pub(crate) kind: Kind,
     pub(crate) handed: (f64, f64),
     pub(crate) points: Vec<Point>,
 }
@@ -146,9 +223,9 @@ impl Book {
 
     /// The end of that message: what was gathered, as its batch.
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-    pub(crate) fn end(&mut self, contact: u64, handed: (f64, f64)) {
+    pub(crate) fn end(&mut self, contact: u64, kind: Kind, handed: (f64, f64)) {
         let points = std::mem::take(&mut self.gathered);
-        self.write(Batch { contact, handed, points });
+        self.write(Batch { contact, kind, handed, points });
     }
 
     /// Writes a message's batch, every point of it.
@@ -165,14 +242,16 @@ impl Book {
         self.batches.push_back(batch);
     }
 
-    /// The points of the datum Flutter was handed at `handed`: the first
-    /// batch, from the oldest unread, that ends there — every earlier batch
-    /// of its contact passed by; another contact's wait for their own
-    /// datums, which a platform may hand in another order (UIKit's set of
-    /// touches). None where none ends there, and nothing is read: the
+    /// The points of the datum of `kind` Flutter was handed at `handed`: the
+    /// first batch of that kind, from the oldest unread, that ends there —
+    /// every earlier batch of its contact passed by; another contact's wait
+    /// for their own datums, which a platform may hand in another order
+    /// (UIKit's set of touches, the cursor that follows a pen on Windows:
+    /// [`Kind`]). None where none ends there, and nothing is read: the
     /// datum's own point is all there is of it (a message no reader wrote).
-    pub(crate) fn take(&mut self, handed: (f64, f64)) -> Option<Vec<Point>> {
-        let at = self.batches.iter().position(|batch| batch.handed == handed)?;
+    pub(crate) fn take(&mut self, kind: Kind, handed: (f64, f64)) -> Option<Vec<Point>> {
+        let at =
+            self.batches.iter().position(|batch| batch.kind == kind && batch.handed == handed)?;
         let batch = self.batches.remove(at)?;
         let before = self.batches.len();
         let mut index = 0;

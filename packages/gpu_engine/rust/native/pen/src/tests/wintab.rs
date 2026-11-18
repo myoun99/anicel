@@ -725,7 +725,10 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
     let words = word | (word << 16);
     crate::points_win::mouse(window.0, LPARAM(words));
     crate::qat_close();
-    let points = crate::points::book().take((f64::from(far), f64::from(far)));
+    let at = (f64::from(far), f64::from(far));
+    let pen = crate::points::book().take(crate::points::Kind::Pen, at);
+    assert_eq!(pen, None, "a mouse's batch is a mouse's datum's alone (H61)");
+    let points = crate::points::book().take(crate::points::Kind::Mouse, at);
     let points = points.expect("the message's");
     let driven: Vec<f64> = points.iter().map(|point| point.driven).collect();
     assert_eq!(driven, [250.0 * (1.0 / 1000.0)]);
