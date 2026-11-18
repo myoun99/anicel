@@ -152,10 +152,34 @@ void main() {
     await tester.pumpAndSettle();
     Set<int> built() => builtSeRows(tester).keys.toSet();
     final before = built();
+    // What lays the rows: the window's builders over the S rows — a lay of
+    // the same rows is a lay too, so they are counted, not the rows.
+    final first = before.reduce(math.min);
+    final layers = {
+      for (final row in [
+        label(first),
+        find.byKey(ValueKey<String>('storyboard-se-row-0-$first')),
+      ])
+        ...find
+            .ancestor(
+              of: row,
+              matching: find.byType(ValueListenableBuilder<int>),
+            )
+            .evaluate(),
+    };
+    expect(layers, isNotEmpty, reason: '⛔전제: the rows have a layer');
+    var laid = 0;
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (layers.contains(element)) {
+        laid += 1;
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
 
     rows(tester).jumpTo(timelineRowWindowMargin);
     await tester.pump();
-    expect(built(), before, reason: 'the notch\'s own frame laid no row');
+    expect(laid, 0, reason: 'the notch\'s own frame laid no row');
+    expect(built(), before);
 
     final arrivals = <int>[];
     var now = before;
@@ -165,6 +189,8 @@ void main() {
       arrivals.add(next.difference(now).length);
       now = next;
     }
+    debugOnRebuildDirtyWidget = null;
+    expect(laid, greaterThan(0), reason: 'LIVENESS: the walk\'s lays are seen');
     expect(
       arrivals.every((count) => count <= 1),
       isTrue,
