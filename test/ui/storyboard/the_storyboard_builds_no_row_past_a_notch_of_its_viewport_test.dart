@@ -7,17 +7,24 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart'
+    show timelineRowWindowMargin;
 
 import '../../helpers/home_page_probes.dart';
 
-/// The storyboard builds NO ROW past its viewport (card frame-panels-build-
-/// in-one-frame ②, 2026-10-29) — by the timeline's own window over the
-/// rail's one table. ↩️Every row of every track was built, seen or not.
+/// The storyboard builds NO ROW past a wheel notch beyond its viewport
+/// ([timelineRowWindowMargin]) — by the timeline's own window over the
+/// rail's one table (card frame-panels-build-in-one-frame ②, 2026-10-29).
+/// ↩️Every row of every track was built, seen or not.
 ///
 /// Every S row the rail and the strips build stands at least partly inside
-/// the rows' viewport, a label and its strip on one line — at the top of the
-/// rows and at their end alike — and a row a pointer holds stays built while
-/// the rows scroll it away.
+/// the rows' viewport grown by that notch on each side, a label and its
+/// strip on one line — at the top of the rows and at their end alike — and
+/// a row a pointer holds stays built while the rows scroll it away.
+///
+/// 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q1 = B,
+/// 「화면 밖 여유 행 — 늘」): the notch is built. ↩️⛔From 2026-10-29 this
+/// pinned no row past the viewport itself.
 void main() {
   /// The track the S rows stand on, as their keys name it.
   late String track;
@@ -79,19 +86,18 @@ void main() {
     track = session.repository.requireProject().tracks.single.id.value;
   }
 
-  testWidgets('every row the storyboard builds stands in its viewport', (
-    tester,
-  ) async {
+  testWidgets('every row the storyboard builds stands within a notch of its '
+      'viewport', (tester) async {
     await pumpManyRows(tester);
 
     void expectEveryRowShown(String where) {
-      final shown = tester.getRect(viewport);
+      final shown = notchPast(tester.getRect(viewport));
       final built = builtSeRows(tester);
       expect(built, isNotEmpty, reason: '⛔전제: $where, an S row stands');
       expect(
         built.length,
         lessThan(_seRows),
-        reason: '⛔전제: $where, not every S row fits the viewport',
+        reason: '⛔전제: $where, not every S row fits the window',
       );
       expect(
         {
@@ -118,7 +124,7 @@ void main() {
         expect(
           row.label.overlaps(shown),
           isTrue,
-          reason: '$where: S$slot\'s label at ${row.label}, the view $shown',
+          reason: '$where: S$slot\'s label at ${row.label}, the window $shown',
         );
         expect(
           row.strip?.top,
@@ -269,12 +275,13 @@ void main() {
       lessThan(shown.height),
       reason: '⛔전제: the smaller window\'s view is shorter',
     );
+    final reach = notchPast(smaller);
     for (final MapEntry(key: slot, value: row)
         in builtSeRows(tester).entries) {
       expect(
-        row.label.overlaps(smaller),
+        row.label.overlaps(reach),
         isTrue,
-        reason: 'shrunk, S$slot\'s label at ${row.label}, the view $smaller',
+        reason: 'shrunk, S$slot\'s label at ${row.label}, the window $reach',
       );
     }
 
@@ -293,8 +300,16 @@ void main() {
   });
 }
 
-/// The S rows the track holds — more than the view shows.
+/// The S rows the track holds — more than the view and its notches show.
 const int _seRows = 30;
+
+/// [view] grown by the notch the rows' window builds past each side of it.
+Rect notchPast(Rect view) => Rect.fromLTRB(
+  view.left,
+  view.top - timelineRowWindowMargin,
+  view.right,
+  view.bottom + timelineRowWindowMargin,
+);
 
 /// One scroll step, less than a row: a row comes into the view at one end
 /// while the other end's row stays, so the window's ends move one at a time.
