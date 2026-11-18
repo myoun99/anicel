@@ -283,8 +283,12 @@ class _BrushEditPressure {
   final List<_PressureFrom> _pressureFroms = [];
   final List<double> _driverOverPointer = [];
 
+  /// How the contact's points came in — the `path` line (F-611).
+  final PenPathTally _path = PenPathTally();
+
   /// Puts the contact that just ended on the input inspector — the `ledger`
-  /// line where the platform keeps one, and the `lean` line — the one
+  /// line where the platform keeps one, the `lean` line and the `path` line
+  /// ([PenPathTally]) — the one
   /// place a device shows whether the platform's word reached the brush —
   /// and starts counting afresh.
   ///
@@ -304,6 +308,10 @@ class _BrushEditPressure {
       _leanTally = _noLean;
     }
     _notePressureFroms();
+    final path = _path.said();
+    if (path != null) {
+      InputInspector.note(path);
+    }
     if (_ledgerAnswers.isEmpty) {
       return;
     }
@@ -460,6 +468,9 @@ class _BrushEditPressure {
       _sidecarTouched = false;
       _heldRepeats.clear();
       _openingForces.clear();
+      _path.press(event.timeStamp);
+    } else {
+      _path.take(event.timeStamp);
     }
     final pressure = pressureOf(event);
     if (pressure.read || opening) {

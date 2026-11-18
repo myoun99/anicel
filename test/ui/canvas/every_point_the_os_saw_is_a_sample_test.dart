@@ -218,6 +218,40 @@ void main() {
       ]);
     },
   );
+
+  // 🗣️F-611 (유저 2026-11-18, iPhone, a finger): the opening of every line
+  // straight — what the phone handed in, said on the phone.
+  testWidgets(
+    "the inspector's path line says how many points a line took, how soon "
+    'the first move came and the longest wait between two — in its opening '
+    'and in all of it',
+    (tester) async {
+      InputInspector.visible.value = true;
+      addTearDown(InputInspector.reset);
+      final lines = <String?>[];
+      await _line(
+        tester,
+        _pressureAndSpeed,
+        [
+          _press(_p(4, 8, 0, 0.5), seenAt: _ms(0)),
+          _merged([_p(20, 10, 8, 0.6), _p(36, 16, 110, 0.7)]),
+          _merged([_p(48, 14, 300, 0.6)]),
+          _lift(_p(60, 12, 310, 0)),
+          // The next line on the same canvas is counted alone.
+          _press(_p(4, 24, 400, 0.5), seenAt: _ms(400)),
+          _merged([_p(30, 24, 408, 0.5)]),
+          _lift(_p(30, 24, 416, 0)),
+        ],
+        strokes: 2,
+        afterEach: () => lines.add(InputInspector.notes['path']),
+      );
+
+      expect(lines.where((line) => line != null).toSet().toList(), [
+        'path pts=4 1st=8ms open=102ms max=190ms',
+        'path pts=2 1st=8ms open=8ms max=8ms',
+      ]);
+    },
+  );
 }
 
 final BrushEditCanvasInputSettings _pressureAndSpeed =
