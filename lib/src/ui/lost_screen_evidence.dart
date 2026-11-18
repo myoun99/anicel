@@ -22,20 +22,28 @@ abstract final class LostScreenEvidence {
   /// Writes the loss of this run's screen, with [active]'s state — once a
   /// run, and only once the screen's device went.
   static void noteOnce(EditorSessionManager? active) {
-    final reason = LostScreen.went.value;
-    if (_noted || reason == null) {
+    final gone = LostScreen.went.value;
+    if (_noted || gone == null) {
       return;
     }
     _noted = true;
-    GpuLossLog.write("the screen's device went", linesOf(reason, active));
+    GpuLossLog.write("the screen's device went", linesOf(gone, active));
   }
 
-  /// The loss's lines: each device's word, the playback and the cut
-  /// [active] stands on. The engine's are of the one the app has now: one
-  /// let go before this was heard wrote its own (`EngineRefusals`).
+  /// The loss's lines: each device's word — the screen's with the moment
+  /// the runner saw it, which the log's own stamp, the moment the app heard
+  /// it, follows — the playback and the cut [active] stands on. The
+  /// engine's are of the one the app has now: one let go before this was
+  /// heard wrote its own (`EngineRefusals`).
   @visibleForTesting
-  static List<String> linesOf(int reason, EditorSessionManager? active) => [
-    'screen watch 0x${reason.toUnsigned(32).toRadixString(16).toUpperCase()}',
+  static List<String> linesOf(
+    ScreenGone gone,
+    EditorSessionManager? active,
+  ) => [
+    'screen watch '
+        '0x${gone.reason.toUnsigned(32).toRadixString(16).toUpperCase()}',
+    'runner saw it ${gone.seenAt.toIso8601String()} '
+        '(${gone.seenAt.toUtc().toIso8601String()})',
     ...appGpuEngineLossLines,
     if (active != null) ..._standing(active),
   ];

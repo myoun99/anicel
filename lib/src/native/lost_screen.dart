@@ -1,6 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+/// The screen's device gone: the reason Windows gave (an HRESULT, as an
+/// int32) and the moment the runner's watch saw it — H63 ③ (관제
+/// 2026-11-18): the log the app writes is stamped when the app hears it,
+/// and the channel and the UI thread lie between the two.
+typedef ScreenGone = ({int reason, DateTime seenAt});
+
 /// 🚨★★★A SCREEN WHOSE GRAPHICS DEVICE WENT IS ONE THE APP NO LONGER DRAWS
 /// ON — IT ASKS WITH WINDOWS' WINDOWS, SAVES AND STARTS AGAIN.
 ///
@@ -32,10 +38,9 @@ abstract final class LostScreen {
   static const startAgainMethod = 'startAgain';
   static const endMethod = 'end';
 
-  /// The reason Windows gave for the device going (an HRESULT), once it
-  /// went this run — null till then.
-  static ValueListenable<int?> get went => _went;
-  static final ValueNotifier<int?> _went = ValueNotifier(null);
+  /// The screen's device gone, once it went this run — null till then.
+  static ValueListenable<ScreenGone?> get went => _went;
+  static final ValueNotifier<ScreenGone?> _went = ValueNotifier(null);
 
   /// Whether the screen's device went this run.
   static bool get hasGone => _went.value != null;
@@ -44,9 +49,12 @@ abstract final class LostScreen {
   /// whose runner does not watch never says it.
   static void listen() {
     channel.setMethodCallHandler((call) async {
-      final reason = call.arguments;
-      if (call.method == wentMethod && reason is int) {
-        _went.value ??= reason;
+      if (call.arguments case [final int reason, final int seenAt]
+          when call.method == wentMethod) {
+        _went.value ??= (
+          reason: reason,
+          seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+        );
       }
       return null;
     });
@@ -77,9 +85,11 @@ abstract final class LostScreen {
   /// process without the engine's teardown, which touches the gone device.
   static Future<void> end() => channel.invokeMethod<void>(endMethod);
 
-  /// Test seam: the screen's device gone, as the runner says it.
+  /// Test seam: the screen's device gone, as the runner says it — seen
+  /// [seenAt], or now.
   @visibleForTesting
-  static void debugGo([int reason = 0x887A0007]) => _went.value ??= reason;
+  static void debugGo([int reason = 0x887A0007, DateTime? seenAt]) =>
+      _went.value ??= (reason: reason, seenAt: seenAt ?? DateTime.now());
 
   /// Test seam: the screen as a launch finds it.
   @visibleForTesting

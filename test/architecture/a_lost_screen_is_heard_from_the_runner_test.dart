@@ -59,9 +59,16 @@ void main() {
     }
     final handles = sourceBodyOf(source, 'FlutterWindow::MessageHandler(');
     expect(handles, contains('if (message == kScreenWentMessage) {'));
+    // H63 ③: [the reason as an int32, the moment the watch saw it as an
+    // int64] — the shape `LostScreen.listen` reads.
+    final says = handles.substring(handles.indexOf('kScreenWent,'));
     expect(
-      handles,
-      contains('kScreenWent, std::make_unique<flutter::EncodableValue>('),
+      says,
+      stringContainsInOrder([
+        'std::make_unique<flutter::EncodableValue>(flutter::EncodableList{',
+        'flutter::EncodableValue(static_cast<int32_t>(wparam))',
+        'flutter::EncodableValue(static_cast<int64_t>(lparam))',
+      ]),
     );
     expect(
       sourceBodyOf(source, 'void FlutterWindow::OnDestroy()'),
@@ -76,7 +83,14 @@ void main() {
     final watch = sourceBodyOf(lost, 'void Watch(');
     expect(watch, contains('RegisterDeviceRemovedEvent'));
     expect(watch, contains('GetDeviceRemovedReason()'));
-    expect(watch, contains('PostMessageW(window, message'));
+    expect(
+      watch,
+      stringContainsInOrder([
+        'PostMessageW(window, message, static_cast<WPARAM>(reason),',
+        'UnixMillisecondsNow());',
+      ]),
+      reason: 'H63 ③: the moment the watch saw it, beside the reason',
+    );
     final again = sourceBodyOf(lost, 'bool StartAgainFor(');
     final letGo = again.indexOf('RemovePropW(window, kRunningWindowProp)');
     final started = again.indexOf('CreateProcessW(');

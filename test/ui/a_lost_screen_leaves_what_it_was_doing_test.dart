@@ -61,8 +61,10 @@ void main() {
     expect(playback.isPlaying, isTrue, reason: '⛔전제: it plays');
     expect(log.existsSync(), isFalse, reason: '⛔전제: nothing went yet');
 
-    // As the runner says it: the HRESULT as an int32, so negative here.
-    LostScreen.debugGo(0x887A0006.toSigned(32));
+    // As the runner says it: the HRESULT as an int32, so negative here, and
+    // the moment its watch saw it (H63 ③).
+    final seen = DateTime.fromMillisecondsSinceEpoch(1795000000123);
+    LostScreen.debugGo(0x887A0006.toSigned(32), seen);
     await tester.pump();
     await tester.pump();
     playback.stop();
@@ -72,6 +74,13 @@ void main() {
     expect(lines.first, startsWith(GpuLossLog.opening));
     expect(lines.first, endsWith("the screen's device went"));
     expect(lines, contains('screen watch 0x887A0006'));
+    expect(
+      lines,
+      contains(
+        'runner saw it ${seen.toIso8601String()} '
+        '(${seen.toUtc().toIso8601String()})',
+      ),
+    );
     // What submits it had moves on as the shell goes on; its word does not.
     expect(lines, contains(appGpuEngineLossLines.first));
     expect(

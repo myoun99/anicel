@@ -160,7 +160,8 @@ constexpr char kOpenHanded[] = "open";
 
 // 🚨★★★A SCREEN WHOSE DEVICE WENT (lost_screen.h says why the runner
 // watches). The runner says so on this channel — once, the reason Windows
-// gave — and Dart asks the user with Windows' own windows and has the
+// gave and the moment the watch saw it, [int32, int64 ms since 1970 UTC]
+// (H63 ③) — and Dart asks the user with Windows' own windows and has the
 // runner start Anicel again for the files it saved
 // (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5).
 // test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
@@ -343,8 +344,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == kScreenWentMessage) {
     if (screen_channel_) {
       screen_channel_->InvokeMethod(
-          kScreenWent, std::make_unique<flutter::EncodableValue>(
-                           static_cast<int32_t>(wparam)));
+          kScreenWent,
+          std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+              flutter::EncodableValue(static_cast<int32_t>(wparam)),
+              flutter::EncodableValue(static_cast<int64_t>(lparam)),
+          }));
     }
     return 0;
   }

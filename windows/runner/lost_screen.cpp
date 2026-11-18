@@ -20,6 +20,21 @@ constexpr DWORD kAskEveryMs = 100;
 // Above the ids a task dialog gives its own buttons (IDOK, IDCANCEL, ...).
 constexpr int kFirstButton = 100;
 
+// Now, in milliseconds since 1970 UTC — the moment the watch sees its device
+// go, which it posts beside the reason (H63 ③, 관제 2026-11-18): the log the
+// app writes is stamped when the app hears it, and the channel and the UI
+// thread lie between the two.
+LPARAM UnixMillisecondsNow() {
+  FILETIME now;
+  ::GetSystemTimePreciseAsFileTime(&now);
+  ULARGE_INTEGER ticks;
+  ticks.LowPart = now.dwLowDateTime;
+  ticks.HighPart = now.dwHighDateTime;
+  // 100 ns ticks since 1601, less those up to 1970.
+  constexpr ULONGLONG kTicksTo1970 = 116444736000000000ULL;
+  return static_cast<LPARAM>((ticks.QuadPart - kTicksTo1970) / 10000);
+}
+
 ComPtr<ID3D11Device> OpenOn(IDXGIAdapter* adapter) {
   ComPtr<ID3D11Device> device;
   const HRESULT hr = ::D3D11CreateDevice(
@@ -47,7 +62,8 @@ void Watch(ComPtr<ID3D11Device> device, HANDLE stop, HWND window,
     }
     const HRESULT reason = device->GetDeviceRemovedReason();
     if (reason != S_OK) {
-      ::PostMessageW(window, message, static_cast<WPARAM>(reason), 0);
+      ::PostMessageW(window, message, static_cast<WPARAM>(reason),
+                     UnixMillisecondsNow());
       break;
     }
   }
