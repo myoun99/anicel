@@ -128,7 +128,8 @@ layers: layers,
     final gesture = await tester.startGesture(start);
     await gesture.moveBy(Offset(0, cellExtent * 4));
 
-    expect(scrubbed, isNotEmpty);
+    // As the ruler's: the press, then where the one move took the drag.
+    expect(scrubbed, containsAllInOrder(<int>[1, 5]));
     expect(selected, isEmpty, reason: 'moves must not commit');
     expect(scrubEnds, 0);
 
