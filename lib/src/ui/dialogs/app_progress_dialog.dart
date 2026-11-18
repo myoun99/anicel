@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../native/lost_screen.dart';
 import '../../services/wait_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -190,6 +191,14 @@ Future<T> runWithAppProgress<T>({
   VoidCallback? onCancel,
   ValueListenable<bool>? cancelLive,
 }) async {
+  // 🚨ONCE THE SCREEN WENT, THE WORK RUNS BARE ([LostScreen]). The window
+  // has to be built before the work starts (below), and no frame is drawn
+  // on a screen whose device went — so behind it the work would never
+  // start: the save of Q1's 「저장하고 다시 시작」 waits on this door
+  // (a-lost-gpu-leaves-the-window-unpainted-Q1).
+  if (LostScreen.hasGone) {
+    return task((_) {});
+  }
   final progress = ValueNotifier<double?>(null);
   final window = AppWaitWindow(
     title: title,

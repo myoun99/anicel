@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "launch_splash.h"
+#include "lost_screen.h"
 #include "win32_window.h"
 
 // What a second Anicel hands the running one (main.cpp): the running window
@@ -48,6 +49,11 @@ class FlutterWindow : public Win32Window {
 
   // Lets Dart say its launch stages on the splash (I-106).
   void ListenForLaunchStages();
+
+  // Watches the device the screen draws on, says on the channel when it
+  // goes, and lets Dart ask with Windows' windows and start again
+  // (lost_screen.h).
+  void ListenForTheScreen();
 
   // Puts this window full screen over its monitor, or back where it stood,
   // and says on the channel which it is now.
@@ -109,6 +115,12 @@ class FlutterWindow : public Win32Window {
   // Where Dart hears the files a second Anicel handed this window.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       files_channel_;
+
+  // Where Dart hears that the screen's device went, asks with Windows'
+  // windows and starts again — and what watches the device.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      screen_channel_;
+  std::unique_ptr<ScreenWatch> screen_watch_;
 
   // Whether the window covers its monitor, and how it stood before — its
   // place, its size, whether it was maximized, and its frame's style.

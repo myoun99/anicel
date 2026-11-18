@@ -867,6 +867,14 @@ class ProjectFile {
   /// gate, the title dots).
   bool get hasUnsavedChanges => _edits != _editsInFile;
 
+  /// 🚨★★★Whether tearing this session down would lose work: edits no file
+  /// has, or a file gone with the clean cels that live as refs into it
+  /// ([hasVanished]). The question every tear-down asks — the window's
+  /// close, a tab's, a lost screen's restart — and so ONE spelling: the
+  /// close and the window each wrote it out till the lost screen made a
+  /// third (2026-11-18).
+  bool wouldLoseWork() => hasUnsavedChanges || hasVanished();
+
   /// The count a save captures before it reads the project, and hands back
   /// as [bindToSavedFile]'s `cleanAsOf`.
   int get editCount => _edits;

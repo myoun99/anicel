@@ -23,14 +23,10 @@ BOOL CALLBACK FindTheRunningWindow(HWND window, LPARAM found) {
 // |file| as the running Anicel can find it: a path given from a command line
 // is read against THIS process's folder, which the running one does not have.
 std::string Absolute(const std::string& file) {
-  const int wide_length =
-      ::MultiByteToWideChar(CP_UTF8, 0, file.c_str(), -1, nullptr, 0);
-  if (wide_length <= 0) {
+  const std::wstring wide = Utf16FromUtf8(file);
+  if (wide.empty()) {
     return file;
   }
-  std::wstring wide(wide_length, L'\0');
-  ::MultiByteToWideChar(CP_UTF8, 0, file.c_str(), -1, wide.data(),
-                        wide_length);
   const DWORD full_length =
       ::GetFullPathNameW(wide.c_str(), 0, nullptr, nullptr);
   if (full_length == 0) {

@@ -13,6 +13,7 @@
 #include <sstream>
 
 #include "resource.h"
+#include "utils.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -53,16 +54,6 @@ struct Stage {
   std::string face_files;
   std::string name;
 };
-
-std::wstring Widen(const std::string& utf8) {
-  if (utf8.empty()) return std::wstring();
-  const int length = ::MultiByteToWideChar(
-      CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-  std::wstring wide(static_cast<size_t>(length), L'\0');
-  ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(),
-                        static_cast<int>(utf8.size()), wide.data(), length);
-  return wide;
-}
 
 std::vector<std::string> SplitOn(const std::string& text, char separator) {
   std::vector<std::string> parts;
@@ -213,7 +204,7 @@ class SplashPainter {
       face_files_ = stage.face_files;
       format_ = MakeFormat();
     }
-    name_ = Widen(stage.name);
+    name_ = Utf16FromUtf8(stage.name);
     dots_ = 1;
   }
 
@@ -257,7 +248,7 @@ class SplashPainter {
     write_->CreateFontSetBuilder(&builder);
     const std::wstring assets = AssetsFolder();
     for (const std::string& file : SplitOn(face_files_, '\t')) {
-      std::wstring path = assets + Widen(file);
+      std::wstring path = assets + Utf16FromUtf8(file);
       std::replace(path.begin(), path.end(), L'/', L'\\');
       ComPtr<IDWriteFontFile> font_file;
       ComPtr<IDWriteFontSetBuilder1> one;

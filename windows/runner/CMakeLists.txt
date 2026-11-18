@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "launch_splash.cpp"
+  "lost_screen.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -53,6 +54,9 @@ target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
 # Direct2D and DirectWrite: the splash writes its launch stage.
 target_link_libraries(${BINARY_NAME} PRIVATE "d2d1.lib" "dwrite.lib")
+# Direct3D 11: the runner's own device on the screen's adapter, which hears
+# a reset of it (lost_screen.h). The task dialog it asks with is comctl32's.
+target_link_libraries(${BINARY_NAME} PRIVATE "d3d11.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

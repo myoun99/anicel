@@ -246,6 +246,60 @@ void main() {
     await heardTillTheNextIsOpen(GpuReadFailed('a read'));
     expect((asked, startedAgain), (2, 1));
   });
+
+  // 🗣️a-lost-gpu-leaves-the-window-unpainted-Q1: the save of 「저장하고 다시
+  // 시작」 reads the drawings back from the canvas engine, whose device a
+  // reset takes with the screen's — and it cannot wait to hear a refusal.
+  test('what cannot wait to hear a refusal stands on an engine not gone: '
+      'another opened in place of the gone one, as a refusal opens it, '
+      'and awaited till it stands — the one opening, never a second; on '
+      'an engine not gone it opens none', () async {
+    final mayStand = Completer<void>();
+    opening(() async {
+      await mayStand.future;
+      await openAppGpuEngine();
+    });
+    await EngineRefusals.standOnAnEngineNotGone();
+    expect(asked, 0, reason: 'not gone');
+
+    final gone = theAppsDeviceGone();
+    var stood = false;
+    unawaited(
+      EngineRefusals.standOnAnEngineNotGone().then((_) => stood = true),
+    );
+    await null;
+    expect(asked, 1, reason: 'after the turn, as a refusal opens one');
+    expect(isTheAppsEngine(gone), isFalse, reason: '⛔premise: let go');
+    await heard(GpuReadFailed('a read on the way'));
+    var alsoStood = false;
+    unawaited(
+      EngineRefusals.standOnAnEngineNotGone().then((_) => alsoStood = true),
+    );
+    await pumpEventQueue();
+    expect(asked, 1, reason: 'the one opening');
+    expect((stood, alsoStood), (false, false), reason: 'not before it stands');
+
+    mayStand.complete();
+    await untilTheNextIsOpen();
+    expect((stood, alsoStood), (true, true));
+    expect((asked, startedAgain, tellings), (1, 1, 0));
+    expect(appGpuEngineIsGone, isFalse);
+  });
+
+  test('within a minute of the last opening it opens none, and the app '
+      'stays on the gone engine, as a refusal leaves it', () async {
+    opening(openAppGpuEngine);
+    theAppsDeviceGone();
+    await heardTillTheNextIsOpen(GpuReadFailed('a read'));
+    expect(asked, 1, reason: '⛔premise');
+
+    now = now.add(const Duration(seconds: 30));
+    final lost = theAppsEngineLost();
+    await EngineRefusals.standOnAnEngineNotGone();
+    expect(asked, 1);
+    expect(isTheAppsEngine(lost), isTrue);
+    expect(lost.debugTakeNoted(), isNotNull, reason: '⛔premise');
+  });
 }
 
 /// Once the app's next engine is open and all that sets off is through —

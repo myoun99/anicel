@@ -13,6 +13,7 @@ import 'src/native/device_battery.dart';
 import 'src/native/engine_refusals.dart';
 import 'src/native/engine_tile_ledger.dart';
 import 'src/native/launch_splash.dart';
+import 'src/native/lost_screen.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
 import 'src/services/licence_entry.dart';
@@ -214,6 +215,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // the reason of the three above: wrapped anywhere that re-runs, a door
   // would tell once a wrap.
   EngineRefusals.install();
+  // The screen's own device going, heard from the runner from before the
+  // first frame (a-lost-gpu-leaves-the-window-unpainted): what the shell
+  // does then reads it whenever the shell is up to.
+  LostScreen.listen();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and

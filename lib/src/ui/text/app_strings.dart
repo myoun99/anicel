@@ -826,6 +826,16 @@ enum AppStrings {
   String get gpuWentByReset => _s('gpuWentByReset');
   String get gpuWentByDriver => _s('gpuWentByDriver');
 
+  /// What Windows' window says once the screen's own graphics device went
+  /// (`LostScreen`, a-lost-gpu-leaves-the-window-unpainted-Q1: 「화면을 그리는
+  /// 그래픽 장치가 멈췄습니다」 + [저장하고 다시 시작] [닫기]) — and what it says
+  /// where the save or the restart did not go through.
+  String get screenWentTitle => _s('screenWentTitle');
+  String get screenWentMessage => _s('screenWentMessage');
+  String get screenWentSaveAndRestart => _s('screenWentSaveAndRestart');
+  String get screenWentNotSaved => _s('screenWentNotSaved');
+  String get screenWentNotStarted => _s('screenWentNotStarted');
+
   // --- A save its file refused: why, and the failed copy (실패본) the work
   // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
   String get saveFailedTitle => _s('saveFailedTitle');
@@ -2930,6 +2940,18 @@ enum AppStrings {
         'Whether it came from this program or another could not be '
         'determined.',
     'gpuWentByDriver': 'Cause: an error inside the graphics driver.',
+    'screenWentTitle': 'The graphics device that draws the screen stopped.',
+    'screenWentMessage':
+        'The screen can no longer be drawn. Save and restart saves every '
+        'open project, then starts the program again with the same '
+        'projects.',
+    'screenWentSaveAndRestart': 'Save and restart',
+    'screenWentNotSaved':
+        'Some projects could not be saved, so the program was not '
+        'restarted.',
+    'screenWentNotStarted':
+        'The program could not be restarted. Your projects are saved: close '
+        'the program and start it again.',
     'uiScaleLabel': 'Interface scale',
     'colorModeLabel': 'Appearance',
     'colorModeDark': 'Dark',
@@ -4472,6 +4494,13 @@ enum AppStrings {
         '原因：グラフィックカードが不正な命令を受けてリセットされました。'
         'このプログラムによるものか、他のプログラムによるものかは特定できませんでした。',
     'gpuWentByDriver': '原因：グラフィックドライバーの内部でエラーが発生しました。',
+    'screenWentTitle': '画面を描くグラフィックデバイスが停止しました。',
+    'screenWentMessage':
+        '画面はこれ以上描画されません。「保存して再起動」を押すと、開いているプロジェクトをすべて保存してから、同じプロジェクトでプログラムを起動し直します。',
+    'screenWentSaveAndRestart': '保存して再起動',
+    'screenWentNotSaved': '保存できなかったプロジェクトがあるため、再起動しませんでした。',
+    'screenWentNotStarted':
+        'プログラムを再起動できませんでした。プロジェクトは保存されています。プログラムを閉じてから起動し直してください。',
     'uiScaleLabel': 'UIの大きさ',
     'colorModeLabel': 'カラーモード',
     'colorModeDark': 'ダーク',
@@ -6448,6 +6477,16 @@ enum AppStrings {
         '원인: 그래픽 장치가 잘못된 명령을 받아 초기화되었습니다. 이 앱 때문인지 '
         '다른 프로그램 때문인지는 확인되지 않았습니다.',
     'gpuWentByDriver': '원인: 그래픽 드라이버 안에서 오류가 났습니다.',
+    // 🗣️유저 2026-11-16 (a-lost-gpu-leaves-the-window-unpainted-Q1): 「윈도
+    // 창으로 알리고 저장하고 다시 시작할지 묻는다」 — 「화면을 그리는 그래픽
+    // 장치가 멈췄습니다」 + [저장하고 다시 시작] [닫기].
+    'screenWentTitle': '화면을 그리는 그래픽 장치가 멈췄습니다.',
+    'screenWentMessage':
+        '화면은 더 그려지지 않습니다. 「저장하고 다시 시작」을 누르면 열린 프로젝트를 모두 저장한 뒤 같은 프로젝트로 앱을 다시 시작합니다.',
+    'screenWentSaveAndRestart': '저장하고 다시 시작',
+    'screenWentNotSaved': '저장하지 못한 프로젝트가 있어 다시 시작하지 않았습니다.',
+    'screenWentNotStarted':
+        '앱을 다시 시작하지 못했습니다. 프로젝트는 저장되었습니다. 앱을 닫고 다시 시작해 주세요.',
     'uiScaleLabel': 'UI 크기',
     'colorModeLabel': '화면 모드',
     'colorModeDark': '다크',
@@ -8468,6 +8507,19 @@ enum AppStrings {
         "invalide. Il n'a pas été possible de déterminer si elle venait de "
         "ce programme ou d'un autre.",
     'gpuWentByDriver': 'Cause : une erreur interne du pilote graphique.',
+    'screenWentTitle':
+        "Le périphérique graphique qui dessine l'écran s'est arrêté.",
+    'screenWentMessage':
+        "L'écran ne peut plus être affiché. « Enregistrer et redémarrer » "
+        'enregistre tous les projets ouverts, puis relance le programme '
+        'avec les mêmes projets.',
+    'screenWentSaveAndRestart': 'Enregistrer et redémarrer',
+    'screenWentNotSaved':
+        "Certains projets n'ont pas pu être enregistrés : le programme n'a "
+        'pas été redémarré.',
+    'screenWentNotStarted':
+        "Le programme n'a pas pu être redémarré. Vos projets sont "
+        'enregistrés : fermez le programme puis relancez-le.',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -10526,6 +10578,12 @@ enum AppStrings {
     'gpuWentByRemoval': '原因：很可能是显卡驱动已更新，或显卡被禁用或断开。这不是本程序造成的。',
     'gpuWentByReset': '原因：显卡收到无效命令后被重置。无法确定该命令来自本程序还是其他程序。',
     'gpuWentByDriver': '原因：显卡驱动内部发生错误。',
+    'screenWentTitle': '绘制画面的图形设备已停止。',
+    'screenWentMessage':
+        '画面已无法继续绘制。点击“保存并重新启动”会保存所有打开的项目，然后用相同的项目重新启动程序。',
+    'screenWentSaveAndRestart': '保存并重新启动',
+    'screenWentNotSaved': '有项目未能保存，因此没有重新启动程序。',
+    'screenWentNotStarted': '无法重新启动程序。项目已保存，请关闭程序后重新启动。',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',

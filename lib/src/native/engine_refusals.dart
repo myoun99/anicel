@@ -104,8 +104,9 @@ abstract final class EngineRefusals {
   /// How the app opens another engine in place of one that is gone.
   static Future<void> Function() _openAnother = openTheAppsEngineAgain;
 
-  /// Whether another is being opened now, and when the last one was.
-  static bool _opensAnother = false;
+  /// Another being opened now — till the app stands on it, or on none —
+  /// and when the last one was.
+  static Future<void>? _opening;
   static DateTime? _openedAnotherAt;
 
   /// Watches both doors, for the app's lifetime: `main`, once — each still
@@ -127,8 +128,25 @@ abstract final class EngineRefusals {
     };
   }
 
+  /// The app on an engine whose device is not gone, as far as one opens:
+  /// the one being opened now awaited, or — the app's own gone — another
+  /// opened in its place as a refusal heard of it opens one ([_hear]).
+  /// Within [openAnotherApart] of the last opening none is, and the app
+  /// stays on the gone one, as a refusal leaves it.
+  ///
+  /// For what cannot wait to hear a refusal: Q1's save once the screen's
+  /// device went (a-lost-gpu-leaves-the-window-unpainted) — a reset takes
+  /// the whole adapter, the canvas engine's device with the screen's, and
+  /// a save reads the drawings back from that engine.
+  static Future<void> standOnAnEngineNotGone() async {
+    if (_opening == null && appGpuEngineIsGone) {
+      _openAnotherIfMay();
+    }
+    await _opening;
+  }
+
   static void _hear(Object error) {
-    if (error is! GpuRefused || _opensAnother) {
+    if (error is! GpuRefused || _opening != null) {
       return;
     }
     if (!appGpuEngineIsGone) {
@@ -143,12 +161,22 @@ abstract final class EngineRefusals {
       if (!error.ofAGoneDevice) {
         _tellOnce(error.runtimeType);
       }
-    } else if (_mayOpenAnother) {
-      _opensAnother = true;
-      scheduleMicrotask(_letGoAndOpenAnother);
-    } else {
+    } else if (!_openAnotherIfMay()) {
       _tellOnce(_deviceGone);
     }
+  }
+
+  /// Opens another engine in place of the app's gone one, after the turn —
+  /// unless the last opened within [openAnotherApart]: answers whether it
+  /// does.
+  static bool _openAnotherIfMay() {
+    if (!_mayOpenAnother) {
+      return false;
+    }
+    final opened = Completer<void>();
+    _opening = opened.future;
+    scheduleMicrotask(() => opened.complete(_letGoAndOpenAnother()));
+    return true;
   }
 
   static void _tellOnce(Object cause) {
@@ -172,7 +200,7 @@ abstract final class EngineRefusals {
     try {
       await _openAnother();
     } finally {
-      _opensAnother = false;
+      _opening = null;
     }
     // Asked of the app's engine, not of what opened it: none is open
     // where one would not open, and one may be gone as it was made ready.
@@ -191,7 +219,7 @@ abstract final class EngineRefusals {
   @visibleForTesting
   static void debugForget() {
     _causes.clear();
-    _opensAnother = false;
+    _opening = null;
     _openedAnotherAt = null;
     _wentBy = GpuDeviceWent.unsaid;
     _openAnother = openTheAppsEngineAgain;

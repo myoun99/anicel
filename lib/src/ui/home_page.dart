@@ -23,6 +23,7 @@ import '../native/device_battery.dart';
 import '../native/drawing_engines.dart';
 import '../native/engine_refusals.dart';
 import '../native/handed_files.dart';
+import '../native/lost_screen.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
@@ -113,6 +114,7 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
 import 'session/app_clipboard.dart';
 import 'session/editor_app_settings.dart';
+import 'session/lost_screen_restart.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
@@ -625,6 +627,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.addListener(_sayTheDeviceStartedAgain);
+    LostScreen.went.addListener(_keepTheWorkOfALostScreen);
+    // Gone before this shell listened — a reset during the launch.
+    scheduleMicrotask(_keepTheWorkOfALostScreen);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -1090,14 +1095,42 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ///
   /// 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
   /// 알린다」 · 「획이 사라진 경우와 캔버스가 멈춘 경우 둘 다 같은 창이다」.
-  void _sayWhatTheEngineRefused() => unawaited(
-    showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('gpu-refused-notice'),
-      title: AppText.strings.commonNotice,
-      message: AppText.strings.gpuRefusedNotice,
-    ),
-  );
+  void _sayWhatTheEngineRefused() {
+    if (LostScreen.hasGone) {
+      return;
+    }
+    unawaited(
+      showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('gpu-refused-notice'),
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.gpuRefusedNotice,
+      ),
+    );
+  }
+
+  /// 🗣️a-lost-gpu-leaves-the-window-unpainted-Q1 (유저 2026-11-16): 「윈도
+  /// 창으로 알리고 저장하고 다시 시작할지 묻는다」 — once the screen's own
+  /// device went ([LostScreen]), Windows' window asks, and saves and starts
+  /// Anicel again on its answer ([keepTheWorkOfALostScreen]).
+  ///
+  /// ⛔And the engine's two notices are not said meanwhile
+  /// ([_sayWhatTheEngineRefused], [_sayTheDeviceStartedAgain]). The same
+  /// reset takes the canvas engine's device, and they would come up as
+  /// Windows' windows over that question — one saying 「you can go on
+  /// working」 of a screen that draws no more. Q1's window is the one the
+  /// user chose for this loss.
+  void _keepTheWorkOfALostScreen() {
+    if (!LostScreen.hasGone || !mounted || _keepsTheWorkOfALostScreen) {
+      return;
+    }
+    _keepsTheWorkOfALostScreen = true;
+    unawaited(keepTheWorkOfALostScreen(context, () => _projects.sessions));
+  }
+
+  /// Whether the question stands or stood: it is asked once a loss — heard
+  /// by the listener, or found by the launch's own look.
+  bool _keepsTheWorkOfALostScreen = false;
 
   /// The graphics device started again and the app stands on another
   /// engine: said in the common window, with why the device went as far as
@@ -1107,17 +1140,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
   /// 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
   /// 다시시작되었는지는 알수있게」.
-  void _sayTheDeviceStartedAgain() => unawaited(
-    showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('gpu-started-again-notice'),
-      title: AppText.strings.commonNotice,
-      message: gpuStartedAgainMessage(
-        AppText.strings,
-        EngineRefusals.wentBy,
+  void _sayTheDeviceStartedAgain() {
+    if (LostScreen.hasGone) {
+      return;
+    }
+    unawaited(
+      showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('gpu-started-again-notice'),
+        title: AppText.strings.commonNotice,
+        message: gpuStartedAgainMessage(
+          AppText.strings,
+          EngineRefusals.wentBy,
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// The app behind its one wait window while it gets its engine ready
   /// ([appEngineGetsReady]), as it is behind it for an open or a save: the
@@ -1160,6 +1198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
+    LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();
@@ -1940,7 +1979,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // exists to protect work. ⚠️"Nothing to lose" is no longer only the
     // dirty flag: a saved cel lives as a ref into the `.anicel`, so a
     // clean session whose file has gone is asked too. The predicate is
-    // [ensureUnsavedWorkSettled]'s first statement, not this one.
+    // [ProjectFile.wouldLoseWork], one for every tear-down.
     //
     // The question itself lives in [ensureUnsavedWorkSettled] now, shared
     // with a tab's close button — which closes a project just as surely as
@@ -1966,8 +2005,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// SCREEN — see [_sayAbout]). One with nothing to lose is not brought
   /// forward just to be let go.
   Future<bool> _settleWithItOnScreen(EditorSessionManager session) async {
-    if (!session.projectFile.hasUnsavedChanges &&
-        !session.projectFile.hasVanished()) {
+    if (!session.projectFile.wouldLoseWork()) {
       return true;
     }
     if (!identical(session, _session)) {
