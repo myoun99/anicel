@@ -343,6 +343,12 @@ void main() {
     // sound as it was is never converted.
     test('at another rate hands every sample back as it was at no amount '
         'and cleans at the whole — late by nothing', () {
+      final at44 = FilterStretches(channels: 2, rate: 44100, stages: [at(1)]);
+      expect(at44.latency, 1039, reason: 'two frames and the conversions');
+      // Each channel's model, the frames it holds late — as far back as the
+      // conversion up reads —, the one it hears, what the conversion down
+      // reads back, and the cleaned ones waiting: sized at the rate.
+      expect(at44.kept, hasLength(2 * (3059 + 1039 + 480 + 169 + 1039)));
       final sound = _madeUpSound();
       for (final rate in [44100, 96000]) {
         Float32List bake(double amount) => filterAudio(
@@ -356,12 +362,6 @@ void main() {
         expect(cleaned, hasLength(sound.length), reason: '$rate Hz');
         expect(cleaned, isNot(sound), reason: '$rate Hz: LIVENESS');
       }
-      final at44 = FilterStretches(channels: 2, rate: 44100, stages: [at(1)]);
-      expect(at44.latency, 1039, reason: 'two frames and the conversions');
-      // Each channel's model, the frames it holds late — as far back as the
-      // conversion up reads —, the one it hears, what the conversion down
-      // reads back, and the cleaned ones waiting: sized at the rate.
-      expect(at44.kept, hasLength(2 * (3059 + 1039 + 480 + 169 + 1039)));
     });
   });
 }
