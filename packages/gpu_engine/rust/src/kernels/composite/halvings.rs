@@ -122,6 +122,12 @@ pub(crate) struct Kept {
 /// made, not shared ([`Kept::made_over`]).
 pub(crate) type Film<'a> = (&'a Kept, &'a dyn Fn((i32, i32)) -> bool);
 
+/// The grid of the tiles the pixels `extent`, [left, top, right, bottom),
+/// meet, none of them placed yet ([`TileSet::unplaced`]).
+fn unplaced_over([left, top, right, bottom]: [i32; 4]) -> Option<TileSet> {
+    TileSet::unplaced((left, top), (right.abs_diff(left), bottom.abs_diff(top)))
+}
+
 impl Kept {
     /// `plan` composited over the pixels `extent`, [left, top, right,
     /// bottom), nothing past it, and kept.
@@ -157,6 +163,14 @@ impl Kept {
         Self::made_in(engine, composite, plan, extent, Some(over), &engine.pictures, budget)
     }
 
+    /// The tiles [`Self::made`] keeps of `plan` over the pixels `extent`:
+    /// each it lays anything on ([`Plan::lays_on`]) — what a picture weighs
+    /// before it is made (the playback's room is asked for it).
+    pub(crate) fn tiles_made(plan: &Plan, extent: [i32; 4]) -> Option<usize> {
+        let set = unplaced_over(extent)?;
+        Some(set.grid().into_iter().filter(|&tile| plan.lays_on(tile)).count())
+    }
+
     /// `made_over` over `over` — `made` where none —, kept in `pictures`:
     /// the engine's, or a test's of fewer tiles a page.
     pub(crate) fn made_in(
@@ -168,9 +182,7 @@ impl Kept {
         pictures: &Pictures,
         budget: Budget,
     ) -> Option<Self> {
-        let [left, top, right, bottom] = extent;
-        let size = (right.abs_diff(left), bottom.abs_diff(top));
-        let set = TileSet::unplaced((left, top), size)?;
+        let set = unplaced_over(extent)?;
         if over.is_some_and(|(film, _)| !film.pictures.is(pictures)) {
             return fail("a picture is laid over a film kept in another pool");
         }

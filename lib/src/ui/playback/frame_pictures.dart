@@ -12,7 +12,9 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/engine_chain_holds.dart';
+import '../../native/engine_frame_tools.dart' show appEngineFrameToolsOpen;
 import '../../services/cel_content_notes.dart';
 import '../../services/cel_looks.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
@@ -582,21 +584,39 @@ class FramePictures implements PlaybackPictures {
     }
   }
 
-  /// What the picture will weigh: the tiles the engine keeps of its
-  /// world ([EngineStackScreen.bytesOver]), where every cel it draws is in
-  /// hand ([readIn]) — and else of the page's. ⛔Reads nothing: a walk
-  /// weighs the frames it asks for ahead before it reads them.
+  /// What the picture will weigh: the tiles the engine keeps of it laid
+  /// afresh ([EngineStackScreen.bytesToMake]), where every cel it draws is
+  /// in hand ([readIn]) — and else of the page's ([EngineStackScreen.
+  /// bytesOver]). ⛔Reads nothing: a walk weighs the frames it asks for
+  /// ahead before it reads them.
+  ///
+  /// ⚠️Where the engine cannot plan it yet — its tools still opening, its
+  /// chains' kernels still to compile ([FrameKernelsToCome]) — every tile
+  /// its world meets: more than it will weigh, never less.
   @override
   int bytesToMake(DemandedPicture picture) {
     final nodes = stackOf(picture);
     final canvasSize = pageOf(picture).canvasSize;
-    return EngineStackScreen.bytesOver(
-      stackedCelsOf(_drawnOf(nodes)).every(
-            (cel) => _aheadLooks.holds(cel, canvasSize: canvasSize),
-          )
-          ? drawingNow(nodes, picture, looks: _aheadLooks).frame.extent
-          : canvasSize.canvasRect,
-    );
+    final inHand = stackedCelsOf(
+      _drawnOf(nodes),
+    ).every((cel) => _aheadLooks.holds(cel, canvasSize: canvasSize));
+    if (!inHand) {
+      return EngineStackScreen.bytesOver(canvasSize.canvasRect);
+    }
+    final frame = drawingNow(nodes, picture, looks: _aheadLooks).frame;
+    final tools = appEngineFrameToolsOpen;
+    if (tools != null) {
+      try {
+        return EngineStackScreen.bytesToMake(
+          frame,
+          tools.composite,
+          tools.letters,
+        );
+      } on FrameKernelsToCome {
+        // Weighed as the world it holds, below.
+      }
+    }
+    return EngineStackScreen.bytesOver(frame.extent);
   }
 
   /// Whether every cel [nodes] draw for [picture] is in hand — its stored

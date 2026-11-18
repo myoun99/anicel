@@ -2144,6 +2144,13 @@ class GpuPlan implements _OfAnEngine {
   /// from begin ([mapDrawn]).
   int get steps => rust.planSteps(_plan);
 
+  /// The tiles a screen keeps of the plan laid afresh over the pixels
+  /// [extent] — [left, top, right, bottom) —: each it lays anything on,
+  /// what the picture will weigh in tiles ([GpuScreen.compose]).
+  int tilesMade((int, int, int, int) extent) => using(
+    (arena) => _checked(rust.planTilesMade(_plan, _rect(arena, extent))),
+  );
+
   /// Takes the plan's steps from step [first] on as the steps a blur map is
   /// drawn from — drawn alone over the blur's rectangle, as they show by
   /// themselves —, read as [mapLaid]'s; returns the index a lens blur

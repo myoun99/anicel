@@ -107,6 +107,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_cel_passed_runs",
             "gpu_engine_held_bytes_of",
             "gpu_engine_plan_steps",
+            "gpu_engine_plan_tiles_made",
             "gpu_engine_plugin_reads_the_moment",
             "gpu_engine_screen_bytes",
             "gpu_engine_stroke_bytes",

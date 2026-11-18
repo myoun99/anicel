@@ -33,7 +33,7 @@ use crate::kernels::pool::Pool;
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
-use super::halvings::Camera;
+use super::halvings::{Camera, Kept};
 use super::held::{HeldChains, held_bytes};
 use super::screen::Screen;
 use super::{
@@ -636,6 +636,24 @@ pub unsafe extern "C" fn gpu_engine_plan_keys(plan: *mut Planned) -> u32 {
     let plan = unsafe { &mut *plan };
     plan.keys.push(KeyChain { runs: Vec::new() });
     plan.keys.len() as u32 - 1
+}
+
+/// The tiles a screen keeps of `plan` laid afresh over the pixels `extent`
+/// — [left, top, right, bottom) —: each it lays anything on
+/// ([`Kept::tiles_made`]), what the picture will weigh. -1 where `extent`
+/// lies past the grid, see the last error.
+///
+/// # Safety
+/// `plan` is live and `extent` holds four words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_tiles_made(
+    plan: *const Planned,
+    extent: *const i32,
+) -> i64 {
+    // SAFETY: see the function's contract.
+    let (plan, extent) = unsafe { (&*plan, *extent.cast::<[i32; 4]>()) };
+    plan.laid_on(&[], |plan| Kept::tiles_made(plan, extent))
+        .map_or(-1, |tiles| i64::try_from(tiles).unwrap_or(i64::MAX))
 }
 
 /// Adds to key chain `keys` a run of `count` colour keys, as the app's
