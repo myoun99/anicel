@@ -944,7 +944,7 @@ impl Composite {
         let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
         // The tiles' output, and the surface's where there is one.
         let outputs = [Some(None), shown.map(Some)];
-        let (source, binding) = (&composite.pages.source(), composite.surface_binding());
+        let (source, binding) = (&composite.pages.stored(), composite.surface_binding());
         let made = engine.side_by_side(outputs.into_iter().flatten().map(|output| {
             move || (output, compile(engine, source, binding, Compiled::full(output)))
         }));
@@ -1157,7 +1157,7 @@ impl Composite {
     /// has why): made, then put in its output's cell.
     fn full(&self, engine: &Engine, surface: Option<&'static str>) -> wgpu::ComputePipeline {
         let (cell, full) = (self.fulls.cell(surface), Compiled::full(surface));
-        kept_or_made(&cell, || compile(engine, &self.pages.source(), self.surface_binding(), full)).clone()
+        kept_or_made(&cell, || compile(engine, &self.pages.stored(), self.surface_binding(), full)).clone()
     }
 
     /// Compiles the passes asked for and not made, the latest asked first,
@@ -1171,7 +1171,7 @@ impl Composite {
     /// (`Apart`, in `device.rs`): no one waits for a pass of a plan's own.
     fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
-        let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
+        let (pages, surface_binding) = (self.pages.stored(), self.surface_binding());
         std::thread::spawn(move || loop {
             engine.apart.wait();
             let Some(wanted) = passes.next() else {

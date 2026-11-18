@@ -249,7 +249,7 @@ impl CelPixels {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
-        let read = pages.source();
+        let read = pages.stored();
         let verbs = include_str!("cel_pixel.wgsl");
         let sources = [KEY_WGSL, TILE_WGSL, PREMULTIPLY_WGSL, &read, BYTE_WGSL, WALK_WGSL, verbs];
         Some(Self {

@@ -49,6 +49,8 @@ mod one_premultiply;
 mod one_side_by_side;
 #[cfg(test)]
 mod one_sixteen_bit;
+#[cfg(test)]
+mod one_stored_read;
 mod paged;
 mod pages;
 mod resample;

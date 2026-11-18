@@ -57,7 +57,7 @@ impl Ink {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
-        let read = pages.source();
+        let read = pages.stored();
         let sources = [TILE_WGSL, &read, BYTE_WGSL, WALK_WGSL, include_str!("ink.wgsl")];
         Some(Self {
             scan: pipeline(engine, &sources, "ink_box"),

@@ -76,7 +76,8 @@ struct Pass {
 // The stack between passes, two words a level, then the output tiles,
 // then the pass's rows of the mask.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
-// The pages, and page_word, come before this (shared/pages.wgsl).
+// The pages, and stored_word, come before this (shared/pages.wgsl and
+// shared/stored.wgsl).
 //__OUTPUT__
 
 // byte.wgsl's host: the pass's rows of the mask are in `work`.
@@ -135,8 +136,7 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   }
   // A page the pass binds none of is NO_PAGE, no case of page_word's.
   let k = plan[pass_.pages_at + page];
-  let index = (entry & 0xffffu) * TILE_TEXELS + tile_texel(u32(x), u32(y));
-  return row_keyed(at, page_word(k, index));
+  return row_keyed(at, stored_word(k, entry & 0xffffu, tile_texel(u32(x), u32(y))));
 }
 
 // What the row of step `at` shows of the `word` R1 laid for it, straight
