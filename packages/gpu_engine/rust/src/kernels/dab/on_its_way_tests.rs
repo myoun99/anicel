@@ -263,7 +263,9 @@ fn a_stroke_s_step_waits_for_no_turn_of_the_engine_s_thread() {
 
 // A pile holds what it was handed (`Piled`): a tip let go of the moment the
 // pile returns, before the engine's thread has run it — its memory taken
-// by a tip of nothing at once — lays as one kept.
+// by a tip of nothing at once — lays as one kept. ⚠️A tip the stroke has
+// not sent yet: a tip is sent once, known again by its id (`placing`), and
+// one sent is not read again.
 #[test]
 fn a_tip_let_go_of_as_its_pile_returns_lays_as_one_kept() {
     // SAFETY: the engine is this test's own, live till its close; each tip
@@ -277,8 +279,9 @@ fn a_tip_let_go_of_as_its_pile_returns_lays_as_one_kept() {
         assert_eq!(done_here(&*own.engine), Ok(()));
         gpu_engine_stroke_clear(own.stroke, own.engine);
         gpu_engine_stand_still(own.engine, 500);
-        pile(&own, &[tipped(tip, 8.0, [20.0, 20.0])]);
-        gpu_engine_dab_texture_free(tip);
+        let again = gpu_engine_dab_texture_new(CORNERS.as_ptr(), 2);
+        pile(&own, &[tipped(again, 8.0, [20.0, 20.0])]);
+        gpu_engine_dab_texture_free(again);
         let nothing = gpu_engine_dab_texture_new([0.0; 4].as_ptr(), 2);
         let (_, freed) = land(&own, NO_TILE, WHOLE, std::ptr::null(), Some(712));
         assert_eq!(done_here(&*own.engine), Ok(()));
@@ -287,6 +290,7 @@ fn a_tip_let_go_of_as_its_pile_returns_lays_as_one_kept() {
         assert!(kept.chunks_exact(4).any(|pixel| pixel[3] != 0), "LIVENESS: the tip was laid");
         assert!(freed == kept, "the tip let go of lays as the one kept");
         gpu_engine_dab_texture_free(nothing);
+        gpu_engine_dab_texture_free(tip);
         close(own);
     }
 }
