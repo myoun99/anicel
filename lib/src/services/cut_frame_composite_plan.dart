@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
 import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
@@ -1541,6 +1541,28 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   /// PLACE ([CutFrameCompositeGhost]), bottom → top. Null for every route
   /// that composites the film.
   List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
+}) => _layTree(
+  cut: cut,
+  frameIndex: frameIndex,
+  liveLayerId: liveLayerId,
+  ghostsOf: ghostsOf,
+  ownNodesOf: (layer) => _ownNodesAt(cut, layer, (
+    frameIndex: frameIndex,
+    foldBufferedFolders: false,
+    liveLayerId: liveLayerId,
+  )),
+);
+
+/// [resolveCutFrameCompositeTree], each row's own nodes as [ownNodesOf]
+/// hands them ([_ownNodesAt]) — the film's kept across an edit where the
+/// row reads all it read ([filmTreeOf]).
+List<CompositeNode<CutFrameCompositeRow>> _layTree({
+  required Cut cut,
+  required int frameIndex,
+  required LayerId? liveLayerId,
+  required List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
+  required List<CompositeNode<CutFrameCompositeRow>> Function(Layer layer)
+  ownNodesOf,
 }) {
   _compositeTreesLaid += 1;
   // folder id (null = top level) → the nodes gathered under it so far.
@@ -1655,18 +1677,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
           break;
       }
     }
-    final row = _resolveLayerNode(cut, layer, (
-      frameIndex: frameIndex,
-      foldBufferedFolders: false,
-      liveLayerId: liveLayerId,
-    ));
-    if (row != null) {
-      final [standing, ...over] = _rowNodes(
-        cut,
-        layer,
-        row,
-        asOnePicture: meetsAClip(cut, layer),
-      );
+    if (ownNodesOf(layer) case [final standing, ...final over]) {
       place(layer, standing);
       // The letters over a row that neither clips nor is clipped to — so
       // [place] laid it last in its list.
@@ -1706,20 +1717,202 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
 /// is (`compositeStructureSpansIn`). ⛔One cut, not one per cut held
 /// weakly as those are: a tree for every frame of every cut the history
 /// holds would be held as long as it holds them.
+///
+/// Each row's own nodes are kept with the trees ([_FilmRows]), and an edit
+/// hands the next cut those of every row that reads all it read: an edit
+/// is a new cut whose untouched rows are the very rows they were, so the
+/// trees are laid anew around them and only the touched rows are resolved
+/// anew. 🔬A ruler's bar recounts its spans after every edit, and resolving
+/// each row of each frame was about 45% of laying the trees (F-620, the
+/// Surface, S5_BA cut 352 · 68 rows, a cel number's size changed 20 times).
 List<CompositeNode<CutFrameCompositeRow>> filmTreeOf(
   Cut cut,
   int frameIndex,
 ) {
   if (!identical(_filmTrees.cut, cut)) {
-    _filmTrees = (cut: cut, trees: {});
+    _filmTrees = (
+      cut: cut,
+      trees: {},
+      rows: _FilmRows(cut, carried: _filmTrees.rows),
+    );
   }
+  final rows = _filmTrees.rows!;
   return _filmTrees.trees[frameIndex] ??= List.unmodifiable(
-    resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+    _layTree(
+      cut: cut,
+      frameIndex: frameIndex,
+      liveLayerId: null,
+      ghostsOf: null,
+      ownNodesOf: (layer) => rows.ownNodesOf(layer, frameIndex),
+    ),
   );
 }
 
-({Cut? cut, Map<int, List<CompositeNode<CutFrameCompositeRow>>> trees})
-_filmTrees = (cut: null, trees: {});
+({
+  Cut? cut,
+  Map<int, List<CompositeNode<CutFrameCompositeRow>>> trees,
+  _FilmRows? rows,
+})
+_filmTrees = (cut: null, trees: {}, rows: null);
+
+/// Whether a row's own nodes [filmTreeOf] hands on from the cut before an
+/// edit are resolved anew each time and held to the kept ones — set by the
+/// test suite, so an input of a row that [_rowReads] does not name throws
+/// in whichever test moves it, as [debugCheckFrameStanding] does for a
+/// frame's key.
+bool debugCheckFilmRowsKept = false;
+
+/// How many rows' own nodes the film has resolved ([_FilmRows]) — the work
+/// an edit hands on, read by the test that pins it.
+@visibleForTesting
+int get debugFilmRowsResolved => _filmRowsResolved;
+
+int _filmRowsResolved = 0;
+
+/// The film's rows of [_cut] ([filmTreeOf]): each row's own nodes by frame
+/// ([_ownNodesAt]), and what they were resolved from ([_rowReads]).
+final class _FilmRows {
+  /// The rows of [_cut], with those [carried] — the cut's before an edit —
+  /// holds of a row [_cut] holds still, reading all it read.
+  _FilmRows(this._cut, {required _FilmRows? carried}) {
+    if (carried == null) {
+      return;
+    }
+    final stack = _stackOf(_cut);
+    for (final MapEntry(key: layer, value: kept) in carried._rows.entries) {
+      final at = stack.indexOf(layer.id);
+      if (at >= 0 &&
+          identical(_cut.layers[at], layer) &&
+          _readAlike(kept.reads, _rowReads(_cut, layer))) {
+        _rows[layer] = (reads: kept.reads, byFrame: kept.byFrame, handed: true);
+      }
+    }
+  }
+
+  final Cut _cut;
+
+  final Map<
+    Layer,
+    ({
+      List<Object?> reads,
+      Map<int, List<CompositeNode<CutFrameCompositeRow>>> byFrame,
+      bool handed,
+    })
+  >
+  _rows = Map.identity();
+
+  List<CompositeNode<CutFrameCompositeRow>> ownNodesOf(
+    Layer layer,
+    int frameIndex,
+  ) {
+    final row = _rows[layer] ??= (
+      reads: _rowReads(_cut, layer),
+      byFrame: {},
+      handed: false,
+    );
+    final kept = row.byFrame[frameIndex];
+    if (kept == null) {
+      _filmRowsResolved += 1;
+      return row.byFrame[frameIndex] = _ownNodesAt(_cut, layer, (
+        frameIndex: frameIndex,
+        foldBufferedFolders: false,
+        liveLayerId: null,
+      ));
+    }
+    assert(
+      !debugCheckFilmRowsKept ||
+          !row.handed ||
+          _laidAlike(
+            kept,
+            _ownNodesAt(_cut, layer, (
+              frameIndex: frameIndex,
+              foldBufferedFolders: false,
+              liveLayerId: null,
+            )),
+          ),
+      'row ${layer.id} of ${_cut.id} at frame $frameIndex was handed on '
+      'from the cut before an edit, and resolves otherwise now — an input '
+      'of the row that _rowReads does not name moved',
+    );
+    return kept;
+  }
+}
+
+/// What [layer]'s own nodes in [cut] are resolved from besides the frame
+/// ([_ownNodesAt]): the paper, whether it meets a clip, the row whose fx it
+/// wears and the base it rides ([_paintingRowOf]), and each folder above
+/// it with whether that folder meets a clip — whether it buffers
+/// ([folderNeedsCompositeBuffer]). Every other input is a field of one of
+/// these rows.
+List<Object?> _rowReads(Cut cut, Layer layer) {
+  final painting = _paintingRowOf(cut, layer);
+  return [
+    cut.canvasSize,
+    meetsAClip(cut, layer),
+    painting?.carrier,
+    painting?.base,
+    for (final folder in _stackOf(cut).folders.ancestryOf(layer.folderId)) ...[
+      folder,
+      meetsAClip(cut, folder),
+    ],
+  ];
+}
+
+/// Whether [a] and [b] are what a row was resolved from both times: its
+/// rows the very same, all else equal.
+bool _readAlike(List<Object?> a, List<Object?> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var at = 0; at < a.length; at += 1) {
+    final (was, now) = (a[at], b[at]);
+    if (!(identical(was, now) || (was is! Layer && was == now))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Whether [a] and [b], a row's own nodes ([_rowNodes]), lay alike.
+bool _laidAlike(
+  List<CompositeNode<CutFrameCompositeRow>> a,
+  List<CompositeNode<CutFrameCompositeRow>> b,
+) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var at = 0; at < a.length; at += 1) {
+    final alike = switch ((a[at], b[at])) {
+      (
+        CompositeLeaf(payload: final CutFrameCompositeEntry was),
+        CompositeLeaf(payload: final CutFrameCompositeEntry now),
+      ) =>
+        identical(was.layer, now.layer) &&
+            identical(was.frame, now.frame) &&
+            was.opacity == now.opacity &&
+            was.blendMode == now.blendMode &&
+            was.placement == now.placement &&
+            listEquals(was.effects, now.effects),
+      (
+        CompositeCelNumber(on: final wasOn, letters: final wasLetters),
+        CompositeCelNumber(on: final nowOn, letters: final nowLetters),
+      ) =>
+        wasLetters == nowLetters && _laidAlike([wasOn], [nowOn]),
+      (final CompositeGroup<CutFrameCompositeRow> was,
+          final CompositeGroup<CutFrameCompositeRow> now) =>
+        was.opacity == now.opacity &&
+            was.blendMode == now.blendMode &&
+            was.tint == now.tint &&
+            listEquals(was.effects, now.effects) &&
+            _laidAlike(was.children, now.children),
+      _ => false,
+    };
+    if (!alike) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /// How many trees have been laid ([resolveCutFrameCompositeTree]) — the
 /// work [filmTreeOf] keeps, read by the tests that pin it.
@@ -1727,6 +1920,22 @@ _filmTrees = (cut: null, trees: {});
 int get debugCompositeTreesLaid => _compositeTreesLaid;
 
 int _compositeTreesLaid = 0;
+
+/// [layer]'s own nodes in [cut]'s tree at [at] ([_rowNodes]) — none where
+/// it draws nothing there ([_resolveLayerNode]).
+List<CompositeNode<CutFrameCompositeRow>> _ownNodesAt(
+  Cut cut,
+  Layer layer,
+  ({int frameIndex, bool foldBufferedFolders, LayerId? liveLayerId}) at,
+) => switch (_resolveLayerNode(cut, layer, at)) {
+  final row? => _rowNodes(
+    cut,
+    layer,
+    row,
+    asOnePicture: meetsAClip(cut, layer),
+  ),
+  null => const [],
+};
 
 /// [row] — [layer]'s, at a frame, or a ghost of it — as its nodes in a
 /// tree, bottom → top: its picture, and the letters of a cel number its
