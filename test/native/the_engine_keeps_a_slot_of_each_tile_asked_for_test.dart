@@ -486,10 +486,10 @@ void main() {
   test('a map of tiles asked again is answered as it was — its slots not '
       'asked again — till a slot is let go', () {
     final ledger = EngineTileLedger(appGpuEngine);
-    final first = tileOf(50);
+    final last = tileOf(51);
     final tiles = {
-      TileCoord(x: 0, y: 0): first,
-      TileCoord(x: 1, y: 0): tileOf(51),
+      TileCoord(x: 0, y: 0): tileOf(50),
+      TileCoord(x: 1, y: 0): last,
     };
     final grid = ledger.held((hold) => hold.gridOf(a, tiles));
     final asked = ledger.debugSlotsAsked;
@@ -499,12 +499,13 @@ void main() {
     expect(ledger.debugSlotsAsked, asked);
     expect(again.tiles, grid.tiles);
 
-    ledger.retire(first);
+    // Its last: every slot is asked whether it is out, not the first.
+    ledger.retire(last);
     final anew = ledger.held((hold) => hold.gridOf(a, tiles));
 
     expect(ledger.debugSlotsAsked, greaterThan(asked));
-    expect(anew.tiles.first, ledger.slotOf(first), reason: 'its slot now');
-    expect(anew.tiles.first, isNotNull);
+    expect(anew.tiles.last, ledger.slotOf(last), reason: 'its slot now');
+    expect(anew.tiles.last, isNotNull);
   });
 
   // A stroke's tiles are collected as it goes, each letting its slot go
