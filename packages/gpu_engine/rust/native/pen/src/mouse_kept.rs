@@ -37,6 +37,11 @@ use crate::points_win::{Move, mouse_history, mouse_lost, newer_than, told_alike}
 
 /// How often the history is read while a button is down: well inside the
 /// 64 moves Windows keeps — 64 ms of a 1 kHz mouse, 8 ms of an 8 kHz one.
+///
+/// 🔬SLEPT, NOT PARKED (2026-11-19): `park_timeout` waits out the system's
+/// clock tick — Surface Pro 11, 4 ms asked of it took 15.69 ms at the
+/// median, past an 8 kHz mouse's 64 moves — where std's `sleep` waits on a
+/// high-resolution timer: 4.51 ms.
 pub(crate) const KEEP_EVERY: Duration = Duration::from_millis(4);
 
 /// What was kept since a button went down: the moves past the press no
@@ -146,18 +151,24 @@ pub(crate) fn keep_from(kept: Kept) {
     *self::kept() = Some(kept);
 }
 
+/// The keeping thread's reads so far, for a test to time its turns by.
+#[cfg(test)]
+pub(crate) static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Ends keeping: what was kept let go of.
 pub(crate) fn release() {
     *kept() = None;
 }
 
-/// The keeping thread: a read every [`KEEP_EVERY`] while a button is down,
-/// asleep while none is.
+/// The keeping thread: a read every [`KEEP_EVERY`] while a button is down —
+/// slept, not parked, for the wait asked — asleep while none is.
 fn keep() {
     loop {
         if kept().is_some() {
             read();
-            std::thread::park_timeout(KEEP_EVERY);
+            #[cfg(test)]
+            READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            std::thread::sleep(KEEP_EVERY);
         } else {
             std::thread::park();
         }

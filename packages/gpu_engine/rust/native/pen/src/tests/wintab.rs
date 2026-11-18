@@ -1049,6 +1049,29 @@ fn a_mouse_press_in_the_view_keeps_its_history_till_the_capture_goes() {
     assert!(!crate::mouse_kept::keeping(), "let go with the capture");
 }
 
+// 🔬A held button's history is read every 4 ms, not at the system's clock
+// tick — 15.6 ms on Surface Pro 11, past the 8 ms an 8 kHz mouse's 64 moves
+// last. The best of five spans: a busy machine may hold the thread up in one.
+#[test]
+fn a_held_button_s_history_is_read_well_inside_an_8_khz_mouse_s_64_moves() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    let reads = || crate::mouse_kept::READS.load(std::sync::atomic::Ordering::Relaxed);
+    let span = std::time::Duration::from_millis(100);
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let best = (0..5)
+        .map(|_| {
+            let from = reads();
+            std::thread::sleep(span);
+            reads() - from
+        })
+        .max()
+        .unwrap_or(0);
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    let eight_khz = std::time::Duration::from_millis(8);
+    assert!(span < eight_khz * u32::try_from(best).unwrap(), "{best} reads in {span:?}");
+}
+
 #[test]
 fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     let (_driver, _turn) = driver();
