@@ -214,10 +214,7 @@ void seekStoryboardCutFrame(
     }
     return;
   }
-  if (session.activeCutId != cutId) {
-    session.selectCut(cutId);
-  }
-  session.selectFrameIndex(ownFrame);
+  session.goToCut(cutId, ownFrame);
 }
 
 // `parkStoryboardGlobalFrame` is gone with the law it carried (⑭): a press

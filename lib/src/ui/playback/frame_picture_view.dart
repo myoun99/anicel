@@ -12,6 +12,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
+import '../../models/cut_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardReach;
 import '../../models/project_background.dart' show ProjectBackground;
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
@@ -137,7 +138,11 @@ class FramePictureView extends StatefulWidget {
   /// Whether a frame not there yet leaves the last one shown standing until
   /// it is, or is drawn as it stands meanwhile from the cels in hand
   /// ([FramePictures.frameAsItStands]) — a canvas that stands, where a row
-  /// being drawn on may not wait for its neighbours.
+  /// being drawn on may not wait for its neighbours: a frame of the cut it
+  /// showed last. 🗣️A frame of another cut stands bare till its picture
+  /// comes (the-standing-canvas-composes-a-frame-twice-before-its-picture-
+  /// Q5 = blank, 유저 2026-11-18 「빈 종이로 기다린다」) — a cut a command
+  /// opened: nothing of it was on screen to stand on.
   ///
   /// ⛔Not one flag with [laysWhatItMisses]: who makes a frame and whether
   /// a frame waits to be whole are two questions, and a track stack's
@@ -285,6 +290,11 @@ class _FramePictureViewState extends State<FramePictureView>
   /// stand — by a view that draws nothing live ([_live] where it does).
   StackedFrame? _asItStands;
 
+  /// The cut of the frame this view put on its screen last — its picture,
+  /// or the frame as it stands ([_show]): a frame of another cut stands
+  /// bare against it ([_standsBare]).
+  CutId? _cutOnScreen;
+
   /// The frame as it stands with its live rows ([LiveRows]) — drawn
   /// wherever its picture is not shown or [_standing], and the body every
   /// patch is drawn by. Null where this view draws nothing as it stands.
@@ -334,10 +344,11 @@ class _FramePictureViewState extends State<FramePictureView>
   /// picture of the frame as it is stacked now taken, and no change of its
   /// live rows still going through its plugins ([_writeThrough]) — what a
   /// frame that waits for them ([_waits]) shows late. One that does not
-  /// wait shows all of it at the paint.
+  /// wait shows all of it at the paint — once its picture comes, where it
+  /// stands bare till it does ([_standsBare]).
   @visibleForTesting
   bool get nothingOnItsWay =>
-      !_waits ||
+      (!_waits && !_standsBare) ||
       (_shown != null &&
           _showing == _pictures.keyOfStack(widget.nodes, widget.picture) &&
           !(_standing.whole && _movedSinceThrough) &&
@@ -1085,6 +1096,7 @@ class _FramePictureViewState extends State<FramePictureView>
     (int, int) size,
     _OnTheTexture on,
   ) {
+    _cutOnScreen = _showing?.cutId ?? _cutOnScreen;
     final (:viewport, :devicePixelRatio, :corner) = on;
     final shown = _drawnPicture;
     if (shown != null) {
@@ -1187,6 +1199,24 @@ class _FramePictureViewState extends State<FramePictureView>
   EngineFramePicture? get _drawnPicture =>
       _standing.whole && !_waits ? null : _shown;
 
+  /// Whether this view stands bare till the picture of its frame comes,
+  /// where it would draw it as it stands: a frame of another cut than the
+  /// one it put on screen last, its picture still to come — nothing of
+  /// that cut was there (Q5 = blank). ⛔Not a page alone, nor a frame given
+  /// up on: there is nothing of them to come, and a move lands on them at
+  /// once ([FramePictures.toComeAt]). ⛔Not its first, a project just
+  /// opened: Q5 asked of a cut a command opens, and a first frame is drawn
+  /// as it stands as it was (asked: the-standing-canvas-composes-a-frame-
+  /// twice-before-its-picture-Q7).
+  bool get _standsBare {
+    final (showing, onScreen) = (_showing, _cutOnScreen);
+    return _standsMeanwhile &&
+        showing != null &&
+        onScreen != null &&
+        showing.cutId != onScreen &&
+        _pictures.toComeAt(showing);
+  }
+
   /// [frame] composed on this view's own screen, where it or its live rows
   /// moved since it last was.
   EngineStackScreen _screenStoodOn(StackedFrame frame) {
@@ -1230,8 +1260,9 @@ class _FramePictureViewState extends State<FramePictureView>
     shown: _shown,
     // ⛔Not the stored cels where the view draws rows live: a frame of no
     // row is a page the pen may be drawing on — nor the live rows of a
-    // frame that waits for its plugins.
-    asItStands: _waits ? _asItStands : _live ?? _asItStands,
+    // frame that waits for its plugins, nor of one it stands bare for
+    // ([_standsBare]).
+    asItStands: _waits || _standsBare ? _asItStands : _live ?? _asItStands,
     ground: widget.ground,
     cutAtCanvas: widget.cutAtCanvas,
     viewport: widget.viewport,

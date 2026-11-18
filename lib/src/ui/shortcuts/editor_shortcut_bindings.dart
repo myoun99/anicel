@@ -918,7 +918,7 @@ class EditorShortcutManager extends ShortcutManager {
   /// Whether the action running now runs for a key held — the OS's repeat
   /// of it, not a press. 🗣️the-standing-canvas-composes-a-frame-twice-
   /// before-its-picture-Q4 = 1: a step pressed is lined up, a step repeated
-  /// is not (`StandsWithItsPicture.step`).
+  /// is not (`StandsWithItsPicture.inTurn`).
   static bool get actsForARepeat => _actingFor is KeyRepeatEvent;
 
   @override

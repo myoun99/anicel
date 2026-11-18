@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show commitStoryboardScrub;
 
+import '../../helpers/a_move_lands.dart';
 import '../../helpers/name_tags_laid.dart';
 
 /// 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
@@ -109,7 +110,7 @@ void main() {
 
     // On into the next cut's frames: the drag crosses into it.
     scrub(s).scrubGlobalFrame(cutEnd + 5);
-    await tester.pump();
+    await theMoveLands(tester, s);
     expect(s.activeCutId, isNot(first));
     expect(find.byKey(stackKey), findsNothing, reason: 'its own canvas');
     expect(
@@ -119,7 +120,7 @@ void main() {
     );
 
     scrub(s).scrubGlobalFrame(2);
-    await tester.pump();
+    await theMoveLands(tester, s);
     await tester.pump();
     expect(s.activeCutId, first);
     expect(find.byKey(stackKey), findsNothing, reason: 'back on the cut');

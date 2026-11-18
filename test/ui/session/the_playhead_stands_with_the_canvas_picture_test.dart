@@ -3,15 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts, standingPicturesOf;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
+    show FramePictureKey;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart'
+    show nothingOnItsWay, theFrameIsShown;
 import '../../helpers/a_move_lands.dart';
-import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
+import '../../helpers/panel_finders.dart'
+    show mainCanvasPanel, visibleCanvasPoint;
 import '../../helpers/settle_async.dart';
 
 /// the-standing-canvas-composes-a-frame-twice-before-its-picture-Q1 = B
@@ -34,6 +40,78 @@ void main() {
         (over == null || pictures.has(over));
   }
 
+  /// The key of the picture the canvas standing on [frame] of the cut open
+  /// shows — the frame stacked as the canvas stacks it, the pen's row live.
+  FramePictureKey keyShownAt(EditorSessionManager session, int frame) {
+    final frameShown = standingPicturesOf(
+      session.activeCutOrNull!,
+      frame,
+      session.onionSkin.settings.value.placement,
+    ).frame;
+    final nodes = frameShown.ghosts == FrameGhosts.inPlace
+        ? session.editingCanvas.stackWithItsGhosts.nodes
+        : session.editingCanvas.stack.nodes;
+    return session.playbackRig.framePictures.keyOfStack(nodes, frameShown);
+  }
+
+  /// A stroke on the drawing of the frame stood on, [dx] right of the
+  /// middle of the canvas.
+  Future<void> strokeAt(WidgetTester tester, double dx) async {
+    final at = visibleCanvasPoint(tester) + Offset(dx, 0);
+    final pen = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await pen.moveTo(at + const Offset(24, 6));
+    await tester.pump();
+    await pen.up();
+    await tester.pumpAndSettle();
+  }
+
+  /// The app open on the first of two cuts, a stroke on the second cut's
+  /// frame 0 — the key its canvas opens with, [opensWith] — and no picture
+  /// of it kept: a move into it waits.
+  Future<
+    ({
+      EditorSessionManager session,
+      CutId first,
+      CutId second,
+      FramePictureKey opensWith,
+    })
+  >
+  inTheFirstOfTwoCuts(WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final area = tester.widget<EditorCanvasArea>(find.byType(EditorCanvasArea));
+    final session = area.session;
+    final first = session.activeCutId!;
+    session.cutVerbs.createCut();
+    await tester.pumpAndSettle();
+    final second = session.repository.requireProject().tracks.first.cuts
+        .firstWhere((cut) => cut.id != first)
+        .id;
+    session.selectCut(second);
+    await theMoveLands(tester, session);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    await strokeAt(tester, 0);
+    final opensWith = keyShownAt(session, 0);
+    session.selectCut(first);
+    await theMoveLands(tester, session);
+    await tester.pumpAndSettle();
+    session.playbackRig.framePictures.store.letGoUnpinnedWhere((_) => true);
+    return (
+      session: session,
+      first: first,
+      second: second,
+      opensWith: opensWith,
+    );
+  }
+
   /// The editor standing on frame 0, a stroke on frame 0's drawing and
   /// another on frame 1's, and no picture of frame 1 kept.
   Future<EditorSessionManager> twoDrawnFrames(WidgetTester tester) async {
@@ -48,17 +126,7 @@ void main() {
       await theMoveLands(tester, session);
       session.createDrawingAtCurrentFrame();
       await tester.pumpAndSettle();
-      final at = visibleCanvasPoint(tester) + Offset(frame * 30.0, 0);
-      final pen = await tester.startGesture(
-        at,
-        kind: PointerDeviceKind.mouse,
-        buttons: kPrimaryButton,
-      );
-      await tester.pump();
-      await pen.moveTo(at + const Offset(24, 6));
-      await tester.pump();
-      await pen.up();
-      await tester.pumpAndSettle();
+      await strokeAt(tester, frame * 30.0);
     }
     session.selectFrameIndex(0);
     await theMoveLands(tester, session);
@@ -101,17 +169,9 @@ void main() {
     expect(session.playheadCursors.cutFrame.value, 1);
     // The canvas's own key for the frame — stacked as the canvas stacks it,
     // the pen's row live — is the one the move waited for.
-    final frameShown = standingPicturesOf(
-      session.activeCutOrNull!,
-      1,
-      session.onionSkin.settings.value.placement,
-    ).frame;
     final pictures = session.playbackRig.framePictures;
-    final nodes = frameShown.ghosts == FrameGhosts.inPlace
-        ? session.editingCanvas.stackWithItsGhosts.nodes
-        : session.editingCanvas.stack.nodes;
     expect(
-      pictures.store.holds(pictures.keyOfStack(nodes, frameShown)),
+      pictures.store.holds(keyShownAt(session, 1)),
       isTrue,
       reason: 'the canvas takes the picture the move waited for, and makes '
           'none of its own',
@@ -134,6 +194,101 @@ void main() {
 
     expect(session.currentFrameIndex, 1);
     expect(session.playheadCursors.cutFrame.value, 1);
+  });
+
+  testWidgets('a cut switch stands in the cut shown till the frame it goes '
+      'to has its picture, and goes with it (Q3 = stand, 유저 11-18 「컷도 앞 '
+      '컷에 서 있는다」)', (tester) async {
+    final (:session, :first, :second, :opensWith) = await inTheFirstOfTwoCuts(
+      tester,
+    );
+    final pictures = session.playbackRig.framePictures;
+    final rowStood = session.activeLayerId;
+
+    session.selectCut(second);
+    await tester.pump();
+
+    expect(
+      session.standsWithItsPicture.cutWaitedFor,
+      second,
+      reason: "premise: the second cut's frame has no picture yet",
+    );
+    expect(session.activeCutId, first, reason: 'the cut shown stands');
+    expect(session.activeLayerId, rowStood, reason: 'and its row');
+    await theMoveLands(tester, session);
+
+    expect(session.activeCutId, second);
+    expect(session.currentFrameIndex, 0);
+    expect(keyShownAt(session, 0), opensWith);
+    expect(
+      pictures.store.holds(opensWith),
+      isTrue,
+      reason: 'the canvas takes the picture the switch waited for, and '
+          'makes none of its own',
+    );
+  });
+
+  testWidgets('a scrub let go while its crossing into another cut waits '
+      'lands in that cut, on the frame it crossed to — not as a move in '
+      'the cut it left (Q3 = stand)', (tester) async {
+    final (:session, first: _, :second, opensWith: _) =
+        await inTheFirstOfTwoCuts(tester);
+
+    session.frameScrub.scrubGlobalFrame(0);
+    await theMoveLands(tester, session);
+    session.frameScrub.scrubGlobalFrame(
+      session.trackFrameAxis().entryFor(second)!.startFrame,
+    );
+    await tester.pump();
+    expect(
+      session.standsWithItsPicture.cutWaitedFor,
+      second,
+      reason: '⛔premise: the crossing waits',
+    );
+    session.frameScrub.commitFrameScrub();
+    await theMoveLands(tester, session);
+
+    expect(session.activeCutId, second);
+    expect(session.currentFrameIndex, 0);
+  });
+
+  testWidgets('🗣️a cut a command opens: the canvas stands bare till its '
+      'picture comes, not on the cut it left (Q5 = blank, 유저 11-18 「빈 '
+      '종이로 기다린다」)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final area = tester.widget<EditorCanvasArea>(find.byType(EditorCanvasArea));
+    final session = area.session;
+    final first = session.activeCutId!;
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    await strokeAt(tester, 0);
+    session.cutVerbs.createCut();
+    await tester.pumpAndSettle();
+    final second = session.repository.requireProject().tracks.first.cuts
+        .firstWhere((cut) => cut.id != first)
+        .id;
+    session.selectCut(second);
+    await theMoveLands(tester, session);
+    await theFrameIsShown(tester, within: mainCanvasPanel());
+    session.playbackRig.framePictures.store.letGoUnpinnedWhere((_) => true);
+
+    session.cutVerbs.deleteActiveCut();
+    await tester.pump();
+
+    expect(
+      session.activeCutId,
+      first,
+      reason: '⛔premise: the command opened the cut before it',
+    );
+    expect(
+      nothingOnItsWay(tester, within: mainCanvasPanel()),
+      isFalse,
+      reason: 'bare till its picture comes',
+    );
+    await theFrameIsShown(tester, within: mainCanvasPanel());
   });
 
   /// The frames [session]'s playhead stands on from now, in turn.

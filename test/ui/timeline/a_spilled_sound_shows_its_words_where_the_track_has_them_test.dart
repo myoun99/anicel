@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
+import '../../helpers/a_move_lands.dart';
 import '../../helpers/an_se_row.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 
@@ -134,10 +135,11 @@ void main() {
       reason: '⛔전제: the storyboard draws the whole block',
     );
 
-    tester
+    final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session
-        .selectCut(const CutId('cut-2'));
+        .session;
+    session.selectCut(const CutId('cut-2'));
+    await theMoveLands(tester, session);
     await tester.pumpAndSettle();
     await tapKey(tester, 'timeline-mode-timeline-button');
 
@@ -180,6 +182,7 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     session.selectCut(const CutId('cut-2'));
+    await theMoveLands(tester, session);
     session.selectLayer(const LayerId('se-row-1'));
     await tester.pumpAndSettle();
     await tapKey(tester, 'floating-bottom-collapse');
@@ -223,6 +226,7 @@ void main() {
 
     expect(deliveryAt('timeline-se-label-se-row-1-4'), SeLineType.on);
     session.selectCut(const CutId('cut-2'));
+    await theMoveLands(tester, session);
     await tester.pumpAndSettle();
     expect(deliveryAt('timeline-se-label-se-row-1-0'), SeLineType.mono);
 

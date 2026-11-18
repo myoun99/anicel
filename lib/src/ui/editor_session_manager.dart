@@ -741,12 +741,13 @@ class EditorSessionManager extends ChangeNotifier
   /// its cut, with the row [Standing.layerACutSwitchSeats] names, then the
   /// frame of that cut's own the run is on.
   void _landOn(PlaybackPosition position) {
-    if (position.cutId != editingSession.activeCutId) {
-      selectCut(position.cutId);
-    }
-    selectFrameIndex(
+    // On the run's own track: a run plays the cuts of the track chosen
+    // (`playbackRunOf`), so the frame is read as it will be once it opens.
+    goToCut(
+      position.cutId,
       activeCutControllers.clampedFrameIndex(
         playheadCursors.ownFrameOf(position),
+        frameCount: playbackFrameCountOf(cutById(position.cutId)),
       ),
     );
   }
@@ -1095,8 +1096,38 @@ class EditorSessionManager extends ChangeNotifier
   // leaves it to them. The hand-offs inside an action go through
   // [standing] and the controllers, not through these.
   void selectCut(CutId cutId) {
-    historyManager.places.leave();
-    standing.selectCut(cutId);
+    if (cutId == activeCutId) {
+      historyManager.places.leave();
+      return;
+    }
+    // Its frame 0, where the cut opens ([Standing.selectCut]).
+    goToCut(cutId, 0, stand: () {});
+  }
+
+  /// 🗣️Q3 = stand (the-standing-canvas-composes-a-frame-twice-before-its-
+  /// picture, 유저 2026-11-18 13:43: 「컷도 앞 컷에 서 있는다」): THE door to
+  /// a frame of a cut, open or not — every move that may cross into another
+  /// cut goes through it, and through [standsWithItsPicture]: the cut, its
+  /// row and the frame land together once the frame's pictures are there,
+  /// and the canvas stands on the frame it shows meanwhile. [stand] stands
+  /// on [frame] once the cut is open — [selectFrameIndex]'s landing where
+  /// none is given.
+  ///
+  /// ⛔Not a cut switch and a seek one after the other: a seek asked while
+  /// the switch waits is a move in the cut still stood in, and replaces it.
+  @override
+  void goToCut(CutId cutId, int frame, {VoidCallback? stand}) {
+    standsWithItsPicture.moveTo(
+      frame,
+      () {
+        if (cutId != activeCutId) {
+          historyManager.places.leave();
+          standing.selectCut(cutId);
+        }
+        (stand ?? () => _standOnFrame(frame))();
+      },
+      inCut: cutId,
+    );
   }
 
   TimelineRowAddress get currentRow => standing.currentRow;
@@ -3849,10 +3880,7 @@ class EditorSessionManager extends ChangeNotifier
     final axis = projectSettings.axisForTrack(trackId);
     final entry = axis.isGap(globalFrame) ? null : axis.ownerOf(globalFrame);
     if (entry != null) {
-      if (entry.cutId != activeCutId) {
-        selectCut(entry.cutId);
-      }
-      selectFrameIndex(axis.localIn(entry, globalFrame));
+      goToCut(entry.cutId, axis.localIn(entry, globalFrame));
       return;
     }
     // A GAP on the tapped track PARKS there (user 2026-07-29, superseding
@@ -3908,8 +3936,16 @@ class EditorSessionManager extends ChangeNotifier
   /// selected track's. A caller that computed its move on one axis must
   /// land it on the same one — resolving on a different track would put
   /// the playhead in a cut the move never chose.
+  ///
+  /// [then] runs once it lands: what follows a move that may go into
+  /// another cut is done in the cut it lands in, never in the one stood in
+  /// while it waits ([goToCut]).
   @override
-  void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis}) {
+  void selectGlobalFrame(
+    int globalFrame, {
+    TrackFrameAxis? onAxis,
+    VoidCallback? then,
+  }) {
     if (strokeInFlight) {
       return;
     }
@@ -3919,12 +3955,20 @@ class EditorSessionManager extends ChangeNotifier
       // A GAP (leading, mid-track, or a track with no cut — F-341): no cut
       // there — park + deselect.
       parkGlobalFrame(globalFrame);
+      then?.call();
       return;
     }
-    if (local.cutId != activeCutId) {
-      selectCut(local.cutId);
-    }
-    selectFrameIndex(local.localFrame);
+    final frame = local.localFrame;
+    goToCut(
+      local.cutId,
+      frame,
+      stand: then == null
+          ? null
+          : () {
+              _standOnFrame(frame);
+              then();
+            },
+    );
   }
 
   // ── the frame scrub: its own object, in its own file ───────────────────
@@ -3948,6 +3992,7 @@ class EditorSessionManager extends ChangeNotifier
   late final StandsWithItsPicture standsWithItsPicture = StandsWithItsPicture(
     pictures: () => playbackRig.framePictures,
     cut: () => activeCutOrNull,
+    cutById: cutById,
     frame: () => activeCutControllers.timelineController.currentFrameIndex,
     placement: () => onionSkin.settings.value.placement,
   );

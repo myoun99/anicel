@@ -336,29 +336,33 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// cut shows it (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
   /// 그대로둠」).
   void _selectCell(ContePlacedCell cell) {
-    final cutId = CutId(cell.cutId);
     final before = _session.activeLayerId;
-    if (_session.activeCutOrNull?.id != cutId) {
-      _session.selectCut(cutId);
-    }
-    // 🚨T4 — 「여기 서라」 IS the verb, on this panel too. 유저 2026-08-13:
-    // 「어떤 행이든 액티브 바꾸면 풀리도록」. Pressing a conte cell moves you
-    // to another cut's storyboard row, which is moving, so it lets a live
-    // selection go exactly as a row click and an arrow step do.
-    //
-    // ⚠️The frame is passed IN rather than seeked afterwards: the standing
-    // law asks whether you are landing inside the current selection, and
-    // asking that about the frame you are LEAVING answers the wrong
-    // question.
-    final seat = _session.standing.layerAConteStandSeats(before: before);
-    if (seat != null) {
-      _session.standOnRow(
-        LayerRowAddress(seat),
-        frameIndex: cell.source.startFrame,
-      );
-    } else {
-      _session.selectFrameIndex(cell.source.startFrame);
-    }
+    final frame = cell.source.startFrame;
+    // The cut, the row and the frame land together, once the frame is
+    // there ([EditorSessionManager.goToCut]): the row is seated in the cut
+    // it lands in.
+    _session.goToCut(
+      CutId(cell.cutId),
+      frame,
+      stand: () {
+        // 🚨T4 — 「여기 서라」 IS the verb, on this panel too. 유저
+        // 2026-08-13: 「어떤 행이든 액티브 바꾸면 풀리도록」. Pressing a conte
+        // cell moves you to another cut's storyboard row, which is moving,
+        // so it lets a live selection go exactly as a row click and an
+        // arrow step do.
+        //
+        // ⚠️The frame is passed IN rather than seeked afterwards: the
+        // standing law asks whether you are landing inside the current
+        // selection, and asking that about the frame you are LEAVING
+        // answers the wrong question.
+        final seat = _session.standing.layerAConteStandSeats(before: before);
+        if (seat != null) {
+          _session.standOnRow(LayerRowAddress(seat), frameIndex: frame);
+        } else {
+          _session.selectFrameIndex(frame);
+        }
+      },
+    );
   }
 
   /// A cell's picture at the size its window shows it — the zoom and the

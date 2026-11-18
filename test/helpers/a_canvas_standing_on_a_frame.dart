@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import 'a_shown_surface.dart';
+import 'settle_async.dart';
 
 /// What a screen shows, row by row.
 typedef Shot = ({Uint8List rgba, int width});
@@ -135,6 +136,27 @@ FramePictureKey keptByTheCanvas(
   FramePictureKey frame, {
   Finder? view,
 }) => frame.standingOn(tester.state(view ?? theFramesPicture()));
+
+/// Whether nothing more of the frame under [within] is on its way to its
+/// screen ([FramePictureView.nothingOnItsWay]).
+bool nothingOnItsWay(WidgetTester tester, {Finder? within}) =>
+    (tester.state(theFramesPicture(within: within)) as dynamic)
+            .nothingOnItsWay
+        as bool;
+
+/// Lends both clocks till the frame's picture under [within] has nothing
+/// more on its way ([nothingOnItsWay]), and pumps the frame it shows in —
+/// a canvas stands bare till the picture of a frame of another cut than
+/// the one it showed comes: a cut a command opened (the-standing-canvas-
+/// composes-a-frame-twice-before-its-picture-Q5 = blank).
+Future<void> theFrameIsShown(WidgetTester tester, {Finder? within}) async {
+  expect(
+    await settleAsync(tester, () => nothingOnItsWay(tester, within: within)),
+    isTrue,
+    reason: 'LIVENESS: what the frame waits for comes',
+  );
+  await tester.pump();
+}
 
 /// [view] on a screen of its own, [size] logical pixels at the window's
 /// top left over [under] — what [screen] shows ([shotOf]) — in a place

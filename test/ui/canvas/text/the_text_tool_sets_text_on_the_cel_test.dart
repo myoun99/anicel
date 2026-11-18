@@ -644,6 +644,7 @@ void main() {
       if (back) {
         if (session.activeCutId != textToolCutId) {
           session.selectCut(textToolCutId);
+          await theMoveLands(tester, session);
         }
         session.selectLayer(textToolLayerId);
         session.selectFrameIndex(0);

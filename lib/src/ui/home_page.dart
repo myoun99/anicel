@@ -1659,9 +1659,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// One step of the playhead — a frame, a block — [walk]ed, and the rails
   /// bring it into view: in line where a move waits for its frame, a key
-  /// held lined up never (`StandsWithItsPicture.step`).
+  /// held lined up never (`StandsWithItsPicture.inTurn`).
   void _stepThePlayhead(VoidCallback walk) =>
-      _session.standsWithItsPicture.step(
+      _session.standsWithItsPicture.inTurn(
         () {
           walk();
           _session.revealSelection();

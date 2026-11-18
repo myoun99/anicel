@@ -24,7 +24,7 @@ import '../playback/playback_pictures.dart' show PictureState;
 ///
 /// The law a run keeps (`playheadWay`, 유저 2026-10-15 F-365-Q1 「직전
 /// 프레임에 서서 기다린다」), with its exception: where the frame it stands on
-/// shows no picture either — a cut just switched to, a project just opened
+/// shows no picture either — a cut a command opened, a project just opened
 /// — there is nothing to stand on, and the move lands at once, the canvas
 /// waiting on the frame itself. So does every move where no canvas stands
 /// to show it ([shownBy]).
@@ -42,15 +42,21 @@ class StandsWithItsPicture {
   StandsWithItsPicture({
     required FramePictures Function() pictures,
     required Cut? Function() cut,
+    required Cut? Function(CutId) cutById,
     required int Function() frame,
     required OnionSkinPlacement Function() placement,
   }) : _pictures = pictures,
        _cut = cut,
+       _cutById = cutById,
        _frame = frame,
        _placement = placement;
 
   final FramePictures Function() _pictures;
   final Cut? Function() _cut;
+
+  /// The cut with an id, anywhere in the project — where a move goes.
+  final Cut? Function(CutId) _cutById;
+
   final int Function() _frame;
   final OnionSkinPlacement Function() _placement;
 
@@ -62,8 +68,9 @@ class StandsWithItsPicture {
 
   final ValueNotifier<int?> _waitsFor = ValueNotifier<int?>(null);
 
-  /// The frame of the cut stood in a move waits for the pictures of — where
-  /// the playhead goes once they are there; null while none waits.
+  /// The frame a move waits for the pictures of — of [cutWaitedFor] where
+  /// it goes into another cut, of the cut stood in else: where the playhead
+  /// goes once they are there; null while none waits.
   ValueListenable<int?> get waitsFor => _waitsFor;
 
   /// Whether a press on the canvas is held for the frame a move waits for:
@@ -124,7 +131,12 @@ class StandsWithItsPicture {
   ///
   /// ↩️A step was counted from the frame stood on: two pressed within one
   /// wait asked for the same frame, and went one.
-  void step(VoidCallback walk, {required bool repeated}) {
+  ///
+  /// A press that acts where the playhead stands is a step of its own —
+  /// the cell a double click opens where the press before it moved
+  /// (`activateCellOnDoubleTap`): taken in its turn, in the cut and on the
+  /// frame that press lands on, never in the one stood in while it waits.
+  void inTurn(VoidCallback walk, {required bool repeated}) {
     if (_waiting == null && _steps.isEmpty) {
       walk();
       return;
@@ -164,33 +176,60 @@ class StandsWithItsPicture {
       ..ensureVisualUpdate();
   }
 
-  /// Moves the playhead to [frame] of the cut stood in: [land] now, where
-  /// its pictures are there or nothing shows them; once they are, else.
-  /// The move after replaces it.
-  void moveTo(int frame, VoidCallback land) {
+  /// Moves the playhead to [frame] of [inCut] — of the cut stood in, where
+  /// none is named: [land] now, where its pictures are there or nothing
+  /// shows them; once they are, else. The move after replaces it.
+  ///
+  /// 🗣️Q3 = stand (유저 2026-11-18 13:43, 「컷도 앞 컷에 서 있는다」): a move
+  /// into another cut waits as one within a cut does — the cut, its row
+  /// and the frame stand where they are until the frame it goes to is
+  /// made, and land together. ↩️A cut switch landed at once, and the canvas
+  /// composed the new cut's frame as it stood until its picture came.
+  void moveTo(int frame, VoidCallback land, {CutId? inCut}) {
     if (!_stepping) {
       _steps.clear();
     }
     if (_pressHeld) {
       return;
     }
-    final cut = _cut();
-    if (cut == null ||
+    final stood = _cut();
+    final into = inCut == null || inCut == stood?.id
+        ? stood
+        : _cutById(inCut);
+    _ask(stood, into, frame, land);
+  }
+
+  /// The cut a move that waits goes into, where it is not the one stood in:
+  /// null while none waits, or one waits within the cut stood in.
+  CutId? get cutWaitedFor => _waiting?.into;
+
+  /// [moveTo] of [frame] in [into] from [stood].
+  void _ask(Cut? stood, Cut? into, int frame, VoidCallback land) {
+    if (stood == null ||
+        into == null ||
         _canvases.isEmpty ||
-        _there(cut, frame) ||
-        !_there(cut, _frame())) {
+        _there(into, frame) ||
+        !_there(stood, _frame())) {
       _letGoOfTheOneWaiting();
       land();
       return;
     }
     final waiting = _waiting;
-    if (waiting != null && waiting.cut == cut.id && waiting.frame == frame) {
+    if (waiting != null &&
+        waiting.from == stood.id &&
+        waiting.cut == into.id &&
+        waiting.frame == frame) {
       waiting.land = land;
       return;
     }
-    final move = _waiting = _Move(cut: cut.id, frame: frame, land: land);
+    final move = _waiting = _Move(
+      from: stood.id,
+      cut: into.id,
+      frame: frame,
+      land: land,
+    );
     _waitsFor.value = frame;
-    _make(cut, move);
+    _make(into, move);
   }
 
   /// Whether every picture a canvas standing on [cut]'s [frame] shows is
@@ -262,7 +301,7 @@ class StandsWithItsPicture {
     if (waiting == null) {
       return;
     }
-    if (_cut()?.id != waiting.cut) {
+    if (_cut()?.id != waiting.from) {
       _steps.clear();
       return;
     }
@@ -286,10 +325,22 @@ class StandsWithItsPicture {
 
 /// A move of the playhead that waits for its frame's pictures.
 final class _Move {
-  _Move({required this.cut, required this.frame, required this.land});
+  _Move({
+    required this.from,
+    required this.cut,
+    required this.frame,
+    required this.land,
+  });
 
+  /// The cut stood in as it was asked: it lands only from there.
+  final CutId from;
+
+  /// The cut it goes into, and the frame of it.
   final CutId cut;
   final int frame;
+
+  /// [cut], where it is another than the one stood in.
+  CutId? get into => cut == from ? null : cut;
 
   /// What the move does once they are there — the last asked for it.
   VoidCallback land;

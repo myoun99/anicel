@@ -137,11 +137,13 @@ class FrameScrub {
       // from-the-gap branch would land frame 0 first and double the
       // committed-seek signal.
       _timeline.editingSession.gapGlobalFrame = null;
-      _selection.selectGlobalFrame(globalFrame);
-      // The crossed frame plays its slice of the mix, as every frame a
-      // scrub crosses does.
-      _playbackRig.audioScrubber.onScrubFrame(
-        _controllers.timelineController.currentFrameIndex,
+      _selection.selectGlobalFrame(
+        globalFrame,
+        // The crossed frame plays its slice of the mix, as every frame a
+        // scrub crosses does — once it is stood on.
+        then: () => _playbackRig.audioScrubber.onScrubFrame(
+          _controllers.timelineController.currentFrameIndex,
+        ),
       );
       return;
     }
@@ -294,6 +296,12 @@ class FrameScrub {
         return;
       }
       _selection.selectGlobalFrame(parked);
+      return;
+    }
+    // A crossing that still waits lands as the committed seek a cut switch
+    // makes ([SelectionAccess.selectGlobalFrame]): asked here, the frame it
+    // goes to would be a move in the cut stood in.
+    if (_moves.cutWaitedFor != null) {
       return;
     }
     // The frame the hand let go on — the one a move still waits for, where

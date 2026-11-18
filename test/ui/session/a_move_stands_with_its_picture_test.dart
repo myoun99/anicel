@@ -53,6 +53,18 @@ void main() {
     canvasSize: canvasSize,
     layers: const [],
   );
+  final thirdCut = Cut(
+    id: const CutId('t'),
+    name: 't',
+    duration: 3,
+    canvasSize: canvasSize,
+    layers: const [],
+  );
+
+  /// The cut with [id] in the project the moves go about.
+  Cut? cutWith(CutId id) => {
+    for (final known in [cut, otherCut, thirdCut]) known.id: known,
+  }[id];
 
   BrushFrameKey keyOf(int frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -113,11 +125,10 @@ void main() {
     );
   }
 
-  DemandedPicture frameAt(int frame) => standingPicturesOf(
-    cut,
-    frame,
-    OnionSkinPlacement.inPlace,
-  ).frame;
+  DemandedPicture frameOf(Cut of, int frame) =>
+      standingPicturesOf(of, frame, OnionSkinPlacement.inPlace).frame;
+
+  DemandedPicture frameAt(int frame) => frameOf(cut, frame);
 
   /// A session's frame, and the moves of its playhead.
   ({
@@ -133,6 +144,7 @@ void main() {
     final moves = StandsWithItsPicture(
       pictures: () => pictures,
       cut: () => cutStood.value,
+      cutById: cutWith,
       frame: () => frame.value,
       placement: () => OnionSkinPlacement.inPlace,
     );
@@ -163,7 +175,7 @@ void main() {
     List<int> walked, {
     int by = 1,
     bool repeated = false,
-  }) => moves.step(() {
+  }) => moves.inTurn(() {
     final to = frame.value + by;
     moves.moveTo(to, () {
       walked.add(to);
@@ -362,6 +374,92 @@ void main() {
     );
   });
 
+  // 🗣️Q3 = stand (유저 2026-11-18 13:43, 「컷도 앞 컷에 서 있는다」).
+  testWidgets('a move into another cut stands in the cut shown till that '
+      "cut's frame has its picture, and goes with it", (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    s.moves.shownBy(tester);
+    var landed = false;
+
+    s.moves.moveTo(1, () => landed = true, inCut: otherCut.id);
+
+    expect(landed, isFalse, reason: 'the cut and its frame stand');
+    expect(s.moves.waitsFor.value, 1);
+    expect(s.moves.cutWaitedFor, otherCut.id);
+    expect(s.pictures.has(frameOf(otherCut, 1)), isFalse);
+    expect(
+      await settleAsync(tester, () => landed),
+      isTrue,
+      reason: 'it goes once the picture is there',
+    );
+    expect(
+      s.pictures.has(frameOf(otherCut, 1)),
+      isTrue,
+      reason: 'the frame of the cut it goes into',
+    );
+    expect(s.pictures.has(frameAt(1)), isFalse, reason: 'not the one stood in');
+    expect(s.moves.waitsFor.value, isNull);
+    expect(s.moves.cutWaitedFor, isNull);
+  });
+
+  testWidgets("a move into another cut goes at once where that cut's frame "
+      'has its picture', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    await tester.runAsync(
+      () => s.pictures.make(frameOf(otherCut, 2), shouldAbort: () => false),
+    );
+    s.moves.shownBy(tester);
+    var landed = false;
+
+    s.moves.moveTo(2, () => landed = true, inCut: otherCut.id);
+
+    expect(landed, isTrue);
+    expect(s.moves.waitsFor.value, isNull);
+    expect(s.moves.cutWaitedFor, isNull);
+  });
+
+  testWidgets('a move within the cut stood in, asked while one into another '
+      'waits for the same frame, is a move of its own', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    s.moves.shownBy(tester);
+    final landed = <String>[];
+
+    s.moves.moveTo(1, () => landed.add('there'), inCut: otherCut.id);
+    s.moves.moveTo(1, () {
+      landed.add('here');
+      s.frame.value = 1;
+    });
+
+    expect(s.moves.waitsFor.value, 1);
+    expect(s.moves.cutWaitedFor, isNull, reason: 'it waits in this cut now');
+    expect(await settleAsync(tester, () => s.frame.value == 1), isTrue);
+    expect(landed, ['here']);
+    expect(s.pictures.has(frameAt(1)), isTrue);
+  });
+
+  testWidgets('a move asked again from another cut than the one it was '
+      'asked from is a move of its own, and lands from there', (tester) async {
+    final s = aSession();
+    await make(tester, s.pictures, 0);
+    await tester.runAsync(
+      () => s.pictures.make(frameOf(thirdCut, 0), shouldAbort: () => false),
+    );
+    s.moves.shownBy(tester);
+    final landed = <String>[];
+    s.moves.moveTo(1, () => landed.add('from c'), inCut: otherCut.id);
+
+    // A command opened the third cut meanwhile.
+    s.cutStood.value = thirdCut;
+    s.moves.moveTo(1, () => landed.add('from t'), inCut: otherCut.id);
+
+    expect(s.moves.cutWaitedFor, otherCut.id, reason: 'premise: it waits');
+    expect(await settleAsync(tester, () => landed.isNotEmpty), isTrue);
+    expect(landed, ['from t']);
+  });
+
   testWidgets('the last canvas that goes lands the move that waits', (
     tester,
   ) async {
@@ -547,6 +645,7 @@ void main() {
     final moves = StandsWithItsPicture(
       pictures: () => s.pictures,
       cut: () => cut,
+      cutById: cutWith,
       frame: () => frame.value,
       placement: () => OnionSkinPlacement.inPlace,
     )..shownBy(tester);

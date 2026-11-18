@@ -533,6 +533,11 @@ class FramePictures implements PlaybackPictures {
   /// to come.
   bool gaveUpAt(FramePictureKey key) => _stateAt(key) == PictureState.gaveUp;
 
+  /// Whether [key]'s frame's picture is still to come — not there, nor
+  /// given up on: what a move waits for (`StandsWithItsPicture`), and a
+  /// canvas stands bare for in another cut (`FramePictureView`).
+  bool toComeAt(FramePictureKey key) => _stateAt(key) == PictureState.toCome;
+
   PictureState _stateAt(FramePictureKey key) => _isThere(key)
       ? PictureState.there
       : _gaveNothing.containsKey(key)

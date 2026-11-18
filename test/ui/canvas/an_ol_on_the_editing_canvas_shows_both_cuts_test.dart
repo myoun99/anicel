@@ -1,4 +1,5 @@
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_move_lands.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -192,7 +193,7 @@ void main() {
     // track stack took the canvas.
     s.frameScrub.scrubGlobalFrame(21);
     s.frameScrub.scrubGlobalFrame(26);
-    await tester.pump();
+    await theMoveLands(tester, s);
     await tester.pump();
     expect(s.activeCutId, const CutId('b'));
     expect(

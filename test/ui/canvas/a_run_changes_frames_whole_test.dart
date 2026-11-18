@@ -36,9 +36,10 @@ import '../../helpers/settle_async.dart';
 /// takes each as it lands ([FramePictureView]).
 ///
 /// 유저 2026-10-08: 「재생했는데 재생바는 지나가고있는데 그림이 없어서
-/// 비어있다던가」. Standing still the canvas shows the frame as it stands
-/// while its picture is made (`FramePictureView.wholeFrames` off); only a
-/// run holds a frame back.
+/// 비어있다던가」. Standing still the canvas shows a frame of the cut it
+/// showed as it stands while its picture is made (`FramePictureView
+/// .wholeFrames` off), and one of another cut not at all till then (Q5 =
+/// blank); only a run holds a frame back.
 ///
 /// ↩️The canvas stacked a run's frame from its rows' images
 /// (`CanvasLayerStackView.run`), each asked at the level of the view it was
@@ -54,6 +55,15 @@ void main() {
   final cut = Cut(
     id: const CutId('c'),
     name: 'c',
+    duration: 3,
+    canvasSize: canvasSize,
+    layers: const [],
+  );
+
+  /// A cut after [cut], of its size.
+  final next = Cut(
+    id: const CutId('n'),
+    name: 'n',
     duration: 3,
     canvasSize: canvasSize,
     layers: const [],
@@ -114,9 +124,9 @@ void main() {
     );
   }
 
-  DemandedPicture at(String cel, {bool paintPaper = true}) =>
+  DemandedPicture at(String cel, {bool paintPaper = true, Cut? of}) =>
       (
-        cut: cut,
+        cut: of ?? cut,
         frameIndex: cels.indexOf(cel),
         paintPaper: paintPaper,
         ghosts: FrameGhosts.none,
@@ -170,22 +180,27 @@ void main() {
     ),
   );
 
-  /// The canvas standing still on [cel]'s frame: its picture, made where
-  /// the view misses it, and drawn as it stands until it is there.
+  /// The canvas standing still on [cel]'s frame — of [of], or of [cut]: its
+  /// picture, made where the view misses it, and drawn as it stands until
+  /// it is there where the view showed a picture of that cut last.
   /// ↩️The stack drew its rows' images, until no screen did
   /// (one-picture-per-frame ②-5b-1).
-  Future<void> pumpStill(WidgetTester tester, StackRun run, String cel) =>
-      pumpScreen(
-        tester,
-        FramePictureView(
-          run: run,
-          picture: at(cel),
-          nodes: frameOf(cel),
-          viewport: CanvasViewport(),
-          laysWhatItMisses: true,
-          wholeFrames: false,
-        ),
-      );
+  Future<void> pumpStill(
+    WidgetTester tester,
+    StackRun run,
+    String cel, {
+    Cut? of,
+  }) => pumpScreen(
+    tester,
+    FramePictureView(
+      run: run,
+      picture: at(cel, of: of),
+      nodes: frameOf(cel),
+      viewport: CanvasViewport(),
+      laysWhatItMisses: true,
+      wholeFrames: false,
+    ),
+  );
 
   /// A view that makes [cel]'s frame itself ([FramePictureView.
   /// laysWhatItMisses]) and changes frames whole, as a cut on the track
@@ -417,6 +432,37 @@ void main() {
     await aWhile(tester);
     expect(pictures.has(at('red')), isTrue, reason: 'the view made it');
     expect(await middle(tester), red);
+  });
+
+  testWidgets('🗣️standing still, a frame of another cut than the one it '
+      'put on screen stands bare till its own picture comes — one of the '
+      'same cut is drawn as it stands at once (the-standing-canvas-composes-'
+      'a-frame-twice-before-its-picture-Q5 = blank)', (tester) async {
+    final cache = images();
+    addTearDown(cache.dispose);
+    final pictures = picturesOver(cache);
+    final (:run, landings: _) = runOver(pictures);
+    await pumpStill(tester, run, 'blue');
+    await aWhile(tester);
+    expect(await middle(tester), blue, reason: '⛔premise: its picture');
+
+    await pumpStill(tester, run, 'red');
+    expect(
+      await middle(tester),
+      red,
+      reason: 'the same cut: drawn as it stands, its picture not there yet',
+    );
+    await aWhile(tester);
+
+    await pumpStill(tester, run, 'blue', of: next);
+    expect(
+      await middle(tester),
+      0,
+      reason: 'bare — not the cut it left, nor drawn as it stands',
+    );
+    await aWhile(tester);
+    expect(pictures.has(at('blue', of: next)), isTrue, reason: 'it made it');
+    expect(await middle(tester), blue, reason: 'its picture came');
   });
 
   /// F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the

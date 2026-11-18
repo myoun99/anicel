@@ -264,15 +264,7 @@ void main() {
   /// last made of it until the next is there — waited for, until nothing
   /// more of it is on its way (`FramePictureView.nothingOnItsWay`).
   Future<Uint8List> composite(WidgetTester tester) async {
-    bool caughtUp() =>
-        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
-                .nothingOnItsWay
-            as bool;
-    expect(
-      await settleAsync(tester, caughtUp),
-      isTrue,
-      reason: 'LIVENESS: what the frame waits for comes',
-    );
+    await theFrameIsShown(tester, within: mainCanvasPanel());
     await pumpFrames(tester, 2);
     final shot = await shotOfBox(
       tester,
@@ -1012,10 +1004,6 @@ void main() {
     final hold = holdIn(tester, region);
     final step = handFor(tester, 20, 15);
     final commands = await select(tester, _Rows.live, region);
-    bool nothingOnItsWay() =>
-        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
-                .nothingOnItsWay
-            as bool;
 
     final before = gate.asked;
     gate.hold();
@@ -1028,7 +1016,7 @@ void main() {
     // 🔬Read before a frame: the next already owes the box's step behind
     // the write, and owed alone would answer.
     expect(
-      nothingOnItsWay(),
+      nothingOnItsWay(tester, within: mainCanvasPanel()),
       isFalse,
       reason: 'the write the move began is on its way, nothing behind it yet',
     );
@@ -1042,7 +1030,7 @@ void main() {
     await settle(tester);
     expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
     expect(
-      nothingOnItsWay(),
+      nothingOnItsWay(tester, within: mainCanvasPanel()),
       isFalse,
       reason: 'the frame shows late what is on its way',
     );
