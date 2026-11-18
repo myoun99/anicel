@@ -8,6 +8,7 @@ import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 
 import '../helpers/engine_screen_pins.dart';
+import '../helpers/poll_until.dart';
 
 /// 🚨★A CEL NUMBER'S PLATE IS THE ENGINE'S TILES, MADE WITH NO WAIT FOR THE
 /// GPU ON THE THREAD THAT ASKS (the-ui-thread-never-enters-the-driver B1-c,
@@ -76,7 +77,10 @@ void main() {
   test('a plate whose picture the engine did not put is made again where '
       'it is next asked for — its tiles hold no letters', () async {
     final kept = engine.letters.celNumberPlate(lettersOf('C1'), row);
-    await pumpEventQueue();
+    // Its picture is put behind the stand-still above, and must be before
+    // the device goes: ↩️a pump of the event queue was all this waited, and
+    // in a batch beside other runs the device went first (11-18, k1335).
+    await patiently(appGpuEngine.done());
     expect(
       engine.letters.celNumberPlate(lettersOf('C1'), row),
       same(kept),
@@ -87,12 +91,17 @@ void main() {
     appGpuEngine.debugLose(forMemory: true);
 
     final unput = engine.letters.celNumberPlate(lettersOf('C2'), row);
-    await pumpEventQueue();
 
     expect(unput.tiles, isNotEmpty, reason: '⛔premise: its slots told');
     expect(
-      engine.letters.celNumberPlate(lettersOf('C2'), row),
-      isNot(same(unput)),
+      await pollUntil(
+        () => !identical(
+          engine.letters.celNumberPlate(lettersOf('C2'), row),
+          unput,
+        ),
+      ),
+      isTrue,
+      reason: 'made again once the engine tells it was not put',
     );
     expect(
       engine.letters.celNumberPlate(lettersOf('C1'), row),

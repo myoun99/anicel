@@ -16,6 +16,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 
+import '../helpers/poll_until.dart';
+
 /// 🚨A STROKE'S STEP WAITS FOR NO TURN OF THE ENGINE'S THREAD (card
 /// a-stroke-step-waits-for-the-engines-turn, 2026-11-18): its dabs piled
 /// and what it shows landed are handed to that thread, as a cel number's
@@ -83,7 +85,9 @@ void main() {
       '— pen-up hands it to no committed tile', () async {
     final stroke = rasterizer()..blendFrom([dab(64, 64)], from: 0);
     final put = shown(stroke)!;
-    await pumpEventQueue();
+    // Its picture is put behind the stand-still above, and must be before
+    // the device goes — as the plate's (11-18, k1335).
+    await patiently(appGpuEngine.done());
     expect(
       shown(stroke)!.revision,
       put.revision,
@@ -94,10 +98,13 @@ void main() {
     appGpuEngine.debugLose(forMemory: true);
 
     final unput = shown(stroke)!;
-    await pumpEventQueue();
 
     expect(unput.revision, put.revision, reason: '⛔premise: shown as it was');
-    expect(shown(stroke)!.revision, greaterThan(unput.revision));
+    expect(
+      await pollUntil(() => shown(stroke)!.revision > unput.revision),
+      isTrue,
+      reason: 'past the revision of a picture the engine tells it did not put',
+    );
     stroke.clear();
   });
 }
