@@ -1,9 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../core/build_stamp.dart';
 import '../models/layer_folder.dart';
-import '../native/app_gpu_engine.dart'
-    show appGpuEngineIsGone, appGpuEngineWentBy;
+import '../native/app_gpu_engine.dart' show appGpuEngineLossLines;
 import '../native/lost_screen.dart';
 import '../services/diagnostics/gpu_loss_log.dart';
 import 'editor_session_manager.dart';
@@ -32,13 +30,13 @@ abstract final class LostScreenEvidence {
     GpuLossLog.write("the screen's device went", linesOf(reason, active));
   }
 
-  /// The loss's lines: the build, each device's word, the playback and
-  /// the cut [active] stands on.
+  /// The loss's lines: each device's word, the playback and the cut
+  /// [active] stands on. The engine's are of the one the app has now: one
+  /// let go before this was heard wrote its own (`EngineRefusals`).
   @visibleForTesting
   static List<String> linesOf(int reason, EditorSessionManager? active) => [
-    'build $buildStamp',
     'screen watch 0x${reason.toUnsigned(32).toRadixString(16).toUpperCase()}',
-    'engine gone=$appGpuEngineIsGone went=${appGpuEngineWentBy.name}',
+    ...appGpuEngineLossLines,
     if (active != null) ..._standing(active),
   ];
 

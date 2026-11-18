@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuDeviceWent, GpuRefused;
 
+import '../services/diagnostics/gpu_loss_log.dart';
 import 'app_gpu_engine.dart'
-    show appGpuEngineIsGone, appGpuEngineOpen, appGpuEngineWentBy;
+    show
+        appGpuEngineIsGone,
+        appGpuEngineLossLines,
+        appGpuEngineOpen,
+        appGpuEngineWentBy;
 import 'app_kernels_ahead.dart' show openTheAppsEngineAgain;
 
 /// 🚨A JOB THE GRAPHICS DEVICE REFUSED IS TOLD — ONCE A CAUSE, A RUN.
@@ -196,6 +201,11 @@ abstract final class EngineRefusals {
   static Future<void> _letGoAndOpenAnother() async {
     // Asked of the engine that is gone, before it is the app's no more.
     final by = appGpuEngineWentBy;
+    // H63: and what it had not finished, which goes with it. A frame's job
+    // waits on this engine far oftener than the runner's watch asks of the
+    // screen's device (each 100 ms), so this loss may be heard first — and
+    // once it is let go, what the screen's loss writes is of the next.
+    GpuLossLog.write("the canvas engine's device went", appGpuEngineLossLines);
     _openedAnotherAt = _now();
     try {
       await _openAnother();

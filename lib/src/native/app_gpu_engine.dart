@@ -1,4 +1,5 @@
 import 'dart:async' show FutureOr;
+import 'dart:convert' show LineSplitter;
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter/foundation.dart'
@@ -87,6 +88,26 @@ bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 /// says of it once it stands on another (`EngineRefusals`).
 GpuDeviceWent get appGpuEngineWentBy =>
     _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
+
+/// What the app's engine says as a device goes, a line each: whether its
+/// device is gone and why, then what it handed the GPU and has not heard it
+/// finish, after the newest it has ([GpuEngine.unfinishedSubmits]) — asked
+/// without opening one. Waits on neither the engine's thread nor its
+/// device, so it is said of an engine whose device went.
+///
+/// 🗣️H63 (관제 2026-11-18): a reset of the GPU leaves what the engine had
+/// sent it and not had back — written where the app hears a device went
+/// (`GpuLossLog`).
+List<String> get appGpuEngineLossLines {
+  final engine = _its.engine;
+  if (engine == null) {
+    return const ['engine none open'];
+  }
+  return [
+    'engine gone=${engine.isGone} went=${engine.wentBy.name}',
+    ...const LineSplitter().convert(engine.unfinishedSubmits),
+  ];
+}
 
 /// What the OS says of the app's engine's adapter memory
 /// ([GpuEngine.videoMemory]) — null where the app has opened none: asked

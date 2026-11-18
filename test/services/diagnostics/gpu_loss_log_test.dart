@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/build_stamp.dart';
 import 'package:anicel/src/services/diagnostics/gpu_loss_log.dart';
 
 /// The losses a graphics device's reset leaves (H63): each one written as it
@@ -26,17 +27,20 @@ void main() {
       if (line.startsWith(GpuLossLog.opening)) line.split(') ').last,
   ];
 
-  test('a loss is its title and its lines, after those before it', () {
+  test('a loss is its title, the build and its lines, after those before '
+      'it', () {
     GpuLossLog.write('first', ['a', 'b']);
     GpuLossLog.write('second', ['c']);
 
     final lines = log.readAsLinesSync();
-    expect(lines, hasLength(5));
+    expect(lines, hasLength(7));
     expect(lines[0], startsWith(GpuLossLog.opening));
     expect(lines[0], endsWith('first'));
-    expect(lines.sublist(1, 3), ['a', 'b']);
-    expect(lines[3], endsWith('second'));
-    expect(lines[4], 'c');
+    expect(lines[1], 'build $buildStamp');
+    expect(lines.sublist(2, 4), ['a', 'b']);
+    expect(lines[4], endsWith('second'));
+    expect(lines[5], 'build $buildStamp');
+    expect(lines[6], 'c');
   });
 
   test('the newest losses are kept, the oldest let go', () {

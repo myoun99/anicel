@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/lost_screen.dart';
 import 'package:anicel/src/services/diagnostics/gpu_loss_log.dart';
 import 'package:anicel/src/services/playback/playback_scope.dart';
@@ -71,7 +72,8 @@ void main() {
     expect(lines.first, startsWith(GpuLossLog.opening));
     expect(lines.first, endsWith("the screen's device went"));
     expect(lines, contains('screen watch 0x887A0006'));
-    expect(lines, contains('engine gone=false went=unsaid'));
+    // What submits it had moves on as the shell goes on; its word does not.
+    expect(lines, contains(appGpuEngineLossLines.first));
     expect(
       lines.where((line) => line.startsWith('playback ')).single,
       allOf(contains('playing=true'), contains('scope=activeCut')),

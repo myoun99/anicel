@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../../core/build_stamp.dart';
 import '../persistence/app_support_path.dart';
 
 /// What the app was doing when a graphics device went — written the moment
@@ -28,8 +29,8 @@ abstract final class GpuLossLog {
   static String logPath() =>
       testRedirectedAppSupportPath('gpu-loss-log.txt', sandbox: 'diagnostics');
 
-  /// Writes one loss: [title] after its time, then [lines] — and lets the
-  /// oldest go past [kept].
+  /// Writes one loss: [title] after its time, the build, then [lines] —
+  /// and lets the oldest go past [kept].
   ///
   /// Synchronous and flushed: a process that a lost device takes down next
   /// must not take a queued write with it.
@@ -38,6 +39,7 @@ abstract final class GpuLossLog {
     final block = [
       '$opening${stamp.toIso8601String()} '
           '(${stamp.toUtc().toIso8601String()}) $title',
+      'build $buildStamp',
       ...lines,
     ];
     try {
