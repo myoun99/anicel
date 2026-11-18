@@ -114,6 +114,7 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
 import 'session/app_clipboard.dart';
 import 'session/editor_app_settings.dart';
+import 'lost_screen_evidence.dart';
 import 'lost_screen_restart.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
@@ -1124,6 +1125,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!LostScreen.hasGone || !mounted || _keepsTheWorkOfALostScreen) {
       return;
     }
+    // H63: what the app was doing, before the save changes it.
+    LostScreenEvidence.noteOnce(_projects.active);
     _keepsTheWorkOfALostScreen = true;
     unawaited(
       keepTheWorkOfALostScreen(
