@@ -129,7 +129,7 @@ Project _projectWithAConte() {
               Frame(id: const FrameId('panel'), duration: 6, strokes: const []),
             ],
             timeline: {
-              0: TimelineExposure.drawing(const FrameId('panel'), length: 6),
+              0: const TimelineExposure.drawing(FrameId('panel'), length: 6),
             },
           ),
           Layer(

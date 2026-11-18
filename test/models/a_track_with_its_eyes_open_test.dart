@@ -1,5 +1,4 @@
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/eyes_open.dart';
@@ -115,7 +114,7 @@ void main() {
     final open = trackWithEyesOpen(track);
     expect(
       open.conte.below.single.head,
-      ConteHead(name: 'under', opacity: .5, onTimesheet: false),
+      const ConteHead(name: 'under', opacity: .5, onTimesheet: false),
       reason: 'its eye open, its other fields the head\'s own',
     );
     expect(open.conte.above, same(track.conte.above));
@@ -128,7 +127,7 @@ void main() {
     final open = trackWithEyesOpen(track);
     expect(
       open.conte.above.single.head,
-      ConteHead(name: 'over', opacity: .5, onTimesheet: false),
+      const ConteHead(name: 'over', opacity: .5, onTimesheet: false),
       reason: 'its eye open, its other fields the head\'s own',
     );
     expect(open.conte.below, same(track.conte.below));
