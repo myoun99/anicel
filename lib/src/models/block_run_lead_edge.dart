@@ -23,9 +23,19 @@
 /// ended up as emptiness at the head of the axis. That rule is gone —
 /// with heads pinned there is no backward ripple left to write.
 ///
-/// A lead-edge drag still never destroys timing BEHIND it: the dragged
-/// block's end never moves, so everything after it holds still by
-/// arithmetic.
+/// ★PULLED BACK PAST ITS LAST FRAME, THE EDGE SWEEPS ON (I-179, 유저
+/// 2026-11-19): 「앞엣지를 뒤로 당기면 지금 1코마째에서 멈추지만, 자기 자신
+/// 없애고 뒤의 블록들도 없앨수있게. 당길때마다 뒤에 것을 없앰. 앞에 붙었던
+/// 블록은 여전히 그에 맞춰 따라와서 결과적으로 코마가 늘어남」 — 「블록을
+/// 사용하는거라면 모든것에 법 통일적용. 컷블록이든 뭐든」 (컷 블록은 이것으로
+/// 컷이 지워지는 게 의도). A block the edge has passed whole is GONE (a
+/// length of none); the one it stands in is shortened from its front, its
+/// end where it was; the glued predecessor follows the edge, else the gap
+/// in front grows — the rolling edit carried on through the row, as far as
+/// the row's last frame. ↩️It stopped at the dragged block's own floor.
+///
+/// Every block the sweep has not reached holds still: no block ends
+/// anywhere else than where it ended.
 library;
 
 import 'dart:math' as math;
@@ -59,7 +69,9 @@ class BlockRunLeadEdgeLayout {
 }
 
 /// Plans a drag of `slots[targetIndex]`'s LEAD edge by [frameDelta] frames
-/// (positive shortens the block from the front).
+/// (positive shortens the block from the front — and, past its last frame,
+/// sweeps on through the blocks behind it: I-179, [_sweepBack]). A block
+/// the answer gives a length of none is gone.
 ///
 /// [minLength] floors every block the drag touches — the dragged one and
 /// the ones it trades with.
@@ -101,49 +113,95 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   // screen; the answer converts back to gaps at the end.
   final starts = slotStartsOf(slots);
 
-  final target = slots[targetIndex];
-  // Shrinking from the front stops at the dragged block's own floor.
-  //
-  // Floored at zero before the clamp: a block ALREADY under the floor (a
-  // cut shorter than the row it must tile, which a load or a stale
-  // minimum can hand us) would otherwise make the shrink limit negative
-  // and `clamp` throw on a lower bound above its upper.
-  final maxShrink = math.max(0, target.length - minLength);
-  final maxGrow = _roomInFront(
-    slots,
-    targetIndex,
-    starts: starts,
-    limits: limits,
-  );
-  final delta = frameDelta.clamp(-maxGrow, maxShrink);
-
   final newStarts = List<int>.of(starts);
   final lengths = [for (final slot in slots) slot.length];
-  newStarts[targetIndex] = starts[targetIndex] + delta;
-  lengths[targetIndex] = target.length - delta;
-
-  // The walk itself; the law it follows is stated in the doc above.
-  if (targetIndex > 0 && delta < 0) {
-    _tradeForward(
+  if (frameDelta > 0) {
+    _sweepBack(
       slots,
-      (
-        targetIndex: targetIndex,
-        owed: -delta,
-        limits: limits,
-        starts: starts,
-      ),
+      (targetIndex: targetIndex, pull: frameDelta, minLength: minLength),
+      starts: starts,
       newStarts: newStarts,
       lengths: lengths,
     );
-  } else if (targetIndex > 0 && slots[targetIndex].leadingGap == 0) {
-    // Shrinking against a block it touches: that one takes the frames back.
-    lengths[targetIndex - 1] = slots[targetIndex - 1].length + delta;
+  } else if (frameDelta < 0) {
+    final maxGrow = _roomInFront(
+      slots,
+      targetIndex,
+      starts: starts,
+      limits: limits,
+    );
+    final delta = math.max(frameDelta, -maxGrow);
+    newStarts[targetIndex] = starts[targetIndex] + delta;
+    lengths[targetIndex] = slots[targetIndex].length - delta;
+    // The walk itself; the law it follows is stated in the doc above.
+    if (targetIndex > 0 && delta < 0) {
+      _tradeForward(
+        slots,
+        (
+          targetIndex: targetIndex,
+          owed: -delta,
+          limits: limits,
+          starts: starts,
+        ),
+        newStarts: newStarts,
+        lengths: lengths,
+      );
+    }
   }
 
   return BlockRunLeadEdgeLayout(
     leadingGaps: leadingGapsOf(starts: newStarts, lengths: lengths),
     lengths: lengths,
   );
+}
+
+/// What a pull back of a lead edge reads: the dragged block, how far the
+/// hand pulled and the floor a block the edge stands in keeps.
+typedef _PullInput = ({int targetIndex, int pull, int minLength});
+
+/// The lead edge of `slots[input.targetIndex]` pulled back [_PullInput.pull]
+/// frames, as far as the row's last frame (I-179): each block the edge has
+/// passed whole goes to a length of none, the one it stands in starts
+/// there — keeping [_PullInput.minLength], the edge holding at that floor
+/// until it has passed the block whole — and a predecessor glued to the
+/// dragged block ends where the edge stands.
+///
+/// A block ALREADY under the floor (a cut shorter than the row it must
+/// tile, which a load or a stale minimum can hand us) holds still until
+/// the edge has passed it whole.
+///
+/// Writes through [newStarts] and [lengths]; a swept block stands where the
+/// edge stopped, so the gaps around it read as the row does.
+void _sweepBack(
+  List<BlockMoveSlot> slots,
+  _PullInput input, {
+  required List<int> starts,
+  required List<int> newStarts,
+  required List<int> lengths,
+}) {
+  final target = input.targetIndex;
+  final from = starts[target];
+  var edge = math.min(from + input.pull, starts.last + slots.last.length);
+  var swept = target;
+  for (; swept < slots.length; swept += 1) {
+    final end = starts[swept] + slots[swept].length;
+    if (edge < end) {
+      if (edge > starts[swept]) {
+        edge = math.min(edge, math.max(starts[swept], end - input.minLength));
+        newStarts[swept] = edge;
+        lengths[swept] = end - edge;
+      }
+      break;
+    }
+    lengths[swept] = 0;
+  }
+  for (var i = target; i < swept; i += 1) {
+    newStarts[i] = edge;
+  }
+  if (target > 0 && slots[target].leadingGap == 0) {
+    // Against a block it touches: that one follows the edge.
+    lengths[target - 1] = slots[target - 1].length + edge - from;
+  }
 }
 
 /// What a forward trade reads: which block is being dragged, how many

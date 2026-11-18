@@ -369,6 +369,36 @@ class TimelineController {
     return kept.length == before.audioClips.length ? before.audioClips : kept;
   }
 
+  /// [after] — an edit of [before] — less each cel the edit stopped
+  /// exposing that no lane of the row's bank still shows: a cel leaves the
+  /// row with the last block that showed it (F-136), its linked sounds
+  /// with it (REC1-A).
+  ///
+  /// ⚠️Only cels THIS edit orphaned. A layer may legitimately hold a cel no
+  /// exposure points at (drawn, then its block deleted), and "unreferenced
+  /// after" alone would take those out with it — an edit three rows away
+  /// silently emptying the bank.
+  ///
+  /// ONE answer for every edit that takes blocks off a row — the delete,
+  /// the splice a retime makes, and a lead edge sweeping blocks away
+  /// (I-179). ↩️The first two spelled it each.
+  Layer _leavingWhatItOrphaned(Layer before, Layer after) {
+    final bank = bankLanesOf(before.id);
+    final frames = [
+      for (final frame in after.frames)
+        if (bank.exposes(frame.id, lane: after.timeline) ||
+            !laneExposesFrame(before.timeline, frame.id))
+          frame,
+    ];
+    if (frames.length == after.frames.length) {
+      return after;
+    }
+    return after.copyWith(
+      frames: frames,
+      audioClips: _audioClipsForFrames(after, frames),
+    );
+  }
+
   // --- Bulk retime (UI-R17 #3/#7) --------------------------------------------
 
   // ── retiming: its own object, in its own file ───────────────────────

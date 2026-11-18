@@ -29,11 +29,13 @@ class _TimelineExposureEdge {
         0;
   }
 
-  /// The largest applicable portion of [delta] for an edge shift:
-  /// shrinking stops at length 1, and start-edge growth stops when the
-  /// pushed chain would cross frame 0 — or, for a MOVIE kept as a
-  /// reference, at the file's first frame. Growth toward the open end is
-  /// unlimited.
+  /// The largest applicable portion of [delta] for an edge shift: an end
+  /// edge shrinking stops at length 1; a start edge pulled back sweeps on
+  /// through the blocks behind it to the row's last frame (I-179), and
+  /// start-edge growth stops when the pushed chain would cross frame 0 —
+  /// or, for a MOVIE kept as a reference, at the file's first frame — each
+  /// as far as the shared lead-edge rule lets it go. Growth toward the
+  /// open end is unlimited.
   int clampExposureEdgeDelta({
     required Layer layer,
     required int blockStartIndex,
@@ -55,19 +57,20 @@ class _TimelineExposureEdge {
         // Shrink from the end: keep at least one frame.
         return delta < 1 - length ? 1 - length : delta;
       case TimelineBlockEdge.start:
-        if (delta > 0) {
-          // Shrink from the front: keep at least one frame.
-          return delta > length - 1 ? length - 1 : delta;
-        }
-        // Grow backward: the empty space in front plus what the block
-        // it touches can give up before IT would fall under one frame —
-        // the shared lead-edge rule's own limit, asked rather than
-        // re-derived (I-21). A movie's head is additionally capped by the
-        // frames of the file before its in point ([_referenceAfterEdge]).
-        final room = _leadEdgeRoomInFront(
+        // Pulled back, as far as the edge sweeps (I-179); grown backward,
+        // the empty space in front plus what the block it touches can give
+        // up before IT would fall under one frame — the shared lead-edge
+        // rule's own limits, asked rather than re-derived (I-21). A movie's
+        // head is additionally capped by the frames of the file before its
+        // in point ([_referenceAfterEdge]).
+        final room = _leadEdgeRoom(
           ghostFreeTimeline(layer),
           blockStartIndex: blockStartIndex,
+          toward: delta.sign,
         );
+        if (delta > 0) {
+          return math.min(delta, room);
+        }
         final maxGrow = isMovieReference(layer)
             ? math.min(room, layer.mediaReference!.frameOffset)
             : room;
@@ -104,9 +107,15 @@ class _TimelineExposureEdge {
       delta: clampedDelta,
     );
     // Live preview keeps the ghosts following the dragged run (UI-R8).
-    return _controller._withGhostsRederived(
+    return _laidOut(
+      layer,
       layer.copyWith(
-        mediaReference: _referenceAfterEdge(layer, edge, clampedDelta),
+        mediaReference: _referenceAfterEdge(
+          layer,
+          edge,
+          delta: clampedDelta,
+          blockLength: layer.timeline[blockStartIndex]!.length!,
+        ),
       ),
       nextTimeline,
     );
@@ -117,15 +126,19 @@ class _TimelineExposureEdge {
   /// file's in point by exactly what the start moved, and every frame left
   /// shows what it showed (the video spec the user approved, 2026-09-11: a
   /// reference block trims at both ends, and its head trim moves the in
-  /// point). A tail trim, and every other row, keep theirs.
+  /// point). A tail trim, and every other row, keep theirs — and so does a
+  /// block a lead edge swept away (I-179), which has no start to count
+  /// from.
   static MediaReference? _referenceAfterEdge(
     Layer layer,
-    TimelineBlockEdge edge,
-    int delta,
-  ) {
+    TimelineBlockEdge edge, {
+    required int delta,
+    required int blockLength,
+  }) {
     final reference = layer.mediaReference;
     if (reference == null ||
         edge != TimelineBlockEdge.start ||
+        delta >= blockLength ||
         !isMovieReference(layer)) {
       return reference;
     }
@@ -220,19 +233,36 @@ class _TimelineExposureEdge {
     _applyLeadEdge(layout, targetIndex: targetIndex, delta: delta, reach: reach);
     // F-137: the bulk's lead edge reads the row the single grip reads — the
     // ghost-free one — and puts the ghosts back the same way.
-    return _controller._withGhostsRederived(layer, layout.toTimeline());
+    return _laidOut(layer, layer, layout.toTimeline());
   }
 
-  /// How far this block's lead edge can travel forward, by the shared
-  /// rule: ask it for an unreachable delta and see what it grants.
+  /// [layer] on [timeline] with its ghosts put back, and the cels of the
+  /// blocks a lead edge swept away gone with them by the F-136 law
+  /// (I-179) — what both edge paths hand back. Null when nothing changed.
+  Layer? _laidOut(
+    Layer before,
+    Layer layer,
+    SplayTreeMap<int, TimelineExposure> timeline,
+  ) {
+    final next = _controller._withGhostsRederived(layer, timeline);
+    return next == null
+        ? null
+        : _controller._leavingWhatItOrphaned(before, next);
+  }
+
+  /// How far this block's lead edge can travel [toward] the back (1) or
+  /// the front (-1), by the shared rule: ask it for an unreachable delta
+  /// and see what it grants.
   ///
   /// ⛔DERIVED, NOT RE-DERIVED. The room used to be computed here from the
   /// axis's own arithmetic ("every gap up to frame 0"), which was a second
   /// statement of a limit the planner already owns — and the two would
-  /// have parted the moment either moved. I-21 moved it.
-  int _leadEdgeRoomInFront(
+  /// have parted the moment either moved. I-21 moved it, and I-179 the
+  /// other way (↩️a pull back stopped here at the block's last frame).
+  int _leadEdgeRoom(
     SplayTreeMap<int, TimelineExposure> timeline, {
     required int blockStartIndex,
+    required int toward,
   }) {
     final layout = _BlockLayout.of(timeline);
     final targetIndex = layout.blocks.indexWhere(
@@ -242,8 +272,12 @@ class _TimelineExposureEdge {
       return 0;
     }
     final before = layout.blocks[targetIndex].startIndex;
-    _applyLeadEdge(layout, targetIndex: targetIndex, delta: -_unreachable);
-    return before - layout.starts[targetIndex];
+    _applyLeadEdge(
+      layout,
+      targetIndex: targetIndex,
+      delta: toward * _unreachable,
+    );
+    return (layout.starts[targetIndex] - before).abs();
   }
 
   /// Bigger than any timeline a hand can drag — the planner clamps it.

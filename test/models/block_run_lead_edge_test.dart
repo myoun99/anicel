@@ -108,16 +108,19 @@ void main() {
     }
   });
 
-  test('shrinking stops at the dragged block\'s own minimum', () {
-    final layout = planBlockRunLeadEdge(
+  test('pulled into its floor, the dragged block holds there until the '
+      'edge has passed it whole — then it is gone (I-179)', () {
+    List<int> pulled(int pull) => planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 4)]),
       targetIndex: 1,
-      frameDelta: 99,
+      frameDelta: pull,
       limits: (minLength: 2, reach: 1),
-    );
+    ).lengths;
 
-    expect(layout.lengths, [6, 2]);
-    expect(startsOf(layout), [0, 6], reason: 'the neighbour held its head');
+    expect(pulled(2), [6, 2], reason: 'down to its floor');
+    expect(pulled(3), [6, 2], reason: 'the edge holds at the floor');
+    expect(pulled(4), [8, 0], reason: 'passed whole, it is gone');
+    expect(pulled(99), [8, 0], reason: 'as far as the row\'s last frame');
   });
 
   test('the FIRST slot has no neighbour — the head of the axis absorbs it', () {
@@ -147,17 +150,86 @@ void main() {
     expect(layout.lengths, [6, 4], reason: 'it grew by the 2 frames of head');
   });
 
-  test('a block ALREADY under the floor refuses to shrink instead of '
-      'throwing — the clamp bounds cannot cross', () {
-    final layout = planBlockRunLeadEdge(
+  test('a block ALREADY under the floor holds still instead of throwing — '
+      'until the edge has passed it whole', () {
+    BlockRunLeadEdgeLayout pulled(int pull) => planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 2)]),
       targetIndex: 1,
-      frameDelta: 3,
+      frameDelta: pull,
       limits: (minLength: 5, reach: 1),
     );
 
-    expect(layout.lengths, [4, 2], reason: 'nothing shrinks below the floor');
-    expect(startsOf(layout), [0, 4]);
+    expect(pulled(1).lengths, [4, 2], reason: 'nothing shrinks below it');
+    expect(startsOf(pulled(1)), [0, 4]);
+    expect(pulled(2).lengths, [6, 0], reason: 'passed whole, it is gone');
+  });
+
+  group('pulled back past its last frame, the edge sweeps on (I-179, 유저 '
+      '2026-11-19: 「자기 자신 없애고 뒤의 블록들도 없앨수있게」)', () {
+    test('the block goes, then each one behind it, and the glued '
+        'predecessor follows the edge', () {
+      // [0,4) [4,5) [5,6) [6,7), all glued.
+      List<int> pulled(int pull) => planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 1), (0, 1), (0, 1)]),
+        targetIndex: 1,
+        frameDelta: pull,
+      ).lengths;
+
+      expect(pulled(1), [5, 0, 1, 1], reason: '「자기 자신 없애고」');
+      expect(pulled(2), [6, 0, 0, 1], reason: '「당길때마다 뒤에 것을 없앰」');
+      expect(pulled(3), [7, 0, 0, 0]);
+      expect(pulled(99), [7, 0, 0, 0], reason: 'the row ends where it ended');
+    });
+
+    test('a block the edge stands in is shortened from its front, its end '
+        'where it was', () {
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 2), (0, 5)]),
+        targetIndex: 1,
+        frameDelta: 4,
+      );
+
+      expect(layout.lengths, [8, 0, 3]);
+      expect(startsOf(layout), [0, 8, 8]);
+      expect(layout.leadingGaps, [0, 0, 0], reason: 'no emptiness appears');
+    });
+
+    test('a SEPARATED predecessor holds and the gap grows', () {
+      // [0,4) .. [6,8) [8,11)
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (2, 2), (0, 3)]),
+        targetIndex: 1,
+        frameDelta: 4,
+      );
+
+      expect(layout.lengths, [4, 0, 1]);
+      expect(startsOf(layout)[2], 10, reason: 'the follower ends at 11');
+      expect(layout.leadingGaps, [0, 6, 0]);
+    });
+
+    test('through a gap behind it the glued predecessor goes on following, '
+        'and a block past the edge holds still', () {
+      // [0,4) [4,6) .. [9,11)
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 2), (3, 2)]),
+        targetIndex: 1,
+        frameDelta: 3,
+      );
+
+      expect(layout.lengths, [7, 0, 2]);
+      expect(startsOf(layout), [0, 7, 9]);
+    });
+
+    test('the FIRST block has no predecessor — the head of the axis grows', () {
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 1), (0, 1), (0, 1)]),
+        targetIndex: 0,
+        frameDelta: 2,
+      );
+
+      expect(layout.lengths, [0, 0, 1]);
+      expect(startsOf(layout)[2], 2, reason: 'the last block holds still');
+    });
   });
 
   group('reach — how far in front the edge may trade (유저 2026-09-12)', () {

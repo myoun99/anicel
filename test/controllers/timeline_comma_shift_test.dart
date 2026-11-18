@@ -156,12 +156,107 @@ void main() {
       harness.expectTimeline({0: _drawing('a', 1), 5: _drawing('b', 1)});
     });
 
-    test('front shrink clamps at one frame', () {
+    test('front shrink holds at one frame until it passes the block', () {
+      final harness = _Harness({0: _drawing('a', 3)});
+
+      harness.shift(blockStart: 0, edge: TimelineBlockEdge.start, delta: 2);
+
+      harness.expectTimeline({2: _drawing('a', 1)});
+    });
+  });
+
+  // I-179 (유저 2026-11-19): 「앞엣지를 뒤로 당기면 지금 1코마째에서
+  // 멈추지만, 자기 자신 없애고 뒤의 블록들도 없앨수있게 … 앞에 붙었던
+  // 블록은 여전히 그에 맞춰 따라와서 결과적으로 코마가 늘어남」.
+  group('a lead edge pulled past its block', () {
+    test('takes the block, and its cel with it', () {
       final harness = _Harness({0: _drawing('a', 3)});
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.start, delta: 9);
 
-      harness.expectTimeline({2: _drawing('a', 1)});
+      harness.expectTimeline({});
+      expect(harness.layer.frames, isEmpty);
+    });
+
+    test('sweeps on through the blocks behind, the glued one in front '
+        'following the edge', () {
+      // A[0,2) B[2,4) C[4,6) .. gap .. D[8,9): B's front pulled 3 passes
+      // B whole and stands in C.
+      final harness = _Harness({
+        0: _drawing('a', 2),
+        2: _drawing('b', 2),
+        4: _drawing('c', 2),
+        8: _drawing('d', 1),
+      });
+
+      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: 3);
+
+      harness.expectTimeline({
+        0: _drawing('a', 5),
+        5: _drawing('c', 1),
+        8: _drawing('d', 1),
+      });
+      expect(
+        [for (final frame in harness.layer.frames) frame.id.value],
+        ['a', 'c', 'd'],
+      );
+    });
+
+    test('goes no further than the row\'s last frame', () {
+      final harness = _Harness({
+        0: _drawing('a', 2),
+        2: _drawing('b', 2),
+        4: _drawing('c', 2),
+        8: _drawing('d', 1),
+      });
+
+      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: 99);
+
+      harness.expectTimeline({0: _drawing('a', 9)});
+    });
+
+    test('opens the gap in front of a block it is not glued to', () {
+      // A[0,1) .. gap .. B[3,5) C[5,6)
+      final harness = _Harness({
+        0: _drawing('a', 1),
+        3: _drawing('b', 2),
+        5: _drawing('c', 1),
+      });
+
+      harness.shift(blockStart: 3, edge: TimelineBlockEdge.start, delta: 2);
+
+      harness.expectTimeline({0: _drawing('a', 1), 5: _drawing('c', 1)});
+    });
+
+    test('leaves a cel the row still shows elsewhere (F-136)', () {
+      // A[0,2)=x B[2,4)=y C[4,6)=x — sweeping B and C leaves x, shown by A.
+      final harness = _Harness({
+        0: _drawing('x', 2),
+        2: _drawing('y', 2),
+        4: _drawing('x', 2),
+      });
+
+      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: 4);
+
+      harness.expectTimeline({0: _drawing('x', 6)});
+      expect(
+        [for (final frame in harness.layer.frames) frame.id.value],
+        ['x'],
+      );
+    });
+
+    test('is one undo step, cels and all', () {
+      final harness = _Harness({0: _drawing('a', 2), 2: _drawing('b', 2)});
+
+      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: 2);
+      harness.expectTimeline({0: _drawing('a', 4)});
+
+      harness.history.undo();
+      harness.expectTimeline({0: _drawing('a', 2), 2: _drawing('b', 2)});
+      expect(
+        [for (final frame in harness.layer.frames) frame.id.value],
+        ['a', 'b'],
+      );
     });
   });
 
@@ -265,9 +360,11 @@ TimelineExposure _drawing(String frameId, int length, {List<int>? dots}) {
 class _Harness {
   _Harness(Map<int, TimelineExposure> timeline) {
     final frames = <Frame>[
-      for (final entry in timeline.entries)
-        if (entry.value.isDrawing)
-          Frame(id: entry.value.frameId!, duration: 1, strokes: const []),
+      for (final id in {
+        for (final entry in timeline.values)
+          if (entry.isDrawing) entry.frameId!,
+      })
+        Frame(id: id, duration: 1, strokes: const []),
     ];
     final layer = Layer(
       id: const LayerId('layer-1'),

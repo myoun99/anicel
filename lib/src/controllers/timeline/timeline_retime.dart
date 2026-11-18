@@ -171,28 +171,13 @@ class _TimelineRetime {
     // A cel nothing points at any more leaves with the exposure that was
     // its last use — the same bookkeeping the retired relink branch did,
     // now asked of the WHOLE row rather than of one replaced block.
-    //
-    // ⚠️Only cels THIS splice orphaned. A layer may legitimately hold a
-    // cel no exposure points at (drawn, then its block deleted), and
-    // "unreferenced after" alone would take those out with it — a splice
-    // three rows away silently emptying the bank.
-    //
-    // 🚨F-136: "points at" is asked of EVERY lane of the bank — a 겸용
-    // cut's row still showing the cel keeps it in the bank.
-    final bank = _controller.bankLanesOf(run.layerId);
-    final nextFrames = [
-      for (final frame in [...before.frames, ...run.bornFrames])
-        if (bank.exposes(frame.id, lane: nextTimeline) ||
-            !laneExposesFrame(before.timeline, frame.id))
-          frame,
-    ];
-    final kept = _controller._audioClipsForFrames(before, nextFrames);
-    final after = before.copyWith(
-      frames: nextFrames,
-      timeline: nextTimeline,
-      audioClips: run.bornSounds.isEmpty
-          ? kept
-          : [...kept, ...run.bornSounds],
+    final after = _controller._leavingWhatItOrphaned(
+      before,
+      before.copyWith(
+        frames: [...before.frames, ...run.bornFrames],
+        timeline: nextTimeline,
+        audioClips: [...before.audioClips, ...run.bornSounds],
+      ),
     );
     return (before: before, after: after);
   }
@@ -263,11 +248,16 @@ class _BlockLayout {
 
   /// The timeline this layout describes: drawings at their new starts, each
   /// one's dots kept to its end whichever edge moved it — the comma edge,
-  /// the neighbour a lead edge trades with and the retime alike.
+  /// the neighbour a lead edge trades with and the retime alike. A block
+  /// laid out at no length is gone (a lead edge swept it, I-179).
   SplayTreeMap<int, TimelineExposure> toTimeline() {
     final next = SplayTreeMap<int, TimelineExposure>();
     for (var i = 0; i < blocks.length; i += 1) {
-      next[starts[i]] = blocks[i].entry.atLengthKeepingDotsToItsEnd(lengths[i]);
+      if (lengths[i] > 0) {
+        next[starts[i]] = blocks[i].entry.atLengthKeepingDotsToItsEnd(
+          lengths[i],
+        );
+      }
     }
     return next;
   }
