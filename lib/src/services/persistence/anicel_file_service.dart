@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../core/progress_share.dart';
+import '../../core/screens_turn.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -794,7 +795,7 @@ class AnicelFileService {
       final work = await next;
       done.add(work);
       if (work?.hot != null) {
-        await Future<void>.delayed(Duration.zero);
+        await theScreensTurn();
         debugAfterScreenTurn?.call();
       }
     }
