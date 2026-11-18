@@ -8,6 +8,7 @@ import '../input/scroller_press_hold.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
+import '../widgets/content_scrollbar.dart';
 import '../widgets/ellipsis_text.dart';
 
 /// One column of the pool's list right of its names: what its head says and
@@ -142,16 +143,18 @@ class _MediaPoolListState extends State<MediaPoolList> {
     final columnsWidth = widths.fold(0.0, (sum, width) => sum + width);
     return LayoutBuilder(
       builder: (context, room) {
-        final nameWidth = math.min(MediaPoolList.nameWidth, room.maxWidth);
+        // The lines stand left of their bar's lane ([_window]).
+        final nameWidth = math.min(
+          MediaPoolList.nameWidth,
+          math.max(0.0, room.maxWidth - ContentScrollbar.laneIn(context)),
+        );
         // 🚨THE COLUMNS SCROLL, THE VIEW DOES NOT: a window as wide as the
         // view rides the sideways scroll's offset, and only the columns in
         // it move. So the lines' own scroll is as wide as the view, and its
-        // bar — the scroll behaviour's, as every bar is — stands at the
-        // view's edge, not at the columns' end; and a line is pressed where
-        // it is drawn. ↩️The whole surface scrolled sideways under a name
-        // translated back: the list's bar went off-screen with the columns,
-        // and was hand-placed at the edge to stay (which only the behaviour
-        // may do).
+        // bar stands at the view's edge, not at the columns' end; and a line
+        // is pressed where it is drawn. ↩️The whole surface scrolled sideways
+        // under a name translated back: the list's bar went off-screen with
+        // the columns, and was hand-placed at the edge to stay.
         return SingleChildScrollView(
           controller: _across,
           scrollDirection: Axis.horizontal,
@@ -183,45 +186,59 @@ class _MediaPoolListState extends State<MediaPoolList> {
       ? _across.offset
       : 0;
 
-  /// What the view shows: the heads, and every file's line under them.
+  /// What the view shows: the heads, and every file's line under them, its
+  /// bar in a lane of its own beside the lines — always there, as every
+  /// panel's content's is ([ContentScrollbar]); the heads stop where the
+  /// lines do, so a head stands over the cells it names.
+  ///
+  /// 🗣️H62 (유저 2026-11-18): 「미디어풀 스크롤바같은게 안뜨는데 … 계속
+  /// 떠있도록. 스크롤바가 필요한 상황인데도 안뜨고있음」. ↩️Its bar was the
+  /// scroll behaviour's, which lays none down a vertical list on a tablet
+  /// and only while it overflows on a desktop.
   Widget _window(BuildContext context, double nameWidth, List<double> widths) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
             height: MediaPoolList.headHeight,
-            child: _line(
-              nameWidth,
-              widths,
-              name: _head(widget.nameLabel),
-              cells: [
-                for (final column in widget.columns)
-                  _head(column.label, end: column.numeric),
-              ],
+            child: Padding(
+              padding: EdgeInsets.only(right: ContentScrollbar.laneIn(context)),
+              child: _line(
+                nameWidth,
+                widths,
+                name: _head(widget.nameLabel),
+                cells: [
+                  for (final column in widget.columns)
+                    _head(column.label, end: column.numeric),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
           Expanded(
-            child: ListView.builder(
+            child: ContentScrollbar(
               controller: _down,
-              padding: EdgeInsets.zero,
-              itemExtent: timelineLayerRowHeightIn(context),
-              itemCount: widget.assets.length,
-              itemBuilder: (context, index) {
-                final asset = widget.assets[index];
-                return widget.lineOf(
-                  asset,
-                  _line(
-                    nameWidth,
-                    widths,
-                    name: widget.nameOf(context, asset),
-                    cells: [
-                      for (final column in widget.columns)
-                        _cell(column, asset),
-                    ],
-                  ),
-                );
-              },
+              builder: (context, controller) => ListView.builder(
+                controller: controller,
+                padding: EdgeInsets.zero,
+                itemExtent: timelineLayerRowHeightIn(context),
+                itemCount: widget.assets.length,
+                itemBuilder: (context, index) {
+                  final asset = widget.assets[index];
+                  return widget.lineOf(
+                    asset,
+                    _line(
+                      nameWidth,
+                      widths,
+                      name: widget.nameOf(context, asset),
+                      cells: [
+                        for (final column in widget.columns)
+                          _cell(column, asset),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
