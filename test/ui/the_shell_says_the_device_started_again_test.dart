@@ -182,7 +182,8 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(LostScreen.channel, (call) async {
           askedWithWindows.add(call);
-          return 1;
+          // The window closed with no button pressed: taken down.
+          return -1;
         });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
