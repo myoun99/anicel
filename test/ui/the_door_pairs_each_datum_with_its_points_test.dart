@@ -52,7 +52,7 @@ void main() {
             pressure: point.force,
             tilt: null,
             orientation: null,
-            driven: index < driven.length ? driven[index] : null,
+            driven: _driven(index < driven.length ? driven[index] : null),
           ),
       ];
     };
@@ -211,7 +211,7 @@ void main() {
             ],
           ),
         );
-        return [for (final event in heard) PenPath.drivenPressureOf(event)];
+        return [for (final event in heard) PenPath.drivenOf(event)?.pressure];
       }
 
       expect(driven(PointerDeviceKind.mouse), [0.2, null, 0.7]);
@@ -341,3 +341,8 @@ void main() {
     expect(asked, isEmpty);
   });
 }
+
+/// The driver's reading of a packet that gave [pressure] alone — none for
+/// none.
+DriverReading? _driven(double? pressure) =>
+    pressure == null ? null : (pressure: pressure, lean: null, twist: null);

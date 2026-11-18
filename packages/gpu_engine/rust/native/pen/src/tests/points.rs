@@ -1,7 +1,7 @@
 //! The book of the points the OS saw, and how a datum is paired with its
 //! batch, on answers worked out here.
 
-use crate::points::{Batch, Book, Kind, LOSSES, Lost, MOST_BATCHES, POINT_WORDS, Point, book};
+use crate::points::{Batch, Book, Driven, Kind, LOSSES, Lost, MOST_BATCHES, POINT_WORDS, Point, book};
 
 /// A message's batch: its points at `xs` along y 0, one microsecond apart
 /// from `from`, handed to Flutter at the last of them — of contact 1, a pen.
@@ -220,8 +220,13 @@ fn a_point_the_os_says_nothing_more_of_reads_none_for_the_pen() {
 
 #[test]
 fn a_point_is_handed_to_the_app_where_when_and_as_the_pen_read() {
-    let point = Point { pressure: 0.5, tilt: 0.25, orientation: -1.5, driven: 0.75, ..Point::at(1.5, 2.25, 7) };
-    assert_eq!(point.words(), [1.5, 2.25, 7.0, 0.5, 0.25, -1.5, 0.75]);
+    let driven = Driven { pressure: 0.75, lean: Some((90.0, 0.5)), twist: Some(270.0) };
+    let point = Point { pressure: 0.5, tilt: 0.25, orientation: -1.5, driven: Some(driven), ..Point::at(1.5, 2.25, 7) };
+    assert_eq!(point.words(), [1.5, 2.25, 7.0, 0.5, 0.25, -1.5, 0.75, 90.0, 0.5, 270.0]);
+    // The packet of a device that declares no orientation and no twist.
+    let bare = Point { driven: Some(Driven { lean: None, twist: None, ..driven }), ..point };
+    assert_eq!(bare.words()[..7], point.words()[..7]);
+    assert!(bare.words()[7..].iter().all(|word| word.is_nan()), "no lean and no twist read");
     // A performance counter's microseconds a day after boot stay whole.
     assert_eq!(Point::at(0.0, 0.0, 86_400_000_001).words()[2], 86_400_000_001.0);
 }

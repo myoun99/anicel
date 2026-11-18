@@ -86,7 +86,7 @@ abstract final class PenSidecars {
 
   /// The driver-side reading of [event]: the pressure the driver gave its
   /// own point where the platform's reader paired them
-  /// ([PenPath.drivenPressureOf] — a pen's point or a mouse's, whatever the
+  /// ([PenPath.drivenOf] — a pen's point or a mouse's, whatever the
   /// OS hands it over as), and the freshest reading otherwise
   /// ([freshReading]).
   ///
@@ -101,7 +101,7 @@ abstract final class PenSidecars {
   static ({double pressure, bool touching, bool ownPoint})? readingOf(
     PointerEvent event,
   ) {
-    final driven = PenPath.drivenPressureOf(event);
+    final driven = PenPath.drivenOf(event)?.pressure;
     final reading = driven != null
         ? _reading(driven, tip: false)
         : freshReading();
@@ -162,26 +162,24 @@ abstract final class PenSidecars {
       kind == PointerDeviceKind.stylus ||
       kind == PointerDeviceKind.invertedStylus;
 
-  /// How the pen leans as the freshest driver-side stream says — null when
-  /// none speaks for this moment or the one that does reports no lean (a
-  /// pen without a tilt sensor). Windows only: the lean Flutter's embedder
+  /// How the pen leans at [event] as the driver-side streams say — null
+  /// when none speaks for it or the one that does reports no lean (a pen
+  /// without a tilt sensor). Windows only: the lean Flutter's embedder
   /// drops (desktop-pen-tilt).
   ///
   /// Raw Input first, as for buttons: HID declares the tilt with its own
   /// unit and reach. Wintab's orientation is the driver's own account, and
-  /// the one left when the HID report has none.
+  /// the one left when the HID report has none ([_wintabPoseAt]).
   ///
   /// ⚠️A hovering pen's lean is still its lean — unlike pressure, whose
   /// hover packet reads 0 (see [freshReading]) — so a fresh report answers
   /// whether or not the tip is down.
-  static PenLean? freshLean({DateTime? now}) {
+  static PenLean? leanOf(PointerEvent event, {DateTime? now}) {
     final tilt = RawPenInputService.instance.freshTilt(now: now);
     if (tilt != null) {
       return penLeanFromPlaneTilt(x: tilt.x, y: tilt.y);
     }
-    final orientation = WintabPenService.instance
-        .freshPacket(now: now)
-        ?.orientation;
+    final orientation = _wintabPoseAt(event, now)?.lean;
     if (orientation != null) {
       return penLeanFromWintab(
         bearing: orientation.bearing,
@@ -191,18 +189,40 @@ abstract final class PenSidecars {
     return null;
   }
 
-  /// How far the pen is turned about its own barrel as the freshest
-  /// driver-side stream says, in degrees 0..360 clockwise — null when none
-  /// speaks for this moment or the device declares no twist. Windows only
+  /// How far the pen is turned about its own barrel at [event] as the
+  /// driver-side streams say, in degrees 0..360 clockwise — null when none
+  /// speaks for it or the device declares no twist. Windows only
   /// (F-176-Q9): Flutter's embedder reads POINTER_PEN_INFO's rotation and
   /// leaves it off the pointer event.
   ///
-  /// Raw Input first, as for the lean; both speak clockwise degrees.
-  static double? freshTwist({DateTime? now}) {
+  /// Raw Input first, as for the lean ([leanOf]); both speak clockwise
+  /// degrees.
+  static double? twistOf(PointerEvent event, {DateTime? now}) {
     final twist =
         RawPenInputService.instance.freshTwist(now: now) ??
-        WintabPenService.instance.freshPacket(now: now)?.twistDegrees;
+        _wintabPoseAt(event, now)?.twist;
     return twist == null ? null : twist % 360.0;
+  }
+
+  /// What Wintab says of how the pen is held at [event]: the packet at its
+  /// own point where the platform's reader paired one ([PenPath.drivenOf]),
+  /// and the freshest otherwise — null where neither is.
+  ///
+  /// 🚨THE POINT'S OWN PACKET FIRST, AS FOR PRESSURE ([readingOf];
+  /// pen-points-are-taken-off-the-ui-thread, 2026-11-18): the freshest is
+  /// the pen NOW. After a stall every point of a merged move leant and
+  /// turned as the pen did when the move was handled, not when it was
+  /// drawn — the pressure had been the point's own since H61.
+  static ({({double bearing, double altitude})? lean, double? twist})?
+  _wintabPoseAt(PointerEvent event, DateTime? now) {
+    final own = PenPath.drivenOf(event);
+    if (own != null) {
+      return (lean: own.lean, twist: own.twist);
+    }
+    final packet = WintabPenService.instance.freshPacket(now: now);
+    return packet == null
+        ? null
+        : (lean: packet.orientation, twist: packet.twistDegrees);
   }
 
   /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =

@@ -419,7 +419,9 @@ Future<List<BrushDab>> _line(
                 : _osAside,
             tilt: null,
             orientation: null,
-            driven: driven ? point.force : null,
+            driven: driven
+                ? (pressure: point.force, lean: null, twist: null)
+                : null,
           ),
       ];
       PenPath.arrived(

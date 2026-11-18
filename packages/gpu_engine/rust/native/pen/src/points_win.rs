@@ -12,9 +12,9 @@
 //! Each batch is handed where the embedder hands Flutter the message's
 //! point: the message's screen pixels put in the view (`ScreenToClient`)
 //! for a pointer, the message's own client pixels for the mouse. A pen's
-//! points and a mouse's take the tablet driver's pressure at each one's own
-//! milliseconds where a Wintab context is open, by one law
-//! ([`wintab::pressures_at`]).
+//! points and a mouse's take the tablet driver's reading of the packet at
+//! each one's own place — its pressure, lean and twist — where a Wintab
+//! context is open, by one law ([`wintab::readings_at`]).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
@@ -211,8 +211,8 @@ fn pointer(view: HWND, w: WPARAM, l: LPARAM) {
 
 /// A pointer message's `history`, the newest first, as its points, the
 /// oldest first: each with the pen's `readings` where it is a pen that gave
-/// them, and each a pen's with the tablet driver's pressure of the packet at
-/// its own place where a Wintab context is open ([`wintab::pressures_at`])
+/// them, and each a pen's with the tablet driver's reading of the packet at
+/// its own place where a Wintab context is open ([`wintab::readings_at`])
 /// — as a mouse's are ([`mouse`]).
 ///
 /// 🚨PAIRED AT ITS OWN POINT, AS A MOUSE'S IS (H61, 2026-11-18): a pen the OS
@@ -228,7 +228,7 @@ pub(crate) fn points_of(view: HWND, history: &[POINTER_INFO], readings: Option<&
         .map(|entry| (entry.ptPixelLocation.x, entry.ptPixelLocation.y, entry.dwTime))
         .collect();
     // SAFETY: asked while the message is handled.
-    let driven = wintab::pressures_at(unsafe { GetMessageTime() } as u32, &moves);
+    let driven = wintab::readings_at(unsafe { GetMessageTime() } as u32, &moves);
     // The pen's, the oldest first, as the points are made.
     let mut pens = driven.into_iter().zip(moves).rev();
     history
@@ -272,8 +272,8 @@ fn since_message(time: u32) -> i64 {
 
 /// A mouse move's points: the moves since the newest written, the oldest
 /// first, each timed back from now by its milliseconds — and each with the
-/// tablet driver's pressure of the packet at its place where a Wintab
-/// context is open ([`wintab::pressures_at`]).
+/// tablet driver's reading of the packet at its place where a Wintab
+/// context is open ([`wintab::readings_at`]).
 ///
 /// 🚨PAIRED HERE, AT THE MOVE'S OWN POINT: a pen the OS hands over as a
 /// mouse (Windows Ink off) carries no pressure, and the driver's packet the
@@ -308,16 +308,16 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let moves = moves_since(own, &history, *written);
     let lost = mouse_lost(found, moves.len(), *written);
     *written = Some(own);
-    let pressures = wintab::pressures_at(time, &moves);
+    let readings = wintab::readings_at(time, &moves);
     let points = moves
         .iter()
-        .zip(pressures)
+        .zip(readings)
         .rev()
-        .map(|(&(x, y, at_time), pressure)| {
+        .map(|(&(x, y, at_time), driven)| {
             let at = in_view(view, POINT { x, y });
             let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
             Point {
-                driven: pressure,
+                driven,
                 asked: Some((x, y, at_time)),
                 ..Point::at(f64::from(at.x), f64::from(at.y), micros)
             }

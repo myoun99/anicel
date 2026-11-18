@@ -43,11 +43,11 @@ pub(crate) struct Point {
     pub(crate) pressure: f64,
     pub(crate) tilt: f64,
     pub(crate) orientation: f64,
-    /// The tablet DRIVER's pressure, 0..1, of the packet that put the pen
-    /// at the point (wintab.rs `Heard::at`) — where the point is the pen's
-    /// or a mouse's (a pen the OS hands over as a mouse) and a Wintab
-    /// context is open; NaN elsewhere.
-    pub(crate) driven: f64,
+    /// What the tablet DRIVER's packet that put the pen at the point says
+    /// ([`Driven`]) — where the point is the pen's or a mouse's (a pen the
+    /// OS hands over as a mouse) and a Wintab context heard that packet;
+    /// None elsewhere.
+    pub(crate) driven: Option<Driven>,
     /// Where that packet is asked for: the move as the OS kept it — the
     /// screen's pixel and the message clock's millisecond —, asked again as
     /// the app reads the point while it has no [`Point::driven`] yet
@@ -56,8 +56,29 @@ pub(crate) struct Point {
     pub(crate) asked: Option<(i32, i32, u32)>,
 }
 
+/// What the tablet DRIVER's packet that put the pen at a point says of the
+/// pen (wintab.rs `Heard::at`, read as `Scales::reading` reads it): its
+/// pressure, 0..1 of the device's axis; the pen top's compass bearing in
+/// degrees (0 toward the top of the tablet, clockwise) and its altitude as
+/// a part of a right angle (1 upright; below 0 with the eraser end down) —
+/// None while the device declares no orientation —; and its twist about
+/// the barrel in degrees, clockwise — None while it declares none.
+///
+/// 🚨ONE PACKET FOR THE WHOLE PEN (pen-points-are-taken-off-the-ui-thread,
+/// 2026-11-18): the packet that gives a point its pressure gives it its
+/// lean and its twist. The app read those off the driver's NEWEST packet
+/// after the pressure had become the point's own, so a stall's merged
+/// points leant as the pen leant when the message was handled.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Driven {
+    pub(crate) pressure: f64,
+    pub(crate) lean: Option<(f64, f64)>,
+    pub(crate) twist: Option<f64>,
+}
+
 /// The numbers a point is handed to the app as ([`Point::words`]).
-pub(crate) const POINT_WORDS: usize = 7;
+pub(crate) const POINT_WORDS: usize = 10;
 
 impl Point {
     /// A point the OS says nothing of but where and when.
@@ -70,16 +91,30 @@ impl Point {
             pressure: f64::NAN,
             tilt: f64::NAN,
             orientation: f64::NAN,
-            driven: f64::NAN,
+            driven: None,
             asked: None,
         }
     }
 
     /// The point as the app reads it (`qa_pen_points_take`): x, y, its time
     /// in microseconds — whole, below 2⁵³ for 285 years of a clock — the
-    /// pressure, the tilt, the orientation and the driver's pressure.
+    /// pressure, the tilt, the orientation, and the driver's pressure,
+    /// bearing, altitude and twist ([`Driven`]); NaN for each that is none.
     pub(crate) fn words(&self) -> [f64; POINT_WORDS] {
-        [self.x, self.y, self.micros as f64, self.pressure, self.tilt, self.orientation, self.driven]
+        let driven = self.driven;
+        let lean = driven.and_then(|driven| driven.lean);
+        [
+            self.x,
+            self.y,
+            self.micros as f64,
+            self.pressure,
+            self.tilt,
+            self.orientation,
+            driven.map_or(f64::NAN, |driven| driven.pressure),
+            lean.map_or(f64::NAN, |(bearing, _)| bearing),
+            lean.map_or(f64::NAN, |(_, altitude)| altitude),
+            driven.and_then(|driven| driven.twist).unwrap_or(f64::NAN),
+        ]
     }
 }
 

@@ -16,9 +16,9 @@ import 'gpu_engine_asset.dart';
 /// pixels, when on the clock Flutter stamps that platform's pointer data
 /// by, and what a pointer datum carries of the pen in a datum's own units —
 /// null where the reader gives none, and the message's own datum says it —
-/// and the tablet driver's pressure at its moment, 0..1, where the reader
-/// paired a pen's or a mouse's point with the driver's packet (points.rs
-/// `Point::driven`).
+/// and what the tablet driver's packet said of the pen at its moment
+/// ([DriverReading]), where the reader paired a pen's or a mouse's point
+/// with the driver's packet (points.rs `Point::driven`).
 typedef OsPoint = ({
   double x,
   double y,
@@ -26,7 +26,19 @@ typedef OsPoint = ({
   double? pressure,
   double? tilt,
   double? orientation,
-  double? driven,
+  DriverReading? driven,
+});
+
+/// What the tablet driver's packet that put the pen at a point said of it
+/// (points.rs `Driven`): its pressure, 0..1; its lean — the pen top's
+/// compass bearing in degrees and its altitude as a part of a right angle,
+/// as a Wintab packet's orientation reads (qa_tablet_bridge.dart) — where
+/// the device declares an orientation; and its twist about the barrel in
+/// degrees, where it declares one.
+typedef DriverReading = ({
+  double pressure,
+  ({double bearing, double altitude})? lean,
+  double? twist,
 });
 
 @Native<Int32 Function()>(symbol: 'qa_pen_points_start')
@@ -53,7 +65,7 @@ external int _lost(Pointer<Uint64> out, int room);
 /// with no order between them.
 abstract final class QaPenPoints {
   /// The numbers a point is handed as (points.rs `POINT_WORDS`).
-  static const int _words = 7;
+  static const int _words = 10;
 
   static bool _started = false;
 
@@ -113,8 +125,8 @@ abstract final class QaPenPoints {
 
   /// The points [words] hand, [_words] numbers each as the book writes them
   /// (points.rs `Point::words`): x, y, the time in microseconds, the
-  /// pressure, the tilt, the orientation and the driver's pressure — NaN
-  /// read as none.
+  /// pressure, the tilt, the orientation, and the driver's pressure,
+  /// bearing, altitude and twist — NaN read as none.
   @visibleForTesting
   static List<OsPoint> pointsOf(List<double> words) {
     double? given(double word) => word.isNaN ? null : word;
@@ -127,9 +139,30 @@ abstract final class QaPenPoints {
           pressure: given(words[at + 3]),
           tilt: given(words[at + 4]),
           orientation: given(words[at + 5]),
-          driven: given(words[at + 6]),
+          driven: _drivenAt(words, at + 6),
         ),
     ];
+  }
+
+  /// What the driver's packet said at a point, from its four numbers at
+  /// [at] (points.rs `Driven`): none where no packet gave a pressure.
+  static DriverReading? _drivenAt(List<double> words, int at) {
+    final pressure = words[at];
+    if (pressure.isNaN) {
+      return null;
+    }
+    final (bearing, altitude, twist) = (
+      words[at + 1],
+      words[at + 2],
+      words[at + 3],
+    );
+    return (
+      pressure: pressure,
+      lean: bearing.isNaN || altitude.isNaN
+          ? null
+          : (bearing: bearing, altitude: altitude),
+      twist: twist.isNaN ? null : twist,
+    );
   }
 
   /// How many messages' points no datum was paired with — each a message

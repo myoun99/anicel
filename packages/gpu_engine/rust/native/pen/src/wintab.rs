@@ -9,11 +9,12 @@
 //! - The packet queue is drained without CXO_MESSAGES (no message pump
 //!   dependency) into the packets heard ([`Heard`]) by the reader's own
 //!   thread ([`DRAIN_EVERY`], and sooner where a move's packet is not heard
-//!   yet: [`pressures_at`]), and by a message that presses
+//!   yet: [`readings_at`]), and by a message that presses
 //!   (points_win.rs). Dart's poll reads what was heard, and so do the
 //!   points' readers (points_win.rs), which give each point the pen or a
-//!   mouse made the pressure of the packet that put it there ([`Heard::at`])
-//!   — at its message, else as the app reads it ([`pair`]).
+//!   mouse made what the packet that put it there says of the pen — its
+//!   pressure, lean and twist ([`Heard::at`]) — at its message, else as the
+//!   app reads it ([`pair`]).
 //! - The Wintab structs and constants are declared here (the vendor header
 //!   set is not in the Windows SDK; the LOGCONTEXT layout and the PK_*
 //!   serialization order are stable, documented ABI).
@@ -24,7 +25,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::points::Point;
+use crate::points::{Driven, Point};
 use crate::points_win::{Move, a_pixel_apart};
 
 use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
@@ -243,6 +244,22 @@ impl Scales {
         Self { pressure, lean, twist }
     }
 
+    /// What a packet says of the pen ([`Driven`]): its pressure, its lean
+    /// where the device declares an orientation, and its twist where it
+    /// declares one — read once here for the app's poll ([`Scales::record`])
+    /// and for a point ([`pair`]) alike.
+    pub(crate) fn reading(&self, packet: &Packet) -> Driven {
+        let turn = |units: i32, span: i32| f64::from(units) * 360.0 / f64::from(span);
+        let pose = packet.orientation;
+        Driven {
+            pressure: self.pressure_of(packet),
+            lean: self.lean.map(|(span, right)| {
+                (turn(pose.azimuth, span), f64::from(pose.altitude) / f64::from(right))
+            }),
+            twist: self.twist.map(|span| turn(pose.twist, span)),
+        }
+    }
+
     /// A packet's record: pressure 0..1; the pen top's compass bearing in
     /// degrees (0 toward the top of the tablet, clockwise) and its altitude
     /// as a fraction of a right angle (1 upright; negative with the eraser
@@ -252,21 +269,12 @@ impl Scales {
     /// wrong one); the twist about the barrel in degrees 0..360, clockwise as
     /// Wintab's orTwist runs; and 1 when the device declares a twist.
     pub(crate) fn record(&self, packet: &Packet) -> [f32; 8] {
-        let pressure = self.pressure_of(packet);
-        let turn = |units: i32, span: i32| (f64::from(units) * 360.0 / f64::from(span)) as f32;
-        let pose = packet.orientation;
-        let (bearing, altitude, oriented) = match self.lean {
-            Some((span, right)) => {
-                (turn(pose.azimuth, span), pose.altitude as f32 / right as f32, 1.0)
-            }
-            None => (0.0, 0.0, 0.0),
-        };
-        let (twist, twisted) = match self.twist {
-            Some(span) => (turn(pose.twist, span), 1.0),
-            None => (0.0, 0.0),
-        };
+        let reading = self.reading(packet);
+        let (bearing, altitude, oriented) =
+            reading.lean.map_or((0.0, 0.0, 0.0), |(bearing, altitude)| (bearing as f32, altitude as f32, 1.0));
+        let (twist, twisted) = reading.twist.map_or((0.0, 0.0), |twist| (twist as f32, 1.0));
         let time = packet.time as f32;
-        [pressure as f32, bearing, altitude, time, packet.buttons as f32, oriented, twist, twisted]
+        [reading.pressure as f32, bearing, altitude, time, packet.buttons as f32, oriented, twist, twisted]
     }
 
     /// A packet's pressure, 0..1 of the device's axis.
@@ -386,10 +394,10 @@ struct Opened {
 }
 
 impl Opened {
-    /// The pressure, 0..1, of the packet heard that put the cursor at `at`
-    /// ([`Heard::at`]); NaN where none did.
-    fn pressure_at(&self, at: Move) -> f64 {
-        self.heard.at(at, self.within, self.output).map_or(f64::NAN, |packet| self.scales.pressure_of(packet))
+    /// What the packet heard that put the cursor at `at` says of the pen
+    /// ([`Heard::at`]); None where none did.
+    fn reading_at(&self, at: Move) -> Option<Driven> {
+        self.heard.at(at, self.within, self.output).map(|packet| self.scales.reading(packet))
     }
 }
 
@@ -514,7 +522,7 @@ pub(crate) fn open(within: u32) -> bool {
 }
 
 /// [`open`], its reader's own thread draining the queue `every` so long
-/// when nothing wakes it sooner ([`pressures_at`]).
+/// when nothing wakes it sooner ([`readings_at`]).
 pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     let mut tablet = tablet();
     if tablet.opened.is_some() {
@@ -605,35 +613,36 @@ pub(crate) fn poll(out: &mut [f32]) -> usize {
     handed
 }
 
-/// The driver's pressure, 0..1, at each of `moves` — screen pixels, and the
-/// message clock — of the packet that put the cursor there, within the
-/// window the context opened with ([`Heard::at`]); NaN where no packet did,
-/// and all NaN while no context is open. Asks the driver nothing; notes how
-/// far the newest packet heard is behind the message being handled, at
-/// `message` — and wakes the reader's own thread where a move's packet is
-/// not heard yet while the pen is at hand, for [`pair`] to find it there.
+/// What the driver's packet that put the cursor at each of `moves` — screen
+/// pixels, and the message clock — says of the pen ([`Driven`]), within the
+/// window the context opened with ([`Heard::at`]); None where no packet
+/// did, and all None while no context is open. Asks the driver nothing;
+/// notes how far the newest packet heard is behind the message being
+/// handled, at `message` — and wakes the reader's own thread where a move's
+/// packet is not heard yet while the pen is at hand, for [`pair`] to find
+/// it there.
 ///
 /// ⛔Not where the pen was last heard further back than the context's own
 /// window: a mouse's moves, with no packet ever to be heard of them — a
 /// mouse of 1,000 Hz would have the reader ask the driver as often.
-pub(crate) fn pressures_at(message: u32, moves: &[Move]) -> Vec<f64> {
+pub(crate) fn readings_at(message: u32, moves: &[Move]) -> Vec<Option<Driven>> {
     let mut tablet = tablet();
     let Some(opened) = tablet.opened.as_mut() else {
-        return vec![f64::NAN; moves.len()];
+        return vec![None; moves.len()];
     };
     opened.heard.behind(message);
-    let pressures: Vec<f64> = moves.iter().map(|&at| opened.pressure_at(at)).collect();
+    let readings: Vec<Option<Driven>> = moves.iter().map(|&at| opened.reading_at(at)).collect();
     let at_hand = opened.heard.gap.is_some_and(|gap| gap.unsigned_abs() <= opened.within);
     drop(tablet);
-    if at_hand && pressures.iter().any(|pressure| pressure.is_nan()) {
+    if at_hand && readings.iter().any(Option::is_none) {
         hear_now();
     }
-    pressures
+    readings
 }
 
-/// Gives each of `points` the driver's pressure of the packet at its place
-/// heard since its message, where it had none then ([`pressures_at`]).
-/// Asks the driver nothing.
+/// Gives each of `points` what the driver's packet at its place, heard
+/// since its message, says of the pen, where it had nothing then
+/// ([`readings_at`]). Asks the driver nothing.
 ///
 /// 🚨A MOVE IS PAIRED AS THE APP READS IT TOO (H61, 2026-11-18): the reader's
 /// own thread drains every [`DRAIN_EVERY`], and the packet that put the
@@ -651,9 +660,9 @@ pub(crate) fn pair(points: &mut [Point]) {
     let Some(opened) = tablet.opened.as_ref() else {
         return;
     };
-    for point in points.iter_mut().filter(|point| point.driven.is_nan()) {
+    for point in points.iter_mut().filter(|point| point.driven.is_none()) {
         if let Some(at) = point.asked {
-            point.driven = opened.pressure_at(at);
+            point.driven = opened.reading_at(at);
         }
     }
 }

@@ -21,7 +21,9 @@ use wintab32::{
     Seen,
 };
 
-use crate::wintab::{self, Heard, Output, QUEUE};
+use crate::points::Driven;
+use crate::points_win::Move;
+use crate::wintab::{self, Heard, Output, QUEUE, Scales};
 
 /// The `qat_*` exports of one reader.
 #[derive(Clone, Copy)]
@@ -734,6 +736,70 @@ fn queued(time: u32, pressure: u32) -> Packet {
     Packet { time, ..packet(pressure, 0, 0, 0) }
 }
 
+/// The pressure `reading` gives: NaN where no packet gave one.
+fn pressure_of(reading: &Option<Driven>) -> f64 {
+    reading.map_or(f64::NAN, |reading| reading.pressure)
+}
+
+/// The pressure the packet at each of `moves` gives ([`wintab::readings_at`]).
+fn pressures_at(message: u32, moves: &[Move]) -> Vec<f64> {
+    wintab::readings_at(message, moves).iter().map(pressure_of).collect()
+}
+
+/// A device axis from `min` to `max`, as the reader keeps it.
+fn kept_axis(min: i32, max: i32) -> wintab::Axis {
+    let mut axis = wintab::Axis::default();
+    (axis.min, axis.max) = (min, max);
+    axis
+}
+
+#[test]
+fn a_reading_leans_and_turns_only_where_the_device_declares_it() {
+    let orientation = wintab::Orientation { azimuth: 900, altitude: 450, twist: 270 };
+    let pen = wintab::Packet { orientation, ..heard_at(0, 512) };
+    let pressure = 512.0 * (1.0 / 1023.0);
+    let scales = |twist| Scales::of(Some(kept_axis(0, 1023)), Some([kept_axis(0, 3599), kept_axis(-900, 900), twist]));
+    let bare = Scales::of(Some(kept_axis(0, 1023)), None);
+    assert_eq!(bare.reading(&pen), Driven { pressure, lean: None, twist: None });
+    let leaning = scales(kept_axis(5, 5)).reading(&pen);
+    assert_eq!(leaning, Driven { pressure, lean: Some((90.0, 0.5)), twist: None });
+    assert_eq!(scales(kept_axis(0, 359)).reading(&pen).twist, Some(270.0));
+}
+
+// The packet that gives a move its pressure gives it its lean and its twist
+// — the newest is another place's.
+#[test]
+fn a_move_is_given_the_lean_and_twist_of_the_packet_at_its_place_as_its_pressure() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    let at_place = Packet { time: 1000, ..packet(500, 900, 450, 90) };
+    let newest = Packet { x: 60, time: 1004, ..packet(800, 2700, -300, 180) };
+    // An output 100 high: the fake's packets, at its (40, 50), are the
+    // screen's (40, 49).
+    let mut context = system_context();
+    (context.0[OUT_ORIGIN + 1], context.0[OUT_EXTENT + 1]) = (0, 100);
+    let script = Script {
+        has_pressure: true,
+        pressure: axis(0, 1000),
+        has_orientation: true,
+        orientation: [axis(0, 3599), axis(-900, 900), axis(0, 359)],
+        context,
+        ..installed(&[at_place, newest])
+    };
+    driver.play(&script);
+    assert_eq!(crate::qat_open(20), 1);
+    wintab::drain();
+    let readings = wintab::readings_at(1005, &[(40, 49, 1004), (60, 49, 1004)]);
+    crate::qat_close();
+    let read = |pressure: f64, bearing, altitude, twist| Driven {
+        pressure: pressure * (1.0 / 1000.0),
+        lean: Some((bearing, altitude)),
+        twist: Some(twist),
+    };
+    let want = [Some(read(500.0, 90.0, 0.5, 90.0)), Some(read(800.0, 270.0, -300.0 / 900.0, 180.0))];
+    assert_eq!(readings, want);
+}
+
 #[test]
 fn a_mouse_move_is_given_the_pressure_of_the_packet_at_its_place() {
     let (driver, _turn) = driver();
@@ -752,7 +818,7 @@ fn a_mouse_move_is_given_the_pressure_of_the_packet_at_its_place() {
     wintab::drain();
     let at = |time| (40, 49, time);
     let moves = [at(1004), at(1016), at(1040), at(1041), at(980), at(979), (40, 47, 1010)];
-    let pressures = wintab::pressures_at(1030, &moves);
+    let pressures = pressures_at(1030, &moves);
     let scale = |pressure: f64| pressure * (1.0 / 1000.0);
     let want = [scale(100.0), scale(300.0), scale(300.0), f64::NAN, scale(100.0), f64::NAN, f64::NAN];
     let bits = |values: &[f64]| values.iter().map(|value| value.to_bits()).collect::<Vec<_>>();
@@ -761,7 +827,7 @@ fn a_mouse_move_is_given_the_pressure_of_the_packet_at_its_place() {
     let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
     assert_eq!((gapped, gap, crate::qat_overflowed()), (1, 10, 0));
     crate::qat_close();
-    let closed = wintab::pressures_at(1030, &[at(1020)]);
+    let closed = pressures_at(1030, &[at(1020)]);
     assert!(closed[0].is_nan(), "no context, no pressure");
     // SAFETY: room for an int.
     assert_eq!(unsafe { crate::qat_clock_gap(&mut gap) }, 0);
@@ -806,7 +872,7 @@ fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
     assert_eq!(pen, None, "a mouse's batch is a mouse's datum's alone (H61)");
     let points = crate::points::book().take(crate::points::Kind::Mouse, at);
     let points = points.expect("the message's");
-    let driven: Vec<f64> = points.iter().map(|point| point.driven).collect();
+    let driven: Vec<f64> = points.iter().map(|point| pressure_of(&point.driven)).collect();
     assert_eq!(driven, [250.0 * (1.0 / 1000.0)]);
     assert!(points[0].pressure.is_nan(), "a mouse says no pressure of its own");
 }
@@ -869,7 +935,7 @@ fn a_poll_and_a_point_ask_the_driver_nothing() {
     for _ in 0..1000 {
         // SAFETY: room for eight records.
         let _ = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
-        let _ = wintab::pressures_at(1001, &[(40, 49, 1000), (40, 49, 1001)]);
+        let _ = pressures_at(1001, &[(40, 49, 1000), (40, 49, 1001)]);
     }
     let asks = driver.seen().asks - before;
     crate::qat_close();
@@ -887,7 +953,7 @@ fn a_move_whose_packet_is_not_heard_yet_wakes_the_reader() {
     assert_eq!(handed_soon(), 1);
     // The packet that put the cursor at the move, queued as it moved.
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(1004, 200) }]));
-    let pressures = wintab::pressures_at(1005, &[(60, 49, 1004)]);
+    let pressures = pressures_at(1005, &[(60, 49, 1004)]);
     let count = handed_soon();
     crate::qat_close();
     assert!(pressures[0].is_nan(), "not heard at the move");
@@ -904,7 +970,7 @@ fn a_move_with_no_pen_at_hand_wakes_no_reader() {
     // The reader's own first drain hears it, and it sleeps from then.
     assert_eq!(handed_soon(), 1);
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(3004, 200) }]));
-    let pressures = wintab::pressures_at(3005, &[(70, 49, 3004)]);
+    let pressures = pressures_at(3005, &[(70, 49, 3004)]);
     let count = handed_within(std::time::Duration::from_millis(200));
     crate::qat_close();
     assert!(pressures[0].is_nan());
@@ -991,10 +1057,10 @@ fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
     let points = crate::points_win::points_of(window.0, &history, None);
     let finger = crate::points_win::points_of(window.0, &[entry(PT_TOUCH, 1019)], None);
     crate::qat_close();
-    let driven: Vec<u64> = points.iter().map(|point| point.driven.to_bits()).collect();
+    let driven: Vec<u64> = points.iter().map(|point| pressure_of(&point.driven).to_bits()).collect();
     let want = [f64::NAN, 100.0 * (1.0 / 1000.0), 300.0 * (1.0 / 1000.0)];
     assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each the packet at its place within 20 ms");
-    assert!(finger[0].driven.is_nan(), "a finger is not the pen");
+    assert!(finger[0].driven.is_none(), "a finger is not the pen");
     let asked: Vec<_> = points.iter().map(|point| point.asked).collect();
     let at = |time| Some((-20_000, -20_000, time));
     assert_eq!(asked, [at(900), at(1004), at(1019)], "asked again as the app reads them");

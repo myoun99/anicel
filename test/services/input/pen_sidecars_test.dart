@@ -1,8 +1,18 @@
 import 'dart:async';
+import 'dart:ui' as ui show PointerChange, PointerData;
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind, computeHitSlop;
+import 'package:flutter/gestures.dart'
+    show
+        Offset,
+        PointerDeviceKind,
+        PointerEvent,
+        PointerHoverEvent,
+        PointerMoveEvent,
+        computeHitSlop;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/qa_pen_points.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/pen_path.dart';
 import 'package:anicel/src/services/input/pen_sidecars.dart';
 import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
@@ -158,7 +168,7 @@ void main() {
     wintab.debugPollOverride = () => const [];
     wintab.start();
 
-    expect(PenSidecars.freshLean(), isNull, reason: 'nothing speaks');
+    expect(PenSidecars.leanOf(_hover), isNull, reason: 'nothing speaks');
 
     // The top toward the user, half way up — while the pen only hovers.
     wintab.debugInjectPacket(
@@ -169,16 +179,16 @@ void main() {
         buttons: 0,
       ),
     );
-    expect(PenSidecars.freshLean(), (azimuthDegrees: 90.0, altitude: 0.5));
+    expect(PenSidecars.leanOf(_hover), (azimuthDegrees: 90.0, altitude: 0.5));
 
     // HID outranks it: the top leans right, half way up.
     report = const QaPenRawState(flags: 0x01, sequence: 1, tilt: (x: 45, y: 0));
-    expect(PenSidecars.freshLean()?.azimuthDegrees, closeTo(0, 1e-9));
-    expect(PenSidecars.freshLean()?.altitude, closeTo(0.5, 1e-9));
+    expect(PenSidecars.leanOf(_hover)?.azimuthDegrees, closeTo(0, 1e-9));
+    expect(PenSidecars.leanOf(_hover)?.altitude, closeTo(0.5, 1e-9));
 
     report = const QaPenRawState(flags: 0x01, sequence: 2);
     expect(
-      PenSidecars.freshLean()?.azimuthDegrees,
+      PenSidecars.leanOf(_hover)?.azimuthDegrees,
       90.0,
       reason: 'a report with no tilt leaves the lean to Wintab',
     );
@@ -187,7 +197,7 @@ void main() {
       const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 0),
     );
     expect(
-      PenSidecars.freshLean(),
+      PenSidecars.leanOf(_hover),
       isNull,
       reason: 'a device with no orientation axes leans nowhere',
     );
@@ -206,7 +216,7 @@ void main() {
     wintab.debugPollOverride = () => const [];
     wintab.start();
 
-    expect(PenSidecars.freshTwist(), isNull, reason: 'nothing speaks');
+    expect(PenSidecars.twistOf(_hover), isNull, reason: 'nothing speaks');
 
     wintab.debugInjectPacket(
       const QaTabletPacket(
@@ -216,14 +226,14 @@ void main() {
         buttons: 0,
       ),
     );
-    expect(PenSidecars.freshTwist(), 0, reason: 'a full turn is none');
+    expect(PenSidecars.twistOf(_hover), 0, reason: 'a full turn is none');
 
     report = const QaPenRawState(flags: 0, sequence: 1, twistDegrees: 135);
-    expect(PenSidecars.freshTwist(), 135, reason: 'HID outranks it');
+    expect(PenSidecars.twistOf(_hover), 135, reason: 'HID outranks it');
 
     report = const QaPenRawState(flags: 0, sequence: 2);
     expect(
-      PenSidecars.freshTwist(),
+      PenSidecars.twistOf(_hover),
       0,
       reason: 'a report with no twist leaves it to Wintab',
     );
@@ -232,10 +242,58 @@ void main() {
       const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 0),
     );
     expect(
-      PenSidecars.freshTwist(),
+      PenSidecars.twistOf(_hover),
       isNull,
       reason: 'a device with no twist axis is not a pen turned to 0°',
     );
+  });
+
+  test("🚨a point's own packet leans and turns it before the newest one — "
+      'HID still first (pen-points-are-taken-off-the-ui-thread)', () {
+    final hid = RawPenInputService.instance;
+    addTearDown(hid.debugReset);
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? report;
+    hid.debugPollOverride = () => report;
+    hid.start();
+    final wintab = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    wintab.debugPollOverride = () => const [];
+    wintab.start();
+    // The pen now: the top toward the user, half way up, turned 90°.
+    wintab.debugInjectPacket(
+      const QaTabletPacket(
+        pressure: 0.5,
+        orientation: (bearing: 180, altitude: 0.5),
+        twistDegrees: 90,
+        timeMs: 2,
+        buttons: 1,
+      ),
+    );
+    // As it was where the point was drawn: the top away, low, turned 300°.
+    final drawn = _madeAt(const Offset(10, 20), (
+      pressure: 0.4,
+      lean: (bearing: 270, altitude: 0.25),
+      twist: 300,
+    ));
+
+    expect(PenSidecars.leanOf(drawn), (azimuthDegrees: 180.0, altitude: 0.25));
+    expect(PenSidecars.twistOf(drawn), 300);
+    expect(
+      PenSidecars.leanOf(_hover),
+      (azimuthDegrees: 90.0, altitude: 0.5),
+      reason: 'a point no packet was paired with leans as the pen does now',
+    );
+    expect(PenSidecars.twistOf(_hover), 90);
+
+    report = const QaPenRawState(
+      flags: 0x01,
+      sequence: 1,
+      tilt: (x: 45, y: 0),
+      twistDegrees: 135,
+    );
+    expect(PenSidecars.leanOf(drawn)?.azimuthDegrees, closeTo(0, 1e-9));
+    expect(PenSidecars.twistOf(drawn), 135, reason: 'HID outranks it');
   });
 
   /// 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): 「우선 1번
@@ -320,4 +378,36 @@ void main() {
     );
     expect(PenSidecars.hitSlopOf(mouse, null), penSlop, reason: 'tip down');
   });
+}
+
+/// An event no reader paired with any packet of the driver's.
+const _hover = PointerHoverEvent();
+
+/// The event a stroke reads at a point drawn [at], which the platform's
+/// reader paired with the driver's packet that said [reading]
+/// ([PenPath.eventsOf]).
+PointerEvent _madeAt(Offset at, DriverReading reading) {
+  QaPenPoints.debugTake = (_, _, _) => [
+    (
+      x: at.dx,
+      y: at.dy,
+      at: Duration.zero,
+      pressure: null,
+      tilt: null,
+      orientation: null,
+      driven: reading,
+    ),
+  ];
+  addTearDown(() => QaPenPoints.debugTake = null);
+  final move = PointerMoveEvent(position: at);
+  PenPath.arrived(
+    move,
+    ui.PointerData(
+      change: ui.PointerChange.move,
+      physicalX: at.dx,
+      physicalY: at.dy,
+    ),
+    1,
+  );
+  return PenPath.eventsOf(move).single;
 }
