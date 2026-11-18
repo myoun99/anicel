@@ -136,6 +136,10 @@ class StandsWithItsPicture {
   /// the cell a double click opens where the press before it moved
   /// (`activateCellOnDoubleTap`): taken in its turn, in the cut and on the
   /// frame that press lands on, never in the one stood in while it waits.
+  ///
+  /// 🗣️Q6 = turn (유저 2026-11-18 「차례를 기다린다」): so is every key —
+  /// what the shortcut funnel acts on (`HomePage._invokeAction`), on the
+  /// frame the move before it lands on.
   void inTurn(VoidCallback walk, {required bool repeated}) {
     if (_waiting == null && _steps.isEmpty) {
       walk();

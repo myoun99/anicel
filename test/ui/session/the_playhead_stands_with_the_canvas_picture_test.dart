@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts, standingPicturesOf;
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -415,5 +416,56 @@ void main() {
     await tester.pump();
 
     expect(stood, [1], reason: 'let go, it stands where it came');
+  });
+
+  testWidgets('🗣️a key pressed while a move waits acts once it lands, where '
+      'it lands: Ctrl+Z takes back the edit made on that frame (Q6 = '
+      'turn)', (tester) async {
+    final session = await twoDrawnFrames(tester);
+    final history = session.historyManager;
+    final edits = history.undoCount;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+    expect(
+      session.standsWithItsPicture.waitsFor.value,
+      1,
+      reason: '⛔premise: the press waits for frame 1',
+    );
+    expect(history.undoCount, edits, reason: 'in its turn');
+    await theMoveLands(tester, session);
+    expect(
+      await settleAsync(tester, () => history.undoCount == edits - 1),
+      isTrue,
+      reason: "frame 1's stroke taken back, not a walk to it from frame 0",
+    );
+    expect(session.currentFrameIndex, 1);
+  });
+
+  testWidgets('…and a tool key pressed meanwhile takes up its tool once the '
+      'move lands (Q6 = turn)', (tester) async {
+    final session = await twoDrawnFrames(tester);
+    final tool = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .brushToolState;
+    expect(tool.value.tool, isNot(CanvasTool.eraser), reason: '⛔premise');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+
+    expect(
+      session.standsWithItsPicture.waitsFor.value,
+      1,
+      reason: '⛔premise: the press waits for frame 1',
+    );
+    expect(tool.value.tool, isNot(CanvasTool.eraser), reason: 'in its turn');
+    await theMoveLands(tester, session);
+    expect(
+      await settleAsync(tester, () => tool.value.tool == CanvasTool.eraser),
+      isTrue,
+    );
   });
 }

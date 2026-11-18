@@ -1300,6 +1300,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!zoomPasses && _consumedByPlayback()) {
       return;
     }
+    // 🗣️Q6 = turn (the-standing-canvas-composes-a-frame-twice-before-its-
+    // picture, 유저 2026-11-18 「차례를 기다린다」): what a key does, it does
+    // in its turn — pressed while a move waits for its frame, once the move
+    // lands, on the frame it lands on, after the steps pressed before it;
+    // a key held is not lined up (Q4 = 1). The two above answer the press
+    // itself: the window the app waits behind, and a run it stops.
+    _session.standsWithItsPicture.inTurn(
+      () {
+        if (mounted) {
+          _act(actionId, definition);
+        }
+      },
+      repeated: EditorShortcutManager.actsForARepeat,
+    );
+  }
+
+  /// What [actionId] does, in its turn ([_invokeAction]).
+  void _act(String actionId, EditorActionDefinition? definition) {
     // 🗣️I-19 (유저 2026-09-13): 「툴 자체에 설정할수도있고 툴 내부의 세부툴도
     // 설정가능하게」 — a tool action presses what its rail button or tile
     // presses, through the one [pressTool]; a colour edit action runs its
@@ -1658,16 +1676,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   /// One step of the playhead — a frame, a block — [walk]ed, and the rails
-  /// bring it into view: in line where a move waits for its frame, a key
-  /// held lined up never (`StandsWithItsPicture.inTurn`).
-  void _stepThePlayhead(VoidCallback walk) =>
-      _session.standsWithItsPicture.inTurn(
-        () {
-          walk();
-          _session.revealSelection();
-        },
-        repeated: EditorShortcutManager.actsForARepeat,
-      );
+  /// bring it into view: in its turn, as every key is ([_invokeAction]).
+  void _stepThePlayhead(VoidCallback walk) {
+    walk();
+    _session.revealSelection();
+  }
 
   /// One step of the size bar's ± from the keys, where the bar would take
   /// it: the tool in hand's size, and nothing on a tool with none.
