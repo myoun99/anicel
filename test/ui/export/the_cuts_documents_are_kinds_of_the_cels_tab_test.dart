@@ -641,6 +641,34 @@ void main() {
     expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
   });
 
+  testWidgets('🗣️F-618 ③: the digital sheet\'s format says which of its two '
+      'files go out, each its own block — a row that a picture of the sheet '
+      'holds dead', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpCels(
+      tester,
+      session,
+      spec: const CelsExportSpec(kinds: {ExportCelKind.timesheet}),
+    );
+    // Under a picture the row stands and takes no press.
+    await press(tester, 'export-tsformat-xdts-genga');
+    expect(listed(tester), ['_TS301.png']);
+
+    await pickPaperFormat(tester, 'export-tsformat', 'xdts');
+    expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
+
+    await press(tester, 'export-tsformat-xdts-genga');
+    expect(listed(tester), ['_TS301_douga_ts.xdts']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [
+      (layerStepAbbrev(LayerProcess.inbetween), true),
+    ]);
+    await press(tester, 'export-tsformat-xdts-douga');
+    expect(listed(tester), isEmpty);
+    await press(tester, 'export-tsformat-xdts-genga');
+    expect(listed(tester), ['_TS301_genga_ts.xdts']);
+  });
+
   testWidgets('a document turned off is not written — its row, or its file',
       (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cels-documents-off');

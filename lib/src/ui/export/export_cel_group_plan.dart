@@ -1099,7 +1099,8 @@ typedef _Document = ({ExportCelKind kind, Cut of, int pages, bool halves});
 /// of every cut (I-151).
 ///
 /// A timesheet is a file a page ([sheetPagesOf]) as pictures, and two files
-/// as the digital sheet — its blocks' ([XdtsSheetHalf]).
+/// as the digital sheet — its blocks' ([XdtsSheetHalf]), those of them
+/// written ([CelsExportSpec.xdtsHalves]).
 Iterable<ExportDocumentSheet> _documentsOf(
   _CutRun entry,
   ExportProjectOverrides? overrides,
@@ -1174,6 +1175,11 @@ Iterable<ExportDocumentSheet> _filesOf(
   final delta = overrides?.deltaFor(of.id);
   for (var page = 0; page < pages; page += 1) {
     final half = halves ? XdtsSheetHalf.values[page] : null;
+    // A half that is not written is no file ([CelsExportSpec.xdtsHalves]);
+    // the other keeps its page, so a file turned off stays turned off.
+    if (half != null && !entry.run.spec.xdtsHalves.contains(half)) {
+      continue;
+    }
     yield ExportDocumentSheet(
       kind: kind,
       listedIn: entry.cut,

@@ -27,6 +27,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerStepAbbrev;
@@ -2101,6 +2102,53 @@ void main() {
       // No two blocks of the list answer to one id.
       final ids = [for (final sheet in paged(3).documents) sheet.idValue];
       expect(ids.toSet(), hasLength(ids.length));
+    });
+
+    test('🗣️F-618 ③: the digital sheet writes the halves picked, each its '
+        'own block — the other is no file; neither picked writes no sheet',
+        () {
+      List<String> sheets(Set<XdtsSheetHalf> halves) => [
+        for (final sheet in paged(
+          3,
+          spec: documents.copyWith(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            xdtsHalves: halves,
+          ),
+        ).documents)
+          if (sheet.kind == ExportCelKind.timesheet) sheet.fileName,
+      ];
+      expect(sheets({XdtsSheetHalf.douga}), ['_TSCUT1_douga_ts.xdts']);
+      expect(sheets({XdtsSheetHalf.genga}), ['_TSCUT1_genga_ts.xdts']);
+      expect(sheets({}), isEmpty);
+      // A picture of the sheet is one whatever the halves say.
+      expect(
+        documentFiles(
+          paged(2, spec: documents.copyWith(xdtsHalves: const {})),
+        ),
+        ['_TSCUT1_1.png', '_TSCUT1_2.png', '_CUTCUT1_envelope.png'],
+      );
+    });
+
+    test('🗣️F-618 ④: a digital sheet\'s block shows the sheet\'s first page '
+        'whichever half it is — a picture\'s block its own page', () {
+      final digital = paged(
+        3,
+        spec: documents.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+      );
+      expect(
+        [
+          for (final sheet in digital.documents)
+            if (sheet.kind == ExportCelKind.timesheet) sheet.sheetPage,
+        ],
+        [0, 0],
+      );
+      expect(
+        [
+          for (final sheet in paged(3).documents)
+            if (sheet.kind == ExportCelKind.timesheet) sheet.sheetPage,
+        ],
+        [0, 1, 2],
+      );
     });
 
     test('each document is written in its OWN format, behind its own prefix '

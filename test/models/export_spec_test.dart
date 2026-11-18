@@ -8,6 +8,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 
 void main() {
@@ -82,6 +83,7 @@ void main() {
       expect(spec.sheetOnly, isFalse);
       expect(spec.sheetInk, isFalse, reason: 'a plain XDTS (I-161)');
       expect(spec.viewerSheet, isNull, reason: 'each cut its own sheet\'s');
+      expect(spec.xdtsHalves, CelsExportSpec.allXdtsHalves, reason: 'both');
       expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
     });
@@ -118,11 +120,20 @@ void main() {
         scope: ExportScopeKind.project,
         sheetInk: true,
         viewerSheet: XdtsViewerSheet.ponocSixSeconds,
+        xdtsHalves: const {XdtsSheetHalf.douga},
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
       expect(restored.sheetInk, isTrue);
       expect(restored.viewerSheet, XdtsViewerSheet.ponocSixSeconds);
+      expect(restored.xdtsHalves, {XdtsSheetHalf.douga});
+      // Neither half written stays neither, not both again (F-618 ③).
+      expect(
+        CelsExportSpec.fromJson(
+          const CelsExportSpec(xdtsHalves: {}).toJson(),
+        ).xdtsHalves,
+        isEmpty,
+      );
       expect(restored.kinds, {ExportCelKind.conte, ExportCelKind.direction});
       expect(restored.take, 3);
       expect(restored.base, isFalse);

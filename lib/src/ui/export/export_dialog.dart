@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../core/path_names.dart';
+import '../../core/set_toggle.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -21,6 +22,7 @@ import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
 import '../../services/export/xdts_viewer_ink.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../../models/xdts_sheet_form.dart';
+import '../../models/xdts_sheet_half.dart';
 import '../../models/xdts_viewer_sheet.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
@@ -61,6 +63,7 @@ import 'conte_pdf_writer.dart';
 import 'ae_script_plan.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
+import 'export_document_sheet.dart' show xdtsHalfWord;
 import 'export_cels_board.dart';
 import 'export_cels_stack.dart';
 import 'export_cels_standing.dart';
@@ -1206,7 +1209,7 @@ class ExportDialogState extends State<ExportDialog> {
         cut: sheet.of,
         cutLabel: sheet.of.name,
         cutStartFrame: _trackStartOf(sheet.of),
-        pageIndex: sheet.page,
+        pageIndex: sheet.sheetPage,
         pageCount: _sheetPagesOf(sheet.of),
         fileName: sheet.fileName,
       );
@@ -1884,7 +1887,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     return (
       size: _sheetDocFor(page.of).$2.paperPixelSize,
-      look: 'sheet:$owner:${page.page}:${face.fontFamily}',
+      look: 'sheet:$owner:${page.sheetPage}:${face.fontFamily}',
       render: (size) =>
           _renderSheetPage(_sheetPageTask(page), face: face, outputSize: size),
     );
@@ -4274,7 +4277,7 @@ class ExportDialogState extends State<ExportDialog> {
         return ExportTimesheetPage(
           cutId: sheet.of.id,
           layout: _sheetDocFor(sheet.of).$2,
-          page: sheet.page,
+          page: sheet.sheetPage,
         );
       // A film is no paper: it runs in the preview ([_celsPreview]).
       case ExportCelKind.video ||
@@ -5034,6 +5037,29 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ),
             ],
+          ),
+          // Which of the digital sheet's two files go out (F-618 ③): a row
+          // that stands under either format and is live under XDTS alone,
+          // as its ink is. Neither picked writes none, as a kind turned off.
+          ExportModuleRow.strip(
+            caption: ExportCaption.target,
+            strip: PillStrip(
+              items: [
+                for (final half in XdtsSheetHalf.values)
+                  PillItem(
+                    keyValue: 'export-tsformat-xdts-${half.jsonValue}',
+                    label: xdtsHalfWord(half),
+                    selected: spec.xdtsHalves.contains(half),
+                    onTap: _isExporting || pictured
+                        ? null
+                        : () => _updateSpec(
+                            spec.copyWith(
+                              xdtsHalves: toggledSet(spec.xdtsHalves, half),
+                            ),
+                          ),
+                  ),
+              ],
+            ),
           ),
           settingsHelpTooltip(
             unread,
