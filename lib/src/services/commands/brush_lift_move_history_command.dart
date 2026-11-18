@@ -263,11 +263,12 @@ class BrushLiftMoveHistoryCommand
 
   /// The first landing, worked out ahead of the step behind the wait window:
   /// the cel thawed on a worker, the derive — the engine's, so the UI
-  /// isolate's — and its ink, then the screen's turn. An undo or a redo
-  /// puts back a picture it holds, with nothing to work out.
+  /// isolate's — and its ink, then the screen's turn. Landed, it has
+  /// nothing to work out: an undo or a redo, which come only after the
+  /// landing, puts back a picture it holds.
   @override
   WorkAhead? workAhead({required bool undo}) {
-    if (undo || _landed) {
+    if (_landed) {
       return null;
     }
     return (report) async {
