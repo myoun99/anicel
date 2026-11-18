@@ -27,6 +27,8 @@ mod apple;
 mod hid_axis;
 #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
 mod ledger;
+#[cfg(windows)]
+mod mouse_kept;
 // And so has the book of the points the OS saw (H56): every platform's
 // reader writes it but Linux's, where each motion is its own event
 // (`linux/runner/my_application.cc` turns GTK's compression off).

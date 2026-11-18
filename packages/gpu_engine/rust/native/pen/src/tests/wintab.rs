@@ -12,8 +12,8 @@ use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Input::Pointer::POINTER_INFO;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, PT_PEN, PT_TOUCH,
-    RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_LBUTTONDOWN, WNDCLASSW, WS_EX_NOACTIVATE,
-    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
+    RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_CAPTURECHANGED, WM_LBUTTONDOWN, WNDCLASSW,
+    WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
@@ -1033,7 +1033,19 @@ fn a_press_drains_the_queue_before_its_point_is_read() {
     // SAFETY: room for eight records.
     let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
     crate::qat_close();
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
     assert_eq!(count, 1, "the contact heard at the press, not a drain later");
+}
+
+#[test]
+fn a_mouse_press_in_the_view_keeps_its_history_till_the_capture_goes() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let pressed = crate::mouse_kept::keeping();
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    assert!(pressed, "kept from the press");
+    assert!(!crate::mouse_kept::keeping(), "let go with the capture");
 }
 
 #[test]

@@ -11,6 +11,8 @@
 mod apple;
 mod hid_axis;
 mod ledger;
+#[cfg(windows)]
+mod mouse_kept;
 mod points;
 #[cfg(windows)]
 mod points_win;

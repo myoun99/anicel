@@ -7,7 +7,8 @@
 //! newest first, each with its own `PerformanceCount`), which the embedder
 //! never asks (flutter_window.cc: `GetPointerInfo` alone). A mouse's
 //! `WM_MOUSEMOVE` the same: the moves before it are `GetMouseMovePointsEx`'s,
-//! at most 64, each with its own time in milliseconds.
+//! at most 64, each with its own time in milliseconds — and every one while
+//! a button is down, kept off the UI's thread (mouse_kept.rs).
 //!
 //! Each batch is handed where the embedder hands Flutter the message's
 //! point: the message's screen pixels put in the view (`ScreenToClient`)
@@ -38,7 +39,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::w;
 
 use crate::points::{Batch, Kind, Lost, Point, book};
-use crate::wintab;
+use crate::{mouse_kept, wintab};
 
 /// The mouse's name among the contacts: past every pointer id, which is
 /// a word.
@@ -126,12 +127,16 @@ pub(crate) fn hear(view: HWND, message: u32, w: WPARAM, l: LPARAM) {
     if PRESSES.contains(&message) {
         wintab::drain();
     }
+    // SAFETY: asked while the message is handled, as the doc requires.
+    let pen = unsafe { GetMessageExtraInfo() }.0 & SIGNATURE == PEN_OR_TOUCH;
+    match mouse_kept::keeping_after(message, w, pen) {
+        Some(true) => mouse_kept::press(message_move(view, l)),
+        Some(false) => mouse_kept::release(),
+        None => {}
+    }
     match message {
         WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP => pointer(view, w, l),
-        // SAFETY: asked while the message is handled, as the doc requires.
-        WM_MOUSEMOVE if unsafe { GetMessageExtraInfo() }.0 & SIGNATURE != PEN_OR_TOUCH => {
-            mouse(view, l)
-        }
+        WM_MOUSEMOVE if !pen => mouse(view, l),
         WM_NCDESTROY => {
             // SAFETY: this subclass, on the window it was set on.
             let _ = unsafe { RemoveWindowSubclass(view, Some(heard), SUBCLASS) };
@@ -144,6 +149,33 @@ pub(crate) fn hear(view: HWND, message: u32, w: WPARAM, l: LPARAM) {
 /// The message's own point, as `l` carries it: signed words.
 fn of(l: LPARAM) -> POINT {
     POINT { x: i32::from(l.0 as u16 as i16), y: i32::from((l.0 >> 16) as u16 as i16) }
+}
+
+/// The move a mouse message at `l` stands for: its point on the screen, at
+/// its millisecond.
+fn message_move(view: HWND, l: LPARAM) -> Move {
+    let mut screen = of(l);
+    // SAFETY: a window this subclass is on, and a local.
+    let _ = unsafe { ClientToScreen(view, &mut screen) };
+    // SAFETY: asked while the message is handled.
+    let time = unsafe { GetMessageTime() } as u32;
+    (screen.x, screen.y, time)
+}
+
+/// The history Windows keeps of the mouse's move `at` — asked a pixel round
+/// it where it is not found at its own ([`history_near`]) —, the newest
+/// first, and how many it found, or its refusal. The system's, asked from
+/// any thread (mouse_kept.rs).
+pub(crate) fn mouse_history(at: Move) -> (Vec<Move>, i32) {
+    let mut moves = [MOUSEMOVEPOINT::default(); MOUSE_HISTORY as usize];
+    let size = size_of::<MOUSEMOVEPOINT>() as u32;
+    let found = history_near(at, |(x, y, time)| {
+        let asked = MOUSEMOVEPOINT { x: x & 0xFFFF, y: y & 0xFFFF, time, dwExtraInfo: 0 };
+        // SAFETY: the move asked and a buffer of 64.
+        unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) }
+    });
+    let history = moves[..found.max(0) as usize].iter().map(|at| (signed(at.x), signed(at.y), at.time));
+    (history.collect(), found)
 }
 
 /// `screen` put in `view`.
@@ -270,10 +302,12 @@ fn since_message(time: u32) -> i64 {
     i64::from(handled.wrapping_sub(time)) * 1000
 }
 
-/// A mouse move's points: the moves since the newest written, the oldest
-/// first, each timed back from now by its milliseconds — and each with the
-/// tablet driver's reading of the packet at its place where a Wintab
-/// context is open ([`wintab::readings_at`]).
+/// A mouse move's points: the moves since the newest written — taken from
+/// what was kept off the UI's thread while a button is down, else from the
+/// OS's 64 (mouse_kept.rs `history_of`) —, the oldest first, each timed
+/// back from now by its milliseconds — and each with the tablet driver's
+/// reading of the packet at its place where a Wintab context is open
+/// ([`wintab::readings_at`]).
 ///
 /// 🚨PAIRED HERE, AT THE MOVE'S OWN POINT: a pen the OS hands over as a
 /// mouse (Windows Ink off) carries no pressure, and the driver's packet the
@@ -285,28 +319,13 @@ fn since_message(time: u32) -> i64 {
 /// ([`wintab::Heard::at`]).
 pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let client = of(l);
-    let mut screen = client;
-    // SAFETY: a window this subclass is on, and a local.
-    let _ = unsafe { ClientToScreen(view, &mut screen) };
-    // SAFETY: asked while the message is handled.
-    let time = unsafe { GetMessageTime() } as u32;
-    let own = (screen.x, screen.y, time);
-    let mut moves = [MOUSEMOVEPOINT::default(); MOUSE_HISTORY as usize];
-    let size = size_of::<MOUSEMOVEPOINT>() as u32;
-    let found = history_near(own, |(x, y, time)| {
-        let asked = MOUSEMOVEPOINT { x: x & 0xFFFF, y: y & 0xFFFF, time, dwExtraInfo: 0 };
-        // SAFETY: the move asked and a buffer of 64, while the message is
-        // handled.
-        unsafe { GetMouseMovePointsEx(size, &asked, &mut moves, GMMP_USE_DISPLAY_POINTS) }
-    });
+    let own = message_move(view, l);
+    let time = own.2;
+    let (history, found) = mouse_kept::history_of(own);
     let mut written = MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
     let now = now_micros();
-    let history: Vec<Move> = moves[..found.max(0) as usize]
-        .iter()
-        .map(|at| (signed(at.x), signed(at.y), at.time))
-        .collect();
     let moves = moves_since(own, &history, *written);
-    let lost = mouse_lost(found, moves.len(), *written);
+    let lost = found.and_then(|found| mouse_lost(found, moves.len(), *written));
     *written = Some(own);
     let readings = wintab::readings_at(time, &moves);
     let points = moves
@@ -362,11 +381,19 @@ pub(crate) fn mouse_lost(found: i32, handed_on: usize, written: Option<Move>) ->
 /// before it: a mouse that reports faster than that keeps several there.
 /// The move written is met where it is [`told_alike`].
 pub(crate) fn moves_since(own: Move, history: &[Move], written: Option<Move>) -> Vec<Move> {
+    let moves = newer_than(history, written);
+    if moves.is_empty() { vec![own] } else { moves.to_vec() }
+}
+
+/// The moves of `history` — the newest first — newer than `last`: down to
+/// it, and none older; none where nothing is `last`. What a message hands
+/// on past the move written ([`moves_since`]), and what is kept past the
+/// move kept last (mouse_kept.rs `Kept::hear`).
+pub(crate) fn newer_than(history: &[Move], last: Option<Move>) -> &[Move] {
     let newer = |at: &&Move| {
-        written.is_some_and(|last| !told_alike(**at, last) && at.2.wrapping_sub(last.2) as i32 >= 0)
+        last.is_some_and(|last| !told_alike(**at, last) && at.2.wrapping_sub(last.2) as i32 >= 0)
     };
-    let moves: Vec<Move> = history.iter().take_while(newer).copied().collect();
-    if moves.is_empty() { vec![own] } else { moves }
+    &history[..history.iter().take_while(newer).count()]
 }
 
 /// 🚨ONE MOVE, TOLD TWICE, IS ONE MOVE (H61, 2026-11-18): a pen the OS hands
