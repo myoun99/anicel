@@ -24,6 +24,7 @@ import '../../controllers/timeline_controller.dart' show TimelineController;
 import '../../models/audio_clip.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
@@ -33,6 +34,7 @@ import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart'
     show importedMediaAsset;
 import '../../services/media/media_asset_uses.dart';
+import '../../services/media/media_preset_sync.dart';
 import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_facts.dart';
@@ -329,20 +331,11 @@ class MediaPool {
       );
     }
     // Blocks through the TIMELINE's own delete, through the lens a person's
-    // own delete would use: a row of a cut through its cut, a row of a track
-    // through the cut in hand when that cut is on the track — the lens the
-    // session's timeline gives it, so a hold on a neighbouring block is
-    // re-derived over the same cut either way.
+    // own delete would use ([_lensOf]).
     final project = _project.repository.requireProject();
-    final activeCutId = _project.activeCutId;
-    final activeTrackId = activeCutId == null
-        ? null
-        : _project.trackOwningCut(activeCutId)?.id;
     final blocks = <(TrackId, CutId?), Map<LayerId, List<int>>>{};
     for (final use in uses.whereType<FrameMediaUse>()) {
-      final lens =
-          use.cutId ?? (use.trackId == activeTrackId ? activeCutId : null);
-      final byLayer = blocks[(use.trackId, lens)] ??= {};
+      final byLayer = blocks[(use.trackId, _lensOf(use))] ??= {};
       (byLayer[use.layerId] ??= []).addAll([
         for (final exposure
             in requireLayerAnywhere(project, use.layerId).timeline.entries)
@@ -351,12 +344,7 @@ class MediaPool {
     }
     for (final MapEntry(key: (trackId, lens), value: byLayer)
         in blocks.entries) {
-      TimelineController(
-        repository: _project.repository,
-        historyManager: _project.historyManager,
-        cutId: lens,
-        trackSeLayers: () => _project.trackById(trackId)?.seLayers ?? const [],
-      ).deleteBlocksForLayers(byLayer);
+      _timelineThrough(trackId, lens).deleteBlocksForLayers(byLayer);
     }
     // What no block took along: a link on a frame no block shows.
     for (final use in mediaAssetUses(path).whereType<FrameMediaUse>()) {
@@ -374,6 +362,141 @@ class MediaPool {
         description: 'Remove media',
       );
     }
+  }
+
+  /// The cut a person's own edit of [use]'s row goes through: a row of a
+  /// cut through its cut, a row of a track through the cut in hand when
+  /// that cut is on the track — the lens the session's timeline gives it, so
+  /// a hold on a neighbouring block is re-derived over the same cut either
+  /// way.
+  CutId? _lensOf(FrameMediaUse use) {
+    if (use.cutId case final cutId?) {
+      return cutId;
+    }
+    final activeCutId = _project.activeCutId;
+    final onTheTrack =
+        activeCutId != null &&
+        _project.trackOwningCut(activeCutId)?.id == use.trackId;
+    return onTheTrack ? activeCutId : null;
+  }
+
+  /// The timeline's own verbs over [trackId]'s rows, through [lens]
+  /// ([_lensOf]).
+  TimelineController _timelineThrough(TrackId trackId, CutId? lens) =>
+      TimelineController(
+        repository: _project.repository,
+        historyManager: _project.historyManager,
+        cutId: lens,
+        trackSeLayers: () => _project.trackById(trackId)?.seLayers ?? const [],
+      );
+
+  /// Sets [fields] of each of [places] of the sound at [path] to what
+  /// [preset] places ([soundPresetOf]) — ONE undo step, through the verbs a
+  /// person uses on each: the SE window's words and name tag, the clip's
+  /// slide, and the comma edge that lengthens or shortens a block, ripple
+  /// and all. A field the preset cannot count yet stays as it is.
+  ///
+  /// 🗣️유저 2026-11-17 (card 「파일마다 배치 기본값」-Q5): the sync window
+  /// picks the fields and the places, and 「모두 적용」 takes every place that
+  /// parts from the preset.
+  void syncSoundPlaces(
+    String path, {
+    required SoundPreset preset,
+    required Set<SoundSyncField> fields,
+    required Iterable<SoundPlace> places,
+  }) {
+    final chosen = places.toList();
+    if (chosen.isEmpty || fields.isEmpty) {
+      return;
+    }
+    final file = normalizedMediaPath(path);
+    _project.historyManager.runAsOneStep('Sync to placement preset', () {
+      for (final place in chosen) {
+        _syncSoundPlace(file, place.use, preset, fields);
+      }
+    });
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
+  void _syncSoundPlace(
+    String file,
+    FrameMediaUse use,
+    SoundPreset preset,
+    Set<SoundSyncField> fields,
+  ) {
+    final timeline = _timelineThrough(use.trackId, _lensOf(use));
+    Layer row() =>
+        requireLayerAnywhere(_project.repository.requireProject(), use.layerId);
+    _syncSoundBlockWords(timeline, row(), use.frameId, preset, fields);
+    if (preset.start case final start?
+        when fields.contains(SoundSyncField.start)) {
+      final clips = row().audioClips;
+      final slid = [
+        for (final clip in clips)
+          if (clip.frameId == use.frameId && clip.filePath == file)
+            clip.copyWith(offsetFrames: start)
+          else
+            clip,
+      ];
+      if (!listEquals(slid, clips)) {
+        _project.cutCommandCoordinator.updateLayerAudioClips(
+          cutId: use.cutId,
+          layerId: use.layerId,
+          audioClips: slid,
+          description: 'Sync to placement preset',
+        );
+      }
+    }
+    if (preset.length case final length?
+        when fields.contains(SoundSyncField.length)) {
+      // Right to left: a block lengthened ripples those after it, never
+      // one before — so each start read here still holds when it is shifted.
+      final starts = [
+        for (final MapEntry(key: at) in blocksShowing(row(), use.frameId)) at,
+      ]..sort((a, b) => b.compareTo(a));
+      for (final at in starts) {
+        timeline.shiftExposureEdge(
+          layerId: use.layerId,
+          blockStartIndex: at,
+          edge: TimelineBlockEdge.end,
+          delta: length - row().timeline[at]!.length!,
+        );
+      }
+    }
+  }
+
+  /// The block's name tag and words as [preset] names them, where [fields]
+  /// ask for either — the SE window's own commit, the rest of its fields
+  /// kept.
+  void _syncSoundBlockWords(
+    TimelineController timeline,
+    Layer row,
+    FrameId frameId,
+    SoundPreset preset,
+    Set<SoundSyncField> fields,
+  ) {
+    final frame = row.frames.firstWhere((frame) => frame.id == frameId);
+    final words = fields.contains(SoundSyncField.words)
+        ? preset.words
+        : frame.name;
+    final nameTag = fields.contains(SoundSyncField.nameTag)
+        ? preset.nameTag
+        : frame.seName;
+    if (words == frame.name && nameTag == frame.seName) {
+      return;
+    }
+    timeline.renameFrameForLayer(
+      layerId: row.id,
+      frameId: frameId,
+      name: words,
+      allowDuplicateName: true,
+      seEntry: (
+        seName: nameTag,
+        seTypes: frame.seTypes,
+        spacing: frame.seSpacing,
+      ),
+    );
   }
 
   /// The pictures of the work among [uses], let go as the window's 「없음」
