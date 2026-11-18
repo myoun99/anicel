@@ -43,9 +43,11 @@ final _eyeShut = Layer(
 );
 final _eyeOpened = _eyeShut.copyWith(isVisible: true);
 
-/// [head] with its eye open.
-ConteHead headWithEyeOpen(ConteHead head) =>
-    head.isVisible ? head : head.editedBy(_eyeShut, _eyeOpened);
+/// [head] with its eye open — [head] itself where it was open already.
+ConteHead headWithEyeOpen(ConteHead head) {
+  final open = head.editedBy(_eyeShut, _eyeOpened);
+  return open == head ? head : open;
+}
 
 ConteEntry _entryWithEyeOpen(ConteEntry entry) =>
     switch (headWithEyeOpen(entry.head)) {
