@@ -151,7 +151,12 @@ class StandsWithItsPicture {
         pictures.stackOf(picture),
         picture,
         shouldAbort: () => !identical(_waiting, move),
-        keepsNodes: false,
+        // Kept as the canvas that goes to the frame keeps them where it
+        // makes it itself (`FramePictureView`, a screen that draws live):
+        // the pen's steps patch into them (🔬S5_BA cut 352, Surface Pro 11:
+        // with the cels in hand p50 83–154 ms to the picture, 186 ms not
+        // kept, 249 ms where the canvas made it itself, 11-18).
+        keepsNodes: true,
       )
       .then<void>(
         (_) {},

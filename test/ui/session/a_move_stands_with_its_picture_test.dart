@@ -8,6 +8,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -23,6 +25,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/session/stands_with_its_picture.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/an_effect_sampled.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/settle_async.dart';
 
@@ -83,11 +86,22 @@ void main() {
       store: pictures,
       layerImages: LayerFrameImageCache(frameStore: store),
       stackOf: (picture) => [
-        CompositeLeaf<CanvasStackRow>(
-          CanvasLayerImageRequest(
-            frameKey: keyOf(picture.frameIndex),
-            opacity: 1,
-          ),
+        // Blurred, so a frame laid holds a chain of its own: a canvas that
+        // goes to it keeps it for the pen (`heldNodes`).
+        CompositeGroup<CanvasStackRow>(
+          effects: [
+            fx(EffectKind.blur, {'blurriness': 1}),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          children: [
+            CompositeLeaf<CanvasStackRow>(
+              CanvasLayerImageRequest(
+                frameKey: keyOf(picture.frameIndex),
+                opacity: 1,
+              ),
+            ),
+          ],
         ),
       ],
       pageOf: (picture) => (
@@ -147,6 +161,11 @@ void main() {
     await make(tester, s.pictures, 0);
     s.moves.shownBy(tester);
 
+    expect(
+      s.pictures.heldNodes.heldBytes,
+      0,
+      reason: '⛔premise: the frame shown was made ahead',
+    );
     s.moves.moveTo(1, () => s.frame.value = 1);
 
     expect(s.frame.value, 0, reason: 'the playhead stands on the frame shown');
@@ -158,6 +177,12 @@ void main() {
       reason: 'it goes once the picture is there',
     );
     expect(s.pictures.has(frameAt(1)), isTrue);
+    expect(
+      s.pictures.heldNodes.heldBytes,
+      greaterThan(0),
+      reason: 'made as the canvas that goes to it makes it: its chains held '
+          'for the pen',
+    );
     expect(s.moves.waitsFor.value, isNull);
   });
 
