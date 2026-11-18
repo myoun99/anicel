@@ -76,12 +76,12 @@ const _knownToPaintThrough = <String, String>{
       'exempted on purpose.',
   'panel:conte':
       'yields to its strata inside (conte-form, conte-content, '
-      'conte-picture, conte-ink). The shell boundary is '
+      'conte-picture). The shell boundary is '
       'brush_canvas_panel.dart:2641, which an earlier round placed there '
       'by bisection and must stay.',
   'panel:envelope':
-      'yields to its strata inside (envelope-form, envelope-content, '
-      'envelope-ink), same shell boundary',
+      'yields to its strata inside (envelope-form, envelope-content), '
+      'same shell boundary',
   'panel:canvas-editor':
       'the canvas shell: boundaries throughout, and its live-stroke path '
       'must never be asked for a full-surface copy',
@@ -149,18 +149,18 @@ const _unreachableInDefaultLayout = <String, String>{
 /// panel would pay full price with every test in this file green. That is
 /// exactly how three panels went a whole round unbaked.
 const _mustBakeWhenActive = <String, List<String>>{
-  // Each sheet stratum on its own (`SheetStrata`), so a typed value, a
-  // landed picture or a stroke re-records only its own.
+  // Each sheet stratum on its own (`SheetStrata`), so a typed value or a
+  // landed picture re-records only its own. The ink is no stratum: the
+  // engine shows it on a screen of its own over them (`SheetInkScreens`),
+  // so a stroke rebakes nothing.
   EditorWorkspace.conteTabId: <String>[
     'conte-form',
     'conte-content',
     'conte-picture',
-    'conte-ink',
   ],
   EditorWorkspace.envelopeTabId: <String>[
     'envelope-form',
     'envelope-content',
-    'envelope-ink',
   ],
   // ⚠️ `media-viewer-page` is deliberately absent: with nothing imported
   // the panel takes its "no media" branch and the page is never built, so
@@ -170,7 +170,6 @@ const _mustBakeWhenActive = <String, List<String>>{
   EditorWorkspace.timesheetTabId: <String>[
     'timesheet-form',
     'timesheet-content',
-    'timesheet-ink',
   ],
   // The command bar has no wrapper of its own — it was removed when the
   // bar became zones, because an outer bake around inner ones is the
@@ -208,7 +207,6 @@ void main() {
       containsAll(<String>[
         'timesheet-form',
         'timesheet-content',
-        'timesheet-ink',
       ]),
       reason: 'the sheet bakes its strata separately',
     );
