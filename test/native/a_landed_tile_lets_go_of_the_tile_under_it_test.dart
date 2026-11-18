@@ -18,9 +18,6 @@ import '../helpers/tiles_on_the_engine.dart';
 /// the cel's own; one kept past its use would be a cel's old picture held
 /// for as long as the ledger stands.
 void main() {
-  // A cel, by the name a painter gives one.
-  const cel = (1, 1);
-
   late GpuEngine engine;
   late EngineTileLedger ledger;
 
@@ -37,7 +34,7 @@ void main() {
   /// in a test would keep it alive to the end of that test.
   (BitmapTile, WeakReference<BitmapTile>) landedOnOne() {
     final under = BitmapTile.blank(size: gpuTileSide);
-    return (landedOn(ledger, cel, [under], 9).single, WeakReference(under));
+    return (landedOn(ledger, [under], 9).single, WeakReference(under));
   }
 
   test('the tile under one the engine alone holds is kept', () async {

@@ -21,18 +21,16 @@ BitmapSurface surfaceOnEngine(BitmapSurface surface) =>
     });
 
 /// A tile of [value] at every byte landed by [ledger] on each of [unders]
-/// — a row of [cel]'s, null where there is no tile to land on — stored as
+/// — a row of a cel's, null where there is no tile to land on — stored as
 /// a kernel stores what it lands, with no kernel to compile; [again], where
 /// the landing says how it is made once more (`LandsAgain`).
 List<BitmapTile> landedOn(
   EngineTileLedger ledger,
-  Object cel,
   List<BitmapTile?> unders,
   int value, {
   LandsAgain? again,
 }) => [
   for (final landed in ledger.land(
-    cel,
     [
       for (final (column, under) in unders.indexed)
         (column: column, row: 0, under: under),

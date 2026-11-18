@@ -446,7 +446,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return const [];
     }
     return EngineTileLedger.instance.land(
-      EngineTileLedger.landedCel,
       asks,
       // A stroke on its way waits for no turn of the engine's: its frame
       // waits for nothing (`GpuStroke.landOnItsWay`, a blur's
@@ -792,7 +791,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _viewsAt = _blendedDabCount;
     final coords = _tileCoords.values.toList();
     final landed = EngineTileLedger.instance.land(
-      EngineTileLedger.landedCel,
       [
         for (final coord in coords)
           (column: coord.x, row: coord.y, under: null),

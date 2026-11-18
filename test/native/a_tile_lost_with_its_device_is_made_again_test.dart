@@ -31,7 +31,7 @@ final class _Adds implements LandsAgain {
     asked.add(asks);
     final tiles = [
       for (final ask in asks)
-        landedOn(on(), _cel, [
+        landedOn(on(), [
           ask.under,
         ], (ask.under?.pixels.first ?? 0) + add).single,
     ];
@@ -102,7 +102,7 @@ void main() {
       'said of its ink', () {
     final adds = _Adds(2, () => next);
     final under = tileOf(7);
-    final [first, second] = landedOn(ledger, _cel, [
+    final [first, second] = landedOn(ledger, [
       under,
       under,
     ], 9, again: adds);
@@ -126,7 +126,7 @@ void main() {
 
   test('a tile that landed on none is made again over none', () {
     final adds = _Adds(2, () => next);
-    final tile = landedOn(ledger, _cel, [null], 2, again: adds).single;
+    final tile = landedOn(ledger, [null], 2, again: adds).single;
 
     engine.debugLose();
 
@@ -137,8 +137,8 @@ void main() {
   test('a tile that landed on one whose own copy had not come is made '
       'again over that one, made again', () {
     final adds = _Adds(2, () => next);
-    final first = landedOn(ledger, _cel, [tileOf(7)], 9, again: adds).single;
-    final second = landedOn(ledger, _cel, [first], 11, again: adds).single;
+    final first = landedOn(ledger, [tileOf(7)], 9, again: adds).single;
+    final second = landedOn(ledger, [first], 11, again: adds).single;
 
     engine.debugLose();
 
@@ -160,8 +160,8 @@ void main() {
         'stored once', () {
       final adds = _Adds(2, () => next);
       final under = tileOf(7);
-      final first = landedOn(ledger, _cel, [under], 9, again: adds).single;
-      final second = landedOn(ledger, _cel, [first], 11, again: adds).single;
+      final first = landedOn(ledger, [under], 9, again: adds).single;
+      final second = landedOn(ledger, [first], 11, again: adds).single;
       final both = [first, second];
 
       engine.debugLose();
@@ -180,7 +180,7 @@ void main() {
 
   test('a landing that leaves a tile as it was, made again, gives the bytes '
       'of the tile under it', () {
-    final tile = landedOn(ledger, _cel, [
+    final tile = landedOn(ledger, [
       tileOf(7),
     ], 7, again: _LeavesAsItWas()).single;
     const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
@@ -195,7 +195,7 @@ void main() {
   test('a tile whose copy came keeps how it was made no longer, and is not '
       'made again', () async {
     final adds = _Adds(2, () => next);
-    final tile = landedOn(ledger, _cel, [tileOf(7)], 9, again: adds).single;
+    final tile = landedOn(ledger, [tileOf(7)], 9, again: adds).single;
     expect(ledger.madeBy(tile), same(adds), reason: '⛔premise: kept');
 
     await ledger.copyHereABatch();
@@ -208,7 +208,7 @@ void main() {
 
   test('a tile read here keeps how it was made no longer', () {
     final adds = _Adds(2, () => next);
-    final tile = landedOn(ledger, _cel, [tileOf(7)], 9, again: adds).single;
+    final tile = landedOn(ledger, [tileOf(7)], 9, again: adds).single;
 
     expect(tile.pixels, everyElement(9));
 
@@ -219,7 +219,7 @@ void main() {
   test('made again on an engine that refuses in its turn, a tile reads as '
       'the tile it landed on, and forgets what its maker said of its ink', () {
     final refused = _Refused();
-    final tile = landedOn(ledger, _cel, [tileOf(7)], 9, again: refused).single;
+    final tile = landedOn(ledger, [tileOf(7)], 9, again: refused).single;
     const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
     tile.rememberInkBounds(said);
 
@@ -235,7 +235,7 @@ void main() {
   test('while the app still stands on the engine that is gone there is '
       'nothing to make a tile on: it reads as the tile it landed on', () {
     final adds = _Adds(2, () => fail('made again on the engine that is gone'));
-    final tile = landedOn(EngineTileLedger.instance, _cel, [
+    final tile = landedOn(EngineTileLedger.instance, [
       tileOf(7),
     ], 9, again: adds).single;
 
@@ -250,7 +250,7 @@ void main() {
       'is made again there', () {
     final adds = _Adds(2, () => EngineTileLedger.instance);
     final gone = EngineTileLedger.instance;
-    final tile = landedOn(gone, _cel, [tileOf(7)], 9, again: adds).single;
+    final tile = landedOn(gone, [tileOf(7)], 9, again: adds).single;
 
     theAppsEngineLostAndLetGo();
 

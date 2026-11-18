@@ -48,7 +48,7 @@ void main() {
 
     List<BitmapTile> landed() => [
       for (var at = 0; at < count; at += 64)
-        ...landedOn(ledger, cel, List.filled(64, null), 9),
+        ...landedOn(ledger, List.filled(64, null), 9),
     ];
 
     String ms(int micros) => (micros / 1000).toStringAsFixed(2);

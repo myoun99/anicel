@@ -496,22 +496,26 @@ final GpuEngine _engine;
   static final Object landedCel = Object();
 
   /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
-  /// `GpuStampLanding.land` —, each result a tile of its own, on [cel]'s
-  /// pages; [compared], [by]'s, says the results' ink is known. A full pool
-  /// has room made as [_store]'s is ([_shortAsRoomIsMade]): what is on the
-  /// way to the screen has no fallback.
+  /// `GpuStampLanding.land` —, each result a tile of its own, on the pages
+  /// of what lands ([landedCel]); [compared], [by]'s, says the results' ink
+  /// is known. A full pool has room made as [_store]'s is
+  /// ([_shortAsRoomIsMade]): what is on the way to the screen has no
+  /// fallback.
   ///
   /// [again] makes the same landing on another engine, where the caller
   /// can say how ([LandsAgain]): what each tile landed reads as should this
   /// engine's device go before the tile's bytes are here ([_makesAgain]).
+  ///
+  /// ↩️It took the cel whose pages it landed on till 2026-11-19: every
+  /// caller named [landedCel], since what lands has pages of its own, and
+  /// [landWhole] never asked.
   List<LandedTile> land(
-    Object cel,
     List<TileAsk> asks, {
     required LandedBy by,
     bool compared = false,
     LandsAgain? again,
   }) => held((hold) {
-    final under = hold.slotsOfThose(cel, [
+    final under = hold.slotsOfThose(landedCel, [
       for (final ask in asks) ask.under,
     ]);
     final asked = <GpuTileAsk>[
@@ -519,7 +523,7 @@ final GpuEngine _engine;
         (column: ask.column, row: ask.row, under: under[at]),
     ];
     List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
-        by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
+        by(pool, _cels.putIfAbsent(landedCel, pool.cel), asked);
     final landed = landOf(asked);
     if (landed.length < asked.length) {
       final short = _shortAsRoomIsMade(asked.length - landed.length, () {
@@ -577,7 +581,7 @@ final GpuEngine _engine;
         for (var across = 0; across < columns; across++)
           (column: x0 + across, row: y0 + down, under: null),
     ];
-    final landed = land(landedCel, asks, by: by);
+    final landed = land(asks, by: by);
     return {
       for (final (at, (:column, :row, under: _)) in asks.indexed)
         TileCoord(x: column, y: row): landed[at].tile!,

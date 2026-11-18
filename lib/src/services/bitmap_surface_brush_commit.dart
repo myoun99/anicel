@@ -175,7 +175,6 @@ List<PlacedTile> _stampOnEngine(
       for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
   ];
   final landed = EngineTileLedger.instance.land(
-    EngineTileLedger.landedCel,
     [
       for (final coord in coords)
         (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
@@ -271,7 +270,6 @@ Map<TileCoord, BitmapTile?> stampLaidOver(
   }
   final coords = unders.keys.toList();
   final landed = EngineTileLedger.instance.land(
-    EngineTileLedger.landedCel,
     [
       for (final coord in coords)
         (column: coord.x, row: coord.y, under: unders[coord]),
