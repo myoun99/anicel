@@ -376,10 +376,10 @@ Widget timelineLaneRowFrom(
 }
 
 /// What a grid keeps of its cells rows, berth by berth: each row, and the
-/// berth it stands in ([keptBerthRow]).
+/// berth it stands in ([KeptBerthRows]).
 final class KeptTimelineCellsRows {
   final KeptByBerth<TimelineCellsRowFacts> _rows = KeptByBerth();
-  final KeptByBerth<BerthRowFacts> _berthed = KeptByBerth();
+  final KeptBerthRows _berthed = KeptBerthRows();
 }
 
 /// [row]'s cells row as [kept] holds it in its berth of [berths] (F-244):
@@ -396,7 +396,7 @@ final class KeptTimelineCellsRows {
 ///
 /// The BERTH stands OUTSIDE the keep, given this pass's layer and world:
 /// inside it, a kept row would have kept its last layer too. It is kept on
-/// its own, while that layer, that world and the row hold ([keptBerthRow],
+/// its own, while that layer, that world and the row hold ([KeptBerthRows],
 /// 11-19) — a pass that changed none of them builds no berth. The row's
 /// tick layer stands INSIDE ([TickLayer]): a new one per pass would lay out
 /// every row again. And the gate stands on that tick layer, reading the
@@ -430,8 +430,7 @@ Widget keptTimelineCellsRow(
   RowBerthMap berths,
   TimelineDisplayRow row,
   TimelineCellsRowGrid grid,
-) => keptBerthRow(
-  kept._berthed,
+) => kept._berthed.keep(
   berths,
   row,
   world: timelineCellsRowWorld(row, grid),

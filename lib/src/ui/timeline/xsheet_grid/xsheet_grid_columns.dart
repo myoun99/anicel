@@ -67,7 +67,7 @@ class _XSheetGridColumns {
     // theirs is (11-19), handed back while what it is built from holds: a
     // pass that changes another column builds none of this one.
     final berths = _state._berths;
-    final _BoxedColumn facts = (
+    final facts = (
       name: 'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
       width: timelineDisplayRowExtent(entry, _state._metrics),
       height: totalFrameContentHeight,

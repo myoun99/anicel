@@ -69,4 +69,10 @@ final class WindowMoveKeep {
   /// only the window moves, built again in another pass.
   Widget ofThePass(Object key, Widget Function() build) =>
       row(key, () => _pass, (_) => build());
+
+  /// Lets go now of every row the last lay left out, which the next lay
+  /// would — for a host whose moves lay rows in no lay of their own (the
+  /// storyboard rail's labels), so a row the window left and brought back
+  /// is built again, not handed back from a pass before (I-57 ㉣).
+  void letGo() => _before = {};
 }

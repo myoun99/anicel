@@ -26,6 +26,10 @@ import '../../helpers/named_finders.dart';
 /// the timeline's rail and cells, the storyboard's rail and strips — and
 /// builds nothing of the frame around them (④, 2026-10-29).
 /// ↩️Every move built every row the window held again.
+///
+/// A build of the host hands back a timeline row whose facts held, as a
+/// move does (card an-eye-toggle-holds-the-ui-thread, 11-19): ↩️it laid
+/// every row afresh, around rows their memos handed back whole.
 void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
@@ -41,14 +45,17 @@ void main() {
       .position;
 
   /// [rows] — a host's rows, top first — through a move of its window
-  /// that keeps a row in view, then through a build of the [host]. The row
-  /// watched is the one a third down the view, else [probe].
+  /// that keeps a row in view, then through a build of the [host] that
+  /// changes nothing of it, which hands it back where [keptThroughABuild]
+  /// and lays it afresh where not. The row watched is the one a third down
+  /// the view, else [probe].
   Future<void> expectKeptThroughAMove(
     WidgetTester tester, {
     required String viewport,
     required List<Finder> rows,
     required Finder host,
     Finder? probe,
+    bool keptThroughABuild = false,
   }) async {
     final position = rowsIn(tester, viewport);
     position.jumpTo(0);
@@ -87,8 +94,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widgetList(watched).first,
-      isNot(same(widgetBefore)),
-      reason: 'a build of the host lays $watched afresh',
+      keptThroughABuild ? same(widgetBefore) : isNot(same(widgetBefore)),
+      reason: keptThroughABuild
+          ? 'a build of the host that changed nothing of $watched hands it '
+                'back'
+          : 'a build of the host lays $watched afresh',
     );
   }
 
@@ -136,6 +146,7 @@ void main() {
         viewport: 'timeline-vertical-scroll-viewport',
         rows: [for (final id in ids) find.named('timeline-rail-row-$id-row')],
         host: find.byType(LayerTimelineGrid),
+        keptThroughABuild: true,
       );
     });
 
@@ -146,6 +157,7 @@ void main() {
         viewport: 'timeline-vertical-scroll-viewport',
         rows: [for (final id in ids) find.named('timeline-row-$id-cells')],
         host: find.byType(LayerTimelineGrid),
+        keptThroughABuild: true,
       );
     });
 

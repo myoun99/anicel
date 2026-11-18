@@ -170,7 +170,7 @@ class _XSheetGridHeaders {
   /// [entry]'s [header] in its berth, named for its row.
   Widget _named(TimelineDisplayRow entry) {
     final berths = _state._berths;
-    final _NamedHeader facts = (
+    final facts = (
       name: 'xsheet-header-${entry.layer.id}-${entry.lane?.laneId ?? 'row'}',
       header: ByIdentity(header(entry)),
     );

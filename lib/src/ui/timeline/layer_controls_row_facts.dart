@@ -260,21 +260,20 @@ final class KeptLayerControlsRows {
   final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
   final KeptByBerth<Object?> _lanes = KeptByBerth();
   final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
-  final KeptByBerth<BerthRowFacts> _berthed = KeptByBerth();
+  final KeptBerthRows _berthed = KeptBerthRows();
 
   /// [row]'s controls row in its berth of [berths] (F-244): the row
   /// [build] makes, kept while its facts hold, in the drag wrapper put on
   /// it, kept while the row and its address do, in the berth that says
   /// which layer it stands for, kept while that layer and the wrapper do
-  /// ([keptBerthRow]) — so a commit rebuilds no row it did not change, and
-  /// a cut switch none whose face it left alone.
+  /// ([KeptBerthRows]) — so a commit rebuilds no row it did not change,
+  /// and a cut switch none whose face it left alone.
   Widget keep(
     RowBerthMap berths,
     TimelineDisplayRow row,
     LayerControlsRowInputs inputs,
     Widget Function() build,
-  ) => keptBerthRow(
-    _berthed,
+  ) => _berthed.keep(
     berths,
     row,
     _wrap(

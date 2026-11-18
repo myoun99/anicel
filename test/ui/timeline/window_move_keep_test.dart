@@ -86,6 +86,25 @@ void main() {
     expect(builds, ['b', 'a', 'b']);
   });
 
+  test('let go of, a row the last lay left out is not handed back after '
+      'it', () {
+    final keep = WindowMoveKeep();
+    keep.lay(Object());
+    final b = rowOf(keep, 'b', 1);
+    keep.lay(Object());
+    rowOf(keep, 'a', 1);
+    expect(
+      rowOf(keep, 'b', 1),
+      same(b),
+      reason: '⛔전제: until it is let go of, its facts hand it back',
+    );
+    keep.lay(Object());
+    rowOf(keep, 'a', 1);
+    keep.letGo();
+    final again = rowOf(keep, 'b', 1);
+    expect(again, isNot(same(b)));
+  });
+
   test('what is built from the pass alone is built again in another', () {
     final keep = WindowMoveKeep();
     final pass = Object();

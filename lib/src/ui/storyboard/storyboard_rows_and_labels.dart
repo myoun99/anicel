@@ -23,9 +23,9 @@ class _StoryboardRowsAndLabels {
   /// the AMMI OP, each row's gesture layer among them.
   ///
   /// It holds the rows of the latest PASS ([railPass]) and no others: a
-  /// row the rail stops drawing lets go of what it was built from at the
-  /// next pass (I-57 ㉣: a memo that let go of nothing held every layer of
-  /// every cut it had shown). Every pass is another, so a row is kept
+  /// row the rail stops drawing lets go of what it was built from once the
+  /// pass is laid (I-57 ㉣: a memo that let go of nothing held every layer
+  /// of every cut it had shown). Every pass is another, so a row is kept
   /// while its facts hold and no longer — the windowed rows' keep, laid
   /// so (`_KeptRailRows` was a keep of its own until 11-19).
   final WindowMoveKeep _kept = WindowMoveKeep();
@@ -241,10 +241,16 @@ class _StoryboardRowsAndLabels {
     _state.widget.onRowSelectionSpan != null,
   );
 
-  /// [build]'s rail rows — every track's — kept as one pass ([_kept]).
+  /// [build]'s rail rows — every track's — kept as one pass ([_kept]),
+  /// whose rows are all the rail keeps once it is laid: the window's moves
+  /// lay labels in no pass of their own.
   List<Widget> railPass(List<Widget> Function() build) {
     _kept.lay(Object());
-    return build();
+    try {
+      return build();
+    } finally {
+      _kept.letGo();
+    }
   }
 
   /// [label] in the drag wrapper [wrap] puts on it — the rail's row [key] —

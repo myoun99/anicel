@@ -143,35 +143,39 @@ typedef BerthWorld = ({
   ByList<SoundCannotPlay?> seSoundsCannotPlay,
 });
 
-/// What a kept row's [BerthRow] is built from ([keptBerthRow]).
-typedef BerthRowFacts = ({
+/// What a kept row's [BerthRow] is built from ([KeptBerthRows]).
+typedef _BerthRowFacts = ({
   ByIdentity<Layer> layer,
   BerthWorld? world,
   ByIdentity<Widget> row,
 });
 
-/// [child] — a row its memo keeps — in the [BerthRow] that says which
-/// layer [row] stands for now and, a cells row's, the [world] it draws:
-/// the one [kept] holds for [row]'s berth of [berths] while those and
-/// [child] are what it was built from.
+/// The [BerthRow]s a grid's kept rows stand in, berth by berth.
 ///
 /// ↩️Built fresh above the memo at every build until card
 /// an-eye-toggle-holds-the-ui-thread (11-19): the memo handed its row back
 /// and the berth it stood in was built again around it — 🔬42 of the 249
 /// widgets an eye toggle rebuilt on S5_BA cut 352, one a row on each side.
 /// ONE keeping for the controls rows and the cells rows alike.
-Widget keptBerthRow(
-  KeptByBerth<BerthRowFacts> kept,
-  RowBerthMap berths,
-  TimelineDisplayRow row,
-  Widget child, {
-  BerthWorld? world,
-}) => kept.keep(
-  berths,
-  row,
-  (layer: ByIdentity(row.layer), world: world, row: ByIdentity(child)),
-  () => BerthRow(layer: row.layer, world: world, child: child),
-);
+final class KeptBerthRows {
+  final KeptByBerth<_BerthRowFacts> _kept = KeptByBerth();
+
+  /// [child] — a row its memo keeps — in the [BerthRow] that says which
+  /// layer [row] stands for now and, a cells row's, the [world] it draws:
+  /// the one held for [row]'s berth of [berths] while those and [child]
+  /// are what it was built from.
+  Widget keep(
+    RowBerthMap berths,
+    TimelineDisplayRow row,
+    Widget child, {
+    BerthWorld? world,
+  }) => _kept.keep(
+    berths,
+    row,
+    (layer: ByIdentity(row.layer), world: world, row: ByIdentity(child)),
+    () => BerthRow(layer: row.layer, world: world, child: child),
+  );
+}
 
 /// What a reader of [BerthRow] is rebuilt for.
 enum BerthAspect {
