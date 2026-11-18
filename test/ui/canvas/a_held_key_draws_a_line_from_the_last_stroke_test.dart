@@ -16,7 +16,6 @@ import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -26,10 +25,13 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_line_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart'
     show debugStrokeDabsLaid;
+import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
+import 'package:anicel/src/ui/canvas/picture_up_view.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-119 (유저 2026-10-21): 「브러시 도구(브러시,지우개) 전용기능, …
 /// 누르고있으면 저번에 찍은 마지막 dab? 점 부터 현재 호버중인 커서까지
@@ -57,6 +59,7 @@ void main() {
   >
   pumpPanel(
     WidgetTester tester, {
+    StandingPicture? picture,
     CutGuides? guides,
     ValueNotifier<bool>? rowTakesStrokes,
   }) async {
@@ -95,15 +98,23 @@ void main() {
               rowAcceptsStrokes: takes,
               activeStrokeOverlayModel: overlay,
               viewportUnderlayBuilder: (context, viewport, painter, float) =>
-                  painter == null
-                  ? const SizedBox.shrink()
-                  : CustomPaint(
-                      painter: painter,
-                      size: Size(
-                        size.width.toDouble(),
-                        size.height.toDouble(),
-                      ),
-                    ),
+                  Builder(
+                    builder: (context) {
+                      // The canvas's picture, where a test names one.
+                      if (picture != null) {
+                        PictureUpViewScope.maybeOf(context)!.carriedBy(picture);
+                      }
+                      return painter == null
+                          ? const SizedBox.shrink()
+                          : CustomPaint(
+                              painter: painter,
+                              size: Size(
+                                size.width.toDouble(),
+                                size.height.toDouble(),
+                              ),
+                            );
+                    },
+                  ),
             ),
           ),
         ),
@@ -275,7 +286,7 @@ void main() {
       coordinator.currentSurfaceOf(coordinator.activeFrameKey);
 
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      (surfacePixelRgba(celOf(coordinator), x, y) ?? 0) & 0xFF;
+      (surfaceRgbaInPlace(celOf(coordinator), x, y) ?? 0) & 0xFF;
 
   /// The alpha [overlay] SHOWS over each tile it pictures, off its pictures.
   Future<Map<TileCoord, List<int>>> shownAlphas(
@@ -655,6 +666,37 @@ void main() {
     expect(antsOf(tester), [line(strokeEnd, hand)]);
   });
 
+  // 🗣️관제 2026-11-16 (a-pan-moves-the-overlays-before-the-canvas (ㄴ)):
+  // 「직선 고무줄 = 끝마다 제 시계」 — the end on the canvas is drawn as the
+  // canvas's picture stands, the end at the hand through the view as it is,
+  // as the app's cursor is.
+  testWidgets('🚨with the picture standing at another view, the line is '
+      'drawn through it from where the last stroke ended — and its end '
+      'stays at the hand', (tester) async {
+    final drawnFor = CanvasViewport(zoom: 2, panX: 30, panY: 10);
+    await pumpPanel(tester, picture: _AtAView(drawnFor));
+    final mouse = await mouseAt(tester, const Offset(10, 10));
+    await stroke(tester, mouse, strokeFrom, strokeEnd);
+
+    await holdTheKey(tester, true);
+    await hover(tester, mouse, hand);
+
+    final painter = tester.widget<CustomPaint>(
+      find
+          .descendant(of: find.byKey(antsKey), matching: find.byType(CustomPaint))
+          .first,
+    ).painter! as SelectionAntsPainter;
+    expect(painter.viewport, drawnFor);
+    // The hand on the deck is where the view as it is lays the canvas's
+    // [hand] (the line runs to it, as every pin here says).
+    expect(antsOf(tester), [
+      [
+        CanvasPoint(x: strokeEnd.dx, y: strokeEnd.dy),
+        drawnFor.viewportOffsetToCanvas(hand),
+      ],
+    ]);
+  });
+
   testWidgets('with no stroke yet there is no line to show: held, a click '
       'draws as it always does — and that stroke starts the next line', (
     tester,
@@ -758,4 +800,14 @@ void main() {
     await hover(tester, mouse, hand);
     expect(antsOf(tester), [line(strokeEnd, hand)]);
   });
+}
+
+/// A picture that stands at [at] whatever the view.
+final class _AtAView implements StandingPicture {
+  _AtAView(this.at);
+
+  final CanvasViewport at;
+
+  @override
+  CanvasViewport standingFor(CanvasViewport now) => at;
 }

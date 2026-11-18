@@ -85,18 +85,19 @@ void main() {
       expect(low.coverage, isNot(high.coverage));
     });
 
-    test('a raster tip takes its coverage as it is at every step but 없음 — '
-        'resolved or not', () {
-      for (final step in [BrushAntiAlias.low, BrushAntiAlias.medium]) {
+    test('🚨a raster tip takes its coverage as it is at EVERY step, 없음 too '
+        '— resolved or not (유저 H39 · I-174 · I-86)', () {
+      for (final step in BrushAntiAlias.values) {
         final raw = dab(step, tipMask: rasterTip);
         final resolved = BrushTipStampCache().resolveDab(raw);
         expect(resolved.tipMask, same(rasterTip), reason: 'premise');
-        expect(brushDabEdgeLaw(raw).contrast, 1.0, reason: '$step');
-        expect(
-          brushDabEdgeLaw(resolved).contrast,
-          1.0,
-          reason: '$step resolved',
-        );
+        for (final (what, law) in [
+          ('$step', brushDabEdgeLaw(raw)),
+          ('$step resolved', brushDabEdgeLaw(resolved)),
+        ]) {
+          expect(law.threshold, isFalse, reason: what);
+          expect(law.contrast, 1.0, reason: what);
+        }
       }
     });
 
@@ -110,11 +111,7 @@ void main() {
         size: 4,
         alpha: Uint8List.fromList(List.filled(16, grey)),
       );
-      for (final step in [
-        BrushAntiAlias.low,
-        BrushAntiAlias.medium,
-        BrushAntiAlias.high,
-      ]) {
+      for (final step in BrushAntiAlias.values) {
         final laid = brushPixelCoveragesForDab(
           dab(step, tipMask: pale),
         ).map((pixel) => pixel.coverage).reduce(math.max);
@@ -130,12 +127,15 @@ void main() {
       expect(brushDabEdgeLaw(resolved).contrast, 4.0);
     });
 
-    test('없음 cuts whatever the tip', () {
+    test('없음 cuts an analytic tip — round or square, resolved or not', () {
+      final square = dab(BrushAntiAlias.none, tipShape: BrushTipShape.square);
+      final resolvedSquare = BrushTipStampCache().resolveDab(square);
+      expect(resolvedSquare.tipMask, isNotNull, reason: 'premise: baked');
       for (final d in [
         dab(BrushAntiAlias.none),
-        dab(BrushAntiAlias.none, tipMask: rasterTip),
-        dab(BrushAntiAlias.none, tipShape: BrushTipShape.square),
         BrushTipStampCache().resolveDab(dab(BrushAntiAlias.none)),
+        square,
+        resolvedSquare,
       ]) {
         expect(brushDabEdgeLaw(d).threshold, isTrue);
       }

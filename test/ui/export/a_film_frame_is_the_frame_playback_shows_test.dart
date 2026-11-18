@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -34,7 +35,11 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart'
     show ExportLayerRow;
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
+import 'package:anicel/src/ui/frame_shots.dart'
+    show debugOverlayRasters, pictureOfLaid;
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️유저 2026-10-13 (card video-export-speed-Q2): 「캔버스 규칙으로」 — a
@@ -64,28 +69,34 @@ void main() {
     return (bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
   }
 
-  /// [paint] decides each pixel of a [canvas] in tiles of [tile] —
+  /// [paint] decides each pixel of a [canvas] in the engine's tiles —
   /// premultiplied, as the tiles hold it — over the tiles [coords] names,
-  /// the canvas's own unless told.
+  /// or, unless told, inside the canvas alone, over the tiles it lies in.
   BitmapSurface surfaceOf(
     CanvasSize canvas,
     int? Function(int x, int y) paint, {
-    int tile = 16,
     Iterable<TileCoord>? coords,
   }) {
+    const tile = defaultCelTileSize;
+    final insideTheCanvas = coords == null;
     final tiles = <TileCoord, BitmapTile>{};
     for (final coord
         in coords ??
             [
-              for (var ty = 0; ty < canvas.height ~/ tile; ty += 1)
-                for (var tx = 0; tx < canvas.width ~/ tile; tx += 1)
+              for (var ty = 0; ty * tile < canvas.height; ty += 1)
+                for (var tx = 0; tx * tile < canvas.width; tx += 1)
                   TileCoord(x: tx, y: ty),
             ]) {
       final pixels = Uint8List(tile * tile * 4);
       var any = false;
       for (var y = 0; y < tile; y += 1) {
         for (var x = 0; x < tile; x += 1) {
-          final argb = paint(coord.x * tile + x, coord.y * tile + y);
+          final (atX, atY) = (coord.x * tile + x, coord.y * tile + y);
+          if (insideTheCanvas &&
+              (atX >= canvas.width || atY >= canvas.height)) {
+            continue;
+          }
+          final argb = paint(atX, atY);
           if (argb == null) {
             continue;
           }
@@ -146,7 +157,11 @@ void main() {
     );
 
     /// The grid's cut through a camera at [zoom], its centre between pixels.
-    EditorSessionManager session(double zoom) {
+    CameraPose poseAt(double zoom) =>
+        CameraPose(center: CanvasPoint(x: 121.3, y: 79.6), zoom: zoom);
+
+    /// The grid's cut through a camera at [pose].
+    EditorSessionManager session(CameraPose pose) {
       final s = EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
@@ -162,14 +177,7 @@ void main() {
                   name: 'Cut',
                   duration: 1,
                   canvasSize: canvas,
-                  camera: CutCamera(
-                    keyframes: {
-                      0: CameraPose(
-                        center: CanvasPoint(x: 121.3, y: 79.6),
-                        zoom: zoom,
-                      ),
-                    },
-                  ),
+                  camera: CutCamera(keyframes: {0: pose}),
                   layers: [
                     row('block'),
                     row('lines'),
@@ -187,12 +195,24 @@ void main() {
       return s;
     }
 
+    /// A picture of the sequence of [s]'s cut.
+    Future<Uint8List> stillOf(EditorSessionManager s) async {
+      final renderer = ExportFrameRenderer(session: s);
+      addTearDown(renderer.dispose);
+      return bytesOf(
+        await renderer.renderComposite(
+          ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+          ExportSizeMode.camera,
+        ),
+      );
+    }
+
     /// The cut's frame as a film's frame, a picture of the sequence and a
     /// panel's picture as wide as the film.
     Future<({Uint8List video, Uint8List still, Uint8List panel})> routes(
       double zoom,
     ) async {
-      final s = session(zoom);
+      final s = session(poseAt(zoom));
       addTearDown(s.dispose);
       final renderer = ExportFrameRenderer(session: s);
       addTearDown(renderer.dispose);
@@ -200,11 +220,11 @@ void main() {
       final task = ExportFrameTask(cut: cut, frameIndex: 0);
       return (
         video: await bytesOf(
-          await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+          await pictureOfFilmFrame(
+            renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+          ),
         ),
-        still: await bytesOf(
-          await renderer.renderComposite(task, ExportSizeMode.camera),
-        ),
+        still: await stillOf(s),
         panel: await bytesOf(
           await PanelPictures(
             session: s,
@@ -214,25 +234,20 @@ void main() {
     }
 
     for (final zoom in [0.47, 0.42, 0.94]) {
-      testWidgets('🎯at a zoom of $zoom, a film\'s frame, a picture of the '
-          'sequence and a panel\'s picture are one picture', (tester) async {
+      testWidgets('🎯at a zoom of $zoom, a film\'s frame and a picture of the '
+          'sequence are one picture, and a panel\'s picture is the picture '
+          'of the sequence, byte for byte', (tester) async {
         await tester.runAsync(() async {
           final (:video, :still, :panel) = await routes(zoom);
           expect(still.length, frameSize.width * frameSize.height * 4);
-          expect(panel.length, still.length);
-
-          // The panel is cut from the frame's one picture, composed on its
-          // paper and then reduced (F-533-Q8); a still reduces each row and
-          // then composes them on its ground: rounded apart wherever a
-          // pixel takes a line in part, by a few levels at most.
-          // ↩️Byte for byte while a panel was a still of its own
-          // (`ExportFrameRenderer.renderPicture`).
-          var panelMost = 0;
-          for (var i = 0; i < still.length; i += 1) {
-            final apart = (panel[i] - still[i]).abs();
-            panelMost = apart > panelMost ? apart : panelMost;
-          }
-          expect(panelMost, lessThanOrEqualTo(3), reason: 'one reduction');
+          // 🗣️유저 11-08: 「지금화면이랑 맞출필요는없어. 어차피 더
+          // 개선되는방향성이고, 바뀌고 나서만 동일하면되」 — both are the
+          // frame's one picture through one view on one paper now (7′,
+          // `frameOnTheEngine`). ↩️A panel was cut from that picture while a
+          // still composed its rows again through the camera: a few levels
+          // apart, and only beside a still at a camera moved by the panel's
+          // snap.
+          expect(panel, still);
           // The film lays the cut's picture — composed on clear — on its
           // stage's paper, as playback lays it: rounded once more than a
           // picture composed straight onto its ground.
@@ -288,13 +303,23 @@ void main() {
     });
   });
 
-  testWidgets('🎯the film shows no pasteboard: what is parked past the canvas '
-      'stays out of a film\'s frame and a picture of the sequence, where the '
-      'camera sees past the canvas', (tester) async {
+  /// What is parked past the canvas, filmed through a camera at [pose] that
+  /// sees past its left edge, read at the film's pixel [probe]: canvas
+  /// (−40, 128), in the red.
+  Future<void> parkedStaysOut(
+    WidgetTester tester,
+    CameraPose pose,
+    (int, int) probe,
+  ) async {
+    final (px, py) = probe;
     await tester.runAsync(() async {
-      const canvas = CanvasSize(width: 32, height: 32);
+      // Two tiles a side.
+      const canvas = CanvasSize(
+        width: 2 * defaultCelTileSize,
+        height: 2 * defaultCelTileSize,
+      );
       const cutId = CutId('cut');
-      // Red ink on the pasteboard tile left of the canvas — x −16 to −1.
+      // Red ink on the pasteboard tiles left of the canvas — x −128 to −1.
       final parked = surfaceOf(
         canvas,
         (_, _) => 0xFFFF0000,
@@ -316,13 +341,7 @@ void main() {
                   name: 'Cut',
                   duration: 1,
                   canvasSize: canvas,
-                  // Its frame from canvas x −8 to 24: a quarter past the
-                  // canvas's left edge.
-                  camera: CutCamera(
-                    keyframes: {
-                      0: CameraPose(center: CanvasPoint(x: 8, y: 16)),
-                    },
-                  ),
+                  camera: CutCamera(keyframes: {0: pose}),
                   layers: [row('parked'), createCameraLayer(cutId: cutId)],
                 ),
               ],
@@ -356,18 +375,21 @@ void main() {
       final task = ExportFrameTask(cut: cut, frameIndex: 0);
 
       final video = await bytesOf(
-        await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+        await pictureOfFilmFrame(
+          renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+        ),
       );
       final still = await bytesOf(
         await renderer.renderComposite(task, ExportSizeMode.camera),
       );
+      // Canvas (−40, 128), in the red.
       expect(
-        pixelOf(video, 32, 3, 16),
+        pixelOf(video, canvas.width, px, py),
         (0, 0, 255, 255),
         reason: 'the stage\'s apron, past the paper',
       );
       expect(
-        pixelOf(still, 32, 3, 16),
+        pixelOf(still, canvas.width, px, py),
         (255, 255, 255, 255),
         reason: 'the picture\'s ground, past the canvas',
       );
@@ -379,11 +401,36 @@ void main() {
           .singleWhere((row) => row.name == 'parked');
       final layered = await bytesOf(await parkedRow.draw());
       expect(
-        pixelOf(layered, 32, 3, 16),
+        pixelOf(layered, canvas.width, px, py),
         (0, 0, 0, 0),
         reason: 'a layered file\'s row, past the canvas',
       );
     });
+  }
+
+  // Its frame from canvas x −64 to 192: a quarter past the canvas's left
+  // edge. Canvas (−40, 128) stands where the canvas does at (24, 128).
+  testWidgets('🎯the film shows no pasteboard: what is parked past the canvas '
+      'stays out of a film\'s frame and a picture of the sequence, where the '
+      'camera sees past the canvas', (tester) async {
+    await parkedStaysOut(
+      tester,
+      CameraPose(center: CanvasPoint(x: 64, y: 128)),
+      (24, 128),
+    );
+  });
+
+  // A camera turned cuts the canvas's edge through the cover the app
+  // rasters of it, where a level one cuts on whole pixels
+  // (`frameOnTheEngine`). Canvas (−40, 128) is (−104, 0) from the centre:
+  // turned 45°, (−73.5, 73.5) from the film's — its pixel (54, 201).
+  testWidgets('🎯the film shows no pasteboard through a camera turned 45° '
+      'either', (tester) async {
+    await parkedStaysOut(
+      tester,
+      CameraPose(center: CanvasPoint(x: 64, y: 128), rotationDegrees: 45),
+      (54, 201),
+    );
   });
 
   // 🗣️playback-picture-is-not-the-canvas-picture (유저 10-13: 「배율따라서
@@ -402,10 +449,6 @@ void main() {
     final filled = surfaceOf(
       canvas,
       (x, y) => x < canvas.width && y < canvas.height ? 0xFF102030 : null,
-      coords: [
-        for (var ty = 0; ty < 3; ty += 1)
-          for (var tx = 0; tx < 4; tx += 1) TileCoord(x: tx, y: ty),
-      ],
     );
 
     /// The cut through a camera at [pose], on a blue apron over a black
@@ -466,9 +509,9 @@ void main() {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final film = await bytesOf(
-            await renderer.videoRun([
+            await pictureOfFilmFrame(renderer.videoRun([
               ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-            ], ExportSizeMode.camera).frame(0),
+            ], ExportSizeMode.camera).frame(0)),
           );
           expect(
             pixelOf(film, canvas.width, 30, 10),
@@ -494,8 +537,10 @@ void main() {
       });
 
       testWidgets('🎯through a camera at $where, the cut takes nothing of a '
-          'pixel the canvas covers in part: a picture of the sequence is '
-          'the panel\'s picture, cut where the film is', (tester) async {
+          'pixel the canvas covers in part: a picture of the sequence is the '
+          'panel\'s picture, cut where the film is, byte for byte', (
+        tester,
+      ) async {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final cut = s.requireActiveCut;
@@ -524,21 +569,22 @@ void main() {
                   '($x, $y): ${pixelOf(still, canvas.width, x, y)} → '
                       '${pixelOf(panel, canvas.width, x, y)}',
           ];
-          // ↩️Compared whole while each row was halved: a level's pixel
-          // ended on the grid the cut went out to. Read from its chain, a
-          // row spreads its edge a level's texel past the canvas — onto
-          // the pasteboard the film does not show (「페이스트보드는 포함
-          // 안 시킴」), and cut there as playback's shot cuts it
-          // (`ShotClip`), until one-picture-per-frame ②-5b-3. Then only
-          // where the canvas lies, a panel being cut nowhere — until it was
-          // cut from the frame's picture where the film is (F-533-Q8).
+          // ↩️Beside the still at a camera moved by the panel's snap, while
+          // a still composed its rows again through the camera — until both
+          // were the frame's one picture through one view (7′,
+          // `frameOnTheEngine`).
           expect(apart, isEmpty);
         });
       });
     }
 
-    testWidgets('🎯where nothing is drawn over it, the paper\'s edge — an '
-        'output pixel in, where it yields to the rows — is anti-aliased', (
+    // ↩️The paper yielded the output pixel the canvas's edge falls inside
+    // to the rows (#15) while a camera render composed its rows apart from
+    // its paper, on Flutter. Composed in one picture with them on the
+    // engine and reduced with them (7′), ink drawn to the edge leaves no
+    // paper past it (above) — and the paper reaches the canvas's edge.
+    testWidgets('🎯where nothing is drawn over it, the paper reaches the '
+        'canvas\'s edge — anti-aliased where the edge falls inside a pixel', (
       tester,
     ) async {
       await tester.runAsync(() async {
@@ -547,28 +593,26 @@ void main() {
           inked: false,
         );
         final film = await bytesOf(
-          await renderer.videoRun([
+          await pictureOfFilmFrame(renderer.videoRun([
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-          ], ExportSizeMode.camera).frame(0),
+          ], ExportSizeMode.camera).frame(0)),
         );
-        // The paper's foot an output pixel — 2.5 canvas pixels — up from
-        // the canvas's, at canvas row 35.5: film row
-        // 19 + (35.5 − 19.7) × 0.4 = 25.32.
+        // The canvas's foot, at canvas row 38: film row
+        // 19 + (38 − 19.7) × 0.4 = 26.32.
         expect(
           pixelOf(film, canvas.width, 30, 24),
           (255, 255, 255, 255),
           reason: 'LIVENESS: the paper above its foot',
         );
-        final (r, _, _, _) = pixelOf(film, canvas.width, 30, 25);
+        final (r, _, _, _) = pixelOf(film, canvas.width, 30, 26);
         expect(r, inExclusiveRange(0x20, 0xE0), reason: 'paper over apron');
       });
     });
 
-    testWidgets('🎯a canvas too small to give an output pixel up keeps its '
-        'paper whole — it does not vanish', (tester) async {
+    testWidgets('🎯a canvas a few output pixels wide keeps its paper — it '
+        'does not vanish', (tester) async {
       await tester.runAsync(() async {
-        // At a quarter, two film pixels a side: an output pixel in from each
-        // edge leaves nothing.
+        // At a quarter, two film pixels a side.
         const small = CanvasSize(width: 8, height: 8);
         final (s, renderer) = filmAt(
           CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 0.25),
@@ -576,9 +620,9 @@ void main() {
           size: small,
         );
         final film = await bytesOf(
-          await renderer.videoRun([
+          await pictureOfFilmFrame(renderer.videoRun([
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-          ], ExportSizeMode.camera).frame(0),
+          ], ExportSizeMode.camera).frame(0)),
         );
         // Film pixel p sees canvas [4 + (p − 4) × 4, 4 + (p − 3) × 4):
         // pixel 2, [-4, 0), is past the canvas and inside the 3x wall at
@@ -593,7 +637,12 @@ void main() {
           (0, 0, 0, 255),
           reason: 'the floor past the pasteboard\'s wall (I-109)',
         );
-        expect(pixelOf(film, small.width, 4, 4), (255, 255, 255, 255));
+        // Reduced as the canvas reduces it — a level's texel spreads the
+        // apron a little into a two-pixel paper: paper still, over apron.
+        final (r, g, b, a) = pixelOf(film, small.width, 4, 4);
+        expect((b, a), (255, 255));
+        expect(r, greaterThan(0x80), reason: 'more paper than apron');
+        expect(g, r);
       });
     });
   });
@@ -639,7 +688,7 @@ void main() {
       session,
       [
         for (final (cut, argb) in cuts)
-          (cut, cut.id.value, surfaceOf(canvas, (_, _) => argb, tile: 8)),
+          (cut, cut.id.value, surfaceOf(canvas, (_, _) => argb)),
       ],
     );
 
@@ -652,9 +701,9 @@ void main() {
       final renderer = ExportFrameRenderer(session: session);
       addTearDown(renderer.dispose);
       final frame = await bytesOf(
-        await renderer.videoRun([
+        await pictureOfFilmFrame(renderer.videoRun([
           ExportFrameTask(cut: cut, frameIndex: index),
-        ], ExportSizeMode.camera).frame(0),
+        ], ExportSizeMode.camera).frame(0)),
       );
       return pixelOf(frame, 8, 4, 4);
     }
@@ -744,12 +793,22 @@ void main() {
         ], ExportSizeMode.camera);
 
         expect(
-          pixelOf(await bytesOf(await run.frame(0)), 8, 4, 4),
+          pixelOf(
+            await bytesOf(await pictureOfFilmFrame(run.frame(0))),
+            8,
+            4,
+            4,
+          ),
           (255, 0, 0, 255),
           reason: 'CONTROL: the stage\'s red through the blank cut over it',
         );
         expect(
-          pixelOf(await bytesOf(await run.frame(1)), 8, 4, 4),
+          pixelOf(
+            await bytesOf(await pictureOfFilmFrame(run.frame(1))),
+            8,
+            4,
+            4,
+          ),
           (255, 255, 255, 255),
           reason: 'its own paper, where nothing lies under it',
         );
@@ -822,13 +881,27 @@ void main() {
           final renderer = ExportFrameRenderer(session: s);
           addTearDown(renderer.dispose);
           return bytesOf(
-            await renderer.videoRun([
+            await pictureOfFilmFrame(renderer.videoRun([
               ExportFrameTask(cut: cut, frameIndex: 0),
-            ], ExportSizeMode.camera).frame(0),
+            ], ExportSizeMode.camera).frame(0)),
           );
         }
 
-        expect(await filmOf(named: true), isNot(await filmOf(named: false)));
+        debugOverlayRasters = [];
+        addTearDown(() => debugOverlayRasters = null);
+        final named = await filmOf(named: true);
+        final rasteredNamed = [...?debugOverlayRasters];
+        debugOverlayRasters = [];
+        final nameless = await filmOf(named: false);
+        // A row of the cut's picture (card
+        // the-flutter-fx-chain-is-a-second-chain) — which its pixels do not
+        // show.
+        expect(
+          rasteredNamed,
+          debugOverlayRasters,
+          reason: 'nothing more is rastered over the frame for the name',
+        );
+        expect(named, isNot(nameless));
       });
     });
 
@@ -844,7 +917,7 @@ void main() {
           (
             s.requireActiveCut,
             'c',
-            surfaceOf(canvas, (x, _) => x < 4 ? 0xFF000064 : null, tile: 8),
+            surfaceOf(canvas, (x, _) => x < 4 ? 0xFF000064 : null),
           ),
         ]);
         return s;
@@ -868,9 +941,9 @@ void main() {
             final renderer = ExportFrameRenderer(session: s);
             addTearDown(renderer.dispose);
             return bytesOf(
-              await renderer.videoRun([
+              await pictureOfFilmFrame(renderer.videoRun([
                 ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-              ], ExportSizeMode.camera).frame(0),
+              ], ExportSizeMode.camera).frame(0)),
             );
           }
 
@@ -915,7 +988,11 @@ void main() {
             'is another picture every frame — and under one that stands, '
             'the picture before', (tester) async {
           await tester.runAsync(() async {
-            Future<(ui.Image, ui.Image)> twoFrames(EffectParameter p) async {
+            /// The run's two frames, as its writer takes them — and the
+            /// picture of each.
+            Future<((GpuShown, ui.Image), (GpuShown, ui.Image))> twoFrames(
+              EffectParameter p,
+            ) async {
               final s = halfInked([brightness(p)]);
               addTearDown(s.dispose);
               final renderer = ExportFrameRenderer(session: s);
@@ -925,21 +1002,26 @@ void main() {
                 for (final index in [0, 1])
                   ExportFrameTask(cut: cut, frameIndex: index),
               ], mode);
-              return (await run.frame(0), await run.frame(1));
+              Future<(GpuShown, ui.Image)> at(int index) async {
+                final frame = await run.frame(index);
+                return (frame, pictureOfLaid(appGpuExport, frame));
+              }
+
+              return (await at(0), await at(1));
             }
 
-            final (still0, still1) = await twoFrames(
+            final ((still0, picture0), (still1, picture1)) = await twoFrames(
               EffectParameter(value: 50),
             );
             expect(
-              still1.isCloneOf(still0),
-              isTrue,
-              reason: 'the chain resolved again, equal: the picture held',
+              still1,
+              same(still0),
+              reason: 'the chain resolved again, equal: the frame held',
             );
-            still0.dispose();
-            still1.dispose();
+            picture0.dispose();
+            picture1.dispose();
 
-            final (moving0, moving1) = await twoFrames(
+            final ((_, moving0), (_, moving1)) = await twoFrames(
               EffectParameter(
                 value: 0,
                 track: PropertyTrack<double>(

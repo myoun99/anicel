@@ -101,7 +101,6 @@ void main() {
         'plays', (tester) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
-      addTearDown(session.playbackRig.prerenderScheduler.cancel);
       await pumpTimelineHostOn(
         tester,
         session,
@@ -152,7 +151,6 @@ void main() {
     tester,
   ) async {
     final session = await pumpStoryboardHost(tester, project());
-    addTearDown(session.playbackRig.prerenderScheduler.cancel);
     final row = conteRowPainter(tester, trackId.value);
 
     expect(row.stepsUntilShown?.call(3), isNull, reason: 'nothing plays');

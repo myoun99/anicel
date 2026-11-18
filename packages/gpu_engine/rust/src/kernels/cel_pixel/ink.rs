@@ -107,7 +107,7 @@ impl Ink {
         let boxes = plane(engine, "ink boxes", bytes);
         let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), None, per_pass, most);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut given = Vec::with_capacity(cut.len());
         for pass in &cut {

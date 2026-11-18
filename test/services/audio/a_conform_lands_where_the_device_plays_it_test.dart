@@ -6,12 +6,16 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
+import 'package:anicel/src/services/audio/sound_filters.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+
+/// The one row's clip these spans are baked for.
+const aSlot = (row: LayerId('s1'), clip: FrameId('f1'));
 
 /// 🚨A CONFORM LANDS WHERE THE DEVICE PLAYS IT, PLACED BY THE WORKER THAT
 /// MADE IT (conform-landing-copies-on-the-ui-thread).
@@ -22,13 +26,10 @@ import '../../helpers/temp_dir.dart';
 /// draws. The worker fills the buffer now, and the runner hands the list
 /// over it to whoever asked.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath == null ? nativeEngineMissingSkipReason : false;
   late Directory directory;
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-conform-placed');
   });
 
@@ -39,7 +40,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     debugWorkersRunHere = true;
     deleteTempQuietly(directory);
   });
@@ -66,7 +66,6 @@ void main() {
     return ConformRequest(
       sourcePath: path,
       conformPath: null,
-      libraryPathOverride: libraryPath,
     );
   }
 
@@ -87,7 +86,7 @@ void main() {
       1,
       reason: 'the worker\'s buffer, its maker\'s hold handed to the list',
     );
-  }, skip: skip);
+  });
 
   test('🎯each rate it is converted to is one too', () async {
     final device = openNull();
@@ -97,7 +96,6 @@ void main() {
       channels: 2,
       inputRate: 48000,
       outputRate: 44100,
-      libraryPathOverride: libraryPath,
     );
     final here = runResampleHere(request);
     debugWorkersRunHere = false;
@@ -106,7 +104,7 @@ void main() {
 
     expect(converted, here);
     expect(device.debugHoldsOf(converted), 1);
-  }, skip: skip);
+  });
 
   test('🎯a conform the device holds is read where it lies by the worker '
       'that converts it, and lent only for as long as it works', () async {
@@ -118,7 +116,6 @@ void main() {
       channels: 2,
       inputRate: 48000,
       outputRate: 44100,
-      libraryPathOverride: libraryPath,
     );
     final here = runResampleHere(request.withSamples(plain));
     debugWorkersRunHere = false;
@@ -130,7 +127,40 @@ void main() {
     expect(converted, here);
     expect(device.debugHoldsOf(converted), 1);
     expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
-  }, skip: skip);
+  });
+
+  test('🎯each span baked through its equalizer is one too, the conform it '
+      'is cut from read where it lies', () async {
+    final device = openNull();
+    final plain = runConformHere(aSound()).samples!;
+    final from = device.newSamples(plain.length)!..setAll(0, plain);
+    const shelf = AudioEqualizer.none(lowShelf: 250, highShelf: 4000);
+    final request = FilterRequest(
+      samples: from,
+      channels: 2,
+      rate: 48000,
+      span: FilteredSpan(
+        slot: aSlot,
+        start: 40,
+        length: 300,
+        stages: [[
+          (start: 0, filter: _withLowDb(shelf, 6)),
+          (start: 120, filter: _withLowDb(shelf, -9)),
+        ]],
+      ),
+    );
+    final here = runFilterHere(request.withSamples(plain));
+    debugWorkersRunHere = false;
+
+    final baking = filteringInto(() => device)(request);
+    expect(device.debugHoldsOf(from), 2, reason: 'lent to the worker');
+    final baked = await baking;
+
+    expect(baked, hasLength(2 * 300));
+    expect(baked, here);
+    expect(device.debugHoldsOf(baked), 1);
+    expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
+  });
 
   group('lendToAWorker', () {
     test('lends the buffer a made list lies in, held while the work runs',
@@ -149,7 +179,7 @@ void main() {
       expect(read, [0.5, -0.25, 1]);
       expect(holdsWhileWorking, 2);
       expect(device.debugHoldsOf(samples), 1);
-    }, skip: skip);
+    });
 
     test('gives the lend back when the work fails', () async {
       final device = openNull();
@@ -162,7 +192,7 @@ void main() {
         throwsStateError,
       );
       expect(device.debugHoldsOf(samples), 1);
-    }, skip: skip);
+    });
 
     test('lends nothing for a list the device did not make', () async {
       final device = openNull();
@@ -173,7 +203,7 @@ void main() {
       });
 
       expect(lends, [null]);
-    }, skip: skip);
+    });
   });
 
   test('with no device, the PCM stays where it was made', () async {
@@ -182,7 +212,7 @@ void main() {
     final landed = await conformingInto(() => null)(request);
 
     expect(landed.samples, runConformHere(request).samples);
-  }, skip: skip);
+  });
 
   test('a buffer that cannot be made places nothing, and leaves the samples '
       'where they are — as a device with no room did', () {
@@ -219,3 +249,13 @@ void main() {
     expect(made, isEmpty);
   });
 }
+
+AudioEqualizer _withLowDb(AudioEqualizer shelf, double lowDb) =>
+    AudioEqualizer(
+      lowCut: shelf.lowCut,
+      highCut: shelf.highCut,
+      lowShelf: shelf.lowShelf,
+      lowDb: lowDb,
+      highShelf: shelf.highShelf,
+      highDb: shelf.highDb,
+    );

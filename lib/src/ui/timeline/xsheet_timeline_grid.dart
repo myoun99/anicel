@@ -1,4 +1,3 @@
-import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
@@ -15,6 +14,7 @@ import '../theme/app_theme.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
+import 'ruler_marker_layer.dart';
 import 'layer_rail_window.dart';
 
 import 'timeline_grid_range_gestures.dart';
@@ -41,7 +41,7 @@ import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_frame_geometry.dart'
-    show TimelineFrameGeometry, timelineFrameWindowMarginPx;
+    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
@@ -157,7 +157,7 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// ★ The header block is the timeline's rail, turned on its side — EVERY
   /// control single file, plus a name as generous as the rail's own name
-  /// column and the third of it the rail gave up ([_nameTheRailGaveUp]).
+  /// column and what the rail gave up of it ([_nameTheRailGaveUp]).
   /// A control the rail gains or sheds the block gains or sheds with it,
   /// with nothing to remember; the rail's names are the rail's own.
   ///
@@ -228,7 +228,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// 패딩개선등 통일할건 통일하지만 x시트는 애초에 지금도 fx부분 보면 공간
   /// 부족하거나 하니 총 길이는 유지해도됨」): the rail went 519 → 461 for its
   /// names alone, and the block keeps the length it had.
-  static const double _nameTheRailGaveUp = 58;
+  /// 58 → 78 (I-177, 2026-11-17): the rail went 461 → 441 for the blend
+  /// column the S row's Total gave back, and the block keeps its length
+  /// still — the sheet's names take the 20. 🔬Shed, the block stood 20
+  /// short and a stood-up lane's column no longer paid its graph chips.
+  /// ⚠️That the block keeps its length here is this lane's reading of the
+  /// rule above, not the user's word on I-177.
+  static const double _nameTheRailGaveUp = 78;
 
   /// The column header's own hairlines, top and bottom.
   static const double _headerBorderExtent = 2;
@@ -295,6 +301,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _frameScroll.renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    hold: () => _frameAxis.hold(),
+    letGo: () => _frameAxis.letGo(),
   );
 
   /// The fallback rail extent for hosts that keep none of their own — the
@@ -500,9 +508,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       timelineGroupFoldFor(
         row: row,
         layers: widget.layers,
-        collapsedAttachBaseIds: widget.hooks.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: widget.hooks.onToggleLayerCollapsed,
-        onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
+        onToggle: widget.hooks.onToggleGroupFold,
       );
 
   /// The display entries of the pass in flight, for the drag's row → slot
@@ -547,6 +553,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       frameCellExtent: _metrics.frameCellWidth,
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
+      geometry: _windowedFrameGeometry,
+      windowBucket: _frameWindowBucket,
     );
   }
 
@@ -698,64 +706,72 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                     // while the rail drew ONE band
                     // per contiguous run. Same
                     // widget, turned on its side.
-                    Stack(
-                      children: [
-                        // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
-                        // widget, same columns; the x-sheet is the rail
-                        // transposed, so the sweep runs ACROSS the layer
-                        // columns instead of down the rows.
-                        RailColumnSwipe<TimelineDisplayRow>(
-                          axis: Axis.horizontal,
-                          columns: _columns.swipeColumns(),
-                          rowsIn: (from, to) => _columns.columnsIn(
-                            from,
-                            to,
-                            entries,
-                            geometry.columnEdges,
-                          ),
-                          child: _rowBerths.counting(
-                            Row(
-                              children: _headers.headers(
-                                entries,
-                                geometry.columnEdges,
+                    //
+                    // The lines a carry draws over ALL of the strip
+                    // ([RailRowLines]): a line's word is wider than a
+                    // column, and the columns after it painted over it
+                    // (F-393 ②).
+                    RailRowLines(
+                      drag: widget.hooks.rowDragHooks?.drag,
+                      child: Stack(
+                        children: [
+                          // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
+                          // widget, same columns; the x-sheet is the rail
+                          // transposed, so the sweep runs ACROSS the layer
+                          // columns instead of down the rows.
+                          RailColumnSwipe<TimelineDisplayRow>(
+                            axis: Axis.horizontal,
+                            columns: _columns.swipeColumns(),
+                            rowsIn: (from, to) => _columns.columnsIn(
+                              from,
+                              to,
+                              entries,
+                              geometry.columnEdges,
+                            ),
+                            child: _rowBerths.counting(
+                              Row(
+                                children: _headers.headers(
+                                  entries,
+                                  geometry.columnEdges,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        if (widget.hooks.rowSelection case final selection?)
-                          Positioned.fill(
-                            child: TimelineRowSelectionBands(
-                              axis: Axis.vertical,
-                              selection: selection,
-                              rows: [
-                                for (final entry in entries) entry.address,
-                              ],
-                              edges: geometry.columnEdges,
-                              crossExtent: _headers.naturalHeaderExtent,
-                            ),
-                          ),
-                        // The sheet's header strip is the rail turned on its
-                        // side, so it is the same place entrance, along x.
-                        if (widget.hooks.onDropMediaAssetBetweenLayers
-                            case final onDrop?)
-                          Positioned.fill(
-                            child: LayerPlacementEntrance(
-                              key: const ValueKey<String>(
-                                'xsheet-layer-placement-entrance',
+                          if (widget.hooks.rowSelection case final selection?)
+                            Positioned.fill(
+                              child: TimelineRowSelectionBands(
+                                axis: Axis.vertical,
+                                selection: selection,
+                                rows: [
+                                  for (final entry in entries) entry.address,
+                                ],
+                                edges: geometry.columnEdges,
+                                crossExtent: _headers.naturalHeaderExtent,
                               ),
-                              rowAxis: Axis.horizontal,
-                              rows: () =>
-                                  (rows: _dragRows, edges: _dragEdges),
-                              onHover:
-                                  widget.hooks.rowDragHooks?.onPlacementHover,
-                              onLeave:
-                                  widget.hooks.rowDragHooks?.onPlacementLeave,
-                              accepts:
-                                  widget.hooks.rowDragHooks?.acceptsPlacement,
-                              onDrop: onDrop,
                             ),
-                          ),
-                      ],
+                          // The sheet's header strip is the rail turned on its
+                          // side, so it is the same place entrance, along x.
+                          if (widget.hooks.onDropMediaAssetBetweenLayers
+                              case final onDrop?)
+                            Positioned.fill(
+                              child: LayerPlacementEntrance(
+                                key: const ValueKey<String>(
+                                  'xsheet-layer-placement-entrance',
+                                ),
+                                rowAxis: Axis.horizontal,
+                                rows: () =>
+                                    (rows: _dragRows, edges: _dragEdges),
+                                onHover:
+                                    widget.hooks.rowDragHooks?.onPlacementHover,
+                                onLeave:
+                                    widget.hooks.rowDragHooks?.onPlacementLeave,
+                                accepts:
+                                    widget.hooks.rowDragHooks?.acceptsPlacement,
+                                onDrop: onDrop,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -805,6 +821,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       repaintSignal: widget.hooks.frameReadySignal,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: bodyViewportHeight,
+      geometry: _windowedFrameGeometry,
       renderedFrames: _frameScroll.renderedFrameCount,
       cellWidth: _metrics.frameCellWidth,
       readyRunsIn: widget.hooks.readyRunsIn,
@@ -819,8 +836,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        // R26 #34: a press that pans is the pan's, not a scrub.
-        if (canvasPressPans(canvasPressButtons(event))) {
+        // R26 #34: a press that pans is the pan's, not a scrub — and a
+        // marker's is the marker's (I-169).
+        if (!rulerPressScrubs(event)) {
           return;
         }
         _railScrub.resetTracking();
@@ -925,6 +943,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             pages: widget.hooks.sheetPages,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
+                            geometry: _windowedFrameGeometry,
+                            markers: widget.hooks.rulerMarkers,
                           ),
                         ),
                         Positioned.fill(
@@ -1336,7 +1356,9 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.playhead,
+    this.markers,
   });
 
   final int frameStartIndex;
@@ -1358,9 +1380,18 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
+  /// The window box the rail is laid in — its sheet's columns'
+  /// ([TimelineRulerScale.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
+
   /// The playhead the rail writes its own pair at (I-16) — a null VALUE
-  /// writes none; a rail without one (null) never mounts the writing.
+  /// writes none; a rail without one (null) mounts the writing for its
+  /// [markers] alone.
   final ValueListenable<int?>? playhead;
+
+  /// The cut's markers and their verbs (I-169) — the ruler's, down the
+  /// rail's leading half.
+  final RulerMarkerHooks? markers;
 
   @override
   Widget build(BuildContext context) {
@@ -1395,6 +1426,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
+      geometry: geometry,
       // The RAIL grays its past-playback tail where the ruler does
       // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
       pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
@@ -1406,15 +1438,15 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       child: timelineRulerStripWithWriting(
         strip: CustomPaint(
           key: const ValueKey<String>('xsheet-frame-rail-paint'),
-          size: Size(metrics.layerControlsWidth, height),
           painter: XSheetFrameRailPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('xsheet-rail-playhead-writing'),
-        playhead: playhead,
-        writing: (held) => TimelineRulerPlayheadWritingPainter(
+        markersKey: const ValueKey<String>('xsheet-rail-markers'),
+        writing: TimelineRulerPlayheadWritingPainter(
           scale: scale,
-          playhead: held,
+          playhead: playhead,
           layout: XSheetFrameRailPainter.glyphsAt,
+          markers: markers,
         ),
       ),
     );
@@ -1428,7 +1460,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 class XSheetFrameRailPainter extends CustomPainter
     with RepaintOnProps, RepaintOnWordBakes {
   XSheetFrameRailPainter({required this.scale})
-    : super(repaint: scale.windowBucket);
+    : super(repaint: scale.repaint);
 
   /// The frame scale this rail draws — the ruler's, field for field
   /// ([TimelineRulerScale]), the rect and the model with it. Only the paint
@@ -1544,7 +1576,7 @@ class XSheetFrameRailPainter extends CustomPainter
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.
   @override
-  Object get props => (scale,);
+  Object get props => (scale.drawn,);
 
   // ↩️Every row got a node, because "the rail numbers every frame" — which
   // stopped being so when its numbers began to thin with the ruler's

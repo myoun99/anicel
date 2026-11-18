@@ -1,21 +1,30 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/camera_pose.dart';
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
-import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
-import 'package:anicel/src/ui/track_effect_paint_policy.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart';
+
+import '../../helpers/cels_parked_cold.dart';
 
 /// 🚨★★★A TRACK'S CHAIN IS A PLAN, LIKE EVERY OTHER ROW'S.
 ///
@@ -31,9 +40,9 @@ import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 /// (layer-menu-strings-outlive-their-entries-Q1).
 ///
 /// 🧪ASKED OF THE PIXELS, not of the plan: a unit test that the plan has a
-/// step passes on a route that ignores the step. This renders a white cut
-/// under a track chain that keys white away — in the group every route lays
-/// the cut in ([underTheCutsFx]) — and counts what survives.
+/// step passes on a route that ignores the step. This renders a green cut
+/// on its paper under a track chain that keys green away — on a film's road, in the group
+/// every route lays the cut in ([underTheCutsFx]) — and counts what survives.
 ///
 /// ↩️It was asked of the playback painter, which filtered a film's finished
 /// picture with the chain, until the film drew its cut through the camera
@@ -41,15 +50,13 @@ import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(ColourKeyShader.load);
-
   const canvasSize = CanvasSize(width: 16, height: 16);
 
-  LayerEffect deleteWhite() => LayerEffect(
+  LayerEffect deleteGreen() => LayerEffect(
     id: const EffectId('fx-key'),
     kind: EffectKind.colorKey,
     colors: {
-      'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFFFFFFF),
+      'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFF00FF00),
     },
     parameters: {
       'tolerance': EffectParameter(value: 0),
@@ -57,43 +64,88 @@ void main() {
     },
   );
 
-  /// A cut of one row: white, edge to edge.
-  BitmapSurface whiteCut() => BitmapSurface(
-    canvasSize: canvasSize,
-    tileSize: 16,
-    tiles: {
-      TileCoord(x: 0, y: 0): BitmapTile(
-        size: 16,
-        pixels: Uint8List(16 * 16 * 4)..fillRange(0, 16 * 16 * 4, 255),
+  /// A cut of one row: green, edge to edge.
+  BitmapSurface greenCut() {
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
+    for (var y = 0; y < 16; y += 1) {
+      for (var x = 0; x < 16; x += 1) {
+        pixels.setAll((y * side + x) * 4, const [0, 255, 0, 255]);
+      }
+    }
+    return BitmapSurface(canvasSize: canvasSize, tileSize: side).putTiles([
+      (
+        coord: TileCoord(x: 0, y: 0),
+        tile: BitmapTile(size: side, pixels: pixels),
       ),
-    },
-  );
+    ]);
+  }
 
-  Future<int> opaquePixels(
+  Future<int> inkedPixels(
     WidgetTester tester,
     List<LayerEffect> trackChain,
   ) async {
-    final bytes = (await tester.runAsync(() async {
-      final image =
-          await const CameraFrameRenderService(
-            background: ui.Color(0x00000000),
-          ).renderThroughCamera(
-            canvasSize: canvasSize,
-            nodes: underTheCutsFx([
-              CompositeLeaf(
-                CutFrameCompositeLayer(surface: whiteCut(), opacity: 1),
+    const cutId = CutId('cut');
+    const layerId = LayerId('a');
+    final drawing = Frame(
+      id: const FrameId('f1'),
+      duration: 1,
+      strokes: const [],
+    );
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        cameraSize: canvasSize,
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'V',
+            effects: trackChain,
+            cuts: [
+              Cut(
+                id: cutId,
+                name: 'CUT',
+                duration: 1,
+                canvasSize: canvasSize,
+                layers: [
+                  Layer(
+                    id: layerId,
+                    name: 'A',
+                    frames: [drawing],
+                    timeline: {
+                      0: TimelineExposure.drawing(drawing.id, length: 1),
+                    },
+                  ),
+                  createCameraLayer(cutId: cutId),
+                ],
               ),
-            ], trackEffectsAt(trackChain, 0)),
-            pose: CameraPose(center: CanvasPoint(x: 8, y: 8)),
-            cameraFrameSize: canvasSize,
-          );
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+            ],
+          ),
+        ],
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    addTearDown(session.dispose);
+    final cut = session.requireActiveCut;
+    parkCold(session.renderCaches.brushFrameStore, {
+      session.brushFrameKeyForCut(cut, layerId, drawing.id): greenCut(),
+    });
+    final renderer = ExportFrameRenderer(session: session);
+    addTearDown(renderer.dispose);
+    final bytes = (await tester.runAsync(() async {
+      final image = await renderer.renderVideoFrame(
+        ExportFrameTask(cut: cut, frameIndex: 0),
+        ExportSizeMode.camera,
+        preserveAlpha: true,
+      );
+      final data = await image.toByteData();
       image.dispose();
       return data!.buffer.asUint8List();
     }))!;
     var n = 0;
-    for (var i = 3; i < bytes.length; i += 4) {
-      if (bytes[i] != 0) {
+    for (var i = 0; i < bytes.length; i += 4) {
+      if (bytes[i + 1] > bytes[i]) {
         n += 1;
       }
     }
@@ -101,10 +153,10 @@ void main() {
   }
 
   testWidgets('a colour key on a TRACK erases what it names', (tester) async {
-    final plain = await opaquePixels(tester, const []);
-    expect(plain, greaterThan(0), reason: 'fixture: the cut drew');
+    final plain = await inkedPixels(tester, const []);
+    expect(plain, 256, reason: 'fixture: the cut drew');
 
-    final keyed = await opaquePixels(tester, [deleteWhite()]);
+    final keyed = await inkedPixels(tester, [deleteGreen()]);
     expect(
       keyed,
       0,
@@ -115,7 +167,7 @@ void main() {
 
   testWidgets('a track chain WITHOUT a key still draws', (tester) async {
     // ⛔The control: only a key removes pixels.
-    final darkened = await opaquePixels(tester, [
+    final darkened = await inkedPixels(tester, [
       LayerEffect(
         id: const EffectId('fx-dark'),
         kind: EffectKind.brightnessContrast,

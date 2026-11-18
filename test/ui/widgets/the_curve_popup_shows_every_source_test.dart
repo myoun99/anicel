@@ -200,9 +200,17 @@ void main() {
   ) async {
     // F-176-Q2: Clip Studio's 最小値 sits beside the graph, so the model
     // keeps it apart from the points; a reset that folded it back into them
-    // would move the slider the user set.
+    // would move the slider the user set. The line is bent, so the reset
+    // has something to put back (F-583: out on a straight line).
     await open(tester, {
-      BrushInputSource.pressure: BrushPressureCurve.linearFrom(0.48),
+      BrushInputSource.pressure: BrushPressureCurve(
+        const [
+          BrushCurvePoint(0.0, 0.0),
+          BrushCurvePoint(0.5, 0.8),
+          BrushCurvePoint(1.0, 1.0),
+        ],
+        minimum: 0.48,
+      ),
     });
 
     await tester.tap(

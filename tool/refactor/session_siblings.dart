@@ -4,7 +4,7 @@
 // internal — it is a sibling, and the collaborator that asks for it should
 // hold that sibling by constructor.
 //
-//   dart run tool/refactor/session_siblings.dart <repoRoot> [--apply]
+//   dart tool/refactor/session_siblings.dart <repoRoot> [--apply]
 //
 // ⚠️The host builds its collaborators with `late final X _x = X(…)`, so
 // the graph must stay ACYCLIC: two objects that name each other cannot be

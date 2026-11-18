@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -288,9 +289,17 @@ BitmapSurface canvasShows(WidgetTester tester) =>
 LandingPreview? canvasFloat(WidgetTester tester) =>
     _canvasPainter(tester).landingPreview?.value;
 
+/// The leading run of the chain of the row the canvas draws on
+/// (`MainCanvasBrushHost.activeSourceEffects`): keys alone the engine runs
+/// over what [canvasPixel] and [canvasRaster] read, with what floats there.
+List<ResolvedLayerEffect> canvasRowKeys(WidgetTester tester) => tester
+    .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
+    .activeSourceEffects;
+
 /// One pixel of what the canvas DRAWS for the cel under the tool, as
 /// straight RGBA — [canvasShows] and what floats over it, the text in hand,
-/// drawn by the canvas's own painter at full size.
+/// drawn by the canvas's own painter at full size: what its row lays, before
+/// the row's chain ([canvasRowKeys]).
 Future<List<int>> canvasPixel(WidgetTester tester, int x, int y) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'frame_id.dart';
 import '../core/copy_with_sentinel.dart';
 import 'app_frame_grid_settings.dart';
@@ -122,7 +123,7 @@ class Frame {
     this.seTypes = SeLineTypes.allOn,
     this.seSpacing = SeDialogueSpacing.standard,
     this.filePicture,
-  }) : strokes = List.unmodifiable(strokes);
+  }) : strokes = frozenList(strokes);
 
   final FrameId id;
   final int duration;

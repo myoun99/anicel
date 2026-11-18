@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../core/piece_read.dart';
+
 /// Thrown when a file cannot be read as a CLIP STUDIO PAINT document.
 class ClipFormatException implements Exception {
   const ClipFormatException(this.message);
@@ -103,14 +105,26 @@ final class ClipContainer {
   }
 }
 
-/// The bytes at [place] in [file].
-Uint8List readClipPlace(RandomAccessFile file, ClipPlace place) {
+/// The bytes at [place] in [file], read a piece at a time — [onRead] told
+/// how much of them is in ([PieceRead]).
+///
+/// 🗣️F-608-Q2 (유저 2026-11-17: 「내려받는중에 퍼센테이지가 조금이라도
+/// 안느는게 문제」): a file in the cloud comes down inside this read — the
+/// database alone is tens of megabytes — so the window's bar is told as
+/// it does.
+Uint8List readClipPlace(
+  RandomAccessFile file,
+  ClipPlace place, {
+  void Function(double fraction)? onRead,
+}) {
+  final read = PieceRead(place.length, onRead: onRead);
   file.setPositionSync(place.offset);
-  final bytes = file.readSync(place.length);
-  if (bytes.length != place.length) {
-    throw ClipFormatException(
-      'the file ends inside the data at ${place.offset}',
-    );
+  while (!read.done) {
+    if (!read.took(file.readIntoSync(read.bytes, read.from, read.to))) {
+      throw ClipFormatException(
+        'the file ends inside the data at ${place.offset}',
+      );
+    }
   }
-  return bytes;
+  return read.bytes;
 }

@@ -10,6 +10,7 @@ import '../models/brush_edit_session_state.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'brush_edit_session_commit.dart';
+import 'selection_clip.dart';
 
 BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   required BrushEditSessionState sessionState,
@@ -21,6 +22,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   return commitBrushDabSequenceToBrushEditSession(
     canvasState: sessionState.canvasState,
@@ -33,6 +35,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
     blendMode: blendMode,
     promotedBase: promotedBase,
     promotedTiles: promotedTiles,
+    selection: selection,
   );
 }
 

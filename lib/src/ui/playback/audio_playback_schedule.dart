@@ -10,25 +10,32 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'dart:collection';
 import 'dart:math' as math;
 
+import '../../core/collection_equality.dart' show listsMatch;
 import '../../models/se_sound.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/timeline_exposure.dart';
+import '../../services/audio/sound_filters.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/audio/filtered_stream.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import '../audio/sound_cannot_play.dart';
 
-/// One point of a scheduled sound's volume line: at [frame] — counted from
-/// the entry's own start — the line passes [gain].
+/// One point of a line a scheduled sound hands the mixer: at [frame] —
+/// counted from the entry's own start — the line passes [gain]. The
+/// volume's line, and each pan side's (audio-fx-grows-like-the-pros-Q7).
 /// Linear between points and held past the ends, as the mixer's envelope
-/// is; an empty line is unity.
-typedef ScheduledVolumePoint = ({int frame, double gain});
+/// is.
+typedef ScheduledGainPoint = ({int frame, double gain});
 
 /// A clip laid out on a run's frame axis, end clamped at the run's end.
 class ScheduledAudioClip {
@@ -40,6 +47,9 @@ class ScheduledAudioClip {
     this.gain = 1.0,
     this.pan = 0.0,
     this.volume = const [],
+    this.panLeftLine = const [],
+    this.panRightLine = const [],
+    this.filters,
   });
 
   /// ONE SPAN, LAID ON AN OUTPUT AXIS — the mapping the playback walk and
@@ -49,30 +59,40 @@ class ScheduledAudioClip {
   ///
   /// The ROW's sound ([SeSound]) is laid in HERE, so no consumer ever
   /// re-consults the layer: a keyed volume becomes the entry's [volume]
-  /// line, read off the row at the frames the entry sounds — [clippedLead]
-  /// frames into the span — and its total multiplies into the [gain].
+  /// line and a keyed pan its two sides' lines ([panLeftLine],
+  /// [panRightLine]), read off the row at the frames the entry sounds —
+  /// [clippedLead] frames into the span — and its total multiplies into
+  /// the [gain]; its sound's filters come as [filters], over the whole span.
+  /// As it is HEARD ([SeSound.heard]): its group switched off, its keys
+  /// and its pan are not.
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
     required int endFrameExclusive,
     required int clippedLead,
     required SeSound sound,
+    ScheduledFilters? filters,
   }) {
+    final heard = sound.heard;
     final first = span.startFrame + clippedLead;
+    final frames = endFrameExclusive - startFrame;
+    List<ScheduledGainPoint> line(double Function(double time) at) =>
+        _lineOf(at, from: first, frames: frames);
     return ScheduledAudioClip(
       filePath: span.clip.filePath,
       startFrame: startFrame,
       endFrameExclusive: endFrameExclusive,
       offsetFrames: clippedLead + span.clip.offsetFrames,
-      gain: span.clip.gain * sound.totalVolume,
-      pan: sound.pan,
-      volume: sound.isKeyed
-          ? _volumeLine(
-              sound,
-              from: first,
-              frames: endFrameExclusive - startFrame,
-            )
+      gain: span.clip.gain * heard.totalVolume,
+      pan: heard.panAt(first.toDouble()),
+      volume: heard.isKeyed ? line(heard.volumeAt) : const [],
+      panLeftLine: heard.isPanKeyed
+          ? line((time) => equalPowerPanGains(heard.panAt(time)).left)
           : const [],
+      panRightLine: heard.isPanKeyed
+          ? line((time) => equalPowerPanGains(heard.panAt(time)).right)
+          : const [],
+      filters: filters,
     );
   }
 
@@ -87,13 +107,26 @@ class ScheduledAudioClip {
   /// row's keyed volume is [volume].
   final double gain;
 
-  /// The row's pan, -1..1 equal-power; applied by the device mixer path
-  /// only.
+  /// The row's pan where the entry begins, -1..1 equal-power — the whole
+  /// entry's while its sides' lines are empty; applied by the device mixer
+  /// path only.
   final double pan;
 
-  /// The row's keyed volume along this entry ([ScheduledVolumePoint]) —
-  /// empty while the row's volume does not change.
-  final List<ScheduledVolumePoint> volume;
+  /// The row's keyed volume along this entry — empty while the row's
+  /// volume does not change.
+  final List<ScheduledGainPoint> volume;
+
+  /// The left side of the row's keyed pan along this entry
+  /// ([equalPowerPanGains] at each point) — empty while the row's pan does
+  /// not change (Q7).
+  final List<ScheduledGainPoint> panLeftLine;
+
+  /// The right side's, as [panLeftLine] is the left's.
+  final List<ScheduledGainPoint> panRightLine;
+
+  /// The row's filters over the span this entry is of — null while the
+  /// row has none.
+  final ScheduledFilters? filters;
 
   @override
   bool operator ==(Object other) =>
@@ -104,7 +137,10 @@ class ScheduledAudioClip {
       other.offsetFrames == offsetFrames &&
       other.gain == gain &&
       other.pan == pan &&
-      listEquals(other.volume, volume);
+      listEquals(other.volume, volume) &&
+      listEquals(other.panLeftLine, panLeftLine) &&
+      listEquals(other.panRightLine, panRightLine) &&
+      other.filters == filters;
 
   @override
   int get hashCode => Object.hash(
@@ -115,33 +151,89 @@ class ScheduledAudioClip {
     gain,
     pan,
     Object.hashAll(volume),
+    Object.hashAll(panLeftLine),
+    Object.hashAll(panRightLine),
+    filters,
   );
 
   @override
   String toString() =>
       'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
       'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
-      'gain: $gain, pan: $pan, volume: $volume)';
+      'gain: $gain, pan: $pan, volume: $volume, panLeftLine: $panLeftLine, '
+      'panRightLine: $panRightLine, filters: $filters)';
 }
 
-/// [sound]'s volume over the [frames] an entry sounds from the row's frame
-/// [from], as the entry's line: the value at every frame from its first to
-/// its end — a line between frames, as the mixer draws it — less every
-/// point that stands on the line its neighbours draw, so a keyed ramp is
-/// its two ends.
+/// The row's filters over the WHOLE span an entry is of, in frames: the
+/// span's own trim — the frame of the file it begins at — its length, and
+/// each filter's settings from the frame of the span they take over at,
+/// in the row's chain's order ([FilteredSpan.stages]).
+///
+/// The whole span, not the part a run plays: it is baked from its first
+/// sample (board audio-fx-grows-like-the-pros ③), so a run begun inside it
+/// plays what one begun before it would. [audioMixScheduleFrom] turns it
+/// into the [FilteredSpan] a bake is of.
+@immutable
+class ScheduledFilters {
+  const ScheduledFilters({
+    required this.spanOffsetFrames,
+    required this.spanFrames,
+    required this.stages,
+    required this.slot,
+  });
+
+  final int spanOffsetFrames;
+  final int spanFrames;
+  final List<List<({int frame, SoundFilter filter})>> stages;
+
+  /// The row's clip it is baked for ([FilteredSpan.slot]).
+  final FilterSlot slot;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScheduledFilters &&
+      other.spanOffsetFrames == spanOffsetFrames &&
+      other.spanFrames == spanFrames &&
+      other.slot == slot &&
+      listsMatch(other.stages, stages, listEquals);
+
+  @override
+  int get hashCode => Object.hash(
+    spanOffsetFrames,
+    spanFrames,
+    slot,
+    Object.hashAll([for (final stage in stages) Object.hashAll(stage)]),
+  );
+
+  @override
+  String toString() =>
+      'ScheduledFilters(spanOffsetFrames: $spanOffsetFrames, '
+      'spanFrames: $spanFrames, stages: $stages, slot: $slot)';
+}
+
+/// [at] — a row's value at a time on its frames — over the [frames] an
+/// entry sounds from the row's frame [from], as the entry's line: the value
+/// at every frame from its first to its end — a line between frames, as
+/// the mixer draws it — less every point that stands on the line its
+/// neighbours draw, so a keyed ramp is its two ends. The volume's, and each
+/// pan side's (Q7).
 ///
 /// ⚠️Every frame, not every key: a key may ease, and the mixer's line is
 /// straight, so a curve between two keys is met at each frame it passes.
-List<ScheduledVolumePoint> _volumeLine(
-  SeSound sound, {
+/// A pan's sides bend under equal power between its keys, so a moving pan
+/// keeps its frames; one that holds still is its run's two ends.
+/// ↩️The pan's own line stood apart, of pans thinned where they held
+/// still, while the mixer drew the sides of one pan point to the next.
+List<ScheduledGainPoint> _lineOf(
+  double Function(double time) at, {
   required int from,
   required int frames,
 }) {
   final points = [
-    for (var at = 0; at <= frames; at += 1)
-      (frame: at, gain: sound.volumeAt((from + at) * 1.0)),
+    for (var frame = 0; frame <= frames; frame += 1)
+      (frame: frame, gain: at((from + frame) * 1.0)),
   ];
-  final line = <ScheduledVolumePoint>[];
+  final line = <ScheduledGainPoint>[];
   for (var index = 0; index < points.length; index += 1) {
     final point = points[index];
     if (line.isNotEmpty && index + 1 < points.length) {
@@ -206,17 +298,14 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required Project? project,
   required ProjectFrameRate rate,
   required double? Function(String filePath) durationSecondsFor,
-  Set<LayerId>? soloedLayerIds,
   Set<LayerId>? mutedLayerIds,
   List<ScheduledAudioClip>? extraClips,
 }) {
-  // Solo is a MONITORING state (AUDIO-PRO R1): a non-empty set narrows
-  // the audible layers to it. Export never passes one — soloing while
-  // rendering would bake a monitoring choice into the file.
-  final soloed = soloedLayerIds ?? const <LayerId>{};
   // A transient monitoring mute on top of the layers' own flags (REC1-B:
   // the armed lane yields to the microphone while a take rolls). Export
-  // never passes one either — same reasoning as solo.
+  // never passes one — muting while rendering would bake a monitoring
+  // choice into the file. ↩️A solo set narrowed the rows here too until
+  // F-577 took its door, the S row's mixer, away.
   final muted = mutedLayerIds ?? const <LayerId>{};
   final schedule = <ScheduledAudioClip>[];
 
@@ -235,10 +324,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   if (window != null && track != null) {
     final fileFramesOf = _fileFramesAt(rate, durationSecondsFor);
     for (final layer in track.seLayers) {
-      final audible =
-          !layer.muted &&
-          !muted.contains(layer.id) &&
-          (soloed.isEmpty || soloed.contains(layer.id));
+      final audible = !layer.muted && !muted.contains(layer.id);
       if (!audible) {
         continue;
       }
@@ -297,18 +383,73 @@ ScheduledAudioClip? _spanInWindow(
     endFrameExclusive: endFrameExclusive,
     clippedLead: clippedLead,
     sound: layer.seSound,
+    filters: _filtersOver(span, layer),
   );
 }
 
+/// [layer]'s sound filters ([EffectKind.filtersSound]) over the whole of [span],
+/// in its chain's order — null where none is switched on.
+///
+/// Each is read at every frame of the span where it is keyed — a key may
+/// ease, and a setting holds till the next — and once where it is not.
+ScheduledFilters? _filtersOver(SeAudioSpan span, Layer layer) {
+  final stages = [
+    for (final effect in layer.effects)
+      if (effect.enabled && effect.kind.filtersSound)
+        _filterSettings(effect, span, layer.fxBlocks),
+  ];
+  return stages.isEmpty
+      ? null
+      : ScheduledFilters(
+          spanOffsetFrames: span.clip.offsetFrames,
+          spanFrames: span.lengthFrames,
+          stages: stages,
+          slot: (row: layer.id, clip: span.clip.frameId),
+        );
+}
+
+/// [effect]'s settings over [span], from the frame of the span each takes
+/// over at — a frame whose sample is the frame's before is no new one.
+List<({int frame, SoundFilter filter})> _filterSettings(
+  LayerEffect effect,
+  SeAudioSpan span,
+  SplayTreeMap<int, TimelineExposure>? blocks,
+) {
+  SoundFilter at(int frame) => soundFilterOf(
+    sampleLayerEffectAt(
+      effect,
+      frameIndex: span.startFrame + frame,
+      blocks: blocks,
+      worn: null,
+    ),
+  );
+  final settings = [(frame: 0, filter: at(0))];
+  if (!effect.parameters.values.any((value) => value.isAnimated)) {
+    return settings;
+  }
+  for (var frame = 1; frame < span.lengthFrames; frame += 1) {
+    final filter = at(frame);
+    if (filter != settings.last.filter) {
+      settings.add((frame: frame, filter: filter));
+    }
+  }
+  return settings;
+}
+
+/// One source a mix reads: a file's conform, or a span of it baked through
+/// its row's filters ([AudioConformStore.filteredAt]).
+typedef AudioMixSourceOf = ({String path, FilteredSpan? filtered});
+
 /// The frame schedule converted to mixer samples: [clips] index into
-/// [sourcePaths] via `sourceIndex` (one entry per DISTINCT file, in first-
-/// appearance order — the caller loads each path's PCM once and uploads it
-/// once, however many clips share it).
+/// [sources] via `sourceIndex` — one entry per DISTINCT source, in first-
+/// appearance order, so the caller loads each one's PCM once and uploads it
+/// once. A file's conform is one source however many clips share it; a
+/// span baked through its filters is a source of its own.
 class AudioMixSchedule {
-  const AudioMixSchedule({required this.clips, required this.sourcePaths});
+  const AudioMixSchedule({required this.clips, required this.sources});
 
   final List<AudioMixClip> clips;
-  final List<String> sourcePaths;
+  final List<AudioMixSourceOf> sources;
 }
 
 /// Converts [schedule] to sample positions at [sampleRate].
@@ -323,13 +464,26 @@ AudioMixSchedule audioMixScheduleFrom({
   required ProjectFrameRate rate,
   required int sampleRate,
 }) {
-  final sourceIndexByPath = <String, int>{};
-  final sourcePaths = <String>[];
+  // A line on the entry's frames as the mixer's envelope, on its samples —
+  // the volume's, and each pan side's.
+  List<AudioEnvelopePoint> envelopeOf(List<ScheduledGainPoint> line) => [
+    for (final point in line)
+      AudioEnvelopePoint(
+        sample: rate.frameToSample(point.frame, sampleRate),
+        gain: point.gain,
+      ),
+  ];
+  final sourceIndexOf = <AudioMixSourceOf, int>{};
+  final sources = <AudioMixSourceOf>[];
   final clips = <AudioMixClip>[];
   for (final clip in schedule) {
-    final sourceIndex = sourceIndexByPath.putIfAbsent(clip.filePath, () {
-      sourcePaths.add(clip.filePath);
-      return sourcePaths.length - 1;
+    final source = (
+      path: clip.filePath,
+      filtered: _filteredSpan(clip.filters, rate, sampleRate),
+    );
+    final sourceIndex = sourceIndexOf.putIfAbsent(source, () {
+      sources.add(source);
+      return sources.length - 1;
     });
     final pan = equalPowerPanGains(clip.pan);
     clips.add(
@@ -341,17 +495,47 @@ AudioMixSchedule audioMixScheduleFrom({
         gain: clip.gain,
         panLeft: pan.left,
         panRight: pan.right,
-        envelope: [
-          for (final point in clip.volume)
-            AudioEnvelopePoint(
-              sample: rate.frameToSample(point.frame, sampleRate),
-              gain: point.gain,
-            ),
-        ],
+        envelope: envelopeOf(clip.volume),
+        panLeftLine: envelopeOf(clip.panLeftLine),
+        panRightLine: envelopeOf(clip.panRightLine),
       ),
     );
   }
-  return AudioMixSchedule(clips: clips, sourcePaths: sourcePaths);
+  return AudioMixSchedule(clips: clips, sources: sources);
+}
+
+/// [filters]' span in samples at [sampleRate]: each of its frames of the
+/// file to the first sample belonging to it, as the clip's own trim is —
+/// so a setting takes over on the sample a run begun at its frame plays
+/// first.
+FilteredSpan? _filteredSpan(
+  ScheduledFilters? filters,
+  ProjectFrameRate rate,
+  int sampleRate,
+) {
+  if (filters == null) {
+    return null;
+  }
+  final first = filters.spanOffsetFrames;
+  final start = rate.frameToSample(first, sampleRate);
+  return FilteredSpan(
+    start: start,
+    length:
+        rate.frameToSample(first + filters.spanFrames, sampleRate) - start,
+    slot: filters.slot,
+    stages: [
+      for (final stage in filters.stages)
+        [
+          for (final setting in stage)
+            (
+              start:
+                  rate.frameToSample(first + setting.frame, sampleRate) -
+                  start,
+              filter: setting.filter,
+            ),
+        ],
+    ],
+  );
 }
 
 /// Where the disk window sits and how far it reaches, in device samples.
@@ -382,21 +566,40 @@ _residentSources({
   final byMixIndex = <int, int>{};
   final cannotPlay = <String, SoundCannotPlay>{};
   var landing = false;
-  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
-    final path = mix.sourcePaths[index];
-    final why = conformStore.cannotPlayAt(path, deviceRate);
+  for (final (index, source) in mix.sources.indexed) {
+    final path = source.path;
+    final filtered = source.filtered;
+    final why = conformStore.cannotPlayAt(
+      path,
+      deviceRate,
+      filtered: filtered,
+    );
     if (why != null) {
       cannotPlay[path] = why;
       continue;
     }
     if (conformStore.isStreaming(path)) {
-      continue; // windowed per clip by the caller
+      // Windowed per clip by the caller — through the span's checkpoints
+      // where it has filters, which a run waits for as for a bake.
+      if (filtered != null &&
+          conformStore.filterCheckpointsFor(path, filtered) == null) {
+        landing = true;
+      }
+      continue;
     }
-    final samples = conformStore.samplesAtRate(path, deviceRate);
+    final samples = filtered == null
+        ? conformStore.samplesAtRate(path, deviceRate)
+        : conformStore.filteredAt(path, deviceRate, filtered);
     final entry = conformStore.resultFor(path);
     if (samples != null && entry != null && entry.isUsable) {
       byMixIndex[index] = sources.length;
-      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+      sources.add(
+        AudioMixSource(
+          samples: samples,
+          channels: entry.channels,
+          sourceStart: filtered?.start ?? 0,
+        ),
+      );
     } else {
       landing = true;
     }
@@ -411,15 +614,6 @@ _residentSources({
   return (sources: sources, byMixIndex: byMixIndex, cannotPlay: cannotPlay);
 }
 
-/// One streamed clip's window: [count] samples per channel from [start] of
-/// [reader]'s conform — what an upload reads for that clip, here or on a
-/// worker.
-typedef StreamWindowRead = ({
-  ConformPcmStreamReader reader,
-  int start,
-  int count,
-});
-
 /// The window a streamed source [clip] needs right now: trailing behind
 /// the playhead and leading in front of it, clamped into the clip's own
 /// span (and, by the reader, into the file).
@@ -427,6 +621,7 @@ StreamWindowRead _streamWindowRead(
   AudioMixClip clip, {
   required ConformPcmStreamReader reader,
   required _StreamWindow at,
+  required FilteredStream? filtered,
 }) {
   final clipLength = clip.endSample - clip.startSample;
   final positionInClip = (at.centerSample - clip.startSample).clamp(
@@ -439,20 +634,11 @@ StreamWindowRead _streamWindowRead(
     clip.sourceOffset + clipLength,
     sourceAt + at.aheadSamples,
   );
-  return (reader: reader, start: windowStart, count: windowEnd - windowStart);
-}
-
-/// [read]'s window, read here — into the list [place] makes for it when it
-/// makes one ([ConformPcmStreamReader.readWindow]).
-AudioMixSource streamWindowReadHere(
-  StreamWindowRead read, {
-  Float32List? Function(int floats)? place,
-}) {
-  final window = read.reader.readWindow(read.start, read.count, place: place);
-  return AudioMixSource(
-    samples: window.samples,
-    channels: read.reader.channels,
-    sourceStart: window.startSample,
+  return (
+    reader: reader,
+    start: windowStart,
+    count: windowEnd - windowStart,
+    filtered: filtered,
   );
 }
 
@@ -468,10 +654,11 @@ typedef WindowedUpload = ({
 /// ([planWindowedMixUpload]): the clips, pointed at their sources — the
 /// [resident] ones first, then one window for each of [reads], in order.
 ///
-/// 🚨PLANNED APART FROM THE READING, so an advance can read on a worker
-/// (streaming-advance-reads-on-the-ui-thread, 10-15): what to read is
-/// decided on the thread that holds the store, and only the reading goes
-/// elsewhere.
+/// 🚨PLANNED APART FROM THE READING, so the reading is a worker's
+/// (streaming-advance-reads-on-the-ui-thread, 10-15 — an advance; every
+/// move since long-sound-windows-are-read-on-the-ui-isolate, 11-15): what
+/// to read is decided on the thread that holds the store, and only the
+/// reading goes elsewhere.
 final class WindowedUploadPlan {
   const WindowedUploadPlan._({
     required this.clips,
@@ -505,13 +692,6 @@ final class WindowedUploadPlan {
       hasStreaming: hasStreaming,
     );
   }
-
-  /// The upload with every window read here ([streamWindowReadHere]) —
-  /// into what [place] makes for each, when it makes one.
-  WindowedUpload readHere({Float32List? Function(int floats)? place}) =>
-      withWindows([
-        for (final read in reads) streamWindowReadHere(read, place: place),
-      ]);
 }
 
 /// Plans the device upload for [mix] — resident PCM for ordinary clips, a
@@ -561,7 +741,8 @@ WindowedUploadPlan? planWindowedMixUpload({
     aheadSamples: aheadSeconds * deviceRate,
   );
   for (final clip in mix.clips) {
-    final path = mix.sourcePaths[clip.sourceIndex];
+    final source = mix.sources[clip.sourceIndex];
+    final path = source.path;
     if (!conformStore.isStreaming(path)) {
       final mapped = resident.byMixIndex[clip.sourceIndex];
       if (mapped != null) {
@@ -574,7 +755,23 @@ WindowedUploadPlan? planWindowedMixUpload({
     }
     final reader = conformStore.streamReaderFor(path)!;
     clips.add(clip.pointedAt(resident.sources.length + reads.length));
-    reads.add(_streamWindowRead(clip, reader: reader, at: at));
+    final filtered = source.filtered;
+    reads.add(
+      _streamWindowRead(
+        clip,
+        reader: reader,
+        at: at,
+        filtered: filtered == null
+            ? null
+            : (
+                span: filtered,
+                checkpoints: conformStore.filterCheckpointsFor(
+                  path,
+                  filtered,
+                )!,
+              ),
+      ),
+    );
   }
   return WindowedUploadPlan._(
     clips: clips,

@@ -49,7 +49,7 @@ TextStyle canvasLetterTextStyle(
   color: foreground == null ? style.colorValue : null,
   foreground: foreground,
   fontSize: fontSize ?? style.fontSize,
-  fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
+  fontWeight: canvasLetterWeight(style),
   fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
   letterSpacing: style.letterSpacing,
   fontFamily:
@@ -57,12 +57,18 @@ TextStyle canvasLetterTextStyle(
       AppTypography.bundledFamily,
   // CJK safety on every family choice: the app's bundled faces catch what
   // a chosen face misses, in the app's own order.
-  fontFamilyFallback: const [
-    AppTypography.bundledFamily,
-    ...AppTypography.bundledFallback,
-  ],
+  fontFamilyFallback: _canvasLetterFamilies,
   height: lineHeight,
 );
+
+/// The weight [style]'s letters are set in: what Flutter matches their face
+/// by, and what the GPU engine is handed for them (`engine_letters.dart`).
+FontWeight canvasLetterWeight(TextLetterStyle style) =>
+    style.bold ? FontWeight.w700 : FontWeight.w400;
+
+final List<String> _canvasLetterFamilies = [
+  for (final face in AppTypography.canvasLetterFaces) face.family,
+];
 
 /// The paint [style]'s outline is stroked with, or null when it wears none.
 ///

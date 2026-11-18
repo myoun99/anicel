@@ -23,7 +23,7 @@ void main() {
     BitmapSurface surface({
       int width = 4,
       int height = 4,
-      int tileSize = 2,
+      int tileSize = 128,
       Map<TileCoord, BitmapTile> tiles = const {},
     }) {
       return BitmapSurface(
@@ -199,9 +199,9 @@ void main() {
     test('multi-tile dab updates multiple tiles', () {
       final result = commit(
         state: CanvasSurfaceState(
-          currentSurface: surface(width: 4, height: 4, tileSize: 2),
+          currentSurface: surface(width: 256, height: 4),
         ),
-        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
+        sequence: BrushDabSequence([squareDab(centerX: 128, centerY: 1)]),
       );
 
       expect(result.lastEdit!.commitResult.changedTileCount, greaterThan(1));

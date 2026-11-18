@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/foundation.dart' show VoidCallback;
 
 import '../../models/app_input_settings.dart';
+import '../../services/input/modifier_keys.dart';
 
 /// The ink views' SHARED finger census (R26 #5).
 ///
@@ -82,6 +83,18 @@ class CanvasTouchContacts {
   /// 「손가락도 — 세는 곳을 하나로 묶고 나서」).
   static bool aFingerDownBesides(int? pointer) =>
       _appWide.any((finger) => finger != pointer);
+
+  /// Whether Shift is held at all, asked BETWEEN presses — by the key
+  /// ([ModifierKeys], which on Windows asks Windows) or by a finger resting
+  /// on the glass ([aFingerDownBesides]): what the line Shift holds past a
+  /// stroke asks for as long as it keeps one (`ShiftLine`, F-592).
+  ///
+  /// ⚠️Any finger, whatever a stroke's switch says of one
+  /// ([aFingerHoldsAStrokesShift]): that is the next press's to say, of the
+  /// stroke it starts. ↩️The canvas panel and the timesheet's layer each
+  /// spelled this at a finger's lift, and each heard the keyboard beside it.
+  static bool shiftIsHeld() =>
+      ModifierKeys.isShiftPressed || aFingerDownBesides(null);
 
   /// Whether a finger beside [pointer] holds a STROKE'S Shift: one resting
   /// on the glass ([aFingerDownBesides]), behind the switch that gives a

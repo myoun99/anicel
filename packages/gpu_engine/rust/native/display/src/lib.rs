@@ -31,6 +31,9 @@ mod tests;
 #[cfg(windows)]
 mod win;
 
+#[cfg(windows)]
+pub use win::app_window;
+
 /// A real vblank and the refresh period: `out2[0]` the vblank, in
 /// microseconds; `out2[1]` the period, in NANOseconds (a period is a
 /// fraction of a microsecond off a whole one, and a run counts thousands of

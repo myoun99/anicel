@@ -9,14 +9,20 @@
 // that lands nothing (past R1's ranges): the app's `covered` keeps such a
 // pixel from the triangles after it all the same.
 //
-// Needs shared/wide.wgsl and shared/resample.wgsl before it.
+// Needs shared/wide.wgsl, shared/resample.wgsl and the picture's pages
+// (pages.rs, named `picture`) before it.
+//
+// A pass lays a band of the window's rows, and binds only those rows of
+// what it puts and of the owners (`warped_base`, `owners_base` are the
+// words their bindings begin on); the picture it reads on its pages, each
+// `page_words` of it, as a map may read any of its rows.
 
 struct Warp {
   // The box's pixels across and down.
   width: u32,
   height: u32,
-  // The window's pixels across and down, and where its top-left pixel is
-  // in the output the maps measure from.
+  // The window's pixels across, the band's rows down, and where the
+  // window's top-left pixel is in the output the maps measure from.
   columns: u32,
   rows: u32,
   left: i32,
@@ -24,26 +30,33 @@ struct Warp {
   // 1 where each pixel takes the map of its owner; 0 where every pixel
   // takes the first.
   owned: u32,
+  page_words: u32,
+  // The window's row the band begins on.
+  first_row: u32,
+  owners_base: u32,
+  warped_base: u32,
+  pad0: u32,
 }
 
 // A map in the table: R1's words (resample.rs's ResampleMap::words), then
 // 1 where it lands anything.
-const WARP_MAP_WORDS: u32 = 16u;
+const WARP_MAP_WORDS: u32 = RESAMPLE_MAP_WORDS + 1u;
 
 @group(0) @binding(0) var<uniform> warp: Warp;
 @group(0) @binding(1) var<storage, read> maps: array<u32>;
 // Each pixel's owner, row after row, as the window lies — read where
 // `warp.owned` says. None is u32::MAX (mesh.wgsl), past any table.
 @group(0) @binding(2) var<storage, read> owners: array<u32>;
-@group(0) @binding(3) var<storage, read> picture: array<u32>;
-@group(0) @binding(4) var<storage, read_write> warped: array<u32>;
+@group(0) @binding(3) var<storage, read_write> warped: array<u32>;
 
 // A pixel before the box wraps past either side, as a u32.
 fn resample_texel(source: u32, x: i32, y: i32) -> u32 {
   if (u32(x) >= warp.width || u32(y) >= warp.height) {
     return 0u;
   }
-  return picture[u32(y) * warp.width + u32(x)];
+  let at = u32(y) * warp.width + u32(x);
+  let page = at / warp.page_words;
+  return picture_word(page, at - page * warp.page_words);
 }
 
 // ⚠️Three lines no test here tells from a wrong one (mutants x10 · y05 ·
@@ -58,20 +71,21 @@ fn warp_window(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= warp.columns || id.y >= warp.rows) {
     return;
   }
-  let pixel = id.y * warp.columns + id.x;
+  let row = warp.first_row + id.y;
+  let pixel = row * warp.columns + id.x;
   var map = 0u;
   if (warp.owned != 0u) {
-    map = owners[pixel];
+    map = owners[pixel - warp.owners_base];
   }
   var word = 0u;
-  if (map < arrayLength(&maps) / WARP_MAP_WORDS && maps[map * WARP_MAP_WORDS + 15u] != 0u) {
+  if (map < arrayLength(&maps) / WARP_MAP_WORDS && maps[map * WARP_MAP_WORDS + RESAMPLE_MAP_WORDS] != 0u) {
     let at = map * WARP_MAP_WORDS;
-    let taken = resample_map(array<u32, 15>(
+    let taken = resample_map(array<u32, RESAMPLE_MAP_WORDS>(
       maps[at], maps[at + 1u], maps[at + 2u], maps[at + 3u], maps[at + 4u], maps[at + 5u],
       maps[at + 6u], maps[at + 7u], maps[at + 8u], maps[at + 9u], maps[at + 10u],
-      maps[at + 11u], maps[at + 12u], maps[at + 13u], maps[at + 14u],
+      maps[at + 11u], maps[at + 12u], maps[at + 13u], maps[at + 14u], maps[at + 15u],
     ));
-    word = resample(taken, 0u, warp.left + i32(id.x), warp.top + i32(id.y));
+    word = resample(taken, 0u, warp.left + i32(id.x), warp.top + i32(row));
   }
-  warped[pixel] = word;
+  warped[pixel - warp.warped_base] = word;
 }

@@ -24,7 +24,7 @@ trap 'rm -rf "$TMP"' EXIT
 STAGE="$TMP/stage"
 SDK="$TMP/flutter/bin/cache/dart-sdk"
 mkdir -p "$STAGE/tool" "$SDK/bin" "$TMP/cache"
-cp "$HERE/run.sh" "$HERE/exe_stamp.sh" "$STAGE/tool/"
+cp "$HERE/run.sh" "$HERE/exe_stamp.sh" "$HERE/machine_folder.sh" "$STAGE/tool/"
 echo "3.99.0" > "$SDK/version"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/flutter/bin/flutter"
 LOG="$TMP/calls"

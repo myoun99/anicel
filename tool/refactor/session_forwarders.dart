@@ -5,8 +5,8 @@
 // — the host answering for an object it no longer owns — and the house rule
 // is that the UI names the collaborator instead.
 //
-//   dart run tool/refactor/session_forwarders.dart <repoRoot> --list
-//   dart run tool/refactor/session_forwarders.dart <repoRoot> --strip _camera
+//   dart tool/refactor/session_forwarders.dart <repoRoot> --list
+//   dart tool/refactor/session_forwarders.dart <repoRoot> --strip _camera
 //
 // ⛔WHAT IT REFUSES TO DELETE, and why each is NOT a forwarder:
 //   - a member declared by one of the ROLE interfaces the host implements

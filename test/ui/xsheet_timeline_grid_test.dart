@@ -133,12 +133,18 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+      find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-paper-layout'),
+      ),
     );
     await tester.pumpAndSettle();
 
     expect(markedLayerId, const LayerId('layer-1'));
-    expect(selectedMark, const LayerMark(process: LayerProcess.paper));
+    expect(selectedMark, const LayerMark.paper(LayerProcess.layout));
   });
 
   testWidgets('frame rail shows the cached-range strip inside playback', (

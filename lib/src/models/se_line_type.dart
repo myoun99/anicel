@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart' show mapEquals;
+import '../core/frozen_collections.dart';
 import 'cut_id.dart';
 import 'se_dialogue_spacing.dart';
 
@@ -59,7 +60,7 @@ final class SeLineTypes {
     Map<CutId, SeLineType> byCut = const {},
   }) => SeLineTypes._(
     own,
-    Map.unmodifiable({
+    frozenMapOrSame(byCut, {
       for (final MapEntry(:key, :value) in byCut.entries)
         if (value != own) key: value,
     }),

@@ -2,9 +2,10 @@ import 'dart:io';
 import '../flutter_test_run.dart';
 
 /// The app-support path for [fileName]:
-/// `<base>/anicel/<fileName>`, where base is `%APPDATA%` on
-/// Windows, `$HOME` or `%USERPROFILE%` elsewhere, and the temp directory as
-/// a last resort.
+/// `<base>/anicel/<fileName>`, where base is the app's own folder where the
+/// platform hands one ([platformAppSupportBase] — Android), else
+/// `%APPDATA%` on Windows, `$HOME` or `%USERPROFILE%` elsewhere, and the
+/// temp directory as a last resort.
 ///
 /// Every settings store and file service resolves its default location
 /// through here so "where app state lives" is one fact, not a dozen copies
@@ -24,6 +25,13 @@ import '../flutter_test_run.dart';
 /// • `launch-labels.txt` — the launch splash's stage names in the app's
 ///   language, written by a run and read by the next one's runner, which
 ///   speaks before Dart does. See `LaunchSplash.labelsFileName`.
+/// • `ShaderCache/` — what the GPU engine's shader compiler made, for the
+///   next launch to hand its driver instead of compiling it again
+///   (🗣️유저 2026-11-13, the-wait-window-stands-seven-seconds-on-the-surface-Q1
+///   「디스크 캐시」: 「캐시 파일이 앱 데이터 옆에 생긴다」). It lives till
+///   the engine lets it go, the oldest first past what the folder may hold;
+///   nothing in it is the user's, and a launch without it compiles again.
+///   See `appShaderFolder`.
 ///
 /// 🪦**TWO ROOMS FULL OF PROJECT DATA ARE GONE.** `Recovery/` held autosave
 /// sidecars until the tick started saving the project file itself, and
@@ -46,6 +54,7 @@ import '../flutter_test_run.dart';
 String appSupportFilePath(String fileName) {
   final environment = Platform.environment;
   final base =
+      platformAppSupportBase ??
       environment['APPDATA'] ??
       environment['HOME'] ??
       environment['USERPROFILE'] ??
@@ -53,6 +62,20 @@ String appSupportFilePath(String fileName) {
   final normalizedBase = base.replaceAll('\\', '/');
   return '$normalizedBase/anicel/$fileName';
 }
+
+/// The app's own folder as the platform hands it, asked once at launch
+/// before any store reads (`AppStorage.ensureInitialized`); null where the
+/// platform hands none, and the environment answers [appSupportFilePath].
+///
+/// 🚨Android starts an app with no `APPDATA`, `HOME` or `USERPROFILE`, so
+/// the base fell to [Directory.systemTemp] — Flutter's `code_cache`, which
+/// Android empties on every update of the app: each Play update reset the
+/// whole of `Settings/`, and the next launch opened at the first-run window
+/// (board android-settings-live-in-the-code-cache, 2026-11-16, measured
+/// with `adb install -r` on the tablet). Android hands its `filesDir`.
+/// ⛔Nothing reads the old `code_cache` address — there are no users' files
+/// to carry over yet (no-production-data-yet).
+String? platformAppSupportBase;
 
 /// [appSupportFilePath], except that a test run gets its own sandbox inside
 /// [testContainerFolder]: `<temp>/qa_test_container_<pid>/<sandbox>/<fileName>`.

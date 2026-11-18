@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -28,6 +29,7 @@ import '../helpers/rail_group_button.dart';
 /// into one each (round 8). These drive the real callbacks the panels are
 /// handed and read the workspace's answer back off the tree.
 void main() {
+  opensTheEnginesScreens();
   late Directory directory;
   late BrushTipLibraryService tips;
   late BrushPresetFileService presets;

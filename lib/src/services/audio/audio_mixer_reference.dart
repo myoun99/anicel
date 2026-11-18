@@ -16,6 +16,8 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/alike_maths.dart';
+
 /// One volume-envelope point (AUDIO-PRO R1) — mirrors the C
 /// `qa_audio_envelope_key`: at [sample] (clip-local, from the clip's
 /// start) the envelope passes [gain]. Linear between points, held past
@@ -41,6 +43,8 @@ class AudioMixClip {
     this.panRight = 1.0,
     this.fadeCurve = 0,
     this.envelope = const [],
+    this.panLeftLine = const [],
+    this.panRightLine = const [],
   });
 
   final int sourceIndex;
@@ -60,8 +64,8 @@ class AudioMixClip {
   final int fadeOutSamples;
 
   /// Per-output-side pan factors, PRECOMPUTED here in Dart (see
-  /// [equalPowerPanGains]) so the C never calls trig — a libm sin/cos can
-  /// differ from Dart's by an ulp and break byte parity. Applied on a
+  /// [equalPowerPanGains]) so the engine never calls trig — a libm sin/cos
+  /// can differ from Dart's by an ulp and break byte parity. Applied on a
   /// stereo bus only; unity leaves the mix untouched.
   final double panLeft;
   final double panRight;
@@ -72,6 +76,15 @@ class AudioMixClip {
   /// The volume envelope, sorted by sample; empty = unity. The FFI layer
   /// flattens every clip's points into one shared array for the C.
   final List<AudioEnvelopePoint> envelope;
+
+  /// The left side as a line, sorted by sample (audio-fx-grows-like-the-
+  /// pros-Q7): a keyed pan's left side at each of its points, read as the
+  /// [envelope] is. Empty = the one [panLeft] the whole clip through. The
+  /// FFI layer lays it in the envelope's shared array.
+  final List<AudioEnvelopePoint> panLeftLine;
+
+  /// The right side's line, as [panLeftLine] is the left's.
+  final List<AudioEnvelopePoint> panRightLine;
 
   /// This clip re-pointed at [sourceIndex]. NOTHING else changes.
   ///
@@ -93,6 +106,8 @@ class AudioMixClip {
     panRight: panRight,
     fadeCurve: fadeCurve,
     envelope: envelope,
+    panLeftLine: panLeftLine,
+    panRightLine: panRightLine,
   );
 }
 
@@ -109,13 +124,15 @@ class AudioMixClip {
 /// pan. ↩️Center-unity was once held for the platform-player fallback,
 /// which could not pan; that path went with the user's 2026-10-16 「대체
 /// 재생을 안 쓰고」. Computed ONCE per clip here so every mixer
-/// implementation consumes identical doubles.
+/// implementation consumes identical doubles — [alikeCos] and [alikeSin]'s,
+/// so every device hands the engine the same ones too (board
+/// linux-libm-hands-the-engine-other-last-bits).
 ({double left, double right}) equalPowerPanGains(double pan) {
   final clamped = pan < -1.0 ? -1.0 : (pan > 1.0 ? 1.0 : pan);
   final angle = (clamped + 1.0) * math.pi / 4.0;
   return (
-    left: math.cos(angle) * math.sqrt2,
-    right: math.sin(angle) * math.sqrt2,
+    left: alikeCos(angle) * math.sqrt2,
+    right: alikeSin(angle) * math.sqrt2,
   );
 }
 
@@ -210,6 +227,26 @@ double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
   return volume;
 }
 
+/// The clip's two pan sides at one timeline position (audio-fx-grows-like-
+/// the-pros-Q7): each side's line read as the envelope is
+/// ([audioEnvelopeAt]) — straight between its points, held past either end
+/// — or, with none, its one [AudioMixClip.panLeft] and
+/// [AudioMixClip.panRight]. Mirrors Rust's `clip_sides`.
+({double left, double right}) audioClipSidesAt(
+  AudioMixClip clip,
+  int positionSample,
+) {
+  final position = positionSample - clip.startSample;
+  return (
+    left: clip.panLeftLine.isEmpty
+        ? clip.panLeft
+        : audioEnvelopeAt(clip.panLeftLine, position),
+    right: clip.panRightLine.isEmpty
+        ? clip.panRight
+        : audioEnvelopeAt(clip.panRightLine, position),
+  );
+}
+
 /// A mono sound laid on two speakers: each side at -3 dB, before its pan
 /// moves it — 0.707 a side at center, 1 on one side at a hard pan.
 ///
@@ -271,8 +308,6 @@ Float64List mixAudioReference({
     }
 
     final spread = source.channels == 1 ? audioMonoOnStereo : 1.0;
-    final left = clip.panLeft * spread;
-    final right = clip.panRight * spread;
     final from = clip.startSample > startSample ? clip.startSample : startSample;
     final to = clip.endSample < blockEnd ? clip.endSample : blockEnd;
     for (var position = from; position < to; position += 1) {
@@ -282,6 +317,9 @@ Float64List mixAudioReference({
         continue; // Outside the available window: silence, never a wait.
       }
       final volume = audioClipVolumeAt(clip, position);
+      final sides = audioClipSidesAt(clip, position);
+      final left = sides.left * spread;
+      final right = sides.right * spread;
       final frame = offset * source.channels;
       final destination = (position - startSample) * outChannels;
       for (var channel = 0; channel < outChannels; channel += 1) {

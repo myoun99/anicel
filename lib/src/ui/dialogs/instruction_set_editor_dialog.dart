@@ -8,6 +8,7 @@ import '../widgets/app_window.dart';
 import 'dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../text/typed_text.dart';
 
 /// Edits the project's instruction vocabulary: rename defs, repick their
 /// icons, add custom ones, delete. Pops the edited [CameraInstructionSet]
@@ -222,6 +223,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                 key: const ValueKey<String>('instruction-def-name-field'),
                 controller: _nameController,
                 autofocus: true,
+                inputFormatters: typedText(),
               ),
             ),
             const SizedBox(height: 12),

@@ -39,6 +39,82 @@ void main() {
   });
 
   group('a job that says how far it is', reportingFromAWorker);
+  group('a job that asks this isolate', askingFromAWorker);
+}
+
+/// An error no isolate message can carry: a closure in a field.
+final class _Unsendable implements Exception {
+  _Unsendable(this.held);
+  final void Function() held;
+}
+
+/// [onAWorkerAsking]: what a job needs of something only this isolate has,
+/// a piece at a time.
+void askingFromAWorker() {
+  late bool corpus;
+  setUp(() => corpus = debugWorkersRunHere);
+  tearDown(() => debugWorkersRunHere = corpus);
+
+  /// A job that asks twice, and says what it heard and where it ran.
+  Future<List<String?>> askingTwice(Future<String> Function(int) ask) async => [
+    await ask(1),
+    await ask(2),
+    _marked,
+  ];
+
+  String answering(int question) => '$question on $_marked';
+
+  test('on a worker, the job runs there and the answers are made here', () async {
+    debugWorkersRunHere = false;
+    _marked = 'this isolate';
+
+    expect(await onAWorkerAsking(answering, askingTwice), [
+      '1 on this isolate',
+      '2 on this isolate',
+      null,
+    ]);
+  });
+
+  test('run here, the job runs on this isolate and is answered the same',
+      () async {
+    debugWorkersRunHere = true;
+    _marked = 'this isolate';
+
+    expect(await onAWorkerAsking(answering, askingTwice), [
+      '1 on this isolate',
+      '2 on this isolate',
+      'this isolate',
+    ]);
+  });
+
+  test('🚨what the answer throws is thrown as it was, however unsendable, '
+      'and the job stops at it', () async {
+    debugWorkersRunHere = false;
+    final thrown = _Unsendable(() {});
+
+    await expectLater(
+      onAWorkerAsking<int, String, String>(
+        (_) => throw thrown,
+        (ask) async {
+          await ask(1);
+          return 'went on';
+        },
+      ),
+      throwsA(same(thrown)),
+    );
+  });
+
+  test('a job that fails by itself fails as a job does', () async {
+    debugWorkersRunHere = false;
+
+    await expectLater(
+      onAWorkerAsking<int, String, String>(
+        answering,
+        (ask) async => throw StateError('its own'),
+      ),
+      throwsStateError,
+    );
+  });
 }
 
 /// [onAWorkerReporting]: a worker's job that tells its caller how far it is

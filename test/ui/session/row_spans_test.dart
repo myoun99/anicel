@@ -26,6 +26,8 @@ RangeSelections rangeSelectionsOf(EditorSessionManager session) =>
     session.rangeSelections;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);

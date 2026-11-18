@@ -85,21 +85,30 @@ void main() {
     );
   });
 
-  /// 🗣️I-143-Q5 (유저 2026-10-30, 「바닥을 따라 밝게」).
-  test('a stage left at the floor wears the floor of the palette worn', () {
+  /// 🗣️F-598 (유저 2026-11-16, 「모드 바꾼다고 안바뀌도록」): the backdrop
+  /// and the pasteboard are settings of their own — a switch of the palette
+  /// leaves them the colour they say, the start both share included
+  /// (↩️I-143-Q5 had that start follow the palette's floor).
+  test('a stage keeps the colour its setting says in either palette', () {
     expect(
       const Color(defaultProjectBackdropArgb),
       AppPalette.dark.backdrop,
-      reason: 'what a project stores as its start IS the dark floor',
+      reason: 'what a project stores as its start is the dark floor',
     );
-    for (final (mode, floor) in [
-      (AppColorMode.dark, AppPalette.dark.backdrop),
-      (AppColorMode.light, AppPalette.light.backdrop),
-    ]) {
+    expect(
+      AppPalette.light.backdrop,
+      isNot(AppPalette.dark.backdrop),
+      reason: 'else a stage that followed the palette would pass here',
+    );
+    for (final mode in AppColorMode.values) {
       wear(mode);
-      expect(stageColorOnScreen(defaultProjectBackdropArgb), floor);
-      expect(stageColorOnScreen(defaultProjectPasteboardArgb), floor);
-      expect(stageColorOnScreen(0xFF336699), const Color(0xFF336699));
+      for (final argb in [
+        defaultProjectBackdropArgb,
+        defaultProjectPasteboardArgb,
+        0xFF336699,
+      ]) {
+        expect(stageColorOnScreen(argb), Color(argb), reason: '$mode');
+      }
     }
   });
 }

@@ -6,7 +6,7 @@
 // `session.projectSettings.projectFps` — so nothing is guessed by pattern.
 //
 //   flutter analyze > a.log 2>&1
-//   dart run tool/refactor/session_receiver.dart a.log spec.json [--dry]
+//   dart tool/refactor/session_receiver.dart a.log spec.json [--dry]
 //
 // 🚨WHY THE COLUMN AND NOT A REGEX: this codebase has Korean identifiers
 // and comments on the same lines, and analyzer columns are UTF-16 offsets.

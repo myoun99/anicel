@@ -3,7 +3,7 @@
 // body becomes a private method of the class, and the locals those
 // functions captured become fields the method assigns.
 //
-//   dart run tool/refactor/hoist_local_functions.dart <file> <Class> <method>
+//   dart tool/refactor/hoist_local_functions.dart <file> <Class> <method>
 //       [local=Type ...] [--dry]
 //
 // `local=Type` names a captured local and the field type it becomes:

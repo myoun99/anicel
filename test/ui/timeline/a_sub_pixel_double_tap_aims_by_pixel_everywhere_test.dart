@@ -80,7 +80,6 @@ void main() {
                       ),
                       laneId: 'position',
                       frameStartIndex: 0,
-                      leadingFrameSpacerWidth: 0,
                       frameCellExtent: eighth,
                       crossAxisExtent: 24,
                       callbacks: TimelineLaneRangeCallbacks(

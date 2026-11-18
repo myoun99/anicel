@@ -2,17 +2,13 @@
 //! in the host's own memory and its four functions are called on them
 //! (🗣️I-132-Q5 「a + 데스크톱은 같은 규격의 네이티브(.dll · .dylib)도」).
 
-use std::ffi::{CStr, c_char};
+use std::ffi::CStr;
 
+use anicel_fx::names::{self, Describe, Reach, Render, Spec};
 use libloading::Library;
 
-use crate::frame::{self, Plan, SPEC_VERSION};
+use crate::frame::{self, Plan};
 use crate::job::{FAILED, Head, Job, NO_ROOM, OK};
-
-type Spec = unsafe extern "C" fn() -> u32;
-type Describe = unsafe extern "C" fn(*mut c_char, u32) -> u32;
-type Reach = unsafe extern "C" fn(*const u8) -> u32;
-type Render = unsafe extern "C" fn(*mut u8) -> i32;
 
 /// An opened native plugin.
 pub(crate) struct Native {
@@ -32,17 +28,17 @@ impl Native {
         // SAFETY: the spec's names, each with the spec's type.
         let found = unsafe {
             (
-                symbol::<Spec>(&library, b"anicel_fx_spec"),
-                symbol::<Describe>(&library, b"anicel_fx_describe"),
-                symbol::<Reach>(&library, b"anicel_fx_reach"),
-                symbol::<Render>(&library, b"anicel_fx_render"),
+                symbol::<Spec>(&library, names::SPEC),
+                symbol::<Describe>(&library, names::DESCRIBE),
+                symbol::<Reach>(&library, names::REACH),
+                symbol::<Render>(&library, names::RENDER),
             )
         };
         let (Some(spec), Some(describe), Some(reach), Some(render)) = found else {
             return Err("the library exports no fx plugin");
         };
         // SAFETY: the spec's anicel_fx_spec takes nothing.
-        if unsafe { spec() } != SPEC_VERSION {
+        if unsafe { spec() } != anicel_fx::SPEC_VERSION {
             return Err("the plugin speaks another spec version");
         }
         Ok(Self { describe, reach, render, block: Block::default(), _library: library })
@@ -51,7 +47,7 @@ impl Native {
     /// The description's length; up to `out`'s length of it in `out`.
     pub(crate) fn describe(&self, out: &mut [u8]) -> i32 {
         // SAFETY: room the spec's describe writes no further than it is told.
-        unsafe { (self.describe)(out.as_mut_ptr().cast(), out.len() as u32) as i32 }
+        unsafe { (self.describe)(out.as_mut_ptr(), out.len() as u32) as i32 }
     }
 
     pub(crate) fn reach(&mut self, head: &Head) -> i32 {
@@ -60,7 +56,7 @@ impl Native {
         };
         frame::lay_reach(block, head);
         // SAFETY: a frame the spec lays, in room the host holds.
-        unsafe { (self.reach)(block.as_ptr()) as i32 }
+        unsafe { (self.reach)(block.as_ptr().cast()) as i32 }
     }
 
     pub(crate) fn render(&mut self, job: &mut Job, plan: &Plan) -> i32 {
@@ -69,7 +65,7 @@ impl Native {
         };
         frame::lay(block, plan, job);
         // SAFETY: a frame the spec lays, every place it names in the block.
-        if unsafe { (self.render)(block.as_mut_ptr()) } != 0 {
+        if unsafe { (self.render)(block.as_mut_ptr().cast()) } != 0 {
             return FAILED;
         }
         frame::take_output(block, plan, job);
@@ -86,7 +82,7 @@ fn load(path: &CStr) -> Option<Library> {
     // ⚠️No test plugin brings a library beside it, so no test tells this
     // flag from none (mutant n06, 2026-11-06).
     // SAFETY: opening a plugin runs its library's start, which the person
-    // agreed to when they installed it (anicel_fx_plugin.h, THE FILE).
+    // agreed to when they installed it (sdk/fx/anicel-fx, The file).
     let library = unsafe { Library::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH) };
     library.ok().map(Into::into)
 }
@@ -107,9 +103,9 @@ fn load(path: &CStr) -> Option<Library> {
 ///
 /// # Safety
 /// `F` is the export's type.
-unsafe fn symbol<F: Copy>(library: &Library, name: &[u8]) -> Option<F> {
+unsafe fn symbol<F: Copy>(library: &Library, name: &str) -> Option<F> {
     // SAFETY: the caller's contract.
-    unsafe { library.get::<F>(name) }.ok().map(|found| *found)
+    unsafe { library.get::<F>(name.as_bytes()) }.ok().map(|found| *found)
 }
 
 /// Room for frames that only grows, kept from one call to the next; on 16

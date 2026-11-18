@@ -27,6 +27,24 @@ List<GroundInkRun> groundInkRunsForFill({
   ];
 }
 
+/// How far a writing [need] long stands in from each end of a box [room]
+/// long that keeps [inset] at each: the whole inset while the writing fits
+/// between the two, and what it does not fit taken from both alike — as
+/// far as the box's ends.
+///
+/// 🗣️F-577-Q1 (유저 2026-11-16): 「애초에 막대안에 숫자 공간 끝까지 채워서
+/// 여백 다 쓰는건줄알았는데 그게 아닌게 의도가아니었음. 여백까지 다
+/// 쓸수있게하도록. 모든막대 공용」 — a bar's insets are where its writing
+/// rests, not walls, on every bar. 🔬What asked: 「200」 on the S rows'
+/// Total is 25.07 px in the app's face where the 40 px bar left 24 between
+/// its 8s, and it broke a glyph to a line and showed 「20」. The bar keeps
+/// its length (F-409: 「100이라는 숫자가 딱 들어갈 정도면 됨」).
+double insetGivenWay({
+  required double room,
+  required double need,
+  required double inset,
+}) => math.min(inset, math.max(0.0, (room - need) / 2));
+
 /// Writing whose ink follows the ground under it — the text-on-ground law
 /// (`textOnColor`) applied run by run, so one string changes ink PART WAY
 /// THROUGH a word where the ground changes under it.
@@ -54,7 +72,7 @@ class GroundInkWriting extends StatelessWidget {
   const GroundInkWriting({
     super.key,
     required this.runs,
-    this.padding = EdgeInsets.zero,
+    this.inset = 0,
     this.alignment,
     required this.builder,
   });
@@ -62,11 +80,13 @@ class GroundInkWriting extends StatelessWidget {
   /// The ground under the writing, left to right — see [GroundInkRun].
   final List<GroundInkRun> runs;
 
-  /// How far the writing stands off the edges of its box — a [Padding]
-  /// round it. The runs are fractions of the WHOLE box, padding and all.
-  final EdgeInsets padding;
+  /// How far the writing stands in from each end of its box while it fits
+  /// there; a writing that does not takes it, both ends alike, as far as
+  /// the box's ends ([insetGivenWay]). The runs are fractions of the WHOLE
+  /// box, inset and all.
+  final double inset;
 
-  /// Where the writing stands inside [padding] — an [Align] round it — or
+  /// Where the writing stands between its insets — an [Align] round it — or
   /// null for a writing that fills that room.
   final Alignment? alignment;
 
@@ -77,7 +97,7 @@ class GroundInkWriting extends StatelessWidget {
   final Widget Function(BuildContext context, TextStyle ink) builder;
 
   /// 🪶The box right above the writing stands it in its place — the
-  /// [padding] and the [alignment] — where a [Padding] and an [Align] were
+  /// [inset] and the [alignment] — where a [Padding] and an [Align] were
   /// two boxes more for every bar a tab reopens (card frame-panels-build-
   /// in-one-frame, 2026-10-28).
   @override
@@ -95,7 +115,7 @@ class GroundInkWriting extends StatelessWidget {
   /// [writing] in its place, in a box that is also where the writing's
   /// shape changes ([_WritingBox]).
   Widget _placed(Widget writing, {bool atOrigin = false}) => _WritingBox(
-    padding: padding,
+    inset: inset,
     alignment: alignment,
     atOrigin: atOrigin,
     child: writing,
@@ -158,20 +178,21 @@ class GroundInkWriting extends StatelessWidget {
 /// are back as they were; this box is what keeps their switch local.
 ///
 /// It is also the box right above the writing, so it stands the writing in
-/// its place ([GroundInkWriting.padding], [GroundInkWriting.alignment]) —
-/// laid out as a [Padding] round an [Align] lays it out. Over a ground that
+/// its place ([GroundInkWriting.inset], [GroundInkWriting.alignment]) —
+/// laid out as a [Padding] round an [Align] lays it out, the padding an
+/// inset that gives way to a writing that needs it. Over a ground that
 /// changes under the writing it is two: the bare box the shapes switch in,
 /// and the placing one inside the layout builder, which also moves the
 /// canvas to its own top-left ([atOrigin]).
 class _WritingBox extends SingleChildRenderObjectWidget {
   const _WritingBox({
-    this.padding = EdgeInsets.zero,
+    this.inset = 0,
     this.alignment,
     this.atOrigin = false,
     required super.child,
   });
 
-  final EdgeInsets padding;
+  final double inset;
   final Alignment? alignment;
 
   /// Paint the writing with the canvas moved to this box's top-left, so a
@@ -188,7 +209,7 @@ class _WritingBox extends SingleChildRenderObjectWidget {
   @override
   _RenderWritingBox createRenderObject(BuildContext context) =>
       _RenderWritingBox(
-        padding: padding,
+        inset: inset,
         alignment: alignment,
         atOrigin: atOrigin,
       );
@@ -199,7 +220,7 @@ class _WritingBox extends SingleChildRenderObjectWidget {
     _RenderWritingBox renderObject,
   ) {
     renderObject
-      ..padding = padding
+      ..inset = inset
       ..alignment = alignment
       ..atOrigin = atOrigin;
   }
@@ -207,21 +228,21 @@ class _WritingBox extends SingleChildRenderObjectWidget {
 
 class _RenderWritingBox extends RenderShiftedBox {
   _RenderWritingBox({
-    required EdgeInsets padding,
+    required double inset,
     required Alignment? alignment,
     required bool atOrigin,
-  }) : _padding = padding,
+  }) : _inset = inset,
        _alignment = alignment,
        _atOrigin = atOrigin,
        super(null);
 
-  EdgeInsets get padding => _padding;
-  EdgeInsets _padding;
-  set padding(EdgeInsets value) {
-    if (_padding == value) {
+  double get inset => _inset;
+  double _inset;
+  set inset(double value) {
+    if (_inset == value) {
       return;
     }
-    _padding = value;
+    _inset = value;
     markNeedsLayout();
   }
 
@@ -245,19 +266,57 @@ class _RenderWritingBox extends RenderShiftedBox {
     markNeedsPaint();
   }
 
+  /// How far the writing stands in from each end of this box [room] wide:
+  /// its [inset], given way as far as the writing needs ([insetGivenWay]).
+  /// All of it in a box that states no width — and none is asked where
+  /// there is none to give: the bare box over a ground that changes under
+  /// the writing holds a layout builder, which says no width it needs.
+  double _insetIn(double room) {
+    final child = this.child;
+    if (_inset == 0 || child == null || room == double.infinity) {
+      return _inset;
+    }
+    return insetGivenWay(
+      room: room,
+      need: child.getMaxIntrinsicWidth(double.infinity),
+      inset: _inset,
+    );
+  }
+
   /// The box and where the child stands in it, under [constraints], with
   /// [layChild] laying the child out — a [Padding]'s answer round an
-  /// [Align]'s, each as its own render object gives it.
+  /// [Align]'s, each as its own render object gives it, the padding being
+  /// what the writing leaves of its inset ([_insetIn]).
+  ///
+  /// 🪶A writing that stands in its room is laid between whole insets
+  /// first, and asked what it needs only where it filled that room — a
+  /// text's width is its one-line width clamped to the room, so a text
+  /// that fits did not. 🔬Asked of every bar, the ask was about a ninth of
+  /// laying 240 rail bars out (debug, 2026-11-16: 40 → 45 ms, and 31 → 36
+  /// on a change of every value); asked so, they cost what they did before
+  /// the law (39–41 ms, 30–36). A writing that fills its room asks always:
+  /// it says nothing by its width.
   ({Size size, Offset childAt}) _place(
     BoxConstraints constraints,
     Size Function(RenderBox child, BoxConstraints constraints) layChild,
   ) {
-    final inner = constraints.deflate(_padding);
+    BoxConstraints within(double inset) =>
+        constraints.deflate(EdgeInsets.symmetric(horizontal: inset));
     final child = this.child;
+    var inset = _inset;
     var innerSize = Size.zero;
     var at = Offset.zero;
     if (_alignment case final alignment?) {
-      final laid = child == null ? null : layChild(child, inner.loosen());
+      var inner = within(inset);
+      var laid = child == null ? null : layChild(child, inner.loosen());
+      if (child != null && laid != null && laid.width >= inner.maxWidth) {
+        final given = _insetIn(constraints.maxWidth);
+        if (given != inset) {
+          inset = given;
+          inner = within(inset);
+          laid = layChild(child, inner.loosen());
+        }
+      }
       innerSize = inner.constrain(
         Size(
           inner.maxWidth == double.infinity
@@ -272,16 +331,14 @@ class _RenderWritingBox extends RenderShiftedBox {
         at = alignment.alongOffset(innerSize - laid as Offset);
       }
     } else if (child != null) {
-      innerSize = layChild(child, inner);
+      inset = _insetIn(constraints.maxWidth);
+      innerSize = layChild(child, within(inset));
     }
     return (
       size: constraints.constrain(
-        Size(
-          _padding.horizontal + innerSize.width,
-          _padding.vertical + innerSize.height,
-        ),
+        Size(inset * 2 + innerSize.width, innerSize.height),
       ),
-      childAt: _padding.topLeft + at,
+      childAt: Offset(inset, 0) + at,
     );
   }
 
@@ -321,31 +378,25 @@ class _RenderWritingBox extends RenderShiftedBox {
     return distance == null ? null : distance + placed.childAt.dy;
   }
 
+  // The intrinsics answer for the writing at rest, its insets whole: what a
+  // host that sizes itself round the writing gives it.
   @override
   double computeMinIntrinsicWidth(double height) =>
-      _padding.horizontal +
-      (child?.getMinIntrinsicWidth(_innerHeight(height)) ?? 0);
+      _inset * 2 + (child?.getMinIntrinsicWidth(height) ?? 0);
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
-      _padding.horizontal +
-      (child?.getMaxIntrinsicWidth(_innerHeight(height)) ?? 0);
+      _inset * 2 + (child?.getMaxIntrinsicWidth(height) ?? 0);
 
   @override
   double computeMinIntrinsicHeight(double width) =>
-      _padding.vertical +
-      (child?.getMinIntrinsicHeight(_innerWidth(width)) ?? 0);
+      child?.getMinIntrinsicHeight(_innerWidth(width)) ?? 0;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>
-      _padding.vertical +
-      (child?.getMaxIntrinsicHeight(_innerWidth(width)) ?? 0);
+      child?.getMaxIntrinsicHeight(_innerWidth(width)) ?? 0;
 
-  double _innerHeight(double height) =>
-      math.max(0.0, height - _padding.vertical);
-
-  double _innerWidth(double width) =>
-      math.max(0.0, width - _padding.horizontal);
+  double _innerWidth(double width) => math.max(0.0, width - _inset * 2);
 
   @override
   void paint(PaintingContext context, Offset offset) {

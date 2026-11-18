@@ -9,6 +9,12 @@
 // the tiles' edges. `widestPatch` says the patches were the dabs' at all: at
 // a tile's width the comparison passes whatever is told.
 //
+// 🚨AND IT ASKS FOR NO PICTURE OF A TILE. The step is measured by what
+// shows each coordinate — the tile the engine laid — and a picture of that
+// is the tile read back, a wait for the GPU, for a screen that draws none.
+// 🔬The app on its engine, a pen's line across 13 tiles: a tile read back
+// at each paint that measured a step, and 13 at pen-up (2026-11-12).
+//
 // The writes are Flutter GPU's: the picture holds the steps only where
 // the GPU wrote them, so this runs in the `gpu` tag's batch.
 @Tags(['gpu'])
@@ -38,14 +44,14 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -54,9 +60,13 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 48, height: 32);
-  const viewSize = Size(48, 32);
-  const tileSize = 16;
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
+  // 3 × 2 tiles — the stroke laid out in sixteenths of one, as it was on
+  // the tiles of 16 this was first drawn on.
+  const sixteenth = tileSize / 16;
+  const canvasSize = CanvasSize(width: 3 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.0 * tileSize);
   const ground = [64, 192, 96];
   final screen = GlobalKey();
   const key = BrushFrameKey(
@@ -118,9 +128,12 @@ void main() {
   final dabs = [
     for (var i = 0; i < 12; i += 1)
       BrushDab(
-        center: CanvasPoint(x: 3.3 + i * 3.7, y: 4.6 + i * 2.1),
+        center: CanvasPoint(
+          x: (3.3 + i * 3.7) * sixteenth,
+          y: (4.6 + i * 2.1) * sixteenth,
+        ),
         color: i % 3 == 0 ? 0xFF40C060 : 0xFF102030,
-        size: 5,
+        size: 5 * sixteenth,
         opacity: 0.6,
         flow: 1,
         hardness: 0.4,
@@ -170,7 +183,6 @@ void main() {
       final images = LayerFrameImageCache(frameStore: cels);
       addTearDown(images.dispose);
       final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
-        ..sourceEffects = effects
         ..preBlendBase = inPlace ? theCel() : null;
       addTearDown(overlay.dispose);
       final rasterizer = BrushLiveStrokeRasterizer(
@@ -178,14 +190,14 @@ void main() {
         tileSize: tileSize,
       );
       final live = BitmapSurfacePainter(
-        surface: celSurfaceAsShown(theCel(), effects),
+        surface: theCel(),
         overlayModel: overlay,
         showTransparentBackground: false,
       );
 
       /// A canvas standing on the frame, its pictures kept by [store].
       Future<void> standOn(
-        FramePictureStore<FramePictureKey> store, {
+        EngineFramePictureStore<FramePictureKey> store, {
         required Key view,
       }) async {
         final run = runOver(
@@ -222,9 +234,7 @@ void main() {
         await lendBothClocks(tester, rounds: 2);
       }
 
-      final gpu = WritesLand();
-      addTearDown(gpu.letAllThrough);
-      final patched = FramePictureStore<FramePictureKey>(gpu: gpu);
+      final patched = StoreTellingItsWrites();
       addTearDown(patched.dispose);
       await standOn(patched, view: const ValueKey(0));
       final shown = runOver(
@@ -234,8 +244,8 @@ void main() {
         stackOf: (_) => nodes,
       ).pictures.keyOfStack(nodes, picture);
 
+      final readBack = EngineTileLedger.instance.debugTileReads;
       for (final dab in dabs) {
-        gpu.holdsRenders = true;
         await tester.runAsync(() async {
           final from = overlay.dabs.length;
           overlay.dabs.add(dab);
@@ -245,18 +255,26 @@ void main() {
           );
         });
         await tester.pump();
-        final landing = patched.landingOf(keptByTheCanvas(tester, shown));
         expect(
-          landing,
-          isNotNull,
+          patched.landedAt(keptByTheCanvas(tester, shown)),
+          isTrue,
           reason: 'LIVENESS: the step is patched into the picture — not the '
               'frame drawn as it stands',
         );
-        gpu.letAllThrough();
-        await inThePicture(tester, landing);
+        await inThePicture(tester);
+      }
+      if (inPlace) {
+        expect(
+          overlay.shownTiles.values.where((tile) => tile.isOnlyOnEngine),
+          isNotEmpty,
+          reason: '⛔premise: the engine alone holds what the stroke shows',
+        );
+        // ⛔Mutation: the measure copies the overlay's pictures → each is
+        // made, of a tile read back, at the step that moved it.
+        expect(EngineTileLedger.instance.debugTileReads, readBack);
       }
       expect(
-        gpu.widestPatch,
+        patched.widestPatch,
         placement == null ? lessThan(tileSize) : greaterThanOrEqualTo(tileSize),
         reason: placement == null
             ? '⛔premise: the patches were the dabs\', not their tiles'
@@ -265,12 +283,10 @@ void main() {
       final afterPatches = await shotOf(tester, screen);
 
       // A view of its own, the stroke in hand: the frame drawn as it stands.
-      final standing = FramePictureStore<FramePictureKey>(
-        gpu: WritesNeverLand(),
-      );
+      final standing = aStoreOfPictures();
       addTearDown(standing.dispose);
       await standOn(standing, view: const ValueKey(1));
       expect(differences(await shotOf(tester, screen), afterPatches), isEmpty);
-    }, skip: noFlutterGpu != null);
+    });
   }
 }

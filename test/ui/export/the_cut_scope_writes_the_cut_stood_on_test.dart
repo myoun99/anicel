@@ -206,7 +206,6 @@ void main() {
             'under this scope emptied the sheet and the envelope',
       );
       expect(count(tester), '${files.length} files');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
@@ -230,7 +229,6 @@ void main() {
     await tester.pump();
 
     expect(filesWrittenUnder(temp), [...pair]..sort());
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the project scope writes the TICKED cuts — their cels, a '
@@ -261,7 +259,6 @@ void main() {
       'C3/_CUTC3_envelope.png',
       'C3/_TSC3.png',
     ]);
-    all.playbackRig.prerenderScheduler.cancel();
 
     final pairOut = film(unticked: {'c1', 'c2'});
     addTearDown(pairOut.dispose);
@@ -272,7 +269,6 @@ void main() {
       'C3/_CUTC3_envelope.png',
     ]);
     expect(count(tester), '3 files');
-    pairOut.playbackRig.prerenderScheduler.cancel();
   });
 
   group('the documents follow the cels\' scope — one switch, one grid (유저 '
@@ -303,7 +299,6 @@ void main() {
         'C3/_TSC3.png',
         'C3/_CUTC3_envelope.png',
       ]);
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('under the cut scope there is no grid', (tester) async {
@@ -317,7 +312,6 @@ void main() {
         reason: 'LIVENESS — the module is open',
       );
       expect(grid, findsNothing);
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 }

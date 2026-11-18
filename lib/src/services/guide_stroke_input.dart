@@ -1,7 +1,5 @@
+import 'dart:async';
 import 'dart:math' as math;
-
-import 'package:flutter/services.dart'
-    show KeyDownEvent, KeyEvent, LogicalKeyboardKey;
 
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
@@ -279,7 +277,7 @@ class StrokeLock {
       _end = points.last;
     }
     if (_shift) {
-      _line._ray ??= _lock?.lockedRay;
+      _line._keep(_lock?.lockedRay);
     }
     return points;
   }
@@ -294,38 +292,69 @@ class StrokeLock {
 /// 즉 스트로크로 라인 그리다가 스트로크만 떼고 다음 포인트에서 같은 라인의
 /// 직선을 그릴 수 있게되는거지. 그걸 기본으로.」
 ///
-/// ⚠️THE HOLD ENDS WHERE ITS OWNER HEARS IT END, between strokes too: a
-/// press, and a finger holding Shift lifting, say whether Shift is held
-/// now ([heldNow]); a Shift pressed anew says the hold before it ended
-/// ([heardKey]). ⛔Not the key's release: on Windows a pen hovering lets
-/// Shift go in the engine's record with the key still down, and the real
-/// release after it is never heard (I-61, `ModifierKeys`) — so "held now"
-/// is asked of `ModifierKeys`, and a release is known by the press after it.
+/// 🚨THE HOLD ENDS WHEN SHIFT IS LET GO, AND AT NOTHING ELSE (F-592, 유저
+/// 2026-11-15: 「스냅확정되고 첫 선 그려지면 어디에 뭘 어떻게 그리던 거기에
+/// 스냅이된단거임. 이상한 규칙 만들지말고」). So there is ONE question,
+/// whether Shift is held now: every press and every point of a stroke
+/// asks it ([heldNow]), and between strokes the line asks it itself for as
+/// long as it keeps a ray ([_watch]).
+///
+/// ↩️Till then a Shift key-down said the hold before it had ended
+/// (`heardKey`). The release itself cannot be heard — on Windows a pen
+/// hovering lets Shift go in the engine's record with the key still down,
+/// and the real release after it is dropped (I-61, `ModifierKeys`) — so it
+/// was guessed from the press after it. But the same engine hands the held
+/// key's own REPEAT out as a key-down like any other once its record has
+/// let the key go (Flutter 3.47.4, keyboard_key_embedder_handler.cc: 「A
+/// normal down event (whether the system event is a repeat or not)」),
+/// some thirty times a second: a pen's line was let go a moment after the
+/// pen lifted, and the next stroke found it only where it began before the
+/// repeat came. ⛔No event stands in for the release: the key is asked
+/// (관제 2026-11-15: 「놓는 때 = 진짜 뗌 하나」).
+///
+/// ⚠️ASKED EVERY [_every], not at the events that might have changed it:
+/// with the pen away from the glass, a Shift let go and pressed again sends
+/// one event, the press — and asked then, Shift is held. What the watch
+/// cannot tell is a Shift let go and pressed again inside one period, which
+/// no hand does.
 final class ShiftLine {
+  /// A line that asks [held] — whether Shift is held now, by the key or by
+  /// what stands for it — for as long as it keeps a ray. Given none it is
+  /// asked by who draws alone ([heldNow]): a stroke's own line, kept for
+  /// that stroke ([StrokeLock]).
+  ShiftLine({bool Function()? held}) : _held = held;
+
+  final bool Function()? _held;
   SnapCandidate? _ray;
+  Timer? _watch;
+
+  static const _every = Duration(milliseconds: 16);
+
+  /// Keeps [ray] where none is kept yet, and watches Shift from then on.
+  void _keep(SnapCandidate? ray) {
+    if (ray == null || _ray != null) {
+      return;
+    }
+    _ray = ray;
+    final held = _held;
+    if (held != null) {
+      _watch ??= Timer.periodic(_every, (_) => heldNow(held()));
+    }
+  }
 
   /// Shift as it stands now — let go, the line goes with it.
   void heldNow(bool shift) {
     if (!shift) {
-      _ray = null;
+      letGo();
     }
   }
 
-  /// A key [event] as the keyboard hears it (`HardwareKeyboard.addHandler`):
-  /// a Shift pressed anew lets go of the line the hold before it kept.
-  /// Always false — the key goes on to its other readers.
-  ///
-  /// ⚠️Not a synthesized press: the Windows engine puts Shift back down of
-  /// its own when a mouse move carries it after a pen let it go (I-61) —
-  /// the same hold.
-  bool heardKey(KeyEvent event) {
-    if (event is KeyDownEvent &&
-        !event.synthesized &&
-        (event.logicalKey == LogicalKeyboardKey.shiftLeft ||
-            event.logicalKey == LogicalKeyboardKey.shiftRight)) {
-      _ray = null;
-    }
-    return false;
+  /// Lets go of the line, and asks no more: Shift let go — or its owner
+  /// going, which nothing draws for any longer.
+  void letGo() {
+    _ray = null;
+    _watch?.cancel();
+    _watch = null;
   }
 
   /// [point] — a press, in a stroke's [space] — on the line held, or as

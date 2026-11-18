@@ -1,5 +1,7 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:gpu_engine/gpu_engine.dart' show contoursOfRuns;
 
 import '../models/canvas_point.dart';
 
@@ -8,294 +10,115 @@ import '../models/canvas_point.dart';
 /// box [width] pixels wide — on the pixel grid, in CANVAS space.
 ///
 /// One walk for every outline drawn around pixels: a selection's committed
-/// ants (`CanvasSelectionRegion.pixelOutlineIn`) and the range a fill held
+/// ants (`CanvasSelectionRegion.pixelContours`) and the range a fill held
 /// down will cover (I-160). ↩️It was the selection's own until the fill
 /// needed the same outline of its flood.
 ///
 /// The contours are CLOSED and walk consistently, so a dash phase runs
 /// around a whole component (and around a hole), and a fill of them carves
-/// the holes out under the default winding.
-List<List<CanvasPoint>> pixelRunContours(
+/// the holes out under the default winding. ⛔A contour starts where the
+/// scan first met it: the dashes stay put.
+///
+/// 🚨WALKED BY THE ENGINE (card pixel-ants-cost-a-frame-while-moving,
+/// 2026-11-16): `rust/src/kernels/mask/contours.rs`, step for step the walk
+/// this file held. ↩️It was walked here in Dart — 2.4 ms of the UI's frame
+/// (5.2 at p90) for a 4K lasso a transform's drag maps anew every frame, on
+/// the Surface in the profile app. ⛔Not off the frame: the box and the
+/// pixels move in the frame the drag asks, and an outline answered a frame
+/// later would stand where they no longer are (관제 11-16 ⓐ).
+PixelContours pixelRunContours(
   List<List<int>> rows, {
   required int left,
   required int top,
   required int width,
 }) {
   if (width <= 0 || rows.isEmpty) {
-    return <List<CanvasPoint>>[];
+    return PixelContours.none;
   }
-  final edges = _boundaryEdges(rows, width);
-  CanvasPoint at(int v) => CanvasPoint(
-    x: (left + v % (width + 1)).toDouble(),
-    y: (top + v ~/ (width + 1)).toDouble(),
+  final offsets = Uint32List(rows.length + 1);
+  for (var row = 0; row < rows.length; row += 1) {
+    offsets[row + 1] = offsets[row] + rows[row].length;
+  }
+  final ends = Uint32List(offsets[rows.length]);
+  for (var row = 0; row < rows.length; row += 1) {
+    ends.setAll(offsets[row], rows[row]);
+  }
+  final (:starts, :points) = contoursOfRuns(
+    offsets: offsets,
+    ends: ends,
+    width: width,
   );
-  final contours = <List<CanvasPoint>>[];
-  // Every vertex in the order its first edge was laid, walked from for as
-  // long as it still has an edge — the very starts the walk always took,
-  // in the same order. ↩️It used to ask the edge map for its first key
-  // before each contour: a removed key kept its place in the map's order,
-  // so every ask walked past every vertex already consumed — quadratic in
-  // the outline (🔬I-160, a 4K range with 5000 small holes: 730 ms).
-  for (final start in edges.starts) {
-    while (edges.has(start)) {
-      contours.add(_closedContour(edges, start, at));
-    }
+  for (var at = 0; at < points.length; at += 2) {
+    points[at] += left;
+    points[at + 1] += top;
   }
-  return contours;
+  return PixelContours._(starts, points);
 }
 
-/// The contour walked from [start] ([_walkContour]), its join merged.
-List<CanvasPoint> _closedContour(
-  _EdgeTable edges,
-  int start,
-  CanvasPoint Function(int vertex) at,
-) {
-  final contour = _walkContour(edges, start, at);
-  // ⚠️And once more AROUND the join. The walk starts wherever the edge
-  // map happened to hand it a vertex, which is usually the middle of a
-  // straight run, and the segment that closes the contour is implied
-  // rather than stepped — so the first and last points can each sit in
-  // the middle of a line the merge in the walk never saw the two halves
-  // of. 🧪Without this a rectangle came back with five corners.
-  while (contour.length > 3 &&
-      _isStraight(
-        contour[contour.length - 2],
-        contour.last,
-        contour.first,
-      )) {
-    contour.removeLast();
-  }
-  while (contour.length > 3 &&
-      _isStraight(contour.last, contour.first, contour[1])) {
-    contour.removeAt(0);
-  }
-  return contour;
-}
-
-/// Every boundary edge of the pixels [rows] hold, by the vertex it starts
-/// at and the way it goes, in a box [width] pixels wide. Wound so that the
-/// covered side is on the same hand throughout: a component runs one way
-/// and a hole the other, which is what makes the outline's fill carve
-/// rather than cover.
+/// The contours [pixelRunContours] walks, kept as the engine gave them:
+/// contour `c`'s points are `points[2 * starts[c] .. 2 * starts[c + 1]]`, a
+/// column and a line in turn, in CANVAS pixels.
 ///
-/// 🚨ROW BY ROW, NEVER A MASK (I-23). An inverse's box is the whole
-/// pasteboard wall — about 35MB at a byte a pixel for a 2340×1654 canvas,
-/// allocated and read on the paint thread before one ant was drawn. Only
-/// a pixel with an edge is visited: a run's two ends, and where the row
-/// above or below leaves it uncovered.
-///
-/// ⛔In exactly the order the pixel-by-pixel scan this replaced emitted
-/// them — row-major, then top, right, bottom, left within a pixel — so
-/// every contour starts where it always did and the dashes stay put.
-_EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
-  final edges = _EdgeTable(width + 1);
-  void edge(int x, int y, int way) => edges.add(y * (width + 1) + x, way);
+/// 🚨NO OBJECT A POINT (card pixel-ants-cost-a-frame-while-moving,
+/// 2026-11-16): a 4K lasso's outline is twenty thousand points, and a
+/// transform's drag walks a new one every frame. Each made a [CanvasPoint]
+/// and then an [ui.Offset] to lay the path was forty thousand objects made
+/// and dropped a frame — 0.44 ms making the points alone (the Surface,
+/// profile), the collections they call besides. The path is laid from the
+/// ints, once ([path]); a reader that moves it to the screen transforms
+/// that path (`Path.transform`) rather than mapping a point at a time.
+final class PixelContours {
+  PixelContours._(this.starts, this.xy);
 
-  for (var y = 0; y < rows.length; y += 1) {
-    final above = _RunCursor(y > 0 ? rows[y - 1] : const []);
-    final below = _RunCursor(y + 1 < rows.length ? rows[y + 1] : const []);
-    final runs = rows[y];
-    for (var r = 0; r + 1 < runs.length; r += 2) {
-      final start = runs[r];
-      final end = runs[r + 1];
-      var x = start;
-      while (x < end) {
-        final up = above.covers(x);
-        final down = below.covers(x);
-        if (!up) edge(x, y, _right);
-        if (x == end - 1) edge(x + 1, y, _down);
-        if (!down) edge(x + 1, y + 1, _left);
-        if (x == start) edge(x, y + 1, _up);
-        if (up && down) {
-          // Covered above and below, nothing has an edge until one of
-          // the three runs ends.
-          final next = math.min(math.min(above.end, below.end), end - 1);
-          x = math.max(x + 1, next);
-        } else {
-          x += 1;
-        }
+  /// No contour.
+  static final none = PixelContours._(Uint32List(1), Int32List(0));
+
+  /// Where each contour's points begin in [xy], and one past the last.
+  final Uint32List starts;
+
+  /// The points, a column and a line each, in CANVAS pixels.
+  final Int32List xy;
+
+  /// How many points the contours hold, all told.
+  int get pointCount => xy.length ~/ 2;
+
+  /// Every contour as one closed path, in CANVAS space — laid once, on the
+  /// first ask.
+  ///
+  /// The default winding, as the walk winds a hole against its component:
+  /// a fill of it carves the holes out.
+  late final ui.Path path = _laid();
+
+  ui.Path _laid() {
+    final path = ui.Path();
+    for (var contour = 0; contour + 1 < starts.length; contour += 1) {
+      final end = starts[contour + 1];
+      var at = starts[contour];
+      if (at == end) {
+        continue;
       }
-    }
-  }
-  return edges;
-}
-
-/// The ways a boundary edge goes from the vertex it starts at.
-const _right = 0;
-const _down = 1;
-const _left = 2;
-const _up = 3;
-
-/// The boundary's edges in one flat table: per vertex, the ways its edges
-/// go as a stack — the last laid is the first taken, as the walk always
-/// took them — and the vertices in the order their first edge was laid
-/// ([starts]). A vertex of a pixel boundary has at most two edges out (two
-/// pixels touching only at a corner), so both fit beside it in its slot.
-///
-/// ↩️A map of a list per vertex until I-160 walked a fill's range with it:
-/// 🔬a 4K range with 20000 small holes spent 650–730 ms on the outline
-/// (now 210–280; 5000 holes, 95–165 → 26–42), most of it on where the
-/// lookups landed rather than on the lists. So one
-/// read finds a vertex and its edges, and a slot is found from the vertex
-/// in blocks of sixteen along a row: a contour, whose vertices sit a pixel
-/// apart, keeps landing in the slots it just used, and a long straight
-/// edge still spreads over the table rather than piling into one run of
-/// slots (🔬the vertex itself as the slot: a plain 4K range took 20 ms
-/// instead of 2).
-final class _EdgeTable {
-  _EdgeTable(int stride) : steps = [1, stride, -1, -stride];
-
-  /// How far each way ([_right], [_down], [_left], [_up]) moves a vertex.
-  final List<int> steps;
-
-  /// How many edges were laid.
-  int length = 0;
-
-  /// Open addressing by vertex: per slot, the vertex (-1 for none), then
-  /// its untaken edges — the count in bits 4 and up, the first edge's way
-  /// in bits 0–1 and the second's in bits 2–3.
-  Int32List _slots = Int32List(2 << 10)..fillRange(0, 2 << 10, -1);
-  int _bits = 10;
-  int _used = 0;
-
-  /// The vertices in the order their first edge was laid.
-  final List<int> starts = [];
-
-  void add(int from, int way) {
-    var slot = _slotOf(from);
-    if (_slots[slot] < 0) {
-      if ((_used + 1) * 2 > 1 << _bits) {
-        _grow();
-        slot = _slotOf(from);
+      path.moveTo(xy[2 * at].toDouble(), xy[2 * at + 1].toDouble());
+      for (at += 1; at < end; at += 1) {
+        path.lineTo(
+          xy[2 * at].toDouble(),
+          xy[2 * at + 1].toDouble(),
+        );
       }
-      _slots[slot] = from;
-      _slots[slot + 1] = 0;
-      _used += 1;
-      starts.add(from);
+      path.close();
     }
-    final held = _slots[slot + 1];
-    final count = held >> 4;
-    // Two out is a corner two pixels share; a third would mean two runs
-    // that touch, which [pixelRunContours]' rows never hold.
-    assert(count < 2, 'a third edge out of vertex $from');
-    _slots[slot + 1] = (count + 1) << 4 | (held & 15) | way << (count * 2);
-    length += 1;
+    return path;
   }
 
-  /// Whether an edge from [vertex] is still untaken.
-  bool has(int vertex) {
-    final slot = _slotOf(vertex);
-    return _slots[slot] >= 0 && _slots[slot + 1] >> 4 > 0;
-  }
-
-  /// Takes the last untaken edge laid from [vertex] — the way it goes, or
-  /// -1 when none is left.
-  int take(int vertex) {
-    final slot = _slotOf(vertex);
-    if (_slots[slot] < 0) {
-      return -1;
-    }
-    final held = _slots[slot + 1];
-    final count = held >> 4;
-    if (count == 0) {
-      return -1;
-    }
-    _slots[slot + 1] = (count - 1) << 4 | (held & 15);
-    return held >> ((count - 1) * 2) & 3;
-  }
-
-  /// [vertex]'s slot (its index in [_slots]), or the empty slot it would
-  /// take: its block of sixteen scattered by a multiplicative hash, its
-  /// place in the block kept.
-  int _slotOf(int vertex) {
-    final mask = (1 << _bits) - 1;
-    final block = ((vertex >> 4) * 0x9E3779B1 & 0xFFFFFFFF) >> (32 - _bits);
-    var slot = (block ^ (vertex & 15)) & mask;
-    while (true) {
-      final there = _slots[slot * 2];
-      if (there < 0 || there == vertex) {
-        return slot * 2;
-      }
-      slot = (slot + 1) & mask;
-    }
-  }
-
-  void _grow() {
-    final slots = _slots;
-    _bits += 1;
-    _slots = Int32List(2 << _bits)..fillRange(0, 2 << _bits, -1);
-    for (var slot = 0; slot < slots.length; slot += 2) {
-      final vertex = slots[slot];
-      if (vertex >= 0) {
-        final into = _slotOf(vertex);
-        _slots[into] = vertex;
-        _slots[into + 1] = slots[slot + 1];
-      }
-    }
-  }
-}
-
-/// One closed contour of [edges], walked from [start] and consumed as it
-/// goes — [at] is a vertex's canvas point.
-List<CanvasPoint> _walkContour(
-  _EdgeTable edges,
-  int start,
-  CanvasPoint Function(int vertex) at,
-) {
-  var current = start;
-  final contour = <CanvasPoint>[at(start)];
-  // ⚠️STRAIGHT RUNS COLLAPSE. The walk emits one vertex per pixel edge,
-  // so a plain rectangle would arrive as four thousand-point sides and
-  // be rebuilt into a `Path` on every animation tick. Merging while
-  // walking makes an axis-aligned outline four points again; a true
-  // staircase (a rotated or lassoed edge) keeps its steps, because
-  // those steps ARE the answer.
-  var lastWay = -1;
-  // ⚠️Bounded by the edge count rather than trusted to close: a
-  // malformed walk must end, not hang the paint thread.
-  var guard = edges.length + 8;
-  while (guard-- > 0) {
-    final way = edges.take(current);
-    if (way < 0) {
-      break;
-    }
-    final next = current + edges.steps[way];
-    if (next == start) {
-      break;
-    }
-    if (way == lastWay) {
-      contour[contour.length - 1] = at(next);
-    } else {
-      contour.add(at(next));
-    }
-    lastWay = way;
-    current = next;
-  }
-  return contour;
-}
-
-/// Whether [b] sits on the straight line from [a] to [c] — the test the
-/// contour merge asks at a join. Axis-aligned steps only, which is all a
-/// pixel boundary ever has.
-bool _isStraight(CanvasPoint a, CanvasPoint b, CanvasPoint c) =>
-    (b.x - a.x) * (c.y - b.y) == (b.y - a.y) * (c.x - b.x);
-
-/// One row's pixel runs, read left to right: asked about columns that never
-/// go back, it answers in a single pass over the row.
-final class _RunCursor {
-  _RunCursor(this._runs);
-
-  final List<int> _runs;
-  int _at = 0;
-
-  /// Whether a run covers column [x].
-  bool covers(int x) {
-    while (_at + 1 < _runs.length && _runs[_at + 1] <= x) {
-      _at += 2;
-    }
-    return _at + 1 < _runs.length && _runs[_at] <= x;
-  }
-
-  /// Where the run [covers] last found ends — asked only after a yes.
-  int get end => _runs[_at + 1];
+  /// The contours a point each — for the tests that pin which points the
+  /// walk keeps; the straight-run merge shows only in the count.
+  List<List<CanvasPoint>> get points => [
+    for (var contour = 0; contour + 1 < starts.length; contour += 1)
+      [
+        for (var at = starts[contour]; at < starts[contour + 1]; at += 1)
+          CanvasPoint(
+            x: xy[2 * at].toDouble(),
+            y: xy[2 * at + 1].toDouble(),
+          ),
+      ],
+  ];
 }

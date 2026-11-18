@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart'
 import '../../services/editing/active_cut_helpers.dart';
 import '../../services/editing/layer_standing_after_change.dart'
     show conteRowAfterChange, conteRowHandedOff;
+import '../../models/attached_layer_resolve.dart' show attachGroupSideOf;
+import '../../models/attached_placement.dart';
 import '../../models/cut.dart' show Cut;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -32,8 +34,10 @@ import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
     show headMirrorTargets;
+import '../../services/commands/update_layer_attach_folds_command.dart';
 import '../../services/commands/update_layer_collapsed_command.dart';
-import '../../services/project_lookup.dart' show cutIdOfLayer;
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, layerAnywhereOrNull;
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -76,7 +80,7 @@ class Standing {
     required RangeSelections rangeSelections,
     required RailView railView,
     required bool Function(LayerId layerId) fxEnabledOf,
-    required bool Function(LayerId? layerId) activeCutHasLayer,
+    required bool Function(Cut cut, LayerId? layerId) cutHasLayer,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -92,7 +96,7 @@ class Standing {
        _rangeSelections = rangeSelections,
        _railView = railView,
        _fxEnabledOf = fxEnabledOf,
-       _activeCutHasLayer = activeCutHasLayer;
+       _cutHasLayer = cutHasLayer;
 
   final RangeSelections _rangeSelections;
 
@@ -101,9 +105,10 @@ class Standing {
   final RailView _railView;
   final bool Function(LayerId layerId) _fxEnabledOf;
 
-  /// Whether the active cut SHOWS a row (`ActiveCutSpan.activeCutHasLayer`),
-  /// asked through the session for the construction cycle that note names.
-  final bool Function(LayerId? layerId) _activeCutHasLayer;
+  /// Whether a cut SHOWS a row (`ActiveCutSpan.cutHasLayer`) — a cut of the
+  /// selected track — asked through the session for the construction cycle
+  /// that note names.
+  final bool Function(Cut cut, LayerId? layerId) _cutHasLayer;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -839,11 +844,19 @@ class Standing {
   /// `conte-attach-fold-leaves-the-conte-panel-standing-inside`). ↩️Only the
   /// timeline was handed on, and the conte panel went on standing in a row
   /// the fold had taken off its rail.
-  void handOffCurrentRowOnAttachFold(LayerId baseId) => _handOffOnGroupFold(
+  ///
+  /// Only the rows on the [sides] shutting leave (I-175): the other half
+  /// stays on the screen, and a row on it goes on standing.
+  void handOffCurrentRowOnAttachFold(
+    LayerId baseId,
+    Set<AttachedPlacement> sides,
+  ) => _handOffOnGroupFold(
     baseId,
     (cut) => {
       for (final layer in cut.layers)
-        if (attachGroupBaseOf(layer, cut.layers) == baseId) layer.id,
+        if (attachGroupBaseOf(layer, cut.layers) == baseId &&
+            sides.contains(attachGroupSideOf(layer, cut.layers)))
+          layer.id,
     },
   );
 
@@ -997,27 +1010,33 @@ class Standing {
   /// A flip, a ruler seek and playback that cross a cut give the same answer
   /// ([layerACutSwitchSeats]).
   void _seatTimelineOnStoryboardStand({required LayerId? before}) {
-    final seat = _layerTheStoryboardStandSeats(before: before);
+    final cut = _project.activeCutOrNull;
+    final seat = cut == null
+        ? null
+        : _layerTheStoryboardStandSeats(cut, before: before);
     if (seat != null) {
       _seatLayer(seat);
     }
   }
 
-  LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
-      switch (storyboardStandingRow) {
-        // A projection row's lane seats the row's layer, as an S row's lane
-        // seats the S row's (I-73 ④ⓔ).
-        final row when projectionRowUnder(row) != null =>
-          layerAProjectionStandSeats(
-            before: before,
-            row: projectionRowUnder(row)!,
-          ),
-        LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
-            when _activeCutHasLayer(layerId) =>
-          layerId,
-        TrackRowAddress() => _activeCutHasLayer(before) ? before : null,
-        _ => null,
-      };
+  LayerId? _layerTheStoryboardStandSeats(
+    Cut cut, {
+    required LayerId? before,
+  }) => switch (storyboardStandingRow) {
+    // A projection row's lane seats the row's layer, as an S row's lane
+    // seats the S row's (I-73 ④ⓔ).
+    final row when projectionRowUnder(row) != null =>
+      layerAProjectionStandSeats(
+        before: before,
+        row: projectionRowUnder(row)!,
+        cut: cut,
+      ),
+    LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+        when _cutHasLayer(cut, layerId) =>
+      layerId,
+    TrackRowAddress() => _cutHasLayer(cut, before) ? before : null,
+    _ => null,
+  };
 
   /// 🚨The layer a CUT SWITCH lands the timeline on — every door that
   /// switches the cut asks this: [selectCut] (a flip, a ruler seek, a
@@ -1029,10 +1048,16 @@ class Standing {
   /// [_layerTheStoryboardStandSeats]). Anywhere else — or when that has no
   /// answer — the cut comes back on the row it was left on.
   ///
-  /// ⚠️Asked AFTER the new cut is active: both halves ask what it shows.
+  /// Both halves ask what [cutId] shows — so a cut not stood on yet is
+  /// asked as the one switched to is: the warm that thaws the cel a step
+  /// lands on ahead asks it of the cuts beside the active one
+  /// (stepping-into-another-cut-stalls-the-ui-a-third-of-a-second-Q1).
+  /// ↩️It was asked only after the new cut was active, and asked that.
   LayerId? layerACutSwitchSeats(CutId cutId, {required LayerId? before}) {
-    final storyboard = _working.value == WorkingPanel.storyboard
-        ? _layerTheStoryboardStandSeats(before: before)
+    final cut = _project.cutById(cutId);
+    final storyboard =
+        cut != null && _working.value == WorkingPanel.storyboard
+        ? _layerTheStoryboardStandSeats(cut, before: before)
         : null;
     return storyboard ?? _lastLayerByCut[cutId];
   }
@@ -1063,16 +1088,22 @@ class Standing {
   /// its conte group, or its camera layer (I-73 ④: 「타임라인의 자리 = 카메라
   /// 행」); else [before] when the cut shows it; else null, and the cut's own
   /// landing stands ([layerAConteStandSeats]'s rule, one body for both).
+  /// Of [cut] where one is named — a cut a switch is asked of
+  /// ([layerACutSwitchSeats]) — and of the active cut where none is.
   LayerId? layerAProjectionStandSeats({
     required LayerId? before,
     required TimelineRowAddress row,
+    Cut? cut,
   }) {
-    final cut = _project.activeCutOrNull;
-    final seated = cut == null ? null : projectedRowOf(cut, row);
+    final shown = cut ?? _project.activeCutOrNull;
+    if (shown == null) {
+      return null;
+    }
+    final seated = projectedRowOf(shown, row);
     if (seated != null) {
       return seated.id;
     }
-    return _activeCutHasLayer(before) ? before : null;
+    return _cutHasLayer(shown, before) ? before : null;
   }
 
   /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and
@@ -1399,10 +1430,11 @@ class Standing {
   /// reads it at once ([RailView.readFolds]).
   ///
   /// ONE write for the two folds the standing law opens: the folders above
-  /// a row an undo walks back to, and the attach group a row you went to
-  /// rides. ↩️The attach group's was a write of its own on the rail's view
-  /// until F-360, and the folders' reached the link group alone.
-  void _openFold(LayerId row) {
+  /// a row an undo walks back to, and the side of the attach group a row you
+  /// went to rides ([attachSide], I-175 — that side alone opens). ↩️The
+  /// attach group's was a write of its own on the rail's view until F-360,
+  /// and the folders' reached the link group alone.
+  void _openFold(LayerId row, {AttachedPlacement? attachSide}) {
     final repository = _project.repository;
     final project = repository.requireProject();
     // A folder and a base stand in a cut; a row no cut holds folds nothing.
@@ -1411,11 +1443,23 @@ class Standing {
       return;
     }
     for (final use in headMirrorTargets(project, cutId: cutId, layerId: row)) {
-      UpdateLayerCollapsedCommand.writeCollapsed(
+      if (attachSide == null) {
+        UpdateLayerCollapsedCommand.writeCollapsed(
+          repository,
+          cutId: use.cutId,
+          layerId: use.layerId,
+          value: false,
+        );
+        continue;
+      }
+      final folded =
+          layerAnywhereOrNull(project, use.layerId)?.foldedAttaches ??
+          const <AttachedPlacement>{};
+      UpdateLayerAttachFoldsCommand.writeFoldedAttaches(
         repository,
         cutId: use.cutId,
         layerId: use.layerId,
-        value: false,
+        value: folded.difference({attachSide}),
       );
     }
     _railView.readFolds(repository.currentProject);
@@ -1464,10 +1508,9 @@ class Standing {
         layerRowHiddenBy(
           layer,
           folders: folders,
-          attachBaseId: attachGroupBaseOf(layer, stack),
           hiddenSections: _railView.hiddenSections.value,
           rowFilter: _railView.rowFilter.value,
-          collapsedAttachBaseIds: _railView.collapsedAttachBaseIds.value,
+          attachFoldedRowIds: _railView.attachFoldedRowIds.value,
           standingLayerId: spared,
           fxEnabledOf: _fxEnabledOf,
         );
@@ -1544,8 +1587,8 @@ class Standing {
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and
-  /// the attach group it rides unfolds ([_openFold]). One write each, only
-  /// when shut.
+  /// the side of the attach group it rides unfolds ([_openFold]). One write
+  /// each, only when shut.
   void _openViewAround(Layer layer, List<Layer> stack) {
     final section = timelineSectionForLayerKind(layer.kind);
     final hidden = _railView.hiddenSections.value;
@@ -1553,11 +1596,13 @@ class Standing {
       _railView.hiddenSections.value = {...hidden}..remove(section);
     }
     final baseId = attachGroupBaseOf(layer, stack);
+    final side = attachGroupSideOf(layer, stack);
     if (baseId != null &&
-        _railView.collapsedAttachBaseIds.value.contains(baseId)) {
+        side != null &&
+        _railView.attachFoldedRowIds.value.contains(layer.id)) {
       // Every use of the base unfolds with it (F-302) — every row that
       // wears its head (I-73).
-      _openFold(baseId);
+      _openFold(baseId, attachSide: side);
     }
   }
 

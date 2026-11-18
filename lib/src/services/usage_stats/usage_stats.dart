@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/one_pass_at_a_time.dart';
 import '../persistence/usage_stats_store.dart';
 import 'aptabase_client.dart';
 
@@ -107,9 +108,14 @@ class UsageStats {
   /// [_days]; empty while off.
   List<AptabaseStamped> _queue = const [];
 
-  /// Whether a POST is on its way — the one that is takes what is queued
-  /// meanwhile, in turn.
-  bool _flushing = false;
+  /// What waits, posted oldest first, a batch at a time, until the queue is
+  /// empty or a POST is not taken ([_postTheOldest]) — one on its way at a
+  /// time, the next taking what is queued meanwhile. Its askers asked
+  /// [_sends] already, and off empties the queue.
+  late final _posts = OnePassAtATime(
+    due: () => _queue.isNotEmpty,
+    pass: _postTheOldest,
+  );
 
   Future<void> _restored = Future<void>.value();
 
@@ -199,7 +205,7 @@ class UsageStats {
       const [(name: 'app_away', props: <String, Object>{})],
       _now(),
     );
-    unawaited(_flush());
+    unawaited(_posts.ask());
     await kept;
   }
 
@@ -332,7 +338,7 @@ class UsageStats {
     // After the events: armed before them, it would count from a session
     // they may have ended, and come due at once.
     _keepInUse();
-    await _flush();
+    await _posts.ask();
   }
 
   /// Where the app runs, as chips on the `day`: the device's language, its
@@ -395,33 +401,23 @@ class UsageStats {
   /// in it.
   UsageStatsOn get _kept => UsageStatsOn(_days, _queue, _client.session);
 
-  /// Posts what waits, oldest first, a batch at a time, until the queue is
-  /// empty or a POST is not taken — what is left waits for the next launch,
-  /// return, in_use or event. Only a POST the service took leaves the queue:
-  /// one whose 2xx never came back is sent again. Its callers asked
-  /// [_sends] already, and off empties the queue.
-  Future<void> _flush() async {
-    if (_flushing) {
-      return;
+  /// Posts the oldest batch of what waits — false where the POST was not
+  /// taken, and what is left waits for the next launch, return, in_use or
+  /// event. Only a POST the service took leaves the queue: one whose 2xx
+  /// never came back is sent again.
+  Future<bool> _postTheOldest() async {
+    final batch = _queue.take(AptabaseClient.batchLimit).toList();
+    // ⚠️Turned off while it was on its way: the queue is gone, and nothing
+    // is written back over the off.
+    if (!await _client.deliver(batch) || !enabled.value) {
+      return false;
     }
-    _flushing = true;
-    try {
-      while (_queue.isNotEmpty) {
-        final batch = _queue.take(AptabaseClient.batchLimit).toList();
-        // ⚠️Turned off while it was on its way: the queue is gone, and
-        // nothing is written back over the off.
-        if (!await _client.deliver(batch) || !enabled.value) {
-          return;
-        }
-        _queue = [
-          for (final event in _queue)
-            if (!batch.any((sent) => identical(sent, event))) event,
-        ];
-        unawaited(_save());
-      }
-    } finally {
-      _flushing = false;
-    }
+    _queue = [
+      for (final event in _queue)
+        if (!batch.any((sent) => identical(sent, event))) event,
+    ];
+    unawaited(_save());
+    return true;
   }
 
   /// ⚠️A launch or a return whose saved answer lands after this arms no

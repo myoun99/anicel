@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/session/se_entries.dart';
 SeEntries seEntriesOf(EditorSessionManager session) => session.seEntries;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('the tag write reaches a TRACK-owned SE row and undoes in one step; '
       'null resets it to the stacked default', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());

@@ -70,35 +70,6 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   /// them over (I-140).
   final double gain;
 
-  /// The same band asked in SECONDS — what a media viewer has instead of a
-  /// frame rate.
-  ///
-  /// 🚨★★★**A SECOND PAINTER WOULD BE A CLONE.** Everything below reduces
-  /// [frameRate] and [pixelsPerFrame] to ONE number — `pixelsPerFrame *
-  /// fps`, pixels per second — and that is the number a viewer already
-  /// knows. So this is not a conversion layer: at one frame per second a
-  /// frame IS a second, and every quantity in `paint` lands on the same
-  /// arithmetic the timeline gets.
-  ///
-  /// ⛔No trim and no envelope: a viewer shows a whole FILE, not a clip
-  /// placed on a lane, so `leadingFrames`, `gain` and the two fades have
-  /// no subject here. A caller that grows one is looking at a clip and
-  /// belongs on the main constructor.
-  WaveformPainter.perSecond({
-    required AudioPeaks peaks,
-    required double pixelsPerSecond,
-    required Color color,
-    required double devicePixelRatio,
-    Axis axis = Axis.horizontal,
-  }) : this(
-         peaks: peaks,
-         frameRate: const ProjectFrameRate.integer(1),
-         pixelsPerFrame: pixelsPerSecond,
-         color: color,
-         devicePixelRatio: devicePixelRatio,
-         axis: axis,
-       );
-
   @override
   void paint(Canvas canvas, Size size) {
     if (peaks.peaks.isEmpty ||
@@ -187,9 +158,16 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
           end: shown.end,
           extent: extentAlong(axis, size),
         ),
+        // A device pixel short of half its share, as the engine's pass
+        // stops it (rust/src/kernels/timeline/wave `reach_q8`): the same
+        // sound looks one way, baked or painted. ↩️A logical pixel short —
+        // on a 2× screen a device pixel more than the engine's
+        // (⏳타임라인/콘티 2026-11-15, the user asleep — theirs to overturn).
         across: (
           center: share * (lane + 0.5),
-          reach: math.max(0.0, share / 2 - 1) * math.min(1.0, gain),
+          reach:
+              math.max(0.0, share / 2 - 1 / devicePixelRatio) *
+              math.min(1.0, gain),
         ),
       );
     }

@@ -22,8 +22,8 @@ import '../helpers/cels_kept_in_a_file.dart';
 /// pictures let go of (`FramePictures.letGoOfLeftRevisions`). Every way a
 /// cel takes a new revision, and the two that name none.
 void main() {
-  const canvas = CanvasSize(width: 16, height: 8);
-  const tileSize = 4;
+  const tileSize = defaultCelTileSize;
+  const canvas = CanvasSize(width: 4 * tileSize, height: 2 * tileSize);
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -42,7 +42,8 @@ void main() {
       coord: coord,
       tile: BitmapTile(
         size: tileSize,
-        pixels: Uint8List(tileSize * tileSize * 4)..fillRange(0, 64, value),
+        pixels: Uint8List(BitmapTile.bytesFor(tileSize))
+          ..fillRange(0, BitmapTile.bytesFor(tileSize), value),
       ),
     ),
   ]);
@@ -137,7 +138,7 @@ void main() {
     store.adoptCutCanvasSize(
       cutId: const CutId('c'),
       canvasSize: canvas,
-      dx: 4,
+      dx: tileSize.toDouble(),
     );
     expect(store.revisionsLastLeft, {left});
   });

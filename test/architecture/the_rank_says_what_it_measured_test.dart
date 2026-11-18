@@ -86,6 +86,16 @@ void main() {
       expect(broken, isEmpty);
     });
 
+    test('what the test config imports, every suite reaches', () {
+      // flutter_test loads the config before every suite while nothing
+      // imports it; a walk without that edge called a file only the config
+      // names reached by none — the 「certain」 direction (2026-11-07).
+      final adapter = rows.singleWhere(
+        (r) => r['path'] == 'lib/src/native/gpu_adapter_choice.dart',
+      );
+      expect(adapter['reach'], report['testFiles']);
+    });
+
     test('a file no test reaches is also named by no test', () {
       for (final r in rows.where((r) => (r['reach'] as int) == 0)) {
         expect(r['direct'], 0, reason: '${r['path']} is named but unreachable');

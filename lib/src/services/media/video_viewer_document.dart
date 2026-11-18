@@ -149,9 +149,11 @@ final class VideoViewerDocument implements ViewerDocument {
     // 🚨The await is the point of the round: the decode happens on the
     // worker, and this isolate is free while it does. A frame measured
     // 14.97 ms at 1080p — more than a third of a 24fps budget — and it used
-    // to be spent right here, on the isolate that also has to PAINT it.
-    final rgba = await _backend.frame(_token, pageIndex);
-    if (rgba == null) {
+    // to be spent right here, on the isolate that also has to PAINT it —
+    // and so did its premultiply, 13–17 ms more, until it went with it
+    // ([VideoDecodeBackend.premultipliedFrame]).
+    final premultiplied = await _backend.premultipliedFrame(_token, pageIndex);
+    if (premultiplied == null) {
       throw StateError('frame $pageIndex could not be read');
     }
     // 🚨★★★**BOTH WAYS OUT OF THIS FUNCTION ARE NOW THE SAME KIND OF
@@ -161,9 +163,10 @@ final class VideoViewerDocument implements ViewerDocument {
     // `_ensurePageRendered` holds an in-flight marker across this await that
     // its `on Object` arm could therefore never clear. One movie frame the
     // engine refused wedged the panel for the life of its `State`.
-    // [decodeStraightRgbaImage] carries why the SDK cannot report that.
-    return decodeStraightRgbaImage(
-      rgba: rgba,
+    // [decodeStraightRgbaImageOnAWorker] carries why the SDK cannot report
+    // that, and [uploadRawRgba] is the upload that can.
+    return uploadRawRgba(
+      premultiplied,
       width: _info.width,
       height: _info.height,
       targetWidth: width,

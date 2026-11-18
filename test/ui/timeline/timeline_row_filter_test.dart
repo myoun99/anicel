@@ -190,7 +190,7 @@ void main() {
       expect(rows.map((r) => r.layer.id.value), ['a', 'b', 'c']);
     });
 
-    test('collapsedAttachBaseIds folds a base\'s attach rows out — the '
+    test('attachFoldedRowIds folds a base\'s attach rows out — the '
         'active one too (UI-R20 #9, ↩️F-169)', () {
       final attachRows = [
         _layer('base'),
@@ -207,7 +207,7 @@ void main() {
         layers: attachRows,
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
-        collapsedAttachBaseIds: {const LayerId('base')},
+        attachFoldedRowIds: {const LayerId('up1')},
       );
       expect(folded.map((r) => r.layer.id.value), ['base', 'other']);
 
@@ -219,7 +219,7 @@ void main() {
         layers: attachRows,
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
-        collapsedAttachBaseIds: {const LayerId('base')},
+        attachFoldedRowIds: {const LayerId('up1')},
         activeLayerId: const LayerId('up1'),
       );
       expect(activeInside.map((r) => r.layer.id.value), ['base', 'other']);

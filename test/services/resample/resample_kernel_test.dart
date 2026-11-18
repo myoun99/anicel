@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/turn_trig.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
+import 'package:anicel/src/services/resample/selection_resample.dart';
 
 import 'coverage_truth.dart';
 
@@ -299,7 +300,8 @@ void main() {
     // The angle steps here are five degrees. The round before used ten,
     // and ten stepped straight over the angles where its footprint failed.
 
-    test('agrees with the truth, and keeps the line art the truth keeps', () {
+    test('agrees with the truth, and keeps the line art the truth '
+        'keeps', () async {
       // Two assertions over one sweep because they share the expensive
       // half: the oracle costs a thousand inverse maps per pixel, and
       // running the grid twice to state the two properties separately
@@ -337,7 +339,7 @@ void main() {
             final scale = 0.4 + step * 0.025;
             final out = (64 * scale).round();
             final transform = _reduceAbout(degrees.toDouble(), scale, 64, out);
-            final got = resampleRgbaReference(
+            final got = await resampleOnTheEngine(
               src: entry.value,
               srcWidth: 64,
               srcHeight: 64,
@@ -416,7 +418,7 @@ void main() {
     });
 
     test('an exact tie is decided by scan order, without inventing a '
-        'colour', () {
+        'colour', () async {
       // The one case the sweep declines to judge, pinned here exactly
       // rather than statistically — a two-pixel source reduced to one
       // destination pixel, where the preimage is precisely the two source
@@ -439,7 +441,7 @@ void main() {
       sourceWords[1] = 0xffffffff;
       // dst 1×1 over src 2×1: the preimage spans u ∈ [−0.5, 1.5], which is
       // source pixel 0 and source pixel 1, each covered exactly 1.0.
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: source,
         srcWidth: 2,
         srcHeight: 1,
@@ -461,7 +463,7 @@ void main() {
     });
 
     test('a vote tied at the first rate is sampled again until area decides '
-        'it — a hairline covering 59% of its pixel is the line', () {
+        'it — a hairline covering 59% of its pixel is the line', () async {
       // resample-tie-doubling-unpinned (10-25): with the refinement off,
       // every other test in this file stayed green — the sweep above
       // states its agreement in percent and an ink floor, and one pixel a
@@ -495,7 +497,7 @@ void main() {
         e: e,
         f: 4.5 - (d + e) / 2,
       );
-      Uint8List picked() => resampleRgbaReference(
+      Future<Uint8List> picked() => resampleOnTheEngine(
         src: source,
         srcWidth: size,
         srcHeight: size,
@@ -516,14 +518,14 @@ void main() {
 
       expect(_tokenAt(truth, 1, 0, 0), ink, reason: '⛔전제: the line has 59%');
       expect(
-        _tokenAt(picked(), 1, 0, 0),
+        _tokenAt(await picked(), 1, 0, 0),
         ink,
         reason: 'a tie at eight samples was decided without sampling again',
       );
     });
 
     test('opaque artwork never comes back transparent, at any anisotropy '
-        'or angle', () {
+        'or angle', () async {
       // The way the previous design died, twice, by two different
       // mechanisms: a footprint box that had to be shrunk to match a
       // rotated parallelogram's area either scored no tap at all (a hole)
@@ -559,7 +561,7 @@ void main() {
                 e: t.e,
                 f: t.f + t.d * shift + t.e * shift,
               );
-              final got = resampleRgbaReference(
+              final got = await resampleOnTheEngine(
                 src: solid,
                 srcWidth: width,
                 srcHeight: height,
@@ -608,7 +610,8 @@ void main() {
   });
 
   group('Pick keeps its provenance contract', () {
-    test('every output token came from the source, at every transform', () {
+    test('every output token came from the source, at every '
+        'transform', () async {
       final cases = <String, ResampleTransform>{
         'rotate 15': _rotationAbout(15, width / 2, height / 2),
         'rotate 37.4': _rotationAbout(37.4, width / 2, height / 2),
@@ -644,7 +647,7 @@ void main() {
         ),
       };
       for (final entry in cases.entries) {
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -667,7 +670,7 @@ void main() {
       }
     });
 
-    test('alpha values are carried, never invented', () {
+    test('alpha values are carried, never invented', () async {
       // The fixture holds 0x80 as well as 0x00 and 0xff, so this asserts
       // something: Pick may emit the source's partial alpha, but must not
       // manufacture a NEW one the way an averaging kernel would.
@@ -679,7 +682,7 @@ void main() {
         ResampleTransform.scaleTranslate(scale: 0.37),
         ResampleTransform.scaleTranslate(scale: 3),
       ]) {
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -693,7 +696,7 @@ void main() {
       }
     });
 
-    test('the elected token overlapped the pixel it was elected for', () {
+    test('the elected token overlapped the pixel it was elected for', () async {
       // The contract as written is about PROVENANCE, not merely about the
       // colour existing somewhere in the source. This walks the preimage
       // box of every destination pixel and asserts the winner came from
@@ -702,7 +705,7 @@ void main() {
       // preimage never touched.
       for (final scale in <double>[2, 4, 0.5]) {
         final transform = ResampleTransform.scaleTranslate(scale: scale);
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -721,10 +724,7 @@ void main() {
             final v = (y + 0.5) / scale - 0.5;
             // Pixels whose unit square meets the preimage box, plus the
             // sampling floor the kernel is allowed to widen to.
-            final reach = math.max(
-              extent,
-              resampleRadiusFloor(ResampleMode.pick),
-            );
+            final reach = math.max(extent, kSelectionResampleRadiusFloor);
             var found = false;
             for (var sy = (v - reach).floor(); sy <= (v + reach).ceil(); sy++) {
               for (
@@ -754,7 +754,7 @@ void main() {
   });
 
   group('magnification is replication, not a vote', () {
-    test('integer magnification reproduces source blocks exactly', () {
+    test('integer magnification reproduces source blocks exactly', () async {
       // Pick's radius floor exists to give rotation and reduction a
       // neighbourhood to vote in. Under magnification the preimage is
       // narrower than one source pixel, and applying the floor there let
@@ -774,7 +774,7 @@ void main() {
       for (final scale in <int>[2, 4, 8]) {
         final outWidth = smallWidth * scale;
         final outHeight = smallHeight * scale;
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: tiny,
           srcWidth: smallWidth,
           srcHeight: smallHeight,
@@ -796,7 +796,7 @@ void main() {
       }
     });
 
-    test('an isolated pixel survives magnification', () {
+    test('an isolated pixel survives magnification', () async {
       const smallWidth = 21;
       const smallHeight = 21;
       final tiny = Uint8List(smallWidth * smallHeight * 4);
@@ -805,7 +805,7 @@ void main() {
         tinyWords[i] = 0xffffffff;
       }
       tinyWords[10 * smallWidth + 10] = 0xff101010;
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: tiny,
         srcWidth: smallWidth,
         srcHeight: smallHeight,
@@ -820,7 +820,8 @@ void main() {
   });
 
   group('degenerate transforms are declared outside, not thrown', () {
-    test('a non-finite map produces a transparent result in both modes', () {
+    test('a non-finite map produces a transparent result in both '
+        'modes', () async {
       final cases = <String, ResampleTransform>{
         'scale zero': ResampleTransform.scaleTranslate(scale: 0),
         'infinite a': ResampleTransform(
@@ -850,7 +851,7 @@ void main() {
       };
       for (final mode in ResampleMode.values) {
         for (final entry in cases.entries) {
-          final out = resampleRgbaReference(
+          final out = await resampleOnTheEngine(
             src: source,
             srcWidth: width,
             srcHeight: height,
@@ -866,10 +867,10 @@ void main() {
       }
     });
 
-    test('a steep perspective terminates and stays bounded', () {
+    test('a steep perspective terminates and stays bounded', () async {
       // Radius grows as 1/w², so without the ceiling one destination pixel
       // can ask for hundreds of millions of taps. This must simply finish.
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -896,7 +897,7 @@ void main() {
   });
 
   group('the vote table survives more colours than it has slots', () {
-    test('a dominant colour still wins past 16 distinct tokens', () {
+    test('a dominant colour still wins past 16 distinct tokens', () async {
       // Dropping the newcomer on overflow let a colour covering 99% of a
       // footprint lose to one covering 0.1%. Eviction of the lightest slot
       // plus an exact re-weigh is what makes "the rarest lose" true.
@@ -918,7 +919,7 @@ void main() {
           crowdedWords[y * size + x] = 0xff000000 | ((y * 8 + x) * 0x040404);
         }
       }
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: crowded,
         srcWidth: size,
         srcHeight: size,
@@ -934,7 +935,8 @@ void main() {
       );
     });
 
-    test('an edge footprint whose interior is opaque is not punched out', () {
+    test('an edge footprint whose interior is opaque is not punched '
+        'out', () async {
       const size = 64;
       final crowded = Uint8List(size * size * 4);
       final crowdedWords = Uint32List.view(crowded.buffer);
@@ -945,7 +947,7 @@ void main() {
       for (var i = 0; i < 16; i += 1) {
         crowdedWords[0 * size + i] = 0xff000000 | (i * 0x080808);
       }
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: crowded,
         srcWidth: size,
         srcHeight: size,
@@ -965,7 +967,7 @@ void main() {
   });
 
   group('footprint geometry is constrained', () {
-    test('swapping the two radii changes the result', () {
+    test('swapping the two radii changes the result', () async {
       // Without this, a fixture symmetric enough to survive an axis swap
       // would let a transposed footprint pass every other test here.
       final anisotropic = ResampleTransform(
@@ -985,7 +987,7 @@ void main() {
         f: 0,
       );
       for (final mode in ResampleMode.values) {
-        final a = resampleRgbaReference(
+        final a = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -994,7 +996,7 @@ void main() {
           transform: anisotropic,
           mode: mode,
         );
-        final b = resampleRgbaReference(
+        final b = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -1008,7 +1010,7 @@ void main() {
     });
 
     test('a wider floor changes what Blend produces and nothing Pick '
-        'elects', () {
+        'elects', () async {
       // Two contracts in one fixture, because they are the same
       // measurement pointed in opposite directions. Blend still gathers
       // taps, so its floor has to be consumed — a kernel that ignored it
@@ -1018,73 +1020,38 @@ void main() {
       // footprint is what deleted line art under rotation for three
       // rounds.
       final transform = _rotationAbout(15, width / 2, height / 2);
-      Uint8List at(ResampleMode mode, double floor) => resampleRgbaReference(
-        src: source,
-        srcWidth: width,
-        srcHeight: height,
-        dstWidth: width,
-        dstHeight: height,
-        transform: transform,
-        mode: mode,
-        radiusFloor: floor,
-      );
+      Future<Uint8List> at(ResampleMode mode, double floor) =>
+          resampleOnTheEngine(
+            src: source,
+            srcWidth: width,
+            srcHeight: height,
+            dstWidth: width,
+            dstHeight: height,
+            transform: transform,
+            mode: mode,
+            radiusFloor: floor,
+          );
       expect(
-        at(ResampleMode.blend, 1.0),
-        isNot(at(ResampleMode.blend, 3.0)),
+        await at(ResampleMode.blend, 1.0),
+        isNot(await at(ResampleMode.blend, 3.0)),
         reason: 'Blend ignored its radius floor',
       );
       expect(
-        at(ResampleMode.pick, 3.0),
-        at(ResampleMode.pick, 1.0),
+        await at(ResampleMode.pick, 3.0),
+        await at(ResampleMode.pick, 1.0),
         reason: 'Pick read a radius floor it is not supposed to have',
       );
-    });
-
-    test('the sample rate follows each axis, not the area they multiply '
-        'to', () {
-      // The rule that came before this one took the rate from the
-      // preimage's AREA, and an anisotropic map is exactly where that is
-      // wrong: shrinking 5:1 across while magnifying 2× down is an area of
-      // 2.5 — the same as a gentle uniform reduction — while needing ten
-      // samples across and eight down. It dropped a whole column of an
-      // opaque image when it got four.
-      expect(resampleSamplesPerAxis(25), 10, reason: 'a 5px step');
-      expect(resampleSamplesPerAxis(0.25), kResampleMinSamplesPerAxis);
-      expect(resampleSamplesPerAxis(1), kResampleMinSamplesPerAxis);
-      expect(resampleSamplesPerAxis(10000), kResampleMaxSamplesPerAxis);
-      expect(
-        resampleSamplesPerAxis(double.nan),
-        kResampleMaxSamplesPerAxis,
-        reason: 'a degenerate rate must terminate, not run away',
-      );
-      // ⌈2√q⌉ at each threshold, so the chain cannot drift from the rule
-      // it stands for.
-      for (
-        var n = kResampleMinSamplesPerAxis;
-        n <= kResampleMaxSamplesPerAxis;
-        n += 1
-      ) {
-        final atThreshold = n * n / 4;
-        expect(resampleSamplesPerAxis(atThreshold), n, reason: 'q = $n²/4');
-        if (n < kResampleMaxSamplesPerAxis) {
-          expect(
-            resampleSamplesPerAxis(atThreshold + 1e-9),
-            n + 1,
-            reason: 'just past q = $n²/4',
-          );
-        }
-      }
     });
   });
 
   group('Blend cannot ring', () {
-    test('output stays inside the min..max of its own footprint', () {
+    test('output stays inside the min..max of its own footprint', () async {
       // The halo TVPaint's Medium/High/VeryHigh filters produce is exactly
       // an excursion outside this interval. A tent is a convex combination,
       // so there must be zero of them.
       const scale = 0.8;
       final transform = ResampleTransform.scaleTranslate(scale: scale);
-      final out = resampleRgbaReference(
+      final out = await resampleOnTheEngine(
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -1148,9 +1115,9 @@ void main() {
   });
 
   group('exactness contracts', () {
-    test('identity is byte-for-byte', () {
+    test('identity is byte-for-byte', () async {
       for (final mode in ResampleMode.values) {
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -1163,9 +1130,9 @@ void main() {
       }
     });
 
-    test('whole-pixel translation is byte-for-byte', () {
+    test('whole-pixel translation is byte-for-byte', () async {
       for (final mode in ResampleMode.values) {
-        final out = resampleRgbaReference(
+        final out = await resampleOnTheEngine(
           src: source,
           srcWidth: width,
           srcHeight: height,
@@ -1192,44 +1159,9 @@ void main() {
     });
   });
 
-  group('band split is invisible', () {
-    test('row bands reproduce the whole-image result exactly', () {
-      // This is what lets the native kernel fan destination rows across the
-      // worker pool: a band must not be able to tell it is a band.
-      for (final mode in ResampleMode.values) {
-        final transform = _rotationAbout(22.5, width / 2, height / 2);
-        final whole = resampleRgbaReference(
-          src: source,
-          srcWidth: width,
-          srcHeight: height,
-          dstWidth: width,
-          dstHeight: height,
-          transform: transform,
-          mode: mode,
-        );
-        final banded = Uint8List(width * height * 4);
-        for (var start = 0; start < height; start += 7) {
-          resampleRgbaReferenceInto(
-            src: source,
-            srcWidth: width,
-            srcHeight: height,
-            dst: banded,
-            dstWidth: width,
-            dstHeight: height,
-            transform: transform,
-            mode: mode,
-            rowStart: start,
-            rowEnd: math.min(start + 7, height),
-          );
-        }
-        expect(banded, whole, reason: '$mode differed when split into bands');
-      }
-    });
-  });
-
   group('quality yardstick', () {
     test('Pick keeps more of a reduced drawing than a point sampler, and '
-        'keeps it in one piece', () {
+        'keeps it in one piece', () async {
       // This test used to compare Pick at floor 1.5 against Pick at floor
       // 1.0 and call the second one "nearest-ish" — so it measured a
       // TUNING KNOB against itself, not the tool it has to beat. Once the
@@ -1247,7 +1179,7 @@ void main() {
       final outWidth = (width * scale).round();
       final outHeight = (height * scale).round();
       final transform = ResampleTransform.scaleTranslate(scale: scale);
-      final pick = resampleRgbaReference(
+      final pick = await resampleOnTheEngine(
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -1293,7 +1225,7 @@ void main() {
       );
     });
 
-    test('a reduction still carries line art through', () {
+    test('a reduction still carries line art through', () async {
       // NOT "more ink than nearest". Measured against the production cel,
       // Pick came out 0.4% BELOW the point sampler on raw ink count
       // (24,144 vs 24,244) — a majority vote discards a stroke narrower
@@ -1307,7 +1239,7 @@ void main() {
       const scale = 0.37;
       final outWidth = (width * scale).round();
       final outHeight = (height * scale).round();
-      final pick = resampleRgbaReference(
+      final pick = await resampleOnTheEngine(
         src: source,
         srcWidth: width,
         srcHeight: height,
@@ -1328,12 +1260,13 @@ void main() {
       );
     });
 
-    test('Pick leaves fewer spurs than point sampling under reduction', () {
+    test('Pick leaves fewer spurs than point sampling under '
+        'reduction', () async {
       const scale = 0.5;
       final outWidth = (width * scale).round();
       final outHeight = (height * scale).round();
       final transform = ResampleTransform.scaleTranslate(scale: scale);
-      final pick = resampleRgbaReference(
+      final pick = await resampleOnTheEngine(
         src: source,
         srcWidth: width,
         srcHeight: height,

@@ -21,7 +21,7 @@ void main() {
 
     BitmapSurface surface() => BitmapSurface(
       canvasSize: const CanvasSize(width: 4, height: 4),
-      tileSize: 2,
+      tileSize: 128,
     );
 
     BrushDab dab({int sequence = 0}) => BrushDab(

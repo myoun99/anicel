@@ -22,7 +22,7 @@ use std::ptr::NonNull;
 
 use wgpu::rwh::{AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-use crate::device::{Engine, storage_texture};
+use crate::device::{Engine, let_go, on_thread_of, storage_texture};
 use crate::fail;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
@@ -51,8 +51,13 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
 }
 
 /// Android has no call that says how much video memory a process uses.
-pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<u64> {
+pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     None
+}
+/// Why the device went — unsaid: Vulkan says that a device is lost, and
+/// not why.
+pub fn device_went_by(_device: &wgpu::Device) -> u32 {
+    super::WENT_UNSAID
 }
 
 #[link(name = "android")]
@@ -117,11 +122,11 @@ impl Window {
         config.usage = usage;
         config.format = format;
         config.present_mode = wgpu::PresentMode::Fifo;
-        surface.configure(&engine.device, &config);
+        surface.configure(engine.device(), &config);
         Some(Self {
             surface,
             current: None,
-            staging: (!direct).then(|| storage_texture(&engine.device, width, height, format)),
+            staging: (!direct).then(|| storage_texture(engine.device(), width, height, format)),
             _native: native,
         })
     }
@@ -156,7 +161,7 @@ impl Window {
         };
         if let Some(staging) = &self.staging {
             let mut encoder = engine
-                .device
+                .device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             encoder.copy_texture_to_texture(
                 staging.as_image_copy(),
@@ -202,11 +207,13 @@ pub unsafe extern "C" fn gpu_engine_window_new(
 ) -> *mut Window {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    NonNull::new(native)
-        .map(NativeWindow)
-        .or_else(|| fail("no window"))
-        .and_then(|native| Window::new(engine, native, width, height))
-        .map_or(std::ptr::null_mut(), |window| Box::into_raw(Box::new(window)))
+    engine.on_thread(|| {
+        NonNull::new(native)
+            .map(NativeWindow)
+            .or_else(|| fail("no window"))
+            .and_then(|native| Window::new(engine, native, width, height))
+            .map_or(std::ptr::null_mut(), |window| engine.hands(window))
+    })
 }
 
 /// # Safety
@@ -218,16 +225,20 @@ pub unsafe extern "C" fn gpu_engine_window_direct(window: *const Window) -> bool
 }
 
 /// The texture this frame's kernels write to `window` — the same one until
-/// it is presented. Null on failure; see the last error.
+/// it is presented. Null on failure; see the last error. The swapchain's
+/// next image is the driver's to give, so it is asked on the window's
+/// engine's thread ([`on_thread_of`]).
 ///
 /// # Safety
 /// `window` is live; the texture lives until `window` is presented.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_window_target(window: *mut Window) -> *const wgpu::Texture {
     // SAFETY: see the function's contract.
-    unsafe { &mut *window }
-        .target()
-        .map_or(std::ptr::null(), |texture| texture)
+    unsafe {
+        on_thread_of(window, || {
+            (*window).target().map_or(std::ptr::null(), |texture| std::ptr::from_ref(texture))
+        })
+    }
 }
 
 /// Shows what the kernels last wrote to `window`. False on failure; see
@@ -239,7 +250,9 @@ pub unsafe extern "C" fn gpu_engine_window_target(window: *mut Window) -> *const
 pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window: *mut Window) -> bool {
     // SAFETY: see the function's contract.
     let (engine, window) = unsafe { (&*engine, &mut *window) };
-    window.present(engine).is_some()
+    engine.on_thread(|| {
+        window.present(engine).is_some()
+    })
 }
 
 /// # Safety
@@ -247,8 +260,6 @@ pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window
 /// released after it, not before.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_window_free(window: *mut Window) {
-    if !window.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(window) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(window) };
 }

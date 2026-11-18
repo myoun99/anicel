@@ -23,6 +23,7 @@ import '../../models/media_asset.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/import/import_warning.dart';
+import 'media_identity_reader.dart' show readMediaModified;
 
 export '../../models/import/import_destination.dart';
 
@@ -120,6 +121,20 @@ bool placementRegisters({required bool baked, bool soundReadsIt = false}) =>
 /// — one frame in a cut that has none.
 int stillHoldIn(Cut cut) => cut.duration < 1 ? 1 : cut.duration;
 
+/// Whether a placement of [pictures] pictures lands as a STILL — one cel
+/// held over the cut ([planStillImageLayer]) — rather than as cels
+/// ([planSequenceLayer]): ONE picture, as a kind that holds one cel
+/// ([LayerKind.holdsSingleCel]; a row's [LayerKind.bornOfOnePicture] until
+/// someone picks another), placed as a layer — a row's frames take cels.
+///
+/// The cut folder's rows ask the kind the same question (F-429): the kind
+/// decides the shape, whatever file the row came from.
+bool placesAStill(
+  int pictures,
+  LayerKind kind, {
+  required bool ontoFrames,
+}) => pictures == 1 && kind.holdsSingleCel && !ontoFrames;
+
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
 /// With a [reference] the layer SHOWS the file — it is stamped as
@@ -130,11 +145,9 @@ ImageLayerImportPlan planStillImageLayer({
   required String displayName,
   required CutId cutId,
   required int duration,
-  required MediaFitMode fit,
   required MediaReference? reference,
   required ImportIdMint mint,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   MediaAssetKind assetKind = MediaAssetKind.image,
@@ -177,9 +190,7 @@ ImageLayerImportPlan planStillImageLayer({
         importedMediaAsset(
           path: sourceFile,
           kind: assetKind,
-          fit: fit,
           sourcePath: sourcePath,
-          sourceStamp: sourceStamp,
           identity: identity,
           carried: carried,
           pageCount: pageCount,
@@ -196,13 +207,19 @@ ImageLayerImportPlan planStillImageLayer({
 /// third.
 ///
 /// A [carried] one is a NEW carry ([mintMediaCarry]): an import is the
-/// moment a carry is made, even of a path the project carried before.
+/// moment a carry is made, even of a path the project carried before. Its
+/// date is read here, as it is carried, off the file its bytes come from —
+/// a piece's [sourcePath], the file the piece was cut from (🗣️F-589-Q1,
+/// [MediaCarriedAs]): one place, so no door that imports forgets it.
+///
+/// ↩️It took the FIT the import placed its picture with and stamped it on
+/// the entry, and the planners took one only to hand it here. Nothing read
+/// it back (유저 2026-11-10, [MediaAsset]): where a picture stands is the
+/// placement's — the reference's pose, or the bake's fit.
 MediaAsset importedMediaAsset({
   required String path,
   required MediaAssetKind kind,
-  required MediaFitMode fit,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   double? sourceFps,
@@ -212,11 +229,14 @@ MediaAsset importedMediaAsset({
   path: path,
   name: mediaAssetDefaultName(path),
   kind: kind,
-  fitMode: fit,
   sourcePath: sourcePath,
-  sourceStamp: sourceStamp,
   identity: identity,
-  carriedAs: carried ? mintMediaCarry(path) : null,
+  carriedAs: carried
+      ? (
+          token: mintMediaCarry(path),
+          modified: readMediaModified(sourcePath ?? path),
+        )
+      : null,
   sourceFps: sourceFps,
   frameCount: frameCount,
   pageCount: pageCount,
@@ -246,16 +266,20 @@ SequenceLayerImportPlan planSequenceLayer({
   required ImportIdMint mint,
 
   /// The file the layer SHOWS, when it shows one: stamped as
-  /// [Layer.mediaReference], and its asset registers — with [fit] as the
-  /// pool entry's placement default. Null bakes the pictures, and nothing
-  /// is stamped or registered ([placementRegisters]).
+  /// [Layer.mediaReference], and its asset registers. Null bakes the
+  /// pictures, and nothing is stamped or registered ([placementRegisters]).
   MediaReference? reference,
-  MediaFitMode fit = MediaFitMode.contain,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   double? sourceFps,
+
+  /// The FILE's own count of frames, detected (§6-x) — a GIF's, whatever
+  /// span of it this places: a span of it is what a preset places
+  /// ([MediaPreset.spanOf]). ↩️It was the count of [sourceFiles], so a GIF
+  /// first placed trimmed was registered as long as its trim. Null where the
+  /// file counts in pages instead ([pageCount]).
+  int? frameCount,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
   List<int>? sourceFrameIndices,
@@ -357,17 +381,11 @@ SequenceLayerImportPlan planSequenceLayer({
             importedMediaAsset(
               path: reference.assetPath,
               kind: assetKind,
-              fit: fit,
               sourcePath: sourcePath,
-              sourceStamp: sourceStamp,
               identity: identity,
               carried: carried,
               sourceFps: sourceFps,
-              // A PDF's page count is its own field; frameCount stays the
-              // image-sequence/video detection slot (§6-z10).
-              frameCount: assetKind == MediaAssetKind.pdf
-                  ? null
-                  : sourceFiles.length,
+              frameCount: frameCount,
               pageCount: pageCount,
             ),
           ],
@@ -501,10 +519,16 @@ class _FolderPlan {
     final landings = <String, _FolderLanding>{};
     _FolderLanding at(String rowKey, String name) =>
         landings.putIfAbsent(_landingOf(rowKey), () => _FolderLanding(name));
+    // A row switched off comes in nowhere ([CutFolderEdits.comesIn]).
     for (final picture in parsed.pictures) {
-      at(picture.rowKey, picture.name).pictures.add(picture);
+      if (edits.comesIn(picture.rowKey)) {
+        at(picture.rowKey, picture.name).pictures.add(picture);
+      }
     }
     for (final layer in parsed.layers) {
+      if (!edits.comesIn(layer.rowKey)) {
+        continue;
+      }
       // A correction riding its symbol goes where the symbol goes.
       final row = edits.ridesItsBase(parsed, layer)
           ? parsed.baseOf(layer)!

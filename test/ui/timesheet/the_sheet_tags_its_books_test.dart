@@ -34,7 +34,7 @@ Layer _book(String id, String frame) => Layer(
   id: LayerId(id),
   name: 'BOOK',
   kind: LayerKind.image,
-  mark: const LayerMark(process: LayerProcess.art),
+  mark: const LayerMark(process: LayerProcess.layout),
   frames: [
     Frame(
       id: FrameId('$id-f'),

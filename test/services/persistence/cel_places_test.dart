@@ -336,13 +336,13 @@ void main() {
       path: 'C:/work/layout.png',
       name: 'Layout',
       kind: MediaAssetKind.image,
-      carriedAs: 'carry-layout',
+      carriedAs: (token: 'carry-layout', modified: null),
     );
     final conte = MediaAsset(
       path: 'C:/work/conte.pdf',
       name: 'Conte',
       kind: MediaAssetKind.pdf,
-      carriedAs: 'carry-conte',
+      carriedAs: (token: 'carry-conte', modified: null),
     );
     final pointedAt = MediaAsset(
       path: 'C:/work/loose.png',

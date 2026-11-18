@@ -38,7 +38,12 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// made it again, and so on for good. A walk that never rests is a run that
 /// renders first standing for good.
 void main() {
-  const canvasSize = CanvasSize(width: 6, height: 6);
+  // A tile and a half across and down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(
+    width: 3 * tileSide ~/ 2,
+    height: 3 * tileSide ~/ 2,
+  );
 
   Cut cut(String id) => Cut(
     id: CutId(id),
@@ -89,16 +94,16 @@ void main() {
   /// bigger than the canvas a row is weighed as before it is read.
   void keepInkedPastEveryEdge(EditorSessionManager s, List<Cut> cuts) {
     BitmapTile inked() => BitmapTile(
-      size: 4,
+      size: tileSide,
       pixels: Uint8List.fromList([
-        for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+        for (var i = 0; i < tileSide * tileSide; i += 1) ...[0, 0, 0, 255],
       ]),
     );
     keepInAFile(s.renderCaches.brushFrameStore, {
       for (final cut in cuts)
         celOf(s, cut): BitmapSurface(
           canvasSize: canvasSize,
-          tileSize: 4,
+          tileSize: tileSide,
           tiles: {
             for (var y = -1; y <= 1; y += 1)
               for (var x = -1; x <= 1; x += 1) TileCoord(x: x, y: y): inked(),

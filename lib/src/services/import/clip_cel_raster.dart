@@ -2,13 +2,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/mask_into_alpha.dart';
+import '../../models/dirty_region.dart';
+import '../../models/pasteboard_bounds.dart';
+import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
 import 'clip_offscreen.dart';
 import 'clip_placement.dart';
-
-/// One tile of a cel's picture: its place in tiles, and its straight RGBA.
-typedef ClipCelTile = ({int x, int y, Uint8List pixels});
+import 'tile_cutter.dart' show TileCutter, laidCelOf;
 
 /// Where a layer's stored picture is and where its top-left stands.
 ///
@@ -115,24 +116,24 @@ typedef ClipStoredMask = ({
   int top,
 });
 
-/// Where a picture is baked: its top-left on a [canvasWidth] ×
-/// [canvasHeight] canvas, in tiles of [tileSize], its alpha times [alpha] —
-/// the bake that keeps a fainter cel fainter.
+/// Where a picture is baked: its top-left on a cel behind [wall] — the
+/// pasteboard of the store the cel is laid in — in tiles of [tileSize], its
+/// alpha times [alpha]: the bake that keeps a fainter cel fainter.
 typedef ClipCelTarget = ({
   int left,
   int top,
-  int canvasWidth,
-  int canvasHeight,
+  PasteboardWall wall,
   double alpha,
   int tileSize,
 });
 
-/// The picture [attribute] and [blocks] store, as cel tiles on [target]
-/// through [mask] — or null for a picture that is not colour: a grey or
-/// monochrome layer, which this reader does not turn into colour.
+/// The picture [attribute] and [blocks] store, through [mask] and at
+/// [target]'s alpha, laid as a cel on [target] — or null for a picture that
+/// is not colour: a grey or monochrome layer, which this reader does not
+/// turn into colour.
 ///
 /// Pure, so it runs on a worker: the byte lists are all it is given.
-List<ClipCelTile>? clipCelTiles(
+AnicelLaidCel? clipCelLaid(
   Uint8List attribute,
   Uint8List blocks,
   ClipCelTarget target, {
@@ -143,50 +144,88 @@ List<ClipCelTile>? clipCelTiles(
   if (rgba == null) {
     return null;
   }
-  return clipCelTilesOf(
-    (rgba: rgba, width: shape.width, height: shape.height),
-    target,
-    mask: mask,
-  );
-}
-
-/// [picture] — straight RGBA, its own to change — as cel tiles on
-/// [target], baked through [mask] when there is one: a stored picture once
-/// decoded ([clipCelTiles]), and a vector layer once drawn.
-///
-/// What falls off the canvas is dropped, and a tile with no ink is not
-/// there at all — the shape the drawing store gives an empty tile.
-List<ClipCelTile> clipCelTilesOf(
-  ({Uint8List rgba, int width, int height}) picture,
-  ClipCelTarget target, {
-  ClipStoredMask? mask,
-}) {
+  final picture = (rgba: rgba, width: shape.width, height: shape.height);
   if (mask != null) {
     _bakeMask(picture, target, mask);
   }
+  return _laidBehindWall(picture, target);
+}
+
+/// [picture] — straight RGBA, its own to change — laid on [target]'s cel
+/// at its alpha: the part of it inside the cel's pasteboard wall, cut into
+/// the cel's tiles by the cutter every picture a file holds is cut by
+/// ([TileCutter]). What falls past the wall is not laid, and a tile with no
+/// ink is not there at all — the shape the drawing store gives an empty
+/// tile.
+///
+/// 🚨ONE CUTTER (F-608 ④, 2026-11-17). ↩️Till then it cut tiles of its own
+/// (`_celTilesOf` · `_tileOf`) — [TileCutter]'s walk written a second time:
+/// the rows of the picture's part on the canvas copied into tiles, a tile
+/// left clear dropped — into tiles of the Dart heap, which the door then
+/// copied again to bake.
+///
+/// 🗣️CUT AT THE WALL, NOT AT THE CANVAS (clip-cels-cut-at-the-canvas-Q1,
+/// 유저 2026-11-17: 「벽까지 담는다 — 앱의 다른 셀과 같은 자리」). ↩️Till
+/// then it cut at the canvas, while the same file's texts were cut at the
+/// wall: a picture CLIP STUDIO kept past the paper was not on the
+/// pasteboard, and moving the layer did not bring it back.
+AnicelLaidCel _laidBehindWall(
+  ({Uint8List rgba, int width, int height}) picture,
+  ClipCelTarget target,
+) {
   final size = target.tileSize;
-  // The picture's part on the canvas, in canvas pixels.
-  final on = (
-    left: math.max(0, target.left),
-    top: math.max(0, target.top),
-    right: math.min(target.canvasWidth, target.left + picture.width),
-    bottom: math.min(target.canvasHeight, target.top + picture.height),
+  final wall = target.wall;
+  final layout = (
+    canvas: wall.canvas,
+    tileSize: size,
+    tiles: wall.tileRange(size),
+    laid: null,
   );
-  final tiles = <ClipCelTile>[];
-  for (var ty = on.top ~/ size; ty * size < on.bottom; ty += 1) {
-    for (var tx = on.left ~/ size; tx * size < on.right; tx += 1) {
-      final pixels = _tileOf(
-        (rgba: picture.rgba, width: picture.width),
-        target,
-        (x: tx, y: ty),
-        on,
-      );
-      if (pixels != null) {
-        tiles.add((x: tx, y: ty, pixels: pixels));
+  final on = DirtyRegion.fromXYWH(
+    x: target.left,
+    y: target.top,
+    width: picture.width,
+    height: picture.height,
+  ).intersection(wall.region);
+  if (on == null) {
+    return laidCelOf(layout, []);
+  }
+  final width = on.rightExclusive - on.left;
+  final cut = (left: on.left, top: on.top, tileSize: size, tiles: layout.tiles);
+  return laidCelOf(
+    layout,
+    TileCutter.cutting(cut, width, (row) {
+      for (var y = on.top; y < on.bottomExclusive; y += 1) {
+        final from =
+            ((y - target.top) * picture.width + on.left - target.left) * 4;
+        final pixels = Uint8List.sublistView(
+          picture.rgba,
+          from,
+          from + width * 4,
+        );
+        _atAlpha(pixels, target.alpha);
+        row(y - on.top, pixels);
       }
+    }),
+  );
+}
+
+/// [pixels]' alpha at [alpha], in place — the bake that keeps a fainter cel
+/// fainter. A pixel it leaves with none is no pixel at all: clear, so a tile
+/// of only such pixels is dropped as one the picture left clear.
+void _atAlpha(Uint8List pixels, double alpha) {
+  for (var i = 0; i < pixels.length; i += 4) {
+    final a = (pixels[i + 3] * alpha).round();
+    if (a == 0) {
+      pixels
+        ..[i] = 0
+        ..[i + 1] = 0
+        ..[i + 2] = 0
+        ..[i + 3] = 0;
+    } else {
+      pixels[i + 3] = a;
     }
   }
-  return tiles;
 }
 
 /// [mask] multiplied into [picture]'s alpha where the picture stands on
@@ -208,45 +247,84 @@ void _bakeMask(
     layerTop: target.top,
     layerWidth: picture.width,
     layerHeight: picture.height,
-    mask: plane,
-    maskLeft: mask.left,
-    maskTop: mask.top,
-    maskWidth: shape.width,
-    maskHeight: shape.height,
-    defaultColor: shape.maskOutside,
+    mask: (
+      plane: plane,
+      left: mask.left,
+      top: mask.top,
+      width: shape.width,
+      height: shape.height,
+      defaultColor: shape.maskOutside,
+    ),
   );
 }
 
-/// [tile]'s pixels out of [picture] — only where [on], the picture's part
-/// on the canvas, covers it. Null when nothing there has ink.
-Uint8List? _tileOf(
-  ({Uint8List rgba, int width}) picture,
-  ClipCelTarget target,
-  ({int x, int y}) tile,
-  ({int left, int top, int right, int bottom}) on,
+/// A layer mask's coverage as the engine lays a picture under one: a byte a
+/// pixel over [width] × [height] canvas pixels from ([left], [top]), past
+/// which it reads as nothing.
+typedef ClipMaskPlane = ({
+  Uint8List bytes,
+  int left,
+  int top,
+  int width,
+  int height,
+});
+
+/// [mask] as the engine lays a picture under it ([ClipMaskPlane]) wherever
+/// that picture stands — [within], canvas pixels [left, top, right, bottom)
+/// — or null for a mask that is not one byte a pixel, which
+/// [clipBakedMaskOf] never hands on: what [_bakeMask] multiplies a stored
+/// picture's alpha by, for a vector layer's picture the engine drew.
+///
+/// Pure, so it runs on a worker: the byte lists are all it is given.
+///
+/// ⚠️ITS OWN BOX, OR [within]: past its box a mask reads as the file says
+/// ([ClipOffscreenShape.maskOutside]), and past a plane the engine reads
+/// nothing — so a mask that shows what lies past it is spread over
+/// [within], the rest of that read as it says, and one that hides it is
+/// its box as it is.
+ClipMaskPlane? clipMaskPlaneOver(
+  ClipStoredMask mask,
+  ({int left, int top, int right, int bottom}) within,
 ) {
-  final size = target.tileSize;
-  final x0 = tile.x * size;
-  final y0 = tile.y * size;
-  final right = math.min(on.right, x0 + size);
-  final bottom = math.min(on.bottom, y0 + size);
-  final pixels = Uint8List(size * size * 4);
-  var inked = false;
-  for (var y = math.max(on.top, y0); y < bottom; y += 1) {
-    for (var x = math.max(on.left, x0); x < right; x += 1) {
-      final from = ((y - target.top) * picture.width + x - target.left) * 4;
-      final a = (picture.rgba[from + 3] * target.alpha).round();
-      if (a == 0) {
-        continue;
-      }
-      final to = ((y - y0) * size + x - x0) * 4;
-      pixels
-        ..[to] = picture.rgba[from]
-        ..[to + 1] = picture.rgba[from + 1]
-        ..[to + 2] = picture.rgba[from + 2]
-        ..[to + 3] = a;
-      inked = true;
-    }
+  final shape = parseClipOffscreenAttribute(mask.attribute);
+  final plane = clipMaskPlane(shape, clipBlocksOf(mask.blocks));
+  if (plane == null) {
+    return null;
   }
-  return inked ? pixels : null;
+  final own = (
+    bytes: plane,
+    left: mask.left,
+    top: mask.top,
+    width: shape.width,
+    height: shape.height,
+  );
+  if (shape.maskOutside == 0) {
+    return own;
+  }
+  final width = within.right - within.left;
+  final height = within.bottom - within.top;
+  final bytes = Uint8List(width * height)
+    ..fillRange(0, width * height, shape.maskOutside);
+  final left = math.max(within.left, own.left);
+  final right = math.min(within.right, own.left + own.width);
+  final bottom = math.min(within.bottom, own.top + own.height);
+  for (var y = math.max(within.top, own.top); y < bottom; y += 1) {
+    if (left >= right) {
+      break;
+    }
+    final from = (y - own.top) * own.width + left - own.left;
+    bytes.setRange(
+      (y - within.top) * width + left - within.left,
+      (y - within.top) * width + right - within.left,
+      plane,
+      from,
+    );
+  }
+  return (
+    bytes: bytes,
+    left: within.left,
+    top: within.top,
+    width: width,
+    height: height,
+  );
 }

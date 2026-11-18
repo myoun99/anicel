@@ -14,6 +14,7 @@ import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
+import '../canvas_drag_in_flight.dart';
 import '../canvas_press.dart';
 import '../canvas_touch_contacts.dart';
 import 'cel_text_chrome.dart';
@@ -159,7 +160,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       // its text begins on the cel that came ([_beginText]).
       _following = null;
       _tracedBox = null;
-      widget.onDragActive(false);
+      _dragActive(false);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -208,6 +209,13 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   @override
   void dispose() {
+    // A press followed as the layer goes — another tool came under the
+    // hand — ends with it: the moves still on their way find no press to
+    // follow, and nothing waits for it any more.
+    if (_following != null) {
+      _following = null;
+      _dragActive(false);
+    }
     _tool.removeListener(_toolChanged);
     CanvasLetterFaces.changes.removeListener(_facesChanged);
     HardwareKeyboard.instance.removeHandler(_heardKey);
@@ -361,7 +369,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       return;
     }
     _following = (press: press, scene: scene);
-    widget.onDragActive(true);
+    _dragActive(true);
   }
 
   void _pointerMove(PointerMoveEvent event) {
@@ -399,13 +407,21 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     following.press.cancel(following.scene);
   }
 
+  /// The press this layer follows goes up ([active]) or lands: told to the
+  /// host, and to the window — the held keys and the mapped buttons wait it
+  /// out rather than take the tool from under it ([CanvasDragInFlight]).
+  void _dragActive(bool active) {
+    widget.onDragActive(active);
+    CanvasDragInFlight.report(this, active: active);
+  }
+
   void _endPress() {
     setState(() {
       _following = null;
       _tracedBox = null;
       _wearsTheBox = celTextHandWearsTheBox(null);
     });
-    widget.onDragActive(false);
+    _dragActive(false);
   }
 
   // ── the tree ────────────────────────────────────────────────────────

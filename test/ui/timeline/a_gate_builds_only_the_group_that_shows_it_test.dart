@@ -202,7 +202,6 @@ void main() {
       ),
       isEmpty,
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   Future<Finder> openTheStoryboard(WidgetTester tester) async {
@@ -227,14 +226,12 @@ void main() {
         matching: find.byType(TimelineActionToolbar),
       ),
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('…and on the storyboard, whose bar is the same widget over its '
       'own panel', (tester) async {
     final s = await openOnAnEmptyCel(tester);
     await expectTheHeadAlone(tester, s, await openTheStoryboard(tester));
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the storyboard keeps its bar through a notify that moves '
@@ -257,7 +254,6 @@ void main() {
       reason: 'the host keeps the bar while it is built for this session',
     );
     expect(_builtAgain(tester, bar, before), isEmpty);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on the storyboard the push/pull pair asks the row its rail '
@@ -290,7 +286,6 @@ void main() {
       isNotNull,
       reason: 'the pair answers as the rail it is on',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a seek into a hold builds the frame verbs it lights and '
@@ -327,6 +322,5 @@ void main() {
       reason: "the seek moved the frame icons' gates alone",
     );
     expect(identical(tester.widget(bar), toolbar), isTrue);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

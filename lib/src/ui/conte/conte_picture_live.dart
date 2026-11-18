@@ -2,17 +2,17 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
-import '../../services/cel_surface_as_shown.dart';
-import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
-import '../playback/camera_shot.dart' show outlineThrough;
+import '../canvas/canvas_zoom_scale.dart';
 import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
-import '../panel_pictures.dart' show panelFrame;
+import '../frame_shots.dart' show panelViewOnRaster;
+import '../panel_pictures.dart' show panelFrame, panelView;
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 import 'conte_picture_ink.dart';
@@ -27,7 +27,7 @@ import 'conte_picture_ink.dart';
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
 /// layers cropped at the canvas — and the camera's work written over it
-/// again, since it covers what the page wrote.
+/// again inside its shot, since there it covers what the page wrote.
 class ContePictureLive extends StatelessWidget {
   const ContePictureLive({
     super.key,
@@ -60,18 +60,6 @@ class ContePictureLive extends StatelessWidget {
         children: [
           for (final picture in pictures)
             Positioned.fill(child: _live(picture)),
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _CameraWork(
-                marks: [
-                  for (final picture in pictures) ...picture.cameraWork,
-                ],
-                viewport: viewport,
-                effectiveRatio: effectiveRatio,
-                paper: paper,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -99,14 +87,6 @@ class ContePictureLive extends StatelessWidget {
       raster.width / effectiveRatio,
       raster.height / effectiveRatio,
     );
-    final frame = picture.mark.frame;
-    // The canvas → the raster: through the paper, the picture's frame
-    // filling the raster's width as the print's camera fills its own.
-    final rasterPerPaper = box.width / frame.width;
-    final canvasToBox =
-        Matrix4.diagonal3Values(rasterPerPaper, rasterPerPaper, 1)
-          ..multiply(Matrix4.translationValues(-frame.left, -frame.top, 0))
-          ..multiply(picture.window.canvasToPaper);
     final laid = pictureLaid(picture.mark, viewport);
     return ClipPath(
       clipper: _shotOf(picture),
@@ -131,27 +111,56 @@ class ContePictureLive extends StatelessWidget {
                 laid,
                 effectiveRatio,
               ),
-              child: _composite(picture, canvasToBox),
+              child: _composite(picture, _onTheRaster(picture, raster)),
             ),
           ),
+          Positioned.fill(child: _cameraWorkOf(picture)),
         ],
       ),
     );
   }
 
+  /// Where [picture]'s print lays the canvas on its [raster], in the box's
+  /// logical pixels ([panelViewOnRaster]).
+  CanvasViewport _onTheRaster(ContePicture picture, CanvasSize raster) =>
+      CanvasZoomScale(effectiveRatio).fromDevice(
+        panelViewOnRaster(
+          panelView(
+            session,
+            picture.cut,
+            picture.frame,
+            picture.mark.canvasRegion,
+          ),
+          raster,
+        ),
+      );
+
+  /// [picture]'s camera work written again over it, inside its shot.
+  ///
+  /// 🚨Only where the live one covers what the page wrote: inside its shot
+  /// (conte-picture-print-and-live-part-at-edges). ↩️Over the whole page, a
+  /// moving camera's frames were written twice wherever they ran past the
+  /// shot's last whole pixel — 🔬30–58 levels darker along their lines with
+  /// the brush on.
+  Widget _cameraWorkOf(ContePicture picture) => CustomPaint(
+    painter: _CameraWork(
+      marks: picture.cameraWork,
+      viewport: viewport,
+      effectiveRatio: effectiveRatio,
+      paper: paper,
+    ),
+  );
+
   /// What [picture]'s raster holds: the frame's ground, and its canvas
-  /// composited through [canvasToBox] — the canvas into the raster — cut
-  /// to the canvas's outline.
-  Widget _composite(ContePicture picture, Matrix4 canvasToBox) {
+  /// composited where [onTheRaster] lays it — the canvas into the raster —
+  /// cut to the canvas's outline.
+  Widget _composite(ContePicture picture, CanvasViewport onTheRaster) {
     final window = picture.window;
     final drawn = session.editingCanvas.stackAt(
       cut: picture.cut,
       frameIndex: picture.frame,
       drawingLayerId: picture.layer.id,
     );
-    // The overlay shows its pictures in place of the painter's tiles below,
-    // so through the chain they are shown through.
-    window.overlay.sourceEffects = drawn.activeSourceEffects;
     return FramePictureView(
       key: ValueKey<String>('conte-picture-live-${window.id}'),
       run: (
@@ -162,16 +171,13 @@ class ContePictureLive extends StatelessWidget {
       // one picture (F-533-Q8).
       picture: panelFrame(picture.cut, picture.frame),
       nodes: drawn.nodes,
-      viewport: viewportOfSimilarity(canvasToBox)!,
+      viewport: onTheRaster,
       live: (
         activeSurfacePainter: BitmapSurfacePainter(
-          surface: celSurfaceAsShown(
-            surfaceOf(picture),
-            drawn.activeSourceEffects,
-          ),
+          surface: surfaceOf(picture),
           overlayModel: window.overlay,
           showTransparentBackground: false,
-          lineage: (window.key.layerId, window.key.frameId),
+          lineage: window.key.cel,
         ),
         floatOverlay: null,
         liftedRows: const {},
@@ -190,7 +196,7 @@ class ContePictureLive extends StatelessWidget {
       // that waits for its plugins, its picture not made yet), so the print
       // shows — and the layers cut at the canvas, as the print's are.
       ground: exportFrameGround,
-      cut: outlineThrough(picture.cut.canvasSize, canvasToBox),
+      cutAtCanvas: picture.cut.canvasSize,
     );
   }
 

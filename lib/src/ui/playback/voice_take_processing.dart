@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/alike_maths.dart' show alikeExp;
 import '../../models/audio_sync_settings.dart' show VoiceInputChannelMode;
 
 /// A take after the capture chain (REC1-D): channel fold + baked gain,
@@ -25,7 +26,13 @@ class ProcessedVoiceTake {
 const double voiceClipThreshold = 0.999;
 
 /// The linear factor for a dB gain (0 dB = 1.0).
-double micGainFactor(int gainDb) => math.pow(10.0, gainDb / 20.0).toDouble();
+///
+/// 🗣️gpu-same-formula (유저 2026-11-05 「기기가 달라도 같아야 한다」): a take
+/// is baked with this factor and saved, so the factor is [alikeExp]'s —
+/// `math.pow` is the device's libm, which may part two devices in a last
+/// bit (board audio-same-across-devices). 10^(dB/20) = e^(dB·ln 10/20), and
+/// 0 dB is e^0, exactly one: a raw take keeps every bit it came with.
+double micGainFactor(int gainDb) => alikeExp(gainDb * math.ln10 / 20);
 
 /// Applies the capture chain to a finished take: [channelMode] folds the
 /// device's channels (an interface's mono mic otherwise lands one-sided

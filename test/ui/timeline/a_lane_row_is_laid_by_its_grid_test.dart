@@ -86,8 +86,6 @@ void main() {
             child: timelineLaneRowFrom(row, layer, grid, (
               startIndex: 0,
               endIndexExclusive: frames,
-              leadingSpacer: 0,
-              trailingSpacer: 0,
               laneRange: null,
             )),
           ),

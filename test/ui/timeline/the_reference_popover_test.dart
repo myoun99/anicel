@@ -434,8 +434,10 @@ void main() {
 
   testWidgets('🎯a 겸용 copy no key carries the move of, showing the picture '
       'elsewhere, goes behind the window with its row — each use its own '
-      'cel, an animation layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
-      '셀을 나눠 굽는다」 — ↩️F-374-Q11 left it a reference and said why)', (
+      'cel, still an image layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
+      '셀을 나눠 굽는다」 · F-572-Q2 「셋 다 행마다 센다」 — ↩️I-120-Q22\'s '
+      'option, more than one cel an animation, changed by F-572-Q2 (유저 '
+      '11-11) · ↩️F-374-Q11 left it a reference and said why)', (
     tester,
   ) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
@@ -463,8 +465,8 @@ void main() {
     final bakedCopy = current(s, copy);
     expect(bakedCopy.mediaReference, isNull);
     expect([baked.kind, bakedCopy.kind], [
-      LayerKind.animation,
-      LayerKind.animation,
+      LayerKind.image,
+      LayerKind.image,
     ]);
     expect(baked.frames, hasLength(2));
     expect(
@@ -474,6 +476,43 @@ void main() {
 
     s.undo();
     expect([current(s, street), current(s, copy)], before);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('🎯rows of one press — one its transform carries, two baked '
+      'behind the window — come back with ONE undo (I-120 ⑥-③: two rows '
+      'baked, three undos)', (tester) async {
+    final (s, rows) = await sessionWith(tester, [
+      'bg_street.png',
+      'bg_night.png',
+      'bg_park.png',
+    ]);
+    final pressed = [
+      rows['bg_street.png']!,
+      rows['bg_night.png']!,
+      rows['bg_park.png']!,
+    ];
+    for (final row in pressed.skip(1)) {
+      sheared(s, row, PropertyTrack<double>().withKey(0, 30).withKey(4, 60));
+    }
+    final before = [for (final row in pressed) current(s, row)];
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, before));
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          pressed.every((row) => current(s, row).mediaReference == null),
+    );
+    expect(
+      current(s, pressed.last).kind,
+      LayerKind.animation,
+      reason: '⛔premise: a moving row was baked a cel a frame',
+    );
+
+    s.undo();
+    expect([for (final row in pressed) current(s, row)], before);
     await tester.pumpAndSettle();
   });
 
@@ -487,7 +526,12 @@ void main() {
     expect(mediaAssetPoolState(linked), 'Linked');
     expect(
       mediaAssetPoolState(
-        linked.copyWith(carriedAs: mediaCarryNamed(linked.path, 'c1')),
+        linked.copyWith(
+          carriedAs: (
+            token: mediaCarryNamed(linked.path, 'c1'),
+            modified: null,
+          ),
+        ),
       ),
       'In the project',
     );

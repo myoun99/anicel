@@ -551,4 +551,32 @@ void main() {
       );
     });
   });
+
+  // 🗣️F-576 (유저 2026-11-09): 「타임시트서식에 북 이름 생략? 이런식으로
+  // 옵션만들도록. 기본값은 on」.
+  group('the book names', () {
+    const shortened = ValueKey<String>('timesheet-format-book-names-shortened');
+
+    testWidgets('🎯they are shortened unless taken off, and taken off is '
+        'saved', (tester) async {
+      TimesheetInfo? saved;
+      await _openWindow(tester, TimesheetInfo.empty, (info) => saved = info);
+      await _press(tester, shortened);
+      await _press(tester, _save);
+      expect(saved!.sheetBookNamesShortened, isFalse);
+    });
+
+    testWidgets('it opens as the work keeps it, and saves that untouched', (
+      tester,
+    ) async {
+      TimesheetInfo? saved;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty.copyWith(sheetBookNamesShortened: false),
+        (info) => saved = info,
+      );
+      await _press(tester, _save);
+      expect(saved!.sheetBookNamesShortened, isFalse);
+    });
+  });
 }

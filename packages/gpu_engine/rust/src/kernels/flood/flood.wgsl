@@ -1,15 +1,28 @@
 // A bucket fill's reach (gpu-canonical-store stage 5): the pixels 4-joined
 // to the seed through pixels whose four channels each lie within the
-// tolerance of the seed's — the app's `pixelWithinTolerance`, qa_engine.c's
-// `qa_tol_ok1`. Which pixels those are is one set however it is found, so
-// these passes need not walk as the app's scanline stack walks to give its
-// bytes: the seed, and every pixel a path of such pixels reaches.
+// tolerance of the seed's, inclusive — a pixel exactly the tolerance away
+// fills. Which pixels those are is one set however it is found: the seed,
+// and every pixel a path of such pixels reaches.
+//
+// THE COVERAGE IS A LANE LIKE THE COLOURS (board F-416 — 유저 2026-10-20:
+// 「레이어에 그린것도 흰색일때 … 배경이랑 그림이랑 같은 흰색이라고 생각해서 캔버스
+// 전체를 칠해버리는거같음. 그림부분만 칠해야하는데」). A pixel drawn white and
+// the empty canvas are as far apart as their coverage, whatever the paper
+// shows under them. ↩️Compared on the colour over the paper alone, ink of
+// the paper's colour was the paper — white ink on a white paper, and black
+// ink on an absent one, which the fill read as black — and a fill on it
+// flooded the whole canvas.
+//
+// ↩️Till 2026-11-12 the app flooded on the CPU as well — a scanline stack
+// in Dart and a wave in C (`pixelWithinTolerance`, qa_engine.c's
+// `qa_tol_ok1`) — and these passes were written to give its bytes without
+// walking as it walked.
 //
 // The picture is what the screen shows (유저 gpu-canonical-store-Q1,
 // 11-06: 「화면과 똑같은 그림을 읽는다」): the composite's output tiles,
 // straight RGBA8 words (A<<24|B<<16|G<<8|R), 128 × 128 a tile, the tiles of
 // a grid row after row. Pixels compare premultiplied, as the screen shows
-// them and as the app's raster held them.
+// them.
 //
 // A plane of bits holds a pixel a bit, the leftmost in a word's lowest, a
 // row `stride` words, over the same grid: a tile is four words of a row,
@@ -67,7 +80,7 @@ struct Crop {
 @group(0) @binding(8) var<uniform> crop: Crop;
 @group(0) @binding(9) var<storage, read_write> mask_out: array<u32>;
 
-// The gap close's (`_gapCloseFloodRegion`): distances over the picture's
+// The gap close's: distances over the picture's
 // box, kernels/mask's, and the distance a pixel must lie past to flood —
 // flood_gap puts it.
 @group(0) @binding(10) var<storage, read> distances: array<u32>;
@@ -284,8 +297,7 @@ fn flood_bounds(
 }
 
 // A word of the mask a fill is finished from: four of the box's pixels,
-// 255 where the flood filled and 0 where it did not — the app's `filled`
-// cropped (`_cropAndFinishFloodRegion`).
+// 255 where the flood filled and 0 where it did not, cropped.
 @compute @workgroup_size(8, 8, 1)
 fn flood_mask(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= crop.bytes || id.y >= crop.height) {
@@ -308,7 +320,7 @@ fn flood_mask(@builtin(global_invocation_id) id: vec3<u32>) {
   mask_out[id.y * crop.bytes + id.x] = word;
 }
 
-// ---- The gap close (`_gapCloseFloodRegion`) ----
+// ---- The gap close ----
 //
 // A flood that does not leak through a gap narrower than about twice the
 // gap: it floods only what lies farther than 3 × gap chamfer units from

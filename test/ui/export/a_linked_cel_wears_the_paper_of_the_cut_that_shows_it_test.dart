@@ -40,7 +40,9 @@ import '../../helpers/no_guides_laid.dart';
 /// the export stands on. The plan's own arithmetic is pinned beside it
 /// (`export_cel_group_plan_test.dart`).
 void main() {
-  const size = CanvasSize(width: 8, height: 8);
+  // One tile, at the engine's side.
+  const side = defaultCelTileSize;
+  const size = CanvasSize(width: side, height: side);
   const red = (255, 0, 0, 255);
   const blue = (0, 0, 255, 255);
   const black = (0, 0, 0, 255);
@@ -61,7 +63,7 @@ void main() {
         id: LayerId('$id-paper'),
         name: 'Paper',
         frames: [frame('p1', '1'), frame('p2', '2')],
-        mark: const LayerMark(process: LayerProcess.paper),
+        mark: const LayerMark.paper(LayerProcess.key),
         timeline: {
           0: TimelineExposure.drawing(
             FrameId(id == 'c1' ? 'p1' : 'p2'),
@@ -116,13 +118,13 @@ void main() {
 
   /// The whole canvas [colour], or one pixel of it at ([x], [y]).
   BitmapSurface surface((int, int, int, int) colour, {int? x, int? y}) {
-    final pixels = Uint8List(8 * 8 * 4);
-    for (var py = 0; py < 8; py += 1) {
-      for (var px = 0; px < 8; px += 1) {
+    final pixels = Uint8List(side * side * 4);
+    for (var py = 0; py < side; py += 1) {
+      for (var px = 0; px < side; px += 1) {
         if ((x != null && px != x) || (y != null && py != y)) {
           continue;
         }
-        final i = (py * 8 + px) * 4;
+        final i = (py * side + px) * 4;
         pixels[i] = colour.$1;
         pixels[i + 1] = colour.$2;
         pixels[i + 2] = colour.$3;
@@ -131,8 +133,8 @@ void main() {
     }
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: side,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: pixels)},
     );
   }
 
@@ -172,7 +174,7 @@ void main() {
         ) async {
           final image = await ExportFrameRenderer(
             session: session,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
           ).renderCelGroup(
             plan.cels.singleWhere((task) => task.fileName == file),
             ExportSizeMode.canvas,

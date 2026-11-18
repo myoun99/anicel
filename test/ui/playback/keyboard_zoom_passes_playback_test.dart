@@ -4,6 +4,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/windows_key_state.dart'
+    show vkControl, vkShift;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -11,6 +14,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show modifiersAloneActivator;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/app_shortcuts.dart';
@@ -225,6 +230,154 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // A modifier is asked which are held, each its own (card
+  // a-held-modifiers-repeat-is-heard-as-a-press): one held as the canvas
+  // started is no press of it, and one gone down while another is held is
+  // alone of its own.
+  testWidgets('🚨Shift held as the canvas starts to play is no press — let '
+      'go, the canvas plays on', (tester) async {
+    final session = await pumpEditor(tester);
+    var held = true;
+    ModifierKeys.debugWindowsKeyDown = (asked) => held && asked == vkShift;
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await playCanvas(tester, session);
+    held = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(
+      session.playbackRig.playback.isPlaying,
+      isTrue,
+      reason: 'it went down before anything played',
+    );
+
+    session.playbackRig.transports.stopAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('…and Ctrl gone down and let go alone while that Shift is '
+      'held was a press of its own: the canvas stops', (tester) async {
+    final session = await pumpEditor(tester);
+    var (shift, ctrl) = (true, false);
+    ModifierKeys.debugWindowsKeyDown = (asked) =>
+        (shift && asked == vkShift) || (ctrl && asked == vkControl);
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await playCanvas(tester, session);
+    ctrl = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isTrue, reason: 'premise');
+    ctrl = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      session.playbackRig.playback.isPlaying,
+      isFalse,
+      reason: 'Ctrl pressed and released with nothing after it, Shift or no',
+    );
+
+    shift = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+  });
+
+  // 🚨Card a-held-modifiers-repeat-is-heard-as-a-press (2026-11-15). On
+  // Windows a pen's or a finger's move lets go of Shift and Ctrl in the
+  // engine's record with the key still down — a key-up no hand made — the
+  // held key's auto-repeat comes next as a new key-down, and the release
+  // that comes after a move is dropped (`ModifierKeys`; counted with the
+  // shift probe on the app's own runner, F-592). The events below come in
+  // that order.
+  for (final (name, key, virtualKey) in [
+    ('Shift', LogicalKeyboardKey.shiftLeft, vkShift),
+    ('Ctrl', LogicalKeyboardKey.controlLeft, vkControl),
+  ]) {
+    Future<void> penMoves(WidgetTester tester, TestPointer pen, int step) =>
+        tester.sendEventToBinding(
+          pen.hover(onCanvas(tester) + Offset(4.0 * step, 0)),
+        );
+
+    testWidgets('🚨$name held under a hovering pen keeps the canvas playing '
+        '— the key-up the engine makes of a pen\'s move, and the repeat it '
+        'hears as a press, are not the key let go; let go, it stops at '
+        'the pen\'s next move', (tester) async {
+      final session = await playingCanvas(tester);
+      var held = true;
+      ModifierKeys.debugWindowsKeyDown = (asked) =>
+          held && asked == virtualKey;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final pen = TestPointer(1, PointerDeviceKind.stylus);
+
+      await tester.sendKeyDownEvent(key);
+      for (var step = 0; step < 2; step++) {
+        await penMoves(tester, pen, step);
+        // The engine's own key-up, made of the move.
+        await tester.sendKeyUpEvent(key);
+        await tester.pump();
+        expect(
+          session.playbackRig.playback.isPlaying,
+          isTrue,
+          reason: '$name is still down: no hand let go of it (move $step)',
+        );
+        // The held key's auto-repeat, heard as a press.
+        await tester.sendKeyDownEvent(key);
+        await tester.pump();
+        expect(session.playbackRig.playback.isPlaying, isTrue);
+      }
+
+      // The record lets go at one more move, and then the hand does — the
+      // release the engine drops.
+      await penMoves(tester, pen, 2);
+      await tester.sendKeyUpEvent(key);
+      held = false;
+      await penMoves(tester, pen, 3);
+      await tester.pump();
+      expect(
+        session.playbackRig.playback.isPlaying,
+        isFalse,
+        reason: 'a $name pressed and released alone was a press after all, '
+            'whatever the pointer under it',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('…and $name held through a canvas WHEEL notch is not alone '
+        'again for the repeat the engine hears as a press', (tester) async {
+      final session = await playingCanvas(tester);
+      var held = true;
+      ModifierKeys.debugWindowsKeyDown = (asked) =>
+          held && asked == virtualKey;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final wheel = TestPointer(1, PointerDeviceKind.mouse);
+      wheel.hover(onCanvas(tester));
+      final pen = TestPointer(2, PointerDeviceKind.stylus);
+
+      await tester.sendKeyDownEvent(key);
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+      await penMoves(tester, pen, 0);
+      await tester.sendKeyUpEvent(key);
+      await tester.sendKeyDownEvent(key);
+      await tester.pump();
+      expect(session.playbackRig.playback.isPlaying, isTrue, reason: 'premise');
+
+      held = false;
+      await tester.sendKeyUpEvent(key);
+      await tester.pump();
+      expect(
+        session.playbackRig.playback.isPlaying,
+        isTrue,
+        reason: 'the notch was the something after — a repeat is not the '
+            'key pressed anew',
+      );
+
+      session.playbackRig.transports.stopAll();
+      await tester.pumpAndSettle();
+    });
+  }
+
   testWidgets('Alt held while the canvas plays IS the eyedropper, and the '
       'canvas keeps playing — a modifier reaches the app like any other', (
     tester,
@@ -261,6 +414,35 @@ void main() {
       reason: 'and an Alt let go with nothing after it stops, like any '
           'modifier',
     );
+  });
+
+  // 🗣️F-603-Q1 (유저 2026-11-16): 「뗐을 때 — 그 사이에 다른 키나 클릭이
+  // 없었으면 발동」 — and T28-c: while something plays, the first actuation
+  // is the stop, and only the stop.
+  testWidgets('🚨a key that is Ctrl alone, let go alone while the canvas '
+      'plays, stops it and runs nothing — and stopped, it runs', (
+    tester,
+  ) async {
+    final session = await pumpEditor(tester);
+    CanvasTool toolOf() =>
+        tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
+    appShortcuts(tester).setActivators(EditorActionIds.toolEraser, [
+      modifiersAloneActivator(control: true),
+    ]);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pumpAndSettle();
+    await playCanvas(tester, session);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(session.playbackRig.playback.isPlaying, isFalse);
+    expect(toolOf(), CanvasTool.brush, reason: 'the stop, and only the stop');
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.eraser);
   });
 
   testWidgets('a modifier chord that is NOT a zoom stops like any key, and '

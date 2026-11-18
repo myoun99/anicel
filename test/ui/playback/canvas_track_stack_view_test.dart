@@ -19,24 +19,20 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/se_name_tag.dart';
-import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
-import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
-import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// One covered cut's share of the frame as the stack lays it: the unit's
 /// fade, the painter under its picture (the apron, an absent paper's
@@ -63,6 +59,7 @@ typedef _Run = ({
 /// the rest composite transparently), drawn from its rows' images as the
 /// canvas draws them, and uncovered frames stay the void.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   const cameraFrameSize = CanvasSize(width: 4, height: 2);
 
@@ -131,7 +128,7 @@ void main() {
   }) {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final told = landings ?? ValueNotifier<int>(0);
     if (landings == null) {
@@ -158,7 +155,6 @@ void main() {
     required ValueNotifier<int?> frame,
     required List<StoryboardTimelineLayoutEntry> layout,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
-    List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
     _Run? run,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
@@ -180,7 +176,6 @@ void main() {
             cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
-            seNameTagsOf: seNameTagsOf,
             run: switch (run) {
               (landings: _, :final frameIsThere) => (
                 frameIsThere: frameIsThere,
@@ -251,6 +246,8 @@ void main() {
   }) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
+    final run = picturesOf((_, _) => const []);
+    await itsToolsOpen(tester, run.pictures.store);
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
@@ -269,7 +266,7 @@ void main() {
                 ),
                 // Nothing drawn: what shows is the stage alone.
                 stackOf: (_, _) => const [],
-                pictures: picturesOf((_, _) => const []),
+                pictures: run,
                 cameraFrameSize: cameraFrameSize,
                 cameraViewEnabled: cameraViewEnabled,
                 cameraPoseOf: (cut, frameIndex) =>
@@ -284,6 +281,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
     final render =
         screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final rgba = (await tester.runAsync<Uint8List>(() async {
@@ -344,46 +342,6 @@ void main() {
       isNot(CanvasViewport()),
       reason: 'seen through the camera: the panel\'s view with the '
           'projection under it',
-    );
-  });
-
-  testWidgets('each unit carries the names its OWN cut speaks, at its own '
-      'frame', (tester) async {
-    final f = fixture();
-    ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
-      layerId: '${cut.id.value}@$frame',
-      widthBudget: 100,
-      shot: const LayerPlacement.identity(),
-      content: TextCelContent(
-        text: cut.id.value,
-        style: SeNameTag.defaultStyle,
-        position: Offset.zero,
-      ),
-    );
-
-    f.frame.value = 3;
-    await pumpView(
-      tester,
-      frame: f.frame,
-      layout: f.layout,
-      seNameTagsOf: (cut, frame) => [tagOf(cut, frame)],
-    );
-
-    expect(
-      [
-        for (final unit in unitsOf(tester))
-          [for (final tag in unit.over.seNameTags) tag.layerId],
-      ],
-      [
-        ['cut-a@3'],
-        ['cut-c@1'],
-      ],
-      reason: 'resolved PER CUT (R5b): each covered track its own speakers',
-    );
-    expect(
-      [for (final unit in unitsOf(tester)) unit.under.seNameTags],
-      everyElement(isEmpty),
-      reason: 'the names lie over the picture, never under it',
     );
   });
 

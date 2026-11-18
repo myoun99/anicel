@@ -56,7 +56,6 @@ import 'dart:io';
 import 'bash_executable.dart';
 import 'import_graph.dart';
 import 'master_check.dart';
-import 'native_engine_provenance.dart';
 import 'process_tree.dart';
 import 'test_queue.dart';
 import 'test_results.dart';
@@ -66,24 +65,31 @@ import 'test_seconds.dart';
 /// what every suite reads without naming it — the green record's own list
 /// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
-/// Dependencies and toolchain change what every file compiles to; the native
-/// sources ([kEngineSources]) sit behind FFI where no import edge reaches them,
-/// and the assets and shaders the pubspec bundles reach every suite the same
-/// way; and `test/flutter_test_config.dart` is loaded by flutter_test before
-/// every suite in the tree while nothing imports it — an edge the graph
-/// cannot see because it does not exist in the source. ↩️Until 10-20 this
-/// was a list of its own that left `assets/` and `shaders/` out, while the
-/// green record already ran every suite again for them.
+/// Dependencies and toolchain change what every file compiles to; the
+/// faces the pubspec bundles reach every suite with no import edge to them
+/// (↩️as the C engine's sources did, behind FFI, till they went —
+/// 2026-11-13 — and the shaders it bundled, till the Flutter chain's went —
+/// the-flutter-fx-chain-is-a-second-chain); and
+/// `test/flutter_test_config.dart` is loaded by flutter_test before every
+/// suite in the tree while nothing imports it — an edge the graph cannot
+/// see because it does not exist in the source. ↩️Until 10-20 this was a
+/// list of its own that left `assets/` and `shaders/` out, while the green
+/// record already ran every suite again for them.
 ///
 /// ↩️THE PLATFORM FOLDERS ARE NO LONGER HERE (유저 10-20,
 /// tests-crowd-the-machine-Q6 「전부」). `android/ ios/ linux/ macos/
 /// windows/` stood in this list from 08-13 because 「they decide what the
 /// app links against」 — the app's, never a suite's: `flutter test` runs
-/// `flutter_tester`, which loads none of them, and the engine the suites
-/// load is the one [_engineCaveat] names. 🧪That day a lane that touched
+/// `flutter_tester`, which loads none of them. 🧪That day a lane that touched
 /// only `windows/runner/` ran all 2,561 files — eighty minutes of five
 /// suites, with eleven runs waiting behind it. A suite that reads a
 /// platform file as text is still chosen, by [selectTests], like any scan.
+///
+/// ↩️NOR THE REST OF `assets/` (2026-11-17, card a-words-only-asset-runs-
+/// every-test): three lines of the update notice ran all 3,289 files. The
+/// notice and the licences are read by the code that names their keys and
+/// by the scans that spell them, and [selectTests] chooses those
+/// (`Reaches`); only the faces stay ([kEveryTestReadsUnder]).
 const _runEverything = <String>[
   ...kEveryTestReads,
   ...kEveryTestReadsUnder,
@@ -269,12 +275,13 @@ const kNearConfigImports = 0;
 /// why there is nothing to run.
 ///
 /// 🚨THE PARITY RUNS GO IN BATCHES TOO ([runInBatches]; parity-runs-crowd-
-/// the-collector-pins, 2026-10-17). Five places run the native parity list —
-/// `lane.sh native` and the TestFlight, Mac, Linux and Windows ARM64 builds —
-/// and each ran it as ONE `xargs flutter test`, its collector pins in the very
-/// crowd the plan keeps them out of: `tile_images_are_counted` lost its 64
-/// bytes inside a parity batch (2026-09-11). They hand the list here instead,
-/// so how a list is run is written once.
+/// the-collector-pins, 2026-10-17). Five places ran the native parity list —
+/// `lane.sh native` (↩️gone with the C engine, 2026-11-13) and the
+/// TestFlight, Mac, Linux and Windows ARM64 builds — and each ran it as ONE
+/// `xargs flutter test`, its collector pins in the very crowd the plan keeps
+/// them out of: `tile_images_are_counted` lost its 64 bytes inside a parity
+/// batch (2026-09-11). They hand the list here instead, so how a list is run
+/// is written once.
 ///
 /// ⛔A list naming nothing is REFUSED, never run: to `flutter test` an empty
 /// selection is the whole suite, and a list that came back empty would turn
@@ -314,19 +321,20 @@ const kNearConfigImports = 0;
 /// Whether a run asked with [args] takes its turn in the machine's line
 /// (`test_queue.dart`) — or why it was asked wrongly.
 ///
-/// 🗣️A LAND'S GATES TAKE NO PLACE IN IT. `tool/lane.sh` runs the native
-/// parity list among the gates a landing stands behind, beside its analyze
-/// and architecture tests, and those run at once, never in the line (유저
-/// 10-08, a-sent-lane-is-gated-once-Q1 「착지 게이트는 이 넷에 세지 않는다」;
-/// 10-18, tests-crowd-the-machine-Q2). A land waiting in the line would hold
-/// the land's turn all the while, and every other lane's land behind it. So
-/// the gates say `--outside-the-line` — ⛔for a list run only: any other run
-/// is a session's, and stands in the line.
+/// ⚙️A CI SHARD TAKES NO PLACE IN IT (ci-shards-crowd-the-collector-pins,
+/// 10-24): its runner holds one job, so there is no line to share — and on
+/// Windows the line waits for the room `flutter_room` measures, which a
+/// small runner may never show. It runs its slice as a list and says
+/// `--outside-the-line` — ⛔for a list run only: any other run is a
+/// session's, and stands in the line.
 ///
-/// ⚙️NOR DOES A CI SHARD (ci-shards-crowd-the-collector-pins, 10-24): its
-/// runner holds one job, so there is no line to share — and on Windows the
-/// line waits for the room `flutter_room` measures, which a small runner
-/// may never show. It runs its slice as a list, so it says the same.
+/// ↩️A land's gates said it first, for the native parity list
+/// `tool/lane.sh` ran among them (유저 10-08, a-sent-lane-is-gated-once-Q1
+/// 「착지 게이트는 이 넷에 세지 않는다」; 10-18, tests-crowd-the-machine-Q2:
+/// a land waiting in the line would hold the land's turn all the while, and
+/// every other lane's land behind it), till that gate went with the C
+/// engine (2026-11-13). What a land's gates run now, they run straight from
+/// `tool/lane.sh`.
 ///
 /// A run that says `--first-in-line` stands at its head — the build's wide
 /// check, which `master_check` asks for (유저 10-22, tests-crowd-the-machine-
@@ -340,8 +348,8 @@ const kNearConfigImports = 0;
     return (
       inTheLine: true,
       first: first,
-      refusal: "--outside-the-line is a land's gates' and a CI shard's, "
-          'for a --files-from list',
+      refusal: "--outside-the-line is a CI shard's, for a --files-from "
+          'list',
     );
   }
   return (inTheLine: false, first: first, refusal: null);
@@ -374,13 +382,14 @@ Set<String> selectTests({
   );
   return {
     // A changed test runs because it changed, whatever it imports.
-    ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+    ...changed.where(isSuite),
     for (final test in tests)
       if (everySuite || reachesAny(reaches.of(test), changed)) test,
   };
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
   final wide = args.contains('--wide');
@@ -463,24 +472,12 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
 
-  final blanket = changed
-      .where((path) => forcesFullRun(path, near: !wide))
-      .toList()
-    ..sort();
+  final blanket = changed.where(forcesFullRun).toList()..sort();
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
     await run(_wholeSuite());
   }
-  final engine = changed.where(changesTheEngine).toList()..sort();
-  final parity = wide || engine.isEmpty ? const <String>[] : parityTests();
-  if (parity == null) {
-    _report('running everything: ${engine.first} changed and '
-        'tool/native_parity_tests.sh chose no test that exercises the '
-        'engine.');
-    await run(_wholeSuite());
-  }
-
   final imports = buildImportGraph(roots: kGraphRoots);
   final tests = _suitesIn(imports);
 
@@ -493,15 +490,8 @@ Future<void> main(List<String> args) async {
       within: within,
       configWithin: configWithin,
     ),
-    ...parity,
     ...named,
   };
-  if (parity.isNotEmpty) {
-    _report('${engine.first} is the engine\'s C — near, that is the '
-        '${parity.length} test(s) that exercise the engine '
-        '(tool/native_parity_tests.sh); every suite runs against it in the '
-        'wide check after landing.');
-  }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
@@ -514,7 +504,7 @@ Future<void> main(List<String> args) async {
       '${changed.length} changed file(s)'
       '${within == null ? '' : ' within $within import(s) — --wide asks every one'}'
       '${named.isEmpty ? '' : ', with the ${named.length} named'}.');
-  final known = _knownTimes();
+  final known = timesOnThisMachine();
   _report('longest first, by this machine\'s times '
       '(${present.where(known.containsKey).length} of ${present.length} '
       'files timed before).');
@@ -573,23 +563,6 @@ ResultCache? _cacheOr(
   return cache;
 }
 
-/// The file [machineCacheFolder] keeps the times in.
-File? _timesFile() {
-  final folder = machineCacheFolder(Platform.environment);
-  return folder == null ? null : File('$folder/test_times.tsv');
-}
-
-Map<String, int> _knownTimes() {
-  try {
-    final file = _timesFile();
-    return file != null && file.existsSync()
-        ? readTimes(file.readAsStringSync())
-        : const {};
-  } on FileSystemException {
-    return const {};
-  }
-}
-
 /// What a batch's [report] says of each file ([suiteRuns]), with its times
 /// and greens laid over the machine's records ([updatePairs]).
 List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
@@ -601,7 +574,7 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
   }
-  final file = _timesFile();
+  final file = timesRecord(Platform.environment);
   final measured = timesOf(runs);
   try {
     if (file != null && measured.isNotEmpty) {
@@ -702,43 +675,20 @@ List<String> _gitLines(List<String> args) {
 }
 
 /// Whether a change to [path] is one the graph cannot answer
-/// ([_runEverything]), so the whole suite runs — but in a [near] run, never
-/// for the engine's own sources ([changesTheEngine]).
+/// ([_runEverything]), so the whole suite runs.
 ///
-/// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q14 「C 레인도 착지 전엔
-/// 가까운 것만」: a lane that changed the C ran all 2,500 files before it
-/// landed — two such lanes were 1,256 of the line's 4,000 waiting
-/// machine-minutes that evening. Narrowing by the graph buys nothing (2,041
-/// of 2,625 suites reach `lib/src/native/`), so a near run takes the tests
-/// that exercise the engine instead ([parityTests]) — the list the land's
-/// gate runs with the C tests — and the wide check after landing
-/// (`master_check`) runs every suite against that C, as it does for Dart.
-bool forcesFullRun(String path, {bool near = false}) =>
-    !(near && changesTheEngine(path)) &&
-    _runEverything.any(
-      (prefix) =>
-          prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
-    );
-
-/// Whether [path] is one of the engine's sources ([kEngineSources]).
-bool changesTheEngine(String path) => path.startsWith(kEngineSources);
-
-/// The tests that exercise the engine: `tool/native_parity_tests.sh`'s
-/// answer, asked rather than copied (the one answer — its header), or null
-/// when it gives none.
-List<String>? parityTests() {
-  final result = Process.runSync(
-    bashExecutable,
-    ['tool/native_parity_tests.sh'],
-  );
-  if (result.exitCode != 0) return null;
-  final files = const LineSplitter()
-      .convert(result.stdout as String)
-      .map((line) => line.trim())
-      .where((line) => line.isNotEmpty)
-      .toList();
-  return files.isEmpty ? null : files;
-}
+/// ↩️But never, in a near run, for the C engine's own sources, while there
+/// were any (🗣️유저 2026-10-21, tests-crowd-the-machine-Q14 「C 레인도
+/// 착지 전엔 가까운 것만」: a lane that changed the C ran all 2,500 files
+/// before it landed — two such lanes were 1,256 of the line's 4,000 waiting
+/// machine-minutes that evening — so near it ran the tests that exercise
+/// the engine, `tool/native_parity_tests.sh`'s, and the wide check every
+/// suite). The C went on 2026-11-13; what a change to the GPU engine's Rust
+/// runs is the graph's answer, near and wide
+/// (connection-round-checklist-Q24).
+bool forcesFullRun(String path) => _runEverything.any(
+  (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
+);
 
 /// The files `flutter test` runs as suites, out of [graph].
 ///
@@ -747,10 +697,8 @@ List<String>? parityTests() {
 /// dependencies through those. Only files flutter test will actually run
 /// as a suite may be handed back, though: passing it the config would ask
 /// it to run a file that defines no tests.
-List<String> _suitesIn(Map<String, Set<String>> graph) => graph.keys
-    .where((f) => f.startsWith('test/') && f.endsWith('_test.dart'))
-    .toList()
-  ..sort();
+List<String> _suitesIn(Map<String, Set<String>> graph) =>
+    graph.keys.where(isSuite).toList()..sort();
 
 /// Every suite there is, named — what `--all` and a blanket file run.
 List<String> _wholeSuite() =>
@@ -949,15 +897,6 @@ Future<int> _runTests(
     return 0;
   }
 
-  // 🚨THE ENGINE IS PART OF WHAT A RUN MEASURES. Every suite loads the build
-  // under build/native_standalone, and a build from other C turns that C's
-  // behaviour into this checkout's reds and greens — 156 reds once, found by
-  // running the same files in another checkout (2026-09-13; the whole story
-  // is at the head of native_engine_provenance.dart). Said before the run,
-  // so it can be stopped, and again beside the verdict it qualifies.
-  final engine = _engineCaveat();
-  if (engine != null) _report(engine);
-
   for (final kind in kRunOrder) {
     final those = split[kind]!;
     final apart = switch (kind) {
@@ -990,12 +929,13 @@ Future<int> _runTests(
   final moved = <String>{};
   final unkeyed = <String>{};
   final unrun = <String>[];
+  final slow = <SlowTest>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
   // takes the suites the line gives it then, by the work still to do. A
-  // land's gates take none ([lineFor], [outsideTheLine]).
-  final known = _knownTimes();
+  // CI shard takes none ([lineFor], [outsideTheLine]).
+  final known = timesOnThisMachine();
   var launched = 0;
   Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands
@@ -1048,6 +988,7 @@ Future<int> _runTests(
 
     await runAll(selected, (i, report, result) {
       runsOf[i] = _recordBatch(report, cache);
+      slow.addAll(_slowIn(report));
       skipped += result.skipped;
       if (result.exitCode != 0) {
         exits[i] = result.exitCode;
@@ -1093,10 +1034,11 @@ Future<int> _runTests(
   }
 
   // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
-  // would run a whole list. Each hop beside it is pinned — the gates pass
-  // the flag (lane.sh, scanned), [lineFor] answers it, and [outsideTheLine]
-  // holds what it asked at once. `first` likewise: master_check asks it
-  // ([kWideCheckStandsFirst]), [lineFor] answers it, the line reads it.
+  // would run a whole list. Each hop beside it is pinned — a CI shard
+  // passes the flag (its action, scanned), [lineFor] answers it, and
+  // [outsideTheLine] holds what it asked at once. `first` likewise:
+  // master_check asks it ([kWideCheckStandsFirst]), [lineFor] answers it,
+  // the line reads it.
   if (inTheLine) {
     await standInLine(
       'affected_tests',
@@ -1178,6 +1120,8 @@ Future<int> _runTests(
     _sayReds(redsTo, reds);
   }
 
+  _warnSlow(slow, onGitHub: Platform.environment['GITHUB_ACTIONS'] == 'true');
+
   // A batch that exits non-zero having run NOTHING is not a test failure,
   // and reading it as one costs an hour. It happened on this tool's first
   // day in anger: an over-long command line made cmd.exe refuse to launch
@@ -1209,7 +1153,6 @@ Future<int> _runTests(
         'a pass: a machine whose tester makes one sees them. '
         '${unrun.join(', ')}');
   }
-  if (engine != null) _report(engine);
   return worst;
 }
 
@@ -1270,30 +1213,48 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
   }
 }
 
-/// What to say when the engine the suites load was not built from the C in
-/// this checkout, or null when there is nothing to say.
-///
-/// No engine at all says nothing here: the suites skip, and a skip is
-/// already reported by name.
-String? _engineCaveat() {
-  const rebuild = 'Rebuild it from this checkout: bash tool/lane.sh engine';
-  final root = Directory.current.path;
-  final source = nativeSourceId(root);
-  if (source == null) {
-    return '⚠️this checkout holds no $nativeSourceDir, so whether the engine '
-        'was built from it is unchecked.';
+/// The tests of [report] that took a minute ([slowTests]); none when it
+/// cannot be read — [_recordBatch] has said so.
+List<SlowTest> _slowIn(File report) {
+  try {
+    return slowTests(report.readAsStringSync(), root: Directory.current.path);
+  } on FileSystemException {
+    return const [];
   }
-  String short(String id) => id.length > 8 ? id.substring(0, 8) : id;
-  return switch (engineProvenance(root, source)) {
-    EngineProvenance.current || EngineProvenance.absent => null,
-    EngineProvenance.foreign =>
-      '⚠️THE ENGINE WAS BUILT FROM OTHER C (${short(engineStampOf(root)!)}; '
-          'this checkout holds ${short(source)}) — every native result '
-          'describes that C. $rebuild',
-    EngineProvenance.unstamped =>
-      '⚠️the engine does not say which C it was built from — native results '
-          'may describe other C. $rebuild',
-  };
+}
+
+/// 🆕Says each test of [slow] — a WARNING, never a red (card
+/// a-slow-test-cannot-creep, 2026-11-17; [kSlowTest] has why a minute).
+/// On CI each is a warning of the run as well ([githubWarning]): a shard's
+/// log is read by no one while its job is green.
+void _warnSlow(List<SlowTest> slow, {required bool onGitHub}) {
+  if (slow.isEmpty) return;
+  final slowest = [...slow]..sort((a, b) => b.ms.compareTo(a.ms));
+  _report('⚠️${slow.length} test(s) took ${kSlowTest.inSeconds} s or more — '
+      'a warning, not a red. A wait for what cannot come looks like this '
+      '(`waitPatience`, test/helpers/poll_until.dart), and so does a '
+      'crowded machine — run one alone to tell which:');
+  for (final test in slowest) {
+    _report('  ${_seconds(test.ms)} s  ${test.path}: ${test.name}');
+  }
+  if (onGitHub) slowest.map(githubWarning).forEach(stdout.writeln);
+}
+
+int _seconds(int ms) => (ms / 1000).round();
+
+/// [test] as a GitHub Actions workflow command, which the run's page lists
+/// as a warning on the test's file. Escaped as the runner reads it: `%`,
+/// CR and LF in the message, and `:` and `,` too in a property.
+String githubWarning(SlowTest test) {
+  String data(String text) => text
+      .replaceAll('%', '%25')
+      .replaceAll('\r', '%0D')
+      .replaceAll('\n', '%0A');
+  String property(String text) =>
+      data(text).replaceAll(':', '%3A').replaceAll(',', '%2C');
+  return '::warning file=${property(test.path)},'
+      'title=${property('a test of ${_seconds(test.ms)} s')}'
+      '::${data(test.name)}';
 }
 
 /// Says out loud when tests were skipped, and what usually causes it here.
@@ -1312,17 +1273,16 @@ void _reportSkips(int skipped) {
   // 🧪Measured after that fix, whole suite, no environment variable: 16
   // skips, and every one of them is deliberate — 15 benchmarks tagged out
   // of the default run, and the CI-only engine pin.
+  //
+  // ↩️The C engine's pins, the one kind a missing binary could skip, went
+  // with it (2026-11-13), and the CI-only pin with them: the GPU engine's
+  // library is built by every run, and a test that needs it and gets none
+  // fails.
   _report('  Name them. The reasons print beside each one (`Skip: …`), and '
-      'the two');
-  _report('  that are FINE are the benchmarks (--tags benchmark) and the '
-      'CI-only');
-  _report('  engine pin. Anything else is a pin that is not running.');
-  _report('  A native pin skipping usually means no binary. Build one, '
-      'stamped with the C');
-  _report('  it came from: bash tool/lane.sh engine');
-  _report('  ⛔But a built binary can skip too — that is a resolver that '
-      'cannot see it,');
-  _report('  and `native_engine_present_test` is the pin that says so.');
+      'the one');
+  _report('  kind that is FINE is the benchmarks (--tags benchmark). '
+      'Anything else');
+  _report('  is a pin that is not running.');
 }
 
 class _BatchResult {
@@ -1480,33 +1440,11 @@ class BatchSilence {
 /// finished, each as `<test file>: <test name>`; a suite still loading is
 /// not one.
 List<String> stillRunning(String report) {
-  final paths = <int, String>{};
-  final open = <int, ({int suite, String name})>{};
-  for (final line in const LineSplitter().convert(report)) {
-    final Object? event;
-    try {
-      event = jsonDecode(line);
-    } on FormatException {
-      continue;
-    }
-    if (event is! Map<String, dynamic>) continue;
-    switch (event['type']) {
-      case 'suite':
-        final suite = event['suite'] as Map<String, dynamic>;
-        paths[suite['id'] as int] = '${suite['path']}'.replaceAll('\\', '/');
-      case 'testStart':
-        final test = event['test'] as Map<String, dynamic>;
-        final name = test['name'] as String;
-        if (!name.startsWith('loading ')) {
-          open[test['id'] as int] = (suite: test['suiteID'] as int, name: name);
-        }
-      case 'testDone':
-        open.remove(event['testID']);
-    }
-  }
+  final read = readReport(report);
   return [
-    for (final test in open.values)
-      '${paths[test.suite] ?? '?'}: ${test.name}',
+    for (final test in read.tests)
+      if (test.end == null && !test.isLoading)
+        '${read.paths[test.suite] ?? '?'}: ${test.name}',
   ];
 }
 
@@ -1563,12 +1501,13 @@ Future<_BatchResult> _flutterTestIn(
   var skipped = 0;
   final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
-  var cut = false;
+  var silent = false;
   final look = Timer.periodic(kLookForSilence, (_) {
-    if (cut || !silence.isPast(kSilentBatch, DateTime.now())) return;
-    cut = true;
+    if (silent || !silence.isPast(kSilentBatch, DateTime.now())) return;
+    silent = true;
     cutTree(process.pid);
   });
+  final memory = MemoryWatch(process.pid);
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -1587,8 +1526,12 @@ Future<_BatchResult> _flutterTestIn(
   ];
   final code = await process.exitCode;
   look.cancel();
+  memory.stop();
   await Future.wait(pumped);
-  if (cut) {
+  final cut = silent
+      ? 'no test finished for ${kSilentBatch.inMinutes} min'
+      : memory.outgrew;
+  if (cut != null) {
     var open = const <String>[];
     try {
       open = stillRunning(File(report).readAsStringSync());
@@ -1596,11 +1539,10 @@ Future<_BatchResult> _flutterTestIn(
       // No report to name them by; the cut is said all the same.
     }
     final named = open.isEmpty ? '(none named)' : open.join(' | ');
-    _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
-        'batch, red. Still running: $named');
+    _report('🚨 $cut — cut the batch, red. Still running: $named');
   }
   return _BatchResult(
-    cut && code == 0 ? 1 : code,
+    cut != null && code == 0 ? 1 : code,
     ranTests,
     skipped,
     noContext: context.said,

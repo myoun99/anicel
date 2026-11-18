@@ -1,43 +1,17 @@
-//! The frame a plugin reads (anicel_fx_plugin.h), laid by ONE WRITER. A
-//! render lays one block — the frame, its values, its layers' places and
-//! every picture's pixels — and the frame names each part by its distance
-//! from itself, so the same bytes are right wherever the block lies: the
-//! host's own memory for a native library, the room a module gave in its
-//! linear memory for a .wasm (🗣️I-132-Q5).
+//! The frame a plugin reads (the spec crate, anicel_fx), laid by ONE
+//! WRITER. A render lays one block — the frame, its values, its layers'
+//! places and every picture's pixels — and the frame names each part by its
+//! distance from itself, so the same bytes are right wherever the block
+//! lies: the host's own memory for a native library, the room a module gave
+//! in its linear memory for a .wasm (🗣️I-132-Q5).
+
+use anicel_fx as spec;
 
 use crate::job::{Head, Image, Job};
 
-#[cfg(not(target_endian = "little"))]
-compile_error!(
-    "the frame is laid little-endian: WebAssembly's memory is, and so is every machine the app \
-     runs on"
-);
-
-/// The spec version this host speaks (ANICEL_FX_SPEC_VERSION).
-pub(crate) const SPEC_VERSION: u32 = 1;
-/// Spec 1's one format (ANICEL_FX_RGBA8_PREMULTIPLIED).
-const RGBA8_PREMULTIPLIED: u32 = 1;
-
-// anicel_fx_frame's size and its fields' places: the numbers the header's
-// ANICEL_FX_ASSERT lines hold every plugin's compiler to, and those they
-// leave out where the fields' order puts them.
-const FRAME: usize = 104;
-const SPEC: usize = 0;
-const FORMAT: usize = 4;
-const INPUT: usize = 8;
-const OUTPUT: usize = 32;
-const VALUE_COUNT: usize = 56;
-const VALUES: usize = 60;
-const LAYER_COUNT: usize = 64;
-const LAYERS: usize = 68;
-const TIME: usize = 72;
-const FRAME_RATE: usize = 80;
-const SCALE: usize = 88;
-const FRAME_INDEX: usize = 96;
-/// anicel_fx_image: pixels, width, height, stride, left and top, a word each.
-const IMAGE: usize = 24;
-/// anicel_fx_value: four doubles.
-const VALUE: usize = 32;
+const FRAME: usize = size_of::<spec::Frame>();
+const IMAGE: usize = size_of::<spec::Image>();
+const VALUE: usize = size_of::<spec::Value>();
 
 fn align16(at: usize) -> usize {
     (at + 15) & !15
@@ -79,20 +53,21 @@ pub(crate) fn reach_size(head: &Head) -> usize {
 
 /// Lays a reach's frame at the start of `block`.
 pub(crate) fn lay_reach(block: &mut [u8], head: &Head) {
-    Laying(block).head(head, align16(FRAME), (0, 0));
+    let none = [spec::Image::default(); 2];
+    Laying(block).frame(&frame(head, align16(FRAME), (0, 0), none), head);
 }
 
 /// Lays `job` at the start of `block` by `plan`, the output's room cleared.
 pub(crate) fn lay(block: &mut [u8], plan: &Plan, job: &Job) {
+    let pictures = [placed(plan.input, &job.input), placed(plan.output, &job.input)];
+    let layers = (job.layers.len(), plan.layers);
     let mut laying = Laying(block);
-    laying.head(&job.head, plan.values, (job.layers.len(), plan.layers));
-    laying.image(INPUT, plan.input, &job.input);
-    laying.image(OUTPUT, plan.output, &job.input);
+    laying.frame(&frame(&job.head, plan.values, layers, pictures), &job.head);
     laying.rows(plan.input, &job.input);
     laying.0[plan.output..][..job.input.packed_bytes()].fill(0);
     let mut at = plan.layer_pixels;
     for (index, layer) in job.layers.iter().enumerate() {
-        laying.image(plan.layers + index * IMAGE, at, layer);
+        laying.bytes(plan.layers + index * IMAGE, placed(at, layer).as_bytes());
         laying.rows(at, layer);
         at = align16(at + layer.packed_bytes());
     }
@@ -106,6 +81,43 @@ pub(crate) fn take_output(block: &[u8], plan: &Plan, job: &mut Job) {
     }
 }
 
+/// The frame `head` is asked at: its values at `values`, its layers'
+/// places at `layers`, and its input and output pictures.
+fn frame(
+    head: &Head,
+    values: usize,
+    (layer_count, layers): (usize, usize),
+    [input, output]: [spec::Image; 2],
+) -> spec::Frame {
+    spec::Frame {
+        spec: spec::SPEC_VERSION,
+        format: spec::RGBA8_PREMULTIPLIED,
+        input,
+        output,
+        value_count: (head.values.len() / 4) as u32,
+        values: values as u32,
+        layer_count: layer_count as u32,
+        layers: layers as u32,
+        time: head.time,
+        frame_rate: head.frame_rate,
+        scale: head.scale,
+        frame_index: head.frame_index,
+        reserved: 0,
+    }
+}
+
+/// `image` as the frame names it, its pixels at `pixels`, its rows packed.
+fn placed(pixels: usize, image: &Image) -> spec::Image {
+    spec::Image {
+        pixels: pixels as u32,
+        width: image.width,
+        height: image.height,
+        stride: image.width * 4,
+        left: image.left,
+        top: image.top,
+    }
+}
+
 /// A block being laid, its places counted from the frame at its start.
 struct Laying<'a>(&'a mut [u8]);
 
@@ -114,45 +126,11 @@ impl Laying<'_> {
         self.0[at..at + bytes.len()].copy_from_slice(bytes);
     }
 
-    fn word(&mut self, at: usize, word: u32) {
-        self.bytes(at, &word.to_le_bytes());
-    }
-
-    fn double(&mut self, at: usize, double: f64) {
-        self.bytes(at, &double.to_le_bytes());
-    }
-
-    /// Everything but the frame's images, which stay 0: its numbers, and the
-    /// values laid at `values`.
-    fn head(&mut self, head: &Head, values: usize, (layer_count, layers): (usize, usize)) {
-        self.0[..FRAME].fill(0);
-        self.word(SPEC, SPEC_VERSION);
-        self.word(FORMAT, RGBA8_PREMULTIPLIED);
-        self.word(VALUE_COUNT, (head.values.len() / 4) as u32);
-        self.word(VALUES, values as u32);
-        self.word(LAYER_COUNT, layer_count as u32);
-        self.word(LAYERS, layers as u32);
-        self.double(TIME, head.time);
-        self.double(FRAME_RATE, head.frame_rate);
-        self.double(SCALE, head.scale);
-        self.word(FRAME_INDEX, head.frame_index as u32);
+    /// `frame` at the start, and `head`'s values where it says they lie.
+    fn frame(&mut self, frame: &spec::Frame, head: &Head) {
+        self.bytes(0, frame.as_bytes());
         for (index, &double) in head.values.iter().enumerate() {
-            self.double(values + index * 8, double);
-        }
-    }
-
-    /// `image`'s place in the frame at `at`, its pixels at `pixels`.
-    fn image(&mut self, at: usize, pixels: usize, image: &Image) {
-        let words = [
-            pixels as u32,
-            image.width,
-            image.height,
-            image.width * 4,
-            image.left as u32,
-            image.top as u32,
-        ];
-        for (index, word) in words.into_iter().enumerate() {
-            self.word(at + index * 4, word);
+            self.bytes(frame.values as usize + index * 8, &double.to_le_bytes());
         }
     }
 
@@ -188,9 +166,10 @@ mod tests {
     }
 
     /// A render and then a reach laid in one room of stale bytes, read back
-    /// by the header's own numbers (anicel_fx_plugin.h: the frame 104 bytes,
-    /// input at 8, output at 32, value_count at 56, layer_count at 64, time
-    /// at 72, frame_index at 96; an image 24 bytes, a value 32): every part
+    /// by the spec's own numbers, written out here rather than asked of the
+    /// spec crate (anicel_fx's asserts: the frame 104 bytes, input at 8,
+    /// output at 32, value_count at 56, layer_count at 64, time at 72,
+    /// frame_index at 96; an image 24 bytes, a value 32): every part
     /// where the frame says, each on 16 bytes and none on another, the
     /// pictures packed, the output cleared — and the reach's images empty,
     /// nothing of the render left in its frame.

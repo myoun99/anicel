@@ -93,8 +93,9 @@ void main() {
   ) async {
     // A screen whose half (F-337) is room for the render queue beside the
     // least the preview takes (the Cels list with its attach column), so
-    // the drawer stays open.
-    await tester.binding.setSurfaceSize(const Size(1960, 930));
+    // the drawer stays open. ↩️1960, until 「이미지」 stood the rules wider
+    // than 「Art」 did (F-578-Q4).
+    await tester.binding.setSurfaceSize(const Size(2040, 930));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -147,7 +148,6 @@ void main() {
       expect(nameTyped(tester), isEmpty, reason: 'nothing was typed for it');
       expect(extensionShown(tester), '.mov');
       expect(tester.exportFirstFileName, '301.mov');
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a name typed is the file written — and an extension typed '
@@ -170,7 +170,6 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), ['shot.png']);
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('an extension of any format the window writes is swapped, '
@@ -186,7 +185,6 @@ void main() {
         await tester.pump();
         expect(tester.exportFirstFileName, 'shot.bmp', reason: typed);
       }
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a field of spaces is an empty one', (tester) async {
@@ -196,7 +194,6 @@ void main() {
       await tester.enterText(keyed('export-file-name-field'), '  ');
       await tester.pump();
       expect(tester.exportFirstFileName, '301.mp4');
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the Sequence tab\'s first module is ALWAYS its name: a '
@@ -222,7 +219,6 @@ void main() {
         lessThan(topOf(strings.exFormat)),
         reason: 'the rule stands where the name stood',
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the conte keeps ONE name in either format: the PDF\'s, and '
@@ -259,7 +255,6 @@ void main() {
         contains('board_p1.png'),
         reason: 'the pages are written under the name typed',
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 
@@ -298,7 +293,6 @@ void main() {
       await press(tester, 'export-scope-cut');
       expect(ghostOf(tester, 'export-naming-base-field'), '301');
       expect(tester.exportFirstFileName, '301_0001.png');
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the image: the name of the cut it is a frame of', (
@@ -314,7 +308,6 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), ['301.png']);
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the conte: the work\'s title and episode, its PDF\'s and its '
@@ -330,7 +323,6 @@ void main() {
       await pickPaperFormat(tester, 'export-conteformat', 'png');
       expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
       expect(tester.exportPreviewName, startsWith('AMMI_OP'));
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a job queued with the field empty comes back empty, and the '
@@ -356,7 +348,6 @@ void main() {
       await tester.pump();
       expect(filesWrittenUnder(temp), ['301.png']);
       expect(nameTyped(tester), 'mine', reason: 'the user\'s own setup');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 
@@ -376,7 +367,6 @@ void main() {
 
     expect(nameTyped(tester), 'take2');
     expect(tester.exportFirstFileName, 'take2.mp4');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   group('the footer spreads', () {
@@ -418,7 +408,6 @@ void main() {
         tester.widget<Text>(keyed('export-order-line')).data,
         AppText.strings.exOrderAsksFirst,
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the progress of a run stands between them for the length of '
@@ -451,7 +440,6 @@ void main() {
       expect(bar.right, lessThanOrEqualTo(order.left));
       expect(order.right, lessThanOrEqualTo(cancel.left));
       expect(cancel.right, lessThanOrEqualTo(export.left));
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 }

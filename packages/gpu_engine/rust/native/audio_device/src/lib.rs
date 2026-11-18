@@ -9,6 +9,8 @@
 // never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
+#[cfg(target_os = "android")]
+mod android;
 mod backend;
 mod buffer;
 mod capture;

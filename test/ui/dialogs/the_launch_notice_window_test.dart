@@ -33,16 +33,22 @@ class _MemoryStore extends LaunchNoticeStore {
 }
 
 /// A notice whose 「what's new」 says [whatsNew], in every language but
-/// for a word that says which.
-LaunchNoticeContent _content({String whatsNew = '- One thing changed.'}) =>
-    LaunchNoticeContent(
-      (language, section) => switch (section) {
-        LaunchNoticeSection.notice =>
-          '## Pre-release ${language.name}\n\nA build before release.',
-        LaunchNoticeSection.whatsNew => whatsNew,
-        LaunchNoticeSection.feedback => 'Tell us ${language.name}.',
-      },
-    );
+/// for a word that says which — in a build stamped [number].
+LaunchNoticeContent _content({
+  String whatsNew = '- One thing changed.',
+  String number = '1091',
+}) => LaunchNoticeContent(
+  (language, section) => switch (section) {
+    LaunchNoticeSection.notice =>
+      '## Pre-release ${language.name}\n\nA build before release.\n\n'
+          'Files may not open.',
+    LaunchNoticeSection.debugOpening =>
+      '## Debug ${language.name}\n\nA debug build.',
+    LaunchNoticeSection.whatsNew => whatsNew,
+    LaunchNoticeSection.feedback => 'Tell us ${language.name}.',
+  },
+  number: number,
+);
 
 final _window = find.byKey(const ValueKey<String>('launch-notice'));
 final _dontShowAgain = find.byKey(
@@ -55,6 +61,12 @@ final _sendFeedback = find.byKey(
 final _feedbackWindow = find.byKey(const ValueKey<String>('feedback-window'));
 final _whatsNewFold = find.byKey(
   const ValueKey<String>('launch-notice-whats-new'),
+);
+
+/// What the window says, inside its own scrolling lane.
+final _body = find.descendant(
+  of: _window,
+  matching: find.byType(ContentScrollbar),
 );
 
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어. 다음부터 표시안함버튼
@@ -238,6 +250,51 @@ void main() {
     expect(heading, findsOneWidget, reason: 'drawn once, as the fold\'s words');
   });
 
+  // 🗣️유저 2026-11-16 (board launch-notice-says-debug-build): 「디버그에서만
+  // 앱에서 내역 내리는거고」.
+  testWidgets('🎯a build no round stamped has no what\'s-new — not even its '
+      'place — and opens as a debug build; the rest is the notice\'s own', (
+    tester,
+  ) async {
+    await pumpHost(
+      tester,
+      _MemoryStore(),
+      content: () => _content(number: ''),
+    );
+    await launch(tester);
+
+    expect(find.text('Debug en'), findsOneWidget);
+    expect(find.text('A debug build.'), findsOneWidget);
+    expect(find.text('Pre-release en'), findsNothing);
+    expect(find.text('A build before release.'), findsNothing);
+    expect(find.text('Files may not open.'), findsOneWidget);
+    expect(find.text('Tell us en.'), findsOneWidget);
+    expect(_sendFeedback, findsOneWidget);
+    expect(_whatsNewFold, findsNothing);
+    expect(find.text('One thing changed.'), findsNothing);
+    expect(
+      find.descendant(of: _body, matching: find.byType(Divider)),
+      findsOneWidget,
+      reason: 'the one between the notice and the feedback — none kept '
+          'for the what\'s-new',
+    );
+  });
+
+  testWidgets('⛔a round\'s build is as it was: its notice as the file says, '
+      'and the what\'s-new under its own divider', (tester) async {
+    await pumpHost(tester, _MemoryStore());
+    await launch(tester);
+
+    expect(find.text('Pre-release en'), findsOneWidget);
+    expect(find.text('A build before release.'), findsOneWidget);
+    expect(find.text('Debug en'), findsNothing);
+    expect(find.text('One thing changed.'), findsOneWidget);
+    expect(
+      find.descendant(of: _body, matching: find.byType(Divider)),
+      findsNWidgets(2),
+    );
+  });
+
   test('every bundled what\'s-new opens with the `## ` heading its fold '
       'carries', () {
     final files = [
@@ -308,17 +365,24 @@ void main() {
     final bundled = (await tester.runAsync(LaunchNoticeContent.bundled))!;
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    for (final language in AppLanguage.values) {
+    // A round's build and a debug build: each draws what the other does not.
+    for (final (number, language) in [
+      for (final number in ['1091', ''])
+        for (final language in AppLanguage.values) (number, language),
+    ]) {
+      final content = LaunchNoticeContent(bundled.textOf, number: number);
       AppText.settings.value = AppLanguageSettings(programLanguage: language);
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),
-          home: LaunchNoticeWindow(content: bundled, onDontShowAgain: () {}),
+          home: LaunchNoticeWindow(content: content, onDontShowAgain: () {}),
         ),
       );
       // The what's-new starts folded; its words are drawn once opened.
-      await tester.tap(_whatsNewFold);
-      await tester.pumpAndSettle();
+      if (content.showsWhatsNew) {
+        await tester.tap(_whatsNewFold);
+        await tester.pumpAndSettle();
+      }
       final drawn = [
         for (final text in tester.widgetList<RichText>(
           find.descendant(
@@ -328,11 +392,12 @@ void main() {
         ))
           text.text.toPlainText(),
       ];
-      expect(drawn, isNotEmpty, reason: language.name);
+      final which = '${language.name} · build "$number"';
+      expect(drawn, isNotEmpty, reason: which);
       expect(
         drawn.where((text) => text.contains('**')),
         isEmpty,
-        reason: language.name,
+        reason: which,
       );
     }
   });

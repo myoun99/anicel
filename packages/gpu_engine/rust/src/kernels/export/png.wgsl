@@ -2,14 +2,15 @@
 // the byte of the filter that leaves it smallest, then the row under it —
 // the bytes a writer deflates as they are, so the CPU's filter pass goes.
 //
-// The law is the app's (`PngImageData`, lib/src/services/media/
-// png_writing.dart). Byte x of a row, with a the byte a pixel to its left,
-// b the byte above it and c the byte above a — each 0 off the picture —,
-// is under filter 0 to 4 x minus 0, a, b, (a + b) >> 1 or Paeth(a, b, c),
-// mod 256. A row's cost under a filter is the sum of its bytes read as
-// signed — f under 128, 256 − f from it —, and the least wins, a tie to the
-// lower filter. The app stops trying once a filter costs 0, which nothing
-// after it can beat: all five here give the same choice.
+// The law, and its one place: every PNG this app writes under filters is
+// filtered here (↩️the app kept a twin in Dart, `PngImageData`, till its
+// last writer — an animated PNG's frames — came here, 2026-11-16). Byte x
+// of a row, with a the byte a pixel to its left, b the byte above it and c
+// the byte above a — each 0 off the picture —, is under filter 0 to 4 x
+// minus 0, a, b, (a + b) >> 1 or Paeth(a, b, c), mod 256 (the reader
+// unfilters by the same Paeth, `pngPaeth`). A row's cost under a filter is
+// the sum of its bytes read as signed — f under 128, 256 − f from it —,
+// and the least wins, a tie to the lower filter.
 //
 // A row is a workgroup's: its filters read only it and the row above as it
 // was, so rows go apart. The costs add in workgroup atomics — integer sums,
@@ -18,20 +19,28 @@
 // three bytes more.
 //
 // Needs, before it, its source's `PIXEL_BYTES` and `row_byte`
-// (png_rgba.wgsl or png_rgb.wgsl).
+// (png_rgba.wgsl or png_packed.wgsl).
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame_shown.wgsl).
+  stride: u32,
   // The picture.
   width: u32,
   height: u32,
   // Words a row of the out takes: its filter's byte and its own.
   row_words: u32,
+  // The word of the source its binding begins on (frame_shown.wgsl
+  // or png_packed.wgsl take it off), the first row this
+  // band puts, and the word of the out its binding begins on: a pass binds
+  // the rows it reads — a row's own and the one above — and puts
+  // (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
+  out_base: u32,
+  pad0: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> source: array<u32>;
 @group(0) @binding(2) var<storage, read_write> rows: array<u32>;
 
 const FILTERS: u32 = 5u;
@@ -112,7 +121,7 @@ fn png_filter_pass(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_index) lane: u32,
 ) {
-  let y = group.y;
+  let y = params.first_row + group.y;
   let stride = params.width * PIXEL_BYTES;
   var sums = array<u32, 5>(0u, 0u, 0u, 0u, 0u);
   for (var i = lane; i < stride; i += GROUP) {
@@ -140,6 +149,6 @@ fn png_filter_pass(
       }
       word |= byte << (k * 8u);
     }
-    rows[y * params.row_words + w] = word;
+    rows[y * params.row_words + w - params.out_base] = word;
   }
 }

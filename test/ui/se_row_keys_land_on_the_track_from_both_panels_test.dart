@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/roll_rows_until_built.dart';
 import '../helpers/storyboard_host.dart';
 
 /// F-102's two HOSTS. Both panels key an SE row through `LaneVerbs`, and each
@@ -78,12 +79,20 @@ void main() {
     );
     await _tapVisible(
       tester,
-      find.named('timeline-lane-group-toggle-$se-transform-group'),
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      find.named('timeline-lane-group-toggle-$se-name-tag-group'),
     );
-    await _tapVisible(
+    final rotation = find.byKey(
+      ValueKey<String>('timeline-lane-key-toggle-$se-rotation'),
+    );
+    // Under the name tag's own lanes: the rail builds no row past its
+    // viewport.
+    await rollRowsUntilBuilt(
       tester,
-      find.byKey(ValueKey<String>('timeline-lane-key-toggle-$se-rotation')),
+      rotation,
+      inRowsOf: find.named('timeline-lane-group-toggle-$se-name-tag-group'),
     );
+    await _tapVisible(tester, rotation);
 
     expect(_rotationKeysOnTheRow(session), [2, cut2Start + 3]);
   });
@@ -108,7 +117,8 @@ void main() {
     await _tapVisible(tester, find.named('storyboard-lane-toggle-$se'));
     await _tapVisible(
       tester,
-      find.named('storyboard-lane-group-toggle-$se-transform-group'),
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      find.named('storyboard-lane-group-toggle-$se-name-tag-group'),
     );
     await _tapVisible(
       tester,

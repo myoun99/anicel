@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -12,13 +13,20 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show
+        canvasManipulatorsForLane,
+        transformGroupHeaderLane,
+        transformLaneDisplayOrder;
 
 import '../../helpers/timeline_host.dart';
 
-/// R5 #7 — the name tag reaches the rail as a fixed lane GROUP, Transform's
-/// sibling, on every SE row.
+/// R5 #7 — the name tag reaches the rail as a fixed lane GROUP on every SE
+/// row, its members holding the row's pose (audio-fx-grows-like-the-pros-Q3
+/// · Q4).
 void main() {
   const seLayerId = LayerId('nt-se');
 
@@ -71,13 +79,37 @@ void main() {
     );
   }
 
+  testWidgets('a DRAWING row has no name-tag lanes — the group belongs to '
+      'SE rows alone', (tester) async {
+    final s = session();
+    await pumpHost(tester, s);
+    final cel = s.layers.firstWhere(
+      (layer) => layer.id == const LayerId('nt-cel'),
+    );
+    expect(
+      timelineLanesForLayer(
+        layer: cel,
+        session: s,
+        expandedGroupKeys: {},
+      ).where((lane) => laneIsSeNameTag(lane.laneId)),
+      isEmpty,
+    );
+  });
+
+  Layer seRow(EditorSessionManager s) =>
+      s.layers.firstWhere((layer) => layer.id == seLayerId);
+
   testWidgets('the group has a header and seven members, and they are the '
       'ones the user listed', (tester) async {
     final s = session();
     await pumpHost(tester, s);
-    final seLayer = s.layers.firstWhere((layer) => layer.id == seLayerId);
+    final seLayer = seRow(s);
 
-    final lanes = timelineLanesForLayer(layer: seLayer, session: s, expandedGroupKeys: {});
+    final lanes = timelineLanesForLayer(
+      layer: seLayer,
+      session: s,
+      expandedGroupKeys: {},
+    );
     final header = lanes.where(
       (lane) => lane.laneId == seNameTagGroupLaneId,
     );
@@ -85,11 +117,6 @@ void main() {
     expect(
       header.single.isGroupHeader,
       isTrue,
-    );
-    expect(
-      header.single.groupEnabled,
-      isNull,
-      reason: 'a FIXED group has no bypass — the row eye covers it',
     );
     expect(
       header.single.previewText,
@@ -111,51 +138,100 @@ void main() {
     );
   });
 
-  testWidgets('the group sits ABOVE Transform — it is a sibling, and the '
-      'thing you type into belongs nearer the row', (tester) async {
+  testWidgets('🎯the S row\'s transform is no group of its own: its lanes '
+      'are the name tag\'s members, after its own, and the header wears its '
+      'switch, its basis chip and its keys (audio-fx-grows-like-the-pros-Q3 · '
+      'Q4)', (tester) async {
     final s = session();
     await pumpHost(tester, s);
-    final seLayer = s.layers.firstWhere((layer) => layer.id == seLayerId);
-    final ids = timelineLanesForLayer(
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      3,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    final seLayer = seRow(s);
+    expect(seLayer.transformTrack.rotation.keys.keys, [3], reason: '⛔전제');
+
+    final folded = timelineLanesForLayer(
       layer: seLayer,
       session: s,
       expandedGroupKeys: {},
-    ).map((lane) => lane.laneId).toList();
+    );
     expect(
-      ids.indexOf(seNameTagGroupLaneId),
-      lessThan(ids.indexOf('transform-group')),
+      folded.map((lane) => lane.laneId),
+      isNot(contains(transformGroupHeaderLane.laneId)),
+    );
+    final header = folded.singleWhere(
+      (lane) => lane.laneId == seNameTagGroupLaneId,
+    );
+    expect(header.groupEnabled, seLayer.transformEnabled);
+    expect(header.groupBasis, seLayer.transformBasis);
+    expect(header.headsAGraph, isTrue);
+    expect(header.keyMarks.keys, [3], reason: 'the pose\'s keys in its union');
+
+    final ids = timelineLanesForLayer(
+      layer: seLayer,
+      session: s,
+      expandedGroupKeys: {'${seLayerId.value}|$seNameTagGroupLaneId'},
+    ).map((lane) => lane.laneId).toList();
+    final head = ids.indexOf(seNameTagGroupLaneId);
+    expect(
+      ids.sublist(head + 1, head + 1 + seNameTagLaneDisplayOrder.length + 5),
+      [...seNameTagLaneDisplayOrder, ...transformLaneDisplayOrder],
+    );
+    expect(
+      s.laneVerbs.laneVerbTargets([seNameTagGroupLaneId]),
+      [...seNameTagLaneDisplayOrder, ...transformLaneDisplayOrder],
+      reason: 'the header stands for every member it holds',
     );
   });
 
-  testWidgets('a DRAWING row has no name-tag lanes — the group belongs to '
-      'SE rows alone', (tester) async {
+  test('🎯the header\'s switch is the name tag fx\'s — the row\'s transform '
+      'switch, folded in (Q5: 「이름표 전체를 끈다」) — and its basis chip the '
+      'pose\'s', () {
     final s = session();
-    await pumpHost(tester, s);
-    final cel = s.layers.firstWhere(
-      (layer) => layer.id == const LayerId('nt-cel'),
+    addTearDown(s.dispose);
+    expect(s.laneVerbs.isLaneGroupOn(seLayerId, seNameTagGroupLaneId), isTrue);
+
+    s.laneVerbs.toggleLaneGroupEnabled(
+      seLayerId,
+      seNameTagGroupLaneId,
+      description: 'Toggle',
     );
+    expect(seRow(s).transformEnabled, isFalse);
     expect(
-      timelineLanesForLayer(
-        layer: cel,
-        session: s,
-        expandedGroupKeys: {},
-      ).where((lane) => laneIsSeNameTag(lane.laneId)),
-      isEmpty,
+      s.laneVerbs.isLaneGroupOn(seLayerId, seNameTagGroupLaneId),
+      isFalse,
+    );
+    expect(seRow(s).effects, isEmpty, reason: 'no fx was made to switch');
+
+    s.laneVerbs.setLaneGroupBasis(
+      seLayerId,
+      seNameTagGroupLaneId,
+      FxBasis.block,
+      description: 'Basis',
+    );
+    expect(seRow(s).transformBasis, FxBasis.block);
+    expect(
+      canvasManipulatorsForLane(seNameTagGroupLaneId),
+      canvasManipulatorsForLane(transformGroupHeaderLane.laneId),
+      reason: 'standing on the group is standing on the pose it holds',
     );
   });
 
   test('🎯the header\'s Reset answers — a typed size back to a new tag\'s, '
-      'one undo (F-374: 「참조fx에서 리셋버튼도 안먹힘」, and so here)', () {
+      'and the pose it holds back to rest, one undo (F-374: 「참조fx에서 '
+      '리셋버튼도 안먹힘」, and so here)', () {
     final s = session();
     addTearDown(s.dispose);
     // What the tag shows at the frame — a typed size is a key now
     // (F-407), not the style it was made with.
-    double? size() => s.layers
-        .firstWhere((layer) => layer.id == seLayerId)
-        .seNameTag
-        ?.resolveAt(0)
-        .style
-        .fontSize;
+    double? size() => seRow(s).seNameTag?.resolveAt(0).style.fontSize;
+    double rotation() => seRow(s).transformTrack.rotation.keys[0]!.value;
     s.laneVerbs.setLaneValueAt(
       seLayerId,
       seNameTagSizeLaneId,
@@ -165,15 +241,111 @@ void main() {
       description: 'Edit Size',
       scaleLinked: false,
     );
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
     expect(size(), 48, reason: '⛔전제: the size was typed');
+    expect(rotation(), 30, reason: '⛔전제: the pose was keyed');
 
+    expect(
+      s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isTrue,
+      reason: 'its Reset is lit off rest (F-583)',
+    );
     expect(
       s.laneVerbs.resetLaneGroup(seLayerId, seNameTagGroupLaneId),
       isTrue,
     );
+    expect(
+      s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isFalse,
+      reason: 'back at rest, its Reset is out (F-583)',
+    );
 
     expect(size(), SeNameTag.defaultStyle.fontSize);
+    expect(rotation(), 0);
     s.undo();
     expect(size(), 48);
+    expect(rotation(), 30, reason: 'one step took both back');
+  });
+
+  test('🎯the pose alone off rest lights the Reset too', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    expect(
+      s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isTrue,
+    );
+  });
+
+  test('🎯a pose lane is read live where the tag holds it — its key, as '
+      'the rail\'s sweep asks (F-475)', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    expect(
+      s.laneVerbs.isLaneKeyedAt(seLayerId, 'rotation', 0, frameIsGlobal: false),
+      isTrue,
+    );
+    expect(
+      s.laneVerbs.isLaneKeyedAt(seLayerId, 'rotation', 5, frameIsGlobal: false),
+      isFalse,
+    );
+  });
+
+  test('🎯a pose edit hands the header a new row and the tag\'s own lanes '
+      'the ones they had — a tag never typed included', () {
+    final s = session();
+    addTearDown(s.dispose);
+    final before = seRow(s);
+    expect(before.seNameTag, isNull, reason: '⛔전제');
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      'rotation',
+      0,
+      '30°',
+      frameIsGlobal: false,
+      description: 'Edit Rotation',
+      scaleLinked: false,
+    );
+    final after = seRow(s);
+    expect(
+      identical(
+        laneRowSlice(before, seNameTagGroupLaneId),
+        laneRowSlice(after, seNameTagGroupLaneId),
+      ),
+      isFalse,
+      reason: 'the header shows the pose\'s keys beside the tag\'s',
+    );
+    for (final laneId in seNameTagLaneDisplayOrder) {
+      expect(
+        identical(laneRowSlice(before, laneId), laneRowSlice(after, laneId)),
+        isTrue,
+        reason: '$laneId shows what it showed',
+      );
+    }
   });
 }

@@ -242,6 +242,14 @@ void main() {
     tester,
   ) async {
     final (s, layer) = await placed(tester, FakeVideoBackend(frameCount: 24));
+    await tester.runAsync(
+      () => patiently(s.movieCels.hydrate(s.requireActiveCut, 0)),
+    );
+    expect(
+      pictureAt(s, layer, 0),
+      isNotNull,
+      reason: 'placed, the span shows the movie it names',
+    );
     debugVideoDecodeBackend = FakeVideoBackend(
       refusal: 'could not open the container',
     );

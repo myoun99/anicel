@@ -5,6 +5,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels;
@@ -353,5 +355,104 @@ void main() {
       );
       expect(laidFirst, isNot(same(laidSecond)), reason: 'fixture');
     });
+  });
+
+  group('on the engine', () {
+    // 🔬The CPU audit (2026-11-13): a text was laid by the CPU's stamp
+    // blend over the drawing's bytes, so a tile the engine alone held — a
+    // stroke's, a stamp's — was read back for it first. The engine lays it
+    // where the tile is.
+    test('a text laid over tiles the engine alone holds reads none of them '
+        'back', () {
+      final ledger = EngineTileLedger.instance;
+      final drawing = drawingOf({
+        a: ledger.debugOnEngine(drawingTile),
+        b: ledger.debugOnEngine(drawingTile),
+      });
+      final plate = {a: plateTile, b: plateTile};
+      final reads = ledger.debugTileReads;
+
+      final laid = celSurfaceWithTextsLaid(
+        drawing.withTexts([textOf(1, plate: plate)]),
+      );
+
+      expect(ledger.debugTileReads, reads);
+      expect(
+        pixelsOver(laid, [a, b]),
+        pixelsOver(stamped(drawingOf({a: drawingTile, b: drawingTile}), plate), [
+          a,
+          b,
+        ]),
+        reason: 'and what it laid is the stamp',
+      );
+    });
+
+    test('a plate goes to the engine once, however often it is laid', () {
+      // ONE text, as a cel keeps it from stroke to stroke: a text made
+      // again freezes its plate again, a plate of its own.
+      final text = textOf(1, plate: {a: plateTile, c: plateTile});
+      final handedUp = EngineStampPictures.debugHandedUp;
+
+      // Unders no other test laid a plate over: a pair laid before is not
+      // laid again ([celTilesWithPlatesLaid]'s memo), and asks for no
+      // stamp at all.
+      for (final rgba in [
+        [31, 41, 59, 255],
+        [26, 53, 58, 97],
+      ]) {
+        final under = tileFilledWith(rgba);
+        celSurfaceWithTextsLaid(
+          drawingOf({a: under, c: under}).withTexts([text]),
+        );
+      }
+
+      expect(EngineStampPictures.debugHandedUp, handedUp + 1);
+    });
+
+    test('a tile a moved plate reaches with none of its ink stays the '
+        'tile it was', () {
+      // Moved by whole pixels, the plate's one tile reaches four; its ink
+      // lies in its corner, so it lands on the first alone. The engine
+      // says the other three are the same — it hands back no tile for
+      // them — and the tiles under them are what they show.
+      final d = TileCoord(x: 1, y: 1);
+      final unders = {
+        a: drawingTile,
+        b: drawingTile,
+        c: drawingTile,
+        d: drawingTile,
+      };
+
+      final laid = celTilesWithPlatesLaid(drawingOf(unders), unders, [
+        (plate: {a: plateTile}, dx: 5, dy: 3),
+      ]);
+
+      for (final coord in [b, c, d]) {
+        expect(laid[coord], same(drawingTile), reason: '$coord');
+      }
+      expect(laid[a], isNot(same(drawingTile)), reason: 'the ink landed');
+    });
+  });
+
+  // ↩️Till 2026-11-14 a plate on a grid of another side than the engine's
+  // was laid there as the commit laid a stamp, on the CPU; a cel is drawn
+  // by the engine alone now, and a plate is turned away like every stroke
+  // (board `the-off-engine-cpu-commit-lives-only-for-tests`).
+  test('on a grid of another side than the engine\'s, a plate is turned '
+      'away as every stroke is', () {
+    const side = 64;
+    final grid = BitmapSurface(canvasSize: celTextTestCanvas, tileSize: side);
+    final under = BitmapTile.blank(size: side);
+    // Inked: a plate tile with no ink lays nothing, and is not asked.
+    final plate = BitmapTile(
+      size: side,
+      pixels: Uint8List(side * side * 4)..setAll(0, const [9, 8, 7, 255]),
+    );
+    expect(
+      () => celTilesWithPlatesLaid(grid, {a: under}, [
+        (plate: {a: plate}, dx: 0, dy: 0),
+      ]),
+      throwsStateError,
+    );
   });
 }

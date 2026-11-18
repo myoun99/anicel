@@ -120,8 +120,6 @@ void main() {
       reason: 'the head lit at pen-down in its own group, so the pen '
           'lifting builds no bar again',
     );
-
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('under the pen every row waits — a press runs nothing until '
@@ -172,7 +170,5 @@ void main() {
     await tester.pumpAndSettle();
     expect(verbs.canRunPixelVerb, isTrue, reason: 'landed, the rows open');
     expect(verbs.canRunPixelClipboardVerb(PixelClipboardVerb.copy), isTrue);
-
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

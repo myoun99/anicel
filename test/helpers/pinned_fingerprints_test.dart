@@ -7,9 +7,9 @@ import 'pinned_fingerprints.dart';
 
 void main() {
   group('fingerprintHex', () {
-    // The standard check value of CRC-32/ISO-HDLC — the same pin the GPU
-    // engine's Rust side carries (`fingerprint.rs`), so both sides are the
-    // one CRC the ledger's rows are written in.
+    // The standard check value of CRC-32/ISO-HDLC — the same pin the
+    // engine's Rust side carries (`fingerprint.rs`, `native/ledger`), so
+    // both sides are the one CRC the ledger's rows are written in.
     test('gives the published CRC of the check string', () {
       expect(fingerprintHex(ascii.encode('123456789')), 'cbf43926');
     });

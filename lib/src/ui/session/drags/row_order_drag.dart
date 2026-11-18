@@ -15,6 +15,8 @@ import '../../text/app_strings.dart';
 import '../../timeline/layer_drop_policy.dart'
     show
         LayerDropPlan,
+        PointerInRow,
+        RowPointer,
         layerDragRun,
         modelInsertionForSlot,
         resolveEffectDrop,
@@ -268,7 +270,7 @@ class RowOrderDrag {
   void updateLayerRow(
     List<Layer> displayLayers,
     int slot, {
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   }) {
     final subject = _subject;
     if (subject is! LayerRowSubject) {
@@ -304,7 +306,7 @@ class RowOrderDrag {
       displayLayers,
       subject.layerId,
       slot,
-      _cutLandings(cut, displayLayers, subject.layerId, pointerInRow),
+      _cutLandings(cut, displayLayers, subject.layerId, pointer),
     );
     final plan = landing?.value;
     _plan = plan;
@@ -322,7 +324,7 @@ class RowOrderDrag {
     Cut cut,
     List<Layer> displayLayers,
     LayerId movingId,
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   ) => (probe) {
     final stack = _listed(cut);
     final insertAt = modelInsertionForSlot(
@@ -333,11 +335,11 @@ class RowOrderDrag {
     if (insertAt == null) {
       return null;
     }
-    LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
+    LayerDropPlan? read(RowPointer? at) => resolveLayerDrop(
       stack: stack,
       movingId: movingId,
       insertAt: insertAt,
-      pointerInRow: pointer,
+      pointer: at,
       alsoMoving: _rowSelectionCarriedBy(movingId),
     );
     // 결정 6 at ONE gap: the half the pointer is in picks a boundary's
@@ -347,8 +349,8 @@ class RowOrderDrag {
     // row itself. Left to the walk instead, the caret fell a row INSIDE
     // while the pointer was at the edge and came back to the edge once it
     // went further (F-393's sweep, 10-18).
-    return read(pointerInRow) ??
-        (pointerInRow == null ? null : read(movingId));
+    return read(pointer) ??
+        (pointer == null ? null : read(PointerInRow(movingId)));
   };
 
   /// 결정 6 (유저 확정 2026-08-22) — **THE CARET STANDS AT THE NEAREST SLOT
@@ -466,7 +468,7 @@ class RowOrderDrag {
       // The pointer is still IN that row, so the gap hears it: a band with
       // no say of its own was the one place a boundary's half went unread,
       // and kept a row in its group from the middle of the row past it.
-      updateLayerRow(displayLayers, slot, pointerInRow: targetId);
+      updateLayerRow(displayLayers, slot, pointer: PointerInRow(targetId));
       return;
     }
     _plan = plan;
@@ -505,10 +507,12 @@ class RowOrderDrag {
       );
       // SYNCED and FREE are different promises about the row's timing, so
       // the caret names which one rather than just "attach".
-      final template = mode == AttachedMode.synced
-          ? AppText.strings.tlDropAttachSyncedTemplate
-          : AppText.strings.tlDropAttachFreeTemplate;
-      return base == null ? null : template.replaceAll('{name}', base.name);
+      return base == null
+          ? null
+          : AppText.strings.tlDropAttach(
+              base.name,
+              synced: mode == AttachedMode.synced,
+            );
     }
     // A folder carried out of a group detaches its MEMBERS, not the row the
     // pointer holds, so the question is whether anything detaches at all.

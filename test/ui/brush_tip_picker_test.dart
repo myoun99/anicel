@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_tip_entry.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tip_picker.dart';
+import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/anchored_popup.dart';
@@ -189,6 +190,62 @@ void main() {
 
     await dismissPicker(tester);
     expect(read().tipMask, _mask('tip-1'));
+
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2): the
+    // swatch is a well in a still region — the tip it shows is cut by the
+    // well's corners, never clipped to them.
+    expect(
+      tester
+          .widget<BrushTipMaskPreview>(
+            find.descendant(
+              of: swatch,
+              matching: find.byType(BrushTipMaskPreview),
+            ),
+          )
+          .well,
+      AppShapes.container(AppShapes.wellRadius),
+    );
+  });
+
+  testWidgets('the swatch is a well and a chosen cell its frame and fill — '
+      'each edge two fills (a-live-dock-frame-costs-a-whole-draw-Q12)', (
+    tester,
+  ) async {
+    await pumpPanel(
+      tester,
+      tips: [_entry('tip-1', 'Mine'), _entry('tip-2', 'Other')],
+      initial: BrushToolState.defaults.copyWith(tips: [_mask('tip-1')]),
+    );
+    final swatch = find.byKey(const ValueKey<String>('brush-tip-picker-tip'));
+    final colorScheme = Theme.of(tester.element(swatch)).colorScheme;
+    expect(
+      tester.renderObject(swatch),
+      paints
+        ..rsuperellipse(color: colorScheme.outlineVariant)
+        ..rsuperellipse(color: colorScheme.surfaceContainerHighest),
+    );
+
+    await tester.ensureVisible(swatch);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+    RenderObject cell(String id) => tester.renderObject(
+      find.byKey(ValueKey<String>('brush-tip-cell-$id')),
+    );
+    expect(
+      cell('tip-1'),
+      paints
+        ..rsuperellipse(color: colorScheme.primary)
+        ..rsuperellipse(color: colorScheme.surfaceContainerHigh),
+      reason: 'chosen',
+    );
+    expect(
+      cell('tip-2'),
+      paints
+        ..rsuperellipse(color: colorScheme.outlineVariant)
+        ..rsuperellipse(color: AppColors.surface),
+      reason: 'not chosen',
+    );
+    await dismissPicker(tester);
   });
 
   testWidgets('the none cell takes the tip back off', (tester) async {

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// `BitmapSurfacePainter` sees nothing at all after a lift — measured, and it
 /// is why the first attempt at this test could not judge anything.
 void main() {
+  opensTheEnginesScreens();
   const size = Size(120, 120);
 
   BrushDab dab(double x, double y) => BrushDab(

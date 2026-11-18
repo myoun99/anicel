@@ -13,11 +13,12 @@
 //! slower by Wasmtime's docs — 「그 상태에서 최대한 개선하는식으로」. The
 //! tests ask it on every machine ([`Wasm::open`]'s `interpret`).
 
+use anicel_fx::names;
 use wasmtime::{Config, Engine, Func, Linker, Memory, Module, Store, Val};
 use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 
-use crate::frame::{self, Plan, SPEC_VERSION};
+use crate::frame::{self, Plan};
 use crate::job::{FAILED, Head, Job, NO_ROOM, OK, TRAPPED};
 
 /// Whether this device runs a module by interpreting it.
@@ -59,14 +60,14 @@ impl Wasm {
         if let Some(start) = instance.get_func(&mut store, "_initialize") {
             start.call(&mut store, &[], &mut []).map_err(|error| said("_initialize", error))?;
         }
-        let memory = instance.get_memory(&mut store, "memory");
+        let memory = instance.get_memory(&mut store, names::MEMORY);
         let mut func = |name| instance.get_func(&mut store, name);
         let found = (
-            func("anicel_fx_spec"),
-            func("anicel_fx_describe"),
-            func("anicel_fx_reach"),
-            func("anicel_fx_render"),
-            func("anicel_fx_alloc"),
+            func(names::SPEC),
+            func(names::DESCRIBE),
+            func(names::REACH),
+            func(names::RENDER),
+            func(names::ALLOC),
             memory,
         );
         let (Some(spec), Some(describe), Some(reach), Some(render), Some(alloc), Some(memory)) =
@@ -76,7 +77,7 @@ impl Wasm {
         };
         let mut wasm = Self { store, memory, describe, reach, render, alloc, room: (0, 0) };
         match wasm.call(spec, &[]) {
-            Some(version) if version as u32 == SPEC_VERSION => Ok(wasm),
+            Some(version) if version as u32 == anicel_fx::SPEC_VERSION => Ok(wasm),
             _ => Err("the plugin speaks another spec version".into()),
         }
     }

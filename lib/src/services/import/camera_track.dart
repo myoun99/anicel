@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
+import '../../core/cubic_curve.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/cut_camera.dart';
@@ -139,14 +141,32 @@ TransformTrack transformTrackOfFramePoses(
 }
 
 /// What fitting one of a transform's lanes takes: the space the app plays
-/// its values in, how far a played value is from the file's, and how far
-/// it may be on a frame before another key stands.
+/// its values in, how far a played value is from the file's, how far it
+/// may be on a frame before another key stands, and — for a lane whose
+/// keys walk a path — the ways that bend as the file's path does
+/// ([bentWays]).
 final class _TransformLane<T> {
-  const _TransformLane(this.space, this.miss, this.tolerance);
+  const _TransformLane(
+    this.space,
+    this.miss,
+    this.tolerance, {
+    this.bentWays,
+  });
 
   final KeyValueSpace<T> space;
   final double Function(T played, T shown) miss;
   final double tolerance;
+
+  /// The ways from the value at one index of the file's values to the
+  /// value at another that bend nearest the ones between, on their frames
+  /// ([_bentWays]) — null on a lane whose keys walk no path.
+  final List<_Way> Function(
+    List<T> values,
+    List<int> frames,
+    int from,
+    int to,
+  )?
+  bentWays;
 
   /// Whether a way whose farthest frame misses the file by [worst] plays
   /// it — the tolerance is as far as it may be.
@@ -163,12 +183,14 @@ const _anchorLane = _TransformLane<CanvasPoint>(
   pathKeySpace,
   _pointMiss,
   _pointTolerance,
+  bentWays: _bentWays,
 );
 
 const _positionLane = _TransformLane<CanvasPoint>(
   pathKeySpace,
   _pointMiss,
   _pointTolerance,
+  bentWays: _bentWays,
 );
 
 const _scaleLane = _TransformLane<CanvasPoint>(
@@ -184,14 +206,27 @@ final _rotationLane = _TransformLane<double>(
 );
 
 /// How a way between two keys goes: the side it leaves the one by and the
-/// side it reaches the other by ([PropertyKey.outgoing] · `incoming`).
-typedef _Way = ({KeyExit leaving, KeySide arriving});
+/// side it reaches the other by ([PropertyKey.outgoing] · `incoming`), and
+/// the path it bends along between them — none where it runs straight.
+typedef _Way = ({KeyExit leaving, KeySide arriving, _Bend? bend});
 
-const _Way _straight = (leaving: KeySide.linear, arriving: KeySide.linear);
+const _Way _straight = (
+  leaving: KeySide.linear,
+  arriving: KeySide.linear,
+  bend: null,
+);
 
 /// The value held from the key on, AE's Hold — what CLIP STUDIO's
 /// `Constant` plays.
-const _Way _held = (leaving: KeyExit.hold, arriving: KeySide.linear);
+const _Way _held = (
+  leaving: KeyExit.hold,
+  arriving: KeySide.linear,
+  bend: null,
+);
+
+/// A handle that reaches nowhere: the side of a key a bent way does not
+/// leave or reach it by.
+final _noReach = CanvasPoint(x: 0, y: 0);
 
 /// One lane's keys, fitted to [values] — the file's value on each of
 /// [frames], in order.
@@ -202,10 +237,13 @@ final class _LaneKeys<T> {
   final List<T> values;
   final _TransformLane<T> lane;
 
-  /// The index of each key, and the sides the ways either side give it.
+  /// The index of each key, the sides the ways either side give it, and
+  /// the handles a bent way leaves it by ([_ahead]) or reaches it by.
   final _stops = SplayTreeSet<int>();
   final _leaving = <int, KeyExit>{};
   final _arriving = <int, KeySide>{};
+  final _ahead = <int, CanvasPoint>{};
+  final _behind = <int, CanvasPoint>{};
 
   /// The lane keyed on those of [keyed] that are [frames], and on the ends
   /// of its move where none of them comes before it starts or after it
@@ -244,9 +282,22 @@ final class _LaneKeys<T> {
             values[index],
             incoming: _arriving[index] ?? KeySide.linear,
             outgoing: _leaving[index] ?? KeySide.linear,
+            path: _pathOf(index),
           ),
       },
     );
+  }
+
+  /// The path through the key at [index]: the handles its bent ways leave
+  /// and reach it by, each side its own ([SplitPath]) — a corner where
+  /// neither way bends.
+  KeyPath _pathOf(int index) {
+    final ahead = _ahead[index];
+    final behind = _behind[index];
+    if (ahead == null && behind == null) {
+      return KeyPath.straight;
+    }
+    return SplitPath(ahead: ahead ?? _noReach, behind: behind ?? _noReach);
   }
 
   /// The last index of the hold the lane opens with and the first of the
@@ -302,17 +353,29 @@ final class _LaneKeys<T> {
       ..add(to);
     _leaving[from] = way.leaving;
     _arriving[to] = way.arriving;
+    if (way.bend case final bend?) {
+      _ahead[from] = bend.ahead;
+      _behind[to] = bend.behind;
+    }
   }
 
   /// The one way from index [from] to [to] that plays every frame between
-  /// as the file shows it — held, straight or eased — or null when none
-  /// does. Straight where it does, unless the ease plays the file nearer by
-  /// more than [_nearerBy] of the lane's tolerance: the tolerance says
-  /// where another key must stand, not how the way between two keys bends.
+  /// as the file shows it — held, or straight or eased along a straight
+  /// path or a bent one — or null when none does. The plainest of those
+  /// that play, unless one less plain plays the file nearer by more than
+  /// [_nearerBy] of the lane's tolerance: the tolerance says where another
+  /// key must stand, not how the way between two keys bends.
   /// ↩️Until 10-13 straight was taken wherever it played — a rule no one
   /// gave: at a pixel, CLIP STUDIO's own slow-out slow-in came in straight
   /// up to ten pixels long (the user's zoom-and-turn sample: 3px of it,
   /// 0.29px off where one ease plays it exactly).
+  ///
+  /// 🗣️A WAY BENDS AS THE FILE'S PATH DOES (card
+  /// `tvp-camera-keys-only-where-needed`, 유저 2026-11-17: 「원본tvp에비해서
+  /// 카메라키가 너무 많은데 … 필요한 키만으로 구현할수있지않나」). ↩️Till
+  /// then every way ran straight between its keys, so a path TVPaint's
+  /// handles bend came in as a key wherever the line left it by a pixel —
+  /// blu's pan, keyed on five frames, came in on forty-nine.
   _Way? _wayBetween(int from, int to) {
     if (to - from < 2) {
       return _straight;
@@ -322,24 +385,43 @@ final class _LaneKeys<T> {
         values.getRange(from + 1, to).every((value) => value == start)) {
       return _held;
     }
-    final straight = _worstMiss(from, to, _straight);
-    final eased = _easedWay(from, to);
-    final bent = eased == null ? double.infinity : _worstMiss(from, to, eased);
-    if (lane.plays(straight) &&
-        straight - bent <= lane.tolerance * _nearerBy) {
-      return _straight;
+    final ways = [
+      _straight,
+      ?_easedWay(from, to),
+      ...?lane.bentWays?.call(values, frames, from, to),
+    ];
+    final misses = [for (final way in ways) _worstMiss(from, to, way)];
+    final nearest = misses.reduce(math.min);
+    for (final (index, way) in ways.indexed) {
+      if (lane.plays(misses[index]) &&
+          misses[index] - nearest <= lane.tolerance * _nearerBy) {
+        return way;
+      }
     }
-    return lane.plays(bent) ? eased : null;
+    return null;
   }
 
   /// How far [way] from index [from] to [to] plays from the file on the
   /// frame between where it is the farthest — read the way the app plays a
   /// lane ([PropertyTrack.resolveAt]), so what is measured is what is seen.
   double _worstMiss(int from, int to, _Way way) {
+    final bend = way.bend;
     final track = PropertyTrack<T>(
       keys: {
-        frames[from]: PropertyKey(values[from], outgoing: way.leaving),
-        frames[to]: PropertyKey(values[to], incoming: way.arriving),
+        frames[from]: PropertyKey(
+          values[from],
+          outgoing: way.leaving,
+          path: bend == null
+              ? KeyPath.straight
+              : SplitPath(ahead: bend.ahead, behind: _noReach),
+        ),
+        frames[to]: PropertyKey(
+          values[to],
+          incoming: way.arriving,
+          path: bend == null
+              ? KeyPath.straight
+              : SplitPath(ahead: _noReach, behind: bend.behind),
+        ),
       },
     );
     var worst = 0.0;
@@ -376,57 +458,217 @@ final class _LaneKeys<T> {
           lane.space.inverseLerp(start, end, values[index]),
       ],
     ).sides();
-    return (leaving: leaving, arriving: arriving);
+    return (leaving: leaving, arriving: arriving, bend: null);
   }
 }
+/// A bent way's handles: how far, and which way, the one ahead of the key
+/// it leaves and the one behind the key it reaches reach out of them
+/// ([SplitPath]).
+typedef _Bend = ({CanvasPoint ahead, CanvasPoint behind});
 
-/// Where a fit of the ease stands: its four numbers — the leaving side's
-/// influence and speed, the arriving side's — how far they miss each
-/// share, and the damping its next step starts from.
-typedef _Fitting = ({List<double> sides, List<double> missed, double damping});
-
-/// The ease — a leaving side and an arriving side — whose curve
-/// ([segmentProgress]) comes nearest [shares] at [times], by least squares:
-/// Levenberg–Marquardt over the two influences and the two speeds.
-final class _NearestEase {
-  _NearestEase({required this.times, required this.shares});
-
-  final List<double> times;
-  final List<double> shares;
-
-  /// The ease, fitted from a straight ramp.
-  ///
-  /// ⛔Not from a second start as well — the speeds the first and the last
-  /// step take, the nearer of the two fits kept: on every calibration file
-  /// and reference cut the second start changed no key, and alone it keyed
-  /// a cut once more (measured 2026-10-13).
-  (EaseSide, EaseSide) sides() {
-    final sides = _nearestFrom([
-      EaseSide.easeInfluence,
-      1,
-      EaseSide.easeInfluence,
-      1,
-    ]).sides;
-    return (
-      EaseSide(influence: sides[0], speed: sides[1]),
-      EaseSide(influence: sides[2], speed: sides[3]),
+/// The ways a path may bend from [values]' [from] to its [to] — at an even
+/// pace, and eased — each the handles, and the pace, whose play comes
+/// nearest the values between on their [frames], by least squares
+/// ([_LeastSquares]): played as the app plays a lane that walks a path,
+/// [segmentProgress] along a [CubicWalk], from the curve nearest the values
+/// in space ([_nearestCurve]) — the even pace first, and the ease from
+/// it. None where no curve is read.
+///
+/// ⛔The fit by play is what lays the way; where it starts from is not. A
+/// start read more finely — each value's parameter read again as the
+/// curve's nearest point (Newton, as Schneider's fit does) and the ease
+/// started from how far along the curve each value stands — changed no
+/// key on blu and moved its worst miss by 1e-7px (measured 2026-11-17);
+/// nor did the ease fitted from straight handles, or from influences of a
+/// half (its worst miss 0.94px → 0.96px; by 1e-6px).
+/// The even pace's own fit is not such a start: without it blu's
+/// position came in on eight keys, not six.
+List<_Way> _bentWays(
+  List<CanvasPoint> values,
+  List<int> frames,
+  int from,
+  int to,
+) {
+  final curve = _nearestCurve(values, from, to);
+  if (curve == null) {
+    return const [];
+  }
+  final start = _offsetOf(values[from]);
+  final end = _offsetOf(values[to]);
+  final span = frames[to] - frames[from];
+  final times = [
+    for (var index = from + 1; index < to; index += 1)
+      (frames[index] - frames[from]) / span,
+  ];
+  List<double> missesOf(List<double> numbers) {
+    final walk = CubicWalk(
+      start,
+      start + Offset(numbers[0], numbers[1]),
+      end + Offset(numbers[2], numbers[3]),
+      end,
     );
+    final misses = <double>[];
+    for (final (index, time) in times.indexed) {
+      final progress = numbers.length == 4
+          ? time
+          : segmentProgress(
+              time,
+              leaving: (influence: numbers[4], speed: numbers[5]),
+              arriving: (influence: numbers[6], speed: numbers[7]),
+            );
+      final miss = walk.at(progress) - _offsetOf(values[from + 1 + index]);
+      misses
+        ..add(miss.dx)
+        ..add(miss.dy);
+    }
+    return misses;
   }
 
-  /// How far the ease of [sides] misses each share.
-  List<double> _missesOf(List<double> sides) => [
-    for (var index = 0; index < times.length; index += 1)
-      segmentProgress(
-            times[index],
-            leaving: (influence: sides[0], speed: sides[1]),
-            arriving: (influence: sides[2], speed: sides[3]),
-          ) -
-          shares[index],
+  final (leaving, arriving) = curve;
+  final even = _LeastSquares(missesOf, _finiteNumbers).nearestFrom([
+    leaving.dx - start.dx,
+    leaving.dy - start.dy,
+    arriving.dx - end.dx,
+    arriving.dy - end.dy,
+  ]).numbers;
+  final eased = _LeastSquares(missesOf, _handlesAndPaceWithinReach)
+      .nearestFrom([
+        ...even,
+        EaseSide.easeInfluence,
+        1,
+        EaseSide.easeInfluence,
+        1,
+      ])
+      .numbers;
+  return [
+    (leaving: KeySide.linear, arriving: KeySide.linear, bend: _bendOf(even)),
+    (
+      leaving: EaseSide(influence: eased[4], speed: eased[5]),
+      arriving: EaseSide(influence: eased[6], speed: eased[7]),
+      bend: _bendOf(eased),
+    ),
   ];
+}
+
+/// The handles the first four of [numbers] say ([_bentWays]).
+_Bend _bendOf(List<double> numbers) => (
+  ahead: CanvasPoint(x: numbers[0], y: numbers[1]),
+  behind: CanvasPoint(x: numbers[2], y: numbers[3]),
+);
+
+/// [numbers], where every one of them is a number.
+List<double>? _finiteNumbers(List<double> numbers) =>
+    numbers.every((value) => value.isFinite) ? numbers : null;
+
+/// A bent way's four handle numbers and its pace, the pace's influences
+/// kept within what a side may take ([_withinReach]).
+List<double>? _handlesAndPaceWithinReach(List<double> numbers) {
+  final handles = _finiteNumbers(numbers.sublist(0, 4));
+  final pace = _withinReach(numbers.sublist(4));
+  return handles == null || pace == null ? null : [...handles, ...pace];
+}
+
+/// The two inner controls of the cubic from [values]' [from] to its [to] —
+/// the way's two keys — that passes nearest the values between in space,
+/// each at the parameter of how far along the line through them it stands
+/// ([_controlsNearest]): where [_bentWays]' own fit starts from. Null where
+/// no one cubic comes nearest them — as where every value stands at one
+/// point — and where fewer than two values stand between.
+///
+/// 🚨ONE VALUE BETWEEN SAYS NO BEND. Its two numbers cannot read a way's
+/// four handle numbers; the solve still answers where rounding leaves its
+/// one-point normal equations short of singular, and a fit from that answer
+/// laid a bend the file never drew — a three-frame turn came in on its two
+/// ends, a handle 400px out (measured 2026-11-17). Its middle frame keeps
+/// its key.
+(Offset, Offset)? _nearestCurve(List<CanvasPoint> values, int from, int to) {
+  if (to - from < 3) {
+    return null;
+  }
+  final start = _offsetOf(values[from]);
+  final end = _offsetOf(values[to]);
+  final between = [
+    for (var index = from + 1; index < to; index += 1)
+      _offsetOf(values[index]),
+  ];
+  final along = [0.0];
+  var last = start;
+  for (final point in [...between, end]) {
+    along.add(along.last + (point - last).distance);
+    last = point;
+  }
+  return _controlsNearest(start, end, between, [
+    for (var index = 1; index <= between.length; index += 1)
+      along[index] / along.last,
+  ]);
+}
+
+/// The two inner controls of the cubic from [start] to [end] that comes
+/// nearest [points] at [parameters], by least squares — each axis the same
+/// two-by-two normal equations ([_solved]); null where they have no one
+/// answer.
+(Offset, Offset)? _controlsNearest(
+  Offset start,
+  Offset end,
+  List<Offset> points,
+  List<double> parameters,
+) {
+  var a11 = 0.0;
+  var a12 = 0.0;
+  var a22 = 0.0;
+  var rest1 = Offset.zero;
+  var rest2 = Offset.zero;
+  for (final (index, point) in points.indexed) {
+    final u = parameters[index];
+    final v = 1 - u;
+    final b1 = 3 * v * v * u;
+    final b2 = 3 * v * u * u;
+    final rest = point - start * (v * v * v) - end * (u * u * u);
+    a11 += b1 * b1;
+    a12 += b1 * b2;
+    a22 += b2 * b2;
+    rest1 += rest * b1;
+    rest2 += rest * b2;
+  }
+  final normal = [
+    [a11, a12],
+    [a12, a22],
+  ];
+  final xs = _solved(normal, [rest1.dx, rest2.dx]);
+  final ys = _solved(normal, [rest1.dy, rest2.dy]);
+  if (![...xs, ...ys].every((value) => value.isFinite)) {
+    return null;
+  }
+  return (Offset(xs[0], ys[0]), Offset(xs[1], ys[1]));
+}
+
+
+Offset _offsetOf(CanvasPoint point) => Offset(point.x, point.y);
+
+/// Where a least-squares fit stands: its numbers, how far they miss what
+/// they are fitted to, and the damping its next step starts from.
+typedef _Fitting = ({
+  List<double> numbers,
+  List<double> missed,
+  double damping,
+});
+
+/// The numbers nearest what [missesOf] measures them against, by least
+/// squares — Levenberg–Marquardt, each step's numbers kept to what they may
+/// take by [withinReach] (null where they ran off to no number).
+///
+/// 🚨ONE FIT (card `tvp-camera-keys-only-where-needed`, 2026-11-17).
+/// ↩️It was the ease's own ([_NearestEase]); a bent way's handles and pace
+/// are fitted by the same steps ([_bentWays]).
+final class _LeastSquares {
+  const _LeastSquares(this.missesOf, this.withinReach);
+
+  final List<double> Function(List<double> numbers) missesOf;
+  final List<double>? Function(List<double> numbers) withinReach;
 
   /// The fit from [start], stepped while a step misses less.
-  _Fitting _nearestFrom(List<double> start) {
-    var at = (sides: start, missed: _missesOf(start), damping: 1e-3);
+  _Fitting nearestFrom(List<double> start) {
+    var at = (numbers: start, missed: missesOf(start), damping: 1e-3);
     for (var round = 0; round < 100; round += 1) {
       if (_squared(at.missed) <= 1e-24) {
         break;
@@ -444,27 +686,28 @@ final class _NearestEase {
   /// until one does, and the next step starting ten times less damped —
   /// or null where no damping finds one.
   _Fitting? _stepFrom(_Fitting at) {
+    final size = at.numbers.length;
     final cost = _squared(at.missed);
-    final slopes = [for (var k = 0; k < 4; k += 1) _slopeOf(at, k)];
+    final slopes = [for (var k = 0; k < size; k += 1) _slopeOf(at, k)];
     final normal = [
       for (final a in slopes) [for (final b in slopes) _dot(a, b)],
     ];
     final pull = [for (final a in slopes) -_dot(a, at.missed)];
     for (var damping = at.damping; damping < 1e12; damping *= 10) {
       final change = _solved([
-        for (var m = 0; m < 4; m += 1)
+        for (var m = 0; m < size; m += 1)
           [
-            for (var n = 0; n < 4; n += 1)
+            for (var n = 0; n < size; n += 1)
               normal[m][n] + (m == n ? damping * (normal[m][m] + 1e-12) : 0.0),
           ],
       ], pull);
-      final sides = _withinReach([
-        for (var k = 0; k < 4; k += 1) at.sides[k] + change[k],
+      final numbers = withinReach([
+        for (var k = 0; k < size; k += 1) at.numbers[k] + change[k],
       ]);
-      if (sides != null) {
-        final missed = _missesOf(sides);
+      if (numbers != null) {
+        final missed = missesOf(numbers);
         if (_squared(missed) < cost) {
-          return (sides: sides, missed: missed, damping: damping / 10);
+          return (numbers: numbers, missed: missed, damping: damping / 10);
         }
       }
     }
@@ -479,15 +722,55 @@ final class _NearestEase {
   /// a step back measured a fit that keyed a reference cut once more
   /// (2026-10-13).
   List<double> _slopeOf(_Fitting at, int k) {
-    final step = 1e-6 * math.max(1, at.sides[k].abs());
-    final moved = [...at.sides];
+    final step = 1e-6 * math.max(1, at.numbers[k].abs());
+    final moved = [...at.numbers];
     moved[k] += step;
-    final missedThere = _missesOf(moved);
+    final missedThere = missesOf(moved);
     return [
       for (var index = 0; index < at.missed.length; index += 1)
         (missedThere[index] - at.missed[index]) / step,
     ];
   }
+}
+
+/// The ease — a leaving side and an arriving side — whose curve
+/// ([segmentProgress]) comes nearest [shares] at [times], by least squares
+/// ([_LeastSquares]) over the two influences and the two speeds.
+final class _NearestEase {
+  _NearestEase({required this.times, required this.shares});
+
+  final List<double> times;
+  final List<double> shares;
+
+  /// The ease, fitted from a straight ramp.
+  ///
+  /// ⛔Not from a second start as well — the speeds the first and the last
+  /// step take, the nearer of the two fits kept: on every calibration file
+  /// and reference cut the second start changed no key, and alone it keyed
+  /// a cut once more (measured 2026-10-13).
+  (EaseSide, EaseSide) sides() {
+    final sides = _LeastSquares(_missesOf, _withinReach).nearestFrom([
+      EaseSide.easeInfluence,
+      1,
+      EaseSide.easeInfluence,
+      1,
+    ]).numbers;
+    return (
+      EaseSide(influence: sides[0], speed: sides[1]),
+      EaseSide(influence: sides[2], speed: sides[3]),
+    );
+  }
+
+  /// How far the ease of [sides] misses each share.
+  List<double> _missesOf(List<double> sides) => [
+    for (var index = 0; index < times.length; index += 1)
+      segmentProgress(
+            times[index],
+            leaving: (influence: sides[0], speed: sides[1]),
+            arriving: (influence: sides[2], speed: sides[3]),
+          ) -
+          shares[index],
+  ];
 }
 
 double _squared(List<double> misses) =>

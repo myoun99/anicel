@@ -1,24 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_image_encoder.dart';
 
-import '../../helpers/native_engine_path.dart';
-
+/// The engine's JPEG encoder as Dart asks it ([_encoder], which holds its
+/// own bytes to the ledger). ↩️Until the connection round
+/// (connection-round-checklist H, 2026-11-08) it was the C engine's, and
+/// these skipped where none was built.
 void main() {
-  final enginePath = nativeEngineLibraryPathOrNull();
-
-  setUp(() {
-    QaImageEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = enginePath;
-  });
-
-  tearDown(() {
-    debugQaEngineLibraryPathOverride = null;
-    QaImageEncoder.debugResetForTests();
-  });
-
   Uint8List gradient(int width, int height) {
     final rgb = Uint8List(width * height * 3);
     for (var y = 0; y < height; y += 1) {
@@ -33,22 +22,13 @@ void main() {
   }
 
   test('encodes a JFIF baseline JPEG with the right dimensions', () {
-    final encoder = QaImageEncoder.instance;
-    if (encoder == null) {
-      if (nativeEngineRequired) {
-        fail('QA_REQUIRE_NATIVE=1 but no engine: '
-            '$nativeEngineMissingSkipReason');
-      }
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    final bytes = encoder.encodeJpg(
+    final bytes = QaImageEncoder.encodeJpg(
       rgb: gradient(64, 48),
       width: 64,
       height: 48,
       quality: 90,
     );
-    expect(bytes, isNotNull);
+    expect(bytes, isNotNull, reason: '$_encoder wrote no JPEG');
     // SOI … EOI.
     expect(bytes!.sublist(0, 2), [0xFF, 0xD8]);
     expect(bytes.sublist(bytes.length - 2), [0xFF, 0xD9]);
@@ -66,22 +46,13 @@ void main() {
   });
 
   test('output is byte-deterministic', () {
-    final encoder = QaImageEncoder.instance;
-    if (encoder == null) {
-      if (nativeEngineRequired) {
-        fail('QA_REQUIRE_NATIVE=1 but no engine: '
-            '$nativeEngineMissingSkipReason');
-      }
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    final a = encoder.encodeJpg(
+    final a = QaImageEncoder.encodeJpg(
       rgb: gradient(32, 32),
       width: 32,
       height: 32,
       quality: 75,
     );
-    final b = encoder.encodeJpg(
+    final b = QaImageEncoder.encodeJpg(
       rgb: gradient(32, 32),
       width: 32,
       height: 32,
@@ -92,14 +63,19 @@ void main() {
   });
 
   test('degenerate input refuses instead of crashing', () {
-    final encoder = QaImageEncoder.instance;
-    if (encoder == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
     expect(
-      encoder.encodeJpg(rgb: Uint8List(3), width: 4, height: 4, quality: 90),
+      QaImageEncoder.encodeJpg(
+        rgb: Uint8List(3),
+        width: 4,
+        height: 4,
+        quality: 90,
+      ),
       isNull,
     );
   });
 }
+
+/// The encoder these ask — named as a path, so a lane that changed only the
+/// engine's JPEG encoder runs this file (`affected_tests` picks a test by the
+/// paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _encoder = 'packages/gpu_engine/rust/native/image_encode';

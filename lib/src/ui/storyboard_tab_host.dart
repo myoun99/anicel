@@ -10,6 +10,7 @@ import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/ruler_marker.dart' show RulerMarkerHolder;
 import '../models/working_panel.dart';
 import '../services/import/import_layer_spot.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
@@ -17,6 +18,9 @@ import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
+import 'timeline/ruler_marker_commands.dart' show rulerMarkerHooksOf;
+import 'timeline/lane_group_reset.dart'
+    show resetLaneGroupOf, resetTrackEffectGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
@@ -43,7 +47,6 @@ import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
-import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart'
     show ReadyRunsOfTheDocument;
@@ -650,7 +653,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     laneGraphs: rail.laneGraphs,
     hiddenSections: rail.hiddenSections,
     rowFilter: rail.rowFilter,
-    collapsedAttachBaseIds: rail.collapsedAttachBaseIds,
+    attachFoldedRowIds: rail.attachFoldedRowIds,
     layerFxStateOf: _session.effectsAndFx.layerFxState,
     trackFxStateOf: (track) => _session.effectsAndFx.trackFxState(track.id),
     poseDisplaySize: _session.camera.cameraFrameSize,
@@ -721,8 +724,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     rowFilter: rail.rowFilter,
                     hiddenSections: rail.hiddenSections,
                     onToggleSection: widget.rail.toggleSection,
-                    collapsedAttachBaseIds: rail.collapsedAttachBaseIds,
-                    onToggleAttachGroup: widget.rail.toggleAttachGroup,
+                    attachFoldedRowIds: rail.attachFoldedRowIds,
+                    onToggleGroupFold: widget.rail.toggleGroupFold,
                     groupFoldOpenOf: _session.layerSwitches.isGroupFoldOpen,
                     expandedLaneLayerIds: rail.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.rail.toggleLayerLanes,
@@ -935,6 +938,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onEnd: _session.movieEnd.endMovieEndDrag,
                       onCancel: _session.movieEnd.cancelMovieEndDrag,
                     ),
+                    // The OPEN TIMELINE's markers, in the movie's frames
+                    // (I-169-Q2): its own, apart from every cut's.
+                    rulerMarkers: rulerMarkerHooksOf(
+                      context,
+                      _session,
+                      const RulerMarkerHolder.timeline(),
+                    ),
                     playheadFrame: _session.playheadCursors.trackFrame,
                     cutUnderPlayhead: _session.cutUnderPlayhead.listenable,
                     // F-110: the gate on the page turn. Null while nothing
@@ -1079,13 +1089,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onRasterizeLaneGroup: (layer, lane) =>
                         rasterizeLaneGroupOf(context, _session, layer, lane),
                     onResetLaneGroup: (layer, lane) =>
-                        _session.laneVerbs.resetLaneGroup(
-                          layer.id,
-                          lane.laneId,
-                        ),
+                        resetLaneGroupOf(_session, layer, lane),
                     laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
                     poseDisplaySize: rail.poseDisplaySize,
                     hasFxPlugin: _session.fxPlugins.has,
+                    fxPluginOutcomes: _session.fxPlugins.outcomes,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the
                     // fade now — an always-visible row rather than two twirls
@@ -1094,23 +1102,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // Timeline-parity layer controls on the ACTIVE cut's SE
                     // rows — the SAME session hooks the timeline host wires.
                     onToggleLayerVisibility: _rowPresses.toggleVisibility,
-                    onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-                      showSeLayerMixer(
-                        anchorContext,
-                        session: _session,
-                        layerId: layerId,
-                      ),
-                    ),
+                    onToggleLayerMute: _rowPresses.toggleMute,
+                    onLayerTotalVolumeChangeEnd: _rowPresses.setTotalVolume,
                     onOpenCameraPath: (anchorContext) =>
                         showCameraPathSettings(
                           anchorContext,
                           _session.appSettings.setCameraPathSettings,
                         ),
-                    isLayerSoloed: (layerId) => _session
-                        .visibilitySolo
-                        .soloedSeLayerIds
-                        .value
-                        .contains(layerId),
                     onLayerOpacityChanged: _rowPresses.previewOpacity,
                     onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
                     onLayerMarkSelected: _rowPresses.pickMark,
@@ -1171,8 +1169,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleTrackEffectEnabled: (track, effectId) =>
                         _session.effectsAndFx.toggleTrackEffectEnabled(track.id, effectId),
                     // R5: AE's group Reset on the V row's chain.
-                    onResetTrackEffectGroup: (track, headerLaneId) =>
-                        _session.effectsAndFx.resetTrackEffectGroup(track.id, headerLaneId),
+                    onResetTrackEffectGroup: (trackId, laneId) =>
+                        resetTrackEffectGroupOf(_session, trackId, laneId),
                     // S-row range selection: the SAME track-axis selection the
                     // cut row paints, one row up. The timeline mounts its range
                     // gesture on every layer row (UI-R20 #2) and these rows had

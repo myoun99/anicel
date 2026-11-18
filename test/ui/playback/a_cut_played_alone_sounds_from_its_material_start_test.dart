@@ -147,7 +147,6 @@ void main() {
     final atZero = playback.trackFrameOf(0);
     final atSix = playback.trackFrameOf(6);
     playback.stop();
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
     expect(atZero, 18);
     expect(atSix, 24);

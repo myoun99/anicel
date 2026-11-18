@@ -44,9 +44,10 @@ import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../playback/frame_picture_store.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
+import '../../native/engine_frame_tools.dart';
+import '../playback/engine_frame_picture_store.dart';
 import '../playback/layer_frame_image_cache.dart';
-import '../quiet_turns.dart';
 import '../playback/stacked_frame_picture.dart' show FramePictureKey;
 import 'session_roles.dart';
 import 'cache_budgets.dart';
@@ -325,24 +326,11 @@ class RenderCaches {
   /// Every frame's one picture a screen shows a run from — keyed by what it
   /// shows ([FramePictureKey]), so an edit asks for another picture and
   /// none needs telling ([FramePictures]).
-  late final FramePictureStore<FramePictureKey> framePictureStore =
-      FramePictureStore(
-        aheadInPieces: () => madeAheadInPieces(QuietTurns.instance),
+  late final EngineFramePictureStore<FramePictureKey> framePictureStore =
+      EngineFramePictureStore(
+        tools: () => appEngineFrameTools,
+        openAlready: () => appEngineFrameToolsOpen,
       );
-
-  /// Whether a frame made ahead goes in pieces though it fits at once: while
-  /// nothing plays (the store's `_layNow` has what it buys). ⛔Not ahead of a
-  /// run: what a run waits for is not to be slowed, and how it fares there
-  /// has not been measured.
-  @visibleForTesting
-  static bool madeAheadInPieces(QuietTurns turns) =>
-      aheadGoesInPieces && turns.atRest;
-
-  /// ⛔Off by itself under a test's clock: a patch into a picture made in
-  /// pieces leaves the pause its levels wait for pending past the test — 4
-  /// tests.
-  @visibleForTesting
-  static bool aheadGoesInPieces = !underFlutterTest;
 
   /// A5 — the trailing edge of an edit burst, so the warming queue
   /// restarts ONCE per burst instead of once per dab commit. Only the
@@ -418,15 +406,30 @@ class RenderCaches {
     });
   }
 
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — what a gone device took of the
+  /// cels is recorded by each cel store as the app lets it go
+  /// ([BrushFrameStore.recordWhatWentWithTheDevice]).
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      for (final store in celStores) {
+        store.recordWhatWentWithTheDevice();
+      }
+    },
+  );
+
   /// Listening starts with the session: a command that lands before this
   /// leaves a stale composite servable.
-  void attach() =>
-      cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+  void attach() {
+    cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    _onTheEngine.start();
+  }
 
   /// ⚠️The ORDER is the one the session's `dispose` used to spell: the
   /// listener comes off the hub and the pending restart is cancelled
   /// BEFORE the caches it would have refilled go down.
   void dispose() {
+    _onTheEngine.stop();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     layerFrameImageCache.dispose();

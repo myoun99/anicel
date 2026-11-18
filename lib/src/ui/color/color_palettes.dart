@@ -30,9 +30,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/settings_file_export.dart';
 import '../input/control_press_claim.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
-import '../shortcuts/panel_keys.dart';
+import '../input/second_click_window.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../theme/disabled_ink.dart';
@@ -376,7 +374,7 @@ class _Place extends StatefulWidget {
   final void Function(int from)? onTraded;
 
   /// A double click: the colour's own window, anchored on the place —
-  /// the second of two presses ([_PlaceState._secondPressWindow]); the
+  /// the second of two presses ([_PlaceState._secondClick]); the
   /// first picks, as any press does.
   final void Function(BuildContext anchor)? onEdit;
 
@@ -396,31 +394,34 @@ class _PlaceState extends State<_Place> {
 
   /// A press while the previous one's [kDoubleTapTimeout] still runs IS
   /// the second click of a double click — the dock splitter's reading
-  /// (`dock_edge_splitter.dart`). ⛔Not a double tap on the ink: under the
+  /// ([SecondClickWindow]). ⛔Not a double tap on the ink: under the
   /// claim, a live tap is rejected the moment the hand moves, and on a
   /// press that does not move it fires a second time
   /// (`every_button_claims_its_press_test`).
-  Timer? _secondPressWindow;
+  final _secondClick = SecondClickWindow();
 
   void _press() {
     if (_carried) {
       return;
     }
     final onEdit = widget.onEdit;
-    if (onEdit != null && (_secondPressWindow?.isActive ?? false)) {
-      _secondPressWindow!.cancel();
+    if (onEdit == null) {
+      widget.onPressed?.call();
+      return;
+    }
+    // The claim fires on the lift alone: the press lands and comes up a
+    // click in one moment here, and the window runs lift to lift.
+    _secondClick.pressed();
+    if (_secondClick.clicked()) {
       onEdit(context);
       return;
     }
     widget.onPressed?.call();
-    if (onEdit != null) {
-      _secondPressWindow = Timer(kDoubleTapTimeout, () {});
-    }
   }
 
   @override
   void dispose() {
-    _secondPressWindow?.cancel();
+    _secondClick.dispose();
     super.dispose();
   }
 
@@ -732,8 +733,7 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
         ),
         AppIconButton(
           keyValue: 'palette-new',
-          tooltip: editorActionLabel(EditorActionIds.paletteNew),
-          shortcuts: const [EditorActionIds.paletteNew],
+          tooltip: AppText.strings.paletteNew,
           // 「＋가 있는 모든 곳, 공통적으로」 — the glyph wears the accent,
           // not the button around it.
           icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
@@ -906,29 +906,25 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     // only while it is in view — they are thirty places each, and nothing
     // caps how many palettes there are.
     //
-    // A key presses the ＋ — the palette panel is one panel, whatever is
-    // in hand (I-40).
+    // ↩️A key pressed the ＋ (I-40) until F-580 took 「패널 안」 off the
+    // shortcut list.
     final listed = palettes.palettes;
-    return PanelKeysBinding(
-      buttons: {EditorActionIds.paletteNew: _newPalette},
-      child: StandOnReorderList(
-        listKey: const ValueKey<String>('palette-panel'),
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        header: _header(hands),
-        itemCount: listed.length,
-        entryKeyOf: (index) => ValueKey<String>('palette-${listed[index].id}'),
-        canMove: (_) => true,
-        onReorderItem: (from, target) {
-          final anchor = reorderAnchorAt(
-            listed,
-            movedIndex: from,
-            target: target,
-          );
-          _change((now) => now.moved(listed[from].id, anchor?.id));
-        },
-        itemBuilder: (context, index, row) =>
-            _entry(listed[index], row, hands),
-      ),
+    return StandOnReorderList(
+      listKey: const ValueKey<String>('palette-panel'),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      header: _header(hands),
+      itemCount: listed.length,
+      entryKeyOf: (index) => ValueKey<String>('palette-${listed[index].id}'),
+      canMove: (_) => true,
+      onReorderItem: (from, target) {
+        final anchor = reorderAnchorAt(
+          listed,
+          movedIndex: from,
+          target: target,
+        );
+        _change((now) => now.moved(listed[from].id, anchor?.id));
+      },
+      itemBuilder: (context, index, row) => _entry(listed[index], row, hands),
     );
   }
 }

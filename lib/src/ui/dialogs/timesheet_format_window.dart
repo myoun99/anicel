@@ -9,6 +9,7 @@ import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/pill_strip.dart';
 import 'work_and_cut_setting_field.dart';
+import '../text/typed_text.dart';
 
 /// What the 「타임시트 서식」 window answers: the work's sheet format and the
 /// paper of the cut the sheet shows — null in the gap, where there is no
@@ -76,6 +77,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
   );
   late TimesheetSheetKind? _kind = widget.sheet?.kind;
   late bool _fixedText = widget.initialInfo.sheetFixedText;
+  late bool _shortBooks = widget.initialInfo.sheetBookNamesShortened;
 
   /// The cut's own fixed text as picked — null until one is, so saving
   /// leaves it as it stands.
@@ -117,6 +119,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
         exposureBarThreshold: () => _actionLine.threshold,
         cellExposureBarThreshold: () => _cellLine.threshold,
         sheetFixedText: _fixedText,
+        sheetBookNamesShortened: _shortBooks,
       ),
       kind: _kind,
       cutFixedText: _cutFixedText,
@@ -214,7 +217,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
                   controller: line.n,
                   enabled: line.on,
                   keyboardType: TextInputType.number,
-                  inputFormatters: halfWidthDigitsOnly,
+                  inputFormatters: typedText(halfWidthDigitsOnly),
                   decoration: const InputDecoration(prefixText: 'N  '),
                 ),
               ),
@@ -301,6 +304,21 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               strings.sheetStretchLineCell,
               'timesheet-format-stretch-line-cell',
               _cellLine,
+            ),
+            AppWindowField(
+              label: strings.sheetBookNamesShortened,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TogglePill(
+                  keyValue: 'timesheet-format-book-names-shortened',
+                  on: _shortBooks,
+                  words: (
+                    on: strings.conteOutlineOn,
+                    off: strings.conteOutlineOff,
+                  ),
+                  onChanged: (on) => setState(() => _shortBooks = on),
+                ),
+              ),
             ),
             _fixedTextField(),
           ],

@@ -1,19 +1,22 @@
-import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/sync_image_upload.dart' show StraightRgbaRows, pictureOf;
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
+import '../../models/brush_stamp_image.dart';
 import '../../models/canvas_point.dart';
 import '../../models/dirty_region.dart';
+import '../../models/tile_coord.dart';
+import '../../services/bitmap_surface_geometry.dart' show tilesOfRegion;
 import '../../services/canvas_selection.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/stamp_carry.dart';
-import '../../services/straight_rgba_image.dart'
-    show decodeStraightRgbaImage, decodedImageStillWanted;
 import '../brush/transform_tool_options.dart';
+import 'after_frame_once.dart';
+import 'deferred_image_disposal.dart';
 import 'transform_box.dart';
 
 // ---------------------------------------------------------------
@@ -244,7 +247,7 @@ class FloatWarp {
         '|v${visible.left},${visible.top},${visible.right},${visible.bottom}',
       );
     }
-    return _ResampleKey(options.resampleMode, stamp.rgba, shape.toString());
+    return _ResampleKey(options.resampleMode, stamp, shape.toString());
   }
 
   /// What the open warp does, as a mapping any stamp on the canvas can be
@@ -366,18 +369,23 @@ bool _recordResampledFloat(BrushDab? dab) {
   return true;
 }
 
-/// What a cached resample belongs to: the mode, the source buffer, and the
+/// What a cached resample belongs to: the mode, the source stamp, and the
 /// warp's numbers.
 ///
 /// The source is compared by IDENTITY. A lift stamp's bytes never change
-/// in place — a new lift means a new buffer — so identity is the exact
+/// in place — a new lift means a new stamp — so identity is the exact
 /// question, and comparing multi-megabyte cels by value on every drag
 /// frame would cost more than the resample this is guarding.
+///
+/// ↩️The stamp's bytes stood here, for their identity alone — and a stamp
+/// the engine carried onto the canvas (a posed row's lift,
+/// `EngineStampPictures.carried`) was read back from it at the first move
+/// of the hand to be asked which one it was (2026-11-11).
 class _ResampleKey {
   const _ResampleKey(this.mode, this.source, this.shape);
 
   final ResampleMode mode;
-  final Uint8List source;
+  final BrushStampImage source;
   final String shape;
 
   @override
@@ -394,26 +402,76 @@ class _ResampleKey {
 /// What the resample preview asks of the layer: the window a drag clips it
 /// to, and a way to say the picture changed.
 abstract interface class FloatWarpHost {
-  bool get mounted;
-
   /// The visible rect the PREVIEW clips to mid-drag; null means all of it.
   SelectionVisibleRect? previewVisibleRect();
 
-  /// The decoded picture changed — repaint.
+  /// The resample shown changed — repaint.
   void previewChanged();
 }
 
+/// A resample as the screen shows it ([FloatResamplePreview.shown]): the
+/// [dab] it is, the rect it lands on ([BrushStampImage.landingRect]), its
+/// pixels as tiles there — what the engine lays — and their [picture],
+/// made only for a canvas that asks.
+///
+/// 🧭관제 2026-11-11 18:47 (a-float-premultiplies-in-the-c-each-step):
+/// 「플로트를 엔진에 놓아(`EngineHeld` 길) Flutter 표시용 디코드 자체를
+/// 없애는 쪽이다」. The canvas lays [tiles] and draws no picture, so none
+/// is made for it — as a text in hand stands (`CelTextLanding.standing`).
+/// ↩️Every resample was premultiplied by the C and uploaded whole for the
+/// screen (`decodeStraightRgbaImage`), each step of the hand, while the
+/// canvas laid its tiles and drew that picture nowhere.
+final class FloatResampleShown {
+  FloatResampleShown._(this.dab, this.landing, this.tiles);
+
+  /// [dab] as the screen shows it: its pixels as tiles where its stamp
+  /// lands.
+  factory FloatResampleShown.of(BrushDab dab) {
+    final stamp = dab.stamp!;
+    final landing = stamp.landingRect(dab.center);
+    return FloatResampleShown._(
+      dab,
+      landing,
+      tilesOfRegion(landing, stamp.rgba),
+    );
+  }
+
+  final BrushDab dab;
+  final DirtyRegion landing;
+  final Map<TileCoord, BitmapTile> tiles;
+
+  ui.Image? _picture;
+
+  /// [tiles]' picture through the door every tile takes ([pictureOf]),
+  /// made the first time a canvas that draws pictures asks: a host with no
+  /// composite behind it.
+  ui.Image get picture => _picture ??= pictureOf(
+    StraightRgbaRows(dab.stamp!.rgba, landing.width, landing.height),
+  );
+
+  /// Test seam: whether [picture] has been made.
+  @visibleForTesting
+  bool get debugPictured => _picture != null;
+
+  /// Lets [picture] go, past the frames that may still draw it
+  /// ([DeferredImageDisposer]).
+  void _letGo() {
+    if (_picture case final made?) {
+      DeferredImageDisposer.instance.retire(made);
+    }
+  }
+}
+
 /// A float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
-/// mesh): the newest resample of its pending stamp through the warp, and
-/// the decoded copy of the last resample that finished — the picture the
-/// screen draws.
+/// mesh): the newest resample of its pending stamp through the warp, as
+/// the screen shows it.
 ///
 /// One per float, owned by the float for the session's lifetime, and
 /// EMPTY outside a warp: every session end calls [discard], which is also
-/// what lets go of a whole-picture image (tens of megabytes on a big cel).
-/// The layer keeps the warp's geometry and answers for it ([_warp], and the
-/// window through [FloatWarpHost]); this keeps the pictures, and the
-/// coalescing that makes them.
+/// what lets go of a whole-picture resample (tens of megabytes on a big
+/// cel). The layer keeps the warp's geometry and answers for it ([_warp],
+/// and the window through [FloatWarpHost]); this keeps the resamples, and
+/// the coalescing that makes them.
 class FloatResamplePreview {
   FloatResamplePreview(this._host, this._warp);
 
@@ -422,54 +480,56 @@ class FloatResamplePreview {
   /// The open box over THIS float, as the layer holds it right now.
   final FloatWarp Function() _warp;
 
-  /// The newest resample, keyed by what it belongs to. Computed and stored
-  /// before its decode is even requested.
+  /// The newest resample, keyed by what it belongs to.
   ({_ResampleKey key, BrushDab dab})? _resampled;
 
-  /// The premultiplied copy for display, and the dab it was decoded FROM.
+  /// The newest resample as the screen shows it — what the engine lays
+  /// (`SelectionFloatPaint.heldTiles`): one field, so its dab, its landing
+  /// and its tiles cannot belong to two resamples. Null where the float's
+  /// own pixels show it: a move ([_runIfIdle]).
   ///
-  /// Kept as a pair, and deliberately NOT compared against [_resampled]:
-  /// the newest resample is computed and stored before its decode is even
-  /// requested, so a guard demanding the two agree would hide the preview
-  /// for the whole time a decode is in flight — which is most of a drag.
-  /// The float would blink back to its untransformed self on every
-  /// pointer move.
-  ///
-  /// Showing the last COMPLETED resample instead is both the honest
-  /// picture (it is a real state the transform passed through) and the
-  /// whole point of coalescing. The last scheduling always runs, so the
-  /// picture just before Enter is always the exact one.
-  ui.Image? _image;
-  BrushDab? _imageDab;
+  /// ↩️It was the last resample whose decode had finished, a step or more
+  /// behind [_resampled] — 「Deliberately NOT compared against
+  /// [_resampled]」, for a guard demanding the two agree would have hidden
+  /// the preview the whole time a decode was in flight — until nothing was
+  /// decoded for it.
+  FloatResampleShown? _shown;
 
-  /// The decoded picture, or null while nothing has decoded.
-  ui.Image? get image => _image;
+  /// What the screen shows of the warp — the newest resample — or null
+  /// while it shows none.
+  FloatResampleShown? get shown => _shown;
 
-  /// The dab [image] was decoded from — where it goes, and what it is.
-  BrushDab? get imageDab => _imageDab;
-
-  int _imageRequest = 0;
-  bool _inFlight = false;
   bool _dirty = false;
 
-  /// Whether the picture shown is the one the box asks for now: no
-  /// resample in flight, and none asked for since ([schedule]).
-  bool get caughtUp => !_inFlight && !_dirty;
+  /// The frame [_runIfIdle] waits on.
+  final AfterFrameOnce _frame = AfterFrameOnce();
+
+  /// Whether what is shown is what the box asks for now: none asked for
+  /// since ([schedule]).
+  bool get caughtUp => !_dirty;
 
   /// Ask for the preview to catch up.
   ///
   /// Safe to call from inside a setState: it never calls setState itself.
-  /// The decode callback does, and that is always a later turn.
+  /// The frame's job does, after the frame.
   void schedule() {
     _dirty = true;
-    _runIfIdle();
+    _frame.ask(_runIfIdle);
   }
 
-  /// Coalescing is the whole design. One resample may be in flight; every
-  /// pointer move that arrives while it is only sets the dirty flag, and
-  /// the decode callback runs the LAST state rather than each intermediate
-  /// one. Without it a drag would queue one full-canvas resample per
-  /// pointer event and fall further behind with every frame.
+  /// Coalescing is the whole design. One resample a frame ([_frame]): every
+  /// pointer move before it ends only sets the dirty flag, and the job runs
+  /// the LAST state rather than each intermediate one. Without it a drag
+  /// would run one full-canvas resample per pointer event and fall further
+  /// behind with every frame.
+  ///
+  /// ↩️One upload at a time was the gate — the resample shown waited on
+  /// its decode, and the next ran when that ended — until the screen took
+  /// the resample's tiles: nothing is decoded for it now, so nothing paces
+  /// the hand but the frame. 「THE GATE IS EXACTLY THE UPLOAD'S LIFETIME,
+  /// and it is released structurally」 — a refused decode had left it
+  /// closed for ever, the handles and ants at 60 fps over pixels that
+  /// stopped.
   ///
   /// It also degrades honestly. On a machine with no native engine the
   /// Dart reference is roughly fifteen times slower, so the preview
@@ -477,7 +537,7 @@ class FloatResamplePreview {
   /// 60 fps — and the state just before Enter is always the exact one,
   /// because the last scheduling always runs.
   void _runIfIdle() {
-    if (_inFlight || !_dirty) {
+    if (!_dirty) {
       return;
     }
     // The PREVIEW clips to the viewport (ABI 26). A whole-picture
@@ -494,7 +554,7 @@ class FloatResamplePreview {
     final key = warp._resampleKey(visible: visible);
     if (key == null) {
       _dirty = false;
-      if (_resampled != null || _image != null) {
+      if (_resampled != null || _shown != null) {
         discard();
       }
       return;
@@ -522,77 +582,25 @@ class FloatResamplePreview {
     // schedule); a drag inside an open box, and a typed X/Y, uploaded.
     // The resample is kept: it is what the confirm lands ([warped]).
     if (identical(stamp, warp.float?.stamp)) {
-      _letGoOfTheImage();
+      _letGoOfTheShown();
       return;
     }
-
-    // decodeImageFromPixels wants premultiplied bytes; the resampler
-    // produces straight alpha, which is the app's storage convention and
-    // must stay that way — premultiplying the RESULT would round the very
-    // colours Pick exists to carry through untouched. So the copy is for
-    // display only and the dab keeps its own bytes.
-    //
-    // The copy and the multiply are ONE native pass into native memory,
-    // the same fused kernel the fill overlay uses. Doing it as a Dart
-    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
-    // allocation and a second full traversal on every frame of a drag,
-    // which on a whole-picture transform is tens of megabytes per pointer
-    // move.
-    //
-    // 🪦It was written out here until 2026-09-09, ending 「The scratch is
-    // freed in the decode callback, on every path」 — which was true of
-    // every path THROUGH the callback, and the callback has a road that
-    // never reaches it. [decodeStraightRgbaImage] is the same pass with
-    // the release in a `finally`, and hand-rolling it beside it was a copy.
-    final request = ++_imageRequest;
-    _inFlight = true;
-    unawaited(() async {
-      final ui.Image? image;
-      try {
-        image = await decodedImageStillWanted(
-          decodeStraightRgbaImage(
-            rgba: stamp.rgba,
-            width: stamp.width,
-            height: stamp.height,
-          ),
-          wanted: () => _host.mounted && request == _imageRequest,
-        );
-      } finally {
-        // 🚨★★★**THE GATE IS EXACTLY THE UPLOAD'S LIFETIME, and it is
-        // released structurally so it cannot be skipped.** A refused
-        // decode used to leave it closed for ever: the handles and the
-        // marching ants kept running at 60 fps while the transformed
-        // pixels stopped, permanently, for that widget.
-        //
-        // ⛔It is NOT folded into [_imageRequest], and the two are not two
-        // spellings of one fact. The request says WHICH ask is current;
-        // this says whether an upload is outstanding — see the throughput
-        // rule this function's header states. That is why [discard]
-        // invalidates the ask and deliberately leaves the gate CLOSED: a
-        // discarded upload is still holding a whole-picture scratch and
-        // still occupying the engine. Making one field answer both would
-        // start a second full-canvas upload on every crossing back
-        // through identity.
-        _inFlight = false;
-      }
-      if (image == null) {
-        return;
-      }
-      _image?.dispose();
-      _image = image;
-      _imageDab = dab;
-      _host.previewChanged();
-      _runIfIdle();
-    }());
+    // Straight, as the resampler made it: the app's storage convention,
+    // which premultiplying the RESULT would round away — the very colours
+    // Pick exists to carry through untouched. What a picture of it needs
+    // multiplied, the door multiplies on a copy ([FloatResampleShown]).
+    _shown?._letGo();
+    _shown = FloatResampleShown.of(dab);
+    _host.previewChanged();
   }
 
-  /// Lets go of everything: the cache, the decoded image, an in-flight
-  /// decode's claim on the result. Every session end, and the layer's
-  /// dispose — the image is a GPU allocation the size of the selection.
+  /// Lets go of everything: the cache and what is shown. Every session
+  /// end, and the layer's dispose — a resample is the size of the
+  /// selection.
   void discard() {
     _dirty = false;
     _resampled = null;
-    _letGoOfTheImage();
+    _letGoOfTheShown();
     // The hook holds a whole resampled cel. Letting it outlive the session
     // that made it would keep that buffer resident for as long as the app
     // runs, which is the same defect in a debug build that the assert
@@ -600,13 +608,10 @@ class FloatResamplePreview {
     assert(_recordResampledFloat(null));
   }
 
-  /// Lets go of the picture shown, and takes the claim of a decode in
-  /// flight away from it. The gate stays as it is — see [_runIfIdle].
-  void _letGoOfTheImage() {
-    _imageRequest += 1; // Invalidate an in-flight decode.
-    _imageDab = null;
-    _image?.dispose();
-    _image = null;
+  /// Lets go of what is shown, and of its picture if one was made.
+  void _letGoOfTheShown() {
+    _shown?._letGo();
+    _shown = null;
   }
 
   /// The cached resample, or a fresh one — what every COMMIT path calls.

@@ -6,7 +6,7 @@ mod tests;
 
 use std::time::Instant;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::shared::{Encoded, encode_on, flat, pipeline, storage_format, whole};
 
@@ -18,7 +18,7 @@ pub struct Fill {
 
 impl Fill {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let params = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let params = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("fill params"),
             size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -68,7 +68,7 @@ impl Fill {
             resource: wgpu::BindingResource::TextureView(&view),
         });
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let groups = flat((width.div_ceil(8), height.div_ceil(8)));
         encode_on(engine, &mut encoder, &[Encoded { pipeline: &pipeline, bound, groups }]);
@@ -85,17 +85,17 @@ impl Fill {
 pub unsafe extern "C" fn gpu_engine_fill_new(engine: *const Engine) -> *mut Fill {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Box::into_raw(Box::new(Fill::new(engine)))
+    engine.on_thread(|| {
+        engine.hands(Fill::new(engine))
+    })
 }
 
 /// # Safety
 /// `fill` came from `gpu_engine_fill_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_fill_free(fill: *mut Fill) {
-    if !fill.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(fill) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(fill) };
 }
 
 /// Fills `texture` with the pattern for `seed` and waits for the GPU.
@@ -113,6 +113,8 @@ pub unsafe extern "C" fn gpu_engine_fill_run(
 ) -> i64 {
     // SAFETY: see the function's contract.
     let (fill, engine, texture) = unsafe { (&mut *fill, &*engine, &*texture) };
-    fill.run(engine, texture, seed)
-        .map_or(-1, |nanos| nanos as i64)
+    engine.on_thread(|| {
+        fill.run(engine, texture, seed)
+            .map_or(-1, |nanos| nanos as i64)
+    })
 }

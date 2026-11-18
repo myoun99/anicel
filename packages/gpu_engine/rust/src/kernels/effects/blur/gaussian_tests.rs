@@ -1,22 +1,24 @@
-//! The blur on a real GPU, checked against the ledger and against what the
-//! box passes give by hand — never against a CPU copy of them
+//! The Gaussian on a real GPU, checked against the ledger and against what
+//! its weights give by hand — never against a CPU copy of the pass
 //! (`kernels/mod.rs` has why). Every hand case is worked on the 16-bit
-//! premultiplied scale, a pass's mean rounded half up, then stored. Each
-//! goes both ways a blur's passes go — a way's three in one dispatch, and a
-//! pass a dispatch — and both put the same pixels.
+//! premultiplied scale: a pass's pixel its weights' sum rounded half up
+//! once, then stored — alpha (a + 128) / 257, a colour over it.
 
+use std::ops::Range;
 use std::sync::OnceLock;
 
-use super::super::TileRect;
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
-use super::{BoxBlur, EDGE_NOTHING, Edge, MOST_RADIUS, Route, passes, strips};
+use super::super::{TileRect, bands};
+use super::{Blur, Edge, Gaussian, MOST_REACH, Way, integers, planes, weights};
 use crate::device::Engine;
+use crate::kernels::composite::TILE_TEXELS;
 use crate::kernels::effects::tests::rgba;
+use crate::kernels::shared::room;
 use crate::testing::{assert_pinned, first_engine};
 
 struct Rig {
     engine: &'static Engine,
-    blur: BoxBlur,
+    blur: Gaussian,
 }
 
 /// One device and one compiled pass for every test here (blend's tests
@@ -27,152 +29,219 @@ fn rig() -> &'static Rig {
         let engine = first_engine();
         Rig {
             engine,
-            blur: BoxBlur::new(engine),
+            blur: Gaussian::new(engine),
         }
     })
 }
 
-/// The tiles of `rect` holding `pixel`, blurred, the passes going by
-/// `route` — `None` where the blur refused them.
-fn blur_by(
+/// The tiles of `rect` holding `pixel`, through `blur` in bands a binding
+/// of `room` bytes holds — `None` where the blur refused them.
+fn blur_in(
     rect: TileRect,
-    radius: (u32, u32),
-    edge: Edge,
+    blur: &Blur,
     pixel: impl Fn(i32, i32) -> u32,
-    route: Route,
+    room: u64,
 ) -> Option<Blurred> {
-    let Rig { engine, blur } = rig();
-    let out = blur.run_by(engine, &tiles(engine, rect, pixel), rect, radius, edge, route)?;
+    let Rig { engine, blur: gaussian } = rig();
+    let out = gaussian.run_in(engine, &tiles(engine, rect, pixel), rect, blur, room)?;
     Some(Blurred::read(engine, rect, &out))
 }
 
-/// The tiles of `rect` holding `pixel`, blurred as a blur goes, once the
-/// passes a dispatch each are seen to put them alike.
-fn blur(
-    rect: TileRect,
-    radius: (u32, u32),
-    edge: Edge,
-    pixel: impl Fn(i32, i32) -> u32,
-) -> Option<Blurred> {
-    let Rig { engine, blur } = rig();
-    let picture = tiles(engine, rect, &pixel);
-    let blurred = blur
-        .run(engine, &picture, rect, radius, edge)
-        .map(|out| Blurred::read(engine, rect, &out));
-    let passes = blur_by(rect, radius, edge, &pixel, Route::Passes);
-    assert_eq!(
-        blurred.as_ref().map(|blurred| &blurred.words),
-        passes.as_ref().map(|blurred| &blurred.words),
-        "{radius:?} {edge:?}"
-    );
-    blurred
+/// `blur_in`, on a binding of the device's.
+fn blurred(rect: TileRect, blur: &Blur, pixel: impl Fn(i32, i32) -> u32) -> Option<Blurred> {
+    blur_in(rect, blur, pixel, room(rig().engine))
 }
 
-/// One opaque pixel, three boxes of radius 1: the first spreads 65535 to
-/// thirds, 21845 each; the second to 7282 · 14563 · 21845 · 14563 · 7282;
-/// the third to 2427 · 7282 · 14563 · 16990 · …, bytes 9 · 28 · 57 · 66.
-const SPIKE: [u32; 9] = [0, 9, 28, 57, 66, 57, 28, 9, 0];
+/// A way of sigma 1 reaching 3: weights 26152 · 15862 · 3539 · 291 from
+/// its middle (`the_weights_are_the_gaussian_s_in_integers`).
+const ONE: Way = Way { sigma: 1.0, reach: 3 };
+const NONE: Way = Way { sigma: 0.0, reach: 0 };
+
+/// `across` and `down` over the whole of `rect`, nothing past it.
+fn whole(rect: TileRect, across: Way, down: Way) -> Blur {
+    Blur {
+        across,
+        down,
+        picture: rect.pixels(),
+        edge: Edge::Nothing,
+        puts: rect.pixels(),
+    }
+}
+
+/// 65535 at a pixel: its own weight and those either side, rounded — so
+/// bytes 1 · 14 · 62 · 102 · 62 · 14 · 1 (26152 → 26152, (26152 + 128) /
+/// 257 = 102).
+const SPIKE: [u32; 7] = [1, 14, 62, 102, 62, 14, 1];
+
+/// Sigma 1 reaching 3: e^(−i²/2) at 0 to 3 — 1, 0.6065, 0.1353, 0.0111 —
+/// over their sum both sides, 2.50595, are 26152.16 · 15862.09 · 3539.31 ·
+/// 290.52 of 65536. The floors sum to 65534 both sides: the pair of the
+/// largest remainder, 0.52, takes the two left. Sigma ½ reaching 2:
+/// 51548.70 · 6976.36 · 17.29, the floors 65534, 6976's pair the two.
+/// Sigma 2 reaching 6: 13085.94 · 11548.30 · 7937.03 · 4248.38 · 1770.99 ·
+/// 574.96 · 145.37, the floors 65529: the pairs of the largest remainders
+/// — 0.99, 0.96, 0.38 — take six, and the middle the one left.
+#[test]
+fn the_weights_are_the_gaussian_s_in_integers() {
+    assert_eq!(weights(1.0, 3), vec![26152, 15862, 3539, 291]);
+    assert_eq!(weights(0.5, 2), vec![51548, 6977, 17]);
+    assert_eq!(weights(2.0, 6), vec![13086, 11548, 7937, 4249, 1771, 575, 145]);
+    // A sigma no pixel beside the middle holds a share of.
+    assert_eq!(weights(0.05, 2), vec![65536, 0, 0]);
+}
+
+/// Pairs of equal remainders: the nearer takes the two first. 65520 ·
+/// 4.5 · 3.5 floor to 65534 both sides — one pair's two short, and both
+/// pairs' remainders ½. No sigma we know of gives two equal remainders,
+/// so the shares are given by hand.
+#[test]
+fn among_equal_remainders_the_nearer_pair_takes_the_two() {
+    assert_eq!(integers(&[65520.0, 4.5, 3.5]), vec![65520, 5, 3]);
+}
+
+/// However far a way reaches, its weights sum to 65536 both sides and fall
+/// away from the middle.
+#[test]
+fn every_way_s_weights_sum_whole_and_fall_from_the_middle() {
+    for sigma in [0.3, 0.7, 1.3, 2.9, 7.5, 16.7, 50.0, 166.7] {
+        for reach in [1, (3.0 * sigma) as u32, (3.0 * sigma) as u32 + 1] {
+            let reach = reach.max(1);
+            let weights = weights(sigma, reach);
+            assert_eq!(weights.len(), reach as usize + 1, "{sigma} {reach}");
+            let sum: u32 = weights[0] + 2 * weights[1..].iter().sum::<u32>();
+            assert_eq!(sum, 65536, "{sigma} {reach}");
+            assert!(weights.windows(2).all(|pair| pair[0] >= pair[1]), "{sigma} {reach}");
+        }
+    }
+}
 
 #[test]
-fn one_pixel_spreads_along_its_row_by_three_boxes() {
-    let blurred = blur(ONE_TILE, (1, 0), Edge::Nothing, |x, y| {
-        if (x, y) == (60, 60) { WHITE } else { 0 }
-    })
-    .expect("blur");
-    assert_eq!(blurred.row(60, 56..65), white(&SPIKE));
-    // A way of radius 0 is left as it is.
+fn one_pixel_spreads_along_its_row_by_the_weights() {
+    let blur = whole(ONE_TILE, ONE, NONE);
+    let blurred = blurred(ONE_TILE, &blur, |x, y| if (x, y) == (60, 60) { WHITE } else { 0 })
+        .expect("blur");
+    assert_eq!(blurred.row(60, 57..64), white(&SPIKE));
+    assert_eq!(blurred.row(60, 56..57), vec![0]);
+    // A way of no reach is left as it is.
     assert_eq!(blurred.row(59, 56..65), vec![0; 9]);
     assert_eq!(blurred.row(61, 56..65), vec![0; 9]);
 }
 
 #[test]
-fn one_pixel_spreads_down_its_column_by_the_same_boxes() {
-    let blurred = blur(ONE_TILE, (0, 1), Edge::Nothing, |x, y| {
-        if (x, y) == (60, 60) { WHITE } else { 0 }
-    })
-    .expect("blur");
-    assert_eq!(blurred.column(60, 56..65), white(&SPIKE));
-    assert_eq!(blurred.column(59, 56..65), vec![0; 9]);
+fn one_pixel_spreads_down_its_column_by_the_same_weights() {
+    let blur = whole(ONE_TILE, NONE, ONE);
+    let blurred = blurred(ONE_TILE, &blur, |x, y| if (x, y) == (60, 60) { WHITE } else { 0 })
+        .expect("blur");
+    assert_eq!(blurred.column(60, 57..64), white(&SPIKE));
+    assert_eq!(blurred.column(59, 57..64), vec![0; 7]);
 }
 
-/// Both ways: the columns blur the rows' 16-bit pixels, not their bytes —
-/// 16990 at the middle goes to 5663, 5663, then 4404: 17, not 66.
+/// Both ways: the columns weigh the rows' 16-bit pixels, not their bytes —
+/// 26152 at the middle goes to 26152 · 26152 / 65536 = 10436, byte 41; one
+/// row off, 15862 · 26152 / 65536 = 6330, byte 25.
 #[test]
-fn the_columns_blur_what_the_rows_left() {
-    let blurred = blur(ONE_TILE, (1, 1), Edge::Nothing, |x, y| {
-        if (x, y) == (60, 60) { WHITE } else { 0 }
-    })
-    .expect("blur");
-    let both = white(&[0, 2, 7, 15, 17, 15, 7, 2, 0]);
-    assert_eq!(blurred.column(60, 56..65), both);
-    assert_eq!(blurred.row(60, 56..65), both);
-    // 2427 spread down three boxes is 629 at most: no byte.
-    assert_eq!(blurred.at(57, 57), 0);
+fn the_columns_weigh_what_the_rows_left() {
+    let blur = whole(ONE_TILE, ONE, ONE);
+    let blurred = blurred(ONE_TILE, &blur, |x, y| if (x, y) == (60, 60) { WHITE } else { 0 })
+        .expect("blur");
+    let middle = white(&[0, 5, 25, 41, 25, 5, 0]);
+    assert_eq!(blurred.column(60, 57..64), middle);
+    assert_eq!(blurred.row(60, 57..64), middle);
+    // One row off and along it, 6330 · 3839 · 857 · 70: bytes 25 · 15 · 3 · 0.
+    assert_eq!(blurred.row(61, 57..64), white(&[0, 3, 15, 25, 15, 3, 0]));
 }
 
 /// Half-clear red over nothing: premultiplied, the nothing beside it
 /// carries no colour, so what spreads stays red — only its alpha falls
-/// (32896 to 8528 · 7310 · 3655 · 1218).
+/// (32896 to 13127 · 7962 · 1776 · 146, bytes 51 · 31 · 7 · 1).
 #[test]
 fn a_clear_neighbour_lends_no_colour() {
-    let blurred = blur(ONE_TILE, (1, 0), Edge::Nothing, |x, y| {
+    let blur = whole(ONE_TILE, ONE, NONE);
+    let blurred = blurred(ONE_TILE, &blur, |x, y| {
         if (x, y) == (60, 60) { rgba(255, 0, 0, 128) } else { 0 }
     })
     .expect("blur");
-    let red: Vec<u32> = [5, 14, 28, 33, 28, 14, 5].iter().map(|&a| rgba(255, 0, 0, a)).collect();
+    let red: Vec<u32> = [1, 7, 31, 51, 31, 7, 1].iter().map(|&a| rgba(255, 0, 0, a)).collect();
     assert_eq!(blurred.row(60, 57..64), red);
 }
 
-/// Red beside blue: at a pixel each lends what its spike left there over
-/// the alpha both left — 16990 and 14563 over 31554 at the pair, 14563 and
-/// 7282 over 21845 one out.
+/// White from x = 64 on, past the picture's left edge too — but the
+/// picture starts there, and past it the blur reads nothing: x = 64 keeps
+/// 26152 + 15862 + 3539 + 291 = 45844 of 65536 (45843, byte 178), 63 the
+/// 19692 reaching in (77), 62 3830 (15), 61 291 (1), 60 none. The blur
+/// puts from 60, and nothing left of it.
 #[test]
-fn two_colours_meet_by_what_each_lends() {
-    let blurred = blur(ONE_TILE, (1, 0), Edge::Nothing, |x, y| match (x, y) {
-        (60, 60) => rgba(255, 0, 0, 255),
-        (61, 60) => rgba(0, 0, 255, 255),
-        _ => 0,
-    })
-    .expect("blur");
-    assert_eq!(
-        blurred.row(60, 59..63),
-        [
-            rgba(170, 0, 85, 85),
-            rgba(137, 0, 118, 123),
-            rgba(118, 0, 137, 123),
-            rgba(85, 0, 170, 85),
-        ]
-    );
+fn past_its_picture_a_blur_reads_nothing_and_puts_past_it_as_far_as_asked() {
+    let blur = Blur {
+        across: ONE,
+        down: NONE,
+        picture: [64, 0, 128, 128],
+        edge: Edge::Nothing,
+        puts: [60, 0, 128, 128],
+    };
+    let blurred = blurred(ONE_TILE, &blur, |_, _| WHITE).expect("blur");
+    assert_eq!(blurred.row(9, 58..68), white(&[0, 0, 0, 1, 15, 77, 178, 240, 254, 255]));
 }
 
-/// On the tiles' first and last column a pixel blurs as one inside does:
-/// each pass is worked out past the tiles as far as the next one reads.
+/// Across too: a blur along the rows alone reads the lines past its
+/// picture as nothing, and puts none of them but those asked.
 #[test]
-fn a_pixel_on_the_tiles_edge_blurs_as_an_inner_one() {
-    let rect = TileRect {
-        x0: -1,
-        y0: 0,
-        columns: 1,
-        rows: 1,
+fn past_its_picture_across_a_blur_reads_nothing_either() {
+    let blur = Blur {
+        across: ONE,
+        down: NONE,
+        picture: [0, 64, 128, 128],
+        edge: Edge::Nothing,
+        puts: [0, 60, 128, 128],
     };
-    let blurred = blur(rect, (1, 0), Edge::Nothing, |x, y| match (x, y) {
-        (-128, 5) | (-1, 9) => WHITE,
-        _ => 0,
-    })
-    .expect("blur");
-    assert_eq!(blurred.row(5, -128..-123), white(&SPIKE[4..]));
-    assert_eq!(blurred.row(9, -5..0), white(&SPIKE[..5]));
+    let blurred = blurred(ONE_TILE, &blur, |_, _| WHITE).expect("blur");
+    for y in [60, 63] {
+        assert_eq!(blurred.row(y, 30..34), vec![0; 4], "{y}");
+    }
+    assert_eq!(blurred.row(64, 30..34), white(&[255; 4]));
+}
+
+/// Either way alone reads the lines past its picture across as it reads
+/// past it along: a blur along the rows puts the rows next above and below
+/// its picture — and one down the columns the columns either side — from
+/// nothing, or repeating, from the nearest line inside: never from the red
+/// the tiles hold there.
+#[test]
+fn a_way_alone_reads_the_lines_past_its_picture_as_past_it() {
+    let inside = [20, 20, 40, 40];
+    let pixel = |x, y| {
+        if (20..40).contains(&x) && (20..40).contains(&y) { WHITE } else { rgba(255, 0, 0, 255) }
+    };
+    for (across, down) in [(ONE, NONE), (NONE, ONE)] {
+        let blur = |edge| Blur { across, down, picture: inside, edge, puts: [16, 16, 44, 44] };
+        let nothing = blurred(ONE_TILE, &blur(Edge::Nothing), pixel).expect("blur");
+        let repeated = blurred(ONE_TILE, &blur(Edge::Repeat), pixel).expect("blur");
+        for past in [19, 40] {
+            let (x, y) = if down == NONE { (30, past) } else { (past, 30) };
+            assert_eq!(nothing.at(x, y), 0, "{across:?} ({x}, {y})");
+            assert_eq!(repeated.at(x, y), WHITE, "{across:?} ({x}, {y})");
+        }
+    }
 }
 
 /// Repeat Edge Pixels: black then white across a 4 × 2 rectangle, red all
-/// round it. Read past the rectangle, a pixel is the nearest inside — never
-/// the red — so the rows go 0 · 0 · W · W out to either side and blur to
-/// 9709 · 24272 · 41263 · 55826 (bytes 38 · 94 · 161 · 217), and the
-/// columns, a pixel the same all the way down, keep them; outside, nothing.
+/// round it. Read past the rectangle, a pixel is the nearest inside —
+/// never the red — so along the rows black reaches 3 past the middle and
+/// white 3 past it either way; the columns, a pixel the same all the way
+/// down, keep them; outside, nothing. 12's taps are white at 0 · 1 · 2 · 3
+/// past it and black at 1 · 2 · 3 short: 26152 + 15862 + 3539 + 291 of
+/// white, byte 178 — and 11 its mirror, 77.
 #[test]
 fn repeat_reads_the_nearest_pixel_inside_and_puts_nothing_outside() {
     let inside = [10, 20, 14, 22];
-    let blurred = blur(ONE_TILE, (1, 1), Edge::Repeat(inside), |x, y| {
+    let blur = Blur {
+        across: ONE,
+        down: ONE,
+        picture: inside,
+        edge: Edge::Repeat,
+        puts: inside,
+    };
+    let blurred = blurred(ONE_TILE, &blur, |x, y| {
         if (10..14).contains(&x) && (20..22).contains(&y) {
             if x < 12 { rgba(0, 0, 0, 255) } else { WHITE }
         } else {
@@ -180,7 +249,7 @@ fn repeat_reads_the_nearest_pixel_inside_and_puts_nothing_outside() {
         }
     })
     .expect("blur");
-    let grey: Vec<u32> = [38, 94, 161, 217].iter().map(|&c| rgba(c, c, c, 255)).collect();
+    let grey: Vec<u32> = [15, 77, 178, 240].iter().map(|&c| rgba(c, c, c, 255)).collect();
     assert_eq!(blurred.row(20, 10..14), grey);
     assert_eq!(blurred.row(21, 10..14), grey);
     for (x, y) in [(9, 20), (14, 21), (10, 19), (13, 22), (0, 0), (127, 127)] {
@@ -188,104 +257,175 @@ fn repeat_reads_the_nearest_pixel_inside_and_puts_nothing_outside() {
     }
 }
 
-/// A picture longer along a way than one strip holds is cut into strips —
-/// two of them here, each way — and they meet with no seam: both edges,
-/// rows and columns, put what a pass a dispatch puts.
+/// White stays white however far a way reaches: 65535 under weights of
+/// 65536 is 65535 · 65536 — what a u32 holds with the half beside it.
 #[test]
-fn strips_of_a_long_picture_meet_with_no_seam() {
-    let wide = TileRect {
-        x0: -2,
-        y0: 0,
-        columns: 9,
-        rows: 1,
+fn white_stays_white_however_far_a_way_reaches() {
+    let far = Way { sigma: 16.7, reach: 50 };
+    let blur = Blur {
+        across: far,
+        down: far,
+        picture: ONE_TILE.pixels(),
+        edge: Edge::Repeat,
+        puts: ONE_TILE.pixels(),
     };
-    let tall = TileRect {
-        x0: 0,
-        y0: -1,
-        columns: 1,
-        rows: 9,
-    };
-    let scenes = [
-        (wide, (5, 3), Edge::Nothing, false),
-        (wide, (5, 3), Edge::Repeat([-250, 5, 880, 125]), false),
-        (tall, (3, 5), Edge::Nothing, true),
-        (tall, (3, 5), Edge::Repeat([5, -100, 120, 1020]), true),
-    ];
-    for (rect, radius, edge, down) in scenes {
-        let picture = match edge {
-            Edge::Nothing => rect.pixels(),
-            Edge::Repeat(inside) => inside,
-        };
-        let way = passes(picture, radius, EDGE_NOTHING);
-        let way = if down { &way[3..] } else { &way[..3] };
-        assert!(strips(way).expect("strips").groups.0 > 1, "{radius:?} {edge:?}");
-        let blurred = blur(rect, radius, edge, pattern).expect("blur");
-        assert!(blurred.words.iter().any(|&word| word != 0), "{radius:?} {edge:?}");
+    let blurred = blurred(ONE_TILE, &blur, |_, _| WHITE).expect("blur");
+    assert!(blurred.words.iter().all(|&word| word == WHITE));
+}
+
+/// The alphas a step of white from `edge` to `last` puts at each of
+/// `places` along a way: the weights reaching white, of 65535, rounded half
+/// up once — then to a byte, (v + 128) / 257.
+fn step(way: Way, [edge, last]: [i32; 2], places: Range<i32>) -> Vec<u32> {
+    let weights = weights(way.sigma, way.reach);
+    let reach = way.reach as i32;
+    places
+        .map(|p| {
+            let reached: u64 = (edge.max(p - reach)..=last.min(p + reach))
+                .map(|q| u64::from(weights[(q - p).unsigned_abs() as usize]))
+                .sum();
+            let v = ((65535 * reached + 32768) >> 16) as u32;
+            (v + 128) / 257
+        })
+        .collect()
+}
+
+/// A reach past what a workgroup's window holds at once — 2048 pixels of
+/// the rows' one line, 256 of each of the columns' eight (gaussian.wgsl) —
+/// sums over the stretches it takes as over one: a step of white spreads by
+/// the weights reaching it, every pixel along (the rows' two stretches, the
+/// columns' three).
+#[test]
+fn a_reach_past_the_window_spreads_a_step_by_the_weights_it_reaches() {
+    let first_off = |got: Vec<u32>, want: Vec<u32>| got.iter().zip(&want).position(|(g, w)| g != w);
+
+    let rows = TileRect { x0: 0, y0: 0, columns: 24, rows: 1 };
+    let across = Way { sigma: 366.7, reach: 1100 };
+    let blur = whole(rows, across, NONE);
+    let along = blurred(rows, &blur, |x, _| if x >= 1536 { WHITE } else { 0 }).expect("blur");
+    let want = white(&step(across, [1536, 3071], 0..3072));
+    assert_eq!(first_off(along.row(100, 0..3072), want), None, "along the rows");
+
+    let columns = TileRect { x0: 0, y0: 0, columns: 1, rows: 12 };
+    let down = Way { sigma: 100.0, reach: 300 };
+    let blur = whole(columns, NONE, down);
+    let downward = blurred(columns, &blur, |_, y| if y >= 768 { WHITE } else { 0 }).expect("blur");
+    let want = white(&step(down, [768, 1535], 0..1536));
+    assert_eq!(first_off(downward.column(100, 0..1536), want), None, "down the columns");
+}
+
+#[test]
+fn a_blur_of_no_reach_is_refused() {
+    assert!(blurred(ONE_TILE, &whole(ONE_TILE, NONE, NONE), |_, _| WHITE).is_none());
+}
+
+#[test]
+fn a_reach_past_the_farthest_is_refused() {
+    let far = Way { sigma: 1.0, reach: MOST_REACH + 1 };
+    for blur in [whole(ONE_TILE, far, NONE), whole(ONE_TILE, NONE, far)] {
+        assert!(blurred(ONE_TILE, &blur, |_, _| WHITE).is_none(), "{blur:?}");
     }
 }
 
-/// A box past MOST_STRIPS_RADIUS goes a pass a dispatch, whether a strip of
-/// it has room (57) or none (171 — three radii each side are more than a
-/// strip's 1024 pixels): a picture the same everywhere, its edge repeated,
-/// blurs to itself.
 #[test]
-fn a_box_past_the_strips_widest_goes_a_pass_a_dispatch() {
-    let inside = [0, 0, 128, 128];
-    assert!(strips(&passes(inside, (57, 0), EDGE_NOTHING)).is_some());
-    assert!(strips(&passes(inside, (171, 0), EDGE_NOTHING)).is_none());
-    let grey = rgba(90, 120, 150, 255);
-    for radius in [(57, 1), (1, 57), (171, 1), (1, 171)] {
-        let blurred = blur(ONE_TILE, radius, Edge::Repeat(inside), |_, _| grey).expect("blur");
-        assert!(blurred.words.iter().all(|&word| word == grey), "{radius:?}");
+fn a_way_that_reaches_by_no_sigma_is_refused() {
+    for sigma in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let blur = whole(ONE_TILE, Way { sigma, reach: 2 }, NONE);
+        assert!(blurred(ONE_TILE, &blur, |_, _| WHITE).is_none(), "{sigma}");
     }
+    let unreached = Way { sigma: f64::NAN, reach: 0 };
+    assert!(blurred(ONE_TILE, &whole(ONE_TILE, ONE, unreached), |_, _| WHITE).is_none());
 }
 
 #[test]
-fn a_blur_of_no_radius_is_refused() {
-    assert!(blur(ONE_TILE, (0, 0), Edge::Nothing, |_, _| WHITE).is_none());
-}
-
-#[test]
-fn a_radius_past_the_widest_box_is_refused() {
-    assert!(blur(ONE_TILE, (MOST_RADIUS + 1, 1), Edge::Nothing, |_, _| WHITE).is_none());
-    assert!(blur(ONE_TILE, (1, MOST_RADIUS + 1), Edge::Nothing, |_, _| WHITE).is_none());
-}
-
-#[test]
-fn a_repeat_reaching_past_the_tiles_or_holding_nothing_is_refused() {
+fn a_picture_or_a_rectangle_put_past_the_tiles_or_holding_nothing_is_refused() {
     for inside in [[-1, 0, 10, 10], [0, 0, 129, 10], [5, 5, 5, 10], [5, 9, 9, 8]] {
-        assert!(
-            blur(ONE_TILE, (1, 1), Edge::Repeat(inside), |_, _| WHITE).is_none(),
-            "{inside:?}"
-        );
+        let mut blur = whole(ONE_TILE, ONE, ONE);
+        blur.picture = inside;
+        assert!(blurred(ONE_TILE, &blur, |_, _| WHITE).is_none(), "picture {inside:?}");
+        let mut blur = whole(ONE_TILE, ONE, ONE);
+        blur.puts = inside;
+        assert!(blurred(ONE_TILE, &blur, |_, _| WHITE).is_none(), "puts {inside:?}");
     }
 }
 
 // ---- The ledger ----
 
-/// Each way alone and both, both edges, and radii of more than a run's
-/// pixels at the edges of runs.
-fn scenes() -> Vec<((u32, u32), Edge)> {
+/// Each way alone and both, both edges, a picture inside the tiles and a
+/// rectangle put past it, and reaches past a workgroup's pixels.
+fn scenes() -> Vec<Blur> {
+    let tiles = LEDGER_TILES.pixels();
+    let inside = [-100, 10, 90, 200];
     vec![
-        ((3, 5), Edge::Nothing),
-        ((2, 0), Edge::Nothing),
-        ((0, 4), Edge::Repeat([-100, 10, 90, 200])),
-        ((70, 2), Edge::Repeat([-128, 0, 128, 256])),
-        ((1, 33), Edge::Nothing),
+        whole(LEDGER_TILES, Way { sigma: 1.0, reach: 3 }, Way { sigma: 1.7, reach: 5 }),
+        whole(LEDGER_TILES, Way { sigma: 0.7, reach: 2 }, NONE),
+        Blur {
+            across: NONE,
+            down: Way { sigma: 1.3, reach: 4 },
+            picture: inside,
+            edge: Edge::Repeat,
+            puts: inside,
+        },
+        Blur {
+            across: Way { sigma: 23.3, reach: 70 },
+            down: Way { sigma: 0.7, reach: 2 },
+            picture: inside,
+            edge: Edge::Nothing,
+            puts: tiles,
+        },
+        whole(LEDGER_TILES, Way { sigma: 0.3, reach: 1 }, Way { sigma: 11.0, reach: 33 }),
     ]
 }
 
-/// The same pin either way the passes go (gpu-canonical-store 01:15 (b) ②).
+/// The ledger's blurs in bands, a binding holding the tiles and no more
+/// than the plane of a quarter of the rows above the middle, are the
+/// blurs whole, byte for byte (connection-round-checklist ④): the lines
+/// past a band its columns read are worked out again as the whole works
+/// them out — in bands where both ways go, a way alone holding no plane.
+#[test]
+fn a_picture_in_bands_is_blurred_as_it_is_whole() {
+    for blur in scenes() {
+        let [_, first, _, end] = blur.puts;
+        let middle = first + (end - first) / 2;
+        let quarter = (end - first + 3) / 4;
+        let tiles = LEDGER_TILES.tiles() * TILE_TEXELS * 4;
+        let room = planes(&blur, [middle - quarter, middle]).max(tiles);
+        let cut = bands([first, end], |band| planes(&blur, band) <= room);
+        let count = cut.map_or(0, |cut| cut.len());
+        let both = blur.across.reach > 0 && blur.down.reach > 0;
+        assert_eq!(count > 1, both, "{blur:?}: {count} bands");
+        let whole = blurred(LEDGER_TILES, &blur, pattern).expect("whole");
+        let banded = blur_in(LEDGER_TILES, &blur, pattern, room).expect("bands");
+        assert!(banded.words == whole.words, "{blur:?}: the bands put the whole's bytes");
+    }
+}
+
+/// The cut halves until every band fits, its bands one after another, as
+/// even as whole rows go — down to bands of one row, and none past them.
+#[test]
+fn the_rows_halve_until_each_band_fits() {
+    let rows = |band: [i32; 2]| band[1] - band[0];
+    assert_eq!(bands([0, 10], |band| rows(band) <= 10), Some(vec![[0, 10]]));
+    assert_eq!(
+        bands([0, 10], |band| rows(band) <= 3),
+        Some(vec![[0, 2], [2, 5], [5, 7], [7, 10]])
+    );
+    assert_eq!(bands([4, 7], |band| rows(band) <= 1), Some(vec![[4, 5], [5, 6], [6, 7]]));
+    assert_eq!(bands([0, 10], |_| false), None);
+}
+
+/// A binding that holds no band of one row refuses the blur.
+#[test]
+fn a_picture_no_band_of_one_row_fits_is_refused() {
+    assert!(blur_in(ONE_TILE, &whole(ONE_TILE, ONE, ONE), pattern, 0).is_none());
+}
+
 #[test]
 fn every_device_blurs_the_pinned_picture() {
-    for route in [Route::Strips, Route::Passes] {
-        let bytes: Vec<u8> = scenes()
-            .into_iter()
-            .flat_map(|(radius, edge)| {
-                blur_by(LEDGER_TILES, radius, edge, pattern, route).expect("blur").words
-            })
-            .flat_map(|word| word.to_le_bytes())
-            .collect();
-        assert_pinned("effects/blur", &bytes);
-    }
+    let bytes: Vec<u8> = scenes()
+        .iter()
+        .flat_map(|blur| blurred(LEDGER_TILES, blur, pattern).expect("blur").words)
+        .flat_map(|word| word.to_le_bytes())
+        .collect();
+    assert_pinned("effects/blur", &bytes);
 }

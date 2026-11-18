@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
-import '../photoshop/psd_image.dart' show decodePsdCompositeImage;
+import '../photoshop/psd_image.dart' show readPsdComposite;
 import '../photoshop/psd_reader.dart'
     show looksLikePsdBytes, psdHeaderLength, readPsdCanvasSize;
 import 'media_byte_source.dart';
@@ -41,7 +41,7 @@ final class ImageViewerDocument implements ViewerDocument {
   ///
   /// 🚨A PHOTOSHOP DOCUMENT IS ASKED FOR FIRST, and opens as its composite
   /// ([PsdCompositeDocument]): no platform codec reads one, and every image
-  /// entry point asks ([decodePsdCompositeImage]'s note). 🪦The viewer read
+  /// entry point asks ([readPsdComposite]'s note). 🪦The viewer read
   /// its images through `decodeImageFrames`, which asks, until this
   /// document replaced it (#1364, 2026-08-29) without asking — from then on
   /// the viewer's own picker offered a `.psd` the viewer could not open, and
@@ -63,23 +63,27 @@ final class ImageViewerDocument implements ViewerDocument {
         : _decoded(await ui.ImmutableBuffer.fromFilePath(file));
   }
 
-  /// How big the picture in [source] is, from its header alone: what [open]
-  /// would show, never decoded — the size a list of files asks of every row
-  /// (the import window's resolution, F-375).
+  /// How big the picture in [source] is and how many pictures it holds, from
+  /// its header alone: what [open] would show, never decoded — what a list of
+  /// files asks of every row (the import window's resolution, F-375, and
+  /// whether a row is ONE picture, F-429).
   ///
   /// ⛔Not [open] and its page size: [open] decodes a frame to count the
   /// frames — the whole picture, for a codec that cannot decode small — and
   /// reads a Photoshop document whole ([PsdCompositeDocument]). Here the
   /// codec reads its header, and a Photoshop document gives its first
   /// [psdHeaderLength] bytes — inside the project file too, where reading
-  /// it whole would hold every byte of it.
-  static Future<CanvasSize> sizeOf(MediaByteSource source) async {
+  /// it whole would hold every byte of it. A Photoshop document is ONE
+  /// picture: merged, its composite.
+  static Future<({CanvasSize size, int pictures})> factsOf(
+    MediaByteSource source,
+  ) async {
     final head = _frontOf(source, psdHeaderLength);
     if (looksLikePsdBytes(head)) {
-      return _psdSize(head);
+      return (size: _psdSize(head), pictures: 1);
     }
     final file = source.wholeFilePath;
-    return _codecSize(
+    return _codecFacts(
       file == null
           ? await ui.ImmutableBuffer.fromUint8List(await source.read())
           : await ui.ImmutableBuffer.fromFilePath(file),
@@ -91,9 +95,12 @@ final class ImageViewerDocument implements ViewerDocument {
     return CanvasSize(width: size.width, height: size.height);
   }
 
-  /// The size the codec reads off the head of [buffer]. The buffer and
-  /// the description are released here, whichever way this ends.
-  static Future<CanvasSize> _codecSize(ui.ImmutableBuffer buffer) async {
+  /// The size and the count of pictures the codec reads off the head of
+  /// [buffer]. The buffer and the description are released here, whichever
+  /// way this ends.
+  static Future<({CanvasSize size, int pictures})> _codecFacts(
+    ui.ImmutableBuffer buffer,
+  ) async {
     final ui.ImageDescriptor descriptor;
     try {
       descriptor = await ui.ImageDescriptor.encoded(buffer);
@@ -101,9 +108,29 @@ final class ImageViewerDocument implements ViewerDocument {
       buffer.dispose();
     }
     try {
-      return CanvasSize(width: descriptor.width, height: descriptor.height);
+      return (
+        size: CanvasSize(width: descriptor.width, height: descriptor.height),
+        pictures: await picturesIn(descriptor),
+      );
     } finally {
       descriptor.dispose();
+    }
+  }
+
+  /// How many pictures [descriptor]'s file holds — the codec's to say, from
+  /// the file's head: nothing is decoded to count them.
+  ///
+  /// ⛔ONE count: the import's still-or-animation question
+  /// (`decodeImageFrames`) asks it here too.
+  static Future<int> picturesIn(ui.ImageDescriptor descriptor) async {
+    final counting = await descriptor.instantiateCodec(
+      targetWidth: 1,
+      targetHeight: 1,
+    );
+    try {
+      return counting.frameCount;
+    } finally {
+      counting.dispose();
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../text/full_width_numerals.dart';
 import 'selected_text_controller.dart';
+import '../text/typed_text.dart';
 
 /// The ONE inline field (R10 R5).
 ///
@@ -213,7 +214,7 @@ class _InlineEditFieldState extends State<InlineEditField> {
               decimal: true,
               signed: widget.signed,
             ),
-        inputFormatters: widget.inputFormatters ?? halfWidthNumerals,
+        inputFormatters: typedText(widget.inputFormatters ?? halfWidthNumerals),
         style: widget.textStyle ?? const TextStyle(fontSize: 12),
         // BARE: the field replaces a readout in place, so it takes nothing
         // of the app-wide boxed field — no fill, no frame in any state, no

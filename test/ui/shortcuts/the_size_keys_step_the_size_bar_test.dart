@@ -1,6 +1,6 @@
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/services/shortcuts/program_keymap.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -19,7 +19,7 @@ import '../../helpers/app_shortcuts.dart';
 /// ★A KEY IS THE BAR'S ±: where it lands is asked of the bar, so the rack
 /// stands in one place (F-325).
 void main() {
-  const rack = ToolSizePresetPanel.presets;
+  const rack = AppInputSettings.defaultToolSizes;
 
   group('in the app', () {
     late BrushToolState Function() hand;

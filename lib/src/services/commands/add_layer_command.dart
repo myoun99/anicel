@@ -10,7 +10,7 @@ import '../../models/timeline_exposure.dart';
 import '../command.dart';
 import '../editing/cut_duplicate_helpers.dart'
     show duplicateFrameContent, remapTimelineExposure;
-import '../editing/default_layer_helpers.dart' show coveringCelFor;
+import '../editing/default_layer_helpers.dart' show linkedCopyCoveringCelFor;
 import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../project_tree_editor.dart';
@@ -76,7 +76,11 @@ class AddLayerMirror {
 /// 2026-09-26 「동작은 링크안하고 독립인상태 그대로」. It is the birth 겸용컷
 /// 생성 already gives such a row (F-99: 「생성시 기본적으로 프레임 생성되는데
 /// 그 법 그대로 재사용/통일」): every panel joins the one bank, and each lane
-/// shows its own.
+/// shows its own. A REFERENCE row's copy is born with the picture of the
+/// file its source shows, as 겸용컷 생성 gives it (🗣️I-120-Q24 · Q29,
+/// [linkedCopyCoveringCelFor]): a file placed, or a reference row pasted or
+/// duplicated, in a cut with a 겸용 ([picturedPanels]). ↩️It was born blank
+/// here, which took the row's 参照 header off in every cut.
 class AddLayerCommand implements Command {
   AddLayerCommand({
     required this.repository,
@@ -103,6 +107,17 @@ class AddLayerCommand implements Command {
 
   Project? _previousProject;
 
+  /// The panels [layer]'s copies were born showing a picture of its file
+  /// in, each with the cel of [layer] whose picture it is
+  /// ([linkedCopyCoveringCelFor]) — none for a row that shows no file.
+  ///
+  /// ⚠️A row comes in BEFORE its pictures do — an import bakes them, a
+  /// paste copies them, after this runs — so the door that lays them gives
+  /// each panel its cel's then (`givePanelsTheirPictures`). A redo finds
+  /// them where they were laid, as it finds the row's own.
+  Map<FrameId, FrameId> get picturedPanels => _picturedPanels;
+  Map<FrameId, FrameId> _picturedPanels = const {};
+
   @override
   String get description => 'Add layer ${layer.name}';
 
@@ -125,11 +140,15 @@ class AddLayerCommand implements Command {
         for (final mirror in mirrors)
           if (mirror.bornCelId case final cel?)
             mirror.layerId: layer.kind.coversWithoutGaps
-                ? coveringCelFor(
+                ? linkedCopyCoveringCelFor(
+                    layer,
                     frameId: cel,
                     cutDuration: requireCut(project, mirror.cutId).duration,
                   )
                 : _firstCelAs(cel),
+      };
+      _picturedPanels = {
+        for (final cel in panels.values) cel.frame.id: ?cel.picturedFrom,
       };
       final row = panels.isEmpty
           ? layer
@@ -201,10 +220,10 @@ class AddLayerCommand implements Command {
   }
 
   /// The first cel [layer] was born with, under [frameId]: a copy's own,
-  /// the ＋ press the source's was — not a second spelling of a drawing.
-  ({Frame frame, Map<int, TimelineExposure> timeline}) _firstCelAs(
-    FrameId frameId,
-  ) {
+  /// the ＋ press the source's was — not a second spelling of a drawing,
+  /// and no picture of a file.
+  ({Frame frame, Map<int, TimelineExposure> timeline, FrameId? picturedFrom})
+  _firstCelAs(FrameId frameId) {
     final born = layer.frames.single;
     return (
       frame: duplicateFrameContent(frame: born, newFrameId: frameId),
@@ -215,6 +234,7 @@ class AddLayerCommand implements Command {
             frameIdMap: {born.id: frameId},
           ),
       },
+      picturedFrom: null,
     );
   }
 

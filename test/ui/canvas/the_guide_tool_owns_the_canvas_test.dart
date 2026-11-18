@@ -1,6 +1,7 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/ui/canvas/canvas_drag_in_flight.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -138,5 +139,52 @@ void main() {
   testWidgets('the viewport above still hears every press', (tester) async {
     expect((await press(tester, const Offset(10, 10))).ancestor, isTrue);
     expect((await press(tester, const Offset(100, 100))).ancestor, isTrue);
+  });
+
+  // 🔎I-110 (검증/서피스 11-17): a handle's drag is the canvas's too — what
+  // would take the tool waits it out — and a layer taken away mid drag
+  // (another tool came under the hand) lands it and hears the hand no more.
+  testWidgets('a handle dragged is a drag in flight, landed where it was if '
+      'the layer goes before the hand comes up', (tester) async {
+    CutGuides? landed;
+    var shown = true;
+    late StateSetter show;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              show = setState;
+              return shown
+                  ? GuideEditLayer(
+                      guides: guides(),
+                      viewport: CanvasViewport(),
+                      onGuidesChanged: (_) {},
+                      onGuidesCommitted: (next) => landed = next,
+                    )
+                  : const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    final origin = tester.getTopLeft(find.byType(GuideEditLayer));
+    final hand = await tester.startGesture(origin + const Offset(100, 100));
+    await tester.pump();
+    expect(CanvasDragInFlight.live.value, isTrue);
+    await hand.moveTo(origin + const Offset(140, 120));
+    await tester.pump();
+
+    show(() => shown = false);
+    await tester.pump();
+    expect(CanvasDragInFlight.live.value, isFalse);
+    await hand.moveTo(origin + const Offset(160, 130));
+    await hand.up();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    final shape = landed?.guides.single.shape;
+    expect(shape, isA<SymmetryShape>(), reason: 'it landed');
+    expect((shape! as SymmetryShape).axis.origin.x, closeTo(140, 1));
   });
 }

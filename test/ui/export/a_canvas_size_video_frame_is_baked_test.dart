@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// A CANVAS-size video frame is baked: the backdrop under it, the V row's
@@ -44,7 +45,10 @@ void main() {
   const green = ui.Color(0xFF00FF00);
   const white = ui.Color(0xFFFFFFFF);
   const red = 0xFFFF0000;
-  const small = CanvasSize(width: 8, height: 8);
+  // One tile at the engine's side; the pins read it in eighths.
+  const tileSide = defaultCelTileSize;
+  const eighth = tileSide ~/ 8;
+  const small = CanvasSize(width: tileSide, height: tileSide);
   const trackId = TrackId('t');
 
   Frame drawing(String id, {int length = 1}) =>
@@ -106,12 +110,12 @@ void main() {
   void ink(
     EditorSessionManager session,
     Map<Cut, (int, int, int)> inks, {
-    int columns = 8,
+    int columns = tileSide,
   }) {
     BitmapSurface tileOf((int, int, int) rgb) {
-      final pixels = Uint8List(8 * 8 * 4);
+      final pixels = Uint8List(tileSide * tileSide * 4);
       for (var i = 0; i < pixels.length; i += 4) {
-        if ((i ~/ 4) % 8 >= columns) {
+        if ((i ~/ 4) % tileSide >= columns) {
           continue;
         }
         pixels[i] = rgb.$1;
@@ -121,8 +125,10 @@ void main() {
       }
       return BitmapSurface(
         canvasSize: small,
-        tileSize: 8,
-        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+        tileSize: tileSide,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+        },
       );
     }
 
@@ -147,17 +153,19 @@ void main() {
   }) async {
     final renderer = ExportFrameRenderer(
       session: session,
-      background: white,
+      ground: white,
       layerFx: layerFx,
     );
     final image = outputSize == null
-        ? await renderer
-              .videoRun(
-                [task],
-                ExportSizeMode.canvas,
-                preserveAlpha: preserveAlpha,
-              )
-              .frame(0)
+        ? await pictureOfFilmFrame(
+            renderer
+                .videoRun(
+                  [task],
+                  ExportSizeMode.canvas,
+                  preserveAlpha: preserveAlpha,
+                )
+                .frame(0),
+          )
         : await renderer.renderVideoFrame(
             task,
             ExportSizeMode.canvas,
@@ -171,7 +179,12 @@ void main() {
   }
 
   /// The pixel at ([x], [y]) of [bytes], a square picture's.
-  (int, int, int, int) pixelOf(Uint8List bytes, int x, int y, {int side = 8}) {
+  (int, int, int, int) pixelOf(
+    Uint8List bytes,
+    int x,
+    int y, {
+    int side = tileSide,
+  }) {
     final offset = (y * side + x) * 4;
     return (
       bytes[offset],
@@ -182,7 +195,7 @@ void main() {
   }
 
   /// The pixel in the middle of [bytes], a square picture's.
-  (int, int, int, int) centreOf(Uint8List bytes, {int side = 8}) =>
+  (int, int, int, int) centreOf(Uint8List bytes, {int side = tileSide}) =>
       pixelOf(bytes, side ~/ 2, side ~/ 2, side: side);
 
   testWidgets('a gap frame is the backdrop — and nothing at all under an '
@@ -215,7 +228,11 @@ void main() {
       // The cut's left half inked, its right half the paper.
       EditorSessionManager halfInked({List<LayerEffect> effects = const []}) {
         final session = sessionOf([cutOf('c')], effects: effects);
-        ink(session, {session.requireActiveCut: (0, 0, 100)}, columns: 4);
+        ink(
+          session,
+          {session.requireActiveCut: (0, 0, 100)},
+          columns: tileSide ~/ 2,
+        );
         return session;
       }
 
@@ -237,16 +254,19 @@ void main() {
 
       final plainFrame = await videoFrame(plain, taskOf(plain));
       expect(
-        (pixelOf(plainFrame, 1, 4), pixelOf(plainFrame, 6, 4)),
+        (
+          pixelOf(plainFrame, eighth, 4 * eighth),
+          pixelOf(plainFrame, 6 * eighth, 4 * eighth),
+        ),
         ((0, 0, 100, 255), (0, 255, 0, 255)),
         reason: 'CONTROL: the ink and the paper as they are',
       );
       final gradedFrame = await videoFrame(graded, taskOf(graded));
-      final (r, _, b, _) = pixelOf(gradedFrame, 1, 4);
+      final (r, _, b, _) = pixelOf(gradedFrame, eighth, 4 * eighth);
       expect(r, greaterThan(40), reason: 'the ink brightened');
       expect(b, greaterThan(140));
       expect(
-        pixelOf(gradedFrame, 6, 4),
+        pixelOf(gradedFrame, 6 * eighth, 4 * eighth),
         (0, 255, 0, 255),
         reason: 'the paper as it is',
       );
@@ -260,7 +280,7 @@ void main() {
     EditorSessionManager mixing({
       List<LayerEffect> effects = const [],
       bool fxEnabled = true,
-      int columns = 8,
+      int columns = tileSide,
     }) {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
@@ -303,20 +323,25 @@ void main() {
     ) async {
       await tester.runAsync(() async {
         // Their left halves inked, their right halves the paper.
-        final session = mixing(columns: 4);
+        final session = mixing(columns: tileSide ~/ 2);
         addTearDown(session.dispose);
 
+        const half = tileSide ~/ 2;
         final frame = await videoFrame(
           session,
           midway(session),
-          outputSize: const CanvasSize(width: 4, height: 4),
+          outputSize: const CanvasSize(width: half, height: half),
         );
-        expect(frame.length, 4 * 4 * 4, reason: 'at the size asked');
-        final (_, g, b, _) = pixelOf(frame, 1, 2, side: 4);
+        expect(frame.length, half * half * 4, reason: 'at the size asked');
+        final (_, g, b, _) = pixelOf(frame, eighth, 2 * eighth, side: half);
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut\'s ink');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut\'s ink');
+        // A pixel in from the ink's edge: reduced as the canvas reduces
+        // (7′, the engine's filter for the scale), the ink reaches the
+        // first column of paper past it. ↩️Read at that column while each
+        // cut was laid by a box of whole pixels.
         expect(
-          pixelOf(frame, 2, 2, side: 4),
+          pixelOf(frame, 3 * eighth, 2 * eighth, side: half),
           (0, 255, 0, 255),
           reason: 'both papers — not the left of a whole-size picture',
         );
@@ -447,7 +472,7 @@ void main() {
         Future<Uint8List> still(EditorSessionManager session) async {
           final image = await ExportFrameRenderer(
             session: session,
-            background: green,
+            ground: green,
           ).renderComposite(taskOf(session), ExportSizeMode.canvas);
           final bytes = await image.toByteData(
             format: ui.ImageByteFormat.rawRgba,

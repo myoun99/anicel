@@ -9,11 +9,12 @@ import '../../models/app_input_settings.dart';
 /// tablet backend, as a PRESSURE SIDECAR:
 ///
 /// Flutter's pointer events keep driving position and every gesture; this
-/// service polls the DRIVER's packet queue (through [QaTabletBridge]) and
-/// holds the freshest contact pressure/tilt. The brush canvas consults
-/// [freshPacket] per pointer sample — so a pen the OS misreports
-/// (as touch, or as mouse with Ink unchecked) still paints with the
-/// driver's full pressure.
+/// service is handed the packets the reader heard of the DRIVER's queue
+/// (through [QaTabletBridge] — the reader's own thread drains it) and holds
+/// the freshest contact pressure/tilt. The brush canvas reads a point's own
+/// driver pressure first and [freshPacket] otherwise — so a pen the OS
+/// misreports (as touch, or as mouse with Ink unchecked) still paints with
+/// the driver's full pressure.
 ///
 /// Lifecycle: [bind] once at app start — the service follows
 /// [AppInput.settings] (`tabletService == wintab` starts polling, anything
@@ -23,8 +24,9 @@ class WintabPenService {
 
   static final WintabPenService instance = WintabPenService._();
 
-  /// Poll cadence: the Wintab queue holds ~128 packets and drivers report
-  /// 133–200Hz — 8ms drains comfortably ahead of loss.
+  /// How often the packets heard are taken: drivers report 133–200Hz, and
+  /// the reader's own thread drains the driver's queue every 4 ms
+  /// (native/pen wintab.rs) — a take asks the driver nothing.
   static const Duration pollInterval = Duration(milliseconds: 8);
 
   /// A pressure sample older than this no longer overrides pointer events
@@ -51,6 +53,11 @@ class WintabPenService {
   /// Test hook: replaces the bridge's poll (packets in, wall-clocked as
   /// now). Null = the real DLL.
   List<QaTabletPacket> Function()? debugPollOverride;
+
+  /// Test hook: the bridge the service opens, polls and asks — null = the
+  /// engine's own ([QaTabletBridge.instanceOrNull]).
+  @visibleForTesting
+  QaTabletBridge? debugBridge;
 
   /// The freshest driver packet (null until one arrives) — the input
   /// inspector renders this line when live.
@@ -121,7 +128,7 @@ class WintabPenService {
     if (_timer != null) {
       return;
     }
-    _bridge ??= QaTabletBridge.instanceOrNull;
+    _bridge ??= debugBridge ?? QaTabletBridge.instanceOrNull;
     if (debugPollOverride == null && (_bridge == null || !_bridge!.available)) {
       return; // No driver — stay idle (the standard graceful absence).
     }
@@ -183,7 +190,7 @@ class WintabPenService {
       if (!_opened) {
         // The context needs the app window — retry until the runner
         // window exists (first frames of app start).
-        _opened = bridge.open();
+        _opened = bridge.open(within: freshWindow);
         if (!_opened) {
           return;
         }
@@ -207,6 +214,19 @@ class WintabPenService {
     }
   }
 
+  /// What the driver's queue said while the stream is open: how far its
+  /// newest packet was behind the mouse message last handled, in ms (null
+  /// before one met a packet), and how many packets said the queue
+  /// overflowed before them — null while it is closed. The input inspector
+  /// shows it beside the packet.
+  ({int? gapMs, int overflowed})? heard() {
+    final bridge = _bridge;
+    if (!_opened || bridge == null) {
+      return null;
+    }
+    return (gapMs: bridge.clockGap(), overflowed: bridge.overflowed());
+  }
+
   /// The driver's BUTTON state (raw Wintab bits) while the stream is live
   /// and fresh — null tells the caller to trust the pointer event's own
   /// buttons. [PenSidecars.freshButtons] translates the bits.
@@ -217,13 +237,19 @@ class WintabPenService {
   /// the caller to use the pointer event's own reading.
   /// [PenSidecars.freshReading] reads a pressure off it.
   ///
-  /// 🚨DRAINS THE QUEUE FIRST (H43, 2026-09-26). The canvas asks at the
-  /// pen's DOWN as well as along the stroke, and the poll timer can be a
-  /// whole [pollInterval] behind: the packet it last took was, as often as
-  /// not, the pen still HOVERING — pressure 0, tip up. The first dab was
-  /// stamped with that, and a press whose buttons were read off it did not
-  /// draw at all. The contact packet was already in the driver's queue; it
-  /// just had not been taken yet.
+  /// Takes what was heard first: the poll timer can be a whole
+  /// [pollInterval] behind.
+  ///
+  /// 🚨THE CONTACT IS HEARD AT THE PRESS (H43, 2026-09-26). The canvas asks at
+  /// the pen's DOWN as well as along the stroke: the packet last taken was,
+  /// as often as not, the pen still HOVERING — pressure 0, tip up. The first
+  /// dab was stamped with that, and a press whose buttons were read off it
+  /// did not draw at all. A message that presses drains the driver's queue
+  /// before Flutter hears it (native/pen points_win.rs).
+  ///
+  /// ↩️This asked the driver itself (09-26 – 11-18): 🔬a quarter of a
+  /// millisecond a call, and a mouse's sample made six or seven of them —
+  /// under Wintab alone (F-600).
   QaTabletPacket? freshPacket({DateTime? now}) {
     if (_timer == null) {
       return null;
@@ -257,6 +283,7 @@ class WintabPenService {
       _settingsListener = null;
     }
     debugPollOverride = null;
+    debugBridge = null;
     debugClockOverride = null;
     persistSettings = null;
     autoDemoted.value = false;

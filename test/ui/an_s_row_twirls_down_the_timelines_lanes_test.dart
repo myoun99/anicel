@@ -15,19 +15,27 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId, seNameTagSizeLaneId;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/roll_rows_until_built.dart';
 
 /// 🚨F-101 (유저 2026-09-12): 「스토리보드패널 se랑 타임라인패널 se랑 통일
 /// 안되어있음. 뭐냐면 타임라인패널 se엔 네임태그등 fx 있는데 스토리보드패널엔
@@ -39,10 +47,11 @@ import '../helpers/named_finders.dart';
 const _trackId = TrackId('twin-track');
 const _seId = LayerId('twin-se');
 
-Layer _seRow({bool clipped = false}) => Layer(
+Layer _seRow({bool clipped = false, TransformTrack? transform}) => Layer(
   id: _seId,
   name: 'S1',
   kind: LayerKind.se,
+  transformTrack: transform,
   frames: [
     Frame(id: const FrameId('twin-voice'), duration: 4, strokes: const []),
   ],
@@ -65,7 +74,7 @@ Layer _seRow({bool clipped = false}) => Layer(
   ],
 );
 
-Project _project({bool clipped = false}) => Project(
+Project _project({bool clipped = false, TransformTrack? transform}) => Project(
   id: const ProjectId('twin-project'),
   name: 'Twin Lanes',
   createdAt: DateTime.utc(2026, 9, 16),
@@ -89,16 +98,18 @@ Project _project({bool clipped = false}) => Project(
           ],
         ),
       ],
-      seLayers: [_seRow(clipped: clipped)],
+      seLayers: [_seRow(clipped: clipped, transform: transform)],
     ),
   ],
 );
 
-Future<void> _openApp(WidgetTester tester) async {
+Future<void> _openApp(WidgetTester tester, {TransformTrack? transform}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(
+      home: HomePage(initialProject: _project(transform: transform)),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -160,12 +171,14 @@ void main() {
 
     expect(
       timeline,
-      containsAll(<String>[
-        'sound-group',
-        'name-tag-group',
-        'transform-group',
-      ]),
+      containsAll(<String>['sound-group', 'name-tag-group']),
       reason: 'the timeline row carries every family this test compares',
+    );
+    expect(
+      timeline,
+      isNot(contains('transform-group')),
+      reason: 'its transform is its name tag\'s pose, no group of its own '
+          '(audio-fx-grows-like-the-pros-Q3 · Q4)',
     );
     expect(
       timeline.where((laneId) => laneId.startsWith('fx')),
@@ -180,8 +193,9 @@ void main() {
     );
   });
 
-  testWidgets('the S row\'s Transform header switch bypasses the row\'s '
-      'transform, as the timeline\'s does', (tester) async {
+  testWidgets('the S row\'s name tag header switch is the name tag fx\'s — '
+      'the row\'s transform switch, folded in — as the timeline\'s is',
+      (tester) async {
     await _openApp(tester);
     final session = tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
@@ -199,7 +213,7 @@ void main() {
     await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
     await _pressNamed(
       tester,
-      'storyboard-lane-group-fx-${_seId.value}-transform-group',
+      'storyboard-lane-group-fx-${_seId.value}-name-tag-group',
     );
 
     expect(
@@ -209,7 +223,33 @@ void main() {
     );
   });
 
-  testWidgets('the S row\'s Transform header picks what it reads its keys '
+  testWidgets('the S row\'s 音声 header wears the same fx switch, and it '
+      'switches the row\'s sound (Q6)', (tester) async {
+    await _openApp(tester);
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    bool soundOn() => session.repository
+        .requireProject()
+        .tracks
+        .single
+        .seLayers
+        .single
+        .seSound
+        .enabled;
+    expect(soundOn(), isTrue);
+
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
+    await _pressNamed(
+      tester,
+      'storyboard-lane-group-fx-${_seId.value}-$seSoundGroupLaneId',
+    );
+
+    expect(soundOn(), isFalse);
+  });
+
+  testWidgets('the S row\'s name tag header picks what it reads its keys '
       'by, as the timeline\'s does (I-120-Q10)', (tester) async {
     await _openApp(tester);
     final session = tester
@@ -226,11 +266,46 @@ void main() {
 
     await _press(tester, 'timeline-mode-storyboard-button');
     await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
-    final chip = 'storyboard-lane-group-basis-${_seId.value}-transform-group';
+    final chip = 'storyboard-lane-group-basis-${_seId.value}-name-tag-group';
     await _pressNamed(tester, chip);
     await _press(tester, '$chip-option-block');
 
     expect(basis(), FxBasis.block);
+  });
+
+  // 🗣️F-583 (유저 2026-11-11): 「리셋버튼도 값 안바뀌었으면 동일하게 통일해서
+  // 비활성화」 — asked over the span laid on it, on this panel as on the
+  // timeline.
+  testWidgets('the S row\'s Reset is asked again as a lane span is laid '
+      'over its keys, as the timeline\'s is', (tester) async {
+    await _openApp(
+      tester,
+      transform: TransformTrack().copyWith(
+        rotation: PropertyTrack<double>().withKey(0, 0).withKey(10, 45),
+      ),
+    );
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
+    VoidCallback? reset() => tester
+        .widget<RailGlyphButton>(
+          find.named(
+            'storyboard-lane-group-reset-${_seId.value}-name-tag-group',
+          ),
+        )
+        .onPressed;
+    expect(reset(), isNull, reason: 'at rest at the playhead');
+
+    session.laneRangeSelection.value = const TimelineLaneSelection(
+      layerId: _seId,
+      laneId: seNameTagGroupLaneId,
+      startIndex: 8,
+      endIndexExclusive: 12,
+    );
+    await tester.pumpAndSettle();
+    expect(reset(), isNotNull, reason: 'the key it covers stands it at 45°');
   });
 
   // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
@@ -245,14 +320,23 @@ void main() {
     Finder chain(String panel) => find.byKey(
       ValueKey<String>('$panel-lane-value-link-${_seId.value}-scale'),
     );
-    // The Scale lane is inside the row's Transform group.
+    // The Scale lane is inside the row's name tag, whose pose it is — under
+    // the tag's own lanes, past the view: rolled to.
     Future<void> openTransform(String panel) async {
-      if (chain(panel).evaluate().isEmpty) {
-        await _pressNamed(
-          tester,
-          '$panel-lane-group-toggle-${_seId.value}-transform-group',
-        );
+      final toggle = '$panel-lane-group-toggle-${_seId.value}-name-tag-group';
+      final open = find.byKey(
+        ValueKey<String>(
+          '$panel-lane-label-${_seId.value}-$seNameTagSizeLaneId',
+        ),
+      );
+      if (open.evaluate().isEmpty) {
+        await _pressNamed(tester, toggle);
       }
+      await rollRowsUntilBuilt(
+        tester,
+        chain(panel),
+        inRowsOf: find.named(toggle),
+      );
     }
 
     await _pressNamed(tester, 'timeline-lane-toggle-${_seId.value}');
@@ -264,7 +348,7 @@ void main() {
     expect(tool.value.scaleLinked, isFalse, reason: "the timeline's press");
     expect(tester.appIconButton(chain('timeline')).isSelected, isFalse);
 
-    // The row and its Transform group stand open as the timeline twirled
+    // The row and its name tag stand open as the timeline twirled
     // them — the twirls are the row's.
     await _press(tester, 'timeline-mode-storyboard-button');
     await openTransform('storyboard');
@@ -308,9 +392,9 @@ void main() {
     );
   });
 
-  test('a Transform reset with no cut open resets nothing and throws '
-      'nothing — a gap has no canvas to centre the pose on, and the '
-      'storyboard\'s S rows can press it there', () {
+  test('a name tag reset — the pose it holds with it — with no cut open '
+      'resets nothing and throws nothing — a gap has no canvas to centre '
+      'the pose on, and the storyboard\'s S rows can press it there', () {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -327,7 +411,7 @@ void main() {
 
     final row = session.repository.requireProject().tracks.first.seLayers.first;
     expect(
-      session.laneVerbs.resetLaneGroup(row.id, transformGroupHeaderLane.laneId),
+      session.laneVerbs.resetLaneGroup(row.id, seNameTagGroupLaneId),
       isFalse,
     );
   });

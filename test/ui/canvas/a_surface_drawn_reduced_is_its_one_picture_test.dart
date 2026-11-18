@@ -14,7 +14,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/core/display_filter.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
 /// 🚨★★★A SURFACE DRAWN REDUCED IS ITS ONE PICTURE DRAWN REDUCED — at 1/2ⁿ
@@ -122,13 +122,11 @@ void main() {
       final size = (side * zoom).round();
       final ofOne = await raster((canvas) {
         applyViewportTransform(canvas, viewport);
-        drawOnTheDisplay(
-          canvas,
+        canvas.drawImageRect(
           onePicture,
           const ui.Rect.fromLTWH(0, 0, side * 1.0, side * 1.0),
           const ui.Rect.fromLTWH(0, 0, side * 1.0, side * 1.0),
-          viewport: viewport,
-          devicePixelRatio: 1,
+          ui.Paint()..filterQuality = filterQualityForDisplayScale(zoom),
         );
       }, size);
       final unchained = await raster((canvas) {

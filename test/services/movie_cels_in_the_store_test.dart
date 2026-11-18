@@ -37,7 +37,11 @@ void main() {
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: 8,
-        pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, seed),
+        // Of two colours: a picture of one holds no block of its own, and
+        // would cost the budget nothing (`BitmapTile.ownBytes`).
+        pixels: Uint8List(8 * 8 * 4)
+          ..fillRange(0, 8 * 8 * 4, seed)
+          ..[1] = seed ^ 0xff,
       ),
     },
   );
@@ -98,6 +102,38 @@ void main() {
       isEmpty,
       reason: 'a decoded picture is not the project\'s',
     );
+  });
+
+  test('forgotten — its movie no longer the row\'s — it is gone, and the '
+      'revision moves as an install moves it', () {
+    final store = BrushFrameStore();
+    store.installMovieCel(key(5), picture(1));
+    final revision = store.frameOrNull(key(5))!.sourceRevision;
+    final pixels = store.celPixelRevision.value;
+
+    store.forgetMovieCel(key(5));
+
+    expect(store.hasMovieCel(key(5), canvas), isFalse);
+    expect(
+      store.currentSurfaceWithoutReplay(key(5), canvasSize: canvas),
+      isNull,
+    );
+    expect(store.movieCelBytes, 0);
+    expect(store.frameOrNull(key(5))!.sourceRevision, greaterThan(revision));
+    expect(store.celPixelRevision.value, pixels + 1);
+  });
+
+  test('a key with no movie picture forgets nothing and moves nothing', () {
+    final store = BrushFrameStore();
+    store.installMovieCel(key(5), picture(1));
+    final revision = store.frameOrNull(key(6))!.sourceRevision;
+    final pixels = store.celPixelRevision.value;
+
+    store.forgetMovieCel(key(6));
+
+    expect(store.hasMovieCel(key(5), canvas), isTrue);
+    expect(store.frameOrNull(key(6))!.sourceRevision, revision);
+    expect(store.celPixelRevision.value, pixels);
   });
 
   test('the same picture again moves nothing', () {
@@ -163,7 +199,9 @@ void main() {
         for (var x = 0; x < 2; x += 1)
           TileCoord(x: x, y: 0): BitmapTile(
             size: 8,
-            pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, seed),
+            pixels: Uint8List(8 * 8 * 4)
+              ..fillRange(0, 8 * 8 * 4, seed)
+              ..[1] = seed ^ 0xff,
           ),
       },
     );

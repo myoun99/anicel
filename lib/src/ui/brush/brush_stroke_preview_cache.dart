@@ -98,10 +98,8 @@ class BrushStrokePreviewCache {
   /// which spawns and tears down an isolate for every preset — measured at
   /// 0.6 ms a spawn, so ~32 ms of a 347 ms roster bake, and that is the
   /// SMALL half of why it had to go. The big half is that a fresh isolate
-  /// starts with every per-isolate static cold, and the two that matter here
-  /// are the tip-stamp cache and — for the native raster this makes possible
-  /// — `QaNativeEngine.instance`, which would mean opening the engine
-  /// library once per preset.
+  /// starts with every per-isolate static cold, and the one that matters
+  /// here is the tip-stamp cache.
   final List<_RasterWorker> _workers = <_RasterWorker>[];
   final Queue<Completer<_RasterWorker>> _waiting =
       Queue<Completer<_RasterWorker>>();
@@ -645,7 +643,7 @@ Uint8List rasterizeBrushStrokeSample(
   for (var index = 0; index < bytes.length; index += 1) {
     final first = accumulated[index].clamp(0.0, 1.0);
     // What a stroke with a second tip shows of its two planes, as on the
-    // canvas (`qa_dual_view_rows`).
+    // canvas ([dualViewLevel]).
     final shown = view == null || levels == null
         ? first
         : dualViewLevel(first, levels[index].clamp(0.0, 1.0), view);

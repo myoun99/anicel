@@ -33,7 +33,12 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// in a file since gone ([keepInAFileThatIsGone]), and read the way a run
 /// reads it.
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // One tile, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
+  const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
   const layerId = LayerId('layer');
   const frameId = FrameId('frame-a');
   const rowB = LayerId('layer-b');
@@ -85,11 +90,11 @@ void main() {
   /// White over the whole canvas, one tile.
   BitmapSurface drawn() => BitmapSurface(
     canvasSize: canvasSize,
-    tileSize: 8,
+    tileSize: defaultCelTileSize,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        size: 8,
-        pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xFF),
+        size: defaultCelTileSize,
+        pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 0xFF),
       ),
     },
   );

@@ -6,7 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/media/image_viewer_document.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
-import 'package:anicel/src/services/media/media_pixel_size.dart';
+import 'package:anicel/src/services/media/media_facts.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart'
@@ -20,6 +20,7 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/the_file_itself.dart';
+import '../../helpers/three_frame_gif.dart';
 
 /// 🚨A file says its size in pixels without being decoded (F-375,
 /// 2026-10-17): what the import window's resolution column asks of every
@@ -57,7 +58,7 @@ void main() {
     HoldMediaBytes hold = theFileItself,
   }) async => said(
     await tester.runAsync<CanvasSize?>(
-      () => readMediaPixelSize(kind, path, hold),
+      () async => (await readMediaFacts(kind, path, hold))?.size,
     ),
   );
 
@@ -191,6 +192,40 @@ void main() {
         reason: '$kind',
       );
       expect(held, 0, reason: '$kind: given back');
+    }
+  });
+
+  // 🗣️F-429 · card 「파일마다 배치 기본값」-Q4: a row of ONE picture is
+  // asked what kind of layer it comes in as, so the list asks how many a
+  // file holds on the same read as its size.
+  testWidgets('and how many pictures it holds — a still one, a GIF its '
+      'frames, a Photoshop document one, a movie its frames, a PDF its '
+      'pages', (tester) async {
+    debugVideoDecodeBackend = FakeVideoBackend(frameCount: 40);
+    PdfRenderService.debugOpenerOverride = (source) async => FakePdfDocument(
+      pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(9, 9)],
+    );
+    final files = await tester.runAsync(
+      () async => {
+        (MediaAssetKind.image, await writeSolidPng(dir, 'a.png')): 1,
+        (MediaAssetKind.image, await writeThreeFrameGif(dir, 'b.gif')): 3,
+        (
+          MediaAssetKind.image,
+          write('c.psd', buildPsd(width: 8, height: 8)),
+        ): 1,
+        (MediaAssetKind.video, write('cut.mp4', standInMovieBytes)): 40,
+        (
+          MediaAssetKind.pdf,
+          write('conte.pdf', const [0x25, 0x50, 0x44, 0x46]),
+        ): 3,
+      },
+    );
+    for (final MapEntry(key: (kind, path), value: pictures)
+        in files!.entries) {
+      final facts = await tester.runAsync(
+        () => readMediaFacts(kind, path, theFileItself),
+      );
+      expect(facts?.pictures, pictures, reason: path);
     }
   });
 

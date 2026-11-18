@@ -88,9 +88,6 @@ void main() {
       );
     });
 
-    // The warm scheduler arms an idle timer whenever the playhead moves,
-    // and the binding checks for pending timers BEFORE any tearDown runs.
-    s.playbackRig.prerenderScheduler.cancel();
     expect(imported, isFalse);
     expect(cutCount(s), cutsBefore);
     expect(s.mediaPool.mediaAssets, isEmpty);
@@ -139,9 +136,6 @@ void main() {
       );
     });
 
-    // The warm scheduler arms an idle timer whenever the playhead moves,
-    // and the binding checks for pending timers BEFORE any tearDown runs.
-    s.playbackRig.prerenderScheduler.cancel();
     expect(warnings, isNull);
     expect(cutCount(s), cutsBefore);
     expect(s.canUndo, isFalse);
@@ -169,9 +163,6 @@ void main() {
       ),
     );
 
-    // The warm scheduler arms an idle timer whenever the playhead moves,
-    // and the binding checks for pending timers BEFORE any tearDown runs.
-    s.playbackRig.prerenderScheduler.cancel();
     expect(imported, isFalse);
     expect(
       opened,
@@ -201,9 +192,6 @@ void main() {
       );
     });
 
-    // The warm scheduler arms an idle timer whenever the playhead moves,
-    // and the binding checks for pending timers BEFORE any tearDown runs.
-    s.playbackRig.prerenderScheduler.cancel();
     expect(imported, isTrue);
     expect(cutCount(s), cutsBefore + 1);
     expect(s.mediaPool.mediaAssets, hasLength(1));

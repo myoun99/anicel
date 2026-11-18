@@ -34,6 +34,7 @@ import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline_current_row.dart';
+import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -97,8 +98,8 @@ class TimelinePanel extends StatefulWidget {
     this.onHoverMediaAssetOnLayer,
     this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
     this.onOpenCameraPath,
@@ -113,7 +114,7 @@ class TimelinePanel extends StatefulWidget {
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
-    this.onToggleLayerCollapsed,
+    this.onToggleGroupFold,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -172,8 +173,7 @@ class TimelinePanel extends StatefulWidget {
     this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    this.attachFoldedRowIds = const {},
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
@@ -181,6 +181,7 @@ class TimelinePanel extends StatefulWidget {
     this.spillInLeadFrames = const {},
     this.cutId,
     this.cutEndDrag,
+    this.rulerMarkers,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
@@ -201,6 +202,9 @@ class TimelinePanel extends StatefulWidget {
   /// cut-end boundary grows a grip that end-trims the ACTIVE cut and the
   /// line follows the live trim preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// The cut's ruler markers (I-169), threaded to both grids' rulers.
+  final RulerMarkerHooks? rulerMarkers;
 
   /// Sparse-row memo identity tokens (UI-R20 #4).
   final TimelineRowMemoAux memoAux;
@@ -323,12 +327,11 @@ class TimelinePanel extends StatefulWidget {
   final void Function(List<Layer> displayLayers, int slot, String path)?
   onDropMediaAssetBetweenLayers;
 
-  /// The SE row's mixer (R10 R3), both orientations: its solo tint, and
-  /// the speaker press that opens the window carrying mute/solo/fader/pan.
-  /// Null hides the speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// The S row's speaker — a mute toggle — and its Total bar's release,
+  /// both orientations (F-577). Null hides each.
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// A reference row's file button, both orientations (미디어 배치 라운드
   /// 3). Null hides the button.
@@ -378,8 +381,10 @@ class TimelinePanel extends StatefulWidget {
   /// selection all arrive through the layer hooks above. R10 R3 took its
   /// last two of its own — rename went to the Layer ▾ menu it always
   /// shared, dissolve is waiting on the layer-label drag system — so only
-  /// the members' twirl is left.
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
+  /// the members' twirl is left: the group fold's, a folder's and a base's
+  /// one verb ([TimelineGridHooks.onToggleGroupFold]).
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -585,7 +590,8 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? layerClipsOf;
 
   /// Forwarded to the grids — see [TimelineGridHooks.groupFoldOpenOf].
-  final bool Function(LayerId layerId)? groupFoldOpenOf;
+  final bool Function(LayerId layerId, AttachedPlacement? side)?
+  groupFoldOpenOf;
 
   /// Forwarded to the grids — see [TimelineGridHooks.laneGroupOpenOf].
   final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
@@ -611,10 +617,10 @@ class TimelinePanel extends StatefulWidget {
   onSetLaneGroupBasis;
 
   /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
@@ -634,10 +640,9 @@ class TimelinePanel extends StatefulWidget {
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
-  /// The attach-group fold state (UI-R20 #9), shared by both orientations;
-  /// the toggle chevron renders on the horizontal rail's base rows.
-  final Set<LayerId> collapsedAttachBaseIds;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rows the attach folds take off the screen (UI-R20 #9), shared by
+  /// both orientations ([TimelineGridHooks.attachFoldedRowIds]).
+  final Set<LayerId> attachFoldedRowIds;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -762,13 +767,13 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
       onLeaveMediaAssetOnLayer: widget.onLeaveMediaAssetOnLayer,
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
-      onOpenLayerMixer: widget.onOpenLayerMixer,
+      onToggleLayerMute: widget.onToggleLayerMute,
+      onLayerTotalVolumeChangeEnd: widget.onLayerTotalVolumeChangeEnd,
       onOpenLayerReference: widget.onOpenLayerReference,
       onOpenLayerLinks: widget.onOpenLayerLinks,
       onOpenCameraPath: widget.onOpenCameraPath,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
-      isLayerSoloed: widget.isLayerSoloed,
       onToggleLayerClip: widget.onToggleLayerClip,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
@@ -778,7 +783,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
       layerSyncPartnersOf: widget.layerSyncPartnersOf,
-      onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
+      onToggleGroupFold: widget.onToggleGroupFold,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
@@ -819,12 +824,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
         displayedOpacity: widget.masterOpacityValue,
         displayedOnionSkinOn: widget.displayedOnionSkinOn,
       ),
-      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-      onToggleAttachGroup: widget.onToggleAttachGroup,
+      attachFoldedRowIds: widget.attachFoldedRowIds,
       opacityDragPreview: widget.opacityDragPreview,
       spillInLeadFrames: widget.spillInLeadFrames,
       cutId: widget.cutId,
       cutEndDrag: widget.cutEndDrag,
+      rulerMarkers: widget.rulerMarkers,
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,

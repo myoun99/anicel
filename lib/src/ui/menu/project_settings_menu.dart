@@ -12,10 +12,12 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../text/pixel_size_label.dart';
+import '../text/sample_rate_label.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../input/control_press_claim.dart';
+import '../text/typed_text.dart';
 
 /// The project's settings — its frame rate, its audio sample rate, its
 /// camera frame and how its playback waits for a picture — as rows of the
@@ -46,12 +48,6 @@ class ProjectSettingsMenu {
   /// EXPORT-AUDIO ③: the audio-rate presets — 48k is the film standard,
   /// 44.1k the music one, 96k for the rare high-rate delivery.
   static const List<int> audioSampleRatePresets = [44100, 48000, 96000];
-
-  /// '48kHz' / '44.1kHz' — kilohertz reads at a glance; the raw hertz number
-  /// is a spec sheet.
-  static String audioSampleRateLabel(int rate) => rate % 1000 == 0
-      ? '${rate ~/ 1000}kHz'
-      : '${(rate / 1000).toStringAsFixed(1)}kHz';
 
   /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real speed)
   /// asks what happens to SOUND, because audio exists in real seconds and
@@ -129,7 +125,7 @@ class ProjectSettingsMenu {
       current: session.projectAudio.projectAudioSampleRate,
       presets: ProjectSettingsMenu.audioSampleRatePresets,
       keyValue: (preset) => 'timeline-samplerate-$preset',
-      label: ProjectSettingsMenu.audioSampleRateLabel,
+      label: sampleRateLabel,
       apply: session.projectAudio.setProjectAudioSampleRate,
     ),
   );
@@ -185,7 +181,7 @@ class ProjectSettingsMenu {
       PanelFlyoutItem(
         keyValue: 'project-settings-audio-rate',
         shortcuts: const [EditorActionIds.projectAudioRate],
-        label: ProjectSettingsMenu.audioSampleRateLabel(
+        label: sampleRateLabel(
           session.projectAudio.projectAudioSampleRate,
         ),
         icon: Icons.graphic_eq,
@@ -383,7 +379,7 @@ class _FpsWindowState extends State<_FpsWindow> {
               key: const ValueKey<String>('project-fps-field'),
               controller: _customController,
               keyboardType: TextInputType.number,
-              inputFormatters: halfWidthDigitsOnly,
+              inputFormatters: typedText(halfWidthDigitsOnly),
               onChanged: (_) => setState(() {}),
             ),
           ),

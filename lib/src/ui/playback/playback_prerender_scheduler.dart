@@ -81,6 +81,7 @@ class PlaybackPrerenderScheduler {
     this.room,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
+    this.yieldsToTheEventLoop = true,
     this.onionPlacement = _onTop,
   });
 
@@ -105,6 +106,10 @@ class PlaybackPrerenderScheduler {
   final Future<void> Function(Cut cut, int frameIndex)? beforeCompose;
 
   final Duration idleDelay;
+
+  /// How the walk lets other work in between two steps: by a turn of the
+  /// event loop — a zero timer — or, false, by a microtask.
+  final bool yieldsToTheEventLoop;
 
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
@@ -230,9 +235,12 @@ class PlaybackPrerenderScheduler {
 
   /// Open input holds (pen down, drag in flight). While any hold is open
   /// warming stands down HARD: the idle gate stays closed regardless of
-  /// elapsed time, and an in-flight composite aborts between layers — a
-  /// live stroke never shares the UI/raster threads with opportunistic
-  /// cache warming (R13-3: the commit-timing stutter).
+  /// elapsed time, and a frame ahead whose lay is not made yet leaves the
+  /// line (`shouldAbort`, read before a frame is made and as the quiet
+  /// turn's and the store's `gone`) — a live stroke never shares the
+  /// UI/raster threads with opportunistic cache warming (R13-3: the
+  /// commit-timing stutter). A lay already handed to the engine runs to
+  /// its end: a frame is one composite, one submission (H59 B2, 11-17).
   int _inputHolds = 0;
 
   void beginInputHold() {
@@ -246,6 +254,23 @@ class PlaybackPrerenderScheduler {
     // The release opens a fresh quiet window: warming resumes idleDelay
     // after the pen lifts, not the instant it lifts.
     notifyEditActivity();
+    if (_inputHolds == 0) {
+      _holdsClosed();
+    }
+  }
+
+  /// Completes once the last open hold closes — or [cancel], [follow] or
+  /// [dispose] flushes the waits ([_flushPendingWaits]). No timer, as a
+  /// rest has none ([_resting]): a hold lasts as long as the hand does.
+  Completer<void>? _holdsClose;
+
+  Future<void> _untilHoldsClose() =>
+      (_holdsClose ??= Completer<void>()).future;
+
+  void _holdsClosed() {
+    final close = _holdsClose;
+    _holdsClose = null;
+    close?.complete();
   }
 
   /// True when warming may touch the UI thread right now.
@@ -281,6 +306,11 @@ class PlaybackPrerenderScheduler {
     return completer.future;
   }
 
+  /// The walk's step aside between two of its steps ([yieldsToTheEventLoop]).
+  Future<void> _yield() => yieldsToTheEventLoop
+      ? _wait(Duration.zero)
+      : Future<void>.microtask(() {});
+
   void _flushPendingWaits() {
     final waits = Map.of(_pendingWaits);
     _pendingWaits.clear();
@@ -288,6 +318,7 @@ class PlaybackPrerenderScheduler {
       entry.key.cancel();
       entry.value.complete();
     }
+    _holdsClosed();
   }
 
   /// A walk that rests — it has nothing to make, or no room to make it in —
@@ -320,6 +351,7 @@ class PlaybackPrerenderScheduler {
     if (_isStale(generation)) {
       return Future<void>.value();
     }
+    pictures.rest();
     _settle();
     final resting = _resting = Completer<void>();
     // Told once it rests in every sense: whoever hears it may wake it.
@@ -424,7 +456,7 @@ class PlaybackPrerenderScheduler {
       }
       if (missing == null && !ended) {
         // A burst's worth walked over: let interactive work in, walk on.
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       if (missing == null) {
@@ -448,7 +480,7 @@ class PlaybackPrerenderScheduler {
         if (_isStale(generation)) {
           return;
         }
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       // 🚨THE ROOM IS ASKED FOR WHAT THE PICTURE WILL BE MADE AS (card
@@ -510,13 +542,13 @@ class PlaybackPrerenderScheduler {
         // yield keeps a compose that keeps coming back empty from spinning.
         // A picture that threw will not come: a run waiting for it goes on.
         _changes.value += 1;
-        await _wait(Duration.zero);
+        await _yield();
         continue;
       }
       _landed(step);
       _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
-      await _wait(Duration.zero);
+      await _yield();
     }
   }
 
@@ -613,8 +645,8 @@ class PlaybackPrerenderScheduler {
   /// again, and never rested; a run that renders first waits for the walk
   /// to rest.
   ///
-  /// ★The law the export holds its rows by ([HeldRows]: by what a row does
-  /// weigh, never letting go of one shown sooner). ⛔Not the media viewer's
+  /// ★The law the export held its rows by (`HeldRows`, until 7′): by what a
+  /// row does weigh, never letting go of one shown sooner. ⛔Not the media viewer's
   /// `keeping` — the page that landed and nothing else: its room is asked by
   /// the very size that lands. Here, keeping only what landed would let go
   /// of the picture before it, and the walk would make the two in turn.
@@ -642,15 +674,18 @@ class PlaybackPrerenderScheduler {
       if (_isQuietNow()) {
         return;
       }
-      final remaining = idleDelay - DateTime.now().difference(_lastActivity);
-      // With a hold open (or the window already elapsed but held) poll on
-      // the 50ms heartbeat; otherwise sleep out the remaining window.
-      await _wait(
-        remaining > Duration.zero &&
-                remaining < const Duration(milliseconds: 50)
-            ? remaining
-            : const Duration(milliseconds: 50),
-      );
+      // With a hold open, until it closes; else the rest of the window
+      // since the last edit, asked again where an edit came meanwhile.
+      // ↩️A hold was polled on a 50ms heartbeat, and a widget test that
+      // holds the warmer to its end — so what a file decodes is the
+      // test's own asking — left that timer pending once the tree was
+      // gone: every one stopped the warmer by hand (card a-test-lending-
+      // the-real-clock-leaves-the-warmer-running, 11-16).
+      if (_inputHolds > 0) {
+        await _untilHoldsClose();
+        continue;
+      }
+      await _wait(idleDelay - DateTime.now().difference(_lastActivity));
     }
   }
 }
@@ -689,7 +724,9 @@ final class _AskedAhead {
       _onTheirWay[picture]?.landing;
 
   /// Asks for the missing pictures past [from], in the pass's order, until
-  /// [_most] are on their way. [making] is what the walk makes itself;
+  /// [_most] are on their way — none while the pictures have no room for
+  /// what another reads to be drawn ([PlaybackPictures.roomToAskAhead]).
+  /// [making] is what the walk makes itself;
   /// [waitingFor], one asked ahead that the walk waits for now — its own
   /// now, not one ahead of it.
   ///
@@ -723,6 +760,7 @@ final class _AskedAhead {
     }
     for (var look = from;
         ahead() < _most &&
+            scheduler.pictures.roomToAskAhead &&
             look < from + PlaybackPrerenderScheduler._walkBurst;
         look += 1) {
       final shown = pass.at(look);

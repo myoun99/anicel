@@ -7,9 +7,9 @@
 // that does nothing.
 //
 // ⚠️These run the REFERENCE path (`brushPixelCoveragesForDab`). The tile
-// kernel and the C kernel are the other two transcriptions of the same
-// cascade; they are held to this one by the parity suites, which is why the
-// remap had to go in the same place in all three.
+// kernel is the other transcription of the same cascade (↩️the C kernel was
+// a third, till 2026-11-12); it is held to this one by the commit parity
+// suite, which is why the remap had to go in the same place in both.
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';

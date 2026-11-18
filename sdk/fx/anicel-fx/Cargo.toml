@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PARK GUNWOO -- the Anicel fx plugin SDK's LICENSE.
+[package]
+name = "anicel-fx"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "The Anicel fx plugin spec, version 1: what a plugin exports, the frame it is handed, and the glue that makes a Rust type a plugin."
+publish = false

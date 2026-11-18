@@ -68,8 +68,9 @@ class ImportWarning {
 /// A file a reader would not take at all, and why — the [reason] said the
 /// way a warning is: the English here, every other language by its key.
 ///
-/// ⚠️One shape for the three readers the brush library asks — the Anicel
-/// brush file, Photoshop's .abr and CLIP STUDIO's .sut — so the library
+/// ⚠️One shape for the four readers the brush library asks — the Anicel
+/// brush file, Photoshop's .abr, CLIP STUDIO's .sut and TVPaint's .tvpx
+/// (since 2026-11-14, card I-86) — so the library
 /// says a refusal in one place. Each kept a type of its own and a message
 /// built in English, and the import window read those sentences in English
 /// whatever the app spoke (F-273).

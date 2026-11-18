@@ -114,6 +114,7 @@ ProjectTimeline duplicateTimelineAsIndependentCopy({
     number: number,
     name: name,
     trailingFrames: source.trailingFrames,
+    rulerMarkers: source.rulerMarkers,
     tracks: [
       for (final track in source.tracks)
         track.copyWith(
@@ -213,6 +214,7 @@ Layer duplicateLayerAsIndependentCopy({
     ),
     isVisible: source.isVisible,
     collapsed: source.collapsed,
+    foldedAttaches: source.foldedAttaches,
     lanesExpanded: source.lanesExpanded,
     expandedLaneGroups: source.expandedLaneGroups,
     muted: source.muted,

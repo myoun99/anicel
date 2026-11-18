@@ -1,16 +1,17 @@
 //! Baseline JPEG of three channels, as stb_image_write v1.16 writes one —
 //! its JPEG writer, after Jon Olick's public-domain jo_jpeg — byte for
-//! byte (native-to-rust: the C is the answer key until the connection
-//! round deletes it).
+//! byte (native-to-rust: the C was the answer key until the connection
+//! round deleted it, and the ledger keeps its bytes).
 //!
 //! The floats are stb's, in stb's order: f32 and no fused multiply-add
 //! here, nor in the C the engine builds (clang `-ffp-contract=off`, MSVC
 //! contracts nothing unless told), so each step rounds as the C's does.
 //!
 //! ⛔What stb has and this does not: other channel counts, a flipped
-//! write, and quality 0 meaning 90 — the engine's one caller passes three
+//! write, and quality 0 meaning 90 — the C engine's one caller passed three
 //! channels top-down with its quality clamped to 1..=100 first
-//! (qa_image_encode.c).
+//! (qa_image_encode.c, deleted in the connection round), as
+//! `qa_image_encode_jpg` here does.
 
 /// Where each of a block's 64 coefficients goes, in row order.
 const ZIGZAG: [usize; 64] = [

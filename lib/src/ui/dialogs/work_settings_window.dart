@@ -9,6 +9,7 @@ import '../widgets/app_window.dart';
 import 'dialog_verb.dart';
 import '../widgets/panel_flyout.dart';
 import 'staff_process_folds.dart';
+import '../text/typed_text.dart';
 
 /// 작품 설정 — the work's words every paper form prints: its title, its
 /// episode, and who does each stage's work. Pops the edited
@@ -159,6 +160,7 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
           autofocus: true,
           decoration: InputDecoration(hintText: widget.projectName),
           onSubmitted: (_) => _submit(),
+          inputFormatters: typedText(),
         ),
       ),
       const SizedBox(height: 12),
@@ -168,6 +170,7 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
           key: const ValueKey<String>('work-settings-episode-field'),
           controller: _episode,
           onSubmitted: (_) => _submit(),
+          inputFormatters: typedText(),
         ),
       ),
       for (final picture in WorkPicture.values) ...[

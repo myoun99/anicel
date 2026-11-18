@@ -333,6 +333,54 @@ void main() {
     });
   });
 
+  // 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬
+  // 추가/삭제버튼 추가」 — the tool size panel's rack is a list the user
+  // keeps.
+  group('the tool size rack', () {
+    test('is the one the app starts with until the user edits it, and so is '
+        'a file that holds none', () {
+      expect(
+        const AppInputSettings().toolSizes,
+        AppInputSettings.defaultToolSizes,
+      );
+      final before = const AppInputSettings().toJson()..remove('toolSizes');
+      expect(
+        AppInputSettings.fromJson(before).toolSizes,
+        AppInputSettings.defaultToolSizes,
+      );
+    });
+
+    test('🚨is kept as it was left — an empty one too, which is not the '
+        'one the app starts with', () {
+      const base = AppInputSettings();
+      final kept = base.copyWith(toolSizes: const [0.5, 9, 33]);
+      expect(AppInputSettings.fromJson(kept.toJson()).toolSizes, [0.5, 9, 33]);
+      expect(
+        kept.copyWith(touchIgnored: true).toolSizes,
+        [0.5, 9, 33],
+        reason: 'a copy that does not name the rack keeps it',
+      );
+
+      final emptied = base.copyWith(toolSizes: const []);
+      expect(AppInputSettings.fromJson(emptied.toJson()).toolSizes, isEmpty);
+    });
+
+    test('a file somebody edited by hand keeps only the sizes a dot can be '
+        'drawn at', () {
+      final edited = const AppInputSettings().toJson()
+        ..['toolSizes'] = <Object?>[
+          4,
+          0,
+          -2,
+          'big',
+          double.nan,
+          double.infinity,
+          12.5,
+        ];
+      expect(AppInputSettings.fromJson(edited).toolSizes, [4, 12.5]);
+    });
+  });
+
   test('🚨every field is in == and in the round trip — a missing one is a '
       'setting that cannot be changed', () {
     // ⛔THIS IS NOT PEDANTRY, it is the bug I shipped and caught in a test
@@ -370,6 +418,14 @@ void main() {
       // Not a bool, and held to the same rule: a lock whose NUMBER was not
       // in `==` could be picked and never stored.
       'zoomCeiling': base.copyWith(zoomCeiling: 150),
+      // I-170: a size put on the rack that `==` did not see would never
+      // reach the panel, and one taken off would never leave it.
+      'toolSizes:added': base.copyWith(
+        toolSizes: [...AppInputSettings.defaultToolSizes, 3000],
+      ),
+      'toolSizes:removed': base.copyWith(
+        toolSizes: AppInputSettings.defaultToolSizes.sublist(1),
+      ),
       // I-54: every choice, each one a field value of its own.
       for (final cursor in DrawingCursor.values)
         if (cursor != base.drawingCursor)

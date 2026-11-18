@@ -34,7 +34,7 @@ void main() {
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: 128,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     );
@@ -44,7 +44,7 @@ void main() {
     return BrushFrameDisplayCacheService(
       frameStore: store,
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: 128,
     );
   }
 
@@ -118,7 +118,7 @@ void main() {
     final cache = BrushFrameDisplayCacheService(
       frameStore: c.frameStore,
       canvasSize: const CanvasSize(width: 32, height: 32),
-      tileSize: 4,
+      tileSize: 128,
     ).prepareFramePreview(key);
 
     expect(
@@ -160,7 +160,7 @@ void main() {
     final service = BrushFrameDisplayCacheService(
       frameStore: store,
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: 128,
     );
 
     final cache = service.prepareFramePreview(key);

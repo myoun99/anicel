@@ -1,7 +1,7 @@
 import 'dart:io';
 
 
-import '../../native/qa_native_engine.dart';
+import '../../native/qa_memory.dart';
 import '../persistence/app_support_path.dart';
 
 /// What the app was holding when it died.
@@ -22,9 +22,9 @@ import '../persistence/app_support_path.dart';
 /// that the app died in the middle of that work, and how big it had
 /// grown when it did.
 ///
-/// ⚠️It measures rather than guesses. [QaNativeEngine.processFootprintBytes]
+/// ⚠️It measures rather than guesses. [QaMemory.processFootprintBytes]
 /// is the number a jetsam report calls `rpages × pageSize`, and
-/// [QaNativeEngine.availableMemoryBytes] on iOS is what the OS will still
+/// [QaMemory.availableMemoryBytes] on iOS is what the OS will still
 /// hand out — neither is the device's RAM, which is what the cel budget
 /// has been scaled from and is why that budget may be twice what the
 /// process is allowed.
@@ -55,10 +55,9 @@ abstract final class MemoryBlackBox {
     if (override != null) {
       return override();
     }
-    final engine = QaNativeEngine.instance;
     return (
-      footprint: engine?.processFootprintBytes,
-      available: engine?.availableMemoryBytes,
+      footprint: QaMemory.processFootprintBytes,
+      available: QaMemory.availableMemoryBytes,
     );
   }
 

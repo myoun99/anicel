@@ -7,9 +7,10 @@ import '../../models/brush_tip_mask.dart';
 import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/face_ink_well.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppShapes, SuperellipseFace;
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/instant_tap_region.dart';
 import 'brush_preset_reorder_grid.dart' show BrushPresetReorderGrid;
@@ -176,34 +177,36 @@ class _TipSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final current = mask;
+    final edge = AppShapes.container(
+      AppShapes.wellRadius,
+      side: BorderSide(color: colorScheme.outlineVariant),
+    );
     return AppTooltip(
       message: tooltip,
       child: ControlPressClaim(
         onPressed: onTap,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
           key: ValueKey<String>(keyValue),
+          edge: edge,
+          fill: colorScheme.surfaceContainerHighest,
           onTap: silentPress(onTap),
-          customBorder: AppShapes.container(AppShapes.wellRadius),
           // One row high, as every control of the grid it stands in is.
-          child: Container(
+          child: SizedBox(
             width: FieldSlider.defaultHeight,
             height: FieldSlider.defaultHeight,
-            decoration: ShapeDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              shape: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(color: colorScheme.outlineVariant),
-              ),
+            child: Padding(
+              padding: edge.dimensions,
+              child: current == null
+                  ? Icon(
+                      Icons.remove,
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    )
+                  : BrushTipMaskPreview(
+                      mask: current,
+                      well: AppShapes.container(AppShapes.wellRadius),
+                    ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: current == null
-                ? Icon(
-                    Icons.remove,
-                    size: 14,
-                    color: colorScheme.onSurfaceVariant,
-                  )
-                : BrushTipMaskPreview(alpha: current.alpha, side: current.size),
           ),
         ),
       ),
@@ -328,9 +331,9 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
         0,
       ),
       child: DecoratedBox(
-        decoration: ShapeDecoration(
+        decoration: SuperellipseFace(
           color: colorScheme.surfaceContainerHighest,
-          shape: AppShapes.container(
+          edge: AppShapes.container(
             AppShapes.wellRadius,
             side: BorderSide(color: colorScheme.outlineVariant),
           ),
@@ -439,10 +442,12 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
                     onTap: tip.mask == null
                         ? null
                         : () => _press(tip.id, tip.mask),
-                    child: BrushTipMaskPreview(
-                      alpha: tip.mask?.alpha ?? tip.thumbnail,
-                      side: tip.mask?.size ?? brushTipThumbnailSide,
-                    ),
+                    // What its index carries, else its mask's picture — a
+                    // built-in carries none.
+                    child: switch (tip.thumbnail) {
+                      final drawn? => BrushTipMaskPreview.thumbnail(drawn),
+                      null => BrushTipMaskPreview(mask: tip.mask!),
+                    },
                   ),
               ],
             ),
@@ -512,25 +517,20 @@ class _PickerCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final (:edge, :fill) = chosenCellFace(
+      Theme.of(context).colorScheme,
+      selected: selected,
+    );
     return AppTooltip(
       message: tooltip,
-      child: Material(
-        color: _cellFill(colorScheme, selected: selected),
-        shape: AppShapes.container(AppShapes.wellRadius),
-        child: ControlPressClaim(
-          onPressed: onTap,
-          child: InkWell(
-            mouseCursor: AppCursors.press,
-            key: ValueKey<String>(keyValue),
-            onTap: silentPress(onTap),
-            customBorder: AppShapes.container(AppShapes.wellRadius),
-            child: Container(
-              decoration: _cellFrame(colorScheme, selected: selected),
-              padding: const EdgeInsets.all(2),
-              child: child,
-            ),
-          ),
+      child: ControlPressClaim(
+        onPressed: onTap,
+        child: FaceInkWell(
+          key: ValueKey<String>(keyValue),
+          edge: edge,
+          fill: fill,
+          onTap: silentPress(onTap),
+          child: Padding(padding: _cellInset(edge), child: child),
         ),
       ),
     );
@@ -562,25 +562,23 @@ class _TurnCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final (:edge, :fill) = chosenCellFace(
+      Theme.of(context).colorScheme,
+      selected: selected,
+    );
     return AppTooltip(
       message: tooltip,
       child: InstantTapRegion(
         onTap: (_) => onTap(),
-        child: Material(
-          color: _cellFill(colorScheme, selected: selected),
-          shape: AppShapes.container(AppShapes.wellRadius),
-          child: InkWell(
-            mouseCursor: AppCursors.press,
-            key: ValueKey<String>('brush-tip-turn-at-$index'),
-            // Its ripple only — the press is [InstantTapRegion]'s.
-            onTap: silentPress(onTap),
-            customBorder: AppShapes.container(AppShapes.wellRadius),
-            child: Container(
-              decoration: _cellFrame(colorScheme, selected: selected),
-              padding: const EdgeInsets.all(2),
-              child: BrushTipMaskPreview(alpha: mask.alpha, side: mask.size),
-            ),
+        child: FaceInkWell(
+          key: ValueKey<String>('brush-tip-turn-at-$index'),
+          edge: edge,
+          fill: fill,
+          // Its ripple only — the press is [InstantTapRegion]'s.
+          onTap: silentPress(onTap),
+          child: Padding(
+            padding: _cellInset(edge),
+            child: BrushTipMaskPreview(mask: mask),
           ),
         ),
       ),
@@ -588,19 +586,7 @@ class _TurnCell extends StatelessWidget {
   }
 }
 
-/// A cell's fill, for either grid.
-Color _cellFill(ColorScheme colorScheme, {required bool selected}) =>
-    selected ? colorScheme.surfaceContainerHigh : Colors.transparent;
-
-/// A cell's frame, for either grid. Selection reads from the border colour,
-/// not a glyph, which would shift the grid.
-ShapeDecoration _cellFrame(ColorScheme colorScheme, {required bool selected}) =>
-    ShapeDecoration(
-      shape: AppShapes.container(
-        AppShapes.wellRadius,
-        side: BorderSide(
-          color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-          width: selected ? 1.5 : 1,
-        ),
-      ),
-    );
+/// Where a cell of either grid ([chosenCellFace]) stands its picture: 2 px
+/// inside its frame.
+EdgeInsetsGeometry _cellInset(RoundedSuperellipseBorder edge) =>
+    const EdgeInsets.all(2).add(edge.dimensions);

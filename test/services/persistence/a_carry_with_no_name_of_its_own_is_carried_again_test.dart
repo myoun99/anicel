@@ -30,11 +30,17 @@ void main() {
   setUp(() => root = Directory.systemTemp.createTempSync('anicel_nameless'));
   tearDown(() => deleteTempQuietly(root));
 
-  MediaAsset carried(String path, String? carriedAs) => MediaAsset(
+  MediaAsset carried(
+    String path,
+    String? carriedAs, {
+    DateTime? modified,
+  }) => MediaAsset(
     path: path,
     name: mediaAssetDefaultName(path),
     kind: MediaAssetKind.image,
-    carriedAs: carriedAs,
+    carriedAs: carriedAs == null
+        ? null
+        : (token: carriedAs, modified: modified),
   );
 
   Project poolOf(List<MediaAsset> assets) =>
@@ -59,7 +65,9 @@ void main() {
         ]),
       );
 
-      final names = [for (final asset in named.mediaAssets) asset.carriedAs];
+      final names = [
+        for (final asset in named.mediaAssets) asset.carriedAs?.token,
+      ];
       expect(names[2], own, reason: 'a name of its own stays');
       expect(names[5], isNull, reason: 'a link carries nothing');
       final anew = [names[0], names[1], names[3], names[4], names[6]];
@@ -79,6 +87,18 @@ void main() {
       expect(projectWithEveryCarryNamed(pool), same(pool));
     });
 
+    test('a carry named anew keeps its date — the file it was carried from '
+        'is as old as it was (F-589)', () {
+      final when = DateTime(2026, 9, 2, 8, 15);
+      final named = projectWithEveryCarryNamed(
+        poolOf([carried('/w/one.png', '', modified: when)]),
+      );
+
+      final carry = named.mediaAssets.single.carriedAs!;
+      expect(isOneStoredName(carry.token), isTrue, reason: 'named anew');
+      expect(carry.modified, when);
+    });
+
     test('the read says when it named a carry anew', () {
       List<int> documentOf(Project project) => utf8.encode(
         jsonEncode({
@@ -91,8 +111,8 @@ void main() {
         documentOf(poolOf([carried('/w/one.png', '')])),
       );
       expect(nameless.carriesNamedAnew, isTrue);
-      expect(isOneStoredName(nameless.project.mediaAssets.single.carriedAs!),
-          isTrue);
+      final name = nameless.project.mediaAssets.single.carriedAs!.token;
+      expect(isOneStoredName(name), isTrue);
 
       final named = decodeAnicelProjectDocument(
         documentOf(
@@ -158,7 +178,8 @@ void main() {
       addTearDown(opened.dispose);
 
       final names = {
-        for (final asset in opened.mediaPool.mediaAssets) asset.carriedAs,
+        for (final asset in opened.mediaPool.mediaAssets)
+          asset.carriedAs?.token,
       };
       expect(names, hasLength(2));
       expect(names.every((name) => isOneStoredName(name!)), isTrue);

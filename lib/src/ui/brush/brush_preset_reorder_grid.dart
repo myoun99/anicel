@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart' show pointerIsStillOn;
+import '../widgets/icon_button_box.dart' show FaceGround;
 import '../widgets/owning_draggable.dart';
 
 /// How wide one preset cell wants to be, in logical pixels.
@@ -415,12 +416,17 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
                           pointerIsStillOn(cellContext, global),
                       data: index,
                       dragAnchorStrategy: childDragAnchorStrategy,
-                      feedback: Material(
-                        color: Colors.transparent,
-                        child: SizedBox(
-                          width: cellWidth,
-                          height: widget.cellHeight,
-                          child: Opacity(opacity: 0.85, child: child),
+                      // Carried over whatever the pointer passes: it stands
+                      // on no one colour (Q12, [FaceGround]).
+                      feedback: FaceGround(
+                        ground: null,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: SizedBox(
+                            width: cellWidth,
+                            height: widget.cellHeight,
+                            child: Opacity(opacity: 0.85, child: child),
+                          ),
                         ),
                       ),
                       // ⛔The SPACE stays and only the CONTENT changes (「자리는

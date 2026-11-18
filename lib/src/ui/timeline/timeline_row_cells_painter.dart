@@ -7,12 +7,16 @@ import 'frame_window_semantics.dart';
 
 import '../../models/frame.dart'
     show InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
+import '../../models/folder_band_rows.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/app_input_settings.dart' show AppInput;
+import '../audio/engine_wave_views.dart';
+import '../audio/waveform_painter.dart';
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/named.dart';
@@ -32,7 +36,7 @@ import 'axis_turn.dart'
 import 'berth_row.dart';
 import 'rail_eyes.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
-import 'property_lane_model.dart' show folderBandRowsOf, timelineBlockEdgesOf;
+import 'property_lane_model.dart' show timelineBlockEdgesOf;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -53,12 +57,16 @@ import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
+import 'timeline_grid_screen.dart';
 import 'timeline_grid_tile_store.dart';
+import 'timeline_se_row_visual.dart' show TimelineRowSounds;
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 import 'timeline_tile_raster_source.dart';
+import 'timeline_exposure_comma_drag_handle.dart' show blockEdgeGripPath;
+import 'timeline_row_edit_chrome.dart' show TimelineRowPaperGrips;
 
 const String _holdGlyph = timelineHoldGlyph;
 
@@ -150,10 +158,15 @@ class TimelineRowCellsPainter extends CustomPainter
     this.unnamedMark = defaultUnnamedDrawingMark,
     this.framesPerSecond = 0,
     this.shown = true,
+    this.sounds,
+    this.paperGrips,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?windowBucket,
+           // What the row's chrome says its grips wear: a hover changes no
+           // layer ([gripsIn]).
+           ?paperGrips?.state,
            // Its OWN row's landings — never every row's (I-22 ③).
            ?tileStore?.noticesFor(
              substrateGeneration: substrateGeneration,
@@ -330,6 +343,40 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   final bool shown;
 
+  /// The sounds the row draws on its paper — an SE row's
+  /// ([timelineRowSoundsOf]); null for a row that draws none. A tile bakes
+  /// them over its ink ([wavesIn]), and where no tile holds a stretch the
+  /// canvas paints them there ([_paintUntiledForegrounds]).
+  ///
+  /// 🗣️the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2 (유저
+  /// 2026-11-14 「(가) SE 행의 셀 타일에 굽는다」): a screen copies what it
+  /// lays (lay.wgsl), so a wave laid as a picture of its own would clear
+  /// the paper under it — the wave is in the paper's own picture.
+  /// ↩️The row laid a strip widget a sound over its cells
+  /// ([timelineRowAudioOverlays]).
+  final TimelineRowSounds? sounds;
+
+  /// The grips the row's blocks wear, where this painter draws them with
+  /// their paper ([gripsIn]) — null on a row whose chrome draws its own, or
+  /// that has none.
+  final TimelineRowPaperGrips? paperGrips;
+
+  @override
+  List<TimelineRowGrip> gripsIn(int from, int to) {
+    final grips = paperGrips;
+    if (grips == null || to <= from) {
+      return const [];
+    }
+    return grips.gripsIn(
+      geometry.value,
+      axis: axis,
+      along: (
+        from: startAlong(axis, cellRectFor(from)),
+        to: startAlong(axis, cellRectFor(to)),
+      ),
+    );
+  }
+
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
   // edge came over verbatim from the painter this replaced, and two numbers
@@ -344,16 +391,10 @@ class TimelineRowCellsPainter extends CustomPainter
   final double devicePixelRatio;
 
   /// The frame window paint() actually draws: the full bounds under the
-  /// classic contract, the bucket-derived span (shared policy) under the
-  /// self-windowing one. THE probe surface for visibility tests.
+  /// classic contract, the bucket-derived span (shared policy), whole, under
+  /// the self-windowing one (Q8). THE probe surface for visibility tests.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
-      visibleFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: frameCellExtent,
-        frameStartIndex: frameStartIndex,
-        frameEndIndexExclusive: frameEndIndexExclusive,
-      );
+      geometry.value.rowDrawnFrames(windowBucket);
 
   /// What this row's BAND shows at [frameIndex] — the union for a row that
   /// has both spans and cels, the layer's own cels for everything else.
@@ -394,6 +435,40 @@ class TimelineRowCellsPainter extends CustomPainter
       along: (from: main, to: main + extent),
       across: (from: 0, to: crossAxisExtent),
     );
+  }
+
+  @override
+  List<TimelineTileWave> wavesIn(int from, int to, double devicePixelRatio) {
+    final row = sounds;
+    if (row == null || to <= from || frameCellExtent <= 0) {
+      return const [];
+    }
+    double along(int frame) => startAlong(axis, cellRectFor(frame));
+    final on = (
+      along: along,
+      origin: along(from),
+      from: from,
+      to: to,
+      axis: axis,
+      across: crossAxisExtent,
+      devicePixelRatio: devicePixelRatio,
+      frameRate: row.frameRate,
+    );
+    return [
+      for (final sound in row.sounds)
+        for (final view in engineWaveViewsOf(
+          (
+            peaks: sound.peaks,
+            startFrame: sound.startFrame,
+            audibleFrames: sound.audibleFrames,
+            leadingFrames: sound.leadingFrames,
+            gain: sound.gain,
+          ),
+          on: on,
+          ink: row.ink,
+        ))
+          (peaks: sound.peaks, view: view),
+    ];
   }
 
   /// Camera rows are a SUMMARY column, not a sheet: their "coverage" is the
@@ -791,13 +866,16 @@ class TimelineRowCellsPainter extends CustomPainter
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
     final store = tileStore;
+    // Where the row's grid has no screen open to lay on, its store is not
+    // asked: a tile is nowhere to be shown.
+    final laying = TimelineGridScreenSlot.laying;
     // Spans whose FRESH tile already carries the foreground ink (T3):
     // the Dart glyph/dash pass skips them.
     final tiledSpans = <(int, int)>[];
-    if (store == null || frameCellExtent <= 0) {
+    if (store == null || laying == null || frameCellExtent <= 0) {
       _paintSubstrate(canvas, window.startIndex, window.endIndexExclusive);
     } else {
-      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
+      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store, laying));
     }
     _paintForegrounds(canvas, window, tiledSpans);
     _paintGhostInk(canvas, window);
@@ -810,41 +888,48 @@ class TimelineRowCellsPainter extends CustomPainter
     // user's switch shows them ([substrateIn]).
   }
 
-  /// The substrate through the tile store: a tile is one drawImageRect —
-  /// baked in this paint where an edit moved the span
-  /// ([TimelineGridTileStore.tileFor]) — a cold span keeps the classic
-  /// paint underneath while its raster lands off-frame, and the two spans
-  /// past the window are asked for so a scroll finds them warm. Answers the
-  /// spans whose tile already carries the foreground ink.
+  /// The substrate through the tile store: a tile is one lay on [laying] —
+  /// baked in this paint where an edit moved the span or nothing stands in
+  /// for it ([TimelineGridTileStore.tileFor]) — a span the tiles kept over
+  /// its frames stand in for, scaled, while it is rastered
+  /// ([TimelineGridTileStore.standInFor]), and one the engine cannot answer
+  /// this frame keeps the classic paint underneath while its raster lands
+  /// off-frame; the two spans past the window are asked for so a scroll
+  /// finds them warm.
+  /// Answers the spans whose tiles already carry the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
     TimelineGridTileStore store,
+    TimelineGridScreenLaying laying,
   ) {
     final tiledSpans = <(int, int)>[];
     final grid = _tileGridIn(window, frameEndIndexExclusive);
-    final tilePaint = Paint()..filterQuality = FilterQuality.low;
     for (final (spanStart, spanEnd) in grid.shown) {
-      final image = store.tileFor(
+      final picture = store.tileFor(
         painter: this,
         spanStartIndex: spanStart,
         spanEndIndexExclusive: spanEnd,
         devicePixelRatio: devicePixelRatio,
       );
-      if (image != null) {
-        final origin = startAlong(axis, cellRectFor(spanStart));
-        final mainExtent = endAlong(axis, cellRectFor(spanEnd - 1)) - origin;
-        final dst = rectAlong(
-          axis,
-          along: (from: origin, to: origin + mainExtent),
-          across: (from: 0, to: crossAxisExtent),
-        );
-        canvas.drawImageRect(
-          image,
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          dst,
-          tilePaint,
-        );
+      final tiles = picture != null
+          ? [
+              (
+                picture: picture,
+                spanStartIndex: spanStart,
+                spanEndIndexExclusive: spanEnd,
+              ),
+            ]
+          : store.standInFor(
+              painter: this,
+              spanStartIndex: spanStart,
+              spanEndIndexExclusive: spanEnd,
+              devicePixelRatio: devicePixelRatio,
+            );
+      if (tiles != null) {
+        for (final tile in tiles) {
+          _layTile(laying, tile, spanStart, spanEnd);
+        }
         tiledSpans.add((spanStart, spanEnd));
         continue;
       }
@@ -876,19 +961,69 @@ class TimelineRowCellsPainter extends CustomPainter
     return tiledSpans;
   }
 
+  /// [tile] laid over the cells of the frames it holds from [from] to [to]
+  /// — the whole of it for its own span, or the part of it a span cut
+  /// otherwise stands on ([TimelineGridTileStore.standInFor]).
+  void _layTile(
+    TimelineGridScreenLaying laying,
+    TileStandIn tile,
+    int from,
+    int to,
+  ) {
+    final first = math.max(from, tile.spanStartIndex);
+    final last = math.min(to, tile.spanEndIndexExclusive);
+    final frames = tile.spanEndIndexExclusive - tile.spanStartIndex;
+    // What its cells were drawn on, not the whole pixels around them: one
+    // of its pixels to a device pixel (F-604, [TimelineGridTilePicture]).
+    final drawn = tile.picture.drawn;
+    final main = extentAlong(axis, drawn);
+    final src = rectAlong(
+      axis,
+      along: (
+        from: main * (first - tile.spanStartIndex) / frames,
+        to: main * (last - tile.spanStartIndex) / frames,
+      ),
+      across: (from: 0, to: extentAcross(axis, drawn)),
+    );
+    final dst = rectAlong(
+      axis,
+      along: (
+        from: startAlong(axis, cellRectFor(first)),
+        to: endAlong(axis, cellRectFor(last - 1)),
+      ),
+      across: (from: 0, to: crossAxisExtent),
+    );
+    laying.lay((picture: tile.picture, from: src, onto: dst));
+  }
+
   /// The tile grid's spans under [window], in order (`shown`), and the one
-  /// past each edge a paint keeps warm (`ahead`), the last cut at the
-  /// [builtFrames] the axis ends at — the grid rides the SHARED window
+  /// past each edge a paint keeps warm (`ahead`) — none from the
+  /// [builtFrames] the axis ends at on — the grid rides the SHARED window
   /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8: a row with a window draws
+  /// it whole ([TimelineFrameGeometry.rowDrawnFrames]), so its last tile is
+  /// a span like every other, not one cut where the axis ends; and a span
+  /// the axis ends before holds nothing a row draws, so it is asked for
+  /// nothing.
+  /// What a runway's growth reaches past the end is blank either way, and
+  /// no row is painted again for it. ↩️The last tile was cut at the axis'
+  /// end — a growth asked for it again. A row with no window still cuts it
+  /// there: it draws every frame up to the end.
   ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
     ({int startIndex, int endIndexExclusive}) window,
     int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final cut = geometry.value.rowDrawsItsWindow(windowBucket)
+        ? null
+        : builtFrames;
     (int, int)? spanAt(int tile) {
       final start = tile * span;
-      final end = math.min(start + span, builtFrames);
-      return start < 0 || end <= start ? null : (start, end);
+      final end = math.min(start + span, cut ?? start + span);
+      return start < 0 || start >= builtFrames || end <= start
+          ? null
+          : (start, end);
     }
 
     final first = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
@@ -965,7 +1100,8 @@ class TimelineRowCellsPainter extends CustomPainter
     }
   }
 
-  /// One untiled stretch [from, to) of [_paintForegrounds].
+  /// One untiled stretch [from, to) of [_paintForegrounds]: its words, and
+  /// the sounds' waves over them, as a tile bakes them ([wavesIn]).
   void _paintUntiledForegrounds(Canvas canvas, int from, int to) {
     canvas.save();
     canvas.clipRect(
@@ -985,7 +1121,65 @@ class TimelineRowCellsPainter extends CustomPainter
     for (final frameIndex in bakedWritingCellsIn(from, to)) {
       _paintCellForeground(canvas, frameIndex);
     }
+    _paintWaves(canvas, from, to);
+    _paintGrips(canvas, from, to);
     canvas.restore();
+  }
+
+  /// The grips over [from, to), each in its ink, as a tile bakes them after
+  /// its words ([gripsIn]) — under the stretch's clip, as the tile's own
+  /// edge cuts one that reaches past its span.
+  void _paintGrips(Canvas canvas, int from, int to) {
+    for (final grip in gripsIn(from, to)) {
+      canvas.drawPath(
+        blockEdgeGripPath(
+          grip.box,
+          edge: grip.edge,
+          axis: axis,
+          // The round end's one-device-pixel bleed, as the chrome drew it.
+          round: (paperCorner: grip.paperCorner, bleed: 1 / devicePixelRatio),
+        ),
+        Paint()..color = grip.color,
+      );
+    }
+  }
+
+  /// The sounds' waves over [from, to), each over its strip — the frames of
+  /// it that are heard — under the stretch's clip.
+  void _paintWaves(Canvas canvas, int from, int to) {
+    final row = sounds;
+    if (row == null) {
+      return;
+    }
+    for (final sound in row.sounds) {
+      final end = sound.startFrame + sound.audibleFrames;
+      if (!frameRangesOverlap(sound.startFrame, end, from, to)) {
+        continue;
+      }
+      final strip = rectAlong(
+        axis,
+        along: (
+          from: startAlong(axis, cellRectFor(sound.startFrame)),
+          to: startAlong(axis, cellRectFor(end)),
+        ),
+        across: (from: 0, to: crossAxisExtent),
+      );
+      canvas
+        ..save()
+        ..clipRect(strip)
+        ..translate(strip.left, strip.top);
+      WaveformPainter(
+        peaks: sound.peaks,
+        frameRate: row.frameRate,
+        pixelsPerFrame: extentAlong(axis, strip.size) / sound.audibleFrames,
+        color: row.ink,
+        devicePixelRatio: devicePixelRatio,
+        axis: axis,
+        leadingFrames: sound.leadingFrames,
+        gain: sound.gain,
+      ).paint(canvas, strip.size);
+      canvas.restore();
+    }
   }
 
   /// A ghost's ink over [window], laid over the tiles at every paint and
@@ -1502,6 +1696,10 @@ class TimelineRowCellsPainter extends CustomPainter
     framesPerSecond,
     shown,
     devicePixelRatio,
+    ByList(sounds?.sounds ?? const []),
+    sounds?.frameRate,
+    sounds?.ink,
+    paperGrips,
   );
 
   // The row's window said in ONE node — what each non-empty cell says, in
@@ -1565,6 +1763,14 @@ Widget timelineRowCellsPaintArea({
   /// What the strip draws over its cells, for the layer the row shows.
   CustomPainter? Function(BuildContext context, Layer shown)?
   foregroundPainterFor,
+
+  /// The sounds the strip draws on its paper, for the layer the row shows
+  /// ([TimelineRowCellsPainter.sounds]).
+  TimelineRowSounds? Function(BuildContext context, Layer shown)? soundsFor,
+
+  /// The grips the strip draws with its paper, as the row's chrome stands
+  /// them on what it shows ([TimelineRowCellsPainter.paperGrips]).
+  TimelineRowPaperGrips? Function(BuildContext context)? paperGripsFor,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -1693,6 +1899,8 @@ Widget timelineRowCellsPaintArea({
             crossAxisExtent: crossAxisExtent,
             axis: axis,
             foregroundPainterFor: foregroundPainterFor,
+            soundsFor: soundsFor,
+            paperGripsFor: paperGripsFor,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
             celContent: celContent,
@@ -1720,6 +1928,8 @@ class _RowCellsPicture extends StatelessWidget {
     required this.crossAxisExtent,
     required this.axis,
     required this.foregroundPainterFor,
+    required this.soundsFor,
+    required this.paperGripsFor,
     required this.exposureStateForLayer,
     required this.frameNameForLayer,
     required this.celContent,
@@ -1737,6 +1947,9 @@ class _RowCellsPicture extends StatelessWidget {
   final Axis axis;
   final CustomPainter? Function(BuildContext context, Layer shown)?
   foregroundPainterFor;
+  final TimelineRowSounds? Function(BuildContext context, Layer shown)?
+  soundsFor;
+  final TimelineRowPaperGrips? Function(BuildContext context)? paperGripsFor;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -1791,20 +2004,26 @@ class _RowCellsPicture extends StatelessWidget {
       // I-129: the eye its rail shows — heard past the row memo, as the
       // rail's own plate and name hear it.
       shown: RailEyes.of(context, layer).shown,
+      sounds: soundsFor?.call(context, layer),
+      paperGrips: paperGripsFor?.call(context),
     );
-    // Named, not keyed (I-57, 10-13): the row shows one layer and then
-    // another in the same elements.
-    return Named(
-      '$keyPrefix-row-cells-${layer.id}',
-      child: CustomPaint(
-        painter: painter,
-        // The block duration labels ride HERE rather than as their own
-        // Positioned.fill CustomPaint: same geometry, same repaint trigger,
-        // two fewer render objects per row to lay out on a zoom step. A
-        // foreground painter that does not implement `hitTest` never absorbs
-        // a pointer, which is what the IgnorePointer around it used to
-        // guarantee.
-        foregroundPainter: foregroundPainterFor?.call(context, layer),
+    // The row lays its tiles on its grid's screen, where there is one
+    // ([TimelineGridScreenHost]); outside the name, which is the picture's.
+    return TimelineGridScreenSlot(
+      // Named, not keyed (I-57, 10-13): the row shows one layer and then
+      // another in the same elements.
+      child: Named(
+        '$keyPrefix-row-cells-${layer.id}',
+        child: CustomPaint(
+          painter: painter,
+          // The block duration labels ride HERE rather than as their own
+          // Positioned.fill CustomPaint: same geometry, same repaint trigger,
+          // two fewer render objects per row to lay out on a zoom step. A
+          // foreground painter that does not implement `hitTest` never
+          // absorbs a pointer, which is what the IgnorePointer around it
+          // used to guarantee.
+          foregroundPainter: foregroundPainterFor?.call(context, layer),
+        ),
       ),
     );
   }

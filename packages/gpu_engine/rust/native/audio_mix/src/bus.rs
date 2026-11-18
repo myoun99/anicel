@@ -35,6 +35,14 @@ pub struct Clip {
     pub envelope_offset: i32,
     /// 0 = unity.
     pub envelope_count: i32,
+    /// The clip's left side as a line (audio-fx-grows-like-the-pros-Q7): a
+    /// run of `keys` as the envelope's, its gain the side. 0 = `pan_left`
+    /// the whole clip through.
+    pub pan_left_offset: i32,
+    pub pan_left_count: i32,
+    /// The right side's, as the left's.
+    pub pan_right_offset: i32,
+    pub pan_right_count: i32,
 }
 
 /// A block of decoded samples, interleaved by channel. `source_start` is
@@ -109,11 +117,31 @@ fn envelope_at(keys: &[EnvelopeKey], position: i64) -> f64 {
     last.gain
 }
 
+/// The run of `keys` an offset and a count name, when it is there — the
+/// volume envelope's and each pan side's alike.
+fn run_of(offset: i32, count: i32, keys: &[EnvelopeKey]) -> Option<&[EnvelopeKey]> {
+    let offset = usize::try_from(offset).ok()?;
+    let count = usize::try_from(count).ok().filter(|&count| count > 0)?;
+    keys.get(offset..offset.checked_add(count)?)
+}
+
 /// The clip's run of `keys`, when it names one that is there.
 fn envelope_of<'k>(clip: &Clip, keys: &'k [EnvelopeKey]) -> Option<&'k [EnvelopeKey]> {
-    let offset = usize::try_from(clip.envelope_offset).ok()?;
-    let count = usize::try_from(clip.envelope_count).ok().filter(|&count| count > 0)?;
-    keys.get(offset..offset.checked_add(count)?)
+    run_of(clip.envelope_offset, clip.envelope_count, keys)
+}
+
+/// The clip's two pan sides at timeline `position_sample` (audio-fx-grows-
+/// like-the-pros-Q7): each side's line read as an envelope is — the sides
+/// Dart worked out at each pan point, straight between them, held past the
+/// ends — or, with none, the clip's one `pan_left` and `pan_right`.
+/// Mirrors the Dart reference's `audioClipSidesAt`.
+fn clip_sides(clip: &Clip, keys: &[EnvelopeKey], position_sample: i64) -> (f64, f64) {
+    let position = position_sample - clip.start_sample;
+    let side = |offset, count, one| run_of(offset, count, keys).map_or(one, |line| envelope_at(line, position));
+    (
+        side(clip.pan_left_offset, clip.pan_left_count, clip.pan_left),
+        side(clip.pan_right_offset, clip.pan_right_count, clip.pan_right),
+    )
 }
 
 /// The clip's volume at timeline `position_sample`. ⛔Not clamped to
@@ -177,7 +205,6 @@ pub unsafe fn mix(
         // SAFETY: the caller's contract.
         let samples = unsafe { slice::from_raw_parts(source.samples, length * channels) };
         let spread = if channels == 1 { MONO_ON_STEREO } else { 1.0 };
-        let (left, right) = (clip.pan_left * spread, clip.pan_right * spread);
         for position in clip.start_sample.max(start_sample)..clip.end_sample.min(block_end) {
             let source_index = clip.source_offset + (position - clip.start_sample);
             let Ok(offset) = usize::try_from(source_index - source.source_start) else {
@@ -187,6 +214,8 @@ pub unsafe fn mix(
                 continue;
             }
             let volume = clip_volume(clip, keys, position);
+            let (left, right) = clip_sides(clip, keys, position);
+            let (left, right) = (left * spread, right * spread);
             let frame = &samples[offset * channels..][..channels];
             let at = (position - start_sample) as usize * out_channels;
             for (channel, destination) in out[at..at + out_channels].iter_mut().enumerate() {

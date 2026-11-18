@@ -14,7 +14,9 @@ import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 /// The raster geometry ops and the instruction icon palette — neither
 /// named by a test (the audit's untested-file pass, 2026-09-05).
 void main() {
-  BitmapTile inkedTile(TileCoord coord, {int size = 8, int at = 0}) {
+  const tile = defaultCelTileSize;
+
+  BitmapTile inkedTile(TileCoord coord, {int size = tile, int at = 0}) {
     final pixels = Uint8List(size * size * 4);
     pixels[at * 4 + 0] = 0x11;
     pixels[at * 4 + 1] = 0x22;
@@ -25,11 +27,11 @@ void main() {
 
   BitmapSurface surfaceWith(
     Map<TileCoord, BitmapTile> tiles, {
-    int width = 16,
-    int height = 16,
+    int width = 2 * tile,
+    int height = 2 * tile,
   }) => BitmapSurface(
     canvasSize: CanvasSize(width: width, height: height),
-    tileSize: 8,
+    tileSize: tile,
     tiles: tiles,
   );
 
@@ -43,7 +45,7 @@ void main() {
       final coord = TileCoord(x: 0, y: 0);
       expect(
         bitmapSurfaceContentBounds(
-          surfaceWith({coord: BitmapTile.blank(size: 8)}),
+          surfaceWith({coord: BitmapTile.blank(size: tile)}),
         ),
         isNull,
       );
@@ -66,7 +68,7 @@ void main() {
         surfaceWith({coord: inkedTile(coord, at: 0)}),
       )!;
 
-      expect((bounds.left, bounds.top), (-8, -8));
+      expect((bounds.left, bounds.top), (-tile, -tile));
     });
 
     test('two tiles bound the whole span between them', () {
@@ -77,7 +79,10 @@ void main() {
       )!;
 
       expect((bounds.left, bounds.top), (0, 0));
-      expect((bounds.rightExclusive, bounds.bottomExclusive), (9, 9));
+      expect(
+        (bounds.rightExclusive, bounds.bottomExclusive),
+        (tile + 1, tile + 1),
+      );
     });
   });
 
@@ -89,7 +94,7 @@ void main() {
         identical(
           resizeBitmapSurfaceCanvas(
             surface,
-            const CanvasSize(width: 16, height: 16),
+            const CanvasSize(width: 2 * tile, height: 2 * tile),
           ),
           surface,
         ),
@@ -102,18 +107,21 @@ void main() {
       final coord = TileCoord(x: 0, y: 0);
       final resized = resizeBitmapSurfaceCanvas(
         surfaceWith({coord: inkedTile(coord)}),
-        const CanvasSize(width: 64, height: 64),
+        const CanvasSize(width: 8 * tile, height: 8 * tile),
       );
 
       expect(resized.tiles.keys, [coord]);
-      expect(resized.canvasSize, const CanvasSize(width: 64, height: 64));
+      expect(
+        resized.canvasSize,
+        const CanvasSize(width: 8 * tile, height: 8 * tile),
+      );
     });
 
     test('a tile outside the SHRUNKEN pasteboard is dropped', () {
       final far = TileCoord(x: 40, y: 40);
       final resized = resizeBitmapSurfaceCanvas(
-        surfaceWith({far: inkedTile(far)}, width: 512, height: 512),
-        const CanvasSize(width: 16, height: 16),
+        surfaceWith({far: inkedTile(far)}, width: 64 * tile, height: 64 * tile),
+        const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       expect(resized.tiles, isEmpty);
@@ -128,7 +136,7 @@ void main() {
         surface,
         dx: 0,
         dy: 0,
-        canvasSize: const CanvasSize(width: 16, height: 16),
+        canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       expect(identical(moved, surface), isTrue);
@@ -138,14 +146,14 @@ void main() {
       final coord = TileCoord(x: 0, y: 0);
       final moved = translateBitmapSurface(
         surfaceWith({coord: inkedTile(coord)}),
-        dx: 8,
+        dx: tile,
         dy: 0,
-        canvasSize: const CanvasSize(width: 16, height: 16),
+        canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       expect(moved.tiles.keys, [TileCoord(x: 1, y: 0)]);
       final bounds = bitmapSurfaceContentBounds(moved)!;
-      expect(bounds.left, 8);
+      expect(bounds.left, tile);
     });
 
     /// 🚨★★★**THE TWO BRANCHES DISAGREED ABOUT WHAT FALLS OFF.** The
@@ -161,11 +169,11 @@ void main() {
       final coord = TileCoord(x: 0, y: 0);
       final moved = translateBitmapSurface(
         surfaceWith({coord: inkedTile(coord)}),
-        // A 16px canvas of 8px tiles: the pasteboard is x ∈ [-2, 4).
+        // A canvas of two tiles: the pasteboard is x ∈ [-2, 4).
         // Four tiles right puts this one at x = 4, one past the wall.
-        dx: 32,
+        dx: 4 * tile,
         dy: 0,
-        canvasSize: const CanvasSize(width: 16, height: 16),
+        canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       expect(moved.tiles, isEmpty);
@@ -179,7 +187,7 @@ void main() {
         surfaceWith({coord: inkedTile(coord, at: 0)}),
         dx: 3,
         dy: 2,
-        canvasSize: const CanvasSize(width: 16, height: 16),
+        canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       final bounds = bitmapSurfaceContentBounds(moved)!;
@@ -255,7 +263,7 @@ void main() {
         surfaceWith({coord: inkedTile(coord, at: 0)}),
         dx: 3,
         dy: 2,
-        canvasSize: const CanvasSize(width: 16, height: 16),
+        canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
       );
 
       expect(moved.tiles, hasLength(1));

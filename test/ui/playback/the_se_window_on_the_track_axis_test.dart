@@ -15,6 +15,8 @@ import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
+    show equalPowerPanGains;
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
@@ -253,20 +255,32 @@ void main() {
     expect(scheduled, isEmpty);
   });
 
-  test('⛔SOLO narrows to itself — a row that is not soloed is silent', () {
-    final project = projectWith(
-      cuts: [cut('c1')],
-      sound: (start: 2, length: 3),
-    );
-    final scheduled = buildAudioPlaybackSchedule(
-      window: window(trackStart: 0, frames: 10),
-      project: project,
-      rate: rate,
-      durationSecondsFor: (_) => 100,
-      soloedLayerIds: {const LayerId('somebody-else')},
-    );
+  // 🗣️F-577 (유저 2026-11-10): 「사운드버튼은 단순하게 음소거/비음소거 역할만
+  // 하는 토글버튼되도록」 — the speaker writes the row's own flag, and the
+  // flag is what silences it.
+  test('⛔a row its speaker muted is silent — the row\'s own flag', () {
+    List<ScheduledAudioClip> scheduledWith({required bool muted}) {
+      final project = projectWith(
+        cuts: [cut('c1')],
+        sound: (start: 2, length: 3),
+      );
+      final track = project.tracks.single;
+      return buildAudioPlaybackSchedule(
+        window: window(trackStart: 0, frames: 10),
+        project: project.copyWith(
+          tracks: [
+            track.copyWith(
+              seLayers: [track.seLayers.single.copyWith(muted: muted)],
+            ),
+          ],
+        ),
+        rate: rate,
+        durationSecondsFor: (_) => 100,
+      );
+    }
 
-    expect(scheduled, isEmpty);
+    expect(scheduledWith(muted: false), isNotEmpty, reason: 'CONTROL');
+    expect(scheduledWith(muted: true), isEmpty);
   });
 
   group('the row\'s sound rides every entry (I-140)', () {
@@ -296,7 +310,7 @@ void main() {
 
     /// The volume an entry's line passes at [frame] — straight between its
     /// points and held past its ends, as the mixer draws it.
-    double lineAt(List<ScheduledVolumePoint> line, int frame) {
+    double lineAt(List<ScheduledGainPoint> line, int frame) {
       if (frame <= line.first.frame) {
         return line.first.gain;
       }
@@ -310,10 +324,13 @@ void main() {
       return line.last.gain;
     }
 
-    test('🎯a window opening mid-sound reads the volume on the TRACK\'s '
-        'frames — where the ramp has climbed to, not where it began', () {
+    test('🎯a window opening mid-sound reads the volume and the pan on the '
+        'TRACK\'s frames — where each ramp has climbed to, not where it '
+        'began', () {
       final sound = SeSound(
-        pan: -0.5,
+        pan: PropertyTrack<double>(
+          keys: {0: const PropertyKey(-1.0), 20: const PropertyKey(0.0)},
+        ),
         volume: PropertyTrack<double>(
           keys: {0: const PropertyKey(0.0), 20: const PropertyKey(1.0)},
         ),
@@ -327,7 +344,16 @@ void main() {
       expect([for (final point in entry.volume) point.frame], [0, 6]);
       expect(entry.volume.first.gain, closeTo(0.5, 1e-9));
       expect(entry.volume.last.gain, closeTo(0.8, 1e-9));
-      expect(entry.pan, -0.5);
+      expect(entry.pan, closeTo(-0.5, 1e-9));
+      for (final (line, side) in [
+        (entry.panLeftLine, (double pan) => equalPowerPanGains(pan).left),
+        (entry.panRightLine, (double pan) => equalPowerPanGains(pan).right),
+      ]) {
+        expect(line.first.frame, 0);
+        expect(line.first.gain, closeTo(side(-0.5), 1e-9));
+        expect(line.last.frame, 6);
+        expect(line.last.gain, closeTo(side(-0.2), 1e-9));
+      }
     });
 
     test('an eased key is met at EVERY frame the entry sounds — the mixer\'s '
@@ -357,14 +383,15 @@ void main() {
     test('an unkeyed row lays no line — the entry plays as recorded', () {
       final entry = schedule(
         project: soundedWith(
-          const SeSound(pan: 0.25),
+          const SeSound(),
           at: (start: 2, length: 3),
         ),
         window: window(trackStart: 0, frames: 10),
       ).single;
 
       expect(entry.volume, isEmpty);
-      expect(entry.pan, 0.25);
+      expect([...entry.panLeftLine, ...entry.panRightLine], isEmpty);
+      expect(entry.pan, 0.0);
     });
   });
 }

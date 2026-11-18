@@ -21,9 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -46,10 +44,12 @@ import '../../helpers/settle_async.dart';
 /// moved is measured from what the PICTURE holds of them, and a paint that
 /// draws the frame as it stands — the float up — moves nothing it holds.
 void main() {
+  opensTheEnginesScreens();
   // Two tiles across, one down — a ring needs a tile the landing does not
   // touch, or the dirty rect is the whole canvas and nothing can go stale.
-  const canvasSize = CanvasSize(width: 8, height: 4);
-  const viewSize = Size(8, 4);
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: tileSide);
+  const viewSize = Size(2.0 * tileSide, tileSide * 1.0);
   final red = RgbaColor(r: 255, g: 0, b: 0, a: 255);
   final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
   final screen = GlobalKey();
@@ -80,14 +80,14 @@ void main() {
   ];
 
   BitmapTile inked(int x, int y, RgbaColor color) => writeRgbaColorToBitmapTile(
-    tile: BitmapTile.blank(size: 4),
+    tile: BitmapTile.blank(size: tileSide),
     x: x,
     y: y,
     color: color,
   );
 
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 4, tiles: tiles);
+      BitmapSurface(canvasSize: canvasSize, tileSize: tileSide, tiles: tiles);
 
   BitmapSurfacePainter painterOf(Map<TileCoord, BitmapTile> tiles) =>
       BitmapSurfacePainter(
@@ -115,7 +115,7 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -167,12 +167,16 @@ void main() {
     // where it lands, so the frame is drawn as it stands.
     float.value = SelectionFloatPaint(
       surface: painterOf({TileCoord(x: 0, y: 0): left}),
-      surfaceOffset: CanvasPoint(x: 4, y: 0),
+      surfaceOffset: CanvasPoint(x: tileSide * 1.0, y: 0),
     );
     await pumpWith(painterOf({TileCoord(x: 1, y: 0): right}));
     final lifted = await shotOf(tester, screen);
     expect(isRed(lifted, 1, 1), isFalse, reason: '⛔premise: the erase shows');
-    expect(isRed(lifted, 5, 1), isTrue, reason: '⛔premise: the float shows');
+    expect(
+      isRed(lifted, tileSide + 1, 1),
+      isTrue,
+      reason: '⛔premise: the float shows',
+    );
 
     // The CONFIRM: the float lands in the RIGHT tile (a new tile object
     // there) and the float goes. The left tile stays erased — nothing on
@@ -188,7 +192,7 @@ void main() {
     await lendBothClocks(tester, rounds: 2);
     final confirmed = await shotOf(tester, screen);
     expect(
-      isRed(confirmed, 5, 1),
+      isRed(confirmed, tileSide + 1, 1),
       isTrue,
       reason: 'LIVENESS: what landed shows',
     );

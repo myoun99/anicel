@@ -23,6 +23,9 @@ class _BrushEditStroke {
     required bool mappedErase,
   }) {
     _state._activeDrawingPointer = event.pointer;
+    // The press at the time the OS saw it ([PenPath]): every point of
+    // the line is on the clock its moves are, and its first too.
+    final press = PenPath.eventsOf(event).last;
     final canvasPosition = _onTheShiftLine(pressed);
     final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
     // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
@@ -36,7 +39,7 @@ class _BrushEditStroke {
     final strokeSettings = _settingsOfAPress(mappedErase: mappedErase);
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
-      _state._pressure.noteSample(event, opening: true),
+      _state._pressure.noteSample(press, opening: true),
     );
     _arm(
       strokeSettings,
@@ -59,14 +62,14 @@ class _BrushEditStroke {
         _startSteadying(
           strokeSettings,
           at: canvasPosition,
-          startedAt: event.timeStamp,
+          startedAt: press.timeStamp,
         );
         _state._drawn = [(position: canvasPosition, readings: _readings)];
         if (startsInsidePasteboard) {
           _paintPress(canvasPosition);
         }
       },
-      at: event.timeStamp,
+      at: press.timeStamp,
       position: canvasPosition,
     );
   }
@@ -291,15 +294,13 @@ class _BrushEditStroke {
       random: math.Random(dice + 6),
     );
     _state._groundMixer = mixer.isActive ? mixer : null;
-    _state._groundSampler = _state._groundMixer == null
-        ? null
-        : bitmapSurfaceGroundSampler(_state.widget.celNow());
     _state._collectedDabs.clear();
   }
 
-  /// One pen sample for the stroke: painted now — or, while the stroke
-  /// waits for its first readings ([_BrushEditOpening.holds]), held with
-  /// the others until they come. [read] is what
+  /// One pen sample for the stroke: its dabs laid now, blended with the
+  /// frame's ([_BrushEditOverlay.queueOverlayDabs]) — or, while the
+  /// stroke waits for its first readings ([_BrushEditOpening.holds]),
+  /// held with the others until they come. [read] is what
   /// [_BrushEditPressure.noteSample] answered for it.
   void takeSample(
     CanvasPoint penPosition, {
@@ -319,9 +320,6 @@ class _BrushEditStroke {
         _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
         _keepSteadying();
       }
-      // On the stroke as it comes, for the step asked late in this frame
-      // (`StepPace`).
-      _state._overlay.flushPendingOverlayDabs();
     }
     if (_state._opening.holds(
       paint,
@@ -713,16 +711,21 @@ class _BrushEditStroke {
     if (rasterizer == null) {
       return;
     }
-    final promotable = base != null && base.tileSize == rasterizer.tileSize;
-    final sourceDabs = List.of(_state._collectedDabs);
+    // A mixing brush's dabs lay the colours the engine resolved, as their
+    // own from here on: every road that lays them again reads those.
+    final sourceDabs = rasterizer.mixedAsResolved(_state._collectedDabs);
     // Where the line went last — through the lock, the stabiliser's catch-up
     // and the tool's waypoints alike — and so where the next line from the
     // last stroke starts (I-119).
     final end = _state._previousRawCanvasPosition;
-    if (!promotable) {
-      // Without promotion (a host whose overlay grid differs from its
-      // surface's) the classic payload still commits correctly: a
-      // bounds-local row-major stroke buffer the commit composites.
+    if (base == null) {
+      // Without a pre-blend base (a host whose overlay shows the stroke
+      // alone) there is nothing to promote, and the stroke's own buffer
+      // commits: a bounds-local row-major stroke buffer the commit lays.
+      // ↩️It was asked of a host whose overlay grid differed from its
+      // surface's too, till 2026-11-14: the stroke, the overlay and the
+      // cel are all on the engine's grid, or refused (board
+      // `the-off-engine-cpu-commit-lives-only-for-tests`).
       _state.widget.onSourceStrokeCommitted(
         BrushStrokeCommitData(
           sourceDabs: sourceDabs,
@@ -781,39 +784,36 @@ class _BrushEditStroke {
   ///
   /// The handoff is revision-gated (only an image at the promoted tile's
   /// own revision qualifies; a stale one would be pinned to that tile
-  /// forever). The pen-up pictures every tile before the promotion
-  /// ([ActiveStrokeOverlayModel.pictureOwed]), so every promoted tile has
-  /// one; a tile whose image is somehow not there — a
-  /// coordinate the flush never touched at this revision — is pictured
-  /// from its own bytes on the spot, through the same door. Either way the
-  /// committed tile has its picture before the commit is announced, and
-  /// the overlay is dropped in the same call.
+  /// forever), and it hands over what a screen that draws pictures asked
+  /// the overlay for. A tile no picture was made of gets none here: the
+  /// screen that lays tiles asks for none (`EngineStackScreen`), and one
+  /// that draws them makes it in the paint that shows the tile
+  /// ([BitmapTileImageCache.pictureFor]). ↩️It was pictured on the spot,
+  /// from its own bytes, till 2026-11-12: of a tile the engine landed, a
+  /// wait for the GPU apiece, inside the pointer's handler
+  /// ([ActiveStrokeOverlayModel]). The overlay is dropped in the same
+  /// call.
   void landPromoted(
     List<PromotedStrokeTile> promoted,
     BrushStrokeCommitData data,
   ) {
     final overlay = _state._overlay._overlayModel;
-    // On a row that runs a plugin the landed cel is pictured whole, as it
-    // is shown ([ActiveStrokeOverlayModel.handsTilesOver]).
-    final handed = overlay.handsTilesOver
-        ? promoted
-        : const <PromotedStrokeTile>[];
-    for (final entry in handed) {
-      // ★The tile the coordinate SHOWS once this lands — the committed tile,
-      // or it with the cel's texts laid over (R9-rest): the overlay has
-      // been showing exactly that tile's pixels, so that is the tile its
-      // picture belongs to. Handed to the committed tile instead, a picture
-      // holding letters would stand for the bare drawing — and go on
-      // showing them after the text was moved or deleted.
-      final shown = overlay.tileShownFor(entry.coord, entry.tile);
+    for (final entry in promoted) {
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
       );
       if (image != null) {
-        BitmapTileImageCache.instance.adoptDecoded(shown, image);
-      } else {
-        BitmapTileImageCache.instance.pictureFor(shown);
+        // ★The tile the coordinate SHOWS once this lands — the committed
+        // tile, or it with the cel's texts laid over (R9-rest): the overlay
+        // has been showing exactly that tile's pixels, so that is the tile
+        // its picture belongs to. Handed to the committed tile instead, a
+        // picture holding letters would stand for the bare drawing — and go
+        // on showing them after the text was moved or deleted.
+        BitmapTileImageCache.instance.adoptDecoded(
+          overlay.tileShownFor(entry.coord, entry.tile),
+          image,
+        );
       }
     }
     _state.widget.onSourceStrokeCommitted(data);
@@ -885,7 +885,6 @@ class _BrushEditStroke {
     _state._symmetryTransforms = const [];
     // The reservoir is per stroke: a new stroke starts with a clean brush.
     _state._groundMixer = null;
-    _state._groundSampler = null;
     _state._stabilizer = null;
     _state._drawn = null;
     _state._collectedDabs.clear();

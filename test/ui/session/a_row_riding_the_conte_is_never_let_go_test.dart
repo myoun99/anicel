@@ -92,8 +92,8 @@ void main() {
       final session = open()
         ..standOnRow(const LayerRowAddress(LayerId('over')));
 
-      expect(session.folders.canDetachActiveLayer, isFalse);
-      session.folders.detachActiveLayer();
+      expect(session.folders.canDetachRows, isFalse);
+      session.folders.detachRows();
 
       expect(
         layerIn(session, 'over').attachedToLayerId,
@@ -105,8 +105,8 @@ void main() {
       final session = open()
         ..standOnRow(const LayerRowAddress(LayerId('inked')));
 
-      expect(session.folders.canDetachActiveLayer, isTrue);
-      session.folders.detachActiveLayer();
+      expect(session.folders.canDetachRows, isTrue);
+      session.folders.detachRows();
 
       expect(layerIn(session, 'inked').attachedToLayerId, isNull);
     });

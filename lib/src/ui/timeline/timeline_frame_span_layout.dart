@@ -302,6 +302,14 @@ class RenderTimelineFrameSpanLayout extends RenderBox
   @override
   Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
 
+  /// Its children are laid by their frames' edges, and its own size is its
+  /// parent's: where the axis ends lays none of it out (Q8).
+  @override
+  bool standsLaidOutUnder(
+    TimelineFrameGeometry now,
+    TimelineFrameGeometry laid,
+  ) => now.laysPiecesOutAs(laid);
+
   /// The rect [placement] resolves to under [frames] — the single source the
   /// layout and the tests both read.
   Rect rectFor(

@@ -52,19 +52,16 @@ class ProjectAudio {
       _settings.setProjectFrameRate(frameRate);
       return;
     }
-    final project = _project.repository.requireProject();
-    // Pulls accumulate — and cancel: 23.976→24→23.976 lands back at 1/1.
-    var numerator = project.audioSpeedNumerator * pull.numerator;
-    var denominator = project.audioSpeedDenominator * pull.denominator;
-    final divisor = numerator.gcd(denominator);
-    numerator ~/= divisor;
-    denominator ~/= divisor;
+    final speed = pullsTogether(
+      _project.repository.requireProject().audioSpeed,
+      pull,
+    );
     _settings.commitProjectSetting(
       UpdateProjectFrameRateCommand(
         repository: _project.repository,
         frameRate: frameRate,
-        audioSpeedNumerator: numerator,
-        audioSpeedDenominator: denominator,
+        audioSpeedNumerator: speed.numerator,
+        audioSpeedDenominator: speed.denominator,
       ),
       () {
         _door.warmAudioConforms();

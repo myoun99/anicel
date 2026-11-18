@@ -1,85 +1,114 @@
 import 'dart:typed_data';
 
-import '../../models/canvas_point.dart';
-import '../../native/qa_native_engine.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, GpuStampPicture;
+
+import '../../core/on_a_worker.dart';
+import '../../native/app_gpu_engine.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../selection_affine.dart';
 import 'resample_kernel.dart';
 
-/// The selection transform's door onto the shared resampler: the three
-/// destination-to-source folds it needs, and the one function that decides
-/// native-or-Dart.
-///
-/// It exists so preview and commit cannot diverge. The Dart reference
-/// derives its radius floor from the mode while the native binding demands
-/// one explicitly, so two call sites is all it takes for the picture on
-/// screen and the picture Enter lands to come out of different kernels with
-/// nothing in the type system to notice.
+/// The app's door onto R1 — the engine's: the three destination-to-source
+/// folds a selection transform needs, the nine the engine reads of each,
+/// the one radius floor every warp is handed, the sampling each mode names,
+/// and a picture carried through it and read back ([resampleOnTheEngine]).
 
-/// The footprint floor, named once so both sides of the native/Dart split
-/// are handed the same number.
+/// Lower bound for the footprint radius — **Blend's radius, and only
+/// Blend's** — the one every warp is handed: the engine REQUIRES an
+/// explicit floor, and two call sites free to disagree is exactly how the
+/// picture on screen and the picture Enter lands come out of different
+/// kernels.
 ///
-/// It is no longer an override — the kernel's floor is 1.0 for both modes
-/// now, since a floor above the true extent has no meaning under a
-/// coverage weight. The constant survives because the native binding
-/// REQUIRES an explicit floor while the Dart reference defaults it, and
-/// two call sites free to disagree is exactly how the picture on screen
-/// and the picture Enter lands come out of different kernels.
+/// It stops a tent narrower than a pixel, which would sample nothing but
+/// the pixel it sits on and make Blend a point sampler. That is the only
+/// job it has left.
+///
+/// It used to be 1.5 for Pick, on the theory that a wider ring smooths the
+/// jagged spurs a rotation leaves along an edge — measured on a dense
+/// production cel, where it did. That number stopped meaning anything the
+/// moment Pick's weight became a measure of AREA: a floor above the true
+/// extent claims the preimage reaches further than it does, so the vote
+/// counts area the destination pixel never covered. It was not a quality
+/// knob, it was a lie about geometry, and it cost what a lie about
+/// geometry costs — on 1px line art the inflated ring let ground outvote
+/// ink and deleted the drawing. Pick has since stopped having a radius at
+/// all: it supersamples the preimage instead of gathering taps around it,
+/// and ignores whatever floor it is handed.
+///
+/// ↩️The Dart reference R1 defaulted the same number by mode
+/// (`resampleRadiusFloor`), a second answer to one question; it went with
+/// that R1 (tip-coverage-is-a-second-r1, 2026-11-13).
 const double kSelectionResampleRadiusFloor = 1.0;
 
-/// Resample [src] into [dst] through [transform], native when the engine is
-/// loaded and the Dart reference otherwise.
+/// The nine elements in the order the engine reads them.
+Float64List resampleTransformElements(ResampleTransform t) =>
+    Float64List.fromList(<double>[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h, t.i]);
+
+/// R1's sampling of [mode], as the engine names it.
+GpuSampling resampleSampling(ResampleMode mode) => switch (mode) {
+  ResampleMode.blend => GpuSampling.blend,
+  ResampleMode.pick => GpuSampling.pick,
+};
+
+/// [src] — straight RGBA8, [srcWidth] × [srcHeight] — carried through
+/// [transform] by R1 in [mode], on the app's engine: the [dstWidth] ×
+/// [dstHeight] picture it lands, straight RGBA8, nothing where the map
+/// lands nothing.
 ///
-/// The two produce identical bytes — that is what
-/// `test/native/resample_parity_test.dart` exists to hold — so which one
-/// ran is invisible in the result and only shows in the clock.
-void resampleSelectionInto({
+/// 🗣️tip-coverage-is-a-second-r1-Q1 (유저 2026-11-12: 「미리 만들어 둔다 —
+/// 엔진이 열리면 기다리지 않고 받아 둔다」): it waits for the engine to be
+/// open and its kernels compiled ([openAppGpuEngine], `AppKernels.ready`) —
+/// opened and compiled off this isolate, never on it — and the GPU's answer
+/// is read on a worker ([onAWorker]), so the isolate that asks goes on
+/// meanwhile. ↩️A tip's coverage came down through a Dart R1 of its own,
+/// the engine's written a second time (card tip-coverage-is-a-second-r1).
+Future<Uint8List> resampleOnTheEngine({
   required Uint8List src,
   required int srcWidth,
   required int srcHeight,
-  required Uint8List dst,
   required int dstWidth,
   required int dstHeight,
   required ResampleTransform transform,
   required ResampleMode mode,
-  int clipX = 0,
-  int clipY = 0,
-}) {
-  final engine = QaNativeEngine.instance;
-  if (engine != null &&
-      engine.resampleRgbaInto(
-        src: src,
-        srcWidth: srcWidth,
-        srcHeight: srcHeight,
-        dst: dst,
-        dstWidth: dstWidth,
-        dstHeight: dstHeight,
-        inverse: resampleTransformElements(transform),
-        radiusFloor: kSelectionResampleRadiusFloor,
-        mode: resampleModeCode(mode),
-        clipX: clipX,
-        clipY: clipY,
-      )) {
-    return;
-  }
-  resampleRgbaReferenceInto(
-    src: src,
-    srcWidth: srcWidth,
-    srcHeight: srcHeight,
-    dst: dst,
-    dstWidth: dstWidth,
-    dstHeight: dstHeight,
-    transform: transform,
-    mode: mode,
-    radiusFloor: kSelectionResampleRadiusFloor,
-    clipX: clipX,
-    clipY: clipY,
+  double radiusFloor = kSelectionResampleRadiusFloor,
+}) async {
+  // Opened off this isolate before its kernels are asked for: asked where
+  // no engine is open, they open one here.
+  await openAppGpuEngine();
+  final landing = await appGpuStampLandingKernels.ready;
+  // 🚨ON THE ENGINE THE KERNELS ARE OF, not the one that was open before
+  // they were waited for: the app may have let that one go meanwhile, its
+  // device gone (`letTheGoneAppGpuEngineGo`), and these are the next
+  // one's. A picture of one engine carried by another's kernels is
+  // refused by name (gpu_engine.dart, `_OfAnEngine`) — ↩️and before that
+  // was, wgpu looked the one's buffer up among the other's and panicked,
+  // which ended the process (🔬2026-11-13: `Cannot get BufferId(2,2),
+  // found other resource BufferId(2,1)`, a tip's thumbnail on its way as
+  // the app opened another engine; the picture was made on the engine
+  // first waited for).
+  return _readOnAWorker(
+    landing.carried(
+      GpuStampPicture(landing.engine, src, srcWidth, srcHeight),
+      inverse: resampleTransformElements(transform),
+      radiusFloor: radiusFloor,
+      sampling: resampleSampling(mode),
+      width: dstWidth,
+      height: dstHeight,
+    ),
   );
 }
 
-/// The nine elements in the order the C kernel reads them.
-Float64List resampleTransformElements(ResampleTransform t) =>
-    Float64List.fromList(<double>[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h, t.i]);
+/// [picture]'s pixels, read on a worker ([onAWorker]) — whose wait for the
+/// GPU is that worker's.
+///
+/// ⚠️[picture] is held here till the read is done: a local of a
+/// `Finalizable` type lives to the end of its scope, and the worker holds
+/// only its address ([GpuStampPicture.reader]).
+Future<Uint8List> _readOnAWorker(GpuStampPicture picture) async {
+  final reader = picture.reader;
+  final pixels = await onAWorker(reader.pixels);
+  return pixels;
+}
 
 /// The free-transform affine, folded into the kernel's destination-pixel
 /// index → source-pixel index form.
@@ -173,49 +202,5 @@ ResampleTransform selectionQuadResampleTransform({
     g: h[6],
     h: h[7],
     i: w,
-  );
-}
-
-/// One mesh triangle's destination-to-source map.
-///
-/// Barycentric interpolation of three source corners over a destination
-/// triangle is an AFFINE function of the destination point — which is why
-/// the mesh can share the kernel at all, rather than needing a warp path of
-/// its own. [d0]/[d1]/[d2] are the destination corners, [s0]/[s1]/[s2] the
-/// source ones, [denominator] the edge cross product the rasteriser has
-/// already computed, and [left]/[top] the CLIPPED destination bbox origin
-/// the resampled rectangle starts at.
-ResampleTransform selectionTriangleResampleTransform({
-  required CanvasPoint d0,
-  required CanvasPoint d1,
-  required CanvasPoint d2,
-  required CanvasPoint s0,
-  required CanvasPoint s1,
-  required CanvasPoint s2,
-  required double denominator,
-  required int left,
-  required int top,
-  required double srcLeft,
-  required double srcTop,
-}) {
-  final e1x = d1.x - d0.x;
-  final e1y = d1.y - d0.y;
-  final e2x = d2.x - d0.x;
-  final e2y = d2.y - d0.y;
-  final f1x = s1.x - s0.x;
-  final f1y = s1.y - s0.y;
-  final f2x = s2.x - s0.x;
-  final f2y = s2.y - s0.y;
-  final a = (e2y * f1x - e1y * f2x) / denominator;
-  final b = (e1x * f2x - e2x * f1x) / denominator;
-  final d = (e2y * f1y - e1y * f2y) / denominator;
-  final e = (e1x * f2y - e2x * f1y) / denominator;
-  return ResampleTransform(
-    a: a,
-    b: b,
-    c: a * (left - d0.x) + b * (top - d0.y) + s0.x - srcLeft,
-    d: d,
-    e: e,
-    f: d * (left - d0.x) + e * (top - d0.y) + s0.y - srcTop,
   );
 }

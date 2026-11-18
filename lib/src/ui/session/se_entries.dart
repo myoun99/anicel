@@ -18,6 +18,7 @@ import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 import 'frame_verbs.dart';
+import 'opacity_verbs.dart' show layersShowingOpacityPreview;
 import 'project_settings.dart';
 
 /// The SE ENTRIES AND NAME TAGS — creating and updating an SE entry, and
@@ -75,11 +76,13 @@ class SeEntries {
   /// [preview] is a drag in flight — an SE row's tag or pose scrubbed, its
   /// handle dragged (F-195), its lines moved or stretched
   /// (canvas-follows-block-moves) — which the EDITING canvas shows as it
-  /// goes. The routes that render a committed film pass none.
+  /// goes, and [opacityPreview] an opacity slider in flight (F-605). The
+  /// routes that render a committed film pass neither.
   List<ResolvedSeNameTag> seNameTagsForCutFrame(
     Cut cut,
     int localFrameIndex, {
     TimelineDragPreview? preview,
+    ({Set<LayerId> layerIds, double opacity})? opacityPreview,
   }) {
     // A frame the film PLAYS — the cut's place and the のりしろ an O.L asks
     // before and after it — shows what is heard then: in a margin, the
@@ -118,7 +121,10 @@ class SeEntries {
       return const [];
     }
     return resolveSeNameTagsAt(
-      trackSeLayers: globalLayersShowingDragPreview(track.seLayers, preview),
+      trackSeLayers: layersShowingOpacityPreview(
+        globalLayersShowingDragPreview(track.seLayers, preview),
+        opacityPreview,
+      ),
       shown: (globalFrame: shown, cutId: cut.id),
       cameraFrame: _camera.cameraFrameSize,
       shot: shotForCutFrame(cut, localFrameIndex),

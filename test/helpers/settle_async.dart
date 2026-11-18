@@ -47,6 +47,15 @@ Future<bool> settleAsync(
   return true;
 }
 
+/// Turns the pumped clock as far as what is due on it now, with no frame —
+/// from inside a `runAsync` too: for what was asked on a widget test's own
+/// clock, comes on the real one, and goes on from there on the pumped one
+/// (a picture's `toImage` answers at once here, and what awaits it is a
+/// microtask of the clock it was asked on), where the test looks at what
+/// its landing marked before anything paints it.
+void turnThePumpedClock(WidgetTester tester) =>
+    unawaited(tester.binding.delayed(Duration.zero));
+
 /// Lends both clocks [rounds] times, each round [beat] of real time and
 /// then a frame [step] on: a WINDOW — what a test watches for something NOT
 /// to happen in, or what it gives work that never says it is done.

@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -28,6 +29,10 @@ Map<BrushFrameKey, AnicelCelBlob> parkCold(
 }
 
 /// The blob [surface] cools into as the cel [key] — what [parkCold] parks,
-/// and what a cel kept in a file holds (`keepInAFile`).
-AnicelCelBlob coldBlobOf(BrushFrameKey key, BitmapSurface surface) =>
-    AnicelCelBlob.ofSurface(key, surface);
+/// and what a cel kept in a file holds (`keepInAFile`) — its bytes as
+/// [bytesOf] gives them, the engine's where null.
+AnicelCelBlob coldBlobOf(
+  BrushFrameKey key,
+  BitmapSurface surface, {
+  TileBytesOf? bytesOf,
+}) => AnicelCelBlob.ofSurface(key, surface, bytesOf: bytesOf);

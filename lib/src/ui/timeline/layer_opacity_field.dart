@@ -3,8 +3,16 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/se_sound.dart';
 import '../widgets/field_slider.dart';
 import 'berth_row.dart';
+
+/// How thick a rail row's bar stands where [context] shows it: 18 at 1×,
+/// and its digits' growth ([FieldSlider.growthIn], text-scale-rail-rows).
+/// The opacity bar's and the S row's Total's — one bar, one size (F-577 ·
+/// I-177; ↩️the Total the longer, F-606).
+double layerRailBarHeightIn(BuildContext context) =>
+    18 + FieldSlider.growthIn(context);
 
 /// A layer row's opacity slider, live-following the session's drag preview
 /// when it targets this layer (the master bar sweep, UI-R6 #2).
@@ -20,14 +28,14 @@ Widget layerOpacityField({
   required void Function(LayerId layerId, double opacity) onChanged,
   void Function(LayerId layerId, double opacity)? onChangeEnd,
 }) {
-  // 18 at 1×, and its digits' growth where it is shown ([FieldSlider
-  // .growthIn], text-scale-rail-rows). Built under the context that holds
-  // it — the preview's builder's, or a [Builder]'s where there is none.
+  // Built under the context that holds it — the preview's builder's, or a
+  // [Builder]'s where there is none.
   Widget slider(BuildContext context, double value) => FieldSlider.opacity(
     name: '$keyPrefix-layer-opacity-${layer.id}',
     axis: axis,
     value: value,
-    height: 18 + FieldSlider.growthIn(context),
+    height: layerRailBarHeightIn(context),
+    typesOnDoubleClick: true,
     onChanged: (opacity) => onChanged(layerIdNow(context, layer.id), opacity),
     onChangeEnd: onChangeEnd == null
         ? null
@@ -51,3 +59,39 @@ Widget layerOpacityField({
     ),
   );
 }
+
+/// An S row's Total — the opacity bar to 200 % ([SeSound.maxVolume]).
+///
+/// 🗣️F-577 (유저 2026-11-10): 「총 볼륨 막대 둠. 연필이나 +, -버튼은
+/// 필요없음. 불투명도막대랑 완전 동일한 디자인/크기」. ↩️It was the speaker
+/// window's bar (I-145-Q1 「따로 한 값 — 두 입구」); the row holds it now.
+/// 🗣️I-177 (유저 2026-11-17 「s행의 막대로서만 있도록」): it is the Total's
+/// one door. ↩️Its 「오디오」 group's lane was the other.
+///
+/// 🗣️F-606 (유저 2026-11-16): 「불투명도는 최대 100이라 지금막대 길이로
+/// 충분하지만 사운드는 최대200이라 더 길어야한다고 판단. 사운드막대를 지금의
+/// 1.5배로」 — the bar's look and thickness, half again its length.
+/// ↩️I-177 (유저 2026-11-17): 「불투명도랑 총볼륨 이렇게 세부조정 가능해지니
+/// 총볼륨 크기 키운거 되돌림. 전처럼 불투명도막대랑 같은길이」 — a double
+/// click in it types the number, so it is the opacity bar's length again.
+///
+/// It writes on RELEASE, as the window's did: a write is an undo step and
+/// re-uploads the whole live audio schedule. The bar shows the drag
+/// itself meanwhile ([FieldSlider] echoes an active gesture).
+Widget layerTotalVolumeField({
+  required Layer layer,
+  required String keyPrefix,
+  Axis axis = Axis.horizontal,
+  required void Function(LayerId layerId, double share) onChangeEnd,
+}) => Builder(
+  builder: (context) => FieldSlider.opacity(
+    name: '$keyPrefix-layer-total-volume-${layer.id}',
+    axis: axis,
+    value: layer.seSound.totalVolume.clamp(0.0, SeSound.maxVolume).toDouble(),
+    height: layerRailBarHeightIn(context),
+    typesOnDoubleClick: true,
+    percents: (SeSound.maxVolume * 100).round(),
+    onChanged: (_) {},
+    onChangeEnd: (share) => onChangeEnd(layerIdNow(context, layer.id), share),
+  ),
+);

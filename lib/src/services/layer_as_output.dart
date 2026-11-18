@@ -2,7 +2,6 @@ import '../models/export_spec.dart' show ExportLayerFx;
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_kind.dart';
-import '../models/transform_track.dart';
 
 /// [layer] as an output written with [fx] keeps it — the ONE answer every
 /// tab of the export reads: the rows of a video and of a still, and the
@@ -53,7 +52,7 @@ Layer layerAsOutput(Layer layer, ExportLayerFx fx) {
     transformEnabled: layer.transformEnabled && fx == ExportLayerFx.on,
     effects: chainAsOutput(layer.effects, fx),
     mediaReference: fx == ExportLayerFx.off && reference != null
-        ? reference.copyWith(pose: reference.laid, fx: TransformTrack.empty())
+        ? reference.standingWhereLaid
         : reference,
   );
 }

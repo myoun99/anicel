@@ -1,7 +1,7 @@
 //! The export's conversions before the readback (gpu-export-path ①, 저장):
-//! a frame the composite left in its output tiles, turned on the GPU into
-//! the bytes its writer takes, so fewer cross to the CPU — the readback
-//! was the largest single cost (960×540: 27 ms against the encoder's 5.5).
+//! a frame as the screen shows it, turned on the GPU into the bytes its
+//! writer takes, so fewer cross to the CPU — the readback was the largest
+//! single cost (960×540: 27 ms against the encoder's 5.5).
 //!
 //! - `nv12` — a movie's frame for its encoder (①a).
 //! - `over_ground` — a still's frame over its format's background, for the
@@ -10,40 +10,192 @@
 //!   `over_ground`'s with the alpha cut (①c).
 //! - `opaque` — whether a frame is opaque, so its PDF picture goes without
 //!   alpha (①d).
+//! - `lay` — a frame the export makes and pictures laid over it, so its
+//!   last picture is made on the engine and read back once (①⑵).
 //! - `png` — a PNG's rows under their filters, from the frame's RGBA or
 //!   from `over_ground`'s RGB (①e).
+//! - `straight` — a frame straight, for the writers that keep its alpha
+//!   (①⑶).
 //!
-//! Each kernel reads the frame through `frame.wgsl`, after the shared
-//! `tile.wgsl`, and runs as one pass over it ([`submit`]).
+//! Each kernel reads its picture through three reads — straight,
+//! premultiplied, its alpha — that `frame_shown.wgsl` gives on a frame as
+//! the screen shows it ([`Shown`]), and runs over it a band of rows at a
+//! time ([`convert`]).
+//!
+//! ↩️Till 2026-11-17 a pass read a run's output tiles too (`frame.wgsl`,
+//! now the plug-ins'), each conversion a call for either: no call of the
+//! app's reached the tiles' after 4f10d408f, and they went (card
+//! the-export-s-tile-entries-have-no-caller).
+//! ([`Frame`]), and runs over it a band of rows at a time ([`convert`]).
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-export-path, 관제 16:26 — the app connects after the bridges), nor
-// the passes it names for the app.
-#![cfg_attr(not(test), allow(dead_code, unused_imports))]
-
+pub(crate) mod abi;
 mod clear;
+mod lay;
 mod nv12;
 mod opaque;
 mod over_ground;
 mod png;
+mod straight;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod shown_tests;
+#[cfg(test)]
+mod lay_tests;
 
 pub(crate) use clear::Clear;
+pub(crate) use lay::{Cover, Lay, Source};
 pub(crate) use nv12::{Nv12, Nv12Shape};
 pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
 pub(crate) use png::PngFilter;
+pub(crate) use straight::Straight;
+
+use std::ops::Range;
+use std::sync::OnceLock;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
+use crate::kernels::composite::TILE;
 use crate::kernels::shared::{
-    Encoded, TILE_WGSL, encode, fits, flat, pipeline, plane, whole, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, bands, buffer_holds, encode, fits, flat, kept_or_made, pipeline_with,
+    plane, room, whole, words_bound, words_buffer,
 };
 
-/// The frame read: `frame_word`.
-const FRAME_WGSL: &str = include_str!("frame.wgsl");
+/// The three reads on a frame as the screen shows it.
+const FRAME_SHOWN_WGSL: &str = include_str!("frame_shown.wgsl");
+
+/// A frame as the screen shows it, for the export's passes
+/// (gpu-export-path ①⑴): a surface's texels copied on the GPU into rows a
+/// pass reads — premultiplied, `bgra` where the surface is laid so —, so
+/// the file a frame makes is the picture the canvas shows and only what a
+/// writer takes crosses to the CPU.
+pub struct Shown {
+    rows: wgpu::Buffer,
+    /// Words from one row to the next: a copy's rows start on
+    /// `COPY_BYTES_PER_ROW_ALIGNMENT`.
+    stride: u32,
+    width: u32,
+    height: u32,
+    bgra: bool,
+}
+
+impl Shown {
+    /// `picture` of `texture`, from its top-left texel, copied and the copy
+    /// submitted — none, with why, unless the texture holds it in 8-bit
+    /// RGBA or BGRA texels.
+    pub(crate) fn of(engine: &Engine, texture: &wgpu::Texture, picture: Picture) -> Option<Self> {
+        picture.check()?;
+        let bgra = match texture.format() {
+            wgpu::TextureFormat::Rgba8Unorm => false,
+            wgpu::TextureFormat::Bgra8Unorm => true,
+            other => return fail(format!("a frame shown is 8-bit RGBA or BGRA, not {other:?}")),
+        };
+        let Picture { width, height } = picture;
+        if width > texture.width() || height > texture.height() {
+            return fail(format!(
+                "a {width}x{height} picture is not in a {}x{} surface",
+                texture.width(),
+                texture.height()
+            ));
+        }
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let row = (width * 4).div_ceil(align) * align;
+        let bytes = u64::from(row) * u64::from(height);
+        buffer_holds(engine, bytes)?;
+        let rows = engine.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("export shown"),
+            size: bytes,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = engine
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &rows,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        engine.queue.submit([encoder.finish()]);
+        Some(Self { rows, stride: row / 4, width, height, bgra })
+    }
+
+    /// The words of the frame that `pixels` of `picture` — counted row
+    /// after row across it — lie on: its rows between. None for none.
+    fn words(&self, picture: Picture, pixels: Range<u64>) -> Range<u64> {
+        if pixels.is_empty() {
+            return 0..0;
+        }
+        let width = u64::from(picture.width);
+        let word = |at: u64| at / width * u64::from(self.stride) + at % width;
+        word(pixels.start)..word(pixels.end - 1) + 1
+    }
+
+    /// None, with why, unless the frame holds `picture`.
+    fn holds(&self, picture: Picture) -> Option<()> {
+        if picture.width > self.width || picture.height > self.height {
+            return fail(format!(
+                "a {}x{} picture is not in a {}x{} frame",
+                picture.width, picture.height, self.width, self.height
+            ));
+        }
+        Some(())
+    }
+}
+
+/// A pass's pipelines, one for a frame laid RGBA and one for a frame laid
+/// BGRA: compiled ahead for the frames the app hands a pass
+/// ([`Self::warm`]), and where one is first asked till then.
+struct Pipelines {
+    own: &'static [&'static str],
+    entry: &'static str,
+    rgba: OnceLock<wgpu::ComputePipeline>,
+    bgra: OnceLock<wgpu::ComputePipeline>,
+}
+
+impl Pipelines {
+    const fn new(own: &'static [&'static str], entry: &'static str) -> Self {
+        Self {
+            own,
+            entry,
+            rgba: OnceLock::new(),
+            bgra: OnceLock::new(),
+        }
+    }
+
+    /// Compiles the pass for the frames the export makes and for frames
+    /// shown on surfaces laid `bgra` or not, so a frame the app hands it
+    /// waits for no compile.
+    fn warm(&self, engine: &Engine, bgra: bool) {
+        self.reading(engine, false);
+        if bgra {
+            self.reading(engine, true);
+        }
+    }
+
+    /// The pipeline that reads its picture as `frame` is read.
+    fn of(&self, engine: &Engine, frame: &Shown) -> &wgpu::ComputePipeline {
+        self.reading(engine, frame.bgra)
+    }
+
+    /// The pipeline that reads a frame laid `bgra` or not.
+    fn reading(&self, engine: &Engine, bgra: bool) -> &wgpu::ComputePipeline {
+        let compiled = if bgra { &self.bgra } else { &self.rgba };
+        kept_or_made(compiled, || {
+            let sources = [&[TILE_WGSL, PREMULTIPLY_WGSL, FRAME_SHOWN_WGSL], self.own].concat();
+            let constants: &[(&str, f64)] = if bgra { &[("FRAME_BGRA", 1.0)] } else { &[] };
+            pipeline_with(engine, &sources, self.entry, constants)
+        })
+    }
+}
 
 /// A picture in the frame, from its top-left pixel.
 #[derive(Clone, Copy, Debug)]
@@ -71,51 +223,70 @@ impl Picture {
     }
 }
 
-/// A kernel's pipeline: its `own` sources, in order, after the frame read
-/// they call.
-fn compile(engine: &Engine, own: &[&str], entry: &str) -> wgpu::ComputePipeline {
-    pipeline(engine, &[&[TILE_WGSL, FRAME_WGSL], own].concat(), entry)
-}
-
-/// None, with why, unless `frame` holds the tiles — a row of them, rows —
-/// its picture is in.
-fn holds(frame: &wgpu::Buffer, (columns, rows): (u32, u32)) -> Option<()> {
-    let needed = u64::from(columns * rows) * TILE_TEXELS * 4;
-    if frame.size() < needed {
-        return fail(format!(
-            "{columns}x{rows} tiles take {needed} bytes; the frame has {}",
-            frame.size()
-        ));
-    }
-    Some(())
-}
-
-/// A new plane of `bytes` for a pass that runs in `groups` (across, down)
-/// to put in — none, with why, unless the device binds the one and
-/// reaches the other.
-fn out_plane(engine: &Engine, label: &str, bytes: u64, groups: (u32, u32)) -> Option<wgpu::Buffer> {
-    fits(engine, &[bytes], [groups].into_iter())?;
+/// A new plane of `bytes` for a pass to put in, bound a band at a time
+/// ([`convert`]) — none, with why, where the device makes no buffer of it.
+fn out_plane(engine: &Engine, label: &str, bytes: u64) -> Option<wgpu::Buffer> {
+    buffer_holds(engine, bytes)?;
     Some(plane(engine, label, bytes))
 }
 
-/// Runs `pipeline` over `frame` in `groups` (across, down) and submits the
-/// work; the caller waits. Its binding 0 is `params`, 1 the frame and 2
-/// `out` — the export's own bindings, on the shared plumbing.
-fn submit(
+/// How a conversion's invocations run: their rows, the rows a workgroup
+/// takes, and its workgroups across.
+#[derive(Clone, Copy)]
+struct Dispatch {
+    rows: u32,
+    unit: u32,
+    across: u32,
+}
+
+/// Runs a conversion's `pipeline` and submits the work; the caller waits.
+/// Binding 0 is its params, 1 the plane it reads — a frame, or bytes that
+/// lie packed — and 2 the plane it puts: the export's own bindings, on the
+/// shared plumbing. Its rows run in bands ([`bands`]), each binding of the
+/// two only the words `words` names for its rows and handed `params` of its
+/// first row and the words its two bindings begin on. None, with why, where
+/// one workgroup's rows do not fit a binding, or a band's workgroups a
+/// dispatch.
+///
+/// 🚨A CONVERSION BINDS THE ROWS IT READS AND PUTS, NOT ITS PLANES WHOLE
+/// (board conversions-bind-a-frame-past-the-device-limit, 2026-11-17): a
+/// frame of the user's canvas, 7751×4396, is 136 MB — past the 128 MiB a
+/// binding holds on lavapipe, the least a Vulkan device may hold.
+fn convert(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
-    params: &[u32],
-    frame: &wgpu::Buffer,
-    out: &wgpu::Buffer,
-    groups: (u32, u32),
-) {
-    let params = words_buffer(engine, "export params", params, wgpu::BufferUsages::UNIFORM);
-    encode(
-        engine,
-        &[Encoded {
-            pipeline,
-            bound: whole(&[(0, &params), (1, frame), (2, out)]),
-            groups: flat(groups),
-        }],
-    );
+    (read, out): (&wgpu::Buffer, &wgpu::Buffer),
+    Dispatch { rows, unit, across }: Dispatch,
+    words: impl Fn(Range<u32>) -> [Range<u64>; 2],
+    params: impl Fn(u32, [u64; 2]) -> Vec<u32>,
+) -> Option<()> {
+    let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+    let bands = bands(0..rows, unit, (room(engine), step), |band| words(band).to_vec())?;
+    let groups = |band: &Range<u32>| (across, (band.end - band.start).div_ceil(unit));
+    fits(engine, &[], bands.iter().map(groups))?;
+    // No band reads or puts nothing (mutant V21, 11-17): rows past a
+    // picture's pixels add no word to a plane, so `bands` keeps them in the
+    // band before them, and the first band begins on the picture's first.
+    let mut uniforms = Vec::new();
+    let mut bound = Vec::new();
+    for band in &bands {
+        let [read_words, out_words] = words(band.clone());
+        let (read_given, read_base) = words_bound(read, read_words, step);
+        let (out_given, out_base) = words_bound(out, out_words, step);
+        let words = params(band.start, [read_base, out_base]);
+        uniforms.push(words_buffer(engine, "export params", &words, wgpu::BufferUsages::UNIFORM));
+        bound.push([(1, read_given), (2, out_given)]);
+    }
+    let passes: Vec<Encoded> = uniforms
+        .iter()
+        .zip(bound)
+        .zip(&bands)
+        .map(|((uniform, planes), band)| {
+            let mut entries = whole(&[(0, uniform)]);
+            entries.extend(planes.map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource }));
+            Encoded { pipeline, bound: entries, groups: flat(groups(band)) }
+        })
+        .collect();
+    encode(engine, &passes);
+    Some(())
 }

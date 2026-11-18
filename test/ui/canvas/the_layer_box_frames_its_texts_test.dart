@@ -69,7 +69,5 @@ void main() {
       (box!.left, box.top, box.rightExclusive, box.bottomExclusive),
       (2 * size + 3, size + 5, 2 * size + 4, size + 6),
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

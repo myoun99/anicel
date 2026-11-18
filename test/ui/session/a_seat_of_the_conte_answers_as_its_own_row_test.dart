@@ -262,12 +262,13 @@ void main() {
 
       SessionRowButtonPresses(session).toggleGroupFold(
         const LayerId('a-conte'),
+        null,
       );
 
-      expect(
-        session.railView.collapsedAttachBaseIds.value,
-        {const LayerId('a-conte'), const LayerId('b-conte')},
-      );
+      expect(session.railView.attachFoldedRowIds.value, {
+        for (final cut in const ['a', 'b'])
+          for (final row in const ['under', 'over']) LayerId('$cut-$row'),
+      }, reason: 'the head is one: both cuts\' rows, both sides');
     });
 
     // 🗣️conte-attach-fold-leaves-the-conte-panel-standing-inside (유저
@@ -281,6 +282,7 @@ void main() {
 
       SessionRowButtonPresses(session).toggleGroupFold(
         const LayerId('a-conte'),
+        null,
       );
 
       expect(session.storyboardStandingRow, conteRow);
@@ -294,6 +296,7 @@ void main() {
 
       SessionRowButtonPresses(session).toggleGroupFold(
         const LayerId('a-conte'),
+        null,
       );
 
       expect(session.activeLayerId, const LayerId('b-cel'));
@@ -304,7 +307,7 @@ void main() {
       session.selectCut(const CutId('b'));
       session.selectLayer(const LayerId('b-cel'));
       final presses = SessionRowButtonPresses(session);
-      presses.toggleGroupFold(const LayerId('a-conte'));
+      presses.toggleGroupFold(const LayerId('a-conte'), null);
 
       presses.toggleVisibility(const LayerId('a-conte'));
 
@@ -336,13 +339,15 @@ void main() {
       final session = sessionOf();
       SessionRowButtonPresses(session).toggleGroupFold(
         const LayerId('a-conte'),
+        null,
       );
 
       bearAConteIn(session);
 
       expect(
-        session.railView.collapsedAttachBaseIds.value,
-        contains(bornAt(session, 0).id),
+        bornAt(session, 0).foldedAttaches,
+        AttachedPlacement.values.toSet(),
+        reason: 'the head\'s folded sides — I-175',
       );
     });
 
@@ -387,7 +392,7 @@ void main() {
 
       bearAConteIn(session);
 
-      expect(session.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(session.railView.attachFoldedRowIds.value, isEmpty);
       expect(session.railView.expandedLaneLayerIds.value, isEmpty);
     });
   });

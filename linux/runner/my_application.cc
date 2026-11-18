@@ -21,9 +21,26 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+// H56 (user 2026-11-14: 「플랫폼 구분없이 통합해결」): every point the OS
+// saw goes into the line, each at its own time. GDK keeps only the newest
+// of the motion events a window has queued unless the window says
+// otherwise, and the embedder never does (fl_view.cc takes motion on an
+// event box of its own, a window of its own); with the merging off each
+// event is its own datum to Flutter, stamped with its own time. Every
+// window under the app's, once all of them are made.
+static void hand_every_motion(GdkWindow* window) {
+  gdk_window_set_event_compression(window, FALSE);
+  for (GList* child = gdk_window_peek_children(window); child != nullptr;
+       child = child->next) {
+    hand_every_motion(GDK_WINDOW(child->data));
+  }
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+  hand_every_motion(
+      gtk_widget_get_window(gtk_widget_get_toplevel(GTK_WIDGET(view))));
   // After the window shows, so the screen is never left with neither.
   anicel_launch_splash_close(self->launch_splash);
   self->launch_splash = nullptr;

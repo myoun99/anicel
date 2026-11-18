@@ -537,40 +537,83 @@ void main() {
       return folder.parent;
     }
 
-    test('the child is started in a folder of its own, which goes when it '
-        'ends', () {
-      final temp = RunTemp.take(parent: parent);
+    String checkout(String name) =>
+        (Directory('${parent.path}/$name')..createSync()).path;
+
+    test("🚨the child is started in its checkout's folder — the same one "
+        'each run, as the hooks runner keys its builds on it — and what it '
+        'made goes when it ends', () {
+      final lane = checkout('lane-a');
+      final temp = RunTemp.take(parent: parent, where: lane);
       expect(temp.folder.parent.path, parent.path);
       expect(temp.environment, {
         'TMP': temp.folder.path,
         'TEMP': temp.folder.path,
         'TMPDIR': temp.folder.path,
       });
-      Directory(
-        '${temp.folder.path}/flutter_tools.x/flutter_test_compiler.y',
-      ).createSync(recursive: true);
+      final made = Directory('${temp.folder.path}/flutter_tools.x')
+        ..createSync(recursive: true);
+      Directory('${made.path}/flutter_test_compiler.y').createSync();
       temp.end();
-      expect(temp.folder.existsSync(), isFalse);
+      expect(made.existsSync(), isFalse);
+      final next = RunTemp.take(parent: parent, where: lane);
+      expect(next.folder.path, temp.folder.path);
+      next.end();
     });
 
-    test('a folder whose run ended goes with the next run to take one — its '
-        'lock free, or never taken', () {
+    test('two runs of one checkout at once take two folders, and another '
+        'checkout its own', () {
+      final lane = checkout('lane-a');
+      final first = RunTemp.take(parent: parent, where: lane);
+      final second = RunTemp.take(parent: parent, where: lane);
+      final other = RunTemp.take(parent: parent, where: checkout('lane-b'));
+      final taken = [first, second, other];
+      expect({for (final temp in taken) temp.folder.path}, hasLength(3));
+      for (final temp in taken) {
+        temp.end();
+      }
+    });
+
+    test("what a killed run left goes when its checkout's next run takes the "
+        'folder', () {
+      final lane = checkout('lane-a');
+      final left = leftBy(runTempName(lane, 0));
+      File('${left.path}/$kRunTempWhere').writeAsStringSync(lane);
+      final temp = RunTemp.take(parent: parent, now: later, where: lane);
+      addTearDown(temp.end);
+      expect(temp.folder.uri, left.uri);
+      expect(Directory('${left.path}/flutter_tools.x').existsSync(), isFalse);
+    });
+
+    test('a folder whose run ended and whose checkout is gone goes with the '
+        'next run to take one — its lock free, or never taken', () {
       final freed = leftBy('${kRunTempPrefix}1_1');
       final neverLocked = leftBy('${kRunTempPrefix}2_1', locked: false);
-      final temp = RunTemp.take(parent: parent, now: later);
+      final gone = leftBy('${kRunTempPrefix}gone_0');
+      File('${gone.path}/$kRunTempWhere').writeAsStringSync('${parent.path}/x');
+      final lane = checkout('lane-b');
+      final lives = leftBy(runTempName(lane, 0));
+      File('${lives.path}/$kRunTempWhere').writeAsStringSync(lane);
+      final temp = RunTemp.take(
+        parent: parent,
+        now: later,
+        where: checkout('lane-a'),
+      );
       expect(freed.existsSync(), isFalse);
       expect(neverLocked.existsSync(), isFalse);
+      expect(gone.existsSync(), isFalse);
+      expect(lives.existsSync(), isTrue, reason: 'its next run empties it');
       expect(temp.folder.existsSync(), isTrue, reason: 'its own stays');
       temp.end();
     });
 
     test("⛔what is no ended run's folder stays: one that may not be locked "
-        "yet, one of this process, another tool's", () {
+        "yet, one this process holds, another tool's", () {
       final young = leftBy('${kRunTempPrefix}1_1');
       sweepEndedRunTemps(parent);
       expect(young.existsSync(), isTrue, reason: 'younger than it settles');
 
-      final own = leftBy('$kRunTempPrefix${pid}_1');
+      final own = RunTemp.take(parent: parent, where: '${parent.path}/gone');
       final others = [leftBy('flutter_tools.1'), leftBy('qa_run_1_1')];
       final held = leftBy('${kRunTempPrefix}3_1');
       sweepEndedRunTemps(
@@ -582,7 +625,12 @@ void main() {
       );
       expect(held.existsSync(), isTrue, reason: 'its run holds the lock');
       expect(young.existsSync(), isFalse, reason: 'the same one, settled');
-      expect(own.existsSync(), isTrue, reason: 'a POSIX lock is the process\'s');
+      expect(
+        own.folder.existsSync(),
+        isTrue,
+        reason: "a POSIX lock is the process's",
+      );
+      own.end();
       for (final other in others) {
         expect(other.existsSync(), isTrue, reason: other.path);
       }

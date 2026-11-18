@@ -1,0 +1,370 @@
+//! Windows: Media Foundation's Source Reader, asked for the decoder's own
+//! NV12 for every document — which comes as the file holds it (🔬Surface,
+//! 2026-11-15: a red written 200·60·30 came back Y 101 · Cb 94 · Cr 191,
+//! the colour law's own sum) — and made RGB, where a document hands RGBA,
+//! by the law (`colour::Sums`). ↩️It asked RGB32 of the reader's advanced
+//! video processing till 2026-11-16, and the colour was Media Foundation's
+//! (card movie-frames-come-as-their-yuv-to-the-engine). A whole file goes
+//! through its URL; a span through media's one byte stream
+//! (`span_stream`), plain or framed.
+
+use std::ffi::CStr;
+
+use media::iso_box;
+use media::media_foundation::span_stream;
+use media::span::Span;
+use windows::Win32::Media::MediaFoundation::*;
+use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+use windows::Win32::System::Variant::{VT_I8, VT_UI8};
+use windows::core::{GUID, PCWSTR};
+
+use super::{Opened, PAST_THE_END, Pixels, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use crate::colour::media_foundation::colours_of;
+use crate::colour::{self, Colours, Decoded};
+use crate::movie_box;
+
+pub const SUPPORTED: bool = true;
+
+/// Media Foundation's ticks: 100 ns.
+const TICKS: i64 = 10_000_000;
+
+/// How far before the presentation's end the video's last samples are
+/// looked for, and how many are read at most before giving up on them.
+const TAIL: i64 = 20_000_000;
+const TAIL_READS: usize = 100_000;
+
+/// How many samples a read walks toward its frame before it gives up.
+const WALK: usize = 600;
+
+/// The largest movie box read whole to find where the pictures start
+/// ([`pictures_start`]). A box that says it is larger is not read: it is
+/// the memory, not the movie, that it would cost. ⚠️Estimated, not
+/// measured: three hours at 60 a second keep their tables in tens of MiB.
+const MOVIE_BOX_READ: u64 = 256 << 20;
+
+const VIDEO: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+
+/// The platform's own state for one movie: the reader, the size it stores, and
+/// how Media Foundation lays out its rows.
+pub struct Reader {
+    reader: IMFSourceReader,
+    stored: (usize, usize),
+    layout: Layout,
+    /// Where the pictures start on the reader's clock ([`pictures_start`]):
+    /// frame 0's stamp, which every time asked of it is counted from.
+    start: i64,
+}
+
+/// How Media Foundation lays a decoded frame out — read again whenever the
+/// reader says its type changed ([`Layout::of`]).
+#[derive(Clone, Copy)]
+struct Layout {
+    /// The row pitch, whichever way the rows run.
+    stride: usize,
+    /// A negative stride in the media type: the LAST row is stored first.
+    bottom_up: bool,
+    /// The rows a frame's buffer holds before its chroma (NV12): the coded
+    /// height, which can pass the picture's.
+    rows: usize,
+}
+
+impl Layout {
+    /// What `current`, the reader's output type, says — the stride a luma
+    /// row would have where it names none.
+    ///
+    /// 🔬A 1920×1080 H.264 movie read as NV12 says 1920×1080 at first, and
+    /// with its first sample the type changes to 1920×1088 — its coded
+    /// rows — and the picture 1080 of them (its minimum display aperture;
+    /// measured on Surface, 2026-11-15). ↩️RGB32, asked till 2026-11-16, was
+    /// cut to the picture by the conversion, and was never seen to change.
+    fn of(current: &IMFMediaType, stored: (usize, usize)) -> Layout {
+        // SAFETY (each): reading an attribute of a live type.
+        let (_, rows) = halves(unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0));
+        let stride =
+            unsafe { current.GetUINT32(&MF_MT_DEFAULT_STRIDE) }.map_or(stored.0 as i32, |stride| stride as i32);
+        Layout { stride: stride.unsigned_abs() as usize, bottom_up: stride < 0, rows: (rows as usize).max(stored.1) }
+    }
+}
+
+// SAFETY: the source reader is a free-threaded MF object; a movie's is opened
+// on the caller's thread and then called only from its reading thread
+// (`reading.rs`), one call at a time.
+unsafe impl Send for Reader {}
+
+impl Reader {
+    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, _pixels: Pixels) -> Result<(Reader, Opened), Why> {
+        let Some(wide) = media::path::wide(path) else { return Err("path is not valid UTF-8".into()) };
+        if !media::media_foundation::up() {
+            return Err("MFStartup failed".into());
+        }
+        // ENABLE_ADVANCED_VIDEO_PROCESSING is what lets NV12 be asked of a
+        // decoder that hands another layout (4:2:2, ten bits) — without it
+        // the reader refuses (⚠️not measured: every movie the tests write is
+        // 4:2:0). ↩️It was what let RGB32 be asked of a YUV source, which
+        // this reader asked till 2026-11-16 — the colour was Media
+        // Foundation's then, and the law's now (`colour::Sums`).
+        let mut attributes = None;
+        // SAFETY (each MF call below): a plain COM call on live objects.
+        unsafe { MFCreateAttributes(&mut attributes, 1) }.map_err(|_| "MFCreateAttributes failed")?;
+        let attributes = attributes.ok_or("MFCreateAttributes failed")?;
+        let _ = unsafe { attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1) };
+        // ⛔The URL form is not a shortcut kept for its own sake: Media
+        // Foundation opening a file itself is faster and better tested than
+        // anything wrapped around one. The stream exists where there is no
+        // file to name.
+        let reader = match span {
+            Some((offset, length, framed)) => {
+                let span = Span::open(path, offset, length, framed).ok_or("that span does not hold a readable movie")?;
+                unsafe { MFCreateSourceReaderFromByteStream(&span_stream::open(span), &attributes) }
+            }
+            None => unsafe { MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attributes) },
+        }
+        .map_err(|_| "this file has no readable video stream")?;
+        // Only the video: audio left selected comes back from every read and
+        // is skipped past on every seek.
+        let _ = unsafe { reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false) };
+        let _ = unsafe { reader.SetStreamSelection(VIDEO, true) };
+        // Measured while the reader has no output type: a sample read now is
+        // the stored bytes, and decodes nothing.
+        let presentation = presentation(&reader);
+        let video_end = video_end(&reader, presentation);
+        // What the FILE says its pictures are — the stored type's, which
+        // the container and the stream fill in (🔬a movie this app wrote
+        // names all four there; `tone_with_video.mp4` names none).
+        let colours =
+            unsafe { reader.GetNativeMediaType(VIDEO, 0) }.map_or(Colours::NONE, |stored| colours_of(&stored));
+
+        let wanted = unsafe { MFCreateMediaType() }.map_err(|_| "MFCreateMediaType failed")?;
+        let _ = unsafe { wanted.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) };
+        let _ = unsafe { wanted.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12) };
+        ask_for_the_stored_rate(&reader, &wanted);
+        unsafe { reader.SetCurrentMediaType(VIDEO, None, &wanted) }.map_err(|_| "no NV12 from this codec")?;
+        let current =
+            unsafe { reader.GetCurrentMediaType(VIDEO) }.map_err(|_| "the reader would not describe its output")?;
+        let (width, height) = halves(unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0));
+        let (num, den) = halves(unsafe { current.GetUINT64(&MF_MT_FRAME_RATE) }.unwrap_or(0));
+        // 🚨MF_MT_VIDEO_ROTATION is an MFVideoRotationFormat, whose values ARE
+        // the clockwise angle in degrees. Absent is none.
+        let rotation = unsafe { current.GetUINT32(&MF_MT_VIDEO_ROTATION) }.unwrap_or(0);
+
+        // 🚨★★★**THE PRESENTATION IS AS LONG AS ITS LONGEST TRACK, AND THAT IS
+        // ALMOST NEVER THE VIDEO**: AAC ends tens of ms past the last picture,
+        // and counted, that is a frame with no picture in it (유저 2026-08-31
+        // 「72프레임짜리 비디오인데 73프레임째의 빈 화면」). The video's own
+        // samples say where it ends; ⛔where they do not, the presentation
+        // keeps the old count rather than none. Their end is on the reader's
+        // clock, and the movie runs from where its pictures start there.
+        let start = pictures_start(path, span);
+        let length = if video_end > 0 { video_end - start } else { presentation };
+        let opened = Opened {
+            stored_width: width as i32,
+            stored_height: height as i32,
+            colours,
+            decodes: Pixels::Nv12,
+            rotation: rotation as i32,
+            // Media Foundation hands the rate over as a ratio already — the
+            // one backend with nothing to reconstruct.
+            rate: Rate::Fraction(num as i32, den as i32),
+            length: (length, TICKS),
+        };
+        let stored = (width as usize, height as usize);
+        let layout = Layout::of(&current, stored);
+        Ok((Reader { reader, stored, layout, start }, opened))
+    }
+
+    /// Moves the reader to `index`'s time on the movie's own clock — never
+    /// past it: the read walks on to its picture by its stamp.
+    ///
+    /// 🚨**NOT TO THE STAMP THE PICTURE WEARS** ([`pictures_start`]). The
+    /// stamps run late by where the pictures start, and the presentation's
+    /// length does not: a seek past that length is refused (🔬2026-11-17,
+    /// `0xC00D36E5` for 1.0417 s in a 1 s movie two frames late), and its
+    /// last two frames could not be asked for. At the movie's own time the
+    /// seek lands no later than the picture, a keyframe before it.
+    pub fn reposition(&mut self, index: i64, rate: (i32, i32)) -> Result<(), Why> {
+        let position = position(ticks_at(index, TICKS, rate));
+        // ⚠️Its answer is not asked, as the C did not: a seek Media
+        // Foundation refuses leaves the read below to walk from where it is,
+        // and that walk says whether the frame was reached.
+        // SAFETY: a plain COM call; the position outlives it.
+        let _ = unsafe { self.reader.SetCurrentPosition(&GUID::zeroed(), &position) };
+        Ok(())
+    }
+
+    /// Walks forward to the picture for `index` and writes it at the stored
+    /// size, as NV12 padded even ([`Self::copy_nv12`]).
+    pub fn read(&mut self, index: i64, rate: (i32, i32), out: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
+        let target = self.start + ticks_at(index, TICKS, rate);
+        let frame = frame_ticks(TICKS, rate);
+        for _ in 0..WALK {
+            let (mut flags, mut stamp, mut sample) = (0, 0, None);
+            // SAFETY: a plain COM call; the out-parameters are this frame's.
+            unsafe { self.reader.ReadSample(VIDEO, 0, None, Some(&mut flags), Some(&mut stamp), Some(&mut sample)) }
+                .map_err(|_| "the reader failed mid-stream")?;
+            alive();
+            if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+                return Err(PAST_THE_END.into());
+            }
+            if flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0 {
+                // SAFETY: a plain COM call.
+                let current = unsafe { self.reader.GetCurrentMediaType(VIDEO) }
+                    .map_err(|_| "the reader would not describe its output")?;
+                self.layout = Layout::of(&current, self.stored);
+            }
+            // None is a gap or a format change: keep reading.
+            let Some(sample) = sample else { continue };
+            if sample_reaches(stamp, target, frame) {
+                return self.copy(&sample, out);
+            }
+        }
+        Err("no picture reached that frame".into())
+    }
+
+    fn copy(&self, sample: &IMFSample, out: &mut [u8]) -> Result<(), Why> {
+        // SAFETY (each): a plain COM call on live objects.
+        let buffer = unsafe { sample.ConvertToContiguousBuffer() }.map_err(|_| "the decoded frame has no buffer")?;
+        let (mut data, mut length) = (std::ptr::null_mut(), 0);
+        unsafe { buffer.Lock(&mut data, None, Some(&mut length)) }.map_err(|_| "the decoded frame would not lock")?;
+        // SAFETY: the locked buffer holds `length` bytes until Unlock.
+        let source = unsafe { std::slice::from_raw_parts(data, length as usize) };
+        let wrote = self.copy_nv12(source, out);
+        let _ = unsafe { buffer.Unlock() };
+        wrote
+    }
+
+    /// The decoder's NV12 as it is, padded even (`colour::nv12_of`). NV12
+    /// is laid top-down: a type that says otherwise is refused rather than
+    /// read upside down.
+    fn copy_nv12(&self, source: &[u8], nv12: &mut [u8]) -> Result<(), Why> {
+        let ((width, height), Layout { stride, bottom_up, rows }) = (self.stored, self.layout);
+        let frame = Decoded::in_one_buffer(source, stride, rows, true);
+        if bottom_up || !colour::nv12_of(&frame, width, height, nv12) {
+            return Err("the decoded frame was short".into());
+        }
+        Ok(())
+    }
+}
+
+/// A packed attribute's two halves, high word first — what `MFGetAttributeSize`
+/// and `MFGetAttributeRatio` unpack.
+fn halves(packed: u64) -> (u32, u32) {
+    ((packed >> 32) as u32, packed as u32)
+}
+
+/// A position in 100 ns, as `SetCurrentPosition` takes one.
+fn position(ticks: i64) -> PROPVARIANT {
+    let mut position = PROPVARIANT::default();
+    // SAFETY: the zeroed variant's tagged member, the one every member but
+    // `decVal` sits in; the tag written below names the integer written.
+    let fields = unsafe { &mut *position.Anonymous.Anonymous };
+    fields.vt = VT_I8;
+    fields.Anonymous.hVal = ticks;
+    position
+}
+
+/// The presentation's length in 100 ns — as long as its LONGEST track,
+/// which is seldom the video. 0 when it does not say.
+fn presentation(reader: &IMFSourceReader) -> i64 {
+    // SAFETY: a plain COM call.
+    let source = MF_SOURCE_READER_MEDIASOURCE.0 as u32;
+    let Ok(duration) = (unsafe { reader.GetPresentationAttribute(source, &MF_PD_DURATION) }) else { return 0 };
+    // SAFETY: reading the member the variant's own tag names.
+    unsafe {
+        let duration = &duration.Anonymous.Anonymous;
+        if duration.vt == VT_UI8 { duration.Anonymous.uhVal as i64 } else { 0 }
+    }
+}
+
+/// Where the pictures start on the reader's clock, in 100 ns: where the
+/// video track's edit list says its media starts
+/// ([`movie_box::media_start`]). 0 where the movie says nothing, or is not
+/// an ISO or QuickTime movie.
+///
+/// 🚨★★★**MEDIA FOUNDATION PLAYS NO EDIT LIST** (card
+/// video-frame-count-two-past, measured 2026-11-17 on the main PC as the
+/// Surface saw it 11-07): a movie x264 wrote with its B-frames stores its
+/// first picture two frames into its media and its list says so, and every
+/// stamp the reader handed back was two frames late — 240 frames counted
+/// 242, and a frame read after a jump was the one two before it (120 showed
+/// 118). The sound is read so too (native/audio `os/media_foundation.rs`:
+/// an edit list's 1,024 came back as 1,024 frames before the sound), and
+/// where it starts is the file's to say there as here.
+fn pictures_start(path: &CStr, span: Option<(i64, i64, bool)>) -> i64 {
+    let said = || -> Option<i64> {
+        let mut movie = match span {
+            Some((offset, length, framed)) => Span::open(path, offset, length, framed)?,
+            None => {
+                let length = std::fs::metadata(media::path::file(path)?).ok()?.len();
+                Span::open(path, 0, i64::try_from(length).ok()?, false)?
+            }
+        };
+        let read_at = |movie: &mut Span, at: u64, out: &mut [u8]| movie.read(at as i64, out) == Some(out.len());
+        let (at, size) = movie_box::moov_in(movie.size() as u64, |at, head| read_at(&mut movie, at, head))?;
+        if size > MOVIE_BOX_READ {
+            return None;
+        }
+        let mut moov = vec![0u8; size as usize];
+        if !read_at(&mut movie, at, &mut moov) {
+            return None;
+        }
+        let whole = iso_box::atom(&moov, 0, moov.len())?;
+        let trak = movie_box::track(&moov, &whole, b"vide")?;
+        let scale = movie_box::scale(&moov, &iso_box::find(&moov, trak.body, trak.end, &[b"mdia", b"mdhd"])?)?;
+        let ticks = i128::from(movie_box::media_start(&moov, &trak)?) * i128::from(TICKS);
+        i64::try_from((ticks + i128::from(scale / 2)) / i128::from(scale)).ok()
+    };
+    said().unwrap_or(0)
+}
+
+/// Where the VIDEO ends, in 100 ns: the end of its last sample, read from a
+/// little before `presentation`'s end — a seek and a few seconds of samples,
+/// none decoded while the reader has no output type. 0 when they do not say.
+///
+/// 🚨★★★**MEDIA FOUNDATION DOES NOT ANSWER 「HOW LONG IS THE VIDEO」**: no
+/// source has ever answered the video stream's `MF_PD_DURATION` (검증
+/// 2026-10-23, windows-counts-a-movie-by-its-longest-track — refused for a
+/// `.mov` and an `.mp4` alike). The samples are what says.
+fn video_end(reader: &IMFSourceReader, presentation: i64) -> i64 {
+    let from = position((presentation - TAIL).max(0));
+    // SAFETY (each): a plain COM call; the out-parameters are this loop's.
+    if unsafe { reader.SetCurrentPosition(&GUID::zeroed(), &from) }.is_err() {
+        return 0;
+    }
+    let mut end = 0;
+    for _ in 0..TAIL_READS {
+        let (mut flags, mut stamp, mut sample) = (0, 0, None);
+        let read = unsafe { reader.ReadSample(VIDEO, 0, None, Some(&mut flags), Some(&mut stamp), Some(&mut sample)) };
+        if read.is_err() {
+            return 0;
+        }
+        if let Some(sample) = sample {
+            let length = unsafe { sample.GetSampleDuration() }.unwrap_or(0);
+            end = end.max(stamp + length);
+        }
+        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            return end;
+        }
+    }
+    // ⛔Out of reads before the end: what was read is not where it ends.
+    0
+}
+
+/// Asks the conversion for pictures at the rate the FILE stores, and leaves
+/// it to choose where the file names none.
+///
+/// 🚨★★★**LEFT TO CHOOSE, THE CONVERSION TAKES THE DECODER'S RATE, AND A
+/// DECODER MAY WORK ITS OWN OUT**: the MPEG-4 Part 2 decoder calls a stream
+/// stored at 23.976 10000000/417188 and the conversion stamps every picture
+/// on that clock (검증 2026-10-23, movie-23976-mpeg4-part2-asks-no-speed — a
+/// 12-frame movie counted 11). ⚠️0/0 names none: asked for, it comes back
+/// 0/0 from the conversion too (measured 2026-10-23).
+fn ask_for_the_stored_rate(reader: &IMFSourceReader, wanted: &IMFMediaType) {
+    // SAFETY (each): a plain COM call on live objects.
+    let Ok(stored) = (unsafe { reader.GetNativeMediaType(VIDEO, 0) }) else { return };
+    if let Ok(packed) = unsafe { stored.GetUINT64(&MF_MT_FRAME_RATE) }
+        && halves(packed).0 != 0
+        && halves(packed).1 != 0
+    {
+        let _ = unsafe { wanted.SetUINT64(&MF_MT_FRAME_RATE, packed) };
+    }
+}

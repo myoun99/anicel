@@ -60,8 +60,8 @@ void main() {
       final built = <String>[];
       var stacks = 0;
       var elements = 0;
-      // Far past a span (96px at the least), so the offset crosses buckets.
-      frames.single.jumpTo(frames.single.pixels + 400);
+      // Far past a span (512px at the least), so the offset crosses buckets.
+      frames.single.jumpTo(frames.single.pixels + 1200);
       debugOnRebuildDirtyWidget = (element, _) {
         elements += 1;
         switch (element.widget) {

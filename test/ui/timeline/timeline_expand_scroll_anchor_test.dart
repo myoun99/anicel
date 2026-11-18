@@ -43,6 +43,7 @@ void main() {
     layer('up1', attachedTo: const LayerId('base')),
     layer('up2', attachedTo: const LayerId('base')),
   ];
+  final riders = {const LayerId('up1'), const LayerId('up2')};
 
   /// The measured geometry from the hands-on repro: 28px rows over a body
   /// viewport a few rows short of the content.
@@ -67,11 +68,15 @@ void main() {
                 onLayerOpacityChanged: (_, _) {},
                 onToggleLayerTimesheet: (_) {},
                 onLayerMarkSelected: (_, _) {},
-                collapsedAttachBaseIds: collapsedIds,
-                onToggleAttachGroup: (baseId) {
-                  collapsed.value = collapsedIds.contains(baseId)
-                      ? (Set<LayerId>.from(collapsedIds)..remove(baseId))
-                      : (Set<LayerId>.from(collapsedIds)..add(baseId));
+                attachFoldedRowIds: collapsedIds,
+                // The fold takes the base's riders off the rail (I-175).
+                // Read live, as the session is: the fold lives outside
+                // [layers] here, so the base's row is kept whole across it
+                // and holds the press it was first built with.
+                onToggleGroupFold: (_, _) {
+                  collapsed.value = collapsed.value.isEmpty
+                      ? riders
+                      : const {};
                 },
               ),
               layers: layers,
@@ -89,7 +94,7 @@ void main() {
 
   Future<void> tapTwirl(WidgetTester tester) async {
     await tester.tap(
-      find.named('timeline-attach-twirl-base'),
+      find.named('timeline-attach-twirl-above-base'),
     );
     await tester.pumpAndSettle();
   }
@@ -149,7 +154,7 @@ void main() {
   testWidgets('an expand with no fold behind it also leaves the view alone', (
     tester,
   ) async {
-    final collapsed = ValueNotifier<Set<LayerId>>({const LayerId('base')});
+    final collapsed = ValueNotifier<Set<LayerId>>(riders);
     addTearDown(collapsed.dispose);
     await tester.pumpWidget(host(collapsed: collapsed));
     await tester.pumpAndSettle();

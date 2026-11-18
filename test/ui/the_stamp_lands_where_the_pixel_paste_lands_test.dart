@@ -29,8 +29,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import 'package:anicel/src/services/canvas_color_sampler.dart'
-    show surfacePixelRgba;
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -43,6 +41,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
 import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
 ///
@@ -142,7 +141,7 @@ void main() {
 
   /// [cel]'s straight RGBA at (x, y), as 0xRRGGBBAA — zero where it is clear.
   int pixel(EditorSessionManager session, String cel, int x, int y) =>
-      surfacePixelRgba(celOf(session, cel), x, y) ?? 0;
+      surfaceRgbaInPlace(celOf(session, cel), x, y) ?? 0;
 
   int alphaOf(int rgba) => rgba & 0xFF;
 
@@ -267,8 +266,8 @@ void main() {
     }
     for (var y = box.top; y < box.bottomExclusive; y += 1) {
       for (var x = box.left; x < box.rightExclusive; x += 1) {
-        final want = surfacePixelRgba(a, x, y);
-        final got = surfacePixelRgba(b, x, y);
+        final want = surfaceRgbaInPlace(a, x, y);
+        final got = surfaceRgbaInPlace(b, x, y);
         if (want != got) {
           fail('$why — at ($x, $y): $got, not $want');
         }
@@ -604,6 +603,51 @@ void main() {
     final again = workspaceOf(tester).lastStroke!;
     expect(again.canReinput, isTrue);
     again.reinput();
+    await pumpFrames(tester);
+
+    expectSamePicture(stamped, celOf(session, 'c4'), '확정, on c4');
+  });
+
+  // 2026-11-14 (board `a-selection-mask-is-built-on-the-cpu-at-every-move`,
+  // L1b-1b): the piece is no longer cut before it lands — it lands through
+  // the selection it took, and 확정 lays it down again through that one.
+  testWidgets('확정 lays the stamp down as it landed through the marquee — '
+      'cut at its feather — though the marquee is gone', (tester) async {
+    final session = await pump(tester);
+    await holdStamp(tester, squareOf(red, side: 40));
+    selectAcross(session, 0, 2);
+    await tester.pump();
+    // Where the press lands, read off a first press and taken back.
+    await press(tester);
+    final box = bitmapSurfaceContentBounds(celOf(session, 'c0'))!;
+    session.historyManager.undo();
+    await tester.pump();
+    final edge = box.left + 20;
+    marquee(
+      session,
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: (box.left - 60).toDouble(),
+          top: (box.top - 60).toDouble(),
+          right: edge.toDouble(),
+          bottom: (box.bottomExclusive + 60).toDouble(),
+        ),
+      ),
+      mask: const SelectionMaskOptions(featherPx: 4),
+    );
+    await press(tester);
+    final stamped = celOf(session, 'c0');
+    expect(
+      alphaOf(pixel(session, 'c0', edge - 1, box.top + 20)),
+      allOf(greaterThan(0), lessThan(255)),
+      reason: '⛔premise: it landed cut at the feather',
+    );
+
+    marquee(session, null);
+    session.frameRangeSelection.value = null;
+    session.selectFrameIndex(6);
+    await pumpFrames(tester);
+    workspaceOf(tester).lastStroke!.reinput();
     await pumpFrames(tester);
 
     expectSamePicture(stamped, celOf(session, 'c4'), '확정, on c4');

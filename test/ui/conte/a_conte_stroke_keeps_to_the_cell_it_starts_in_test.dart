@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/fixed_thumbnails.dart';
 import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -29,7 +30,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️H49 (유저 2026-09-30): 「그냥 선 시작한곳에따라 칸 나누자. 픽쳐칸에서
 /// 그리기시작하면 해당 레이어? 칸에서만 작동하도록. 밖으로 나가면 해당
@@ -172,10 +173,8 @@ void main() {
               ]),
               builder: (context, _) => ConteTabHost(
                 session: session,
-                thumbnails: (
-                  resolve: (cut, frame, {required shownHeight, region}) => printed,
-                  landed: const _NeverLands(),
-                  pending: () => false,
+                thumbnails: fixedThumbnails(
+                  (cut, frame, {required shownHeight, region}) => printed,
                 ),
                 viewport: seedFromRender(
                   tester,
@@ -583,7 +582,7 @@ void main() {
     final across = band.placement.pixelOf(Offset(slot.right + 55, y));
     var inked = 0;
     for (var dy = -40; dy <= 40; dy += 1) {
-      final rgba = surfacePixelRgba(
+      final rgba = surfaceRgbaInPlace(
         surface,
         across.dx.floor(),
         across.dy.floor() + dy,
@@ -645,15 +644,4 @@ class _Shot {
     final o = (device.dy.floor() * width + device.dx.floor()) * 4;
     return Color.fromARGB(rgba[o + 3], rgba[o], rgba[o + 1], rgba[o + 2]);
   }
-}
-
-/// A picture store whose one picture never changes.
-class _NeverLands implements Listenable {
-  const _NeverLands();
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
 }

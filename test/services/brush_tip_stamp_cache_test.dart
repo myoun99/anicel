@@ -114,6 +114,18 @@ void main() {
     expect(identical(cache.resolveDab(stampDab), stampDab), isTrue);
   });
 
+  // The lift leaves a width of zero as it is (`markUnderAPixel`), and a dab
+  // of no size lays nothing (`dirtyRegionForBrushDab`).
+  test('a dab of no size is left as it is, whatever its tip — not made a '
+      'speck of the smallest step', () {
+    final cache = BrushTipStampCache();
+    for (final shape in [BrushTipShape.round, BrushTipShape.square]) {
+      final none = dab(size: 0, shape: shape);
+      expect(identical(cache.resolveDab(none), none), isTrue, reason: '$shape');
+    }
+    expect(cache.entryCount, 0, reason: 'nothing was baked');
+  });
+
   test('a hard round resolved dab covers the same disc: full alpha at the '
       'center, empty outside the radius', () {
     final cache = BrushTipStampCache();
@@ -125,7 +137,7 @@ void main() {
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(
         canvasSize: const CanvasSize(width: 32, height: 32),
-        tileSize: 32,
+        tileSize: 128,
       ),
       sequence: BrushDabSequence([resolved]),
     );
@@ -159,7 +171,7 @@ void main() {
         materializeBrushDabSequenceOnBitmapSurface(
           surface: BitmapSurface(
             canvasSize: const CanvasSize(width: 64, height: 64),
-            tileSize: 64,
+            tileSize: 128,
           ),
           sequence: BrushDabSequence([BrushTipStampCache().resolveDab(dab)]),
         ).surface;

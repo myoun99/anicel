@@ -225,7 +225,11 @@ void main() {
       await tester.pumpAndSettle();
       final layer = session.activeLayer!;
       expect(layer.kind, kind, reason: 'fixture: the new row is active');
-      session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      // An fx of what the row plays: a sound row takes a sound's alone
+      // (audio-fx-grows-like-the-pros Q3).
+      session.effectsAndFx.addEffectToActiveLayer(
+        kind.playsSound ? EffectKind.equalizer : EffectKind.blur,
+      );
       await tester.pumpAndSettle();
       final effect = session.commitLayerById(layer.id)!.effects.single;
       final headerLane = effectGroupLaneId(effect.id);

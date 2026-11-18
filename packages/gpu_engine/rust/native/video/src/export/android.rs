@@ -1,6 +1,9 @@
-//! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer (`crate::ndk`).
-//! Color conversion RGBA → YUV420 happens here, in the app's colour law
-//! (`crate::colour`) — hardware encoders overwhelmingly accept
+//! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, through `ndk-sys`
+//! — the NDK's own headers, never a hand table (media's `served_span.rs`).
+//! An export's frames come as the GPU engine's NV12 and a trimmed piece's
+//! as its movie's decoder made it, each only laid (`nv12`) and named as
+//! it is (`crate::colour`); ↩️RGBA was converted here in the app's colour
+//! law till 2026-11-15. Hardware encoders overwhelmingly accept
 //! COLOR_FormatYUV420SemiPlanar; the planar variant is the fallback.
 //!
 //! 🪦The C once resolved its own NDK table, and its constants were wrong
@@ -11,13 +14,33 @@
 //! finish a file since that backend was written (#646).
 
 use std::collections::VecDeque;
-use std::ffi::{c_int, c_long};
+use std::ffi::c_int;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 
-use super::{CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
-use crate::colour::{self, Picture, Planes};
-use crate::ndk::*;
+use ndk_sys::{
+    AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM, AMEDIACODEC_CONFIGURE_FLAG_ENCODE,
+    AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED, AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED, AMEDIACODEC_INFO_TRY_AGAIN_LATER,
+    AMEDIAFORMAT_KEY_AAC_PROFILE, AMEDIAFORMAT_KEY_BIT_RATE, AMEDIAFORMAT_KEY_CHANNEL_COUNT,
+    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
+    AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, AMEDIAFORMAT_KEY_MIME, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMEDIAFORMAT_KEY_WIDTH,
+    AMediaCodec, AMediaCodec_configure, AMediaCodec_createEncoderByType, AMediaCodec_delete,
+    AMediaCodec_dequeueInputBuffer, AMediaCodec_dequeueOutputBuffer, AMediaCodec_getInputBuffer,
+    AMediaCodec_getOutputBuffer, AMediaCodec_getOutputFormat, AMediaCodec_queueInputBuffer,
+    AMediaCodec_releaseOutputBuffer, AMediaCodec_start, AMediaCodec_stop, AMediaCodecBufferInfo, AMediaFormat_delete,
+    AMediaFormat_new, AMediaFormat_setInt32, AMediaFormat_setString, AMediaMuxer, AMediaMuxer_addTrack,
+    AMediaMuxer_delete, AMediaMuxer_new, AMediaMuxer_start, AMediaMuxer_stop, AMediaMuxer_writeSampleData,
+    OutputFormat, media_status_t,
+};
+
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, H26X_TAKES_NV12, Job, bitrate, lock, set_error};
+use super::nv12;
+use crate::colour::{Colours, Planes, media_format};
+
+const AMEDIA_OK: media_status_t = media_status_t::AMEDIA_OK;
+
+/// What a codec has not filled in yet.
+const NO_INFO: AMediaCodecBufferInfo = AMediaCodecBufferInfo { offset: 0, size: 0, presentationTimeUs: 0, flags: 0 };
 
 pub const SUPPORTED: bool = true;
 
@@ -57,8 +80,6 @@ struct Writer {
     /// codec took.
     yuv: Vec<u8>,
     semi_planar: bool,
-    src_width: usize,
-    src_height: usize,
     width: usize,
     height: usize,
     fps_num: i64,
@@ -67,6 +88,8 @@ struct Writer {
     audio_samples: i64,
     sample_rate: i64,
     channels: usize,
+    /// What the pictures are named (`Job::named`).
+    colours: Colours,
 }
 
 // SAFETY: the codecs and the muxer are called one call at a time under the
@@ -143,8 +166,13 @@ impl Writer {
             );
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
+            // What the pictures are, named as every writer names them
+            // (`colour`) — the law's four, or a piece's movie's, and none
+            // that movie does not name. ⚠️Not read back on a device: none is
+            // here.
+            media_format::name(format, self.colours);
             let configured =
-                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
             if configured != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK {
                 AMediaCodec_delete(codec);
@@ -170,7 +198,7 @@ impl Writer {
             // 2 = AAC LC.
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_AAC_PROFILE, 2);
             let configured =
-                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
             if configured != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK {
                 AMediaCodec_delete(codec);
@@ -218,13 +246,13 @@ impl Writer {
     fn drain(&mut self, track: Track) -> bool {
         let codec = if track == Track::Video { self.video_codec } else { self.audio_codec };
         loop {
-            let mut info = AMediaCodecBufferInfo::default();
+            let mut info = NO_INFO;
             // SAFETY: our codec; `info` is a local.
             let index = unsafe { AMediaCodec_dequeueOutputBuffer(codec, &mut info, 0) };
-            if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER {
+            if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER as isize {
                 return true;
             }
-            if index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED {
+            if index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED as isize {
                 // SAFETY: the codec's format, handed to the muxer and deleted.
                 let added = unsafe {
                     let format = AMediaCodec_getOutputFormat(codec);
@@ -243,7 +271,7 @@ impl Writer {
                 }
                 continue;
             }
-            if index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED || index < 0 {
+            if index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED as isize || index < 0 {
                 continue;
             }
             if !self.take_output(codec, track, index as usize, &info) {
@@ -273,12 +301,11 @@ impl Writer {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| {
-        held.is_none() && job.width > 0 && job.height > 0 && job.fps_num > 0 && job.fps_den > 0 && job.channels >= 0
-    }) else {
-        set_error("video export: unsupported or bad parameters");
+    if held.is_some() {
+        set_error(BAD_OPEN);
         return false;
-    };
+    }
+    let path = job.path;
     if job.container != CONTAINER_MP4 || (job.codec != CODEC_H264 && job.codec != CODEC_HEVC) {
         set_error("video export: Android writes MP4 H.264/H.265 only");
         return false;
@@ -295,8 +322,6 @@ pub fn open(job: &Job) -> bool {
         pending: VecDeque::new(),
         yuv: vec![0; width * height * 3 / 2],
         semi_planar: true,
-        src_width: job.width as usize,
-        src_height: job.height as usize,
         width,
         height,
         fps_num: i64::from(job.fps_num),
@@ -305,6 +330,7 @@ pub fn open(job: &Job) -> bool {
         audio_samples: 0,
         sample_rate: i64::from(job.sample_rate),
         channels: job.channels as usize,
+        colours: job.named(),
     };
     // SAFETY: a NUL-terminated path; the fd is the writer's to close.
     writer.fd = unsafe { libc::open(path.as_ptr(), libc::O_CREAT | libc::O_TRUNC | libc::O_RDWR, 0o644 as libc::c_uint) };
@@ -313,7 +339,7 @@ pub fn open(job: &Job) -> bool {
         return false;
     }
     // SAFETY: an open fd, which the muxer writes and the writer closes.
-    writer.muxer = unsafe { AMediaMuxer_new(writer.fd, AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4) };
+    writer.muxer = unsafe { AMediaMuxer_new(writer.fd, OutputFormat::AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4) };
     if writer.muxer.is_null() {
         set_error("video export: the MP4 muxer could not be created");
         return false;
@@ -324,12 +350,14 @@ pub fn open(job: &Job) -> bool {
         writer.video_codec = writer.open_video_codec(mime, PLANAR, job.bitrate_bps);
         writer.semi_planar = false;
     }
+    // The size is named, not that the device has no encoder: one that
+    // exists turns a size away at configure, as the main PC's H.265 encoder
+    // did 64×48 on Windows where the probe said it had one (관제
+    // 2026-11-15, board trimmed-movie-decodes-to-nv12). ↩️「no H.265
+    // encoder on this device」.
     if writer.video_codec.is_null() {
-        set_error(if job.codec == CODEC_HEVC {
-            "video export: no H.265 encoder on this device"
-        } else {
-            "video export: no H.264 encoder accepted the frames"
-        });
+        let name = if job.codec == CODEC_HEVC { "H.265" } else { "H.264" };
+        set_error(&format!("video export: no {name} encoder accepted {width}x{height} frames"));
         return false;
     }
     if job.channels > 0 {
@@ -343,29 +371,60 @@ pub fn open(job: &Job) -> bool {
     true
 }
 
+/// Refused: this writer writes H.264 and H.265 alone, and they come as NV12
+/// ([`write_nv12`], `H26X_TAKES_NV12`) — said where a job is open and a
+/// frame handed; out of turn, refused without a word, as before. ↩️Till
+/// 2026-11-15 RGBA was made YUV 4:2:0 here in the app's colour law, the
+/// padding white.
+///
 /// # Safety
-/// `rgba` is null or holds the frame `open` was given.
+/// Nothing is read of `rgba`.
 pub unsafe fn write_frame(rgba: *const u8) -> bool {
+    if lock(&WRITER).is_some() && !rgba.is_null() {
+        set_error(H26X_TAKES_NV12);
+    }
+    false
+}
+
+/// The frame the open writer takes as NV12: the codec's, padded even.
+pub fn nv12_shape() -> Option<(usize, usize)> {
+    lock(&WRITER).as_ref().map(|writer| (writer.width, writer.height))
+}
+
+/// # Safety
+/// `bytes` is null or holds the frame `nv12_shape` says, rows `stride`
+/// bytes apart.
+pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
     let mut held = lock(&WRITER);
-    let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
+    let Some(writer) = held.as_mut().filter(|_| !bytes.is_null() && stride > 0) else {
         return false;
     };
-    let luma = writer.width * writer.height;
-    let frame_bytes = luma * 3 / 2;
-    // RGBA → YUV420 in the app's colour law (BT.601 studio range — the
-    // convention H.264 players assume for unflagged content). Pad pixels
-    // render white.
     // SAFETY: the caller's contract.
-    let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
-    let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    let (y, chroma) = writer.yuv.split_at_mut(luma);
-    let mut planes = if writer.semi_planar {
-        Planes { y, y_stride: writer.width, chroma, cb: 0, cr: 1, chroma_stride: writer.width, chroma_step: 2 }
-    } else {
-        Planes { y, y_stride: writer.width, chroma, cb: 0, cr: luma / 4, chroma_stride: writer.width / 2, chroma_step: 1 }
+    let Some(frame) = (unsafe { nv12::handed(bytes, stride as usize, writer.width, writer.height) }) else {
+        return false;
     };
-    colour::from_rgba(&picture, writer.width, writer.height, &mut planes);
+    // The bytes as they are — the engine's, or a piece's movie's: the
+    // semi-planar codec takes them row for row, the planar one with CbCr
+    // parted — no sum either way.
+    nv12::lay(&frame, &mut planes_of(writer));
+    queue(writer)
+}
 
+/// The conversion buffer as the codec lays a frame: Y, then CbCr side by
+/// side (semi-planar) or Cb's plane and Cr's (planar).
+fn planes_of(writer: &mut Writer) -> Planes<'_> {
+    let (width, luma) = (writer.width, writer.width * writer.height);
+    let (y, chroma) = writer.yuv.split_at_mut(luma);
+    if writer.semi_planar {
+        Planes { y, y_stride: width, chroma, cb: 0, cr: 1, chroma_stride: width, chroma_step: 2 }
+    } else {
+        Planes { y, y_stride: width, chroma, cb: 0, cr: luma / 4, chroma_stride: width / 2, chroma_step: 1 }
+    }
+}
+
+/// The conversion buffer handed to the codec as the next frame.
+fn queue(writer: &mut Writer) -> bool {
+    let frame_bytes = writer.width * writer.height * 3 / 2;
     // SAFETY: our codec; an input buffer is filled within its capacity and
     // queued once.
     unsafe {
@@ -441,7 +500,7 @@ fn signal_end(codec: *mut AMediaCodec) {
     unsafe {
         let input = AMediaCodec_dequeueInputBuffer(codec, INPUT_WAIT_US);
         if input >= 0 {
-            AMediaCodec_queueInputBuffer(codec, input as usize, 0 as c_long, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+            AMediaCodec_queueInputBuffer(codec, input as usize, 0, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
         }
     }
 }
@@ -463,7 +522,7 @@ pub fn finish() -> bool {
         if !writer.audio_codec.is_null() && !writer.drain(Track::Audio) {
             break;
         }
-        let mut info = AMediaCodecBufferInfo::default();
+        let mut info = NO_INFO;
         // SAFETY: our codec; `info` is a local.
         let index = unsafe { AMediaCodec_dequeueOutputBuffer(writer.video_codec, &mut info, 10_000) };
         if index >= 0 {
@@ -474,7 +533,7 @@ pub fn finish() -> bool {
             }
             continue;
         }
-        if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER {
+        if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER as isize {
             break;
         }
     }

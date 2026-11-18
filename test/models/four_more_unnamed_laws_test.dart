@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -100,6 +102,18 @@ void main() {
         endsWith('/anicel/Sessions/snap.anicel'),
       );
     });
+
+    test('🚨the app\'s own folder, where the platform hands one, is the '
+        'base — Android names none in the environment, and the temp '
+        'directory it fell to is emptied by every update of the app', () {
+      addTearDown(() => platformAppSupportBase = null);
+      platformAppSupportBase = '/data/user/0/com.myoun.anicel/files';
+
+      expect(
+        appSupportFilePath('Settings/ui_scale.json'),
+        '/data/user/0/com.myoun.anicel/files/anicel/Settings/ui_scale.json',
+      );
+    });
   });
 
   group('a committed stroke bills only what it still HOLDS', () {
@@ -119,8 +133,12 @@ void main() {
           tiles: tiles,
         );
 
-    BitmapTile tile(int x, {int size = 8}) =>
-        BitmapTile.blank(size: size);
+    // Of two colours: a tile of one holds no block of its own, and would
+    // weigh nothing whoever held it (`BitmapTile.ownBytes`).
+    BitmapTile tile(int x, {int size = 8}) => BitmapTile(
+      size: size,
+      pixels: Uint8List(BitmapTile.bytesFor(size))..[3] = 255,
+    );
 
     test('the retained bytes are the tiles the LIVE surface replaced — '
         'the rest is shared with the neighbouring undo entry', () {

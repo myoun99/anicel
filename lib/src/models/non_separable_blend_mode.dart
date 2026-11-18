@@ -9,10 +9,10 @@
 /// list the six the brush already had, and a second enum carrying the same
 /// six labels would be the copy D5 took out of the separable vocabulary.
 ///
-/// 🚨NONE IS A GPU BLEND: the brush composites all six on the CPU
-/// (`brush_stroke_blend.dart`, `_ChannelMix`), and a layer in one is
-/// composed over its backdrop by the blend shader
-/// ([LayerBlendMode.needsItsBackdrop]), by the same formulas.
+/// 🚨NONE IS A `ui.BlendMode`: the engine lays a brush stroke in all six
+/// (blend.wgsl), and a layer in one is composed over its backdrop by the
+/// blend shader ([LayerBlendMode.needsItsBackdrop]), by the same formulas.
+/// ↩️The brush composited them on the CPU (`_ChannelMix`) till 2026-11-14.
 enum NonSeparableBlendMode {
   darkerColor('Darker Color'),
   lighterColor('Lighter Color'),

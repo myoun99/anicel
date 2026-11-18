@@ -2,6 +2,7 @@ import '../../models/key_range_move.dart'
     show transformKeyMarkUnion, transformKeyNameUnion;
 import '../../models/media_reference.dart';
 import '../../models/transform_pose.dart';
+import '../../models/transform_track.dart' show TransformTrack;
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
@@ -81,11 +82,10 @@ String _referenceLaneOf(String laneId) => 'reference:$laneId';
 /// stretched along one axis (a stretch fit), so it is a layer's two.
 const ScaleLaneForm referenceScaleForm = TwoScales();
 
-/// The lane rows for [reference]: the header — its keys' union, as the
-/// Transform header draws its members' — and its members while the group
-/// is twirled open: the transform lanes of its fx ([transformPropertyLanes]),
-/// valued where [poseAt] stands the picture. Null [poseAt] leaves them
-/// unvalued — a rail with no cut to read them in.
+/// The lane rows for [reference]: the header ([referenceGroupHeader]) and
+/// its members while the group is twirled open: the transform lanes of its
+/// fx ([transformPropertyLanes]), valued where [poseAt] stands the picture.
+/// Null [poseAt] leaves them unvalued — a rail with no cut to read them in.
 List<PropertyLaneRow> referencePropertyLanes(
   MediaReference reference, {
   required bool expanded,
@@ -93,17 +93,7 @@ List<PropertyLaneRow> referencePropertyLanes(
 }) {
   final fx = reference.fx;
   return [
-    PropertyLaneRow(
-      laneId: referenceGroupLaneId,
-      label: AppText.strings.tlReferenceGroup,
-      keyMarks: transformKeyMarkUnion(fx),
-      keyNames: transformKeyNameUnion(fx),
-      showsKeyNavigator: false,
-      isGroupHeader: true,
-      groupExpanded: expanded,
-      headsAGraph: true,
-      // NO bypass switch (I-68-Q1 「헤더에 fx버튼 안둠」).
-    ),
+    referenceGroupHeader(fx, expanded: expanded),
     if (expanded)
       for (final lane in transformPropertyLanes(
         fx,
@@ -114,3 +104,20 @@ List<PropertyLaneRow> referencePropertyLanes(
         if (!lane.isGroupHeader) lane,
   ];
 }
+
+/// The reference group's header: the keys of [fx] in one union, as the
+/// Transform header draws its members'.
+PropertyLaneRow referenceGroupHeader(
+  TransformTrack fx, {
+  required bool expanded,
+}) => PropertyLaneRow(
+  laneId: referenceGroupLaneId,
+  label: AppText.strings.tlReferenceGroup,
+  keyMarks: transformKeyMarkUnion(fx),
+  keyNames: transformKeyNameUnion(fx),
+  showsKeyNavigator: false,
+  isGroupHeader: true,
+  groupExpanded: expanded,
+  headsAGraph: true,
+  // NO bypass switch (I-68-Q1 「헤더에 fx버튼 안둠」).
+);

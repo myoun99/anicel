@@ -7,12 +7,11 @@
 // The law is the app's (`_overGround`, lib/src/ui/export/
 // still_image_encoders.dart): a premultiplied channel p over the ground's
 // g is p + g·(255 − a) / 255, the division flooring. The app reads p from
-// Flutter's premultiplied bytes; the frame here is straight, so p is the
-// engine's own premultiply first — the shared `premultiply8`
-// (premultiply.wgsl, qa_engine.c `qa_premultiply_pixel`), round(c·a /
-// 255). An opaque pixel is its own colour — p = c and nothing of the
-// ground —, as the app's branch for it says. Integers only: a float step
-// may be fused or reassociated on one device and not another (fill.wgsl).
+// Flutter's premultiplied bytes, as a frame the screen shows holds them
+// (frame_shown.wgsl). An opaque pixel is its own colour — p = c and
+// nothing of the ground —, as the app's branch for it says. Integers
+// only: a float step may be fused or reassociated on one device and not
+// another (fill.wgsl).
 // p <= a and g·(255 − a) / 255 <= 255 − a, so the sum is a byte.
 //
 // A GIF takes its colours the same way, with its alpha cut (①c): its
@@ -24,11 +23,12 @@
 // takes the place of. Cut at 0, none is under it and every pixel is its
 // own colour — a GIF that keeps no clear colour.
 //
-// Needs tile.wgsl, frame.wgsl and premultiply.wgsl before it.
+// Needs tile.wgsl, premultiply.wgsl and its picture's reads
+// (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame_shown.wgsl).
+  stride: u32,
   // The picture.
   width: u32,
   height: u32,
@@ -39,12 +39,19 @@ struct Params {
   ground: u32,
   // Where the alpha is cut; past 255, nowhere — its shades are laid.
   cut: u32,
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), the first row of runs this band puts, and the word of
+  // the out its binding begins on: a pass binds the rows it reads and
+  // puts (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
+  out_base: u32,
+  pad0: u32,
   pad1: u32,
   pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> rgb: array<u32>;
 
 fn byte_of(word: u32, shift: u32) -> u32 {
@@ -72,9 +79,16 @@ fn pixel(index: u32) -> vec3<u32> {
   if (index >= params.width * params.height) {
     return vec3<u32>(0u);
   }
-  let word = frame[frame_word(params.columns, index % params.width, index / params.width)];
-  let alpha = coverage(word >> 24u);
-  let premultiplied = premultiply8((word & 0xffffffu) | (alpha << 24u));
+  let x = index % params.width;
+  let y = index / params.width;
+  var premultiplied = frame_premultiplied(x, y);
+  // A cut pixel is laid whole or not at all, in the colour it was laid
+  // with: the straight one, at the cut's alpha.
+  if (params.cut <= 255u) {
+    let straight = frame_straight(x, y);
+    premultiplied = premultiply8((straight & 0xffffffu) | (coverage(straight >> 24u) << 24u));
+  }
+  let alpha = premultiplied >> 24u;
   return vec3<u32>(
     laid(premultiplied, alpha, 0u),
     laid(premultiplied, alpha, 8u),
@@ -91,7 +105,7 @@ fn over_ground_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= params.row_groups) {
     return;
   }
-  let run = id.y * params.row_groups + id.x;
+  let run = (params.first_row + id.y) * params.row_groups + id.x;
   let first = run * 4u;
   // A run past the picture's last has its words past the buffer, and a
   // store out of bounds may land anywhere in it (WGSL, invalid memory
@@ -103,7 +117,7 @@ fn over_ground_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   let b = pixel(first + 1u);
   let c = pixel(first + 2u);
   let d = pixel(first + 3u);
-  let at = run * 3u;
+  let at = run * 3u - params.out_base;
   rgb[at] = a.r | (a.g << 8u) | (a.b << 16u) | (b.r << 24u);
   rgb[at + 1u] = b.g | (b.b << 8u) | (c.r << 16u) | (c.g << 24u);
   rgb[at + 2u] = c.b | (d.r << 8u) | (d.g << 16u) | (d.b << 24u);

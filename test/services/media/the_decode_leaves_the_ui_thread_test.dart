@@ -4,11 +4,9 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -29,19 +27,9 @@ import '../../helpers/project_scratch_folder.dart';
 /// while the decode happens, so that is what is measured here — with a
 /// zero-duration timer, which is the smallest piece of 「anything」 there is.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
   tearDown(() {
     debugVideoDecodeBackend = null;
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
+    QaVideoDecoder.instance.close();
   });
 
   const movie = 'test/fixtures/tone_with_video.mp4';
@@ -100,7 +88,7 @@ void main() {
           'has to be able to run a timer while it does, because that is the '
           'brush, the scroll and the cursor',
     );
-  }, skip: skip);
+  });
 
   test('both backends produce the SAME pixels — one law, two places to run '
       'it', () async {
@@ -128,7 +116,7 @@ void main() {
       reason: 'a frame is a frame — if moving the decode changed the '
           'picture, the move is not what it claims to be',
     );
-  }, skip: skip);
+  });
 
   test('frames asked for at once come back in order, each its own', () async {
     // 🚨★★★**THE NATIVE DOCUMENT IS A POSITION.** Two reads in flight would
@@ -155,7 +143,7 @@ void main() {
     expect(together[1], orderedEquals(wanted[5]!));
     expect(together[2], orderedEquals(wanted[9]!));
     await backend.close(opened!.token);
-  }, skip: skip);
+  });
 
   test('a movie that cannot be read says so instead of hanging', () async {
     if (!readerHere()) {
@@ -177,7 +165,7 @@ void main() {
     // ⛔And the worker is still usable afterwards: one bad open must not
     // jam the queue behind it.
     expect(await backend.open(movie), isNotNull);
-  }, skip: skip);
+  });
 
   test('🚨a handle names ONE document for ever — a worker that restarts '
       'cannot hand it to another', () async {
@@ -219,13 +207,14 @@ void main() {
     expect(third.token, isNot(second.token));
     await backend.close(second.token);
     await backend.close(third.token);
-  }, skip: skip);
+  });
 
   test('🚨a request whose work THROWS is answered before the worker dies', () {
     // 🚨★★★**THE STRONGER OF THE TWO NEVER-SETTLES.** `Isolate.spawn`
-    // defaults to `errorsAreFatal: true`, and the frame arm allocates three
-    // whole frames per decode — a native scratch, a `Uint8List`, and the
-    // copy into the transfer, each 8.3 MB at 1080p and 33 MB at 4K. Those
+    // defaults to `errorsAreFatal: true`, and the frame arm allocates whole
+    // frames per decode — the copy into the transfer, and the native scratch
+    // and the room it is copied into when a frame of a new size comes, each
+    // 8.3 MB at 1080p and 33 MB at 4K. Those
     // raise (`ArgumentError('Could not allocate …')`, `OutOfMemoryError`)
     // rather than returning null, so before 2026-09-08 an out-of-memory
     // frame KILLED the worker with nobody listening: `reply.first` never
@@ -246,7 +235,11 @@ void main() {
         // 1 is the frame op. ⚠️If those constants are ever renumbered this
         // lands on the default arm, which replies without throwing — and
         // this expectation then fails loudly rather than passing on nothing.
-        (op: 1, args: (token: 0, index: 0), reply: port.sendPort),
+        (
+          op: 1,
+          args: (token: 0, index: 0, premultiplied: false),
+          reply: port.sendPort,
+        ),
         <int, QaVideoDocument>{},
         (_) => throw StateError('the decode ran out of memory'),
       ),

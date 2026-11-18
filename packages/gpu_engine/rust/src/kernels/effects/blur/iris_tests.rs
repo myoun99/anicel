@@ -1,9 +1,9 @@
 //! The iris's table on a real GPU, checked against the shape asked point
-//! by point — the app's `pastTheIris` (test/helpers/iris_truth.dart), none
-//! of the crossings iris_table.wgsl works a row out from — by hand, and
-//! against the ledger. ⚠️A centre within [`BAND`] of the edge may fall
-//! either way, as the app's own test has it
-//! (an_iris_table_covers_its_shape_test).
+//! by point ([`past_the_iris`]), none of the crossings iris_table.wgsl
+//! works a row out from — by hand, and against the ledger. ⚠️A centre
+//! within [`BAND`] of the edge may fall either way. ↩️The app asked it so
+//! too (`pastTheIris`, test/helpers/iris_truth.dart) of its own table till
+//! the Flutter chain went (the-flutter-fx-chain-is-a-second-chain).
 
 use std::f64::consts::{PI, SQRT_2};
 use std::sync::OnceLock;
@@ -103,9 +103,9 @@ fn iris(sides: u32, roundness: f64, aspect: f64, rotation: f64) -> Iris {
     }
 }
 
-/// The app's `pastTheIris`: how far the centre (dx, dy) about an iris's own
-/// lies past the edge of `iris` drawn `radius` out — less than 0 inside —
-/// asked point by point, unturned and unsqueezed, of the polygon drawn
+/// How far the centre (dx, dy) about an iris's own lies past the edge of
+/// `iris` drawn `radius` out — less than 0 inside — asked point by point,
+/// unturned and unsqueezed, of the polygon drawn
 /// `1 - roundness` as big.
 fn past_the_iris(dx: i32, dy: i32, radius: f64, iris: &Iris) -> f64 {
     let [c, s] = iris.turn;

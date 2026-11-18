@@ -281,6 +281,7 @@ void main() {
           effects: session.activeLayer!.effects,
           frameIndex: 0,
           blocks: null,
+          worn: null,
         ),
         isEmpty,
       );
@@ -294,10 +295,10 @@ void main() {
       final pixels = flatTilePixels(argb);
       return BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 8,
+        tileSize: defaultCelTileSize,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            size: 8,
+            size: defaultCelTileSize,
             pixels: pixels,
           ),
         },
@@ -506,8 +507,9 @@ void main() {
 
 /// An 8×8 tile filled with one straight-alpha ARGB colour.
 Uint8List flatTilePixels(int argb) {
-  final bytes = Uint8List(8 * 8 * 4);
-  for (var index = 0; index < 8 * 8; index += 1) {
+  const side = defaultCelTileSize;
+  final bytes = Uint8List(side * side * 4);
+  for (var index = 0; index < side * side; index += 1) {
     bytes[index * 4] = (argb >> 16) & 0xFF;
     bytes[index * 4 + 1] = (argb >> 8) & 0xFF;
     bytes[index * 4 + 2] = argb & 0xFF;

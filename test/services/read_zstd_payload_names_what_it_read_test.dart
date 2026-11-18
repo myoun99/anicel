@@ -9,10 +9,11 @@ import 'package:anicel/src/services/persistence/zstd_payload.dart';
 /// `project_tree_editor_test.dart`.
 void main() {
   group('readZstdPayload', () {
-    test('🚨with no engine it is a FormatException NAMING what could not be '
-        'read — "no engine" is something the user can act on, and it must '
-        'not reach the screen as "corrupt"', () {
-      // The engine is optional at runtime, and this test bench has none.
+    // ↩️Until the connection round (connection-round-checklist H) this was
+    // the bench with no engine, whose answer had to say "no engine" and not
+    // "corrupt": the engine's compressor ships with the app now.
+    test('🚨bytes that are no frame it can read are a FormatException NAMING '
+        'what could not be read', () {
       expect(
         () => readZstdPayload(
           Uint8List.fromList([1, 2, 3]),

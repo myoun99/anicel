@@ -1,3 +1,4 @@
+import '../brush_import_result.dart';
 import '../brush_preset_id_mint.dart';
 import 'dart:async';
 import 'dart:isolate';
@@ -23,14 +24,6 @@ import '../brush_tip_coverage.dart';
 import '../brush_tip_image_codec.dart';
 import '../persistence/sqlite_bytes.dart';
 import 'sut_material_tip.dart';
-
-/// Result of decoding a Clip Studio Paint `.sut`/`.sutg` brush file.
-class SutImportResult {
-  const SutImportResult({required this.presets, required this.warnings});
-
-  final List<BrushPreset> presets;
-  final List<String> warnings;
-}
 
 /// Thrown when the file cannot be read as a Clip Studio brush at all.
 class SutDecodeException extends ImportRefusal {
@@ -59,7 +52,7 @@ class SutDecodeException extends ImportRefusal {
 /// large brush file would stop the app for both (board
 /// `three-readers-copy-an-sqlite-file-their-own-way`). The tips decode here,
 /// where the engine is.
-Future<SutImportResult> decodeSutBrushFile(
+Future<BrushImportResult> decodeSutBrushFile(
   Uint8List bytes, {
   required String sourceName,
 }) async {
@@ -137,7 +130,7 @@ _SutRows _rowsOf(Database database) {
   );
 }
 
-Future<SutImportResult> _decode(
+Future<BrushImportResult> _decode(
   _SutRows rows, {
   required String sourceName,
 }) async {
@@ -286,15 +279,11 @@ Future<SutImportResult> _decode(
     );
   }
 
-  if (presets.isEmpty) {
-    throw const SutDecodeException(
-      ImportWarning(
-        'sutNothingImportable',
-        'The file contained no importable brushes.',
-      ),
-    );
-  }
-  return SutImportResult(presets: presets, warnings: warnings);
+  return BrushImportResult.orRefused(
+    presets,
+    warnings,
+    refusal: SutDecodeException.new,
+  );
 }
 
 BrushSettings _settingsFromVariant(

@@ -1,5 +1,5 @@
-// V1, the cel pixel pass (gpu-census V1 — C's `qa_cel_pixel_pass_tile`,
-// the app's `overwriteCelPixels`): the 색 편집 verbs over a cel's stored
+// V1, the cel pixel pass (gpu-census V1 — the app's
+// `overwriteCelPixels`): the 색 편집 verbs over a cel's stored
 // tiles, read from the pool's pages as they are stored — a colour under an
 // alpha of 0 included, which 픽셀 비우기 leaves there on purpose
 // (`CelPixelChannel.alpha`).
@@ -11,10 +11,9 @@
 // is above its own byte —, blended by its coverage going forward, assigned
 // as they are on an undo. What it held before goes out as runs, in walk
 // order: consecutive pixels taking part whose channel bytes are equal share
-// one. A run never crosses a tile — the app's recipe builder joins them, as
-// C's pass.
+// one. A run never crosses a tile — the app's recipe builder joins them.
 //
-// A tile is a workgroup and a row a lane, which walks it as C's loop does.
+// A tile is a workgroup and a row a lane, walking it as the app's loop does.
 // The lanes' rows are joined by lane 0, in order, into where each row's
 // pixels and runs start. The count entry puts each tile's pixels taking
 // part and runs; the apply entry, given where every tile's start among all
@@ -134,7 +133,7 @@ fn cel_incoming(at: u32) -> u32 {
 }
 
 // `older + (incoming - older) * coverage / 255`, the integer mul-div-255:
-// C's `qa_cel_pixel_blend`, the app's `_blend`.
+// the app's `_blend`.
 fn cel_blend(older: u32, incoming: u32, coverage: u32) -> u32 {
   return div255_round(incoming * coverage + older * (255u - coverage));
 }

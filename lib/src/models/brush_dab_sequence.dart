@@ -1,9 +1,10 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'brush_dab.dart';
 
 class BrushDabSequence {
   BrushDabSequence([Iterable<BrushDab> dabs = const [], this.opacity = 1.0])
-    : _dabs = List<BrushDab>.unmodifiable(dabs);
+    : _dabs = frozenList<BrushDab>(dabs);
 
   /// 🚨★F-12 — the stroke's CEILING (유저 2026-08-24: 「불투명도 낮추면
   /// 스트로크동안 dab이 겹친다고 해도 해당 불투명도 이상으로 안 진해지지

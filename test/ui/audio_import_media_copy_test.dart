@@ -147,12 +147,12 @@ void main() {
     session.dispose();
   });
 
-  test('importAudioFile hands back the source in the pool spelling', () {
+  test('importSoundOf hands back the source in the pool spelling', () {
     final session = sessionWithFakeConforms();
     final source = File('${directory.path}/voice.wav')
       ..writeAsBytesSync([1, 2, 3]);
     expect(
-      session.mediaPool.importAudioFile(source.path),
+      session.mediaPool.importSoundOf(source.path),
       source.path.replaceAll('\\', '/'),
       reason:
           'the pool is keyed by path, so a backslash spelling would be '
@@ -166,7 +166,7 @@ void main() {
     () {
       final session = sessionWithFakeConforms();
       final missing = '${directory.path}/없는파일.wav';
-      expect(session.mediaPool.importAudioFile(missing), missing.replaceAll('\\', '/'));
+      expect(session.mediaPool.importSoundOf(missing), missing.replaceAll('\\', '/'));
       session.dispose();
     },
   );

@@ -1,5 +1,6 @@
 import '../core/identity_memo.dart';
 import '../models/attached_layer_resolve.dart';
+import '../models/attached_placement.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -14,6 +15,7 @@ import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
 import '../services/commands/link_mirror.dart' show eyeMirrorRows;
 import '../services/commands/update_layer_blend_mode_command.dart';
+import '../services/commands/update_layer_attach_folds_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
@@ -90,14 +92,22 @@ class LayerController {
     return _layers.resolve(
       identity: cut,
       key: (trackSe, transition),
-      build: () => _composed(cut, trackSe, transition),
+      build: () => rowsTheTimelineShows(cut, trackSe, transition),
     );
   }
 
   final _cut = IdentityMemo<({Cut? found})>();
   final _layers = IdentityMemo<List<Layer>>();
 
-  List<Layer> _composed(Cut cut, List<Layer> trackSe, Layer? transition) {
+  /// [cut]'s rows as the timeline shows them, in its order: the cut's own
+  /// (an attached row as shown), the track's SE rows, its transition row
+  /// over the camera — what [layers] is, and what a cut switch lands on the
+  /// first of where it names none (`ActiveCutSpan.rowACutSwitchLandsOn`).
+  static List<Layer> rowsTheTimelineShows(
+    Cut cut,
+    List<Layer> trackSe,
+    Layer? transition,
+  ) {
     final cutLayers = cut.layers;
     // SYNCED attach rows join as DISPLAY clones whose timeline mirrors
     // the base through the cell links (W5) — the same read-clone pattern
@@ -412,7 +422,9 @@ class LayerController {
   ///
   /// ↩️That last sentence was not so when it was written — the attach fold
   /// was a set on the rail's view (`RailView`), undone through a command of
-  /// its own, and every reload opened it back up. It is so since F-360.
+  /// its own, and every reload opened it back up. It was so from F-360 till
+  /// I-175, which gave a base's sides a field of their own
+  /// ([setAttachFolds]).
   void toggleLayerCollapsed(LayerId layerId) => _executeInItsCut(
     layerId,
     (cutId) => UpdateLayerCollapsedCommand(
@@ -425,6 +437,20 @@ class LayerController {
       ).collapsed,
     ),
   );
+
+  /// The sides of [baseId]'s attach group folded away — [folded], every
+  /// other side open (`Layer.foldedAttaches`, I-175). Undoable, as the
+  /// folder's fold beside it is.
+  void setAttachFolds(LayerId baseId, Set<AttachedPlacement> folded) =>
+      _executeInItsCut(
+        baseId,
+        (cutId) => UpdateLayerAttachFoldsCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: baseId,
+          folded: folded,
+        ),
+      );
 
   /// Where this cut's rows' twirls are written — the property lanes and
   /// the groups among them, a track's own rows on their track.

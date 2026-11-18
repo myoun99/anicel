@@ -71,18 +71,22 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  BitmapSurface inked(int seed) => BitmapSurface(
-    canvasSize: const CanvasSize(width: 16, height: 16),
-    tileSize: 8,
-    tiles: {
-      TileCoord(x: 0, y: 0): BitmapTile(
-        size: 8,
-        pixels: Uint8List.fromList([
-          for (var i = 0; i < 8 * 8 * 4; i += 1) (i * seed * 31 + seed) & 0xFF,
-        ]),
-      ),
-    },
-  );
+  BitmapSurface inked(int seed) {
+    const side = defaultCelTileSize;
+    return BitmapSurface(
+      canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: side,
+          pixels: Uint8List.fromList([
+            for (var i = 0; i < side * side * 4; i += 1)
+              (i * seed * 31 + seed) & 0xFF,
+          ]),
+        ),
+      },
+    );
+  }
 
   /// What a save hands over beside its cels: one of each kind it carries —
   /// a medium, a sound converted for playback and a font — each big enough

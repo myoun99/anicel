@@ -180,7 +180,7 @@ PsPattern? _readPatternRecord(PhotoshopByteReader record) {
 /// filter minifies a coverage map, and there is one of it: this hands
 /// coverage to [brushTipMaskFromCoverage] like the image decoder and the
 /// cut-piece tip do.
-BrushTipMask brushTipMaskFromPattern(
+Future<BrushTipMask> brushTipMaskFromPattern(
   PsPattern pattern, {
   required String id,
 }) {

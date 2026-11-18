@@ -1,21 +1,23 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuEngine;
 
 import '../diagnostics/memory_census.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_gpu_settings.dart';
+import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
 import '../session/editor_app_settings.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
 import 'usage_stats_switch_row.dart';
 
 /// Preferences ▸ System: the live runtime-path report — which
-/// implementation each switchable subsystem is ACTUALLY running (native
-/// engine vs Dart fallback, OS codecs vs ffmpeg, Wintab vs plain
-/// pointer events).
+/// implementation each switchable subsystem is ACTUALLY running (OS codecs
+/// vs ffmpeg, Wintab vs plain pointer events).
 ///
 /// User rule (07-22): every runtime-selected path that changes behavior
 /// on a real device is listed here, with searchable technology names, so
@@ -29,7 +31,9 @@ import 'usage_stats_switch_row.dart';
 /// app」, rather than a tab of its own for one row. And the GPU choice
 /// ([GpuPreferenceRow] — 유저 「설정의 시스템같은데서」, board
 /// `gpu-choice-in-preferences`): which GPU the app runs on is this tab's
-/// question too.
+/// question too — and under it what a GPU fx plugin may spend on it
+/// ([FxPluginShareRow], an-endless-plugin-stalls-the-app-Q13 「GPU 고르기
+/// 줄 바로 아래」).
 class SystemStatusSection extends StatelessWidget {
   const SystemStatusSection({
     super.key,
@@ -54,6 +58,7 @@ class SystemStatusSection extends StatelessWidget {
       children: [
         UsageStatsSwitchRow(usageStats: appSettings.usageStats),
         GpuPreferenceRow(appSettings: appSettings),
+        FxPluginShareRow(appSettings: appSettings),
         const SizedBox(height: 10),
         Text(
           AppText.strings.systemStatusHelp,
@@ -103,6 +108,7 @@ class GpuPreferenceRow extends StatelessWidget {
 
   static const pickerKey = 'settings-gpu-preference';
   static const nextLaunchKey = ValueKey<String>('settings-gpu-next-launch');
+  static const inUseKey = ValueKey<String>('settings-gpu-in-use');
 
   @override
   Widget build(BuildContext context) =>
@@ -124,6 +130,28 @@ class GpuPreferenceRow extends StatelessWidget {
                 labelOf: _labelOf,
                 onPicked: AppGpu.choosableHere ? _pick : null,
               ),
+              // 🗣️show-the-gpu-the-app-runs-on (유저 2026-11-16): 「gpu는
+              // 밑에 오디오 임포트 디코더 카드 이런거말고 GPU고르는곳에 두자.
+              // 그래야 잘보이니까」 — the adapter this run draws on, by the
+              // name the engine opened it under (it follows the one Flutter
+              // took, app_gpu_settings.dart), here under the choice rather
+              // than in the runtime path report. Its place stands while the
+              // engine is still opening.
+              SettingsRow(
+                label: strings.gpuInUseLabel,
+                control: SizedBox(
+                  width: SettingsPickerRow.width,
+                  child: ValueListenableBuilder<GpuEngine?>(
+                    valueListenable: appGpuEngineOpen,
+                    builder: (context, engine, _) => EllipsisText(
+                      engine?.adapterName ?? '',
+                      key: inUseKey,
+                      maxLines: 1,
+                      textAlign: TextAlign.end,
+                    ),
+                  ),
+                ),
+              ),
               Text(
                 started != null && settings.preference != started
                     ? strings.gpuPreferenceNextLaunch
@@ -137,7 +165,9 @@ class GpuPreferenceRow extends StatelessWidget {
       );
 
   void _pick(AppGpuPreference preference) =>
-      appSettings.setGpuSettings(AppGpuSettings(preference: preference));
+      appSettings.setGpuSettings(
+        AppGpu.settings.value.copyWith(preference: preference),
+      );
 
   /// What the row's tooltip says here: what the choice is where it can be
   /// made, and why it cannot where it cannot.
@@ -156,6 +186,47 @@ class GpuPreferenceRow extends StatelessWidget {
     AppGpuPreference.lowPower => AppText.strings.gpuPreferenceLowPower,
     AppGpuPreference.highPerformance =>
       AppText.strings.gpuPreferenceHighPerformance,
+  };
+}
+
+/// What each pixel of a GPU fx plugin's run may spend on this machine
+/// ([AppGpuSettings.pluginShare]) — a list to pick from, as the GPU's is
+/// (🗣️an-endless-plugin-stalls-the-app-Q13: 「열 배씩 … 고른다」).
+class FxPluginShareRow extends StatelessWidget {
+  const FxPluginShareRow({super.key, required this.appSettings});
+
+  final EditorAppSettings appSettings;
+
+  static const pickerKey = 'settings-fx-plugin-share';
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<AppGpuSettings>(
+        valueListenable: AppGpu.settings,
+        builder: (context, settings, _) => settingsEnumPickerRow(
+          keyValue: pickerKey,
+          label: AppText.strings.fxPluginShareLabel,
+          help: AppText.strings.fxPluginShareHelp,
+          value: settings.pluginShare,
+          values: FxPluginShare.values,
+          labelOf: _labelOf,
+          onPicked: _pick,
+        ),
+      );
+
+  void _pick(FxPluginShare share) => appSettings.setGpuSettings(
+    AppGpu.settings.value.copyWith(pluginShare: share),
+  );
+
+  static String _labelOf(FxPluginShare share) => switch (share) {
+    FxPluginShare.tenThousand => AppText.strings.fxPluginShareTenThousand,
+    FxPluginShare.hundredThousand =>
+      AppText.strings.fxPluginShareHundredThousand,
+    FxPluginShare.million => AppText.strings.fxPluginShareMillion,
+    FxPluginShare.tenMillion => AppText.strings.fxPluginShareTenMillion,
+    FxPluginShare.hundredMillion =>
+      AppText.strings.fxPluginShareHundredMillion,
+    FxPluginShare.uncut => AppText.strings.fxPluginShareUncut,
   };
 }
 

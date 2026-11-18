@@ -214,7 +214,83 @@ void main() {
     test('⛔a card the user finished after writing is nobody\'s turn', () {
       final card = cardOf(moved([work, memo], '완료'));
       expect(statusOf(card), BoardStatus.done);
-      expect(turnOf(card), (user: false, me: false));
+      expect(turnOf(card), (user: false, me: false, aiCheck: false));
+    });
+  });
+
+  // 🗣️유저 2026-11-16 (관제's chat): 「검증은 내가 수동으로 안할거야. 기본
+  // ai가 검증해줬으면하고 가끔 수동으로 내가 누를때가 있을지도 모를정도?」 —
+  // board verification-is-ai-by-default.
+  group('검증은 AI 가 기본', () {
+    const handed = '{"kind":"item","id":"W",'
+        '"note":"👤**유저 확인 필요**: 펜 느낌","ts":"2026-10-01T09:05:00"}';
+    const failed = '{"kind":"item","id":"W",'
+        '"note":"🤖**AI 검증 실패**: 그대로다","ts":"2026-10-01T09:05:00"}';
+
+    test('🚨a waiting check is the AI\'s turn, not the user\'s', () {
+      final card = cardOf([tried]);
+      expect(checksWaiting(card), hasLength(1), reason: '⛔premise');
+      expect(turnOf(card), (user: false, me: false, aiCheck: true));
+    });
+
+    test('🚨a check the AI handed to a person is on the shelf, nobody\'s '
+        'turn', () {
+      final card = cardOf([tried, handed]);
+      expect(checksWaiting(card), hasLength(1), reason: '⛔premise: it waits');
+      expect(statusOf(card), BoardStatus.verify);
+      expect(onTheShelf(card), isTrue);
+      expect(turnOf(card), (user: false, me: false, aiCheck: false));
+    });
+
+    test('⛔a check opened after that verdict is the AI\'s again — nobody has '
+        'looked at it', () {
+      final card = cardOf([tried, handed, triedAgain]);
+      expect(onTheShelf(card), isFalse);
+      expect(turnOf(card).aiCheck, isTrue);
+    });
+
+    test('⛔only 유저 확인 필요 shelves a card — a failure after the check '
+        'does not', () {
+      final card = cardOf([tried, failed]);
+      expect(checksWaiting(card), isNotEmpty, reason: '⛔premise');
+      expect(onTheShelf(card), isFalse);
+    });
+
+    test('the user\'s tick still ends a check on the shelf, as any', () {
+      final card = cardOf(plus([tried, handed], quietTick));
+      expect(statusOf(card), BoardStatus.done);
+      expect(onTheShelf(card), isFalse);
+      expect(turnOf(card), (user: false, me: false, aiCheck: false));
+    });
+
+    test('a head carries both, and the page reads them — it does not count '
+        'the checks a second time', () {
+      Map<String, Object?> headOf(List<String> lines) =>
+          boardHeads(read(lines)).firstWhere((head) => head['id'] == 'W');
+      expect(headOf([tried]), containsPair('aiCheck', true));
+      expect(headOf([tried]), containsPair('shelf', false));
+      expect(headOf([tried]), containsPair('user', false));
+      expect(headOf([tried, handed]), containsPair('aiCheck', false));
+      expect(headOf([tried, handed]), containsPair('shelf', true));
+
+      final script = boardScript();
+      expect(script, contains("['verify','검증']"));
+      expect(script, contains('return live(c) && c.user; })'));
+      expect(script, contains('return live(c) && c.aiCheck; })'));
+      expect(script, contains('return live(c) && c.shelf; })'));
+      expect(
+        script,
+        contains("{t:'원하면 확인', rows: shelf, pick: true, fold: true, "
+            "skip: ['ai']}"),
+      );
+      expect(script, contains("user: '👤원하면 확인'"));
+      expect(script, isNot(contains('c.checks > 0')));
+      expect(
+        script,
+        contains("if (S.view === 'verify' && !S.q) {"),
+        reason: '이 빌드로 시험 중 marks what 검증 is grouped by',
+      );
+      expect(script, isNot(contains("if (S.view === 'me' && !S.q) {")));
     });
   });
 
@@ -355,7 +431,7 @@ void main() {
         ),
       );
       expect(script, contains('flagsOf(c, g)'));
-      expect(script, contains('x.pick = true; out.push(x);'));
+      expect(script, contains('x.pick = true; return x;'));
       expect(script, isNot(contains("x.skip = ['check']")));
       expect(
         script,

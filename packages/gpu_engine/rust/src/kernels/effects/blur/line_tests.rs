@@ -6,10 +6,11 @@
 
 use std::sync::OnceLock;
 
-use super::super::TileRect;
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
-use super::{IDENTITY, LineBlur, LinePass, MOST_TAPS};
+use super::super::{TileRect, bands};
+use super::{IDENTITY, LineBlur, LinePass, MOST_TAPS, planes, puts};
 use crate::device::Engine;
+use crate::kernels::composite::TILE_TEXELS;
 use crate::kernels::effects::tests::rgba;
 use crate::testing::{assert_pinned, first_engine};
 
@@ -244,4 +245,115 @@ fn every_device_blurs_the_pinned_picture() {
         .flat_map(|word| word.to_le_bytes())
         .collect();
     assert_pinned("effects/line-blur", &bytes);
+}
+
+// ---- Bands ----
+
+/// `blur`, its planes in bands a binding of `room` bytes holds.
+fn blur_in(
+    plate: [i32; 4],
+    passes: &[LinePass],
+    room: u64,
+) -> Option<Blurred> {
+    let Rig { engine, blur } = rig();
+    let tiles = tiles(engine, LEDGER_TILES, pattern);
+    let out = blur.run_in(engine, &tiles, LEDGER_TILES, plate, passes, room)?;
+    Some(Blurred::read(engine, LEDGER_TILES, &out))
+}
+
+/// A pass reads from the row above its highest tap to the row below its
+/// lowest, two more each side, inside the plate: three taps 2.25 rows apart
+/// putting rows 10 to 19 land from 8.25 to 21.75 — rows 7 to 22. A quarter
+/// turn reads the rows where the columns were: on a plate of columns 40 to
+/// 49, rows 40 to 50.
+#[test]
+fn a_pass_reads_the_rows_its_taps_land_on() {
+    let down = LinePass::along([0.0, 2.25], 3);
+    assert_eq!(down.reads(WHOLE_TILE, [10, 20]), [5, 25]);
+    assert_eq!(down.reads(WHOLE_TILE, [0, 4]), [0, 9]);
+    assert_eq!(down.reads(WHOLE_TILE, [124, 128]), [119, 128]);
+    assert_eq!(down.reads(WHOLE_TILE, [7, 7]), [7, 7]);
+    let turn = about(MIDDLE, QUARTER_TURN, IDENTITY, 1);
+    assert_eq!(turn.reads(WHOLE_TILE, [10, 12]), [0, 128]);
+    assert_eq!(turn.reads([40, 0, 50, 128], [10, 12]), [38, 53]);
+}
+
+/// The last pass puts the band, each before it what the next reads; the
+/// planes hold every column of the most rows but the last's — none for a
+/// pass alone.
+#[test]
+fn the_passes_before_the_last_put_what_the_next_reads() {
+    let down = LinePass::along([0.0, 2.25], 3);
+    let across = LinePass::along([3.0, 0.0], 5);
+    let passes = [across, down, down];
+    assert_eq!(puts(&passes, WHOLE_TILE, [10, 20]), vec![[0, 30], [5, 25], [10, 20]]);
+    assert_eq!(planes(&passes, WHOLE_TILE, [10, 20]), 128 * 30 * 8);
+    assert_eq!(puts(&[down], WHOLE_TILE, [10, 20]), vec![[10, 20]]);
+    assert_eq!(planes(&[down], WHOLE_TILE, [10, 20]), 0);
+}
+
+/// Pictures of more than one pass blurred in bands, a binding holding the
+/// tiles and no more than the planes of a quarter of the plate's rows above
+/// its middle — two bands or four —, are the pictures blurred whole, byte
+/// for byte (connection-round-checklist
+/// ④): two lines, a line, a zoom and a line, and a line and a small spin —
+/// what a band's taps read past it, and what those read in turn, are worked
+/// out again as the whole works them out.
+#[test]
+fn a_picture_in_bands_is_blurred_as_it_is_whole() {
+    let zoom = about([100.25, 130.5], IDENTITY, [1.02, 0.0, 0.0, 1.02], 4);
+    let spin = LinePass {
+        taps: 5,
+        step: [0.0, 0.0],
+        centre: [10.25, 120.75],
+        first: IDENTITY,
+        each: [0.999, 0.0447, -0.0447, 0.999],
+    };
+    let along = LinePass::along;
+    let scenes = [
+        ([-100, 10, 250, 200], vec![along([3.0, 0.0], 5), along([0.0, 2.25], 3)]),
+        (LEDGER_TILES.pixels(), vec![along([0.0, 1.5], 7), zoom, along([2.0, 0.5], 3)]),
+        ([-120, 6, 200, 250], vec![along([0.0, 3.0], 4), spin]),
+    ];
+    for (plate, passes) in scenes {
+        let [_, top, _, bottom] = plate;
+        let middle = top + (bottom - top) / 2;
+        let quarter = planes(&passes, plate, [middle - (bottom - top + 3) / 4, middle]);
+        let room = quarter.max(LEDGER_TILES.tiles() * TILE_TEXELS * 4);
+        let cut = bands([top, bottom], |band| planes(&passes, plate, band) <= room);
+        let count = cut.map_or(0, |cut| cut.len());
+        assert!(count >= 2, "{plate:?}: {count} bands");
+        let whole = blur(LEDGER_TILES, plate, &passes, pattern).expect("whole");
+        let banded = blur_in(plate, &passes, room).expect("bands");
+        assert!(banded.words == whole.words, "{plate:?}: the bands put the whole's bytes");
+    }
+}
+
+/// The tiles are bound whole, a pass alone's too: a binding a byte short of
+/// them refuses the blur.
+#[test]
+fn tiles_past_a_binding_are_refused() {
+    let Rig { engine, blur } = rig();
+    let tiles = tiles(engine, LEDGER_TILES, pattern);
+    let (plate, one) = (LEDGER_TILES.pixels(), [LinePass::along([1.5, -0.5], 7)]);
+    let bytes = tiles.size();
+    assert!(blur.run_in(engine, &tiles, LEDGER_TILES, plate, &one, bytes).is_some());
+    assert!(blur.run_in(engine, &tiles, LEDGER_TILES, plate, &one, bytes - 1).is_none());
+}
+
+/// A pass alone reads the tiles and puts them, and holds no plane: it goes
+/// whole on a binding that holds the tiles and no more. A quarter turn
+/// after it reads every row for a band of one, a plane twice the tiles:
+/// refused there.
+#[test]
+fn a_pass_alone_needs_no_plane() {
+    let plate = LEDGER_TILES.pixels();
+    let one = [LinePass::along([1.5, -0.5], 7)];
+    let room = LEDGER_TILES.tiles() * TILE_TEXELS * 4;
+    let whole = blur(LEDGER_TILES, plate, &one, pattern).expect("whole");
+    let alone = blur_in(plate, &one, room).expect("a pass alone");
+    assert!(alone.words == whole.words);
+    let turned = [one[0], about([64.5, 128.5], QUARTER_TURN, IDENTITY, 1)];
+    assert_eq!(planes(&turned, plate, [0, 1]), room * 2);
+    assert!(blur_in(plate, &turned, room).is_none());
 }

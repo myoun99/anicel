@@ -150,6 +150,24 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
   );
 }
 
+/// 🗣️I-176 (유저 2026-11-16): 「앞으로 리셋버튼은 값이 바뀌어서 리셋이
+/// 작동가능하면? 유효하면 강조색되도록 … fx의 fx리셋버튼도 동일하게 무언가
+/// 값이 기본값이 아니게되면 강조색으로」 — A RESET WEARS ITS FAMILY'S ACCENT
+/// EXACTLY WHILE IT CAN BE PRESSED, and it can be pressed exactly while
+/// pressing it would change something (🗣️F-583, 유저 2026-11-11
+/// 「리셋버튼도 값 안바뀌었으면 동일하게 통일해서 비활성화」). So the accent asks
+/// nothing of its own: a reset whose press is out where nothing would change
+/// is lit where something would.
+///
+/// Every family says its accent its own way — an icon button's glyph
+/// ([IconButtonInk]), a tool setting's ground, a flyout row's word, a
+/// chip's word and edge — and every one of them asks this.
+///
+/// ⛔Not `isSelected`: that says a thing is ON, which a reset never is — one
+/// flag answering both would tell a screen reader a lit reset is selected.
+bool resetWearsAccent({required bool resets, required bool live}) =>
+    resets && live;
+
 /// An icon button's box: the app's control corner for its OWN height — a
 /// bar button and a strip button are different sizes, and the corner is a
 /// RATIO of the short axis, so each asks for its own — with the edge drawn
@@ -186,13 +204,16 @@ ShapeBorder appIconButtonShape(
 /// `RailGlyphButton`) asks it again at paint without the context — the two
 /// faces cannot come to wear different ink.
 final class IconButtonInk {
+  /// [litReset]: a reset that can be pressed, which wears the accent
+  /// ([resetWearsAccent] — the face asks it, as every reset's family does).
   IconButtonInk.of(
     BuildContext context, {
     required bool isSelected,
     required bool danger,
+    bool litReset = false,
   }) : _own = danger
            ? _dangerInk
-           : isSelected
+           : isSelected || litReset
            ? _accentInk
            : null,
        _theme = IconButtonTheme.of(context).style,
@@ -351,8 +372,8 @@ final class IconButtonInk {
 /// for the state it is in, filling its shape — painted as the face's old
 /// `DecoratedBox` painted it, by every face that tracks its own hover and
 /// press: the app's ([RenderIconButtonPressFace]) and the rail's glyph
-/// (`RenderRailGlyphFace`). At rest the overlay is null and only an
-/// outlined shape's edge is drawn.
+/// (`RenderRailGlyphFace`). At rest the overlay is null: a plain shape
+/// paints nothing, an outlined one its ground and edge ([iconButtonLayerOf]).
 final class IconButtonLayer {
   /// [onChanged] repaints the face — what a decoration calls when an image
   /// it waits for arrives.
@@ -382,6 +403,88 @@ final class IconButtonLayer {
   }
 
   void dispose() => _painter?.dispose();
+}
+
+/// An [InkWell]'s two highlights as one overlay — [focus]'s and [hover]'s,
+/// where each shows — each with its alpha in whole bytes as an
+/// `InkHighlight` fills it: the same hue over itself, so their order says
+/// nothing. Null while neither shows.
+Color? inkWellOverlay({Color? focus, Color? hover}) =>
+    [?focus, ?hover].fold<Color?>(null, (under, ink) {
+      final whole = ink.withAlpha((ink.a * 255).round());
+      return under == null ? whole : Color.alphaBlend(whole, under);
+    });
+
+/// What [IconButtonLayer] paints for a face cut to [shape] with [overlay]
+/// over it: the overlay filling the shape — or, where the shape is
+/// outlined ([appIconButtonShape]), a [SuperellipseFace] filled with the
+/// ground the button stands on and the overlay over that, its edge drawn
+/// by fills.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q11 (유저 2026-11-08): 「안쪽을 그
+/// 테두리가 놓인 바탕색으로 칠해 『채우기 둘』로 그린다」 — so an image of
+/// the button and the screen agree at its edge. Every outlined button
+/// stands on [AppColors.surface] (census 11-08: the brush settings' reset
+/// and detail on the panel's frame, the number pad's keys in its popup),
+/// and the overlay is the face's own fill, not something behind it.
+/// ⛔A button outlined on another ground wears a surface plate there —
+/// that ground is then its to say.
+/// ↩️It said so by standing on [AppColors.surface] alone until Q12: the
+/// ground is read now ([FaceGround]) — and where it is no one colour, the
+/// edge is a stroke, as it was.
+ShapeDecoration iconButtonLayerOf(
+  ShapeBorder shape,
+  Color? overlay, {
+  required Color? ground,
+}) => switch ((shape, ground)) {
+  (
+    final RoundedSuperellipseBorder edge &&
+        RoundedSuperellipseBorder(side: BorderSide(style: BorderStyle.solid)),
+    final ground?,
+  ) =>
+    SuperellipseFace(
+      color: Color.alphaBlend(overlay ?? const Color(0x00000000), ground),
+      edge: edge,
+    ),
+  _ => ShapeDecoration(shape: shape, color: overlay),
+};
+
+/// THE GROUND A FACE STANDS ON — the one colour painted under it, which an
+/// outlined face fills its inside with, its hover and its focus over that,
+/// so its edge is drawn by fills ([iconButtonLayerOf]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+/// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」). Census
+/// 11-08: the panels, the windows, the popups, the capsules and the top
+/// strip all stand on [AppColors.surface], so that is the ground where
+/// nothing says otherwise. A row that washes itself says what it is washed
+/// to, over the ground it stands on ([washedIn]); where the ground is no
+/// one colour — a row laid over the artwork, a cell carried over whatever
+/// the pointer passes — it says null, and an outlined face there draws its
+/// edge as a stroke.
+class FaceGround extends InheritedWidget {
+  const FaceGround({super.key, required this.ground, required super.child});
+
+  /// The ground below, or null where it is no one colour.
+  final Color? ground;
+
+  /// The ground [context] stands on.
+  static Color? of(BuildContext context) => switch (context
+      .dependOnInheritedWidgetOfExactType<FaceGround>()) {
+    null => AppColors.surface,
+    final scope => scope.ground,
+  };
+
+  /// [wash] laid over the ground [context] stands on — null where that is
+  /// no one colour.
+  static Color? washedIn(BuildContext context, Color wash) =>
+      switch (of(context)) {
+        final ground? => Color.alphaBlend(wash, ground),
+        null => null,
+      };
+
+  @override
+  bool updateShouldNotify(FaceGround oldWidget) => oldWidget.ground != ground;
 }
 
 /// Where the keyboard's focus is, as an icon button shows it: not on it;

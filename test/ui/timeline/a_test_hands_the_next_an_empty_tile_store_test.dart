@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -13,14 +15,18 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The timeline tile store is one per process. A test's drain can stop on a
-/// real await (a word's glyph bake) that its fake clock never finishes,
-/// with rasters still queued behind it; the next test's first request
-/// starts a drain of its own, which took the earlier test's rasters first
-/// — against that test's painter and resolvers, in this test's zone
-/// (2026-09-26: a rows test failed on a raster the test before it had
-/// queued). `flutter_test_config` empties the store after every test.
-/// ⚠️The two tests run in this order on purpose.
+/// real await (a word's first bake reads its raster back) that its fake
+/// clock never finishes, with rasters still queued behind it; the next
+/// test's first request starts a drain of its own, which took the earlier
+/// test's rasters first — against that test's painter and resolvers, in
+/// this test's zone (2026-09-26: a rows test failed on a raster the test
+/// before it had queued). `flutter_test_config` empties the store after
+/// every test. ⚠️The two tests run in this order on purpose.
+///
+/// The first holds its drain where its drawing waits, on a wait that never
+/// ends: ↩️an upload was that await until grid-on-the-engine ⑤.
 void main() {
+  setUpAll(openAppGpuEngine);
   var leftBehindAsks = 0;
   var asksWhenItEnded = -1;
 
@@ -71,10 +77,9 @@ void main() {
   testWidgets('a test that ends with its drain waiting and rasters queued…', (
     tester,
   ) async {
-    if (QaNativeEngine.instance == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
+    final store = TimelineGridTileStore.instance;
+    store.debugBeforeDrawing = () => Completer<void>().future;
+    addTearDown(() => store.debugBeforeDrawing = null);
     final leftBehind = row('left-behind', onAsk: () => leftBehindAsks += 1);
     for (var span = 0; span < 3; span += 1) {
       ask(leftBehind, span);
@@ -90,10 +95,6 @@ void main() {
   });
 
   testWidgets('…hands the next test only its own rasters', (tester) async {
-    if (QaNativeEngine.instance == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     ask(row('own'), 0);
     await tester.pump();
     expect(

@@ -138,25 +138,32 @@ class TvppBuilder {
   }
 
   /// A v12 image slot: the record zlib-wrapped in a ZCHK. [blocks] > 1
-  /// splits the record into that many separately-deflated streams laid
-  /// back to back — how real files store anything past 64KB.
-  void zchkSlot(Uint8List record, {int blocks = 1}) {
-    final streams = <int>[];
+  /// splits the record into that many separately-deflated streams, each
+  /// behind its own `100 · raw · packed` head — how real files store
+  /// anything past 64KB (every one of the 754 records of a 7751 × 4396
+  /// TVPaint 12 file walked so, 2026-11-17). [level] 0 stores a block's
+  /// bytes as they are.
+  void zchkSlot(Uint8List record, {int blocks = 1, int level = 6}) {
+    final body = <int>[];
     final per = (record.length / blocks).ceil();
+    var count = 0;
     for (var i = 0; i < record.length; i += per) {
+      count += 1;
       final end = (i + per) > record.length ? record.length : i + per;
-      streams.addAll(ZLibEncoder().convert(record.sublist(i, end)));
+      final stream = ZLibEncoder(level: level).convert(record.sublist(i, end));
+      body
+        ..addAll(_u32(100))
+        ..addAll(_u32(end - i))
+        ..addAll(_u32(stream.length))
+        ..addAll(stream);
     }
     chunk('ZCHK', [
       ...record.sublist(0, 4), // the record's own magic heads the header
       ..._u32(record.length - 8),
       ...ascii.encode('czmp'),
-      ..._u32(streams.length),
-      ..._u32(blocks),
-      ..._u32(100),
-      ..._u32(per),
-      ..._u32(streams.length),
-      ...streams,
+      ..._u32(12 + body.length), // czmp's own size, its head counted
+      ..._u32(count),
+      ...body,
     ]);
   }
 
@@ -171,11 +178,14 @@ class TvppBuilder {
   }
 
   /// [lockedTracks] are the indexes of [audio] locked in TVPaint.
+  /// [timestamp] is false as the builds of 2023 and 2025 write a clip:
+  /// with no TMST after its FCFG.
   void clipConfig({
     String cameraData = '',
     List<(String path, double offset, double volume, bool mute)> audio =
         const [],
     Set<int> lockedTracks = const {},
+    bool timestamp = true,
   }) {
     final sb = StringBuffer('\u{FEFF}[info]\ncreationos=TEST\n');
     if (audio.isNotEmpty) {
@@ -194,8 +204,27 @@ class TvppBuilder {
       sb.write('\n[cameradata]\n$cameraData');
     }
     chunk('FCFG', utf8.encode(sb.toString()));
-    chunk('TMST', List.filled(118, 0));
+    if (timestamp) {
+      chunk('TMST', List.filled(118, 0));
+    }
   }
+
+  /// The two record heads the builds of 2023 and 2025 open a clip's
+  /// property block with — a GUID of TVPaint's own and a u64 each, the
+  /// GUIDs as a file of theirs holds them (あるふぁYOU_MV, 2026-11-07).
+  void recordHeads() {
+    for (final guid in const [
+      [0x33, 0x89, 0xb8, 0x46, 0xbc, 0x40, 0x11, 0xd7, 0x9e, 0xfe],
+      [0x33, 0x87, 0xe3, 0x4a, 0xbc, 0x40, 0x11, 0xd7, 0x8e, 0xe6],
+    ]) {
+      _out.add(guid);
+      _out.add(const [0x00, 0x10, 0x5a, 0xaf, 0xaa, 0xab]);
+      _out.add(const [0, 0, 0, 0, 0, 0, 0x01, 0x48]);
+    }
+  }
+
+  /// Bytes as they are, outside any chunk.
+  void raw(List<int> bytes) => _out.add(bytes);
 
   static List<int> _u16(int v) => [(v >> 8) & 0xff, v & 0xff];
 
@@ -300,6 +329,15 @@ Uint8List srawRecord(
   /// Writes a tile-0 size the record does not actually hold, so the
   /// decoder's "the cursor has drifted" check can be driven.
   bool corruptFirstTileSize = false,
+
+  /// The thumbnail's size as the head gives it — TVPaint's 96 wide and as
+  /// tall as the canvas's shape makes it.
+  (int, int) thumbnail = (96, 67),
+
+  /// Tiles written as a copy of another — `{tile: source}` — whatever the
+  /// two hold, in the X > 0 layout: how a copy between tiles of two sizes
+  /// is driven, which no picture deduped by equality makes.
+  Map<int, int> copies = const {},
 }) {
   const tile = 64;
   final cols = (width + tile - 1) ~/ tile;
@@ -323,9 +361,11 @@ Uint8List srawRecord(
   bool tileEmpty(int t) => tileRows(t).every((row) => row.every((v) => v == 0));
 
   final body = <int>[];
-  // Thumbnail: 96×67 of transparent — content correctness of the
-  // thumbnail is TVPaint's problem, the decoder only skips it.
-  body.addAll(encodeRows([for (var y = 0; y < 67; y++) List.filled(96, 0)]));
+  // Thumbnail: transparent, its runs crossing its rows as TVPaint writes
+  // them (124 pixels a run) — what it shows is TVPaint's problem, the
+  // decoder only skips it.
+  final (thumbWidth, thumbHeight) = thumbnail;
+  body.addAll(encodeRows([List.filled(thumbWidth * thumbHeight, 0)]));
 
   List<int> u32(int v) => [
     (v >> 24) & 0xff,
@@ -343,6 +383,10 @@ Uint8List srawRecord(
     ]);
     body.addAll(tile0);
     for (var t = 1; t < total; t++) {
+      if (copies[t] case final source?) {
+        body.addAll([...u32(0), ...u32(0), ...u32(source)]);
+        continue;
+      }
       // TVPaint dedupes identical tiles into copy markers — solid fills
       // arrive this way, so the encoder must produce them for the
       // decoder's copy path to be tested at all.
@@ -408,8 +452,8 @@ Uint8List srawRecord(
   v.setUint32(4, 16 + body.length); // total-8, matching the ZCHK field
   v.setUint32(8, 64);
   v.setUint32(12, 0); // N — unused by the decoder
-  v.setUint32(16, 96);
-  v.setUint32(20, 67);
+  v.setUint32(16, thumbWidth);
+  v.setUint32(20, thumbHeight);
   record.setAll(24, body);
   return record;
 }

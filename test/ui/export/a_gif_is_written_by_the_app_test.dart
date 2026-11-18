@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:image/image.dart' as img;
 
 import 'package:anicel/src/models/export_format_selection.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -20,40 +22,12 @@ import '../../helpers/project_scratch_folder.dart';
 /// one, so every machine writes it — a picture a held drawing, shown as
 /// long as it is held.
 void main() {
-  /// Every frame made here: a run lets go of each one it is handed.
-  final made = <ui.Image>[];
-
-  tearDown(() {
-    expect(
-      [
-        for (final (index, image) in made.indexed)
-          if (!image.debugDisposed) index,
-      ],
-      isEmpty,
-      reason: 'frames still held when the run was over',
-    );
-    made.clear();
-  });
-
   const red = ui.Color(0xFFE02010);
   const green = ui.Color(0xFF10C030);
   const blue = ui.Color(0xFF2040E0);
 
-  /// A 4×2 frame, all of it [color].
-  Future<ui.Image> frame(ui.Color color) async {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawColor(color, ui.BlendMode.src);
-    final image = await recorder.endRecording().toImage(4, 2);
-    made.add(image);
-    return image;
-  }
-
-  /// [image] handed again, as the renderer hands a held frame.
-  ui.Image held(ui.Image image) {
-    final again = image.clone();
-    made.add(again);
-    return again;
-  }
+  /// A 4×2 frame on the engine, all of it [color].
+  Future<GpuShown> frame(ui.Color color) => filmFrameIn(color);
 
   /// The service, failing the test if it asks ffmpeg or an OS encoder.
   final service = VideoExportService(
@@ -98,7 +72,7 @@ void main() {
     final colors = [red, green, blue];
     final summary = await service.exportVideo(
       count: 3,
-      renderImage: (index) => frame(colors[index]),
+      renderFrame: (index) => frame(colors[index]),
       outputFilePath: file.path,
       frameRate: const ProjectFrameRate.integer(12),
       container: ExportVideoContainer.gif,
@@ -114,12 +88,13 @@ void main() {
   test('🚨a frame that is the picture before it goes in as no picture of its '
       'own: the picture is shown as long as it is held', () async {
     final file = outputIn('held.gif');
+    // The first frame handed again, as the renderer hands a frame it holds.
     final first = await frame(red);
     final last = await frame(blue);
-    final frames = [first, held(first), held(first), last];
+    final frames = [first, first, first, last];
     final summary = await service.exportVideo(
       count: 4,
-      renderImage: (index) async => frames[index],
+      renderFrame: (index) async => frames[index],
       outputFilePath: file.path,
       frameRate: ProjectFrameRate.fps24,
       container: ExportVideoContainer.gif,
@@ -139,7 +114,7 @@ void main() {
     final colors = [red, green, blue];
     await service.exportVideo(
       count: 3,
-      renderImage: (index) => frame(colors[index]),
+      renderFrame: (index) => frame(colors[index]),
       outputFilePath: file.path,
       frameRate: const ProjectFrameRate.integer(60),
       container: ExportVideoContainer.gif,
@@ -158,7 +133,7 @@ void main() {
     final file = outputIn('clear.gif');
     await service.exportVideo(
       count: 1,
-      renderImage: (_) => frame(const ui.Color(0x00000000)),
+      renderFrame: (_) => frame(const ui.Color(0x00000000)),
       outputFilePath: file.path,
       frameRate: ProjectFrameRate.fps24,
       container: ExportVideoContainer.gif,
@@ -168,13 +143,33 @@ void main() {
     expect(picturesOf(file).single.a, 255);
   });
 
+  // A GIF that keeps no clear colour cuts nothing away: a pixel a quarter
+  // covered is whole in its own colour, as one half covered or more is in
+  // a GIF that keeps one.
+  test('a GIF asked for RGB lays a pixel part covered whole, in the colour '
+      'it was laid with', () async {
+    final file = outputIn('part.gif');
+    await service.exportVideo(
+      count: 1,
+      renderFrame: (_) => frame(red.withAlpha(0x40)),
+      outputFilePath: file.path,
+      frameRate: ProjectFrameRate.fps24,
+      container: ExportVideoContainer.gif,
+      codec: ExportVideoCodec.gif,
+    );
+
+    final picture = picturesOf(file).single;
+    expect(picture, about(red));
+    expect(picture.a, 255);
+  });
+
   test('🚨cancelled mid-run, the GIF keeps the frames it got to', () async {
     final file = outputIn('stopped.gif');
     var rendered = 0;
     final colors = [red, green, blue];
     final summary = await service.exportVideo(
       count: 3,
-      renderImage: (index) {
+      renderFrame: (index) {
         rendered += 1;
         return frame(colors[index]);
       },
@@ -192,7 +187,7 @@ void main() {
   group('🗣️what a GIF is asked (「색처리든 뭐든 gif에대한 세부설정가능한거 '
       '두고싶어」)', () {
     /// A frame [width]×[height] whose pixel at (x, y) is [colorAt]'s.
-    Future<ui.Image> painted(
+    Future<GpuShown> painted(
       int width,
       int height,
       ui.Color Function(int x, int y) colorAt,
@@ -209,26 +204,26 @@ void main() {
           );
         }
       }
-      final image = await recorder.endRecording().toImage(width, height);
-      made.add(image);
-      return image;
+      return filmFrameOf(
+        await recorder.endRecording().toImage(width, height),
+      );
     }
 
     /// 64 greys, 0 to 252, a column apiece.
-    Future<ui.Image> greys() =>
+    Future<GpuShown> greys() =>
         painted(64, 2, (x, _) => ui.Color.fromARGB(255, x * 4, x * 4, x * 4));
 
-    /// The GIF at [name] of the one frame [image], as [settings] ask.
+    /// The GIF at [name] of the one frame [picture], as [settings] ask.
     Future<File> written(
       String name,
-      ui.Image image, {
+      GpuShown picture, {
       ExportGifSettings settings = const ExportGifSettings(),
       bool alpha = false,
     }) async {
       final file = outputIn(name);
       await service.exportVideo(
         count: 1,
-        renderImage: (_) async => image,
+        renderFrame: (_) async => picture,
         outputFilePath: file.path,
         frameRate: ProjectFrameRate.fps24,
         container: ExportVideoContainer.gif,
@@ -382,7 +377,7 @@ void main() {
     )!;
 
     /// More colours than a palette holds.
-    Future<ui.Image> strokes() => painted(64, 16, strokeAt);
+    Future<GpuShown> strokes() => painted(64, 16, strokeAt);
 
     /// [pixel]'s distance from what [strokes] laid there, the worst channel.
     int offBy((int, int, int, int) pixel, int x, int y) {
@@ -436,7 +431,7 @@ void main() {
         '「획이 통째로 없다」 (AI 검증 11-04)', () async {
       // White, and in its corners a red square and a blue one — 16 shades
       // each, a sixty-fourth of the picture.
-      Future<ui.Image> squares() => painted(32, 32, (x, y) {
+      Future<GpuShown> squares() => painted(32, 32, (x, y) {
         final shade = (x % 4) * 4 + y % 4;
         return x < 4 && y < 4
             ? ui.Color.fromARGB(255, 200 + shade, 40, 30)
@@ -498,7 +493,7 @@ void main() {
       final colors = [red, green, blue];
       await service.exportVideo(
         count: 3,
-        renderImage: (index) => frame(colors[index]),
+        renderFrame: (index) => frame(colors[index]),
         outputFilePath: once.path,
         frameRate: const ProjectFrameRate.integer(12),
         container: ExportVideoContainer.gif,
@@ -515,17 +510,21 @@ void main() {
 
     test('🚨asked for RGBA, a pixel under half covered is the clear colour, '
         'and the rest are opaque in the colour they were laid with', () async {
-      final image = await painted(4, 1, (x, _) => switch (x) {
+      final image = await painted(6, 1, (x, _) => switch (x) {
         0 => const ui.Color(0x00000000),
         1 => red.withAlpha(0x40),
-        2 => red.withAlpha(0xC0),
+        2 => red.withAlpha(0x7F),
+        3 => red.withAlpha(0x80),
+        4 => red.withAlpha(0xC0),
         _ => red,
       });
-      final [none, quarter, threeQuarters, whole] = pixelsOf(
+      final [none, quarter, underHalf, half, threeQuarters, whole] = pixelsOf(
         await written('clear.gif', image, alpha: true),
       );
       expect(none.$4, 0);
       expect(quarter.$4, 0);
+      expect(underHalf.$4, 0, reason: '127 is under half covered');
+      expect(half.$4, 255, reason: '128 is half covered: covered');
       expect(whole, (224, 32, 16, 255));
       expect(threeQuarters.$4, 255);
       expect(
@@ -623,7 +622,6 @@ void main() {
     final availability = ExportFormatAvailability(
       encoderResolver: () => null,
       ffmpegCheck: () async => false,
-      jpgSupported: true,
     );
     addTearDown(availability.dispose);
     expect(
@@ -652,7 +650,6 @@ void main() {
     final availability = ExportFormatAvailability(
       encoderResolver: () => encoder,
       ffmpegCheck: () async => false,
-      jpgSupported: true,
     );
     addTearDown(availability.dispose);
     expect(

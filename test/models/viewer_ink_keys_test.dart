@@ -9,7 +9,9 @@ void main() {
     path: 'C:/work/file',
     name: 'file',
     kind: kind,
-    carriedAs: carried ? mintMediaCarry('C:/work/file') : null,
+    carriedAs: carried
+        ? (token: mintMediaCarry('C:/work/file'), modified: null)
+        : null,
   );
 
   test('a file the project carries takes ink on every kind with a picture — '

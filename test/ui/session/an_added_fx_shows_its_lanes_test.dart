@@ -78,15 +78,15 @@ void main() {
   test('an S row is shown on its track, where its twirls live', () {
     final se = s.layers.firstWhere((layer) => layer.kind == LayerKind.se).id;
     s.selectLayer(se);
-    expect(s.effectsAndFx.canAddEffectToActiveLayer(EffectKind.blur),
+    expect(s.effectsAndFx.canAddEffectToActiveLayer(EffectKind.equalizer),
       isTrue,
       reason: '⛔전제',
     );
 
-    s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.equalizer);
 
-    final blur = s.commitLayerById(se)!.effects.single.id;
-    expectTwirls(se, lanes: true, groups: {effectGroupLaneId(blur)});
+    final equalizer = s.commitLayerById(se)!.effects.single.id;
+    expectTwirls(se, lanes: true, groups: {effectGroupLaneId(equalizer)});
     s.undo();
     expectTwirls(se, lanes: false);
   });

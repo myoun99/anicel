@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'exposure_instruction.dart';
 import 'frame.dart' show writtenDrawingName;
 
@@ -172,7 +173,7 @@ class CameraInstructionDef {
 /// The project-level instruction vocabulary, in display order.
 class CameraInstructionSet {
   CameraInstructionSet({required List<CameraInstructionDef> defs})
-    : defs = List.unmodifiable(defs) {
+    : defs = frozenList(defs) {
     final ids = <String>{};
     for (final def in this.defs) {
       if (!ids.add(def.id)) {

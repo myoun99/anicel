@@ -124,6 +124,7 @@ void main() {
                   resolve:
                       (cut, frame, {required shownHeight, region}) =>
                           null,
+                  noticesFor: (_) => thumbnails,
                   landed: thumbnails,
                   pending: () => false,
                 ),

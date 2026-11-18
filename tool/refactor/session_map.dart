@@ -9,7 +9,7 @@
 // future class; a field written from many is shared state that needs an
 // owner before anything can move.
 //
-//   dart run tool/refactor/session_map.dart <repoRoot> [out.json]
+//   dart tool/refactor/session_map.dart <repoRoot> [out.json]
 //
 // Resolution is by NAME (the library is one namespace, so a private name
 // is unambiguous across the host and its parts); locals and parameters

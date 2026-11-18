@@ -8,20 +8,19 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/fx_plugin_file.dart';
+
 /// I-132: a plugin's effect is ONE kind ([EffectKind.plugin]) that keeps
 /// its plugin's description — its parameters are the plugin's, read by the
 /// code that reads the app's own (Q29), and the project keeps the
 /// description so a machine without the plugin still shows its lanes
 /// (Q28).
 void main() {
-  Map<String, Object?> describing({String version = '1.0'}) => {
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': version,
-    'can': ['cpu'],
-    'params': [
+  FxPluginDescription glow({String version = '1.0'}) => fxPluginDescriptionOf(
+    'com.example.glow',
+    name: 'Glow',
+    version: version,
+    params: [
       // An id the app's brightness & contrast goes by too.
       {
         'id': 'brightness',
@@ -50,9 +49,8 @@ void main() {
         'default': 1,
       },
     ],
-  };
-  FxPluginDescription glow({String version = '1.0'}) =>
-      FxPluginDescription.fromJson(describing(version: version))!;
+  );
+  Map<String, Object?> describing() => glow().toJson();
   LayerEffect effectOf(FxPluginDescription plugin) => LayerEffect.defaults(
     id: const EffectId('fx-glow'),
     kind: EffectKind.plugin,
@@ -102,6 +100,7 @@ void main() {
       effects: [effect],
       frameIndex: 0,
       blocks: null,
+      worn: null,
     );
 
     expect(resolved, hasLength(1));
@@ -118,6 +117,7 @@ void main() {
       effects: [effect.withLayer('mask', const LayerId('matte'))],
       frameIndex: 0,
       blocks: null,
+      worn: null,
     ).single;
     expect(naming.layers, {'mask': const LayerId('matte')});
     expect(naming.namingNoRow.layers, {'mask': null});
@@ -141,6 +141,7 @@ void main() {
       effects: [effect],
       frameIndex: frame,
       blocks: null,
+      worn: null,
     ).single.parameter('brightness');
 
     expect(at(held, 3), 60);
@@ -211,8 +212,18 @@ void main() {
     expect(one.plugin, glow());
     expect(one, isNot(two));
     expect(
-      resolveLayerEffectsAt(effects: [one], frameIndex: 0, blocks: null),
-      isNot(resolveLayerEffectsAt(effects: [two], frameIndex: 0, blocks: null)),
+      resolveLayerEffectsAt(
+        effects: [one],
+        frameIndex: 0,
+        blocks: null,
+        worn: null,
+      ),
+      isNot(resolveLayerEffectsAt(
+        effects: [two],
+        frameIndex: 0,
+        blocks: null,
+        worn: null,
+      )),
     );
     expect(one.copyWith(enabled: false).plugin, one.plugin);
   });

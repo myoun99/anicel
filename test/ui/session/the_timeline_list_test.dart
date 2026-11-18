@@ -314,17 +314,18 @@ void main() {
     }
 
     BitmapSurface surfaceOf(int red) {
-      final pixels = Uint8List(256 * 256 * 4);
+      const tileSide = defaultCelTileSize;
+      final pixels = Uint8List(tileSide * tileSide * 4);
       for (var at = 0; at < pixels.length; at += 4) {
         pixels.setRange(at, at + 4, [red, 0, 0, 255]);
       }
       return BitmapSurface(
         canvasSize: s.requireActiveCut.canvasSize,
-        tileSize: 256,
+        tileSize: tileSide,
       ).putTiles([
         (
           coord: TileCoord(x: 0, y: 0),
-          tile: BitmapTile(size: 256, pixels: pixels),
+          tile: BitmapTile(size: tileSide, pixels: pixels),
         ),
       ]);
     }

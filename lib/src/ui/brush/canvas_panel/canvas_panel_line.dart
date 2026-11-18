@@ -218,21 +218,53 @@ class _CanvasPanelLine {
   /// is empty — the painter the shape tool's drag draws its line with.
   Widget ants() => IgnorePointer(
     child: RepaintBoundary(
-      child: ValueListenableBuilder<List<List<CanvasPoint>>>(
-        valueListenable: trails,
-        builder: (context, trails, _) => CustomPaint(
-          painter: SelectionAntsPainter(
-            repaint: _state._idleAnts,
-            viewport: _state._viewportState._viewport,
-            committedRegion: null,
-            screenOffset: Offset.zero,
-            marqueeShapes: const [],
-            openTrails: trails,
-            trailCarries: guideCarriesOf(_state.widget.guides),
-          ),
-          child: const SizedBox.expand(),
-        ),
+      child: ListenableBuilder(
+        listenable: Listenable.merge([trails, _state._pictureUp]),
+        builder: (context, _) {
+          final shown = _state._viewShown;
+          return CustomPaint(
+            painter: SelectionAntsPainter(
+              repaint: _state._idleAnts,
+              viewport: shown,
+              committedRegion: null,
+              screenOffset: Offset.zero,
+              marqueeShapes: const [],
+              openTrails: _endsOnTheirClocks(trails.value, shown),
+              trailCarries: guideCarriesOf(_state.widget.guides),
+            ),
+            child: const SizedBox.expand(),
+          );
+        },
       ),
     ),
   );
+
+  /// [lines] — each run from the canvas to the hand ([MarqueeDrag.path]) —
+  /// for a painter drawing through [shown], each end where its own clock
+  /// lays it (관제 2026-11-16, a-pan-moves-the-overlays-before-the-canvas
+  /// (ㄴ)): the end the line runs from stands on the canvas, drawn as the
+  /// picture stands ([PictureUpView]); the end at the hand follows the hand
+  /// as the app's cursor does — through the view as it is, where the next
+  /// stroke falls.
+  List<List<CanvasPoint>> _endsOnTheirClocks(
+    List<List<CanvasPoint>> lines,
+    CanvasViewport shown,
+  ) {
+    final now = _state._viewportState._viewport;
+    if (shown == now) {
+      return lines;
+    }
+    CanvasPoint atTheHand(CanvasPoint end) {
+      final onScreen = now.canvasToViewport(end);
+      return shown.viewportOffsetToCanvas(Offset(onScreen.x, onScreen.y));
+    }
+
+    return [
+      for (final line in lines)
+        if (line.isEmpty)
+          line
+        else
+          [...line.take(line.length - 1), atTheHand(line.last)],
+    ];
+  }
 }

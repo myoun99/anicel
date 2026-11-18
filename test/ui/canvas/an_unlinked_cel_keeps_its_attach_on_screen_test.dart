@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -33,7 +34,8 @@ import '../../helpers/pill_row_clipboard.dart';
 /// a mirror of it carrying the same picture — what the screen shows does not
 /// change, so it must not change on any frame.
 void main() {
-  const tile = 256;
+  opensTheEnginesScreens();
+  const tile = defaultCelTileSize;
 
   /// A tile of [rgba] at the cut's top-left corner.
   BitmapSurface ink(CanvasSize canvasSize, List<int> rgba) {
@@ -192,7 +194,8 @@ void main() {
     await tester.pump();
     final firstFrame = await bluePixels(tester);
     await drainWarming(tester);
-    return (shown, firstFrame, await bluePixels(tester));
+    final landed = await bluePixels(tester);
+    return (shown, firstFrame, landed);
   }
 
   testWidgets('🚨링크 독립 leaves the attach row\'s picture on the screen — on '

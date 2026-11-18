@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import 'ellipsis_text.dart';
+import 'face_ink_well.dart';
 import 'instant_tap_region.dart';
+import 'superellipse_clip.dart';
 
 /// One tab in a rail of groups down a panel's left side — the brush
 /// library's groups, and the brush detail window's (I-141-Q4, 유저
@@ -81,64 +82,57 @@ class GroupTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final face = this.face;
+    final (:edge, :fill) = chosenCellFace(colorScheme, selected: selected);
     final body = Material(
-      color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
-      shape: AppShapes.container(AppShapes.wellRadius),
-      child: InkWell(
-        mouseCursor: AppCursors.press,
+      color: Colors.transparent,
+      child: FaceInkWell(
         key: ValueKey<String>(keyValue),
+        edge: edge,
+        fill: fill,
+        margin: const EdgeInsets.symmetric(vertical: 1),
         // The switch rides the raw pointer (R10) — see the wrapper below.
         // The InkWell keeps a no-op tap so its ripple and its semantics
         // stay, the same shape the timeline cells use.
         onTap: () {},
         onDoubleTap: onDoubleTap,
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 1),
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: selected ? 1.5 : 1,
-              ),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Row(
-            children: [
-              // No fixed width: the selected tab's border is thicker, so a
-              // hard-sized box overflows it by a pixel.
-              if (face != null)
+        child: SuperellipseClip(
+          // The tab's picture — its first brush — reaches into its corners.
+          shape: edge,
+          child: Padding(
+            padding: edge.dimensions,
+            child: Row(
+              children: [
+                // No fixed width: the selected tab's border is thicker, so a
+                // hard-sized box overflows it by a pixel.
+                if (face != null)
+                  if (showName)
+                    SizedBox(width: 20, child: face)
+                  else
+                    Expanded(child: face),
                 if (showName)
-                  SizedBox(width: 20, child: face)
-                else
-                  Expanded(child: face),
-              if (showName)
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      left: face != null ? 0 : 5,
-                      right: 3,
-                    ),
-                    child: EllipsisText(
-                      label,
-                      maxLines: 1,
-                      // Group names run long — a pack keeps the file's name
-                      // — so the tail is what gives.
-                      style: TextStyle(
-                        fontSize: nameFontSize,
-                        color: selected
-                            ? colorScheme.onSurface
-                            : colorScheme.onSurfaceVariant,
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: face != null ? 0 : 5,
+                        right: 3,
+                      ),
+                      child: EllipsisText(
+                        label,
+                        maxLines: 1,
+                        // Group names run long — a pack keeps the file's name
+                        // — so the tail is what gives.
+                        style: TextStyle(
+                          fontSize: nameFontSize,
+                          color: selected
+                              ? colorScheme.onSurface
+                              : colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              if (showName) ?trailing,
-            ],
+                if (showName) ?trailing,
+              ],
+            ),
           ),
         ),
       ),

@@ -7,8 +7,8 @@ part of '../bitmap_surface_painter.dart';
 /// reaching the paint's state through `_pass` (carved out on 2026-09-16
 /// when the level blocks took the pass past the long-class line).
 ///
-/// ⛔A PRE-BLENDED overlay on the surface's own grid is not drawn here at
-/// all: its tiles REPLACE their coordinates, so they are those coordinates'
+/// ⛔A PRE-BLENDED overlay is not drawn here at all: its tiles REPLACE
+/// their coordinates, so they are those coordinates'
 /// pictures and the base pass draws them as such at every zoom
 /// (`_CoordinatePicture`, the one law of what a coordinate
 /// shows). Two draws of one coordinate is the double-density ghost.
@@ -18,11 +18,7 @@ class _OverlayPass {
   final _SurfacePaintPass _pass;
   final ActiveStrokeOverlayModel _overlay;
 
-  Paint get _overlayPaint => _pass._livePreviewPaint(
-    erase: _overlay.erase,
-    preBlended: _overlay.preBlended,
-    replacesCoords: _pass._overlayReplacesCoords,
-  );
+  Paint get _overlayPaint => _pass._livePreviewPaint(erase: _overlay.erase);
 
   void paint() {
     // The live stroke renders through the EXACT pipeline the committed
@@ -32,11 +28,12 @@ class _OverlayPass {
     // diverged from image sampling at fractional zoom). Overlay tiles
     // never overlap, so plain source-over per tile is exact. An ERASE
     // stroke draws destination-out instead: the accumulated stroke alpha
-    // removes committed pixels exactly like the commit pass will. On a
-    // mismatched grid the isolation layer is up and pre-blended tiles
-    // REPLACE (BlendMode.src) instead. The erase paint serves only overlays
-    // that don't pre-blend (hosts driving the model directly).
-    if (_pass._overlayReplacesCoords) {
+    // removes committed pixels exactly like the commit pass will. Only
+    // overlays that don't pre-blend draw here (hosts driving the model
+    // directly). ↩️On a mismatched grid pre-blended tiles were laid here
+    // too, REPLACING (BlendMode.src) in an isolation layer, till
+    // 2026-11-14.
+    if (_overlay.preBlended) {
       return;
     }
     final overlayPaint = _overlayPaint;
@@ -57,10 +54,11 @@ class _OverlayPass {
       // 🚨F-243: each tile is one image, held to its own rect wherever its
       // paint does not blend in place ([drawHeldToItsRect]) — tiles never
       // overlapping does not keep such a blend inside them. Here that is
-      // `src` (a pre-blended result off the surface's grid) or an eraser's
-      // `dstOut`. ↩️And a brush blend on the GPU (BB-1), for an overlay that
-      // did not pre-blend, until brush-fidelity-Q9 took that road out of
-      // `_livePreviewPaint` with the stamp ghost, its last rider in the app.
+      // an eraser's `dstOut`. ↩️And a brush blend on the GPU (BB-1), for an
+      // overlay that did not pre-blend, until brush-fidelity-Q9 took that
+      // road out of `_livePreviewPaint` with the stamp ghost, its last
+      // rider in the app; and `src`, a pre-blended result off the
+      // surface's grid, till 2026-11-14.
       final image = entry.value;
       drawHeldToItsRect(
         _pass._canvas,

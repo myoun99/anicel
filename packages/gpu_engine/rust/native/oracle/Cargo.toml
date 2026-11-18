@@ -4,6 +4,8 @@ version = "0.0.1"
 edition = "2024"
 publish = false
 
-# Loads the C engine at run time: wgpu-hal's own major, already in the lock.
+# The app's zstd (native/compress), which frames a medium as the save
+# does (`framed`). ↩️And libloading, which loaded the C engine at run time,
+# till the C went (2026-11-13).
 [dependencies]
-libloading = "0.8"
+compress = { path = "../compress" }

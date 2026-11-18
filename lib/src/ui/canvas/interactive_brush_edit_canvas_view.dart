@@ -6,10 +6,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../core/laid_whole.dart';
 import '../../core/neighbour_pairs.dart';
 import '../../models/bitmap_surface.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_path.dart';
 import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
@@ -29,7 +32,6 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_in_and_out_along.dart';
-import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
 import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
 import '../../services/fill_gradient.dart' show FillGradientOptions;
@@ -100,19 +102,20 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
 ///
-/// 🚨A piece is cut ONCE. [selection] is what the view lays the pieces
-/// through, and null for a held picture's ghost (brush-fidelity-Q9: the
-/// ghost is what lands), whose pieces come through the door cut already.
-/// ↩️The maker cut a shape's too, so the dabs a shape landed with were cut
-/// ones: harmless at a hard outline, but under a soft one the commit
-/// re-deriving them on a cel that had moved, or 확정 laying them again,
-/// took the selection's ramp a second time (brush-fidelity-Q11). A fill's
-/// dabs have always stayed whole.
+/// 🚨A piece is cut ONCE, where it lands: [selection] is what the view lays
+/// the pieces through, asked when it lays them — a held picture's ghost
+/// answers with the selection the door reads for the cel on screen
+/// (brush-fidelity-Q9: the ghost is what lands). ↩️The maker cut a shape's
+/// too, so the dabs a shape landed with were cut ones: harmless at a hard
+/// outline, but under a soft one the commit re-deriving them on a cel that
+/// had moved, or 확정 laying them again, took the selection's ramp a second
+/// time (brush-fidelity-Q11). ↩️Till 2026-11-14 the ghost's pieces came
+/// through the door cut on the CPU, and laid through no selection.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,
   BrushBlendMode blend,
-  SelectionClip? selection,
+  SelectionClip? Function() selection,
 });
 
 /// The fill's gradient knobs and the sub colour — the rail swatch's back
@@ -311,10 +314,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final GuideSpace guideSpace;
 
   /// The line Shift holds past a stroke ([ShiftLine], I-121): a stroke
-  /// pressed under the same hold starts on it and goes along it. Its owner
-  /// hears the keyboard let go of it; this view says, at each press and as
-  /// each finger holding Shift lifts, whether Shift is held now. Null — a
-  /// surface that keeps none — and each stroke's Shift is its own.
+  /// pressed under the same hold starts on it and goes along it. Between
+  /// strokes the line asks for itself whether Shift is still held, as its
+  /// owner has it ask; this view says so at each press and at each point
+  /// of a stroke. Null — a surface that keeps none — and each stroke's
+  /// Shift is its own.
   final ShiftLine? shiftLine;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
@@ -534,16 +538,11 @@ class _InteractiveBrushEditCanvasViewState
   /// wander the spacing.
   BrushDab? _previousBaseDab;
 
-  /// Ground-colour mixing state for the stroke in flight, or null when the
-  /// brush paints its own colour flat. Holds the reservoir, so it must see
-  /// the dabs in stroke order.
+  /// Ground-colour mixing for the stroke in flight, or null when the brush
+  /// paints its own colour flat: it numbers the stroke's steps, so it must
+  /// see the dabs in stroke order. The ground they read is the cel as it
+  /// stood when the stroke began ([BrushLiveStrokeRasterizer.mixOver]).
   BrushGroundColorMixer? _groundMixer;
-
-  /// Reads the cel as it stood when the stroke began. A stroke cannot change
-  /// what is under it mid-flight from the mixer's point of view: the live
-  /// tiles are rasterized a pointer-move at a time, so sampling them would
-  /// race the batch that produced them.
-  BrushGroundColorSampler? _groundSampler;
 
   /// The pen's stroke's 손떨림 보정 (F-418): made at pointer-down from the
   /// brush's own, none when it steadies nothing; pen positions run through
@@ -598,19 +597,29 @@ class _InteractiveBrushEditCanvasViewState
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
   /// Dabs collected since the last rasterized batch: one frame callback
-  /// blends what a press, a path or a shape queued. Dab generation, order
-  /// and blend math are the same either way — the batch is byte-identical
-  /// to per-event blending, and pen-up flushes synchronously before commit.
+  /// blends what a press, a path, a shape or a pen's samples queued. Dab
+  /// generation, order and blend math are the same either way — the batch
+  /// is byte-identical to per-event blending, and pen-up flushes
+  /// synchronously before commit.
   ///
   /// ↩️Every pointer sample queued here until F-512 (rasterizing per event
-  /// «multiplied the blend work for zero visible benefit», 2026-07-08): a
-  /// pen's sample blends as it comes now
-  /// ([_BrushEditStroke.takeSample]): a step asked late in a frame holds
-  /// what came in it (`StepPace`), and the work is the same dabs. 🔬Main PC,
-  /// 144 Hz, input at 1000 Hz: a frame every vsync still. ⛔Once a sample, not
-  /// at every queue: a post-correcting brush lays its whole line again at the
-  /// pen-up, a queue a point, and that held this thread 72 ms on the main PC
-  /// and 144 on the Surface Pro 11.
+  /// «multiplied the blend work for zero visible benefit», 2026-07-08).
+  /// ↩️From F-512 (10-31) to F-600 (11-17) a pen's sample blended as it
+  /// came ([_BrushEditStroke.takeSample]), so that a step asked late in a
+  /// frame (`StepPace`) held what came in it. 🔬Main PC, 144 Hz, input at
+  /// 1000 Hz: a frame every vsync still. That step went with the picture
+  /// medium (5987bdfb1, 11-09): the picture is made at the paint, after
+  /// this callback, so a sample blended as it comes is on no frame sooner
+  /// — and each was a pile of its own, a GPU submission. A mouse reports
+  /// at 1000 Hz, five times a pen, and a message a busy thread held hands
+  /// on every point it missed: the piles went with the mouse's rate, and
+  /// their work fed the load that made them (F-600, 유저: 「펜은 어느정도
+  /// 빠른데 마우스는 심하게 느림」). 🔬Main PC, the measuring scene's band
+  /// full, a stroke of 16 / 32 / 64 points a frame: a step's handling
+  /// 4.7 / 6.8 / 10.2 ms at a pile a point, 1.0 ms at one
+  /// a frame. ⛔Once a frame, not at every queue: a post-correcting brush
+  /// lays its whole line again at the pen-up, a queue a point, and that
+  /// held this thread 72 ms on the main PC and 144 on the Surface Pro 11.
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 
@@ -629,6 +638,7 @@ class _InteractiveBrushEditCanvasViewState
     _shapeKeeper?.up(_shapeShow);
     _holdKeeper?.up(_fill);
     _toolHolds.handOver = _door;
+    _onTheEngine.start();
   }
 
   /// This view's door for a press it could not hear
@@ -666,20 +676,39 @@ class _InteractiveBrushEditCanvasViewState
     }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      _endStrokeAfterTheFrame();
-      _fill.letGo();
-      // A shape laid on the cel that went is no shape of this one's.
-      _shapeShow.drop();
-      _overlay.resetOverlay();
-      // clear() before dropping: the live tiles are native-backed (R21)
-      // and return to the engine's free list through it.
-      _liveRasterizer?.clear();
-      _liveRasterizer = null;
+      _letGoOfWhatIsInFlight();
     }
   }
 
+  /// Lets go of what is in flight on the cel, landing none of it — the
+  /// stroke, what the fill holds, a shape laid, and the overlay they show
+  /// on: the cel went from under them ([didUpdateWidget]), or the engine
+  /// they are drawn on did ([_onTheEngine]).
+  void _letGoOfWhatIsInFlight() {
+    _endStrokeAfterTheFrame();
+    _fill.letGo();
+    // A shape laid on the cel that went is no shape of this one's.
+    _shapeShow.drop();
+    _overlay.resetOverlay();
+    // clear() before dropping: the live tiles are native-backed (R21)
+    // and return to the engine's free list through it.
+    _liveRasterizer?.clear();
+    _liveRasterizer = null;
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다. 잃는 것은 그리던 획 정도다」 —
+  /// what is in flight is drawn on the engine's stroke, which goes with its
+  /// device: let go of as it is where its cel goes, and the next press
+  /// draws on the next engine's.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: _letGoOfWhatIsInFlight,
+  );
+
   /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
-  /// under the pen, or the view is going — and says so after the frame.
+  /// under the pen, the engine it is drawn on went, or the view is going —
+  /// and says so after the frame: one it asks for, where none is on its
+  /// way.
   ///
   /// R13-4: this runs inside the build/update phase. The stroke-end
   /// callback reached ancestor setState (the panel's _strokeActive then;
@@ -701,6 +730,9 @@ class _InteractiveBrushEditCanvasViewState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         notify?.call(StrokeInFlight.none);
       });
+      // An engine goes between two frames, and a view that keeps the
+      // input alone has no painter of its own to ask for the next.
+      SchedulerBinding.instance.ensureVisualUpdate();
     }
   }
 
@@ -716,6 +748,7 @@ class _InteractiveBrushEditCanvasViewState
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
+    _onTheEngine.stop();
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.
@@ -741,7 +774,11 @@ class _InteractiveBrushEditCanvasViewState
     // The canvas says which cel it draws — only while it draws one; the
     // merged stack draws it otherwise, and says so itself.
     if (widget.paintsContent && widget.editable) {
-      ShownCels.instance.show(this, (widget.layerId, widget.frameId));
+      ShownCels.instance.show(
+        this,
+        (widget.layerId, widget.frameId),
+        pictured: ShownCels.asItIs,
+      );
     } else {
       ShownCels.instance.hide(this);
     }
@@ -860,7 +897,7 @@ class _InteractiveBrushEditCanvasViewState
       // the jitter multiply this). The tool's opacity is the accumulated
       // stroke's ceiling and rides `BrushDabSequence.opacity` instead.
       // F-205 (유저 2026-09-28): the variation is a ceiling too — a dab
-      // settles at its opacity where dabs pile up (`qa_dab_source_alpha`).
+      // settles at its opacity where dabs pile up (`settledDabAlpha`).
       // ↩️Per dab it multiplied like flow, and a light press piled up to the
       // full slider wherever the stroke crossed itself.
       opacity: 1,
@@ -900,14 +937,8 @@ class _InteractiveBrushEditCanvasViewState
   /// Resolves the colour a mixing brush deposits, after the dynamics have
   /// settled each dab's final position — scatter moves dabs, and the ground
   /// has to be read where the dab actually lands.
-  List<BrushDab> _withGroundMixing(List<BrushDab> dabs) {
-    final mixer = _groundMixer;
-    final sampler = _groundSampler;
-    if (mixer == null || sampler == null) {
-      return dabs;
-    }
-    return mixer.apply(dabs, sample: sampler);
-  }
+  List<BrushDab> _withGroundMixing(List<BrushDab> dabs) =>
+      _groundMixer?.apply(dabs) ?? dabs;
 
   // ── pressure and the stamp: their own object ────────────────────────
   //
@@ -954,6 +985,10 @@ class _InteractiveBrushEditCanvasViewState
     // same cel the overlay pre-blends against ([_BrushEditStroke._openOverlay]).
     if (settings.blurs) {
       _liveRasterizer!.blurOver(surface);
+    }
+    // A mixing brush reads the same cel under its dabs, on the engine.
+    if (settings.shape.picksUpGround) {
+      _liveRasterizer!.mixOver(surface);
     }
   }
 

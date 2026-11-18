@@ -4,8 +4,6 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'native_engine_path.dart';
-
 /// Whether this host's engine writes movies with the OS: Media Foundation
 /// on Windows, AVAssetWriter on macOS. Linux exports through FFmpeg, and
 /// Android's encoder is a device's, never a test host's.
@@ -17,37 +15,27 @@ bool get osHasVideoEncoder => Platform.isWindows || Platform.isMacOS;
 bool get osHasVideoDecoder => Platform.isWindows || Platform.isMacOS;
 
 /// The engine's OS video encoder — or null, the test marked skipped, or
-/// FAILED where this run must have one ([videoCodecAbsence]).
+/// FAILED where this host has one ([videoCodecAbsence]).
 QaVideoEncoder? osVideoEncoderOrSkip() {
   final encoder = QaVideoEncoder.instance;
-  if (encoder != null && encoder.isSupported) {
+  if (encoder.isSupported) {
     return encoder;
   }
   _answer(
-    videoCodecAbsence(
-      what: 'video encoder',
-      engineBound: encoder != null,
-      hostHasOne: osHasVideoEncoder,
-      engineRequired: nativeEngineRequired,
-    ),
+    videoCodecAbsence(what: 'video encoder', hostHasOne: osHasVideoEncoder),
   );
   return null;
 }
 
 /// The engine's OS video decoder — or null, the test marked skipped, or
-/// FAILED where this run must have one ([videoCodecAbsence]).
+/// FAILED where this host has one ([videoCodecAbsence]).
 QaVideoDecoder? osVideoDecoderOrSkip() {
   final decoder = QaVideoDecoder.instance;
-  if (decoder != null && decoder.isSupported) {
+  if (decoder.isSupported) {
     return decoder;
   }
   _answer(
-    videoCodecAbsence(
-      what: 'video decoder',
-      engineBound: decoder != null,
-      hostHasOne: osHasVideoDecoder,
-      engineRequired: nativeEngineRequired,
-    ),
+    videoCodecAbsence(what: 'video decoder', hostHasOne: osHasVideoDecoder),
   );
   return null;
 }
@@ -63,22 +51,21 @@ QaVideoDecoder? osVideoDecoderOrSkip() {
 /// others returned in silence, or failed anywhere but Linux.
 /// `a_missing_video_codec_is_a_named_skip_test` keeps them here.
 ///
-/// What a test does where this run has no OS [what]: it FAILS when the run
-/// builds its engine ([nativeEngineRequired]) on a host that has one, and is
-/// skipped otherwise — with the reason either way.
+/// What a test does where the engine has no OS [what]: it FAILS on a host
+/// that has one, and is skipped otherwise — with the reason either way.
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// the codec was the C engine's, which a run could be without, so it failed
+/// only where the run built that engine (`QA_REQUIRE_NATIVE=1`) and was
+/// skipped with no engine bound; the engine is the Rust one now, which every
+/// run builds, so the host alone says whether there must be one.
 ({bool fails, String reason}) videoCodecAbsence({
   required String what,
-  required bool engineBound,
   required bool hostHasOne,
-  required bool engineRequired,
 }) {
-  final fails = engineRequired && hostHasOne;
-  final why = engineBound
-      ? 'the engine has no OS $what on this platform'
-      : nativeEngineMissingSkipReason;
+  final why = 'the engine has no OS $what on this platform';
   return (
-    fails: fails,
-    reason: fails ? 'QA_REQUIRE_NATIVE=1 but no OS $what: $why' : why,
+    fails: hostHasOne,
+    reason: hostHasOne ? '$why, and this host has one' : why,
   );
 }
 

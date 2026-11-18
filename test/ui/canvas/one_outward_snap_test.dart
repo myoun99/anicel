@@ -2,9 +2,10 @@
 //
 // A display level's grid, the pyramid's grid counted from a surface's
 // content origin and a sub-tree image's grid at its device scale each wrote
-// out the same snap. `rectOutwardOnGrid` is that snap once; the three
-// formulas below are the copies it replaced, kept here as the reference it
-// must match to the bit.
+// out the same snap. `rectOutwardOnGrid` is that snap once; the formulas
+// below are the copies it replaced, kept here as the reference it must
+// match to the bit. ↩️The pyramid's, counted from an origin of its own, went
+// with the last grid counted so (the-flutter-fx-chain-is-a-second-chain).
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -30,21 +31,6 @@ ui.Rect _subtreeCopy(ui.Rect bounds, double scale) => ui.Rect.fromLTRB(
   (bounds.bottom * scale).ceilToDouble() / scale,
 );
 
-/// `surfaceInkWorldRect`'s grid as it was: blocks counted from an origin.
-ui.Rect _inkCopy(ui.Rect bounds, double grid, ui.Offset origin) {
-  double outward(double value, double start, {required bool up}) {
-    final blocks = (value - start) / grid;
-    return start +
-        (up ? blocks.ceilToDouble() : blocks.floorToDouble()) * grid;
-  }
-
-  return ui.Rect.fromLTRB(
-    outward(bounds.left, origin.dx, up: false),
-    outward(bounds.top, origin.dy, up: false),
-    outward(bounds.right, origin.dx, up: true),
-    outward(bounds.bottom, origin.dy, up: true),
-  );
-}
 
 void main() {
   final random = math.Random(20261001);
@@ -96,29 +82,8 @@ void main() {
     }
   });
 
-  test('the pyramid grid counts from the content origin, as it did', () {
-    for (var i = 0; i < 4000; i += 1) {
-      final bounds = anyWholeRect();
-      final origin = ui.Offset(
-        (random.nextInt(400) - 200).toDouble(),
-        (random.nextInt(400) - 200).toDouble(),
-      );
-      final level = random.nextInt(6);
-      expect(
-        rectOutwardOnGrid(bounds, 1.0 / (1 << level), origin: origin),
-        _inkCopy(bounds, (1 << level).toDouble(), origin),
-        reason: '$bounds from $origin at level $level',
-      );
-    }
-  });
-
   test('a rect already on the grid stays where it is', () {
     const onGrid = ui.Rect.fromLTRB(-8, 16, 24, 40);
     expect(rectOutwardOnGrid(onGrid, 0.25), onGrid);
-    expect(
-      rectOutwardOnGrid(onGrid, 0.25, origin: const ui.Offset(2, 2)),
-      const ui.Rect.fromLTRB(-10, 14, 26, 42),
-      reason: 'counted from (2, 2) the same rect sits between grid lines',
-    );
   });
 }

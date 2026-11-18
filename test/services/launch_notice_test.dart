@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/build_stamp.dart' show buildNumber;
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
@@ -19,20 +20,38 @@ class _MemoryStore extends LaunchNoticeStore {
 }
 
 /// A notice whose sections say [whatsNew] in [changedIn] and the same
-/// words everywhere else.
+/// words everywhere else, in a build stamped [number].
 LaunchNoticeContent _content({
   String whatsNew = '- One thing changed.',
   AppLanguage? changedIn,
   String lineEnd = '\n',
+  String debugOpening = '## Debug\n\nA debug build.\n',
+  String number = '1091',
 }) => LaunchNoticeContent(
   (language, section) => switch (section) {
     LaunchNoticeSection.notice => '## Pre-release${lineEnd}Body.$lineEnd',
+    LaunchNoticeSection.debugOpening => debugOpening,
     LaunchNoticeSection.whatsNew =>
       changedIn == null || language == changedIn
           ? whatsNew
           : '- One thing changed.',
     LaunchNoticeSection.feedback => 'Feedback ${language.name}.',
   },
+  number: number,
+);
+
+/// A notice whose own opening is a heading and one sentence, with more
+/// under it — the shape of every bundled notice.md.
+LaunchNoticeContent _withBody({required String number}) => LaunchNoticeContent(
+  (language, section) => switch (section) {
+    LaunchNoticeSection.notice =>
+      '## Pre-release\n\nA build before release.\n\n'
+          'Keep your **files**.\n\nThey open later.\n',
+    LaunchNoticeSection.debugOpening => '## Debug\n\nA **debug** build.\n',
+    LaunchNoticeSection.whatsNew => '- One thing changed.',
+    LaunchNoticeSection.feedback => 'Feedback.',
+  },
+  number: number,
 );
 
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어. 다음부터 표시안함버튼
@@ -66,6 +85,117 @@ void main() {
         ),
         '## Pre-release\nBody.\n',
       );
+    });
+  });
+
+  // 🗣️유저 2026-11-16 (board launch-notice-says-debug-build): a build no
+  // round stamped is a debug build — no what's-new in it, and it says it is
+  // a debug build. A round's build says what it said before.
+  group('a build with no round\'s number', () {
+    test('carries no what\'s-new — a round\'s build does', () {
+      expect(_content(number: '').showsWhatsNew, isFalse);
+      expect(_content(number: '1091').showsWhatsNew, isTrue);
+    });
+
+    test('the notice the app opens asks the build\'s own stamp', () async {
+      // `flutter test` stamps nothing: the suite runs as a debug build.
+      expect(buildNumber, isEmpty, reason: '⛔premise');
+      final bundled = await LaunchNoticeContent.bundled();
+      expect(bundled.number, buildNumber);
+      expect(bundled.showsWhatsNew, isFalse);
+    });
+
+    test('opens its notice with the debug words, and says the rest as the '
+        'file does', () {
+      expect(
+        _withBody(number: '').noticeIn(AppLanguage.en),
+        '## Debug\n\nA **debug** build.\n\n'
+        'Keep your **files**.\n\nThey open later.\n',
+      );
+    });
+
+    test('a round\'s build says its notice as the file does', () {
+      expect(
+        _withBody(number: '1091').noticeIn(AppLanguage.en),
+        '## Pre-release\n\nA build before release.\n\n'
+        'Keep your **files**.\n\nThey open later.\n',
+      );
+    });
+
+    test('its key is what it shows — the what\'s-new it does not show is '
+        'not in it, the debug words are', () {
+      String key({required String number, String? whatsNew, String? opening}) =>
+          _content(
+            number: number,
+            whatsNew: whatsNew ?? '- One thing changed.',
+            debugOpening: opening ?? '## Debug\n\nA debug build.\n',
+          ).key;
+
+      expect(
+        key(number: '', whatsNew: '- Another thing.'),
+        key(number: ''),
+      );
+      expect(
+        key(number: '', opening: '## Debug\n\nAnother build.\n'),
+        isNot(key(number: '')),
+      );
+      expect(
+        key(number: '1091', opening: '## Debug\n\nAnother build.\n'),
+        key(number: '1091'),
+      );
+      expect(
+        key(number: '1091', whatsNew: '- Another thing.'),
+        isNot(key(number: '1091')),
+      );
+      expect(
+        key(number: ''),
+        isNot(key(number: '1091')),
+        reason: 'a notice dismissed in a debug build keeps no round\'s '
+            'what\'s-new from being shown',
+      );
+    });
+
+    test('every bundled notice opens with a heading and its first sentence '
+        'alone, each its own block — and the debug words with the same two',
+        () async {
+      final bundled = await LaunchNoticeContent.bundled();
+      for (final language in AppLanguage.values) {
+        final notice = bundled
+            .textOf(language, LaunchNoticeSection.notice)
+            .split('\n\n');
+        final opening = bundled
+            .textOf(language, LaunchNoticeSection.debugOpening)
+            .trimRight()
+            .split('\n\n');
+        expect(notice.first, startsWith('## '), reason: language.name);
+        expect(notice, hasLength(greaterThan(2)), reason: language.name);
+        expect(opening, hasLength(2), reason: language.name);
+        expect(opening.first, startsWith('## '), reason: language.name);
+        expect(
+          notice[1],
+          isNot(contains('\n')),
+          reason: '${language.name}: the first sentence, alone',
+        );
+      }
+    });
+
+    test('the debug words the user asked for, in every language', () async {
+      final bundled = await LaunchNoticeContent.bundled();
+      const headings = {
+        AppLanguage.ko: '## 디버그 버전입니다',
+        AppLanguage.ja: '## デバッグ版です',
+        AppLanguage.en: '## A debug version',
+        AppLanguage.fr: '## Une version de débogage',
+        AppLanguage.zhHans: '## 调试版本',
+      };
+      expect(headings.keys.toSet(), AppLanguage.values.toSet());
+      for (final MapEntry(key: language, value: heading) in headings.entries) {
+        expect(
+          bundled.textOf(language, LaunchNoticeSection.debugOpening),
+          startsWith('$heading\n\n'),
+          reason: language.name,
+        );
+      }
     });
   });
 

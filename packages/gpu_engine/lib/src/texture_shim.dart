@@ -1,9 +1,19 @@
-// Bindings to the Windows texture shim (windows/gpu_engine_plugin_c_api.cpp),
-// the plugin DLL Flutter loads beside the runner.
+// Bindings to the texture shim, which every platform whose engine makes
+// the texture Flutter shows exports by the same names: the Windows plugin
+// DLL Flutter loads beside the runner (windows/gpu_engine_plugin_c_api.cpp),
+// the iOS and macOS pod compiled into the app (darwin/Classes/
+// GpuEnginePlugin.m) and the Linux plugin library the runner links
+// (linux/gpu_engine_plugin.cc).
 import 'dart:ffi';
+import 'dart:io';
 
-final DynamicLibrary _shim = DynamicLibrary.open('gpu_engine_plugin.dll');
+final DynamicLibrary _shim = Platform.isWindows
+    ? DynamicLibrary.open('gpu_engine_plugin.dll')
+    : Platform.isLinux
+    ? DynamicLibrary.open('libgpu_engine_plugin.so')
+    : DynamicLibrary.process();
 
+/// Windows' alone: Flutter names its adapter by LUID only there.
 final int Function() flutterAdapterLuid = _shim
     .lookupFunction<Uint64 Function(), int Function()>(
       'gpu_engine_flutter_adapter_luid',
@@ -26,6 +36,7 @@ final void Function(int) textureUnregister = _shim
       'gpu_engine_texture_unregister',
     );
 
+/// Windows' alone: what ANGLE's D3D11 sees of a shared handle.
 final bool Function(
   Pointer<Void>,
   Pointer<Uint32>,

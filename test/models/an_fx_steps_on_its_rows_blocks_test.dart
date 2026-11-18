@@ -16,6 +16,8 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show resolveLayerPoseAt;
 import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart';
 
+import '../helpers/fx_plugin_file.dart';
+
 /// 🗣️AN FX READS ITS KEYS BY THE FRAME, OR BY THE BLOCK (backlog-21-Q4 ·
 /// I-120-Q10): on 「블록」 a bundle's keys are read at the head of the block
 /// a frame shows, so a move keyed across `1--2--3--` steps on the drawings
@@ -50,6 +52,7 @@ void main() {
         effects: [effect],
         frameIndex: frame,
         blocks: hasBlocks ? blocks : null,
+        worn: null,
       ).firstOrNull?.parameter('blurriness');
 
   group('where a bundle reads its keys', () {
@@ -100,6 +103,25 @@ void main() {
     test('on the block, on a row with none, reads every frame', () {
       final stepped = rampedBlur(basis: FxBasis.block);
       expect(blurAt(stepped, 7, hasBlocks: false), _near(7));
+    });
+
+    test('a plugin on the block is told its head\'s frame — its picture '
+        'holds through the block as its values do', () {
+      final glow = LayerEffect(
+        id: const EffectId('e-glow'),
+        kind: EffectKind.plugin,
+        plugin: fxPluginDescriptionOf('com.example.glow', name: 'Glow'),
+        basis: FxBasis.block,
+      );
+      int? toldAt(int frame) => sampleLayerEffectAt(
+        glow,
+        frameIndex: frame,
+        blocks: blocks,
+        worn: null,
+      ).frame;
+      expect(toldAt(5), 4);
+      expect(toldAt(7), 4);
+      expect(toldAt(8), 8, reason: 'an empty cell: its own');
     });
   });
 

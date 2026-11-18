@@ -35,22 +35,24 @@ void main() {
 
   FxPluginDescription plugin(String id, {String version = '1'}) =>
       FxPluginDescription.fromJson({
-        'spec': 1,
+        'spec': 2,
         'id': id,
         'name': 'Plugin $id',
         'vendor': 'Example',
         'version': version,
-        'can': ['cpu'],
+        'can': ['gpu'],
         'params': <Object?>[],
       })!;
 
-  // A file whose module is its description's text — what the stand-in
-  // answers with.
+  // A plugin's file: its description, beside WGSL no device is asked to
+  // open.
   Uint8List fileOf(FxPluginDescription description) =>
       ZipEncoder().encodeBytes(
-        Archive()..add(
+        Archive()
+          ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
+          ..add(
           ArchiveFile.bytes(
-            'plugin.wasm',
+            'plugin.json',
             utf8.encode(jsonEncode(description.toJson())),
           ),
         ),
@@ -59,12 +61,12 @@ void main() {
   Future<InstalledFxPlugins> installing(List<FxPluginDescription> of) async {
     final installed = InstalledFxPlugins(
       service: library,
-      describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+      check: (_) async => (opened: null, refusal: null),
     );
     for (final description in of) {
       await installed.install(
         fileOf(description),
-        confirm: (_, {required native, required replacing}) async => true,
+        confirm: (_, {required replacing}) async => true,
       );
     }
     return installed;
@@ -137,7 +139,7 @@ void main() {
 
     await installed.install(
       fileOf(plugin('on.se', version: '3')),
-      confirm: (_, {required native, required replacing}) async => true,
+      confirm: (_, {required replacing}) async => true,
     );
     expect(await missingIn(installed), ['on.track', 'on.cut']);
   });

@@ -12,7 +12,6 @@ import '../widgets/kept_tail_row.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
-import '../widgets/superellipse_clip.dart';
 import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
 import 'open_tab_content.dart';
@@ -965,6 +964,7 @@ class _PanelTabButton extends StatelessWidget {
       // one sat centred on the pointer, a look of its own.
       chip: [(icon: icon, label: label)],
       nearby: panelHovered,
+      shape: _shape(),
       atBottom: stripAtBottom,
       edgeOutline: edgeOutline,
       onLifted: onTabDragChanged,
@@ -992,50 +992,40 @@ class _PanelTabButton extends StatelessWidget {
           // band on the edge facing the WINDOW rather than along the seam
           // the panel wants invisible.
           //
-          // The band is CLIPPED to that shape, the way every other grip in
-          // the app is clipped to the panel it belongs to: the tab's rounded
-          // corners cut it, so it reads as the tab's own edge.
-          child: SuperellipseClip(
-            shape: _shape(),
-            // PASSTHROUGH, not the default loose fit. A loose Stack hands
-            // its non-positioned child the incoming constraints LOOSENED,
-            // so the tab's body shrank to its 16px glyph and sat at the top
-            // of a 30px strip: the selected fill stopped reaching the panel
-            // body it is supposed to merge into, and every glyph rode 7px
-            // high. Passthrough keeps the strip's tight height and the
-            // loose width, which is exactly what a tab wants — as tall as
-            // the strip, as wide as what it holds.
-            child: Stack(
-              fit: StackFit.passthrough,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: ShapeDecoration(
-                    color: selected
-                        ? colorScheme.surface
-                        : Colors.transparent,
-                    shape: _shape(),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, size: 16, color: foreground),
-                      if (locked) ...[
-                        const SizedBox(width: 3),
-                        Icon(Icons.lock, size: 9, color: colorScheme.primary),
-                      ],
+          // The band is CUT by that shape, the way every other grip in the
+          // app is cut by the panel it belongs to: the tab's rounded corners
+          // cut it, so it reads as the tab's own edge.
+          //
+          // PASSTHROUGH, not the default loose fit. A loose Stack hands its
+          // non-positioned child the incoming constraints LOOSENED, so the
+          // tab's body shrank to its 16px glyph and sat at the top of a 30px
+          // strip: the selected fill stopped reaching the panel body it is
+          // supposed to merge into, and every glyph rode 7px high.
+          // Passthrough keeps the strip's tight height and the loose width,
+          // which is exactly what a tab wants — as tall as the strip, as wide
+          // as what it holds.
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: ShapeDecoration(
+                  color: selected ? colorScheme.surface : Colors.transparent,
+                  shape: _shape(),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 16, color: foreground),
+                    if (locked) ...[
+                      const SizedBox(width: 3),
+                      Icon(Icons.lock, size: 9, color: colorScheme.primary),
                     ],
-                  ),
+                  ],
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: stripAtBottom ? null : 0,
-                  bottom: stripAtBottom ? 0 : null,
-                  child: grip,
-                ),
-              ],
-            ),
+              ),
+              Positioned.fill(child: grip),
+            ],
           ),
         ),
       ),

@@ -63,7 +63,7 @@ void main() {
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: const CanvasSize(width: 8, height: 8),
-        tileSize: 4,
+        tileSize: 128,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     );

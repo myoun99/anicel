@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:anicel/src/ui/dashed_path.dart';
@@ -166,4 +167,60 @@ void main() {
       expect(over.lengths, [5, 5]);
     });
   });
+
+  group('an outline of straight sides cut along its sides', () {
+    /// A block 10 × 4 at (2, 3), and a staircase of pixel steps with a
+    /// hole: polygons the ants draw, a point a pair, each closed.
+    final starts = Uint32List.fromList([0, 4, 12, 16]);
+    final xy = Int32List.fromList([
+      2, 3, 12, 3, 12, 7, 2, 7, //
+      20, 0, 23, 0, 23, 2, 26, 2, 26, 5, 22, 5, 22, 3, 20, 3, //
+      23, 3, 23, 4, 25, 4, 25, 3,
+    ]);
+
+    /// The same polygons laid as a path, as the ants' outline is.
+    Path asPath() {
+      final path = Path();
+      for (var polygon = 0; polygon + 1 < starts.length; polygon += 1) {
+        path.addPolygon([
+          for (var at = starts[polygon]; at < starts[polygon + 1]; at += 1)
+            Offset(xy[2 * at].toDouble(), xy[2 * at + 1].toDouble()),
+        ], true);
+      }
+      return path;
+    }
+
+    /// Each dash of [dashed] by where it starts, where it ends and how long
+    /// it runs — its turns at a corner included.
+    List<(Offset, Offset, double)> each(Path dashed) => [
+      for (final metric in dashed.computeMetrics())
+        (
+          _near(metric.getTangentForOffset(0)!.position),
+          _near(metric.getTangentForOffset(metric.length)!.position),
+          (metric.length * 1000).roundToDouble() / 1000,
+        ),
+    ];
+
+    for (final (name, pattern) in [
+      ('the ants\' own', fiveFour),
+      ('marched part of a period', fiveFour.marchedBy(3.25)),
+      ('measured a third as long', fiveFour.marchedBy(7).scaledBy(1 / 3)),
+    ]) {
+      test('lays the very dashes the one walk cuts — $name', () {
+        final walked = Path();
+        for (final dash in dashesAlong(asPath(), pattern)) {
+          walked.addPath(dash, Offset.zero);
+        }
+        final cut = dashedPolygons(starts, xy, pattern);
+        expect(each(cut), each(walked));
+        expect(each(cut), isNotEmpty);
+      });
+    }
+  });
 }
+
+/// [offset] to the thousandth: a path keeps its points in single precision.
+Offset _near(Offset offset) => Offset(
+  (offset.dx * 1000).roundToDouble() / 1000,
+  (offset.dy * 1000).roundToDouble() / 1000,
+);

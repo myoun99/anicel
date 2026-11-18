@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 import '../../helpers/block_word_finder.dart';
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/the_classic_rail.dart';
 import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
@@ -363,7 +364,7 @@ void main() {
 
       expect(
         _markPaint(_marker(_camId, transformGroupHeaderLane.laneId, 4)),
-        paints..path(color: _finishLabel),
+        paintsShape(color: _finishLabel),
         reason: '「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로」',
       );
       expect(
@@ -392,7 +393,7 @@ void main() {
 
       expect(
         _markPaint(_marker(_drawId, 'position', 8)),
-        paints..path(color: _finishLabel),
+        paintsShape(color: _finishLabel),
       );
     });
   });

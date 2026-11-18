@@ -9,38 +9,56 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkControl;
+import 'package:anicel/src/services/input/modifier_keys.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
+import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
+import 'package:anicel/src/ui/brush/tool_library_panel.dart'
+    show subToolTilesOf;
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show actionLabelOf, labelWithKeys;
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
-    show activatorKey, singleActivatorLabel;
+    show activatorKey, isModifiersAlone, singleActivatorLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/text_finders.dart';
 
 void main() {
-  Future<EditorShortcutBindings> pump(WidgetTester tester) async {
-    final bindings = EditorShortcutBindings();
-    addTearDown(bindings.dispose);
+  Future<EditorShortcutBindings> pump(
+    WidgetTester tester, {
+    EditorShortcutBindings? bindings,
+    ScrollBehavior? scrollBehavior,
+  }) async {
+    final held = bindings ?? EditorShortcutBindings();
+    addTearDown(held.dispose);
     await tester.binding.setSurfaceSize(const Size(900, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ShortcutSettingsDialog(bindings: bindings)),
+        scrollBehavior: scrollBehavior,
+        home: Scaffold(body: ShortcutSettingsDialog(bindings: held)),
       ),
     );
     await tester.pump();
-    return bindings;
+    return held;
   }
 
   Finder recordButtons() => find.byWidgetPredicate(
@@ -125,6 +143,234 @@ void main() {
     expect(places(tester), all);
   });
 
+  // 🗣️F-580 (유저 2026-11-10): 「키보드 단축키 창 좀 더 커도될듯. 너무작음」
+  // — the import and export windows' share of the screen (F-337), and never
+  // smaller than the 520 × 520 it stood at.
+  group('the window', () {
+    /// The window as it is laid out — the box inside the Material `Dialog`
+    /// its key is on, as the import window's pin reads it.
+    Future<Size> windowOn(WidgetTester tester, Size screen) async {
+      await pump(tester);
+      await tester.binding.setSurfaceSize(screen);
+      await tester.pump();
+      return tester.getSize(
+        find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('shortcut-settings-dialog'),
+              ),
+              matching: find.byType(ConstrainedBox),
+            )
+            .first,
+      );
+    }
+
+    testWidgets('takes the import window\'s share of the screen', (
+      tester,
+    ) async {
+      final size = await windowOn(tester, const Size(1600, 1000));
+      expect(size.width, closeTo(1306.4, 0.1));
+      expect(size.height, closeTo(816.5, 0.1));
+    });
+
+    testWidgets('never smaller than the 520 it stood at', (tester) async {
+      final size = await windowOn(tester, const Size(700, 600));
+      expect(size.height, 520);
+    });
+  });
+
+  // 🗣️I-168 (유저 2026-11-10): 「동작검색 말고 단축키검색도 생성. 키보드
+  // 단축키 지정하는거 재사용해서 버튼누르고 단축키입력하면 그 키의 단축키
+  // 보이게. 리셋버튼으로 리셋」.
+  group('🗣️I-168: the search by key', () {
+    final seekButton = find.byKey(
+      const ValueKey<String>('shortcut-search-by-key'),
+    );
+    final clearButton = find.byKey(
+      const ValueKey<String>('shortcut-search-by-key-clear'),
+    );
+    const f9 = LogicalKeyboardKey.f9;
+    const save = EditorActionIds.fileSave;
+    const undo = EditorActionIds.undo;
+
+    /// Presses the ⌨ beside the search, then [key] — Ctrl held where
+    /// [control] says.
+    Future<void> seek(
+      WidgetTester tester,
+      LogicalKeyboardKey key, {
+      bool control = false,
+    }) async {
+      await tester.tap(seekButton);
+      await tester.pump();
+      if (control) {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.sendKeyEvent(key);
+      if (control) {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.pump();
+    }
+
+    List<String> rowsListed(WidgetTester tester) => [
+      for (final key in listed(tester))
+        if (key.startsWith('shortcut-row-')) key,
+    ];
+
+    testWidgets('the ⌨ beside the search takes the next key, and the list '
+        'keeps the actions that hold it — their shelves open', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      expect(
+        [
+          for (final row in bindings.definitions)
+            if (bindings.holds(row.id, const SingleActivator(f9))) row.id,
+        ],
+        isEmpty,
+        reason: '⛔premise: no one holds F9 out of the box',
+      );
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9)]);
+      await tester.pump();
+      expect(rowsListed(tester), isEmpty, reason: '⛔premise: all shut');
+
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$undo', 'shortcut-row-$save']);
+      expect(bindings.activatorsFor(save), hasLength(1), reason: 'nothing '
+          'was recorded on a row');
+    });
+
+    testWidgets('a key is its modifiers too: Ctrl+F9 is not F9', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9, control: true)]);
+      await tester.pump();
+
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+      await seek(tester, f9, control: true);
+      expect(rowsListed(tester), ['shortcut-row-$undo']);
+    });
+
+
+    testWidgets('a key that is modifiers alone is sought as any other: Alt '
+        'pressed and let go finds what Alt alone holds (F-603)', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings.setPreset(ShortcutPreset.anicel);
+      await tester.pump();
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(rowsListed(tester), [
+        'shortcut-row-${EditorActionIds.eyedropperHold}',
+      ]);
+    });
+    testWidgets('the ↺ lets the key go — and stands dead while none is '
+        'sought', (tester) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      final all = places(tester);
+      expect(tester.appIconButton(clearButton).onPressed, isNull);
+
+      await seek(tester, f9);
+      expect(places(tester), hasLength(1), reason: '⛔premise: it narrowed');
+      expect(tester.appIconButton(clearButton).onPressed, isNotNull);
+      await tester.tap(clearButton);
+      await tester.pump();
+      expect(places(tester), all);
+      expect(tester.appIconButton(clearButton).onPressed, isNull);
+    });
+
+    testWidgets('Esc while it waits takes nothing — the key sought stays', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      await seek(tester, f9);
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('shortcut-search-by-key-sought'),
+          ),
+          matching: find.text(singleActivatorLabel(const SingleActivator(f9))),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with words too, what answers both', (tester) async {
+      final bindings = await pump(tester);
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9)]);
+      await tester.pump();
+      await tester.enterText(
+        search,
+        actionLabelOf(
+          bindings.definitions.singleWhere((row) => row.id == save),
+        ),
+      );
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+    });
+
+    // 🗣️F-241: an arrow is kept as the timeline reads it, and the X-sheet
+    // turns a pressed one — the key sought is what it presses there.
+    testWidgets('on the X-sheet an arrow finds what it presses there', (
+      tester,
+    ) async {
+      final sheet = FlipHudController()..framesRunVertically = true;
+      addTearDown(sheet.dispose);
+      await pump(
+        tester,
+        bindings: EditorShortcutBindings()
+          ..setPreset(ShortcutPreset.anicel)
+          ..sheet = sheet,
+      );
+
+      await seek(tester, LogicalKeyboardKey.arrowDown);
+      final rows = rowsListed(tester);
+      expect(rows, contains('shortcut-row-${EditorActionIds.drawingNext}'));
+      expect(
+        rows,
+        isNot(contains('shortcut-row-${EditorActionIds.layerDown}')),
+      );
+    });
+
+    testWidgets('⛔the search line keeps its place: the field is as wide '
+        'while it waits and with a key sought', (tester) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      final width = tester.getSize(search).width;
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      expect(tester.getSize(search).width, width, reason: 'waiting');
+      await tester.sendKeyEvent(f9);
+      await tester.pump();
+      expect(tester.getSize(search).width, width, reason: 'F9 sought');
+    });
+  });
+
   // 🗣️유저 2026-10-08 (menu-rows-and-panels-are-shortcut-rows): 「단축키
   // 많으니까 항목은 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법
   // 통일하면서」 — the brush bundles' law (I-56-Q1: 기본 접힘 · 검색하면 맞는
@@ -176,36 +422,119 @@ void main() {
       );
     });
 
-    // 🗣️F-560 (유저 2026-11-04): the tool library's shelves stand under 세부
-    // 도구, which keeps rows of its own. ↩️Every row stood on a shelf with
-    // no shelves of its own until then.
-    testWidgets('a shelf\'s own rows stand before the shelves on it', (
-      tester,
-    ) async {
-      final bindings = await pump(tester);
-      const tiles = ShortcutShelf.toolTiles;
-      final own = [
-        for (final row in bindings.definitions)
-          if (row.shelf == tiles) 'shortcut-row-${row.id}',
-      ];
-      // ⛔premise: 세부 도구 holds rows and shelves both.
-      expect(own, isNotEmpty);
-      expect(tiles.shelves, isNotEmpty);
-
-      for (final shelf in tiles.path) {
-        await tester.tap(twirlOf(shelf));
-        await tester.pump();
+    // 🗣️F-580 (유저 2026-11-10): 「캔버스-도구에 도구 있고, 그 밑에 해당 도구의
+    // 세부도구 … 도구-세부도구-도구-세부도구 순으로 있는게 알기쉬움」 — a tool's
+    // row, then a step in what is that tool's: its tiles in the tool
+    // library's order, then its own shelf. ↩️「세부 도구」 was one shelf of
+    // every tool's tiles, its rows before the tool library's shelves (F-560).
+    group('under 도구, a tool\'s own stand a step in under its row', () {
+      Future<(EditorShortcutBindings, List<String>)> openTools(
+        WidgetTester tester,
+      ) async {
+        final bindings = await pump(tester);
+        // Tall enough that every row of 도구 is laid out at once.
+        await tester.binding.setSurfaceSize(const Size(900, 3600));
+        for (final shelf in ShortcutShelf.tools.path) {
+          await tester.tap(twirlOf(shelf));
+          await tester.pump();
+        }
+        return (bindings, listed(tester));
       }
 
-      final keys = listed(tester);
-      final after = keys.indexOf(headingKeyOf(tiles)) + 1;
-      expect(keys.sublist(after, after + own.length), own);
-      // The brush tools' shelves hold the library's brushes, none here.
-      expect(
-        keys[after + own.length],
-        headingKeyOf(ShortcutShelf.brushLibrary),
-        reason: 'the shelves on it come after its rows',
-      );
+      String rowKeyOf(String id) => 'shortcut-row-$id';
+
+      testWidgets('a tool\'s tiles right under its row, in the tool '
+          'library\'s order', (tester) async {
+        final (bindings, keys) = await openTools(tester);
+        for (final (id, group) in [
+          (EditorActionIds.toolSelect, CanvasTool.select),
+          (EditorActionIds.toolCut, CanvasTool.cut),
+          (EditorActionIds.toolFill, CanvasTool.fill),
+          (EditorActionIds.toolTransform, CanvasTool.move),
+        ]) {
+          final tiles = [
+            for (final tile in subToolTilesOf(group))
+              rowKeyOf(
+                bindings.definitions
+                    .singleWhere((row) => row.toolPress == tile.press)
+                    .id,
+              ),
+          ];
+          expect(tiles, isNotEmpty, reason: '⛔premise: $id has tiles');
+          final at = keys.indexOf(rowKeyOf(id));
+          expect(at, isNot(-1), reason: id);
+          expect(keys.sublist(at + 1, at + 1 + tiles.length), tiles);
+        }
+      });
+
+      testWidgets('a tool\'s own shelf right under its row', (tester) async {
+        final (_, keys) = await openTools(tester);
+        for (final (id, shelf) in [
+          (EditorActionIds.toolText, ShortcutShelf.texts),
+          (EditorActionIds.toolGuide, ShortcutShelf.guides),
+        ]) {
+          expect(
+            keys[keys.indexOf(rowKeyOf(id)) + 1],
+            headingKeyOf(shelf),
+            reason: id,
+          );
+        }
+      });
+
+      testWidgets('every row of 도구 stands once — a tile no tool lists is '
+          'not lost', (tester) async {
+        final (bindings, _) = await openTools(tester);
+        for (final shelf in ShortcutShelf.tools.shelves) {
+          if (twirlOf(shelf).evaluate().isEmpty) {
+            continue; // a shelf with no rows has no heading
+          }
+          await tester.tap(twirlOf(shelf));
+          await tester.pump();
+        }
+        final opened = listed(tester);
+        for (final row in bindings.definitions) {
+          if (row.shelf.path.contains(ShortcutShelf.tools)) {
+            expect(
+              opened.where((key) => key == rowKeyOf(row.id)),
+              hasLength(1),
+              reason: row.id,
+            );
+          }
+        }
+      });
+
+      testWidgets('a tile\'s words start where its tool\'s shelf\'s do — one '
+          'step in from its tool\'s', (tester) async {
+        final (bindings, _) = await openTools(tester);
+        Rect wordsOfRow(String id) => tester.getRect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(rowKeyOf(id))),
+            matching: find.text(
+              actionLabelOf(
+                bindings.definitions.singleWhere((row) => row.id == id),
+              ),
+            ),
+          ),
+        );
+        Rect wordsOfHeading(ShortcutShelf shelf) => tester.getRect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(headingKeyOf(shelf))),
+            matching: find.anyText(),
+          ),
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCut).left,
+          wordsOfHeading(ShortcutShelf.tools).left,
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCutStamp).left,
+          wordsOfHeading(ShortcutShelf.texts).left,
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCutStamp).left,
+          greaterThan(wordsOfRow(EditorActionIds.toolCut).left),
+        );
+      });
     });
 
     testWidgets('every shelf stands shut when the window opens: the places\' '
@@ -397,6 +726,135 @@ void main() {
     expect(recorded.control, isTrue);
   });
 
+
+  // 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
+  // 단축키등록안됨. 다 가능하게」.
+  group('🗣️F-603: modifiers alone are a key', () {
+    const pan = EditorActionIds.canvasPanHold;
+
+    Future<EditorShortcutBindings> recording(
+      WidgetTester tester,
+      String id,
+    ) async {
+      final bindings = await pump(tester);
+      await openShelvesOf(tester, bindings, id);
+      await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
+      await tester.pump();
+      return bindings;
+    }
+
+    Finder hint() =>
+        find.byKey(const ValueKey<String>('shortcut-recording-hint'));
+
+    testWidgets('🚨Alt pressed and let go with nothing else is the key of a '
+        'held row', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(hint(), findsOneWidget, reason: 'it waits while Alt is down');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(hint(), findsNothing);
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Alt'],
+      );
+      expect(isModifiersAlone(bindings.activatorsFor(pan).single), isTrue);
+    });
+
+    testWidgets('modifiers held together are one key, whichever is let go '
+        'first: Ctrl+Alt', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Ctrl+Alt'],
+      );
+    });
+
+    // Card a-held-modifiers-repeat-is-heard-as-a-press: on Windows a pen's
+    // move lets go of Ctrl in the engine's record with the key still down.
+    testWidgets('🚨a Ctrl the engine lets go of under a pen, the key still '
+        'down, is not let go: the key pressed after it is the chord', (
+      tester,
+    ) async {
+      ModifierKeys.debugWindowsKeyDown = (key) => key == vkControl;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(hint(), findsOneWidget, reason: 'Ctrl is still down');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pump();
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Ctrl+F9'],
+      );
+    });
+
+    testWidgets('a modifier that went down with a key is that chord, not the '
+        'modifier alone', (tester) async {
+      final bindings = await recording(tester, pan);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+
+      expect(
+        bindings.activatorsFor(pan).map(singleActivatorLabel),
+        ['Alt+F9'],
+      );
+    });
+
+    testWidgets('🗣️F-603-Q1 「뗐을 때」: a pressed row takes modifiers alone '
+        'too — and one recorded after a chord hears that chord\'s Ctrl no '
+        'more', (tester) async {
+      const undo = EditorActionIds.undo;
+      final bindings = await recording(tester, undo);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+
+      expect(hint(), findsNothing);
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl',
+      ]);
+      expect(isModifiersAlone(bindings.activatorsFor(undo).single), isTrue);
+
+      // A chord recorded, its Ctrl let go once the row has its key — and the
+      // row recorded again: Ctrl alone is a press of its own all the same.
+      Future<void> record() async {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('shortcut-record-$undo')),
+        );
+        await tester.pump();
+      }
+
+      await record();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl+F9',
+      ]);
+      await record();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(bindings.activatorsFor(undo).map(singleActivatorLabel), [
+        'Ctrl',
+      ]);
+    });
+  });
   testWidgets('record captures the next key, and the reset restores', (
     tester,
   ) async {
@@ -463,6 +921,21 @@ void main() {
           ),
           findsOneWidget,
         );
+        // Out while nothing is recorded over the preset (F-583): a key
+        // recorded is what gives it something to put back.
+        // And in the accent while it is live, as every reset is
+        // (🗣️I-176-Q1: 「강조색 — 리셋 법 하나」 — the red went).
+        Color? ink() => tester
+            .widget<TextButton>(resetButton)
+            .style
+            ?.foregroundColor
+            ?.resolve(const <WidgetState>{});
+        expect(tester.widget<TextButton>(resetButton).onPressed, isNull);
+        expect(ink(), isNot(AppColors.accent));
+        bindings.setActivators(bindings.definitions.first.id, const [spare]);
+        await tester.pump();
+        expect(tester.widget<TextButton>(resetButton).onPressed, isNotNull);
+        expect(ink(), AppColors.accent);
 
         await press(tester, resetButton);
 
@@ -1013,4 +1486,69 @@ void main() {
       });
     });
   });
+
+  // 🗣️F-590 (user, 2026-11-15): 「키보드 단축키 창, 스크롤바랑 내부
+  // 리셋버튼이랑 겹치니 스크롤바 확실하게 공간 주도록」.
+  testWidgets('the list keeps its scrollbar in a lane of its own: beside '
+      'the rows, and no bar over a row\'s reset button', (tester) async {
+    // The app root's behaviour, as in the app: it lays its own bar over a
+    // scrollable on a desktop, and that one must not come back here.
+    await pump(tester, scrollBehavior: const AppScrollBehavior());
+    // A shelf's name finds every row it holds, on the shelves under it too.
+    await tester.enterText(search, ShortcutShelf.pills.label);
+    await tester.pump();
+
+    final window = find.byKey(
+      const ValueKey<String>('shortcut-settings-dialog'),
+    );
+    final rows = tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey<String>('shortcut-action-list')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+    expect(
+      rows.maxScrollExtent,
+      greaterThan(0),
+      reason: '⛔premise: the rows overflow the list',
+    );
+
+    final bar = find.descendant(
+      of: window,
+      matching: find.byType(AppControllerScrollbar),
+    );
+    expect(
+      tester.widget<AppControllerScrollbar>(bar).controller.position,
+      same(rows),
+      reason: 'the lane is this list\'s',
+    );
+    final lane = tester.getRect(bar);
+    expect(lane.width, AppScrollbarLane.thin);
+
+    final resets = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'shortcut-reset-',
+          ),
+    );
+    expect(resets, findsWidgets, reason: '⛔premise: rows are on screen');
+    for (final reset in resets.evaluate()) {
+      final box = reset.renderObject! as RenderBox;
+      expect(
+        box.localToGlobal(box.size.bottomRight(Offset.zero)).dx,
+        lessThanOrEqualTo(lane.left),
+        reason: '${reset.widget.key}: clear of the lane',
+      );
+    }
+    expect(
+      find.descendant(of: window, matching: find.byType(PanelScrollbar)),
+      findsNothing,
+      reason: 'no second bar laid over the rows',
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
 import '../../core/path_names.dart';
+import '../../core/piece_read.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
@@ -277,6 +278,11 @@ typedef WaitClock = ({
   Duration Function() elapsed,
   Future<void> Function(Duration slice, Future<void>? sooner) sleep,
 });
+
+/// What a wait tells the window it keeps, on every beat: how long it has
+/// gone on, and how long since a byte of the file last arrived — the two
+/// things `cloudWaitLine` says.
+typedef WaitReport = void Function(Duration waited, Duration quiet);
 
 abstract final class FolderPicker {
   /// Test seam. The repo's convention for a Dart→native call is an
@@ -949,21 +955,32 @@ abstract final class FolderPicker {
   ///
   /// [step] is the PROBE spacing, named so tests can compress it — how
   /// often the file is asked, which backs off. What [onWaiting] reports is
-  /// the elapsed time and what has ARRIVED, on its own steady beat.
+  /// the elapsed time and how long since a byte last ARRIVED, on its own
+  /// steady beat.
   static Future<({String path, bool staged})> materializeOpenedFile(
     String path, {
-    Duration? within = const Duration(minutes: 10),
-    Duration step = const Duration(milliseconds: 250),
-    void Function(Duration waited, FileArrival arrival)? onWaiting,
+    Duration? within = _backstop,
+    Duration step = _firstStep,
+    WaitReport? onWaiting,
     bool Function()? isCancelled,
   }) async {
-    if (within == null && isCancelled == null) {
-      throw ArgumentError.value(
-        within,
-        'within',
-        'a wait with no deadline needs a way to be cancelled',
-      );
-    }
+    return _materialize(
+      path,
+      _Wait(
+        within: within,
+        step: step,
+        onWaiting: onWaiting,
+        isCancelled: isCancelled,
+      ),
+    );
+  }
+
+  /// [materializeOpenedFile]'s road, on a wait that may go on past it —
+  /// [readOpenedFile] reads the bytes in under the same one.
+  static Future<({String path, bool staged})> _materialize(
+    String path,
+    _Wait wait,
+  ) async {
     // 🚨★★★ONE WAIT, ONE CLOCK, ONE CANCEL (F-135, 유저 2026-09-15: 「우선
     // 프로젝트 열 때 여는중 이라고만뜨는데」). The provider's fetch and the
     // pick becoming readable are ONE wait to the person watching. The fetch
@@ -971,66 +988,16 @@ abstract final class FolderPicker {
     // IS the long part (a 94MB project on Drive): the window said only
     // 「여는 중…」, never that it was waiting for the cloud, and Cancel did
     // nothing until the provider let go. Every wait in here goes through
-    // [tick]: stopped when the person stops it, reported as it grows, and
-    // bounded only by [within]. 🧪Measured the same day: once the bytes are
-    // local, the app's own read and apply of that project take ~160ms — this
-    // wait is what the window is for.
+    // [_Wait.tick]: stopped when the person stops it, reported as it grows,
+    // and bounded only by its backstop. 🧪Measured the same day: once the
+    // bytes are local, the app's own read and apply of that project take
+    // ~160ms — this wait is what the window is for.
     //
     // ⚠️No percent for the fetch: iOS gives an app no progress for another
     // app's File Provider download (the subscriber API is macOS-only), so the
     // line says what is being waited for and for how long — never a number
     // it cannot know.
-    // 🚨★★★TWO QUESTIONS, TWO VALUES (F-141, 유저 2026-09-16: 「클라우드에서
-    // 내려받는중 표시가 1,2,3초가 아니라 1,3,5초마다? 보임」).
     //
-    // 「얼마나 자주 물어볼까」와 「얼마나 지났나」는 다른 질문인데, 누적치
-    // 하나가 둘 다에 답하고 있었다: the probe spacing doubles so a slow fetch
-    // is not asked a hundred times a minute, and the window was shown that
-    // spacing's running total — so the line it drew skipped seconds (0 · 0 ·
-    // 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and
-    // the backoff is only the backoff.
-    final clock = (debugWaitClock ?? _realWaitClock)();
-    var pause = step;
-    // What the last probe SAW, so the wait's sentence can be true instead of
-    // guessed from the clock ([cloudWaitLine]).
-    var seen = FileArrival.nothing;
-    // One tick of the wait; false once [within] has passed. A wait that has
-    // something to finish passes it as [sooner] and ends the tick early when
-    // it does — and a tick ended that way reports nothing, because an
-    // instant answer is not a wait. The timer goes with it, so nothing is
-    // left ticking behind an answered question.
-    //
-    // ⚠️It sleeps in [_reportEvery] slices and reports each one, so the beat
-    // the window draws stays steady while [pause] backs off. A [sooner] that
-    // wins is the caller's [settled] to notice — the one caller raises its
-    // flag before that future completes, so the slice loop cannot spin on an
-    // already-finished future.
-    Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
-      var slept = Duration.zero;
-      while (true) {
-        MaterializeCancelled.throwIf(isCancelled);
-        if (within != null && clock.elapsed() >= within) {
-          return false;
-        }
-        final left = pause - slept;
-        final slice = left < _reportEvery ? left : _reportEvery;
-        await clock.sleep(slice, sooner);
-        if (settled?.call() ?? false) {
-          return true;
-        }
-        slept += slice;
-        onWaiting?.call(clock.elapsed(), seen);
-        if (slept >= pause) {
-          // Doubling, capped: the common case lands within a second or two.
-          pause = pause * 2;
-          if (pause > _materializeMaxStep) {
-            pause = _materializeMaxStep;
-          }
-          return true;
-        }
-      }
-    }
-
     // 🚨★★★A DOCUMENT WITH NO FILESYSTEM PATH IS COPIED IN — AND THAT IS
     // THIS WAIT TOO (PICK-7, 유저 2026-09-27). Drive on Android hands out a
     // `content://` document, and the archive reader needs a file it can
@@ -1041,16 +1008,23 @@ abstract final class FolderPicker {
     // road, not the alarmed last resort below.
     if (ProviderDocuments.isDocumentUri(path)) {
       final copy = ProviderDocuments.copyIn(path);
-      var answered = false;
-      final settled = copy.done.whenComplete(() => answered = true);
+      // A copy that has moved further since the last beat is bytes
+      // ARRIVING — so the line says nothing has come only when nothing has
+      // since the last of them, not since the start (F-608 ①).
+      var moved = 0;
       try {
-        while (!answered) {
-          if (!await tick(sooner: settled, settled: () => answered)) {
-            throw FileSystemException('파일을 읽지 못했습니다', path);
-          }
-          seen = await copy.moved() > 0
-              ? FileArrival.partway
-              : FileArrival.nothing;
+        final done = await wait.outlast(
+          copy.done,
+          between: () async {
+            final now = await copy.moved();
+            if (now > moved) {
+              moved = now;
+              wait.arrived();
+            }
+          },
+        );
+        if (!done) {
+          throw FileSystemException('파일을 읽지 못했습니다', path);
         }
       } on Object {
         copy.stop();
@@ -1069,30 +1043,28 @@ abstract final class FolderPicker {
     // where there is no coordinator it is not asked at all.
     // ⚠️A Cancel here leaves the native coordination to finish on its own
     // thread: its block only opens the item and closes it again, so there is
-    // nothing to undo — only nothing left to wait for.
+    // nothing to undo — only nothing left to wait for. Past the backstop the
+    // pick is probed all the same.
     if (hasFileCoordinator) {
-      var answered = false;
-      final ask = readInPlaceCoordinated(path)
-          .then<void>((_) {}, onError: (Object _) {})
-          .whenComplete(() => answered = true);
-      while (!answered) {
-        if (!await tick(sooner: ask, settled: () => answered)) {
-          break;
-        }
-      }
+      await wait.outlast(readInPlaceCoordinated(path));
     }
-    seen = await arrivalOf(path);
-    if (seen == FileArrival.whole) {
+    if (await arrivalOf(path) == FileArrival.whole) {
       return (path: path, staged: false);
     }
     if (await File(path).exists()) {
       // Ask the platform to fetch it, then wait for the PICK to be ALL here
       // — no copy anywhere in this wait.
       await requestFileDownload(path);
-      while (await tick()) {
-        seen = await arrivalOf(path);
-        if (seen == FileArrival.whole) {
+      while (await wait.tick()) {
+        final arrival = await arrivalOf(path);
+        if (arrival == FileArrival.whole) {
           return (path: path, staged: false);
+        }
+        // A front that reads is a file on its way, and the placeholder
+        // tells no more of its bytes than that: it counts as arriving, so
+        // the line keeps counting for it (F-141).
+        if (arrival == FileArrival.partway) {
+          wait.arrived();
         }
       }
     }
@@ -1122,29 +1094,114 @@ abstract final class FolderPicker {
     throw FileSystemException('파일을 읽지 못했습니다', path);
   }
 
-  static const Duration _materializeMaxStep = Duration(seconds: 2);
+  /// The default backstop of a wait nobody can stop ([materializeOpenedFile]).
+  static const Duration _backstop = Duration(minutes: 10);
 
-  /// How often a waiting window is told the time. ⛔It does NOT back off
-  /// with [_materializeMaxStep]: a clock that skipped seconds is exactly
-  /// what F-141 reported.
-  static const Duration _reportEvery = Duration(seconds: 1);
+  /// The first probe spacing, which then backs off ([_Wait.tick]).
+  static const Duration _firstStep = Duration(milliseconds: 250);
 
-  /// The clock a wait runs on: a stopwatch started with it, and a timer for
-  /// each slice — which [sooner] ends early, taking the timer with it.
-  static WaitClock _realWaitClock() {
-    final stopwatch = Stopwatch()..start();
-    return (
-      elapsed: () => stopwatch.elapsed,
-      sleep: (slice, sooner) async {
-        final over = Completer<void>();
-        final timer = Timer(slice, over.complete);
-        await (sooner == null
-            ? over.future
-            : Future.any<void>([sooner, over.future]));
-        timer.cancel();
-      },
+  /// [path] brought down and READ IN under one wait: its bytes, and where
+  /// they were read from.
+  ///
+  /// 🚨★★★THE READ IS THE WAIT TOO (F-608 ①, 유저 2026-11-16: a TVPaint file
+  /// that lived only on Google Drive was dropped in, and the window said
+  /// only 「여는 중」 while it came down). Drive on Windows says nothing of a
+  /// file the cloud still holds: its attributes read Normal downloaded or
+  /// not, and both of [arrivalOf]'s ends answer in 2 ms (실측 11-16 · 11-17)
+  /// — so the materializer found it whole, and the download ran inside the
+  /// door's own read, which no wait was watching. The bytes are the one
+  /// honest signal there, so they are read in pieces ON THE WAIT'S CLOCK,
+  /// every piece an arrival: the line says the file is coming down while it
+  /// is, and that nothing has come only when no piece has for
+  /// `cloudWaitSaysNothingAfter`.
+  /// 🧪Free on a file that is here: 137 MB in 4 MB pieces read in 75–115 ms
+  /// against ~100 ms for one `readAsBytes` (서피스 11-17).
+  ///
+  /// A door that can be stopped waits as long as the file takes, and one
+  /// that cannot keeps [_backstop] — the rule each door wrote out beside its
+  /// own call.
+  ///
+  /// [onRead] is told how much of the file is in, as its 0–1 — before the
+  /// first piece and after every one: the reading stretch of the window's
+  /// bar.
+  /// 🗣️THE PERCENT FOLLOWS THE BYTES (F-608-Q2, 유저 2026-11-17: 「그냥
+  /// 통일적으로 심플하게 퍼센테이지만 근본적으로 늘면됨 … 내려받는중에
+  /// 퍼센테이지가 조금이라도 안느는게 문제」). ↩️Till then a door's bar
+  /// moved only as its cels were baked, so it stood still for as long as the
+  /// file took to come down.
+  static Future<({String path, bool staged, Uint8List bytes})> readOpenedFile(
+    String path, {
+    WaitReport? onWaiting,
+    bool Function()? isCancelled,
+    void Function(double fraction)? onRead,
+  }) async {
+    final wait = _Wait(
+      within: isCancelled == null ? _backstop : null,
+      step: _firstStep,
+      onWaiting: onWaiting,
+      isCancelled: isCancelled,
     );
+    final source = await _materialize(path, wait);
+    final file = await File(source.path).open();
+    var gaveUp = false;
+    final reading = _readInPieces(
+      length: file.length,
+      readInto: (into, from, to) {
+        if (gaveUp) {
+          throw FileSystemException('파일을 읽지 못했습니다', path);
+        }
+        return (debugReadPiece ?? _readPiece)(file, into, from, to);
+      },
+      arrived: wait.arrived,
+      onRead: onRead,
+    ).whenComplete(file.close);
+    try {
+      if (!await wait.outlast(reading)) {
+        throw FileSystemException('파일을 읽지 못했습니다', path);
+      }
+    } on Object {
+      // Stopped, or past the backstop: the piece in flight is the last.
+      gaveUp = true;
+      rethrow;
+    }
+    return (path: source.path, staged: source.staged, bytes: await reading);
   }
+
+  /// The bytes [length] says, read a piece at a time by [readInto] — each
+  /// piece [arrived], and [onRead] told how much is in ([PieceRead]).
+  static Future<Uint8List> _readInPieces({
+    required Future<int> Function() length,
+    required Future<int> Function(Uint8List into, int from, int to) readInto,
+    required void Function() arrived,
+    void Function(double fraction)? onRead,
+  }) async {
+    final read = PieceRead(await length(), onRead: onRead);
+    while (!read.done) {
+      if (!read.took(await readInto(read.bytes, read.from, read.to))) {
+        throw const FileSystemException('파일이 제 길이보다 먼저 끝났습니다');
+      }
+      arrived();
+    }
+    return read.bytes;
+  }
+
+  static Future<int> _readPiece(
+    RandomAccessFile file,
+    Uint8List into,
+    int from,
+    int to,
+  ) => file.readInto(into, from, to);
+
+  /// Test seam for one piece of [readOpenedFile]'s read, so a test can hold
+  /// a piece the way the cloud does.
+  /// ⚠️Reset in `test/flutter_test_config.dart`.
+  static Future<int> Function(
+    RandomAccessFile file,
+    Uint8List into,
+    int from,
+    int to,
+  )?
+  debugReadPiece;
 
   /// Test seam for the clock each wait starts — so the beat the window is
   /// told can be counted in no real time. A pin that waited four real
@@ -1368,4 +1425,136 @@ enum FileArrival {
 
   /// Both ends read, so what lies between them is here too.
   whole,
+}
+
+/// ONE wait for a picked file: one clock, one cancel, one steady beat, and
+/// when a byte of it last arrived — for every stretch of it, from the
+/// provider's fetch to the read that brings the bytes in
+/// ([FolderPicker.readOpenedFile]).
+///
+/// 🚨★★★TWO QUESTIONS, TWO VALUES (F-141, 유저 2026-09-16: 「클라우드에서
+/// 내려받는중 표시가 1,2,3초가 아니라 1,3,5초마다? 보임」).
+///
+/// 「얼마나 자주 물어볼까」와 「얼마나 지났나」는 다른 질문인데, 누적치
+/// 하나가 둘 다에 답하고 있었다: the probe spacing doubles so a slow fetch
+/// is not asked a hundred times a minute, and the window was shown that
+/// spacing's running total — so the line it drew skipped seconds (0 · 0 ·
+/// 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and the
+/// backoff is only the backoff.
+///
+/// 🚨「얼마나 지났나」 and 「얼마나 조용했나」 are two more (F-608 ①,
+/// 2026-11-17): the line may say nothing has come only when nothing has
+/// since the LAST byte — a download that stopped halfway is as stuck as
+/// one that never started, and one still moving is not stuck at all.
+final class _Wait {
+  _Wait({
+    required this.within,
+    required Duration step,
+    required this.onWaiting,
+    required this.isCancelled,
+  }) : _pause = step {
+    if (within == null && isCancelled == null) {
+      throw ArgumentError.value(
+        within,
+        'within',
+        'a wait with no deadline needs a way to be cancelled',
+      );
+    }
+  }
+
+  /// The backstop; null when someone can stop the wait instead.
+  final Duration? within;
+  final WaitReport? onWaiting;
+  final bool Function()? isCancelled;
+  final WaitClock _clock = (FolderPicker.debugWaitClock ?? _realClock)();
+  Duration _pause;
+  Duration _lastArrival = Duration.zero;
+
+  static const Duration _maxStep = Duration(seconds: 2);
+
+  /// How often a waiting window is told the time. ⛔It does NOT back off
+  /// with [_maxStep]: a clock that skipped seconds is exactly what F-141
+  /// reported.
+  static const Duration _reportEvery = Duration(seconds: 1);
+
+  /// Bytes of the file arrived, now.
+  void arrived() => _lastArrival = _clock.elapsed();
+
+  /// One tick of the wait; false once [within] has passed. A wait that has
+  /// something to finish passes it as [sooner] and ends the tick early when
+  /// it does — and a tick ended that way reports nothing, because an
+  /// instant answer is not a wait. The timer goes with it, so nothing is
+  /// left ticking behind an answered question.
+  ///
+  /// ⚠️It sleeps in [_reportEvery] slices and reports each one, so the beat
+  /// the window draws stays steady while [_pause] backs off. A [sooner] that
+  /// wins is the caller's [settled] to notice — [outlast] raises its flag
+  /// before that future completes, so the slice loop cannot spin on an
+  /// already-finished future.
+  Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
+    var slept = Duration.zero;
+    while (true) {
+      MaterializeCancelled.throwIf(isCancelled);
+      final within = this.within;
+      if (within != null && _clock.elapsed() >= within) {
+        return false;
+      }
+      final left = _pause - slept;
+      final slice = left < _reportEvery ? left : _reportEvery;
+      await _clock.sleep(slice, sooner);
+      if (settled?.call() ?? false) {
+        return true;
+      }
+      slept += slice;
+      final waited = _clock.elapsed();
+      onWaiting?.call(waited, waited - _lastArrival);
+      if (slept >= _pause) {
+        // Doubling, capped: the common case lands within a second or two.
+        _pause = _pause * 2;
+        if (_pause > _maxStep) {
+          _pause = _maxStep;
+        }
+        return true;
+      }
+    }
+  }
+
+  /// Ticks until [work] is done — true — or [within] has passed — false.
+  /// [between] runs after every tick, to look at how the work is going.
+  ///
+  /// What [work] ends in is its caller's to read: a failure ends the wait
+  /// as an answer does.
+  Future<bool> outlast(
+    Future<Object?> work, {
+    Future<void> Function()? between,
+  }) async {
+    var answered = false;
+    final settled = work
+        .then<void>((_) {}, onError: (Object _) {})
+        .whenComplete(() => answered = true);
+    while (!answered) {
+      if (!await tick(sooner: settled, settled: () => answered)) {
+        return false;
+      }
+      await between?.call();
+    }
+    return true;
+  }
+
+  /// The clock a wait runs on: a stopwatch started with it, and a timer for
+  /// each slice — which `sooner` ends early, taking the timer with it.
+  static WaitClock _realClock() {
+    final stopwatch = Stopwatch()..start();
+    return (
+      elapsed: () => stopwatch.elapsed,
+      sleep: (slice, sooner) async {
+        final over = Completer<void>();
+        final timer = Timer(slice, over.complete);
+        await (sooner == null
+            ? over.future
+            : Future.any<void>([sooner, over.future]));
+        timer.cancel();
+      },
+    );
+  }
 }

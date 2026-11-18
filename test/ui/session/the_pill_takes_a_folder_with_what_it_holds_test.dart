@@ -276,10 +276,12 @@ void main() {
 
       pill(s).cutRun();
 
-      expect(stack(s), ['note', 'over'], reason: 'the last instruction row');
+      // Let out of the folder, it stands in its own section again: over the
+      // pictures (F-596).
+      expect(stack(s), ['over', 'note'], reason: 'the last instruction row');
       s.selectLayer(const LayerId('over'));
       pill(s).pasteIndependentFrame();
-      expect(stack(s), ['note', 'over', 'a<F', 'F']);
+      expect(stack(s), ['over', 'a<F', 'F', 'note']);
     });
 
     test('🗣️F-532-Q1: a folder holding an attach row goes with it, and the '
@@ -321,7 +323,9 @@ void main() {
 
       pill(s).cutRun();
 
-      expect(stack(s), ['cam', 'over']);
+      // Let out of the folder, it stands in its own section: over the
+      // pictures (F-596).
+      expect(stack(s), ['over', 'cam']);
     });
   });
 
@@ -387,6 +391,31 @@ void main() {
       expect(stack(s).sublist(1, 4), ['a<F', 'c<G', 'G<F']);
     });
 
+    test('a folder holding a direction row, put down over a direction row, '
+        'lands whole at the top of the pictures — the direction row in it',
+        () {
+      final s = sessionOf([
+        row('note', inside: 'F', kind: LayerKind.instruction),
+        row('a', inside: 'F'),
+        row('F', kind: LayerKind.folder),
+        row('over'),
+        row('d2', kind: LayerKind.instruction),
+      ]);
+      select(s, ['F']);
+      pill(s).copyFrame();
+      s.clearRowSelection();
+      s.selectLayer(const LayerId('d2'));
+
+      pill(s).pasteIndependentFrame();
+
+      expect(
+        stack(s),
+        ['note<F', 'a<F', 'F', 'over', 'note<F', 'a<F', 'F', 'd2'],
+        reason: '↩️F-596: the held direction row went over the direction row '
+            'stood on, which put it over its folder — held by no one',
+      );
+    });
+
     test('on a base it lands past the whole attach group', () {
       final s = sessionOf([row('under'), row('base'), row('over')]);
       s.selectLayer(const LayerId('base'));
@@ -404,6 +433,30 @@ void main() {
   });
 
   group('🗣️F-532-Q2: the linked paste lands the folder too', () {
+    test('a folder holding a direction row, put down over a direction row, '
+        'lands whole — the direction row in it', () {
+      final s = sessionOf([
+        row('note', inside: 'F', kind: LayerKind.instruction),
+        row('a', inside: 'F'),
+        row('F', kind: LayerKind.folder),
+        row('over'),
+        row('d2', kind: LayerKind.instruction),
+      ]);
+      select(s, ['F']);
+      pill(s).copyFrame();
+      s.clearRowSelection();
+      s.selectLayer(const LayerId('d2'));
+
+      pill(s).pasteLinkedFrame();
+
+      expect(
+        stack(s),
+        ['note<F', 'a<F', 'F', 'over', 'note<F', 'a<F', 'F', 'd2'],
+        reason: '↩️F-596: the held direction row went over the direction row '
+            'stood on — over its folder, held by no one',
+      );
+    });
+
     test('its rows are linked copies, in a folder of their own', () {
       final s = sessionOf(nested());
       select(s, ['G']);

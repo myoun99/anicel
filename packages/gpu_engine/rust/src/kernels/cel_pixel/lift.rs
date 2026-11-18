@@ -102,7 +102,7 @@ impl Lift {
         let cut = runs(pages, Some(rows.as_slice()), per_pass, most);
         let align = alignment(engine);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut given = Vec::with_capacity(cut.len());
         let mut lifted = Vec::with_capacity(cut.len());

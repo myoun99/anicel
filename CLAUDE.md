@@ -67,7 +67,7 @@
   PR이 사 주던 건 기다림뿐이다 — CI는 master 푸시에도 돈다.
   게이트는 `.githooks/pre-push` 가 **강제**한다: **되감는 푸시**와 보드 밖 파일이 끼면 거부,
   보드 전용이면 analyze+보드 테스트를 돌려 빨가면 거부. 새 기계 · 새 체크아웃에서 한 번:
-  `dart run tool/session_hooks/install.dart --board <보드 폴더> --memory <메모리 폴더>` (훅 · 메모리 · 보드 주소 · `core.hooksPath`).
+  `dart tool/session_hooks/install.dart --board <보드 폴더> --memory <메모리 폴더>` (훅 · 메모리 · 보드 주소 · `core.hooksPath`).
 - **그 외에는 레인으로 간다** — `bash tool/lane.sh open <이름>` 이 master에서 워크트리를 파고,
   `land <이름>` 이 리베이스 → analyze → `test/architecture` → ff 머지 → 로컬 master 전진을
   **순서대로 강제**한다.

@@ -1,3 +1,4 @@
+import '../helpers/a_cut_as_surfaces.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -270,6 +271,7 @@ void main() {
       effects: chainWornBy(cut, attach),
       frameIndex: 0,
       blocks: null,
+      worn: null,
     );
     expect(kindsOf(worn), ['blur', 'blur']);
     expect(chainWornBy(cut, base), base.effects);

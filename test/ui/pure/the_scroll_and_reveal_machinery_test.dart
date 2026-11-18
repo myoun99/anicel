@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/panels/panel_collapsed_scope.dart';
 import 'package:anicel/src/ui/panels/panel_flash.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_editor_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_axis_follower.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_scroll_offset_sync.dart';
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 
@@ -394,20 +395,21 @@ void main() {
         isMounted: () => true,
       );
       addTearDown(follower.dispose);
-      // The window spans five cells a bucket: 100px.
+      int bucketAt(double offset) =>
+          timelineFrameWindowBucketOf(offset: offset, cellExtent: 20);
       controller.jumpTo(200);
       follower.handleScroll();
       expect(follower.renderedFrameCount, 30, reason: '⛔premise: built to 30');
 
       expect(
         follower.nextPage(runFrames: 32),
-        (bucket: 6, builtFrames: 50),
+        (bucket: bucketAt(600), builtFrames: 50),
         reason: 'frame 30 leaves the window first, and the turn standing it '
             'at 600px builds the axis to the view\'s end',
       );
       expect(
         (follower.trailingFrames, bucket.value),
-        (0, 2),
+        (0, bucketAt(200)),
         reason: 'asking where the turn stands it moves nothing',
       );
 

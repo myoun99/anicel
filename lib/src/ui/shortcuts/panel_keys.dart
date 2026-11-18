@@ -1,17 +1,14 @@
 import 'package:flutter/widgets.dart';
 
 import '../brush/brush_tool_state.dart' show CanvasTool;
-import '../widgets/panel_flyout.dart';
 
 /// What one panel binds for keys to press (I-40): its buttons, each under
 /// the action it names — the very callback the button holds, null while the
-/// button is dead — and the rows its menu would open now.
-typedef PanelPresses = ({
-  Map<String, VoidCallback?> buttons,
-  List<PanelFlyoutEntry> Function()? menu,
-});
+/// button is dead. ↩️And the rows its menu would open — the brush library's
+/// ⋯, the one menu bound, until F-580 took its rows off the shortcut list.
+typedef PanelPresses = ({Map<String, VoidCallback?> buttons});
 
-/// The panels' own buttons and menus as a KEY presses them (I-40) — each
+/// The panels' own buttons as a KEY presses them (I-40) — each
 /// panel binds what it shows while it is mounted ([PanelKeysBinding]), and
 /// the shell presses the one an action names.
 ///
@@ -20,22 +17,23 @@ typedef PanelPresses = ({
 /// button's own callback, so a dead button is dead by key too, and a panel
 /// that is not mounted has nothing here to press.
 ///
-/// WHICH PANEL: a panel of a TOOL — its library, its settings — binds as
-/// that tool's, and a key presses the panels of the tool in hand: two paint
-/// tools keep their libraries mounted side by side, and the eraser's is not
-/// the one on screen while the brush is in hand. A panel of no tool is the
-/// only one of its kind, and a key presses it whatever is in hand.
+/// WHICH PANEL: a panel of a TOOL — its settings (↩️its library too, until
+/// F-580) — binds as that tool's, and a key presses the panels of the tool
+/// in hand: two paint tools keep their panels mounted side by side, and the
+/// eraser's is not the one on screen while the brush is in hand. ↩️A panel of
+/// no tool — the media pool, the sheets, the palette — was pressed whatever
+/// was in hand, until F-580 took 「패널 안」 off the shortcut list.
 ///
 /// ↩️The brush library had a binding of its own (`BrushLibraryKeys`, the
 /// eighth round of I-40); the guide list, the text tool's settings, the
 /// media pool and the timesheet were the next four, so the binding is one
 /// for every panel now.
 class PanelKeys {
-  final Map<Object, ({CanvasTool? tool, PanelPresses presses})> _bound = {};
+  final Map<Object, ({CanvasTool tool, PanelPresses presses})> _bound = {};
 
-  /// [owner]'s presses from now on, as [tool]'s panel or as no tool's —
+  /// [owner]'s presses from now on, as [tool]'s panel —
   /// whatever it bound before, replaced.
-  void bind(Object owner, PanelPresses presses, {CanvasTool? tool}) {
+  void bind(Object owner, PanelPresses presses, {required CanvasTool tool}) {
     _bound[owner] = (tool: tool, presses: presses);
   }
 
@@ -45,14 +43,7 @@ class PanelKeys {
 
   Iterable<PanelPresses> _reaching(CanvasTool inHand) => [
     for (final bound in _bound.values)
-      if (bound.tool == null || bound.tool == inHand) bound.presses,
-  ];
-
-  /// Every row the menus a key reaches would open right now, with [inHand]
-  /// in hand.
-  Iterable<PanelFlyoutItem> menuRows(CanvasTool inHand) => [
-    for (final presses in _reaching(inHand))
-      if (presses.menu case final menu?) ...flyoutRowsOf(menu()),
+      if (bound.tool == inHand) bound.presses,
   ];
 
   /// One press of the button that names [actionId] on a panel a key
@@ -83,13 +74,13 @@ class PanelKeysScope extends InheritedWidget {
       !identical(keys, oldWidget.keys);
 }
 
-/// Binds the buttons and the menu of the panel around [child] for keys while
-/// it is mounted — as [tool]'s panel, or as no tool's ([PanelKeys]).
+/// Binds the buttons of the panel around [child] for keys while
+/// it is mounted — as [tool]'s panel ([PanelKeys]).
 ///
 /// [buttons] are handed again on every build, so a key presses what the
 /// buttons hold NOW.
 ///
-/// ⚠️It wraps the PANEL — a tool's settings section, a library, a pool —
+/// ⚠️It wraps the PANEL — a tool's settings section, its guide list —
 /// never the row a button stands on: a settings list builds its rows only
 /// near the screen, and a binding on a row far down would not be there to
 /// press until the list was scrolled to it (the tool settings' round of
@@ -97,15 +88,13 @@ class PanelKeysScope extends InheritedWidget {
 class PanelKeysBinding extends StatefulWidget {
   const PanelKeysBinding({
     super.key,
-    this.tool,
+    required this.tool,
     this.buttons = const {},
-    this.menu,
     required this.child,
   });
 
-  final CanvasTool? tool;
+  final CanvasTool tool;
   final Map<String, VoidCallback?> buttons;
-  final List<PanelFlyoutEntry> Function()? menu;
   final Widget child;
 
   @override
@@ -134,7 +123,6 @@ class _PanelKeysBindingState extends State<PanelKeysBinding> {
 
   void _bind() => _keys?.bind(this, (
     buttons: widget.buttons,
-    menu: widget.menu,
   ), tool: widget.tool);
 
   @override

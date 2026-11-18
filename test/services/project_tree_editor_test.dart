@@ -112,10 +112,166 @@ void main() {
     expect(
       [for (final track in next.tracks) track.id],
       [first.id, second.id],
-      reason:
-          'every track is rebuilt, so each has to come back as '
-          'ITSELF — the rebuild must not hand one track another\'s name',
+      reason: 'each track comes back as ITSELF — the walk must not hand one '
+          'track another\'s name',
     );
+  });
+
+  group('🚨A WALK HANDS BACK, AS THEY WERE, EVERY TRACK AND CUT IT DID NOT '
+      'CHANGE — card conte-one-eye-repaints-every-track (11-08)', () {
+    // One S row's eye made every track and every cut anew, and the conte's
+    // rows — kept while their cuts are the same objects — all built again.
+    // Two tracks, two cuts on the first: each edit below lands in one place.
+    late Project two;
+    late Track first;
+    late Track second;
+
+    setUp(() {
+      final track = project.tracks.first;
+      final cut = track.cuts.first;
+      first = track.copyWith(
+        cuts: [
+          cut,
+          cut.copyWith(id: const CutId('c1b'), layers: const []),
+        ],
+        seLayers: [
+          Layer(
+            id: const LayerId('se-a'),
+            name: 'SE',
+            frames: const [],
+            kind: LayerKind.se,
+          ),
+        ],
+      );
+      second = Track(
+        id: const TrackId('t2'),
+        name: 'B',
+        cuts: [
+          cut.copyWith(
+            id: const CutId('c2'),
+            layers: [
+              Layer(
+                id: const LayerId('b-row'),
+                name: 'B row',
+                frames: [
+                  Frame(
+                    id: const FrameId('b-frame'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      two = project.copyWith(tracks: [first, second]);
+    });
+
+    Layer rename(Layer layer) => layer.copyWith(name: 'Renamed');
+
+    /// A track built again round an edit of its own rows wraps its lists
+    /// anew ([Track]'s constructor): it is its cuts that stand as they were.
+    void expectTheSameCuts(Track track) {
+      expect(track.cuts, hasLength(first.cuts.length));
+      for (final (index, cut) in track.cuts.indexed) {
+        expect(cut, same(first.cuts[index]), reason: 'cut $index');
+      }
+    }
+
+    test('a cut row\'s edit keeps the other cut, the track\'s own rows and '
+        'the other track', () {
+      final next = updateLayerAnywhere(
+        two,
+        first.cuts.first.layers.first.id,
+        rename,
+      )!;
+      expect(next.tracks.first.cuts.first.layers.first.name, 'Renamed');
+      expect(next.tracks.first.cuts.last, same(first.cuts.last));
+      expect(next.tracks.first.seLayers.single, same(first.seLayers.single));
+      expect(
+        next.tracks.first.transitionLayer,
+        same(first.transitionLayer),
+      );
+      expect(next.tracks.last, same(second));
+    });
+
+    test('an S row\'s edit keeps every cut, and the other track', () {
+      final next = updateLayerAnywhere(two, const LayerId('se-a'), rename)!;
+      expect(next.tracks.first.seLayers.single.name, 'Renamed');
+      expectTheSameCuts(next.tracks.first);
+      expect(next.tracks.last, same(second));
+    });
+
+    test('a transition row\'s edit keeps every cut, and the other track', () {
+      final next = updateLayerAnywhere(
+        two,
+        first.transitionLayer.id,
+        rename,
+      )!;
+      expect(next.tracks.first.transitionLayer.name, 'Renamed');
+      expectTheSameCuts(next.tracks.first);
+      expect(next.tracks.last, same(second));
+    });
+
+    test('a frame\'s edit keeps the other track', () {
+      final next = updateFrameAnywhere(
+        two,
+        const FrameId('b-frame'),
+        (frame) => frame.copyWith(name: 'Renamed'),
+      )!;
+      expect(
+        next.tracks.last.cuts.single.layers.single.frames.single.name,
+        'Renamed',
+      );
+      expect(next.tracks.first, same(first));
+    });
+
+    test('a cut\'s edit keeps the other track, and the other cut', () {
+      final next = updateCutAnywhere(
+        two,
+        const CutId('c1b'),
+        (cut) => cut.copyWith(name: 'Renamed'),
+      )!;
+      expect(next.tracks.first.cuts.last.name, 'Renamed');
+      expect(next.tracks.first.cuts.first, same(first.cuts.first));
+      expect(next.tracks.last, same(second));
+    });
+
+    test('a cut\'s removal keeps the other track', () {
+      final removed = removeCutAnywhere(two, const CutId('c2'));
+      expect(removed.project.tracks.first, same(first));
+      expect(
+        removeCutAnywhere(two, const CutId('nowhere')).project,
+        same(two),
+        reason: 'nothing removed, nothing made anew',
+      );
+    });
+
+    test('an edit that changes nothing hands back the very project, or cut',
+        () {
+      expect(
+        updateLayerAnywhere(two, const LayerId('b-row'), (layer) => layer),
+        same(two),
+      );
+      expect(
+        updateFrameAnywhere(two, const FrameId('b-frame'), (frame) => frame),
+        same(two),
+      );
+      expect(
+        updateCutAnywhere(two, const CutId('c2'), (cut) => cut),
+        same(two),
+      );
+      expect(
+        updateTrackById(two, const TrackId('t2'), (track) => track),
+        same(two),
+      );
+      final cut = second.cuts.single;
+      expect(
+        updateLayerInCut(cut, const LayerId('b-row'), (layer) => layer),
+        same(cut),
+      );
+    });
   });
 
   test('removeCutAnywhere takes the cut out of whichever track holds it '

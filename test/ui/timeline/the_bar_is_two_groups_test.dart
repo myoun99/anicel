@@ -320,7 +320,6 @@ void main() {
       for (var i = 0; i < after.length; i += 1) {
         expect(identical(after[i], before[i]), isTrue, reason: 'control $i');
       }
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 

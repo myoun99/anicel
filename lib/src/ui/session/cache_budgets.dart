@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../native/qa_native_engine.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/history_manager.dart';
 import '../../services/memory_allowance.dart';
@@ -49,10 +47,9 @@ enum CacheBudgetLine {
 
   undo({'undo'}),
 
-  /// The frames' pictures every screen shows, and the canvas's row images
-  /// beside them — one line, the pictures claiming it first
-  /// (`PlaybackCacheBudgetEnforcer`).
-  playback({'framePictures', 'layerImages'}),
+  /// The frames' pictures every screen shows — the pictures claiming it
+  /// first (`PlaybackCacheBudgetEnforcer`).
+  playback({'framePictures'}),
 
   /// ONE viewer's pages; each mounted viewer keeps its own.
   viewerPages({'viewerPages'}),
@@ -62,13 +59,18 @@ enum CacheBudgetLine {
   /// The sheets' media images — logos, covers, the photos on their ink.
   sheetImages({'sheetImages'}),
 
-  /// The engine's stamp and mask copies, split evenly between the two
-  /// caches.
-  nativeUploads({'nativeUploads'}),
-
+  /// ↩️`nativeUploads` stood before this one till 2026-11-12: the C
+  /// engine's copies of stamps and of mask alphas, which went with the
+  /// last kernel that read them (C ABI 80).
+  ///
+  /// ↩️`liveStroke` stood after this one till 2026-11-14: 96MB of the
+  /// allowance for the live stroke's resident Dart results
+  /// (`BrushLiveStrokeRasterizer.residentResultByteBudget`), which the app
+  /// had not held since its strokes went to the engine — and no census row
+  /// counted. They went with the last route that kept them (board
+  /// `the-off-engine-cpu-commit-lives-only-for-tests`); the engine's
+  /// strokes are its pool's.
   brushTips({'brushTips'}),
-
-  liveStroke({'liveStroke'}),
 
   /// The framework's own image cache — `Image.asset` and its kind. This app
   /// decodes its own pixels, so the ceiling suits a cache that is nearly
@@ -100,7 +102,7 @@ enum CacheBudgetLine {
 
   /// The engine's parked tile blocks ([enginePool]): one full 8K frame of
   /// tiles (256MB) plus headroom for a previous frame still draining — the
-  /// number C starts from.
+  /// number the lists start from (native/tile_blocks `CAP_AT_START`).
   static const int engineTilePoolBytes = 512 * 1024 * 1024;
 
   /// This line's budget on a device with [physicalMemoryBytes] of RAM — null
@@ -123,10 +125,7 @@ enum CacheBudgetLine {
     CacheBudgetLine.sheetImages => viewerRasterBytesFor(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
-    CacheBudgetLine.nativeUploads => 2 * QaNativeEngine.stampUploadByteBudget,
     CacheBudgetLine.brushTips => BrushTipStampCache.defaultByteBudget,
-    CacheBudgetLine.liveStroke =>
-      BrushLiveStrokeRasterizer.defaultResidentResultByteBudget,
     CacheBudgetLine.imageCache => frameworkImageCacheBytes,
     CacheBudgetLine.enginePool => engineTilePoolBytes,
     CacheBudgetLine.tileImages => TilePictureBudget.deviceScaledByteBudget(
@@ -145,9 +144,7 @@ enum CacheBudgetLine {
     CacheBudgetLine.storyboardThumbnails ||
     CacheBudgetLine.sheetImages => viewerPageBytesAtCap,
     CacheBudgetLine.sheetInk ||
-    CacheBudgetLine.nativeUploads ||
     CacheBudgetLine.brushTips ||
-    CacheBudgetLine.liveStroke ||
     CacheBudgetLine.imageCache ||
     CacheBudgetLine.enginePool ||
     CacheBudgetLine.tileImages => 0,
@@ -202,9 +199,7 @@ class CacheBudgets {
   int get viewerPages => this[CacheBudgetLine.viewerPages];
   int get storyboardThumbnails => this[CacheBudgetLine.storyboardThumbnails];
   int get sheetImages => this[CacheBudgetLine.sheetImages];
-  int get nativeUploads => this[CacheBudgetLine.nativeUploads];
   int get brushTips => this[CacheBudgetLine.brushTips];
-  int get liveStroke => this[CacheBudgetLine.liveStroke];
   int get imageCache => this[CacheBudgetLine.imageCache];
   int get enginePool => this[CacheBudgetLine.enginePool];
   int get tileImages => this[CacheBudgetLine.tileImages];

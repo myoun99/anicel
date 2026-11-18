@@ -9,6 +9,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardCameraRowPainter, StoryboardCutStartsPainter;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 
 /// THE PROJECTION ROWS' PAINTERS READ THE VIEW OFF THE GEOMETRY
 /// (storyboard-strips-build-on-every-view-pixel, 2026-10-30): the camera
@@ -19,9 +20,14 @@ import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 /// ↩️Each took the breadth as a field its row handed down, and every pixel
 /// of a rail splitter's drag built the row again to hand it.
 void main() {
-  // Ten-pixel cells: a bucket is ten of them, and a view of 100px reaches
-  // three spans — frames [0, 30).
+  // Ten-pixel cells, and a view of 100px: its window reaches the span its
+  // last cell and the overscan end in.
   const cell = 10.0;
+  final windowEnd = timelineFrameWindowFor(
+    bucket: 0,
+    cellExtent: cell,
+    viewportExtent: 100,
+  ).endIndexExclusive;
 
   late TimelineFrameGeometryHandle geometry;
   late ValueNotifier<int> bucket;
@@ -85,7 +91,7 @@ void main() {
     );
     expect(
       [for (final wash in painter.noriShiroWashes()) wash.right],
-      [30 * cell],
+      [windowEnd * cell],
       reason: 'washed to the window\'s end',
     );
 
@@ -93,7 +99,7 @@ void main() {
 
     expect(
       [for (final wash in painter.noriShiroWashes()) wash.right],
-      [greaterThan(30 * cell)],
+      [greaterThan(windowEnd * cell)],
       reason: 'a wider view washes on',
     );
   });

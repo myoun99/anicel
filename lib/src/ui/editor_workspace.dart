@@ -34,6 +34,7 @@ import '../services/font_library_service.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
 import '../models/canvas_size.dart';
@@ -95,11 +96,16 @@ import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
 import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
+import 'media/media_pool_view.dart';
+import 'media/media_preset_flow.dart';
+import 'media/media_pool_pictures.dart';
 import 'media/media_relink_flow.dart';
+import 'media/open_viewer_document.dart' show openViewerDocument;
 import 'media/media_viewer_tab_host.dart';
 import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
+import 'layout/scroll_stood_in_layout.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
@@ -124,6 +130,7 @@ import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
+import 'widgets/face_ink_well.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
@@ -198,7 +205,7 @@ import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_edge_auto_pan.dart'
-    show keptAxisWindows, revealKeptAxis;
+    show ScrollWindow, keptAxisWindows, revealKeptAxis, revealScrollOffset;
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
@@ -664,6 +671,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// chip's ban (「불가능 = 칩의 금지 표시」). One per workspace, because one
   /// drag is in flight at a time.
   final ValueNotifier<bool?> _mediaDropVerdict = ValueNotifier<bool?>(null);
+
+  /// How the media pool shows its files — a line each or big pictures, each
+  /// as it is or as its preset places it (🗣️asset-placement-presets Q4 ·
+  /// Q6). Kept with the window, so a pool docked elsewhere or built again
+  /// shows what it showed.
+  final ValueNotifier<MediaPoolView> _mediaPoolView =
+      ValueNotifier<MediaPoolView>(const MediaPoolView());
 
   // 🪦The memory warning and the resume used to be heard HERE — 「the
   // workspace hosts the observer because its lifetime IS the session being
@@ -1344,6 +1358,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         _laidFloorTab,
       ]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
+      canResetLayout: _layoutPersistence.layoutResetChanges,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
       toolRailMover: _rail.setToolRailOnRight,
@@ -1406,6 +1421,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       slot.request.addListener(_writeViewerBookmarks);
     }
     _bindSession(widget.session);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _layoutPersistence.rememberFactoryLayout();
   }
 
   @override
@@ -1510,11 +1531,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _followProjectFonts() {
     final session = widget.session;
     final fonts = session.repository.requireProject().fonts;
-    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. A project is made
-    // anew at every edit and builds its lists anew with it (`Project`'s
-    // constructor), so 「is it the same list」 is no at every stroke — and
-    // saying the fonts again reads the project file's directory. The
-    // session tells of every edit; this hears all of them.
+    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. Saying the fonts
+    // again reads the project file's directory, and the session tells of
+    // every edit; this hears all of them. A copy of the project hands its
+    // list on as it was (card a-track-copy-wraps-its-unchanged-lists-anew,
+    // 11-11), but a list that says the same need not be that one.
+    // ↩️Until 11-11 every edit built the list anew (`Project`'s
+    // constructor), and 「is it the same list」 was no at every stroke.
     if (listEquals(fonts, _projectFontsShown)) {
       return;
     }
@@ -1692,7 +1715,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       direction: direction,
       hiddenSections: session.railView.hiddenSections.value,
       rowFilter: session.railView.rowFilter.value,
-      collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
+      attachFoldedRowIds: session.railView.attachFoldedRowIds.value,
       // R10 #19: property rows are stops now, so the walk needs the same
       // lane list the grids draw.
       expandedLayerIds: session.railView.expandedLaneLayerIds.value,
@@ -1900,6 +1923,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _unbindSession(widget.session);
     _foldedStoryboard.dispose();
     _mediaDropVerdict.dispose();
+    _mediaPoolView.dispose();
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
@@ -1953,6 +1977,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     // After the bridge lets go: its relay listens to it.
     _brushValuesOnStrip.dispose();
+    _floorPillBeside.dispose();
     _railToolsOnly.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2269,6 +2294,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
   /// workspace and the floor inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
+
+  /// Whether the floor's pill stood past the left rail when it was last
+  /// seated ([CanvasFloorInsets.leftPillBeside]) — kept here, with the
+  /// floor, so a panel laid on it frames its first frame with it (F-607 ②).
+  final ValueNotifier<bool> _floorPillBeside = ValueNotifier<bool>(false);
 
   /// Whether the tool strip holds its tools alone — false, the default,
   /// stands the shortcut buttons above them
@@ -3243,6 +3273,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   width: BrushValuesPill.widthIn(context),
                   child: BrushValuesPill(brushTool: _brushTool),
                 ),
+          // F-607 ②: where the pill stood, kept for whoever lies here next.
+          leftPillBeside: _floorPillBeside,
           child: floor!,
         ),
         child: floor,
@@ -3438,6 +3470,7 @@ class _RailGroupButton extends StatelessWidget {
               for (final tab in tabs) (icon: tab.icon, label: tab.label),
             ],
             nearby: nearby,
+            shape: AppShapes.control(ToolsPanel.buttonExtent),
             onLifted: onLifted,
           );
     final button = face == null
@@ -3453,15 +3486,12 @@ class _RailGroupButton extends StatelessWidget {
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),
-              color: open
-                  ? colorScheme.surfaceContainerHigh
-                  : Colors.transparent,
-              clipBehavior: Clip.antiAlias,
-              shape: AppShapes.control(ToolsPanel.buttonExtent),
+              color: Colors.transparent,
               child: ControlPressClaim(
                 onPressed: onPressed,
-                child: InkWell(
-                  mouseCursor: AppCursors.press,
+                child: FaceInkWell(
+                  edge: AppShapes.control(ToolsPanel.buttonExtent),
+                  fill: open ? colorScheme.surfaceContainerHigh : null,
                   onTap: silentPress(onPressed),
                   // The pair sizes itself to one button cell, so a group that
                   // wears a face is the same square as every other.
@@ -3470,8 +3500,7 @@ class _RailGroupButton extends StatelessWidget {
                     child: Stack(
                       children: [
                         Positioned.fill(child: face!),
-                        if (band != null)
-                          Positioned(left: 0, right: 0, top: 0, child: band),
+                        if (band != null) Positioned.fill(child: band),
                       ],
                     ),
                   ),

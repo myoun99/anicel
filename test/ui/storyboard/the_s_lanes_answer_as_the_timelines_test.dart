@@ -50,7 +50,8 @@ void main() {
     await tester.tap(find.named('storyboard-lane-toggle-${se.id}'));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.named('storyboard-lane-group-toggle-${se.id}-transform-group'),
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      find.named('storyboard-lane-group-toggle-${se.id}-name-tag-group'),
     );
     await tester.pumpAndSettle();
     return (s, se.id);

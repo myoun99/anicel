@@ -1,7 +1,9 @@
 import '../editing/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/media_asset.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
@@ -74,6 +76,14 @@ class ImportMediaCommand implements Command {
 
   /// The new rows' adds, made once for the same reason.
   List<AddLayerCommand>? _layerAdds;
+
+  /// The panels each new row's 겸용 copies were born showing its pictures
+  /// in, by row ([AddLayerCommand.picturedPanels]) — which the door gives
+  /// them once it has baked those pictures (🗣️I-120-Q29).
+  Map<LayerId, Map<FrameId, FrameId>> get picturedPanels => {
+    for (final add in _layerAdds ?? const <AddLayerCommand>[])
+      if (add.picturedPanels.isNotEmpty) add.layer.id: add.picturedPanels,
+  };
 
   @override
   String get description => _description;

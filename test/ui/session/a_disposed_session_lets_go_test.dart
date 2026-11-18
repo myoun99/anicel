@@ -49,10 +49,6 @@ void main() {
       'memoryPressureTicks': () => session.memoryPressureTicks.addListener(
         () {},
       ),
-      'visibilitySolo.soloedSeLayerIds': () => session
-          .visibilitySolo
-          .soloedSeLayerIds
-          .addListener(() {}),
       'editingFrameCursor': () => session.editingFrameCursor.addListener(() {}),
       'frameSeekCommitted': () => session.frameSeekCommitted.addListener(() {}),
       'frameRangeSelection': () => session.frameRangeSelection.addListener(

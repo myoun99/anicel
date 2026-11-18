@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -28,15 +29,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/camera_frame_corners.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+import 'package:anicel/src/ui/canvas/subtree_buffer_bounds.dart'
     show subtreeBufferBounds;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
@@ -45,6 +43,7 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberExtent;
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/placement_reading.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
@@ -55,6 +54,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// ↩️Q2 메모 wrote it under the FX off too (「fx체크해제해도 셀출력시
 /// 내보냄」); Q3 made 끔 turn every fx off, the number with them.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 320, height: 240);
   const cutId = CutId('cut');
   const layerId = LayerId('a');
@@ -118,93 +118,6 @@ void main() {
           : CanvasPoint(x: x / count, y: y / count),
     );
   }
-
-  /// On the paper's middle: across, exactly; down, as near as the glyphs
-  /// sit to the middle of their line — the box the letters are stood by is
-  /// the line's (`TextCelLayout.inkBounds`), and a glyph is not centred in
-  /// it.
-  final onTheMiddle = isA<CanvasPoint>()
-      .having((p) => p.x, 'x', closeTo(160, 0.5))
-      .having((p) => p.y, 'y', closeTo(120, 4));
-
-  group('through the camera', () {
-    final view = cameraViewOver(
-      ui.Rect.fromLTWH(0, 0, canvas.width.toDouble(), canvas.height.toDouble()),
-    );
-
-    Future<Uint8List> shot(Layer layer) async {
-      final image =
-          await const CameraFrameRenderService(
-            background: ui.Color(0x00000000),
-          ).renderThroughCamera(
-            canvasSize: canvas,
-            nodes: planCutFrameCompositeTree(
-              cut: Cut(
-                id: cutId,
-                name: 'Cut',
-                layers: [layer],
-                duration: 4,
-                canvasSize: canvas,
-              ),
-              frameIndex: 0,
-              reading: (
-                surfaces: (_, _) => BitmapSurface(canvasSize: canvas),
-                plugins: null,
-              ),
-            ),
-            pose: view.pose,
-            cameraFrameSize: view.frameSize,
-          );
-      final data = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }
-
-    testWidgets('the letters are written in the number\'s colour, their '
-        'middle on the paper\'s at rest — and none without the number', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        final letters = redOf(await shot(row([number])), canvas.width);
-        expect(letters.count, greaterThan(100));
-        expect(letters.middle, onTheMiddle);
-        expect(redOf(await shot(row(const [])), canvas.width).count, 0);
-      });
-    });
-
-    testWidgets('they move with the row\'s transform (Q2 a)', (tester) async {
-      await tester.runAsync(() async {
-        final moved = TransformTrack.empty().copyWith(
-          position: PropertyTrack<CanvasPoint>.empty().withKey(
-            0,
-            CanvasPoint(x: 220, y: 150),
-          ),
-        );
-        final rest = redOf(await shot(row([number])), canvas.width).middle;
-        final there = redOf(
-          await shot(row([number], transform: moved)),
-          canvas.width,
-        ).middle;
-        expect((there.x - rest.x, there.y - rest.y), (60, 30));
-      });
-    });
-
-    testWidgets('a blur after the number softens its letters; one before '
-        'it leaves them as they were', (tester) async {
-      await tester.runAsync(() async {
-        final plain = await shot(row([number]));
-        expect(await shot(row([blur, number])), plain);
-        final after = await shot(row([number, blur]));
-        expect(after, isNot(plain));
-        expect(
-          redOf(after, canvas.width).soft,
-          greaterThan(redOf(plain, canvas.width).soft),
-        );
-      });
-    });
-  });
 
   group('on the editing canvas', () {
     final letters = CelNumberLetters(
@@ -289,7 +202,10 @@ void main() {
         'the row', (tester) async {
       final rest = redOf(await painted(tester), canvas.width);
       expect(rest.count, greaterThan(100));
-      expect(rest.middle, onTheMiddle);
+      // The bundle's letters: 'A' holds more ink than '1', so the ink's
+      // middle stands left of where they are written.
+      expect(rest.middle.x, closeTo(160, 16));
+      expect(rest.middle.y, closeTo(120, 4));
       final there = redOf(
         await painted(
           tester,
@@ -403,7 +319,7 @@ void main() {
         ),
       );
       addTearDown(session.dispose);
-      const tile = 256;
+      const tile = defaultCelTileSize;
       final pixels = Uint8List(tile * tile * 4)..[3] = 255;
       final green = Uint8List(tile * tile * 4);
       for (var at = 0; at < green.length; at += 4) {
@@ -411,24 +327,26 @@ void main() {
           ..[at + 1] = 255
           ..[at + 3] = 255;
       }
+      // Green all over: every tile the paper spans.
+      final everyTile = [
+        for (var y = 0; y * tile < canvas.height; y += 1)
+          for (var x = 0; x * tile < canvas.width; x += 1) (x, y),
+      ];
+      BitmapSurface surfaceOf({required bool all}) =>
+          BitmapSurface(canvasSize: canvas, tileSize: tile).putTiles([
+            for (final (x, y) in all ? everyTile : const [(0, 0)])
+              (
+                coord: TileCoord(x: x, y: y),
+                tile: BitmapTile(size: tile, pixels: all ? green : pixels),
+              ),
+          ]);
       final cut = session.requireActiveCut;
-      for (final id in [layerId, attachId]) {
-        final all = clipped && id == attachId;
-        session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-          key: session.brushFrameKeyForCut(cut, id, drawing.id),
-          previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-              .putTiles([
-                for (final (x, y)
-                    in all
-                        ? const [(0, 0), (1, 0), (0, 1), (1, 1)]
-                        : const [(0, 0)])
-                  (
-                    coord: TileCoord(x: x, y: y),
-                    tile: BitmapTile(size: tile, pixels: all ? green : pixels),
-                  ),
-              ]),
-        );
-      }
+      parkCold(session.renderCaches.brushFrameStore, {
+        for (final id in [layerId, attachId])
+          session.brushFrameKeyForCut(cut, id, drawing.id): surfaceOf(
+            all: clipped && id == attachId,
+          ),
+      });
       return session;
     }
 
@@ -449,7 +367,7 @@ void main() {
           await ExportFrameRenderer(
             session: session,
             layerFx: fx,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
           ).renderCelGroup(
             ExportCelGroupTask(
               cut: cut,
@@ -470,13 +388,29 @@ void main() {
       return bytes!.buffer.asUint8List();
     }
 
+    testWidgets('a blur after the number softens its letters; one before '
+        'it leaves them as they were', (tester) async {
+      await tester.runAsync(() async {
+        final plain = redOf(await celOf([number]), canvas.width);
+        final before = redOf(await celOf([blur, number]), canvas.width);
+        expect((before.count, before.soft), (plain.count, plain.soft));
+        final after = redOf(await celOf([number, blur]), canvas.width);
+        expect(after.soft, greaterThan(plain.soft));
+      });
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('the cel wears its number, on the paper\'s middle', (
       tester,
     ) async {
       await tester.runAsync(() async {
         final letters = redOf(await celOf([number]), canvas.width);
         expect(letters.count, greaterThan(100));
-        expect(letters.middle, onTheMiddle);
+        // The bundle's letters, as on the editing canvas above — the cel is
+        // the engine's picture too (7′): 'A' holds more ink than '1', so
+        // the ink's middle stands left of where they are written.
+        expect(letters.middle.x, closeTo(160, 16));
+        expect(letters.middle.y, closeTo(120, 4));
         expect(redOf(await celOf(const []), canvas.width).count, 0);
       });
       await tester.pumpAndSettle();

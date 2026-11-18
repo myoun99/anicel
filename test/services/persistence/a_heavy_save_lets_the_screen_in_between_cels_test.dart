@@ -161,7 +161,10 @@ void main() {
     final source = File(
       'lib/src/services/persistence/anicel_file_service.dart',
     ).readAsStringSync();
-    expect(source, contains('encodeCelEntryFromSurface('));
+    // ↩️`encodeCelEntryFromSurface(` was called here until a hot cel's
+    // stream took one road for the save, the cooling and the park — the
+    // one that calls it now (2026-11-13).
+    expect(source, contains('onAWorkerWithCelStream('));
     expect(source, contains('TransferableTypedData.fromList('));
     expect(source, isNot(contains('AnicelCelEntry.fromSurface(')));
   });

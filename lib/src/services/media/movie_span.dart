@@ -6,7 +6,8 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../native/qa_video_encoder.dart';
-import '../audio/sound_span.dart' show decodeAudioOfFrames, int16PcmOfFrames;
+import '../audio/sound_span.dart'
+    show decodeAudioOfFrames, int16PcmBefore, int16PcmOfFrames;
 import 'media_byte_source.dart';
 
 /// Writes the movie at [sourcePath] over the project frames [trim] keeps of
@@ -27,38 +28,60 @@ import 'media_byte_source.dart';
 /// is drawing against.
 ///
 /// Its sound is the same span in the source's own time
-/// ([int16PcmOfFrames]), handed to the encoder frame by frame.
+/// ([int16PcmOfFrames]), handed to the encoder frame by frame — behind the
+/// movie's own sound just before the span, where the writer puts a frame
+/// there ([_fillTheLead]).
 ///
 /// Uses the encoder's own budget, as the export does by default.
 ///
+/// Without [withSound] the piece holds the picture alone — a movie that
+/// brings its picture and not its sound (🗣️I-171-Q1, 유저 2026-11-14: 「그림만
+/// = 소리를 뺀 MP4」).
+///
+/// With a [pull] the movie is read on [clockPulledBy] it and [trim] counts
+/// that clock's frames: the piece is the movie rewritten at the project's
+/// speed, its sound pulled with its pictures (🗣️F-588, [framePullOf]).
+///
+/// 🗣️★★★**THE MOVIE'S OWN PICTURES, NAMED AS THE MOVIE NAMES THEM** (유저
+/// 2026-11-14, trimmed-movie-decodes-to-nv12-Q1: 「원본의 색을 그대로 따라
+/// 쓴다」). The movie is read for its own 4:2:0
+/// ([QaVideoDecoder.openNv12Document]) and the piece written of it as the
+/// decoder made it, naming what the movie names and nothing it does not —
+/// no sum either way. ↩️Each frame went to RGBA in the decoder and back to
+/// YCbCr in the app's law in the writer: a round trip of colour, and a
+/// movie made in BT.709 written as BT.601.
+///
 /// [onProgress] hears the frames written, as 0–1 — the work there is
 /// (🔬F-494, 2026-10-28: two minutes of a 3.4GB 1080p movie took 61 s here,
-/// 55 of them this loop, the decode and the encode half each; reading the
-/// span's sound before it, 5).
+/// 55 of them this loop, the decode and the encode half each — through
+/// RGBA; reading the span's sound before it, 5).
 ({KeptSpan? kept, String? failure}) writeMovieSpan(
   String sourcePath,
   String piecePath, {
   required ({int inFrame, int? outFrame}) trim,
   required ProjectClock clock,
+  bool withSound = true,
+  ({int numerator, int denominator}) pull = noPull,
   void Function(double fraction)? onProgress,
 }) {
   final decoder = QaVideoDecoder.instance;
   final encoder = QaVideoEncoder.instance;
-  if (decoder == null || !decoder.isSupported) {
+  if (!decoder.isSupported) {
     return (kept: null, failure: 'no video decoder');
   }
-  if (encoder == null || !encoder.isSupported) {
+  if (!encoder.isSupported) {
     return (kept: null, failure: 'no video encoder');
   }
-  final document = decoder.openDocument(sourcePath);
+  final document = decoder.openNv12Document(sourcePath);
   if (document == null) {
     return (kept: null, failure: decoder.lastError);
   }
   try {
     final info = document.info;
+    final read = clockPulledBy(clock, pull);
     final movie = movieClockFor(
-      projectRate: clock.rate,
-      audioSpeed: clock.speed,
+      projectRate: read.rate,
+      audioSpeed: read.speed,
       movie: info,
     );
     // The same span the placement would have kept of the whole movie.
@@ -70,11 +93,14 @@ import 'media_byte_source.dart';
     final pace = clock.rate.inSourceTime(clock.speed);
     // Only the span's own samples: a minute cut from a two-hour reel holds
     // a minute (Q5).
-    final sound = decodeAudioOfFrames(
-      MediaFileBytes(sourcePath),
-      (first: kept.first, count: kept.count),
-      pace,
-    );
+    final sound = withSound
+        ? decodeAudioOfFrames(
+            MediaFileBytes(sourcePath),
+            (first: kept.first, count: kept.count),
+            clock,
+            pull: pull,
+          )
+        : null;
     if (!encoder.open(
       path: piecePath,
       width: info.width,
@@ -83,6 +109,7 @@ import 'media_byte_source.dart';
       fpsDenominator: pace.denominator,
       sampleRate: sound?.sampleRate ?? 0,
       channels: sound?.channels ?? 0,
+      colours: document.colours,
     )) {
       return (kept: null, failure: encoder.lastError);
     }
@@ -104,17 +131,33 @@ import 'media_byte_source.dart';
 
     var finished = false;
     try {
-      final frame = Uint8List(info.width * info.height * 4);
+      if (sound != null &&
+          !_fillTheLead(
+            encoder,
+            MediaFileBytes(sourcePath),
+            // Where the span begins in the movie's own sound.
+            before: read.rate
+                .inSourceTime(read.speed)
+                .frameToSample(kept.first, sound.sampleRate),
+          )) {
+        return (kept: null, failure: encoder.lastError);
+      }
+      // The writer's frame is the decoder's: both the picture padded even.
+      final stride = encoder.nv12Frame?.width;
+      if (stride == null) {
+        return (kept: null, failure: 'the writer takes no NV12');
+      }
+      final frame = Uint8List(document.frameBytes);
       for (var at = kept.first; at <= kept.last; at += 1) {
-        final rgba = decoder.frameOf(
+        final nv12 = decoder.frameOf(
           document,
           movie.movieFrameAt(at),
           into: frame,
         );
-        if (rgba == null) {
+        if (nv12 == null) {
           return (kept: null, failure: decoder.lastError);
         }
-        if (!encoder.writeFrame(rgba) || !writeSoundOf(at)) {
+        if (!encoder.writeNv12(nv12, stride: stride) || !writeSoundOf(at)) {
           return (kept: null, failure: encoder.lastError);
         }
         onProgress?.call(doneShare(at - kept.first + 1, kept.count));
@@ -131,4 +174,27 @@ import 'media_byte_source.dart';
   } finally {
     decoder.closeDocument(document);
   }
+}
+
+/// Fills the frame of sound this build's writer puts before a piece's own
+/// ([QaVideoEncoder.audioLead]) with what [source] plays just before its
+/// sample [before], the span's first — the piece's past, as an exported
+/// movie is handed its mix's (`SoundBefore`, video_export_service.dart;
+/// 유저 2026-11-10, board an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2:
+/// 「무음, 범위 앞에 소리가 있으면 그 소리」).
+///
+/// The writer's silence stays where the writer puts no frame, or nothing
+/// lies before the span. False means the encoder refused what it was
+/// handed.
+bool _fillTheLead(
+  QaVideoEncoder encoder,
+  MediaByteSource source, {
+  required int before,
+}) {
+  final samples = encoder.audioLead;
+  if (samples == 0) {
+    return true;
+  }
+  final lead = int16PcmBefore(source, before, count: samples);
+  return lead == null || encoder.writeLead(lead, samples);
 }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueChanged;
 
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -46,7 +47,9 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   laneToggle: _laneToggle(hooks),
   graph: _graph(hooks),
   lanePin: _lanePin(hooks),
-  groupFold: _groupFold(hooks),
+  groupFold: _groupFold(hooks, null),
+  groupFoldAbove: _groupFold(hooks, AttachedPlacement.above),
+  groupFoldBelow: _groupFold(hooks, AttachedPlacement.below),
   laneGroupToggle: _laneGroupToggle(hooks),
   laneKey: _laneKey(hooks),
   laneFlag: _laneFlag(hooks),
@@ -92,7 +95,7 @@ typedef RailSwipeHooks = ({
   // whether it folds rows of its own, open or shut, and what its twirl
   // presses.
   TimelineGroupFold Function(TimelineDisplayRow row) foldOf,
-  bool Function(LayerId layerId)? groupFoldOpenOf,
+  bool Function(LayerId layerId, AttachedPlacement? side)? groupFoldOpenOf,
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup,
   bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf,
   // What a lane row's ◆ and its flag's ring are pressed with, as its label
@@ -163,9 +166,7 @@ RailSwipeHooks timelineRailSwipeHooks(
   foldOf: (row) => timelineGroupFoldFor(
     row: row,
     layers: layers,
-    collapsedAttachBaseIds: hooks.collapsedAttachBaseIds,
-    onToggleLayerCollapsed: hooks.onToggleLayerCollapsed,
-    onToggleAttachGroup: hooks.onToggleAttachGroup,
+    onToggle: hooks.onToggleGroupFold,
   ),
   groupFoldOpenOf: hooks.groupFoldOpenOf,
   onToggleLaneGroup: hooks.onToggleLaneGroup,
@@ -375,14 +376,25 @@ bool? _laneOpen(RailSwipeHooks hooks, TimelineDisplayRow row) {
 /// Read LIVE where the host reads it, as every column is: a row the sweep
 /// crosses may have been folded a moment ago by the press, spread across
 /// the selection.
-RailToggle<TimelineDisplayRow> _groupFold(RailSwipeHooks hooks) => (
+///
+/// A sweep reaches each row it crosses as a press on [side] would — the
+/// column it started in (I-175): from a half, a folder too (🗣️I-175-Q3 (가)
+/// 「폴더도 같이 접힌다」) and a base on that side, a base with no row there
+/// having nothing to paint; from a folder's twirl, a base on both sides
+/// (🗣️I-175-Q5 (가) 「양쪽 다 — 지금처럼」). The one predicate answers
+/// which ([TimelineGroupFold.openOn]).
+RailToggle<TimelineDisplayRow> _groupFold(
+  RailSwipeHooks hooks,
+  AttachedPlacement? side,
+) => (
   valueOf: (row) {
     if (row.isLane) return null;
     final fold = hooks.foldOf(row);
-    if (!fold.has || fold.onToggle == null) return null;
-    return hooks.groupFoldOpenOf?.call(row.layer.id) ?? fold.expanded;
+    final open = fold.openOn(side);
+    if (open == null || fold.onToggle == null) return null;
+    return hooks.groupFoldOpenOf?.call(row.layer.id, side) ?? open;
   },
-  toggle: (row) => hooks.foldOf(row).onToggle?.call(row.layer.id),
+  toggle: (row) => hooks.foldOf(row).onToggle?.call(row.layer.id, side),
 );
 
 /// A LANE GROUP's twirl — Transform, an effect — worn by the group's

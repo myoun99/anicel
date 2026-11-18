@@ -59,6 +59,9 @@ class _WorkspaceRail {
   /// Whether [dockId] is one of the top strip's slots.
   static bool isTopSlot(String dockId) => dockId.startsWith('top-');
 
+  /// Whether [dockId] is a group of a rail — panels beside the drawing.
+  static bool isRailGroup(String dockId) => dockId.startsWith('rail-');
+
   /// The top strip's slots that HOLD something — its floor buttons.
   List<String> _topGroups() => _filled(_topSlotIds());
 
@@ -78,7 +81,7 @@ class _WorkspaceRail {
   /// closed, and of the floor's — its own and the top strip's groups — the
   /// one lying there.
   bool dockShows(String dockId) {
-    if (dockId.startsWith('rail-')) {
+    if (isRailGroup(dockId)) {
       return _state._openRails.contains(dockId);
     }
     if (isTopSlot(dockId) || dockId == EditorWorkspace.centerGroupId) {
@@ -188,6 +191,7 @@ class _WorkspaceRail {
     );
     if (opening) {
       _state._claimPanelOf(_state._layout.activeTabIn(railId));
+      _bringIntoWindow(railId);
     }
     _state._layoutPersistence.scheduleLayoutSave();
   }
@@ -378,9 +382,21 @@ class _WorkspaceRail {
   /// "open". So every path that places a panel comes through here rather
   /// than each remembering on its own.
   ///
+  /// An OPEN group can be out of sight as well — scrolled out of its rail's
+  /// window — and that is the same failure, so a rail group none of which
+  /// shows is brought into the window whether or not it had to be opened
+  /// ([_bringIntoWindow]).
+  ///
   /// On the floor, somewhere is what lies there: a top strip group is laid,
   /// and the floor's own dock takes the floor back.
   void ensureRailOpen(String dockId) {
+    if (isRailGroup(dockId)) {
+      if (!dockShows(dockId)) {
+        _openRailGroup(dockId);
+      }
+      _bringIntoWindow(dockId);
+      return;
+    }
     if (dockShows(dockId)) {
       return;
     }
@@ -388,8 +404,6 @@ class _WorkspaceRail {
       layOnTheFloor(null);
     } else if (isTopSlot(dockId)) {
       layOnTheFloor(_state._layout.activeTabIn(dockId));
-    } else {
-      _openRailGroup(dockId);
     }
   }
 
@@ -400,6 +414,82 @@ class _WorkspaceRail {
       () => _state._rebuild(() => _state._openRails.add(railId)),
     );
     _state._layoutPersistence.scheduleLayoutSave();
+  }
+
+  /// The rail group asked to be brought into its rail's window, and which
+  /// asking it is — until the build that lays the group out takes it
+  /// ([_takeStandShowing]): its column says where that stands the rail
+  /// ([_railColumn]).
+  ({String railId, int asking})? _brought;
+
+  /// How many times a group was asked for ([_brought]).
+  int _askings = 0;
+
+  /// Brings the rail group [railId] into its rail's window when the window
+  /// shows none of it, by the least scroll that shows all of it
+  /// ([_takeStandShowing]). All of it fits: a group is never taller than its
+  /// rail ([_railGroupHeight]).
+  ///
+  /// 🚨A GROUP OPENED IS A GROUP ON SCREEN (card
+  /// the-media-button-lights-but-no-media-panel-shows, 2026-11-15: 「버튼만
+  /// 켜진 색이 되고 소재 목록 패널은 어디에도 안 뜬다」). A group keeps the
+  /// height it was left at and a rail that cannot fit its groups scrolls
+  /// ([_railGroupHeight]) — so one opened under two others stood below the
+  /// window. Measured in a 1920×1209 window as the workspace ships: the
+  /// window ends at 623.7 and the media pool opened at 712, under the
+  /// colours and the sheets, its button lit and nothing else on screen
+  /// changed.
+  ///
+  /// ⛔IN THE FRAME IT OPENS IN, not the one after: the column that lays the
+  /// group out says where it stands, and the rail is stood there in that
+  /// layout ([ScrollStoodInLayout]). A rail still moving stops first — what
+  /// carried it would carry it on past the group.
+  void _bringIntoWindow(String railId) {
+    final asking = _askings += 1;
+    final controller = _state._railScrollControllers[_railSlotIds(
+      right: true,
+    ).contains(railId)]!;
+    if (singleScrollPixelsOf(controller) case final pixels?) {
+      controller.jumpTo(pixels);
+    }
+    _state._rebuild(() => _brought = (railId: railId, asking: asking));
+  }
+
+  /// The asking for [railId], if it is the group asked for ([_brought]),
+  /// TAKEN: where its rail stands to show the group at [top], [height] tall
+  /// — or null, when [window] shows some of it already.
+  ///
+  /// ⛔TAKEN BY THE BUILD THAT LAYS THE GROUP OUT, whichever way that build
+  /// answers it. An asking left standing would be answered by whichever
+  /// later build found the group out of the window — the rail scrolled away
+  /// from it by hand, the app's window drawn shorter — and the rail would
+  /// jump to it then.
+  ///
+  /// ⛔ONLY A GROUP THE WINDOW SHOWS NONE OF — 🗣️유저 2026-11-15
+  /// (the-media-button-lights-but-no-media-panel-shows-Q1: 「a 하나도 안
+  /// 보일 때만 데려온다(지금 넣은 것)」). One it shows a part of opens where
+  /// the hand left the rail, over heights the hand set, as it opened before
+  /// 2026-11-15 — ⛔not brought in whole.
+  ///
+  /// It comes in whole, by the law a walk keeps its step in view by
+  /// ([revealScrollOffset]), measured where its column lays it.
+  ScrollStand? _takeStandShowing(
+    String railId,
+    ScrollWindow window, {
+    required double top,
+    required double height,
+  }) {
+    final brought = _brought;
+    if (brought == null || brought.railId != railId) {
+      return null;
+    }
+    _brought = null;
+    if (top < window.offset + window.viewport &&
+        top + height > window.offset) {
+      return null;
+    }
+    final group = (start: top, extent: height, margin: 0.0);
+    return (asking: brought.asking, pixels: revealScrollOffset(window, group));
   }
 
   /// Moves the tool strip to the requested edge (the left-handed choice).
@@ -636,9 +726,21 @@ class _WorkspaceRail {
     // the residue landing where it must rather than accumulating.
     final children = <Widget>[];
     final run = DeviceGrid.of(context).run();
+    final controller = _state._railScrollControllers[room.right]!;
+    final window = (
+      offset: singleScrollPixelsOf(controller) ?? 0,
+      viewport: railExtent,
+    );
+    ScrollStand? stand;
     for (var i = 0; i < room.open.length; i += 1) {
       final top = run.position;
       final height = run.take(heights[i]);
+      stand ??= _takeStandShowing(
+        room.open[i],
+        window,
+        top: top,
+        height: height,
+      );
       children.add(
         Positioned(
           // 🚨★★★A GROUP IS WHICH GROUP IT IS, NOT WHERE IT SITS (F-103,
@@ -716,7 +818,6 @@ class _WorkspaceRail {
     // only sometimes LIVE, which is exactly what was wanted — and the
     // tree stops changing shape under a live gesture.
     final overflowing = railExtent.isFinite && content > railExtent;
-    final controller = _state._railScrollControllers[room.right]!;
     return Stack(
       children: [
         Positioned.fill(
@@ -768,7 +869,14 @@ class _WorkspaceRail {
                 child: DeviceGridScrollBody(
                   controller: controller,
                   axisDirection: AxisDirection.down,
-                  child: Align(alignment: Alignment.topCenter, child: column),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ScrollStoodInLayout(
+                      controller: controller,
+                      stand: stand,
+                      child: column,
+                    ),
+                  ),
                 ),
               ),
             ),

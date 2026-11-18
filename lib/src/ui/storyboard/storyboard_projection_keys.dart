@@ -19,8 +19,9 @@ mixin _StoryboardProjectionKeys on Widget {
   /// the track ([cameraRowReachesOf]).
   List<CameraRowReach> get reaches;
 
-  /// The scroll content's full width — the V row's own.
-  double get width;
+  /// Whether the row's window is a still region of its own
+  /// ([_storyboardRowBox]) — every row of the panel's strips.
+  bool get windowIsStill;
 
   /// Its label's height — one row.
   double get height;
@@ -70,8 +71,7 @@ mixin _StoryboardProjectionKeys on Widget {
         layer.id: _eyeOf(reach.entry.cut, layer),
   };
 
-  int _frameAtX(double x) =>
-      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
+  int _frameAtX(double x) => _storyboardRowFrameAt(frameGeometry, x) ?? 0;
 
   /// [_reachAt]'s cut and the layer the row shows of it — what a sweep there
   /// selects on. Null where no cut's own frames reach, or the cut holds no
@@ -123,15 +123,11 @@ mixin _StoryboardProjectionKeys on Widget {
     required Widget keys,
     required void Function(int frame)? onEdit,
     required List<Widget> over,
-  }) => SizedBox(
+  }) => _storyboardRowBox(
     key: ValueKey<String>('storyboard-$_keyName-row-${trackId.value}'),
-    width: math.max(
-      _storyboardCutsExtent([
-        for (final reach in reaches) reach.entry,
-      ], timelineScale),
-      width,
-    ),
+    geometry: frameGeometry,
     height: height,
+    windowIsStill: windowIsStill,
     child: Stack(
       children: [
         _ground(context),
@@ -155,9 +151,7 @@ mixin _StoryboardProjectionKeys on Widget {
             ),
             row: _address,
             cellExtent: timelineScale.pixelsPerFrame,
-            frameAt: (local) => timelineScale.pixelsPerFrame <= 0
-                ? null
-                : timelineScale.frameAt(local.dx),
+            frameAt: (local) => _storyboardRowFrameAt(frameGeometry, local.dx),
             onRowFramePress: onRowFramePress,
             onPressAt: _pressed,
             onEdit: onEdit,
@@ -470,12 +464,12 @@ class _StoryboardProjectionLaneRow extends StatelessWidget
     required this.projection,
     required this.laneId,
     required this.reaches,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
     required this.viewportWidth,
+    this.windowIsStill = false,
     this.onRowFramePress,
     this.onCameraCutPress,
     this.laneRange,
@@ -493,8 +487,6 @@ class _StoryboardProjectionLaneRow extends StatelessWidget
   @override
   final List<CameraRowReach> reaches;
   @override
-  final double width;
-  @override
   final double height;
   @override
   final TimelineScale timelineScale;
@@ -504,6 +496,8 @@ class _StoryboardProjectionLaneRow extends StatelessWidget
   final ValueListenable<int> windowBucket;
   @override
   final double viewportWidth;
+  @override
+  final bool windowIsStill;
   @override
   final StoryboardRowFramePress? onRowFramePress;
   @override

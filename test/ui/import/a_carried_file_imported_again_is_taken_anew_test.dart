@@ -284,7 +284,7 @@ void main() {
               path: path,
               name: mediaAssetDefaultName(path),
               kind: MediaAssetKind.video,
-              carriedAs: mintMediaCarry(path),
+              carriedAs: (token: mintMediaCarry(path), modified: null),
             ),
           ],
         ),
@@ -433,7 +433,6 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
       await tester.pumpAndSettle();
-      session.playbackRig.prerenderScheduler.cancel();
     }
 
     testWidgets('🗣️a carried file picked again: the window shows the FILE, '
@@ -468,7 +467,6 @@ void main() {
       await tester.pump(Duration.zero);
       expect(carryIn(session, path), before);
       expect(middleOf(session, cutId, row), redPixel);
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a pool row placed is the pool\'s: shown and placed as the '
@@ -489,7 +487,6 @@ void main() {
 
       expect(carryIn(session, path), before);
       expect(middleOf(session, cutId, row), redPixel);
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a carried SOUND picked again: the preview plays the file, '
@@ -543,7 +540,6 @@ void main() {
       );
       expect(peaks!.durationFrames(session.projectSettings.projectFrameRate),
           framesOf(3));
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('a row the file carried anew lacks a picture for is said in '
@@ -585,7 +581,6 @@ void main() {
           reason: words,
         );
       }
-      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 

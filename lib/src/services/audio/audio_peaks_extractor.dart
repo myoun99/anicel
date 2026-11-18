@@ -61,13 +61,19 @@ class AudioPeaks {
   /// a ratio of two integers — so the frame count is computed from that
   /// ratio directly. Going through [durationSeconds] as a double was how
   /// an exactly-2-second file at 24fps used to measure 49 frames.
-  int durationFrames(ProjectFrameRate rate) {
+  ///
+  /// [pull]: played that much faster again, the clip lasts that much less
+  /// — a movie's sound laid frame for frame with its pictures (🗣️F-588).
+  int durationFrames(
+    ProjectFrameRate rate, {
+    ({int numerator, int denominator}) pull = noPull,
+  }) {
     if (bucketsPerSecond <= 0) {
       return 1;
     }
     final frames = rate.framesCoveringExactSeconds(
-      peaks.length,
-      bucketsPerSecond,
+      peaks.length * pull.denominator,
+      bucketsPerSecond * pull.numerator,
     );
     return frames < 1 ? 1 : frames;
   }
@@ -152,34 +158,19 @@ AudioPeaks peaksFromSamples({
   required int channels,
   required int sampleRate,
   int bucketsPerSecond = 40,
-}) => peaksFromWindows(
-  windows: [samples],
+}) => (AudioPeaksOfWindows(
   channels: channels,
   sampleRate: sampleRate,
   bucketsPerSecond: bucketsPerSecond,
-);
+)..add(samples)).finish();
 
-/// The same envelope of PCM that arrives a window at a time — [windows] in
-/// order, each a run of whole interleaved frames — folded as one buffer
-/// would be: a bucket runs on across a window's edge. What a long conform
-/// is measured by without its PCM in memory.
-AudioPeaks peaksFromWindows({
-  required Iterable<Float32List> windows,
-  required int channels,
-  required int sampleRate,
-  int bucketsPerSecond = 40,
-}) {
-  final fold = AudioPeaksOfWindows(
-    channels: channels,
-    sampleRate: sampleRate,
-    bucketsPerSecond: bucketsPerSecond,
-  );
-  windows.forEach(fold.add);
-  return fold.finish();
-}
-
-/// [peaksFromWindows] a window at a time, for a pass that does more with each
-/// window than measure it — a conform written as it is made.
+/// The same envelope of PCM that arrives a window at a time — each a run of
+/// whole interleaved frames, in order — folded as one buffer would be: a
+/// bucket runs on across a window's edge. What a conform's making measures
+/// its sound by as it is made, and keeps behind its PCM.
+/// ↩️A long conform was also measured so at every open, its PCM read back a
+/// window at a time to fold again (`peaksFromWindows`, gone with that —
+/// card `a-sound-folds-its-peaks-again-at-every-open`).
 final class AudioPeaksOfWindows {
   AudioPeaksOfWindows({
     required this.channels,

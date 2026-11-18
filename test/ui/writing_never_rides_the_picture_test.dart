@@ -34,7 +34,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 /// — whose words stand on their own paper, as every frame block's do.
 void main() {
   final conte = layerMarkColor(const LayerMark(process: LayerProcess.conte));
-  final art = layerMarkColor(const LayerMark(process: LayerProcess.art));
+  final key = layerMarkColor(const LayerMark(process: LayerProcess.key));
   final paper = layerMarkColor(LayerMark.none);
 
   StoryboardCutBlockVisual visual({
@@ -64,7 +64,7 @@ void main() {
   });
 
   test('the cut\'s bands ARE its label, whatever the label', () {
-    for (final label in [paper, conte, art]) {
+    for (final label in [paper, conte, key]) {
       expect(storyboardCarriedWritingGround(visual(cutLabel: label)), label);
     }
   });
@@ -89,9 +89,9 @@ void main() {
       'the tint', () {
     expect(
       storyboardCarriedWritingGround(
-        visual(cutLabel: art, isRangeSelected: true),
+        visual(cutLabel: key, isRangeSelected: true),
       ),
-      isNot(storyboardCarriedWritingGround(visual(cutLabel: art))),
+      isNot(storyboardCarriedWritingGround(visual(cutLabel: key))),
       reason: 'a cut selection colours what is not the picture',
     );
   });

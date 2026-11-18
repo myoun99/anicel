@@ -8,19 +8,25 @@
 // group's word, the group's word into the answer — AND gives the same
 // whatever order a device takes them in.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame_shown.wgsl).
+  stride: u32,
   // The picture.
   width: u32,
   height: u32,
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), and the first row of tiles this band
+  // asks: a pass binds the rows it reads (`convert`, mod.rs).
+  frame_base: u32,
+  first_row: u32,
   pad0: u32,
+  pad1: u32,
+  pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 // 255 before the pass.
 @group(0) @binding(2) var<storage, read_write> opaque: atomic<u32>;
 
@@ -38,10 +44,10 @@ fn opaque_pass(
   var alpha = 255u;
   for (var texel = local; texel < TILE_TEXELS; texel += 64u) {
     let x = tile.x * TILE_SIDE + texel % TILE_SIDE;
-    let y = tile.y * TILE_SIDE + texel / TILE_SIDE;
+    let y = (params.first_row + tile.y) * TILE_SIDE + texel / TILE_SIDE;
     // Past the picture a tile holds what no page shows.
     if (x < params.width && y < params.height) {
-      alpha &= frame[frame_word(params.columns, x, y)] >> 24u;
+      alpha &= frame_alpha(x, y);
     }
   }
   atomicAnd(&held, alpha);

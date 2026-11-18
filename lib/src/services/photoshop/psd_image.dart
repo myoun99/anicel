@@ -1,38 +1,14 @@
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import '../import/cel_picture.dart';
-import '../straight_rgba_image.dart';
 import 'psd_reader.dart';
 
-/// The bridge between the document reader and everything in the app that
-/// already knows what to do with a `ui.Image`.
-///
-/// Every image entry point asks [looksLikePsdBytes] first and comes here if
-/// the answer is yes, which is what makes a PSD behave like a PNG
-/// everywhere — the cel bake, the brush tip, the media viewer, thumbnails.
-/// The alternative was a PSD branch in each of them.
-///
-/// The parse runs OFF the UI isolate. A layout PSD is routinely a hundred
-/// megabytes and the walk over its channels is not fast; on the main isolate
-/// that is a frozen window, and this app's bar is that a tablet must not
-/// stutter.
-Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
-  final composite = await readPsdComposite(bytes);
-  return decodeStraightRgbaImage(
-    rgba: composite.rgba,
-    width: composite.width,
-    height: composite.height,
-  );
-}
-
-/// The composite as a picture an import lays on cels ([pictureOfPixels]):
-/// longer on a side than this device's engine hands back, never made one
-/// GPU image.
+/// The composite as a picture an import lays on cels: the pixels the reader
+/// made, as they are ([PixelsPicture]) — never made one GPU image.
 Future<CelPicture> decodePsdCompositePicture(Uint8List bytes) async {
   final composite = await readPsdComposite(bytes);
-  return pictureOfPixels(
+  return PixelsPicture(
     composite.rgba,
     width: composite.width,
     height: composite.height,
@@ -40,9 +16,18 @@ Future<CelPicture> decodePsdCompositePicture(Uint8List bytes) async {
 }
 
 /// The composite itself — the straight RGBA the reader produces, at the
-/// document's own size — for a holder that renders it more than once at
-/// sizes of its own ([PsdCompositeDocument]). Read OFF the UI isolate, for
-/// the reason above.
+/// document's own size: what an image entry point that asks
+/// [looksLikePsdBytes] first reads a Photoshop document as — the cel bake
+/// ([decodePsdCompositePicture]), the brush tip, the media viewer
+/// ([PsdCompositeDocument]) — rather than a PSD branch in each.
+///
+/// The parse runs OFF the UI isolate. A layout PSD is routinely a hundred
+/// megabytes and the walk over its channels is not fast; on the main isolate
+/// that is a frozen window, and this app's bar is that a tablet must not
+/// stutter. ↩️It was made a `ui.Image` for them too
+/// (`decodePsdCompositeImage`, 「the bridge … to everything that already
+/// knows what to do with a `ui.Image`」) until its last caller, the brush
+/// tip, read these bytes as they are (관제 2026-11-11 18:47).
 Future<({Uint8List rgba, int width, int height})> readPsdComposite(
   Uint8List bytes,
 ) async {

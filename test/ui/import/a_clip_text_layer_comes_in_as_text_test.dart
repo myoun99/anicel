@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
@@ -114,10 +116,12 @@ void main() {
       'drew it, where it stands; the one it did not set by this app, and '
       'said', () async {
     final set = <String>[];
+    final behind = <PasteboardWall>[];
     final marker = markerPlate();
     debugCelTextBaker =
         (layout, {required pasteboard, required tileSize, previous = const {}}) {
           set.add(layout.content.text);
+          behind.add(pasteboard);
           return Future.value(marker);
         };
     final opened = await openedClip(writeClip());
@@ -132,6 +136,17 @@ void main() {
       [('clipTextSetHere', 'words')],
     );
     expect(set, ['yo'], reason: 'only the text the file drew no picture of');
+    expect(
+      behind,
+      [
+        const CanvasSize(
+          width: 300,
+          height: 200,
+        ).pasteboardAt(PasteboardReach.whole),
+      ],
+      reason: 'set behind the wall of the store it is laid in — the one the '
+          'file\'s own pictures are cut at (clip-cels-cut-at-the-canvas-Q1)',
+    );
     final cut = session.repository.requireProject().tracks.single.cuts.single;
     final row = cut.layers.singleWhere((layer) => layer.name == 'words');
     final surface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(

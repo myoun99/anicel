@@ -362,8 +362,7 @@ void main() {
   });
 
   testWidgets('🚨⛔an edit that leaves the fonts as they were says nothing '
-      'of them again: a project is made anew at every edit, its list of '
-      'fonts with it — and saying them reads the project file', (tester) async {
+      'of them again — saying them reads the project file', (tester) async {
     final c = await textToolInHand(tester, deviceWith({'font-1.ttf': sans}));
     await pickFace(tester, 'Probe Sans');
     await hiOnTheCel(tester, c);
@@ -383,24 +382,28 @@ void main() {
     sessionOf(tester).notifyChanged();
     await pumpFrames(tester);
     final listed = fontsOfTheProject(tester);
+    final project = sessionOf(tester).repository.requireProject();
     var said = 0;
     fonts.addListener(() => said += 1);
 
     // Another text in the same face, begun where there is no cel: the press
     // makes one, so the PROJECT is another — and its fonts are what they
-    // were, in a list made anew with it. (A text set on a cel that is
-    // there changes the cel's picture and no project.)
+    // were. (A text set on a cel that is there changes the cel's picture
+    // and no project.)
     await clickAt(tester, c.dx - 200, c.dy - 100);
     await typeText(tester, 'ab');
     await clickAt(tester, c.dx + 300, c.dy + 200);
 
-    final listedNow = fontsOfTheProject(tester);
     expect(
-      identical(listedNow, listed),
+      identical(sessionOf(tester).repository.requireProject(), project),
       isFalse,
-      reason: '⛔fixture: the project was made anew, its list with it',
+      reason: '⛔fixture: the project was made anew',
     );
-    expect(listedNow, listed, reason: '⛔fixture: and says what it said');
+    expect(
+      fontsOfTheProject(tester),
+      listed,
+      reason: '⛔fixture: and its fonts say what they said',
+    );
     expect(said, 0);
   });
 }

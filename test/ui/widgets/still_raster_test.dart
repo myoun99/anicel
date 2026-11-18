@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
+import 'package:anicel/src/ui/widgets/raster_grid_fit.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
@@ -67,8 +69,50 @@ Future<void> _pump(
 const _red = Color(0xFFE53935);
 const _blue = Color(0xFF1E88E5);
 
+/// An `outer` region holding an `inner` one, and a region `beside` them,
+/// all still at once — the outer one first in the order they paint, the
+/// inner one before the one beside, which holds [beside].
+Future<void> _pumpInnerAndBeside(WidgetTester tester, {Widget? beside}) {
+  return pumpSurface(
+    tester,
+    Row(
+      // Stretched, for the reason the frame apart test gives.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: StillRaster(
+            debugLabel: 'outer',
+            child: StillRaster(debugLabel: 'inner', child: _box()),
+          ),
+        ),
+        Expanded(
+          child: StillRaster(
+            debugLabel: 'beside',
+            child: beside ?? _box(color: _blue),
+          ),
+        ),
+      ],
+    ),
+    left: _left,
+    width: _width,
+    height: _height,
+  );
+}
+
+/// The regions on screen, by their labels.
+Map<String, RenderStillRaster> _regionsByLabel(WidgetTester tester) => {
+  for (final region in tester.renderObjectList<RenderStillRaster>(
+    find.byType(StillRaster),
+  ))
+    region.debugLabel: region,
+};
+
 /// A box that is its own repaint boundary, so a property of a layer ABOVE
 /// it can change while its picture stays exactly the one it was.
+/// How a region is moved: its scroll view's offset, its own place, or the
+/// place of a boundary above it.
+enum _Moved { scrolled, itself, byAncestor }
+
 Widget _box({Color color = _red}) =>
     RepaintBoundary(child: ColoredBox(color: color));
 
@@ -189,6 +233,35 @@ final _layerChanges = <String, Widget Function(bool changed)>{
 };
 
 final _link = LayerLink();
+
+/// How often a transform was asked through [_CountingTransforms].
+class _Asks {
+  int count = 0;
+}
+
+/// Counts every region below it whose way to the root is multiplied
+/// through it.
+class _CountingTransforms extends SingleChildRenderObjectWidget {
+  const _CountingTransforms({required this.asks, required super.child});
+
+  final _Asks asks;
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderCountingTransforms(asks);
+}
+
+class _RenderCountingTransforms extends RenderProxyBox {
+  _RenderCountingTransforms(this.asks);
+
+  final _Asks asks;
+
+  @override
+  void applyPaintTransform(RenderObject child, Matrix4 transform) {
+    asks.count += 1;
+    super.applyPaintTransform(child, transform);
+  }
+}
 
 /// A repaint boundary whose own layer is a transform: whoever paints it
 /// moves it by that layer's OFFSET, which lands after the matrix.
@@ -387,6 +460,75 @@ void main() {
     expect(tookOn, hasLength(2), reason: 'both regions took their image');
   });
 
+  testWidgets('a region the scene draws is taken before one under another '
+      'region\'s image (F-533)', (tester) async {
+    await _pumpInnerAndBeside(tester);
+    final regions = _regionsByLabel(tester);
+    final tookOn = <String, int>{};
+    for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+      await _frame(tester);
+      for (final MapEntry(key: label, value: region) in regions.entries) {
+        if (region.debugCaptureCount > 0) {
+          tookOn.putIfAbsent(label, () => frame);
+        }
+      }
+    }
+    expect(tookOn.keys, containsAll(['outer', 'inner', 'beside']));
+    expect(
+      tookOn['outer'],
+      lessThan(tookOn['beside']!),
+      reason: 'premise: the outer region is drawn from its image first',
+    );
+    expect(
+      tookOn['beside'],
+      lessThan(tookOn['inner']!),
+      reason: 'the region under the outer one\'s image took the turn of the '
+          'one the scene draws',
+    );
+  });
+
+  group('a region the scene draws holds no turn back', () {
+    const gaveItsTurn =
+        'the region under the outer one\'s image gave its turn to one that '
+        'does not take it';
+
+    testWidgets('that cannot be taken', (tester) async {
+      await _pumpInnerAndBeside(tester, beside: const Texture(textureId: 7));
+      final regions = _regionsByLabel(tester);
+      for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+        await _frame(tester);
+      }
+      expect(
+        regions['beside']!.standDown,
+        StillStandDown.unvouched,
+        reason: 'premise: the region beside cannot be taken',
+      );
+      expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
+      expect(regions['inner']!.debugCaptureCount, 1, reason: gaveItsTurn);
+    });
+
+    testWidgets('that keeps changing', (tester) async {
+      final color = ValueNotifier<Color>(_red);
+      addTearDown(color.dispose);
+      await _pumpInnerAndBeside(
+        tester,
+        beside: CustomPaint(painter: _Fill(color), size: Size.infinite),
+      );
+      final regions = _regionsByLabel(tester);
+      for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+        color.value = frame.isEven ? _red : _blue;
+        await _frame(tester);
+      }
+      expect(
+        regions['beside']!.debugCaptureCount,
+        0,
+        reason: 'premise: the region beside never stood still',
+      );
+      expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
+      expect(regions['inner']!.debugCaptureCount, 1, reason: gaveItsTurn);
+    });
+  });
+
   group('when the frames stop (F-533)', () {
     // A click, a hover, a pen lifting: the region changed, its frames
     // ended with the change, and the wait was left for the next stroke to
@@ -472,6 +614,28 @@ void main() {
       expect(taken(), 1);
       await tester.binding.delayed(theRest);
       expect(taken(), 2);
+    });
+
+    testWidgets('a region the scene draws is taken a step before one under '
+        'another region\'s image', (tester) async {
+      await _pumpInnerAndBeside(tester);
+      await lastFrame(tester);
+      final regions = _regionsByLabel(tester);
+      List<String> taken() => [
+        for (final MapEntry(key: label, value: region) in regions.entries)
+          if (region.debugCaptureCount > 0) label,
+      ];
+      await tester.binding.delayed(step);
+      expect(taken(), ['outer'], reason: 'premise: the outer region first');
+      await tester.binding.delayed(step);
+      expect(
+        taken(),
+        ['outer', 'beside'],
+        reason: 'the region under the outer one\'s image took the step of '
+            'the one the scene draws',
+      );
+      await tester.binding.delayed(step);
+      expect(taken(), ['outer', 'inner', 'beside']);
     });
 
     testWidgets('a region that threw an image away waits as many more steps '
@@ -856,6 +1020,125 @@ void main() {
     );
   });
 
+  testWidgets('regions under an ancestor that moved ask through it once a '
+      'frame, not once a region', (tester) async {
+    // 🔬Card row-images-placement-check-ui-cost: a scroll moves every
+    // row's ancestors, and 32 rows each asking the whole way to the root
+    // took 0.45 ms of a frame on the main PC.
+    const rows = 8;
+    final asks = _Asks();
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      RepaintBoundary(
+        child: _CountingTransforms(
+          asks: asks,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              for (var row = 0; row < rows; row += 1)
+                Expanded(
+                  child: StillRaster(debugLabel: 'row $row', child: _box()),
+                ),
+            ],
+          ),
+        ),
+      ),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    await at(_left);
+    final regions = _regionsByLabel(tester).values.toList();
+    expect(regions, hasLength(rows));
+    bool allFromImage() =>
+        regions.every((region) => region.debugDrawnFromImage);
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (allFromImage()) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(allFromImage(), isTrue);
+    final checks = [
+      for (final region in regions) region.debugFullPlacementChecks,
+    ];
+
+    asks.count = 0;
+    await at(_left + 3);
+    expect(allFromImage(), isTrue, reason: 'a whole-pixel move');
+    expect(
+      [for (final region in regions) region.debugFullPlacementChecks],
+      [for (final before in checks) before + 1],
+      reason: 'every region asked where it sits now, fully',
+    );
+    expect(
+      asks.count,
+      1,
+      reason: 'and the ancestor they share multiplied once for all of them',
+    );
+  });
+
+  testWidgets('a fit asked as the scene is built is the one asked the whole '
+      'way, bit for bit', (tester) async {
+    // Each ask outside a frame names a frame no real one has: between
+    // frames the serial is already the next frame's.
+    var frame = -1;
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      Transform.scale(
+        scale: 1.25,
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 0.3, top: 0.7),
+          child: Transform.translate(
+            offset: const Offset(1.1, 2.35),
+            child: Column(
+              children: <Widget>[
+                for (var row = 0; row < 4; row += 1)
+                  Padding(
+                    padding: EdgeInsets.only(left: row * 0.37),
+                    child: SizedBox(height: 13.3, key: ValueKey(row)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    final ratio = tester.view.devicePixelRatio;
+    for (final left in [_left, _left + 0.29, _left + 7.61]) {
+      await at(left);
+      frame -= 1;
+      for (var row = 0; row < 4; row += 1) {
+        final box = tester.renderObject(find.byKey(ValueKey(row)));
+        final whole = RasterGridFit.of(box, ratio);
+        expect(whole, isNotNull);
+        expect(
+          RasterGridFit.ofPainted(box, ratio, frame: frame),
+          whole,
+          reason: 'row $row at $left',
+        );
+      }
+    }
+  });
+
+  test('a fit asked as the scene is built is none where the whole way '
+      'finds no root, as there', () {
+    final owner = PipelineOwner()
+      ..rootNode = RenderConstrainedBox(
+        additionalConstraints: const BoxConstraints(),
+      );
+    final box = RenderConstrainedBox(
+      additionalConstraints: const BoxConstraints(),
+    );
+    RenderPadding(padding: const EdgeInsets.all(1), child: box).attach(owner);
+    expect(RasterGridFit.of(box, 1), isNull);
+    expect(RasterGridFit.ofPainted(box, 1, frame: -1), isNull);
+  });
+
   testWidgets('a region under a scale moves when an ancestor and a '
       'descendant of the scale move by opposite amounts', (tester) async {
     // Every offset summed stays put; under the scale, the region still
@@ -1070,6 +1353,128 @@ void main() {
         expect(region.debugDrawnFromImage, isFalse);
       });
     }
+
+    group('moved by whole device pixels, its corner across 1024,', () {
+      // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
+      // device x crossed 1024, the sum that placed it rounded on a
+      // coarser grid, and the same pixels read a phase of 7.6e-14 against
+      // the 0 its image was taken on — the image dropped, the row drawn
+      // live. One law reads every region, so every way one is moved, on
+      // both axes, at each ratio the screens here run at.
+      const at = 1400 + 2 / 3;
+      for (final ratio in const [1.0, 1.25, 1.5, 2.0]) {
+        for (final axis in Axis.values) {
+          for (final moved in _Moved.values) {
+            testWidgets('${moved.name} ${axis.name} at $ratio keeps its '
+                'image', (tester) async {
+              tester.view.devicePixelRatio = ratio;
+              addTearDown(tester.view.resetDevicePixelRatio);
+              final scroll = ScrollController();
+              addTearDown(scroll.dispose);
+              Widget placed(double along) {
+                final region = StillRaster(debugLabel: 'test', child: _box());
+                return placedAlong(
+                  axis,
+                  along: along,
+                  across: 0,
+                  alongExtent: _height,
+                  acrossExtent: _height,
+                  child: moved == _Moved.byAncestor
+                      ? RepaintBoundary(child: region)
+                      : region,
+                );
+              }
+
+              Future<void> pumpAt(double offset) => tester.pumpWidget(
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: sizedAlong(
+                      axis,
+                      along: 1600,
+                      across: _height,
+                      child: moved == _Moved.scrolled
+                          ? SingleChildScrollView(
+                              controller: scroll,
+                              scrollDirection: axis,
+                              child: sizedAlong(
+                                axis,
+                                along: 3000,
+                                across: _height,
+                                child: Stack(children: [placed(at)]),
+                              ),
+                            )
+                          : Stack(
+                              clipBehavior: Clip.none,
+                              children: [placed(at - offset)],
+                            ),
+                    ),
+                  ),
+                ),
+              );
+              Future<void> moveTo(double offset) async {
+                if (moved == _Moved.scrolled) {
+                  scroll.jumpTo(offset);
+                } else {
+                  await pumpAt(offset);
+                }
+              }
+
+              // Four logical pixels are whole device pixels at each of
+              // these ratios: every step lands on the pixels it left.
+              final first = (at - 1024 / ratio - 40).floorToDouble();
+              await pumpAt(first);
+              final dropped = <String>[];
+              for (var offset = first; offset < first + 80; offset += 4) {
+                await moveTo(offset);
+                await _untilImage(tester);
+                final region = _region(tester);
+                final taken = region.debugCaptureCount;
+                await moveTo(offset + 4);
+                await _frame(tester);
+                if (!region.debugDrawnFromImage ||
+                    region.debugCaptureCount != taken) {
+                  dropped.add('$offset → ${offset + 4}');
+                }
+              }
+              expect(dropped, isEmpty, reason: 'dropped its image');
+            });
+          }
+        }
+      }
+    });
+
+    testWidgets('on whole device pixels reads no phase where its sum lands '
+        'an ulp short of one', (tester) async {
+      // 1000⅔ + 400 rounds at 1400's grid, and back 400 it sums to
+      // 1500.9999999999998 device pixels at 150% — 1501 floored bare is a
+      // phase of a whole pixel less an ulp.
+      tester.view.devicePixelRatio = 1.5;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 1000 + 2 / 3 + 400,
+                top: 0,
+                width: _width,
+                height: _height,
+                child: Transform.translate(
+                  offset: const Offset(-400, 0),
+                  child: StillRaster(debugLabel: 'test', child: _box()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await _untilImage(tester);
+      expect(_region(tester).debugDrawnFromImage, isTrue);
+      expect(_region(tester).debugGridShift, Offset.zero);
+    });
   });
 
   group('a region that keeps changing', () {

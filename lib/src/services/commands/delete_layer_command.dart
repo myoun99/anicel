@@ -77,22 +77,6 @@ class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
         repository.deleteLayer(cutId: target.cutId, layerId: target.layerId);
       }
     });
-    // Every member of the affected group was just deleted — the group
-    // dissolves whole (a layer belongs to at most one group).
-    final deletedIds = {for (final target in _targets!) target.layerId};
-    repository.updateProject(
-      (current) => current.copyWith(
-        linkRegistry: current.linkRegistry.copyWith(
-          groups: [
-            for (final group in current.linkRegistry.groups)
-              if (!group.members.any(
-                (member) => deletedIds.contains(member.layerId),
-              ))
-                group,
-          ],
-        ),
-      ),
-    );
     markExecuted();
   }
 

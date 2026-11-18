@@ -25,11 +25,22 @@ Future<BrushTipMask> decodeBrushTipImage(
   Uint8List bytes, {
   required String id,
 }) async {
-  // A Photoshop document reaches the tip library the same way a PNG does,
-  // so it takes the same detour every image entry point takes.
-  final image = looksLikePsdBytes(bytes)
-      ? await decodePsdCompositeImage(bytes)
-      : (await (await ui.instantiateImageCodec(bytes)).getNextFrame()).image;
+  // A Photoshop document's composite is read as the reader hands it —
+  // straight bytes, its own size. ↩️It was made a GPU image and read back
+  // straight, the detour every image entry point took (e22ee1c1d 「One
+  // seam, not a branch per caller」 — one road, not a need), and every
+  // partly clear pixel came back through a premultiply and its undoing (관제
+  // 2026-11-11 18:47: 「필요 없으면 지워라」).
+  if (looksLikePsdBytes(bytes)) {
+    final composite = await readPsdComposite(bytes);
+    return brushTipMaskFromCoverage(
+      brushTipCoverageOfRgba(composite.rgba),
+      size: (width: composite.width, height: composite.height),
+      id: id,
+    );
+  }
+  final image =
+      (await (await ui.instantiateImageCodec(bytes)).getNextFrame()).image;
   try {
     final byteData = await image.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,
@@ -37,7 +48,7 @@ Future<BrushTipMask> decodeBrushTipImage(
     if (byteData == null) {
       throw const FormatException('image pixels unavailable');
     }
-    return brushTipMaskFromCoverage(
+    return await brushTipMaskFromCoverage(
       brushTipCoverageOfRgba(byteData.buffer.asUint8List()),
       size: (width: image.width, height: image.height),
       id: id,
@@ -95,11 +106,13 @@ Future<Uint8List> encodeBrushTipImage(BrushTipMask mask) async {
 /// is a minification of a coverage map, which is the one question
 /// [resampleCoverage] answers, so it is not a second question and does not
 /// get a second filter (ARCH-audit-Q7, 2026-09-07).
-Uint8List brushTipThumbnailAlpha(BrushTipMask mask, {int side = 16}) =>
-    resampleCoverage(
-      mask.alpha,
-      width: mask.size,
-      height: mask.size,
-      newWidth: side,
-      newHeight: side,
-    );
+Future<Uint8List> brushTipThumbnailAlpha(
+  BrushTipMask mask, {
+  int side = 16,
+}) => resampleCoverage(
+  mask.alpha,
+  width: mask.size,
+  height: mask.size,
+  newWidth: side,
+  newHeight: side,
+);

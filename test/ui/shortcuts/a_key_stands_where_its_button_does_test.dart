@@ -19,17 +19,15 @@ ShortcutShelf shelfOf(String id) =>
     editorActionDefinitions.singleWhere((row) => row.id == id).shelf;
 
 void main() {
-  test('the places are the answer\'s but the tool library (F-560), and a '
-      'fifth for a panel\'s own buttons', () {
+  test('the places are the answer\'s but the tool library (F-560) — and '
+      'under 도구, each tool\'s own shelf names it (F-580)', () {
     expect(ShortcutShelf.places, [
       ShortcutShelf.canvas,
       ShortcutShelf.timeline,
       ShortcutShelf.topStrip,
-      ShortcutShelf.inAPanel,
     ]);
     expect(ShortcutShelf.canvas.shelves, [
       ShortcutShelf.tools,
-      ShortcutShelf.toolTiles,
       ShortcutShelf.blendModes,
       ShortcutShelf.selection,
       ShortcutShelf.edit,
@@ -42,26 +40,23 @@ void main() {
       ShortcutShelf.layerHeader,
       ShortcutShelf.timelineBar,
     ]);
-    // 🗣️F-560: the tool library stands under 세부 도구 — its place is gone.
-    expect(ShortcutShelf.toolTiles.shelves, [
-      ShortcutShelf.brushLibrary,
-      ShortcutShelf.brushToolBrushes,
-      ShortcutShelf.eraserToolBrushes,
-      ShortcutShelf.guides,
-      ShortcutShelf.texts,
-    ]);
+    // 🗣️F-580: 「브러시 도구 밑에 브러시 도구의 브러시 항목 … 그 다음 아래에
+    // 지우개 도구, 그 밑에 지우개 도구의 브러시 항목」 — a shelf under 도구 is
+    // a tool's own, and stands under that tool's row.
+    expect(
+      [for (final shelf in ShortcutShelf.tools.shelves) (shelf, shelf.tool)],
+      [
+        (ShortcutShelf.brushToolBrushes, CanvasTool.brush),
+        (ShortcutShelf.eraserToolBrushes, CanvasTool.eraser),
+        (ShortcutShelf.texts, CanvasTool.text),
+        (ShortcutShelf.guides, CanvasTool.guide),
+      ],
+    );
     expect(ShortcutShelf.topStrip.shelves, [
       ShortcutShelf.file,
       ShortcutShelf.settings,
       ShortcutShelf.panels,
       ShortcutShelf.debug,
-    ]);
-    expect(ShortcutShelf.inAPanel.shelves, [
-      ShortcutShelf.media,
-      ShortcutShelf.timesheet,
-      ShortcutShelf.conteSheet,
-      ShortcutShelf.envelope,
-      ShortcutShelf.palette,
     ]);
     expect(ShortcutShelf.pills.path, [
       ShortcutShelf.timeline,
@@ -79,7 +74,8 @@ void main() {
 
   test('the readings: the clipboard and the colour edit are the shared '
       'pill\'s, the canvas keeps the rail\'s undo, the onion and the solo '
-      'stand by the view, and a tool panel\'s buttons by the library', () {
+      'stand by the view, a tool panel\'s buttons by their tool, and the '
+      'whole picture cut\'s 실행 by the stamp\'s buttons (F-580)', () {
     for (final (id, shelf) in [
       (EditorActionIds.editCut, ShortcutShelf.sharedPill),
       (EditorActionIds.editPasteIndependent, ShortcutShelf.sharedPill),
@@ -94,11 +90,8 @@ void main() {
       (EditorActionIds.layerVisibilitySolo, ShortcutShelf.view),
       (EditorActionIds.guideAddSymmetry, ShortcutShelf.guides),
       (EditorActionIds.textDeleteText, ShortcutShelf.texts),
-      (EditorActionIds.mediaPoolImport, ShortcutShelf.media),
-      (EditorActionIds.timesheetFormat, ShortcutShelf.timesheet),
-      (EditorActionIds.conteFormat, ShortcutShelf.conteSheet),
-      (EditorActionIds.envelopeFormat, ShortcutShelf.envelope),
-      (EditorActionIds.paletteNew, ShortcutShelf.palette),
+      (EditorActionIds.cutStampRegisterTip, ShortcutShelf.edit),
+      (EditorActionIds.toolCutWholeRun, ShortcutShelf.edit),
     ]) {
       expect(shelfOf(id), shelf, reason: id);
     }
@@ -119,12 +112,12 @@ void main() {
     for (final (id, shelf) in [
       (EditorActionIds.toolBrush, ShortcutShelf.tools),
       (EditorActionIds.toolCut, ShortcutShelf.tools),
-      (EditorActionIds.toolFillBucket, ShortcutShelf.toolTiles),
-      (EditorActionIds.toolTransformFree, ShortcutShelf.toolTiles),
-      (EditorActionIds.toolCutStamp, ShortcutShelf.toolTiles),
+      (EditorActionIds.toolFillBucket, ShortcutShelf.tools),
+      (EditorActionIds.toolTransformFree, ShortcutShelf.tools),
+      (EditorActionIds.toolCutStamp, ShortcutShelf.tools),
       (
         shapeTileActionId(CanvasTool.select, CanvasShapeKind.lasso),
-        ShortcutShelf.toolTiles,
+        ShortcutShelf.tools,
       ),
       (blendModeActionId(BrushBlendMode.erase), ShortcutShelf.blendModes),
       (EditorActionIds.selectionDeselect, ShortcutShelf.selection),

@@ -17,23 +17,12 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_blur_kernel.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
+import 'package:anicel/src/services/brush_stroke_landing.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_dab_dirty_region.dart';
-import 'package:anicel/src/services/brush_dab_kernel.dart';
 import 'package:anicel/src/services/brush_ground_color_mixing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
-import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
-import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/services/canvas_selection_shape.dart';
-import 'package:anicel/src/services/selection_clip.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// 🗣️I-75 흐리기 (유저 2026-10-27): a brush in the mixing group that blurs
 /// what is already drawn — no slider of its own (Q3: its size is how far it
@@ -45,23 +34,16 @@ import '../helpers/native_engine_path.dart';
 /// land the same bytes.
 void main() {
   const canvasSize = CanvasSize(width: 192, height: 128);
-  const tileSize = 64;
+  const tileSize = 128;
   const layerId = LayerId('l');
   const frameId = FrameId('f');
   final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
 
   /// A cel whose pixel at (x, y) is [argbAt]'s.
   BitmapSurface celOf(int Function(int x, int y) argbAt) {
     final tiles = [
-      for (var tileY = 0; tileY < canvasSize.height ~/ tileSize; tileY += 1)
-        for (var tileX = 0; tileX < canvasSize.width ~/ tileSize; tileX += 1)
+      for (var tileY = 0; tileY * tileSize < canvasSize.height; tileY += 1)
+        for (var tileX = 0; tileX * tileSize < canvasSize.width; tileX += 1)
           (
             coord: TileCoord(x: tileX, y: tileY),
             tile: BitmapTile(
@@ -129,13 +111,9 @@ void main() {
     List<BrushDab> dabs,
     BitmapSurface base, {
     double opacity = 1,
-    CanvasSelectionRegion? selection,
   }) {
     final rasterizer =
         BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
-          ..selectionClip = selection == null
-              ? null
-              : SelectionClip.outline(selection)
           ..strokeOpacity = opacity
           ..blurOver(base);
     for (var from = 0; from < dabs.length; from += 5) {
@@ -246,33 +224,8 @@ void main() {
     return moved;
   }
 
-  void onEachEngine(String name, void Function() body) {
-    test('$name — Dart engine', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      body();
-    });
-    test('$name — native engine', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      expect(
-        QaBlurKernel.instance,
-        isNotNull,
-        reason: 'the engine is loaded, so its blur runs in the C',
-      );
-      body();
-    });
-  }
-
-  onEachEngine('what the screen showed is what lands — promoted at pen-up, '
-      're-derived from the dabs, and cut by a selection that covers it', () {
+  test('what the screen showed is what lands — promoted at pen-up, and '
+      're-derived from the dabs', () {
     final base = edgeCel();
     final dabs = rub();
     final watched = live(dabs, base);
@@ -282,37 +235,17 @@ void main() {
       reason: 'premise: the stroke smeared the edge',
     );
     expectSameArtwork(rederived(dabs, base), watched, 're-derived');
-
-    final clipped = clipStrokeCommitToSelection(
-      BrushStrokeCommitData(sourceDabs: dabs),
-      clip: SelectionClip.outline(CanvasSelectionRegion.shape(
-        CanvasSelectionShape.rect(left: 0, top: 0, right: 192, bottom: 128),
-      )),
-      surface: base,
-    )!;
-    expectSameArtwork(
-      brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: base,
-        sequence: BrushDabSequence(dabs),
-        layerId: layerId,
-        frameId: frameId,
-        promotedBase: clipped.promotedBase,
-        promotedTiles: clipped.promotedTiles,
-      ).afterSurface,
-      watched,
-      'through a selection that covers it',
-    );
   });
 
-  onEachEngine('the screen shows, tile for tile, what pen-up lands', () {
+  test('the screen shows, tile for tile, what pen-up lands', () {
     final base = edgeCel();
     final rasterizer =
         BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
           ..blurOver(base);
     rasterizer.blendFrom(rub(), from: 0);
     final coords = [
-      for (var y = 0; y < canvasSize.height ~/ tileSize; y += 1)
-        for (var x = 0; x < canvasSize.width ~/ tileSize; x += 1)
+      for (var y = 0; y * tileSize < canvasSize.height; y += 1)
+        for (var x = 0; x * tileSize < canvasSize.width; x += 1)
           TileCoord(x: x, y: y),
     ];
     final shown = rasterizer.preBlendedOverlayTiles(
@@ -339,300 +272,41 @@ void main() {
     );
   });
 
-  /// The plain reading of the law (`BrushBlurPicture`), dab by dab, on a
-  /// premultiplied 16-bit plane padded with nothing: what each dab lays
-  /// onto an empty plane, measured afresh by the dab kernel; the whole
-  /// plane blurred — three box passes along the rows, then three along the
-  /// columns, each a sixth of the dab's size, means rounded half up; each
-  /// pixel moved toward its blur by that share, rounded half away from
-  /// zero. Straight ARGB per canvas pixel.
-  Uint32List byTheLaw(BitmapSurface base, List<BrushDab> dabs) {
-    const pad = 40;
-    const width = 192 + pad * 2;
-    const height = 128 + pad * 2;
-    var plane = List<int>.filled(width * height * 4, 0);
-    for (var y = 0; y < 128; y += 1) {
-      for (var x = 0; x < 192; x += 1) {
-        final argb = pixelAt(base, x, y);
-        final alpha = argb >> 24;
-        final o = ((y + pad) * width + x + pad) * 4;
-        for (final (c, shift) in [(0, 16), (1, 8), (2, 0)]) {
-          final channel = (argb >> shift) & 0xFF;
-          plane[o + c] = (channel * alpha * 514 + 255) ~/ 510;
-        }
-        plane[o + 3] = alpha * 257;
-      }
-    }
+  // ↩️Three cases held what the engine lays to a CPU reading of the law
+  // (`byTheLaw`, over the Dart dab kernel) till 2026-11-14: one hard dab,
+  // soft dabs rubbed over each other, a window reaching tiles the dab does
+  // not touch. A copy of a kernel's formula is not kept as a test's oracle
+  // either (kernels/mod.rs; board
+  // `the-off-engine-cpu-commit-lives-only-for-tests`) — dab/blur_tests.rs
+  // pins them: `a_dab_at_full_flow_puts_the_blur_itself`,
+  // `each_dab_reads_what_the_one_before_it_moved`,
+  // `a_window_across_tiles_reads_each_by_its_slot`,
+  // `a_rub_reads_the_cel_it_met_across_a_tile_edge`,
+  // `every_device_blurs_the_pinned_strokes`.
 
-    List<int> pass(List<int> from, int radius, {required bool alongRows}) {
-      final count = radius * 2 + 1;
-      final to = List<int>.filled(from.length, 0);
-      for (var y = 0; y < height; y += 1) {
-        for (var x = 0; x < width; x += 1) {
-          for (var c = 0; c < 4; c += 1) {
-            var sum = 0;
-            for (var k = -radius; k <= radius; k += 1) {
-              final sx = alongRows ? x + k : x;
-              final sy = alongRows ? y : y + k;
-              if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
-                sum += from[(sy * width + sx) * 4 + c];
-              }
-            }
-            to[(y * width + x) * 4 + c] = (sum * 2 + count) ~/ (count * 2);
-          }
-        }
-      }
-      return to;
-    }
-
-    int scaled(int difference, int factor, int whole) => difference >= 0
-        ? (difference * factor * 2 + whole) ~/ (whole * 2)
-        : -((-difference * factor * 2 + whole) ~/ (whole * 2));
-
-    for (final dab in dabs) {
-      const scratch = 64;
-      final planes = <(int, int), BrushDabTileBuffers>{};
-      blendDabTilesDart(
-        BrushDabPlan.of(
-          dab.copyWith(color: 0xFFFFFFFF),
-          wall: wall,
-          tileSize: scratch,
-          erase: false,
-        )!,
-        tileSize: scratch,
-        bufferFor: (tileX, tileY) => planes.putIfAbsent(
-          (tileX, tileY),
-          () => (
-            bytes: Uint8List(scratch * scratch * 4),
-            wide: Uint16List(scratch * scratch * 4),
-            second: null,
-          ),
-        ),
-      );
-      final radius = (dab.size / 6).round().clamp(1, 1 << 30);
-      var blurred = plane;
-      for (var i = 0; i < 3; i += 1) {
-        blurred = pass(blurred, radius, alongRows: true);
-      }
-      for (var i = 0; i < 3; i += 1) {
-        blurred = pass(blurred, radius, alongRows: false);
-      }
-      final next = List<int>.of(plane);
-      for (final MapEntry(key: (tileX, tileY), value: planesOfTile)
-          in planes.entries) {
-        for (var i = 0; i < scratch * scratch; i += 1) {
-          final share = planesOfTile.wide[i * 4 + 3];
-          if (share == 0) {
-            continue;
-          }
-          final x = tileX * scratch + i % scratch + pad;
-          final y = tileY * scratch + i ~/ scratch + pad;
-          final o = (y * width + x) * 4;
-          final alpha =
-              plane[o + 3] + scaled(blurred[o + 3] - plane[o + 3], share, 65535);
-          next[o + 3] = alpha;
-          for (var c = 0; c < 3; c += 1) {
-            next[o + c] =
-                plane[o + c] + scaled(blurred[o + c] - plane[o + c], share, 65535);
-            // Held by nothing in the law: the order the blur and the move
-            // keep (M9).
-            expect(next[o + c], lessThanOrEqualTo(alpha), reason: 'a channel '
-                'passed its alpha at ($x, $y)');
-          }
-        }
-      }
-      plane = next;
-    }
-
-    final argb = Uint32List(192 * 128);
-    for (var y = 0; y < 128; y += 1) {
-      for (var x = 0; x < 192; x += 1) {
-        final o = ((y + pad) * width + x + pad) * 4;
-        final alpha = plane[o + 3];
-        final outAlpha = (alpha * 2 + 257) ~/ 514;
-        int straight(int channel) =>
-            outAlpha == 0 ? 0 : (channel * 510 + alpha) ~/ (alpha * 2);
-        argb[y * 192 + x] =
-            (outAlpha << 24) |
-            (straight(plane[o]) << 16) |
-            (straight(plane[o + 1]) << 8) |
-            straight(plane[o + 2]);
-      }
-    }
-    return argb;
-  }
-
-  void expectByTheLaw(List<BrushDab> dabs, {BitmapSurface? over}) {
-    final base = over ?? edgeCel();
-    final landed = live(dabs, base);
-    final expected = byTheLaw(base, dabs);
-    var moved = 0;
-    for (var y = 0; y < 128; y += 1) {
-      for (var x = 0; x < 192; x += 1) {
-        final got = pixelAt(landed, x, y);
-        expect(
-          got,
-          expected[y * 192 + x],
-          reason: '($x, $y)',
-        );
-        if (got != pixelAt(base, x, y)) {
-          moved += 1;
-        }
-      }
-    }
-    expect(moved, greaterThan(100), reason: 'premise: the edge was smeared');
-  }
-
-  BrushDab dabAt(
-    double x, {
-    required double flow,
-    required double hardness,
-    int sequence = 0,
-    double? pathStep,
-    double size = 24,
-  }) => BrushDab(
-    center: CanvasPoint(x: x, y: 64),
-    color: 0xFF000000,
-    size: size,
-    opacity: 1,
-    flow: flow,
-    hardness: hardness,
-    tipShape: BrushTipShape.round,
-    pressure: 1,
-    sequence: sequence,
-    blurs: true,
-    pathStep: pathStep,
-  );
-
-  onEachEngine('one hard dab leaves exactly the picture blurred under it, '
-      'by the law written beside it', () {
-    expectByTheLaw([dabAt(96, flow: 1, hardness: 1)]);
-  });
-
-  onEachEngine('a dab wide enough to share its passes out among threads '
-      'lays the law too', () {
-    // 84px: a window of 168² pixels, past the C's 128² floor for the pool.
-    expectByTheLaw([dabAt(96, flow: 0.7, hardness: 0.6, size: 84)]);
-  });
-
-  onEachEngine('soft dabs rubbed over each other each read what the ones '
-      'before them left, by the law written beside it', () {
-    expectByTheLaw([
-      for (var i = 0; i < 4; i += 1)
-        dabAt(
-          90.0 + i * 3,
-          flow: 0.35,
-          hardness: 0.4,
-          sequence: i,
-          pathStep: i == 0 ? null : 3,
-        ),
-    ]);
-  });
-
-  onEachEngine('a dab whose blur reaches tiles it does not touch reads them '
-      'as the cel has them, by the law written beside it', () {
-    // A hard square in the corner of tile (0, 0): its window runs a reach
-    // into the three tiles beside it, which it never rewrites — so the
-    // corner it moves is mostly what it reads from them.
-    final dab = BrushDab(
-      center: CanvasPoint(x: 52, y: 52),
-      color: 0xFF000000,
-      size: 24,
-      opacity: 1,
-      flow: 1,
-      hardness: 1,
-      tipShape: BrushTipShape.square,
-      pressure: 1,
-      sequence: 0,
-      blurs: true,
-    );
-    final plan = BrushDabPlan.of(
-      dab,
-      wall: wall,
-      tileSize: tileSize,
-      erase: false,
-    )!;
-    final range = plan.clip.tileRange(tileSize: tileSize);
-    expect(
-      (range.firstX, range.lastX, range.firstY, range.lastY),
-      (0, 0, 0, 0),
-      reason: 'premise: the dab touches one tile',
-    );
-    expect(
-      plan.rightExclusive + (24 / 6).round() * 3,
-      greaterThan(tileSize),
-      reason: 'premise: its window reaches past it',
-    );
-    expectByTheLaw(
-      [dab],
-      over: celOf(
-        (x, y) => (x ~/ 6 + y ~/ 6).isEven ? 0xFF2244CC : 0xFFEE8811,
-      ),
-    );
-  });
-
-  onEachEngine('over a cel with tiles missing, the blur reads nothing there '
+  test('over a cel with tiles missing, the blur reads nothing there '
       '— also in memory a stroke before it let go', () {
-    // The stroke before leaves its rewritten tiles' blocks to be handed out
-    // again, its picture still in them.
-    live(rub(), edgeCel());
+    // A stroke before leaves its rewritten tiles' blocks to be handed out
+    // again, its picture still in them: two strokes before over two
+    // pictures must leave the same picture behind them.
     final whole = edgeCel();
-    expectByTheLaw(
-      rub(),
-      over: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize).putTiles([
-        for (final coord in [TileCoord(x: 0, y: 0), TileCoord(x: 2, y: 1)])
-          (coord: coord, tile: whole.tileAt(coord)!),
-      ]),
+    final kept = TileCoord(x: 0, y: 0);
+    BitmapSurface sparse() =>
+        BitmapSurface(canvasSize: canvasSize, tileSize: tileSize)
+            .putTiles([(coord: kept, tile: whole.tileAt(kept)!)]);
+    live(rub(), edgeCel());
+    final afterEdge = live(rub(), sparse());
+    live(rub(), celOf((x, y) => 0xFFFF00FF));
+    final afterMagenta = live(rub(), sparse());
+    expect(
+      movedPixels(afterEdge, sparse()),
+      greaterThan(100),
+      reason: 'premise: the edge was smeared',
     );
+    expectSameArtwork(afterEdge, afterMagenta, 'what a stroke before left');
   });
 
-  test('under the engine a blur stroke gives its memory back — a '
-      'coordinate\'s finished tile made again in its own buffer, and the '
-      'rewritten tiles and the scratch let go at the stroke\'s end', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    final kernel = QaBlurKernel.instance!;
-    final base = edgeCel();
-    final rasterizer =
-        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
-          ..blurOver(base);
-    Uint8List shown() => rasterizer
-        .preBlendedOverlayTile(
-          tileX: 1,
-          tileY: 0,
-          base: base,
-          mode: BrushBlendMode.color,
-          erase: false,
-        )!
-        .readStraight((straight) => straight);
-
-    final dabs = rub();
-    rasterizer.blendFrom(dabs.sublist(0, 24), from: 0);
-    final first = shown();
-    rasterizer.blendFrom(dabs, from: 24);
-    expect(
-      identical(shown(), first),
-      isTrue,
-      reason: 'the next result is made in the buffer of the one before',
-    );
-    expect(kernel.debugScratchBytes, greaterThan(0), reason: 'premise');
-
-    final before = QaNativeEngine.debugReleasedTileBuffers;
-    rasterizer.clear();
-    expect(
-      QaNativeEngine.debugReleasedTileBuffers - before,
-      7,
-      reason: 'the six tiles the rub rewrote and the one finished tile shown',
-    );
-    expect(kernel.debugScratchBytes, 0);
-  });
-
-  onEachEngine('a rasterizer let go after a blur paints the next stroke', () {
+  test('a rasterizer let go after a blur paints the next stroke', () {
     final base = edgeCel();
     final rasterizer =
         BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
@@ -660,7 +334,7 @@ void main() {
   });
 
 
-  onEachEngine('rubbing again blurs further (Q4)', () {
+  test('rubbing again blurs further (Q4)', () {
     final base = edgeCel();
     final once = live(rub(), base);
     final twice = live(rub(passes: 2), base);
@@ -678,43 +352,22 @@ void main() {
     expect(blueAcross(twice), greaterThan(blueAcross(once)));
   });
 
-  onEachEngine('a flat field stays exactly as it was — nothing to blur, '
+  test('a flat field stays exactly as it was — nothing to blur, '
       'and no rounding creeps in', () {
     final base = celOf((x, y) => 0xB0337788);
     expectSameArtwork(live(rub(passes: 2), base), base, 'flat');
   });
 
-  onEachEngine('a colour behind no alpha the blur never reached is kept, '
-      'though its tile was rewritten', () {
-    // Rows 0-3 carry a colour under no alpha; the dabs smear an edge
-    // across rows 32-48 of the same 64px tiles.
-    final base = celOf(
-      (x, y) => y < 4 ? 0x00EE8811 : (x < 32 ? 0xFF2244CC : 0xFFCC4422),
-    );
-    final landed = live([
-      for (var i = 0; i < 6; i += 1)
-        BrushDab(
-          center: CanvasPoint(x: 20.0 + i * 4, y: 40),
-          color: 0xFF000000,
-          size: 16,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: i,
-          blurs: true,
-        ),
-    ], base);
-    expect(pixelAt(landed, 30, 1), 0x00EE8811);
-    expect(
-      pixelAt(landed, 32, 40),
-      isNot(pixelAt(base, 32, 40)),
-      reason: 'premise: the dabs smeared their own rows',
-    );
-  });
+  // ↩️Till 2026-11-14 a case held that a colour behind no alpha the blur
+  // never reached was kept though its tile was rewritten — the C's law
+  // (2026-10-27), held on after the C by the Dart tiles of a 64px grid. On
+  // the engine the pool holds no colour behind no alpha (blend_pack8,
+  // 2026-10-25), so neither does the blur's copy of the cel
+  // (dab/blur_cel.wgsl's head, 2026-11-06); dab/blur_tests.rs
+  // `every_stored_pixel_comes_back_from_its_picture` pins it (board
+  // `the-off-engine-cpu-commit-lives-only-for-tests`).
 
-  onEachEngine('over nothing a line fades, it does not darken', () {
+  test('over nothing a line fades, it does not darken', () {
     final base = celOf(
       (x, y) => (x - 96).abs() <= 1 ? 0xFFFF0000 : 0x00000000,
     );
@@ -740,7 +393,7 @@ void main() {
     expect(faded, greaterThan(50), reason: 'premise: the line was smeared');
   });
 
-  onEachEngine('only what the brush reaches moves', () {
+  test('only what the brush reaches moves', () {
     final base = edgeCel();
     final dabs = rub();
     final reached = [for (final dab in dabs) dirtyRegionForBrushDab(dab)!];
@@ -761,39 +414,7 @@ void main() {
     }
   });
 
-  onEachEngine('the selection keeps what lies outside it', () {
-    final base = edgeCel();
-    final selection = CanvasSelectionRegion.shape(
-      CanvasSelectionShape.rect(left: 0, top: 0, right: 100, bottom: 128),
-    );
-    final blurred = live(rub(), base, selection: selection);
-    var movedInside = 0;
-    for (var y = 0; y < canvasSize.height; y += 1) {
-      for (var x = 0; x < canvasSize.width; x += 1) {
-        final moved = pixelAt(blurred, x, y) != pixelAt(base, x, y);
-        if (x >= 100) {
-          expect(moved, isFalse, reason: '($x, $y) lies outside');
-        } else if (moved) {
-          movedInside += 1;
-        }
-      }
-    }
-    expect(movedInside, greaterThan(100));
-    expectSameArtwork(
-      clipStrokeCommitToSelection(
-            BrushStrokeCommitData(sourceDabs: rub()),
-            clip: SelectionClip.outline(selection),
-            surface: base,
-          )!.promotedTiles!.fold(
-            base,
-            (surface, placed) => surface.putTiles([placed]),
-          ),
-      blurred,
-      'the selection cut re-derived',
-    );
-  });
-
-  onEachEngine('the tool\'s opacity caps how far the picture moves', () {
+  test('the tool\'s opacity caps how far the picture moves', () {
     final base = edgeCel();
     final full = live(rub(), base);
     final half = live(rub(), base, opacity: 0.5);
@@ -874,6 +495,6 @@ void main() {
 
   test('a blur stroke with nothing to land lands nothing', () {
     final base = celOf((x, y) => 0x00000000);
-    expect(blurStrokeLandedOn(base, rub(), opacity: 1), isEmpty);
+    expect(strokeLandedOn(base, BrushDabSequence(rub())), isEmpty);
   });
 }

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/gestures.dart';
@@ -18,7 +19,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/panel_finders.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**AN INTERRUPTION HAS EXACTLY TWO ANSWERS.**
 ///
@@ -41,6 +42,7 @@ import '../../helpers/panel_finders.dart';
 /// the pins below walk the ROUTES — a key, the tool rail, a frame walk —
 /// and each one has to come out in one of the two buckets.
 void main() {
+  opensTheEnginesScreens();
   const frameA = FrameId('tl-frame-a');
   const frameB = FrameId('tl-frame-b');
   const layerId = LayerId('tl-layer');
@@ -104,7 +106,7 @@ void main() {
     var ink = 0;
     for (var y = 0; y < size.height; y += step) {
       for (var x = 0; x < size.width; x += step) {
-        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
+        if ((surfaceRgbaInPlace(surface, x, y) ?? 0) != 0) {
           ink += 1;
         }
       }

@@ -48,7 +48,12 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
     required this.geometry,
     required this.colorScheme,
     required this.windowBucket,
-  }) : super(repaint: Listenable.merge([geometry, windowBucket]));
+  }) : super(
+         repaint: Listenable.merge([
+           timelineFrameDrawing(geometry),
+           windowBucket,
+         ]),
+       );
 
   /// Each cut's place on the track — its first frame, not where a のりしろ
   /// before it is drawn from.

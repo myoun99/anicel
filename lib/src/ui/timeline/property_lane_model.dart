@@ -2,6 +2,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 
 import 'package:flutter/foundation.dart' show Listenable;
 
+import '../../models/folder_band_rows.dart';
 import '../../models/frame_id.dart';
 import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart';
@@ -91,10 +92,12 @@ double scrubbedAngle(double degrees, Offset dragDelta) {
 String formatLaneColorValue(int? argb) =>
     argb == null ? 'none' : colorHexOf(argb);
 
-/// A group header's RASTERIZE as a host answers it for [layer]'s [lane]
-/// (I-120 round ②): null where the header has none; its press null where
-/// it bakes nothing now.
-typedef LaneGroupRasterize =
+/// A group header's RASTERIZE (I-120 round ②), or its RESET, as a host
+/// answers it for [layer]'s [lane]: null where the header has none; its
+/// press null where it would change nothing now — 🗣️F-583 (유저
+/// 2026-11-11) 「값이 안바뀌었으면 비활성화로. 동일하게 리셋버튼도 …
+/// 통일해서 비활성화」, the two answered the one way.
+typedef LaneGroupPress =
     ({VoidCallback? press})? Function(Layer layer, PropertyLaneRow lane);
 
 class PropertyLaneRow {
@@ -117,6 +120,7 @@ class PropertyLaneRow {
     this.groupEnabled,
     this.groupBasis,
     this.pluginNotOnDevice = false,
+    this.pluginFailures,
     this.headsAGraph = false,
     this.previewText,
     this.stretchWords = const [],
@@ -259,7 +263,24 @@ class PropertyLaneRow {
   /// the header greys, its lanes stay as they were, and it draws nothing
   /// until a plugin of its id is installed.
   final bool pluginNotOnDevice;
+
+  /// Group headers of a PLUGIN's effect only — null on every other row,
+  /// which keeps no ⚠ slot: where the header reads whether its plugin
+  /// failed to draw at the frame it stands on.
+  /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08):
+  /// 「원래 셀 + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」 — the slot
+  /// stands whether or not a run failed, so the name never narrows and
+  /// widens with it; a failure fills it and greys the name as
+  /// [pluginNotOnDevice] does.
+  final PluginRunFailures? pluginFailures;
 }
+
+/// Whether a plugin effect's run failed at a rail frame, and what tells a
+/// header it may have changed.
+typedef PluginRunFailures = ({
+  Listenable changes,
+  bool Function(int frameIndex) failedAt,
+});
 
 /// A word over the stretch of a lane from its key on [from] to the next, on
 /// [to] — written in its row's key colour (`timelineStretchWordSpan`).
@@ -620,26 +641,6 @@ Layer folderBandOf(Layer folder, Iterable<Layer> members) {
   return band;
 }
 
-/// The rows [band] is made of — what a drag in flight re-reads it from
-/// (`rowShownWhileMoved`); null for every layer that is no band.
-///
-/// 🐛folder-band-lags-a-comma-drag (10-27): a folder's row is what its rows
-/// hold (F-311), so it follows the hand as they do — and it did for a block
-/// MOVE alone, whose drag laid the bands in its own preview. A comma drag
-/// and a file held over a row put their one row there, and the folder stood
-/// where it was until the release. So the band says what it stands for,
-/// as a mirror says its base (`attachedDisplayBaseOf`), and whatever reads
-/// a row as a drag shows it reads a folder's from its rows.
-List<Layer>? folderBandRowsOf(Layer band) => _bandRows[band];
-
-/// Notes that [band] stands for [rows]: [folderBandOf]'s own, and a cache's
-/// that keeps a band while the rows under it changed and its blocks did not.
-void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
-    _bandRows[band] = List.unmodifiable(rows);
-
-/// The rows each band stands for, held weakly like the bands themselves.
-final Expando<List<Layer>> _bandRows = Expando('folder band rows');
-
 /// Where [row]'s blocks start and end — where what a block shows can
 /// change along it: a row's cells' edges (`timelineRowCellEdges`), and a
 /// folder band's, which shows its rows' (F-561).
@@ -815,7 +816,8 @@ enum LayerRowHiddenBy {
   /// Its section is hidden (the toolbar's SE/CAMERA toggles).
   section,
 
-  /// Its attach group is twirled shut (UI-R20 #9).
+  /// Its base folded the side of its attach group it sits on (UI-R20 #9,
+  /// I-175).
   attachFold,
 
   /// The row filter refuses it (R2).
@@ -828,9 +830,9 @@ enum LayerRowHiddenBy {
 /// [layer]'s row: null when it is on screen, otherwise the FIRST of the
 /// rail's reasons that hides it, asked in [LayerRowHiddenBy]'s order.
 ///
-/// [folders] indexes the MODEL stack and [attachBaseId] is
-/// [attachGroupBaseOf] against it — the row builder needs that base again
-/// for the indent, so it is asked once, outside.
+/// [folders] indexes the MODEL stack. [attachFoldedRowIds] are the rows
+/// their base's fold takes off the screen, each on a side the base folded
+/// (`RailView.attachFoldedRowIds`, I-175).
 ///
 /// [standingLayerId] is the row the FILTER spares — a filter never hides
 /// the row you are editing ([TimelineRowFilter.allowsRow]). The folds and
@@ -841,17 +843,16 @@ enum LayerRowHiddenBy {
 LayerRowHiddenBy? layerRowHiddenBy(
   Layer layer, {
   required LayerFolderIndex folders,
-  required LayerId? attachBaseId,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
-  Set<LayerId> collapsedAttachBaseIds = const {},
+  Set<LayerId> attachFoldedRowIds = const {},
   LayerId? standingLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
     return LayerRowHiddenBy.section;
   }
-  if (attachBaseId != null && collapsedAttachBaseIds.contains(attachBaseId)) {
+  if (attachFoldedRowIds.contains(layer.id)) {
     return LayerRowHiddenBy.attachFold;
   }
   if (!rowFilter.allowsLayerRow(
@@ -883,7 +884,7 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
-  Set<LayerId> collapsedAttachBaseIds = const {},
+  Set<LayerId> attachFoldedRowIds = const {},
   LayerId? activeLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
 
@@ -924,10 +925,9 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (layerRowHiddenBy(
           layer,
           folders: folders,
-          attachBaseId: attachBaseId,
           hiddenSections: hiddenSections,
           rowFilter: rowFilter,
-          collapsedAttachBaseIds: collapsedAttachBaseIds,
+          attachFoldedRowIds: attachFoldedRowIds,
           standingLayerId: activeLayerId,
           fxEnabledOf: fxEnabledOf,
         ) !=

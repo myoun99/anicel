@@ -108,7 +108,7 @@ void main() {
         region: DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
       );
     });
-    final first = frame.movedSince(before!);
+    final first = frame.movedSince(before);
     expect(first.located, isTrue);
     expect(first.dirty, isNotNull, reason: 'the dab moved the live row');
     // ⛔THE RECT IS INFLATED BY ONE PIXEL, and that is not decoration: a
@@ -141,7 +141,7 @@ void main() {
         region: DirtyRegion.fromXYWH(x: 19, y: 2, width: 5, height: 5),
       );
     });
-    final dirty = frame.movedSince(first.now!).dirty;
+    final dirty = frame.movedSince(first.now).dirty;
     expect(dirty, isNotNull, reason: 'the dab moved the live row');
     expect(
       dirty!.left,

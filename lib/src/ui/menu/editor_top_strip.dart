@@ -56,7 +56,6 @@ import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
-import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
     show ExportFrameTask, sanitizeExportFileComponent, unnamedExportName;
 import '../export/frame_image_file.dart';
@@ -160,6 +159,7 @@ class EditorTopStrip extends StatelessWidget {
     bool? checked,
     List<PanelFlyoutEntry> Function()? submenuBuilder,
     List<String> shortcuts = const [],
+    bool resets = false,
   }) => PanelFlyoutItem(
     keyValue: 'menu-$id',
     // Every entry localizes HERE, by the id it is already keyed with, with
@@ -167,6 +167,7 @@ class EditorTopStrip extends StatelessWidget {
     label: AppText.strings.menuLabel(id, label),
     icon: icon,
     checked: checked,
+    resets: resets,
     shortcuts: shortcuts,
     // A row that opens a SECOND level takes no tap of its own, so it has no
     // `onPressed` — and it must still be live (F-146).
@@ -423,7 +424,7 @@ class EditorTopStrip extends StatelessWidget {
             id: saveAsImageActionId(format),
             label: format.label,
             shortcuts: [saveAsImageActionId(format)],
-            onPressed: _onACut && stillFormatWritable(format)
+            onPressed: _onACut
                 ? () => unawaited(saveFrameAsImage(context, session, format))
                 : null,
           ),
@@ -666,6 +667,7 @@ class EditorTopStrip extends StatelessWidget {
           shortcuts: const [EditorActionIds.resetLayout],
           icon: Icons.restart_alt,
           onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
+          resets: true,
         ),
       ],
     ),
@@ -1876,11 +1878,14 @@ String saveFailureMessage(SaveFailure failure) {
     SaveFailureCause.diskFull => strings.saveFailedDiskFull,
     SaveFailureCause.locationGone => strings.saveFailedLocationGone,
     SaveFailureCause.replaceRefused => strings.saveFailedReplaceRefused,
+    SaveFailureCause.engineRead => strings.saveFailedEngineRead,
     SaveFailureCause.unknown => strings.saveFailedUnknown,
   };
-  final where = failure.failedCopy == null
-      ? strings.saveFailedNoCopy
-      : strings.saveFailedCopyKept;
+  final where = failure.failedCopy != null
+      ? strings.saveFailedCopyKept
+      : failure.cause == SaveFailureCause.engineRead
+      ? strings.saveFailedEngineReadNoCopy
+      : strings.saveFailedNoCopy;
   return '$why\n\n$where\n\n${strings.saveFailedRetry}';
 }
 

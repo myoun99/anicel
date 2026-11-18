@@ -17,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는 같은스냅」
 /// — a lasso is a path the hand draws as a stroke is (I-110), so the line a
 /// hold kept goes on through it too: the layer hands its drag the line, and
-/// says at the press and as its modifier finger lifts whether Shift is held.
+/// says at the press and at each point of the drag whether Shift is held.
 void main() {
   const layerKey = ValueKey<String>('layer');
   late ShiftLine line;
@@ -153,7 +153,8 @@ void main() {
     pointer: pointer,
   );
 
-  // Letting go of a finger is its owner's to hear — the panel's
+  // A finger let go of between presses is the line's own to ask after, as
+  // its owner has it ask — the panel's
   // (`the_stamp_goes_on_along_the_line_shift_holds_test`).
   testWidgets('🚨a finger holding the lasso\'s Shift keeps the line while it '
       'rests', (tester) async {

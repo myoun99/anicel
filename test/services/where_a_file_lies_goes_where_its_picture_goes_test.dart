@@ -25,22 +25,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const key = celTextTestKey;
-  // Twelve pixels past the wall on the left: on the test grid (32 × 32 in
-  // tiles of 8) the pasteboard's first tile is -4, so the file's reaches
+  // 192 pixels past the wall on the left: on the test grid (512 × 512 in
+  // tiles of 128) the pasteboard's first tile is -4, so the file's reaches
   // two beyond it.
   final laid = DirtyRegion(
-    left: -44,
+    left: -704,
     top: 0,
-    rightExclusive: 4,
-    bottomExclusive: 8,
+    rightExclusive: 64,
+    bottomExclusive: 128,
   );
   final beyond = TileCoord(x: -6, y: 0);
   final inside = TileCoord(x: 0, y: 0);
   const pastTheWall = [9, 9, 9, 255];
   const withinIt = [7, 7, 7, 255];
-  // Its ink at world (-43, 1) — inside the file's rect, past the wall.
-  final edge = tileOf({(5, 1): pastTheWall});
-  final ink = tileOf({(1, 1): withinIt});
+  // Its ink at world (-688, 16) — inside the file's rect, past the wall.
+  final edge = tileOf({(80, 16): pastTheWall});
+  final ink = tileOf({(16, 16): withinIt});
   BitmapSurface laidPicture() => BitmapSurface(
     canvasSize: celTextTestCanvas,
     tileSize: celTextTestTileSize,
@@ -68,7 +68,7 @@ void main() {
       expect(end.getUint8(0), 1);
       expect([
         for (var i = 0; i < 4; i += 1) end.getInt32(1 + i * 4, Endian.little),
-      ], [-44, 0, 4, 8]);
+      ], [-704, 0, 64, 128]);
     });
 
     test('a cel no file was laid on ends in a zero', () {
@@ -100,8 +100,8 @@ void main() {
   group('a change of the sheet\'s size', () {
     test('🚨a crop keeps a laid picture whole, and cuts the drawing at the '
         'new wall', () {
-      // A sheet of 16: its pasteboard's tiles are -2 to 3.
-      const smaller = CanvasSize(width: 16, height: 16);
+      // A sheet of 256: its pasteboard's tiles are -2 to 3.
+      const smaller = CanvasSize(width: 256, height: 256);
       final drawn = TileCoord(x: 5, y: 2);
 
       final cropped = resizeBitmapSurfaceCanvas(
@@ -117,9 +117,9 @@ void main() {
     test('🚨an anchored resize carries a laid picture with the drawing, and '
         'keeps it whole', () {
       // A whole tile and a part of one, so both roads of the pass run — and
-      // six, a part that carries the file's pixel into a tile it held none
+      // 96, a part that carries the file's pixel into a tile it held none
       // of before.
-      for (final (dx, dy) in [(-8, 0), (-3, 0), (-6, 0), (-3, 2)]) {
+      for (final (dx, dy) in [(-128, 0), (-48, 0), (-96, 0), (-48, 32)]) {
         final moved = translateBitmapSurface(
           laidPicture(),
           dx: dx,
@@ -130,33 +130,37 @@ void main() {
         expect(
           moved.laidBounds,
           DirtyRegion(
-            left: -44 + dx,
+            left: -704 + dx,
             top: dy,
-            rightExclusive: 4 + dx,
-            bottomExclusive: 8 + dy,
+            rightExclusive: 64 + dx,
+            bottomExclusive: 128 + dy,
           ),
           reason: '($dx, $dy)',
         );
         expect(
-          pixelAt(moved, -43 + dx, 1 + dy),
+          pixelAt(moved, -688 + dx, 16 + dy),
           pastTheWall,
           reason: '($dx, $dy)',
         );
-        expect(pixelAt(moved, 1 + dx, 1 + dy), withinIt, reason: '($dx, $dy)');
+        expect(
+          pixelAt(moved, 16 + dx, 16 + dy),
+          withinIt,
+          reason: '($dx, $dy)',
+        );
       }
     });
 
     test('a move cuts what is not the file at the wall, as ever', () {
-      // A drawn pixel at world (-31, 1) — the pasteboard's first column but
-      // one — is carried three past the wall, where no file lies.
+      // A drawn pixel at world (-496, 16) — sixteen columns into the
+      // pasteboard — is carried 48 left, past the wall, where no file lies.
       final drawn = tileOf({
-        (1, 1): [5, 5, 5, 255],
+        (16, 16): [5, 5, 5, 255],
       });
       final picture = drawingOf({TileCoord(x: -4, y: 0): drawn});
 
       final moved = translateBitmapSurface(
         picture,
-        dx: -3,
+        dx: -48,
         dy: 0,
         canvasSize: celTextTestCanvas,
       );
@@ -170,16 +174,17 @@ void main() {
     // tells a drawn row below it from the file.
     test('a move carries past the wall the file\'s rect to the row, and '
         'not the drawn row below it', () {
-      // The file's rect ends two rows into its tile, and a drawn pixel
-      // sits on the first row below it, inside the wall: (-31, 6).
+      // The file's rect ends 32 rows short of its tile's bottom, and a
+      // drawn pixel sits on the first row below it, inside the wall:
+      // (-496, 96).
       final shallow = DirtyRegion(
-        left: -44,
+        left: -704,
         top: 0,
-        rightExclusive: 4,
-        bottomExclusive: 6,
+        rightExclusive: 64,
+        bottomExclusive: 96,
       );
       final drawn = tileOf({
-        (1, 6): [5, 5, 5, 255],
+        (16, 96): [5, 5, 5, 255],
       });
       final picture = BitmapSurface(
         canvasSize: celTextTestCanvas,
@@ -188,31 +193,31 @@ void main() {
         laidBounds: shallow,
       );
 
-      // Three left puts it past the wall, one down on the rect's new
+      // 48 left puts it past the wall, sixteen down on the rect's new
       // bottom row — the first the file does not cover, in a tile it does.
       final moved = translateBitmapSurface(
         picture,
-        dx: -3,
-        dy: 1,
+        dx: -48,
+        dy: 16,
         canvasSize: celTextTestCanvas,
       );
 
-      expect(pixelAt(moved, -43 - 3, 1 + 1), pastTheWall);
-      expect(pixelAt(moved, -34, 7) ?? const [0, 0, 0, 0], [0, 0, 0, 0]);
+      expect(pixelAt(moved, -688 - 48, 16 + 16), pastTheWall);
+      expect(pixelAt(moved, -544, 112) ?? const [0, 0, 0, 0], [0, 0, 0, 0]);
     });
   });
 
   group('a file\'s picture laid on the cel', () {
-    // 160 × 8 laid 1:1 at x -64: 32 past the wall on each side of the
-    // test grid's pasteboard (-32 to 64).
+    // 2560 × 128 laid 1:1 at x -1024: 512 past the wall on each side of the
+    // test grid's pasteboard (-512 to 1024).
     Future<ui.Image> strip() async {
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder).drawRect(
-        const ui.Rect.fromLTWH(0, 0, 160, 8),
+        const ui.Rect.fromLTWH(0, 0, 2560, 128),
         ui.Paint()..color = const ui.Color(0xFF336699),
       );
       final picture = recorder.endRecording();
-      final image = await picture.toImage(160, 8);
+      final image = await picture.toImage(2560, 128);
       picture.dispose();
       return image;
     }
@@ -225,7 +230,7 @@ void main() {
         final surface = await layCelPicture(
           picture: EnginePicture(image),
           canvas: celTextTestCanvas,
-          placement: const GuideTransform(1, 0, 0, 1, -64, 0),
+          placement: const GuideTransform(1, 0, 0, 1, -1024, 0),
           tileSize: celTextTestTileSize,
           whole: true,
         );
@@ -234,18 +239,18 @@ void main() {
         expect(
           surface.laidBounds,
           DirtyRegion(
-            left: -64,
+            left: -1024,
             top: 0,
-            rightExclusive: 96,
-            bottomExclusive: 8,
+            rightExclusive: 1536,
+            bottomExclusive: 128,
           ),
         );
         final columns = surface.tiles.keys.map((coord) => coord.x).toList()
           ..sort();
         expect(columns.first, -8);
         expect(columns.last, 11);
-        expect(pixelAt(surface, -64, 0), [0x33, 0x66, 0x99, 255]);
-        expect(pixelAt(surface, 95, 7), [0x33, 0x66, 0x99, 255]);
+        expect(pixelAt(surface, -1024, 0), [0x33, 0x66, 0x99, 255]);
+        expect(pixelAt(surface, 1535, 127), [0x33, 0x66, 0x99, 255]);
       });
     });
 
@@ -257,7 +262,7 @@ void main() {
         final surface = await layCelPicture(
           picture: EnginePicture(image),
           canvas: celTextTestCanvas,
-          placement: const GuideTransform(1, 0, 0, 1, -64.5, 0.25),
+          placement: const GuideTransform(1, 0, 0, 1, -1024.5, 0.25),
           tileSize: celTextTestTileSize,
           whole: true,
         );
@@ -266,10 +271,10 @@ void main() {
         expect(
           surface.laidBounds,
           DirtyRegion(
-            left: -65,
+            left: -1025,
             top: 0,
-            rightExclusive: 96,
-            bottomExclusive: 9,
+            rightExclusive: 1536,
+            bottomExclusive: 129,
           ),
         );
       });
@@ -284,7 +289,7 @@ void main() {
         final surface = await layCelPicture(
           picture: EnginePicture(image),
           canvas: celTextTestCanvas,
-          placement: const GuideTransform(1, 0, 0, 1, -64, 0),
+          placement: const GuideTransform(1, 0, 0, 1, -1024, 0),
           tileSize: celTextTestTileSize,
         );
         image.dispose();

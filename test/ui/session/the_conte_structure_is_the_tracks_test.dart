@@ -28,7 +28,7 @@ import '../../helpers/a_folder_made_by_hand.dart';
 /// UNDO must take back what the structure gave the other cuts for the step
 /// — the step's own undo takes back only what it did in its cut — and a
 /// step that writes cut by cut is laid once, when its last write is in
-/// (`ConteStepScope`).
+/// (`RepositoryStepScope`).
 void main() {
   Layer conte(String cut) => Layer(
     id: LayerId('$cut-conte'),

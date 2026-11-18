@@ -11,12 +11,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/native_scratch.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/collect_garbage.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🚨C-ipad-crash (2026-09-11): on a phone every decoded tile is a GPU
 /// texture, alive as long as its tile — the picture on screen and, through
@@ -24,7 +25,6 @@ import '../../helpers/collect_garbage.dart';
 /// so the share read as engine overhead; the drawing engine's own parked
 /// tile blocks and grow-only scratch had none either.
 void main() {
-  BitmapTile aTile() => BitmapTile.blank(size: 4);
 
   Future<ui.Image> anImage() {
     final recorder = ui.PictureRecorder();
@@ -48,8 +48,8 @@ void main() {
       await collectGarbage();
       final before = BitmapTileImageCache.liveImageBytes;
 
-      BitmapTile? adopted = aTile();
-      BitmapTile? made = aTile();
+      BitmapTile? adopted = aTileOfItsOwn(size: 4);
+      BitmapTile? made = aTileOfItsOwn(size: 4);
       cache.adoptDecoded(
         adopted,
         await anImage(),
@@ -88,7 +88,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      BitmapTile? held = aTile();
+      BitmapTile? held = aTileOfItsOwn(size: 4);
       BitmapTileImageCache.instance.adoptDecoded(
         held,
         await anImage(),
@@ -96,6 +96,9 @@ void main() {
       final scratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
       addTearDown(scratch.release);
       scratch.ensure(1000);
+      // A freed block parks on the lists, where the pool's row reads it.
+      const parked = 4096;
+      TileBlocks.free(TileBlocks.alloc(parked));
 
       final rows = {
         for (final item in collectMemoryCensusWhereTexturesAreRam([session]).items)
@@ -110,9 +113,11 @@ void main() {
       );
       // Two rows since 2026-09-16: the pool has a ceiling the allowance
       // sets, the scratch has none — one row was half inside and half out.
+      expect(rows['enginePool'], TileBlocks.parkedBytes);
       expect(
         rows['enginePool'],
-        QaNativeEngine.instance?.tilePoolParkedBytes ?? 0,
+        greaterThanOrEqualTo(parked),
+        reason: 'fixture: a parked block is on the books',
       );
       expect(rows['engineScratch'], NativeScratch.liveBytes);
       expect(
@@ -160,6 +165,45 @@ void main() {
         () => BitmapTileImageCache.liveImageBytes == before,
       );
 
+      expect(BitmapTileImageCache.liveImageBytes, before);
+    });
+  });
+
+  // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): the tiles of a
+  // colour share one picture, their colour's block's — on the books once,
+  // and off with the last of them.
+  testWidgets("🚨a colour's one picture is on the books once, and off with "
+      'the last tile of it', (tester) async {
+    await tester.runAsync(() async {
+      final cache = BitmapTileImageCache();
+      // Settle what earlier tests let go of, so the baseline holds still.
+      await collectGarbage();
+      final before = BitmapTileImageCache.liveImageBytes;
+      // A colour no other tile of this file is.
+      const word = 0x7F00FF00;
+      BitmapTile? first = BitmapTile.ofOneColour(size: 4, word: word);
+      BitmapTile? second = BitmapTile.ofOneColour(size: 4, word: word);
+
+      cache.pictureFor(first);
+      cache.pictureFor(second);
+      expect(BitmapTileImageCache.liveImageBytes - before, oneImage);
+
+      first = null;
+      // Bounded: what is waited for must not come.
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+        rounds: 3,
+      );
+      expect(
+        BitmapTileImageCache.liveImageBytes - before,
+        oneImage,
+        reason: 'the other tile of it holds it',
+      );
+
+      second = null;
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+      );
       expect(BitmapTileImageCache.liveImageBytes, before);
     });
   });

@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2024"
 publish = false
 
-# The C answer key: the engine's qa_zstd_* (native/oracle).
+# The app's ledger (native/ledger), which keeps what the C engine's
+# qa_zstd_* answered before it was deleted.
 [dev-dependencies]
-oracle = { path = "../oracle" }
+ledger = { path = "../ledger" }

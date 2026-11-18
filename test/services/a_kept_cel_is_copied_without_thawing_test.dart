@@ -19,9 +19,12 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 
+import '../helpers/a_room_that_refuses.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/files_written_under.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// 🗣️Card `store-copies-a-kept-cel-without-thawing` (유저 2026-11-04,
@@ -29,7 +32,11 @@ import '../helpers/project_scratch_folder.dart';
 /// thawed every cel it copied, and FU rose to 3000MB. A copy takes the
 /// picture in the tier its source keeps it in.
 void main() {
-  const size = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const size = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -40,14 +47,19 @@ void main() {
   );
 
   BitmapSurface inked(int seed) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 31 + seed) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: defaultCelTileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: defaultCelTileSize,
+          pixels: pixels,
+        ),
+      },
     );
   }
 
@@ -74,8 +86,8 @@ void main() {
     expect(looked(store, 'a'), pixelsOf(inked(1)));
   });
 
-  test('🎯a parked cel is parked again under the copy\'s name: the copy '
-      'keeps its picture once the source thaws and lets its file go', () async {
+  test('🎯a parked cel\'s copy keeps its picture once the source thaws and '
+      'lets go of what it kept', () async {
     final store = BrushFrameStore();
     parkCold(store, {key('a'): inked(2)});
 
@@ -113,7 +125,10 @@ void main() {
 
   test('a hot cel copied onto a canvas of another size is laid to it', () {
     final store = BrushFrameStore()..storeBakedSurface(key('a'), inked(3));
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     store.copyCel(key('a'), key('b'), canvasSize: bigger);
 
@@ -138,7 +153,10 @@ void main() {
       'parked — never hot', () {
     final store = BrushFrameStore();
     keepInAFile(store, {key('a'): inked(4)});
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     store.copyCel(key('a'), key('b'), canvasSize: bigger);
 
@@ -189,7 +207,10 @@ void main() {
       store.copyCel(
         key('a'),
         key('b'),
-        canvasSize: const CanvasSize(width: 32, height: 32),
+        canvasSize: const CanvasSize(
+          width: 4 * defaultCelTileSize,
+          height: 4 * defaultCelTileSize,
+        ),
       );
 
       expect(store.isCelFileBacked(key('b')), isFalse);
@@ -242,7 +263,10 @@ void main() {
   test('a copy answers the size it is kept at — what an undo empties', () {
     final store = BrushFrameStore();
     keepInAFile(store, {key('a'): inked(1)});
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     expect(store.copyCel(key('a'), key('b'), canvasSize: size), size);
     expect(store.copyCel(key('a'), key('c'), canvasSize: bigger), bigger);
@@ -253,7 +277,10 @@ void main() {
   // its surface is — the sheet's, whatever the cut's canvas.
   group('left without a size, a copy keeps the size its source is kept '
       'at', () {
-    const sheet = CanvasSize(width: 24, height: 40);
+    const sheet = CanvasSize(
+      width: 3 * defaultCelTileSize,
+      height: 5 * defaultCelTileSize,
+    );
 
     BitmapSurface onTheSheet(int seed) =>
         resizeBitmapSurfaceCanvas(inked(seed), sheet);
@@ -349,5 +376,109 @@ void main() {
         key('b'): pixelsOf(inked(6)),
       });
     });
+  });
+
+  // 🗣️Card a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-
+  // thread (저장 11-14): a copy at its source's size keeps the very ref, a
+  // parked file as a stretch of the saved file — the file read and written
+  // again on the UI thread was 3 ms a cel of small ones.
+  group('a parked copy at its source\'s size keeps the very file', () {
+    /// Every file in the run's room — once what was let go is gone.
+    Future<Set<String>> roomFiles() async {
+      await ScratchFile.lettingGo;
+      return filesWrittenUnder(
+        Directory(SessionScratch.stagedFolder()),
+      ).toSet();
+    }
+
+    test('🎯nothing is written, and its bytes are counted once', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+      final before = await roomFiles();
+      final bytes = store.coldBakedBytes;
+
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      expect(await roomFiles(), before);
+      expect(store.coldBakedBytes, bytes);
+      expect(store.isCelCold(key('b')), isTrue);
+    });
+
+    test('🎯the file goes with the last cel that keeps it', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+      final before = await roomFiles();
+      final bytes = store.coldBakedBytes;
+
+      store.bakedSurfaceOrNull(key('a'));
+
+      expect(await roomFiles(), before, reason: 'the copy keeps it');
+      expect(store.coldBakedBytes, bytes);
+
+      store.bakedSurfaceOrNull(key('b'));
+
+      expect(before.difference(await roomFiles()), hasLength(1));
+      expect(store.coldBakedBytes, 0);
+    });
+
+    test('a pass that rewrites the source leaves the copy the file it '
+        'keeps', () async {
+      final store = BrushFrameStore();
+      const elsewhere = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('d'),
+        layerId: LayerId('l'),
+        frameId: FrameId('b'),
+      );
+      parkCold(store, {key('a'): inked(2)});
+      store.copyCel(key('a'), elsewhere, canvasSize: size);
+      const bigger = CanvasSize(
+        width: 4 * defaultCelTileSize,
+        height: 4 * defaultCelTileSize,
+      );
+
+      store.resizeBakedSurfaces(bigger, cutId: const CutId('c'));
+      await ScratchFile.lettingGo;
+
+      expect(
+        pixelsOf(store.bakedSurfaceOrNull(elsewhere, read: CelRead.look)),
+        pixelsOf(inked(2)),
+      );
+      expect(
+        store.bakedSurfaceOrNull(key('a'), read: CelRead.look)!.canvasSize,
+        bigger,
+        reason: 'fixture: the source was rewritten',
+      );
+    });
+
+    test('a copy onto the key it is copied from keeps its picture', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+
+      store.copyCel(key('a'), key('a'), canvasSize: size);
+      await ScratchFile.lettingGo;
+
+      expect(store.isCelCold(key('a')), isTrue);
+      expect(looked(store, 'a'), pixelsOf(inked(2)));
+    });
+  });
+
+  test('a room that will not take a copy laid to another size leaves the '
+      'copy hot', () {
+    final store = BrushFrameStore();
+    keepInAFile(store, {key('a'): inked(4)});
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
+    refuseTheRoom();
+
+    expect(store.copyCel(key('a'), key('b'), canvasSize: bigger), bigger);
+
+    final copy = store.hotBakedSurfaceOrNull(key('b'))!;
+    expect(copy.canvasSize, bigger);
+    expect(pixelsOf(copy), pixelsOf(inked(4)));
   });
 }

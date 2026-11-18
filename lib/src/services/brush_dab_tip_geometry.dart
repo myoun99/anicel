@@ -46,10 +46,15 @@ typedef BrushTipNumbers = ({
 ///
 /// An analytic round tip is its [RoundTipProfile] — two ramps and a pixel's
 /// square, read along its radius, the law and its reasons written there.
+///
+/// A picture tip is its picture as the step smooths it
+/// ([brushTipMaskSmoothed]) by the width a round tip's ramp is
+/// ([brushTipEdgeWidth]) — in canvas pixels, so across a texel's share of
+/// them on each of its axes, the minor's pressed by the roundness.
 BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final radius = tip.size / 2.0;
   final isRound = tip.tipShape == BrushTipShape.round;
-  final tipMask = tip.tipMask;
+  final tipMask = _pictureLaid(tip, radius);
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
   final profile = isRound && tipMask == null
       ? RoundTipProfile.of(
@@ -77,6 +82,28 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   );
 }
 
+/// [tip]'s mask as a dab of [radius] reads it: a picture's, smoothed by the
+/// step; any other's as it is.
+BrushTipMask? _pictureLaid(BrushTipNumbers tip, double radius) {
+  final mask = tip.tipMask;
+  if (!tipIsAPicture(mask, tip.tipShape)) {
+    return mask;
+  }
+  final across =
+      brushTipEdgeWidth(tip.edge, radius) * mask!.size / (2.0 * radius);
+  return brushTipMaskSmoothedCached(
+    mask,
+    across: across,
+    down: across / tip.roundness,
+  );
+}
+
+/// Whether a tip of [mask] and [shape] is a picture — not a square baked
+/// into one (`BrushTipStampCache`): its greys are what it holds, not an
+/// edge ([brushDabEdgeLaw]).
+bool tipIsAPicture(BrushTipMask? mask, BrushTipShape shape) =>
+    mask != null && shape != BrushTipShape.square;
+
 BrushDabTipGeometry brushDabTipGeometry(BrushDab dab) => brushTipGeometry((
   size: dab.size,
   hardness: dab.hardness,
@@ -94,12 +121,27 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 
 /// 🚨★★★ONE answer for the kernel plan and the coverage reference (I-50).
 ///
-/// 없음 cuts at half coverage whatever the tip. Any other step: an ANALYTIC
-/// round tip already carries its edge in its profile ([RoundTipProfile])
-/// and takes its coverage as it is, and so does a raster tip, whose greys
-/// are its picture and not its edge. Only a square keeps the contrast
-/// ladder ([BrushAntiAlias.contrast]) — its edge was never made wider by
-/// the step.
+/// A raster tip — a picture, not a square baked into one — takes its
+/// coverage as it is at EVERY step, 없음 too: its greys are its picture,
+/// not an edge. 없음 cuts an ANALYTIC tip alone, round or square, at half
+/// coverage. Any other step: a round tip already carries its edge in its
+/// profile ([RoundTipProfile]) and takes its coverage as it is; only a
+/// square keeps the contrast ladder ([BrushAntiAlias.contrast]) — its edge
+/// was never made wider by the step.
+///
+/// 🚨★★★A RASTER TIP AT 없음 IS ITS PICTURE (유저, three times: H39
+/// 2026-09-11 「팁 이미지인 브러시는 aa off시 팁 이미지 그대로 되는거
+/// 문제없는데 … 원형인것들 … aa off시엔 진짜 안티앨리어싱 완전없었으면」 · I-174
+/// 11-14 「aa off일때 팁이 소재일때는 aa있어도되는거 잊지말고」 · I-86 11-15
+/// 「팁이 소재면 aa off하면 소재 팁 그대로인거고 거기서 aa추가하면 추가로 aa
+/// 적용되는거고」 — every brush, an imported one too). ↩️None cut every tip
+/// from the ladder's first day (`f28307f54`, 09-08), and I-50 wrote that
+/// down as the law (`818b07027`) after the user had said a picture is left
+/// alone. 1~3단계 add their smoothing to the picture before it is sampled
+/// ([brushTipGeometry], H60-Q2 · Q3), so the coverage the sampler reads
+/// is laid as it is at every step here.
+/// ↩️Till 2026-11-15 1~3단계 laid the picture as 없음 did: what they add was
+/// H60-Q1's, unanswered.
 ///
 /// 🚨★★★A RASTER TIP LEFT THE LADDER (board
 /// imported-water-blend-lays-almost-nothing, 2026-10-30, 유저 「표본을
@@ -111,11 +153,14 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 /// nothing measured had put them there (`f28307f54`: 4 and 2 are 「a
 /// geometric placing, not a measurement」).
 BrushEdgeLaw brushDabEdgeLaw(BrushDab dab) {
+  final isSquare = dab.tipShape == BrushTipShape.square;
   final contrast = dab.antiAlias.contrast;
+  if (tipIsAPicture(dab.tipMask, dab.tipShape)) {
+    return (threshold: false, contrast: 1.0);
+  }
   if (contrast == null) {
     return (threshold: true, contrast: 1.0);
   }
-  final isSquare = dab.tipShape == BrushTipShape.square;
   return (threshold: false, contrast: isSquare ? contrast : 1.0);
 }
 
@@ -142,8 +187,8 @@ double edgePiledShare(double coverage, double ceiling) {
   return share < 1.0 ? share : 1.0;
 }
 
-/// [coverage] through [law] — the definition the tile and native kernels
-/// inline against hoisted values.
+/// [coverage] through [law] — the definition the tile kernel inlines
+/// against hoisted values.
 double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
   if (law.threshold) {
     return coverage >= 0.5 ? 1.0 : 0.0;
@@ -167,9 +212,10 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// until 2026-10-01, and this is now the one place the choice is made. The
 /// three are one body so the per-pixel loop still makes one call.
 /// ↩️The tile kernel's loop (`blendDabTilesDart`) wrote the cascade out a
-/// fourth time; it calls this now wherever it does not read an unrotated
+/// fourth time, then called this wherever it did not read an unrotated
 /// raster tip off its lattices (board
-/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`), till it
+/// went on 2026-11-14 with the commit off the engine's grid.
 @pragma('vm:prefer-inline')
 double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) =>
     _tipAt(tip, dx, dy, pile: false);

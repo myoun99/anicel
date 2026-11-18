@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
@@ -24,7 +23,6 @@ void main() {
     WidgetTester tester, {
     required bool pictured,
     required PillItem after,
-    bool Function(ExportStillFormat format)? stillEnabled,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -33,7 +31,6 @@ void main() {
             keyPrefix: 'paper',
             caption: ExportCaption.format,
             image: paperDocumentFormat,
-            stillEnabled: stillEnabled ?? (_) => true,
             pictured: pictured,
             onImageChanged: (_) {},
             after: [after],
@@ -89,9 +86,12 @@ void main() {
     });
   });
 
-  testWidgets('every still is listed, a PSD among them (I-117), and one this '
-      'machine cannot write is off and says why — as the Format module\'s '
-      'list is', (tester) async {
+  // ↩️A still this machine could not write stood off here, saying why,
+  // until every still was written wherever the app runs
+  // (connection-round-checklist H, 관제 2026-11-08 08:23).
+  testWidgets('every still is listed and on, a PSD among them (I-117)', (
+    tester,
+  ) async {
     final rows = await rowsOf(
       tester,
       pictured: true,
@@ -101,16 +101,11 @@ void main() {
         selected: false,
         onTap: () {},
       ),
-      stillEnabled: (format) => format != ExportStillFormat.jpg,
     );
-    final jpg = 'paper-${ExportStillFormat.jpg.jsonValue}';
     expect(
       {for (final row in rows) row.keyValue: (row.enabled, row.warning)},
       {
-        for (final picture in pictureRows)
-          picture: picture == jpg
-              ? (false, AppText.strings.exNotInThisBuild)
-              : (true, null),
+        for (final picture in pictureRows) picture: (true, null),
         'paper-xdts': (true, null),
       },
     );

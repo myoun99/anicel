@@ -15,6 +15,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
+
+import '../helpers/a_room_that_refuses.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨★★★**A COOLED CEL IS UNSAVED WORK, AND IT NOW LIVES ON DISK.**
 ///
@@ -36,17 +41,19 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  BitmapSurface inked(int seed) {
-    final pixels = Uint8List(8 * 8 * 4);
+  /// A picture of one tile of [side] — the engine's unless asked — inked
+  /// by [seed].
+  BitmapSurface inked(int seed, {int side = defaultCelTileSize}) {
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 31 + seed) & 0xFF;
     }
     return BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 8,
+      canvasSize: CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
       },
@@ -149,22 +156,7 @@ void main() {
     store.storeBakedSurface(k1, s1);
     store.storeBakedSurface(key('f2'), inked(13));
 
-    // A FILE where the room's folder has to go: nothing can be created
-    // under it, which is the shape of a revoked scope or a full disk.
-    final room = Directory(SessionScratch.stagedFolder());
-    if (room.existsSync()) {
-      room.deleteSync(recursive: true);
-    }
-    File(SessionScratch.stagedFolder())
-      ..createSync(recursive: true)
-      ..writeAsBytesSync(const [0]);
-    addTearDown(() {
-      try {
-        File(SessionScratch.stagedFolder()).deleteSync();
-      } on Object {
-        // Best effort; the room goes with the run.
-      }
-    });
+    refuseTheRoom();
 
     await store.drainCooling();
 
@@ -180,5 +172,66 @@ void main() {
       s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
       reason: 'and it is the same picture, still in RAM where it was',
     );
+  });
+
+  test('🚨 a pass that THROWS stands down as a failed park does — the cel '
+      'stays HOT, the error is the waiter\'s, and no pass runs again on '
+      'its own', () async {
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    // A tile of a side the engine does not store: its read back throws
+    // before the pass's first wait.
+    store.storeBakedSurface(k1, inked(11, side: defaultCelTileSize ~/ 2));
+    store.storeBakedSurface(key('f2'), inked(13));
+
+    await expectLater(store.drainCooling(), throwsStateError);
+    // Asked again, as a read or a budget's fall asks — nothing an edit or a
+    // swap would change: a pass begun would throw again, here.
+    store.coolToBudget();
+    await store.drainCooling();
+
+    expect(store.isCelCold(k1), isFalse);
+    expect(store.celHasRenderableContent(k1), isTrue);
+  });
+
+  test('🚨 a cel whose bytes are here parks from them: none of it goes to '
+      'the engine and back, which is what a park was to save', () async {
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    final surface = inked(11);
+    store.storeBakedSurface(k1, surface);
+    store.storeBakedSurface(key('f2'), inked(13));
+
+    await store.drainCooling();
+
+    expect(store.isCelCold(k1), isTrue, reason: 'LIVENESS: it did park');
+    expect(
+      EngineTileLedger.instance.slotOf(surface.tiles.values.single),
+      isNull,
+    );
+  });
+
+  test('🚨 a read the engine refuses is a park refused — no one waits on the '
+      'pass to be told, the cel stays HOT, and no pass runs again', () async {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    var reads = 0;
+    EngineTileLedger.debugBeforeRead = (_) {
+      reads += 1;
+      throw GpuReadFailed('lost');
+    };
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    store.storeBakedSurface(k1, surfaceOnEngine(inked(11)));
+    store.storeBakedSurface(key('f2'), surfaceOnEngine(inked(13)));
+
+    await store.drainCooling();
+
+    expect(reads, 1, reason: 'the pass ended at the first refusal');
+    expect(store.isCelCold(k1), isFalse);
+    expect(store.celHasRenderableContent(k1), isTrue);
+
+    store.coolToBudget();
+    await store.drainCooling();
+    expect(reads, 1, reason: 'stood down, as after a refused park');
   });
 }

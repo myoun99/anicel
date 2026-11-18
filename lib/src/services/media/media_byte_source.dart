@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../core/on_a_worker.dart';
+import '../../core/piece_read.dart';
 import '../../native/qa_media_span.dart';
 import '../persistence/anicel_incremental_writer.dart' show AnicelZipEntry;
 import '../persistence/media_blob_codec.dart';
@@ -23,11 +25,35 @@ import '../persistence/media_blob_codec.dart';
 sealed class MediaByteSource {
   const MediaByteSource();
 
-  /// The bytes, or a throw. Sync because the two callers that matter are
-  /// already sync inside an isolate; the async wrapper is [read].
-  Uint8List readSync();
+  /// The bytes, or a throw — read through a [MediaWindowReader] a piece at
+  /// a time ([PieceRead]), [onRead] told how much of them is in. Sync, for
+  /// a worker's own read; [read] is the road that runs it on one.
+  ///
+  /// 🚨ONE WHOLE READ (F-608-Q2, 2026-11-17). ↩️Each kind read itself whole
+  /// in one call — a file's `readAsBytesSync`, an entry's and a framed
+  /// medium's one window as long as the medium — told nothing till it was
+  /// done, and on the screen's isolate: the import window's bar stood still
+  /// while a picked picture came down from the cloud.
+  Uint8List readSync({void Function(double fraction)? onRead}) {
+    final reader = openWindowReader();
+    try {
+      final read = PieceRead(lengthSync(), onRead: onRead);
+      while (!read.done) {
+        final piece = Uint8List.sublistView(read.bytes, read.from, read.to);
+        if (!read.took(reader.readIntoSync(piece, read.from, piece.length))) {
+          throw const FileSystemException('the medium ends before its length');
+        }
+      }
+      return read.bytes;
+    } finally {
+      reader.close();
+    }
+  }
 
-  Future<Uint8List> read() async => readSync();
+  /// [readSync] on a worker, so the screen paints while the bytes come in
+  /// — [onRead] told on this isolate.
+  Future<Uint8List> read({void Function(double fraction)? onRead}) =>
+      _readOnAWorker(this, onRead);
 
   /// How many bytes there are, without reading them.
   int lengthSync();
@@ -244,6 +270,17 @@ int _readOnce(
   }
 }
 
+/// [source] read on a worker ([MediaByteSource.read]) — a function of its
+/// own, so the closure that crosses carries [source] and nothing of its
+/// caller's scope ([onAWorkerReporting]'s 🚨).
+Future<Uint8List> _readOnAWorker(
+  MediaByteSource source,
+  void Function(double fraction)? onRead,
+) => onAWorkerReporting(
+  onRead,
+  (report) => source.readSync(onRead: report),
+);
+
 /// A file on disk — every source today, and still the answer for the media
 /// that stays outside once the rest moves in (video is reference-only by
 /// kind, and the user may keep anything else linked too).
@@ -251,9 +288,6 @@ class MediaFileBytes extends MediaByteSource {
   const MediaFileBytes(this.path);
 
   final String path;
-
-  @override
-  Uint8List readSync() => File(path).readAsBytesSync();
 
   @override
   int lengthSync() => File(path).lengthSync();
@@ -369,13 +403,6 @@ class MediaArchiveBytes extends MediaByteSource {
   final int? entryCrc32;
 
   @override
-  Uint8List readSync() {
-    final buffer = Uint8List(length);
-    final read = readIntoSync(buffer, 0, length);
-    return read == length ? buffer : Uint8List.sublistView(buffer, 0, read);
-  }
-
-  @override
   int lengthSync() => length;
 
   /// Existence is the ENTRY's, not the file's: a source is only built from
@@ -481,9 +508,11 @@ class MediaFramedBytes extends MediaByteSource {
         : (path: at.path, offset: at.offset, length: at.length, framed: true);
   }
 
-  /// The engine's reader over [span], or a throw that says which of three
-  /// it was: the bytes are gone, this build has no engine to read them
-  /// with, or they do not hold together.
+  /// The engine's reader over [span], or a throw that says which of two it
+  /// was: the bytes are gone, or they do not hold together. ↩️A third, 「no
+  /// engine to read them with」, went in the connection round
+  /// (connection-round-checklist H, 2026-11-08): the reader is the engine's
+  /// Rust now, which every build carries.
   QaMediaSpan _openSpan() {
     final at = span;
     if (at == null) {
@@ -498,13 +527,8 @@ class MediaFramedBytes extends MediaByteSource {
     if (opened != null) {
       return opened;
     }
-    // ⛔「No engine」 is something the user can act on, and must not reach
-    // the screen as 「corrupt」 — the same line the cel reader draws.
-    throw FormatException(
-      QaMediaSpan.available
-          ? 'this framed media entry does not hold together'
-          : 'This media was compressed with zstd and no engine is available '
-                'to read it.',
+    throw const FormatException(
+      'this framed media entry does not hold together',
     );
   }
 
@@ -513,18 +537,6 @@ class MediaFramedBytes extends MediaByteSource {
     final opened = _openSpan();
     try {
       return opened.size;
-    } finally {
-      opened.close();
-    }
-  }
-
-  @override
-  Uint8List readSync() {
-    final opened = _openSpan();
-    try {
-      final out = Uint8List(opened.size);
-      opened.readInto(out, 0, out.length);
-      return out;
     } finally {
       opened.close();
     }
@@ -578,9 +590,6 @@ class MediaAppFileBytes extends MediaByteSource {
 
   @override
   bool get storedIsFramed => framed;
-
-  @override
-  Uint8List readSync() => File(path).readAsBytesSync();
 
   @override
   int lengthSync() => File(path).lengthSync();
@@ -713,9 +722,13 @@ enum HeldBytesMove {
 typedef HoldMediaBytes = Future<HeldMediaBytes> Function(String path);
 
 /// All of [path]'s bytes, read while [hold] holds them — for a reader that
-/// decodes a whole file at once (a picture, a Photoshop document).
-Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) =>
-    readOnHeldBytes(hold, path, (source) => source.read());
+/// decodes a whole file at once (a picture, a Photoshop document) — [onRead]
+/// told how much of them is in ([MediaByteSource.read]).
+Future<Uint8List> readHeldMediaBytes(
+  HoldMediaBytes hold,
+  String path, {
+  void Function(double fraction)? onRead,
+}) => readOnHeldBytes(hold, path, (source) => source.read(onRead: onRead));
 
 /// [read] on the bytes [hold] answers for [path], given back the moment it
 /// is done — a reader that is done in a moment never looks at

@@ -1,6 +1,3 @@
-import 'package:flutter/foundation.dart';
-
-import '../../core/set_toggle.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
@@ -26,13 +23,9 @@ class VisibilitySolo {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
 
-  /// The SE solo set — pure MONITORING state (never persisted, never
-  /// exported): non-empty narrows playback/scrub to these SE rows. Held by
-  /// [toggleLayerSolo], its one writer; playback and the rows read it.
-  final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
-      ValueNotifier<Set<LayerId>>(const {});
-
-  void dispose() => soloedSeLayerIds.dispose();
+  // ↩️The SE solo set lived here with its toggle (AUDIO-PRO R1) — monitoring
+  // state the S row's mixer set. F-577 (유저 2026-11-10: 「음소거나
+  // 솔로버튼도 그냥 삭제」) took its one door away, and the set with it.
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
   /// engaging it snapshots every row's eye (cut layers + track SE) but the
@@ -294,15 +287,5 @@ class VisibilitySolo {
     } else {
       _applyVisibilitySolo();
     }
-  }
-
-  /// Toggles an SE row's solo (pro semantics: multiple solos stack).
-  void toggleLayerSolo(LayerId layerId) {
-    soloedSeLayerIds.value = toggledSet(
-      soloedSeLayerIds.value,
-      layerId,
-    );
-    _changes.refreshLiveAudioSchedule();
-    _changes.notifyChanged();
   }
 }

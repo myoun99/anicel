@@ -167,6 +167,11 @@ const _ringsOfTheirOwn = <String, String>{
       'a row of the export window\'s Cels list: a press on its name STANDS '
       'the list on it (what the preview shows), so the ring that says '
       'whether the row is written leads the row as the rail\'s first cell',
+  'lib/src/ui/import/import_file_table.dart':
+      'a row of the import window (F-595 ②): a press on its name SELECTS '
+      'the row, so the ring that says whether it comes in leads the row in '
+      'the rail\'s section slot, as the export window\'s Cels list wears its '
+      'own',
   'lib/src/ui/timeline/timeline_bar_menus.dart':
       'a colour edit row: a press on its name RUNS the row and closes the '
       'list, so the ring right of its bar that previews it (I-164) cannot '

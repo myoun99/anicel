@@ -92,7 +92,7 @@ void main() {
                   id: const LayerId('paper'),
                   name: 'Paper',
                   frames: [frame('p1', '1')],
-                  mark: const LayerMark(process: LayerProcess.paper),
+                  mark: const LayerMark.paper(LayerProcess.key),
                 ),
                 Layer(
                   id: const LayerId('a'),
@@ -128,18 +128,20 @@ void main() {
     ),
   );
 
-  /// One pixel of [colour] at ([x], [y]) on an empty canvas.
+  /// One pixel of [colour] at ([x], [y]) on an empty canvas — its one tile
+  /// at the engine's side, past the canvas's edge.
   BitmapSurface dot((int, int, int, int) colour, int x, int y) {
-    final pixels = Uint8List(8 * 8 * 4);
-    final i = (y * 8 + x) * 4;
+    const tile = defaultCelTileSize;
+    final pixels = Uint8List(tile * tile * 4);
+    final i = (y * tile + x) * 4;
     pixels[i] = colour.$1;
     pixels[i + 1] = colour.$2;
     pixels[i + 2] = colour.$3;
     pixels[i + 3] = colour.$4;
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: tile,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels)},
     );
   }
 
@@ -224,7 +226,6 @@ void main() {
     // file that is not there (2026-10-30).
     expect(script, isNot(contains('_Camera_PAN.png')));
     expect(script, contains('comp("CUT1", 32, 18, 2, bin)'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a cel is the drawing alone — no paper under it, its ground '
@@ -252,7 +253,6 @@ void main() {
     expect(dotAlpha, 255);
     expect(paperAlpha, 0, reason: 'the paper was laid into the cel');
     expect(groundAlpha, 0);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the tab offers the Cels list\'s picking without what a '
@@ -266,7 +266,7 @@ void main() {
 
     Finder byKey(String key) => find.byKey(ValueKey<String>(key));
     expect(byKey('export-cels-kind-cel'), findsOneWidget);
-    expect(byKey('export-cels-kind-art'), findsOneWidget);
+    expect(byKey('export-cels-kind-image'), findsOneWidget);
     expect(byKey('export-cels-kind-conte'), findsOneWidget);
     // ae-script-export-Q3: a direction is a guide in AE, and so is the
     // camera's path — the two switches.
@@ -280,7 +280,6 @@ void main() {
     ]) {
       expect(byKey(absent), findsNothing, reason: absent);
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('its picking is its own: a kind turned off here leaves the '
@@ -292,7 +291,7 @@ void main() {
 
     final state = await pumpAeScript(tester, session, temp);
     await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-kind-art')),
+      find.byKey(const ValueKey<String>('export-cels-kind-image')),
     );
     await tester.pump();
 
@@ -305,7 +304,6 @@ void main() {
       const CelsExportSpec().kinds,
       reason: 'the AE Script tab wrote the Cels tab\'s picking',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a cut that sounds is heard in AE as the app plays it: its '
@@ -366,7 +364,6 @@ void main() {
     expect(at(perFrame + perFrame ~/ 2), isNot(0), reason: 'frame 1 sounds');
     final script = File('${temp.path}/CUT1.jsx').readAsStringSync();
     expect(script, contains('footage("CUT1.wav")'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a cut whose camera moves gets its path beside its cels, '
@@ -415,6 +412,5 @@ void main() {
       File('${off.path}/CUT1.jsx').readAsStringSync(),
       isNot(contains('CUT1_camera.png')),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

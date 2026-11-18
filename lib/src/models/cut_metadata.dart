@@ -1,8 +1,10 @@
 import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
+import '../core/frozen_collections.dart';
 import 'conte/conte_camera_room.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
+import 'ruler_marker.dart';
 import 'sheet_memo_side.dart';
 import 'timesheet_sheet_kind.dart';
 
@@ -18,6 +20,7 @@ class CutMetadata {
     this.conteCameraRoom,
     this.conteFixedText,
     this.sheetFixedText,
+    this.rulerMarkers = const RulerMarkers.none(),
   });
 
   const CutMetadata.empty()
@@ -30,7 +33,8 @@ class CutMetadata {
       openStaffFolds = staffFoldsOpenAtFirst,
       conteCameraRoom = null,
       conteFixedText = null,
-      sheetFixedText = null;
+      sheetFixedText = null,
+      rulerMarkers = const RulerMarkers.none();
 
   /// The memo written on the left of each page of the cut's timesheet, by
   /// page — trailing blanks left off ([withPageNote]).
@@ -71,7 +75,7 @@ class CutMetadata {
     while (notes.isNotEmpty && notes.last.isEmpty) {
       notes.removeLast();
     }
-    final kept = List<String>.unmodifiable(notes);
+    final kept = frozenList<String>(notes);
     return switch (side) {
       SheetMemoSide.left => copyWith(pageNotes: kept),
       SheetMemoSide.right => copyWith(rightPageNotes: kept),
@@ -134,6 +138,13 @@ class CutMetadata {
   final bool? conteFixedText;
   final bool? sheetFixedText;
 
+  /// The markers on this cut's own ruler — the timeline panel's and the
+  /// X-sheet's rail — counted in the cut's frames ([RulerMarkers], I-169).
+  ///
+  /// The cut's alone: a 겸용 sibling keeps its own, as it keeps its own
+  /// timing; a 동기컷 is one cut, and holds them as one (`syncedCopy`).
+  final RulerMarkers rulerMarkers;
+
   /// [mark]'s name on this cut, or empty when nobody is set.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
@@ -152,6 +163,7 @@ class CutMetadata {
     Object? conteCameraRoom = copyWithSentinel,
     Object? conteFixedText = copyWithSentinel,
     Object? sheetFixedText = copyWithSentinel,
+    RulerMarkers? rulerMarkers,
   }) {
     return CutMetadata(
       pageNotes: pageNotes ?? this.pageNotes,
@@ -170,6 +182,7 @@ class CutMetadata {
       sheetFixedText: identical(sheetFixedText, copyWithSentinel)
           ? this.sheetFixedText
           : sheetFixedText as bool?,
+      rulerMarkers: rulerMarkers ?? this.rulerMarkers,
     );
   }
 
@@ -189,6 +202,7 @@ class CutMetadata {
     if (conteCameraRoom case final room?) 'conteCameraRoom': room.name,
     'conteFixedText': ?conteFixedText,
     'sheetFixedText': ?sheetFixedText,
+    if (!rulerMarkers.isEmpty) 'rulerMarkers': rulerMarkers.toJson(),
     // The per-cut fade TARGET (FO/WO) is gone (R3b) — legacy 'fadeTarget'
     // keys are ignored on read. ↩️F-192: the black or white a fade clears
     // from or closes to is the TERM's (F.x black, W.x white —
@@ -200,10 +214,10 @@ class CutMetadata {
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
     return CutMetadata(
-      pageNotes: List.unmodifiable([
+      pageNotes: frozenList([
         for (final note in json['pageNotes'] as List? ?? const []) '$note',
       ]),
-      rightPageNotes: List.unmodifiable([
+      rightPageNotes: frozenList([
         for (final note in json['rightPageNotes'] as List? ?? const []) '$note',
       ]),
       mark: LayerMark.fromJson(json['mark']),
@@ -211,7 +225,7 @@ class CutMetadata {
       sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
       scene: '${json['scene'] ?? ''}',
       openStaffFolds: switch (json['openStaffFolds']) {
-        final List<dynamic> open => Set.unmodifiable({
+        final List<dynamic> open => frozenSet({
           for (final value in open) ?LayerProcess.fromJson(value),
         }),
         _ => staffFoldsOpenAtFirst,
@@ -219,6 +233,7 @@ class CutMetadata {
       conteCameraRoom: ConteCameraRoom.named(json['conteCameraRoom']),
       conteFixedText: json['conteFixedText'] as bool?,
       sheetFixedText: json['sheetFixedText'] as bool?,
+      rulerMarkers: RulerMarkers.fromJson(json['rulerMarkers']),
     );
   }
 
@@ -235,7 +250,8 @@ class CutMetadata {
           setEquals(other.openStaffFolds, openStaffFolds) &&
           other.conteCameraRoom == conteCameraRoom &&
           other.conteFixedText == conteFixedText &&
-          other.sheetFixedText == sheetFixedText;
+          other.sheetFixedText == sheetFixedText &&
+          other.rulerMarkers == rulerMarkers;
 
   @override
   int get hashCode => Object.hash(
@@ -251,6 +267,7 @@ class CutMetadata {
     conteCameraRoom,
     conteFixedText,
     sheetFixedText,
+    rulerMarkers,
   );
 
   @override
@@ -259,5 +276,6 @@ class CutMetadata {
       'mark: $mark, staff: $staff, sheetKind: $sheetKind, scene: $scene, '
       'openStaffFolds: $openStaffFolds, '
       'conteCameraRoom: $conteCameraRoom, '
-      'conteFixedText: $conteFixedText, sheetFixedText: $sheetFixedText)';
+      'conteFixedText: $conteFixedText, sheetFixedText: $sheetFixedText, '
+      'rulerMarkers: $rulerMarkers)';
 }

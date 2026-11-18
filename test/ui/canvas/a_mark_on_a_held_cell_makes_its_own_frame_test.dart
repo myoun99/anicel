@@ -88,7 +88,6 @@ void main() {
     await pumpFrames(tester);
     expect(blocks(tester), {0: 3});
     expect(row(tester).frames, hasLength(1));
-    sessionOf(tester).playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with the toggle off, the stroke goes on the held cel', (
@@ -100,7 +99,6 @@ void main() {
 
     expect(blocks(tester), {0: 3});
     expect(drawnAt(tester, 0), isTrue);
-    sessionOf(tester).playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on the block\'s head the stroke goes on the cel there — the '
@@ -111,7 +109,6 @@ void main() {
 
     expect(blocks(tester), {0: 3});
     expect(drawnAt(tester, 0), isTrue);
-    sessionOf(tester).playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the shape tool\'s drag makes its own frame on a held cell '
@@ -125,7 +122,6 @@ void main() {
     expect(blocks(tester), {0: 1, 1: 2});
     expect(drawnAt(tester, 1), isTrue);
     expect(drawnAt(tester, 0), isFalse);
-    sessionOf(tester).playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the text tool\'s click makes its own cel on a held cell and '

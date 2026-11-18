@@ -75,7 +75,6 @@ void main() {
 
     expect(said.hidden, isTrue, reason: '「원인 제대로 메시지 띄워주기」');
     expect(said.noFrame, isFalse, reason: 'the frame is there — only hidden');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a row inside a hidden folder is hidden too', (tester) async {
@@ -101,7 +100,6 @@ void main() {
 
     expect(said.hidden, isTrue);
     expect(said.noFrame, isFalse);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고 클릭하면 이거는
@@ -135,7 +133,6 @@ void main() {
       reason: 'LIVENESS — the same press without the key would draw, and '
           'says why it cannot',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a hidden row\'s empty frame makes no block with the auto-frame '
@@ -160,6 +157,5 @@ void main() {
       reason: 'no stroke can land on a hidden row, so no block is made for one',
     );
     expect(said.hidden, isTrue);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

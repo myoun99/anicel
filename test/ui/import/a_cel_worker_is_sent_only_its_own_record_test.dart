@@ -10,13 +10,17 @@ import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_import_planner.dart';
-import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
+    show AnicelLaidCel, laidCelSurface;
 import 'package:anicel/src/ui/session/tvpp_import_door.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/surface_rgba_in_place.dart';
 import '../../models/import/tvpp_test_builder.dart';
+import '../../services/import/tvpp_slot_rgba.dart';
 
-/// A cel's worker is sent that cel's record and nothing else of its wave.
+/// A cel's worker is sent that cel's record and nothing else of the work it
+/// is part of.
 ///
 /// `Isolate.run` copies the closure's whole context chain, not only the
 /// names the closure reads — so a worker built where the wave is in scope
@@ -24,7 +28,7 @@ import '../../models/import/tvpp_test_builder.dart';
 /// wave holds (tvpp-import-isolate-copies-wave, 2026-09-16).
 ///
 /// 🧪A port is the one thing an isolate message refuses outright, so here
-/// everything a worker must NOT receive holds one: the wave, the windows,
+/// everything a worker must NOT receive holds one: the work, the windows,
 /// the plan, the cut, the bake. Nothing reads those ports. A message that
 /// reaches any of them fails to send, and that failure is the measurement —
 /// counting bytes would only be a shadow of the graph this reads directly.
@@ -33,7 +37,7 @@ void main() {
   const height = 48;
 
   test('each worker decodes its own record from a message that reaches '
-      'nothing else of the wave', () async {
+      'nothing else of the work', () async {
     // Two drawings with ink in different places, so a worker handed the
     // other one's record decodes a different picture.
     final builder = TvppBuilder()
@@ -61,7 +65,7 @@ void main() {
       canvasSize: const CanvasSize(width: width, height: height),
     );
     final plan = _PlanHoldingAPort(port, cut: cut);
-    final wave =
+    final work =
         _ListHoldingAPort<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)>(
           port,
           [for (final slot in slots) (plan, cut, _BakeHoldingAPort(port), slot)],
@@ -79,25 +83,37 @@ void main() {
         ),
     ]);
 
-    final decoded = await TvppImportDoor.decodeWave(wave, windows);
+    final decoded = <int, Object>{};
+    await TvppImportDoor.decodeEach(
+      work,
+      atOnce: slots.length,
+      windowOf: (slot) async => windows[slots.indexOf(slot)],
+      landed: (index, lay, cel) async => decoded[index] = cel,
+      stopped: () => false,
+    );
 
-    expect(decoded, hasLength(slots.length));
+    expect(decoded.keys, unorderedEquals([0, 1]));
     for (var i = 0; i < slots.length; i++) {
-      final expected = decodeTvppSlotTiles(
+      final expected = tvppSlotRgba(
         recordBytes: file,
         slot: slots[i],
         width: width,
         height: height,
       )!;
-      expect(decoded[i], isA<List<TvppCelTile>>(), reason: 'cel $i decodes');
-      final tiles = decoded[i]! as List<TvppCelTile>;
-      expect(
-        [for (final tile in tiles) (tile.x, tile.y)],
-        [for (final tile in expected) (tile.x, tile.y)],
-        reason: 'cel $i lands on the tiles of its own record',
-      );
-      for (var t = 0; t < tiles.length; t++) {
-        expect(tiles[t].pixels, expected[t].pixels, reason: 'cel $i tile $t');
+      expect(decoded[i], isA<AnicelLaidCel>(), reason: 'cel $i decodes');
+      final cel = laidCelSurface(decoded[i]! as AnicelLaidCel);
+      for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+          final at = (y * width + x) * 4;
+          expect(
+            surfaceRgbaInPlace(cel, x, y),
+            (expected[at] << 24) |
+                (expected[at + 1] << 16) |
+                (expected[at + 2] << 8) |
+                expected[at + 3],
+            reason: 'cel $i pixel ($x, $y) is its own record\'s',
+          );
+        }
       }
     }
   });

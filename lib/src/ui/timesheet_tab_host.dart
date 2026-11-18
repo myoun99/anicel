@@ -21,10 +21,8 @@ import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
-import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
-import 'shortcuts/panel_keys.dart';
 import 'sliced_value_listenable_builder.dart' show SlicedListenable;
-import 'timeline/memo_token.dart' show ByIdentity;
+import 'timeline/memo_token.dart' show ByIdentity, ByList;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -120,6 +118,7 @@ typedef _Printed = ({
   ByIdentity<Object> instructionSet,
   ByIdentity<Object> trackSe,
   ByIdentity<Object> transition,
+  ByList<String> linkedCuts,
   int fps,
   InbetweenMark unnamedMark,
 });
@@ -183,6 +182,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           session.activeTrack.transitionLayer,
           olWord: sheetOlWord(session),
         ),
+      ),
+      // The 겸용 cuts' names the header writes (F-558), keyed as they
+      // print: 🔬a rename on another track hands the printed cut back as
+      // the same object (`mappedOrSame`, 11-08), and the header kept the
+      // old name.
+      linkedCuts: ByList(
+        sheetLinkedCutNames(session.repository.requireProject(), at.cut),
       ),
       fps: session.projectSettings.projectFps,
       // An app preference, not the session's (F-489): a pick reprints.
@@ -316,7 +322,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       AppIconButton(
         keyValue: 'timesheet-format-button',
         tooltip: AppText.strings.sheetFormatTitle,
-        shortcuts: const [EditorActionIds.timesheetFormat],
         icon: const Icon(Icons.edit_note),
         size: AppIconButtonSize.strip,
         onPressed: _editSheetFormat,
@@ -347,7 +352,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         tooltip: _dataSheet
             ? AppText.strings.sheetModeNotation
             : AppText.strings.sheetModeData,
-        shortcuts: const [EditorActionIds.timesheetDataMode],
         icon: const Icon(Icons.receipt_long_outlined),
         isSelected: _dataSheet,
         onPressed: _toggleDataSheet,
@@ -564,15 +568,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         );
       },
     );
-    // A key presses the format window and the notation ⇄ data switch —
-    // the timesheet is one panel, whatever is in hand (I-40).
-    return PanelKeysBinding(
-      buttons: {
-        EditorActionIds.timesheetFormat: _editSheetFormat,
-        EditorActionIds.timesheetDataMode: _toggleDataSheet,
-      },
-      child: sheet,
-    );
+    // ↩️A key pressed the format window and the notation ⇄ data switch
+    // (I-40) until F-580 took 「패널 안」 off the shortcut list.
+    return sheet;
   }
 }
 

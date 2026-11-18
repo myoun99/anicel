@@ -1,39 +1,29 @@
-import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Offset;
 
-import '../core/argb_channels.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuColour, GpuFloodPicture, GpuMask, GpuPaint;
+
 import '../core/floor_math.dart';
-import '../core/point_bounds.dart';
-import '../core/rgba_premultiply.dart' show copyRgb, mul255Round;
 import '../models/dirty_region.dart';
-import '../models/bitmap_surface.dart';
-import '../models/bitmap_tile.dart';
+import '../models/bitmap_surface.dart' show defaultCelTileSize;
 import '../models/brush_dab.dart';
-import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/cut.dart';
+import '../models/canvas_size.dart';
 import '../models/drawing_guide.dart';
-import '../models/layer_id.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
-import '../native/qa_native_engine.dart';
+import '../native/app_gpu_engine.dart' show appGpuComposite;
+import '../native/engine_floods.dart';
+import '../native/engine_selection_masks.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../core/dev_profile.dart';
-import '../core/seed_tolerance.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
-import 'cel_text_laying.dart';
 import 'fill_gradient.dart';
-import 'cut_frame_composite_plan.dart';
-import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
 import 'layer_pose_matrix.dart';
-import 'resample/resample_kernel.dart';
-import 'resample/selection_resample.dart';
-import 'mask_morphology.dart';
-import 'mask_soft_edge.dart';
 import 'pixel_run_contours.dart';
 import 'selection_clip.dart';
 
@@ -84,8 +74,7 @@ class FloodFillOptions {
   /// Close-gap fill (R20-C1, the CSP "틈 닫기"): barriers act as if
   /// thickened by this radius, so the fill cannot leak through line-art
   /// gaps narrower than ~2× this value; the region then grows back to
-  /// the REAL barriers. 0 = off. Forces a full compose (the leak search
-  /// needs the whole picture), so it costs more than a plain fill.
+  /// the REAL barriers. 0 = off.
   final int gapClosePx;
 
   /// Pasteboard fill: the fill boundary moves from the canvas rect to a
@@ -145,8 +134,9 @@ class FloodFillOptions {
 
 /// The extended fill's apron width per side: as far as the pasteboard
 /// reaches past the paper ([PasteboardReach.pastEdgeOf], I-109), capped so
-/// the fill raster stays allocatable (a full 3×3 pasteboard raster of an
-/// 8K canvas would be gigabytes). Canvases at or under the cap get the
+/// the picture a fill reads stays allocatable (a full 3×3 pasteboard
+/// picture of an 8K canvas would be gigabytes). Canvases at or under the
+/// cap get the
 /// exact pasteboard as their fill wall; larger ones get a generous apron
 /// — either way the wall is FINITE, which is what makes leak detection
 /// and "no infinite flood" structural.
@@ -174,874 +164,11 @@ class FloodFillRegion {
   final Uint8List mask;
 }
 
-/// The fill's sampling target: the picture as DRAWN — the layers it reads
-/// composed over nothing, premultiplied RGBA, the coverage in the fourth
-/// byte — composited LAZILY tile by tile as the flood visits pixels — a
-/// fill only pays for the region it actually floods, never the whole
-/// canvas (R11-③: the eager full-canvas compose froze the tap for seconds
-/// on big canvases). It lies in the space the SEED is in, and a posed
-/// layer is read through its pose — see the constructor.
-///
-/// 🚨NO PAPER UNDER IT (board F-416, [pixelWithinTolerance] has the
-/// user's words): the paper is not drawn, so a fill neither stops at it
-/// nor runs through it into what is drawn its colour. ↩️It was 「fill what
-/// you see」 — the layers over the project's paper (R10-C, 07-12; an
-/// absent paper read as black since 09-15) — and ink of the paper's
-/// colour was the paper: a fill on white ink on a white paper took the
-/// whole canvas, and with the fill past the canvas on, a white shape
-/// running onto the pasteboard flooded to the wall and was refused as
-/// open.
-class LazyCanvasRasterRgb {
-  /// With the native engine loaded the raster lives in native memory
-  /// (R18 A-2b): the compose loops write through typed-data views
-  /// unchanged, and the C flood stepper reads the SAME bytes — no
-  /// copies between compose and flood.
-  factory LazyCanvasRasterRgb({
-    required Cut cut,
-    required int frameIndex,
-    required LayerFrameSurfaceResolver surfaceResolver,
-    bool extendBeyondCanvas = false,
-    PasteboardReach pasteboardReach = PasteboardReach.whole,
-    CanvasReadSource source = CanvasReadSource.display,
-    LayerId? activeLayerId,
-    LayerPlacement? space,
-  }) {
-    // Extended (pasteboard) fills widen the raster by a finite apron and
-    // shift its origin into negative world space; the default raster IS
-    // the canvas at origin (0, 0), byte-identical to before.
-    final marginX = extendBeyondCanvas
-        ? _pasteboardFillMargin(cut.canvasSize.width, pasteboardReach)
-        : 0;
-    final marginY = extendBeyondCanvas
-        ? _pasteboardFillMargin(cut.canvasSize.height, pasteboardReach)
-        : 0;
-    final rasterWidth = cut.canvasSize.width + marginX * 2;
-    final rasterHeight = cut.canvasSize.height + marginY * 2;
-    final handles = QaNativeEngine.instance?.acquireFloodRaster(
-      width: rasterWidth,
-      height: rasterHeight,
-      composeTileSize: _tileSize,
-    );
-    return LazyCanvasRasterRgb._(
-      cut: cut,
-      frameIndex: frameIndex,
-      surfaceResolver: surfaceResolver,
-      read: layersReadBy(source, activeLayerId),
-      space: space,
-      handles: handles,
-      originX: -marginX,
-      originY: -marginY,
-      rasterWidth: rasterWidth,
-      rasterHeight: rasterHeight,
-    );
-  }
-
-  LazyCanvasRasterRgb._({
-    required Cut cut,
-    required int frameIndex,
-    required LayerFrameSurfaceResolver surfaceResolver,
-    required Set<LayerId>? read,
-    required LayerPlacement? space,
-    required QaFloodNativeHandles? handles,
-    required this.originX,
-    required this.originY,
-    required int rasterWidth,
-    required int rasterHeight,
-  }) : nativeHandles = handles,
-       width = rasterWidth,
-       height = rasterHeight,
-       rgb = handles?.rgbView ?? Uint8List(rasterWidth * rasterHeight * 4),
-       _tilesX = (rasterWidth + _tileSize - 1) ~/ _tileSize,
-       _composed =
-           handles?.composedView ??
-           Uint8List(
-             ((rasterWidth + _tileSize - 1) ~/ _tileSize) *
-                 ((rasterHeight + _tileSize - 1) ~/ _tileSize),
-           ) {
-    // Surfaces resolve ONCE (a cold resolve may replay paint commands).
-    //
-    // WHICH layers is [read] — the read source's answer, the one the
-    // eyedropper reads by too (I-36). HOW each is read is [_carryInto]'s:
-    // in the seed's [space], through the layer's placement.
-    final entries = resolveCutFrameCompositeEntries(
-      cut: cut,
-      frameIndex: frameIndex,
-    );
-    _ReadLayer? readOf(CutFrameCompositeEntry entry, {double strength = 1}) {
-      final carry = _carryInto(entry, space);
-      final surface = surfaceResolver(entry.layer, entry.frame);
-      if (!carry.shows || surface == null) {
-        return null;
-      }
-      return _ReadLayer(
-        // The cel as it SHOWS: a letter bounds a fill as a drawn line
-        // does (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
-        surface: celSurfaceWithTextsLaid(surface),
-        opacity: entry.opacity * strength,
-        toArtwork: carry.toArtwork,
-      );
-    }
-
-    for (final entry in entries) {
-      if (read != null && !read.contains(entry.layer.id)) {
-        continue;
-      }
-      // A row that clips to the layer below walls the fill where it shows
-      // — where its base is (I-92) — in the whole picture; a read of one
-      // row reads it as drawn, as the eyedropper does.
-      final clip = read != null
-          ? null
-          : flatClipOf(
-              cut: cut,
-              layer: entry.layer,
-              frameIndex: frameIndex,
-              entries: entries,
-            );
-      final layer = readOf(entry, strength: clip?.strength ?? 1);
-      if (layer == null) {
-        continue;
-      }
-      if (clip == null) {
-        _layers.add(layer);
-        continue;
-      }
-      final cutBy = [
-        for (final base in clip.cutBy) ?readOf(base),
-      ];
-      if (cutBy.isNotEmpty) {
-        _layers.add(
-          _ReadLayer(
-            surface: layer.surface,
-            opacity: layer.opacity,
-            toArtwork: layer.toArtwork,
-            cutBy: cutBy,
-          ),
-        );
-      }
-    }
-  }
-
-  static const int _tileSize = 256;
-
-  /// Non-null when the raster is native-backed — hand this to
-  /// [floodFillRegion] so the C stepper floods the same memory.
-  final QaFloodNativeHandles? nativeHandles;
-
-  /// Raster dimensions (canvas + apron when extended).
-  final int width;
-  final int height;
-
-  /// World coordinate of raster (0, 0): (0, 0) for canvas fills,
-  /// negative for extended (pasteboard) fills. World = raster + origin.
-  final int originX;
-  final int originY;
-
-  /// `width*height*4` bytes, premultiplied RGBA (four bytes a pixel —
-  /// R22-D's SIMD contract); only composed tiles hold real pixels — read
-  /// through
-  /// [ensureComposedAt].
-  final Uint8List rgb;
-
-  final int _tilesX;
-  final Uint8List _composed;
-  final List<_ReadLayer> _layers = [];
-
-  /// Guarantees the tile containing pixel [index] (row-major) is composed.
-  /// The tile a pixel [index] sits in, and where that tile starts.
-  ///
-  /// ⛔THE ROUTES MUST AGREE ON WHICH TILE A PIXEL IS IN. The per-pixel
-  /// path and the batch path each wrote this arithmetic out; a route that
-  /// computed a different tile would mark one composed and compose
-  /// another, and the flood would then read nothing where a layer is.
-  ({int tileIndex, int left, int top}) _tileOf(int index) {
-    final tileX = (index % width) ~/ _tileSize;
-    final tileY = (index ~/ width) ~/ _tileSize;
-    return (
-      tileIndex: tileY * _tilesX + tileX,
-      left: tileX * _tileSize,
-      top: tileY * _tileSize,
-    );
-  }
-
-  void ensureComposedAt(int index) {
-    final tile = _tileOf(index);
-    if (_composed[tile.tileIndex] != 0) {
-      return;
-    }
-    _composed[tile.tileIndex] = 1;
-    _composeTile(tile.left, tile.top);
-  }
-
-  /// R25-③: composes every still-uncomposed tile that [pixelIndices]
-  /// touch through ONE pooled native call — within a tile the clear +
-  /// layer order is preserved (bytes identical to [ensureComposedAt]);
-  /// tiles fan out across the worker pool. Engine-less falls back to
-  /// the per-tile path.
-  void ensureComposedBatch(Int32List pixelIndices) {
-    final native = QaNativeEngine.instance;
-    final handles = nativeHandles;
-    if (native == null || handles == null) {
-      for (final index in pixelIndices) {
-        ensureComposedAt(index);
-      }
-      return;
-    }
-    final tiles =
-        <
-          ({
-            int left,
-            int top,
-            int rightExclusive,
-            int bottomExclusive,
-            int firstBlend,
-            int blendCount,
-          })
-        >[];
-    // Holds every tile whose POINTER is staged below, so none of their
-    // buffers can be finalized before the batch call consumes them.
-    final keepAlive = <BitmapTile>[];
-    final blends =
-        <
-          ({
-            Pointer<Uint8> pixels,
-            int tileSize,
-            int baseX,
-            int baseY,
-            int clipLeft,
-            int clipTop,
-            int clipRightExclusive,
-            int clipBottomExclusive,
-            int opacityInt,
-          })
-        >[];
-    for (final index in pixelIndices) {
-      final tile = _tileOf(index);
-      if (_composed[tile.tileIndex] != 0) {
-        continue;
-      }
-      _composed[tile.tileIndex] = 1;
-      final left = tile.left;
-      final top = tile.top;
-      final right = math.min(left + _tileSize, width);
-      final bottom = math.min(top + _tileSize, height);
-      final firstBlend = blends.length;
-      for (final under in _layerTilesUnder(
-        left: left,
-        top: top,
-        rightExclusive: right,
-        bottomExclusive: bottom,
-      )) {
-        final tile = under.tile;
-        // The staged pointer outlives this loop (the batch call below
-        // reads it), so the TILE must stay reachable until then —
-        // keepAlive does that (see BitmapTile.readPixels).
-        keepAlive.add(tile);
-        blends.add((
-          pixels: tile.readPixels((pointer, _) => pointer),
-          tileSize: tile.size,
-          baseX: under.baseX,
-          baseY: under.baseY,
-          clipLeft: under.clipLeft,
-          clipTop: under.clipTop,
-          clipRightExclusive: under.clipRightExclusive,
-          clipBottomExclusive: under.clipBottomExclusive,
-          opacityInt: under.opacityInt,
-        ));
-      }
-      tiles.add((
-        left: left,
-        top: top,
-        rightExclusive: right,
-        bottomExclusive: bottom,
-        firstBlend: firstBlend,
-        blendCount: blends.length - firstBlend,
-      ));
-    }
-    if (tiles.isEmpty) {
-      return;
-    }
-    native.fillComposeBatch(
-      rasterWidth: width,
-      tiles: tiles,
-      blends: blends,
-    );
-    // Reached only after the kernel has read every staged pointer: this
-    // use is what keeps the tiles above alive across the call.
-    keepAlive.clear();
-  }
-
-  void _composeTile(int left, int top) {
-    final right = math.min(left + _tileSize, width);
-    final bottom = math.min(top + _tileSize, height);
-
-    // R18 A-2c: with a native-backed raster the clear and the layer
-    // blends run in the C kernels — byte-identical to the Dart loops
-    // below (parity-pinned); Dart stays the reference and the fallback.
-    final native = QaNativeEngine.instance;
-    final handles = nativeHandles;
-    if (native != null && handles != null) {
-      native.fillClearRect(
-        handles: handles,
-        left: left,
-        top: top,
-        rightExclusive: right,
-        bottomExclusive: bottom,
-      );
-      for (final under in _layerTilesUnder(
-        left: left,
-        top: top,
-        rightExclusive: right,
-        bottomExclusive: bottom,
-      )) {
-        under.tile.readPixels(
-          (pointer, _) => native.fillComposeTile(
-            handles: handles,
-            tilePixels: pointer,
-            tileSize: under.tile.size,
-            baseX: under.baseX,
-            baseY: under.baseY,
-            clipLeft: under.clipLeft,
-            clipTop: under.clipTop,
-            clipRightExclusive: under.clipRightExclusive,
-            clipBottomExclusive: under.clipBottomExclusive,
-            opacityInt: under.opacityInt,
-          ),
-        );
-      }
-      return;
-    }
-
-    for (var y = top; y < bottom; y += 1) {
-      final rowStart = (y * width + left) * 4;
-      rgb.fillRange(rowStart, rowStart + (right - left) * 4, 0);
-    }
-    for (final under in _layerTilesUnder(
-      left: left,
-      top: top,
-      rightExclusive: right,
-      bottomExclusive: bottom,
-    )) {
-      final tile = under.tile;
-      // Snapshot the tile's buffer ONCE (the getter copies).
-      final pixels = tile.pixels;
-      final tileSize = tile.size;
-      final baseX = under.baseX;
-      final baseY = under.baseY;
-      final clipLeft = under.clipLeft;
-      final clipRight = under.clipRightExclusive;
-      final opacityInt = under.opacityInt;
-      for (var y = under.clipTop; y < under.clipBottomExclusive; y += 1) {
-        var source = ((y - baseY) * tileSize + (clipLeft - baseX)) * 4;
-        var target = (y * width + clipLeft) * 4;
-        for (var x = clipLeft; x < clipRight; x += 1) {
-          final alphaByte = pixels[source + 3];
-          if (alphaByte != 0) {
-            final effective = (alphaByte * opacityInt + 127) ~/ 255;
-            final inverse = 255 - effective;
-            rgb[target] =
-                (pixels[source] * effective + rgb[target] * inverse + 127) ~/
-                255;
-            rgb[target + 1] =
-                (pixels[source + 1] * effective +
-                    rgb[target + 1] * inverse +
-                    127) ~/
-                255;
-            rgb[target + 2] =
-                (pixels[source + 2] * effective +
-                    rgb[target + 2] * inverse +
-                    127) ~/
-                255;
-            rgb[target + 3] =
-                (255 * effective + rgb[target + 3] * inverse + 127) ~/ 255;
-          }
-          source += 4;
-          target += 4;
-        }
-      }
-    }
-  }
-
-  /// Every existing layer tile under a raster rect, in layer stack order:
-  /// the tile, its layer's byte opacity, and where the tile's origin and
-  /// the clipped rect land in RASTER space. The three composes — per-tile
-  /// native, batched native, the Dart reference — walk exactly this, so
-  /// they cannot disagree on which tile a pixel reads from or where a
-  /// tile straddling a compose wall is cut.
-  ///
-  /// Per TILE, never per pixel: the per-pixel loops stay in the callers.
-  Iterable<_LayerTileUnder> _layerTilesUnder({
-    required int left,
-    required int top,
-    required int rightExclusive,
-    required int bottomExclusive,
-  }) sync* {
-    // Surface tiles live in WORLD space (raster + origin); bases pass
-    // back in raster space, so tile-local offsets stay (world - base).
-    final region = DirtyRegion(
-      left: left + originX,
-      top: top + originY,
-      rightExclusive: rightExclusive + originX,
-      bottomExclusive: bottomExclusive + originY,
-    );
-    for (final layer in _layers) {
-      // Integer blend (R15-⑥): the per-pixel double multiply/round path
-      // was a whole-canvas-scale cost on big fills; the raster only feeds
-      // seed MATCHING (tolerance compares), so byte-rounded source-over
-      // is exact enough by construction.
-      final opacityInt = (layer.opacity * 255).round();
-      if (layer.toArtwork != null || layer.cutBy != null) {
-        yield _carriedTileUnder(layer, region);
-        continue;
-      }
-      for (final covered in tilesCovering(layer.surface, region)) {
-        yield (
-          tile: covered.tile,
-          opacityInt: opacityInt,
-          baseX: covered.worldLeft - originX,
-          baseY: covered.worldTop - originY,
-          clipLeft: covered.left - originX,
-          clipTop: covered.top - originY,
-          clipRightExclusive: covered.rightExclusive - originX,
-          clipBottomExclusive: covered.bottomExclusive - originY,
-        );
-      }
-    }
-  }
-
-  /// [layer] carried onto one compose rect ([world], the rect in raster
-  /// WORLD space) as a compose-sized tile, so the three composes blend it
-  /// like any stored tile: through its `toArtwork`, and cut by its base
-  /// where it clips to the layer below ([_ReadLayer.cutBy], I-92).
-  _LayerTileUnder _carriedTileUnder(_ReadLayer layer, DirtyRegion world) {
-    final pixels = _pixelsOn(layer, world);
-    final cutBy = layer.cutBy;
-    if (cutBy != null) {
-      // What the base covers, its pixels laid together — and the row's
-      // premultiplied pixels kept that much: `srcATop`'s cut, which the
-      // clipping group's picture is.
-      final covered = Uint8List(_tileSize * _tileSize);
-      for (final base in cutBy) {
-        final basePixels = _pixelsOn(base, world);
-        for (var i = 0; i < covered.length; i += 1) {
-          final alpha = basePixels[i * 4 + 3];
-          covered[i] = alpha + (covered[i] * (255 - alpha) + 127) ~/ 255;
-        }
-      }
-      for (var i = 0; i < pixels.length; i += 1) {
-        pixels[i] = (pixels[i] * covered[i >> 2] + 127) ~/ 255;
-      }
-    }
-    return (
-      tile: BitmapTile(size: _tileSize, pixels: pixels),
-      opacityInt: (layer.opacity * 255).round(),
-      baseX: world.left - originX,
-      baseY: world.top - originY,
-      clipLeft: world.left - originX,
-      clipTop: world.top - originY,
-      clipRightExclusive: world.rightExclusive - originX,
-      clipBottomExclusive: world.bottomExclusive - originY,
-    );
-  }
-
-  /// [layer]'s pixels on the compose tile at [world]'s origin, in raster
-  /// WORLD space — straight off its tiles where it is read 1:1, resampled
-  /// by the resampler that carries a transformed picture everywhere else
-  /// where it is posed.
-  ///
-  /// Blend, not pick: the screen draws a posed layer filtered, and the fill
-  /// reads what the screen shows.
-  static Uint8List _pixelsOn(_ReadLayer layer, DirtyRegion world) {
-    final toArtwork = layer.toArtwork;
-    if (toArtwork == null) {
-      return bitmapSurfaceRegionPixels(
-        layer.surface,
-        DirtyRegion(
-          left: world.left,
-          top: world.top,
-          rightExclusive: world.left + _tileSize,
-          bottomExclusive: world.top + _tileSize,
-        ),
-      );
-    }
-    final source = _preimageOf(toArtwork, world);
-    final pixels = Uint8List(BitmapTile.bytesFor(_tileSize));
-    resampleSelectionInto(
-      src: bitmapSurfaceRegionPixels(layer.surface, source),
-      srcWidth: source.width,
-      srcHeight: source.height,
-      dst: pixels,
-      dstWidth: _tileSize,
-      dstHeight: _tileSize,
-      transform: _resampleFold(toArtwork, world, source),
-      mode: ResampleMode.blend,
-    );
-    return pixels;
-  }
-
-  /// What a compose tile at [world]'s origin can read of a layer carried by
-  /// [toArtwork]: its corners' preimage, one tent wider.
-  static DirtyRegion _preimageOf(GuideTransform toArtwork, DirtyRegion world) {
-    final corners = [
-      for (final (x, y) in [
-        (world.left, world.top),
-        (world.left + _tileSize, world.top),
-        (world.left, world.top + _tileSize),
-        (world.left + _tileSize, world.top + _tileSize),
-      ])
-        toArtwork.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
-    ];
-    final bounds = pointsBounds([
-      for (final corner in corners) Offset(corner.x, corner.y),
-    ]);
-    return DirtyRegion(
-      left: bounds.left.floor() - 2,
-      top: bounds.top.floor() - 2,
-      rightExclusive: bounds.right.ceil() + 2,
-      bottomExclusive: bounds.bottom.ceil() + 2,
-    );
-  }
-
-  /// [toArtwork] folded for a tile at [world]'s origin reading [source].
-  static ResampleTransform _resampleFold(
-    GuideTransform toArtwork,
-    DirtyRegion world,
-    DirtyRegion source,
-  ) => planeResampleTransform(
-    toSource: toArtwork,
-    srcLeft: source.left,
-    srcTop: source.top,
-    outLeft: world.left,
-    outTop: world.top,
-  );
-}
-
-/// A layer the raster reads: its surface, its opacity, — for a layer NOT
-/// placed as the seed's space — how raster WORLD maps into its artwork
-/// (null = read 1:1; see [_carryInto]), and — for one that clips to the
-/// layer below — its base's layers, which cut it ([flatClipOf]; null =
-/// nothing cuts it).
-final class _ReadLayer {
-  const _ReadLayer({
-    required this.surface,
-    required this.opacity,
-    required this.toArtwork,
-    this.cutBy,
-  });
-
-  final BitmapSurface surface;
-  final double opacity;
-  final GuideTransform? toArtwork;
-  final List<_ReadLayer>? cutBy;
-}
-
-/// How [entry] is read by a raster laid in [space]: null `toArtwork` for a
-/// layer placed exactly as that space (read 1:1, byte for byte as before —
-/// every layer, when nothing is posed); otherwise the map from raster WORLD
-/// into the layer's artwork, out through the space's placement and in
-/// through the inverse of the layer's own. `shows` is false when the
-/// layer's placement collapses it: it shows nothing, so it walls nothing.
-///
-/// 🚨I-36 — THE POSE LAW, the eyedropper's since R28 #7: a posed layer is
-/// read THROUGH its pose, never skipped. P5+P6 skipped posed layers in both
-/// tools as a 「v1」; the eyedropper outgrew it, the fill kept it, so line
-/// art with a transform key — or inside a folder with one — never walled a
-/// fill (유저 2026-09-24: 「이 과정에서 법 다른거 통일」). The raster lies in
-/// the SEED's space because that is where the pen is and where the dab
-/// lands: the draw-through wrap hands the seed over in the posed layer's
-/// artwork.
-({bool shows, GuideTransform? toArtwork}) _carryInto(
-  CutFrameCompositeEntry entry,
-  LayerPlacement? space,
-) {
-  final placement = entry.placement;
-  if (placement == space) {
-    return (shows: true, toArtwork: null);
-  }
-  final fromCanvas = placement == null
-      ? const GuideTransform.identity()
-      : canvasToArtwork(placement);
-  if (fromCanvas == null) {
-    return (shows: false, toArtwork: null);
-  }
-  final carried = space == null ? fromCanvas : fromCanvas.compose(space);
-  return (shows: true, toArtwork: carried.isIdentity ? null : carried);
-}
-
-/// One layer tile under a compose rect — see
-/// [LazyCanvasRasterRgb._layerTilesUnder].
-typedef _LayerTileUnder = ({
-  BitmapTile tile,
-  int opacityInt,
-  int baseX,
-  int baseY,
-  int clipLeft,
-  int clipTop,
-  int clipRightExclusive,
-  int clipBottomExclusive,
-});
-
-/// Scanline flood fill over the fill raster from the seed, within
-/// [FloodFillOptions.tolerance] of the SEED pixel; null when the seed is
-/// out of bounds. Includes expand + anti-alias post passes.
-///
-/// R14-② performance contract: [ensureComposed] fires per COMPOSE-TILE
-/// crossing (256px, [LazyCanvasRasterRgb]'s tile), never per pixel — the
-/// old per-visit dynamic dispatch across tens of millions of pixels was
-/// the multi-second fill freeze on large regions. The vertical seeding
-/// enqueues one seed per contiguous run (not every matching pixel), and
-/// the expand/anti-alias passes operate on the CROPPED region instead of
-/// copying the full canvas array per pass.
-FloodFillRegion? floodFillRegion({
-  required Uint8List rgb,
-  required int width,
-  required int height,
-  required int seedX,
-  required int seedY,
-  FloodFillOptions options = const FloodFillOptions(),
-  void Function(int index)? ensureComposed,
-  void Function(Int32List pixelIndices)? ensureComposedBatch,
-  QaFloodNativeHandles? nativeHandles,
-}) {
-  if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) {
-    return null;
-  }
-  ensureComposed?.call(seedY * width + seedX);
-  final seedIndex = (seedY * width + seedX) * 4;
-  final seed = seedAt(rgb, seedIndex);
-  final tolerance = options.tolerance;
-
-  // R20-C1 close-gap fill: barriers thickened by the gap radius (chamfer
-  // distance-transform erosion of the fillable field), flood, then grow
-  // back to the real barriers. Needs the WHOLE picture composed — the
-  // leak search is global by nature.
-  if (options.gapClosePx > 0) {
-    if (ensureComposed != null) {
-      const composeTile = 256;
-      for (var ty = 0; ty < height; ty += composeTile) {
-        final rowStart = ty * width;
-        for (var tx = 0; tx < width; tx += composeTile) {
-          ensureComposed(rowStart + tx);
-        }
-      }
-    }
-    final native = QaNativeEngine.instance;
-    if (native != null && nativeHandles != null) {
-      final result = native.gapCloseFillRun(
-        handles: nativeHandles,
-        seedX: seedX,
-        seedY: seedY,
-        seed: seed,
-        tolerance: tolerance,
-        gapClosePx: options.gapClosePx,
-      );
-      if (result != null) {
-        final (
-          left: cropLeft,
-          top: cropTop,
-          right: cropRight,
-          bottom: cropBottom,
-        ) = _floodFinishBox(
-          minX: result.minX,
-          maxX: result.maxX,
-          minY: result.minY,
-          maxY: result.maxY,
-          width: width,
-          height: height,
-          options: options,
-        );
-        return FloodFillRegion(
-          left: cropLeft,
-          top: cropTop,
-          width: cropRight - cropLeft + 1,
-          height: cropBottom - cropTop + 1,
-          mask: native.finishFillMask(
-            canvasWidth: width,
-            cropLeft: cropLeft,
-            cropTop: cropTop,
-            regionWidth: cropRight - cropLeft + 1,
-            regionHeight: cropBottom - cropTop + 1,
-            expandPx: options.expandPx,
-            antiAlias: options.antiAlias,
-          ),
-        );
-      }
-      // Stack overflow inside the kernel (pathological run counts) —
-      // fall through to the Dart reference, which grows freely.
-    }
-    return _gapCloseFloodRegion(
-      rgb: rgb,
-      width: width,
-      height: height,
-      seedX: seedX,
-      seedY: seedY,
-      seed: seed,
-      options: options,
-    );
-  }
-
-  // R18 A-2b / R22-E3: with a native-backed raster the wave-parallel C
-  // engine runs the flood (per-compose-tile local floods across the
-  // worker pool around the lazy compose; result set identical by
-  // construction — parity-pinned). The Dart loop below stays as the
-  // reference and the fallback.
-  final native = QaNativeEngine.instance;
-  if (native != null && nativeHandles != null && ensureComposed != null) {
-    final result = native.floodFillRun(
-      handles: nativeHandles,
-      seedX: seedX,
-      seedY: seedY,
-      seed: seed,
-      tolerance: tolerance,
-      ensureComposed: ensureComposed,
-      ensureComposedBatch: ensureComposedBatch,
-    );
-    if (result != null) {
-      // The finish (crop + expand + anti-alias) runs natively too
-      // (A-2d): the verification lab showed these full-region passes
-      // were most of what remained in the fill.flood probe. The crop is
-      // the Dart tail's own ([_floodFinishBox]).
-      final (
-        left: cropLeft,
-        top: cropTop,
-        right: cropRight,
-        bottom: cropBottom,
-      ) = _floodFinishBox(
-        minX: result.minX,
-        maxX: result.maxX,
-        minY: result.minY,
-        maxY: result.maxY,
-        width: width,
-        height: height,
-        options: options,
-      );
-      return FloodFillRegion(
-        left: cropLeft,
-        top: cropTop,
-        width: cropRight - cropLeft + 1,
-        height: cropBottom - cropTop + 1,
-        mask: native.finishFillMask(
-          canvasWidth: width,
-          cropLeft: cropLeft,
-          cropTop: cropTop,
-          regionWidth: cropRight - cropLeft + 1,
-          regionHeight: cropBottom - cropTop + 1,
-          expandPx: options.expandPx,
-          antiAlias: options.antiAlias,
-        ),
-      );
-    }
-    // Wave arena failure (belt) — fall through to the Dart reference,
-    // which starts from its own clean heap state.
-  }
-
-  // Pure byte compare (pixelWithinTolerance) — the caller guarantees the
-  // pixel's compose tile via the crossing checks below (one ensure per
-  // 256px boundary).
-  final filled = Uint8List(width * height);
-  final stack = <int>[seedY * width + seedX];
-  filled[seedY * width + seedX] = 255;
-  var minX = seedX;
-  var maxX = seedX;
-  var minY = seedY;
-  var maxY = seedY;
-
-  while (stack.isNotEmpty) {
-    final index = stack.removeLast();
-    final y = index ~/ width;
-    final rowStart = y * width;
-
-    // Expand the scanline run left and right; ensure fires only when the
-    // walk crosses into a new 256px compose tile.
-    var left = index - rowStart;
-    while (left > 0 && filled[rowStart + left - 1] == 0) {
-      if ((left & 0xFF) == 0) {
-        ensureComposed?.call(rowStart + left - 1);
-      }
-      if (!pixelWithinTolerance(
-        rgb,
-        (rowStart + left - 1) * 4,
-        seed,
-        tolerance,
-      )) {
-        break;
-      }
-      left -= 1;
-      filled[rowStart + left] = 255;
-    }
-    var right = index - rowStart;
-    while (right < width - 1 && filled[rowStart + right + 1] == 0) {
-      if (((right + 1) & 0xFF) == 0) {
-        ensureComposed?.call(rowStart + right + 1);
-      }
-      if (!pixelWithinTolerance(
-        rgb,
-        (rowStart + right + 1) * 4,
-        seed,
-        tolerance,
-      )) {
-        break;
-      }
-      right += 1;
-      filled[rowStart + right] = 255;
-    }
-    minX = math.min(minX, left);
-    maxX = math.max(maxX, right);
-    minY = math.min(minY, y);
-    maxY = math.max(maxY, y);
-
-    // Seed the rows above and below across the run — ONE seed per
-    // contiguous matching run (the seed's own expansion fills the rest);
-    // enqueueing every matching pixel used to flood the queue with the
-    // whole region.
-    for (final dy in const [-1, 1]) {
-      final neighborY = y + dy;
-      if (neighborY < 0 || neighborY >= height) {
-        continue;
-      }
-      final neighborRow = neighborY * width;
-      ensureComposed?.call(neighborRow + left);
-      var runOpen = false;
-      for (var x = left; x <= right; x += 1) {
-        if ((x & 0xFF) == 0 && x != left) {
-          ensureComposed?.call(neighborRow + x);
-        }
-        final neighborIndex = neighborRow + x;
-        if (filled[neighborIndex] == 0 &&
-            pixelWithinTolerance(
-              rgb,
-              neighborIndex * 4,
-              seed,
-              tolerance,
-            )) {
-          if (!runOpen) {
-            filled[neighborIndex] = 255;
-            stack.add(neighborIndex);
-            runOpen = true;
-          }
-        } else {
-          runOpen = false;
-        }
-      }
-    }
-  }
-
-  return _cropAndFinishFloodRegion(
-    filled: filled,
-    width: width,
-    height: height,
-    minX: minX,
-    maxX: maxX,
-    minY: minY,
-    maxY: maxY,
-    options: options,
-  );
-}
-
 /// How far past its coverage a fill's finish reaches: [FloodFillOptions.
 /// expandPx] generations of growth — and, with the anti-alias, one pixel
-/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge
-/// ([softenMaskBoundary], unclamped), so a box a fill is finished in holds
-/// that pixel on every side.
+/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge (the
+/// engine's soften, unclamped — mask.wgsl), so a box a fill is finished in
+/// holds that pixel on every side.
 ///
 /// 🗣️유저 답 the-fill-ramp-is-cut-at-its-box-Q1 (10-09): 「상자를 한 칸 넓혀
 /// 어디서나 번지게」. ↩️The box was the coverage grown by the expand alone,
@@ -1051,247 +178,7 @@ FloodFillRegion? floodFillRegion({
 int fillFinishReach(FloodFillOptions options) =>
     options.expandPx + (options.antiAlias ? 1 : 0);
 
-/// The box a flood's coverage `[minX, maxX] × [minY, maxY]` is finished
-/// in: its bounds grown by what the finish reaches ([fillFinishReach]), cut
-/// at the canvas — the one box the Dart tail and both native finishes are
-/// handed.
-({int left, int top, int right, int bottom}) _floodFinishBox({
-  required int minX,
-  required int maxX,
-  required int minY,
-  required int maxY,
-  required int width,
-  required int height,
-  required FloodFillOptions options,
-}) {
-  final reach = fillFinishReach(options);
-  return (
-    left: math.max(0, minX - reach),
-    top: math.max(0, minY - reach),
-    right: math.min(width - 1, maxX + reach),
-    bottom: math.min(height - 1, maxY + reach),
-  );
-}
-
-/// The shared post-flood tail: crop to the flooded bounds, then the
-/// expand and anti-alias passes region-locally (both the Dart and the
-/// native flood produce the same `filled` set, so this tail is common).
-FloodFillRegion _cropAndFinishFloodRegion({
-  required Uint8List filled,
-  required int width,
-  required int height,
-  required int minX,
-  required int maxX,
-  required int minY,
-  required int maxY,
-  required FloodFillOptions options,
-}) {
-  // Crop FIRST (with room for what the finish reaches), then run the
-  // expand and anti-alias passes region-locally: the old grow pass copied
-  // and scanned a full-canvas array per pass.
-  final (
-    left: cropLeft,
-    top: cropTop,
-    right: cropRight,
-    bottom: cropBottom,
-  ) = _floodFinishBox(
-    minX: minX,
-    maxX: maxX,
-    minY: minY,
-    maxY: maxY,
-    width: width,
-    height: height,
-    options: options,
-  );
-  final regionWidth = cropRight - cropLeft + 1;
-  final regionHeight = cropBottom - cropTop + 1;
-  final mask = Uint8List(regionWidth * regionHeight);
-  for (var y = 0; y < regionHeight; y += 1) {
-    final sourceStart = (cropTop + y) * width + cropLeft;
-    mask.setRange(
-      y * regionWidth,
-      y * regionWidth + regionWidth,
-      filled,
-      sourceStart,
-    );
-  }
-
-  dilateMask4(
-    mask,
-    width: regionWidth,
-    height: regionHeight,
-    passes: options.expandPx,
-  );
-
-  if (options.antiAlias) {
-    // ⛔UNCLAMPED, and that is the fill's meaning: paint that stops dead on
-    // the outline reads as a hard edge, so the fill's ramp is allowed one
-    // pixel past its own. The SELECTION's is not — see [softenMaskBoundary].
-    softenMaskBoundary(
-      mask,
-      width: regionWidth,
-      height: regionHeight,
-      insideOutlineOnly: false,
-    );
-  }
-
-  return FloodFillRegion(
-    left: cropLeft,
-    top: cropTop,
-    width: regionWidth,
-    height: regionHeight,
-    mask: mask,
-  );
-}
-
-/// The close-gap fill reference pipeline (R20-C1) — the C kernel
-/// reproduces this EXACTLY (integer chamfer math throughout; parity is
-/// pinned):
-///
-/// 1. fillable = per-pixel tolerance test against the seed;
-/// 2. chamfer 3-4 distance transform to the nearest barrier;
-/// 3. erode: only pixels farther than `3 × gap` chamfer units fill —
-///    a leak through a gap narrower than ~2×gap can't survive. If the
-///    seed itself sits closer than that to a barrier, the gap HALVES
-///    until the seed survives (deterministic; gap 0 degenerates to the
-///    plain fill);
-/// 4. scanline flood over the eroded field;
-/// 5. grow back: a second distance transform from the flooded set,
-///    keeping fillable pixels within `3 × gap` — the region reaches the
-///    REAL barriers again (and slightly into the gap mouths, like CSP).
-FloodFillRegion? _gapCloseFloodRegion({
-  required Uint8List rgb,
-  required int width,
-  required int height,
-  required int seedX,
-  required int seedY,
-  required int seed,
-  required FloodFillOptions options,
-}) {
-  const infinity = 60000;
-  final pixelCount = width * height;
-  final tolerance = options.tolerance;
-
-  final fillable = Uint8List(pixelCount);
-  for (var index = 0, base = 0; index < pixelCount; index += 1, base += 4) {
-    if (pixelWithinTolerance(rgb, base, seed, tolerance)) {
-      fillable[index] = 1;
-    }
-  }
-
-  final dist = Uint16List(pixelCount);
-  chamferDistance34(
-    dist,
-    from: fillable,
-    zeroWhen: 0,
-    width: width,
-    height: height,
-    infinity: infinity,
-    // The canvas edge is NOT a barrier: a fill against the wall stays open.
-    borderDistance: infinity,
-  );
-
-  // Seed survival: halve the gap until the seed escapes erosion.
-  var gap = options.gapClosePx;
-  final seedIndex = seedY * width + seedX;
-  while (gap > 0 && dist[seedIndex] <= 3 * gap) {
-    gap ~/= 2;
-  }
-  final erodeThreshold = 3 * gap;
-
-  // Scanline flood over the eroded field.
-  final filled = Uint8List(pixelCount);
-  final stack = <int>[seedIndex];
-  filled[seedIndex] = 255;
-  bool eroded(int index) => dist[index] > erodeThreshold;
-  if (!eroded(seedIndex)) {
-    return null; // The seed is a barrier pixel (gap already 0 here).
-  }
-  while (stack.isNotEmpty) {
-    final index = stack.removeLast();
-    final y = index ~/ width;
-    final rowStart = y * width;
-    var left = index - rowStart;
-    while (left > 0 &&
-        filled[rowStart + left - 1] == 0 &&
-        eroded(rowStart + left - 1)) {
-      left -= 1;
-      filled[rowStart + left] = 255;
-    }
-    var right = index - rowStart;
-    while (right < width - 1 &&
-        filled[rowStart + right + 1] == 0 &&
-        eroded(rowStart + right + 1)) {
-      right += 1;
-      filled[rowStart + right] = 255;
-    }
-    for (final dy in const [-1, 1]) {
-      final neighborY = y + dy;
-      if (neighborY < 0 || neighborY >= height) {
-        continue;
-      }
-      final neighborRow = neighborY * width;
-      var runOpen = false;
-      for (var x = left; x <= right; x += 1) {
-        final neighborIndex = neighborRow + x;
-        if (filled[neighborIndex] == 0 && eroded(neighborIndex)) {
-          if (!runOpen) {
-            filled[neighborIndex] = 255;
-            stack.add(neighborIndex);
-            runOpen = true;
-          }
-        } else {
-          runOpen = false;
-        }
-      }
-    }
-  }
-
-  // Grow back to the real barriers: distance from the flooded set.
-  final growDist = Uint16List(pixelCount);
-  chamferDistance34(
-    growDist,
-    from: filled,
-    zeroWhen: 255,
-    width: width,
-    height: height,
-    infinity: infinity,
-    borderDistance: infinity,
-  );
-  var minX = width;
-  var maxX = -1;
-  var minY = height;
-  var maxY = -1;
-  for (var index = 0; index < pixelCount; index += 1) {
-    if (fillable[index] != 0 && growDist[index] <= erodeThreshold) {
-      filled[index] = 255;
-      final x = index % width;
-      final y = index ~/ width;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    } else {
-      filled[index] = 0;
-    }
-  }
-  if (maxX < 0) {
-    return null;
-  }
-
-  return _cropAndFinishFloodRegion(
-    filled: filled,
-    width: width,
-    height: height,
-    minX: minX,
-    maxX: maxX,
-    minY: minY,
-    maxY: maxY,
-    options: options,
-  );
-}
-
-/// An AREA laid as stamp pieces ([_stampPieces]): every pixel [region]
+/// An AREA laid as stamp pieces ([_dabsOf]): every pixel [region]
 /// covers, painted [color] whatever is under it and whoever asked — the
 /// fill tool's shape fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든
 /// 채운다), and what the shape tool lays without the brush: its fill and
@@ -1300,13 +187,19 @@ FloodFillRegion? _gapCloseFloodRegion({
 ///
 /// It shares the flood's tail rather than resembling it. Once there is a
 /// coverage mask the two are the same problem, so the expand and
-/// anti-alias passes are the bucket's own — [dilateMask4] and
-/// [softenMaskBoundary], run as [_cropAndFinishFloodRegion] runs them —
-/// which is why "AA follows the fill" (유저 확정) needed no new rasterizer:
-/// the bucket's AA has always been a post-pass over a binary mask, and a
-/// region's mask is binary too.
+/// anti-alias passes are the bucket's — which is why "AA follows the fill"
+/// (유저 확정) needed no new rasterizer: the bucket's AA has always been a
+/// post-pass over a binary mask, and a region's mask is binary too.
+/// ONE SPELLING OF THOSE PASSES: the engine's (rust/src/kernels/mask,
+/// `MaskPasses::fill`), which finishes the bucket's flood
+/// (`Flood::finish`) and an area ([EngineSelectionMasks.area]) alike.
+/// ↩️From 2026-11-12, when the bucket's finish moved to the engine, till
+/// 2026-11-15 an area was finished here by a second spelling in Dart
+/// (`dilateMask4` · `softenMaskBoundary`, a window a piece), which a test
+/// held to the kernel's (board
+/// `an-areas-finish-is-a-second-spelling-of-the-floods`).
 ///
-/// What it does NOT share is the front: no lazy compose, no seed, no
+/// What it does NOT share is the front: no picture, no seed, no
 /// tolerance. An area never looks at the picture, so it never pays to
 /// composite one — this is markedly cheaper than a flood, not a variant of
 /// it.
@@ -1319,17 +212,24 @@ FloodFillRegion? _gapCloseFloodRegion({
 /// tile of the box, the same as filling the box solid (the VM on the
 /// desktop). Now the rows come as RUNS first
 /// ([CanvasSelectionRegion.pixelRunsFor] — no byte per pixel), the runs
-/// say which tiles the finished area can reach ([_tilesReached]), and only
-/// those are finished, each in a window of its own ([_finishedWindow]).
+/// say which tiles the finished area reaches ([_tilesReached]), and the
+/// engine finishes it over those alone, each piece's coverage cut for it
+/// there ([_AreaOnEngine]).
 ///
-/// ⛔WHAT LANDS IS THE SHEET'S BYTES, and that is what the window is for,
-/// not a hope. A finished byte reads the hard mask no farther than the
-/// passes reach — `expandPx` 4-neighbour generations, then one soften —
-/// and the sheet's edges were its box's. A window is its tile grown by
-/// that reach and cut at that same box, so every pixel of the tile reads
-/// exactly what the sheet read. The box itself holds all the finish reaches
-/// ([fillFinishReach]), the ramp past the expand included, so nothing of
-/// the area is cut at it.
+/// ⛔NO PIECE IS READ BACK (🗣️캔버스 베이스 2026-11-15 09:46, 관제's to
+/// overturn): a fill's pieces are the engine's mask stamps ([_pieceDab]),
+/// so coverage read down to be cut here and handed up again would be a
+/// trip from the GPU to the CPU and back. The engine cuts each piece's
+/// plane where it finished the sheet, and the piece is laid of that: no
+/// wait, no read.
+///
+/// ⛔WHAT LANDS IS THE SHEET'S BYTES. The finish reads the hard mask no
+/// farther than its passes reach — `expandPx` 4-neighbour generations,
+/// then one soften — so the tiles within that reach of the coverage hold
+/// every pixel it leaves any of, and finished over those alone each is
+/// what the whole sheet finished there (`MaskPasses::fill`). The sheet
+/// itself holds all the finish reaches ([fillFinishReach]), the ramp past
+/// the expand included, so nothing of the area is cut at it.
 List<BrushDab> buildRegionFillDabs({
   required CanvasSelectionRegion region,
   required int color,
@@ -1342,10 +242,11 @@ List<BrushDab> buildRegionFillDabs({
   options: options,
 ).toList();
 
-/// [buildRegionFillDabs]'s pieces one at a time, each made as it is asked
-/// for — what lets a shape being dragged be laid a few pieces a frame and
-/// shown when it is whole (I-69-Q4ⓒ). Every pass over it makes its pieces
-/// afresh.
+/// [buildRegionFillDabs]'s pieces one at a time — what lets a shape being
+/// dragged be laid a few pieces a frame and shown when it is whole
+/// (I-69-Q4ⓒ). Every pass over it makes its pieces afresh; their coverage
+/// is the engine's, asked for all together the first time one is laid
+/// ([_AreaOnEngine]).
 Iterable<BrushDab> regionFillPieces({
   required CanvasSelectionRegion region,
   required int color,
@@ -1357,25 +258,20 @@ Iterable<BrushDab> regionFillPieces({
     return;
   }
   final (:hard, :sheet, :reach) = area;
-  final reached = _tilesReached(hard, sheet: sheet, reach: reach);
-  yield* _stampPieces(
+  final runs = _runsOf(
     sheet,
-    paint: (color: color, gradient: null, opacity: opacity),
-    finishedAround: (piece) => reached(piece)
-        ? _finishedWindow(
-            hard,
-            around: (
-              left: piece.left,
-              top: piece.top,
-              rightExclusive: piece.rightExclusive,
-              bottomExclusive: piece.bottomExclusive,
-            ),
-            sheet: sheet,
-            reach: reach,
-            options: options,
-          )
-        : null,
+    covered: _tilesReached(hard, sheet: sheet, reach: reach),
+  ).toList();
+  final onEngine = _AreaOnEngine(
+    region: region,
+    sheet: _pixelsOf(sheet),
+    options: options,
+    parts: [for (final run in runs) run.box],
   );
+  yield* _dabsOf([
+    for (final (at, run) in runs.indexed)
+      _Piece(run, (_) => onEngine.masks[at]),
+  ], (color: color, gradient: null, opacity: opacity));
 }
 
 /// The RANGE a drawn outline covers (I-160: 「올가미같은것도 올가미로 범위고르고
@@ -1384,10 +280,10 @@ Iterable<BrushDab> regionFillPieces({
 /// lays its gradient through the bucket's own code. Null when it covers no
 /// pixel.
 ///
-/// ⚠️Finished over its whole sheet at once, which [regionFillPieces] will
-/// not do (board `an-area-dab-costs-its-box`): a range is read whole — its
-/// mark, and a gradient over every pixel of it — as the bucket's flood is,
-/// which costs its box too.
+/// ⚠️Finished over its whole sheet at once and read back, which
+/// [regionFillPieces] will not do (board `an-area-dab-costs-its-box`): a
+/// range is read whole — its mark, and a gradient over every pixel of it —
+/// as the bucket's flood is, which costs its box too. Waits for the GPU.
 FillRange? regionFillRange({
   required CanvasSelectionRegion region,
   double opacity = 1.0,
@@ -1398,26 +294,21 @@ FillRange? regionFillRange({
   if (area == null || area.hard.rows.every((runs) => runs.isEmpty)) {
     return null;
   }
-  final (:hard, :sheet, :reach) = area;
-  final whole = _finishedWindow(
-    hard,
-    around: (
-      left: sheet.left,
-      top: sheet.top,
-      rightExclusive: sheet.rightExclusive,
-      bottomExclusive: sheet.bottomExclusive,
-    ),
-    sheet: sheet,
-    reach: reach,
-    options: options,
-  );
+  final sheet = _pixelsOf(area.sheet);
+  final whole = _areaMasks(region, sheet, options, over: [sheet]).single;
+  final Uint8List mask;
+  try {
+    mask = whole.read();
+  } finally {
+    whole.free();
+  }
   return FillRange.over(
     FloodFillRegion(
-      left: whole.left,
-      top: whole.top,
-      width: whole.width,
-      height: whole.mask.length ~/ whole.width,
-      mask: whole.mask,
+      left: sheet.left,
+      top: sheet.top,
+      width: sheet.width,
+      height: sheet.height,
+      mask: mask,
     ),
     opacity: opacity,
   );
@@ -1462,12 +353,56 @@ FillRange? regionFillRange({
 /// ([CanvasSelectionRegion.pixelRunsFor]).
 typedef _HardRuns = ({List<List<int>> rows, int left, int top});
 
-/// A box of canvas pixels, right and bottom exclusive.
-typedef _Box = ({int left, int top, int rightExclusive, int bottomExclusive});
+/// A box of canvas pixels.
+typedef _Pixels = ({int left, int top, int width, int height});
 
-/// A finished coverage mask and where it sits on the canvas, at least as
-/// large as the piece it was finished for.
-typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
+/// [box]'s pixels.
+_Pixels _pixelsOf(DirtyRegion box) => (
+  left: box.left,
+  top: box.top,
+  width: box.rightExclusive - box.left,
+  height: box.bottomExclusive - box.top,
+);
+
+/// [region] finished over [sheet] as [options] say — the expand's
+/// generations, then the anti-alias — [over] those parts of it alone, and
+/// cut into a mask for each, on the engine ([EngineSelectionMasks.area]).
+List<GpuMask> _areaMasks(
+  CanvasSelectionRegion region,
+  _Pixels sheet,
+  FloodFillOptions options, {
+  required List<_Pixels> over,
+}) => EngineSelectionMasks.area(
+  region.spelled,
+  box: sheet,
+  expand: options.expandPx,
+  antiAlias: options.antiAlias,
+  parts: over,
+);
+
+/// An area's pieces' coverage on the engine ([_areaMasks] over [parts]):
+/// asked for once, all together, the first time one is read on the engine
+/// the app has, and kept as long as this is — which every piece laid of it
+/// holds.
+final class _AreaOnEngine {
+  _AreaOnEngine({
+    required this.region,
+    required this.sheet,
+    required this.options,
+    required this.parts,
+  });
+
+  final CanvasSelectionRegion region;
+  final _Pixels sheet;
+  final FloodFillOptions options;
+  final List<_Pixels> parts;
+
+  /// A mask a part, in [parts]' order.
+  List<GpuMask> get masks => EngineSelectionMasks.keptFor(
+    this,
+    () => _areaMasks(region, sheet, options, over: parts),
+  );
+}
 
 /// The grid an area is cut on: the cel's own tiles. It decides only how
 /// the area is cut, never a byte of what lands — a piece lands 1:1 wherever
@@ -1476,9 +411,20 @@ typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
 /// another grid lands the same bytes.
 const int _pieceSize = defaultCelTileSize;
 
-/// Which of [sheet]'s tiles the finished area can reach: a tile within
-/// [reach] of a covered pixel. The rest would finish to nothing, and are
-/// never finished.
+/// Which of [sheet]'s tiles the finished area reaches: a tile that holds a
+/// pixel within [reach] of a covered one, the steps along the rows and
+/// along the columns counted together. A generation of the expand takes in
+/// a pixel's four neighbours and the soften one more, so the finish leaves
+/// something of every pixel that near and of no other. The rest finish to
+/// nothing, and are never finished.
+///
+/// ⛔EXACT, and it has to be: no byte of a piece comes back to say the
+/// piece was empty ([buildRegionFillDabs]), so a tile named here that held
+/// nothing would be laid as a stamp of nothing — staged, and kept by the
+/// history — and one missed would be a hole. ↩️Till 2026-11-15 it named
+/// every tile within [reach] along the rows AND along the columns, a
+/// square's corners more than the finish reaches, and the bytes finished
+/// here said which of those were empty.
 bool Function(TileSpan piece) _tilesReached(
   _HardRuns hard, {
   required DirtyRegion sheet,
@@ -1493,23 +439,22 @@ bool Function(TileSpan piece) _tilesReached(
       continue;
     }
     final y = hard.top + row;
-    final firstY =
-        floorDiv(math.max(y - reach, sheet.top), _pieceSize) - range.firstY;
-    final lastY =
-        floorDiv(math.min(y + reach, sheet.bottomExclusive - 1), _pieceSize) -
-        range.firstY;
-    for (var r = 0; r + 1 < runs.length; r += 2) {
-      final x0 = math.max(hard.left + runs[r] - reach, sheet.left);
-      final x1 = math.min(
-        hard.left + runs[r + 1] - 1 + reach,
-        sheet.rightExclusive - 1,
-      );
-      final firstX = floorDiv(x0, _pieceSize) - range.firstX;
-      final lastX = floorDiv(x1, _pieceSize) - range.firstX;
-      for (var tileRow = firstY; tileRow <= lastY; tileRow += 1) {
+    final firstY = floorDiv(y - reach, _pieceSize);
+    final lastY = floorDiv(y + reach, _pieceSize);
+    for (var tileY = firstY; tileY <= lastY; tileY += 1) {
+      // What is left of the reach along the row, once it has gone up or
+      // down to this row of tiles.
+      final top = tileY * _pieceSize;
+      final bottom = top + _pieceSize - 1;
+      final away = y < top ? top - y : (y > bottom ? y - bottom : 0);
+      final along = reach - away;
+      final tileRow = (tileY - range.firstY) * columns - range.firstX;
+      for (var r = 0; r + 1 < runs.length; r += 2) {
+        final x0 = hard.left + runs[r] - along;
+        final x1 = hard.left + runs[r + 1] - 1 + along;
         grid.fillRange(
-          tileRow * columns + firstX,
-          tileRow * columns + lastX + 1,
+          tileRow + floorDiv(x0, _pieceSize),
+          tileRow + floorDiv(x1, _pieceSize) + 1,
           1,
         );
       }
@@ -1521,60 +466,14 @@ bool Function(TileSpan piece) _tilesReached(
       0;
 }
 
-/// The area finished over [around] — a piece, or the whole sheet — as the
-/// one sheet over [sheet] would have finished it: its hard mask over a
-/// window — [around] grown by [reach], cut at [sheet] — then the expand and
-/// the anti-alias pass, as [_cropAndFinishFloodRegion] runs them. Exact
-/// over [around], which is all a reader takes from it
-/// ([buildRegionFillDabs] says why).
-_FinishedMask _finishedWindow(
-  _HardRuns hard, {
-  required _Box around,
-  required DirtyRegion sheet,
-  required int reach,
-  required FloodFillOptions options,
-}) {
-  final left = math.max(around.left - reach, sheet.left);
-  final top = math.max(around.top - reach, sheet.top);
-  final width = math.min(around.rightExclusive + reach, sheet.rightExclusive) -
-      left;
-  final height =
-      math.min(around.bottomExclusive + reach, sheet.bottomExclusive) - top;
-  final mask = Uint8List(width * height);
-  final firstRow = math.max(top, hard.top);
-  final endRow = math.min(top + height, hard.top + hard.rows.length);
-  for (var y = firstRow; y < endRow; y += 1) {
-    final runs = hard.rows[y - hard.top];
-    final offset = (y - top) * width;
-    for (var r = 0; r + 1 < runs.length; r += 2) {
-      final start = math.max(hard.left + runs[r], left);
-      final end = math.min(hard.left + runs[r + 1], left + width);
-      if (start < end) {
-        mask.fillRange(offset + start - left, offset + end - left, 255);
-      }
-    }
-  }
-  dilateMask4(mask, width: width, height: height, passes: options.expandPx);
-  if (options.antiAlias) {
-    // ⛔UNCLAMPED — the fill's ramp, as in [_cropAndFinishFloodRegion].
-    softenMaskBoundary(
-      mask,
-      width: width,
-      height: height,
-      insideOutlineOnly: false,
-    );
-  }
-  return (mask: mask, left: left, top: top, width: width);
-}
-
 /// 🚨★★★WHAT A FILL HELD DOWN WILL COVER, BEFORE A COLOUR IS LAID (I-160 ·
 /// I-160-Q2 a, 유저 2026-11-04 「바꾼다 — 누르는 동안 미리보기, 떼면 채움」):
 /// the flood from a point, kept so the press can show where it reaches and
 /// the lift can land it without flooding again.
 ///
 /// In the space the seed was in ([fillRangeAt]'s `space`). Null from
-/// [fillRangeAt] when nothing was flooded at all — the seed off the fill
-/// raster.
+/// [fillRangeAt] when nothing was flooded at all — the seed off the box
+/// the fill reads.
 final class FillRange {
   FillRange._({
     required this.region,
@@ -1600,6 +499,38 @@ final class FillRange {
 
   final double _opacity;
   final void Function()? _onOpenRegion;
+
+  /// The pieces of [region] made so far, and what makes the rest
+  /// ([_pieces]).
+  final List<_Piece> _made = [];
+  Iterator<_Piece>? _making;
+
+  /// [region]'s pieces ([_runsOf]), each made once — and its coverage
+  /// moved to the engine once — however often the range is laid: a
+  /// gradient dragged over it lays it at every frame under new ends, and
+  /// its commit lays it once more. An ask reads what the asks before made
+  /// and makes on from where they stopped, so it is still laid a share at
+  /// a time where a share is asked.
+  Iterable<_Piece> _pieces(FloodFillRegion finished) sync* {
+    for (var at = 0; ; at += 1) {
+      if (at == _made.length) {
+        final making = _making ??=
+            _runsOf(
+                  _boxOf(finished),
+                  covered: (tile) => _covers(finished, tile),
+                )
+                .map(
+                  (run) => _Piece.ofBytes(run, _bytesOver(finished, run.box)),
+                )
+                .iterator;
+        if (!making.moveNext()) {
+          return;
+        }
+        _made.add(making.current);
+      }
+      yield _made[at];
+    }
+  }
 
   /// Whether nothing fills because the region is not closed — an EXTENDED
   /// fill's flood reached the apron wall.
@@ -1639,15 +570,16 @@ final class FillRange {
     onOpenRegion: _onOpenRegion,
   );
 
-  /// The range laid in [color] as stamp pieces ([_stampPieces]) — empty for
+  /// The range laid in [color] as stamp pieces ([_dabsOf]) — empty for
   /// an [open] range, which says so ([fillRangeAt]'s `onOpenRegion`): it is
   /// where the fill would have landed that nothing does.
   List<BrushDab> dabsIn(int color) => _laid(color: color).toList();
 
   /// The range laid under [gradient] (I-160) — the stamp pieces [dabsIn]
-  /// lays, each pixel the gradient's colour at its centre. Made as they are
-  /// asked for, afresh at each ask: what a dragged shape lays a share of a
-  /// frame at a time ([ShapeArea]'s `pieces`).
+  /// lays, each pixel the gradient's colour at its centre. Asked afresh at
+  /// each frame a gradient is dragged, and laid a share of a frame at a
+  /// time where a share is asked ([ShapeArea]'s `pieces`) — the pieces
+  /// themselves made once ([_pieces]): a new frame is the gradient's ends.
   Iterable<BrushDab> piecesUnder(FillGradient gradient) =>
       _laid(color: gradient.startColor, gradient: gradient);
 
@@ -1657,117 +589,195 @@ final class FillRange {
       _onOpenRegion?.call();
       return const [];
     }
-    final mask = (
-      mask: finished.mask,
-      left: finished.left,
-      top: finished.top,
-      width: finished.width,
-    );
-    return _stampPieces(
-      DirtyRegion(
-        left: finished.left,
-        top: finished.top,
-        rightExclusive: finished.left + finished.width,
-        bottomExclusive: finished.top + finished.height,
-      ),
-      paint: (color: color, gradient: gradient, opacity: _opacity),
-      finishedAround: (_) => mask,
+    return _dabsOf(
+      _pieces(finished),
+      (color: color, gradient: gradient, opacity: _opacity),
     );
   }
 
-  /// The outline of every pixel the fill would write into, inside [within]
-  /// where a selection cuts it — on the pixel grid, in the seed's space
-  /// ([pixelRunContours]). Empty for an [open] range.
-  List<List<CanvasPoint>> contoursWithin(SelectionClip? within) {
+  /// Every pixel the fill would write into, inside [within] where a
+  /// selection cuts it, in the seed's space — read in one pass as the two
+  /// marks of it ([FillRangeCover]). Null for an [open] range.
+  FillRangeCover? coveredWithin(SelectionClip? within) {
     final finished = region;
     if (finished == null) {
-      return const [];
+      return null;
     }
     final width = finished.width;
-    final cut = within?.maskFor(
-      left: finished.left,
-      top: finished.top,
-      width: width,
-      height: finished.height,
-    );
-    final mask = finished.mask;
+    final mask = within == null ? finished.mask : _within(finished, within);
+    final cover = Uint8List(mask.length);
     // Four bytes at a time where the four are one answer — all ink inside a
     // run, all empty outside one — and a byte at a time where they are not
     // (🔬I-160: a 4K range read a byte each was 25 ms of rows). Only where
-    // the mask's words line up, and never under a cut, which reads its own.
-    final words = cut == null && mask.offsetInBytes % 4 == 0
-        ? mask.buffer.asUint32List(mask.offsetInBytes, mask.length ~/ 4)
+    // the mask's words line up.
+    final words = mask.offsetInBytes % 4 == 0
+        ? (
+            mask: mask.buffer.asUint32List(
+              mask.offsetInBytes,
+              mask.length ~/ 4,
+            ),
+            cover: cover.buffer.asUint32List(0, mask.length ~/ 4),
+          )
         : null;
-    // The covered runs of the row that starts at [offset] in the mask.
-    List<int> runsFrom(int offset) {
-      // [words] and [cut] are the method's, and a capture checked inside a
-      // loop is read past its check by the AOT compiler — a null one kills
-      // the release build
-      // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
-      final wordsNow = words;
-      final cutNow = cut;
-      final runs = <int>[];
-      var inside = false;
-      var x = 0;
-      while (x < width) {
-        final at = offset + x;
-        if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
-          final word = wordsNow[at >> 2];
-          if (inside ? word == 0xFFFFFFFF : word == 0) {
-            x += 4;
-            continue;
-          }
-        }
-        final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
-        if (covered != inside) {
-          runs.add(x);
-          inside = covered;
-        }
-        x += 1;
-      }
-      if (inside) {
-        runs.add(width);
-      }
-      return runs;
-    }
-
-    return pixelRunContours(
-      [for (var y = 0; y < finished.height; y += 1) runsFrom(y * width)],
+    final rows = _RowsCovered(
+      width: width,
+      mask: mask,
+      cover: cover,
+      words: words,
+    );
+    final outline = pixelRunContours(
+      [for (var y = 0; y < finished.height; y += 1) rows.from(y * width)],
       left: finished.left,
       top: finished.top,
       width: width,
     );
+    return (
+      outline: outline,
+      cover: FloodFillRegion(
+        left: finished.left,
+        top: finished.top,
+        width: width,
+        height: finished.height,
+        mask: cover,
+      ),
+    );
   }
 }
+
+/// [finished]'s pixels [within] takes any of, whole, and none elsewhere —
+/// cut on the engine under the mask the selection made there
+/// ([SelectionClip.maskOnEngine]), as the fill lands under it.
+///
+/// ↩️Till 2026-11-14 the CPU read the selection over the range's box at
+/// every region a held press reached (`SelectionClip.maskFor`, its grow,
+/// feather and anti-alias run there) and cut the range here a byte at a
+/// time.
+Uint8List _within(FloodFillRegion finished, SelectionClip within) {
+  final box = (
+    left: finished.left,
+    top: finished.top,
+    width: finished.width,
+    height: finished.height,
+  );
+  final meets = within.mayCover(
+    DirtyRegion.fromXYWH(
+      x: box.left,
+      y: box.top,
+      width: box.width,
+      height: box.height,
+    ),
+  );
+  if (!meets) {
+    return Uint8List(finished.mask.length);
+  }
+  return EngineSelectionMasks.cut(
+    finished.mask,
+    box: box,
+    by: within.maskOnEngine(),
+  );
+}
+
+/// The rows of a fill's [mask] read for what they cover
+/// ([FillRange.coveredWithin]), each covered pixel marked in [cover].
+final class _RowsCovered {
+  _RowsCovered({
+    required this.width,
+    required this.mask,
+    required this.cover,
+    required this.words,
+  });
+
+  final int width;
+  final Uint8List mask;
+  final Uint8List cover;
+  final ({Uint32List mask, Uint32List cover})? words;
+
+  /// The covered runs of the row that starts at [offset] in the mask.
+  List<int> from(int offset) {
+    final wordsNow = words;
+    final runs = <int>[];
+    var inside = false;
+    var x = 0;
+    while (x < width) {
+      final at = offset + x;
+      if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
+        final word = wordsNow.mask[at >> 2];
+        if (inside ? word == 0xFFFFFFFF : word == 0) {
+          wordsNow.cover[at >> 2] = word;
+          x += 4;
+          continue;
+        }
+      }
+      final covered = mask[at] > 0;
+      if (covered) {
+        cover[at] = 255;
+      }
+      if (covered != inside) {
+        runs.add(x);
+        inside = covered;
+      }
+      x += 1;
+    }
+    if (inside) {
+      runs.add(width);
+    }
+    return runs;
+  }
+}
+
+/// The pixels a fill held down would write into ([FillRange.coveredWithin])
+/// as each mark of them reads them: their [outline] on the pixel grid
+/// ([pixelRunContours]) — the walk's — and their [cover], 255 on each and 0
+/// elsewhere over the range's box — the engine's (flip lane ⓐ-3).
+typedef FillRangeCover = ({
+  PixelContours outline,
+  FloodFillRegion cover,
+});
 
 /// What a canvas asks for the fill's range at [point] — [fillRangeAt] with
 /// the host's cut, frame and knobs — and every copy [symmetry] makes of it.
 typedef FillRangeAt =
     FillRange? Function(CanvasPoint point, SymmetryShape? symmetry);
 
-/// The flood a fill from [point] makes — compose, then flood — as a
+/// The picture a fill reads over [box] of the space its seed is in: what
+/// the screen shows there with the paper left out, kept on the engine
+/// ([GpuFloodPicture]) — or null where there is none to read now. A canvas
+/// makes it (`fillPictureOver`); [fillRangeAt] frees it.
+typedef FillPictureOver = GpuFloodPicture? Function(DirtyRegion box);
+
+/// The flood a fill from [point] makes — the picture its canvas shows
+/// ([pictureOver]), flooded on the engine (rust/src/kernels/flood) — as a
 /// [FillRange] laid later, in [FillRange.dabsIn]'s colour at [opacity].
-/// Null when nothing floods (the seed off the fill raster).
+/// Null when nothing floods: the seed off the box the fill reads, or no
+/// picture to read.
+///
+/// 🚨★★★THE FILL READS WHAT THE SCREEN SHOWS (🗣️유저
+/// gpu-canonical-store-Q1, 2026-11-06: 「화면과 똑같은 그림을 읽는다」): the
+/// engine's composite of the frame — blends, folders, effects and letters
+/// as they show — and the flood, its finish and its gap close run there
+/// too. ↩️It read a raster of its own, the layers summed by a rule of its
+/// own (source-over at each one's opacity, no blend or effect) tile by
+/// tile as the flood reached them, in C or, with no engine, in Dart
+/// (`LazyCanvasRasterRgb` · `floodFillRegion`, till 2026-11-12): what a
+/// fill walled on was not always what was on screen.
+///
+/// The box is the canvas, or — with the fill past the canvas on — a finite
+/// apron around it ([pasteboardFillMarginCap]), in the space [point] is
+/// in: [space], the ARTWORK of the layer the dab lands on when it is posed
+/// (the draw-through wrap hands the seed over in it), null for the canvas.
 ///
 /// [symmetry] makes the tap fill every copy of the seed, unioned into the
-/// same one region — see the loop below for why the stroke path's dab
-/// replication is the wrong tool here.
-///
-/// [activeLayerId] is the 「현재」 of [FloodFillOptions.source] — the layer
-/// the dab lands on. [space] is where [point] and the dab are: that layer's
-/// ARTWORK when it is posed (the draw-through wrap hands the seed over in
-/// it), null for the canvas.
+/// same one region — see below for why the stroke path's dab replication
+/// is the wrong tool here.
 ///
 /// [onOpenRegion] is told when an open range is laid ([FillRange.dabsIn]),
 /// not here: a press that rests on an open region has filled nothing yet.
 FillRange? fillRangeAt({
-  required Cut cut,
-  required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
+  required CanvasSize canvasSize,
+  required FillPictureOver pictureOver,
   required CanvasPoint point,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
-  LayerId? activeLayerId,
   LayerPlacement? space,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
@@ -1778,18 +788,19 @@ FillRange? fillRangeAt({
   // at the paper's edge is not refused as open.
   final extended =
       options.extendBeyondCanvas && pasteboardReach != PasteboardReach.none;
-  final raster = labProbe(
-    'fill.raster-ctor',
-    () => LazyCanvasRasterRgb(
-      cut: cut,
-      frameIndex: frameIndex,
-      surfaceResolver: surfaceResolver,
-      extendBeyondCanvas: extended,
-      pasteboardReach: pasteboardReach,
-      source: options.source,
-      activeLayerId: activeLayerId,
-      space: space,
-    ),
+  // Extended (pasteboard) fills widen the box by a finite apron, into
+  // negative world space; the default box IS the canvas.
+  final marginX = extended
+      ? _pasteboardFillMargin(canvasSize.width, pasteboardReach)
+      : 0;
+  final marginY = extended
+      ? _pasteboardFillMargin(canvasSize.height, pasteboardReach)
+      : 0;
+  final box = DirtyRegion.fromLTBR(
+    left: -marginX,
+    top: -marginY,
+    rightExclusive: canvasSize.width + marginX,
+    bottomExclusive: canvasSize.height + marginY,
   );
   // A symmetry guide fills every copy of the SEED, not every copy of the
   // finished region: the mirrored region is whatever the picture encloses
@@ -1801,80 +812,86 @@ FillRange? fillRangeAt({
   // the other side. Reflecting the seed and flooding again is the only
   // thing that reads the other side's own outline.
   //
-  // The raster is built ONCE and every flood samples it, so N copies cost N
+  // The picture is made ONCE and every flood reads it, so N copies cost N
   // floods and not N composites — and every copy sees the same untouched
   // picture, which is what makes the result independent of seed order.
   //
   // [symmetry] is the CANVAS's and [point] is in [space]: the copies are
   // the canvas's, read through the seed's placement like a stroke's.
-  final seeds = symmetry == null
-      ? <CanvasPoint>[point]
-      : [
-          for (final copy in symmetryCopiesIn(guideSpaceOf(space), symmetry))
-            copy.apply(point),
-        ];
+  final seeds = [
+    for (final seed
+        in symmetry == null
+            ? [point]
+            : [
+                for (final copy in symmetryCopiesIn(
+                  guideSpaceOf(space),
+                  symmetry,
+                ))
+                  copy.apply(point),
+              ])
+      // A seed that simply landed outside the box answers nothing in
+      // silence, exactly as it did before symmetry existed.
+      if (box.containsPixel(x: seed.x.floor(), y: seed.y.floor()))
+        (x: seed.x.floor(), y: seed.y.floor()),
+  ];
+  if (seeds.isEmpty) {
+    return null;
+  }
+  final picture = labProbe('fill.picture', () => pictureOver(box));
+  if (picture == null) {
+    return null;
+  }
   final parts = <FloodFillRegion>[];
   final reached = <FloodFillRegion>[];
-  for (final seed in seeds) {
-    final flooded = labProbe(
-      'fill.flood',
-      () => floodFillRegion(
-        rgb: raster.rgb,
-        width: raster.width,
-        height: raster.height,
-        seedX: seed.x.floor() - raster.originX,
-        seedY: seed.y.floor() - raster.originY,
-        options: options,
-        ensureComposed: raster.ensureComposedAt,
-        ensureComposedBatch: raster.ensureComposedBatch,
-        nativeHandles: raster.nativeHandles,
-      ),
-    );
-    if (flooded == null) {
-      continue;
-    }
-    // The flood finished its region as one sheet already (the raster is
-    // whole either way), so every piece is cut from that one mask — where
-    // the raster lies.
-    final part = FloodFillRegion(
-      left: flooded.left + raster.originX,
-      top: flooded.top + raster.originY,
-      width: flooded.width,
-      height: flooded.height,
-      mask: flooded.mask,
-    );
-    reached.add(part);
-    if (extended) {
-      // Leak detection: a flood that reached the apron's outer wall means
-      // the region is OPEN (nothing bounded it before the wall). Refuse
-      // the fill — the raster analogue of Flash refusing to fill an
-      // unclosed shape.
-      //
-      // Judged per COPY: one copy landing in open space says nothing about
-      // the others, and dropping the whole fill because a mirror missed
-      // would make the symmetry's own copies veto the seed's.
-      final hitTheWall =
-          flooded.left <= 0 ||
-          flooded.top <= 0 ||
-          flooded.left + flooded.width >= raster.width ||
-          flooded.top + flooded.height >= raster.height;
-      if (hitTheWall) {
-        continue;
+  try {
+    for (final (:x, :y) in seeds) {
+      // Finished as one sheet where the picture lies — every piece is cut
+      // from that one mask.
+      final (:left, :top, :width, :height, :mask) = labProbe(
+        'fill.flood',
+        () => EngineFloods.kernels.fill(
+          picture,
+          x,
+          y,
+          tolerance: options.tolerance,
+          gap: options.gapClosePx,
+          expand: options.expandPx,
+          antiAlias: options.antiAlias,
+        ),
+      );
+      final part = FloodFillRegion(
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        mask: mask,
+      );
+      reached.add(part);
+      if (extended) {
+        // Leak detection: a flood that reached the apron's outer wall
+        // means the region is OPEN (nothing bounded it before the wall).
+        // Refuse the fill — the raster analogue of Flash refusing to fill
+        // an unclosed shape.
+        //
+        // Judged per COPY: one copy landing in open space says nothing
+        // about the others, and dropping the whole fill because a mirror
+        // missed would make the symmetry's own copies veto the seed's.
+        final hitTheWall =
+            left <= box.left ||
+            top <= box.top ||
+            left + width >= box.rightExclusive ||
+            top + height >= box.bottomExclusive;
+        if (hitTheWall) {
+          continue;
+        }
       }
+      parts.add(part);
     }
-    parts.add(part);
+  } finally {
+    picture.free();
   }
-  if (extended) {
-    // The extended raster grew the engine's fill arenas ~9×; give the
-    // memory back once this tap's flood is done (the next canvas fill
-    // re-allocs canvas size).
-    QaNativeEngine.instance?.trimFloodRasterArena(
-      keepBytes: cut.canvasSize.width * cut.canvasSize.height * 4,
-    );
-  }
-  // A seed that simply landed outside the raster answers nothing in
-  // silence, exactly as it did before symmetry existed; the notice is the
-  // OPEN-region one only when a flood actually hit the wall.
+  // The notice is the OPEN-region one only when a flood actually hit the
+  // wall.
   if (reached.isEmpty) {
     return null;
   }
@@ -1943,11 +960,62 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// [opacity].
 typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 
-/// A finished coverage mask painted as [paint] says and handed over as STAMP
-/// PIECES: one dab for each run of cel tiles of [box] that the mask covers
-/// at all, along a tile row, in row-major order. [finishedAround] hands
-/// the finished mask over a tile, or null for a tile it knows is empty.
-/// Empty when no tile has a covered pixel.
+/// A run of a fill's cel tiles along one tile row that its finished mask
+/// covers at all ([_runsOf]): the pixels it covers, and its first tile's
+/// place on the grid.
+typedef _Run = ({_Pixels box, int column, int row});
+
+/// A piece of a fill — a [_Run] of its tiles: the mask over `[left,
+/// left+width) × [top, top+height)`, the run's first tile at ([column],
+/// [row]), and its coverage where the engine holds it ([onEngine]).
+final class _Piece {
+  /// [run], whose coverage on the engine [_coverage] answers each time it
+  /// is asked: an area's is the engine's from the start, cut where it was
+  /// finished ([_AreaOnEngine]).
+  _Piece(_Run run, this._coverage)
+    : left = run.box.left,
+      top = run.box.top,
+      width = run.box.width,
+      height = run.box.height,
+      column = run.column,
+      row = run.row;
+
+  /// [run] of a mask the CPU holds — a flood's range, read whole for its
+  /// mark ([FillRange]): [coverage], the mask's bytes over the run, moved
+  /// to the engine the first time the piece is asked there, however often
+  /// it is laid after ([EngineSelectionMasks.keptFor]).
+  _Piece.ofBytes(_Run run, Uint8List coverage)
+    : this(
+        run,
+        (piece) => EngineSelectionMasks.keptFor(
+          piece,
+          () => GpuMask(
+            appGpuComposite,
+            coverage,
+            x: piece.left,
+            y: piece.top,
+            width: piece.width,
+            height: piece.height,
+          ),
+        ),
+      );
+
+  final int left;
+  final int top;
+  final int width;
+  final int height;
+  final int column;
+  final int row;
+  final GpuMask Function(_Piece piece) _coverage;
+
+  /// Its coverage on the engine the app has.
+  GpuMask onEngine() => _coverage(this);
+}
+
+/// A finished coverage mask cut into STAMP PIECES: one for each run of cel
+/// tiles of [box] that the mask covers at all, along a tile row, in
+/// row-major order. [covered] says whether the mask covers any pixel of a
+/// tile. Empty when no tile has a covered pixel.
 ///
 /// 🚨★★★EVERY MASK A FILL LAYS IS CUT HERE — the bucket's flood and an
 /// area alike (board `an-area-dab-costs-its-box`, 2026-10-09). A piece lands
@@ -1962,176 +1030,109 @@ typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 /// blend, 뒤에 그리기) clears that wherever it passes — the one stamp passed
 /// over its whole box, a piece passes over itself.
 ///
-/// ⚠️A RUN, NOT A TILE, and it was measured: a stamp lands in one native
-/// call that fans its tiles out across the worker pool, and the call has a
+/// ⚠️A RUN, NOT A TILE, and it was measured — on the C stamp batch a piece
+/// landed through then (gone 2026-11-12): a stamp landed in one native
+/// call that fanned its tiles out across a worker pool, and the call had a
 /// price of its own. A piece a tile filled the 2010×1510 ellipse in 173
 /// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
 /// the desktop); a run of the row's covered tiles takes one call per run,
 /// and a thin line still carries only the tiles it crosses.
-Iterable<BrushDab> _stampPieces(
+Iterable<_Run> _runsOf(
   DirtyRegion box, {
-  required _Paint paint,
-  required _FinishedMask? Function(TileSpan tile) finishedAround,
+  required bool Function(TileSpan tile) covered,
 }) sync* {
-  // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
-  // inside one microsecond, and a stamp is equal to another by id, size and
-  // bytes — two solid pieces sharing an id would be one stamp to any set of
-  // them (the 확정 slot counts its stamps' bytes as a set).
-  final id = 'fill-${DateTime.now().microsecondsSinceEpoch}';
-  var sequence = 0;
-  final run = <({TileSpan tile, Uint8List coverage})>[];
-  BrushDab laid() {
-    final first = run.first.tile;
-    final dab = _colorStampDab(
-      left: first.left,
-      top: first.top,
-      width: run.last.tile.rightExclusive - first.left,
-      height: first.bottomExclusive - first.top,
-      mask: _joined(run),
-      color: paint.color,
-      gradient: paint.gradient,
-      opacity: paint.opacity,
-      id: '$id-${first.coord.x}.${first.coord.y}',
-      sequence: sequence,
+  final run = <TileSpan>[];
+  _Run cut() {
+    final first = run.first;
+    final piece = (
+      box: (
+        left: first.left,
+        top: first.top,
+        width: run.last.rightExclusive - first.left,
+        height: first.bottomExclusive - first.top,
+      ),
+      column: first.coord.x,
+      row: first.coord.y,
     );
-    sequence += 1;
     run.clear();
-    return dab;
+    return piece;
   }
 
   for (final tile in tileSpansOf(box, tileSize: _pieceSize)) {
-    if (run.isNotEmpty && run.last.tile.coord.y != tile.coord.y) {
-      yield laid();
+    if (run.isNotEmpty && run.last.coord.y != tile.coord.y) {
+      yield cut();
     }
-    final finished = finishedAround(tile);
-    final coverage = finished == null ? null : _coverageOf(tile, finished);
-    if (coverage == null) {
-      if (run.isNotEmpty) {
-        yield laid();
-      }
-      continue;
+    if (covered(tile)) {
+      run.add(tile);
+    } else if (run.isNotEmpty) {
+      yield cut();
     }
-    run.add((tile: tile, coverage: coverage));
   }
   if (run.isNotEmpty) {
-    yield laid();
+    yield cut();
   }
 }
 
-/// [finished]'s bytes over [tile], or null when not one of them is
-/// covered.
-Uint8List? _coverageOf(TileSpan tile, _FinishedMask finished) {
-  final width = tile.rightExclusive - tile.left;
-  final height = tile.bottomExclusive - tile.top;
-  final coverage = Uint8List(width * height);
-  var covers = false;
-  for (var y = 0; y < height; y += 1) {
-    final from =
-        (tile.top + y - finished.top) * finished.width +
-        (tile.left - finished.left);
-    coverage.setRange(y * width, y * width + width, finished.mask, from);
-    if (!covers) {
-      for (var x = y * width; x < y * width + width; x += 1) {
-        if (coverage[x] != 0) {
-          covers = true;
-          break;
-        }
-      }
-    }
+/// The box [region] lies in.
+DirtyRegion _boxOf(FloodFillRegion region) => DirtyRegion(
+  left: region.left,
+  top: region.top,
+  rightExclusive: region.left + region.width,
+  bottomExclusive: region.top + region.height,
+);
+
+/// How many fills have been laid as dabs ([_dabsOf]) since the app began.
+var _fillsLaid = 0;
+
+/// [pieces] laid as [paint] says, a stamp dab each.
+Iterable<BrushDab> _dabsOf(Iterable<_Piece> pieces, _Paint paint) sync* {
+  // ⚠️ONE id per fill, and a piece's first tile in it. A stamp is equal to
+  // another by id, size and bytes — two solid pieces sharing an id would be
+  // one stamp to any set of them (the 확정 slot counts its stamps' sizes as
+  // a set). ⛔And a fill's pieces have no bytes here to tell them apart
+  // ([_pieceDab]): two fills laid within one microsecond must not share
+  // one, so the count of fills is in it too.
+  final id = 'fill-${DateTime.now().microsecondsSinceEpoch}-$_fillsLaid';
+  _fillsLaid += 1;
+  final onEngine = paint.gradient?.onEngine ?? GpuColour(paint.color);
+  var sequence = 0;
+  for (final piece in pieces) {
+    yield _pieceDab(
+      piece,
+      paint: onEngine,
+      color: paint.color,
+      opacity: paint.opacity,
+      id: '$id-${piece.column}.${piece.row}',
+      sequence: sequence,
+    );
+    sequence += 1;
   }
-  return covers ? coverage : null;
 }
 
-/// The coverages of a run of neighbouring tiles along one tile row, side by
-/// side as one mask.
-Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
-  if (run.length == 1) {
-    return run.single.coverage;
-  }
-  final first = run.first.tile;
-  final width = run.last.tile.rightExclusive - first.left;
-  final height = first.bottomExclusive - first.top;
-  final joined = Uint8List(width * height);
-  for (final (:tile, :coverage) in run) {
-    final tileWidth = tile.rightExclusive - tile.left;
-    final x = tile.left - first.left;
-    for (var y = 0; y < height; y += 1) {
-      joined.setRange(
-        y * width + x,
-        y * width + x + tileWidth,
-        coverage,
-        y * tileWidth,
-      );
-    }
-  }
-  return joined;
-}
-
-/// One piece of a fill's coverage painted [color] and handed over as a
-/// stamp dab landing on the pixels `[left, left+width) × [top,
-/// top+height)`.
+/// [piece] handed over as a stamp dab landing on its own pixels, its
+/// coverage laid under [paint] by the engine
+/// ([EngineStampPictures.ofMask]).
 ///
-/// The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
-/// coverage, drawn 1:1 by the stamp blend path. The old square-padded
-/// tip-mask dab re-sampled the giant mask bilinearly per pixel at every
-/// materialization — a multi-second slice on large fills — and the stamp
-/// is byte-exact by construction.
+/// The fill lands as a STAMP (R15-⑥), drawn 1:1 by the stamp blend path.
+/// The old square-padded tip-mask dab re-sampled the giant mask bilinearly
+/// per pixel at every materialization — a multi-second slice on large
+/// fills — and the stamp is byte-exact by construction.
 ///
-/// Under a [gradient] (I-160) each pixel is the gradient's colour at its
-/// centre instead, its alpha times the coverage ([_gradientRgba]).
-BrushDab _colorStampDab({
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-  required Uint8List mask,
+/// ↩️Till 2026-11-15 the CPU painted each piece a pixel at a time and
+/// handed the picture up — under a gradient at every frame it was dragged
+/// (board `a-gradient-fill-preview-paints-its-range-on-the-cpu-every-
+/// frame`). 🗣️브러시/렌더링 2026-11-15 08:30: the plain fill goes by the
+/// same door — 「CPU 가 RGBA 를 안 만드는 길이 하나가 된다」 — so no byte of
+/// a piece's picture is made here, and nothing reads one.
+BrushDab _pieceDab(
+  _Piece piece, {
+  required GpuPaint paint,
   required int color,
-  FillGradient? gradient,
   required double opacity,
   required String id,
   required int sequence,
 }) {
-  final r = argbRed(color);
-  final g = argbGreen(color);
-  final b = argbBlue(color);
-  final rgba = labProbe('fill.stamp-build', () {
-    if (gradient != null) {
-      return _gradientRgba((
-        mask: mask,
-        left: left,
-        top: top,
-        width: width,
-      ), gradient);
-    }
-    final bytes = Uint8List(width * height * 4);
-    if (Endian.host == Endian.little) {
-      // One word store per pixel (R19-8K): the four byte stores below
-      // were a 197ms term on an 8000² fill. Little-endian word layout
-      // [r, g, b, coverage] is byte-identical to the byte loop.
-      final words = Uint32List.view(bytes.buffer, 0, mask.length);
-      final baseRgb = r | (g << 8) | (b << 16);
-      for (var index = 0; index < mask.length; index += 1) {
-        final coverage = mask[index];
-        if (coverage == 0) {
-          continue;
-        }
-        words[index] = baseRgb | (coverage << 24);
-      }
-      return bytes;
-    }
-    for (var index = 0; index < mask.length; index += 1) {
-      final coverage = mask[index];
-      if (coverage == 0) {
-        continue;
-      }
-      final offset = index * 4;
-      bytes[offset] = r;
-      bytes[offset + 1] = g;
-      bytes[offset + 2] = b;
-      bytes[offset + 3] = coverage;
-    }
-    return bytes;
-  });
+  final _Piece(:left, :top, :width, :height) = piece;
   return BrushDab(
     // Centred on the piece: a stamp lands at its centre less half its size
     // ([BrushStampImage.landingRect]), which is the piece's own corner.
@@ -2144,44 +1145,44 @@ BrushDab _colorStampDab({
     tipShape: BrushTipShape.square,
     pressure: 1,
     sequence: sequence,
-    stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
+    stamp: EngineStampPictures.ofMask(
+      id: id,
+      width: width,
+      height: height,
+      coverage: piece.onEngine,
+      whole: false,
+      paint: paint,
+      rgba: () => throw StateError(
+        'a fill piece is painted on the engine; its picture is never made '
+        'here',
+      ),
+    ),
   );
 }
 
-/// How finely [_gradientRgba] looks a pixel's colour up along its gradient
-/// ([FillGradient.stops]) — four stops to each level a channel can take.
-const int _gradientStops = 1024;
-
-/// [piece] — the coverage of a piece of a fill, where its corner sits —
-/// painted with [gradient]: each covered pixel the gradient's colour at its
-/// centre, that colour's alpha times the coverage.
-Uint8List _gradientRgba(_FinishedMask piece, FillGradient gradient) {
-  final (:mask, :left, :top, :width) = piece;
-  // The stops as the stamp's own bytes, so a pixel copies three of them
-  // rather than taking a colour apart.
-  final stops = Uint8List(_gradientStops * 4);
-  for (final (i, argb) in gradient.stops(_gradientStops).indexed) {
-    stops
-      ..[i * 4] = argbRed(argb)
-      ..[i * 4 + 1] = argbGreen(argb)
-      ..[i * 4 + 2] = argbBlue(argb)
-      ..[i * 4 + 3] = argbAlpha(argb);
-  }
-  final bytes = Uint8List(mask.length * 4);
-  final along = Float64List(width);
-  for (var start = 0; start < mask.length; start += width) {
-    gradient.rowInto(along, left + 0.5, top + start ~/ width + 0.5);
-    for (var column = 0; column < width; column += 1) {
-      final coverage = mask[start + column];
-      if (coverage == 0) {
-        continue;
+/// Whether [finished] covers any pixel of [tile].
+bool _covers(FloodFillRegion finished, TileSpan tile) {
+  final width = tile.rightExclusive - tile.left;
+  for (var y = tile.top; y < tile.bottomExclusive; y += 1) {
+    final from =
+        (y - finished.top) * finished.width + (tile.left - finished.left);
+    for (var at = from; at < from + width; at += 1) {
+      if (finished.mask[at] != 0) {
+        return true;
       }
-      // Rounded: [along] is never below 0.
-      final stop = (along[column] * (_gradientStops - 1) + 0.5).toInt() * 4;
-      final offset = (start + column) * 4;
-      copyRgb(bytes, offset, stops, stop);
-      bytes[offset + 3] = mul255Round(stops[stop + 3], coverage);
     }
+  }
+  return false;
+}
+
+/// [finished]'s bytes over [box], row after row.
+Uint8List _bytesOver(FloodFillRegion finished, _Pixels box) {
+  final bytes = Uint8List(box.width * box.height);
+  for (var y = 0; y < box.height; y += 1) {
+    final from =
+        (box.top + y - finished.top) * finished.width +
+        (box.left - finished.left);
+    bytes.setRange(y * box.width, (y + 1) * box.width, finished.mask, from);
   }
   return bytes;
 }

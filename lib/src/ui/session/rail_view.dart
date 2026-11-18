@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../models/attached_layer_resolve.dart' show canCarryAttachedLayers;
+import '../../models/attached_layer_resolve.dart' show attachRowsFoldedAway;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
@@ -64,12 +64,13 @@ class RailView {
     TimelineRowFilter.none,
   );
 
-  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9) — the bases whose
-  /// `collapsed` is set ([readFolds]). Default open: a fresh attach layer
-  /// must be visible the moment it is made.
-  ValueListenable<Set<LayerId>> get collapsedAttachBaseIds =>
-      _collapsedAttachBaseIds;
-  final _collapsedAttachBaseIds = ValueNotifier(const <LayerId>{});
+  /// Rows an ATTACH fold takes off the screen (UI-R20 #9): the rows a base's
+  /// attach group stacks on a side the base folded (`Layer.foldedAttaches`,
+  /// I-175 — [readFolds]). Default open: a fresh attach layer must be
+  /// visible the moment it is made.
+  ValueListenable<Set<LayerId>> get attachFoldedRowIds =>
+      _attachFoldedRowIds;
+  final _attachFoldedRowIds = ValueNotifier(const <LayerId>{});
 
   /// Layers whose AE-style property-lane twirl-down is open
   /// (`Layer.lanesExpanded`). The walk reads it too: property rows are
@@ -111,16 +112,18 @@ class RailView {
       return;
     }
     _foldsReadOff = project;
-    final folded = <LayerId>{};
+    final foldedAway = <LayerId>{};
     final twirled = <LayerId>{};
     final groups = <String>{};
     final layers = project == null
         ? const <Layer>[]
         : projectLayersAnywhere(project);
-    for (final layer in layers) {
-      if (layer.collapsed && canCarryAttachedLayers(layer)) {
-        folded.add(layer.id);
+    for (final track in project?.tracksOfEveryTimeline ?? const <Track>[]) {
+      for (final cut in track.cuts) {
+        foldedAway.addAll(attachRowsFoldedAway(cut.layers));
       }
+    }
+    for (final layer in layers) {
       if (layer.lanesExpanded) {
         twirled.add(layer.id);
       }
@@ -137,7 +140,7 @@ class RailView {
         groups.add(laneGroupKey(trackTransformLaneCarrierId(track.id), laneId));
       }
     }
-    _tell(_collapsedAttachBaseIds, folded);
+    _tell(_attachFoldedRowIds, foldedAway);
     _tell(_expandedLaneLayerIds, twirled);
     _tell(_expandedLaneGroupKeys, groups);
     _tell(_twirledTrackIds, tracks);
@@ -261,7 +264,7 @@ class RailView {
   late final Listenable drawn = Listenable.merge([
     hiddenSections,
     rowFilter,
-    _collapsedAttachBaseIds,
+    _attachFoldedRowIds,
     _expandedLaneLayerIds,
     _expandedLaneGroupKeys,
     _twirledTrackIds,
@@ -271,7 +274,7 @@ class RailView {
   void dispose() {
     hiddenSections.dispose();
     rowFilter.dispose();
-    _collapsedAttachBaseIds.dispose();
+    _attachFoldedRowIds.dispose();
     _expandedLaneLayerIds.dispose();
     _expandedLaneGroupKeys.dispose();
     _twirledTrackIds.dispose();

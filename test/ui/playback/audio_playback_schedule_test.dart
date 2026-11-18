@@ -5,6 +5,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_audio_spans.dart';
 import 'package:anicel/src/models/se_sound.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
+    show equalPowerPanGains;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 void main() {
@@ -34,7 +36,8 @@ void main() {
       expect(ntsc.sampleToFrame(1601, 48000), 0);
     });
 
-    test('carries trim, gain and the volume line into sample units', () {
+    test('carries trim, gain, the volume line and the pan sides\' lines into '
+        'sample units', () {
       const rate = ProjectFrameRate.fps24;
       final converted = audioMixScheduleFrom(
         schedule: const [
@@ -45,6 +48,8 @@ void main() {
             offsetFrames: 5,
             gain: 0.5,
             volume: [(frame: 0, gain: 0.0), (frame: 3, gain: 0.8)],
+            panLeftLine: [(frame: 0, gain: 1.0), (frame: 3, gain: 0.5)],
+            panRightLine: [(frame: 0, gain: 0.0), (frame: 3, gain: 0.25)],
           ),
         ],
         rate: rate,
@@ -57,6 +62,14 @@ void main() {
       expect(clip.gain, 0.5);
       expect([for (final point in clip.envelope) point.sample], [0, 3 * 2000]);
       expect([for (final point in clip.envelope) point.gain], [0.0, 0.8]);
+      expect(
+        [for (final point in clip.panLeftLine) (point.sample, point.gain)],
+        [(0, 1.0), (3 * 2000, 0.5)],
+      );
+      expect(
+        [for (final point in clip.panRightLine) (point.sample, point.gain)],
+        [(0, 0.0), (3 * 2000, 0.25)],
+      );
     });
 
     test('shares one source per distinct path, in first-appearance order', () {
@@ -70,7 +83,10 @@ void main() {
         rate: rate,
         sampleRate: 48000,
       );
-      expect(converted.sourcePaths, ['b.wav', 'a.wav']);
+      expect(converted.sources, [
+        (path: 'b.wav', filtered: null),
+        (path: 'a.wav', filtered: null),
+      ]);
       expect(
         converted.clips.map((clip) => clip.sourceIndex).toList(),
         [0, 1, 0],
@@ -110,5 +126,106 @@ void main() {
       (frame: 4, gain: 1.0),
       (frame: 8, gain: 1.0),
     ], reason: 'the keys stay the keys');
+  });
+
+  // 🗣️audio-fx-grows-like-the-pros-Q6 (유저 2026-11-17): 「音量 키 · パン 을
+  // 건너뛴다」.
+  test('🎯a sound switched off plays its Total alone — its keys and its pan '
+      'passed by, kept for when it is on', () {
+    final span = SeAudioSpan(
+      clip: AudioClip(
+        filePath: 'a.wav',
+        frameId: const FrameId('f'),
+        gain: 1.5,
+      ),
+      clipIndex: 0,
+      startFrame: 2,
+      lengthFrames: 8,
+    );
+    final sound = SeSound(
+      pan: PropertyTrack<double>(keys: {2: const PropertyKey(-0.5)}),
+      totalVolume: 0.5,
+      volume: PropertyTrack<double>(
+        keys: {2: const PropertyKey(0.0), 6: const PropertyKey(1.0)},
+      ),
+    );
+    ScheduledAudioClip scheduled(SeSound sound) => ScheduledAudioClip.ofSpan(
+      span,
+      startFrame: 2,
+      endFrameExclusive: 10,
+      clippedLead: 0,
+      sound: sound,
+    );
+    final off = scheduled(sound.copyWith(enabled: false));
+    expect(off.gain, 0.75, reason: 'the Total still answers');
+    expect(off.pan, 0.0);
+    expect([...off.panLeftLine, ...off.panRightLine], isEmpty);
+    expect(off.volume, isEmpty);
+    final on = scheduled(sound);
+    expect(on.pan, -0.5);
+    expect(on.panLeftLine, isNotEmpty);
+    expect(on.volume, isNotEmpty);
+  });
+
+  // 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
+  // 단다」.
+  test('🎯a keyed pan rides the entry as its two sides\' lines, read at '
+      'every frame it sounds from where it begins, a still run kept by its '
+      'ends', () {
+    final span = SeAudioSpan(
+      clip: AudioClip(filePath: 'a.wav', frameId: const FrameId('f')),
+      clipIndex: 0,
+      startFrame: 2,
+      lengthFrames: 8,
+    );
+    ScheduledAudioClip scheduled(Map<int, double> keys, {int lead = 0}) =>
+        ScheduledAudioClip.ofSpan(
+          span,
+          startFrame: 2 + lead,
+          endFrameExclusive: 10,
+          clippedLead: lead,
+          sound: SeSound(
+            pan: PropertyTrack<double>(
+              keys: {
+                for (final MapEntry(:key, :value) in keys.entries)
+                  key: PropertyKey(value),
+              },
+            ),
+          ),
+        );
+    // The two sides the pans make at their frames.
+    void expectSides(ScheduledAudioClip entry, List<(int, double)> pans) {
+      expect(entry.panLeftLine, [
+        for (final (frame, pan) in pans)
+          (frame: frame, gain: equalPowerPanGains(pan).left),
+      ]);
+      expect(entry.panRightLine, [
+        for (final (frame, pan) in pans)
+          (frame: frame, gain: equalPowerPanGains(pan).right),
+      ]);
+    }
+
+    const sweep = {2: -1.0, 6: 1.0};
+    final whole = scheduled(sweep);
+    expect(whole.pan, -1.0);
+    expectSides(whole, [
+      (0, -1.0),
+      (1, -0.5),
+      (2, 0.0),
+      (3, 0.5),
+      (4, 1.0),
+      (8, 1.0),
+    ]);
+    final clipped = scheduled(sweep, lead: 3);
+    expect(clipped.pan, 0.5, reason: 'where the entry begins');
+    expectSides(clipped, [(0, 0.5), (1, 1.0), (5, 1.0)]);
+    // Still, then moving: kept where the move begins.
+    expectSides(scheduled(const {2: 0.0, 4: 0.0, 6: 1.0}), [
+      (0, 0.0),
+      (2, 0.0),
+      (3, 0.5),
+      (4, 1.0),
+      (8, 1.0),
+    ]);
   });
 }

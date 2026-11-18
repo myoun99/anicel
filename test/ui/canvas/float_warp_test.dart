@@ -1,19 +1,24 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart'
+    show straightRgbaOf;
 import 'package:anicel/src/services/stamp_carry.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart';
 import 'package:anicel/src/ui/canvas/transform_box.dart';
-
-import '../../helpers/settle_async.dart';
 
 /// Where the open box puts the float, read without a selection layer
 /// around it: [FloatWarp]'s geometry, and the [FloatResamplePreview] that
@@ -218,6 +223,7 @@ void main() {
       host.visible = (left: -500, top: -500, right: 500, bottom: 500);
 
       preview.schedule();
+      await tester.pump();
 
       expect(
         debugLastResampledFloat!.stamp!.width,
@@ -231,6 +237,7 @@ void main() {
     ) async {
       host.visible = (left: 100, top: -500, right: 500, bottom: 500);
       preview.schedule();
+      await tester.pump();
       expect(
         debugLastResampledFloat!.stamp!.width,
         140 - 100,
@@ -256,71 +263,183 @@ void main() {
       pasteboard: wall,
     );
 
-    /// Lends a decode, were one asked for, a second to land in: the window
-    /// a test watches for a picture NOT to come in.
-    Future<void> window(WidgetTester tester) => lendBothClocks(
+    testWidgets('a box that only moves the float shows no resample of its '
+        'own — the float\'s pixels draw it — and lands it moved', (
       tester,
-      rounds: 100,
-      beat: const Duration(milliseconds: 10),
-    );
-
-    testWidgets('a box that only moves the float shows no picture of its own '
-        '— the float\'s pixels draw it — and lands it moved', (tester) async {
+    ) async {
       final now = over(box(tx: 40, ty: 30));
       final preview = FloatResamplePreview(_Host(), () => now);
       addTearDown(preview.discard);
 
       preview.schedule();
-      await window(tester);
+      await tester.pump();
 
-      expect(preview.image, isNull);
+      expect(preview.shown, isNull);
       final landed = preview.warped()!;
       expect(landed.center, CanvasPoint(x: 140, y: 80));
       expect(landed.stamp, same(lifted.stamp), reason: 'its own picture');
     });
 
-    testWidgets('a picture shown for a scale is let go once the box only '
+    testWidgets('a resample shown for a scale is let go once the box only '
         'moves again', (tester) async {
       var now = over(box(scale: 2));
       final preview = FloatResamplePreview(_Host(), () => now);
       addTearDown(preview.discard);
       preview.schedule();
-      await settleAsync(tester, () => preview.image != null);
+      await tester.pump();
       expect(
-        preview.image,
+        preview.shown,
         isNotNull,
         reason: '⛔premise: a scale shows its resample',
       );
 
       now = over(box(tx: 40, ty: 30));
       preview.schedule();
+      await tester.pump();
 
-      expect(preview.image, isNull);
-      expect(preview.imageDab, isNull);
+      expect(preview.shown, isNull);
     });
 
-    testWidgets('a decode still on its way when the box ends lands nowhere — '
-        'letting go of the picture takes the decode\'s claim with it', (
-      tester,
-    ) async {
+    testWidgets('🚨the resample shown holds itself as tiles where it lands '
+        '— what the engine lays (flip lane ⓐ-2)', (tester) async {
+      final now = over(box(scale: 2));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      preview.schedule();
+      await tester.pump();
+
+      final FloatResampleShown(:dab, :landing, :tiles) = preview.shown!;
+      final stamp = dab.stamp!;
+      expect(landing, stamp.landingRect(dab.center));
+      expect(
+        bitmapSurfaceRegionPixels(
+          BitmapSurface(
+            canvasSize: const CanvasSize(width: 1000, height: 1000),
+            tiles: tiles,
+          ),
+          landing,
+        ),
+        stamp.rgba,
+      );
+    });
+
+    testWidgets('a resample asked for as the box ends is never shown — '
+        'letting go takes the ask with it', (tester) async {
       final now = over(box(scale: 2));
       final preview = FloatResamplePreview(_Host(), () => now);
       addTearDown(preview.discard);
       preview.schedule();
 
       preview.discard();
-      await window(tester);
+      await tester.pump();
 
-      expect(preview.image, isNull);
+      expect(preview.shown, isNull);
+    });
+  });
+
+  // 🧭관제 2026-11-11 18:47 (a-float-premultiplies-in-the-c-each-step):
+  // 「플로트를 엔진에 놓아 … Flutter 표시용 디코드 자체를 없애는 쪽」 — and
+  // one resample a frame, the last the hand asked for, where one upload at
+  // a time had paced it.
+  group('what an open box shows, a frame at a time', () {
+    FloatWarp scaled(double by) => FloatWarp(
+      box: box(scale: by),
+      float: float(),
+      options: TransformToolOptions.defaults,
+      pasteboard: wall,
+    );
+
+    testWidgets('every ask before the frame ends waits for it, and the last '
+        'is what runs', (tester) async {
+      var now = scaled(2);
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      debugLastResampledFloat = null;
+
+      preview.schedule();
+      now = scaled(3);
+      preview.schedule();
+
+      expect(debugLastResampledFloat, isNull, reason: 'nothing ran yet');
+      expect(preview.caughtUp, isFalse);
+      await tester.pump();
+
+      expect(preview.caughtUp, isTrue);
+      expect(
+        debugLastResampledFloat!.stamp!.height,
+        20 * 3,
+        reason: 'the box as it is when the frame ends — the wall cuts its '
+            'width, not its height',
+      );
+      expect(preview.shown!.dab, same(debugLastResampledFloat));
+    });
+
+    testWidgets('🚨the resample shown is pictured for no one till a canvas '
+        'draws it', (tester) async {
+      final preview = FloatResamplePreview(_Host(), () => scaled(2));
+      addTearDown(preview.discard);
+      preview.schedule();
+      await tester.pump();
+      final shown = preview.shown!;
+
+      expect(shown.debugPictured, isFalse);
+      // CONTROL: a canvas that draws pictures asks — and gets the dab's
+      // pixels, where it lands: its alpha exactly, and its colour where
+      // it is whole (a straight read of a premultiplied picture rounds a
+      // part-clear one).
+      final picture = shown.picture;
+      expect(shown.debugPictured, isTrue);
+      expect(
+        (picture.width, picture.height),
+        (shown.landing.width, shown.landing.height),
+      );
+      final read = (await tester.runAsync(() => straightRgbaOf(picture)))!;
+      final rgba = shown.dab.stamp!.rgba;
+      expect(read.length, rgba.length);
+      for (var at = 0; at < rgba.length; at += 4) {
+        final alpha = rgba[at + 3];
+        expect(
+          alpha == 255 ? read.sublist(at, at + 4) : read[at + 3],
+          alpha == 255 ? rgba.sublist(at, at + 4) : alpha,
+          reason: 'pixel ${at ~/ 4}',
+        );
+      }
+    });
+
+    testWidgets('a picture made is let go once its resample is shown no '
+        'more — another taking its place, or the box ending', (tester) async {
+      var now = scaled(2);
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      Future<ui.Image> pictured() async {
+        preview.schedule();
+        await tester.pump();
+        return preview.shown!.picture;
+      }
+
+      Future<void> pastTheFramesThatMayDrawIt() async {
+        for (var frame = 0; frame < 4; frame += 1) {
+          await tester.pump();
+        }
+      }
+
+      final replaced = await pictured();
+      now = scaled(3);
+      final ended = await pictured();
+      expect(replaced.debugDisposed, isFalse, reason: '⛔CONTROL: not yet');
+      await pastTheFramesThatMayDrawIt();
+      expect(replaced.debugDisposed, isTrue, reason: 'another took its place');
+
+      preview.discard();
+      expect(ended.debugDisposed, isFalse, reason: '⛔CONTROL: not yet');
+      await pastTheFramesThatMayDrawIt();
+      expect(ended.debugDisposed, isTrue, reason: 'the box ended');
     });
   });
 }
 
 class _Host implements FloatWarpHost {
   SelectionVisibleRect? visible;
-
-  @override
-  bool get mounted => true;
 
   @override
   SelectionVisibleRect? previewVisibleRect() => visible;

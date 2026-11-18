@@ -12,16 +12,41 @@
 /// 뺄수있고**」.
 library;
 
-/// 공정 — 대분류(용지·콘티·미술)와 셀 안의 작업 단계를 한 벌로 둡니다.
+/// A colour label's SECOND axis — a correction ([LayerRevise]), or, for a
+/// 用紙 label, the stage it is the paper of ([LayerProcess]).
 ///
-/// ⚠️미술은 BG와 BOOK을 **나누지 않습니다**(유저: 「BG랑 BOOK이랑 나누지말라고.
-/// 美術라는. 미술이라는 항목으로 합치고」).
-enum LayerProcess {
+/// 🗣️F-578 (유저 2026-11-10): 「용지색라벨에도 공정 다 넣고싶거든?
+/// 용지-레이아웃, 용지-러프원, 용지-작감 이런식으로 … 용지는 용지-소재가
+/// 아니라 용지-LO 이런식으로」 — one slot, one name (용지-작감), so the paper's
+/// stage rides where a drawing's correction rides rather than in a field of
+/// its own beside it.
+sealed class LabelStep {
+  /// The stored key — the two sets share no spelling, so a key names one.
+  String get jsonValue;
+
+  /// The unabbreviated English name; the other languages are tabled in
+  /// `AppStrings` under [jsonValue].
+  String get displayName;
+
+  /// What the label chip writes.
+  String get abbreviation;
+}
+
+/// 공정 — 대분류(용지·콘티)와 셀 안의 작업 단계를 한 벌로 둡니다.
+///
+/// 🗣️美術 은 없습니다(F-578, 유저 2026-11-10: 「색라벨의 미술이란 공정
+/// 없앨까 생각중. 어차피 이 미술(원도) 그림은, 레이아웃작업자가 그리고, 그걸
+/// 레이아웃연출/레이아웃작감등이 수정하는거라 공정을 나눌 필요가 없음」) —
+/// BG · BOOK 은 LO 로 태어나고 종류 아이콘으로 구분합니다(F-578-Q1).
+/// ↩️미술은 BG 와 BOOK 을 나누지 않는 한 항목이었습니다(유저 08-27: 「BG랑
+/// BOOK이랑 나누지말라고. 美術라는. 미술이라는 항목으로 합치고」).
+enum LayerProcess implements LabelStep {
   /// 用紙 — 그림이 아니라 종이. ⚠️TVPaint 스샷에는 「TAP」으로 되어 있지만
   /// 유저 정정(2026-08-27): 「그게아니라 **용지**로 하자. 이름. 用紙」.
+  /// Its second axis names the stage or the correction it is the paper of
+  /// ([LabelStep]).
   paper('paper', 'Paper', 'PAP'),
   conte('conte', 'Storyboard', 'SB'),
-  art('art', 'Art', 'ART'),
   layout('layout', 'Layout', 'LO'),
   roughKey('rough-key', 'Rough Key', 'RK'),
   key('key', 'Key', 'KEY'),
@@ -33,16 +58,19 @@ enum LayerProcess {
   /// The stored key. ⚠️Shared with the cut envelope's `Map<공정키, 담당자>`
   /// so a process means the same thing in both — 「같은 것이 두 군데 살면
   /// 갈라진다」.
+  @override
   final String jsonValue;
 
   /// The unabbreviated name, in ENGLISH — the other languages are tabled in
   /// `AppStrings.layerProcessName` under [jsonValue]. ⛔The words cannot live
   /// in `AppStrings` alone: `models` may not import `ui/`, so the enum is
   /// the English row and the table holds the rest (the `menuLabel` contract).
+  @override
   final String displayName;
 
   /// What the label chip writes. 유저 설계: 공정 축약 + 수정 축약을 붙여
   /// 「LO작감」.
+  @override
   final String abbreviation;
 
   static LayerProcess? fromJson(Object? json) {
@@ -60,7 +88,7 @@ enum LayerProcess {
 /// ⛔이름에 「수정」 접미사를 붙이지 않습니다(유저: 「뒤에 공통적으로 수정
 /// 붙는거 다 없애. 그냥 연출 작화감독 이렇게만 존재하게」). 무엇의 수정인지는
 /// 라벨이 이미 공정을 앞에 달고 있어서 말해 줍니다.
-enum LayerRevise {
+enum LayerRevise implements LabelStep {
   direction('direction', 'Direction', 'DIR'),
   animationDirector('animation-director', 'Animation Director', 'AD'),
   chiefAnimationDirector('chief-animation-director', 'Chief Animation Director', 'CAD'),
@@ -72,8 +100,11 @@ enum LayerRevise {
 
   const LayerRevise(this.jsonValue, this.displayName, this.abbreviation);
 
+  @override
   final String jsonValue;
+  @override
   final String displayName;
+  @override
   final String abbreviation;
 
   static LayerRevise? fromJson(Object? json) {
@@ -104,15 +135,17 @@ const List<LayerRevise> _drawingRevises = [
 /// the whole reason the axis is a reference: 「원화 수정공정에서 동화검사수정을
 /// 뺄수있고」 without the other seven growing a copy of the list.
 List<LayerRevise> revisesFor(LayerProcess process) => switch (process) {
-  // 용지는 그림이 아니라 종이라 고칠 것이 없습니다 — 유저 정정(2026-08-27):
-  // 「용지는 수정공정 존재 안하도록」.
-  LayerProcess.paper => const [],
+  // 용지는 수정 전부 — 그 수정의 종이입니다(🗣️F-578, 유저 2026-11-10:
+  // 「용지라벨은 권한대로. 모든 공정을 넣음. 앞으로 발생하는것도.」). 목록에서
+  // 만들므로 수정이 늘면 같이 늡니다. ↩️용지는 그림이 아니라 종이라 고칠 것이
+  // 없었습니다 — 유저 정정(2026-08-27): 「용지는 수정공정 존재 안하도록」.
+  LayerProcess.paper => LayerRevise.values,
   // 콘티는 감독이 고칩니다 — 유저: 「콘티는 총 공정은 콘티, 콘티 감독수정,
   // 콘티 총감독 수정 아마 3가지임」.
   LayerProcess.conte => const [LayerRevise.director, LayerRevise.chiefDirector],
   // 동화와 시아게는 여섯에 더해 자기 검사를 하나씩 답니다.
   LayerProcess.inbetween => const [..._drawingRevises, LayerRevise.inbetweenCheck],
   LayerProcess.finish => const [..._drawingRevises, LayerRevise.cellCheck],
-  // 나머지는 여섯 전부 — 미술도 포함입니다(유저 2026-08-27).
+  // 나머지(LO · 러프원 · 원화)는 여섯 전부.
   _ => _drawingRevises,
 };

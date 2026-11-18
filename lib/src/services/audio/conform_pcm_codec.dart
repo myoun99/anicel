@@ -39,6 +39,7 @@ library;
 import 'dart:typed_data';
 import '../../models/audio_pcm_scale.dart';
 import '../media/media_byte_source.dart';
+import 'audio_peaks_extractor.dart';
 
 /// What a conformed file records about the source it came from, so a
 /// replaced original is detected rather than silently played stale.
@@ -180,12 +181,30 @@ class ConformFormatException implements Exception {
 /// 28   4  speedDenominator    u32
 /// 32   8  sourceLength        u64
 /// 40   4  sourceCrc32         u32
-/// 44   4  (reserved, 0)
+/// 44   4  peaksPerSecond      u32   the waveform's buckets a second (0 = none)
 /// 48   8  sourceModifiedMicros i64
 /// 56   4  decodeRecipe        u32   which decode made the PCM (0 = before)
-/// 60   4  (reserved, 0)
+/// 60   4  peakBuckets         u32   buckets in each channel's lane
 /// 64  ..  int16 LE, interleaved
+/// ..  ..  float32, a lane per channel of peakBuckets — the waveform's peaks
 /// ```
+///
+/// 🚨★★★**THE PEAKS RIDE BEHIND THE PCM** (card
+/// `a-sound-folds-its-peaks-again-at-every-open`, 관제 2026-11-14: 「피크를
+/// 컨폼 옆에 두고 열 때 다시 접지 않게, 극한으로」). The pass that makes a
+/// conform folds them as it goes, and every open used to read the whole PCM
+/// back to fold them again: 2.6 s of a worker for half an hour of stereo,
+/// and the PCM of a sound past the streaming threshold read for nothing
+/// else (measured 2026-11-14). Kept here rather than in a file beside it
+/// for the reason the fingerprint is: no second file to go missing on its
+/// own.
+///
+/// ⚠️**The magic did not move.** A conform written before the peaks has 0 in
+/// both their words (they were reserved), so its peaks are of no bucket rate
+/// anything asks for: it is stale, and made again from its source. And a
+/// build before them reads this layout as it always did — the peaks lie
+/// past the PCM, where it never reads. ↩️'QACONF02' was tried, and walled
+/// those builds off a conform they read whole for nothing.
 ///
 /// 🔑**64 is not a round number for looks.** The PCM starting on a 64-byte
 /// boundary is what lets a reader take an `Int16List.view` over it instead
@@ -206,17 +225,21 @@ class ConformHeader {
     required this.frames,
     required this.speedNumerator,
     required this.speedDenominator,
+    required this.peaksPerSecond,
+    required this.peakBuckets,
     this.fingerprint,
     this.sourceStat,
     this.decodeRecipe = 0,
   });
 
   /// The header a conform of [frames] is written with today — the one
-  /// [encodeConform] and the pipeline's streamed write both lay down.
+  /// [encodeConform] and the pipeline's streamed write both lay down —
+  /// holding [peaks] behind its PCM ([peaksBytesOf]).
   factory ConformHeader.of({
     required int frames,
     required int channels,
     required int sampleRate,
+    required AudioPeaks peaks,
     ConformSourceFingerprint? fingerprint,
     MediaSourceStamp? sourceStat,
     int speedNumerator = 1,
@@ -240,6 +263,8 @@ class ConformHeader {
       frames: frames,
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
+      peaksPerSecond: peaks.bucketsPerSecond,
+      peakBuckets: peaks.lanes.first.length,
       fingerprint: fingerprint,
       sourceStat: fingerprint == null ? null : sourceStat,
       decodeRecipe: conformDecodeRecipe,
@@ -271,11 +296,58 @@ class ConformHeader {
   /// this app wrote it today, 0 on a conform written before the field.
   final int decodeRecipe;
 
+  /// The waveform's buckets a second, as the peaks behind the PCM were
+  /// folded — a setting of the conform's, as its rate is.
+  final int peaksPerSecond;
+
+  /// Buckets in each channel's lane of those peaks.
+  final int peakBuckets;
+
   /// Bytes of PCM this header claims.
   int get dataBytes => frames * channels * 2;
 
+  /// Where the peaks start — right behind the PCM.
+  int get peaksOffset => length + dataBytes;
+
+  /// Bytes of peaks this header claims: a float a bucket, a lane a channel.
+  int get peaksBytes => peakBuckets * channels * 4;
+
   /// What the whole file must weigh for the claim to be honest.
-  int get totalBytes => length + dataBytes;
+  int get totalBytes => peaksOffset + peaksBytes;
+
+  /// [peaks] as they lie behind the PCM, a lane after another — in the
+  /// platform's byte order, as the PCM is ([conformPcmToFloat32]).
+  Uint8List peaksBytesOf(AudioPeaks peaks) {
+    final out = Float32List(peakBuckets * channels);
+    for (final (channel, lane) in peaks.lanes.indexed) {
+      out.setAll(channel * peakBuckets, lane);
+    }
+    return out.buffer.asUint8List();
+  }
+
+  /// The peaks [bytes] hold — [peaksBytes] of them, read from [peaksOffset].
+  AudioPeaks peaksFrom(Uint8List bytes) {
+    // Floats are read where a float may start — copied only when not.
+    final aligned = bytes.offsetInBytes % 4 == 0
+        ? bytes
+        : Uint8List.fromList(bytes);
+    final floats = Float32List.view(
+      aligned.buffer,
+      aligned.offsetInBytes,
+      peakBuckets * channels,
+    );
+    return AudioPeaks.ofChannels(
+      bucketsPerSecond: peaksPerSecond,
+      lanes: [
+        for (var channel = 0; channel < channels; channel += 1)
+          Float32List.sublistView(
+            floats,
+            channel * peakBuckets,
+            (channel + 1) * peakBuckets,
+          ),
+      ],
+    );
+  }
 
   Uint8List toBytes() {
     final out = Uint8List(length);
@@ -294,8 +366,10 @@ class ConformHeader {
     view.setUint32(28, speedDenominator, Endian.little);
     view.setUint64(32, fingerprint?.sourceLength ?? 0, Endian.little);
     view.setUint32(40, fingerprint?.sourceCrc32 ?? 0, Endian.little);
+    view.setUint32(44, peaksPerSecond, Endian.little);
     view.setInt64(48, sourceStat?.modifiedMicros ?? 0, Endian.little);
     view.setUint32(56, decodeRecipe, Endian.little);
+    view.setUint32(60, peakBuckets, Endian.little);
     return out;
   }
 
@@ -332,6 +406,8 @@ class ConformHeader {
       frames: frames,
       speedNumerator: view.getUint32(24, Endian.little),
       speedDenominator: view.getUint32(28, Endian.little),
+      peaksPerSecond: view.getUint32(44, Endian.little),
+      peakBuckets: view.getUint32(60, Endian.little),
       fingerprint: hasFingerprint
           ? ConformSourceFingerprint(
               sourceLength: sourceLength,
@@ -367,8 +443,14 @@ class ConformHeader {
 /// (2026-10-16, board mac-reads-no-movie-pcm): Media Foundation read 8-bit
 /// sound up to 1/128 off that and 32-bit integers a last bit off, and
 /// Android's path takes what MediaCodec hands back as 16 bits unless it is
-/// float (`qa_os_take_output`).
-const int conformDecodeRecipe = 3;
+/// float (`qa_os_take_output`). 4 = the engine's decoder is the Rust one,
+/// its bundled decoders symphonia's (native-to-rust-Q4; the connection
+/// round, connection-round-checklist H, 2026-11-08): an MP3 and an ogg
+/// computed within a decoder's rounding of dr_mp3's and stb_vorbis's, a
+/// movie's AAC-LC and ALAC read by the bundled decoder where the OS stack
+/// read them. A WAV's, a FLAC's, an AIFF's and a movie's uncompressed sound
+/// are the samples they were, to the bit (the ledger's `audio/*` rows).
+const int conformDecodeRecipe = 4;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes
@@ -391,6 +473,10 @@ bool looksLikeConform(List<int> head) {
 /// Values outside [-1, 1] clip: this is a fixed-point container, and unlike
 /// the mix bus it has no headroom to offer. Conforms are decoded source
 /// material, so anything out of range came in that way.
+///
+/// Its peaks are [samples]' own at [bucketsPerSecond] — the pipeline's
+/// default, so a conform encoded here is one a pipeline left at its default
+/// reuses.
 Uint8List encodeConform({
   required Float32List samples,
   required int channels,
@@ -399,11 +485,21 @@ Uint8List encodeConform({
   MediaSourceStamp? sourceStat,
   int speedNumerator = 1,
   int speedDenominator = 1,
+  int bucketsPerSecond = 40,
 }) {
+  final count = channels <= 0 ? 0 : samples.length ~/ channels * channels;
+  final pcm = Float32List.sublistView(samples, 0, count);
+  final peaks = peaksFromSamples(
+    samples: pcm,
+    channels: channels,
+    sampleRate: sampleRate,
+    bucketsPerSecond: bucketsPerSecond,
+  );
   final header = ConformHeader.of(
     frames: channels <= 0 ? 0 : samples.length ~/ channels,
     channels: channels,
     sampleRate: sampleRate,
+    peaks: peaks,
     fingerprint: fingerprint,
     sourceStat: sourceStat,
     speedNumerator: speedNumerator,
@@ -411,13 +507,13 @@ Uint8List encodeConform({
   );
   final out = Uint8List(header.totalBytes);
   out.setRange(0, ConformHeader.length, header.toBytes());
-  final count = header.frames * channels;
   // The 64-byte header keeps the PCM's start even, so a 16-bit view lands
   // on it ([conformPcmToFloat32]'s rule, written instead of read).
   int16PcmOf(
-    Float32List.sublistView(samples, 0, count),
+    pcm,
     into: Int16List.view(out.buffer, ConformHeader.length, count),
   );
+  out.setAll(header.peaksOffset, header.peaksBytesOf(peaks));
   return out;
 }
 
@@ -426,7 +522,9 @@ Uint8List encodeConform({
 ///
 /// 🚨**32768, not 32767** — the industry convention, and what dr_wav uses (it
 /// multiplies by the literal 0.000030517578125f). Matching it is not
-/// cosmetic: every OTHER format arrives through dr_libs, so a conform read
+/// cosmetic: every OTHER format arrives through the engine's decoders, whose
+/// whole-number conversions are dr_wav's (native/audio `convert.rs`; ↩️dr_libs
+/// itself until the connection round), so a conform read
 /// with a different scale than an imported WAV would put the same audio at
 /// two different levels depending on which path it took. It also makes a
 /// unity-gain clip round trip BIT-EXACTLY through the whole chain: raw ÷
@@ -486,7 +584,7 @@ ConformAudio decodeConform(Uint8List bytes) {
   }
   return ConformAudio(
     samples: conformPcmToFloat32(
-      Uint8List.sublistView(bytes, ConformHeader.length, header.totalBytes),
+      Uint8List.sublistView(bytes, ConformHeader.length, header.peaksOffset),
       header.frames * header.channels,
     ),
     channels: header.channels,

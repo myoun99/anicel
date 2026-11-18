@@ -671,7 +671,9 @@ class MediaRun {
   /// by the seek its run fires (`CanvasPlaybackController.onSeeked`).
   void _putTheClockBackTo(double seconds) {
     soundSeconds = seconds;
-    sound.resume(seconds);
+    // Its sound there on its way ([ViewerSound.resume]): the run waits for
+    // it where it was put, as after a press ([_soundHasCome]).
+    _soundComing = !sound.resume(seconds);
     _film.spanFrom(seconds);
     _behind.clockStarts();
   }

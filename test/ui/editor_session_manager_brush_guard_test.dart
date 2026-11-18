@@ -19,6 +19,8 @@ import '../helpers/reference_to.dart';
 /// its band is its own timeline underneath them — see
 /// [LayerKind.bandIsInstructionsOnly].
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late EditorSessionManager session;
 
   setUp(() {

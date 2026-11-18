@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/session/frame_clipboard.dart';
 FrameClipboard clipboardOf(EditorSessionManager session) => session.clipboard;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late EditorSessionManager session;
   late LayerId s1;
   late LayerId s2;

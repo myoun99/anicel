@@ -1,7 +1,10 @@
 // A frame as a movie encoder takes it: NV12 — 4:2:0 BT.601 studio range,
-// the app's colour law for movies (packages/qa_native/src/qa_yuv601.h,
-// `qa_yuv601_from_rgba`) — converted before the readback, so 1.5 bytes a
-// pixel cross to the CPU instead of 4 (gpu-export-path ①a).
+// the app's colour law for movies — converted before the readback, so 1.5
+// bytes a pixel cross to the CPU instead of 4 (gpu-export-path ①a). Every
+// H.264 and H.265 the app writes of its own pictures is this pass's; the
+// law's reader is video's `colour::rgba_of`. ↩️video's `colour::from_rgba`
+// wrote the law on the CPU too, and this pass was held to it byte for
+// byte, till 2026-11-15 (board trimmed-movie-decodes-to-nv12-Q2).
 //
 // The law's numbers, all of them:
 //   Y  = ((66R + 129G + 25B + 128) >> 8) + 16
@@ -9,17 +12,18 @@
 //   Cr = ((112R - 94G - 18B + 128) >> 8) + 128
 // a 2x2 block's chroma from its top-left pixel, and white past the picture
 // — the encoder's even size. WGSL's `>>` on an i32 is arithmetic (§8.10),
-// as the law's C compilers do it, so a negative sum floors the same way.
+// so a negative sum floors, as the law's shift does (↩️as Rust's on an i32
+// did in `from_rgba`).
 // Integers only: a float step may be fused or reassociated on one device
 // and not another (fill.wgsl).
 //
 // The picture's alpha is not read, as the law reads none.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and its picture's reads (frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame_shown.wgsl).
+  stride: u32,
   // The picture.
   src_width: u32,
   src_height: u32,
@@ -29,12 +33,16 @@ struct Params {
   // Bytes from one Y row to the next — and one CbCr row to the next: a
   // multiple of 4, at least the width.
   y_stride: u32,
-  pad0: u32,
-  pad1: u32,
+  // The word of the frame its binding begins on (frame_shown.wgsl
+  // takes it off), and the first row of blocks this band
+  // puts: a pass binds the rows it reads (`convert`, mod.rs). The out is
+  // bound whole: its Y and CbCr rows lie apart, and an encoder's frame of
+  // 8K is 50 MB of it.
+  frame_base: u32,
+  first_row: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> nv12: array<u32>;
 
 // Pixel (x, y)'s red, green and blue; white past the picture — the
@@ -45,7 +53,7 @@ fn rgb_at(x: u32, y: u32) -> vec3<i32> {
   if (x >= params.src_width || y >= params.src_height) {
     return vec3<i32>(255);
   }
-  let word = frame[frame_word(params.columns, x, y)];
+  let word = frame_straight(x, y);
   return vec3<i32>(
     i32(word & 0xffu),
     i32((word >> 8u) & 0xffu),
@@ -69,8 +77,9 @@ fn red_difference(c: vec3<i32>) -> u32 {
 // and the one word of CbCr their two 2 x 2 blocks share.
 @compute @workgroup_size(16, 8)
 fn nv12_pass(@builtin(global_invocation_id) id: vec3<u32>) {
+  let block = params.first_row + id.y;
   let x = id.x * 4u;
-  let y = id.y * 2u;
+  let y = block * 2u;
   if (x >= params.y_stride || y >= params.height) {
     return;
   }
@@ -85,7 +94,7 @@ fn nv12_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   nv12[(y + 1u) * row + id.x] = bottom;
   let left = rgb_at(x, y);
   let right = rgb_at(x + 2u, y);
-  nv12[(params.height + id.y) * row + id.x] = blue_difference(left)
+  nv12[(params.height + block) * row + id.x] = blue_difference(left)
     | (red_difference(left) << 8u)
     | (blue_difference(right) << 16u)
     | (red_difference(right) << 24u);

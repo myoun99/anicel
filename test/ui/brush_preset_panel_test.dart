@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, AppShapes;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
@@ -96,6 +96,7 @@ class _PanelHost extends StatefulWidget {
     this.onGroupOpened,
     this.onGroupsReordered,
     this.onLibraryReset,
+    this.canResetLibrary,
   });
 
   final List<BrushGroup> groups;
@@ -114,6 +115,7 @@ class _PanelHost extends StatefulWidget {
   final ValueChanged<BrushGroupId?>? onGroupOpened;
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
   final VoidCallback? onLibraryReset;
+  final bool Function()? canResetLibrary;
 
   @override
   State<_PanelHost> createState() => _PanelHostState();
@@ -150,6 +152,7 @@ class _PanelHostState extends State<_PanelHost> {
                       setState(() => _groups = groups);
                     },
               onLibraryReset: widget.onLibraryReset,
+              canResetLibrary: widget.canResetLibrary,
             ),
           ),
         ),
@@ -176,6 +179,7 @@ Future<void> _pumpPanel(
   ValueChanged<BrushGroupId?>? onGroupOpened,
   ValueChanged<List<BrushGroup>>? onGroupsReordered,
   VoidCallback? onLibraryReset,
+  bool Function()? canResetLibrary,
 }) async {
   await tester.pumpWidget(
     _PanelHost(
@@ -194,6 +198,7 @@ Future<void> _pumpPanel(
       onGroupOpened: onGroupOpened,
       onGroupsReordered: onGroupsReordered,
       onLibraryReset: onLibraryReset,
+      canResetLibrary: canResetLibrary,
     ),
   );
 }
@@ -233,6 +238,18 @@ void main() {
     expect(_row('preset-marker'), findsOneWidget);
     expect(_row('preset-sampled'), findsOneWidget);
     expect(find.byType(BrushTipPreview), findsNWidgets(3));
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2): a
+    // preset's tip stands in a well in a still region — cut by the well's
+    // corners, never clipped to them.
+    expect(
+      [
+        for (final tip in tester.widgetList<BrushTipPreview>(
+          find.byType(BrushTipPreview),
+        ))
+          tip.well,
+      ],
+      everyElement(AppShapes.container(AppShapes.wellRadius)),
+    );
     expect(find.byType(BrushStrokePreview), findsNWidgets(3));
     expect(find.text('Marker'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -1547,6 +1564,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(created.single, 'Sketch');
+  });
+
+  testWidgets('the library reset is out on the built-ins and lit off them, '
+      'asked as the menu opens (F-583, I-176)', (tester) async {
+    var builtIns = true;
+    await _pumpPanel(
+      tester,
+      presets: [_marker()],
+      onLibraryReset: () {},
+      canResetLibrary: () => !builtIns,
+    );
+    final row = find.byKey(const ValueKey<String>('brush-preset-menu-reset'));
+    Future<({bool live, Color? ink})> asked() async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      final answer = (
+        live: tester.widget<PopupMenuItem<Object?>>(row).enabled,
+        ink: tester
+            .widget<Text>(
+              find.descendant(
+                of: row,
+                matching: find.text('Reset brush library'),
+              ),
+            )
+            .style
+            ?.color,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      return answer;
+    }
+
+    final atBuiltIns = await asked();
+    expect(atBuiltIns.live, isFalse);
+    expect(atBuiltIns.ink, isNot(AppColors.accent));
+
+    builtIns = false;
+    final offThem = await asked();
+    expect(offThem.live, isTrue);
+    expect(offThem.ink, AppColors.accent);
   });
 
   testWidgets('resetting the library confirms first', (tester) async {

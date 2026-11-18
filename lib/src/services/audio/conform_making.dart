@@ -21,7 +21,7 @@ import '../persistence/media_blob_codec.dart';
 import '../persistence/scratch_file.dart' show ScratchFile;
 import 'audio_decode_stream.dart';
 import 'audio_peaks_extractor.dart';
-import 'audio_resampler_reference.dart' show AudioResampleStream;
+import 'audio_resample_stream.dart';
 import 'conform_pcm_codec.dart';
 import 'conform_pcm_stream.dart' show conformStaysOnDisk;
 
@@ -43,7 +43,7 @@ typedef AudioDecodeCallback =
     AudioDecodeStream? Function(MediaByteSource source);
 
 /// Opens a conversion of [channels] from [inputRate] to [outputRate] — the
-/// rates unequal — fed a piece at a time. The native polyphase resampler
+/// rates unequal — fed a piece at a time. The engine's polyphase resampler
 /// supplies this.
 typedef AudioResampleCallback =
     AudioResampleStream Function({
@@ -252,8 +252,9 @@ final class ConformScratch {
     }
   }
 
-  /// The conform made, kept at [conformPath] with [header] — where it landed,
-  /// or a throw where it could not be written.
+  /// The conform made, kept at [conformPath] with [header] and the [peaks]
+  /// the pass folded behind its PCM ([ConformHeader.peaksBytesOf]) — where
+  /// it landed, or a throw where it could not be written.
   ///
   /// 🚨★★★**AND IT IS WRITTEN COMPRESSED.** A conform is ~12× its source
   /// and zstd takes 38–51% of it back, measured on the user's own audio
@@ -267,12 +268,14 @@ final class ConformScratch {
   /// WINDOW by `ConformPcmStreamReader`, and a whole frame has no random
   /// access. This is the same codec media uses, so「how do I read this」
   /// has one answer for both.
-  String keep(ConformHeader header) {
+  String keep(ConformHeader header, AudioPeaks peaks) {
     final refused = failure;
     if (refused != null) {
       throw refused;
     }
     final file = _file!
+      ..setPositionSync(header.peaksOffset)
+      ..writeFromSync(header.peaksBytesOf(peaks))
       ..setPositionSync(0)
       ..writeFromSync(header.toBytes());
     // Streamed out rather than compressed whole: an hour of dialogue is

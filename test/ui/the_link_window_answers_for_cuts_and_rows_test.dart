@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/dialogs/link_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/pill_row_clipboard.dart';
@@ -554,7 +555,28 @@ void main() {
 
     testWidgets('a linked cut the view widens onto wears its button, as the '
         'paint draws it there', (tester) async {
-      final s = session();
+      // The first cut as long as the frame window of a view as wide as the
+      // whole surface reaches — more than the view is — so its linked copy
+      // starts out of the window ([timelineFrameWindowFor]).
+      final reached = timelineFrameWindowFor(
+        bucket: 0,
+        cellExtent: 40,
+        viewportExtent: 900,
+      ).endIndexExclusive;
+      final made = createDefaultProject();
+      final s = EditorSessionManager(
+        initialProject: made.copyWith(
+          tracks: [
+            for (final track in made.tracks)
+              track.copyWith(
+                cuts: [
+                  for (final cut in track.cuts) cut.copyWith(duration: reached),
+                ],
+              ),
+          ],
+        ),
+      );
+      addTearDown(s.dispose);
       s.cutVerbs.createLinkedCutFromActiveCut();
       final linked = s.requireActiveCut.id;
       await pumpStoryboardHostOn(

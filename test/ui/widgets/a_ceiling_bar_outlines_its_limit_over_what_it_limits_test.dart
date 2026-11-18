@@ -56,21 +56,26 @@ void main() {
     );
 
     expect(tester.getSize(track).width, width, reason: 'premise: no hands');
+    // Each the track's shape where it lies — the levels and the outline's
+    // four sides, cut by the corner they reach (Q10); the far side stands
+    // clear of it, a rectangle.
+    const value = width * 0.5;
     expect(
       track,
       paints
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.3, 24))
+        ..rsuperellipse(color: AppColors.hairline)
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.1, 24))
+        ..rsuperellipse(color: AppColors.accent)
+        ..clipRect(rect: const Rect.fromLTRB(0, 0, value, 1.5))
+        ..rsuperellipse(color: AppColors.textDim)
+        ..clipRect(rect: const Rect.fromLTRB(0, 22.5, value, 24))
+        ..rsuperellipse(color: AppColors.textDim)
+        ..clipRect(rect: const Rect.fromLTRB(0, 1.5, 1.5, 22.5))
+        ..rsuperellipse(color: AppColors.textDim)
         ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.3, 24),
-          color: AppColors.hairline,
-        )
-        ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.1, 24),
-          color: AppColors.accent,
-        )
-        ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.5, 24).deflate(0.75),
+          rect: const Rect.fromLTRB(value - 1.5, 1.5, value, 22.5),
           color: AppColors.textDim,
-          style: PaintingStyle.stroke,
         ),
     );
   });
@@ -129,5 +134,84 @@ void main() {
       (end: 0.3, ink: textOnColor(AppColors.hairline)),
       (end: 1.0, ink: textOnColor(AppColors.surface)),
     ]);
+  });
+
+  // 🗣️유저 2026-11-16 (vram-in-use-shown-in-the-memory-tab): the OS's VRAM
+  // budget drawn as the allowance beside it is — 「막대의 ui라던가 너무
+  // 다르잖아 … 최대한 통일감」 — though no hand sets it.
+  group('a ceiling set elsewhere', () {
+    Widget shown({
+      required bool setElsewhere,
+      String? restingText,
+    }) => MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: width,
+            child: FieldSlider.ceiling(
+              value: 50,
+              max: scale,
+              floor: 0,
+              levels: [
+                (value: 30, color: AppColors.hairline),
+                (value: 10, color: AppColors.accent),
+              ],
+              color: AppColors.textDim,
+              unit: 'MB',
+              restingText: restingText,
+              setElsewhere: setElsewhere,
+              onChanged: null,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('is drawn at full strength, where one nobody may set now '
+        'dims', (tester) async {
+      final levelsAsGiven = paints
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.3, 24))
+        ..rsuperellipse(color: AppColors.hairline)
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.1, 24))
+        ..rsuperellipse(color: AppColors.accent)
+        ..clipRect(rect: const Rect.fromLTRB(0, 0, width * 0.5, 1.5))
+        ..rsuperellipse(color: AppColors.textDim);
+
+      await tester.pumpWidget(shown(setElsewhere: true));
+      expect(track, levelsAsGiven);
+
+      await tester.pumpWidget(shown(setElsewhere: false));
+      expect(
+        track,
+        isNot(levelsAsGiven),
+        reason: 'premise: a bar that takes no hand dims',
+      );
+    });
+
+    testWidgets('takes no hand', (tester) async {
+      await tester.pumpWidget(shown(setElsewhere: true));
+      final before = tester.widget<FieldSlider>(find.byType(FieldSlider));
+
+      await tester.dragFrom(tester.getCenter(track), const Offset(-60, 0));
+      await tester.pump();
+
+      expect(
+        find.descendant(of: track, matching: find.text('50.0MB')),
+        findsOneWidget,
+        reason: 'the bar still shows the value it was handed',
+      );
+      expect(tester.widget<FieldSlider>(find.byType(FieldSlider)), before);
+    });
+
+    testWidgets('reads its resting text where nothing says the value', (
+      tester,
+    ) async {
+      await tester.pumpWidget(shown(setElsewhere: true, restingText: '—'));
+      expect(find.descendant(of: track, matching: find.text('—')), findsOne);
+      expect(
+        find.descendant(of: track, matching: find.text('50.0MB')),
+        findsNothing,
+      );
+    });
   });
 }

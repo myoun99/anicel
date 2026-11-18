@@ -5,6 +5,8 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/drawn_shapes.dart';
+
 /// The filled bar is the accent ITSELF (유저 2026-09-08).
 ///
 /// ⚠️The writing on it no longer asks the ground law anything: 유저 2026-09-10
@@ -40,11 +42,13 @@ void main() {
       of: find.byType(FieldSlider),
       matching: find.byType(FieldSliderTrack),
     );
+    final half = tester.getSize(track).width / 2;
     expect(
       track,
-      paints..rect(
-        rect: Rect.fromLTWH(0, 0, tester.getSize(track).width / 2, 24),
+      paintsShape(
         color: AppColors.accent,
+        includes: [const Offset(2, 12), Offset(half - 1, 12)],
+        excludes: [Offset(half + 1, 12)],
       ),
     );
   });
@@ -71,14 +75,14 @@ void main() {
       of: find.byType(FieldSlider),
       matching: find.byType(FieldSliderTrack),
     );
-    expect(track, paints..rect(color: AppColors.textDim));
+    expect(track, paintsShape(color: AppColors.textDim));
 
     final hand = await tester.startGesture(tester.getCenter(track));
     await hand.moveBy(const Offset(10, 0));
     await tester.pump();
     await hand.moveBy(const Offset(10, 0));
     await tester.pump();
-    expect(track, paints..rect(color: AppColors.accent), reason: 'dragged');
+    expect(track, paintsShape(color: AppColors.accent), reason: 'dragged');
     await hand.up();
     await tester.pumpAndSettle();
   });
@@ -99,15 +103,27 @@ void main() {
       ),
     );
 
-    // The 2px accent edge sat at x=49 and was the same colour as the fill,
-    // so only its NARROWNESS distinguishes it. Painting it again would put
-    // a second accent rect in the stream.
+    // The 2px accent edge sat at the fill's end and was the same colour as
+    // the fill, so only its NARROWNESS distinguishes it. Painting it again
+    // would put a second accent shape in the stream: one at the end that
+    // the start is not in.
+    final track = find.descendant(
+      of: find.byType(FieldSlider),
+      matching: find.byType(FieldSliderTrack),
+    );
+    final half = tester.getSize(track).width / 2;
     expect(
-      find.byType(FieldSlider),
+      track,
+      paintsShape(color: AppColors.accent, includes: [Offset(half - 1, 12)]),
+      reason: 'fixture: the fill reaches its end',
+    );
+    expect(
+      track,
       isNot(
-        paints..rect(
-          rect: const Rect.fromLTWH(49, 0, 2, 24),
+        paintsShape(
           color: AppColors.accent,
+          includes: [Offset(half - 1, 12)],
+          excludes: [const Offset(2, 12)],
         ),
       ),
     );

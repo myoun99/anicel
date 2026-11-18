@@ -716,6 +716,34 @@ void main() {
 
       await shell.contactLifts(tester, const Offset(80, 60));
     });
+
+    // 🔎I-110 (검증/서피스 11-17): the text's drag is one the window waits
+    // out too ([CanvasDragInFlight]) — with the held keys, one answer.
+    testWidgets('a text box being traced stays the text tool\'s', (
+      tester,
+    ) async {
+      final shell = await _Shell.pump(tester, tool: CanvasTool.text);
+      await shell.contact(
+        tester,
+        const Offset(20, 20),
+        buttons: kPrimaryButton,
+      );
+      await shell.contactMoves(
+        tester,
+        const Offset(60, 50),
+        buttons: kPrimaryButton,
+      );
+
+      await shell.contactMoves(
+        tester,
+        const Offset(80, 60),
+        buttons: kPrimaryButton | kPrimaryStylusButton,
+      );
+      expect(shell.holds, isEmpty);
+      expect(shell.tool, CanvasTool.text);
+
+      await shell.contactLifts(tester, const Offset(80, 60));
+    });
   });
 
   /// A hold takes the tool, a change of tool takes the tool's own layer

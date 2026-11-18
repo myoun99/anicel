@@ -28,7 +28,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
-import '../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../helpers/panel_finders.dart';
 import '../helpers/settle_async.dart';
 
@@ -304,6 +303,6 @@ void main() {
           reason: 'back on the frame it rested on: nothing stays there',
         );
       }
-    }, skip: noFlutterGpu != null);
+    });
   }
 }

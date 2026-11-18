@@ -19,6 +19,7 @@ import '../../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../../models/track_se_window.dart';
 import '../../../models/project_frame_rate.dart';
 import '../../../services/audio/audio_peaks_extractor.dart';
+import '../../../services/import/media_import_planner.dart' show placesAStill;
 import '../../timeline/timeline_drag_preview.dart';
 
 /// A FILE FROM THE POOL, HELD OVER THE TIMELINE — 「끄는 동안 보이는 것은
@@ -193,7 +194,7 @@ class MediaPlacementDrag {
     final gaps = emptyGapsBetween(
       row,
       start,
-      start + peaks.durationFrames(_frameRate()),
+      start + _soundFramesFor(path, peaks),
     );
     // ⛔The landing's own two rules, not a second reading of them: the gap
     // must begin AT the cell, and the block is as long as the gap answers
@@ -218,22 +219,24 @@ class MediaPlacementDrag {
   /// 끼운다」).
   ///
   /// What KIND of row, and how long its block, is the landing's own branch
-  /// asked at hover time: one picture becomes an image row holding the cut
-  /// (`planStillImageLayer`), and several become cels (`planSequenceLayer`).
-  /// The count is the pool's, which is the count the bake writes — so the
-  /// row drawn here is the row that appears.
+  /// asked at hover time ([placesAStill]): one picture of a kind that holds
+  /// one cel becomes an image row holding the cut (`planStillImageLayer`),
+  /// and the rest become cels (`planSequenceLayer`) — the kind the file's
+  /// preset places it as. The count is the pool's, the count the bake writes
+  /// — so the row drawn here is the row that appears.
   ///
   /// ⚠️Whether a row may go in that gap is NOT asked here: the rail's caret
   /// already asked it (`newRowInsertionForSlot`), and the caller only draws
   /// where that said yes.
   void showOnLayerSlot({required int slot, required String path}) {
     final count = _cellsFor(path) ?? 1;
+    final kind = (_assetFor(path)?.preset ?? const MediaPreset()).pictureKind;
     final cut = _cutFrameCount();
     // The name the landing gives the row ([mediaAssetNameFor]).
     final name = mediaAssetNameFor(_assetFor(path), path);
     _preview.value = MediaPlacementPreview(
       silhouetteSlot: slot,
-      silhouetteRow: count == 1
+      silhouetteRow: placesAStill(count, kind, ontoFrames: false)
           ? Layer(
               id: _previewRowId,
               name: name,
@@ -264,11 +267,26 @@ class MediaPlacementDrag {
     }
   }
 
-  /// How many cells [path] would become — the pool's own count, which is
-  /// the number the bake writes ([planSequenceLayer] registers
-  /// `frameCount: sourceFiles.length`). A file with no count is one cell:
-  /// a still is one picture.
-  int? _cellsFor(String path) => _assetFor(path)?.frameCount ?? 1;
+  /// How many cells [path] would become: the file's pictures — the pool's
+  /// own count of them ([MediaAsset.pictures]), a PDF's pages as well — as
+  /// many as its preset places ([MediaPreset.spanOf]), the span the import
+  /// window starts its row from. So the row drawn here is the row that
+  /// appears. A file with no count is one cell.
+  int? _cellsFor(String path) {
+    final asset = _assetFor(path);
+    final frames = asset?.pictures;
+    return asset == null || frames == null || frames < 1
+        ? 1
+        : asset.preset.spanOf(frames).count;
+  }
+
+  /// How many frames the sound at [path] would place, its conform [peaks]
+  /// in hand — as many of them as its preset places ([MediaPreset.spanOf]).
+  int _soundFramesFor(String path, AudioPeaks peaks) {
+    final frames = peaks.durationFrames(_frameRate());
+    final preset = _assetFor(path)?.preset ?? const MediaPreset();
+    return frames < 1 ? 0 : preset.spanOf(frames).count;
+  }
 
   /// [count] cells standing at [frameIndex] — a row that exists only to be
   /// planned with.

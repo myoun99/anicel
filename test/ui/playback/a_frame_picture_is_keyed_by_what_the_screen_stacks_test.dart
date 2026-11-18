@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -34,6 +36,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// the drawing reads parts the key, and nothing else does: the canvas
 /// standing on a frame and a run playing it ask one picture.
 void main() {
+  opensTheEnginesScreens();
   BrushFrameKey cel(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
     trackId: const TrackId('t'),
@@ -281,22 +284,18 @@ void main() {
       tiles: const {},
     );
     final asked = <String>[];
-    final drawing = stackedFrameOf(
+    final extent = stackedFrameOf(
       [drawn, empty],
       page: page,
       surfaceOf: (cel) {
         asked.add(cel.layerId.value);
         return cel.layerId.value == 'drawn' ? surface : null;
       },
-    ).drawing;
+    ).extent;
     expect(asked, ['drawn', 'empty'], reason: '⛔premise: both were asked');
     expect(
-      drawing.extent,
-      stackedFrameOf(
-        [drawn],
-        page: page,
-        surfaceOf: (_) => surface,
-      ).drawing.extent,
+      extent,
+      stackedFrameOf([drawn], page: page, surfaceOf: (_) => surface).extent,
     );
   });
 
@@ -323,23 +322,24 @@ void main() {
 
   test('an onion ghost is drawn in its tint — the colour the key parts it '
       'by', () async {
-    final blue = BitmapSurface(
-      canvasSize: page.canvasSize,
-      tileSize: 8,
-      tiles: {
-        for (var x = 0; x < 3; x += 1)
-          for (var y = 0; y < 2; y += 1)
-            TileCoord(x: x, y: y): BitmapTile(
-              size: 8,
-              pixels: Uint8List.fromList([
-                for (var i = 0; i < 8 * 8; i += 1) ...[0, 0, 0xFF, 0xFF],
-              ]),
-            ),
-      },
+    final blue = onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: page.canvasSize,
+        tileSize: 8,
+        tiles: {
+          for (var x = 0; x < 3; x += 1)
+            for (var y = 0; y < 2; y += 1)
+              TileCoord(x: x, y: y): BitmapTile(
+                size: 8,
+                pixels: Uint8List.fromList([
+                  for (var i = 0; i < 8 * 8; i += 1) ...[0, 0, 0xFF, 0xFF],
+                ]),
+              ),
+        },
+      ),
     );
     Future<List<int>> drawnAt(int? tint) async {
-      final recorder = ui.PictureRecorder();
-      stackedFrameOf(
+      final frame = stackedFrameOf(
         [
           CompositeLeaf<CanvasStackRow>(
             CanvasLayerImageRequest(
@@ -356,14 +356,12 @@ void main() {
           paperBackground: page.paperBackground,
         ),
         surfaceOf: (_) => blue,
-      ).drawing.draw(ui.Canvas(recorder));
-      final picture = recorder.endRecording();
-      final image = await picture.toImage(24, 16);
-      picture.dispose();
-      final bytes = await image.toByteData();
-      image.dispose();
+      );
       const at = (8 * 24 + 12) * 4;
-      return bytes!.buffer.asUint8List(at, 4);
+      return pixelsOfFrame(
+        frame,
+        const ui.Rect.fromLTWH(0, 0, 24, 16),
+      ).sublist(at, at + 4);
     }
 
     expect(await drawnAt(null), [0, 0, 0xFF, 0xFF], reason: '⛔premise');

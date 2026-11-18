@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/brush_values_on_strip.dart';
 import '../../helpers/settings_flyout.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
@@ -9,7 +10,6 @@ import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
-import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
@@ -120,7 +120,16 @@ void main() {
 
     // Export used to be its own icon in the strip; it is a once-a-session
     // verb, so it lives behind the same button as saving now.
-    await tapEntry(tester, 'menu-file-export');
+    // Not settled: the dialog's viewer spins till the engine has drawn its
+    // page, which takes real time, and a pumped clock has none to give.
+    // Pumped past the timers the dialog starts, in steps as they re-arm.
+    final export = find.byKey(const ValueKey<String>('menu-file-export'));
+    await tester.ensureVisible(export);
+    await tester.pumpAndSettle();
+    await tester.tap(export);
+    for (var step = 0; step < 12; step += 1) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
     expect(
       find.byKey(const ValueKey<String>('export-run-button')),
       findsOneWidget,
@@ -203,6 +212,28 @@ void main() {
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Settings: Reset Workspace Layout is out as the factory laid '
+      'the workspace, live once something moved, and out again after it '
+      '(F-583, I-176)', (tester) async {
+    await pumpHome(tester);
+    bool resetLive() => tester
+        .widget<EditorTopStrip>(find.byType(EditorTopStrip))
+        .menuRows(tester.element(find.byType(EditorTopStrip)))
+        .singleWhere((row) => row.keyValue == 'menu-window-reset-layout')
+        .enabled;
+    expect(resetLive(), isFalse, reason: 'nothing to put back yet');
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
+    await tapEntry(tester, 'panels-menu-item-brushes');
+    expect(resetLive(), isTrue, reason: 'a panel closed');
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
+    await tapEntry(tester, 'menu-window-reset-layout');
+    expect(resetLive(), isFalse, reason: 'the factory arrangement again');
   });
 
   testWidgets('Settings: Reset Workspace Layout restores EVERY remembered '
@@ -471,7 +502,7 @@ void main() {
       expect(tool.value.activeSize, 8, reason: 'and back down past 10, to 8');
       expect(
         barOf(tester, 'top-strip-size-bar').stops,
-        same(ToolSizePresetPanel.presets),
+        same(AppInput.settings.value.toolSizes),
         reason: 'the rack itself, not a copy of it',
       );
 
@@ -486,6 +517,53 @@ void main() {
         0.7,
         reason: 'the rack\'s first — ↩️the floor at 1 held the − there',
       );
+    });
+
+    // 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬
+    // 추가/삭제버튼 추가」 — the rack is the user's, and the bar standing on
+    // the strip steps through it as it is NOW.
+    testWidgets('🚨a size put on the rack is the size bar\'s next step, and '
+        'one taken off it is stepped past', (tester) async {
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+      await pumpHomeWithBars(tester);
+      final tool = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .brushTool!;
+      tool.value = tool.value.withActiveSize(10);
+      await tester.pumpAndSettle();
+      final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+      Finder hand(String key) => find.descendant(
+        of: bar,
+        matching: find.byKey(ValueKey<String>(key)),
+      );
+      void keep(List<double> rack) => AppInput.settings.value = AppInput
+          .settings
+          .value
+          .copyWith(toolSizes: rack);
+
+      // 11 put on between 10 and 12 — and nothing else told the strip.
+      keep([
+        for (final size in AppInputSettings.defaultToolSizes) ...[
+          size,
+          if (size == 10) 11,
+        ],
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-up'));
+      await tester.pumpAndSettle();
+      expect(tool.value.activeSize, 11, reason: 'the size just put on');
+
+      // 12 taken off: the next one up from 11 is 15.
+      keep([
+        for (final size in AppInput.settings.value.toolSizes)
+          if (size != 12) size,
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-up'));
+      await tester.pumpAndSettle();
+      expect(tool.value.activeSize, 15, reason: '12 is not a stop any more');
     });
 
     testWidgets('opacity is per tool: the fill keeps its own', (tester) async {

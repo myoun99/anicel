@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -103,6 +104,31 @@ void main() {
       reason: 'a file that is not there has no date to show',
     );
     expect(session.mediaPool.missingMediaPaths, {gone});
+  });
+
+  test('🎯F-589-Q1: a carried file is not asked its date — its row shows the '
+      'one its carry recorded', () {
+    final carried = plant('품음.wav', 64);
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject().copyWith(
+        mediaAssets: [
+          MediaAsset(
+            path: carried,
+            name: '품음.wav',
+            carriedAs: (
+              token: mediaCarryNamed(carried, 'c1'),
+              modified: DateTime(2026, 9, 2, 8, 15),
+            ),
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+
+    session.mediaPool.refreshMediaExistence();
+
+    expect(session.mediaPool.mediaModifiedTimes.containsKey(carried), isFalse);
+    expect(session.mediaPool.missingMediaPaths, isEmpty);
   });
 
   test('a re-sweep that finds the same answers does not notify', () {
@@ -215,5 +241,58 @@ void main() {
           'the SECOND import is the whole point — the pool already '
           'knows the path, and the conform still has to be dropped',
     );
+  });
+
+  test('🚨F-589: a file that comes into the pool is swept at once, by any '
+      'door, and one an undo takes out is swept out — a step that leaves '
+      'the pool as it was asks the disk nothing', () async {
+    final linked = plant('링크.wav', 64);
+    final pasted = plant('붙임.wav', 64);
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final pool = session.mediaPool;
+    var asked = 0;
+    pool.debugMediaFileExists = (path) {
+      asked += 1;
+      return File(path).existsSync();
+    };
+
+    await pool.addMediaAssets([linked]);
+    expect(
+      pool.mediaModifiedTimes[linked],
+      File(linked).lastModifiedSync(),
+      reason: 'the pool\'s own import, linked',
+    );
+
+    // As a paste from another project lands its files: a door of its own.
+    session.cutCommandCoordinator.updateMediaAssets([
+      ...pool.mediaAssets,
+      MediaAsset(path: pasted, name: '붙임.wav'),
+    ], description: 'Paste media');
+    expect(
+      pool.mediaModifiedTimes[pasted],
+      File(pasted).lastModifiedSync(),
+      reason: 'a paste',
+    );
+
+    session.historyManager.undo();
+    expect(
+      pool.mediaModifiedTimes.keys,
+      [linked],
+      reason: 'undone, the paste\'s file is the pool\'s no more',
+    );
+
+    final before = asked;
+    session.cutCommandCoordinator.updateCameraInstructionSet(
+      CameraInstructionSet(
+        defs: [
+          ...CameraInstructionSet.standard.defs,
+          const CameraInstructionDef(id: 'f589', name: '팬', iconKey: 'note'),
+        ],
+      ),
+    );
+    expect(asked, before, reason: 'a step that left the pool as it was');
   });
 }

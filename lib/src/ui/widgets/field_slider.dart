@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
+import '../input/second_click_window.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
 import '../text/readout_text.dart';
@@ -80,6 +82,13 @@ typedef FieldSliderLevel = ({double value, Color color});
 /// ↩️It types again, never on a tap of the bar: through its pencil since
 /// 2026-10-10 ([ValuePencil]), and through its readout's press where its
 /// readout stands for the pencil (I-135).
+/// ↩️And on a DOUBLE click in the bar, where the bar says so
+/// ([typesOnDoubleClick] — a rail row's opacity and an S row's Total, I-177,
+/// 유저 2026-11-17). That is not the editor above come back: it holds no
+/// tap hostage. Each click sets the value the moment it comes, as every
+/// tap here does, and the second opens the pad besides
+/// ([SecondClickWindow]) — 「더블클릭하더라도 일반클릭이랑 동일하게
+/// 다른규칙두지말고 값 변경된거」.
 class FieldSlider extends StatefulWidget implements NamesItself {
   const FieldSlider({
     super.key,
@@ -108,6 +117,8 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.stepsRun,
   }) : levels = null,
        floor = null,
+       setElsewhere = false,
+       typesOnDoubleClick = false,
        assert(max > min, 'max must exceed min'),
        assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
@@ -165,6 +176,8 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        stops = null,
        levels = null,
        floor = null,
+       setElsewhere = false,
+       typesOnDoubleClick = false,
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
@@ -200,6 +213,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// ⚠️Not every slider is integral and this does not claim they are: brush
   /// SIZE goes down to 0.7, the pressure curve is a gamma, and the transform
   /// tool's scale is the exception 유저 named in the same sentence.
+  ///
+  /// [percents] is how far the bar reaches, in whole per cent — 100 for an
+  /// opacity. 🗣️F-577 (유저 2026-11-10: 「총 볼륨 막대 … 불투명도막대랑 완전
+  /// 동일한 디자인/크기」): an S row's Total is this very bar, to its 200
+  /// (`SeSound.maxVolume`).
   const FieldSlider.opacity({
     super.key,
     this.name,
@@ -216,6 +234,8 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.upright = false,
     this.readout,
     this.stepsRun,
+    this.typesOnDoubleClick = false,
+    int percents = 100,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
@@ -230,11 +250,12 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        ),
        min = 0,
        fillOrigin = null,
-       max = 1,
-       divisions = 100,
+       max = percents / 100,
+       divisions = percents,
        stops = null,
        levels = null,
        floor = null,
+       setElsewhere = false,
        scale = FieldSliderScale.linear,
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
@@ -265,6 +286,13 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// bar under it — 「두번째 슬라이더랑 내용적으로 같아지니 내용 서로
   /// 합쳐서 통합」 — are one bar, the allowance outlined over the use
   /// (F-480-Q2 a: 「사용량 채움 위에 허용치 손잡이」).
+  ///
+  /// A ceiling something else sets — the OS's budget for the app's VRAM —
+  /// is [setElsewhere]: drawn as the one the hand sets beside it is, and
+  /// set by none (유저 2026-11-16, vram-in-use-shown-in-the-memory-tab:
+  /// 「ram의 앱 허용치랑 vram의 os 예산 중 … 막대의 ui라던가 너무
+  /// 다르잖아 … 최대한 통일감」, Q5 「C-1」). Where nothing says it, the
+  /// bar reads [restingText] instead of a number.
   const FieldSlider.ceiling({
     super.key,
     this.name,
@@ -276,10 +304,12 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.onChangeEnd,
     this.unit = '',
     this.color,
+    this.restingText,
+    this.setElsewhere = false,
   }) : min = 0,
        displayScale = 1,
+       typesOnDoubleClick = false,
        valueTextBuilder = null,
-       restingText = null,
        restingAccent = null,
        label = null,
        scale = FieldSliderScale.linear,
@@ -293,7 +323,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        readout = null,
        stepsRun = null,
        assert(max > 0, 'max must exceed min'),
-       assert(floor <= max, 'the floor stands on the scale');
+       assert(floor <= max, 'the floor stands on the scale'),
+       assert(
+         !setElsewhere || onChanged == null,
+         'a value set elsewhere takes no hand',
+       );
 
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
@@ -358,6 +392,30 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// number at all: the legend's master bar reads `OPAC` at rest and its per
   /// cent while it is being dragged (R4 #6). Null = the number, always.
   final String? restingText;
+
+  /// Whether the value is one something else sets ([FieldSlider.ceiling]):
+  /// drawn at full strength as a bar the hand sets is, and taking no hand
+  /// — [onChanged] is null. ⛔Not [onChanged] null alone: that is a bar
+  /// that could be set and is not now, and it dims
+  /// ([_FieldSliderState._asDrawn]).
+  final bool setElsewhere;
+
+  /// Whether a double click in the bar types its number — the number pad
+  /// under it, as its pencil opens ([_FieldSliderState._beginTyping]).
+  ///
+  /// 🗣️I-177 (유저 2026-11-17): 「레이어의 불투명도/오디오막대만 추가기능.
+  /// 막대 안에서 더블클릭하면 수동편집가능하게. 아래에 공용 넘버패드ui
+  /// 열어서. 콘티,타임라인/x시트패널 동일. 레이어의 불투명도랑 총볼륨막대만」
+  /// — so it is a bar's to say, and those two say it
+  /// (`layer_opacity_field.dart`); every other bar is as it was. Each click
+  /// of the two sets the value as any click does, and the pad opens after
+  /// the second: 「더블클릭하더라도 일반클릭이랑 동일하게 다른규칙두지말고 값
+  /// 변경된거 … 언두로 되돌리면됨」. No press waits on it, and none is undone
+  /// ([SecondClickWindow]).
+  final bool typesOnDoubleClick;
+
+  /// Whether the bar is drawn at full strength.
+  bool get _lit => onChanged != null || setElsewhere;
 
   final FieldSliderScale scale;
 
@@ -469,13 +527,13 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// field ran the whole of it, so the frame was the field's (유저
   /// 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데. 다른박스 마찬가지
   /// 통일」), until the field moved into the pad (I-134).
-  static ShapeDecoration frameOf(
+  static SuperellipseFace frameOf(
     double height, {
     required bool enabled,
     bool typed = false,
-  }) => ShapeDecoration(
+  }) => SuperellipseFace(
     color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
-    shape: AppShapes.container(
+    edge: AppShapes.container(
       radiusFor(height),
       side: BorderSide(
         color: typed
@@ -499,7 +557,9 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
   ).lineGrowthOf(TextMeasure.everyScript);
 
-  /// What the writing stands in from each end of the track.
+  /// What the writing stands in from each end of the track while it fits
+  /// there — every bar's writing takes it, as far as the track's ends, where
+  /// it does not ([insetGivenWay], F-577-Q1: 「모든막대 공용」).
   static const double inset = 8;
 
   /// The least a name and its number stand apart and still read as two —
@@ -522,9 +582,10 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   ///
   /// 🗣️top-strip-narrow-overflow-Q1 (유저 2026-10-01, the answer as
   /// corrected): 「막대 먼저 줄어들고 다음 목록으로」 — 「이름과 숫자가 막대
-  /// 안에 들어가는 최소 폭까지 줄어든다(최소 폭은 실측해서 정한다)」. Below
-  /// this the name gives way to an ellipsis, which is where a bar stops
-  /// saying what it is.
+  /// 안에 들어가는 최소 폭까지 줄어든다(최소 폭은 실측해서 정한다)」 — the
+  /// writing at rest, its insets whole. Below this its insets give way
+  /// first (F-577-Q1, [insetGivenWay]) and then the name to an ellipsis,
+  /// which is where a bar stops saying what it is.
   double narrowestIn(BuildContext context) {
     final hands = _carriesHands ? _handsReach : 0.0;
     if (readout != null) {
@@ -849,6 +910,7 @@ class _FieldSliderState extends State<FieldSlider> {
           t: t,
           originT: _originFraction,
           accent: _asDrawn(accent),
+          corner: _radius,
         )
       : _FieldSliderCeilingPainter(
           levels: [
@@ -857,6 +919,7 @@ class _FieldSliderState extends State<FieldSlider> {
           ],
           t: t,
           edge: _asDrawn(accent),
+          corner: _radius,
         );
 
   /// [color] the way this bar draws it — dimmed when the bar is disabled.
@@ -884,7 +947,8 @@ class _FieldSliderState extends State<FieldSlider> {
   /// widget's: the pressure-curve well dims to the same figure on purpose
   /// (「a disabled group reads as one thing rather than as three different
   /// greys」), and two widgets spelling one rule is how the two drift.
-  Color _asDrawn(Color color) => dimmedIfDisabled(color, enabled: _enabled);
+  Color _asDrawn(Color color) =>
+      dimmedIfDisabled(color, enabled: widget._lit);
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
@@ -948,7 +1012,35 @@ class _FieldSliderState extends State<FieldSlider> {
   @override
   void dispose() {
     widget.readout?._letGo(_beginTyping);
+    _secondClick.dispose();
     super.dispose();
+  }
+
+  /// Whether the press under way is the second click of a double click
+  /// ([FieldSlider.typesOnDoubleClick]).
+  final _secondClick = SecondClickWindow();
+
+  /// The bar's own pointer, as its grip hears it ([_RenderFieldSliderGrip]):
+  /// a press let go inside the bar is a click (the one predicate,
+  /// [pointerIsStillOn]), and the second of two opens the number pad — once
+  /// the frame that shows the value the click set is up, so the pad opens
+  /// on it.
+  void _pointed(PointerEvent event) {
+    switch (event) {
+      case PointerDownEvent():
+        _secondClick.pressed();
+      case PointerUpEvent(:final position)
+          when pointerIsStillOn(context, position):
+        if (_secondClick.clicked()) {
+          WidgetsBinding.instance
+            ..addPostFrameCallback((_) {
+              if (mounted) {
+                unawaited(_beginTyping());
+              }
+            })
+            ..ensureVisualUpdate();
+        }
+    }
   }
 
   /// A typed number, in the units the bar writes ([FieldSlider
@@ -1179,7 +1271,7 @@ class _FieldSliderState extends State<FieldSlider> {
       onExtent: _takeTrackExtent,
       frame: FieldSlider.frameOf(
         widget.height,
-        enabled: _enabled,
+        enabled: widget._lit,
         typed: _typing,
       ),
       shape: AppShapes.container(_radius),
@@ -1238,6 +1330,7 @@ class _FieldSliderState extends State<FieldSlider> {
         // is not also taken by the canvas layer above it.
         onWheel: (event) =>
             handleWheelUnlessScrolling(event, context, _handleWheel),
+        onPointer: widget.typesOnDoubleClick ? _pointed : null,
         child: bar,
       ),
     );
@@ -1364,7 +1457,7 @@ class _FieldSliderWriting extends StatelessWidget {
     final labelStyle = Theme.of(context).textTheme.labelSmall;
     final row = GroundInkWriting(
       runs: runs,
-      padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+      inset: FieldSlider.inset,
       alignment: _rowAt,
       builder: (context, ink) => _rowIn(
         value: valueStyle?.merge(ink) ?? ink,
@@ -1625,7 +1718,7 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
     // On its host's ground — the pill's, the surface ([AppColors.surface]).
     final ink = dimmedIfDisabled(
       textOnColor(AppColors.surface),
-      enabled: _enabled,
+      enabled: widget.bar._lit,
     );
     final style =
         FieldSliderValueReadout.styleIn(context) ?? const TextStyle();
@@ -1639,7 +1732,7 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
           tooltip: AppText.strings.valueTypeIn,
           onPressed: _enabled ? _type : null,
           focus: keyboardFocus,
-          hoverShape: AppShapes.control(sizes.height),
+          shape: AppShapes.control(sizes.height),
           child: Center(
             child: Text(
               said,
@@ -1657,16 +1750,35 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
   }
 }
 
+/// The track's shape over [size], which what the track fills is cut by —
+/// a fill reaching the corner drawn as the corner itself
+/// ([SuperellipseCut.drawRSuperellipseCut]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림 안의
+/// 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」, which named
+/// this bar: 「값 막대의 값 칠은 축에 맞는 사각형으로 자르고(정확) 그 안에 초타원
+/// 채움」): a bar stands in still regions — a rail row, a dock — so what it
+/// fills is not clipped to its corner ([SuperellipseClip]). ↩️The track
+/// clipped the rectangles these painters drew.
+RSuperellipse _trackIn(Size size, double corner) => AppShapes.container(corner)
+    .borderRadius
+    .resolve(null)
+    .toRSuperellipse(Offset.zero & size);
+
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   const _FieldSliderTrackPainter({
     required this.t,
     required this.accent,
+    required this.corner,
     this.axis = Axis.horizontal,
     this.originT = 0.0,
   });
 
   /// Vertical fills UPWARD from the bottom — a fader's direction.
   final Axis axis;
+
+  /// The track's corner ([FieldSlider.radiusFor]).
+  final double corner;
 
   final double t;
 
@@ -1696,22 +1808,19 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
     // mark the position because a wash that pale did not read as an end. A
     // solid fill IS the position, so keeping the line would be marking the
     // same fact twice.
-    final fill = Paint()..color = accent;
-    if (far > near) {
-      final extent = far - near;
-      canvas.drawRect(
-        rectAlong(
-          axis,
-          along: (from: near, to: near + extent),
-          across: (from: 0, to: extentAcross(axis, size)),
-        ),
-        fill,
-      );
-    }
+    canvas.drawRSuperellipseCut(
+      _trackIn(size, corner),
+      rectAlong(
+        axis,
+        along: (from: near, to: far),
+        across: (from: 0, to: extentAcross(axis, size)),
+      ),
+      Paint()..color = accent,
+    );
   }
 
   @override
-  Object get props => (t, originT, axis, accent);
+  Object get props => (t, originT, axis, accent, corner);
 }
 
 /// A [FieldSlider.ceiling]'s track: its levels filled from the left, a
@@ -1721,7 +1830,11 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
     required this.levels,
     required this.t,
     required this.edge,
+    required this.corner,
   });
+
+  /// The track's corner ([FieldSlider.radiusFor]).
+  final double corner;
 
   /// Where each level ends along the track, 0..1, and its colour.
   final List<({double t, Color color})> levels;
@@ -1737,39 +1850,46 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final track = _trackIn(size, corner);
     for (final level in levels) {
-      if (level.t > 0) {
-        canvas.drawRect(
-          Rect.fromLTWH(0, 0, size.width * level.t, size.height),
-          Paint()..color = level.color,
-        );
-      }
+      canvas.drawRSuperellipseCut(
+        track,
+        Rect.fromLTWH(0, 0, size.width * level.t, size.height),
+        Paint()..color = level.color,
+      );
     }
+    // The outline as its four sides, each the track's shape where it lies —
+    // a stroke of the rectangle, cut by the corner as the fill is.
     final reach = math.max(size.width * t, edgeWidth);
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, reach, size.height).deflate(edgeWidth / 2),
-      Paint()
-        ..color = edge
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = edgeWidth,
-    );
+    const w = edgeWidth;
+    final h = size.height;
+    final outline = Paint()..color = edge;
+    for (final side in [
+      Rect.fromLTRB(0, 0, reach, w),
+      Rect.fromLTRB(0, h - w, reach, h),
+      Rect.fromLTRB(0, w, math.min(w, reach), h - w),
+      Rect.fromLTRB(math.max(w, reach - w), w, reach, h - w),
+    ]) {
+      canvas.drawRSuperellipseCut(track, side, outline);
+    }
   }
 
   // A list compares by identity; its levels are records, so by value.
   @override
-  Object get props => (ByList(levels), t, edge);
+  Object get props => (ByList(levels), t, edge, corner);
 }
 
 /// The bar's TRACK, as one box: its [frame] under everything, its [fill]
-/// inside the frame's corner under the writing, and the writing — the
-/// order a [DecoratedBox], a [SuperellipseClip] and a [CustomPaint] painted
-/// them in, and the clip's exact corner for a pointer.
+/// inside the frame's corner under the writing — cut by the corner, not
+/// clipped to it ([_trackIn]) — and the writing, with the exact corner for
+/// a pointer.
 ///
 /// 🪶WHY (card frame-panels-build-in-one-frame, 2026-10-25): the track was
-/// those three and a probe of its length — four elements and four render
-/// objects for one painted bar, made again for every bar a tab reopens
-/// (fourteen on each of the timeline's tabs). It IS the clip, so the
-/// corner is the clip's code and not a second spelling of it.
+/// a [DecoratedBox], a clip and a [CustomPaint] and a probe of its length —
+/// four elements and four render objects for one painted bar, made again
+/// for every bar a tab reopens (fourteen on each of the timeline's tabs).
+/// It IS the shape a pointer meets ([SuperellipseHit]), so the corner is
+/// that code and not a second spelling of it.
 ///
 /// It also hands the bar's length along its axis to the gesture math as the
 /// bar is laid out — the one thing the bar needed a `LayoutBuilder` for.
@@ -1784,7 +1904,7 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
 /// pick's heaviest frame spent ~4 ms there. This lays the bar out exactly
 /// as the builder did (its constraints, handed straight through) and asks
 /// for nothing when the bar is only repainted.
-class FieldSliderTrack extends SuperellipseClip {
+class FieldSliderTrack extends SuperellipseHit {
   const FieldSliderTrack({
     super.key,
     required this.axis,
@@ -1806,10 +1926,9 @@ class FieldSliderTrack extends SuperellipseClip {
   final ValueChanged<double> onExtent;
 
   @override
-  RenderSuperellipseClip createRenderObject(BuildContext context) =>
+  RenderSuperellipseHit createRenderObject(BuildContext context) =>
       RenderFieldSliderTrack(
         borderRadius: borderRadiusIn(context),
-        clipBehavior: clipBehavior,
         axis: axis,
         frame: frame,
         textDirection: Directionality.maybeOf(context),
@@ -1833,10 +1952,9 @@ class FieldSliderTrack extends SuperellipseClip {
 }
 
 /// [FieldSliderTrack]'s render object.
-class RenderFieldSliderTrack extends RenderSuperellipseClip {
+class RenderFieldSliderTrack extends RenderSuperellipseHit {
   RenderFieldSliderTrack({
     required super.borderRadius,
-    required super.clipBehavior,
     required Axis axis,
     required ShapeDecoration frame,
     required TextDirection? textDirection,
@@ -1911,19 +2029,13 @@ class RenderFieldSliderTrack extends RenderSuperellipseClip {
       offset,
       ImageConfiguration(size: size, textDirection: _textDirection),
     );
-    super.paint(context, offset);
-  }
-
-  @override
-  void paintInside(PaintingContext context, Offset offset) {
-    final canvas = context.canvas;
-    canvas.save();
+    final canvas = context.canvas..save();
     if (offset != Offset.zero) {
       canvas.translate(offset.dx, offset.dy);
     }
     _fill.paint(canvas, size);
     canvas.restore();
-    super.paintInside(context, offset);
+    super.paint(context, offset);
   }
 
   @override
@@ -1960,6 +2072,7 @@ class _FieldSliderGrip extends OwningAxisGrip {
     required this.cursor,
     required this.semantics,
     required this.onWheel,
+    required this.onPointer,
     required super.child,
   });
 
@@ -1970,6 +2083,10 @@ class _FieldSliderGrip extends OwningAxisGrip {
 
   final PointerSignalEventListener onWheel;
 
+  /// What the bar's box hears of a pointer, as it comes — for a bar that types
+  /// on a double click ([FieldSlider.typesOnDoubleClick]); null for the rest.
+  final ValueChanged<PointerEvent>? onPointer;
+
   @override
   _RenderFieldSliderGrip createRenderObject(BuildContext context) =>
       _RenderFieldSliderGrip(
@@ -1977,6 +2094,7 @@ class _FieldSliderGrip extends OwningAxisGrip {
           semantics: semantics,
           textDirection: Directionality.maybeOf(context),
           onWheel: onWheel,
+          onPointer: onPointer,
         )
         ..wear(this);
 
@@ -1990,7 +2108,8 @@ class _FieldSliderGrip extends OwningAxisGrip {
       ..cursor = cursor
       ..properties = semantics
       ..textDirection = Directionality.maybeOf(context)
-      ..onWheel = onWheel;
+      ..onWheel = onWheel
+      ..onPointer = onPointer;
   }
 }
 
@@ -2002,6 +2121,7 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
     required SemanticsProperties semantics,
     required TextDirection? textDirection,
     required this.onWheel,
+    required this.onPointer,
   }) : _cursor = cursor {
     // A bar's [Semantics] said only these: a boundary round its own node.
     initSemanticsAnnotations(
@@ -2016,6 +2136,8 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
   }
 
   PointerSignalEventListener onWheel;
+
+  ValueChanged<PointerEvent>? onPointer;
 
   @override
   MouseCursor get cursor => _cursor;
@@ -2044,5 +2166,6 @@ class _RenderFieldSliderGrip extends RenderOwningAxisGrip
     if (event is PointerSignalEvent) {
       onWheel(event);
     }
+    onPointer?.call(event);
   }
 }

@@ -20,13 +20,14 @@ export 'layer_pose_matrix.dart'
         placementMatrix,
         placementOf;
 
-/// Applies a layer's [placement] to [canvas] before its image draws at the
-/// origin — see [placementMatrix] for the mapping and [rasterScale].
+/// Applies a picture's [placement] to [canvas] before its image draws at
+/// the origin — see [placementMatrix] for the mapping.
 ///
-/// EVERY composite route shares this one function — playback composites,
-/// camera renders (export/thumbnails) and the editing canvas's layer
-/// stack — so a transformed layer looks byte-identical everywhere
-/// (three-route parity discipline).
+/// ↩️Every composite route shared it — playback, the camera's renders and
+/// the editing canvas's stack — so a transformed layer looked byte-identical
+/// everywhere, till every row stood on the engine and the Flutter chain
+/// went (the-flutter-fx-chain-is-a-second-chain): a sheet's photo draws by
+/// it (`drawPosedLayerImage`).
 ///
 /// 🚨A TEXEL'S EDGE NEVER LIES ON A PIXEL'S CENTRE: the image is drawn
 /// [_offTheTexelEdge] of a texel past its pose. A pose whose texel edges
@@ -47,29 +48,23 @@ export 'layer_pose_matrix.dart'
 /// pose that moves nothing stopped drawing as no pose.
 /// ⚠️Only the draw: where the row is told and hit ([placementMatrix]) is
 /// the pose itself — a sixty-fourth of a texel is not where a pen lands.
-void applyLayerPlacement(
-  Canvas canvas,
-  LayerPlacement placement, {
-  double rasterScale = 1,
-}) {
-  canvas.transform(
-    placementMatrix(placement, rasterScale: rasterScale).storage,
-  );
-  if (!_laysTexelsWhole(placement, rasterScale)) {
+void applyLayerPlacement(Canvas canvas, LayerPlacement placement) {
+  canvas.transform(placementMatrix(placement).storage);
+  if (!_laysTexelsWhole(placement)) {
     canvas.translate(_offTheTexelEdge, _offTheTexelEdge);
   }
 }
 
 /// Whether [placement] takes each texel's edges onto whole pixels: whole
-/// numbers in its matrix, and a move of whole pixels at [rasterScale].
-bool _laysTexelsWhole(LayerPlacement placement, double rasterScale) {
+/// numbers in its matrix.
+bool _laysTexelsWhole(LayerPlacement placement) {
   bool whole(double value) => value == value.roundToDouble();
   return whole(placement.a) &&
       whole(placement.b) &&
       whole(placement.c) &&
       whole(placement.d) &&
-      whole(placement.tx * rasterScale) &&
-      whole(placement.ty * rasterScale);
+      whole(placement.tx) &&
+      whole(placement.ty);
 }
 
 /// How far past its pose a posed image is drawn ([applyLayerPlacement]), in

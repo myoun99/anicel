@@ -54,28 +54,42 @@ void main() {
 
   /// One row of a 겸용 pair: the bank is the link group's, and each cut
   /// shows ONE of its two cels — [shownByC1] on C1, the other on C2.
-  Layer rowOf(String cut, String row, {required String shownByC1}) {
+  ///
+  /// [bare] makes it as the menu makes a 겸용 cut's row: no cel yet.
+  Layer rowOf(
+    String cut,
+    String row, {
+    required String shownByC1,
+    bool bare = false,
+  }) {
     final other = shownByC1 == '1' ? '2' : '1';
     return Layer(
       id: LayerId('$cut-$row'),
       name: row.toUpperCase(),
-      frames: [frame('${row}1', '1'), frame('${row}2', '2')],
+      frames: bare
+          ? const []
+          : [frame('${row}1', '1'), frame('${row}2', '2')],
       mark: const LayerMark(process: LayerProcess.key),
       isVisible: true,
       onTimesheet: true,
-      timeline: {
-        0: TimelineExposure.drawing(
-          FrameId('$row${cut == 'c1' ? shownByC1 : other}'),
-          length: 2,
-        ),
-      },
+      timeline: bare
+          ? const {}
+          : {
+              0: TimelineExposure.drawing(
+                FrameId('$row${cut == 'c1' ? shownByC1 : other}'),
+                length: 2,
+              ),
+            },
     );
   }
 
   /// C1 and C2 sharing rows A and B. C1 shows A 1 and B 2; C2 shows A 2
   /// and B 1 — so standing on either cut, each bundle's FIRST cel comes
   /// from a different cut than the other bundle's.
-  EditorSessionManager linkedPair() => inkEveryCel(EditorSessionManager(
+  ///
+  /// [bare] makes it as the menu does: rows with no cel yet.
+  EditorSessionManager linkedPair({bool bare = false}) {
+    final session = EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -93,8 +107,8 @@ void main() {
                 duration: 2,
                 canvasSize: const CanvasSize(width: 8, height: 8),
                 layers: [
-                  rowOf(cut, 'a', shownByC1: '1'),
-                  rowOf(cut, 'b', shownByC1: '2'),
+                  rowOf(cut, 'a', shownByC1: '1', bare: bare),
+                  rowOf(cut, 'b', shownByC1: '2', bare: bare),
                   createCameraLayer(cutId: CutId(cut)),
                 ],
               ),
@@ -118,7 +132,9 @@ void main() {
         ],
       ),
     ),
-  ));
+    );
+    return bare ? session : inkEveryCel(session);
+  }
 
   Future<void> pumpCels(
     WidgetTester tester,
@@ -211,7 +227,6 @@ void main() {
       expect(transportLine(tester), 'A1.png · 1 / 2');
       await tapRow(tester, '$standingOn-b');
       expect(transportLine(tester), 'B1.png · 1 / 2');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
@@ -234,7 +249,31 @@ void main() {
       isNull,
       reason: 'the group exports once, as one cut: nothing to pick between',
     );
-    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🚨under the project scope a pair with no cel yet still '
+      'lists its timesheets — a sheet each cut', (tester) async {
+    // F-415 (검증 2026-11-16 ②): standing on C2 with no cel made, the
+    // list stood on C2, and the pair's timesheets — listed in C1, where the
+    // export walks the pair from — were in no row.
+    final session = linkedPair(bare: true);
+    addTearDown(session.dispose);
+    session.selectCut(const CutId('c2'));
+
+    await pumpCels(
+      tester,
+      session,
+      scope: ExportScopeKind.project,
+      kinds: {...celKindsAlone, ExportCelKind.timesheet},
+    );
+
+    expect(
+      [
+        for (final row in tester.celsBoard.rows)
+          if (row is ExportCelsDocumentRow) (row.kind, row.sheets.length),
+      ],
+      [(ExportCelKind.timesheet, 2)],
+    );
   });
 
   testWidgets('🗣️a film a cut of the pair, as a timesheet is (I-151: 「셀은 '
@@ -257,7 +296,6 @@ void main() {
       ],
       ['_CUTC1.mp4', '_CUTC2.mp4'],
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   /// F-337: the window takes its share of the screen, and never less than
@@ -326,7 +364,6 @@ void main() {
       );
       expect(picker(tester).label, 'C1-C2');
       expect(tester.takeException(), isNull);
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 }

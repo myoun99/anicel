@@ -25,7 +25,7 @@ void main() {
     BitmapSurface surface({
       int width = 4,
       int height = 4,
-      int tileSize = 2,
+      int tileSize = 128,
       Map<TileCoord, BitmapTile> tiles = const {},
     }) {
       return BitmapSurface(
@@ -38,7 +38,7 @@ void main() {
     PlacedTile blankTile({
       required int tileX,
       required int tileY,
-      int size = 2,
+      int size = 128,
     }) {
       return (
         coord: TileCoord(x: tileX, y: tileY),
@@ -235,8 +235,8 @@ void main() {
       'multi-tile dab produces afterSurface with multiple changed tiles',
       () {
         final edit = editFor(
-          surface: surface(width: 4, height: 4, tileSize: 2),
-          sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
+          surface: surface(width: 256, height: 4),
+          sequence: BrushDabSequence([squareDab(centerX: 128, centerY: 1)]),
         );
 
         expect(edit.commitResult.changedTileCount, greaterThan(1));

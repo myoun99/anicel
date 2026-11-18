@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
     show TimelineBlockText;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingInkColor;
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
@@ -24,6 +25,19 @@ void main() {
   );
 
   const metrics = TimelineGridMetrics.defaults;
+
+  /// The frame axis a band of [frames] at [grid]'s cell is laid by.
+  TimelineFrameGeometryHandle axisOf(TimelineGridMetrics grid, int frames) {
+    final geometry = ValueNotifier(
+      TimelineFrameGeometry(
+        frameCellExtent: grid.frameCellWidth,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: frames,
+      ),
+    );
+    addTearDown(geometry.dispose);
+    return geometry;
+  }
 
   const member = PropertyLaneRow(
     laneId: 'position',
@@ -60,8 +74,10 @@ void main() {
               lane: lane,
               frameStartIndex: 0,
               frameEndIndexExclusive: 6,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
+              geometry: axisOf(
+                const TimelineGridMetrics(frameCellWidth: 72),
+                6,
+              ),
               metrics: const TimelineGridMetrics(frameCellWidth: 72),
             ),
           ),
@@ -83,8 +99,7 @@ void main() {
               lane: lane,
               frameStartIndex: 0,
               frameEndIndexExclusive: 20,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
+              geometry: axisOf(metrics, 20),
               metrics: metrics,
             ),
           ),
@@ -195,8 +210,7 @@ void main() {
                   lane: lane,
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 40,
-                  leadingFrameSpacerWidth: 0,
-                  trailingFrameSpacerWidth: 0,
+                  geometry: axisOf(narrow, 40),
                   metrics: narrow,
                 ),
               ),

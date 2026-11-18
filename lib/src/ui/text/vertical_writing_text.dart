@@ -10,7 +10,7 @@ import 'word_condensation.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart' show ByList;
 import '../widgets/app_tooltip.dart' show SummonsTooltip, TooltipBox;
-import '../widgets/ground_ink_writing.dart' show GroundInkRun;
+import '../widgets/ground_ink_writing.dart' show GroundInkRun, insetGivenWay;
 
 // Hosts pick a Latin form when they mount the widget, so the choice has to
 // travel with the renderer they already import — the table itself stays a
@@ -370,9 +370,10 @@ class VerticalWritingText extends LeafRenderObjectWidget {
   /// packs, and it goes through [paintVerticalText] directly.
   final VerticalTextOverflow overflow;
 
-  /// What the column keeps clear at each end of the box — a stood bar's
-  /// track inset; the box itself, and so [inks], still runs the whole
-  /// length.
+  /// How far the column stands in from each end of the box while it fits
+  /// there — a stood bar's track inset, which a column longer than that
+  /// takes, both ends alike, before it packs or is cut ([insetGivenWay]);
+  /// the box itself, and so [inks], still runs the whole length.
   final double endInset;
 
   /// The ground under the column, top to bottom ([GroundInkRun], as
@@ -586,21 +587,35 @@ class _VerticalWritingPainter extends CustomPainter
   /// The extent of a slot at the natural leading.
   double get _naturalCellExtent => (style.fontSize ?? 12) * lineHeight;
 
+  /// How many slots the column runs down.
+  int get _slots => verticalTextSpanCount(
+    verticalTextCells(
+      text,
+      tateChuYokoDigits: tateChuYokoDigits,
+      latinForm: latinForm,
+    ),
+  );
+
+  /// How far the column stands in from each end of a box [size] big: its
+  /// [endInset], given way as far as the column needs at its natural
+  /// leading ([insetGivenWay]).
+  double _insetIn(Size size) => endInset == 0
+      ? 0
+      : insetGivenWay(
+          room: size.height,
+          need: _slots * _naturalCellExtent,
+          inset: endInset,
+        );
+
   /// What the column has to run down in a box [size] big.
   double _mainExtentIn(Size size) =>
-      math.max(0, size.height - endInset * 2);
+      math.max(0, size.height - _insetIn(size) * 2);
 
   /// Whether a box [size] big ends the column short of its text
   /// ([paintVerticalText]).
   bool isCutIn(Size size) =>
       overflow == VerticalTextOverflow.ellipsis &&
-      verticalTextSpanCount(
-            verticalTextCells(
-              text,
-              tateChuYokoDigits: tateChuYokoDigits,
-              latinForm: latinForm,
-            ),
-          ) >
+      _slots >
           verticalTextCapacityCells(
             mainExtent: _mainExtentIn(size),
             naturalCellExtent: _naturalCellExtent,
@@ -633,13 +648,14 @@ class _VerticalWritingPainter extends CustomPainter
 
   void _paintColumn(Canvas canvas, Size size, TextStyle style) {
     final fontSize = style.fontSize ?? 12;
+    final inset = _insetIn(size);
     paintVerticalText(
       canvas,
       text,
       style: style,
       centerX: size.width / 2,
-      top: endInset,
-      mainExtent: _mainExtentIn(size),
+      top: inset,
+      mainExtent: math.max(0, size.height - inset * 2),
       naturalCellExtent: _naturalCellExtent,
       setWord: paintFittedText,
       // The leading is proportional here, unlike the timesheet's fixed-row

@@ -15,7 +15,6 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
-import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -91,7 +90,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     this.paperGround,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?windowBucket,
            // Its OWN row's answers: a block that turns empty turns its
            // number grey (I-129).
@@ -183,13 +182,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter
   /// The labels a paint prints: those whose block reaches the frames the
   /// window can show ([windowBucket]).
   List<TimelineRunLabel> runLabelsInWindow() {
-    final window = visibleFrameWindowFor(
-      bucket: windowBucket,
-      viewportMainExtent: viewportMainExtent,
-      cellExtent: frameCellExtent,
-      frameStartIndex: frameStartIndex,
-      frameEndIndexExclusive: frameEndIndexExclusive,
-    );
+    final window = geometry.value.rowDrawnFrames(windowBucket);
     return _labelsIn(window.startIndex, window.endIndexExclusive);
   }
 

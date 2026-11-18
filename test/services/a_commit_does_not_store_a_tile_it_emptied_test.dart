@@ -65,7 +65,7 @@ void main() {
         sequence: BrushDabSequence([dab]),
       ).surface;
 
-  BitmapSurface empty() => BitmapSurface(canvasSize: canvas, tileSize: 2);
+  BitmapSurface empty() => BitmapSurface(canvasSize: canvas, tileSize: 128);
 
   test('erasing the last ink out of a tile DROPS the tile', () {
     final painted = commit(empty(), dabAt(0, 0));
@@ -106,8 +106,8 @@ void main() {
   test('⛔putTiles does NOT drop — the recipe rewrite walks the tiles that '
       'exist, and cannot visit one the forward pass took away', () {
     final blank = BitmapTile(
-      size: 2,
-      pixels: Uint8List(BitmapTile.bytesFor(2)),
+      size: 128,
+      pixels: Uint8List(BitmapTile.bytesFor(128)),
     );
 
     expect(empty().putTiles([(coord: origin, tile: blank)]).tileAt(origin), isNotNull);
@@ -122,8 +122,8 @@ void main() {
   test('the PROMOTION fast path drops what it emptied too', () {
     final painted = commit(empty(), dabAt(0, 0));
     final blanked = BitmapTile(
-      size: 2,
-      pixels: Uint8List(BitmapTile.bytesFor(2)),
+      size: 128,
+      pixels: Uint8List(BitmapTile.bytesFor(128)),
     );
 
     final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
@@ -146,8 +146,8 @@ void main() {
   test('a materializing put REMOVES a tile that was already there', () {
     final painted = commit(empty(), dabAt(0, 0));
     final blank = BitmapTile(
-      size: 2,
-      pixels: Uint8List(BitmapTile.bytesFor(2)),
+      size: 128,
+      pixels: Uint8List(BitmapTile.bytesFor(128)),
     );
 
     expect(painted.putMaterializedTiles([(coord: origin, tile: blank)]).tiles, isEmpty);

@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
+
 /// 🗣️F-192 (유저 2026-09-27): 「컷의 페이드인은 애초에 쌩 검은화면에서
 /// 바뀐단거였음. 화이트인은 쌩 흰화면에서 바뀌는거고 … 백그라운드색을
 /// 바꾸는거말고 구조적으로」.
@@ -81,12 +83,14 @@ void main() {
     // The canvas route stands a frame on the renderer's GROUND
     // (`exportFrameGround` unless named) and the camera route on the
     // project's paper — green on both, so the paper is one colour.
-    final image = await ExportFrameRenderer(
-      session: manager,
-      background: const ui.Color(green),
-    ).videoRun([
-          ExportFrameTask(cut: manager.requireActiveCut, frameIndex: frame),
-        ], mode).frame(0);
+    final image = await pictureOfFilmFrame(
+      ExportFrameRenderer(
+        session: manager,
+        ground: const ui.Color(green),
+      ).videoRun([
+        ExportFrameTask(cut: manager.requireActiveCut, frameIndex: frame),
+      ], mode).frame(0),
+    );
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final offset = ((image.height ~/ 2) * image.width + image.width ~/ 2) * 4;
     image.dispose();

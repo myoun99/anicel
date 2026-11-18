@@ -61,7 +61,7 @@ class AudioClips {
     }
     // Conform from scratch — the file may have changed on disk since a
     // previous import.
-    final effectivePath = _pool.importAudioFile(filePath);
+    final effectivePath = _pool.importSoundOf(filePath);
     final current = _controllers.timelineController.currentFrameIndex;
     final frameIndex = current < 0 ? 0 : current;
     var frame = resolveExposedFrameAt(layer, frameIndex);

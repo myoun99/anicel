@@ -20,10 +20,12 @@ import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_history_policy.dart';
 import '../models/dirty_tile_set.dart';
+import 'bitmap_surface_geometry.dart';
 import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
 import 'cache_invalidation_executor.dart';
+import 'selection_clip.dart';
 
 /// The brush editing spine (R19 P3b): sessions hold the CURRENT surface
 /// only. Undo/redo live at the app level as pre/post SURFACE REFERENCES
@@ -36,16 +38,9 @@ class BrushFrameEditingCoordinator {
     required this.frameStore,
     required this.sessionStore,
     required this.historyPolicy,
-  }) : _activeFrameKey = initialFrameKey {
-    // ★ONE RESOLVER, TWO STORES. The frame store folds every single-cel
-    // operation onto the physical cel; a session is state ABOUT that cel,
-    // so it answers to the same address or the two drift apart. Wired
-    // HERE because this is the one object holding both — the session
-    // store never grows a resolver of its own to keep in step. The
-    // pasteboard's reach (I-109) is read through the same way.
-    sessionStore
-      ..setLinkResolver(frameStore.canonicalKeyOf)
-      ..setPasteboardReachSource(() => frameStore.pasteboardReach);
+  }) : _activeFrameKey = initialFrameKey,
+       _laysCelsOnItsCanvas = false {
+    _answerToTheStoresAddress();
   }
 
   /// A coordinator over a sheet's ink [store] — the conte's, the
@@ -57,17 +52,51 @@ class BrushFrameEditingCoordinator {
     required BrushFrameStore store,
     required CanvasSize canvasSize,
     required BrushFrameKey initialFrameKey,
-  }) : this(
-         initialFrameKey: initialFrameKey,
-         frameStore: store,
-         sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-         historyPolicy: const BrushHistoryPolicy(),
-       );
+  }) : frameStore = store,
+       sessionStore = BrushFrameEditSessionStore(canvasSize: canvasSize),
+       historyPolicy = const BrushHistoryPolicy(),
+       _activeFrameKey = initialFrameKey,
+       _laysCelsOnItsCanvas = true {
+    _answerToTheStoresAddress();
+  }
+
+  /// ★ONE RESOLVER, TWO STORES. The frame store folds every single-cel
+  /// operation onto the physical cel; a session is state ABOUT that cel,
+  /// so it answers to the same address or the two drift apart. Wired
+  /// HERE because this is the one object holding both — the session
+  /// store never grows a resolver of its own to keep in step. The
+  /// pasteboard's reach (I-109) is read through the same way.
+  void _answerToTheStoresAddress() => sessionStore
+    ..setLinkResolver(frameStore.canonicalKeyOf)
+    ..setPasteboardReachSource(() => frameStore.pasteboardReach);
 
   final BrushFrameStore frameStore;
   final BrushFrameEditSessionStore sessionStore;
   final BrushHistoryPolicy historyPolicy;
   BrushFrameKey _activeFrameKey;
+
+  /// Whether a cel kept at another size is laid on this coordinator's
+  /// canvas when a session seeds from it — a sheet's ink ([overInk]),
+  /// whose cels stand on the one paper the plane shows — or is no cel a
+  /// session can stand on, a drawing's, whose cels keep their cut's own
+  /// size (R27, [resizeCanvas]).
+  ///
+  /// 🗣️A paper's size moves no pixel of its ink: the writing stays where it
+  /// was written (F-252, 유저 2026-10-01 「잉크는 용지에 귀속됨 … 내용물이
+  /// 뭐가 바뀌던 독립적」), and every printer lays it from the top-left at
+  /// its own scale (`SheetInkPlacement.rasterRect`). The size says only how
+  /// far a brush's canvas reaches, so only the cel a brush comes to is
+  /// laid on it — top-left anchored, every tile behind the wall kept.
+  ///
+  /// ↩️A plane's new size was laid on EVERY cel of its store as its panel
+  /// built (`resizeCanvasAllCuts`): R27 (2026-07-15) kept that for the
+  /// timesheet ink because its cuts shared one page. 11-05 gave each cut a
+  /// paper of its own (its sheet kind; an XDTS sheet as wide as its
+  /// columns), and every visit to a cut on another paper then unpacked,
+  /// laid and packed again every kept cel of every cut on the UI thread
+  /// (13–32 ms a cel, 저장 2026-11-14) — and left every other cut's ink
+  /// on the paper last shown, its export cropped to it.
+  final bool _laysCelsOnItsCanvas;
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
   BrushEditSessionState get activeSessionState => _sessionFor(_activeFrameKey);
@@ -112,21 +141,10 @@ class BrushFrameEditingCoordinator {
     _seedSession(_activeFrameKey);
   }
 
-  /// Whole-store resize for SINGLE-CANVAS dedicated stores only (the
-  /// timesheet ink planes). The main canvas coordinator must use the
-  /// cut-scoped [resizeCanvas].
-  void resizeCanvasAllCuts(CanvasSize canvasSize) {
-    if (canvasSize == sessionStore.canvasSize) {
-      return;
-    }
-    sessionStore.resizeCanvas(canvasSize);
-    frameStore.clearDisplayCaches();
-    frameStore.resizeAllBakedSurfacesSingleCanvas(canvasSize);
-    _seedSession(_activeFrameKey);
-  }
-
   /// Adopts [canvasSize] WITHOUT touching any baked cel — the cut-switch
-  /// path when the new cut has no editable cels to scope a resize to.
+  /// path when the new cut has no editable cels to scope a resize to, and
+  /// every sheet's ink plane, whose cels are laid on the canvas one at a
+  /// time as sessions seed from them ([_laysCelsOnItsCanvas]).
   void adoptCanvasSize(CanvasSize canvasSize) {
     if (canvasSize == sessionStore.canvasSize) {
       return;
@@ -165,8 +183,7 @@ class BrushFrameEditingCoordinator {
     final current = session.canvasState.currentSurface;
     final baked = frameStore.bakedSurfaceOrNull(key);
     if (baked != null) {
-      return !identical(baked, current) &&
-          baked.canvasSize == sessionStore.canvasSize;
+      return !identical(baked, current) && _standsOn(baked);
     }
     if (current.holdsNothing) {
       return current.pasteboardReach != frameStore.pasteboardReach;
@@ -178,20 +195,28 @@ class BrushFrameEditingCoordinator {
   /// byte-exact (donations keep baked current across every mutation).
   /// A never-drawn cel seeds blank. The seed re-donates so the display
   /// cache is fresh whenever a session exists (e.g. right after a resize
-  /// cleared every old-size cache).
+  /// cleared every old-size cache) — and a cel laid on the canvas as it
+  /// seeds ([_laysCelsOnItsCanvas]) is the store's truth at that size.
   BrushEditSessionState _seedSession(BrushFrameKey key) {
     final blank = sessionStore.reset(key);
     final baked = frameStore.bakedSurfaceOrNull(key);
-    if (baked == null || baked.canvasSize != sessionStore.canvasSize) {
+    if (baked == null || !_standsOn(baked)) {
       return blank;
     }
+    final laid = resizeBitmapSurfaceCanvas(baked, sessionStore.canvasSize);
     final seeded = sessionStore.update(
       key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: baked)),
+      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: laid)),
     );
     _donateSessionSurfaceToDisplayCache(key, seeded);
     return seeded;
   }
+
+  /// Whether a session stands on [baked]: one at the canvas's size, or of
+  /// any size where this coordinator lays its cels on the canvas
+  /// ([_laysCelsOnItsCanvas]).
+  bool _standsOn(BitmapSurface baked) =>
+      _laysCelsOnItsCanvas || baked.canvasSize == sessionStore.canvasSize;
 
   /// Donates the session's post-edit surface to the store's display cache.
   ///
@@ -249,6 +274,7 @@ class BrushFrameEditingCoordinator {
     List<BrushDab> dabs, {
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushFrameKey? key,
+    SelectionClip? selection,
   }) {
     if (dabs.isEmpty) {
       throw ArgumentError.value(dabs, 'dabs', 'must not be empty');
@@ -261,6 +287,7 @@ class BrushFrameEditingCoordinator {
       frameId: target.frameId,
       cacheInvalidationSink: _NoopCacheInvalidationSink(),
       blendMode: blendMode,
+      selection: selection,
     );
     if (result.affectedEntry == null) {
       return null;
@@ -282,6 +309,7 @@ class BrushFrameEditingCoordinator {
     double strokeOpacity = 1,
     BitmapSurface? promotedBase,
     List<PlacedTile>? promotedTiles,
+    SelectionClip? selection,
   }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
@@ -303,6 +331,7 @@ class BrushFrameEditingCoordinator {
         blendMode: blendMode,
         promotedBase: promotedBase,
         promotedTiles: promotedTiles,
+        selection: selection,
       ),
     );
     final committedState = result.sessionState;

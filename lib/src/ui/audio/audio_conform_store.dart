@@ -2,11 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/on_a_worker.dart';
 import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/project_frame_rate.dart' show noPull;
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
+import '../../services/audio/sound_filters.dart'
+    show FilterSlot, FilteredSpan;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/audio/filtered_stream.dart';
 import '../../services/media/media_byte_source.dart';
 import 'sound_cannot_play.dart';
 
@@ -36,7 +41,7 @@ class _ConformFailure {
 /// still syncing down from a cloud folder) self-heal, and a hard one
 /// cannot spin the paint loop.
 ///
-/// A format the decoder chain does not read (dr_libs + stb_vorbis + the
+/// A format the decoder chain does not read (the bundled decoders + the
 /// OS codec stack) is a DEFINITIVE `undecodable` answer, not a failure:
 /// the entry stays, the waveform stays blank, and a run plays without that
 /// file, saying so (`OutputArmed.cannotPlay`). ↩️Its playback rode the
@@ -51,6 +56,7 @@ class AudioConformStore extends ChangeNotifier {
     this.resolveCarry,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
+    FilterRunner? filterRunner,
     int Function()? resolveProjectSampleRate,
     int projectSampleRate = 48000,
     ({int numerator, int denominator}) Function()? resolveAudioSpeed,
@@ -59,13 +65,13 @@ class AudioConformStore extends ChangeNotifier {
     this.maxAttempts = 3,
     this.retryDelay = const Duration(seconds: 2),
     void Function(String message)? log,
-    this.libraryPathOverride,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
+       _filterRunner = filterRunner ?? runFilterInIsolate,
        _resolveProjectSampleRate =
            resolveProjectSampleRate ?? (() => projectSampleRate),
        _resolveAudioSpeed =
-           resolveAudioSpeed ?? (() => (numerator: 1, denominator: 1)),
+           resolveAudioSpeed ?? (() => noPull),
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
@@ -108,6 +114,7 @@ class AudioConformStore extends ChangeNotifier {
 
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
+  final FilterRunner _filterRunner;
 
   /// The PROJECT's audio rate, read live (EXPORT-AUDIO ③ made it a
   /// project setting; a fixed int remains as the test-friendly default).
@@ -124,10 +131,6 @@ class AudioConformStore extends ChangeNotifier {
   final int maxAttempts;
   final Duration retryDelay;
 
-  /// Test hook, forwarded into every request (worker isolates start with
-  /// fresh statics).
-  final String? libraryPathOverride;
-
   /// A store that conforms each path's FILE as it lies — no carry, no
   /// conform of the project's, nothing kept on disk — at this one's rate
   /// and speed, through its runners: what the import window plays a file
@@ -136,6 +139,7 @@ class AudioConformStore extends ChangeNotifier {
     resolveConformPath: (_) => null,
     runner: _runner,
     resampleRunner: _resampleRunner,
+    filterRunner: _filterRunner,
     resolveProjectSampleRate: _resolveProjectSampleRate,
     resolveAudioSpeed: _resolveAudioSpeed,
     bucketsPerSecond: bucketsPerSecond,
@@ -143,7 +147,6 @@ class AudioConformStore extends ChangeNotifier {
     maxAttempts: maxAttempts,
     retryDelay: retryDelay,
     log: _log,
-    libraryPathOverride: libraryPathOverride,
   );
 
   final Map<String, ConformResult> _entries = {};
@@ -224,7 +227,7 @@ class AudioConformStore extends ChangeNotifier {
         // change, or an undo of one): stale by definition, re-conform.
         // Self-healing here rather than hooked into the history stack.
         _entries.remove(sourcePath);
-        _resampledByRate.remove(sourcePath);
+        _derived.letGoOfWhatWasMade(sourcePath);
       } else {
         return cached;
       }
@@ -244,10 +247,17 @@ class AudioConformStore extends ChangeNotifier {
   }
 
   /// The waveform for [sourcePath], computed from the conformed PCM.
-  AudioPeaks? peaksFor(String sourcePath) {
-    final entry = resultFor(sourcePath);
-    return entry != null && entry.isUsable ? entry.peaks : null;
-  }
+  AudioPeaks? peaksFor(String sourcePath) => _peaksOf(resultFor(sourcePath));
+
+  /// The waveform for [sourcePath] where its conform is already held —
+  /// ⛔never asking for one, as [peaksFor] does: a list that tells every
+  /// sound's length (the media pool's, asset-placement-presets Q4) must
+  /// not start a decode of each.
+  AudioPeaks? heldPeaksFor(String sourcePath) =>
+      _peaksOf(_entries[sourcePath]);
+
+  static AudioPeaks? _peaksOf(ConformResult? entry) =>
+      entry != null && entry.isUsable ? entry.peaks : null;
 
   /// The clip length in seconds — an EXACT sample count over the rate.
   double? durationSecondsFor(String sourcePath) {
@@ -264,17 +274,12 @@ class AudioConformStore extends ChangeNotifier {
     return entry != null && entry.isUsable ? entry.samples : null;
   }
 
-  final Map<String, Map<int, Float32List>> _resampledByRate = {};
-  final Set<String> _resamplePending = {};
+  /// What is made of the conforms here — conversions, bakes, checkpoints —
+  /// kept beside them and let go of with them ([_DerivedSound]).
+  late final _derived = _DerivedSound(this);
 
-  /// The rates [_resampleTo] could not convert a path to — not kicked again
-  /// for the session, as a conform that spent its attempts is not: a run
-  /// that waits for its sound ([isLanding]) would otherwise wait on a
-  /// conversion failing again at every landing. [invalidate] forgets them.
-  final Map<String, Set<int>> _conversionsThatFailed = {};
-
-  String _resampleKey(String sourcePath, int sampleRate) =>
-      '$sampleRate|$sourcePath';
+  /// The listeners told that a result made of a conform landed.
+  void _landed() => notifyListeners();
 
   /// The conformed PCM at [sampleRate] — [samplesFor] when the device runs
   /// at the project rate (the common case, bit-exact, no filter), a cached
@@ -287,26 +292,14 @@ class AudioConformStore extends ChangeNotifier {
       return samplesFor(sourcePath);
     }
     final entry = resultFor(sourcePath);
-    final samples = entry != null && entry.isUsable ? entry.samples : null;
-    if (samples == null) {
-      return null;
-    }
-    final cached = _resampledByRate[sourcePath]?[sampleRate];
-    if (cached != null) {
-      return cached;
-    }
-    if (_conversionsThatFailed[sourcePath]?.contains(sampleRate) ?? false) {
-      return null;
-    }
-    final key = _resampleKey(sourcePath, sampleRate);
-    if (_resamplePending.add(key)) {
-      unawaited(_resampleTo(sourcePath, entry!, sampleRate, key));
-    }
-    return null;
+    return entry != null && entry.isUsable && entry.samples != null
+        ? _derived.convertedTo(sourcePath, entry, sampleRate)
+        : null;
   }
 
   /// Whether [sourcePath] is on its way to being played at [sampleRate]:
-  /// its conform, or its conversion to that rate, under way — and it will
+  /// its conform, its conversion to that rate, or a span of it baked
+  /// through its filters ([filteredAt]) under way — and it will
   /// say so when it lands (a notify).
   ///
   /// 🚨What a run that waits for its sound waits on
@@ -316,7 +309,7 @@ class AudioConformStore extends ChangeNotifier {
   /// — and the run plays without it.
   bool isLanding(String sourcePath, int sampleRate) =>
       _pending.contains(sourcePath) ||
-      _resamplePending.contains(_resampleKey(sourcePath, sampleRate));
+      _derived.isLanding(sourcePath, sampleRate);
 
   /// Why [sourcePath] cannot be played at [sampleRate] — null while it can,
   /// and while it is on its way ([isLanding]). Like [resultFor] it kicks
@@ -332,17 +325,39 @@ class AudioConformStore extends ChangeNotifier {
   /// would buy that rare case with a permanent cost, and an arm opens such
   /// a device again at the project's rate before it plans
   /// (`armAudioOutput`).
-  SoundCannotPlay? cannotPlayAt(String sourcePath, int sampleRate) {
+  ///
+  /// [filtered]: the span of it a run plays, baked through its filters
+  /// ([filteredAt]) — the bake under way, or failed, in place of the
+  /// conform's samples.
+  SoundCannotPlay? cannotPlayAt(
+    String sourcePath,
+    int sampleRate, {
+    FilteredSpan? filtered,
+  }) {
     if (isStreaming(sourcePath)) {
       if (sampleRate != projectSampleRate) {
         return SoundCannotPlay.deviceRate;
       }
-      return streamReaderFor(sourcePath) == null
-          ? SoundCannotPlay.conform
-          : null;
+      if (streamReaderFor(sourcePath) == null) {
+        return SoundCannotPlay.conform;
+      }
+      return filtered == null
+          ? null
+          : _bakedOrComing(
+              sourcePath,
+              sampleRate,
+              filterCheckpointsFor(sourcePath, filtered),
+            );
     }
-    if (samplesAtRate(sourcePath, sampleRate) != null ||
-        isLanding(sourcePath, sampleRate)) {
+    final samples = samplesAtRate(sourcePath, sampleRate);
+    if (samples != null && filtered != null) {
+      return _bakedOrComing(
+        sourcePath,
+        sampleRate,
+        filteredAt(sourcePath, sampleRate, filtered),
+      );
+    }
+    if (samples != null || isLanding(sourcePath, sampleRate)) {
       return null;
     }
     // Only a usable conform or an undecodable answer is kept as an entry.
@@ -359,43 +374,89 @@ class AudioConformStore extends ChangeNotifier {
     };
   }
 
-  Future<void> _resampleTo(
+  /// A span plays its bake or not at all: null while [baked] is there or
+  /// on its way ([isLanding]).
+  SoundCannotPlay? _bakedOrComing(
     String sourcePath,
-    ConformResult entry,
     int sampleRate,
-    String pendingKey,
+    Object? baked,
+  ) => baked != null || isLanding(sourcePath, sampleRate)
+      ? null
+      : SoundCannotPlay.conform;
+
+  /// [sourcePath]'s [span] through its filters, at [sampleRate] — baked
+  /// ONCE from the span's first sample, whatever part of it a run or an
+  /// export plays (board audio-fx-grows-like-the-pros ③), and read by both.
+  /// A missing bake is kicked async and lands with a notify, as a rate
+  /// conversion does — what a run that waits for its sound waits on
+  /// ([isLanding]).
+  ///
+  /// The span is cut from the samples the device plays at [sampleRate]
+  /// ([samplesAtRate]), so a device off the project's rate bakes from the
+  /// conversion — null while that is landing.
+  Float32List? filteredAt(
+    String sourcePath,
+    int sampleRate,
+    FilteredSpan span,
+  ) => _derived.bakedAt(sourcePath, sampleRate, span);
+
+  /// [sourcePath]'s [span] through its filters where its conform streams
+  /// ([isStreaming]): the checkpoints its windows are baked on from
+  /// ([readStreamedWindow]), made once by a pass over the span on a worker
+  /// — kicked and landing as [filteredAt]'s bake does, for a run to wait
+  /// on ([isLanding]).
+  FilterCheckpoints? filterCheckpointsFor(
+    String sourcePath,
+    FilteredSpan span,
+  ) => _derived.checkpointsFor(sourcePath, span);
+
+  /// How many spans of [sourcePath] the store holds baked or checkpointed
+  /// — what a knob's bound ([FilterSlot]) is read by.
+  @visibleForTesting
+  int heldFilteringsOf(String sourcePath) => _derived.heldOf(sourcePath);
+
+  /// Awaits [sourcePath]'s [span] baked at [sampleRate]: the bake, or null
+  /// once it is not coming — no conform, or a bake that failed. What an
+  /// export mixes an filtered span from: the same bake playback reads.
+  Future<Float32List?> ensureFilteredFor(
+    String sourcePath,
+    int sampleRate,
+    FilteredSpan span,
+  ) async => await ensureFor(sourcePath) == null
+      ? null
+      : _onceLanded(
+          sourcePath,
+          sampleRate,
+          () => filteredAt(sourcePath, sampleRate, span),
+        );
+
+  /// Awaits a streamed [span]'s checkpoints ([filterCheckpointsFor]), or
+  /// null once they are not coming — what an export streams an filtered
+  /// long span through: the checkpoints playback's windows are baked from.
+  Future<FilterCheckpoints?> ensureFilterCheckpointsFor(
+    String sourcePath,
+    FilteredSpan span,
+  ) async => await ensureFor(sourcePath) == null
+      ? null
+      : _onceLanded(
+          sourcePath,
+          projectSampleRate,
+          () => filterCheckpointsFor(sourcePath, span),
+        );
+
+  /// What [look] finds, as soon as it finds it — or once nothing of
+  /// [sourcePath] at [sampleRate] is on its way ([isLanding]) to be found.
+  Future<T?> _onceLanded<T>(
+    String sourcePath,
+    int sampleRate,
+    T? Function() look,
   ) async {
-    try {
-      final converted = await _resampleRunner(
-        ResampleRequest(
-          samples: entry.samples!,
-          channels: entry.channels,
-          inputRate: entry.sampleRate,
-          outputRate: sampleRate,
-          libraryPathOverride: libraryPathOverride,
-        ),
-      );
-      // Onto the entry it was made FROM, or nowhere: one let go of while
-      // this ran — another carry, a rate that moved — would otherwise get
-      // the old sound back at the device rate.
-      if (_disposed || !identical(_entries[sourcePath], entry)) {
-        return;
+    while (true) {
+      final found = look();
+      if (found != null || !isLanding(sourcePath, sampleRate)) {
+        return found;
       }
-      (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted;
-    } on Object catch (error) {
-      if (_disposed) {
-        return;
-      }
-      (_conversionsThatFailed[sourcePath] ??= {}).add(sampleRate);
-      _log(
-        '[AudioConformStore] device-rate conversion failed for '
-        '$sourcePath → ${sampleRate}Hz: $error',
-      );
-    } finally {
-      if (!_disposed) {
-        _resamplePending.remove(pendingKey);
-        notifyListeners();
-      }
+      await _aNotify();
     }
   }
 
@@ -426,19 +487,25 @@ class AudioConformStore extends ChangeNotifier {
         // export render's — give the answer we have.
         return null;
       }
-      final landed = Completer<void>();
-      void onChanged() {
-        if (!landed.isCompleted) {
-          landed.complete();
-        }
-      }
+      await _aNotify();
+    }
+  }
 
-      addListener(onChanged);
-      try {
-        await landed.future;
-      } finally {
-        removeListener(onChanged);
+  /// The next notify — whatever landed: what [ensureFor] and
+  /// [_onceLanded] wait on between their looks.
+  Future<void> _aNotify() async {
+    final landed = Completer<void>();
+    void onChanged() {
+      if (!landed.isCompleted) {
+        landed.complete();
       }
+    }
+
+    addListener(onChanged);
+    try {
+      await landed.future;
+    } finally {
+      removeListener(onChanged);
     }
   }
 
@@ -468,7 +535,6 @@ class AudioConformStore extends ChangeNotifier {
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,
           speedDenominator: speed.denominator,
-          libraryPathOverride: libraryPathOverride,
         ),
       );
     } on Object catch (error) {
@@ -539,8 +605,7 @@ class AudioConformStore extends ChangeNotifier {
     _entries.remove(sourcePath);
     _failures.remove(sourcePath);
     _conformedAs.remove(sourcePath);
-    _resampledByRate.remove(sourcePath);
-    _conversionsThatFailed.remove(sourcePath);
+    _derived.forget(sourcePath);
     _closeStreamReader(sourcePath);
   }
 
@@ -559,3 +624,335 @@ class AudioConformStore extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// Where a result made of a conform goes as it lands ([_DerivedSound._land]):
+/// [keep] keeps it, [failed] remembers a failure and [saying] says it, and
+/// [settled] lets go of it as under way.
+typedef _Landing<T> = ({
+  void Function(T made) keep,
+  void Function() failed,
+  String Function(Object error) saying,
+  void Function() settled,
+});
+
+/// What [AudioConformStore] makes of its conforms, kept beside them and
+/// let go of with them: each conversion to a device's rate, each span
+/// baked through its filters, each long span's checkpoints.
+///
+/// 🚨PART OF THE STORE, NOT A STORE OF ITS OWN: it reads the conforms the
+/// store holds and tells the store's listeners as each result lands. Split
+/// from it when the equalizer's bakes and checkpoints came to sit beside
+/// the conversions (board audio-fx-grows-like-the-pros ③, 11-17) and the
+/// three made one landing ([_land]).
+final class _DerivedSound {
+  _DerivedSound(this._store);
+
+  final AudioConformStore _store;
+
+  final Map<String, Map<int, Float32List>> _resampledByRate = {};
+  final Set<String> _resamplePending = {};
+
+  /// The rates a path could not be converted to — not kicked again for the
+  /// session, as a conform that spent its attempts is not: a run that waits
+  /// for its sound ([AudioConformStore.isLanding]) would otherwise wait on
+  /// a conversion failing again at every landing. [forget] forgets them.
+  final Map<String, Set<int>> _conversionsThatFailed = {};
+
+  /// Each span of a path baked through its filters, by the rate and the
+  /// span — the second result made of a conform, beside
+  /// [_resampledByRate].
+  final Map<String, Map<(int, FilteredSpan), Float32List>> _filtered = {};
+
+  /// Each span of a STREAMED path through its filters: its checkpoints,
+  /// by the span — the long sound's half of [_filtered], under way and
+  /// failing under the same keys, at the project's rate, the one a streamed
+  /// conform plays at.
+  final Map<String, Map<FilteredSpan, FilterCheckpoints>> _checkpoints =
+      {};
+
+  final Set<(String, int, FilteredSpan)> _filterPending = {};
+
+  /// The bakes and checkpoints that could not be made — not kicked again,
+  /// as [_conversionsThatFailed] are not.
+  final Map<String, Set<(int, FilteredSpan)>> _filteringThatFailed = {};
+
+  /// Each slot's hold at each rate ([FilterSlot]) — the bound a dragged
+  /// knob's bakes and checkpoints keep: the one last asked, the one last
+  /// made, one under way.
+  final Map<(FilterSlot, int), _SlotHold> _holds = {};
+
+  String _resampleKey(String sourcePath, int sampleRate) =>
+      '$sampleRate|$sourcePath';
+
+  /// [entry]'s samples converted to [sampleRate] — null while that is kicked
+  /// ([AudioConformStore.samplesAtRate]).
+  Float32List? convertedTo(
+    String sourcePath,
+    ConformResult entry,
+    int sampleRate,
+  ) {
+    final cached = _resampledByRate[sourcePath]?[sampleRate];
+    if (cached != null ||
+        (_conversionsThatFailed[sourcePath]?.contains(sampleRate) ?? false)) {
+      return cached;
+    }
+    final key = _resampleKey(sourcePath, sampleRate);
+    if (_resamplePending.add(key)) {
+      unawaited(
+        _land(
+          sourcePath,
+          entry,
+          () => _store._resampleRunner(
+            ResampleRequest(
+              samples: entry.samples!,
+              channels: entry.channels,
+              inputRate: entry.sampleRate,
+              outputRate: sampleRate,
+            ),
+          ),
+          (
+            keep: (Float32List converted) =>
+                (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted,
+            failed: () =>
+                (_conversionsThatFailed[sourcePath] ??= {}).add(sampleRate),
+            saying: (error) =>
+                'device-rate conversion failed for '
+                '$sourcePath → ${sampleRate}Hz: $error',
+            settled: () => _resamplePending.remove(key),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+
+  /// [sourcePath]'s [span] baked at [sampleRate] — null while that is
+  /// kicked ([AudioConformStore.filteredAt]).
+  Float32List? bakedAt(String sourcePath, int sampleRate, FilteredSpan span) {
+    final samples = _store.samplesAtRate(sourcePath, sampleRate);
+    final entry = _store._entries[sourcePath];
+    if (samples == null || entry == null) {
+      return null;
+    }
+    final key = (sampleRate, span);
+    final hold = _askedOf(sourcePath, key);
+    final cached = _filtered[sourcePath]?[key];
+    if (cached != null) {
+      _madeFor(hold, key);
+      return cached;
+    }
+    if (_cannotBeMade(sourcePath, key)) {
+      return null;
+    }
+    _kickOnce(
+      sourcePath,
+      key,
+      () => _store._filterRunner(
+        FilterRequest(
+          samples: samples,
+          channels: entry.channels,
+          rate: sampleRate,
+          span: span,
+        ),
+      ),
+      (baked) => (_filtered[sourcePath] ??= {})[key] = baked,
+    );
+    return null;
+  }
+
+  /// [sourcePath]'s streamed [span]'s checkpoints — null while they are
+  /// kicked ([AudioConformStore.filterCheckpointsFor]).
+  FilterCheckpoints? checkpointsFor(String sourcePath, FilteredSpan span) {
+    final reader = _store.streamReaderFor(sourcePath);
+    if (reader == null) {
+      return null;
+    }
+    final key = (_store.projectSampleRate, span);
+    final hold = _askedOf(sourcePath, key);
+    final cached = _checkpoints[sourcePath]?[span];
+    if (cached != null) {
+      _madeFor(hold, key);
+      return cached;
+    }
+    if (_cannotBeMade(sourcePath, key)) {
+      return null;
+    }
+    _kickOnce(
+      sourcePath,
+      key,
+      () => _checkpointsOnAWorker(reader, span),
+      (made) => (_checkpoints[sourcePath] ??= {})[span] = made,
+    );
+    return null;
+  }
+
+  /// How many spans of [sourcePath] are held baked or checkpointed.
+  int heldOf(String sourcePath) =>
+      (_filtered[sourcePath]?.length ?? 0) +
+      (_checkpoints[sourcePath]?.length ?? 0);
+
+  bool _cannotBeMade(String sourcePath, (int, FilteredSpan) key) =>
+      _filteringThatFailed[sourcePath]?.contains(key) ?? false;
+
+  /// [key]'s slot's hold at its rate ([FilterSlot]), asked for [key] —
+  /// a fresh one where the slot's clip took another file, what the old one
+  /// made let go of.
+  _SlotHold _askedOf(String sourcePath, (int, FilteredSpan) key) {
+    final at = (key.$2.slot, key.$1);
+    final held = _holds[at];
+    if (held != null && held.sourcePath == sourcePath) {
+      return held..asked = key;
+    }
+    if (held != null) {
+      _letGo(held.sourcePath, held.made);
+    }
+    return _holds[at] = _SlotHold(sourcePath)..asked = key;
+  }
+
+  /// [key] made for [hold]: what it held made before let go of, unless it
+  /// is what the slot asks for again.
+  void _madeFor(_SlotHold hold, (int, FilteredSpan) key) {
+    final before = hold.made;
+    hold.made = key;
+    if (before != null && before != key && before != hold.asked) {
+      _letGo(hold.sourcePath, before);
+    }
+  }
+
+  /// [key]'s bake and checkpoints of [sourcePath], let go of.
+  void _letGo(String sourcePath, (int, FilteredSpan)? key) {
+    if (key == null) {
+      return;
+    }
+    _filtered[sourcePath]?.remove(key);
+    _checkpoints[sourcePath]?.remove(key.$2);
+  }
+
+  /// [making] [sourcePath]'s span at [key] from the conform it holds now,
+  /// for its slot's hold — kept by [keep] as it lands, while the slot holds
+  /// that file. One under way a slot: the one asked meanwhile is kicked
+  /// when the store is asked again after this one lands.
+  void _kickOnce<T>(
+    String sourcePath,
+    (int, FilteredSpan) key,
+    Future<T> Function() making,
+    void Function(T made) keep,
+  ) {
+    final at = (key.$2.slot, key.$1);
+    final hold = _holds[at]!;
+    final pending = (sourcePath, key.$1, key.$2);
+    if (hold.underWay != null || !_filterPending.add(pending)) {
+      return;
+    }
+    hold.underWay = key;
+    unawaited(
+      _land(sourcePath, _store._entries[sourcePath]!, making, (
+        keep: (T made) {
+          if (identical(_holds[at], hold)) {
+            keep(made);
+            _madeFor(hold, key);
+          }
+        },
+        failed: () => (_filteringThatFailed[sourcePath] ??= {}).add(key),
+        saying: (error) =>
+            'filtering ${key.$2} of $sourcePath at ${key.$1}Hz '
+            'failed: $error',
+        settled: () {
+          _filterPending.remove(pending);
+          hold.underWay = null;
+        },
+      )),
+    );
+  }
+
+  /// Whether a conversion of [sourcePath] to [sampleRate], or a span of it
+  /// baked or checkpointed at that rate, is under way.
+  bool isLanding(String sourcePath, int sampleRate) =>
+      _resamplePending.contains(_resampleKey(sourcePath, sampleRate)) ||
+      _filterPending.any(
+        (bake) => bake.$1 == sourcePath && bake.$2 == sampleRate,
+      );
+
+  /// Lets go of what was made of [sourcePath]'s conform — the conform it
+  /// was made of is gone ([AudioConformStore.resultFor]).
+  void letGoOfWhatWasMade(String sourcePath) {
+    _resampledByRate.remove(sourcePath);
+    _filtered.remove(sourcePath);
+    _checkpoints.remove(sourcePath);
+    _holds.removeWhere((_, hold) => hold.sourcePath == sourcePath);
+  }
+
+  /// [letGoOfWhatWasMade], and of what could not be made, so the next
+  /// look makes it again ([AudioConformStore.invalidate]).
+  void forget(String sourcePath) {
+    letGoOfWhatWasMade(sourcePath);
+    _conversionsThatFailed.remove(sourcePath);
+    _filteringThatFailed.remove(sourcePath);
+  }
+
+  /// What [making] makes of [sourcePath]'s conform [entry], gone where
+  /// [landing] says as it lands — and the store's listeners told, either
+  /// way.
+  ///
+  /// 🚨ONTO THE ENTRY IT WAS MADE FROM, OR NOWHERE: one let go of while it
+  /// ran — another carry, a rate that moved — would otherwise get the old
+  /// sound back. ↩️The conversion spelled this out on its own; the
+  /// equalizer's bake and its checkpoints made it three.
+  /// 🚨A FAILURE TOO (저장's read of the bake, 11-17): remembered against
+  /// the entry it failed on, it would stop the next entry's — never let go
+  /// of with a carry that moved — for the session.
+  Future<void> _land<T>(
+    String sourcePath,
+    ConformResult entry,
+    Future<T> Function() making,
+    _Landing<T> landing,
+  ) async {
+    final store = _store;
+    bool madeOfWhatIsHeld() =>
+        !store._disposed && identical(store._entries[sourcePath], entry);
+    try {
+      final made = await making();
+      if (madeOfWhatIsHeld()) {
+        landing.keep(made);
+      }
+    } on Object catch (error) {
+      if (madeOfWhatIsHeld()) {
+        landing.failed();
+        store._log('[AudioConformStore] ${landing.saying(error)}');
+      }
+    } finally {
+      if (!store._disposed) {
+        landing.settled();
+        store._landed();
+      }
+    }
+  }
+}
+
+
+/// A slot's hold on the bakes of its clip's file at one rate
+/// ([_DerivedSound._holds]): each a rate and a span, null for none.
+final class _SlotHold {
+  _SlotHold(this.sourcePath);
+
+  final String sourcePath;
+
+  /// The one last asked of the slot — where its knob stands.
+  (int, FilteredSpan)? asked;
+
+  /// The one last made for the slot, kept while [asked] is made.
+  (int, FilteredSpan)? made;
+
+  /// The one being made — one at a time.
+  (int, FilteredSpan)? underWay;
+}
+/// The checkpoints' pass, in a function of its own: [onAWorker] copies the
+/// closure's whole context, and this one holds a reader and a span.
+Future<FilterCheckpoints> _checkpointsOnAWorker(
+  ConformPcmStreamReader reader,
+  FilteredSpan span,
+) => onAWorker(
+  () =>
+      filterCheckpointsOf(reader, span) ??
+      (throw StateError('the conform did not read whole')),
+);

@@ -40,7 +40,7 @@ void main() {
     final page = layoutConteSheet(source).single;
     final m = page.metrics;
     // 64×35 against the camera's 16:9 (64×36).
-    final picture = ContePdfPicture(rgba: _black, width: 64, height: 35);
+    final picture = ContePdfPicture(pixels: _black, width: 64, height: 35);
     final pdf = await tester.runAsync(
       () async => writeContePdf(
         source: source,

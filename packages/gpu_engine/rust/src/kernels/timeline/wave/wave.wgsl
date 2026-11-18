@@ -11,10 +11,22 @@
 //
 // Across, a row is covered by how much of it the band [middle − reach,
 // middle + reach] overlaps, in q8, and the band laid by the normal
-// composite (laid.wgsl), and the pixel stored premultiplied, as the grid's
-// is (grid.wgsl has why). Integers only, as fill.wgsl has why.
+// composite (laid.wgsl), and the pixel stored straight, as the grid's is
+// (grid.wgsl has why): the view's screen premultiplies it once as it lays
+// it, as it lays the grid's tiles (lay.wgsl). ↩️Stored premultiplied
+// (11-05) till its picture first reached a screen through that lay
+// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel, 2026-11-14): laid
+// so, an edge would be premultiplied twice and show darker than it is.
+// Integers only, as fill.wgsl has why.
 //
-// Needs blend/blend.wgsl, laid.wgsl and shared/premultiply.wgsl before it.
+// Laid over what the tile holds (`under`, a copy of it): a pixel of no
+// band is the tile's own. A frame grid's tile is the paper a sound's
+// strip stands on (the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2,
+// 유저 2026-11-14 「(가) SE 행의 셀 타일에 굽는다」) — the screen copies what
+// it lays, so the band must be in the paper's own picture. ↩️Laid over one
+// colour handed in (`background`), the tile's whole before the band.
+//
+// Needs blend/blend.wgsl and laid.wgsl before it.
 
 struct Params {
   width: u32,
@@ -29,19 +41,21 @@ struct Params {
   // A lane's full reach, q8, the clip's gain in it.
   scale_q8: u32,
   rgba: u32,
-  // The tile's pixel before the band, as an RGBA word.
-  background: u32,
   pad0: u32,
   pad1: u32,
+  pad2: u32,
 }
 
-@group(0) @binding(0) var<uniform> params: Params;
+// A part of the batch's one plane, as the edges are (mod.rs, `WaveTile::encode`).
+@group(0) @binding(0) var<storage, read> params: Params;
 // The range table, two u16 a word: lane, then level, then bucket.
 @group(0) @binding(1) var<storage, read> peaks: array<u32>;
 // Where each column's edge stands: (bucket, how far on to the next, q16),
 // held to the envelope's first and last bucket.
 @group(0) @binding(2) var<storage, read> edges: array<vec2<u32>>;
 @group(0) @binding(3) var tile: texture_storage_2d<__FORMAT__, write>;
+// What the tile held before the band.
+@group(0) @binding(4) var under: texture_2d<f32>;
 
 // The most of `lane`'s 2^`level` buckets from bucket `i`, q16.
 fn table(lane: u32, level: u32, i: u32) -> u32 {
@@ -77,7 +91,8 @@ fn wave(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= params.width || id.y >= params.height) {
     return;
   }
-  var pixel = blend_unpack8(params.background);
+  // The one float step back, as lay.wgsl reads a tile.
+  var pixel = blend_unpack8(pack4x8unorm(textureLoad(under, vec2<i32>(id.xy), 0)));
   let along = select(id.x, id.y, params.vertical != 0u);
   let across = select(id.y, id.x, params.vertical != 0u);
   let first = edges[along];
@@ -104,7 +119,7 @@ fn wave(@builtin(global_invocation_id) id: vec3<u32>) {
     let rgba = params.rgba;
     pixel = laid(pixel, rgba, (u32(cover) * (rgba >> 24u) * 257u + 128u) >> 8u);
   }
-  let packed = premultiply8(blend_pack8(pixel));
+  let packed = blend_pack8(pixel);
   // The one float step, as fill.wgsl's.
   textureStore(tile, id.xy, unpack4x8unorm(packed));
 }

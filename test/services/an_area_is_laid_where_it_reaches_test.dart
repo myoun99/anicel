@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
@@ -11,17 +10,12 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/engine_selection_masks.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
@@ -30,24 +24,23 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
-import 'package:anicel/src/services/mask_morphology.dart';
-import 'package:anicel/src/services/mask_soft_edge.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask, debugWaitsHere;
 
 import '../helpers/fill_pieces.dart';
-import '../helpers/native_engine_path.dart';
 
 /// 🚨★★★board `an-area-dab-costs-its-box` (2026-10-09): an area — what the
 /// shape tool lays without the brush, and the fill tool's shape fill — was
 /// finished as ONE SHEET over its whole box, so a thin line across a big box
 /// cost the box. It is finished only where it reaches now, and every fill —
-/// the bucket's too — lands as stamp pieces cut on the cel's tiles.
+/// the bucket's too (its ring: `canvas_flood_fill_test.dart`) — lands as stamp
+/// pieces cut on the cel's tiles.
 ///
 /// Nothing a user sees may move for it: the pieces are pinned here against
-/// the one sheet itself, restated below as the old code built it, and their
-/// landing against that sheet's one stamp, on both engines, through every
-/// route a stamp lands by.
+/// the one sheet itself — the engine's finish over the whole box in one
+/// part, as the old code laid it — and their landing against that sheet's
+/// one stamp, through every route a stamp lands by.
 void main() {
   const color = 0xFF336699;
   const layerId = LayerId('l');
@@ -57,8 +50,19 @@ void main() {
 
   /// The area finished as ONE SHEET over its whole box — how it was laid
   /// before it was cut: the coverage box grown by all the finish reaches,
-  /// the hard mask in it, then the expand's generations and the soften over
-  /// all of it.
+  /// and the engine's finish — the expand's generations, then the soften —
+  /// over all of it, in one part.
+  ///
+  /// ⚠️NOT A PIN OF THE ARITHMETIC (관제 2026-11-15, board
+  /// `an-areas-finish-is-a-second-spelling-of-the-floods`): the sheet and
+  /// the pieces are both the engine's finish, so a sum that is wrong is
+  /// wrong in both and they agree still — what is asked here is that parts
+  /// cut and laid are the whole, with no seam. The sums are pinned a layer
+  /// down, and this reference stands on them: the values counted by hand
+  /// (`kernels/flood/tests.rs` — 36 · 109 · 146 · 182) and the bytes a
+  /// bucket lays being an area's
+  /// (`an_area_is_finished_as_the_bucket_is_test.dart`). ⛔Neither is a pin
+  /// said twice: take one away and this reference holds nothing up.
   ({int left, int top, int width, int height, Uint8List mask}) sheetOf(
     CanvasSelectionRegion region,
     FloodFillOptions options,
@@ -73,35 +77,30 @@ void main() {
     // pixel past it (유저 답 the-fill-ramp-is-cut-at-its-box-Q1, 「상자를 한
     // 칸 넓혀 어디서나 번지게」).
     final reach = grow + (options.antiAlias ? 1 : 0);
-    final hard = region.maskFor(
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-    );
-    final sheetWidth = width + reach * 2;
-    final sheetHeight = height + reach * 2;
-    final mask = Uint8List(sheetWidth * sheetHeight);
-    for (var y = 0; y < height; y += 1) {
-      final at = (y + reach) * sheetWidth + reach;
-      mask.setRange(at, at + width, hard, y * width);
-    }
-    dilateMask4(mask, width: sheetWidth, height: sheetHeight, passes: grow);
-    if (options.antiAlias) {
-      softenMaskBoundary(
-        mask,
-        width: sheetWidth,
-        height: sheetHeight,
-        insideOutlineOnly: false,
-      );
-    }
-    return (
+    final sheet = (
       left: left - reach,
       top: top - reach,
-      width: sheetWidth,
-      height: sheetHeight,
-      mask: mask,
+      width: width + reach * 2,
+      height: height + reach * 2,
     );
+    final whole = EngineSelectionMasks.area(
+      region.spelled,
+      box: sheet,
+      expand: grow,
+      antiAlias: options.antiAlias,
+      parts: [sheet],
+    ).single;
+    try {
+      return (
+        left: sheet.left,
+        top: sheet.top,
+        width: sheet.width,
+        height: sheet.height,
+        mask: whole.read(),
+      );
+    } finally {
+      whole.free();
+    }
   }
 
   /// That sheet as the ONE stamp dab it used to land as.
@@ -230,6 +229,7 @@ void main() {
             reason: why,
           );
           var anything = false;
+          final alone = [piece];
           for (var y = 0; y < stamp.height; y += 1) {
             for (var x = 0; x < stamp.width; x += 1) {
               final at =
@@ -237,18 +237,25 @@ void main() {
                   (landing.left - sheet.left + x);
               expect(written[at], 0, reason: '$why: a pixel laid twice');
               written[at] = 1;
-              final alpha = stamp.rgba[(y * stamp.width + x) * 4 + 3];
+              final rgba = piecesRgbaAt(
+                alone,
+                landing.left + x,
+                landing.top + y,
+              );
+              final alpha = rgba[3];
               laid[at] = alpha;
               if (alpha != 0) {
                 anything = true;
-                expect(
-                  stamp.rgba.sublist(
-                    (y * stamp.width + x) * 4,
-                    (y * stamp.width + x) * 4 + 3,
-                  ),
-                  [0x33, 0x66, 0x99],
-                  reason: why,
-                );
+                // Off by what a step of alpha spans where it is partly
+                // clear: the engine keeps it premultiplied on the way.
+                final slack = alpha == 255 ? 0 : 255 ~/ alpha + 1;
+                for (final (c, want) in [0x33, 0x66, 0x99].indexed) {
+                  expect(
+                    (rgba[c] - want).abs(),
+                    lessThanOrEqualTo(slack),
+                    reason: why,
+                  );
+                }
               }
             }
           }
@@ -336,6 +343,34 @@ void main() {
     expect(laidPixels * 4, lessThan(sheet.width * sheet.height));
   });
 
+  test('🚨no piece is read back: the pieces\' coverage is the engine\'s, '
+      'asked for once for them all — with no wait for the GPU — however '
+      'often they are laid', () {
+    final pieces = buildRegionFillDabs(
+      region: areas['a 4px diagonal across nine tiles']!,
+      color: color,
+      options: const FloodFillOptions(expandPx: 1, antiAlias: true),
+    );
+    expect(pieces.length, greaterThan(1), reason: '⛔premise: pieces');
+    final waits = debugWaitsHere;
+    final asked = EngineSelectionMasks.debugAreasAsked;
+    List<GpuMask> coverages() => [
+      for (final piece in pieces)
+        EngineStampPictures.madeOfMask(piece.stamp!)!.coverage(),
+    ];
+
+    final first = coverages();
+    final again = coverages();
+
+    expect(again, [for (final mask in first) same(mask)]);
+    expect(
+      EngineSelectionMasks.debugAreasAsked - asked,
+      1,
+      reason: 'one ask finishes the area and cuts every piece of it',
+    );
+    expect(debugWaitsHere, waits, reason: 'a wait for the GPU here');
+  });
+
   test('an area that covers no pixel lays no piece', () {
     expect(
       buildRegionFillDabs(
@@ -388,14 +423,7 @@ void main() {
   });
 
   group('the pieces LAND what the one stamp landed', () {
-    final dllPath = nativeEngineLibraryPathOrNull();
     const canvas = CanvasSize(width: 512, height: 384);
-
-    tearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-    });
 
     /// Paint under the area, where a blend has something to read.
     BitmapSurface painted() => materializeBrushDabSequenceOnBitmapSurface(
@@ -436,6 +464,7 @@ void main() {
         frameId: frameId,
         prerasterizedStrokePixels: data.strokePixels,
         prerasterizedStrokeBounds: data.strokeBounds,
+        selection: data.selection,
         blendMode: mode,
       ).afterSurface;
     }
@@ -471,27 +500,7 @@ void main() {
       return null;
     }
 
-    void onEachEngine(String name, void Function() body) {
-      test('$name — Dart engine', () {
-        QaNativeEngine.debugResetForTests();
-        QaNativeEngine.debugForceDartFallback = true;
-        expect(QaNativeEngine.instance, isNull);
-        body();
-      });
-      test('$name — native engine', () {
-        if (dllPath == null) {
-          markTestSkipped(nativeEngineMissingSkipReason);
-          return;
-        }
-        QaNativeEngine.debugResetForTests();
-        debugQaEngineLibraryPathOverride = dllPath;
-        QaNativeEngine.debugForceDartFallback = false;
-        expect(QaNativeEngine.instance, isNotNull);
-        body();
-      });
-    }
-
-    onEachEngine('painting, erasing, multiplying and 뒤에 그리기, with a '
+    test('painting, erasing, multiplying and 뒤에 그리기, with a '
         'selection and without', () {
       final base = painted();
       final selection = CanvasSelectionRegion.shape(
@@ -537,7 +546,7 @@ void main() {
       }
     });
 
-    onEachEngine('a fill shown before it commits is still its commit, cut '
+    test('a fill shown before it commits is still its commit, cut '
         'in pieces', () {
       final base = painted();
       final region = areas["a rectangle's outline astride the grid"]!;
@@ -571,95 +580,6 @@ void main() {
         for (final entry in promoted) (coord: entry.coord, tile: entry.tile),
       ]);
       expect(firstVisibleDifference(installed, classic), isNull);
-    });
-  });
-
-  group('the bucket lands in pieces too', () {
-    // Two outlines: a frame round the page, and a box whose inside holds
-    // the whole of tile (1, 1) — so the fill between them is a ring with
-    // a hole a tile wide.
-    const canvas = CanvasSize(width: 320, height: 320);
-    bool isInk(int x, int y) {
-      bool outline(int from, int to) =>
-          (x >= from && x <= to && (y == from || y == to)) ||
-          (y >= from && y <= to && (x == from || x == to));
-      return outline(10, 300) || outline(120, 264);
-    }
-
-    BitmapSurface inked() {
-      const size = 64;
-      final buffers = <TileCoord, Uint8List>{};
-      for (var y = 0; y < canvas.height; y += 1) {
-        for (var x = 0; x < canvas.width; x += 1) {
-          if (!isInk(x, y)) {
-            continue;
-          }
-          final buffer = buffers.putIfAbsent(
-            TileCoord(x: x ~/ size, y: y ~/ size),
-            () => Uint8List(size * size * 4),
-          );
-          buffer[((y % size) * size + x % size) * 4 + 3] = 255;
-        }
-      }
-      return BitmapSurface(
-        canvasSize: canvas,
-        tileSize: size,
-        tiles: {
-          for (final entry in buffers.entries)
-            entry.key: BitmapTile(size: size, pixels: entry.value),
-        },
-      );
-    }
-
-    test('a ring\'s fill is four pieces — a whole tile empty in its middle '
-        'carries nothing — and lays exactly the ring', () {
-      final surface = inked();
-      final pieces = fillRangeAt(
-        cut: Cut(
-          id: const CutId('cut'),
-          name: 'Cut',
-          layers: [
-            Layer(
-              id: const LayerId('ink'),
-              name: 'Ink',
-              frames: [
-                Frame(id: const FrameId('ink'), duration: 1, strokes: const []),
-              ],
-              timeline: {
-                0: const TimelineExposure.drawing(FrameId('ink'), length: 1),
-              },
-            ),
-          ],
-          duration: 24,
-          canvasSize: canvas,
-        ),
-        frameIndex: 0,
-        surfaceResolver: (_, _) => surface,
-        point: p(50.5, 50.5),
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )?.dabsIn(color) ?? const [];
-      expect(pieces, hasLength(4), reason: 'rows 0 and 2 whole, row 1 split');
-      for (var y = 0; y < canvas.height; y += 1) {
-        for (var x = 0; x < canvas.width; x += 1) {
-          final inRing =
-              x > 10 && x < 300 && y > 10 && y < 300 &&
-              !(x >= 120 && x <= 264 && y >= 120 && y <= 264);
-          expect(
-            piecesAlphaAt(pieces, x, y),
-            inRing ? 255 : 0,
-            reason: '($x, $y)',
-          );
-        }
-      }
-      for (final piece in pieces) {
-        final landing = piece.stamp!.landingRect(piece.center);
-        expect(
-          landing.left >= 256 || landing.rightExclusive <= 128 ||
-              landing.bottomExclusive <= 128 || landing.top >= 256,
-          isTrue,
-          reason: 'tile (1, 1) is all hole: no piece carries it',
-        );
-      }
     });
   });
 }

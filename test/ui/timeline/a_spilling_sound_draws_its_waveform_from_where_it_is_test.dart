@@ -10,16 +10,17 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuWaveView;
 
 import 'timeline_frame_geometry_probe.dart';
 
 /// F-113 (유저 2026-09-12): 「컷2부터는 두 파형이 서로 다름. 스토리보드패널의
 /// 파형은 정확한데 타임라인패널 파형은 어긋남」. A block spilling into the cut
 /// starts at frame 0 of the cut's row with its sound already under way —
-/// the waveform the timeline draws for it (the row's underlay) must start
+/// the waveform the timeline draws for it (on the row's cells) must start
 /// that far into the file. ↩️The SE audio lane drew a second one, an
 /// editing strip, until the lane went (I-140).
 
@@ -41,19 +42,22 @@ Layer _spillingRow({int offsetFrames = 0}) => Layer(
   ],
 );
 
-WaveformPainter _painterUnder(WidgetTester tester, Finder host) =>
-    tester
-            .widget<CustomPaint>(
-              find.descendant(
-                of: host,
-                matching: find.byWidgetPredicate(
-                  (widget) =>
-                      widget is CustomPaint && widget.painter is WaveformPainter,
-                ),
-              ),
-            )
-            .painter!
-        as WaveformPainter;
+/// The row's one sound as its cells' tile shows the span [0, 3) of it at a
+/// ratio of 1 ([TimelineRowCellsPainter.wavesIn]).
+GpuWaveView _waveOf(WidgetTester tester) =>
+    (tester
+                    .widget<CustomPaint>(
+                      find.byWidgetPredicate(
+                        (widget) =>
+                            widget is CustomPaint &&
+                            widget.painter is TimelineRowCellsPainter,
+                      ),
+                    )
+                    .painter!
+                as TimelineRowCellsPainter)
+        .wavesIn(0, 3, 1)
+        .single
+        .view;
 
 void main() {
   Future<void> pumpCellsRow(
@@ -86,15 +90,14 @@ void main() {
         ),
       );
 
-  testWidgets('🚨the row\'s underlay waveform starts that far into the sound',
+  testWidgets('🚨the row\'s waveform starts that far into the sound',
       (tester) async {
     await pumpCellsRow(tester, lead: 14);
-    const strip = ValueKey<String>('timeline-audio-clip-se-1-0-b0');
-    expect(_painterUnder(tester, find.byKey(strip)).leadingFrames, 14);
+    expect(_waveOf(tester).leadingFrames, 14);
 
     await pumpCellsRow(tester);
     expect(
-      _painterUnder(tester, find.byKey(strip)).leadingFrames,
+      _waveOf(tester).leadingFrames,
       0,
       reason: 'a block that starts in this cut is drawn from the file start',
     );
@@ -103,15 +106,14 @@ void main() {
   testWidgets('a frame of the row\'s sound is drawn as long as a frame cell '
       '— along the row, not across it', (tester) async {
     await pumpCellsRow(tester);
-    const strip = ValueKey<String>('timeline-audio-clip-se-1-0-b0');
     // Cells 48 along and the row 52 across: the two sides differ, so a
-    // strip that measured the wrong one draws its sound at another scale.
-    expect(_painterUnder(tester, find.byKey(strip)).pixelsPerFrame, 48);
+    // wave that measured the wrong one draws its sound at another scale.
+    final wave = _waveOf(tester);
+    expect((wave.frameQ8, wave.acrossQ8), (48 * 256, 52 * 256));
   });
 
   testWidgets('🚨and on top of the clip\'s own trim', (tester) async {
     await pumpCellsRow(tester, lead: 14, offsetFrames: 3);
-    const strip = ValueKey<String>('timeline-audio-clip-se-1-0-b0');
-    expect(_painterUnder(tester, find.byKey(strip)).leadingFrames, 17);
+    expect(_waveOf(tester).leadingFrames, 17);
   });
 }

@@ -1,14 +1,20 @@
+// The engine's Rust library carries the pen ledger (rust/src/lib.rs), and
+// its names are found in that code asset — no library opened, no path
+// named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart' show malloc;
 import 'package:flutter/foundation.dart';
 
-import 'qa_engine_abi.dart';
+import 'gpu_engine_asset.dart';
 
-/// What the platform said about one pen sample — the PEN LEDGER `qa_native`
-/// keeps (`qa_pen_ledger_apple.m`, H43): written natively BEFORE Flutter
-/// hears of the sample, read here by the sample's own timestamp.
+/// What the platform said about one pen sample — the PEN LEDGER the engine
+/// keeps (native/pen, H43): written natively BEFORE Flutter hears of the
+/// sample, read here by the sample's own timestamp.
 ///
 /// ⚠️A channel could not carry this. A channel message and a pointer event
 /// travel two queues with no order between them, and the brush has to know
@@ -42,46 +48,29 @@ typedef PenLedgerReading = ({PenLedgerState state, double value});
 /// AppKit's scaled tilt of one sample — `NSEvent.tilt`, −1..1 each way.
 typedef PenLedgerTilt = ({double x, double y});
 
-typedef _LedgerReaders = ({
-  double Function(int) force,
-  double Function(int) altitude,
-  int Function(int, Pointer<Double>) tilt,
-});
+@Native<Double Function(Int64)>(symbol: 'qa_pen_ledger_value')
+external double _force(int micros);
+
+@Native<Double Function(Int64)>(symbol: 'qa_pen_ledger_altitude')
+external double _altitude(int micros);
+
+@Native<Int32 Function(Int64, Pointer<Double>)>(symbol: 'qa_pen_ledger_tilt')
+external int _tilt(int micros, Pointer<Double> xy);
+
+@Native<Void Function()>(symbol: 'qa_pen_ledger_start')
+external void _start();
 
 abstract final class QaPenLedger {
-  /// The ledger's readers, or null where there is none: another platform,
-  /// or a build whose native side predates it.
-  static final _LedgerReaders? _read = _open();
+  /// Whether the ledger is kept: on Apple's platforms alone, where the
+  /// engine has it.
+  static final bool _kept = _open();
 
-  static _LedgerReaders? _open() {
+  static bool _open() {
     if (!Platform.isIOS && !Platform.isMacOS) {
-      return null;
+      return false;
     }
-    // Through the ONE door every engine loader uses: on Apple it is the
-    // process the plugin compiled the engine into, behind the ABI gate.
-    final engine = openQaEngineLibrary();
-    if (engine == null) {
-      return null;
-    }
-    try {
-      double Function(int) reader(String name) => engine
-          .lookupFunction<Double Function(Int64), double Function(int)>(name);
-      final read = (
-        force: reader('qa_pen_ledger_value'),
-        altitude: reader('qa_pen_ledger_altitude'),
-        tilt: engine
-            .lookupFunction<
-              Int32 Function(Int64, Pointer<Double>),
-              int Function(int, Pointer<Double>)
-            >('qa_pen_ledger_tilt'),
-      );
-      engine.lookupFunction<Void Function(), void Function()>(
-        'qa_pen_ledger_start',
-      )();
-      return read;
-    } on Object {
-      return null;
-    }
+    _start();
+    return true;
   }
 
   /// Where the native side writes a tilt's two numbers — one, for the life
@@ -107,7 +96,7 @@ abstract final class QaPenLedger {
       debugForce != null ||
       debugAltitude != null ||
       debugTilt != null ||
-      _read != null;
+      _kept;
 
   /// What the ledger holds for the FORCE of the sample Flutter stamped [at]
   /// — UIKit force on iOS, NSEvent pressure (0..1) on macOS — or null when
@@ -117,7 +106,7 @@ abstract final class QaPenLedger {
     if (override != null) {
       return override(at);
     }
-    return decode(_read?.force(at.inMicroseconds));
+    return _kept ? decode(_force(at.inMicroseconds)) : null;
   }
 
   /// What the ledger holds for the ALTITUDE of the sample Flutter stamped
@@ -128,7 +117,7 @@ abstract final class QaPenLedger {
     if (override != null) {
       return override(at);
     }
-    return decode(_read?.altitude(at.inMicroseconds));
+    return _kept ? decode(_altitude(at.inMicroseconds)) : null;
   }
 
   /// AppKit's tilt of the sample Flutter stamped [at] — or null when the
@@ -139,8 +128,7 @@ abstract final class QaPenLedger {
     if (override != null) {
       return override(at);
     }
-    final read = _read;
-    if (read == null || read.tilt(at.inMicroseconds, _tiltXy) == 0) {
+    if (!_kept || _tilt(at.inMicroseconds, _tiltXy) == 0) {
       return null;
     }
     return (x: _tiltXy[0], y: _tiltXy[1]);

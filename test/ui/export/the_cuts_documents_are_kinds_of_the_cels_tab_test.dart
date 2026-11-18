@@ -31,6 +31,8 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -189,7 +191,7 @@ void main() {
 
     expect(state.debugSpecs.cels.kinds, {
       ExportCelKind.cel,
-      ExportCelKind.art,
+      ExportCelKind.image,
       ExportCelKind.timesheet,
     });
     expect(tester.celsBoardRowIds, ['a', 'document-timesheet']);
@@ -211,7 +213,6 @@ void main() {
     await press(tester, 'export-cels-kind-timesheet');
     expect(tester.celsBoardRowIds, ['a', 'document-envelope']);
     expect(count(tester), '3 files');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a document\'s row is drawn with the rail\'s cells: its '
@@ -239,17 +240,27 @@ void main() {
         reason: 'a document wears no label',
       );
       expect(tester.celsBoardSwitchState(id), BooleanMix.on);
-      final block = tester.widget<ExportCelBlock>(
-        find.descendant(
-          of: keyed('export-cels-board'),
-          matching: find.byWidgetPredicate(
-            (widget) => widget is ExportCelBlock && widget.rowId == id,
-          ),
-        ),
+      final paper =
+          tester
+                  .widget<Container>(
+                    find
+                        .descendant(
+                          of: find.byWidgetPredicate(
+                            (widget) =>
+                                widget is ExportCelBlock && widget.rowId == id,
+                          ),
+                          matching: find.byType(Container),
+                        )
+                        .first,
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(
+        paper.color,
+        timelineDrawingHeldColor,
+        reason: '$id: plain paper, as every file\'s block is (I-167)',
       );
-      expect(block.mark, LayerMark.none);
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('「내보낼 종류」: the kinds of the cut\'s rows in one strip, its '
@@ -269,7 +280,7 @@ void main() {
     expect(keysOf(stripOf(ExportCelKind.cel)), [
       'export-cels-kind-cel',
       'export-cels-kind-conte',
-      'export-cels-kind-art',
+      'export-cels-kind-image',
       'export-cels-kind-direction',
     ]);
     expect(keysOf(stripOf(ExportCelKind.timesheet)), [
@@ -281,7 +292,6 @@ void main() {
       tester.getTopLeft(keyed('export-cels-kind-timesheet')).dy,
       greaterThan(tester.getBottomLeft(keyed('export-cels-kind-cel')).dy),
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // export-four-tabs ③ (유저 2026-10-09): a row's switch is its files. ↩️A
@@ -327,7 +337,6 @@ void main() {
     await press(tester, 'export-cels-reset');
     expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.on);
     expect(count(tester), '4 files');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a document\'s block is its file\'s switch: off it is hollow '
@@ -363,7 +372,6 @@ void main() {
       tester.celsBoardBlock('document-envelope', 'envelope-cut-0'),
     );
     expect(count(tester), '4 files');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the list stands on a document as on any row: the preview is '
@@ -396,7 +404,6 @@ void main() {
       closeTo(1754 / 2480, 0.01),
       reason: 'a timesheet page, fitted to the pane',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a cel is open where its format says, and a document is its '
@@ -420,7 +427,6 @@ void main() {
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
     expect(tester.exportPreviewCheckered, isFalse);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('셀 형식 · 타임시트 형식 · 컷봉투 형식 · 동영상 형식: a module '
@@ -501,7 +507,6 @@ void main() {
       ExportStillFormat.png,
       reason: 'each document keeps a format of its own',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨ONE run writes the cels and the documents, each in its own '
@@ -537,7 +542,6 @@ void main() {
     expect(head('_CUT301_envelope.png'), [0x89, 0x50, 0x4E, 0x47]);
     expect(head('_TS301.jpg').take(3), [0xFF, 0xD8, 0xFF]);
     expect(textOf(tester, 'export-status'), 'Exported 4 files.');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두 파일로」.
@@ -575,7 +579,6 @@ void main() {
       );
     }
     expect(textOf(tester, 'export-status'), 'Exported 4 files.');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a timesheet that runs over several pages is a file a PAGE: '
@@ -632,11 +635,10 @@ void main() {
     // second page's off is no file of it (I-162-Q6).
     await pickPaperFormat(tester, 'export-tsformat', 'xdts');
     expect(tester.celsBoardBlocksOf('document-timesheet'), [
-      (layerProcessAbbrev(LayerProcess.key), true),
-      (layerProcessAbbrev(LayerProcess.inbetween), true),
+      (layerStepAbbrev(LayerProcess.key), true),
+      (layerStepAbbrev(LayerProcess.inbetween), true),
     ]);
     expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a document turned off is not written — its row, or its file',
@@ -658,6 +660,5 @@ void main() {
     await tester.pump();
 
     expect(filesWrittenUnder(temp), ['A1.png', 'A2.png']);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

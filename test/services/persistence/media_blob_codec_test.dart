@@ -19,14 +19,9 @@ import '../../helpers/temp_dir.dart';
 /// So these check what a whole-frame format could not do: that the header
 /// can be found from a fixed-size prefix. That a range maps to the blocks it
 /// actually touches and no others is the READER's, and is pinned where the
-/// one reader is — `qa_media_span_test.c`, and against this writer's files
-/// in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
+/// one reader is — native/media's `span/tests.rs`, and against this
+/// writer's files in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
 void main() {
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   /// Compressible bytes — a repeating pattern with enough variety that
   /// zstd cannot fold it to nothing, so the ratios stay realistic.
   Uint8List compressible(int length) {
@@ -49,7 +44,8 @@ void main() {
       final bytes = header.toBytes();
       final view = ByteData.sublistView(bytes);
 
-      // ⛔The layout `qa_media_span.h` reads, field by field: a reader
+      // ⛔The layout native/media's `span.rs` reads (↩️`qa_media_span.h`
+      // until the connection round), field by field: a reader
       // holding a 3GB movie's entry must never have to read it to find the
       // index, and the engine's reader — the only one there is — trusts
       // exactly these offsets.
@@ -92,10 +88,6 @@ void main() {
     }
 
     test('bytes that will not shrink are stored, not framed', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // 🚨Random bytes, and the comment used to call them「a JPEG or an
       // MP4」. Measured, a JPEG saves 15–21% and an MP4 6.7% — they are
       // FRAMED. What is genuinely incompressible is noise (and PNG, at
@@ -114,10 +106,6 @@ void main() {
     });
 
     test('compressible bytes round-trip through the framed form', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       final source = compressible(300 * 1024);
       final (:framed, :entry, :back) = roundTrip(source);
       expect(framed, isTrue, reason: 'fixture: this data does compress');
@@ -130,10 +118,6 @@ void main() {
     });
 
     test('a file longer than one block gets one index entry per block', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // Two blocks and a bit, at a block size a test can afford.
       final source = compressible(mediaBlockBytes * 2 + 1024);
       final (:framed, :entry, :back) = roundTrip(source);
@@ -148,12 +132,13 @@ void main() {
       expect(framedEntryBytes(Uint8List(0)), isNull);
     });
 
-    test('without an engine, everything is stored — no deflate floor here', () {
-      QaCelCompressor.debugInstanceOverride = () => null;
-      addTearDown(() {
-        QaCelCompressor.debugInstanceOverride = null;
-        QaCelCompressor.debugResetForTests();
-      });
+    // ↩️「without an engine」 until the connection round put the compressor
+    // in the engine the app ships with (connection-round-checklist H): a
+    // refusal is what is left of that world, and the floor answers it.
+    test('where zstd refuses, everything is stored — no deflate floor here',
+        () {
+      QaCelCompressor.debugForceRefusal = true;
+      addTearDown(() => QaCelCompressor.debugForceRefusal = false);
       expect(
         framedEntryBytes(compressible(64 * 1024)),
         isNull,
@@ -175,10 +160,6 @@ void main() {
     });
 
     test('⛔a stored entry is the FILE, with nothing in front of it', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       final random = Random(3);
       final noise = Uint8List.fromList(
         List<int>.generate(8 * 1024, (_) => random.nextInt(256)),
@@ -237,10 +218,6 @@ void main() {
     });
 
     test('🚨 no read is larger than one block, whatever the asset weighs', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       const block = 64 * 1024;
       final random = Random(11);
       final noise = Uint8List.fromList(

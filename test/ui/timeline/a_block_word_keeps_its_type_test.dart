@@ -547,6 +547,14 @@ void main() {
       required Axis axis,
       TextStyle ambient = const TextStyle(),
     }) async {
+      final geometry = ValueNotifier(
+        TimelineFrameGeometry(
+          frameCellExtent: cell,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 12,
+        ),
+      );
+      addTearDown(geometry.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -564,8 +572,7 @@ void main() {
                   ),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 12,
-                  leadingFrameSpacerWidth: 0,
-                  trailingFrameSpacerWidth: 0,
+                  geometry: geometry,
                   metrics: TimelineGridMetrics.defaults.copyWith(
                     frameCellWidth: cell,
                   ),

@@ -42,13 +42,19 @@ struct Stamp {
   // 1: a pixel the mask covers at all is covered whole (the app's
   // `takeWholePixels` — the erase the twin of the lift's gather).
   whole: u32,
+  // The word of `given` the box's first pixel is: a picture a wall cut
+  // reads on from where what it left begins. A pass binds the rows of the
+  // box its tiles meet, so it counts from that binding's first word — and
+  // wraps below it, the rows before the binding being read by no pixel of
+  // the pass (stamp.rs `rows_bound`).
+  origin: u32,
 }
 
 @group(0) @binding(0) var<uniform> stamp: Stamp;
 // The mask's words, or the picture's.
 @group(0) @binding(1) var<storage, read> given: array<u32>;
 @group(0) @binding(2) var<storage, read_write> page: array<u32>;
-// The gradient's stops, straight RGBA8 (`FillGradient.stops`).
+// The gradient's stops, straight RGBA8 (stamp.rs `graded`).
 @group(0) @binding(3) var<storage, read> stops: array<u32>;
 
 const STAMP_LINE: u32 = 1u;
@@ -71,7 +77,7 @@ fn stamp_pixel(id: vec3<u32>) -> vec2<i32> {
 fn stamp_at(id: vec3<u32>) -> vec3<i32> {
   let at = stamp_pixel(id);
   // A pixel past the box's left or top wraps past its width or height.
-  let plane = MaskPlane(0u, stamp.width, stamp.height, stamp.stride);
+  let plane = MaskPlane(stamp.origin, stamp.width, stamp.height, stamp.stride);
   let byte = mask_byte_of(plane, u32(at.x - stamp.left), u32(at.y - stamp.top));
   let covered = select(byte, 255u, stamp.whole != 0u && byte != 0u);
   return vec3<i32>(at, i32(covered));
@@ -99,14 +105,14 @@ fn stamp_picture(@builtin(global_invocation_id) id: vec3<u32>) {
   let y = u32(at.y - stamp.top);
   var word = 0u;
   if (x < stamp.width && y < stamp.height) {
-    word = given[y * stamp.stride + x];
+    word = given[stamp.origin + y * stamp.stride + x];
   }
   stamp_put(id, word);
 }
 
-// The stop canvas pixel (x, y)'s centre lies at (`FillGradient.rowInto`):
+// The stop canvas pixel (x, y)'s centre lies at (`FillGradient.onEngine`):
 // 0 at `from`, the last at `to` and past it, each the nearest — a half
-// goes up, as the app's `+ 0.5` does. A line's is the centre's projection
+// goes up. A line's is the centre's projection
 // onto it, 0 behind `from`; a circle's its distance from `from` over the
 // radius. A gradient of no length lays its first (I-160-Q5).
 fn stamp_stop(x: i32, y: i32) -> u32 {

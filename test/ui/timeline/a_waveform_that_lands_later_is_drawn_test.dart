@@ -10,12 +10,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
@@ -93,22 +93,34 @@ void main() {
     ),
   );
 
-  final waveforms = find.byWidgetPredicate(
-    (widget) => widget is CustomPaint && widget.painter is WaveformPainter,
+  // The row's cells, which draw its sounds on their paper.
+  final cells = find.byWidgetPredicate(
+    (widget) =>
+        widget is CustomPaint && widget.painter is TimelineRowCellsPainter,
   );
+  List<AudioPeaks> drawnPeaks(WidgetTester tester) => [
+    ...?(tester.widget<CustomPaint>(cells).painter! as TimelineRowCellsPainter)
+        .sounds
+        ?.sounds
+        .map((sound) => sound.peaks),
+  ];
 
   testWidgets('🚨the same layer, rebuilt once the peaks land, shows them — '
       'no edit needed', (tester) async {
     await tester.pumpWidget(body());
-    expect(waveforms, findsNothing, reason: 'the premise: still extracting');
+    expect(
+      drawnPeaks(tester),
+      isEmpty,
+      reason: 'the premise: still extracting',
+    );
     final row = tester.widget(find.byType(TimelineFrameCellsRow));
 
     _landed = peaks;
     await tester.pumpWidget(body());
 
     expect(
-      waveforms,
-      findsOneWidget,
+      drawnPeaks(tester),
+      [peaks],
       reason:
           'the memo handed the row built before the peaks back, until an '
           'edit replaced the layer',
@@ -125,7 +137,7 @@ void main() {
     _landed = peaks;
     await tester.pumpWidget(body());
     final first = tester.widget(find.byType(TimelineFrameCellsRow));
-    final drawn = tester.widget(waveforms);
+    final drawn = tester.widget(cells);
 
     await tester.pumpWidget(body());
 
@@ -135,7 +147,7 @@ void main() {
       reason: 'only the waveform the row paints joined its world',
     );
     expect(
-      identical(tester.widget(waveforms), drawn),
+      identical(tester.widget(cells), drawn),
       isTrue,
       reason: 'a world that did not move builds no picture again',
     );

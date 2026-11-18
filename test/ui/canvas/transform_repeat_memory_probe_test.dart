@@ -14,7 +14,8 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/native_scratch.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/qa_memory.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -103,15 +104,6 @@ void main() {
 
   testWidgets('C-ipad-crash ①: what grows when a big picture is scaled up '
       'and back down, round after round', (tester) async {
-    // The device runs the native kernels and the native upload cache; a
-    // probe on the Dart fallback would measure a different set of holders.
-    // `flutter_test_config.dart` points every test at the built engine —
-    // this only refuses to run without it.
-    expect(
-      QaNativeEngine.instance,
-      isNotNull,
-      reason: 'fixture: the engine loaded, so its holders are the real ones',
-    );
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final store = BrushFrameStore();
     final coordinator = BrushFrameEditingCoordinator(
@@ -188,17 +180,15 @@ void main() {
       for (var i = 0; i < 4; i += 1) {
         await tester.pump();
       }
-      final engine = QaNativeEngine.instance;
       // The census's own rows, as far as a panel without a session has
       // them — layer images, playback frames and the viewers need one.
       return {
-        'footprint': engine?.processFootprintBytes ?? ProcessInfo.currentRss,
+        'footprint': QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
         'tileImages': BitmapTileImageCache.liveImageBytes,
         'undo': history.retainedBytes,
         'drawings': store.hotBakedBytes + store.reclaimableViewBytes,
-        'uploads': engine?.nativeUploadBytes ?? 0,
         'brushTips': BrushTipStampCache.instance.residentBytes,
-        'enginePool': engine?.tilePoolParkedBytes ?? 0,
+        'enginePool': TileBlocks.parkedBytes,
         'scratch': NativeScratch.liveBytes,
         'imageCache': PaintingBinding.instance.imageCache.currentSizeBytes,
         'panelRasters': StaticRaster.censusBytes,
@@ -359,7 +349,7 @@ void main() {
         print(
           '    took=${watch.elapsedMilliseconds}ms '
           'rss=${mb(ProcessInfo.currentRss)} '
-          'available=${mb(QaNativeEngine.instance?.availableMemoryBytes ?? 0)}',
+          'available=${mb(QaMemory.availableMemoryBytes ?? 0)}',
         );
         previous = now;
       }

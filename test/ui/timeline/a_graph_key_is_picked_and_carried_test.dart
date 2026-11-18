@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart'
     show AppIconButtonFace;
 
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/named_finders.dart';
 
 /// **I-3 — a header graph's key is picked and carried, AE's way.**
@@ -221,17 +222,12 @@ void main() {
       'row', (tester) async {
     final s = await _pump(tester);
     await _openTheGraph(tester, s);
-    // Any path stroked as the ring is, past the line and the marks.
-    final ring = paints
-      ..something((method, arguments) {
-        if (method != #drawPath) {
-          return false;
-        }
-        // A paint keeps its stroke as a 32-bit float.
-        final paint = arguments[1] as Paint;
-        return paint.style == PaintingStyle.stroke &&
-            (paint.strokeWidth - 8 / 3).abs() < 1e-6;
-      });
+    // The ring's colour over the key at 8 — a diamond, filled exactly, so
+    // rung by fills: the ring's colour under its own, a ring's width in.
+    final ring = paintsShape(
+      color: selectedLaneKeyRing.color,
+      includes: [_keyAt(tester, 8)],
+    );
     expect(_paintOf(tester), isNot(ring), reason: '⛔전제: none picked');
 
     s.updateLaneRangeSelectionDrag(
@@ -859,6 +855,55 @@ void main() {
       expect((picked.startIndex, picked.endIndexExclusive), (0, 17));
     });
 
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q1 (유저 2026-11-07, a:
+    // 「값을 도구 줄 아래로 맞춘다」): 🔬opened as it opens, the box's top
+    // handle, its top right and the key on 8 stood under the graph's tools,
+    // and a press there was theirs.
+    testWidgets('opened as it opens, its keys and the box\'s handles stand '
+        'clear of the graph\'s tools, and the top handle takes a press', (
+      tester,
+    ) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      final tools = tester.getRect(find.byType(LaneGraphTools));
+      final (:painter, :box) = _graphOf(tester);
+      expect(
+        tools.overlaps(box.localToGlobal(Offset.zero) & box.size),
+        isTrue,
+        reason: '⛔전제: the tools stand over the picture',
+      );
+      final under = [
+        for (final key in painter.keysIn(box.size))
+          if (tools.contains(box.localToGlobal(key.at))) 'key on ${key.frame}',
+        for (final along in [-1, 0, 1])
+          for (final across in [-1, 0, 1])
+            if ((along, across) != (0, 0) &&
+                tools.contains(
+                  handleOnScreen(tester, (along: along, across: across)),
+                ))
+              'handle ($along, $across)',
+      ];
+      expect(under, isEmpty, reason: 'under the tools');
+
+      final gesture = await tester.startGesture(
+        handleOnScreen(tester, (along: 0, across: -1)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(rotations(s)[0], 0);
+      expect(
+        rotations(s)[8],
+        lessThan(45),
+        reason: 'the top handle pulled down lowers the top key',
+      );
+    });
+
     testWidgets('a finger on the start\'s handle stretches them too: the '
         'press is the handle\'s', (tester) async {
       final s = await _pump(tester, transform: rotating(8, 16));
@@ -1264,7 +1309,7 @@ Offset _lineOnScreen(WidgetTester tester, double time) {
       laneGraphAcross(
         line.lane.curve!.at(time).single,
         fit.ranges.single,
-        box.size.height,
+        painter.depthIn(box.size),
         Axis.horizontal,
       ),
     ),
@@ -1336,14 +1381,18 @@ double _cellExtent(WidgetTester tester) => _graphOf(
 ).painter.frameAxis.geometry.value.frameCellExtent;
 
 /// Where the graph marks its lane's key on [frame] — of its numbers, the
-/// [part]th's — on the screen.
-Offset _keyOnScreen(WidgetTester tester, int frame, {int part = 0}) {
+/// [part]th's — in the graph's own box.
+Offset _keyAt(WidgetTester tester, int frame, {int part = 0}) {
   final (:painter, :box) = _graphOf(tester);
-  final key = painter
+  return painter
       .keysIn(box.size)
-      .singleWhere((key) => key.frame == frame && key.part == part);
-  return box.localToGlobal(key.at);
+      .singleWhere((key) => key.frame == frame && key.part == part)
+      .at;
 }
+
+/// [_keyAt] on the screen.
+Offset _keyOnScreen(WidgetTester tester, int frame, {int part = 0}) =>
+    _graphOf(tester).box.localToGlobal(_keyAt(tester, frame, part: part));
 
 ScrollPosition _rowsScroll(WidgetTester tester) => tester
     .stateList<ScrollableState>(
@@ -1359,10 +1408,6 @@ ScrollPosition _rowsScroll(WidgetTester tester) => tester
 
 /// The drawing's lanes twirled open and its Transform graph with them, its
 /// [lane] stood on — the one lane the graph then draws.
-///
-/// Pulled taller than it opens: a line's top stands about where the tools
-/// in the view's near corner end, and the key on 8 is that top — half under
-/// them once the pen joined them (I-3 ④).
 Future<void> _openTheGraph(
   WidgetTester tester,
   EditorSessionManager s, {
@@ -1377,7 +1422,6 @@ Future<void> _openTheGraph(
     tester,
     'timeline-lane-group-graph-draw-${transformGroupHeaderLane.laneId}',
   );
-  SessionRowButtonPresses(s).resizeLaneGraph(_transformGroup, 320);
   s.standOnRow(LaneRowAddress(_drawId, lane));
   await tester.pumpAndSettle();
 }

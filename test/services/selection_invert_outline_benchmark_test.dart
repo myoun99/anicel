@@ -13,13 +13,15 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 ///
 /// Two numbers, measured side by side in one run:
 ///
-///   1. the ants: `pixelOutlineContours`, walked from each row's runs. It
-///      used to allocate a mask over the selected box and read every byte
-///      of it, and an inverse's box is the whole wall — ~18.7M bytes on
-///      the paint thread before one ant was drawn.
-///   2. `maskFor` over the same box — what a LIFT of the inverse still
-///      pays, because the mask is the lift's input. This is the number the
-///      ants no longer pay.
+///   1. the ants: `pixelContours`, walked from each row's runs —
+///      the engine's, read back as runs (`pixelRunsFor`). It used to
+///      allocate a mask over the selected box and read every byte of it,
+///      and an inverse's box is the whole wall — ~18.7M bytes on the paint
+///      thread before one ant was drawn.
+///   2. `maskFor` over the same box — those runs laid as a byte a pixel,
+///      what a reader of the bytes on the CPU pays (a lift reads the
+///      engine's mask where it lies). This is the number the ants do not
+///      pay.
 ///
 /// ⚠️READ THE RATIO, NOT THE MILLISECONDS: this machine runs other lanes'
 /// gates, and only two things measured in one run compare.
@@ -64,7 +66,7 @@ void main() {
 
     var contours = 0;
     final outline = medianMicros(() {
-      contours = inverse().pixelOutlineContours.length;
+      contours = inverse().pixelContours.starts.length - 1;
     });
     var cornerByte = 0;
     final mask = medianMicros(() {

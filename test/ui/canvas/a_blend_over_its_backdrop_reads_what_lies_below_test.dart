@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -9,16 +10,11 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/camera_frame_corners.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
@@ -41,12 +37,11 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// (a-blurred-folder-cut-by-the-view-moves-on-vulkan). The paper laid once
 /// is held against a normal row, which lays it under itself.
 ///
-/// Both walks, the editing stack (playback's too) and the camera (the
-/// export's), each against its own control.
+/// On the frame as it stands, the one picture a screen, a run and an export
+/// show.
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUpAll(LayerBlendShader.load);
 
   const canvasSize = CanvasSize(width: 4, height: 4);
   const grey = ProjectBackground.color(0xFF808080);
@@ -59,10 +54,12 @@ void main() {
       ..[1] = 60
       ..[2] = 128
       ..[3] = 255;
-    return BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: 4,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+    return onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+      ),
     );
   }
 
@@ -75,91 +72,6 @@ void main() {
     final i = (y * canvasSize.width + x) * 4;
     return bytes.sublist(i, i + 4);
   }
-
-  group('the camera', () {
-    Future<Uint8List> render(
-      List<CompositeNode<CutFrameCompositeLayer>> nodes, {
-      ProjectBackground paper = grey,
-    }) async {
-      final view = cameraViewOver(canvasSize.canvasRect);
-      final image = await const CameraFrameRenderService().renderThroughCamera(
-        nodes: nodes,
-        pose: view.pose,
-        cameraFrameSize: view.frameSize,
-        canvasSize: canvasSize,
-        cutsToTheCanvas: true,
-        paper: paper,
-      );
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }
-
-    CutFrameCompositeLayer row(LayerBlendMode blendMode) =>
-        CutFrameCompositeLayer(
-          surface: inked(),
-          opacity: 1,
-          blendMode: blendMode,
-        );
-
-    /// [nodes] as the plan hands them over.
-    List<CompositeNode<CutFrameCompositeLayer>> planned(
-      List<CompositeNode<CutFrameCompositeLayer>> nodes,
-    ) => composeOverTheirBackdrops(
-      nodes,
-      blendOf: (layer) => layer.blendMode,
-      paintedNormal: (layer) => layer.paintedNormal(),
-    );
-
-    test('at the root a blend reads the paper', () async {
-      final control = await render(
-        planned([CompositeLeaf(row(LayerBlendMode.difference))]),
-      );
-      expect(at(control, 0, 0), differenceWithThePaper, reason: 'control');
-
-      final bytes = await render(
-        planned([CompositeLeaf(row(LayerBlendMode.subtract))]),
-      );
-      expect(at(bytes, 0, 0), subtractedFromThePaper);
-      expect(at(bytes, 3, 3), thePaper);
-    });
-
-    test('inside a folder\'s buffer it reads only what the folder holds',
-        () async {
-      final bytes = await render(
-        planned([
-          CompositeGroup(
-            children: [CompositeLeaf(row(LayerBlendMode.subtract))],
-            opacity: 1,
-            blendMode: LayerBlendMode.normal,
-          ),
-        ]),
-      );
-      expect(
-        at(bytes, 0, 0),
-        inkOverThePaper,
-        reason: 'over nothing, subtract keeps the ink — and the folder lays '
-            'it on the paper plain',
-      );
-    });
-
-    test('the paper is laid once: a thin one stays as thin', () async {
-      const thin = ProjectBackground.color(0x80808080);
-      final control = await render([
-        CompositeLeaf(row(LayerBlendMode.normal)),
-      ], paper: thin);
-      final bytes = await render(
-        planned([CompositeLeaf(row(LayerBlendMode.subtract))]),
-        paper: thin,
-      );
-      expect(
-        at(bytes, 3, 3),
-        at(control, 3, 3),
-        reason: 'laid under the rows AND in the blend\'s backdrop it would '
-            'show through itself',
-      );
-    });
-  });
 
   group('the editing stack', () {
     Future<Uint8List> render(

@@ -78,13 +78,14 @@ void main() {
       expect(demand.stepOf(const CutId('elsewhere'), 0), isNull);
     });
 
-    test('each frame is wanted as a run plays it — on its paper — and with '
-        'the ghosts of a canvas standing on it: off it, over the frame, or '
-        'in the frame on its paper (onion-ghosts-in-place)', () {
+    test('each frame of the cut is wanted as a run plays it — on its paper '
+        '— and with the ghosts of a canvas standing on it: off it, over the '
+        'frame, or in the frame on its paper (onion-ghosts-in-place)', () {
       for (final placement in OnionSkinPlacement.values) {
         final demand = standing(placement: placement);
-        for (var step = 0; step < demand.length; step += 1) {
+        for (var step = 0; step < 5; step += 1) {
           final [frame, onion] = demand.picturesAt(step)!;
+          expect(frame.cut.id, a, reason: '⛔premise: the cut stood on');
           expect((frame.paintPaper, frame.ghosts), (true, FrameGhosts.none));
           expect(
             (onion.paintPaper, onion.ghosts),
@@ -96,6 +97,24 @@ void main() {
           );
           expect(identical(onion.cut, frame.cut), isTrue);
           expect(onion.frameIndex, frame.frameIndex);
+        }
+      }
+    });
+
+    test('🚨the cut shown next is wanted as a run plays it, and no more — '
+        'its ghosts are made once a canvas stands on it (card '
+        'one-cut-of-fnk02-holds-nine-gigabytes, Q2)', () {
+      for (final placement in OnionSkinPlacement.values) {
+        final demand = standing(placement: placement);
+        for (var step = 5; step < demand.length; step += 1) {
+          final pictures = demand.picturesAt(step)!;
+          expect(pictures, hasLength(1), reason: placement.name);
+          final [played] = pictures;
+          expect(played.cut.id, b);
+          expect((played.paintPaper, played.ghosts), (
+            true,
+            FrameGhosts.none,
+          ));
         }
       }
     });

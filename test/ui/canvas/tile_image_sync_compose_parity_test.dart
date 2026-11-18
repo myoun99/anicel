@@ -45,7 +45,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// A fully opaque stroke composes exactly by construction and would make this
 /// test prove nothing — the anti-vacuity condition is asserted below.
 void main() {
-  const tileSize = 8;
+  const tileSize = 128;
   final coord = TileCoord(x: 0, y: 0);
 
   BrushDab dab({

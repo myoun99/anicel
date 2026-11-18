@@ -142,13 +142,17 @@ void main() {
       layerId: const LayerId('l'),
       frameId: const FrameId('kept'),
     );
+    const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
     keepInAFile(store, {
-      kept: BitmapSurface(canvasSize: before, tileSize: 8).putTiles([
+      kept: BitmapSurface(
+        canvasSize: before,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 50),
+            size: defaultCelTileSize,
+            pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 50),
           ),
         ),
       ]),

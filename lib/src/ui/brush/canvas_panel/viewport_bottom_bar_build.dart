@@ -40,8 +40,11 @@ class _BottomBarBuild {
 
     // ROTATION/FLIP cluster (UI-R18 #20, left→right): rotate-left, the
     // ALWAYS-ON angle readout (drag = 1°/px, double-tap = type), rotate-
-    // right, straighten, flip-H, flip-V. Rotate buttons accent by the
-    // rotation SIGN (#18); flips accent while active (#19).
+    // right, straighten, flip-H, flip-V. Flips accent while active (#19);
+    // straighten is a reset, lit while the view is turned (I-176).
+    // ↩️The rotate buttons accented by the rotation's SIGN (#18) — 🗣️I-176
+    // (유저 2026-11-16): 「지금 왼쪽회전하면 왼쪽회전버튼 강조색인데 없애고 그냥
+    // 일반색 유지하고, 값이 바뀌면 리셋버튼을 강조색」.
     // Built PER VIEWPORT, not once: these live in the settings list, which
     // is an overlay route the panel's own rebuilds never reach. Handing
     // them the live view is what lets the accent follow the rotation
@@ -215,7 +218,8 @@ class _BottomBarBuild {
           shortcuts: _bar._viewKeys(const [EditorActionIds.canvasResetView]),
           icon: Icons.crop_free,
           onSelected: _bar.onReset,
-          enabled: _bar.viewEnabled,
+          enabled: _oneToOneChanges,
+          resets: true,
         ),
       // ⛔Only where they exist to begin with. A panel that is not on
       // the floor has no zoom steps at any width — they are the
@@ -409,7 +413,7 @@ class _BottomBarBuild {
   ///
   /// ⚠️The landing here is for the WRAP's float, not a second rounding of
   /// the view: `(15.37 + 180) % 360 - 180` comes back as 15.370000000000005,
-  /// and the accent on the rotate buttons asks this number for its sign.
+  /// and the straighten asks this number whether it is 0.
   double _rotationDegreesOf(CanvasViewport v) =>
       CanvasViewport.onReadoutGrid(((v.rotationDegrees + 180) % 360) - 180);
 
@@ -423,7 +427,7 @@ class _BottomBarBuild {
   List<Widget> _viewControlsFor(CanvasViewport viewport) {
     final rotationDegrees = _rotationDegreesOf(viewport);
     return <Widget>[
-      if (_bar.onRotateCcw != null) _rotateCcwButton(rotationDegrees),
+      if (_bar.onRotateCcw != null) _rotateCcwButton(),
       if (_bar.onRotateByDrag != null)
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
@@ -444,14 +448,17 @@ class _BottomBarBuild {
             }
           },
         ),
-      if (_bar.onRotateCw != null) _rotateCwButton(rotationDegrees),
+      if (_bar.onRotateCw != null) _rotateCwButton(),
       if (_bar.onRotateReset != null)
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
           tooltip: AppText.strings.viewStraighten,
           shortcuts: const [EditorActionIds.canvasStraighten],
           icon: const Icon(Icons.refresh),
-          onPressed: _bar.onRotateReset,
+          // Out where the view is not turned: straightening it would
+          // change nothing (F-583).
+          onPressed: rotationDegrees == 0 ? null : _bar.onRotateReset,
+          resets: true,
         ),
       if (_bar.onFlipHorizontal != null) _flipHorizontalButton(viewport),
       if (_bar.onFlipVertical != null)
@@ -468,22 +475,20 @@ class _BottomBarBuild {
 
   // R, Shift+R and H press these three (I-19), so each names its action —
   // the same one-button-one-method shape as the fit, 1:1 and zoom buttons.
-  Widget _rotateCcwButton(double rotationDegrees) => _bar._barIconButton(
+  Widget _rotateCcwButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-rotate-ccw',
     tooltip: AppText.strings.viewRotateLeft,
     shortcuts: const [EditorActionIds.canvasRotateCcw],
     icon: const Icon(Icons.rotate_left),
     onPressed: _bar.onRotateCcw,
-    isSelected: rotationDegrees < 0,
   );
 
-  Widget _rotateCwButton(double rotationDegrees) => _bar._barIconButton(
+  Widget _rotateCwButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-rotate-cw',
     tooltip: AppText.strings.viewRotateRight,
     shortcuts: const [EditorActionIds.canvasRotateCw],
     icon: const Icon(Icons.rotate_right),
     onPressed: _bar.onRotateCw,
-    isSelected: rotationDegrees > 0,
   );
 
   Widget _flipHorizontalButton(CanvasViewport viewport) => _bar._barIconButton(
@@ -516,8 +521,19 @@ class _BottomBarBuild {
       textScaler: TextScaler.noScaling,
       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, height: 1),
     ),
-    onPressed: _bar.viewEnabled ? _bar.onReset : null,
+    onPressed: _oneToOneChanges ? _bar.onReset : null,
+    resets: true,
   );
+
+  /// The zoom as the readout says it, in percent.
+  double get _displayPercent => _zoomScale.display(_bar.viewport.zoom) * 100;
+
+  /// Whether the 1:1 — the button and its row in the settings list — would
+  /// change the view: it puts back the zoom alone ([_bar.onReset]), so it
+  /// would where the readout says anything but 100% (F-583).
+  bool get _oneToOneChanges =>
+      _bar.viewEnabled &&
+      CanvasViewport.onReadoutGrid(_displayPercent) != 100;
 
   Widget _zoomOutButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-zoom-out',
@@ -536,7 +552,7 @@ class _BottomBarBuild {
   );
 
   Widget _zoomReadout() {
-    final displayPercent = _zoomScale.display(_bar.viewport.zoom) * 100;
+    final displayPercent = _displayPercent;
     return DragValueLabel(
       keyValue: 'canvas-viewport-zoom-label',
       inputKeyValue: 'canvas-viewport-zoom-input',

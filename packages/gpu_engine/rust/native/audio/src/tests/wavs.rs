@@ -1,6 +1,12 @@
-//! WAVs, AIFFs and MPEG frames made up here, each decoded by both.
+//! WAVs, AIFFs and MPEG frames made up here, each decode held to the
+//! ledger or to what the C answered. ↩️Each was decoded by both until the
+//! connection round deleted the C (connection-round-checklist H,
+//! 2026-11-08).
 
-use super::{Span, TempFile, between_junk, c_window, expect_same, framed, noise, rust_window};
+use super::{
+    Sounds, Span, TempFile, between_junk, decode, expect_left_to_the_os, expect_the_same_sound, expect_window_of, framed,
+    noise,
+};
 
 /// A WAV's `fmt ` chunk body.
 fn fmt(tag: u16, channels: u16, rate: u32, bits: u16, block_align: u16, extensible: Option<(u16, u16)>) -> Vec<u8> {
@@ -98,13 +104,17 @@ fn every_wav_reads_as_the_c_reads_it() {
     cut.truncate(cut.len() - 1001);
     cases.push(("cut short".into(), cut));
 
+    let mut pins = Sounds::default();
     for (what, bytes) in &cases {
         let file = TempFile::new("wav.wav", bytes);
-        expect_same(what, &Span::whole(file.path()), 0, -1);
+        let whole = decode(&Span::whole(file.path()), 0, -1);
         let (carried, offset) = between_junk("carried.wav", bytes);
         let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-        expect_same(&format!("{what}, carried"), &span, 0, -1);
+        let what = format!("{what}, carried");
+        expect_the_same_sound(&what, &decode(&span, 0, -1), &whole);
+        pins.add(&whole);
     }
+    pins.pinned("audio/every-wav");
 }
 
 /// The same sound as an RF64, a Wave64 and a RIFX — the WAVs symphonia does
@@ -116,11 +126,13 @@ fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str
 }
 
 /// `data` of `format` as an RF64, a Wave64 and a RIFX, with a chunk of
-/// something else first when `junk` — one whose size is odd, and no
-/// multiple of eight, so that each family's padding is what finds the next
-/// — and a list after the data, which is no sound.
+/// something else first when `junk` — one whose size is odd, and one past
+/// a multiple of eight, so that each family's padding is what finds the
+/// next: rounded to two bytes it is 10, to four 12, to eight 16 (five
+/// bytes rounded to four and to eight were both 8, and a Wave64 read on
+/// four-byte bounds passed) — and a list after the data, which is no sound.
 fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8>); 3] {
-    let other: &[u8] = &[1, 2, 3, 4, 5];
+    let other: &[u8] = &[1, 2, 3, 4, 5, 6, 7, 8, 9];
     let mut chunks: Vec<(&[u8; 4], &[u8])> = if junk { vec![(b"JUNK", other)] } else { Vec::new() };
     chunks.extend([(b"fmt ", format), (b"data", data), (b"LIST", b"INFOisft")]);
 
@@ -172,14 +184,16 @@ fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8
 
 #[test]
 fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
+    let mut pins = Sounds::default();
     for (what, tag, channels, bits) in
         [("8-bit", 1, 2, 8), ("16-bit", 1, 2, 16), ("24-bit", 1, 1, 24), ("32-bit", 1, 2, 32), ("floats", 3, 2, 32)]
     {
         for (family, bytes) in families(tag, channels, bits, 3001) {
             let (carried, offset) = between_junk("family.wav", &bytes);
             let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-            let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
+            let decoded = decode(&span, 0, -1);
             assert_eq!(decoded.samples.len(), 3001 * usize::from(channels), "{family}, {what}: every frame");
+            pins.add(&decoded);
         }
     }
     let data = noise(2000 * 6, 61);
@@ -203,22 +217,24 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
             }
             let file = TempFile::new("family.wav", bytes);
             let span = Span::whole(file.path());
-            // ⚠️dr_wav pads a Wave64 chunk by its size mod 8, where the
+            // ⚠️dr_wav padded a Wave64 chunk by its size mod 8, where the
             // format puts each chunk on the next eight-byte bound: past a
             // chunk of odd size it found nothing (measured 2026-11-06),
             // and this reads on — the same sound the RF64 holds.
             if *family == "Wave64" && junk {
-                let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-                assert_ne!(c.format, crate::FORMAT_WAV, "the C's {family}, {what}");
+                let wave64 = decode(&span, 0, -1);
                 let file = TempFile::new("family.wav", &files[0].1);
-                let rf64 = expect_same("RF64, the same", &Span::whole(file.path()), 0, -1);
-                assert!(rust.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
+                let rf64 = decode(&Span::whole(file.path()), 0, -1);
+                assert!(wave64.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
+                pins.add(&rf64);
                 continue;
             }
-            let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
+            let decoded = decode(&span, 0, -1);
             assert_eq!(decoded.format, crate::FORMAT_WAV, "{family}, {what}");
+            pins.add(&decoded);
         }
     }
+    pins.pinned("audio/wav-families");
 }
 
 #[test]
@@ -227,8 +243,10 @@ fn a_framed_wav_reads_as_the_c_reads_it() {
     let blob = framed(&bytes, 4096);
     let (carried, offset) = between_junk("framed.bin", &blob);
     let span = Span { path: carried.path(), offset, length: blob.len() as i64, framed: true };
-    expect_same("framed", &span, 0, -1);
-    expect_same("framed, a window", &span, 12_345, 999);
+    let plain = TempFile::new("plain.wav", &bytes);
+    let whole = decode(&Span::whole(plain.path()), 0, -1);
+    expect_the_same_sound("framed", &decode(&span, 0, -1), &whole);
+    expect_window_of("framed, a window", &decode(&span, 12_345, 999), &whole, 12_345, 999);
 }
 
 /// An AIFF (or AIFC, when `compression` is said) of 16-bit-word fields,
@@ -263,7 +281,8 @@ fn aiff(compression: Option<&[u8; 4]>, channels: u16, bits: u16, frames: u32, da
 
 #[test]
 fn every_aiff_reads_as_the_c_reads_it() {
-    for (what, compression, channels, bits) in [
+    let mut pins = Sounds::default();
+    for (_what, compression, channels, bits) in [
         ("8-bit", None, 2, 8),
         ("16-bit", None, 2, 16),
         ("24-bit", None, 1, 24),
@@ -275,8 +294,9 @@ fn every_aiff_reads_as_the_c_reads_it() {
         let data = noise(frames * usize::from(channels * bits / 8), u32::from(bits));
         let bytes = aiff(compression, channels, bits, frames as u32, &data);
         let file = TempFile::new("aiff.aif", &bytes);
-        expect_same(what, &Span::whole(file.path()), 0, -1);
+        pins.add(&decode(&Span::whole(file.path()), 0, -1));
     }
+    pins.pinned("audio/every-aiff");
 }
 
 /// `count` MPEG-1 Layer III frames of silence — a header and zeros, no side
@@ -325,24 +345,25 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         tagged.extend(body);
         tagged
     };
-    for (what, bytes) in [
-        ("no tag", mp3_frames(24)),
+    // The frames each is heard for: the C's, measured 2026-11-07
+    // (connection-round-checklist A).
+    for (what, bytes, frames) in [
+        ("no tag", mp3_frames(24), 26_543),
         // 320 kbit/s first, then 128: a length guessed from the first
         // frame's bitrate would cut the sound short.
-        ("no tag, two bitrates", [mp3_frames_at(20, 0xE0, 1044), mp3_frames(4)].concat()),
-        ("a LAME tag", tagged_mp3_frames(24, None, 0)),
-        ("a LAME tag counting the frames", tagged_mp3_frames(24, Some(23), 0)),
-        ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700)),
-        ("a count short of the frames", tagged_mp3_frames(24, Some(10), 100)),
-        ("behind an ID3 tag", id3(tagged_mp3_frames(24, Some(23), 0))),
-        ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat()),
+        ("no tag, two bitrates", [mp3_frames_at(20, 0xE0, 1044), mp3_frames(4)].concat(), 26_543),
+        ("a LAME tag", tagged_mp3_frames(24, None, 0), 25_391),
+        ("a LAME tag counting the frames", tagged_mp3_frames(24, Some(23), 0), 25_391),
+        ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700), 24_691),
+        ("a count short of the frames", tagged_mp3_frames(24, Some(10), 100), 10_315),
+        ("behind an ID3 tag", id3(tagged_mp3_frames(24, Some(23), 0)), 25_391),
+        ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat(), 25_391),
     ] {
         let file = TempFile::new("mp3.mp3", &bytes);
-        let span = Span::whole(file.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{what}");
-        assert_eq!(rust.samples.len(), c.samples.len(), "{what}: the frames");
-        assert!(rust.samples.iter().all(|&s| s == 0.0), "{what}: silence");
+        let sound = decode(&Span::whole(file.path()), 0, -1);
+        assert_eq!((sound.format, sound.channels, sound.rate), (crate::FORMAT_MP3, 2, 44_100), "{what}");
+        assert_eq!(sound.samples.len(), 2 * frames, "{what}: the frames");
+        assert!(sound.samples.iter().all(|&s| s == 0.0), "{what}: silence");
     }
 }
 
@@ -407,7 +428,7 @@ impl Bits {
 /// channels.
 fn mp3_read(bytes: &[u8]) -> (Vec<f32>, i32) {
     let file = TempFile::new("pieces.mp3", bytes);
-    let read = rust_window(&Span::whole(file.path()), 0, -1);
+    let read = decode(&Span::whole(file.path()), 0, -1);
     assert_eq!(read.format, crate::FORMAT_MP3);
     (read.samples, read.channels)
 }
@@ -493,21 +514,17 @@ fn a_piece_lasts_its_time_at_the_stream_s_rate() {
     assert_eq!(frames_lasting(777, None, 48_000), 777);
 }
 
-type Resample = unsafe extern "C" fn(*const f32, i64, i32, i32, i32, f64, f64, *mut f32) -> i64;
-type ResampleFrames = extern "C" fn(i64, i32, i32) -> i64;
-
-/// Interleaved `samples` of `channels` at `from` as the C conforms a whole
-/// sound to `to`.
-fn c_conformed(samples: &[f32], channels: usize, from: i32, to: i32) -> Vec<f32> {
-    // SAFETY: each type above is its export's C declaration in qa_engine.c.
-    let (frames_of, resample) = unsafe {
-        (oracle::export::<ResampleFrames>("qa_audio_resample_frames"), oracle::export::<Resample>("qa_audio_resample"))
-    };
+/// Interleaved `samples` of `channels` at `from` as a whole sound converts
+/// to `to`, through the export the app's conform calls — the C's until
+/// the connection round (H), audio_mix's since.
+fn whole_conformed(samples: &[f32], channels: usize, from: i32, to: i32) -> Vec<f32> {
     let frames = (samples.len() / channels) as i64;
-    let mut out = vec![0.0; frames_of(frames, from, to) as usize * channels];
-    // SAFETY: `out` holds the frames qa_audio_resample_frames answers.
+    let mut out = vec![0.0; audio_mix::resample_frames(frames, from, to) as usize * channels];
     let (stopband, bandwidth) = (audio_mix::DEFAULT_STOPBAND_DB, audio_mix::DEFAULT_BANDWIDTH);
-    let written = unsafe { resample(samples.as_ptr(), frames, channels as i32, from, to, stopband, bandwidth, out.as_mut_ptr()) };
+    // SAFETY: `out` holds the frames resample_frames answers.
+    let written = unsafe {
+        audio_mix::qa_audio_resample(samples.as_ptr(), frames, channels as i32, from, to, stopband, bandwidth, out.as_mut_ptr())
+    };
     out.truncate(written as usize * channels);
     out
 }
@@ -532,14 +549,15 @@ fn piece_at(rate_byte: u8, frame_bytes: usize, gains: &[u32]) -> Vec<u8> {
 fn a_piece_at_another_rate_is_heard_at_the_stream_s() {
     // Six frames at 48 kHz (384 bytes at 128 kbit/s) amid a 44.1 kHz sound,
     // and six at 32 kHz (576) at its end: each read by a decoder of its own
-    // and put in the sound's rate as the C conforms a whole sound — what a
+    // and put in the sound's rate as a whole sound converts — what a
     // conversion fed piece by piece writes, bit for bit — and the sound's
     // frames after it keep their place (native-to-rust-Q11).
+    let mut pins = Sounds::default();
     for (what, rate, piece, after) in [
         ("amid it", 48_000, piece_at(0x94, 384, &[230, 222]), 8),
         ("at its end", 32_000, piece_at(0x98, 576, &[230, 222]), 0),
     ] {
-        let conformed = c_conformed(&decoded(&piece), 2, rate, 44_100);
+        let conformed = whole_conformed(&decoded(&piece), 2, rate, 44_100);
         assert!(conformed.chunks_exact(2).any(|lr| lr[0] != lr[1]), "{what}: the channels differ");
         let (read, channels) = mp3_read(&[mp3_frames(12), piece, mp3_frames(after)].concat());
         assert_eq!(channels, 2);
@@ -547,7 +565,9 @@ fn a_piece_at_another_rate_is_heard_at_the_stream_s() {
         assert_eq!(read.len(), 2 * at + conformed.len() + 2 * after * 1152, "{what}: every frame in its place");
         assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "{what}: the piece");
         assert!(read[..2 * at].iter().chain(&read[2 * at + conformed.len()..]).all(|&s| s == 0.0), "{what}: around it");
+        pins.add_samples(&read);
     }
+    pins.pinned("audio/mp3-piece-at-another-rate");
 }
 
 #[test]
@@ -558,12 +578,15 @@ fn a_piece_at_a_third_rate_ends_the_run_before_it() {
     // (native-to-rust-Q11 · Q12).
     let (first, second) = (piece_at(0x94, 384, &[230, 222]), piece_at(0x98, 576, &[230]));
     let widened: Vec<f32> = decoded(&second).iter().flat_map(|&s| [std::f32::consts::FRAC_1_SQRT_2 * s; 2]).collect();
-    let conformed = [c_conformed(&decoded(&first), 2, 48_000, 44_100), c_conformed(&widened, 2, 32_000, 44_100)].concat();
+    let conformed = [whole_conformed(&decoded(&first), 2, 48_000, 44_100), whole_conformed(&widened, 2, 32_000, 44_100)].concat();
     let (read, channels) = mp3_read(&[mp3_frames(12), first, second, mp3_frames(8)].concat());
     assert_eq!(channels, 2);
     let at = 12 * 1152 - LEAD;
     assert_eq!(read.len(), 2 * at + conformed.len() + 2 * 8 * 1152, "every frame in its place");
     assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "the two runs");
+    let mut pins = Sounds::default();
+    pins.add_samples(&read);
+    pins.pinned("audio/mp3-piece-at-a-third-rate");
 }
 
 #[test]
@@ -602,20 +625,15 @@ fn a_piece_nothing_reads_is_its_length_of_silence() {
 
 #[test]
 fn a_head_that_names_another_container_keeps_the_mp3_decoder_away() {
-    // MPEG frames behind each head the MP3 decoder is kept from: nothing
-    // reads them, where the frames alone read as an MP3.
+    // MPEG frames behind each head the MP3 decoder is kept from: no bundled
+    // decoder reads them, where the frames alone read as an MP3.
     for head in [b"RIFF", b"RIFX", b"RF64", b"riff", b"FORM", b"fLaC", b"OggS"] {
         let mut bytes = head.to_vec();
         bytes.extend_from_slice(&[0, 0, 0, 0]);
         bytes.extend(mp3_frames(24));
         let file = TempFile::new("head.bin", &bytes);
         let span = Span::whole(file.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        // On Windows Media Foundation finds the frames behind a RIFX: what
-        // only the OS stage reads, nothing reads here until it comes.
-        let (format, frames) =
-            if c.format == crate::FORMAT_OS { (crate::FORMAT_UNKNOWN, 0) } else { (c.format, c.samples.len()) };
-        assert_eq!(rust.format, format, "{}", String::from_utf8_lossy(head));
-        assert_eq!(rust.samples.len(), frames, "{}", String::from_utf8_lossy(head));
+        // On Windows Media Foundation finds the frames behind a RIFX.
+        expect_left_to_the_os(&String::from_utf8_lossy(head), &span);
     }
 }

@@ -42,6 +42,14 @@ final class SignedMemo<S, V> {
   /// The value kept for [source], under whatever signature it was last
   /// made — null where none is. A LOOKUP: it makes nothing.
   V? keptOf(Object source) => _kept[source]?.$2;
+
+  /// The value kept for [source] where the signature it was made under is
+  /// [same] as [signature] — null where none is, or it was made under
+  /// another. A LOOKUP: it makes nothing, and what is kept stays kept.
+  V? keptUnder(Object source, S signature) => switch (_kept[source]) {
+    (final kept, final value) when _same(kept, signature) => value,
+    _ => null,
+  };
 }
 
 bool _equal(Object? kept, Object? asked) => kept == asked;

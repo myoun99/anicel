@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/effects_and_fx.dart' show TrackChain;
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/fx_plugin_file.dart';
 import '../../helpers/os_file_drop.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/wait_window.dart';
@@ -29,6 +31,7 @@ import '../../helpers/wait_window.dart';
 /// target decides the point is inside it and hands the paths on. A test
 /// that called the handler would survive the target losing its callback.
 void main() {
+  opensTheEnginesScreens();
   late Directory folder;
 
   setUp(() {
@@ -124,6 +127,7 @@ void main() {
       'window never comes up', (tester) async {
     final path = await projectNamed(tester, 'Cut 12.anicel');
     final projects = await pumpApp(tester);
+    final told = watchTheBar(tester);
 
     await drop(tester, [path]);
     expect(find.byType(ImportDialog), findsNothing);
@@ -133,19 +137,17 @@ void main() {
     expect(spelled(projects.active.projectFile.path!), path);
     expect(find.byType(ImportDialog), findsNothing);
     expect(pluginsNotHere, findsNothing, reason: 'it wears none');
+    expect(
+      told,
+      [0, 1],
+      reason: 'the bar is the bytes the open reads — none, then all '
+          '(F-608-Q2); a project of no cel reads its document alone',
+    );
   });
 
   testWidgets('a project wearing a plugin this device has not is told so '
       'after it opens — by the plugin\'s name (🗣️I-132-Q28)', (tester) async {
-    final glow = FxPluginDescription.fromJson({
-      'spec': 1,
-      'id': 'com.example.glow',
-      'name': 'Glow',
-      'vendor': 'Example',
-      'version': '1',
-      'can': ['cpu'],
-      'params': <Object?>[],
-    })!;
+    final glow = fxPluginDescriptionOf('com.example.glow', name: 'Glow');
     final path = await projectNamed(tester, 'Cut 12.anicel', plugin: glow);
     await pumpApp(tester);
 

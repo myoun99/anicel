@@ -8,7 +8,6 @@ import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/media_asset.dart'
     show MediaCarry, mediaCarryNamed, mediaNameParts, mintMediaCarry;
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
@@ -63,11 +62,6 @@ void main() {
     return path;
   }
 
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   test(
     'an import copies the bytes, so losing the original costs nothing',
     () async {
@@ -120,10 +114,6 @@ void main() {
   test(
     'compressible media is framed, and the entry says so by its name',
     () async {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       final staged = (await store.stage(carry(sourceFile('take.wav'))))!;
       expect(staged.framed, isTrue);
       expect(mediaEntryIsFramed(staged.path), isTrue);
@@ -138,10 +128,6 @@ void main() {
   test(
     'media that will not shrink is staged as the FILE, byte for byte',
     () async {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // ⚠️Named `.png` deliberately: measured, PNG is the one common format
       // zstd cannot improve (0.0%), while JPEG (15–21%), PDF (up to 40%)
       // and MP4 (6.7%) all shrink and are framed. The bytes are noise
@@ -748,21 +734,15 @@ void main() {
         isNotEmpty,
         reason: 'the copy is counted on its way: $heard',
       );
-      if (engineHere()) {
-        expect(
-          heard.where((told) => told > 0 && told < 0.5),
-          isNotEmpty,
-          reason: 'and the framing tries before it: $heard',
-        );
-      }
+      expect(
+        heard.where((told) => told > 0 && told < 0.5),
+        isNotEmpty,
+        reason: 'and the framing tries before it: $heard',
+      );
     });
 
     test('a file that frames is read once — its framing all of the way, '
         'and then the end', () async {
-      if (!engineHere()) {
-        markTestSkipped('no compressor here — nothing frames');
-        return;
-      }
       final (:heard, :framed) = await held(
         sourceFile('take.wav', length: 2 << 20),
       );

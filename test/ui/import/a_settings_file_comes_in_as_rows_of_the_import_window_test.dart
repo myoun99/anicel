@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -134,7 +135,6 @@ void main() {
   ) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
     // The window's own way out, where the run closed it.
     await tester.pump(const Duration(milliseconds: 400));
   }
@@ -229,7 +229,7 @@ void main() {
   testWidgets('every row left out, nothing goes in place — and nothing is '
       'warned of', (tester) async {
     final path = aSettingsFile({'accent_settings.json': accent});
-    final session = await openOn(tester, [path]);
+    await openOn(tester, [path]);
     final row = '$path#accent_settings.json';
 
     await leaveOut(tester, row);
@@ -239,7 +239,6 @@ void main() {
     await leaveOut(tester, row);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await tester.pump();
-    session.playbackRig.prerenderScheduler.cancel();
 
     expect(put, isEmpty);
     expect(table(tester).rows, hasLength(1), reason: 'no run happened');
@@ -325,5 +324,51 @@ void main() {
     final rows = table(tester).rows;
     expect(rows.any((row) => row.path.startsWith('$path#')), isFalse);
     expect(rows.last.name, contains('Mine.anisettings'));
+  });
+
+  // 🗣️F-595 ② (유저 2026-11-16): 「임포트시 이름왼쪽행으로 불리언버튼
+  // 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록」 — a settings
+  // row already had its 「제외」; the switch says that one answer.
+  testWidgets('the switch before a row\'s name is its 「제외」 — one answer, '
+      'which its 넣을 곳 says too — and is dead on a row this build cannot '
+      'read', (tester) async {
+    final path = aSettingsFile({
+      'accent_settings.json': accent,
+      'language_settings.json': language,
+      'onion_skin_settings.json': {
+        'version': AppOnionSkinSettingsStore.version + 1,
+      },
+    });
+    final session = await openOn(tester, [path]);
+    final languageRow = '$path#language_settings.json';
+    BooleanDotButton switchOf(String row) => tester.widget<BooleanDotButton>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is BooleanDotButton &&
+            widget.keyValue == 'import-switch-$row',
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('import-switch-$languageRow')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      column(tester, 'into').cellWordOf(languageRow),
+      AppText.strings.imExcluded,
+    );
+    await answer(tester, languageRow, 'settings');
+    expect(switchOf(languageRow).value, isTrue);
+    await leaveOut(tester, languageRow);
+    expect(switchOf(languageRow).value, isFalse);
+    expect(
+      switchOf('$path#onion_skin_settings.json').onChanged,
+      isNull,
+      reason: 'it goes nowhere whatever is pressed',
+    );
+
+    await importAll(tester, session);
+
+    expect(put.single.rows, ['accent_settings.json']);
   });
 }

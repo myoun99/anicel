@@ -21,7 +21,10 @@ import 'brush_tip_coverage.dart';
 ///
 /// The library's own shape rules still apply: square, and no longer than
 /// [maxBrushTipMaskSide] on a side.
-BrushTipMask cutPieceToTipMask(CutPiece piece, {required String id}) {
+Future<BrushTipMask> cutPieceToTipMask(
+  CutPiece piece, {
+  required String id,
+}) {
   // The POSE is honoured here, unlike paste-at-origin: registering says
   // "this shape, the way I have it set up", and a flipped or resized piece
   // is what the user is looking at when they press the button.

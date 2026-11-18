@@ -1,8 +1,13 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
+
+import '../../helpers/a_film_frame_on_the_engine.dart';
+import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 void main() {
@@ -10,19 +15,8 @@ void main() {
 
   const service = PngSequenceExportService();
 
-  Future<ui.Image> smallImage() {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawRect(
-      const ui.Rect.fromLTWH(0, 0, 2, 2),
-      ui.Paint()..color = const ui.Color(0xFF000000),
-    );
-    final picture = recorder.endRecording();
-    try {
-      return picture.toImage(2, 2);
-    } finally {
-      picture.dispose();
-    }
-  }
+  Future<GpuShown> smallFrame() =>
+      filmFrameIn(const ui.Color(0xFF000000), width: 2, height: 2);
 
   Directory tempDirectory() {
     final directory = Directory.systemTemp.createTempSync('png_export_svc');
@@ -38,12 +32,12 @@ void main() {
           .toList()
         ..sort();
 
-  test('writes each rendered image and skips null renders', () async {
+  test('writes each rendered frame and skips null renders', () async {
     final directory = tempDirectory();
 
     final summary = await service.exportImages(
       count: 3,
-      renderImage: (index) async => index == 1 ? null : await smallImage(),
+      renderImage: (index) async => index == 1 ? null : await smallFrame(),
       fileNameFor: (index) => 'img_$index.png',
       directoryPath: directory.path,
       onProgress: (completed, total) {},
@@ -56,28 +50,52 @@ void main() {
     }
   });
 
-  group('a file whose image is the one before, handed again', () {
-    late ui.Image picture;
-    late List<ui.Image> handed;
+  // Red half covered is red at half its alpha in a file that keeps its
+  // colour straight: not the darker red the engine keeps it as.
+  test('🎯the default is a PNG of four channels, its colour straight, and '
+      'the sRGB stamp', () async {
+    final directory = tempDirectory();
+    await service.exportImages(
+      count: 1,
+      renderImage: (_) => filmFrameIn(const ui.Color(0x80FF0000)),
+      fileNameFor: (_) => 'half.png',
+      directoryPath: directory.path,
+    );
+
+    final png = File(
+      '${directory.path}${Platform.pathSeparator}half.png',
+    ).readAsBytesSync();
+    expect(pngColourTypeOf(png), 6, reason: 'RGBA');
+    expect(
+      [for (final chunk in pngChunksOf(png)) chunk.type],
+      ['IHDR', 'sRGB', 'gAMA', 'cHRM', 'IDAT', 'IEND'],
+      reason: 'C1-v1: every PNG handed out says its colours are sRGB',
+    );
+    final codec = await ui.instantiateImageCodec(png);
+    final picture = (await codec.getNextFrame()).image;
+    final straight = await picture.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
+    picture.dispose();
+    codec.dispose();
+    expect(Uint8List.sublistView(straight!, 0, 4), [255, 0, 0, 128]);
+  });
+
+  group('a file whose frame is the one before, handed again', () {
+    late GpuShown held;
     late int encoded;
 
     setUp(() async {
-      picture = await smallImage();
-      handed = [];
+      held = await smallFrame();
       encoded = 0;
     });
 
-    tearDown(() => picture.dispose());
+    /// Frames 0 and 1 are [held] handed twice; frame 2 another frame.
+    Future<GpuShown?> render(int index) async =>
+        index < 2 ? held : await smallFrame();
 
-    /// Frames 0 and 1 are [picture] handed twice; frame 2 another picture.
-    Future<ui.Image?> render(int index) async {
-      final image = index < 2 ? picture.clone() : await smallImage();
-      handed.add(image);
-      return image;
-    }
-
-    /// An encoder that writes [mark] and how many images it has encoded.
-    ExportImageEncoder encoderMarked(int mark) => (image) async {
+    /// An encoder that writes [mark] and how many frames it has encoded.
+    ExportImageEncoder encoderMarked(int mark) => (frame) async {
       encoded += 1;
       return [mark, encoded];
     };
@@ -123,24 +141,7 @@ void main() {
       expect(bytesOf(directory, 1), [9, 2]);
     });
 
-    test('is let go at once, and the one kept to know it by when the run '
-        'ends', () async {
-      await service.exportImages(
-        count: 3,
-        renderImage: render,
-        fileNameFor: (index) => 'img_$index.png',
-        directoryPath: tempDirectory().path,
-      );
-
-      expect(handed, hasLength(3), reason: 'LIVENESS: three handed');
-      expect([for (final image in handed) image.debugDisposed], [
-        true,
-        true,
-        true,
-      ]);
-    });
-
-    test('a run whose encode fails lets go of what it kept', () async {
+    test('a run whose encode fails says so', () async {
       await expectLater(
         service.exportImages(
           count: 3,
@@ -148,12 +149,10 @@ void main() {
           fileNameFor: (index) => 'img_$index.png',
           directoryPath: tempDirectory().path,
           encoderFor: (index) =>
-              (image) async => throw StateError('no encoder'),
+              (frame) async => throw StateError('no encoder'),
         ),
         throwsStateError,
       );
-
-      expect(handed.single.debugDisposed, isTrue);
     });
   });
 
@@ -165,7 +164,7 @@ void main() {
       count: 5,
       renderImage: (index) async {
         rendered += 1;
-        return smallImage();
+        return smallFrame();
       },
       fileNameFor: (index) => 'img_$index.png',
       directoryPath: directory.path,

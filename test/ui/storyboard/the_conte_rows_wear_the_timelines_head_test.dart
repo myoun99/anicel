@@ -222,11 +222,13 @@ void main() {
           reason: 'the head mounts no $cell',
         );
       }
-      expect(
-        named('storyboard-attach-twirl-a-conte'),
-        findsNothing,
-        reason: 'no attach row rides the conte: nothing to fold',
-      );
+      for (final side in AttachedPlacement.values) {
+        expect(
+          named('storyboard-attach-twirl-${side.name}-a-conte'),
+          findsNothing,
+          reason: 'no attach row rides the conte: nothing to fold',
+        );
+      }
       // ONE head for the film: cut b's conte draws no row of its own.
       expect(named('storyboard-layer-fx-b-conte'), findsNothing);
     });
@@ -442,10 +444,14 @@ void main() {
       expect(key('storyboard-conte-row-t1'), findsOneWidget);
       expect(key('storyboard-conte-row-t1-conte+1'), findsOneWidget);
       expect(key('storyboard-conte-row-t1-conte-1'), findsOneWidget);
-      // The twirl is the base's: a row that rides folds nothing.
-      expect(named('storyboard-attach-twirl-a-conte'), findsOneWidget);
-      expect(named('storyboard-attach-twirl-a-over'), findsNothing);
-      expect(named('storyboard-attach-twirl-a-under'), findsNothing);
+      // The twirl is the base's — a half a side (I-175): a row that rides
+      // folds nothing.
+      for (final side in AttachedPlacement.values) {
+        final half = 'storyboard-attach-twirl-${side.name}';
+        expect(named('$half-a-conte'), findsOneWidget);
+        expect(named('$half-a-over'), findsNothing);
+        expect(named('$half-a-under'), findsNothing);
+      }
       // And the button that makes a cut's conte — cut c has none — is the
       // conte row's alone.
       expect(key('storyboard-conte-create-t1'), findsOneWidget);
@@ -591,30 +597,48 @@ void main() {
     });
 
     testWidgets('🚨the conte\'s twirl folds them — on this rail, and in '
-        'every cut\'s timeline: the head is one', (tester) async {
+        'every cut\'s timeline: the head is one — a half its side '
+        '(I-175)', (tester) async {
       final session = await pumpPanel(tester, film(withRiders: true));
-      final twirl = named('storyboard-attach-twirl-a-conte');
-      expect(twirl, findsOneWidget);
-      expect(headOf(tester, 'conte').groupFoldExpanded, isTrue);
+      final above = named('storyboard-attach-twirl-above-a-conte');
+      final below = named('storyboard-attach-twirl-below-a-conte');
+      expect(above, findsOneWidget);
+      expect(below, findsOneWidget);
+      expect(
+        headOf(tester, 'conte').groupFold,
+        (folder: null, above: true, below: true),
+      );
 
-      await tester.tap(twirl);
+      await tester.tap(above);
       await tester.pumpAndSettle();
-      expect(headOf(tester, 'conte').groupFoldExpanded, isFalse);
-
+      expect(
+        headOf(tester, 'conte').groupFold,
+        (folder: null, above: false, below: true),
+      );
       expect(label('conte+1'), findsNothing);
-      expect(label('conte-1'), findsNothing);
       expect(key('storyboard-conte-row-t1-conte+1'), findsNothing);
+      expect(label('conte-1'), findsOneWidget, reason: 'the lower half\'s');
+
+      await tester.tap(below);
+      await tester.pumpAndSettle();
+      expect(label('conte-1'), findsNothing);
       expect(label('conte'), findsOneWidget, reason: 'the conte stays');
       expect(
-        session.railView.collapsedAttachBaseIds.value,
-        containsAll(const [LayerId('a-conte'), LayerId('b-conte')]),
+        session.railView.attachFoldedRowIds.value,
+        {
+          for (final cut in const ['a', 'b'])
+            for (final row in const ['over', 'under']) LayerId('$cut-$row'),
+        },
         reason: 'cut b\'s group folds with cut a\'s',
       );
 
-      await tester.tap(twirl);
+      await tester.tap(above);
       await tester.pumpAndSettle();
       expect(label('conte+1'), findsOneWidget, reason: 'and opens again');
-      expect(session.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(label('conte-1'), findsNothing, reason: 'the other half stays');
+      await tester.tap(below);
+      await tester.pumpAndSettle();
+      expect(session.railView.attachFoldedRowIds.value, isEmpty);
     });
 
     testWidgets('an attach row\'s eye writes the row at its seat of every '

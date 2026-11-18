@@ -119,7 +119,8 @@ void main() {
     });
 
     test('🎯each reader\'s refusal is said in the program language — the '
-        'Anicel brush file, Photoshop\'s and CLIP STUDIO\'s (F-273)', () async {
+        'Anicel brush file, Photoshop\'s, CLIP STUDIO\'s and TVPaint\'s '
+        '(F-273)', () async {
       AppText.settings.value = const AppLanguageSettings(
         programLanguage: AppLanguage.ko,
       );
@@ -148,6 +149,10 @@ void main() {
       expect(
         await refusalOf('x.sut', const []),
         ko.importWarning('sutNoBrushData', untabled),
+      );
+      expect(
+        await refusalOf('x.tvpx', utf8.encode('junk')),
+        ko.importWarning('tvpxNoPanel', untabled),
       );
     });
 
@@ -499,6 +504,19 @@ void main() {
 
       expect(library.presets, defaultBrushPresets);
       expect(library.groups, defaultBrushGroups);
+    });
+
+    test('atDefaults says whether the reset would change the library '
+        '(F-583)', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      expect(library.atDefaults, isFalse, reason: 'seeded off the built-ins');
+
+      library.resetToDefaults();
+      expect(library.atDefaults, isTrue);
+
+      library.rename(defaultBrushPresets.first.id, 'Mine');
+      expect(library.atDefaults, isFalse, reason: 'a built-in renamed');
     });
   });
 

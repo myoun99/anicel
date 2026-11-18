@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
@@ -62,11 +61,6 @@ void main() {
     return path;
   }
 
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   test('품기 stages the bytes at IMPORT, not at save', () async {
     final path = compressibleFile('take.wav');
 
@@ -97,10 +91,6 @@ void main() {
 
   test('the staged bytes are what a save writes, and the entry name says '
       'whether they are framed', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     await pool.addMediaAssets([path], carried: true);
     final staged = stagedCopyIn(session, path)!;
@@ -119,10 +109,6 @@ void main() {
 
   test('🚨a FRAMED carry survives a save and a reopen with its original gone '
       '— the manifest names the entry the archive holds', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);
@@ -194,10 +180,6 @@ void main() {
   });
 
   test('a framed staged file still serves a WINDOW', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);
@@ -599,5 +581,52 @@ void main() {
           'feeds the relink hunt, whose "success" re-keys the asset away '
           'from the bytes it was promised',
     );
+  });
+
+  /// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+  /// 띄운다」): a carry made after the import records the date of the file
+  /// it takes, at that moment.
+  group('a carry made later records the date of the file it takes', () {
+    test('🎯promoting a link records its file\'s date', () async {
+      final path = compressibleFile('linked.wav');
+      File(path).setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
+      await pool.addMediaAssets([path]);
+
+      await pool.promoteMediaAssetIntoProject(path);
+
+      expect(
+        pool.mediaAssets.single.carriedAs!.modified,
+        DateTime(2026, 9, 2, 8, 15),
+      );
+    });
+
+    test('🎯carrying anew records the file as it is now', () async {
+      final path = compressibleFile('take.wav');
+      File(path).setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
+      await pool.addMediaAssets([path], carried: true);
+      File(path).setLastModifiedSync(DateTime(2026, 11, 13, 19, 41));
+
+      await pool.carryAnew([path]);
+
+      expect(
+        pool.mediaAssets.single.carriedAs!.modified,
+        DateTime(2026, 11, 13, 19, 41),
+      );
+    });
+
+    test('🎯a relink by hand records the date of the file picked', () async {
+      final from = compressibleFile('take.wav');
+      File(from).setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
+      await pool.addMediaAssets([from], carried: true);
+      final picked = compressibleFile('picked.wav');
+      File(picked).setLastModifiedSync(DateTime(2026, 10, 1, 12));
+
+      await pool.relinkMediaAsset(from, picked);
+
+      expect(
+        pool.mediaAssets.single.carriedAs!.modified,
+        DateTime(2026, 10, 1, 12),
+      );
+    });
   });
 }

@@ -6,7 +6,7 @@ import '../../models/timeline_frame_range.dart'
 import '../../models/timeline_row_address.dart';
 import 'lane_graph.dart';
 import 'property_lane_model.dart';
-import 'timeline_current_row.dart' show laneGroupOf;
+import 'timeline_current_row.dart' show laneGroupOf, laneIsInGroup;
 import 'transform_lane_policy.dart'
     show laneSelectionCoversBandRow, transformGroupHeaderLane;
 
@@ -64,7 +64,9 @@ Set<TimelineRowAddress> selectionSeatedIn(
 ) => {
   for (final row in selection)
     if (row case LaneRowAddress(:final layerId, :final laneId)
-        when graphs.open.containsKey(_groupKeyOfLane(layerId, laneId)))
+        when graphs.open.keys.any(
+          (key) => _laneIsInGroupKey(layerId, laneId, key),
+        ))
       row,
 };
 
@@ -147,7 +149,7 @@ List<String> laneGraphDrawnLanes(
       ? seat.picked
       : switch (standing) {
           LaneRowAddress(:final layerId, :final laneId)
-              when _groupKeyOfLane(layerId, laneId) == seat.groupKey =>
+              when _laneIsInGroupKey(layerId, laneId, seat.groupKey) =>
             [laneId],
           _ => seat.lanes,
         };
@@ -161,7 +163,10 @@ List<String> laneGraphDrawnLanes(
 /// that is no member of a group.
 String? _graphKeyOf(TimelineDisplayRow row) {
   final lane = row.lane;
-  return lane == null ? null : _groupKeyOfLane(row.layer.id, lane.laneId);
+  final header = lane == null
+      ? null
+      : laneGroupOf(lane.laneId, kind: row.layer.kind);
+  return header == null ? null : laneGroupKey(row.layer.id, header);
 }
 
 /// A lane as a header graph draws it (I-89 ③): its row's layer, whose
@@ -188,7 +193,7 @@ typedef LaneGraphReach = ({int start, int end});
 List<String> laneGraphGuests(TimelineGraphSeat seat, Set<String> pinned) => [
   for (final key in pinned)
     if (parseLaneGroupKey(key) case (:final layerId, :final laneId)
-        when _groupKeyOfLane(layerId, laneId) != seat.groupKey)
+        when !_laneIsInGroupKey(layerId, laneId, seat.groupKey))
       key,
 ];
 
@@ -214,11 +219,8 @@ LaneGraphLine? laneGraphLineAmong(
   if (pinned == null) {
     return null;
   }
-  final group = laneGroupOf(pinned.laneId);
-  for (final layer in rows) {
-    if (layer.id != pinned.layerId) {
-      continue;
-    }
+  for (final layer in rows.where((row) => row.id == pinned.layerId)) {
+    final group = laneGroupOf(pinned.laneId, kind: layer.kind);
     final lanes = lanesOf(layer, {
       if (group != null) laneGroupKey(layer.id, group),
     });
@@ -231,13 +233,15 @@ LaneGraphLine? laneGraphLineAmong(
   return null;
 }
 
-/// The key of the group [laneId] is a member of on [layerId]'s row, or
-/// null for a lane that is no member of a group — a header, a lane of its
-/// own.
-String? _groupKeyOfLane(LayerId layerId, String laneId) {
-  final header = laneGroupOf(laneId);
-  return header == null ? null : laneGroupKey(layerId, header);
-}
+/// Whether [laneId] on [layerId]'s row is a member of the group [groupKey]
+/// names ([laneIsInGroup]) — never for a header, a lane of its own, or a
+/// lane of another row.
+bool _laneIsInGroupKey(LayerId layerId, String laneId, String groupKey) =>
+    switch (parseLaneGroupKey(groupKey)) {
+      (layerId: final row, laneId: final header) =>
+        row == layerId && laneIsInGroup(laneId, header),
+      null => false,
+    };
 
 /// One open graph's run of member rows in a display-row list: where it
 /// starts, how many rows it holds, and the seat they share.

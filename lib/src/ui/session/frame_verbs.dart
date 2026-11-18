@@ -612,3 +612,25 @@ bool rowTakesNewCels(Layer layer) =>
     !isSyncedAttachedLayer(layer) &&
     layer.mediaReference == null &&
     (!layer.kind.holdsSingleCel || pictureRowStandsEmpty(layer));
+
+/// Whether a block landing on [layer] — pasted or dragged there — lands as
+/// its PICTURE, hung in the block [layer] shows (`picturesHungInBlocks`),
+/// rather than as a block: a row of drawn cels nothing makes a cel on
+/// ([rowTakesNewCels]) — a SYNCED attach row, whose blocks are its base's
+/// (F-545 · F-546), and a PICTURE row holding its picture, whose one block
+/// is all it holds. Not a row whose picture is a file's
+/// ([Layer.mediaReference]).
+///
+/// 🗣️F-593 (유저 2026-11-15): 「이미지 레이어에도 다른 블록의 그림 복사한거
+/// 붙여넣기 가능하게. 어태치 싱크레이어에 붙여넣기 작동시키듯이
+/// 그림교체방식으로. 규칙 최대한 어태치싱크때 규칙 따라서 통일」 — and its
+/// Q1 (유저 2026-11-15, 「(가) 맞바꾼다 — 싱크행과 같게」): a block dragged
+/// onto it trades pictures as onto a synced row. So the picture row takes
+/// the synced row's law whole: on its hold as on its block (F-140), with a
+/// selection or none, its cel, name, block and links kept. ↩️It took a
+/// paste only with a selection over its block, which lifted the block and
+/// laid the clip's first as a new cel, and no drag at all.
+bool blocksLandAsPicturesOn(Layer layer) =>
+    layer.kind.takesAuthoredCels &&
+    layer.mediaReference == null &&
+    !rowTakesNewCels(layer);

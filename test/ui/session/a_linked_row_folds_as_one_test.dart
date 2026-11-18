@@ -32,7 +32,7 @@ void main() {
     final r = _Rig()..linkACut();
     final depth = r.s.historyManager.undoCount;
 
-    r.presses.toggleGroupFold(r.twinOf(r.folder));
+    r.presses.toggleGroupFold(r.twinOf(r.folder), null);
 
     expect(r.collapsed(r.twinOf(r.folder)), isTrue);
     expect(r.collapsed(r.folder), isTrue, reason: 'the origin cut\'s too');
@@ -49,16 +49,39 @@ void main() {
   test('🚨an ATTACH group folded in one 겸용 cut is folded in the other — '
       'and one undo opens both', () {
     final r = _Rig()..linkACut();
-    final folded = r.s.railView.collapsedAttachBaseIds;
+    final folded = r.s.railView.attachFoldedRowIds;
     final depth = r.s.historyManager.undoCount;
 
-    r.presses.toggleGroupFold(r.twinOf(r.base));
+    r.presses.toggleGroupFold(r.twinOf(r.base), null);
 
-    expect(folded.value, {r.base, r.twinOf(r.base)});
+    expect(
+      folded.value,
+      {r.rider, r.twinOf(r.rider)},
+      reason: 'the rows the fold takes off, in both cuts',
+    );
     expect(r.s.historyManager.undoCount, depth + 1);
 
     r.s.undo();
     expect(folded.value, isEmpty);
+  });
+
+  test('🚨a HALF folded in one 겸용 cut folds that side in the other, and '
+      'no other side (I-175)', () {
+    final r = _Rig();
+    r.s.selectLayer(r.base);
+    r.s.folders.addAttachedLayer(AttachedPlacement.below);
+    r.linkACut();
+
+    r.presses.toggleGroupFold(r.twinOf(r.base), AttachedPlacement.above);
+
+    for (final use in [r.base, r.twinOf(r.base)]) {
+      expect(r.row(use).foldedAttaches, {AttachedPlacement.above});
+    }
+    expect(
+      r.s.railView.attachFoldedRowIds.value,
+      {r.rider, r.twinOf(r.rider)},
+      reason: 'the rows above, in both cuts — the row below stays',
+    );
   });
 
   test('🚨a row\'s lanes twirled open in one 겸용 cut are open in the '
@@ -111,11 +134,11 @@ void main() {
       'start — its rows are new, and nothing was ever folded by them', () {
     final r = _Rig();
     r.presses.toggleLanes(r.plain);
-    r.presses.toggleGroupFold(r.base);
+    r.presses.toggleGroupFold(r.base, null);
     r.presses.toggleLaneGroup(
       laneGroupKey(r.plain, transformGroupHeaderLane.laneId),
     );
-    r.presses.toggleGroupFold(r.folder);
+    r.presses.toggleGroupFold(r.folder, null);
 
     r.linkACut();
 
@@ -123,9 +146,9 @@ void main() {
       r.plain,
       r.twinOf(r.plain),
     });
-    expect(r.s.railView.collapsedAttachBaseIds.value, {
-      r.base,
-      r.twinOf(r.base),
+    expect(r.s.railView.attachFoldedRowIds.value, {
+      r.rider,
+      r.twinOf(r.rider),
     });
     expect(r.s.railView.expandedLaneGroupKeys.value, {
       laneGroupKey(r.plain, transformGroupHeaderLane.laneId),
@@ -183,8 +206,8 @@ void main() {
   test('🚨the walk that opens what hides the row you are taken to opens it '
       'in every use — a folder and an attach group', () {
     final r = _Rig()..linkACut();
-    r.presses.toggleGroupFold(r.twinOf(r.folder));
-    r.presses.toggleGroupFold(r.twinOf(r.base));
+    r.presses.toggleGroupFold(r.twinOf(r.folder), null);
+    r.presses.toggleGroupFold(r.twinOf(r.base), null);
     expect(r.collapsed(r.folder), isTrue, reason: '⛔전제');
 
     // An undo's walk lands on the row inside the folder, then on the row
@@ -202,7 +225,7 @@ void main() {
       (cut: r.linked, layer: r.twinOf(r.rider), frame: 0),
     );
     expect(
-      r.s.railView.collapsedAttachBaseIds.value,
+      r.s.railView.attachFoldedRowIds.value,
       isEmpty,
       reason: 'the attach group unfolded in the origin cut too',
     );
@@ -213,7 +236,7 @@ void main() {
     final r = _Rig()..linkACut();
     final eyeBefore = r.row(r.folder).isVisible;
     r.presses.toggleVisibility(r.twinOf(r.folder));
-    r.presses.toggleGroupFold(r.twinOf(r.folder));
+    r.presses.toggleGroupFold(r.twinOf(r.folder), null);
 
     expect(r.row(r.twinOf(r.folder)).isVisible, !eyeBefore);
     expect(r.row(r.folder).isVisible, eyeBefore);

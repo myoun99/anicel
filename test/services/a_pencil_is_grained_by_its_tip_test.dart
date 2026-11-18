@@ -8,6 +8,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -39,6 +40,11 @@ BrushSettings _withoutPaper(BrushSettings settings) => BrushSettings.fromShape(
 BrushSettings _onARound(BrushSettings settings) =>
     BrushSettings.fromShape(settings.shape.copyWith(tips: const []));
 
+/// [settings] drawn with no anti-aliasing: the tip as it is.
+BrushSettings _unsmoothed(BrushSettings settings) => BrushSettings.fromShape(
+  settings.shape.copyWith(antiAlias: BrushAntiAlias.none),
+);
+
 Uint8List _line(BrushSettings settings) =>
     rasterizeBrushStrokeSample(settings, _width, _height);
 
@@ -65,12 +71,22 @@ double _grain(Uint8List line) {
 int _ink(Uint8List line) => line.fold(0, (sum, level) => sum + level);
 
 void main() {
-  test('🗣️with the paper off a pencil\'s line is still specks — and a round '
+  // 🗣️H60-Q4 (유저 2026-11-15 07:20, 「3단계 그대로」, its cost shown: a
+  // pencil's grain 0.163 at three steps, under the 0.25 below): the default
+  // pencils name no step and draw at the three every such brush does, and
+  // three smooth a picture's tip as wide as a round one (H60-Q2). So what
+  // F-511 asks of the TIP is read with none, and at the three it is drawn
+  // with it stays grained beside the round control.
+  // ↩️Till then a picture's tip laid whole at every step, and this read
+  // the pencils as drawn.
+  test('🗣️with the paper off a pencil\'s tip is still specks — and a round '
       'tip laid the same way is not', () {
     for (final id in _grades) {
       final off = _withoutPaper(_settingsOf(id));
-      expect(_grain(_line(off)), greaterThan(0.25), reason: id);
-      expect(_grain(_line(_onARound(off))), lessThan(0.1), reason: '$id round');
+      final round = _grain(_line(_onARound(off)));
+      expect(_grain(_line(_unsmoothed(off))), greaterThan(0.25), reason: id);
+      expect(round, lessThan(0.1), reason: '$id round');
+      expect(_grain(_line(off)), greaterThan(round), reason: '$id as drawn');
     }
   });
 

@@ -498,8 +498,33 @@ LayerDropPlan? _joinRidersGroup(
     // The pointer is in the row it dropped on, which is not the run's own
     // group: a run that rides another base lets go of it here rather than
     // being read as still touching it at the edge.
-    pointerInRow: rider.id,
+    pointer: PointerInRow(rider.id),
   );
+}
+
+/// Where a row drag's pointer stands, which splits a boundary caret in half
+/// (F-31②, [_pointerHalf]).
+///
+/// 🗣️F-393 (검증 2026-11-16): three answers, not a nullable id. "Past the
+/// rows" and "no pointer to offer" were one null, so a row carried past the
+/// end of the list stayed in the group it was let go of.
+sealed class RowPointer {
+  const RowPointer();
+}
+
+/// In the rows of [layerId]: its own row, or a lane twirled down under it.
+///
+/// The row need not be one the drop's stack holds: a track's SE row and
+/// the transition row are on the rail and in no cut.
+final class PointerInRow extends RowPointer {
+  const PointerInRow(this.layerId);
+
+  final LayerId layerId;
+}
+
+/// Past either end of the rail, over no row at all.
+final class PointerPastTheRows extends RowPointer {
+  const PointerPastTheRows();
 }
 
 /// The plan for dropping [movingId]'s run at [insertAt] in [stack], or null
@@ -532,18 +557,18 @@ LayerDropPlan? resolveLayerDrop({
   /// ㊵: the row selection this drag carries, when [movingId] is in it.
   Set<LayerId> alsoMoving = const {},
 
-  /// F-31②: the row the POINTER stands in, which splits a boundary caret
-  /// in half — see [_pointerHalf]. Null from every caller that has no
-  /// pointer (the menu moves, the tests), and each membership's own rule
-  /// stands: the closed interval for a group, the row below for a folder.
-  LayerId? pointerInRow,
+  /// F-31②: where the POINTER stands, which splits a boundary caret in
+  /// half — see [_pointerHalf]. Null from every caller that has no pointer
+  /// (the menu moves, the tests), and each membership's own rule stands:
+  /// the closed interval for a group, the row below for a folder.
+  RowPointer? pointer,
 }) {
   final lift = _liftIfLanding(
     stack,
     movingId,
     insertAt,
     alsoMoving: alsoMoving,
-    pointerInRow: pointerInRow,
+    pointer: pointer,
   );
   if (lift == null) return null;
   final joinedFolderId = forceJoinFolderId ?? _joinedFolderId(lift);
@@ -580,7 +605,7 @@ class _Lift {
     required this.carriedIds,
     required this.rest,
     required this.restInsertAt,
-    required this.pointerInRow,
+    required this.pointer,
   });
 
   factory _Lift.of(
@@ -588,7 +613,7 @@ class _Lift {
     LayerId movingId,
     ({int start, int endExclusive}) run,
     int insertAt,
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   ) {
     final carried = stack.sublist(run.start, run.endExclusive);
     return _Lift(
@@ -605,7 +630,7 @@ class _Lift {
       restInsertAt: insertAt <= run.start
           ? insertAt
           : insertAt - carried.length,
-      pointerInRow: pointerInRow,
+      pointer: pointer,
     );
   }
 
@@ -615,7 +640,7 @@ class _Lift {
   final Set<LayerId> carriedIds;
   final List<Layer> rest;
   final int restInsertAt;
-  final LayerId? pointerInRow;
+  final RowPointer? pointer;
 
   /// SECTIONS: the row below the slot decides which one we are in (the
   /// bottom of the stack is the first section by construction).
@@ -630,13 +655,13 @@ _Lift? _liftIfLanding(
   LayerId movingId,
   int insertAt, {
   required Set<LayerId> alsoMoving,
-  required LayerId? pointerInRow,
+  required RowPointer? pointer,
 }) {
   final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (run == null || !_lands(run, insertAt, stackLength: stack.length)) {
     return null;
   }
-  final lift = _Lift.of(stack, movingId, run, insertAt, pointerInRow);
+  final lift = _Lift.of(stack, movingId, run, insertAt, pointer);
   return _leavesSection(lift) ? null : lift;
 }
 
@@ -720,7 +745,7 @@ LayerId? _joinedFolderId(_Lift lift) {
     bool inFolder(Layer row) =>
         row.id == own || lift.rest.isInsideFolder(row.folderId, own);
     final sides = _sidesOfSlot(lift.rest, lift.restInsertAt, inFolder);
-    if (_pointerHalf(lift.rest, sides, inFolder, lift.pointerInRow) ?? false) {
+    if (_pointerHalf(lift, sides, inFolder) ?? false) {
       return own;
     }
   }
@@ -775,9 +800,7 @@ LayerAttachDrop? _attachPlan(
   final moving = lift.moving;
   final ownBase =
       moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, lift.stack);
-  final keepsOwnGroup =
-      ownBase != null &&
-      _slotKeepsGroup(lift.rest, lift.restInsertAt, ownBase, lift.pointerInRow);
+  final keepsOwnGroup = ownBase != null && _slotKeepsGroup(lift, ownBase);
   final target =
       (keepsOwnGroup
           ? null
@@ -929,12 +952,7 @@ Set<LayerId> _detachIds(_Lift lift, List<_Mount> mounts) {
       if (layer.attachedToLayerId != null &&
           !lift.carriedIds.contains(layer.attachedToLayerId) &&
           !mountedIds.contains(layer.id) &&
-          !_slotKeepsGroup(
-            lift.rest,
-            lift.restInsertAt,
-            layer.attachedToLayerId!,
-            lift.pointerInRow,
-          ))
+          !_slotKeepsGroup(lift, layer.attachedToLayerId!))
         layer.id,
   };
 }
@@ -1112,7 +1130,7 @@ _Sides _sidesOfSlot(
 );
 
 /// Which half of a BOUNDARY the pointer stands in: true for the group's own
-/// rows, false for the row past them — or null where there is no half to
+/// rows, false for the rows past them — or null where there is no half to
 /// stand in (the slot is not on the boundary, or no pointer was handed),
 /// and each membership's own rule answers.
 ///
@@ -1124,23 +1142,47 @@ _Sides _sidesOfSlot(
 /// The half is not new geometry: the gap has a row on either side of it,
 /// and the one the pointer is IN is the answer. Inside the group's rows —
 /// a base, a folder's own row — keeps; the row past them lets go.
+///
+/// 🗣️F-393 (검증 2026-11-16): past them is every row that is not the
+/// group's — a row the stack does not hold too — and no row at all, past
+/// the rail's end. ↩️A row missing from the rest was read as one the drag
+/// carries, and past the end as no pointer: a row at the top of its
+/// section, under a track's SE row, and one at the end of the list stayed
+/// in the group (or folder) they were let go of.
 bool? _pointerHalf(
-  List<Layer> rest,
+  _Lift lift,
   _Sides sides,
   bool Function(Layer row) inGroup,
-  LayerId? pointerInRow,
 ) {
-  if (sides.below == sides.above || pointerInRow == null) {
+  if (sides.below == sides.above) {
     return null;
   }
-  for (final row in rest) {
-    if (row.id == pointerInRow) {
+  return switch (lift.pointer) {
+    null => null,
+    PointerPastTheRows() => false,
+    PointerInRow(:final layerId) => _rowIsOnTheInside(lift, layerId, inGroup),
+  };
+}
+
+/// Whether [rowId], the row the pointer stands in, is on the group's side
+/// of a boundary ([_pointerHalf]).
+bool _rowIsOnTheInside(
+  _Lift lift,
+  LayerId rowId,
+  bool Function(Layer row) inGroup,
+) {
+  // The pointer is over a row this drag CARRIES: it moved with the run, so
+  // it says nothing about which side of the boundary the run came to rest.
+  if (lift.carriedIds.contains(rowId)) {
+    return true;
+  }
+  for (final row in lift.rest) {
+    if (row.id == rowId) {
       return inGroup(row);
     }
   }
-  // The pointer is over a row this drag CARRIES: it moved with the run, so
-  // it says nothing about which side of the boundary the run came to rest.
-  return true;
+  // A row the stack does not hold is in none of its groups.
+  return false;
 }
 
 /// Whether a run landing at [insertAt] KEEPS its membership of [baseId]'s
@@ -1166,20 +1208,15 @@ bool? _pointerHalf(
 /// split boundary there. `_slotTouchesGroup` was this with a null pointer,
 /// so it is this with a null pointer.
 ///
-/// [pointerInRow] is null when the drag has no pointer row to offer (a menu
-/// move, a test, the pointer over a lane), and then the old closed interval
-/// stands: no information is not a reason to detach.
-bool _slotKeepsGroup(
-  List<Layer> rest,
-  int insertAt,
-  LayerId baseId,
-  LayerId? pointerInRow,
-) {
+/// The lift's pointer is null when the drag has no pointer to offer (a
+/// menu move, a test), and then the old closed interval stands: no
+/// information is not a reason to detach.
+bool _slotKeepsGroup(_Lift lift, LayerId baseId) {
   bool inGroup(Layer row) =>
-      _groupBaseOfRow(rest, row, ownBase: baseId) == baseId;
-  final sides = _sidesOfSlot(rest, insertAt, inGroup);
+      _groupBaseOfRow(lift.rest, row, ownBase: baseId) == baseId;
+  final sides = _sidesOfSlot(lift.rest, lift.restInsertAt, inGroup);
   return (sides.below || sides.above) &&
-      (_pointerHalf(rest, sides, inGroup, pointerInRow) ?? true);
+      (_pointerHalf(lift, sides, inGroup) ?? true);
 }
 
 /// The gap [steps] away from the item at [index].
@@ -1337,8 +1374,18 @@ bool ownsTheLane(TimelineRowAddress head, TimelineRowAddress? address) {
 
 /// Where a row's two lines stand: [lead] before it, to where its unit begins,
 /// and [trail] after it, to where the unit ends — both none while its lanes
-/// are shut — and [end], where that end stands along the rail.
-typedef RowLinesBeyond = ({double lead, double trail, double end});
+/// are shut — and [start] and [end], where those two stand along the rail,
+/// whose rows end at [rail].
+///
+/// [rail] is what a line's word stands inside (F-393 ②): past the rail's
+/// rows a word is drawn on nothing, and is cut off there.
+typedef RowLinesBeyond = ({
+  double lead,
+  double trail,
+  double start,
+  double end,
+  double rail,
+});
 
 /// How far past the row at [at] its two lines stand where [edges] lay the
 /// rows, its [unit] being what it stands for.
@@ -1355,7 +1402,9 @@ RowLinesBeyond linesBeyondRow(
 ) => (
   lead: edges.startOf(at) - edges.startOf(unit.first),
   trail: edges.startOf(unit.last + 1) - edges.endOf(at),
+  start: edges.startOf(unit.first),
   end: edges.startOf(unit.last + 1),
+  rail: edges.total,
 );
 
 /// The row a file held over the layer area would make, and the gap it
@@ -1522,17 +1571,23 @@ class LayerRowCaret {
     return null;
   }
 
-  /// The layer whose rows the pointer stands in — its own row or a lane
-  /// twirled down under it — or null past either end of the rail.
+  /// Where the pointer stands: in a layer's rows — its own row or a lane
+  /// twirled down under it — or past either end of the rail.
   ///
   /// The half of a boundary (F-31②) is read off THIS, not [onRowLayer]: a
   /// lane holds no drop, but it is still its layer's. Read as no row at
   /// all, the pointer over a row's own lanes let a folder's bottom member
   /// out of the folder where it stood, and over a neighbour's lanes it kept
   /// a row in a group it had left.
-  Layer? layerUnder(int inRow) {
+  ///
+  /// 🗣️F-393 (검증 2026-11-16): past the ends is a place of its own, not
+  /// "no pointer" — read as none, a row carried past the end of the list
+  /// stayed in the group it was let go of.
+  RowPointer pointerAt(int inRow) {
     final at = rows[slot].rowIndex + inRow;
-    return at >= 0 && at < _drawn.length ? _drawn[at].layer : null;
+    return at >= 0 && at < _drawn.length
+        ? PointerInRow(_drawn[at].layer.id)
+        : const PointerPastTheRows();
   }
 }
 

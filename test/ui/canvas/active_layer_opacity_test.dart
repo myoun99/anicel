@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -29,11 +30,12 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// interactive view is input-only, so that wrap now dims a widget which
 /// paints nothing.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 4, height: 4);
 
   /// One fully opaque red pixel at (0,0) — enough to read an alpha off.
   BitmapSurfacePainter redSurfacePainter() {
-    var tile = BitmapTile.blank(size: 4);
+    var tile = BitmapTile.blank(size: defaultCelTileSize);
     tile = writeRgbaColorToBitmapTile(
       tile: tile,
       x: 0,
@@ -43,7 +45,7 @@ void main() {
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: defaultCelTileSize,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,

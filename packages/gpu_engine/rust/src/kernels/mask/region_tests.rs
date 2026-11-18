@@ -186,6 +186,86 @@ fn a_nested_selection_folds_as_one_operand() {
     assert_eq!(drawn(&side_by_side, (0, 0), 6, 3), ["......", "..##..", "......"]);
 }
 
+/// An act of many polygons adds and subtracts as their union, though each
+/// polygon folds in by itself; and a nested selection that replaces is
+/// what it folds to, laid where it lands — over what was there, from
+/// nothing where its first step does not replace.
+#[test]
+fn an_act_and_a_nested_selection_fold_where_they_land() {
+    let a = || rect(0.0, 0.0, 4.0, 2.0);
+    let b = || rect(2.0, 1.0, 6.0, 3.0);
+    let whole = || rect(0.0, 0.0, 6.0, 3.0);
+    let corner = || rect(5.0, 0.0, 6.0, 1.0);
+    let added = [shape(Replace, corner()), copies(Add, vec![a(), b()])];
+    assert_eq!(drawn(&added, (0, 0), 6, 3), ["####.#", "######", "..####"]);
+    let taken = [shape(Replace, whole()), copies(Subtract, vec![a(), b()])];
+    assert_eq!(drawn(&taken, (0, 0), 6, 3), ["....##", "......", "##...."]);
+    let union = vec![shape(Replace, a()), shape(Add, b())];
+    let replaced = [shape(Replace, whole()), nested(Replace, union)];
+    assert_eq!(drawn(&replaced, (0, 0), 6, 3), ["####..", "######", "..####"]);
+    let from_nothing = [shape(Replace, whole()), nested(Replace, vec![shape(Add, a())])];
+    assert_eq!(drawn(&from_nothing, (0, 0), 6, 3), ["####..", "####..", "......"]);
+    let none_left = [shape(Replace, whole()), nested(Replace, vec![shape(Intersect, a())])];
+    assert_eq!(drawn(&none_left, (0, 0), 6, 3), ["......", "......", "......"]);
+}
+
+/// What a fold leaves in the planes it gives back is nothing to the next:
+/// a selection made after a wider one with more planes, over the same
+/// kernels, is what it is by itself (`Kept`).
+#[test]
+fn a_fold_reads_nothing_an_earlier_one_left() {
+    let engine = rig().engine;
+    let mask = RegionMask::new(engine);
+    let drawn_with = |steps: &[Step], width: u32, height: u32| {
+        let size = MaskBox { width, height };
+        let out = mask.selection(engine, steps, (0, 0), size).expect("a mask");
+        let stride = width.div_ceil(4) * 4;
+        let pixel = |&byte: &u8| if byte == 255 { '#' } else { '.' };
+        read_buffer(engine, &out)
+            .chunks(stride as usize)
+            .take(height as usize)
+            .map(|row| row[..width as usize].iter().map(pixel).collect::<String>())
+            .collect::<Vec<_>>()
+    };
+    let narrowed = vec![
+        shape(Replace, rect(3.0, 2.0, 60.0, 7.0)),
+        shape(Intersect, rect(5.0, 0.0, 9.0, 9.0)),
+    ];
+    let wide = [
+        shape(Replace, rect(0.0, 0.0, 70.0, 9.0)),
+        nested(Subtract, narrowed),
+        copies(Intersect, vec![rect(0.0, 0.0, 40.0, 9.0), rect(30.0, 0.0, 70.0, 5.0)]),
+    ];
+    drawn_with(&wide, 70, 9);
+    let small = [shape(Replace, rect(1.0, 1.0, 3.0, 2.0))];
+    assert_eq!(drawn_with(&small, 4, 3), ["....", ".##.", "...."]);
+    let added = [shape(Add, rect(0.0, 0.0, 1.0, 1.0))];
+    assert_eq!(drawn_with(&added, 4, 3), ["#...", "....", "...."]);
+}
+
+/// 🚨An inverse of one rectangle — as the app nests it (`invertedWithin`)
+/// — folds in six passes over one plane, a lasso in two: each polygon
+/// scanned into the plane it changes, a nested selection of one step that
+/// replaces read as its operand. ↩️17 passes over four planes and five over
+/// two, where a simple selection's runs came slower than the CPU's fold
+/// (L2e).
+#[test]
+fn a_simple_selection_folds_in_few_passes() {
+    let wall = || rect(-1920.0, -1080.0, 3840.0, 2160.0);
+    let hole = vec![shape(Replace, rect(300.3, 200.7, 1500.4, 900.2))];
+    let inverse = [
+        nested(Replace, vec![shape(Replace, wall()), nested(Subtract, hole)]),
+        shape(Intersect, wall()),
+    ];
+    let laid_of = |steps: &[Step]| {
+        let (mut vertices, mut passes) = (Vec::new(), Vec::new());
+        let deepest = super::laid(steps, 1, &mut vertices, &mut passes).expect("laid");
+        (passes.len(), deepest)
+    };
+    assert_eq!(laid_of(&inverse), (6, 1));
+    assert_eq!(laid_of(&[shape(Replace, lasso(3, 300))]), (2, 1));
+}
+
 /// A ring of no points selects nothing, as no edge crosses a row.
 #[test]
 fn an_empty_ring_selects_nothing() {

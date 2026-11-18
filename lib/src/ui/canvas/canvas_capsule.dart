@@ -34,6 +34,13 @@ import '../widgets/superellipse_clip.dart';
 /// never come from an image, so its dock holds none, but a capsule is
 /// chrome lying on the canvas, and every frame of a stroke drew all of
 /// them for nothing. [StillRaster]'s class doc has the run.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림 안의
+/// 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」): so what it
+/// holds is not clipped to its corner ([SuperellipseClip]) — the pills' rows
+/// lie inside it, and a panbar's thumb is the capsule's own shape; a pointer
+/// still meets its corner ([SuperellipseHit]). ⛔But [clipped]: the one
+/// whose content reaches into the corner keeps the clip.
 class CanvasCapsule extends StatelessWidget {
   const CanvasCapsule({
     super.key,
@@ -41,6 +48,7 @@ class CanvasCapsule extends StatelessWidget {
     required this.child,
     this.width,
     this.height,
+    this.clipped = false,
   });
 
   /// A pill of bar buttons (`AppIconButtonSize.bar`): its height, and the
@@ -54,6 +62,14 @@ class CanvasCapsule extends StatelessWidget {
   final double? width;
   final double? height;
 
+  /// Whether what it holds reaches into its corner and is clipped there —
+  /// the transport's: its playhead stands 3px past its track, and at the
+  /// first and the last frame the tip of it lies in the corner of a
+  /// transport tall enough to show the range (🔬11-08, the test raster:
+  /// 150~187/255 past the corner at 1×, 1.5× and 2×; without the range
+  /// row 0~1).
+  final bool clipped;
+
   @override
   Widget build(BuildContext context) {
     // The corner follows the SHORT axis, the way every control's does. A
@@ -63,20 +79,20 @@ class CanvasCapsule extends StatelessWidget {
     final shape = short.isFinite
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
+    final held = SizedBox(width: width, height: height, child: child);
     return StillRaster(
       debugLabel: 'capsule:$keyValue',
       child: DecoratedBox(
         key: ValueKey<String>(keyValue),
-        decoration: ShapeDecoration(
+        decoration: SuperellipseFace(
           color: Theme.of(context).colorScheme.surface,
-          shape: shape.copyWith(
+          edge: shape.copyWith(
             side: BorderSide(color: AppColors.backdrop),
           ),
         ),
-        child: SuperellipseClip(
-          shape: shape,
-          child: SizedBox(width: width, height: height, child: child),
-        ),
+        child: clipped
+            ? SuperellipseClip(shape: shape, child: held)
+            : SuperellipseHit(shape: shape, child: held),
       ),
     );
   }

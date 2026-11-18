@@ -92,8 +92,6 @@ void main() {
     );
     expect(storeHoldsAPicture(s), isTrue, reason: 'premise: it landed');
     expect(blockIsWhite(s), isTrue);
-
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the eraser on an empty block leaves it grey from pen-down '
@@ -126,8 +124,6 @@ void main() {
       before,
       reason: 'no block changed, so no row is painted again',
     );
-
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a press the pen\'s button maps to the eraser leaves the block '
@@ -152,7 +148,5 @@ void main() {
       },
     );
     expect(blockIsWhite(s), isFalse);
-
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

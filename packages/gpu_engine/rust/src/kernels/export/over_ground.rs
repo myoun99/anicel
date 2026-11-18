@@ -3,9 +3,10 @@
 //! alpha cut (①c) — `over_ground.wgsl` has the law and why each number is
 //! the one it is.
 
-use super::{Picture, compile, holds, out_plane, submit};
+use std::ops::Range;
+
+use super::{Dispatch, Picture, Pipelines, Shown, convert, out_plane};
 use crate::device::Engine;
-use crate::kernels::shared::PREMULTIPLY_WGSL;
 
 impl Picture {
     /// The RGB bytes the writers read: three a pixel, row after row with
@@ -26,50 +27,59 @@ const NO_CUT: u32 = 256;
 
 /// The over-the-ground pass.
 pub(crate) struct OverGround {
-    pipeline: wgpu::ComputePipeline,
+    pub(super) pipelines: Pipelines,
 }
 
 impl OverGround {
-    pub(crate) fn new(engine: &Engine) -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            pipeline: compile(
-                engine,
-                &[PREMULTIPLY_WGSL, include_str!("over_ground.wgsl")],
-                "over_ground_pass",
-            ),
+            pipelines: Pipelines::new(&[include_str!("over_ground.wgsl")], "over_ground_pass"),
         }
     }
 
-    /// Lays `frame` — the composite's output tiles for the picture, asked
-    /// row by row from its top-left tile — over `ground` (red, green,
-    /// blue), its alpha `cut` where a GIF cuts it (none: its shades), and
-    /// submits the work; the caller waits. Returns the buffer the RGB
-    /// bytes are at the start of ([`Picture::rgb_bytes`] of them), to be
-    /// copied out for reading.
+    /// Lays the picture in `frame` over `ground` (red, green, blue), its
+    /// alpha `cut` where a GIF cuts it (none: its shades), and submits the
+    /// work; the caller waits. Returns the buffer the RGB bytes are at the
+    /// start of ([`Picture::rgb_bytes`] of them), to be copied out for
+    /// reading.
     pub(crate) fn run(
         &self,
         engine: &Engine,
-        frame: &wgpu::Buffer,
+        frame: &Shown,
         picture: Picture,
         ground: [u8; 3],
         cut: Option<u8>,
     ) -> Option<wgpu::Buffer> {
         picture.check()?;
-        holds(frame, picture.tiles())?;
+        frame.holds(picture)?;
         let row_groups = picture.width.div_ceil(4);
-        let params = [
-            picture.tiles().0,
-            picture.width,
-            picture.height,
-            row_groups,
+        let out = out_plane(engine, "over ground out", picture.rgb_words_bytes())?;
+        // A row of invocations asks for its runs' pixels, four a run and
+        // three words out, run on across the picture's rows.
+        let per_row = u64::from(row_groups);
+        let runs = |rows: &Range<u32>| u64::from(rows.start) * per_row..u64::from(rows.end) * per_row;
+        let pixels = |runs: Range<u64>| runs.start * 4..(runs.end * 4).min(picture.pixels());
+        let puts = |runs: Range<u64>| runs.start * 3..(runs.end * 3).min(out.size() / 4);
+        let colour = [
             u32::from_le_bytes([ground[0], ground[1], ground[2], 0]),
             cut.map_or(NO_CUT, u32::from),
-            0,
-            0,
         ];
-        let groups = (row_groups.div_ceil(64), picture.height);
-        let out = out_plane(engine, "over ground out", picture.rgb_words_bytes(), groups)?;
-        submit(engine, &self.pipeline, &params, frame, &out, groups);
+        let dispatch = Dispatch { rows: picture.height, unit: 1, across: row_groups.div_ceil(64) };
+        convert(
+            engine,
+            self.pipelines.of(engine, frame),
+            (&frame.rows, &out),
+            dispatch,
+            |rows| [frame.words(picture, pixels(runs(&rows))), puts(runs(&rows))],
+            |first_row, [frame_base, out_base]| {
+                // Inside u32: words of planes the shader indexes.
+                let (frame_base, out_base) = (frame_base as u32, out_base as u32);
+                let (width, height) = (picture.width, picture.height);
+                let [ground, cut] = colour;
+                let shape = [frame.stride, width, height, row_groups, ground, cut];
+                [&shape[..], &[frame_base, first_row, out_base, 0, 0, 0]].concat()
+            },
+        )?;
         Some(out)
     }
 }

@@ -99,7 +99,6 @@ void main() {
       displayName: 'b.png',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: null,
       mint: mint(),
     );
@@ -107,6 +106,38 @@ void main() {
     expect(still.assets, isEmpty);
 
     // ↩️「구워도 풀에 남음」 (09-11): both registered their file.
+  });
+
+  // 🗣️F-429: 「1장짜리 그림을 기본 이미지레이어로 자동지정해두지만
+  // 같은창에서 애니메이션레이어로 변경가능」.
+  test('a cut folder\'s picture is born one picture\'s kind — an image — '
+      'until someone picks another', () {
+    const picture = ParsedPicture(name: 'BG', file: '_BG.png');
+    expect(
+      const CutFolderEdits().kindOfPicture(picture),
+      LayerKind.bornOfOnePicture,
+    );
+    expect(
+      CutFolderEdits(
+        kinds: {picture.rowKey: LayerKind.animation},
+      ).kindOfPicture(picture),
+      LayerKind.animation,
+    );
+  });
+
+  // 🗣️F-429: 「레이어 타입(이미지,애니메이션)으로서 지정가능하고 그게
+  // 인식기준」 — the kind decides the shape, whatever file the row came from.
+  test('a placement is a STILL when it is one picture, of a kind that holds '
+      'one cel, placed as a layer of its own', () {
+    expect(placesAStill(1, LayerKind.image, ontoFrames: false), isTrue);
+    expect(placesAStill(1, LayerKind.animation, ontoFrames: false), isFalse);
+    expect(placesAStill(2, LayerKind.image, ontoFrames: false), isFalse);
+    expect(
+      placesAStill(1, LayerKind.image, ontoFrames: true),
+      isFalse,
+      reason: 'a row\'s frames take cels — a still is ONE cell there',
+    );
+    expect(LayerKind.bornOfOnePicture, LayerKind.image);
   });
 
   test('the law: a placement registers when the layer draws from the file, '
@@ -117,8 +148,8 @@ void main() {
     expect(placementRegisters(baked: false, soundReadsIt: true), isTrue);
   });
 
-  test('a sequence in REFERENCE mode registers one asset with the frame '
-      'count and stamps the layer reference', () {
+  test("a sequence in REFERENCE mode registers one asset with the FILE's "
+      "frame count — not the span's — and stamps the layer reference", () {
     final reference = referenceTo('C:/media/a.gif');
     final plan = planSequenceLayer(
       sourceFiles: const ['a.gif', 'a.gif'],
@@ -127,7 +158,7 @@ void main() {
       cutId: const CutId('cut-1'),
       mint: mint(),
       reference: reference,
-      fit: MediaFitMode.none,
+      frameCount: 5,
     );
     expect(
       plan.layer.mediaReference,
@@ -135,13 +166,17 @@ void main() {
       reason: 'the reference the door made — where it stands included',
     );
     expect(plan.assets.single.path, 'C:/media/a.gif');
-    expect(plan.assets.single.frameCount, 2);
-    expect(plan.assets.single.kind, MediaAssetKind.image);
     expect(
-      plan.assets.single.fitMode,
-      MediaFitMode.none,
-      reason: 'the fit it was placed with, the entry\'s placement default',
+      plan.assets.single.frameCount,
+      5,
+      reason: 'two frames of a five-frame GIF placed: a preset spans the file',
     );
+    expect(plan.assets.single.kind, MediaAssetKind.image);
+    // ↩️And 「the fit it was placed with, the entry's placement default」.
+    // A placement writes no preset: the entry starts where every placement
+    // does (`MediaPreset`), and where this picture stands is the
+    // reference's own pose, asserted above.
+    expect(plan.assets.single.preset, const MediaPreset());
   });
 
   // I-68 「가」 (유저 2026-10-10): a row that shows its file says by cel
@@ -170,7 +205,6 @@ void main() {
       displayName: 'conte.pdf',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: shows ? referenceTo('C:/media/conte.pdf') : null,
       mint: mint(),
       assetKind: MediaAssetKind.pdf,
@@ -203,7 +237,6 @@ void main() {
       displayName: 'page.pdf',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: referenceTo('C:/media/page.pdf'),
       mint: mint(),
       assetKind: MediaAssetKind.pdf,
@@ -455,15 +488,18 @@ void main() {
         expect(bg.timeline[0]!.length, 1);
       });
 
-      test('each row lays its cels with the fit picked for it — contain until '
-          'one is', () {
+      test('each row lays its cels with the fit picked for it — 원본 크기 '
+          'until one is (유저 2026-11-10 F-581: 「기본값은 원본크기로」)', () {
         final plan = planFor('csm_13_074_gen', [
           'A1.png',
           '_BG.png',
-        ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.none}));
+        ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.contain}));
         final [bg, a, ...] = plan.cuts.single.layers;
 
-        expect(plan.fits, {a.id: MediaFitMode.none, bg.id: MediaFitMode.contain});
+        expect(plan.fits, {
+          a.id: MediaFitMode.contain,
+          bg.id: MediaFitMode.none,
+        });
       });
     });
 

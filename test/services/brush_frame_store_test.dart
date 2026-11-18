@@ -32,13 +32,23 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  BitmapSurface surfaceWithInk({int size = 4}) {
-    final pixels = Uint8List(4 * 4 * 4)..fillRange(0, 16, 255);
+  // One tile on the engine's side, and a canvas of just that tile.
+  const oneTile = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
+
+  BitmapSurface surfaceWithInk({int size = defaultCelTileSize}) {
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+      ..fillRange(0, 16, 255);
     return BitmapSurface(
       canvasSize: CanvasSize(width: size, height: size),
-      tileSize: 4,
+      tileSize: defaultCelTileSize,
     ).putTiles([
-      (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: 4, pixels: pixels)),
+      (
+        coord: TileCoord(x: 0, y: 0),
+        tile: BitmapTile(size: defaultCelTileSize, pixels: pixels),
+      ),
     ]);
   }
 
@@ -180,10 +190,7 @@ void main() {
     store.storeBakedSurface(k, surfaceWithInk());
     expect(store.celHasRenderableContent(k), isTrue);
 
-    store.storeBakedSurface(
-      k,
-      BitmapSurface(canvasSize: const CanvasSize(width: 4, height: 4)),
-    );
+    store.storeBakedSurface(k, BitmapSurface(canvasSize: oneTile));
     expect(store.celHasRenderableContent(k), isFalse);
     expect(store.bakedSurfaceOrNull(k), isNull);
   });
@@ -218,10 +225,7 @@ void main() {
 
     expect(
       identical(
-        store.currentSurfaceWithoutReplay(
-          k,
-          canvasSize: const CanvasSize(width: 4, height: 4),
-        ),
+        store.currentSurfaceWithoutReplay(k, canvasSize: oneTile),
         surface,
       ),
       isTrue,
@@ -229,7 +233,10 @@ void main() {
     expect(
       store.currentSurfaceWithoutReplay(
         k,
-        canvasSize: const CanvasSize(width: 8, height: 8),
+        canvasSize: const CanvasSize(
+          width: 2 * defaultCelTileSize,
+          height: 2 * defaultCelTileSize,
+        ),
       ),
       isNull,
     );
@@ -392,8 +399,8 @@ void main() {
       filePath: 'unused.anicel',
       dataOffset: 0,
       length: 1,
-      canvasSize: CanvasSize(width: 4, height: 4),
-      tileSize: 4,
+      canvasSize: oneTile,
+      tileSize: defaultCelTileSize,
       photoPaths: [],
       showsSomething: true,
     );
@@ -411,10 +418,7 @@ void main() {
     // landing makes it renderable again, and the timeline must hear it.
     store.storeBakedSurface(
       k,
-      BitmapSurface(
-        canvasSize: const CanvasSize(width: 4, height: 4),
-        tileSize: 4,
-      ),
+      BitmapSurface(canvasSize: oneTile, tileSize: defaultCelTileSize),
     );
     expect(store.celHasRenderableContent(k), isFalse);
     final beforeAdopt = store.celContentRevision.value;
@@ -435,11 +439,21 @@ void main() {
   group('F-166: every surface the store replaces runs the crossing '
       'detector — the tint hears no other pixel event', () {
     BitmapSurface inkAt(CanvasSize canvas, TileCoord coord) {
-      final pixels = Uint8List(4 * 4 * 4)..fillRange(0, 16, 255);
-      return BitmapSurface(canvasSize: canvas, tileSize: 4).putTiles([
-        (coord: coord, tile: BitmapTile(size: 4, pixels: pixels)),
+      final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+        ..fillRange(0, 16, 255);
+      return BitmapSurface(
+        canvasSize: canvas,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
+        (
+          coord: coord,
+          tile: BitmapTile(size: defaultCelTileSize, pixels: pixels),
+        ),
       ]);
     }
+
+    // A hundred canvases down — past any pasteboard.
+    const offThePasteboard = 100.0 * defaultCelTileSize;
 
     test('an offset that carries the last line off the pasteboard crosses '
         'to empty', () {
@@ -450,8 +464,8 @@ void main() {
 
       store.adoptCutCanvasSize(
         cutId: const CutId('c'),
-        canvasSize: const CanvasSize(width: 4, height: 4),
-        dy: 400,
+        canvasSize: oneTile,
+        dy: offThePasteboard,
       );
 
       expect(store.celHasRenderableContent(k), isFalse);
@@ -464,16 +478,16 @@ void main() {
       store.storeBakedSurface(
         k,
         inkAt(
-          const CanvasSize(width: 16, height: 16),
+          const CanvasSize(
+            width: 4 * defaultCelTileSize,
+            height: 4 * defaultCelTileSize,
+          ),
           TileCoord(x: 3, y: 3),
         ),
       );
       final before = store.celContentRevision.value;
 
-      store.resizeBakedSurfaces(
-        const CanvasSize(width: 4, height: 4),
-        cutId: const CutId('c'),
-      );
+      store.resizeBakedSurfaces(oneTile, cutId: const CutId('c'));
 
       expect(store.celHasRenderableContent(k), isFalse);
       expect(store.celContentRevision.value, greaterThan(before));
@@ -487,8 +501,8 @@ void main() {
       final snapshot = store.bakedSurfacesForCut(const CutId('c'));
       store.adoptCutCanvasSize(
         cutId: const CutId('c'),
-        canvasSize: const CanvasSize(width: 4, height: 4),
-        dy: 400,
+        canvasSize: oneTile,
+        dy: offThePasteboard,
       );
       final beforeUndo = store.celContentRevision.value;
 
@@ -500,12 +514,15 @@ void main() {
       store.storeBakedSurface(
         k,
         BitmapSurface(
-          canvasSize: const CanvasSize(width: 4, height: 4),
-          tileSize: 4,
+          canvasSize: oneTile,
+          tileSize: defaultCelTileSize,
         ).putTiles([
           (
             coord: TileCoord(x: 0, y: 0),
-            tile: BitmapTile(size: 4, pixels: Uint8List(4 * 4 * 4)),
+            tile: BitmapTile(
+              size: defaultCelTileSize,
+              pixels: Uint8List(defaultCelTileSize * defaultCelTileSize * 4),
+            ),
           ),
         ]),
       );

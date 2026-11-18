@@ -65,11 +65,11 @@ void main() {
 
     test('a copy with another canvas', () {
       final next = picture().copyWith(
-        canvasSize: const CanvasSize(width: 64, height: 64),
+        canvasSize: const CanvasSize(width: 1024, height: 1024),
       );
 
       expect(next.texts, texts);
-      expect(next.canvasSize.width, 64);
+      expect(next.canvasSize.width, 1024);
     });
   });
 
@@ -206,7 +206,7 @@ void main() {
         ]),
         'a copy-on-write rebuild': sheet().withRebuiltTiles({there: ink}),
         'a copy with another canvas': sheet().copyWith(
-          canvasSize: const CanvasSize(width: 64, height: 64),
+          canvasSize: const CanvasSize(width: 1024, height: 1024),
         ),
         'other texts': sheet().withTexts(const []),
       };
@@ -271,13 +271,13 @@ void main() {
   });
 
   group('where a file\'s picture lies (F-374-Q8)', () {
-    // Twelve pixels past the wall on the left: on the test grid the
+    // 192 pixels past the wall on the left: on the test grid the
     // pasteboard's first tile is -4, so the file's reaches two beyond it.
     final laid = DirtyRegion(
-      left: -44,
+      left: -704,
       top: 0,
-      rightExclusive: 4,
-      bottomExclusive: 8,
+      rightExclusive: 64,
+      bottomExclusive: 128,
     );
     final beyond = TileCoord(x: -6, y: 0);
     BitmapSurface laidPicture() => BitmapSurface(
@@ -305,7 +305,10 @@ void main() {
     });
 
     test('keeps its pixels in the pasteboard grown to take it in', () {
-      expect(laidPicture().storableRect, const Rect.fromLTRB(-44, -32, 64, 64));
+      expect(
+        laidPicture().storableRect,
+        const Rect.fromLTRB(-704, -512, 1024, 1024),
+      );
       expect(
         drawingOf({here: ink}).storableRect,
         celTextTestCanvas.pasteboardAt(PasteboardReach.whole).rect,
@@ -320,7 +323,7 @@ void main() {
         ]),
         'a copy-on-write rebuild': laidPicture().withRebuiltTiles({there: ink}),
         'a copy with another canvas': laidPicture().copyWith(
-          canvasSize: const CanvasSize(width: 64, height: 64),
+          canvasSize: const CanvasSize(width: 1024, height: 1024),
         ),
         'other texts': laidPicture().withTexts(texts),
         'other photos': laidPicture().withPhotos([photoOf(1)]),
@@ -334,10 +337,10 @@ void main() {
     test('two pictures with a file laid at another place, or none, are not '
         'equal', () {
       final elsewhere = DirtyRegion(
-        left: -44,
+        left: -704,
         top: 0,
-        rightExclusive: 5,
-        bottomExclusive: 8,
+        rightExclusive: 80,
+        bottomExclusive: 128,
       );
 
       expect(laidPicture(), laidPicture());

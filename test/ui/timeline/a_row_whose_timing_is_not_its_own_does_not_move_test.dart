@@ -16,6 +16,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// landing on it, a multi-row shift travelling across it, the shove — all
 /// stand it down.
 ///
+/// ↩️Save a picture row's block picked up for a move: F-593 (유저
+/// 2026-11-15, Q1 (가)) trades its picture with the block it is dropped on,
+/// and slid along its own row it moves nothing — both pinned in
+/// `a_block_dragged_onto_a_synced_row_trades_test`. Its pin here, 「its
+/// block does not pick up for a block move」, went with it.
+///
 /// 🧪Pinned when the audit's nineteenth family (2026-09-28) moved the two
 /// halves of this law — `blockMoveEligible` and `standsDownFromRetime` —
 /// into a role of their own (`RetimeLaw`): a mutant that answered every row
@@ -34,17 +40,6 @@ void main() {
 
   Layer stored(EditorSessionManager s, LayerId id) =>
       s.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
-
-  test('its block does not pick up for a block move', () {
-    final (s, picture) = sessionOnAPictureRow();
-
-    s.updateFrameRangeSelectionDrag(
-      layerId: picture.id,
-      anchorIndex: 0,
-      headIndex: 0,
-    );
-    expect(s.rangeMove.beginFrameRangeMoveDrag(picture.id), isFalse);
-  });
 
   test('its block takes no frames from the add-frames grip', () {
     final (s, picture) = sessionOnAPictureRow();

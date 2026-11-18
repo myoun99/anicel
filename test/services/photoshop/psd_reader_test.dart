@@ -687,6 +687,40 @@ void main() {
       expect(pixels[7], 0);
     });
 
+    // A mask that is on but holds no plane — its rectangle empty — was
+    // baked through nothing: the layer keeps its pixels as they are, and
+    // is said to have left its mask behind, as a group's is (a mutant run
+    // on 2026-11-16 found no pin said so).
+    test('a mask that is on with no plane is said to be left behind', () {
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 1,
+          layers: [
+            PsdTestLayer(
+              name: 'masked',
+              left: 0,
+              top: 0,
+              right: 2,
+              bottom: 1,
+              planes: psdSolidPlanes(2, 1, [255, 255, 255]),
+              mask: PsdTestMask(
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+                samples: Uint8List(0),
+                defaultColor: 0,
+              ),
+            ),
+          ],
+        ),
+      );
+      final layer = document.layers.single;
+      expect(layer.hasUnbakedMask, isTrue);
+      expect(layer.pixels!.sublist(0, 8), List.filled(8, 255));
+    });
+
     test('a mask that is on and that no pixels were baked through — a '
         'group\'s — is said to be left behind; a baked one, and one '
         'switched off, are not (보드 the-clip-import-leaves-masks-and-locks-'

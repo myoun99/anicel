@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../controllers/layer_controller.dart' show LayerController;
 import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -63,16 +64,13 @@ class ActiveCutSpan {
   /// and only for this one row kind (camera and SE both survive the same
   /// drag). A fourth row kind must join HERE, next to the composition it
   /// mirrors, rather than buying another arm on a predicate.
+  ///
+  /// ↩️It wrote the three sources out beside the composition it mirrors; it
+  /// reads that composition now ([LayerController.rowsTheTimelineShows]),
+  /// which a cut not yet stood on is asked through too ([cutHasLayer]).
   List<Layer> get activeCutRowLayers {
     final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return const [];
-    }
-    return [
-      ...cut.layers,
-      ..._trackSe.trackSeDisplayLayers,
-      _transitions.trackTransitionDisplayLayer,
-    ];
+    return cut == null ? const [] : _rowsOf(cut);
   }
 
   /// Whether the active cut SHOWS [layerId] — one of [activeCutRowLayers],
@@ -84,9 +82,38 @@ class ActiveCutSpan {
   /// QUESTION instead — a closure the session hands them, the way the
   /// controllers already take [activeCutPlaybackFrameCount]
   /// (ARCH-session-state's ninth family, 2026-09-27).
-  bool activeCutHasLayer(LayerId? layerId) =>
-      layerId != null &&
-      activeCutRowLayers.any((layer) => layer.id == layerId);
+  bool activeCutHasLayer(LayerId? layerId) {
+    final cut = _project.activeCutOrNull;
+    return cut != null && cutHasLayer(cut, layerId);
+  }
+
+  /// Whether [cut] SHOWS [layerId] — [activeCutHasLayer] asked of a cut of
+  /// the selected track that need not be the active one: its SE and
+  /// transition rows are the track's.
+  bool cutHasLayer(Cut cut, LayerId? layerId) =>
+      layerId != null && _rowsOf(cut).any((layer) => layer.id == layerId);
+
+  /// The row a cut switch to [cut] lands on (`ActiveCutControllers.rebuild`):
+  /// [seat] where [cut] shows it, else the first row the timeline shows —
+  /// as shown, an attached row's timeline the one it mirrors. Asked of the
+  /// cut switched to, and of a cut beside the active one by the warm that
+  /// thaws the cel a step lands on ahead
+  /// (stepping-into-another-cut-stalls-the-ui-a-third-of-a-second-Q1).
+  Layer? rowACutSwitchLandsOn(Cut cut, LayerId? seat) {
+    final rows = _rowsOf(cut);
+    for (final row in rows) {
+      if (row.id == seat) {
+        return row;
+      }
+    }
+    return rows.firstOrNull;
+  }
+
+  List<Layer> _rowsOf(Cut cut) => LayerController.rowsTheTimelineShows(
+    cut,
+    _trackSe.trackSeDisplayLayers,
+    _transitions.trackTransitionDisplayLayer,
+  );
 
   int get activeCutPlaybackFrameCount =>
       math.max(1, _project.activeCutOrNull?.duration ?? 1);

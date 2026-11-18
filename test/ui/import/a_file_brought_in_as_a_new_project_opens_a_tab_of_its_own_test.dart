@@ -60,7 +60,6 @@ void main() {
       ),
       letGo: (session) {
         letGo.add(session);
-        session.playbackRig.prerenderScheduler.cancel();
         session.dispose();
       },
     );
@@ -177,15 +176,11 @@ void main() {
     await settleAsync(tester, () => !tester.any(answer));
   }
 
-  /// The window's press, waited out — and every tab's warmer stopped, the
-  /// one it opened among them.
+  /// The window's press, waited out.
   Future<void> pressImport(WidgetTester tester, OpenProjects projects) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
-    for (final session in projects.sessions) {
-      session.playbackRig.prerenderScheduler.cancel();
-    }
   }
 
   /// [session]'s one cut — the file's.

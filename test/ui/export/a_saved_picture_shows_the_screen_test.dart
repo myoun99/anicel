@@ -31,6 +31,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/frame_image_file.dart';
@@ -154,7 +155,7 @@ void main() {
   ExportFrameRenderer rendererOf(EditorSessionManager s) {
     final renderer = ExportFrameRenderer(
       session: s,
-      background: const ui.Color(0x00000000),
+      ground: const ui.Color(0x00000000),
     );
     addTearDown(renderer.dispose);
     return renderer;
@@ -184,19 +185,48 @@ void main() {
     await rendererOf(s).renderComposite(standing(s), ExportSizeMode.canvas),
   );
 
+  /// [s]'s standing drawing as the cels tab writes it, on nothing.
+  Future<Uint8List> cel(EditorSessionManager s) async {
+    final cut = s.requireActiveCut;
+    final row = cut.layers.firstWhere((layer) => layer.id == rowId);
+    final drawing = row.frames.firstWhere((frame) => frame.id == stood);
+    final image = await rendererOf(s).renderCelGroup(
+      ExportCelGroupTask(
+        cut: cut,
+        baseLayer: row,
+        members: [row],
+        memberFrames: [drawing],
+        baseFrame: drawing,
+        celName: '1',
+        fileName: 'A1.png',
+      ),
+      ExportSizeMode.canvas,
+      guideColor: guideInk,
+    );
+    return bytesOf(image!);
+  }
+
   /// The RGBA of ([x], [y]) of a [width] wide picture.
   List<int> at(Uint8List rgba, int x, int y, {int width = 200}) {
     final offset = (y * width + x) * 4;
     return rgba.sublist(offset, offset + 4);
   }
 
-  testWidgets('⛔with nothing over it the picture IS the film\'s, to the '
-      'byte: nothing is laid that the canvas does not show', (tester) async {
+  // 🗣️gpu-export-path ⑶ (관제 11-11 12:49): the picture as shown, the
+  // film's and the cels tab's come off one engine frame (`frameOnTheEngine`)
+  // — so a frame with nothing over it is the same bytes through all three.
+  testWidgets('⛔with nothing over it the picture IS the film\'s and the '
+      'cel\'s, to the byte: nothing is laid that the canvas does not show', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final s = sessionOf();
       ink(s, stood, 100, 100);
       expect(s.cameraViewMode.enabled.value, isFalse, reason: '⛔premise');
-      expect(await shown(s), await film(s));
+      final asShown = await shown(s);
+      expect(asShown.any((byte) => byte != 0), isTrue, reason: '⛔ink');
+      expect(asShown, await film(s), reason: 'the film');
+      expect(asShown, await cel(s), reason: 'the cels tab');
     });
   });
 
@@ -306,59 +336,64 @@ void main() {
     });
   });
 
+  /// A cut whose SE row speaks through its ten frames, its camera's eye
+  /// shut, on nothing — as the saved picture here is: a film lays its paper.
+  EditorSessionManager speaking() {
+    const se = LayerId('se');
+    return EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        createdAt: DateTime.utc(2026),
+        cameraSize: cameraSize,
+        background: const ProjectBackground.color(
+          ProjectBackground.defaultPaperArgb,
+          none: true,
+        ),
+        tracks: [
+          Track(
+            id: trackId,
+            name: 'V',
+            cuts: [
+              Cut(
+                id: cutId,
+                name: 'Cut',
+                duration: 10,
+                canvasSize: canvas,
+                layers: [
+                  createCameraLayer(cutId: cutId).copyWith(isVisible: false),
+                ],
+              ),
+            ],
+            seLayers: [
+              Layer(
+                id: se,
+                name: 'S1',
+                kind: LayerKind.se,
+                frames: [
+                  Frame(
+                    id: const FrameId('line'),
+                    duration: 10,
+                    strokes: const [],
+                    name: 'the line',
+                    seName: 'who',
+                  ),
+                ],
+                timeline: const {
+                  0: TimelineExposure.drawing(FrameId('line'), length: 10),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   testWidgets('the SE rows\' name tags: the frame a film makes, as the '
       'canvas lays them over its picture', (tester) async {
     await tester.runAsync(() async {
-      const se = LayerId('se');
-      final s = EditorSessionManager(
-        initialProject: Project(
-          id: const ProjectId('project'),
-          name: 'Project',
-          createdAt: DateTime.utc(2026),
-          cameraSize: cameraSize,
-          // On nothing, as the saved picture here is: a film lays its paper.
-          background: const ProjectBackground.color(
-            ProjectBackground.defaultPaperArgb,
-            none: true,
-          ),
-          tracks: [
-            Track(
-              id: trackId,
-              name: 'V',
-              cuts: [
-                Cut(
-                  id: cutId,
-                  name: 'Cut',
-                  duration: 10,
-                  canvasSize: canvas,
-                  layers: [
-                    createCameraLayer(cutId: cutId).copyWith(isVisible: false),
-                  ],
-                ),
-              ],
-              seLayers: [
-                Layer(
-                  id: se,
-                  name: 'S1',
-                  kind: LayerKind.se,
-                  frames: [
-                    Frame(
-                      id: const FrameId('line'),
-                      duration: 10,
-                      strokes: const [],
-                      name: 'the line',
-                      seName: 'who',
-                    ),
-                  ],
-                  timeline: const {
-                    0: TimelineExposure.drawing(FrameId('line'), length: 10),
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+      final s = speaking();
       addTearDown(s.dispose);
       final named = await bytesOf(
         await rendererOf(s).renderVideoFrame(
@@ -485,7 +520,7 @@ void main() {
         Future<int> reach(ExportLayerFx fx) async {
           final renderer = ExportFrameRenderer(
             session: s,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
             layerFx: fx,
           );
           addTearDown(renderer.dispose);
@@ -628,6 +663,32 @@ void main() {
           guideInk: guideInk,
         )!;
         expect(at(await bytesOf(await row.draw()), 40, 40)[3], greaterThan(0));
+      });
+    });
+
+    testWidgets('the SE rows\' name tags are in that row, as no other holds '
+        'one', (tester) async {
+      await tester.runAsync(() async {
+        final s = speaking();
+        addTearDown(s.dispose);
+        // Nothing else shown over the rows: the names alone.
+        CameraPathSettings.settings.value = const CameraPathSettings(
+          show: CameraPathShow.off,
+        );
+        final row = rendererOf(s).rowShownOver(
+          standing(s),
+          ExportSizeMode.canvas,
+          guideInk: guideInk,
+        );
+        expect(row, isNotNull, reason: 'the names stand a row of their own');
+        final drawn = await bytesOf(await row!.draw());
+        expect(
+          [for (var i = 3; i < drawn.length; i += 4) drawn[i]].any(
+            (alpha) => alpha > 0,
+          ),
+          isTrue,
+          reason: 'the tag\'s letters lie in it',
+        );
       });
     });
   });

@@ -29,7 +29,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerProcessAbbrev;
+    show layerStepAbbrev;
 
 import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
@@ -37,11 +37,10 @@ import '../../helpers/export_cels_alone.dart';
 void main() {
   const key = LayerMark(process: LayerProcess.key);
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark(process: LayerProcess.paper);
-  const art = LayerMark(process: LayerProcess.art);
+  const paper = LayerMark.paper(LayerProcess.key);
   const withDirection = {
     ExportCelKind.cel,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.direction,
   };
   // 디렉션 alone: the drawing filters off, the direction kind written.
@@ -87,14 +86,15 @@ void main() {
     timeline: shown ? exposed(frames) : const {},
   );
 
-  /// An IMAGE row holding [cel] — a picture row wears 미술, as Add Layer
-  /// makes one ([LayerMark.bornOfKind]).
+  /// An IMAGE row holding [cel], wearing 원화 上がり — the label the
+  /// default spec exports, which an image row answers to as a cel does
+  /// (F-578).
   Layer image(String id, String name, Frame cel) => Layer(
     id: LayerId(id),
     name: name,
     kind: LayerKind.image,
     frames: [cel],
-    mark: art,
+    mark: key,
     timeline: exposed([cel]),
   );
 
@@ -518,7 +518,7 @@ void main() {
         name: 'BG',
         kind: LayerKind.image,
         frames: [theirs, mine],
-        mark: art,
+        mark: key,
         timeline: exposed([mine]),
       ),
     ], spec: const CelsExportSpec());
@@ -539,14 +539,14 @@ void main() {
 
     expect(filesWith(const ExportCelNaming()), ['A1.png', '_BG1.png']);
     expect(
-      filesWith(const ExportCelNaming().withPrefix(ExportCelKind.art, '')),
+      filesWith(const ExportCelNaming().withPrefix(ExportCelKind.image, '')),
       ['A1.png', 'BG1.png'],
     );
     expect(
       filesWith(
         const ExportCelNaming()
             .withPrefix(ExportCelKind.cel, 'x-')
-            .withPrefix(ExportCelKind.art, 'bg_'),
+            .withPrefix(ExportCelKind.image, 'bg_'),
       ),
       ['x-A1.png', 'bg_BG1.png'],
     );
@@ -755,10 +755,10 @@ void main() {
     expect(keyOf(plain), keyOf(plan(layers).cels.single));
   });
 
-  test('미술 추가: an art row makes a bundle of its own', () {
+  test('이미지: an image row makes a bundle of its own (F-578)', () {
     final layers = [
       base('a', 'A', [frame('f1')]),
-      base('bg', 'BG', [frame('b1')], mark: art),
+      image('bg', 'BG', frame('b1')),
     ];
     expect(files(plan(layers)), ['A1.png', '_BG1.png']);
     expect(
@@ -952,7 +952,7 @@ void main() {
         name: 'BG',
         kind: LayerKind.image,
         frames: [frame('bg1'), frame('bg2')],
-        mark: art,
+        mark: key,
         timeline: {
           0: TimelineExposure.drawing(
             FrameId(cut == 'c1' ? 'bg1' : 'bg2'),
@@ -2069,8 +2069,8 @@ void main() {
               (sheet.word, sheet.fullName),
         ],
         [
-          (layerProcessAbbrev(LayerProcess.key), 'TSCUT1_genga_ts'),
-          (layerProcessAbbrev(LayerProcess.inbetween), 'TSCUT1_douga_ts'),
+          (layerStepAbbrev(LayerProcess.key), 'TSCUT1_genga_ts'),
+          (layerStepAbbrev(LayerProcess.inbetween), 'TSCUT1_douga_ts'),
         ],
       );
       // No two blocks of the list answer to one id.

@@ -1,6 +1,8 @@
 import 'dart:math' show max;
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
+import 'ruler_marker.dart';
 import 'timeline_id.dart';
 import 'track.dart';
 
@@ -32,7 +34,8 @@ class ProjectTimeline {
     this.name,
     required List<Track> tracks,
     int trailingFrames = 0,
-  }) : tracks = List.unmodifiable(tracks),
+    this.rulerMarkers = const RulerMarkers.none(),
+  }) : tracks = frozenList(tracks),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames;
 
   final TimelineId id;
@@ -52,14 +55,23 @@ class ProjectTimeline {
   /// + this.
   final int trailingFrames;
 
-  ProjectTimeline copyWith({List<Track>? tracks, int? trailingFrames}) =>
-      ProjectTimeline(
-        id: id,
-        number: number,
-        name: name,
-        tracks: tracks ?? this.tracks,
-        trailingFrames: trailingFrames ?? this.trailingFrames,
-      );
+  /// The markers on this timeline's own ruler — the conte panel's — counted
+  /// in the movie's frames ([RulerMarkers], I-169). No cut's: a cut moved
+  /// under them leaves them where they stand.
+  final RulerMarkers rulerMarkers;
+
+  ProjectTimeline copyWith({
+    List<Track>? tracks,
+    int? trailingFrames,
+    RulerMarkers? rulerMarkers,
+  }) => ProjectTimeline(
+    id: id,
+    number: number,
+    name: name,
+    tracks: tracks ?? this.tracks,
+    trailingFrames: trailingFrames ?? this.trailingFrames,
+    rulerMarkers: rulerMarkers ?? this.rulerMarkers,
+  );
 
   /// This timeline named [name] — null gives it back the one its [number]
   /// gives.
@@ -69,6 +81,7 @@ class ProjectTimeline {
     name: name,
     tracks: tracks,
     trailingFrames: trailingFrames,
+    rulerMarkers: rulerMarkers,
   );
 
   Map<String, dynamic> toJson() => {
@@ -77,6 +90,7 @@ class ProjectTimeline {
     if (name != null) 'name': name,
     'tracks': [for (final track in tracks) track.toJson()],
     if (trailingFrames != 0) 'trailingFrames': trailingFrames,
+    if (!rulerMarkers.isEmpty) 'rulerMarkers': rulerMarkers.toJson(),
   };
 
   factory ProjectTimeline.fromJson(Map<String, dynamic> json) =>
@@ -89,6 +103,7 @@ class ProjectTimeline {
             Track.fromJson(track as Map<String, dynamic>),
         ],
         trailingFrames: (json['trailingFrames'] as int?) ?? 0,
+        rulerMarkers: RulerMarkers.fromJson(json['rulerMarkers']),
       );
 
   @override
@@ -99,9 +114,16 @@ class ProjectTimeline {
           other.number == number &&
           other.name == name &&
           listEquals(other.tracks, tracks) &&
-          other.trailingFrames == trailingFrames;
+          other.trailingFrames == trailingFrames &&
+          other.rulerMarkers == rulerMarkers;
 
   @override
-  int get hashCode =>
-      Object.hash(id, number, name, Object.hashAll(tracks), trailingFrames);
+  int get hashCode => Object.hash(
+    id,
+    number,
+    name,
+    Object.hashAll(tracks),
+    trailingFrames,
+    rulerMarkers,
+  );
 }

@@ -1,4 +1,4 @@
-import '../../native/qa_native_engine.dart';
+import '../../native/qa_memory.dart';
 import 'media_run.dart';
 import 'page_rasters.dart';
 import 'viewer_raster_budget.dart';
@@ -38,7 +38,7 @@ final class ViewerPagesAndRun {
   /// pumping the same widget again reuses this budget.
   late final PageRasters rasters = PageRasters(
     budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+      physicalMemoryBytes: QaMemory.physicalMemoryBytes,
     ),
     document: () => _surface.document,
     wantedAt: (page) => run.wantedAt(page),

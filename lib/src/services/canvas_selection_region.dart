@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../core/point_bounds.dart';
 import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
+import '../native/engine_selection_masks.dart';
 import 'canvas_selection_shape.dart';
 import 'pixel_run_contours.dart';
 
@@ -57,9 +57,9 @@ enum SelectionCombineMode {
   /// Membership through one step: [inside] is the fold so far, [hit] the
   /// operand's own answer.
   ///
-  /// ⛔THE ONE TABLE. The point test folds by it and so does the row sweep
-  /// the mask and the ants read ([_combineSpans]), so a mode cannot mean one
-  /// thing to the hit test and another to the lift.
+  /// ⛔THE ONE TABLE. The point test folds by it and the engine's mask by
+  /// the same (region.wgsl's `op`, from the mode's [Enum.index]), so a mode
+  /// cannot mean one thing to the hit test and another to the lift.
   bool _fold(bool inside, bool hit) => switch (this) {
     replace => hit,
     add => inside || hit,
@@ -87,9 +87,9 @@ enum SelectionCombineMode {
 /// ([CanvasSelectionNested], I-23's inverse). The copies stay a list all the
 /// same — they are one act, which a nested selection is not.
 ///
-/// ⛔Every reader asks the OPERAND, never its kind: the hit, the row's spans,
-/// the path and the coverage are each subtype's to answer, and the fold over
-/// them is written once, in [CanvasSelectionRegion].
+/// ⛔Every reader asks the OPERAND, never its kind: the hit, the path, the
+/// coverage and its spelling for the engine are each subtype's to answer,
+/// and the fold over them is written once, in [CanvasSelectionRegion].
 sealed class CanvasSelectionStep {
   /// One polygon.
   factory CanvasSelectionStep(
@@ -116,11 +116,6 @@ sealed class CanvasSelectionStep {
   /// Whether [point] is inside the operand — before [mode] applies.
   bool hits(CanvasPoint point);
 
-  /// The operand's inside spans on the scanline at [scanY]: a flat sorted
-  /// `[start, end, …]` list whose spans may touch or be empty, the shape
-  /// [_combineSpans] reads.
-  List<double> _spansOn(double scanY);
-
   /// The operand as ONE path in [map]'s space.
   ui.Path _pathIn(ui.Offset Function(CanvasPoint) map);
 
@@ -141,6 +136,11 @@ sealed class CanvasSelectionStep {
   /// of it is left inside ([CanvasSelectionRegion.clippedTo] reads that as
   /// the empty set).
   CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode);
+
+  /// The operand as the engine reads it ([CanvasSelectionRegion.spelled]):
+  /// its kind's word and what follows it into [words], its points into
+  /// [points].
+  void _spellInto(List<int> words, List<double> points);
 }
 
 /// The polygons ONE act drew — usually one, several under a symmetry guide
@@ -158,45 +158,6 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
   @override
   bool hits(CanvasPoint point) =>
       shapes.any((shape) => shape.containsPoint(point));
-
-  /// 🚨Merging SPANS, not crossings. Concatenating two polygons' crossings
-  /// and pairing them off is the even-odd rule, which cancels where the
-  /// copies overlap — the lift would then punch a hole exactly where [hits]
-  /// says the point is in. One copy (nearly every region) hands back its
-  /// crossings untouched.
-  ///
-  /// ⚠️Only the copies the scanline CROSSES are asked. One act can be
-  /// hundreds of copies — the shape tool's plain line round a big ellipse
-  /// is a box and a corner for every side of it (I-69) — and a row meets a
-  /// handful of them. 🔬That line round a 2000×1500 ellipse, 200 pieces:
-  /// 71–97 ms of mask with every copy asked on every row, 4–9 ms with
-  /// the ones it crosses (the VM on the desktop, 2026-10-08).
-  @override
-  List<double> _spansOn(double scanY) {
-    List<double>? union;
-    for (var i = 0; i < shapes.length; i += 1) {
-      final box = _boxes[i];
-      if (scanY < box.top || scanY >= box.bottom) {
-        continue;
-      }
-      final crossings = _crossingsOn(shapes[i], scanY);
-      union = union == null
-          ? crossings
-          : _combineSpans(union, crossings, SelectionCombineMode.add);
-    }
-    return union ?? const <double>[];
-  }
-
-  /// Each copy's box. Its top and bottom are the rows the copy has: an
-  /// edge is crossed on `top ≤ y < bottom`
-  /// ([CanvasSelectionShape.edgeStraddles]), so a scanline outside them
-  /// meets nothing of the copy.
-  late final List<ui.Rect> _boxes = [
-    for (final shape in shapes)
-      pointsBounds([
-        for (final point in shape.points) ui.Offset(point.x, point.y),
-      ]),
-  ];
 
   /// Copies UNION into one outline before the mode applies — one
   /// `addPolygon` per copy would even-odd them and punch a hole wherever
@@ -239,6 +200,22 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
   CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode) {
     final kept = [for (final shape in shapes) ?shape.clippedTo(wall)];
     return kept.isEmpty ? null : CanvasSelectionCopies(kept, mode);
+  }
+
+  /// 0, the polygons' count and each one's points' count.
+  @override
+  void _spellInto(List<int> words, List<double> points) {
+    words
+      ..add(0)
+      ..add(shapes.length);
+    for (final shape in shapes) {
+      words.add(shape.points.length);
+      for (final point in shape.points) {
+        points
+          ..add(point.x)
+          ..add(point.y);
+      }
+    }
   }
 
   @override
@@ -284,9 +261,6 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
   bool hits(CanvasPoint point) => region.containsPoint(point);
 
   @override
-  List<double> _spansOn(double scanY) => region._spansOn(scanY);
-
-  @override
   ui.Path _pathIn(ui.Offset Function(CanvasPoint) map) => region.pathIn(map);
 
   /// Its own coverage box — a superset, which is all coverage promises.
@@ -315,6 +289,13 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
   CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode) {
     final kept = region.clippedTo(wall);
     return kept == null ? null : CanvasSelectionNested(kept, mode);
+  }
+
+  /// 1, and the selection spelled as the top is.
+  @override
+  void _spellInto(List<int> words, List<double> points) {
+    words.add(1);
+    region._spellInto(words, points);
   }
 
   @override
@@ -543,21 +524,24 @@ class CanvasSelectionRegion {
   /// this arithmetic out for themselves (the cut without the pad), which is
   /// one algorithm three times; the pixel copy (I-55) would have been a
   /// fourth, the cut's with the pad added by hand.
+  ///
+  /// With no [clip] the box is the region's own — what a clip that knows no
+  /// wall reads (`SelectionClip.outline`).
   ({int left, int top, int width, int height})? pixelBoxWithin(
-    DirtyRegion clip, {
+    DirtyRegion? clip, {
     int pad = 0,
   }) {
     final bounds = coverageBounds;
-    final left = math.max(clip.left, bounds.left.floor() - pad);
-    final top = math.max(clip.top, bounds.top.floor() - pad);
-    final rightExclusive = math.min(
-      clip.rightExclusive,
-      bounds.right.ceil() + 1 + pad,
-    );
-    final bottomExclusive = math.min(
-      clip.bottomExclusive,
-      bounds.bottom.ceil() + 1 + pad,
-    );
+    var left = bounds.left.floor() - pad;
+    var top = bounds.top.floor() - pad;
+    var rightExclusive = bounds.right.ceil() + 1 + pad;
+    var bottomExclusive = bounds.bottom.ceil() + 1 + pad;
+    if (clip != null) {
+      left = math.max(clip.left, left);
+      top = math.max(clip.top, top);
+      rightExclusive = math.min(clip.rightExclusive, rightExclusive);
+      bottomExclusive = math.min(clip.bottomExclusive, bottomExclusive);
+    }
     if (rightExclusive <= left || bottomExclusive <= top) {
       return null;
     }
@@ -567,6 +551,29 @@ class CanvasSelectionRegion {
       width: rightExclusive - left,
       height: bottomExclusive - top,
     );
+  }
+
+  /// This selection as the engine reads its steps (`steps_of`,
+  /// rust/src/kernels/mask/abi.rs), to make its mask there: the steps'
+  /// count, then each step's fold — its mode's [Enum.index], the engine's
+  /// value for it — and its operand ([CanvasSelectionStep._spellInto]);
+  /// every polygon's points, x then y, in that order.
+  ({Uint32List program, Float64List points}) get spelled {
+    final words = <int>[];
+    final points = <double>[];
+    _spellInto(words, points);
+    return (
+      program: Uint32List.fromList(words),
+      points: Float64List.fromList(points),
+    );
+  }
+
+  void _spellInto(List<int> words, List<double> points) {
+    words.add(steps.length);
+    for (final step in steps) {
+      words.add(step.mode.index);
+      step._spellInto(words, points);
+    }
   }
 
   ({double left, double top, double right, double bottom})? _selectedBounds;
@@ -741,7 +748,10 @@ class CanvasSelectionRegion {
     return combined;
   }
 
-  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65).
+  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65), in CANVAS space:
+  /// the closed contours of the selected pixels, their path laid once
+  /// ([PixelContours.path]) and the ants' dashes cut along their sides
+  /// (`dashedPolygons`).
   ///
   /// 유저: 「라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데,
   /// **선택 커밋될떈 픽셀에 제대로 안착한 상태로**. 지금은 **변형되는 픽셀
@@ -758,51 +768,19 @@ class CanvasSelectionRegion {
   /// a second one written next to it would be a rule that can drift.
   /// ↩️It read [maskFor] itself — one byte per pixel of the selected box —
   /// until an inverse made that box the whole pasteboard wall (I-23); the
-  /// runs are the same answer without the bytes. ⚠️It still folds every row
-  /// of the selected box, so callers cache the result rather than asking
-  /// per frame.
+  /// runs are the same answer without the bytes.
+  ///
+  /// 🚨IN CANVAS SPACE, AND MOVED WHOLE (card
+  /// pixel-ants-cost-a-frame-while-moving, 2026-11-16): a painter moves the
+  /// path and the dashes to the screen through its canvas→screen matrix
+  /// (`Path.transform`). ↩️The outline was laid anew in screen space at
+  /// every tick through a map a point at a time (`pixelOutlineIn`) — twenty
+  /// thousand points mapped and made objects a tick for a 4K lasso,
+  /// standing or moving.
   ///
   /// The contours are CLOSED and walk consistently, so a dash phase runs
   /// around a whole component (and around a hole) exactly as it did around
   /// [pathIn]'s contours.
-  ui.Path pixelOutlineIn(ui.Offset Function(CanvasPoint) map) {
-    final path = ui.Path();
-    for (final contour in _pixelContours) {
-      path.addPolygon([for (final point in contour) map(point)], true);
-    }
-    return path;
-  }
-
-  List<List<CanvasPoint>>? _pixelContoursCache;
-
-  /// What holding THIS region costs, for the history stack's byte budget.
-  ///
-  /// The steps are a handful of shapes; the weight is the memo above,
-  /// which a canvas-sized lasso fills with hundreds of thousands of
-  /// points. An undo entry keeps its region alive, so the memo lives as
-  /// long as the entry does — measured as RSS the budget could not see,
-  /// because the selection command reported nothing at all.
-  ///
-  /// ⚠️Zero until something asks for the contours: a region nobody drew
-  /// ants around holds only its steps.
-  int get estimatedRetainedBytes {
-    final contours = _pixelContoursCache;
-    if (contours == null) {
-      return 0;
-    }
-    var points = 0;
-    for (final contour in contours) {
-      points += contour.length;
-    }
-    return points * _bytesPerContourPoint;
-  }
-
-  /// Two doubles and the object header a [CanvasPoint] costs on the Dart
-  /// heap. An estimate by construction — the budget needs the ORDER of
-  /// the number, and zero was the wrong order.
-  static const int _bytesPerContourPoint = 32;
-
-  /// The closed contours of [pixelOutlineIn], in CANVAS space.
   ///
   /// ⚠️Memoised, and that is not an optimisation but the condition of
   /// calling it from a painter at all: the walk folds every row of the
@@ -814,16 +792,31 @@ class CanvasSelectionRegion {
   /// tick and there is more than one of them on screen (the selection layer
   /// and the panel's idle outline), so a cache living there would either
   /// vanish every frame or be a global two painters take turns evicting.
-  List<List<CanvasPoint>> get _pixelContours =>
+  PixelContours get pixelContours =>
       _pixelContoursCache ??= _walkPixelContours();
 
-  /// The contours [pixelOutlineIn] draws, for the test that pins how many
-  /// POINTS they hold — the straight-run merge is invisible in the shape
-  /// and only shows up in the count, so nothing else can measure it.
-  @visibleForTesting
-  List<List<CanvasPoint>> get pixelOutlineContours => _pixelContours;
+  PixelContours? _pixelContoursCache;
 
-  List<List<CanvasPoint>> _walkPixelContours() {
+  /// What holding THIS region costs, for the history stack's byte budget.
+  ///
+  /// The steps are a handful of shapes; the weight is the memo above,
+  /// which a canvas-sized lasso fills with hundreds of thousands of
+  /// points. An undo entry keeps its region alive, so the memo lives as
+  /// long as the entry does — measured as RSS the budget could not see,
+  /// because the selection command reported nothing at all.
+  ///
+  /// ⚠️Zero until something asks for the contours: a region nobody drew
+  /// ants around holds only its steps.
+  int get estimatedRetainedBytes =>
+      (_pixelContoursCache?.pointCount ?? 0) * _bytesPerContourPoint;
+
+  /// A point's two ints as the walk keeps them, and its point and verb in
+  /// the path laid from them. An estimate by construction — the budget
+  /// needs the ORDER of the number, and zero was the wrong order.
+  /// ↩️32 while each point was a [CanvasPoint] on the Dart heap.
+  static const int _bytesPerContourPoint = 8 + 8 + 1;
+
+  PixelContours _walkPixelContours() {
     final bounds = selectedBounds;
     // The pixel box: every pixel whose CENTRE can be inside. A box smaller
     // than that would clip the outline; a bigger one only costs rows.
@@ -832,7 +825,7 @@ class CanvasSelectionRegion {
     final width = (bounds.right + 0.5).ceil() - left;
     final height = (bounds.bottom + 0.5).ceil() - top;
     if (width <= 0 || height <= 0) {
-      return <List<CanvasPoint>>[];
+      return PixelContours.none;
     }
     return pixelRunContours(
       pixelRunsFor(left: left, top: top, width: width, height: height),
@@ -843,16 +836,8 @@ class CanvasSelectionRegion {
   }
 
   /// The hard coverage mask over the pixel box `[left, left+width) ×
-  /// [top, top+height)`: 255 inside, 0 outside, by PIXEL CENTRE — the
-  /// same even-odd rule as [containsPoint], so a lift never disagrees
-  /// with a hit test.
-  ///
-  /// Per row the WHOLE fold is taken as spans first ([_spansOn]: each
-  /// operand's spans combined under its mode) and sampled into pixels once
-  /// ([_pixelRuns]). Sampling commutes with the set operations, so this is
-  /// the answer folding every step's own pixels gave — and a nested
-  /// selection folds in as spans of its own, which a per-step pixel fold
-  /// had no row to hold.
+  /// [top, top+height)`: 255 inside, 0 outside, by PIXEL CENTRE —
+  /// [pixelRunsFor] laid as bytes, for a reader that wants a byte a pixel.
   Uint8List maskFor({
     required int left,
     required int top,
@@ -860,8 +845,13 @@ class CanvasSelectionRegion {
     required int height,
   }) {
     final mask = Uint8List(width * height);
-    for (var row = 0; row < height; row += 1) {
-      final runs = _pixelRuns(top + row + 0.5, left, width);
+    final rows = pixelRunsFor(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+    );
+    for (final (row, runs) in rows.indexed) {
       final rowOffset = row * width;
       for (var r = 0; r + 1 < runs.length; r += 2) {
         mask.fillRange(rowOffset + runs[r], rowOffset + runs[r + 1], 255);
@@ -870,70 +860,31 @@ class CanvasSelectionRegion {
     return mask;
   }
 
-  /// [maskFor]'s rows as RUNS instead of bytes: for each row of the pixel
-  /// box `[left, left+width) × [top, top+height)`, the `[start, end, …]`
-  /// columns it fills, counted from [left] ([_pixelRuns]).
+  /// For each row of the pixel box `[left, left+width) × [top,
+  /// top+height)`, the `[start, end, …]` columns its selected pixels fill,
+  /// counted from [left] — a pixel in when its CENTRE is, by the engine's
+  /// mask of this selection (`EngineSelectionMasks.runs`): the very pixels
+  /// a lift or a stroke under it takes, never a second answer beside them.
   ///
-  /// The same answer without a byte per pixel of the box — for a reader
-  /// that wants WHERE the pixels are rather than the pixels: the outline
-  /// walk ([pixelOutlineIn]), and an area laid in pieces
-  /// (`buildRegionFillDabs`), which finds the tiles it reaches from these
-  /// and fills only theirs.
+  /// The answer without a byte per pixel of the box — for a reader that
+  /// wants WHERE the pixels are rather than the pixels: the outline walk
+  /// ([pixelContours]), and an area laid in pieces (`buildRegionFillDabs`),
+  /// which finds the tiles it reaches from these and fills only theirs.
+  ///
+  /// ↩️Till 2026-11-14 the CPU folded each row's crossings here in f64
+  /// (`_spansOn` · `_pixelRuns`) while the engine made the mask in Q.8 —
+  /// the same rule, its vertices rounded apart: the ants could stand a
+  /// pixel off what a lift moved (board
+  /// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2b).
   List<List<int>> pixelRunsFor({
     required int left,
     required int top,
     required int width,
     required int height,
-  }) => [
-    for (var row = 0; row < height; row += 1)
-      _pixelRuns(top + row + 0.5, left, width),
-  ];
-
-  /// What the fold selects on the scanline at [scanY]: every operand's
-  /// spans combined under its step's mode, left to right — [containsPoint]
-  /// for a whole row, by the same table ([SelectionCombineMode._fold]).
-  List<double> _spansOn(double scanY) {
-    var fold = const <double>[];
-    for (final step in steps) {
-      fold = _combineSpans(fold, step._spansOn(scanY), step.mode);
-    }
-    return fold;
-  }
-
-  /// The pixels [maskFor] fills on the row at [scanY], as `[start, end, …]`
-  /// columns counted from [left] and clamped into `[0, width)`.
-  ///
-  /// A pixel is in when its CENTRE is: `start ≤ x + 0.5 < end`, the same
-  /// strictness as [containsPoint]'s `point.x < intersection`.
-  ///
-  /// ⚠️A span wholly to the RIGHT of the window samples to a start past
-  /// `width`, and the `start >= end` skip is what keeps the fill from
-  /// running off the row — the 1×1 probe a mask/hit-test parity check uses
-  /// is exactly the window small enough to reach it.
-  ///
-  /// ⚠️Runs that TOUCH once sampled are one run. Two spans kept apart by a
-  /// gap with no pixel centre in it sample to neighbouring columns, and a
-  /// reader of run ends (the outline walk) would draw a wall between two
-  /// pixels that are both selected.
-  List<int> _pixelRuns(double scanY, int left, int width) {
-    final spans = _spansOn(scanY);
-    final runs = <int>[];
-    for (var c = 0; c + 1 < spans.length; c += 2) {
-      final start = math.max((spans[c] - 0.5).ceil() - left, 0);
-      final end = math.min((spans[c + 1] - 0.5).ceil() - left, width);
-      if (start >= end) {
-        continue;
-      }
-      if (runs.isNotEmpty && runs[runs.length - 1] == start) {
-        runs[runs.length - 1] = end;
-      } else {
-        runs
-          ..add(start)
-          ..add(end);
-      }
-    }
-    return runs;
-  }
+  }) => EngineSelectionMasks.runs(
+    spelled,
+    box: (left: left, top: top, width: width, height: height),
+  );
 
   @override
   bool operator ==(Object other) {
@@ -956,63 +907,6 @@ class CanvasSelectionRegion {
 
   @override
   String toString() => 'CanvasSelectionRegion(${steps.join(' → ')})';
-}
-
-/// Sorted x crossings of [shape]'s edges on the scanline at [scanY] — its
-/// inside spans by the even-odd rule, paired off left to right.
-List<double> _crossingsOn(CanvasSelectionShape shape, double scanY) {
-  final crossings = <double>[];
-  final points = shape.points;
-  for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
-    final a = points[i];
-    final b = points[j];
-    if (CanvasSelectionShape.edgeStraddles(a, b, scanY)) {
-      crossings.add(CanvasSelectionShape.edgeCrossingX(a, b, scanY));
-    }
-  }
-  return crossings..sort();
-}
-
-/// Two rows of spans combined under [mode] — each a flat sorted
-/// `[start, end, …]` list whose spans may touch or be empty, which is
-/// exactly what a polygon's raw crossings are.
-///
-/// ⛔ONE sweep for every mode, the union of a guide's copies included (that
-/// is `add`): walk both rows' endpoints in order, and between two of them
-/// ask [SelectionCombineMode._fold] — the table the point test folds by.
-/// A row's membership there is the PARITY of its endpoints passed so far,
-/// which is the even-odd rule, so raw crossings need no pairing first.
-///
-/// Exact, not approximate: it only ever hands back endpoints it was given,
-/// so sampling the answer at a pixel centre says what folding the two
-/// rows' own samples says. That is why the mask can fold spans first and
-/// sample once.
-List<double> _combineSpans(
-  List<double> a,
-  List<double> b,
-  SelectionCombineMode mode,
-) {
-  final combined = <double>[];
-  var inside = false;
-  var ia = 0;
-  var ib = 0;
-  while (ia < a.length || ib < b.length) {
-    final x = ib >= b.length || (ia < a.length && a[ia] <= b[ib])
-        ? a[ia]
-        : b[ib];
-    while (ia < a.length && a[ia] == x) {
-      ia += 1;
-    }
-    while (ib < b.length && b[ib] == x) {
-      ib += 1;
-    }
-    final next = mode._fold(ia.isOdd, ib.isOdd);
-    if (next != inside) {
-      combined.add(x);
-      inside = next;
-    }
-  }
-  return combined;
 }
 
 /// [shape] as one closed even-odd path in [map]'s space.

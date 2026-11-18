@@ -13,11 +13,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// 🚨WHAT A DAB ANSWERS IS ALL IT MOVED (F-533). A step goes into the frame's
 /// picture as far as the stroke says it moved
@@ -32,17 +28,11 @@ import '../helpers/native_engine_path.dart';
 /// `a_step_writes_what_its_dabs_moved_test` does that.
 void main() {
   const canvasSize = CanvasSize(width: 96, height: 64);
-  const tileSize = 16;
-  const reach = 2 * tileSize;
+  const tileSize = 128;
+  const reach = tileSize;
   final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
-  final dllPath = nativeEngineLibraryPathOrNull();
   final width = canvasSize.width + 2 * reach;
   final height = canvasSize.height + 2 * reach;
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
 
   final tip = BrushTipMask(
     id: 'a-dab-tells-all-it-moved',
@@ -90,8 +80,8 @@ void main() {
 
   /// The cel a stroke shows over, every pixel of it something to move.
   final celPixels = {
-    for (var y = 0; y < 4; y += 1)
-      for (var x = 0; x < 6; x += 1)
+    for (var y = 0; y * tileSize < canvasSize.height; y += 1)
+      for (var x = 0; x * tileSize < canvasSize.width; x += 1)
         TileCoord(x: x, y: y): Uint8List.fromList([
           for (var index = 0; index < tileSize * tileSize; index += 1) ...[
             (index * 11) % 256,
@@ -145,7 +135,6 @@ void main() {
         continue;
       }
       tile.readStraight((straight) => lay(coords[i], straight));
-      tile.free();
     }
     return bytes;
   }
@@ -163,60 +152,48 @@ void main() {
           (x - reach, y - reach),
   ];
 
-  for (final (route, dart) in [('the engine', false), ('the Dart', true)]) {
-    for (final (kind, dab) in <(String, BrushDab Function(CanvasPoint, int))>[
-      ('a soft round', plain),
-      ('a pixel', (at, i) => plain(at, i, size: 1, hardness: 1)),
-      ('a wide one', (at, i) => plain(at, i, size: 61.3)),
-      (
-        'a square',
-        (at, i) => plain(at, i, tipShape: BrushTipShape.square, hardness: 1),
-      ),
-      ('a sampled tip', (at, i) => plain(at, i, tipMask: tip)),
-      ('a textured one', (at, i) => plain(at, i, textureMask: tip)),
-      (
-        'a second tip',
-        (at, i) => plain(at, i, dual: const BrushDualView(density: 0.35)),
-      ),
-      ('a blur', (at, i) => plain(at, i, blurs: true)),
-    ]) {
-      test('$kind by $route moves no byte past what it tells', () {
-        QaNativeEngine.debugResetForTests();
-        debugQaEngineLibraryPathOverride = dllPath;
-        QaNativeEngine.debugForceDartFallback = dart;
-        if (!dart && (dllPath == null || QaNativeEngine.instance == null)) {
-          if (nativeEngineRequired) {
-            fail(nativeEngineMissingSkipReason);
-          }
-          markTestSkipped(nativeEngineMissingSkipReason);
-          return;
-        }
-        final stroke = BrushLiveStrokeRasterizer(
-          pasteboard: wall,
-          tileSize: tileSize,
+  for (final (kind, dab) in <(String, BrushDab Function(CanvasPoint, int))>[
+    ('a soft round', plain),
+    ('a pixel', (at, i) => plain(at, i, size: 1, hardness: 1)),
+    ('a wide one', (at, i) => plain(at, i, size: 61.3)),
+    (
+      'a square',
+      (at, i) => plain(at, i, tipShape: BrushTipShape.square, hardness: 1),
+    ),
+    ('a sampled tip', (at, i) => plain(at, i, tipMask: tip)),
+    ('a textured one', (at, i) => plain(at, i, textureMask: tip)),
+    (
+      'a second tip',
+      (at, i) => plain(at, i, dual: const BrushDualView(density: 0.35)),
+    ),
+    ('a blur', (at, i) => plain(at, i, blurs: true)),
+  ]) {
+    test('$kind moves no byte past what it tells', () {
+      final stroke = BrushLiveStrokeRasterizer(
+        pasteboard: wall,
+        tileSize: tileSize,
+      );
+      final dabs = lineOf(dab);
+      if (dabs.first.blurs) {
+        stroke.blurOver(cel);
+      }
+      var moved = 0;
+      var before = shown(stroke);
+      for (var from = 0; from < dabs.length; from += 1) {
+        final told = stroke.blendFrom(
+          dabs.sublist(0, from + 1),
+          from: from,
         );
-        final dabs = lineOf(dab);
-        if (dabs.first.blurs) {
-          stroke.blurOver(cel);
-        }
-        var moved = 0;
-        var before = shown(stroke);
-        for (var from = 0; from < dabs.length; from += 1) {
-          final told = stroke.blendFrom(
-            dabs.sublist(0, from + 1),
-            from: from,
-          );
-          final after = shown(stroke);
-          expect(
-            movedPast(before, after, told),
-            isEmpty,
-            reason: 'dab $from told $told',
-          );
-          moved += movedPast(before, after, null).length;
-          before = after;
-        }
-        expect(moved, greaterThan(0), reason: 'LIVENESS: the dabs moved ink');
-      });
-    }
+        final after = shown(stroke);
+        expect(
+          movedPast(before, after, told),
+          isEmpty,
+          reason: 'dab $from told $told',
+        );
+        moved += movedPast(before, after, null).length;
+        before = after;
+      }
+      expect(moved, greaterThan(0), reason: 'LIVENESS: the dabs moved ink');
+    });
   }
 }

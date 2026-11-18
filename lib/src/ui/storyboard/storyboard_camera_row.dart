@@ -30,13 +30,13 @@ class _StoryboardCameraRow extends KeptPiece
   const _StoryboardCameraRow({
     required this.trackId,
     required this.reaches,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
     required this.viewportWidth,
     required this.instructionDefById,
+    this.windowIsStill = false,
     this.onRowFramePress,
     this.onCameraCutPress,
     this.onEditCameraCell,
@@ -47,8 +47,6 @@ class _StoryboardCameraRow extends KeptPiece
   final TrackId trackId;
   @override
   final List<CameraRowReach> reaches;
-  @override
-  final double width;
 
   /// Its label's height ([_StoryboardRowHeights.camera]) — one row.
   @override
@@ -61,6 +59,8 @@ class _StoryboardCameraRow extends KeptPiece
   final ValueListenable<int> windowBucket;
   @override
   final double viewportWidth;
+  @override
+  final bool windowIsStill;
 
   /// The vocabulary the camera's moves are written in ([cameraUnionHeader]).
   final CameraInstructionDef? Function(String id) instructionDefById;
@@ -113,7 +113,6 @@ class _StoryboardCameraRow extends KeptPiece
   Object? get facts => (
     trackId,
     ByList(reaches),
-    width,
     height,
     timelineScale.pixelsPerFrame,
     timelineScale.minBlockWidth,
@@ -126,6 +125,7 @@ class _StoryboardCameraRow extends KeptPiece
       cellExtent: timelineScale.pixelsPerFrame,
     ),
     instructionDefById,
+    windowIsStill,
     onRowFramePress != null,
     onCameraCutPress != null,
     onEditCameraCell != null,
@@ -192,7 +192,10 @@ class _StoryboardCameraRow extends KeptPiece
       }
       // Held inside the cut: the timeline's cells run on past its end, and
       // a selection made there names frames this row does not draw.
-      return Stack(
+      return TimelineFrameSpanLayout(
+        geometry: frameGeometry,
+        crossAxisExtent: height,
+        axis: Axis.horizontal,
         children: [
           for (final stretch in reach.stretchesOf(
             selection.startIndex,
@@ -205,15 +208,18 @@ class _StoryboardCameraRow extends KeptPiece
     return const SizedBox.shrink();
   }
 
-  /// The band over one [stretch] of a cut's own frames, on its line.
+  /// The band over one [stretch] of a cut's own frames, on its line — laid
+  /// by its frames' edges, as the row's keys are.
   Widget _bandPiece(CameraRowStretch stretch) {
     final across = stretch.line == CameraRowLine.middle ? height : height / 2;
-    return Positioned(
+    return TimelineFrameSpan(
       key: ValueKey<String>('storyboard-camera-range-selection-${stretch.from}'),
-      left: timelineScale.leftForFrame(stretch.from),
-      top: stretch.line == CameraRowLine.lower ? height / 2 : 0,
-      width: timelineScale.spanWidth(stretch.from, stretch.to),
-      height: across,
+      placement: TimelineFrameSpanPlacement(
+        startIndex: stretch.from,
+        endIndexExclusive: stretch.to,
+        crossInset: stretch.line == CameraRowLine.lower ? height / 2 : 0,
+        crossExtent: across,
+      ),
       child: Semantics(
         label: AppText.strings.tlSelectedFrameRange,
         container: true,
@@ -266,7 +272,12 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     required this.crossAxisExtent,
     required this.colorScheme,
     required this.windowBucket,
-  }) : super(repaint: Listenable.merge([geometry, windowBucket]));
+  }) : super(
+         repaint: Listenable.merge([
+           timelineFrameDrawing(geometry),
+           windowBucket,
+         ]),
+       );
 
   final List<CameraRowReach> reaches;
   final TimelineFrameGeometryHandle geometry;

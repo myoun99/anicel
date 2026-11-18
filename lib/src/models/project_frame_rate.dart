@@ -70,16 +70,7 @@ class ProjectFrameRate {
   double get approximateFps => numerator / denominator;
 
   /// `24 fps`, `23.976 fps` — trailing zeros trimmed.
-  String get label {
-    if (isInteger) {
-      return '$numerator fps';
-    }
-    final text = approximateFps.toStringAsFixed(3);
-    final trimmed = text
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
-    return '$trimmed fps';
-  }
+  String get label => framesPerSecondLabel(approximateFps);
 
   /// What ffmpeg wants for `-framerate` / `-r`: it takes the fraction
   /// directly, so an NTSC export is exact rather than 23.976-rounded.
@@ -246,6 +237,18 @@ String secondsPlusFramesLabel(int frames, int framesPerSecond) {
   return '$seconds+$left';
 }
 
+/// `24 fps`, `23.976 fps` — a rate as every surface says it, trailing zeros
+/// trimmed: a project's ([ProjectFrameRate.label]) and a movie's own, which
+/// the decoder hands over as a number (the media pool's 비디오 정보,
+/// asset-placement-presets Q4).
+String framesPerSecondLabel(double fps) {
+  final trimmed = fps
+      .toStringAsFixed(3)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+  return '$trimmed fps';
+}
+
 /// A running time the way a conte's cover prints it — minutes, seconds and
 /// frames: `20:52+12`.
 String runningTimeLabel(int frames, int framesPerSecond) {
@@ -304,6 +307,28 @@ int framesOfSecondsAndFrames(int seconds, int frames, int framesPerSecond) {
   if (numerator == denominator) {
     return null;
   }
+  final divisor = numerator.gcd(denominator);
+  return (
+    numerator: numerator ~/ divisor,
+    denominator: denominator ~/ divisor,
+  );
+}
+
+/// A sound played at its own speed — the pull nothing applies.
+const ({int numerator, int denominator}) noPull = (
+  numerator: 1,
+  denominator: 1,
+);
+
+/// [first] and then [then] — two pulls one on top of the other, as one
+/// exact rational: they accumulate, and cancel (23.976→24→23.976 lands back
+/// at 1/1).
+({int numerator, int denominator}) pullsTogether(
+  ({int numerator, int denominator}) first,
+  ({int numerator, int denominator}) then,
+) {
+  final numerator = first.numerator * then.numerator;
+  final denominator = first.denominator * then.denominator;
   final divisor = numerator.gcd(denominator);
   return (
     numerator: numerator ~/ divisor,

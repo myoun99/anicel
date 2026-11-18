@@ -6,18 +6,16 @@
 //! spec puts it). The warp (kernels/warp) reads the picture through them,
 //! each pixel by its triangle's map through R1.
 
-// ⏳Nothing outside the tests reads a mesh until the canvas's verbs come to
-// the engine (gpu-canonical-store, stage 4).
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 mod tests;
+
+use std::ops::Range;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
-    Encoded, ResampleMap, ResampleMode, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole,
-    words_buffer,
+    Encoded, ResampleMap, ResampleMode, WIDE_WGSL, bands, buffer_holds, encode, fits, flat, pipeline,
+    plane, q, room, whole, words_bound, words_buffer,
 };
 
 /// mesh.wgsl's workgroup side.
@@ -124,6 +122,13 @@ impl MeshOwners {
     /// that paints it, or `u32::MAX` where none does — a word a pixel, row
     /// after row. None when the output or a point is past the reach. Submits
     /// the work; the caller waits.
+    ///
+    /// 🚨A PASS BINDS A BAND OF THE OUTPUT'S ROWS, NOT ALL OF THEM (board
+    /// conversions-bind-a-frame-past-the-device-limit, 2026-11-17): the
+    /// owners were bound whole and refused past a binding, before the warp
+    /// that reads them had its turn. The output goes in bands as the warp's
+    /// window does ([`bands`]), its clear and each triangle's box cut to
+    /// the rows of every band they meet.
     pub(crate) fn owners(
         &self,
         engine: &Engine,
@@ -152,11 +157,29 @@ impl MeshOwners {
         let groups = |[_, _, width, height]: [i64; 4]| {
             ((width as u32).div_ceil(GROUP), (height as u32).div_ceil(GROUP))
         };
-        let all = boxes.iter().map(|&(_, reach)| groups(reach)).chain([groups(output)]);
         let bytes = u64::from(width) * u64::from(height) * 4;
-        fits(engine, &[bytes], all)?;
+        let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+        // The words a band of the output's rows lies on.
+        let words = |band: &Range<u32>| {
+            u64::from(band.start) * u64::from(width)..u64::from(band.end) * u64::from(width)
+        };
+        let bands = bands(0..height, GROUP, (room(engine), step), |band| vec![words(&band)])?;
+        let cut = |reach: [i64; 4], band: &Range<u32>| cut_to_band(reach, band, top);
+        // Band by band, the output cleared, then each triangle's box in it.
+        let jobs: Vec<(Option<&(&Triangle, [i64; 4])>, [i64; 4], &Range<u32>)> = bands
+            .iter()
+            .flat_map(|band| {
+                let clear = cut(output, band).map(|reach| (None, reach, band));
+                let own = boxes
+                    .iter()
+                    .filter_map(move |each| cut(each.1, band).map(|reach| (Some(each), reach, band)));
+                clear.into_iter().chain(own)
+            })
+            .collect();
+        fits(engine, &[], jobs.iter().map(|&(_, reach, _)| groups(reach)))?;
+        buffer_holds(engine, bytes)?;
         let owners = plane(engine, "mesh owners", bytes);
-        let uniform = |order: u32, [x, y, w, h]: [i64; 4], triangle: Option<&Triangle>| {
+        let uniform = |order: u32, [x, y, w, h]: [i64; 4], triangle: Option<&Triangle>, base: u64| {
             let (d0, e1, e2, den) = triangle.map_or(([0; 2], [0; 2], [0; 2], 0), |t| {
                 (t.d0, t.e1, t.e2, t.den)
             });
@@ -177,27 +200,51 @@ impl MeshOwners {
                 e2[1] as u32,
                 den as u32,
                 (den >> 32) as u32,
+                base as u32,
+                0,
+                0,
+                0,
             ];
             words_buffer(engine, "mesh triangle", &words, wgpu::BufferUsages::UNIFORM)
         };
-        let cleared = uniform(0, output, None);
-        let words: Vec<wgpu::Buffer> = boxes
+        let bound: Vec<_> = jobs.iter().map(|&(_, _, band)| words_bound(&owners, words(band), step)).collect();
+        let uniforms: Vec<wgpu::Buffer> = jobs
             .iter()
-            .map(|&(triangle, reach)| uniform(triangle.order, reach, Some(triangle)))
+            .zip(&bound)
+            .map(|(&(each, reach, _), (_, base))| {
+                let triangle = each.map(|&(triangle, _)| triangle);
+                uniform(triangle.map_or(0, |triangle| triangle.order), reach, triangle, *base)
+            })
             .collect();
-        let mut encoded = vec![Encoded {
-            pipeline: &self.clear,
-            bound: whole(&[(0, &cleared), (1, &owners)]),
-            groups: flat(groups(output)),
-        }];
-        encoded.extend(boxes.iter().zip(&words).map(|(&(_, reach), words)| Encoded {
-            pipeline: &self.own,
-            bound: whole(&[(0, words), (1, &owners)]),
-            groups: flat(groups(reach)),
-        }));
+        let encoded: Vec<Encoded> = jobs
+            .iter()
+            .zip(&uniforms)
+            .zip(bound)
+            .map(|((&(each, reach, _), uniform), (given, _))| {
+                let mut bound = whole(&[(0, uniform)]);
+                bound.push(wgpu::BindGroupEntry { binding: 1, resource: given });
+                let pipeline = if each.is_some() { &self.own } else { &self.clear };
+                Encoded { pipeline, bound, groups: flat(groups(reach)) }
+            })
+            .collect();
         encode(engine, &encoded);
         Some(owners)
     }
+}
+
+/// `reach` — left, top, width, height on the canvas — cut to the rows of
+/// `band`, counted from the output's `top` row: none where it meets none.
+///
+/// ⚠️THE CUT IS THE BOUND, and no test on a device tells it from none
+/// (mutants W18 · W19, 11-17): a pass binds only its band's rows of the
+/// owners, so a box left whole writes its other rows past the binding —
+/// which DX12 and lavapipe drop, and Metal would clamp onto the band's last
+/// word. Hence the pin on this alone (`mesh::tests`).
+fn cut_to_band(reach: [i64; 4], band: &Range<u32>, top: i32) -> Option<[i64; 4]> {
+    let [x, y, w, h] = reach;
+    let low = (y - i64::from(top)).max(i64::from(band.start));
+    let high = (y - i64::from(top) + h).min(i64::from(band.end));
+    (low < high).then_some([x, i64::from(top) + low, w, high - low])
 }
 
 /// The pixels of `output` — left, top, width, height — that may hold a

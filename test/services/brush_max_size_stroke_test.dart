@@ -13,8 +13,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// Pin for the CSP-parity size ceiling (maxSize 128 → 2000, FieldSlider
 /// round): a dab at the FULL ceiling must ride the whole stamp/compose
@@ -57,7 +57,7 @@ void main() {
     expect(outcome!.dirtyTiles.isNotEmpty, isTrue);
 
     final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
-    int alphaAt(int x, int y) => surfacePixelRgba(surface, x, y) ?? 0;
+    int alphaAt(int x, int y) => surfaceRgbaInPlace(surface, x, y) ?? 0;
 
     // Radius = maxSize / 2 = 1000 around (1100.5, 1100.5).
     expect(alphaAt(1100, 1100), greaterThan(0), reason: 'center painted');

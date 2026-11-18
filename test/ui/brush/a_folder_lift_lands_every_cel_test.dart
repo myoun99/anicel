@@ -5,7 +5,6 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -13,6 +12,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// I-37 — EVERY CEL A FOLDER'S LIFT TOOK UP LANDS, each from the float the
 /// layer hands back for it.
@@ -40,7 +40,7 @@ void main() {
     BrushFrameKey key,
     int x,
     int y,
-  ) => (surfacePixelRgba(coordinator.currentSurfaceOf(key), x, y) ?? 0) != 0;
+  ) => (surfaceRgbaInPlace(coordinator.currentSurfaceOf(key), x, y) ?? 0) != 0;
 
   testWidgets('a host with no history lands every cel a folder\'s lift took '
       'up', (tester) async {

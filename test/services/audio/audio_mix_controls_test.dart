@@ -67,6 +67,78 @@ void main() {
     expect(audioEnvelopeAt(const [], 10), 1.0, reason: 'empty = unity');
   });
 
+  // audio-fx-grows-like-the-pros-Q7: a keyed pan's line.
+  test('audioClipSidesAt: a pan line runs its sides straight between its '
+      'points, clip-local, held past its ends; with none, the clip\'s one '
+      'pan', () {
+    const plain = AudioMixClip(
+      sourceIndex: 0,
+      startSample: 100,
+      endSample: 400,
+      panLeft: 0.25,
+      panRight: 0.75,
+    );
+    expect(audioClipSidesAt(plain, 150), (left: 0.25, right: 0.75));
+
+    const lined = AudioMixClip(
+      sourceIndex: 0,
+      startSample: 100,
+      endSample: 400,
+      panLeft: 0.25,
+      panRight: 0.75,
+      panLeftLine: [
+        AudioEnvelopePoint(sample: 0, gain: 1.0),
+        AudioEnvelopePoint(sample: 100, gain: 0.0),
+        AudioEnvelopePoint(sample: 200, gain: 0.5),
+      ],
+      panRightLine: [
+        AudioEnvelopePoint(sample: 0, gain: 0.0),
+        AudioEnvelopePoint(sample: 100, gain: 1.0),
+        AudioEnvelopePoint(sample: 200, gain: 0.5),
+      ],
+    );
+    expect(
+      audioClipSidesAt(lined, 50),
+      (left: 1.0, right: 0.0),
+      reason: 'held before',
+    );
+    expect(
+      audioClipSidesAt(lined, 125),
+      (left: 0.75, right: 0.25),
+      reason: 'a quarter into the first run, counted from the clip',
+    );
+    expect(
+      audioClipSidesAt(lined, 200),
+      (left: 0.0, right: 1.0),
+      reason: 'on a point',
+    );
+    expect(
+      audioClipSidesAt(lined, 250),
+      (left: 0.25, right: 0.75),
+      reason: 'second run',
+    );
+    expect(
+      audioClipSidesAt(lined, 350),
+      (left: 0.5, right: 0.5),
+      reason: 'held after',
+    );
+    expect(
+      audioClipSidesAt(
+        AudioMixClip(
+          sourceIndex: 0,
+          startSample: 100,
+          endSample: 400,
+          panLeft: 0.25,
+          panRight: 0.75,
+          panLeftLine: lined.panLeftLine,
+        ),
+        125,
+      ),
+      (left: 0.75, right: 0.75),
+      reason: 'each side its own',
+    );
+  });
+
   test('pan factors apply on a STEREO bus and leave other geometries '
       'untouched', () {
     final source = AudioMixSource(
@@ -193,7 +265,7 @@ void main() {
         AudioClip(filePath: 'a.wav', frameId: const FrameId('f'), gain: 0.7),
       ],
       seSound: SeSound(
-        pan: -0.5,
+        pan: PropertyTrack<double>(keys: {2: const PropertyKey(-0.5)}),
         volume: PropertyTrack<double>(
           keys: {0: const PropertyKey(1.0), 4: const PropertyKey(0.5)},
         ),
@@ -201,7 +273,7 @@ void main() {
     );
     final reopened = Layer.fromJson(layer.toJson());
     expect(reopened.seSound, layer.seSound);
-    expect(reopened.seSound.pan, -0.5);
+    expect(reopened.seSound.panAt(2), -0.5);
     expect(reopened.seSound.volumeAt(4), 0.5);
     expect(reopened.audioClips.single.gain, 0.7);
     // Defaults stay OUT of the JSON — legacy files keep their bytes.

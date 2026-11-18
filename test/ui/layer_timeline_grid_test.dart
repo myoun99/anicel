@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -596,7 +597,9 @@ void main() {
         reason: 'sub-cell pixels rebuild nothing',
       );
 
-      framePosition().jumpTo(4 * 48.0); // Crosses cell boundaries.
+      // Crosses cell boundaries, and a span's, where the window moves.
+      final span = timelineFrameWindowSpanFor(48);
+      framePosition().jumpTo(span * 48.0);
       await tester.pump();
       // PRO-TIMELINE contract (UI-R15): a cell crossing rebuilds NOTHING
       // either — the painter windows itself off the live offset, so the
@@ -608,7 +611,7 @@ void main() {
         reason: 'crossings are repaint-only now — no rebuild at all',
       );
       expect(
-        timelineCellInWindow(tester, 'layer-1', 4),
+        timelineCellInWindow(tester, 'layer-1', span),
         isTrue,
         reason: 'the paint window followed the offset',
       );
@@ -617,7 +620,7 @@ void main() {
         isFalse,
         reason:
             'scrolled-out cells left the paint window (48px cells, '
-            'offset 192, overscan 2)',
+            'a span on, overscan 2)',
       );
     },
   );
@@ -772,7 +775,7 @@ void main() {
     }) => TimelineRowDragHooks(
       drag: ValueNotifier<LayerRowDragState?>(null),
       onBegin: (_) => events.add('begin'),
-      onUpdate: (_, slot, {pointerInRow}) => slots.add(slot),
+      onUpdate: (_, slot, {pointer}) => slots.add(slot),
       onRowTarget: (_, slot, _) => slots.add(slot),
       onEffectUpdate: (_, _, _) {},
       onEnd: () => events.add('end'),
@@ -1404,9 +1407,14 @@ void main() {
           'F-174 「엔드라인+1콤마」: the one comma past the end line is '
           'part of the resting extent, so the scrollbar shows the line',
     );
+    // Where the axis ends, not where the strip's paint stops: a strip laid
+    // in its rows' window box draws its window whole, past the end too, as
+    // a row does (Q8; card conte-sideways-scroll-build-spikes, 11-16).
+    int axisEnd() =>
+        timelineRulerPainter(tester).scale.frameEndIndexExclusive;
     expect(
-      timelineHeaderInWindow(tester, 25),
-      isFalse,
+      axisEnd(),
+      25,
       reason:
           'past the allowance, cells exist only while visible/materialized '
           '(UI-R12 #16) — scrolling never creates them',
@@ -1418,8 +1426,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      timelineHeaderInWindow(tester, 47),
-      isFalse,
+      axisEnd(),
+      25,
       reason: 'the scroll walls at the built extent',
     );
   });
@@ -1591,11 +1599,17 @@ void main() {
             ),
           )
           .position;
+      // From where the view stands, as the edge pan moves it
+      // (`edgeAutoPanOvershoot`): a growth builds a screen ahead of the view
+      // now (card a-live-dock-frame-costs-a-whole-draw-Q4), so the built end
+      // is no longer where the view stands.
       Future<void> materializeBy(double overshoot) async {
-        framePosition().jumpTo(framePosition().maxScrollExtent + overshoot);
+        framePosition().jumpTo(framePosition().pixels + overshoot);
         await tester.pumpAndSettle();
       }
 
+      framePosition().jumpTo(framePosition().maxScrollExtent);
+      await tester.pumpAndSettle();
       await materializeBy(200);
 
       expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);

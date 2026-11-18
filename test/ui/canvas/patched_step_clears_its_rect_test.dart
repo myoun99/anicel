@@ -45,7 +45,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -54,8 +54,13 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
-  const viewSize = Size(8, 8);
+  opensTheEnginesScreens();
+  // One tile, at the engine's side — the stroke laid out in its eighths,
+  // as it was on the tile of 8 this was first drawn on.
+  const tileSide = defaultCelTileSize;
+  const eighth = tileSide ~/ 8;
+  const canvasSize = CanvasSize(width: tileSide, height: tileSide);
+  const viewSize = Size(tileSide * 1.0, tileSide * 1.0);
   final screen = GlobalKey();
 
   const key = BrushFrameKey(
@@ -87,19 +92,22 @@ void main() {
   /// not reach — a cel with nothing on it is no part of its frame's
   /// picture, and there would be no picture to patch.
   BitmapSurface theCel() {
-    final pixels = Uint8List(8 * 8 * 4);
-    pixels.setRange((7 * 8 + 7) * 4, (7 * 8 + 7) * 4 + 4, [0, 0, 255, 255]);
+    const corner = (tileSide * tileSide - 1) * 4;
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    pixels.setRange(corner, corner + 4, [0, 0, 255, 255]);
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: tileSide,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+      },
     );
   }
 
   BrushDab dabAt(double x, {int sequence = 0}) => BrushDab(
-    center: CanvasPoint(x: x, y: 4),
+    center: CanvasPoint(x: x, y: 4.0 * eighth),
     color: 0xFF000000,
-    size: 3,
+    size: 3.0 * eighth,
     opacity: 1,
     flow: 1,
     hardness: 1,
@@ -116,7 +124,7 @@ void main() {
     keepInAFile(cels, {key: theCel()});
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: 8);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSide);
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
@@ -129,7 +137,7 @@ void main() {
 
     /// A canvas standing on the frame, its pictures kept by [store].
     Future<void> standOn(
-      FramePictureStore<FramePictureKey> store, {
+      EngineFramePictureStore<FramePictureKey> store, {
       required Key view,
     }) async {
       final run = runOver(
@@ -166,9 +174,7 @@ void main() {
       await lendBothClocks(tester, rounds: 2);
     }
 
-    final gpu = WritesLand();
-    addTearDown(gpu.letAllThrough);
-    final patched = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final patched = StoreTellingItsWrites();
     addTearDown(patched.dispose);
     await standOn(patched, view: const ValueKey(0));
     final shown = runOver(
@@ -181,37 +187,42 @@ void main() {
     /// [dabs] stroked so far, the newest over [region]: the step lands in
     /// the picture before the next, held on its way until it is seen there.
     Future<void> step(List<BrushDab> dabs, DirtyRegion region) async {
-      gpu.holdsRenders = true;
       await tester.runAsync(() async {
         rasterizer.blendFrom(dabs, from: dabs.length - 1);
         overlay.updateRegion(source: rasterizer, region: region);
       });
       await tester.pump();
-      final landing = patched.landingOf(keptByTheCanvas(tester, shown));
       expect(
-        landing,
-        isNotNull,
+        patched.landedAt(keptByTheCanvas(tester, shown)),
+        isTrue,
         reason: 'LIVENESS: the step is patched into the picture — not the '
             'frame drawn as it stands',
       );
-      gpu.letAllThrough();
-      await inThePicture(tester, landing);
+      await inThePicture(tester);
     }
 
     await step(
-      [dabAt(2)],
-      DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
+      [dabAt(2.0 * eighth)],
+      DirtyRegion.fromXYWH(
+        x: 0,
+        y: 2 * eighth,
+        width: 5 * eighth,
+        height: 5 * eighth,
+      ),
     );
     await step(
-      [dabAt(2), dabAt(5, sequence: 1)],
-      DirtyRegion.fromXYWH(x: 3, y: 2, width: 5, height: 5),
+      [dabAt(2.0 * eighth), dabAt(5.0 * eighth, sequence: 1)],
+      DirtyRegion.fromXYWH(
+        x: 3 * eighth,
+        y: 2 * eighth,
+        width: 5 * eighth,
+        height: 5 * eighth,
+      ),
     );
     final afterPatch = await shotOf(tester, screen);
 
     // A view of its own, the stroke in hand: the frame drawn as it stands.
-    final standing = FramePictureStore<FramePictureKey>(
-      gpu: WritesNeverLand(),
-    );
+    final standing = aStoreOfPictures();
     addTearDown(standing.dispose);
     await standOn(standing, view: const ValueKey(1));
     final fresh = await shotOf(tester, screen);
@@ -222,5 +233,5 @@ void main() {
           'the dirty rect is cleared before its repaint — the first dab, '
           'drawn again over its own previous frame, would read darker',
     );
-  }, skip: noFlutterGpu != null);
+  });
 }

@@ -84,8 +84,8 @@ void main() {
     find.byKey(const ValueKey<String>('cut-settings-cancel-button')),
   );
 
-  testWidgets('컷 설정 folds every stage but the conte\'s, 美術\'s and '
-      '用紙\'s, and a name typed there is the cut\'s own — one undo takes it '
+  testWidgets('컷 설정 folds every stage but the conte\'s and 用紙\'s, and '
+      'a name typed there is the cut\'s own — one undo takes it '
       'back', (tester) async {
     final session = await pumpCutButton(tester);
     expect(
@@ -96,12 +96,11 @@ void main() {
       expect(
         foldOf(process),
         switch (process) {
-          LayerProcess.conte || LayerProcess.art || LayerProcess.paper =>
-            findsNothing,
+          LayerProcess.conte || LayerProcess.paper => findsNothing,
           _ => findsOneWidget,
         },
         reason:
-            '${process.jsonValue}: the conte is the work\'s, 美術 and 用紙 '
+            '${process.jsonValue}: the conte is the work\'s, 用紙 '
             'nobody\'s',
       );
     }

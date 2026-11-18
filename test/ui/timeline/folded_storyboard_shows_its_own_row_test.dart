@@ -12,8 +12,13 @@ import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 
 /// D15 (유저 2026-08-21): 「①트랙이 보여야 하는데 프레임이 보임 ②심지어
 /// 수정 전 구버전 간편오버레이가 보임 — 설마 사본 멋대로 만든 건가?」
@@ -69,6 +74,8 @@ Future<void> _pumpFolded(
     find.byKey(const ValueKey<String>('floating-bottom-collapse')),
   );
   await tester.pumpAndSettle();
+  // The rows the fold laid out anew stand at a new extent on the engine.
+  await tester.pump(TimelineGridTileStore.zoomSettles);
 }
 
 Finder _cutBlocks() => find.descendant(
@@ -79,6 +86,7 @@ Finder _cutBlocks() => find.descendant(
 );
 
 void main() {
+  opensTheEnginesScreens();
   testWidgets('a folded STORYBOARD shows the track row — its cuts, not the '
       'timeline\'s frames', (tester) async {
     await _pumpFolded(tester, storyboard: true);
@@ -222,7 +230,22 @@ void main() {
     // pictures showed whenever something else happened to repaint it.
     final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
     expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
-    (painter.thumbnails!.landed as ChangeNotifier).notifyListeners();
+    // A picture of the row's cut at a height no block asks for, rendered
+    // and landed on the real clock, with no frame drawn after it.
+    final thumbnails = painter.thumbnails!;
+    final cut = painter.entries.first.cut;
+    thumbnails.resolve(cut, 0, shownHeight: 1000);
+    expect(thumbnails.pending(), isTrue, reason: 'the premise: it renders');
+    expect(
+      await tester.runAsync(
+        () => pollUntil(() {
+          turnThePumpedClock(tester);
+          return !thumbnails.pending();
+        }),
+      ),
+      isTrue,
+      reason: 'the premise: it landed',
+    );
     expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');
   });
 

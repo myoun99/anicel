@@ -78,6 +78,40 @@ void main() {
     expect(bytes.premultipliedReads, 0);
   });
 
+  test('premultiplied rows handed over draw the picture rows held do, '
+      'straightened where they lie', () async {
+    const width = 48;
+    const height = 48;
+    final premultiplied = premultipliedRgbaCopy(straightSweep(width, height));
+    final held = pictureOf(
+      PremultipliedRows(Uint8List.fromList(premultiplied), width, height),
+    );
+    final handed = Uint8List.fromList(premultiplied);
+    final given = pictureOf(PremultipliedRows.given(handed, width, height));
+    addTearDown(held.dispose);
+    addTearDown(given.dispose);
+    expect(await readBack(held), premultiplied);
+    expect(await readBack(given), premultiplied);
+    expect(
+      handed,
+      straightRgbaFor(premultiplied),
+      reason: 'rows handed over are straightened where they lie, no copy',
+    );
+  });
+
+  test('rows that lie off a word\'s bound draw as rows on one do', () async {
+    const width = 16;
+    const height = 16;
+    final straight = straightSweep(width, height);
+    final shifted = Uint8List(straight.length + 1)
+      ..setRange(1, straight.length + 1, straight);
+    final image = pictureOf(
+      _Bytes(Uint8List.sublistView(shifted, 1), width, height),
+    );
+    addTearDown(image.dispose);
+    expect(await readBack(image), premultipliedRgbaCopy(straight));
+  });
+
   test('a picture is made per call — two calls, two images', () {
     final straight = straightSweep(8, 8);
     final first = pictureOf(_Bytes(straight, 8, 8));

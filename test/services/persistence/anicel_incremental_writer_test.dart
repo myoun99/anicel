@@ -39,18 +39,19 @@ void main() {
   );
 
   AnicelCelBlob blob(String frame, int seed) {
-    final pixels = Uint8List(4 * 4 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed + 3) & 0xFF;
     }
     return AnicelCelBlob.ofSurface(
       key(frame),
       BitmapSurface(
-        canvasSize: const CanvasSize(width: 4, height: 4),
-        tileSize: 4,
+        canvasSize: const CanvasSize(width: side, height: side),
+        tileSize: side,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            size: 4,
+            size: side,
             pixels: pixels,
           ),
         },

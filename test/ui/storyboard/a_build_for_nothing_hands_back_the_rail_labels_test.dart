@@ -28,13 +28,14 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show FxToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
+import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
+    show PointerInRow, PointerPastTheRows, RowPointer;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowDragTarget, TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
-import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
@@ -508,22 +509,6 @@ void main() {
     ], unorderedEquals(['S1', 'Rain']));
   });
 
-  testWidgets('🚨a solo the session answers is what the S row\'s speaker '
-      'shows — no part of its layer', (tester) async {
-    final session = await pumpPanel(tester, film());
-    final speaker = find.named('storyboard-layer-mute-t1-s1');
-    bool soloed() =>
-        (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
-            .color ==
-        Theme.of(tester.element(speaker)).colorScheme.primary;
-    expect(soloed(), isFalse, reason: 'premise');
-
-    session.visibilitySolo.toggleLayerSolo(const LayerId('t1-s1'));
-    await tester.pump();
-
-    expect(soloed(), isTrue);
-  });
-
   testWidgets('the V row\'s fx switch shows the track\'s fx as the session '
       'answers it', (tester) async {
     final session = await pumpPanel(tester, film());
@@ -783,11 +768,12 @@ void main() {
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });
 
-  /// The twirl that opens the Transform group of the lanes now open.
-  final transformGroupTwirl = find.byWidgetPredicate(
+  /// The twirl that opens the S row's name tag of the lanes now open — the
+  /// group its transform's lanes are members of
+  /// (audio-fx-grows-like-the-pros-Q3 · Q4).
+  final nameTagTwirl = find.byWidgetPredicate(
     (widget) =>
-        widget is LayerFoldTwirl &&
-        widget.name.endsWith('-transform-group'),
+        widget is LayerFoldTwirl && widget.name.endsWith('-name-tag-group'),
   );
 
   /// ↩️It read the S row's label itself, kept whole while its wrapper was
@@ -804,7 +790,7 @@ void main() {
     final head = tester.widget(headIn(seLabel));
     final open = wrapper(tester, seLabel).rowExtent;
 
-    await tester.tap(transformGroupTwirl.first);
+    await tester.tap(nameTagTwirl.first);
     await tester.pump();
 
     expect(tester.widget(headIn(seLabel)), same(head), reason: 'kept');
@@ -907,7 +893,7 @@ void main() {
         drag: ValueNotifier<LayerRowDragState?>(null),
         onBegin: (_) {},
         onRowTarget: (_, _, _) {},
-        onUpdate: (rows, slot, {pointerInRow}) =>
+        onUpdate: (rows, slot, {pointer}) =>
             moves.add([for (final row in rows) row.name]),
         onTrackUpdate: (_) {},
         onEffectUpdate: (_, _, _) {},
@@ -945,6 +931,48 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('🚨F-393: a conte row hands the hooks the row the pointer is '
+      'in, and past the rail\'s rows says so', (tester) async {
+    // The timeline's rail answers the same three ways
+    // (`drag_counts_only_visible_rows_test.dart`). ↩️Past the conte rail's
+    // rows it handed no pointer — a menu move's answer, which keeps a row
+    // in the group it was carried out of.
+    final heard = <RowPointer?>[];
+    final drag = ValueNotifier<LayerRowDragState?>(null);
+    addTearDown(drag.dispose);
+    final hooks = TimelineRowDragHooks(
+      drag: drag,
+      onBegin: (_) {},
+      onRowTarget: (_, _, _) {},
+      onUpdate: (_, _, {pointer}) => heard.add(pointer),
+      onTrackUpdate: (_) {},
+      onEffectUpdate: (_, _, _) {},
+      onEnd: () {},
+      onCancel: () {},
+    );
+    final host = ValueNotifier<_BareHost>(
+      (film: film(attachRows: 1), hooks: hooks, span: false, resize: false),
+    );
+    addTearDown(host.dispose);
+    await pumpBare(tester, host);
+
+    final onCrossed = wrapper(tester, conteLabel).onCrossed;
+    for (final inRow in [0, -40, 40]) {
+      onCrossed(0, null, inRow);
+    }
+    expect(
+      [
+        for (final pointer in heard)
+          switch (pointer) {
+            PointerInRow() => 'in a row',
+            PointerPastTheRows() => 'past the rows',
+            null => 'no pointer',
+          },
+      ],
+      ['in a row', 'past the rows', 'past the rows'],
+    );
+  });
 
   testWidgets('🚨a row\'s wrapper is built again for the hooks its host hands '
       'it now, and for a span it no longer wires', (tester) async {

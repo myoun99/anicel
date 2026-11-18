@@ -15,7 +15,6 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show SelectionMaskOptions;
@@ -39,6 +38,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// The cut tool driven through real pointer input.
 ///
@@ -335,7 +335,7 @@ void main() {
   ) async {
     final env = await pumpPanel(tester, tool: CanvasTool.cut);
     int inkAt(int x) =>
-        surfacePixelRgba(
+        surfaceRgbaInPlace(
           env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
           x,
           40,
@@ -396,7 +396,7 @@ void main() {
     );
     expect(env.slot.isEmpty, isTrue, reason: 'the host fills the hand');
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             20,
             40,
@@ -436,7 +436,7 @@ void main() {
 
     expect(env.slot.isNotEmpty, isTrue, reason: 'the cut reads the cel');
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             20,
             40,
@@ -457,7 +457,7 @@ void main() {
     expect(env.slot.isNotEmpty, isTrue);
 
     await env.setTool(CanvasTool.cutStamp);
-    final before = surfacePixelRgba(
+    final before = surfaceRgbaInPlace(
       env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
       30,
       140,
@@ -469,7 +469,7 @@ void main() {
     await tester.tapAt(tester.getTopLeft(canvas) + const Offset(30, 140));
     await tester.pump();
 
-    final after = surfacePixelRgba(
+    final after = surfaceRgbaInPlace(
       env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
       30,
       140,
@@ -498,7 +498,7 @@ void main() {
     // On the bar, so there is something to remove.
     final canvas = find.byType(BrushCanvasPanel);
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             50,
             40,
@@ -512,7 +512,7 @@ void main() {
     await tester.pump();
 
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             50,
             40,
@@ -553,7 +553,7 @@ void main() {
     await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.behind);
     await windowBehind(tester, () async => env.slot.pasteAtOrigin());
 
-    final landed = surfacePixelRgba(
+    final landed = surfaceRgbaInPlace(
       env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
       50,
       40,
@@ -573,7 +573,7 @@ void main() {
     await tester.tapAt(tester.getTopLeft(canvas) + const Offset(30, 140));
     await tester.pump();
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             30,
             140,
@@ -611,7 +611,7 @@ void main() {
     );
     // The far end of the drag is painted, which the press alone could not
     // have done.
-    expect(surfacePixelRgba(surface, 190, 150) ?? 0, isNot(0));
+    expect(surfaceRgbaInPlace(surface, 190, 150) ?? 0, isNot(0));
   });
 
   testWidgets('a stamp drag stops when the pointer lifts', (tester) async {
@@ -636,7 +636,7 @@ void main() {
     final surface = env.coordinator.currentSurfaceOf(
       env.coordinator.activeFrameKey,
     );
-    expect(surfacePixelRgba(surface, 195, 150) ?? 0, 0);
+    expect(surfaceRgbaInPlace(surface, 195, 150) ?? 0, 0);
   });
 
   testWidgets('paste at origin puts the piece back where it was cut', (
@@ -661,7 +661,7 @@ void main() {
     );
     // Somewhere inside the piece's own footprint is painted again.
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             surface,
             origin.originLeft + origin.image.width ~/ 2,
             origin.originTop + origin.image.height ~/ 2,
@@ -678,7 +678,7 @@ void main() {
     expect(env.slot.isNotEmpty, isTrue);
     final canvas = find.byType(BrushCanvasPanel);
     int alphaAt(int x, int y) =>
-        (surfacePixelRgba(
+        (surfaceRgbaInPlace(
               env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
               x,
               y,
@@ -721,7 +721,7 @@ void main() {
     await tester.pump();
 
     int alphaAt(int x) =>
-        (surfacePixelRgba(
+        (surfaceRgbaInPlace(
               env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
               x,
               140,
@@ -780,7 +780,7 @@ void main() {
     }
 
     int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-        (surfacePixelRgba(
+        (surfaceRgbaInPlace(
               coordinator.currentSurfaceOf(coordinator.activeFrameKey),
               x,
               y,
@@ -849,7 +849,7 @@ void main() {
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
     int inkOnTheBar() =>
-        surfacePixelRgba(
+        surfaceRgbaInPlace(
           env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
           50,
           40,
@@ -891,7 +891,7 @@ void main() {
     final y = piece.originTop + piece.image.height ~/ 2;
 
     int alphaAt() =>
-        (surfacePixelRgba(
+        (surfaceRgbaInPlace(
               env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
               x,
               y,
@@ -1042,7 +1042,7 @@ void main() {
       return [
         for (var y = top; y < top + height; y += 1)
           for (var x = left; x < left + width; x += 1)
-            surfacePixelRgba(surface, x, y) ?? 0,
+            surfaceRgbaInPlace(surface, x, y) ?? 0,
       ];
     }
 
@@ -1263,7 +1263,7 @@ void main() {
       await tester.pump();
 
       int inkAt(int x, int y) =>
-          surfacePixelRgba(
+          surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             x,
             y,
@@ -1307,7 +1307,7 @@ void main() {
       await tester.pump();
 
       int inkAt(int x, int y) =>
-          surfacePixelRgba(
+          surfaceRgbaInPlace(
             env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
             x,
             y,

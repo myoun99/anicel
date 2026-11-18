@@ -26,7 +26,7 @@ import '../../helpers/word_bakes.dart';
 /// tiles' bake — rasterised big, averaged down on the CPU — came out smooth,
 /// so a screen's narrowed word is drawn from that bake too.
 ///
-/// The bake reads its pixels back off the engine, which answers in real
+/// The bake is uploaded to the engine as an image, which answers in real
 /// time ([pumpUntilAWordBakeLands]).
 
 /// A word in a red ink, laid out.
@@ -475,8 +475,92 @@ void main() {
     );
   });
 
+  testWidgets('a word painted in another ink is drawn from the bake it has '
+      '— the bake is its letters\' ink alone, tinted where it is drawn', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const fit = (x: 0.5, y: 1.0);
+    TextPainter inked(Color ink) => TextPainter(
+      text: TextSpan(
+        text: 'インク',
+        style: TextStyle(fontSize: 12, color: ink),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final red = inked(const Color(0xFFD00000));
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, red, Offset.zero, fit),
+      paints..paragraph(),
+    );
+    await pumpUntilAWordBakeLands(tester);
+    const blue = Color(0xFF0000D0);
+    final again = inked(blue);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(
+        source: Rect.fromLTWH(
+          0,
+          0,
+          (red.width * fit.x).ceil() + 2.0,
+          red.height.ceil() + 2.0,
+        ),
+      ),
+      reason: 'the same letters, baked once',
+    );
+    await tester.runAsync(() async {
+      final ink = await _inkOf(
+        (canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+        Size(again.width, again.height),
+      );
+      expect(ink.a, greaterThan(0.5), reason: 'fixture: the word is inked');
+      expect(ink.b, moreOrLessEquals(0xD0 / 255, epsilon: 0.05));
+      expect(ink.r, lessThan(0.05), reason: 'in its own ink, not the first');
+    });
+  });
+
+  testWidgets('a translucent word keeps a bake of its own — its alpha is in '
+      'the raster, so the word is tinted with its colour made opaque', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const fit = (x: 0.5, y: 1.0);
+    TextPainter inked(Color ink) => TextPainter(
+      text: TextSpan(
+        text: 'うすい',
+        style: TextStyle(fontSize: 12, color: ink),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final solid = inked(const Color(0xFF0000D0));
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, solid, Offset.zero, fit),
+      paints..paragraph(),
+    );
+    await pumpUntilAWordBakeLands(tester);
+    final thin = inked(const Color(0x800000D0));
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, thin, Offset.zero, fit),
+      paints..paragraph(),
+      reason: 'not drawn from the solid word\'s bake',
+    );
+    await pumpUntilAWordBakeLands(tester);
+    await tester.runAsync(() async {
+      Future<Color> ink(TextPainter word) => _inkOf(
+        (canvas) => paintFittedText(canvas, word, Offset.zero, fit),
+        Size(word.width, word.height),
+      );
+      final full = await ink(solid);
+      final half = await ink(thin);
+      expect(full.a, greaterThan(0.5), reason: 'fixture: the word is inked');
+      expect(half.a / full.a, moreOrLessEquals(0x80 / 255, epsilon: 0.05));
+    });
+  });
+
   testWidgets('🚨a word is recorded in the paint that asks for its bake, and '
-      'rastered, read back and uploaded in its turn in the quiet between a '
+      'rastered and uploaded in its turn in the quiet between a '
       'run\'s held frames — the painter may be gone by then', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);

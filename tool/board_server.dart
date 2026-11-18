@@ -38,7 +38,7 @@
 //   - the records file missing -> refuses to start rather than serving an
 //     empty board that looks like "nothing to do".
 //
-//   dart run tool/board_server.dart --records <file.jsonl> [--port 4321]
+//   dart tool/board_server.dart --records <file.jsonl> [--port 4321]
 //       [--open-to lan --token-file <file>]
 //
 // ↩️Until 2026-10-07 this said: 「Localhost only, on purpose: the board is
@@ -276,7 +276,7 @@ Future<void> main(List<String> args) async {
 
   if (records.isEmpty || !File(records).existsSync()) {
     stderr.writeln('records file not found. '
-        'usage: dart run tool/board_server.dart --records <file.jsonl>');
+        'usage: dart tool/board_server.dart --records <file.jsonl>');
     exit(2);
   }
   final asked = doorAsked(
@@ -1817,6 +1817,8 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
     'workLeft': waiting.isNotEmpty && status != BoardStatus.verify,
     'user': turn.user,
     'me': turn.me,
+    'aiCheck': turn.aiCheck,
+    'shelf': onTheShelf(e),
     'arrival': _arrivalOf(e),
     'prio': e.priority,
     'owner': ownerOf(e),
@@ -2740,7 +2742,7 @@ var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 �
   todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', records:'기록',
   done:'완료', canceled:'취소'};
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
-var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
+var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['verify','검증'], ['todo','할 일'],
   ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
   ['known','알려진 문제'], ['records','기록'], ['done','완료'], ['letters','전달'],
   ['system','시스템']];
@@ -2819,15 +2821,23 @@ function groupsFor(view){
     if (S.old && S.old.length) g.push({t: '지난 카드', rows: S.old});
     return g;
   }
-  // What the user can press: a question to answer, a check to tick. ↩️A 답
-  // 기다림 group stood here and listed 대화 중 cards — see `BoardStatus`.
+  // The user's turn, as the head says it (`turnOf`): a question to answer.
+  // ↩️The checks waiting stood here too till 2026-11-16 — they are the AI's
+  // (verification-is-ai-by-default), in 검증. ↩️A 답 기다림 group stood here
+  // and listed 대화 중 cards — see `BoardStatus`.
   if (view === 'me') {
-    var decide = pool.filter(function(c){ return live(c) && c.q.length; }).sort(oldest('updated'));
-    var checks = pool.filter(function(c){ return live(c) && !c.q.length && c.checks > 0; }).sort(oldest('since'));
-    var out = [{t:'결정 필요', rows: decide, skip: ['decide']}];
-    verifyGroups(checks).forEach(function(x){
-      x.t = '검증 · ' + x.t; x.pick = true; out.push(x);
-    });
+    return [{t:'결정 필요', skip: ['decide'], rows: pool.filter(function(c){
+      return live(c) && c.user; }).sort(oldest('updated'))}];
+  }
+  // 🆕Verification is the AI's by default; the user ticks a check only when
+  // they like (유저 2026-11-16, verification-is-ai-by-default) — so every
+  // group keeps its boxes. What the AI has still to look at, by build; then
+  // what it handed to a person, on a shelf that waits on nobody.
+  if (view === 'verify') {
+    var ai = pool.filter(function(c){ return live(c) && c.aiCheck; }).sort(oldest('since'));
+    var shelf = pool.filter(function(c){ return live(c) && c.shelf; }).sort(oldest('since'));
+    var out = verifyGroups(ai).map(function(x){ x.pick = true; return x; });
+    out.push({t:'원하면 확인', rows: shelf, pick: true, fold: true, skip: ['ai']});
     return out;
   }
   if (view === 'doing') {
@@ -2889,7 +2899,10 @@ function countFor(view){
 // a card with one part landed and another still to do read there exactly
 // like a finished one. The fact is the head's (`workLeft`): in the card's
 // own list the news is the check, in the 검증 list it is the work.
-var AI_WORD = {evidence: '🤖검증완료 · 증거', done: '🤖검증완료', failed: '🤖검증 실패', user: '👤유저 확인 필요'};
+// ↩️The verdict a person is handed read 「👤유저 확인 필요」 till 2026-11-16 —
+// the line's own words. It waits on nobody now (`onTheShelf`), so the chip
+// says the shelf's name; the lines keep theirs.
+var AI_WORD = {evidence: '🤖검증완료 · 증거', done: '🤖검증완료', failed: '🤖검증 실패', user: '👤원하면 확인'};
 var AI_TONE = {evidence: 'ok', done: 'ok', failed: 'bad', user: 'run'};
 function flagsOf(c, g){
   var f = [];
@@ -2969,7 +2982,7 @@ function renderList(){
   var groups = groupsFor(S.view);
   var title = S.q ? '찾기 — 「' + esc(S.q) + '」' : VIEWS.filter(function(v){ return v[0] === S.view; })[0][1];
   var html = '<div class="vhead"><h2>' + title + '</h2>';
-  if (S.view === 'me' && !S.q) {
+  if (S.view === 'verify' && !S.q) {
     html += '<button class="ghost sm" onclick="markBuild(event)" title="지금 master 를 빌드했다고 적습니다 — 검증이 이 빌드 기준으로 묶입니다">이 빌드로 시험 중</button>';
   }
   if (S.view === 'doing' && !S.q) html += '<button class="ghost sm" onclick="refreshPrs(event)">PR 다시 읽기</button>';

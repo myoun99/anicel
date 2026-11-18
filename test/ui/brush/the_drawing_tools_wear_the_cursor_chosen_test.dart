@@ -648,7 +648,17 @@ void main() {
       tester,
       () => calls.any((call) => call.method == runnerWearCursor),
     );
-    final made = calls.singleWhere((call) => call.method == runnerMakeCursor);
+    // The pen's picture, by its name: what this pins is the pen's, and a
+    // picture an earlier test of this file asked for can reach the runner
+    // after that test ended — a session let go stops its wearing, not its
+    // making. CI's Linux shard counted two here (run 43891668921) where
+    // Windows counts one.
+    final made = calls.singleWhere(
+      (call) =>
+          call.method == runnerMakeCursor &&
+          (call.arguments as Map<Object?, Object?>)['name'] ==
+              'anicel-${penCursorLook().key}-44',
+    );
     final arguments = made.arguments as Map<Object?, Object?>;
     expect(arguments['width'], 44);
     expect(arguments['height'], 44);

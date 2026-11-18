@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
 
+import '../canvas/canvas_drag_in_flight.dart';
 import '../canvas/shown_cels.dart';
 import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
@@ -20,6 +20,7 @@ import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds, celTextPlateSurface;
 import '../../services/bitmap_surface_brush_commit.dart'
@@ -32,6 +33,7 @@ import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/cel_text.dart';
+import '../../models/tiles_covering.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
@@ -44,6 +46,7 @@ import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/selection_clip.dart';
+import '../../services/selection_lift.dart';
 import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
 import '../../services/selection_placement.dart';
 import '../../services/stamp_carry.dart';
@@ -82,6 +85,7 @@ import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../canvas/picture_up_view.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
@@ -99,6 +103,7 @@ import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/stage_planes_painter.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../playback/frame_wait_mark.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -143,6 +148,7 @@ import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../widgets/panel_flyout.dart';
 import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
+import '../engine_screen_texture.dart' show PicturesLeftUp;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -167,10 +173,11 @@ part 'canvas_panel/canvas_panel_build.dart';
 part 'canvas_panel/canvas_panel_control_holds.dart';
 
 /// What the row being drawn on shows its cel through, as a painter made
-/// for the cel holds it: its colour keys' values, and the plugin its chain
-/// runs ([celSourcePlugin]) — a plugin's picture moves with its frame and
-/// the rows it reads, none of which changes the cel.
-typedef _ShownThrough = ({String keys, ResolvedLayerEffect? plugin});
+/// for the cel holds it: its leading colour keys' values — whether a text
+/// in hand floats as itself or as its landing turns on them. ↩️And the
+/// plugin at its chain's head, while that ran on the cel here
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+typedef _ShownThrough = String;
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -715,13 +722,9 @@ class BrushCanvasPanel extends StatefulWidget {
     return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
       key: coordinator.activeFrameKey,
-      // The colour keys' VALUES join the token: they change no surface and
-      // no cel, so without them dragging Tolerance would keep serving the
-      // painter built at the old value.
-      fx: (
-        keys: celSourceEffectSignature(activeSourceEffects).join(','),
-        plugin: celSourcePlugin(activeSourceEffects),
-      ),
+      // The leading keys join the token: a text in hand floats as its
+      // landing on a keyed row (`_CanvasPanelText._floatsTheLanding`).
+      fx: celSourceEffectSignature(activeSourceEffects).join(','),
     );
   }
 
@@ -1156,6 +1159,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The viewport (Round 6): own, owner's, published, and the editor size.
   late final _CanvasPanelViewport _viewportState = _CanvasPanelViewport(this);
 
+  /// The view the canvas's picture stands at — what is drawn over it is
+  /// drawn through it ([PictureUpView]).
+  final PictureUpView _pictureUp = PictureUpView();
+
+  /// What the canvas's pictures go up together by ([PicturesUpTogether]).
+  final PicturesUpTogether _picturesUp = PicturesUpTogether();
+
+  /// Where the canvas's picture is left up for the screen that takes its
+  /// place — at a cut a run crosses, at Play and at Stop ([PicturesLeftUp]).
+  final PicturesLeftUp _picturesLeftUp = PicturesLeftUp();
+
+  /// The view what stands on the canvas's coordinates is drawn through:
+  /// the view its picture stands at, the view being as it is
+  /// ([PictureUpView.standing]).
+  CanvasViewport get _viewShown =>
+      _pictureUp.standing(_viewportState._viewport);
+
   // The book (F-201): the page its reader is on, kept true to the view.
   late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
@@ -1211,7 +1231,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// hover repainted the painter instead of making a new one per position
   /// ([_activeSurfacePainter]'s token) — holding an image borrowed from the
   /// piece, until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved
-  /// the stamp ghost to the overlay's CPU pre-blended tiles.
+  /// the stamp ghost to the overlay's pre-blended tiles.
   final ValueNotifier<CutStampPreview?> _stampPreview =
       ValueNotifier<CutStampPreview?>(null);
 
@@ -1363,9 +1383,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShownCels.instance.hide(this);
       return null;
     }
-    // The overlay shows its pictures in place of this painter's tiles, so
-    // through the chain they are shown through below.
-    overlay.sourceEffects = widget.activeSourceEffects;
     final identity = widget._activeSurfaceIdentityFor(coordinator);
     // 🚨★★★**AN OPEN MOVE SESSION IS PART OF WHAT THIS PAINTER DRAWS**, so
     // it is part of the token: the hole is a derived surface the session
@@ -1410,26 +1427,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
-    // The canvas says which cel it is drawing, and THROUGH what: the texts
-    // laid over it and the colour keys make the tiles it paints other
-    // objects than the cel's own, so a picture made ahead for the cel's own
-    // would go unused.
-    ShownCels.instance.show(
-      this,
-      (token.key.layerId, token.key.frameId),
-      painted: (surface) =>
-          celSurfaceAsShown(surface, widget.activeSourceEffects),
-    );
+    // The canvas says which cel it shows — the one the steps of an undo
+    // are read ahead for — and that it draws no picture of a tile: the
+    // engine lays the row from its tiles, so none is made ahead. ↩️It said
+    // through what it painted them, its texts laid, while its stack drew
+    // pictures (till 2026-11-12).
+    ShownCels.instance.show(this, token.key.cel, pictured: null);
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      // ★DRAWN THROUGH THE SEAM — the texts laid, then the keys. Both are
-      // cached per TILE, so a dab re-lays and re-keys the one tile it
-      // changed and the rest of the cel answers from memory.
-      surface: celSurfaceAsShown(token.surface, widget.activeSourceEffects),
+      // ★DRAWN WITH ITS TEXTS LAID. They are laid per TILE, so a dab
+      // re-lays the one tile it changed and the rest of the cel answers
+      // from memory.
+      surface: token.surface,
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.
       showTransparentBackground: false,
-      lineage: (token.key.layerId, token.key.frameId),
+      lineage: token.key.cel,
       landingPreview: _text.float,
     );
   }
@@ -1699,6 +1712,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport?.removeListener(_viewportState.handleViewportMovedByOwner);
     _viewportState._listenedViewport = null;
     _viewportState._ownViewport.dispose();
+    _ownPillBeside.dispose();
     // The reader's page is the owner's too, for the same reason.
     _bookState.unbind();
     // A mid-stroke teardown must release the session's warm hold — a
@@ -1710,6 +1724,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
     }
+    // A stamp's drag in flight as the canvas goes ends with it: nothing
+    // waits for it any more ([_StampTrail]).
+    _tap._trail.drop();
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     _stopAskingTheGhost();
@@ -1733,6 +1750,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.lastStroke?.reinputHandler = null;
     }
     _line.unbind();
+    _pictureUp.dispose();
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
@@ -2088,13 +2106,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // on anyone who has selected
         // something and walked away.
         child: RepaintBoundary(
-          child: CustomPaint(
+          child: ListenableBuilder(
+          listenable: _pictureUp,
+          builder: (context, _) => CustomPaint(
             painter:
                 SelectionAntsPainter(
                   repaint:
                       _idleAnts,
-                  viewport:
-                      _viewportState._viewport,
+                  viewport: _viewShown,
                   committedRegion:
                       idleSelection,
                   screenOffset:
@@ -2114,6 +2133,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             child:
                 const SizedBox.expand(),
           ),
+          ),
         ),
       ),
     );
@@ -2131,7 +2151,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // What a lift takes up is heard here as well as at the panel's
         // build ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
         child: _asideForTheContent(ListenableBuilder(
-        listenable: Listenable.merge([widget.transformCelsUnderfootChanges]),
+        listenable: Listenable.merge([
+          widget.transformCelsUnderfootChanges,
+          _pictureUp,
+        ]),
         builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
             widget
@@ -2172,11 +2195,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _brush.activeShapeKind ??
                   CanvasShapeKind
                       .rect,
-              // R17-U: Move = 이동+변형 통합 툴
-              // — 핸들 상시.
-              alwaysShowTransformBox:
-                  _brush.tool ==
-                  CanvasTool.move,
               onShapeCommitted:
                   _selectionSeat.recordSelectionChange,
               // I-14: a host whose content is not a cel cuts from what it
@@ -2210,7 +2228,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // coordinates.
               guides: widget.guides,
               shiftLine: _shiftLine,
-              viewport: _viewportState._viewport,
+              viewport: _viewShown,
               pasteboard: _stagePasteboard,
               frameToken: _whatALiftTakesUp,
               selectionCommands:
@@ -2462,13 +2480,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Whether the left pill stood past the left rail when it was last laid
   /// out — what its seat decided ([_LeftEdgeSeat]), kept because framing is
   /// read before the layout that places it.
-  bool _leftPillBesideRail = false;
+  ///
+  /// 🚨THE FLOOR'S TO KEEP ([CanvasFloorInsets.leftPillBeside], F-607 ②): a
+  /// panel laid on the floor frames its first frame with what the panel
+  /// before it learned there, the floor seating every panel's pill in one
+  /// room. ↩️Each panel kept it, and one laid from the top strip framed its
+  /// first frame without it — a frame 32 px to the left of where it stood
+  /// next. A floor built with none: this panel's own, as `viewportNotifier`
+  /// is an owner's or the panel's.
+  ValueNotifier<bool> get _pillBeside =>
+      _floor?.leftPillBeside ?? _ownPillBeside;
+
+  final ValueNotifier<bool> _ownPillBeside = ValueNotifier<bool>(false);
+
+  bool get _leftPillBesideRail => _pillBeside.value;
 
   void _rememberLeftPillBeside(bool beside) {
     if (beside == _leftPillBesideRail) {
       return;
     }
-    _leftPillBesideRail = beside;
+    _pillBeside.value = beside;
     // Learned in a layout, after this frame's build framed the view with
     // the answer before it: the next build frames with this one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2757,33 +2788,25 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The line Shift holds on this canvas (I-121) — ONE for every path the
   /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
-  /// a hold kept goes on whichever of them draws next. The panel hears the
-  /// keyboard for it, for its life ([ShiftLine.heardKey]), and the glass
-  /// ([_heardAFingerLift]).
-  final ShiftLine _shiftLine = ShiftLine();
-
-  /// A finger left the glass: the line goes unless Shift is still held —
-  /// by the key, or by a finger still resting
-  /// ([CanvasTouchContacts.aFingerDownBesides]).
-  void _heardAFingerLift() => _shiftLine.heldNow(
-    ModifierKeys.isShiftPressed || CanvasTouchContacts.aFingerDownBesides(null),
+  /// a hold kept goes on whichever of them draws next. It asks whether
+  /// Shift is still held, by the key or by a finger resting on the glass
+  /// ([CanvasTouchContacts.shiftIsHeld]), for as long as it keeps one
+  /// (F-592), and goes with the panel ([_stopHearingTheHand]).
+  final ShiftLine _shiftLine = ShiftLine(
+    held: CanvasTouchContacts.shiftIsHeld,
   );
 
   /// The hand as the app hears it beyond this canvas, for the panel's life:
-  /// a finger landing anywhere, and the key and the glass that say whether
-  /// Shift still holds [_shiftLine].
+  /// a finger landing anywhere.
   void _hearTheHand() {
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.addHandler(_shiftLine.heardKey);
-    CanvasTouchContacts.addAppWideLiftListener(_heardAFingerLift);
   }
 
   void _stopHearingTheHand() {
     CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.removeHandler(_shiftLine.heardKey);
-    CanvasTouchContacts.removeAppWideLiftListener(_heardAFingerLift);
+    _shiftLine.letGo();
   }
 
   /// What a save lands first (R9-rest): the stroke the view's pen is in
@@ -2848,7 +2871,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// dragged shape is: the last whole ghost stays up until the next is
   /// whole, while the cursor keeps its own pace.
   /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — every mode,
-  /// normal too, pre-blended on the CPU; Q10: the shape tool's law.
+  /// normal too, pre-blended (on the CPU then, by the engine now); Q10: the
+  /// shape tool's law.
   ///
   /// ↩️It was drawn on the GPU, `preBlended: false` on purpose: a hover
   /// ghost has no committed tiles to stand for, so pre-blending (what buys
@@ -2874,7 +2898,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// The ghost of [preview] as the area the view lays ([ShapeArea]): the
-  /// door's own answer for the cel on screen ([pieceDabs]), read and cut
+  /// door's own answer for the cel on screen ([pieceDabs]), read
   /// when the view lays it — inside a frame's share, never in the build or
   /// the hover that asked.
   ShapeArea _stampGhostArea(
@@ -2899,6 +2923,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       description: 'Stamp',
     );
     final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
+    final answer = _ghostAnsweredOnce(coordinator, ground, stamp, standing);
     return (
       // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
       // is now, and every fact of the ground the door reads — so whatever
@@ -2919,19 +2944,38 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ]),
       ),
       pieces: () sync* {
-        final answer = pieceDabs(
+        if (answer() case final answer?) {
+          yield answer.dab;
+        }
+      },
+      blend: blend,
+      selection: () => answer()?.within,
+    );
+  }
+
+  /// The door's answer for [stamp] on [standing] ([pieceDabs]) — asked
+  /// once, when the view lays the ghost: its piece and the selection the
+  /// door lands it through on the cel on screen.
+  PieceDab? Function() _ghostAnsweredOnce(
+    BrushFrameEditingCoordinator coordinator,
+    PieceGround ground,
+    PieceStamp stamp,
+    BrushFrameKey standing,
+  ) {
+    PieceDab? answered;
+    var asked = false;
+    return () {
+      if (!asked) {
+        asked = true;
+        answered = pieceDabs(
           coordinator: coordinator,
           ground: ground,
           stamp: stamp,
           only: standing,
         )[standing];
-        if (answer != null) {
-          yield answer.dab;
-        }
-      },
-      blend: blend,
-      selection: null,
-    );
+      }
+      return answered;
+    };
   }
 
   /// What the stamp's ghost listens to, let go: the aim and the softness
@@ -3109,7 +3153,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
             ),
       blend: blend,
-      selection: _selectionSeat.clipNow(),
+      selection: _selectionSeat.clipNow,
     );
   }
 
@@ -3299,10 +3343,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final standing = coordinator.frameStore.canonicalKeyOf(
       coordinator.activeFrameKey,
     );
+    final record = landed[standing] ?? landed.values.first;
     widget.lastStroke?.hold(
       BrushStrokeCommitData(
-        sourceDabs: [(landed[standing] ?? landed.values.first).dab],
+        sourceDabs: [record.dab],
         blendMode: blend,
+        selection: record.within,
       ),
     );
     setState(() {
@@ -3345,15 +3391,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the same place on the cel you stand on — one step, one undo
   /// (confirm-button, 유저 2026-09-24).
   ///
-  /// ⛔It goes through [_commitSourceStroke] like any stroke, so the live
-  /// selection clips it and the history takes it the way it takes a stroke.
+  /// ⛔What landed, cut by the selection it landed through
+  /// ([BrushStrokeCommitData.selection]) — not by the marquee standing now:
+  /// the screen showed it so, and what 확정 lays must be what was seen
+  /// (관제 2026-11-14 by 유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안
+  /// 되」, then 유저 11-14 Q2 「그릴 때 보이던 모양대로」, board
+  /// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  /// ↩️From 09-24 it went down [_commitSourceStroke] whole, and the live
+  /// selection cut it again — the funnel reused, which nobody had asked
+  /// for. It lands the way a stroke lands all the same ([_landStroke]).
   void _reinputLastStroke() {
     final stroke = widget.lastStroke?.stroke;
     if (stroke == null) {
       return;
     }
     if (widget._editableCoordinator != null) {
-      _commitSourceStroke(stroke);
+      _landStroke(stroke);
       return;
     }
     // No cel to lay it on: the door a stroke on an empty cell takes — the
@@ -3369,7 +3422,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     WidgetsBinding.instance
       ..addPostFrameCallback((_) {
         if (mounted && widget._editableCoordinator != null) {
-          _commitSourceStroke(stroke);
+          _landStroke(stroke);
         }
         widget.onAutoFrameSettled?.call();
       })
@@ -3393,12 +3446,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       setState(() {});
       return;
     }
-    // What landed, clipped as it landed — the pixels 확정 lays down again.
+    // What landed, with the selection it landed through — what 확정 lays
+    // down again.
     // ⛔Here, for every verb that comes down this funnel: each passes this
     // line, so none can be the one that forgets to record itself. The one
     // drawing verb that lands elsewhere — the cut tool's stamp, through the
     // piece door — records at its own ([_landStamp]).
     widget.lastStroke?.hold(strokeData);
+    _landStroke(strokeData);
+  }
+
+  /// [strokeData] onto the cel you stand on, as one step of the history —
+  /// a stroke past the funnel, or the one 확정 lays down again.
+  void _landStroke(BrushStrokeCommitData strokeData) {
+    final coordinator = widget._editableCoordinator!;
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
@@ -3411,6 +3472,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           strokeOpacity: strokeData.strokeOpacity,
           promotedBase: strokeData.promotedBase,
           promotedTiles: strokeData.promotedTiles,
+          selection: strokeData.selection,
         );
         return;
       }
@@ -3650,9 +3712,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         // ([backdropOnScreen], F-114) — but the floor is the one surface
         // with no panel behind it, so it states its own floor colour rather
         // than borrowing whatever the route happens to be sitting on. One
-        // answer for it ([stageGroundOf]): the film and the fade's wash lay
+        // answer for it ([stageGround]): the film and the fade's wash lay
         // the backdrop over the same ground.
-        Positioned.fill(child: ColoredBox(color: stageGroundOf(context))),
+        const Positioned.fill(child: ColoredBox(color: stageGround)),
         // ★THE CANVAS IS ITS OWN LAYER, and the shell's furniture is
         // another. This is where a cursor move's repaint stops.
         //
@@ -3702,6 +3764,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           bottom: cover.bottom + (onFloor ? 0 : lane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
+              // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에
+              // 준비 중 표시를 둔다」 — at the middle of THIS box, what the
+              // docks leave of the panel to be seen: at the panel's own
+              // middle the mark stood half behind the timeline docked under
+              // it (🔬shot, 2026-11-11). Nothing where the panel is no place
+              // that marks its frames' waits ([FrameWaitPlace]).
+              const Positioned.fill(child: FrameWaitMark()),
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
               //
               // ⛔It used to take the top corner away from the tool strip
@@ -3825,10 +3894,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// stands: over what covers that edge, and over the transport when there
   /// is one.
   double get _floorBarBottom =>
-      cover.bottom +
-      bottomOverlaySpan +
-      _capsuleMargin +
+      _floorBarBottomOnTheCanvas +
       (transport == null ? 0 : transport!.height + _capsuleMargin);
+
+  /// [_floorBarBottom] as the canvas has it: no transport, which only a
+  /// panel laid on the floor brings ([_LeftEdgeSeat.centreBottom], F-607).
+  double get _floorBarBottomOnTheCanvas =>
+      cover.bottom + bottomOverlaySpan + _capsuleMargin;
 
   /// The floor's transport, in a capsule under the horizontal bar — as wide
   /// as what the side panels leave.
@@ -3846,6 +3918,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     child: CanvasCapsule(
       keyValue: 'canvas-transport',
       height: transport.height,
+      clipped: true,
       child: transport.child,
     ),
   );
@@ -3861,6 +3934,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         nameBottom: onFloor
             ? _floorBarBottom + lane + _capsuleMargin
             : _transportCover + lane + _capsuleMargin,
+        // Only a floor has a left pill ([CanvasFloorInsets.leftPill]).
+        centreBottom: _floorBarBottomOnTheCanvas + lane + _capsuleMargin,
         nameRight: (onFloor ? cover.right : lane) + _capsuleMargin,
         railBand: leftRailBand,
         onPillLaidOut: onLeftPillLaidOut,
@@ -4022,8 +4097,9 @@ enum _LeftEdgeSlot { name, pill }
 /// Seats what stands on the LEFT edge: the file's name at the artwork's
 /// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
 /// and inside what the side panels leave — and the left pill
-/// ([CanvasFloorInsets.leftPill]) in the middle of the room between the
-/// pill's band and the name.
+/// ([CanvasFloorInsets.leftPill]) in the middle of the canvas's room — from
+/// the pill's band to the bar, as the canvas has it — and never down on the
+/// name or a transport (`centreBottom`, F-607).
 ///
 /// The axis law the two bars follow (유저, R4): ALONG the edge it rides the
 /// left pill holds the room's centre, and ACROSS that edge it sits on the
@@ -4042,6 +4118,7 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
     required this.onFloor,
     required this.top,
     required this.nameBottom,
+    required this.centreBottom,
     required this.nameRight,
     required this.railBand,
     required this.onPillLaidOut,
@@ -4058,6 +4135,18 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
 
   /// How far up the box the name stands.
   final double nameBottom;
+
+  /// How far up the box the room the pill is CENTRED in ends: over the bar
+  /// as the canvas has it, with no file name and no transport under it.
+  ///
+  /// 🗣️F-607 (유저 2026-11-16): 「캔버스랑 타임시트패널이랑 서로 브러시 알약
+  /// 위치가 다름. 타임시트가 좀 더 위쪽인느낌 … 캔버스쪽에 맞춰서 법 통일」 —
+  /// a panel laid on the floor stands the canvas's pill where the canvas
+  /// does, whatever it lays under its bar: a timesheet its page turner, a
+  /// viewer its name. Those only keep the pill from standing on them
+  /// ([nameBottom]). ↩️It was centred over what the panel laid, so a page
+  /// turner stood it higher by half the turner.
+  final double centreBottom;
 
   /// How far in from the right edge the name may run.
   final double nameRight;
@@ -4094,7 +4183,9 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
       _LeftEdgeSlot.pill,
       BoxConstraints(maxHeight: room),
     );
-    final pillTop = top + (room - pill.height) / 2;
+    final centred =
+        top + (size.height - centreBottom - top - pill.height) / 2;
+    final pillTop = math.min(centred, roomBottom - pill.height);
     final beside = canvasFloorBandIntrudes(
       railBand,
       top: pillTop,
@@ -4113,6 +4204,7 @@ class _LeftEdgeSeat extends MultiChildLayoutDelegate {
       oldDelegate.onFloor != onFloor ||
       oldDelegate.top != top ||
       oldDelegate.nameBottom != nameBottom ||
+      oldDelegate.centreBottom != centreBottom ||
       oldDelegate.nameRight != nameRight ||
       oldDelegate.railBand != railBand;
 }
@@ -4563,6 +4655,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required Widget icon,
     required VoidCallback? onPressed,
     bool isSelected = false,
+    bool resets = false,
     List<String> shortcuts = const [],
   }) {
     return AppIconButton(
@@ -4571,6 +4664,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
+      resets: resets,
       shortcuts: _viewKeys(shortcuts),
     );
   }
@@ -4770,7 +4864,7 @@ class _StagePlanes extends StatelessWidget {
         backdrop: backdropOnScreen((
           color: stageColorOnScreen(backdropArgb),
           none: backdropNone,
-        ), stageGroundOf(context)),
+        ), stageGround),
         pasteboard: hasPasteboard
             ? (color: stageColorOnScreen(pasteboardArgb), none: pasteboardNone)
             : null,

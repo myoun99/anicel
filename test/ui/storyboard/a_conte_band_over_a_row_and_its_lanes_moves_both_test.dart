@@ -122,8 +122,12 @@ final _s2Row = find.byKey(const ValueKey<String>('storyboard-se-row-0-2'));
 final _position = find.byKey(
   const ValueKey<String>('storyboard-se-lane-row-0-1-position'),
 );
-final _transformGroup = find.byKey(
-  const ValueKey<String>('storyboard-se-lane-row-0-1-transform-group'),
+// The lane right above Position: the pose's first, under the name tag's
+// own — S1's transform is its name tag's since the fold
+// (audio-fx-grows-like-the-pros-Q3). ↩️It was the Transform group's
+// header till 2026-11-18.
+final _anchorPoint = find.byKey(
+  const ValueKey<String>('storyboard-se-lane-row-0-1-anchor-point'),
 );
 final _vRow = find.byKey(const ValueKey<String>('storyboard-track-row-t'));
 final _vLane = find.byKey(
@@ -136,7 +140,7 @@ final _vLaneRow = LaneRowAddress(
   effectLaneId(_fx, _brightness),
 );
 
-/// The conte with S1's Transform lanes open.
+/// The conte with S1's name tag lanes open — its pose's among them.
 Future<EditorSessionManager> _openS1Lanes(WidgetTester tester) async {
   final session = await pumpStoryboardHost(
     tester,
@@ -147,7 +151,7 @@ Future<EditorSessionManager> _openS1Lanes(WidgetTester tester) async {
   session.layerSwitches.toggleLayerLanes(_s1);
   await tester.pumpAndSettle();
   await tester.tap(
-    find.named('storyboard-lane-group-toggle-S1-transform-group'),
+    find.named('storyboard-lane-group-toggle-S1-name-tag-group'),
   );
   await tester.pumpAndSettle();
   return session;
@@ -229,7 +233,7 @@ void main() {
       band?.spanRows,
       containsAllInOrder(const [
         LayerRowAddress(_s1),
-        LaneRowAddress(_s1, 'transform-group'),
+        LaneRowAddress(_s1, 'name-tag-group'),
         LaneRowAddress(_s1, 'position'),
       ]),
       reason: 'the rows the rail drew between the press and the pointer',
@@ -323,7 +327,7 @@ void main() {
       tester,
       _position,
       across:
-          tester.getCenter(_transformGroup).dy -
+          tester.getCenter(_anchorPoint).dy -
           tester.getCenter(_position).dy,
     );
 

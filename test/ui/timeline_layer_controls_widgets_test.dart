@@ -422,12 +422,18 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+        find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('layer-mark-option-paper-layout'),
+        ),
       );
       await tester.pumpAndSettle();
 
       expect(markedLayerId, layer.id);
-      expect(selectedMark, const LayerMark(process: LayerProcess.paper));
+      expect(selectedMark, const LayerMark.paper(LayerProcess.layout));
     });
 
     testWidgets('the mark picker opens the SHARED flyout — R6 #4, the last '
@@ -456,7 +462,7 @@ void main() {
       expect(
         tester
             .widget<PopupMenuItem<PanelFlyoutItem>>(
-              find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+              find.byKey(const ValueKey<String>('layer-mark-option-none')),
             )
             .height,
         32,

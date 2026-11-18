@@ -14,8 +14,6 @@ import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
     show timelineLanesForLayer;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
     show transformTrackWithRotationDragged;
-import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
 
 /// F-102 (유저 2026-09-12): 「컷1에서 se의 트랜스폼으로 포지션 조정했는데, 그게
 /// 다른 컷2에서 값이 안바뀌어 있고 초기값인 상태로 보임. 아마 se든 아니든
@@ -66,7 +64,7 @@ void main() {
     final lanes = timelineLanesForLayer(
       layer: session.layerById(se.id)!,
       session: session,
-      expandedGroupKeys: {laneGroupKey(se.id, transformGroupHeaderLane.laneId)},
+      expandedGroupKeys: {laneGroupKey(se.id, seNameTagGroupLaneId)},
     );
     final rotation = lanes.singleWhere((lane) => lane.laneId == 'rotation');
     expect(rotation.valueLabel!(0), '0x+30.00°');

@@ -8,6 +8,7 @@ import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
+import '../../services/brush_tip_thumbnails.dart';
 import 'picked_file.dart';
 import '../text/app_strings.dart';
 
@@ -77,6 +78,12 @@ class BrushTipLibrary extends ChangeNotifier {
       return;
     }
     _tips = [..._builtIns(), ...indexed];
+    // The pictures its grid draws, asked for as it is read — a built-in
+    // has none of its own (tip-coverage-is-a-second-r1-Q1).
+    BrushTipThumbnails.instance.want([
+      for (final tip in _tips)
+        if (tip.thumbnail == null) ?tip.mask,
+    ]);
     _notify();
 
     if (indexed.isEmpty) {

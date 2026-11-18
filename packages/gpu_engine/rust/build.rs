@@ -23,8 +23,8 @@ const ZIP_URL: &str = "https://github.com/microsoft/DirectXShaderCompiler/releas
 /// GitHub's digest of that asset (32,287,592 bytes).
 const ZIP_SHA256: &str = "ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1";
 /// The dxcompiler.dll in it for each Windows architecture the engine
-/// builds for — Microsoft-signed, version 1.9.2609.5. Its licence is the
-/// LLVM Release License (NCSA): the notice ships with the app.
+/// builds for — Microsoft-signed, version 1.9.2609.5. The zip ships it
+/// beside the three licence texts below, which the app shows with it.
 const DLLS: [(&str, &str, &str); 2] = [
     (
         "x86_64",
@@ -38,17 +38,45 @@ const DLLS: [(&str, &str, &str); 2] = [
     ),
 ];
 
+/// Every licence text the zip ships, each with the digest of its text
+/// with the carriage returns taken out — the bytes git keeps of a text
+/// file. Which file each one covers the zip does not say (nor do the
+/// release's notes), so the app's About ▸ licenses shows all three
+/// (assets/licenses/LICENSE-DXC-*.txt, held to these digests by
+/// test/every_dll_the_engine_ships_is_noticed_test.dart): a zip pinned
+/// above with other texts fails here until they are shown.
+///
+/// The DLL itself is read as under the LLVM licence, as Microsoft labels
+/// its NuGet package of it, and the Microsoft terms as the closed-source
+/// `dxil.dll`'s, which the app does not ship: the three texts are its
+/// notice, and no one is asked to agree to the terms (유저 2026-11-07,
+/// gpu-engine-feasibility-Q6).
+const LICENCES: [(&str, &str); 3] = [
+    ("LICENSE-LLVM.txt", "b2551288a0381a79527d63c1590ae8bac98de4dafa1afd0702625d6e82524b85"),
+    ("LICENCE-MIT.txt", "fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"),
+    ("LICENSE-MS.txt", "e249948c6c7b0007e90638ad749d0e89c84634dcc8c28436a52b8b2dbce4a31e"),
+];
+
 /// Where the build hook asks for a copy (hook/build.dart).
 const HOOK_DIR: &str = "GPU_ENGINE_DXC_OUT";
 
+fn digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn sha256(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    Some(Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect())
+    Some(digest(&fs::read(path).ok()?))
 }
 
 fn check(path: &Path, pinned: &str) {
     let found = sha256(path);
     assert_eq!(found.as_deref(), Some(pinned), "{} is not the pinned file", path.display());
+}
+
+fn check_text(path: &Path, pinned: &str) {
+    let bytes = fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let text: Vec<u8> = bytes.into_iter().filter(|&byte| byte != b'\r').collect();
+    assert_eq!(digest(&text), pinned, "{} is not the pinned licence text", path.display());
 }
 
 fn run(command: &mut Command) {
@@ -61,6 +89,34 @@ fn run(command: &mut Command) {
 fn windows_tool(name: &str) -> Command {
     let root = env::var("SystemRoot").expect("SystemRoot");
     Command::new(Path::new(&root).join("System32").join(name))
+}
+
+/// The zip, kept once for this user outside every checkout and target
+/// folder: each target folder fetched its own 32 MB — every lane's
+/// worktree, whose build hook builds into its own, and every CI job (관제
+/// 2026-11-07, gpu-engine-skeleton) — and the pin says whether it is the
+/// one, wherever it lies.
+fn cached_zip() -> PathBuf {
+    let local = env::var("LOCALAPPDATA").expect("LOCALAPPDATA");
+    Path::new(&local).join("anicel-build").join("dxc").join(format!("{ZIP_SHA256}.zip"))
+}
+
+/// The pinned zip at `zip`, fetched there unless it already is. A fetch
+/// lands beside it under this process's name first, so a build reading
+/// `zip` never sees half of one.
+fn fetched(zip: &Path) {
+    if sha256(zip).as_deref() == Some(ZIP_SHA256) {
+        return;
+    }
+    fs::create_dir_all(zip.parent().unwrap()).expect("make the DXC cache's folder");
+    let part = zip.with_extension(format!("part-{}", std::process::id()));
+    run(windows_tool("curl.exe").args(["-sSfL", "--retry", "3", "-o"]).arg(&part).arg(ZIP_URL));
+    check(&part, ZIP_SHA256);
+    if fs::rename(&part, zip).is_err() {
+        // Another build's fetch got there first and is being read.
+        check(zip, ZIP_SHA256);
+        let _ = fs::remove_file(&part);
+    }
 }
 
 fn main() {
@@ -77,14 +133,15 @@ fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let dll = out.join("dxcompiler.dll");
     if sha256(&dll).as_deref() != Some(pinned) {
-        let zip = out.join("dxc.zip");
-        if sha256(&zip).as_deref() != Some(ZIP_SHA256) {
-            run(windows_tool("curl.exe").args(["-sSfL", "--retry", "3", "-o"]).arg(&zip).arg(ZIP_URL));
-            check(&zip, ZIP_SHA256);
-        }
-        run(windows_tool("tar.exe").arg("-xf").arg(&zip).arg("-C").arg(&out).arg(member));
+        let zip = cached_zip();
+        fetched(&zip);
+        let licences = LICENCES.iter().map(|(name, _)| name);
+        run(windows_tool("tar.exe").arg("-xf").arg(&zip).arg("-C").arg(&out).arg(member).args(licences));
         fs::rename(out.join(member), &dll).expect("move dxcompiler.dll out of the zip's folders");
         check(&dll, pinned);
+        for (name, text) in LICENCES {
+            check_text(&out.join(name), text);
+        }
     }
     println!("cargo:rerun-if-changed={}", dll.display());
     println!("cargo:rustc-env=GPU_ENGINE_DXC={}", dll.display());

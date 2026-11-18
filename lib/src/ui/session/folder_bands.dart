@@ -1,9 +1,10 @@
-import 'package:flutter/foundation.dart';
+import '../../models/folder_band_rows.dart';
+import '../../models/layer_cells_agreement.dart'
+    show firstCellTheBandRowsMayDiffer;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../timeline/property_lane_model.dart'
-    show folderBandOf, folderBandStandsFor, timelineBlockEdgesOf;
+import '../timeline/property_lane_model.dart' show folderBandOf;
 import 'session_roles.dart';
 
 /// The FOLDER BANDS — which layer a folder's band stands on, who its members
@@ -31,10 +32,21 @@ class FolderBands {
   /// Identity is the whole point, and the same reason [_seDisplayCloneCache]
   /// exists: repaint, the tile bake key and the row memo all compare the
   /// Layer INSTANCE, and a folder's own instance does not move when a
-  /// member is edited. Same union ⇒ the same clone back, so nothing
-  /// re-records; a changed union ⇒ a new instance, so everything does.
+  /// member is edited. Rows that hold as they did ⇒ the same clone back, so
+  /// nothing re-records; rows that hold otherwise ⇒ a new instance, so
+  /// everything does.
   ///
-  /// R5 #2: the key is the union AND the folder itself. The union alone was
+  /// 🚨F-561 ② (서피스 실기 2026-11-07): A BAND IS WHAT ITS ROWS HOLD, NOT
+  /// THEIR UNION. It paints what they hold — grey where none holds a picture
+  /// (R28 #11) — so an edit inside its blocks moves its cells: a row's block
+  /// end dragged 3 → 7 under a folder of 1..10, a row's block put on another
+  /// cel. ↩️The key was the union and where its rows' blocks met (e919e2397):
+  /// the cel handed back the band from before, and the end made a new one
+  /// whose tiles were kept, for its own blocks had not moved. Its key and its
+  /// tiles' ask one question now ([firstCellTheBandRowsMayDiffer]), and a
+  /// row's eye or opacity, which it does not read, keeps it as before.
+  ///
+  /// R5 #2: the key is the folder itself too. The union alone was
   /// a cache key for the BAND, and the band is what this was written for —
   /// but the clone the rails render is the whole ROW, so every folder field
   /// that is not an exposure rode a key that could not see it change.
@@ -49,7 +61,6 @@ class FolderBands {
     LayerId,
     ({
       List<({int start, int endExclusive})> runs,
-      Set<int> edges,
       Layer source,
       Layer band,
     })
@@ -76,32 +87,31 @@ class FolderBands {
       }
       final members = index.subtreeMembersOf(layer.id);
       _folderBandMembers[layer.id] = members;
-      final band = folderBandOf(layer, members);
-      final edges = {
-        for (final member in members) ...timelineBlockEdgesOf(member),
-      };
       final cached = _folderBandCache[layer.id];
       // The FOLDER's own instance is half the key: the repository hands back
       // the same instance while nothing about the folder changed, and a new
-      // one the moment anything did. The other half is everything the band
-      // shows of its rows — the ghosts beside the blocks (F-311), and where
-      // their blocks meet inside its own, which its grey follows (F-561).
+      // one the moment anything did. The other half is what the band reads
+      // of its rows ([firstCellTheBandRowsMayDiffer]) — its blocks, the
+      // ghosts beside them (F-311), its grey (F-561).
       if (cached != null &&
           identical(cached.source, layer) &&
-          mapEquals(cached.band.timeline, band.timeline) &&
-          setEquals(cached.edges, edges)) {
+          firstCellTheBandRowsMayDiffer(
+                folderBandRowsOf(cached.band) ?? const [],
+                members,
+              ) ==
+              null) {
         // Kept for what it shows, it stands for the rows under it now — a
         // drag reads it from them (`rowShownWhileMoved`).
         folderBandStandsFor(cached.band, members);
         continue;
       }
+      final band = folderBandOf(layer, members);
       _folderBandCache[layer.id] = (
         runs: [
           for (final entry in band.timeline.entries)
             if (!entry.value.ghost)
               (start: entry.key, endExclusive: entry.key + entry.value.length!),
         ],
-        edges: edges,
         source: layer,
         band: band,
       );

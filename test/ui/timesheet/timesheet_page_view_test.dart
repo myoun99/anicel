@@ -359,7 +359,6 @@ void main() {
       expect(pageText(tester), '1/2');
 
       session.playbackRig.playback.stop();
-      session.playbackRig.prerenderScheduler.cancel();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     });
@@ -383,7 +382,6 @@ void main() {
       expect(pageTopOnScreen(tester, 1), closeTo(turnedTop(tester), 1e-6));
 
       session.playbackRig.playback.stop();
-      session.playbackRig.prerenderScheduler.cancel();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     });

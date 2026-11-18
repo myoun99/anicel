@@ -29,8 +29,8 @@ final class Handed {
   Handed(this._device) : _last = _device.clockPoint;
 
   /// A callback asked early, or two run back to back after a starved
-  /// stretch: two and a half of the device's 10ms blocks (miniaudio's
-  /// low-latency period, which nothing here overrides).
+  /// stretch: two and a half of the device's 10ms blocks (the null
+  /// device's period, as miniaudio's was).
   static const _slack = Duration(milliseconds: 25);
 
   final QaAudioDevice _device;

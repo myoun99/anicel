@@ -121,14 +121,19 @@ void main() {
       layerId: const LayerId('l'),
       frameId: const FrameId('kept'),
     );
-    // Tiles of 8: the centre's move of the new size below is no whole tile.
+    // Tiles of the engine's side: the centre's move of the new size below
+    // is no whole tile.
+    const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
     keepInAFile(store, {
-      kept: BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+      kept: BitmapSurface(
+        canvasSize: cut.canvasSize,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 50),
+            size: defaultCelTileSize,
+            pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 50),
           ),
         ),
       ]),
@@ -284,8 +289,9 @@ void main() {
         PasteboardSize.three,
         reason: 'premise: 1.5x, and none, are smaller walls',
       );
-      // A cel kept in a file, wholly past the 1.5x wall — x -16..-13 of a
-      // paper 16 wide, inside the 3x one.
+      // A cel kept in a file, wholly past the 1.5x wall — the tile four
+      // tiles left of a paper four tiles wide, inside the 3x one.
+      const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
       keepInAFile(session.renderCaches.brushFrameStore, {
         const BrushFrameKey(
           projectId: ProjectId('p'),
@@ -294,14 +300,17 @@ void main() {
           layerId: LayerId('l'),
           frameId: FrameId('kept'),
         ): BitmapSurface(
-          canvasSize: const CanvasSize(width: 16, height: 8),
-          tileSize: 4,
+          canvasSize: const CanvasSize(
+            width: 4 * defaultCelTileSize,
+            height: 2 * defaultCelTileSize,
+          ),
+          tileSize: defaultCelTileSize,
         ).putTiles([
           (
             coord: TileCoord(x: -4, y: 0),
             tile: BitmapTile(
-              size: 4,
-              pixels: Uint8List(64)..fillRange(0, 64, 50),
+              size: defaultCelTileSize,
+              pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 50),
             ),
           ),
         ]),

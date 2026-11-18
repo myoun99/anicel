@@ -9,16 +9,17 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/sheet_sources.dart' show sheetPageFramesOf;
 import '../models/timeline_row_address.dart';
+import '../models/ruler_marker.dart' show RulerMarkerHolder;
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'timeline/cut_list.dart' show cutListButton;
+import 'timeline/lane_group_reset.dart' show resetLaneGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
-import 'timeline/se_layer_mixer.dart';
 import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
@@ -43,6 +44,8 @@ import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart'
     show ReadyRunsOfTheDocument;
+import 'timeline/ruler_marker_commands.dart' show rulerMarkerHooksOf;
+import 'timeline/ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
@@ -294,12 +297,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
   /// nav needs the same answer, and a second copy would have drifted from
-  /// what the grids draw.
-  List<PropertyLaneRow> _lanesForLayer(Layer layer) => timelineLanesForLayer(
-    layer: layer,
+  /// what the grids draw. Handed back as the same lanes while what they are
+  /// read from holds ([KeptTimelineLanes]), so the grids keep the lane rows
+  /// a pass did not change.
+  List<PropertyLaneRow> _lanesForLayer(Layer layer) => _lanes.of(
+    layer,
     session: _session,
     expandedGroupKeys: widget.rail.expandedLaneGroupKeys,
   );
+
+  final _lanes = KeptTimelineLanes();
 
   /// The CAMERA row's union summary (B4): the shared transform-header union
   /// lane, re-derived per row rebuild from the session's preview-aware
@@ -420,6 +427,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       onEnd: _session.edgeDrag.endCutEdgeDrag,
       onCancel: _session.edgeDrag.cancelCutEdgeDrag,
     );
+  }
+
+  /// The ACTIVE cut's ruler markers and their verbs (I-169): the cut's own,
+  /// on the ruler across and the sheet's rail down. 🗣️I-169-Q2 (유저
+  /// 2026-11-13): 「컷(로컬)이랑 콘티(글로벌)이랑 마커 독립적으로」 — the
+  /// conte panel's ruler shows none of these. Null while no cut is active
+  /// (gap parking).
+  RulerMarkerHooks? _rulerMarkerHooks(BuildContext context) {
+    final cutId = _session.activeCutId;
+    return cutId == null
+        ? null
+        : rulerMarkerHooksOf(context, _session, RulerMarkerHolder.cut(cutId));
   }
 
   /// The layer stack as the GRIDS should render it — display clones for
@@ -626,6 +645,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // end-trims the ACTIVE cut through the storyboard's trim
             // channel — live preview, ONE undo on release.
             cutEndDrag: _cutEndDragCallbacks(),
+            rulerMarkers: _rulerMarkerHooks(context),
             // Sparse-row memo identities (UI-R20 #4): camera/instruction
             // rows re-enter the row memo, invalidated exactly by these.
             memoAux: TimelineRowMemoAux(
@@ -667,18 +687,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // same wiring (F-101).
             onDropMediaAssetOnSeBlock: sessionSeBlockDrop(_session),
             onAddLayer: _session.layerStack.addLayer,
-            isLayerSoloed: (layerId) => _session
-                .visibilitySolo
-                .soloedSeLayerIds
-                .value
-                .contains(layerId),
-            onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-              showSeLayerMixer(
-                anchorContext,
-                session: _session,
-                layerId: layerId,
-              ),
-            ),
+            onToggleLayerMute: _rowPresses.toggleMute,
+            onLayerTotalVolumeChangeEnd: _rowPresses.setTotalVolume,
             onOpenLayerReference: (anchorContext, layerId) =>
                 showLayerReferencePopover(
                   anchorContext,
@@ -716,8 +726,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             layerSyncPartnersOf: _session.layerVerbs.syncPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
-            // already threaded above. Only the members' twirl lands here.
-            onToggleLayerCollapsed: _rowPresses.toggleGroupFold,
+            // already threaded above. Only the members' twirl lands here —
+            // the group fold's one verb, a base's halves told their side.
+            onToggleGroupFold: _rowPresses.toggleGroupFold,
             onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
@@ -908,8 +919,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleSection: widget.rail.toggleSection,
             rowFilter: widget.rail.rowFilter,
             onSetRowFilter: widget.rail.setRowFilter,
-            collapsedAttachBaseIds: widget.rail.collapsedAttachBaseIds,
-            onToggleAttachGroup: widget.rail.toggleAttachGroup,
+            attachFoldedRowIds: widget.rail.attachFoldedRowIds,
             visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
             // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
             // channel live; at rest the bar shows the last committed value.
@@ -968,7 +978,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
-                _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
+                resetLaneGroupOf(_session, layer, lane),
             transport: timelineTransport,
             // The legend's heading is the cut list (I-154).
             legendHeading: cutListButton(context, _session),

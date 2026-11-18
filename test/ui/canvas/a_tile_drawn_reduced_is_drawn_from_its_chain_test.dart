@@ -14,7 +14,6 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/chained_picture.dart';
-import 'package:anicel/src/ui/canvas/pictured_tiles.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 
 /// 🚨★★★A TILE A SCREEN DRAWS REDUCED IS DRAWN FROM ITS OWN PICTURE'S MIP
@@ -86,11 +85,10 @@ void main() {
   }
 
   ({BitmapTileImageCache cache, TilePictureBudget budget}) ownPictures() {
-    final pictured = PicturedTiles();
-    final cache = BitmapTileImageCache(pictured: pictured);
+    final cache = BitmapTileImageCache();
     return (
       cache: cache,
-      budget: TilePictureBudget(cache: cache, pictured: pictured),
+      budget: TilePictureBudget(cache: cache),
     );
   }
 

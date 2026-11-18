@@ -5,6 +5,7 @@ import '../../models/layer_process.dart';
 import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../text/typed_text.dart';
 
 /// One name field per colour label [holder] keeps ([staffHolderOf]), in
 /// the order the label popover lists them ([everyLayerMark] — the one
@@ -81,7 +82,7 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // A process with no field here has no fold: 用紙 and 美術, and the
+        // A process with no field here has no fold: 用紙, and the
         // stages the other holder keeps ([staffFieldsOf]).
         for (final process in LayerProcess.values)
           if (widget.fields.keys.any((mark) => mark.process == process))
@@ -136,6 +137,7 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
                   key: ValueKey<String>('$prefix-staff-${mark.keySlug}'),
                   controller: widget.fields[mark],
                   onSubmitted: (_) => widget.onSubmitted?.call(),
+                  inputFormatters: typedText(),
                 ),
               ),
               const SizedBox(height: 6),

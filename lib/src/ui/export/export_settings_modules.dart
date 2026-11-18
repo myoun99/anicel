@@ -18,9 +18,11 @@ import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/icon_button_box.dart' show resetWearsAccent;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
+import '../text/typed_text.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, pill strips, and the shared Format module.
@@ -128,19 +130,29 @@ class ExportAccordion extends StatelessWidget {
   }
 }
 
-/// 「초기화」 at the head of a module, and of the Cels list's rules: off —
-/// dim, taking no press — while there is nothing to put back.
+/// 「초기화」 at the head of a module, and of the Cels list's rules — and
+/// the cut grid's 「전부」, which puts every cut back in: off — dim, taking
+/// no press — while there is nothing to put back, and lit in the accent
+/// while there is ([resetWearsAccent], I-176).
 class ExportResetChip extends StatelessWidget {
-  const ExportResetChip({super.key, required this.enabled, this.onPressed});
+  const ExportResetChip({
+    super.key,
+    required this.enabled,
+    this.onPressed,
+    this.label,
+  });
 
   final bool enabled;
   final VoidCallback? onPressed;
 
+  /// The chip's word — 「초기화」 when null.
+  final String? label;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = enabled
-        ? theme.colorScheme.onSurface
+    final color = resetWearsAccent(resets: true, live: enabled)
+        ? AppColors.accent
         : theme.disabledColor.withValues(alpha: 0.4);
     return ControlPressClaim(
       onPressed: enabled ? onPressed : null,
@@ -159,7 +171,7 @@ class ExportResetChip extends StatelessWidget {
             ),
           ),
           child: Text(
-            AppText.strings.commonReset,
+            label ?? AppText.strings.commonReset,
             style: theme.textTheme.labelSmall?.copyWith(color: color),
           ),
         ),
@@ -312,7 +324,7 @@ String exportCelLabelText(LayerMark label) {
     return AppText.strings.tlLayerMarkNone;
   }
   final chip = layerMarkChipText(label);
-  return [chip.process, chip.revise].where((t) => t.isNotEmpty).join(' ');
+  return [chip.process, chip.step].where((t) => t.isNotEmpty).join(' ');
 }
 
 /// The 선택 filters that are on, read as one line — 「기준 · 어태치」,
@@ -389,13 +401,16 @@ class ExportChoiceRow<T> extends StatelessWidget {
 
 /// What the Format module offers in a tab: the LINEUP (v10 — every pill
 /// shows), with per-pill enablement + reason from the machine's actual
-/// encoders. A grayed pill says why on hover; nothing fails only at
-/// Export.
+/// video encoders. A grayed pill says why on hover; nothing fails only at
+/// Export. Every still is written wherever the app runs.
+/// ↩️A still could stand off too — JPG on a machine without the C engine's
+/// encoder — until the connection round put the encoder in the engine the
+/// app ships with (connection-round-checklist H, 관제 2026-11-08 08:23:
+/// a switch that only ever answers 「on」 goes with its premise).
 class ExportFormatCapabilities {
   const ExportFormatCapabilities({
     required this.stills,
     this.video = const {},
-    this.stillEnabled,
     this.videoEnabled,
     this.videoReason,
   });
@@ -403,8 +418,7 @@ class ExportFormatCapabilities {
   final List<ExportStillFormat> stills;
   final Map<ExportVideoContainer, List<ExportVideoCodec>> video;
 
-  /// Null = everything in the lineup is writable (the EX2 behavior).
-  final bool Function(ExportStillFormat format)? stillEnabled;
+  /// Null = every pair in the lineup is writable (the EX2 behavior).
   final bool Function(ExportVideoContainer container, ExportVideoCodec codec)?
   videoEnabled;
   final String? Function(
@@ -417,9 +431,6 @@ class ExportFormatCapabilities {
 
   List<ExportVideoCodec> codecsFor(ExportVideoContainer container) =>
       video[container] ?? const [];
-
-  bool isStillEnabled(ExportStillFormat format) =>
-      stillEnabled?.call(format) ?? true;
 
   bool isVideoEnabled(ExportVideoContainer container, ExportVideoCodec codec) =>
       videoEnabled?.call(container, codec) ?? true;
@@ -523,9 +534,7 @@ class ExportFormatModule extends StatelessWidget {
     ExportMediaKind.video => capabilities.video.keys.any(
       capabilities.isContainerEnabled,
     ),
-    ExportMediaKind.still => capabilities.stills.any(
-      capabilities.isStillEnabled,
-    ),
+    ExportMediaKind.still => capabilities.stills.isNotEmpty,
   };
 
   Widget _kindButton() => PanelFlyoutButton(
@@ -546,8 +555,8 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
-  /// [kind], landing on the format that kind last stood on — or, when that
-  /// one is off in this build, the first one that is on.
+  /// [kind], landing on the format that kind last stood on — or, for a
+  /// movie whose container is off in this build, the first one that is on.
   ExportFormatSelection _withKind(ExportMediaKind kind) {
     if (kind == ExportMediaKind.video) {
       final container = capabilities.isContainerEnabled(selection.container)
@@ -558,13 +567,7 @@ class ExportFormatModule extends StatelessWidget {
             );
       return _withContainer(container);
     }
-    final still = capabilities.isStillEnabled(selection.stillFormat)
-        ? selection.stillFormat
-        : capabilities.stills.firstWhere(
-            capabilities.isStillEnabled,
-            orElse: () => selection.stillFormat,
-          );
-    return selection.copyWith(kind: kind, stillFormat: still);
+    return selection.copyWith(kind: kind);
   }
 
   /// The containers. Choosing one lands on that container's first WRITABLE
@@ -619,15 +622,10 @@ class ExportFormatModule extends StatelessWidget {
     enabled: enabled,
     entriesBuilder: () => capabilities.stills.asFlyoutValueChoices(
       current: selection.stillFormat,
-      choiceOf: (still) {
-        final writable = capabilities.isStillEnabled(still);
-        return PanelFlyoutChoice(
-          key: '$keyPrefix-still-${still.jsonValue}',
-          label: still.label,
-          enabled: writable,
-          warning: writable ? null : AppText.strings.exNotInThisBuild,
-        );
-      },
+      choiceOf: (still) => PanelFlyoutChoice(
+        key: '$keyPrefix-still-${still.jsonValue}',
+        label: still.label,
+      ),
       onPicked: (still) => _change(
         selection.copyWith(kind: ExportMediaKind.still, stillFormat: still),
       ),
@@ -896,8 +894,8 @@ class ExportJpgQualityRow extends StatelessWidget {
 /// envelope, the conte's page images: any still, JPG at a quality
 /// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
 /// 추가」 · I-117, 10-21: 「새 출력형식으로서 BMP TGA TIFF WEBP」, and a PSD
-/// of its strata). A still this machine cannot write stays in the list,
-/// off, saying why — the Format module's law ([stillEnabled]).
+/// of its strata). Every still is written wherever the app runs, as in the
+/// Format module's list ([ExportFormatCapabilities]).
 ///
 /// A document that has a format which is no picture — the timesheet's
 /// digital sheet, the conte's PDF — offers it in the same list ([before] ·
@@ -910,7 +908,6 @@ class ExportPaperFormatModule extends StatelessWidget {
     required this.caption,
     required this.image,
     required this.onImageChanged,
-    required this.stillEnabled,
     this.pictured = true,
     this.before = const [],
     this.after = const [],
@@ -925,10 +922,6 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// A picture format, picked — or its quality, moved. Null while the
   /// window is busy.
   final ValueChanged<ExportFormatSelection>? onImageChanged;
-
-  /// Whether this machine writes a still in a format — the answer the
-  /// Format module's list is greyed by ([ExportFormatCapabilities]).
-  final bool Function(ExportStillFormat format) stillEnabled;
   final bool pictured;
   final List<PillItem> before;
   final List<PillItem> after;
@@ -963,19 +956,13 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// one value of the app's one picker ([PanelFlyoutValueChoices]).
   List<PanelFlyoutEntry> _entries() {
     final changed = onImageChanged;
-    ({
-      String key,
-      String label,
-      bool current,
-      VoidCallback? pick,
-      bool writable,
-    })
-    listed(PillItem item) => (
+    ({String key, String label, bool current, VoidCallback? pick}) listed(
+      PillItem item,
+    ) => (
       key: item.keyValue,
       label: item.label,
       current: item.selected,
       pick: item.onTap,
-      writable: true,
     );
     final rows = [
       for (final item in before) listed(item),
@@ -987,7 +974,6 @@ class ExportPaperFormatModule extends StatelessWidget {
           pick: changed == null
               ? null
               : () => changed(image.copyWith(stillFormat: format)),
-          writable: stillEnabled(format),
         ),
       for (final item in after) listed(item),
     ];
@@ -996,8 +982,7 @@ class ExportPaperFormatModule extends StatelessWidget {
       choiceOf: (row) => PanelFlyoutChoice(
         key: row.key,
         label: row.label,
-        enabled: row.writable && row.pick != null,
-        warning: row.writable ? null : AppText.strings.exNotInThisBuild,
+        enabled: row.pick != null,
       ),
       onPicked: (row) => row.pick?.call(),
     );
@@ -1201,6 +1186,7 @@ class ExportFileNameModule extends StatelessWidget {
               enabled: enabled,
               decoration: InputDecoration(hintText: ghost),
               onChanged: (_) => onChanged(),
+              inputFormatters: typedText(),
             ),
           ),
           const SizedBox(width: 6),
@@ -1253,6 +1239,7 @@ class ExportSequenceNamingModule extends StatelessWidget {
               decoration: InputDecoration(hintText: ghost),
               onChanged: (value) =>
                   onChanged(naming.copyWith(baseName: value.trim())),
+              inputFormatters: typedText(),
             ),
           ),
         ),
@@ -1308,7 +1295,7 @@ class _DigitsFieldState extends State<_DigitsField> {
         controller: _controller,
         enabled: widget.enabled,
         keyboardType: TextInputType.number,
-        inputFormatters: halfWidthDigitsOnly,
+        inputFormatters: typedText(halfWidthDigitsOnly),
         onChanged: (value) {
           final parsed = halfWidthInt(value);
           if (parsed != null) {
@@ -1327,7 +1314,8 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   // The conte ROW's word (콘티), not the sheet panel's (콘티 용지): the kind
   // is the row's drawings, written as cels are.
   ExportCelKind.conte => AppText.strings.tlKindStoryboard,
-  ExportCelKind.art => AppText.strings.exArtLabel,
+  // The image ROW's word too — the kind is the image rows (F-578-Q4).
+  ExportCelKind.image => AppText.strings.tlKindImage,
   ExportCelKind.direction => AppText.strings.exSelDirection,
   ExportCelKind.timesheet => AppText.strings.panelTimesheet,
   ExportCelKind.envelope => AppText.strings.panelEnvelope,
@@ -1405,6 +1393,7 @@ class ExportCelNamingModule extends StatelessWidget {
           controller: prefixControllers[kind],
           enabled: enabled,
           onChanged: (value) => onChanged(naming.withPrefix(kind, value)),
+          inputFormatters: typedText(),
         ),
       ),
     );
@@ -1496,6 +1485,7 @@ class ExportCelNamingModule extends StatelessWidget {
           controller: controller,
           enabled: enabled && made,
           onChanged: (value) => onChanged(named(typed(value))),
+          inputFormatters: typedText(),
         ),
       ),
     );
@@ -1599,6 +1589,7 @@ class ExportCelNamingModule extends StatelessWidget {
                   enabled: enabled,
                   onChanged: (value) =>
                       onChanged(naming.copyWith(suffix: value.trim())),
+                  inputFormatters: typedText(),
                 ),
               ),
             ),

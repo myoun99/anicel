@@ -136,7 +136,7 @@ class _WorkspaceBrushPresets {
       nextUserBrushTipId(sequence: _registeredCutTipSequence),
     );
     await _state._tipLibrary.register(
-      cutPieceToTipMask(piece, id: id),
+      await cutPieceToTipMask(piece, id: id),
       name: name,
     );
   }
@@ -340,6 +340,12 @@ class _WorkspaceBrushPresets {
       brushFor: _brushNamed,
     );
   }
+
+  /// Whether [resetLibrary] would change anything — the library off its
+  /// built-ins, or a hand off its preset: its menu row is out where it
+  /// would not (F-583) and lit where it would (I-176).
+  bool libraryResetChanges() =>
+      !_state._presetLibrary.atDefaults || _brushHandSettings.isNotEmpty;
 
   /// A preset dragged to a new place or into another group — one undo step
   /// (F-250).

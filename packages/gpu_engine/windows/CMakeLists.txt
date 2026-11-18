@@ -19,7 +19,8 @@ apply_standard_settings(${PLUGIN_NAME})
 set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden)
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
-# /utf-8 for the same reason qa_engine has it: without it MSVC reads a
+# /utf-8 for the same reason the runner has it (windows/runner/
+# CMakeLists.txt): without it MSVC reads a
 # source in the machine's code page, and one non-ASCII character in a
 # comment is C4819, which apply_standard_settings' /WX makes an error on
 # every Japanese or Korean Windows build (measured 2026-11-05: an em dash).

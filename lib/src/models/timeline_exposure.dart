@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
 import 'frame.dart' show InbetweenMark;
@@ -117,7 +118,9 @@ class TimelineExposure {
       for (final offset in marks.keys)
         if (offset >= 1 && offset < length) offset,
     ]..sort();
-    return Map.unmodifiable({for (final offset in kept) offset: marks[offset]});
+    return frozenMapOrSame(marks, {
+      for (final offset in kept) offset: marks[offset]!,
+    });
   }
 
   /// The key a file writes [mark]'s dots under, as a list of offsets.

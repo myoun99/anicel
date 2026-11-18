@@ -203,11 +203,19 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
 
 /// The bytes every resource this process made on the adapter's device
 /// holds — Metal's per-device count, which is per process as Windows'
-/// `CurrentUsage` is.
-pub fn video_memory(adapter: &wgpu::Adapter) -> Option<u64> {
+/// `CurrentUsage` is. No budget: on Apple's unified memory the bound is
+/// the RAM budget a pool is given (gpu-canonical-store 11-05 13:19 ②).
+pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the device's allocation count.
     let hal = unsafe { adapter.as_hal::<Metal>() }?;
-    Some(hal.raw_device().currentAllocatedSize() as u64)
+    let used = hal.raw_device().currentAllocatedSize() as u64;
+    Some(super::VideoMemory { used, budget: None, in_system: None, total: None })
+}
+
+/// Why the device went — unsaid: nothing wgpu hands over of Metal says
+/// why a device is lost.
+pub fn device_went_by(_device: &wgpu::Device) -> u32 {
+    super::WENT_UNSAID
 }
 
 #[cfg(test)]
@@ -233,7 +241,7 @@ mod tests {
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
         let (texture, shared) =
-            super::create(&engine.device, WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm)
+            super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm)
                 .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
         let pixels = &*shared.pixels;
@@ -259,7 +267,7 @@ mod tests {
     #[test]
     fn an_rgba_surface_is_refused() {
         let engine = first_engine();
-        let made = super::create(&engine.device, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm);
+        let made = super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm);
         assert!(made.is_err());
     }
 }

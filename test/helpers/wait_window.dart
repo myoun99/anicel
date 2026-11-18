@@ -13,14 +13,13 @@ import 'settle_async.dart';
 ///
 /// ⛔A turning spinner never settles, so `pumpAndSettle` cannot be the wait.
 ///
-/// 🚨A TEST THAT WAITS HERE ENDS BY STOPPING PLAYBACK'S WARMER
-/// (`session.playbackRig.prerenderScheduler.cancel()`). The real clock this
-/// lends is what the warmer starts on — after 400ms of real quiet — and a
-/// walk caught between two pictures holds a timer past the body, which
-/// fails the test before its tear-downs run: 「A Timer is still pending」,
-/// the busier the machine the likelier (2026-10-08 — 3 runs in 16 on one
-/// master). `a_run_the_window_waits_out_stops_the_warmer_test` holds every
-/// caller to it.
+/// ↩️A test that waited here ended by stopping playback's warmer
+/// (2026-10-08 — 3 runs in 16 on one master failed 「A Timer is still
+/// pending」), held to it by a scan of the callers. Since 11-16 the warmer
+/// steps aside by a microtask under widget tests (`playback_rig.dart`,
+/// card a-test-lending-the-real-clock-leaves-the-warmer-running) — the
+/// pump after a body runs it — so no test has to, and none does.
+///
 /// Every share of the bar a wait window tells — read off the window's own
 /// listenable, not off its frames, so no report falls between two of them.
 ///

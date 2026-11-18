@@ -46,7 +46,7 @@ void main() {
   void aStepNotReady() {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel, pictured: ShownCels.asItIs);
     final now = _surfaceOf([1, 2]);
     next = _surfaceOf([3, 4]);
     _givePictures(cache, now);
@@ -87,7 +87,7 @@ void main() {
       'looks at this one', (tester) async {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel, pictured: ShownCels.asItIs);
     final now = _surfaceOf([1, 2]);
     final first = _surfaceOf([3, 4]);
     final second = _surfaceOf([5, 6]);
@@ -137,6 +137,37 @@ void main() {
     expect(pictured(next), isFalse);
   });
 
+  testWidgets('🚨the warm makes none for a canvas that draws no picture — '
+      'its steps are read ahead all the same', (tester) async {
+    cache = BitmapTileImageCache();
+    shown = ShownCels(cache: cache)
+      // The drawing canvas: the engine lays its frame from the tiles.
+      ..show(Object(), _key.cel, pictured: null);
+    final now = _surfaceOf([1, 2]);
+    final first = _surfaceOf([3, 4]);
+    final second = _surfaceOf([5, 6]);
+    final deep = _PutsBack(now: first, next: second);
+    history = HistoryManager()
+      ..execute(deep)
+      ..execute(_PutsBack(now: now, next: first));
+    pictures = HistoryPictures(history: history, shown: shown);
+    addTearDown(() {
+      pictures.dispose();
+      history.dispose();
+    });
+
+    pictures.step(undo: true, apply: history.undo);
+    await letTheWarmRun(tester);
+
+    // ⛔Mutation: warmed as a canvas that draws the cel's own tiles →
+    // pictures nobody draws are made and held (the case above this one's
+    // twin, where `asItIs` makes them).
+    expect(pictured(second), isFalse);
+    // ⛔Mutation: a canvas that draws none counted as showing nothing → its
+    // next step is read at the press.
+    expect(deep.readAheads, greaterThan(0));
+  });
+
   testWidgets('the sheet ink view says which cel it paints, while it paints '
       'it', (tester) async {
     final store = BrushFrameEditSessionStore(
@@ -168,7 +199,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final now = _surfaceOf([7, 8]);
     _givePictures(BitmapTileImageCache.instance, now);
@@ -189,7 +220,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final held = [
       for (final fill in [11, 12, 13]) _surfaceOf([fill]),
@@ -208,6 +239,62 @@ void main() {
     expect(pictured(held[1]), isFalse, reason: 'deep');
     expect(pictured(held[2]), isTrue, reason: 'the next undo');
   });
+
+  testWidgets('a deep entry\'s pictures stay where a cel still holds its '
+      'tiles', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final held = [
+      for (final fill in [21, 22, 23]) _surfaceOf([fill]),
+    ];
+    for (final surface in held) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    session.renderCaches.brushFrameStore.storeBakedSurface(_key, held[0]);
+    await tester.pump();
+
+    bool pictured(BitmapSurface surface) => surface.tiles.values.every(
+      (tile) => BitmapTileImageCache.instance.heldFor(tile) != null,
+    );
+    expect(pictured(held[1]), isFalse, reason: '⛔premise: deep, let go');
+    expect(pictured(held[0]), isTrue, reason: 'the cel holds it');
+  });
+
+  // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): a tile of one
+  // colour shares its colour's picture, which a cel may be showing through
+  // another tile of it.
+  testWidgets("🚨a deep entry's tile of one colour keeps its colour's "
+      'picture — a tile of its own beside it lets its own go', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final colour = BitmapTile.ofOneColour(size: _tile, word: 0xFF0A0B0C);
+    final own = _surfaceOf([31]).tiles.values.single;
+    final deep = BitmapSurface(
+      canvasSize: const CanvasSize(width: 2 * _tile, height: _tile),
+      tileSize: _tile,
+      tiles: {TileCoord(x: 0, y: 0): colour, TileCoord(x: 1, y: 0): own},
+    );
+    for (final surface in [deep, _surfaceOf([32]), _surfaceOf([33])]) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    await tester.pump();
+
+    final cache = BitmapTileImageCache.instance;
+    expect(cache.heldFor(own), isNull, reason: '⛔premise: deep, let go');
+    expect(cache.heldFor(colour), isNotNull, reason: "its colour's");
+  });
 }
 
 const _key = BrushFrameKey(
@@ -220,6 +307,9 @@ const _key = BrushFrameKey(
 
 const _tile = 8;
 
+/// A tile a fill, each of bytes of its own — its first byte one past the
+/// fill: no tile of one colour, whose picture is its colour's
+/// (`BitmapTile.pixelsKey`).
 BitmapSurface _surfaceOf(List<int> fills) => BitmapSurface(
   canvasSize: CanvasSize(width: _tile * fills.length, height: _tile),
   tileSize: _tile,
@@ -228,7 +318,8 @@ BitmapSurface _surfaceOf(List<int> fills) => BitmapSurface(
       TileCoord(x: i, y: 0): BitmapTile(
         size: _tile,
         pixels: BitmapTile.blank(size: _tile).pixels
-          ..fillRange(0, BitmapTile.bytesFor(_tile), fills[i]),
+          ..fillRange(0, BitmapTile.bytesFor(_tile), fills[i])
+          ..[0] = fills[i] + 1,
       ),
   },
 );
@@ -275,9 +366,14 @@ class _PutsBack implements Command, PictureRestoringCommand {
   @override
   void undo() {}
 
+  /// How many times it was read ahead.
+  int readAheads = 0;
+
   @override
-  void readAhead(CelsAhead cels, {required bool undo}) =>
-      cels.readSnapshot(_key, _snapshot, () => now);
+  void readAhead(CelsAhead cels, {required bool undo}) {
+    readAheads += 1;
+    cels.readSnapshot(_key, _snapshot, () => now);
+  }
 
   @override
   void dropReadAhead() => _snapshot.dropReadAhead();

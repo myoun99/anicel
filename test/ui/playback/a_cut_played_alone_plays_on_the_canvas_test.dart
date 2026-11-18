@@ -5,7 +5,6 @@ import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_instruction.dart' show InstructionEvent;
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/ui/playback/playback_run_layer.dart';
 import 'package:anicel/src/ui/repaint_props.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/name_tags_laid.dart';
 
 /// playback-plays-the-screen-material ① (10-09) and ② (10-10): a cut played
 /// alone plays ON the editing canvas, through the camera or not. The clock
@@ -371,16 +371,18 @@ void main() {
 
     final shotWidget = tester.widget<CameraShot>(find.byType(CameraShot));
     final shot = shotWidget.shot!;
-    final (tagsView, _, _, _) =
-        propsOf(tester, '_SeNameTagOverlayPainter')
-            as (CanvasViewport, CanvasSize, double, Object);
     final (washView, unit, _, _, _, _) =
         propsOf(tester, '_CutFadeWashPainter')
             as (CanvasViewport, Rect, Object, Object, double, double);
     expect(
-      tagsView,
+      nameTagsLaidBy(tester, theCanvasOwnPictures()),
+      isNotEmpty,
+      reason: 'LIVENESS: the tags are rows of the canvas\'s picture',
+    );
+    expect(
+      tester.widget<FramePictureView>(theCanvasOwnPictures().first).viewport,
       shot.frameView,
-      reason: 'the tags ride the camera, as the picture they name does',
+      reason: 'the tags ride the camera, as the picture they are rows of',
     );
     expect(washView, shotWidget.view);
     expect(

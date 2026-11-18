@@ -8,18 +8,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
-import '../../helpers/native_engine_path.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -35,9 +33,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// its ink outside any.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
+  setUpAll(openAppGpuEngine);
 
   /// Blocks of several lengths from frame 0, each named, then empty frames.
   Layer rowLayer({List<int> lengths = const [3, 7, 2, 12, 5]}) {
@@ -198,19 +194,8 @@ void main() {
 
   test('a tile asks each of its cells once — its paper and its ink are ONE '
       'pass, as a paint is', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     final store = TimelineGridTileStore.instance..clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      store.clear();
-    });
+    addTearDown(store.clear);
     final (:painter, :asked) = countedRow(
       rowLayer(),
       cellExtent: 4,
@@ -219,7 +204,14 @@ void main() {
       blockFrameLines: true,
     );
 
-    // One span, asked for directly: every read below is the raster's.
+    Map<int, int> twice() => {
+      for (final MapEntry(key: frame, value: times) in asked.entries)
+        if (times > 1) frame: times,
+    };
+
+    // One span, asked for directly: the ask is a pass — inside a paint, the
+    // paint's — and so is the raster its word, baked the first time, sends
+    // off the paint.
     const span = (start: 0, end: 24);
     expect(
       store.tileFor(
@@ -229,17 +221,14 @@ void main() {
         devicePixelRatio: 1,
       ),
       isNull,
-      reason: 'premise: cold',
+      reason: 'premise: its word is baked the first time',
     );
+    expect(asked, isNotEmpty, reason: 'premise: the ask read the row');
+    expect(twice(), isEmpty, reason: 'the ask');
+    asked.clear();
     await tileStoreIdle(store);
 
     expect(asked, isNotEmpty, reason: 'premise: the raster read the row');
-    expect(
-      {
-        for (final MapEntry(key: frame, value: times) in asked.entries)
-          if (times > 1) frame: times,
-      },
-      isEmpty,
-    );
+    expect(twice(), isEmpty, reason: 'the raster');
   });
 }

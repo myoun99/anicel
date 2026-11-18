@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/test_seconds.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🆕2026-10-18 (card tests-crowd-the-machine): a batch ends when its
 /// slowest file ends, so `affected_tests` hands its files out longest first,
@@ -201,15 +202,34 @@ void main() {
       expect(machineCacheFolder(const {}), isNull);
     });
 
-    test('⛔the same folder tool/run.sh builds its exes under', () {
-      // Two spellings of one place (this file and the launcher's shell):
-      // change both or neither.
-      final launcher = File('tool/run.sh').readAsStringSync();
-      expect(launcher, contains(r'CACHE="${LOCALAPPDATA//\\//}/anicel/tools"'));
+    test('⛔the same folder as the shell\'s one spelling of it', () {
+      // Two spellings of one place (this file and the shell's): change both
+      // or neither.
+      final shell = File('tool/machine_folder.sh').readAsStringSync();
+      expect(shell, contains(r'MACHINE_FOLDER="${LOCALAPPDATA//\\//}/anicel"'));
       expect(
-        launcher,
-        contains(r'CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/anicel/tools"'),
+        shell,
+        contains(r'MACHINE_FOLDER="${XDG_CACHE_HOME:-$HOME/.cache}/anicel"'),
       );
+    });
+
+    test('⛔which the launcher builds its exes under, and the lanes keep '
+        'their crate greens in — no shell spells it again', () {
+      final launcher = File('tool/run.sh').readAsStringSync();
+      expect(launcher, contains(r'. "$TOOL_DIR/machine_folder.sh"'));
+      expect(launcher, contains(r'CACHE="$MACHINE_FOLDER/tools"'));
+      final lanes = File('tool/lane.sh').readAsStringSync();
+      expect(lanes, contains(r'. "$ROOT/tool/machine_folder.sh"'));
+      final spelt = [
+        for (final file in filesUnder('tool'))
+          if (file.path.endsWith('.sh') &&
+              !file.path.endsWith('machine_folder.sh') &&
+              file.readAsStringSync().contains(
+                RegExp(r'\$\{?LOCALAPPDATA[^\n]*/anicel'),
+              ))
+            file.path,
+      ];
+      expect(spelt, isEmpty);
     });
   });
 }

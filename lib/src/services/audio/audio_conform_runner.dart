@@ -6,9 +6,14 @@
 /// moves the whole pipeline to a worker; the request is plain values, the
 /// result crosses back as one copy.
 ///
-/// The native singletons resolve PER ISOLATE (a `DynamicLibrary` is opened
-/// wherever it is first asked for), which is why the entry point builds
-/// the pipeline inside the isolate instead of capturing one.
+/// The entry point builds the pipeline inside the isolate instead of
+/// capturing one: what crosses is the request's plain values. Every native
+/// function the conform asks is the Rust engine's, bound with `@Native`, so
+/// a worker finds it with no path named. ↩️While the decoder was the C
+/// engine's, its singleton resolved PER ISOLATE (a `DynamicLibrary` opened
+/// wherever it was first asked for), and a test's library path travelled
+/// with the request — until the connection round (connection-round-checklist
+/// H, 2026-11-08).
 library;
 
 import 'dart:ffi';
@@ -19,12 +24,12 @@ import 'dart:typed_data';
 import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_device.dart';
-import '../../native/qa_audio_native.dart';
-import '../../native/qa_engine_abi.dart';
+import '../../native/qa_audio_filter.dart';
+import '../../native/qa_audio_resampler.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
+import 'sound_filters.dart' show FilteredSpan;
 import 'audio_decode_stream.dart';
-import 'audio_resampler_reference.dart';
 
 /// One conform request — every field a sendable value so the whole thing
 /// can cross an isolate boundary.
@@ -38,7 +43,6 @@ class ConformRequest {
     this.bucketsPerSecond = 80,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
-    this.libraryPathOverride,
   });
 
   final String sourcePath;
@@ -77,10 +81,6 @@ class ConformRequest {
   final int speedNumerator;
   final int speedDenominator;
 
-  /// Test hook: the worker isolate starts with fresh statics, so a test
-  /// pointing the loaders at a locally built binary has to send the path
-  /// along rather than rely on having set it on the main isolate.
-  final String? libraryPathOverride;
 }
 
 /// How a store runs a conform; production is [runConformInIsolate], tests
@@ -96,28 +96,27 @@ Future<ConformResult> runConformInIsolate(ConformRequest request) =>
 /// may hand back 44.1k however nicely 48k was asked for), so the sources
 /// have to meet the device where it is. Sendable values only, same as
 /// [ConformRequest].
-class ResampleRequest {
+class ResampleRequest implements _PcmFromPcm<ResampleRequest> {
   const ResampleRequest({
     required this.samples,
     required this.channels,
     required this.inputRate,
     required this.outputRate,
-    this.libraryPathOverride,
   });
 
+  @override
   final Float32List samples;
   final int channels;
   final int inputRate;
   final int outputRate;
-  final String? libraryPathOverride;
 
   /// This conversion of [samples] instead.
+  @override
   ResampleRequest withSamples(Float32List samples) => ResampleRequest(
     samples: samples,
     channels: channels,
     inputRate: inputRate,
     outputRate: outputRate,
-    libraryPathOverride: libraryPathOverride,
   );
 }
 
@@ -129,110 +128,201 @@ typedef ResampleRunner = Future<Float32List> Function(ResampleRequest request);
 Future<Float32List> runResampleInIsolate(ResampleRequest request) =>
     Isolate.run(() => runResampleHere(request));
 
+/// One span of already-conformed PCM through its row's filters — what
+/// playback and an export both read of a filtered span (board
+/// audio-fx-grows-like-the-pros ③). [samples] are the whole conform at
+/// [rate]; [span] says which of them, baked from rest at its first.
+/// Sendable values only, same as [ConformRequest].
+class FilterRequest implements _PcmFromPcm<FilterRequest> {
+  const FilterRequest({
+    required this.samples,
+    required this.channels,
+    required this.rate,
+    required this.span,
+  });
+
+  @override
+  final Float32List samples;
+  final int channels;
+  final int rate;
+  final FilteredSpan span;
+
+  /// This bake of [samples] instead.
+  @override
+  FilterRequest withSamples(Float32List samples) => FilterRequest(
+    samples: samples,
+    channels: channels,
+    rate: rate,
+    span: span,
+  );
+}
+
+/// How a store bakes a span; production is [runFilterInIsolate], tests
+/// substitute a synchronous fake.
+typedef FilterRunner = Future<Float32List> Function(FilterRequest request);
+
+/// The production bake runner.
+Future<Float32List> runFilterInIsolate(FilterRequest request) =>
+    Isolate.run(() => runFilterHere(request));
+
+/// A job that makes PCM out of PCM already conformed — a conversion to the
+/// device's rate, a span through its filters — so the samples it reads
+/// can be lent to its worker where they lie ([_pcmFromPcmInto]).
+abstract interface class _PcmFromPcm<R extends _PcmFromPcm<R>> {
+  Float32List get samples;
+  R withSamples(Float32List samples);
+}
+
+/// What a worker hands back: its result, less its PCM where that was
+/// placed in the device's buffers, and where — at 0 where it was not.
+typedef _Landed<T> = ({T result, int address, int floats});
+
 /// The production runner, its PCM placed where [device] plays it — or, with
 /// no device, [runConformInIsolate]'s.
 ///
 /// 🚨THE PCM THE DEVICE PLAYS LIVES IN THE DEVICE FROM THE MOMENT IT LANDS
-/// (play-press-first-frame-stall, 10-15). A conform's samples, and each
-/// rate they were converted to ([resamplingInto]), are placed there ONCE,
-/// and every schedule after names them without a copy. ↩️They stayed in
-/// Dart memory, and every upload — each press, seek and streaming advance —
-/// copied every resident sound into the device again, however many takes a
-/// project had.
-///
-/// 🚨PLACED BY THE WORKER THAT MADE THEM (conform-landing-copies-on-the-ui-
-/// thread): it fills a buffer of the device's own, and this isolate adopts
-/// it as it lands — here, the one place, so no buffer is left that nobody
-/// holds. ↩️The store copied them in as they landed (`placeForPlayback`),
-/// on the thread that draws: two minutes of stereo is 46 MB, and an
-/// unsaved project's sound is held whole however long it is.
+/// (play-press-first-frame-stall, 10-15). A conform's samples, each rate
+/// they were converted to ([resamplingInto]) and each span baked through
+/// its filters ([filteringInto]) are placed there ONCE, and every
+/// schedule after names them without a copy. ↩️They stayed in Dart memory,
+/// and every upload — each press, seek and streaming advance — copied every
+/// resident sound into the device again, however many takes a project had.
 ConformRunner conformingInto(QaAudioDevice? Function() device) =>
-    (request) async {
-      final into = device();
-      if (into == null) {
-        return runConformInIsolate(request);
-      }
-      final landed = await _conformOnAWorker(request, into.buffers);
-      return landed.address == 0
-          ? landed.result
-          : landed.result.withSamples(
-              into.adoptSamples(landed.address, landed.floats),
-            );
-    };
+    (request) => _landedWhereTheDevicePlays(
+      device(),
+      plainly: () => runConformInIsolate(request),
+      worked: (_) => _conformOnAWorker(request),
+      withAdopted: (result, adopted) => result.withSamples(adopted),
+    );
 
 /// The production resample runner, its PCM placed as [conformingInto]
-/// places a conform's.
+/// places a conform's, the conform it converts lent to its worker
+/// ([_pcmFromPcmInto]).
+ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
+    (request) => _pcmFromPcmInto(
+      device(),
+      request,
+      plainly: runResampleInIsolate,
+      here: runResampleHere,
+    );
+
+/// The production bake runner, placed and lent as [resamplingInto]'s.
+FilterRunner filteringInto(QaAudioDevice? Function() device) =>
+    (request) => _pcmFromPcmInto(
+      device(),
+      request,
+      plainly: runFilterInIsolate,
+      here: runFilterHere,
+    );
+
+/// 🚨THE ONE WAY PCM MADE ON A WORKER LANDS WHERE THE DEVICE PLAYS IT: with
+/// no device [into], [plainly]; with one, [worked] makes it on a worker that
+/// places its PCM in the device's buffers ([_placedOnTheWorker]), and this
+/// isolate adopts it as it lands, put back into its result by
+/// [withAdopted] — here, the one place, so no buffer is left that nobody
+/// holds.
 ///
-/// 🚨THE CONFORM IT CONVERTS IS READ WHERE IT LIES (resample-request-copies-
+/// 🚨PLACED BY THE WORKER THAT MADE THEM (conform-landing-copies-on-the-ui-
+/// thread): ↩️the store copied them in as they landed
+/// (`placeForPlayback`), on the thread that draws: two minutes of stereo
+/// is 46 MB, and an unsaved project's sound is held whole however long it
+/// is.
+///
+/// ↩️The conform's runner and the conversion's each spelled it (the
+/// one-algorithm ledger's 86 → 87), until the equalizer's bake came as the
+/// third kind of PCM landing here, which merged the three.
+Future<T> _landedWhereTheDevicePlays<T>(
+  QaAudioDevice? into, {
+  required Future<T> Function() plainly,
+  required Future<_Landed<T>> Function(QaAudioDevice into) worked,
+  required T Function(T result, Float32List adopted) withAdopted,
+}) async {
+  if (into == null) {
+    return plainly();
+  }
+  final landed = await worked(into);
+  return landed.address == 0
+      ? landed.result
+      : withAdopted(
+          landed.result,
+          into.adoptSamples(landed.address, landed.floats),
+        );
+}
+
+/// [request]'s job, landed as [_landedWhereTheDevicePlays] lands PCM.
+///
+/// 🚨THE CONFORM IT READS IS READ WHERE IT LIES (resample-request-copies-
 /// the-conform-to-the-worker): the conform's samples are a buffer of the
 /// device's, lent to the worker by address for as long as it works
 /// ([QaAudioDevice.lendToAWorker]). ↩️The request carried them, and a
 /// message copies what it carries — on the thread that draws, a sound's
 /// whole PCM once more for each sound a device at another rate asks for.
-ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
-    (request) async {
-      final into = device();
-      if (into == null) {
-        return runResampleInIsolate(request);
-      }
-      final landed = await into.lendToAWorker(
-        request.samples,
-        (lent) => _resampleOnAWorker(
-          lent == null ? request : request.withSamples(Float32List(0)),
-          lent,
-          into.buffers,
-        ),
-      );
-      return landed.address == 0
-          ? landed.samples
-          : into.adoptSamples(landed.address, landed.floats);
-    };
+Future<Float32List> _pcmFromPcmInto<R extends _PcmFromPcm<R>>(
+  QaAudioDevice? into,
+  R request, {
+  required Future<Float32List> Function(R request) plainly,
+  required Float32List Function(R request) here,
+}) => _landedWhereTheDevicePlays(
+  into,
+  plainly: () => plainly(request),
+  worked: (into) => into.lendToAWorker(
+    request.samples,
+    (lent) => _fromLentOnAWorker(
+      lent == null ? request : request.withSamples(Float32List(0)),
+      lent,
+      here,
+    ),
+  ),
+  withAdopted: (_, adopted) => adopted,
+);
 
 /// The workers' jobs, each in a function of its own: [onAWorker] copies
-/// the closure's whole context, and these hold a request and addresses.
-Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
-  ConformRequest request,
-  AudioBuffers buffers,
-) => onAWorker(() {
-  final result = runConformHere(request);
-  final placed = placedWhereTheDevicePlays(
-    result.samples,
-    audioBuffersHere(buffers),
-  );
-  return (
-    result: placed.address == 0 ? result : result.withSamples(null),
-    address: placed.address,
-    floats: placed.floats,
-  );
-});
+/// the closure's whole context, and these hold a request and an address.
+Future<_Landed<ConformResult>> _conformOnAWorker(ConformRequest request) =>
+    onAWorker(() {
+      final result = runConformHere(request);
+      return _placedOnTheWorker(
+        result,
+        result.samples,
+        () => result.withSamples(null),
+      );
+    });
 
 /// [lent]: where the samples [request] left out lie, when it left them out.
-Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
-  ResampleRequest request,
+Future<_Landed<Float32List>> _fromLentOnAWorker<R extends _PcmFromPcm<R>>(
+  R request,
   ({int address, int floats})? lent,
-  AudioBuffers buffers,
+  Float32List Function(R request) here,
 ) => onAWorker(() {
   assert(
     lent == null || request.samples.isEmpty,
-    'a lent conversion carries its samples by address alone',
+    'a lent job carries its samples by address alone',
   );
-  final converted = runResampleHere(
+  final made = here(
     lent == null
         ? request
         : request.withSamples(
             Pointer<Float>.fromAddress(lent.address).asTypedList(lent.floats),
           ),
   );
-  final placed = placedWhereTheDevicePlays(
-    converted,
-    audioBuffersHere(buffers),
-  );
+  return _placedOnTheWorker(made, made, () => Float32List(0));
+});
+
+/// On a worker: [made]'s PCM, [samples], placed where the device plays it
+/// ([placedWhereTheDevicePlays]), and [made] handed back [without] it
+/// where it was placed.
+_Landed<T> _placedOnTheWorker<T>(
+  T made,
+  Float32List? samples,
+  T Function() without,
+) {
+  final placed = placedWhereTheDevicePlays(samples, audioBuffersHere());
   return (
-    samples: placed.address == 0 ? converted : Float32List(0),
+    result: placed.address == 0 ? made : without(),
     address: placed.address,
     floats: placed.floats,
   );
-});
+}
 
 /// [samples] in a buffer [hands] makes, by its address and its floats — or
 /// none, at 0, where there are none or the buffer cannot be made, and the
@@ -255,33 +345,40 @@ Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
 }
 
 /// The conversion itself, on whichever isolate this is called from.
-Float32List runResampleHere(ResampleRequest request) {
-  _applyLibraryOverride(request.libraryPathOverride);
-  final native = QaAudioNative.instance;
-  if (native != null) {
-    return native.resample(
-      samples: request.samples,
-      channels: request.channels,
-      inputRate: request.inputRate,
-      outputRate: request.outputRate,
+Float32List runResampleHere(ResampleRequest request) => resampleAudio(
+  samples: request.samples,
+  channels: request.channels,
+  inputRate: request.inputRate,
+  outputRate: request.outputRate,
+);
+
+/// The bake itself, on whichever isolate this is called from: the span's
+/// samples — those of it the conform holds — through its settings.
+///
+/// Throws where the engine refuses what it was handed, so the store
+/// remembers the bake as failed rather than playing silence for it.
+Float32List runFilterHere(FilterRequest request) {
+  final channels = request.channels;
+  final frames = channels <= 0 ? 0 : request.samples.length ~/ channels;
+  final start = request.span.start.clamp(0, frames);
+  final end = (request.span.start + request.span.length).clamp(start, frames);
+  final baked = filterAudio(
+    samples: Float32List.sublistView(
+      request.samples,
+      start * channels,
+      end * channels,
+    ),
+    channels: channels,
+    rate: request.rate,
+    stages: request.span.stages,
+  );
+  if (baked.length != (end - start) * channels) {
+    throw StateError(
+      'the engine would not bake ${end - start} samples of $channels '
+      'channels at ${request.rate} Hz',
     );
   }
-  return resampleAudioReference(
-    samples: request.samples,
-    channels: request.channels,
-    inputRate: request.inputRate,
-    outputRate: request.outputRate,
-  ).samples;
-}
-
-void _applyLibraryOverride(String? override) {
-  // A worker isolate re-resolves the singletons from scratch, so the test
-  // path has to travel with the request. One assignment now covers every
-  // loader — this used to name two of six, which was fine only because
-  // the conform path happens to touch exactly those two.
-  if (override != null) {
-    debugQaEngineLibraryPathOverride = override;
-  }
+  return baked;
 }
 
 /// [source]'s sound, decoded at its own rate — what a conform starts from,
@@ -303,7 +400,7 @@ void _applyLibraryOverride(String? override) {
   MediaByteSource source, {
   ({int start, int count})? window,
 }) {
-  final decoded = QaAudioDecoder.instance?.decodeSpan(
+  final decoded = QaAudioDecoder.instance.decodeSpan(
     _spanOf(source),
     window: window,
   );
@@ -322,7 +419,7 @@ void _applyLibraryOverride(String? override) {
 /// long-sound-conform-memory-Q1). Null when no decoder recognized it.
 /// Decoded where it lies, as [decodeAudioSource] is.
 AudioDecodeStream? openAudioSource(MediaByteSource source) =>
-    QaAudioDecoder.instance?.openSpan(_spanOf(source));
+    QaAudioDecoder.instance.openSpan(_spanOf(source));
 
 /// Where [source]'s bytes lie for the decoder.
 MediaSpan _spanOf(MediaByteSource source) {
@@ -339,27 +436,11 @@ MediaSpan _spanOf(MediaByteSource source) {
 /// [runConformInIsolate]'s worker body, and directly callable by tests
 /// that want the real native path without isolate indirection.
 ConformResult runConformHere(ConformRequest request) {
-  _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
     decode: openAudioSource,
-    // Native resampler when the binary is present; the byte-identical Dart
-    // reference otherwise. Either way the SAME filter design — that is what
-    // the parity pins are for.
-    resample: ({required channels, required inputRate, required outputRate}) {
-      final native = QaAudioNative.instance;
-      if (native != null) {
-        return native.openResampler(
-          channels: channels,
-          inputRate: inputRate,
-          outputRate: outputRate,
-        );
-      }
-      return AudioResampleStreamReference(
-        channels: channels,
-        inputRate: inputRate,
-        outputRate: outputRate,
-      );
-    },
+    // The engine's resampler, which always loads — its Dart twin is the
+    // tests' answer key, no fallback (connection-round-checklist H).
+    resample: openAudioResampler,
     projectSampleRate: request.projectSampleRate,
     bucketsPerSecond: request.bucketsPerSecond,
     speedNumerator: request.speedNumerator,

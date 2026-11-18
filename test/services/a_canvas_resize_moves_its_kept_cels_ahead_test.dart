@@ -30,16 +30,17 @@ import '../helpers/cels_parked_cold.dart';
 /// up ([BrushFrameStore.moveCutCelsAhead]) — and a move worked out ahead is
 /// the very move the resize makes.
 ///
-/// The paper is 16 × 8 in tiles of 4, its pasteboard a quarter past it; the
-/// resize takes it to 14 × 6 about its centre — the picture one pixel up and
-/// one to the left, a move of no whole tile.
+/// The paper is 512 × 256 in tiles of 128, the engine's
+/// ([defaultCelTileSize]), its pasteboard a quarter past it; the resize
+/// takes it to 448 × 192 about its centre — the picture 32 pixels up and 32
+/// to the left, a quarter of a tile: a move of no whole tile.
 void main() {
-  const canvas = CanvasSize(width: 16, height: 8);
-  const resized = CanvasSize(width: 14, height: 6);
-  const tileSize = 4;
+  const canvas = CanvasSize(width: 512, height: 256);
+  const resized = CanvasSize(width: 448, height: 192);
+  const tileSide = defaultCelTileSize;
   const reach = PasteboardReach.quarter;
-  const dx = -1;
-  const dy = -1;
+  const dx = -32;
+  const dy = -32;
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -51,11 +52,19 @@ void main() {
   final drawnCel = key('drawn');
   final otherCel = key('other');
 
-  /// Every pixel of its own bytes, so a pixel landing one off reads wrong.
+  /// Every pixel of its own bytes — its column and its row in the first two
+  /// of them, the tile's [salt] in the third — so a pixel landing one off,
+  /// across or down, reads wrong.
   BitmapTile tile(int salt) => BitmapTile(
-    size: tileSize,
+    size: tileSide,
     pixels: Uint8List.fromList([
-      for (var i = 0; i < tileSize * tileSize * 4; i += 1) (i * 7 + salt) | 1,
+      for (var y = 0; y < tileSide; y += 1)
+        for (var x = 0; x < tileSide; x += 1) ...[
+          x * 2 + 1,
+          y * 2 + 1,
+          salt | 1,
+          (x * 7 + y * 3 + salt) | 1,
+        ],
     ]),
   );
 
@@ -63,19 +72,19 @@ void main() {
   /// picture laid past the wall.
   BitmapSurface drawn({int salt = 0}) => BitmapSurface(
     canvasSize: canvas,
-    tileSize: tileSize,
+    tileSize: tileSide,
     laidBounds: DirtyRegion(
-      left: -6,
-      top: -1,
-      rightExclusive: 5,
-      bottomExclusive: 3,
+      left: -192,
+      top: -32,
+      rightExclusive: 160,
+      bottomExclusive: 96,
     ),
     texts: [
       CelText(
         id: 1,
         content: CelTextContent(
           spans: const [CelTextSpan(text: 'a', style: TextLetterStyle())],
-          anchor: CanvasPoint(x: 2, y: 3),
+          anchor: CanvasPoint(x: 64, y: 96),
         ),
         plate: {TileCoord(x: 1, y: 0): tile(90 + salt)},
       ),
@@ -183,7 +192,7 @@ void main() {
       // walled again here — every tile the wall crosses, copied twice.
       test('🚨thawed and moved behind the wall on its worker — walled here '
           'not at all, a move of whole tiles too', () async {
-        for (final (dx, dy) in [(dx, dy), (-tileSize, 0)]) {
+        for (final (dx, dy) in [(dx, dy), (-tileSide, 0)]) {
           final store = kept();
           final walled = store.celsWalledHere;
           await moveAhead(store, dx: dx, dy: dy);
@@ -219,13 +228,13 @@ void main() {
 
   test('ink the wall cut away on the thaw stays away, whatever the move '
       'carries inside the new wall', () async {
-    // Wholly past the quarter wall of the paper (x -8..-5, the wall at -4),
-    // and a grow of six about the centre carries it three to the right —
-    // to where the wider paper's wall reaches.
-    const grown = CanvasSize(width: 22, height: 8);
+    // Wholly past the quarter wall of the paper (x -256..-129, the wall at
+    // -128), and a grow of 192 about the centre carries it 96 to the right —
+    // to where the wider paper's wall (-176) reaches.
+    const grown = CanvasSize(width: 704, height: 256);
     BitmapSurface pastTheWall() => BitmapSurface(
       canvasSize: canvas,
-      tileSize: tileSize,
+      tileSize: tileSide,
     ).putTiles([(coord: TileCoord(x: -2, y: 0), tile: tile(60))]);
     final here = BrushFrameStore();
     final ahead = BrushFrameStore();
@@ -234,12 +243,12 @@ void main() {
     }
     await ahead.moveCutCelsAhead(const [
       CutId('c'),
-    ], (canvasSize: grown, dx: 3, dy: 0));
+    ], (canvasSize: grown, dx: 96, dy: 0));
     for (final store in [here, ahead]) {
       store.adoptCutCanvasSize(
         cutId: const CutId('c'),
         canvasSize: grown,
-        dx: 3,
+        dx: 96,
         dy: 0,
       );
     }
@@ -269,7 +278,7 @@ void main() {
   test('worked out for another move: not taken, and not left behind', () async {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
-    await moveAhead(store, dx: -2);
+    await moveAhead(store, dx: -64);
     resize(store);
     expect(store.celsMovedHere, 1);
     expect(store.movedAheadOf(drawnCel), isNull);
@@ -312,11 +321,11 @@ void main() {
       'renamed, shared with the undo', () async {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
-    await moveAhead(store, dx: -tileSize, dy: 0);
+    await moveAhead(store, dx: -tileSide, dy: 0);
     expect(store.movedAheadOf(drawnCel), isNull);
     final was = store.hotBakedSurfaceOrNull(drawnCel);
     expect(was, isNotNull, reason: 'thawed ahead all the same');
-    resize(store, dx: -tileSize, dy: 0);
+    resize(store, dx: -tileSide, dy: 0);
     expect(store.celsMovedHere, 1);
     expect(
       identical(
@@ -332,9 +341,9 @@ void main() {
     final store = BrushFrameStore();
     _keepHot(store, {drawnCel: drawn()}, pasteboardReach: reach);
     final was = store.hotBakedSurfaceOrNull(drawnCel)!;
-    await moveAhead(store, dx: -tileSize, dy: 0);
+    await moveAhead(store, dx: -tileSide, dy: 0);
     expect(store.movedAheadOf(drawnCel), isNull);
-    resize(store, dx: -tileSize, dy: 0);
+    resize(store, dx: -tileSide, dy: 0);
     expect(
       identical(
         store.bakedSurfaceOrNull(drawnCel)!.tileAt(TileCoord(x: 0, y: 1)),
@@ -357,7 +366,7 @@ void main() {
   test('worked out again, the last round is the one held', () async {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
-    await moveAhead(store, dx: -2);
+    await moveAhead(store, dx: -64);
     final first = store.movedAheadOf(drawnCel);
     await moveAhead(store);
     final last = store.movedAheadOf(drawnCel);

@@ -7,8 +7,8 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
 
 /// 🚨THE LEDGER OF PINNED FINGERPRINTS (gpu-engine-skeleton, 2026-11-05):
 /// bytes every device must reproduce, pinned once on the first device that
-/// made them. Dart tests and the GPU engine's Rust tests
-/// (`packages/gpu_engine/rust/src/fingerprint.rs`) read this one file.
+/// made them. Dart tests and the engine's Rust tests, every crate's through
+/// one reader (`packages/gpu_engine/rust/native/ledger`), read this one file.
 ///
 /// ⛔A row is never pinned again to make a device pass — a device that
 /// differs fails. A new value needs its reason in the commit that changes

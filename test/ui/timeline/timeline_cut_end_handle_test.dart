@@ -176,7 +176,7 @@ void main() {
     expect(rec.ends, hasLength(1));
   });
 
-  // Both end lines are dragged by [EndLineGrip] (F-445): what a drag reports
+  // Both end lines are dragged by [WholeFramesGrip] (F-445): what a drag reports
   // is counted from where THAT drag went down.
   testWidgets('a second drag of the grip counts from its own start', (
     tester,
@@ -187,7 +187,7 @@ void main() {
         child: SizedBox(
           width: 12,
           height: 40,
-          child: EndLineGrip(
+          child: WholeFramesGrip(
             axis: Axis.horizontal,
             cellExtent: 24,
             onBegin: () => true,
@@ -198,7 +198,7 @@ void main() {
         ),
       ),
     );
-    final grip = find.byType(EndLineGrip);
+    final grip = find.byType(WholeFramesGrip);
 
     Future<void> drag(double dx) async {
       final gesture = await tester.startGesture(tester.getCenter(grip));

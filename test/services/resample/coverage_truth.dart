@@ -34,7 +34,11 @@ import 'package:anicel/src/services/resample/resample_kernel.dart';
 /// vote table where this one has an unbounded map. Those are the three
 /// places a disagreement can come from, and the sweep in
 /// `resample_kernel_test.dart` measures how large it gets (1.06% of
-/// pixels, worst case, all of them near-ties).
+/// pixels, worst case, all of them near-ties — measured on the CPU
+/// reference). The shipping kernel is the engine's since that reference
+/// went (`resample.wgsl`, 2026-11-13), and it differs in one place more: a
+/// homography's subsamples move by the pixel's own Jacobian rather than
+/// each through the divide.
 Uint8List coverageTruth({
   required Uint8List src,
   required int srcWidth,

@@ -32,6 +32,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -43,6 +44,7 @@ import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/frame_shots.dart' show frameOfPicture;
 import 'package:anicel/src/ui/sheet_painting.dart' show pictureOutline;
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/checker_sampling.dart';
@@ -433,6 +435,76 @@ void main() {
     );
   });
 
+  // Card conte-pdf-panels-read-back-twice: a cell made on the engine was
+  // read back as a picture and read again from it, and carried an alpha
+  // mask whatever it showed.
+  testWidgets('🎯a cell made on the engine is read once as the PDF keeps '
+      'it: three bytes a pixel and no alpha mask where it is opaque, '
+      'straight with its mask where it lets the page through', (
+    tester,
+  ) async {
+    final (opaque, seeThrough, plain, masked) = (await tester.runAsync(
+      () async {
+        Future<ContePdfPicture> cellOf(ui.Color colour) async {
+          final recorder = ui.PictureRecorder();
+          ui.Canvas(recorder).drawRect(
+            const ui.Rect.fromLTWH(0, 0, 2, 2),
+            ui.Paint()..color = colour,
+          );
+          final drawn = recorder.endRecording();
+          final image = await drawn.toImage(2, 2);
+          drawn.dispose();
+          final frame = await frameOfPicture(appGpuExport, image);
+          image.dispose();
+          try {
+            return ContePdfPicture.ofFrame(frame);
+          } finally {
+            frame.free();
+          }
+        }
+
+        final opaque = await cellOf(const ui.Color(0xFF336699));
+        final seeThrough = await cellOf(const ui.Color(0x80FF0000));
+        final source = buildConteSheetSource(project());
+        final pages = layoutConteSheet(
+          source,
+          metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+        );
+        final page = pages.first;
+        final key = contePictureOf(page.cells.first, page.metrics).key;
+        final fonts = await ContePdfFonts.load();
+        Future<Uint8List> pdfOf(ContePdfPicture cell) => writeContePdf(
+          source: source,
+          words: conteWordsIn(AppLanguage.ja),
+          pages: pages,
+          fonts: fonts,
+          pictures: {key: cell},
+        );
+        return (
+          opaque,
+          seeThrough,
+          await pdfOf(opaque),
+          await pdfOf(seeThrough),
+        );
+      },
+    ))!;
+
+    expect(opaque.alpha, isFalse);
+    expect(opaque.pixels, [
+      for (var pixel = 0; pixel < 4; pixel += 1) ...[0x33, 0x66, 0x99],
+    ]);
+    expect(seeThrough.alpha, isTrue);
+    expect(seeThrough.pixels, [
+      for (var pixel = 0; pixel < 4; pixel += 1) ...[255, 0, 0, 128],
+    ]);
+    expect(
+      pdfMaskedImageCount(masked),
+      1,
+      reason: 'LIVENESS: a mask is counted',
+    );
+    expect(pdfMaskedImageCount(plain), 0);
+  });
+
   testWidgets('the dialog\'s Conte tab exports the project\'s PDF into the '
       'chosen location', (tester) async {
     final session = EditorSessionManager(initialProject: project());
@@ -498,11 +570,17 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
-    final sizes = pdfImageSizes(
-      File('${temp.path}${Platform.pathSeparator}$sheet.pdf').readAsBytesSync(),
-    );
+    final pdf = File(
+      '${temp.path}${Platform.pathSeparator}$sheet.pdf',
+    ).readAsBytesSync();
+    final sizes = pdfImageSizes(pdf);
     expect(sizes, isNotEmpty, reason: 'fixture: the cells print pictures');
     expect(sizes.toSet(), {(32, 18)});
+    expect(
+      pdfMaskedImageCount(pdf),
+      0,
+      reason: 'each cell on its ground, opaque (ContePdfPicture.ofFrame)',
+    );
   });
 
   testWidgets('a cell whose camera moves carries the canvas it sweeps, as '

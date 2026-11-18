@@ -100,6 +100,8 @@ Project _project({
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   EditorSessionManager sessionFor({
     Map<int, InstructionEvent> moreSpans = const {},
   }) {

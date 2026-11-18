@@ -2,8 +2,8 @@ part of '../brush_canvas_panel.dart';
 
 /// A TAP ON THE CANVAS — the press that may become a tool tap or a stamp,
 /// the slop that decides it, the pointers holding an aim, and the drag
-/// that carries a stamp along. The panel stays the widget that mounts
-/// them.
+/// that carries a stamp along ([_StampTrail]). The panel stays the
+/// widget that mounts them.
 ///
 /// 🚨A collaborator carved out of `_BrushCanvasPanelState` (the audit's SRP
 /// cut, Round 6, 2026-09-03). Measured before cutting: four fields of its
@@ -13,6 +13,9 @@ class _CanvasPanelTap {
   _CanvasPanelTap(this._state);
 
   final _BrushCanvasPanelState _state;
+
+  /// The stamp's press and the trail its drag lays ([_StampTrail]).
+  late final _StampTrail _trail = _StampTrail(this);
 
   /// Pointers that are DOWN and could drive a tool — the census's own
   /// count of who is holding the aim up.
@@ -165,7 +168,7 @@ class _CanvasPanelTap {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
     if (event.pointer == _pressPointer) {
-      _stampDrag = null;
+      _trail.drop();
     }
     _letGoOfPress(event.pointer);
   }
@@ -180,7 +183,7 @@ class _CanvasPanelTap {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
     if (event.pointer == _pressPointer) {
-      _endStampDrag();
+      _trail.end();
     }
     _letGoOfPress(event.pointer);
   }
@@ -326,12 +329,11 @@ class _CanvasPanelTap {
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
       // layer. The CUT variants ride that same layer (canvasToolSelects),
-      // the STAMP variant paints and the WHOLE runs from its settings
-      // (I-163), so none of them want a tap handler here either.
+      // and the STAMP variant paints, so none of them want a tap handler
+      // here either.
       case CanvasTool.select:
       case CanvasTool.move:
       case CanvasTool.cut:
-      case CanvasTool.cutWhole:
       // The shape fill rides the same drag layer as select and cut — one
       // outline, three things to do with it.
       case CanvasTool.fillShape:
@@ -341,6 +343,13 @@ class _CanvasPanelTap {
       // too — the text tool mounts a layer of its own for both.
       case CanvasTool.text:
         return null;
+      case CanvasTool.cutWhole:
+        // The whole cut runs from its settings (I-163): a press on the
+        // canvas does nothing with it, and the layer this mounts takes the
+        // press so that the drawing view under it starts no stroke.
+        // ↩️It had no layer, and a drag under it painted the brush
+        // (found 2026-11-17, I-110's eyedropper sweep).
+        return (_) {};
       case CanvasTool.cutStamp:
         // Click = drop the held piece, centred here, committed at once.
         // Photoshop, Clip Studio and TVPaint agree on the immediate part:
@@ -351,7 +360,8 @@ class _CanvasPanelTap {
         if (slot == null || _state.widget._editableCoordinator == null) {
           return null;
         }
-        return (point) => _pressStamp(slot.piece, point);
+        return (point) =>
+            _trail.press(slot.piece, point, shift: _stampShiftHeld);
       case CanvasTool.eyedropper:
         return eyedropperPick();
       case CanvasTool.fill:
@@ -389,57 +399,6 @@ class _CanvasPanelTap {
         pick(color);
       }
     };
-  }
-
-  /// The stamp's drag: the path's lock, and where its last stamp landed,
-  /// on the standing row's own artwork. Null between drags.
-  ///
-  /// 🗣️I-121 (유저 2026-10-21): 「잘라내기 도구의 스탬프도 쉬프트 누른동안 법
-  /// 통일해서 스냅. 떼면 스냅 끝남.」 — the stroke's lock ([StrokeLock]), as
-  /// the lasso took it (I-110: 「프리핸드로 하는 모든것들도 스냅되도록. 최대한
-  /// 법 통일」): Shift's eight ways and the line a hold kept while it is held,
-  /// the snapping perspectives' rays where it is not. On the CANVAS, where a
-  /// press is read; the row's own artwork is where the spacing is measured.
-  ({StrokeLock lock, CanvasPoint lastCenter})? _stampDrag;
-
-  /// A press of the stamp at [point]: [piece] lands there, and the drag it
-  /// may begin is armed. Pressed under the hold that kept a line, it lands
-  /// on that line (I-121), as a stroke's press does.
-  void _pressStamp(CutPiece? piece, CanvasPoint point) {
-    final line = _state._shiftLine..heldNow(_stampShiftHeld);
-    final pressed = line.onTheLine(point);
-    // Pressed on the canvas, landed on the row's own artwork where the
-    // row shows the press (a-marquee-on-a-posed-row) — the piece is the
-    // row's pure pixels, so it lands in the row's own coordinates.
-    final onTheRow = _state._selectionSeat.pointOnTheRow(pressed);
-    if (piece == null || onTheRow == null) {
-      return;
-    }
-    _stampAt(piece, pressed);
-    // A press is also the start of a possible drag, and the drag
-    // measures its spacing from the stamp that just landed.
-    _stampDrag = (
-      lock: StrokeLock(
-        guides: _state.widget.guides ?? CutGuides.empty,
-        start: pressed,
-        zoom: _state._viewportState._viewport.zoom,
-        line: line,
-      ),
-      lastCenter: onTheRow,
-    );
-  }
-
-  /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
-  /// which every row the stamp lands on takes on its own artwork, where
-  /// that row shows it ([_BrushCanvasPanelState._landStamp]).
-  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
-    _state._landStamp(
-      pieceCentredOn(
-        piece,
-        onCanvas,
-        opacity: _state._brush.cutStampOpacity,
-      ),
-    );
   }
 
   /// The held [piece] centred on [onCanvas] — a point on the CANVAS — as
@@ -540,10 +499,7 @@ class _CanvasPanelTap {
     if (!canvasToolStamps(_state._brush.tool)) {
       return;
     }
-    final lock = _stampDrag?.lock;
-    if (lock != null) {
-      _stampAlong(lock.follow(point, shift: _stampShiftHeld));
-    }
+    _trail.dragTo(point, shift: _stampShiftHeld);
   }
 
   /// Whether the press under way is a pen's — or a mouse's: anything but a
@@ -562,23 +518,111 @@ class _CanvasPanelTap {
       ModifierKeys.isShiftPressed ||
       (_aPenPresses &&
           CanvasTouchContacts.aFingerHoldsAStrokesShift(_pressPointer));
+}
+
+/// THE STAMP'S TRAIL — a press of the stamp lands the held piece, and the
+/// drag it begins lays a row of them along the hand, each a piece's own
+/// size on from the last.
+///
+/// 🗣️I-121 (유저 2026-10-21): 「잘라내기 도구의 스탬프도 쉬프트 누른동안 법
+/// 통일해서 스냅. 떼면 스냅 끝남.」 — the stroke's lock ([StrokeLock]), as
+/// the lasso took it (I-110: 「프리핸드로 하는 모든것들도 스냅되도록. 최대한
+/// 법 통일」): Shift's eight ways and the line a hold kept while it is held,
+/// the snapping perspectives' rays where it is not. On the CANVAS, where a
+/// press is read; the row's own artwork is where the spacing is measured.
+///
+/// Carved out of [_CanvasPanelTap] (11-17) when the drag's one door to the
+/// window ([CanvasDragInFlight]) took that class past six hundred lines.
+class _StampTrail {
+  _StampTrail(this._tap);
+
+  final _CanvasPanelTap _tap;
+
+  _BrushCanvasPanelState get _state => _tap._state;
+
+  /// The drag: the path's lock, and where its last stamp landed, on the
+  /// standing row's own artwork. Null between drags.
+  ({StrokeLock lock, CanvasPoint lastCenter})? get _drag => _held;
+
+  /// ⛔The one door [_drag] is written by: a stamp's drag in flight is
+  /// waited out by the window's held keys and the mapped buttons
+  /// ([CanvasDragInFlight]), and they hear of it here.
+  set _drag(({StrokeLock lock, CanvasPoint lastCenter})? drag) {
+    _held = drag;
+    CanvasDragInFlight.report(this, active: drag != null);
+  }
+
+  ({StrokeLock lock, CanvasPoint lastCenter})? _held;
+
+  /// A press of the stamp at [point]: [piece] lands there, and the drag it
+  /// may begin is armed. Pressed under the hold that kept a line, it lands
+  /// on that line (I-121), as a stroke's press does — [shift] held now.
+  void press(CutPiece? piece, CanvasPoint point, {required bool shift}) {
+    final line = _state._shiftLine..heldNow(shift);
+    final pressed = line.onTheLine(point);
+    // Pressed on the canvas, landed on the row's own artwork where the
+    // row shows the press (a-marquee-on-a-posed-row) — the piece is the
+    // row's pure pixels, so it lands in the row's own coordinates.
+    final onTheRow = _state._selectionSeat.pointOnTheRow(pressed);
+    if (piece == null || onTheRow == null) {
+      return;
+    }
+    _stampAt(piece, pressed);
+    // A press is also the start of a possible drag, and the drag
+    // measures its spacing from the stamp that just landed.
+    _drag = (
+      lock: StrokeLock(
+        guides: _state.widget.guides ?? CutGuides.empty,
+        start: pressed,
+        zoom: _state._viewportState._viewport.zoom,
+        line: line,
+      ),
+      lastCenter: onTheRow,
+    );
+  }
+
+  /// The hand at [point], [shift] held now: what the lock lays from the
+  /// last stamp on.
+  void dragTo(CanvasPoint point, {required bool shift}) {
+    final lock = _drag?.lock;
+    if (lock != null) {
+      _along(lock.follow(point, shift: shift));
+    }
+  }
 
   /// The hand has lifted: what the drag's lock still holds is stamped
   /// ([StrokeLock.finish]), and the drag is over.
-  void _endStampDrag() {
-    final lock = _stampDrag?.lock;
+  void end() {
+    final lock = _drag?.lock;
     if (lock != null) {
-      _stampAlong(lock.finish());
+      _along(lock.finish());
     }
-    _stampDrag = null;
+    _drag = null;
+  }
+
+  /// The drag is over with nothing more stamped: a cancel, or the canvas
+  /// going away under it.
+  void drop() => _drag = null;
+
+  /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
+  /// which every row the stamp lands on takes on its own artwork, where
+  /// that row shows it ([_BrushCanvasPanelState._landStamp]).
+  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
+    _state._landStamp(
+      _tap.pieceCentredOn(
+        piece,
+        onCanvas,
+        opacity: _state._brush.cutStampOpacity,
+      ),
+    );
   }
 
   /// The drag's stamps along [points], on the canvas, each a piece's own
   /// size on from the last.
-  void _stampAlong(List<CanvasPoint> points) {
+  void _along(List<CanvasPoint> points) {
     final piece = _state.widget.cutPieceSlot?.piece;
     for (final point in points) {
-      final drag = _stampDrag;
+      final drag = _drag;
       // The trail is laid on the row's own artwork, as the press was, so the
       // spacing is the piece's own size in its own pixels.
       final to = _state._selectionSeat.pointOnTheRow(point);
@@ -595,7 +639,7 @@ class _CanvasPanelTap {
         _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
       }
       if (centers.isNotEmpty) {
-        _stampDrag = (lock: drag.lock, lastCenter: centers.last);
+        _drag = (lock: drag.lock, lastCenter: centers.last);
       }
     }
   }

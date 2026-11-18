@@ -124,7 +124,7 @@ void main() {
     expect(session.activeLayerId, attachFolder);
 
     await tester.tap(
-      find.named('timeline-attach-twirl-${groupBase.value}').first,
+      find.named('timeline-attach-twirl-above-${groupBase.value}').first,
     );
     await tester.pumpAndSettle();
 

@@ -18,15 +18,23 @@ import 'transform_box.dart';
 /// draws over it.
 ///
 /// A view of the selection layer at one moment — the viewport, the canvas,
-/// the armed mode, whether a box is open and the open warp — owning none of
-/// them. Where the box puts the float on the CANVAS is [FloatWarp]; this is
+/// the armed mode and the box shown with its warp — owning none of them.
+/// Where the box puts the float on the CANVAS is [FloatWarp]; this is
 /// where the box stands on the SCREEN.
+///
+/// ⛔**ONE BOX, AND IT DOES NOT KNOW WHETHER IT IS OPEN** (F-585 · F-586,
+/// 유저 2026-11-12: 「매쉬변형, 변형시작해야 내부 사각형들 뜨는데, 그냥
+/// 매쉬변형인 상태면 뜨도록. 변형안한상태로 그것들 잡아끌어서 변형한다는게
+/// 안되는게 이유」). The box the Move tool stands at rest is drawn and
+/// pressed as the box that press opens: the same handles, in every mode.
+/// ↩️It took the box to press beside a warp that knew only the OPEN one,
+/// and a flag for which it was — so the box at rest had no warp to draw
+/// ([scaleHandles]).
 class BoxOnScreen {
   const BoxOnScreen({
     required this.viewport,
     required this.pasteboard,
     required this.mode,
-    required this.boxOpen,
     required this.warp,
   });
 
@@ -38,15 +46,13 @@ class BoxOnScreen {
   /// Which of 일반/퍼스/메쉬 is armed.
   final TransformMode mode;
 
-  /// Whether a box is open — a closed one offers its corners whatever the
-  /// mode ([scaleHandles]).
-  final bool boxOpen;
-
-  /// The open box over the float — where 퍼스 puts its quad corners.
+  /// The box shown, over what floats — where 퍼스 puts its quad corners and
+  /// 메쉬 its grid. Its [FloatWarp.box] is the box drawn and pressed; null
+  /// when none stands.
   final FloatWarp warp;
 
   /// The warp's own points as drawn — a 퍼스 quad's corners or a 메쉬
-  /// grid — or none in 일반 (and on a box that is not open).
+  /// grid — or none in 일반.
   List<CanvasPoint> get _warpPoints =>
       warp.placedMeshPoints ?? warp.placedCorners ?? const [];
 
@@ -105,35 +111,27 @@ class BoxOnScreen {
   /// the two corners", which is what the user asked for — the old
   /// one-axis scale could not move the edge off its own axis at all.
   ///
-  /// With NO session open the corners are added back whatever the mode,
-  /// because the mode describes what an OPEN box does and something has to
+  /// ↩️With NO session open the corners were added back whatever the mode,
+  /// 「because the mode describes what an OPEN box does and something has to
   /// be grabbable to open one. Otherwise 메쉬 — whose handles are grid
   /// points that do not exist until the box does — would be a mode you
-  /// could select and then never enter.
-  List<TransformHandle> get scaleHandles {
-    final open = switch (mode) {
-      // 🚨★★★**일반변형도 변 중앙을 잡는다** — 유저 2026-09-22: 「**일반변형도
-      // 자유변형처럼 각 변 중앙에 버튼? 두도록. 자유변형이랑 법 통일**해서.
-      // 이제 기본조작은 어떤 꼭짓점 편집하든 중심기준 크기변형이지만,
-      // **수정자통한 조작이 변 중앙의 꼭짓점 조작이 필요**해진다는게 이유임」.
-      //
-      // ⛔Nothing else had to change: `_dragBoxHandle` already solves all
-      // eight through `_solveScaleDrag`, and the edges were only ever
-      // withheld from this mode.
-      TransformMode.normal => const [..._cornerHandles, ..._edgeHandles],
-      TransformMode.perspective => _edgeHandles,
-      TransformMode.mesh => const <TransformHandle>[],
-    };
-    if (boxOpen) {
-      return open;
-    }
-    return [
-      ..._cornerHandles,
-      ...open.where((handle) => !_cornerHandles.contains(handle)),
-    ];
-  }
+  /// could select and then never enter」. The grid stands with the box at
+  /// rest now ([warp]), so it is what opens one (F-586).
+  List<TransformHandle> get scaleHandles => switch (mode) {
+    // 🚨★★★**일반변형도 변 중앙을 잡는다** — 유저 2026-09-22: 「**일반변형도
+    // 자유변형처럼 각 변 중앙에 버튼? 두도록. 자유변형이랑 법 통일**해서.
+    // 이제 기본조작은 어떤 꼭짓점 편집하든 중심기준 크기변형이지만,
+    // **수정자통한 조작이 변 중앙의 꼭짓점 조작이 필요**해진다는게 이유임」.
+    //
+    // ⛔Nothing else had to change: `_dragBoxHandle` already solves all
+    // eight through `_solveScaleDrag`, and the edges were only ever
+    // withheld from this mode.
+    TransformMode.normal => const [..._cornerHandles, ..._edgeHandles],
+    TransformMode.perspective => _edgeHandles,
+    TransformMode.mesh => const <TransformHandle>[],
+  };
 
-  /// The box's outline as it is DRAWN, on the canvas: a 메쉬 grid's warped
+  /// [box]'s outline as it is DRAWN, on the canvas: a 메쉬 grid's warped
   /// boundary, a 퍼스 quad, or the affine box — the one polygon the chrome
   /// strokes and a press asks 「inside?」 of.
   ///
@@ -144,16 +142,13 @@ class BoxOnScreen {
   /// along their own points while the press asked the affine box their
   /// corners had been pulled away from, so the grown picture's inside was
   /// the turn. What you see is what you grab (F-262), in every mode.
-  List<CanvasPoint> outline(
-    SelectionAffine affine,
-    double width,
-    double height,
-  ) {
+  List<CanvasPoint> _outline(TransformBox box) {
     final mesh = warp.placedMeshPoints;
     if (mesh != null) {
       return warp.meshBoundary(mesh);
     }
-    return warp.placedCorners ?? _boxShapeFor(affine, width, height).points;
+    return warp.placedCorners ??
+        _boxShapeFor(box.affine, box.baseWidth, box.baseHeight).points;
   }
 
   /// The box as it stood when its session opened — the untouched rectangle
@@ -196,12 +191,7 @@ class BoxOnScreen {
   /// box's edge, so once a corner moved the handle stayed behind on a box no
   /// longer shown. Its place is its quad edge's middle now; every other handle
   /// keeps the affine box's.
-  Offset scaleHandleViewport(
-    TransformHandle handle,
-    SelectionAffine affine,
-    double width,
-    double height,
-  ) {
+  Offset _scaleHandleViewport(TransformHandle handle, TransformBox box) {
     final corners = warp.placedCorners;
     final pair = edgeCornerPair(handle);
     if (corners != null && pair != null) {
@@ -209,12 +199,16 @@ class BoxOnScreen {
       final b = viewport.canvasToViewportOffset(corners[pair[1]]);
       return (a + b) / 2;
     }
-    return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
+    return _mapLocalToViewport(
+      box.affine,
+      handleLocal(handle, box.baseWidth, box.baseHeight)!,
+    );
   }
 
   /// What a press lands on — through the one order every box keeps
   /// ([boxPressAt]): the cross, then a point the warp drew or a grip, then
-  /// inside the [outline], and outside is the turn.
+  /// inside the outline drawn, and outside is the turn. Null with no box
+  /// shown.
   ///
   /// ⛔**THE WARP'S POINTS ARE HANDLES LIKE THE REST.** The layer asked them
   /// first, ahead of this order, so a 퍼스 corner or a grid point under the
@@ -225,20 +219,22 @@ class BoxOnScreen {
   /// ⚠️The stage gate is the one the move already asked for — see the
   /// `onStage` check on the move path. ⛔Not a new rule: the same sentence,
   /// asked once instead of twice.
-  BoxGrab? grabAt(Offset local, TransformBox box) {
-    final affine = box.affine;
+  BoxGrab? grabAt(Offset local) {
+    final box = warp.box;
+    if (box == null) {
+      return null;
+    }
     final points = _warpPoints;
     final handles = scaleHandles;
     final hit = boxPressAt(
       local,
-      anchor: viewport.canvasToViewportOffset(affine.anchorCanvas),
+      anchor: viewport.canvasToViewportOffset(box.affine.anchorCanvas),
       handles: [
         for (final point in points) viewport.canvasToViewportOffset(point),
-        for (final handle in handles)
-          scaleHandleViewport(handle, affine, box.baseWidth, box.baseHeight),
+        for (final handle in handles) _scaleHandleViewport(handle, box),
       ],
       inside: (press) => CanvasSelectionShape(
-        outline(affine, box.baseWidth, box.baseHeight),
+        _outline(box),
       ).containsPoint(viewport.viewportOffsetToCanvas(press)),
       onStage: (press) {
         final at = viewport.viewportOffsetToCanvas(press);
@@ -260,13 +256,14 @@ class BoxOnScreen {
     };
   }
 
-  /// What the ants painter draws over the box: the [outline], the handles
+  /// What the ants painter draws over the box: its outline, the handles
   /// and the anchor cross, in viewport space — what [grabAt] takes, drawn.
+  /// Null with no box shown.
   ///
   /// The handles are the warp's own points (a 퍼스 quad's corners, a 메쉬
   /// grid), then the grips the mode offers ([scaleHandles]). 퍼스 keeps its
   /// edge grips under the quad, because they carry the edges and hiding
-  /// them would hide half the tool; an open 메쉬 offers none.
+  /// them would hide half the tool; 메쉬 offers none.
   ///
   /// ⚠️The warp's points are the PLACED ones rather than the resample's, so
   /// the handles are on screen from the moment the mode is armed instead
@@ -276,36 +273,29 @@ class BoxOnScreen {
   /// own outline — and the press asked a fourth, the affine box, for its
   /// inside (F-412). One outline, one list of handles: a mode differs only
   /// in which points it has.
-  SelectionTransformChrome? transformChrome(
-    SelectionAffine? chromeAffine,
-    double chromeWidth,
-    double chromeHeight,
-  ) {
-    if (chromeAffine == null) {
+  SelectionTransformChrome? transformChrome() {
+    final box = warp.box;
+    if (box == null) {
       return null;
     }
     Offset onScreen(CanvasPoint point) =>
         viewport.canvasToViewportOffset(point);
     return (
-      box: [
-        for (final point in outline(chromeAffine, chromeWidth, chromeHeight))
-          onScreen(point),
-      ],
+      box: [for (final point in _outline(box)) onScreen(point)],
       handles: [
         for (final point in _warpPoints) onScreen(point),
-        for (final handle in scaleHandles)
-          scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
+        for (final handle in scaleHandles) _scaleHandleViewport(handle, box),
       ],
       // ⚠️ONE anchor for every mode. The cross is the ROTATION's centre
       // and every mode can be turned (outside the box is the rotation,
       // whatever mode is armed), so hiding it in 퍼스/메쉬 would be a rule
       // about the modes that the rotation does not have.
-      anchor: onScreen(chromeAffine.anchorCanvas),
+      anchor: onScreen(box.affine.anchorCanvas),
     );
   }
 }
 
-/// What a press on the open box takes hold of ([BoxOnScreen.grabAt]).
+/// What a press on the box takes hold of ([BoxOnScreen.grabAt]).
 sealed class BoxGrab {
   const BoxGrab();
 }

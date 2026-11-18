@@ -102,7 +102,7 @@ void main() {
   group('the PSD bridge', () {
     test('⛔bytes that are not a PSD are refused before any decode', () {
       expect(
-        () => decodePsdCompositeImage(Uint8List.fromList([1, 2, 3, 4])),
+        () => readPsdComposite(Uint8List.fromList([1, 2, 3, 4])),
         throwsA(isA<FormatException>()),
       );
     });
@@ -131,7 +131,7 @@ void main() {
         ];
 
         await expectLater(
-          decodePsdCompositeImage(Uint8List.fromList(header)),
+          readPsdComposite(Uint8List.fromList(header)),
           throwsA(
             isA<FormatException>().having(
               (error) => error.message,

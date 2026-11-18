@@ -15,8 +15,9 @@ import '../../helpers/a_folder_made_by_hand.dart';
 /// 그것만 적용 등 이런 규칙) … fx펼치기, … 그룹펼치기 … 일괄조작가능하게」.
 ///
 /// The group fold is ONE chevron with two verbs (`timelineGroupFoldFor`): a
-/// folder folds itself, a base folds the attach group riding it. Pressed
-/// inside the row selection it folds every selected row that has one.
+/// folder folds itself, a base folds the attach group riding it — pressed
+/// on the folder's twirl, both its sides (🗣️I-175-Q5 (가)). Pressed inside
+/// the row selection it folds every selected row that has one.
 void main() {
   test('pressed inside the selection, a folder and two bases fold together '
       '— as one undo', () {
@@ -24,7 +25,7 @@ void main() {
     r.select([r.baseA, r.folder, r.baseB]);
     final depth = r.s.historyManager.undoCount;
 
-    r.presses.toggleGroupFold(r.baseA);
+    r.presses.toggleGroupFold(r.baseA, null);
 
     expect(r.open(r.baseA), isFalse);
     expect(r.open(r.baseB), isFalse, reason: '「선택안 버튼조작은 선택전부적용」');
@@ -43,7 +44,7 @@ void main() {
     final r = _Rig();
     r.select([r.folder, r.baseB]);
 
-    r.presses.toggleGroupFold(r.baseA);
+    r.presses.toggleGroupFold(r.baseA, null);
 
     expect(r.open(r.baseA), isFalse);
     expect([r.open(r.folder), r.open(r.baseB)], [true, true]);
@@ -53,7 +54,7 @@ void main() {
     final r = _Rig();
     r.select([r.baseA, r.plain]);
 
-    r.presses.toggleGroupFold(r.baseA);
+    r.presses.toggleGroupFold(r.baseA, null);
 
     expect(r.open(r.baseA), isFalse);
     expect(r.open(r.plain), isNull, reason: 'no chevron, nothing to fold');
@@ -63,8 +64,8 @@ void main() {
       'the pressed row turns to, on every row', () {
     final r = _Rig();
     r.presses
-      ..toggleGroupFold(r.baseB)
-      ..toggleGroupFold(r.folder);
+      ..toggleGroupFold(r.baseB, null)
+      ..toggleGroupFold(r.folder, null);
     expect(
       [r.open(r.baseB), r.open(r.folder)],
       [false, false],
@@ -72,7 +73,7 @@ void main() {
     );
     r.select([r.baseA, r.folder, r.baseB]);
 
-    r.presses.toggleGroupFold(r.baseA);
+    r.presses.toggleGroupFold(r.baseA, null);
 
     expect(
       [r.open(r.baseA), r.open(r.folder), r.open(r.baseB)],
@@ -125,7 +126,8 @@ class _Rig {
   void select(List<LayerId> ids) =>
       s.rowSelection.value = [for (final id in ids) LayerRowAddress(id)];
 
-  /// The chevron's reading — null for a row that has none.
+  /// The chevron's reading — null for a row that has none: a folder's own
+  /// fold, a base's riders on the rail or folded off it.
   bool? open(LayerId id) {
     final layer = requireLayerAnywhere(s.repository.requireProject(), id);
     if (layer.kind.groupsLayers) {
@@ -134,8 +136,9 @@ class _Rig {
     final riders = s.activeCutOrNull!.layers.where(
       (candidate) => candidate.attachedToLayerId == id,
     );
+    final away = s.railView.attachFoldedRowIds.value;
     return riders.isEmpty
         ? null
-        : !s.railView.collapsedAttachBaseIds.value.contains(id);
+        : !riders.every((rider) => away.contains(rider.id));
   }
 }

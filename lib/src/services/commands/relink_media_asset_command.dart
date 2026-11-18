@@ -1,3 +1,4 @@
+import '../../models/media_asset.dart' show MediaCarriedAs;
 import '../../models/project.dart';
 import '../command.dart';
 import '../media/media_moves.dart';
@@ -33,7 +34,7 @@ class RelinkMediaAssetCommand implements Command {
   /// old file's copy an undo needs, and the picked file's (audit 09-25).
   /// The batch relink proves the identity first, so it keeps the carry,
   /// and the name goes with it.
-  final String? carriedAs;
+  final MediaCarriedAs? carriedAs;
 
   Project? _previousProject;
   bool _hasExecuted = false;

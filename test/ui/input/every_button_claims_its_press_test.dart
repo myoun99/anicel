@@ -112,6 +112,10 @@ void main() {
     // draws the box that picks keys — the graph's own band — and a finger
     // scrolls where the band's devices do not, as on the lane grid.
     'lane-graph-ground': 'the graph\'s ground: its drag draws a box',
+    // ⛔NOT A SITE: the well inside `FaceInkWell`, which takes whatever press
+    // its wearer hands it. The claim is the wearer's, and the scan reads the
+    // `FaceInkWell(` where it is worn.
+    'statesController: _states': 'the well a FaceInkWell is made of',
   };
 
   /// The four names the scan read first. A bare one of these fails outright.
@@ -120,6 +124,9 @@ void main() {
     'TextButton',
     'InkWell',
     'GestureDetector',
+    // An InkWell whose hover is its face (a-live-dock-frame-costs-a-whole-
+    // draw-Q12) — read where it is worn, as the InkWell it replaced was.
+    'FaceInkWell',
   };
 
   /// 🚨THE MATERIAL PRESS FAMILIES, counted and not yet claimed.
@@ -189,7 +196,8 @@ void main() {
   List<({String site, String family, String? parent, List<String> arguments})>
   scannedControls() {
     final button = RegExp(
-      '(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector|'
+      '(^|[^A-Za-z])(IconButton|TextButton|FaceInkWell|InkWell|'
+      'GestureDetector|'
       r'FilledButton\.tonal|FilledButton|OutlinedButton|ElevatedButton|'
       'SwitchListTile|CheckboxListTile|RadioListTile|Switch|Checkbox|Radio|'
       'DropdownButtonFormField|DropdownButton|SegmentedButton|ChoiceChip|'
@@ -241,6 +249,10 @@ void main() {
         }
         final control = button.firstMatch(line);
         if (control == null || line.contains('.styleFrom')) {
+          continue;
+        }
+        // The app's own control declared (`const FaceInkWell({`), not worn.
+        if (line.substring(control.end).startsWith('{')) {
           continue;
         }
         final ahead = lines

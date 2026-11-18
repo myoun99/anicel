@@ -11,49 +11,44 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/pixels_laid_in_a_mode.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
-/// BB-1 (R26 #9): the stroke-level brush blend — kernel math, byte-exact
-/// pass-through, region extraction, and the commit round trip.
+/// BB-1 (R26 #9): the stroke-level brush blend — its numbers on the engine
+/// ([pixelsLaidInAMode]), byte-exact pass-through, region extraction, and
+/// the commit round trip.
 void main() {
-  Uint8List pixel(int r, int g, int b, int a) =>
-      Uint8List.fromList([r, g, b, a]);
-
   test('multiply over an opaque destination lands the product; the '
       'destination outside the source alpha stays byte-exact', () {
-    final result = blendStrokeRegionPixels(
-      dst: Uint8List.fromList([255, 0, 0, 255, 40, 50, 60, 70]),
-      src: Uint8List.fromList([0, 255, 0, 255, 0, 0, 0, 0]),
-      mode: BrushBlendMode.multiply,
-      pixelCount: 2,
+    final result = pixelsLaidInAMode(
+      BrushBlendMode.multiply,
+      dst: [255, 0, 0, 255, 40, 50, 60, 70],
+      src: [0, 255, 0, 255, 0, 0, 0, 0],
     );
     // Pixel 0: green × red = black, opaque.
     expect(result.sublist(0, 4), [0, 0, 0, 255]);
-    // Pixel 1: src alpha 0 = the destination VERBATIM (the erase-rect
-    // landing pass covers the whole bounds — drift here would corrupt
-    // untouched pixels).
+    // Pixel 1: src alpha 0 = the destination VERBATIM (drift here would
+    // corrupt pixels the stroke never touched).
     expect(result.sublist(4, 8), [40, 50, 60, 70]);
   });
 
   test('multiply onto an EMPTY destination keeps the source (standard '
       'alpha-weighted blend: nothing below = the ink itself)', () {
-    final result = blendStrokeRegionPixels(
-      dst: pixel(0, 0, 0, 0),
-      src: pixel(0, 255, 0, 255),
-      mode: BrushBlendMode.multiply,
-      pixelCount: 1,
+    final result = pixelsLaidInAMode(
+      BrushBlendMode.multiply,
+      dst: [0, 0, 0, 0],
+      src: [0, 255, 0, 255],
     );
     expect(result, [0, 255, 0, 255]);
   });
 
   test('behind paints only where the destination is transparent', () {
-    final result = blendStrokeRegionPixels(
-      dst: Uint8List.fromList([255, 0, 0, 255, 0, 0, 0, 0]),
-      src: Uint8List.fromList([0, 0, 255, 255, 0, 0, 255, 255]),
-      mode: BrushBlendMode.behind,
-      pixelCount: 2,
+    final result = pixelsLaidInAMode(
+      BrushBlendMode.behind,
+      dst: [255, 0, 0, 255, 0, 0, 0, 0],
+      src: [0, 0, 255, 255, 0, 0, 255, 255],
     );
     expect(result.sublist(0, 4), [255, 0, 0, 255], reason: 'covered = dst');
     expect(result.sublist(4, 8), [0, 0, 255, 255], reason: 'empty = src');
@@ -88,6 +83,31 @@ void main() {
     expect(region[3], 0);
   });
 
+  test('a region across two tiles takes each one\'s bytes at its own place',
+      () {
+    const tileSize = 4;
+    BitmapTile solid(int red) => BitmapTile(
+      size: tileSize,
+      pixels: Uint8List(tileSize * tileSize * 4)
+        ..fillRange(0, tileSize * tileSize * 4, red),
+    );
+    final surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      tileSize: tileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): solid(10),
+        TileCoord(x: 1, y: 0): solid(20),
+      },
+    );
+
+    final region = bitmapSurfaceRegionPixels(
+      surface,
+      DirtyRegion(left: 3, top: 0, rightExclusive: 5, bottomExclusive: 1),
+    );
+
+    expect(region, [10, 10, 10, 10, 20, 20, 20, 20]);
+  });
+
   test('the commit round trip: a multiply stroke lands the product over '
       'existing ink, unbolended pixels survive byte-exact, one undo '
       'restores everything', () {
@@ -109,7 +129,7 @@ void main() {
 
     // Base: an opaque RED square at (30,30). The sampler packs RGBA.
     coordinator.commitSourceStroke(sourceDabs: [dab(30, 30, 0xFFFF0000)]);
-    final red = surfacePixelRgba(
+    final red = surfaceRgbaInPlace(
       coordinator.currentSurfaceOf(coordinator.activeFrameKey),
       30,
       30,
@@ -126,17 +146,17 @@ void main() {
     expect(outcome, isNotNull);
     final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     expect(
-      surfacePixelRgba(surface, 31, 30),
+      surfaceRgbaInPlace(surface, 31, 30),
       0x000000FF,
       reason: 'green × red = black where the stroke covers ink',
     );
     expect(
-      surfacePixelRgba(surface, 33, 30),
+      surfaceRgbaInPlace(surface, 33, 30),
       0x00FF00FF,
       reason: 'green over emptiness stays green',
     );
     expect(
-      surfacePixelRgba(surface, 29, 30),
+      surfaceRgbaInPlace(surface, 29, 30),
       0xFF0000FF,
       reason: 'red outside the stroke bounds-roundtrip stays byte-exact',
     );

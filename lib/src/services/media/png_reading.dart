@@ -10,10 +10,12 @@
 /// the next is read. 🔬A 20000×1080 PNG in `flutter test` on the Surface:
 /// the `image` package took 1.6 s and held the picture twice over.
 ///
-/// ⚠️Read as stored: no colour profile (iCCP), no gamma (gAMA) and no EXIF
-/// turn is applied — the engine's decoder applies a profile, so a picture
-/// of a wide-gamut file can come out a little apart from the same picture
-/// small enough for the engine.
+/// Its rows are as stored: what the file says of its colours is read apart
+/// ([readPngColour]), and the reader of a picture file turns the rows by it
+/// (`colour_profile.dart`), as the engine's decoder does. ⚠️No EXIF turn is
+/// applied. ↩️(2026-11-14, a-raster-import-goes-gpu-cpu-gpu-cpu-Q1) no
+/// profile and no gamma was, and a picture of a wide-gamut file came out
+/// apart from the same picture small enough for the engine.
 library;
 
 import 'dart:io' show ZLibDecoder;
@@ -86,6 +88,58 @@ void readPngRows(
     }
   }
   inflater.close();
+}
+
+/// What a PNG says of its colours: its ICC profile (`iCCP`, inflated),
+/// whether it says it is sRGB's (`sRGB`), its gamma (`gAMA`) and its
+/// white's and primaries' chromaticities (`cHRM`, white x y, red x y,
+/// green x y, blue x y) — each × 100000 as the file writes them.
+typedef PngColour = ({
+  Uint8List? profile,
+  bool srgb,
+  int? gamma,
+  List<int>? chromaticities,
+});
+
+/// What the PNG [bytes] say of their colours — null where they are not a
+/// PNG. A chunk that does not read is as if it were not there.
+PngColour? readPngColour(Uint8List bytes) {
+  if (readPngHeader(bytes) == null) {
+    return null;
+  }
+  final chunks = _chunksOf(bytes);
+  final profile = _dataOf(bytes, chunks, 'iCCP');
+  final gamma = _dataOf(bytes, chunks, 'gAMA');
+  final chromaticities = _dataOf(bytes, chunks, 'cHRM');
+  return (
+    profile: profile == null ? null : _inflatedProfile(profile),
+    srgb: _dataOf(bytes, chunks, 'sRGB') != null,
+    gamma: gamma != null && gamma.length == 4
+        ? ByteData.sublistView(gamma).getUint32(0)
+        : null,
+    chromaticities: chromaticities != null && chromaticities.length == 32
+        ? [
+            for (var at = 0; at < 32; at += 4)
+              ByteData.sublistView(chromaticities).getUint32(at),
+          ]
+        : null,
+  );
+}
+
+/// An `iCCP` chunk's profile — its name, a nul, the method (0, deflate)
+/// and the deflated profile — inflated; null where it does not read.
+Uint8List? _inflatedProfile(Uint8List chunk) {
+  final nul = chunk.indexOf(0);
+  if (nul < 1 || nul + 2 > chunk.length || chunk[nul + 1] != 0) {
+    return null;
+  }
+  try {
+    return Uint8List.fromList(
+      ZLibDecoder().convert(Uint8List.sublistView(chunk, nul + 2)),
+    );
+  } on FormatException {
+    return null;
+  }
 }
 
 bool _startsLikePng(Uint8List bytes) {

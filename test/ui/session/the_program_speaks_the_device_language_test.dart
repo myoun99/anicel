@@ -40,6 +40,40 @@ void main() {
       expect(AppLanguage.forDevice(['de', 'pt']), AppLanguage.en);
       expect(AppLanguage.forDevice(const []), AppLanguage.en);
     });
+
+    test('with no language saved an app speaks the device\'s, and prints '
+        'its notation in Japanese', () {
+      expect(
+        AppLanguageSettings.ofDevice(['ko', 'en']),
+        const AppLanguageSettings(
+          programLanguage: AppLanguage.ko,
+          notationLanguage: AppLanguage.ja,
+        ),
+      );
+      expect(AppLanguageSettings.ofDevice(['de']), const AppLanguageSettings());
+    });
+  });
+
+  // 🔬검증/서피스 2026-11-11 20:12, a Surface Pro 11 that reads Japanese,
+  // no language saved: the window the app waits for its engine behind
+  // (gpu-canonical-store-Q15) stood in English for the 9 s it stood — it
+  // reads its words at the first frame, and till then only a saved choice
+  // was spoken before one; the device's came with the session's restore.
+  //
+  // ⚠️By its source: no test runs a launch.
+  test('the launch speaks the device\'s language where none is saved, '
+      'before its splash and its first frame', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final spoken = RegExp(
+      r'AppText\.settings\.value =\s+'
+      r'await AppLanguageSettingsStore\(\)\.load\(\) \?\?\s+'
+      r'AppLanguageSettings\.ofDevice\(AppText\.deviceLanguageCodes\(\)\);',
+    ).firstMatch(source);
+    expect(spoken, isNotNull, reason: 'the saved choice, else the device\'s');
+    final splash = source.indexOf('LaunchSplash.preparing(AppText.strings)');
+    expect(splash, isNonNegative, reason: '⛔premise: the splash is read');
+    expect(spoken!.end, lessThan(splash));
+    expect(splash, lessThan(source.indexOf('runApp(')));
   });
 
   group('the saved language and the device', () {

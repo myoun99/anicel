@@ -66,6 +66,15 @@ void main() {
       reason: 'a carry handed to a new asset',
     );
     expect(
+      _declaresCarried(
+        'final a = MediaAsset(\n'
+        '  carriedAs: (token: carry.token, modified: at),\n'
+        ');',
+      ),
+      isTrue,
+      reason: 'a carry handed over with its date (F-589)',
+    );
+    expect(
       _declaresCarried('final a = MediaAsset(\n  carriedAs: null,\n);'),
       isFalse,
     );
@@ -161,8 +170,9 @@ bool _declaresCarried(String source) {
 /// expression, never `false`, never a collection.
 final _decidesCarried = RegExp(r'\bcarried:\s*(?!false\b)[A-Za-z_]');
 
-/// `carriedAs:` given a carry — anything but `null`.
-final _namesACarry = RegExp(r'\bcarriedAs:\s*(?!null\b)[A-Za-z_]');
+/// `carriedAs:` given a carry — anything but `null`: a name, or the carry
+/// written out with its date (`(token: …, modified: …)`, F-589).
+final _namesACarry = RegExp(r'\bcarriedAs:\s*(?!null\b)[A-Za-z_(]');
 
 /// Files that name `carried` without being an entrance, with the reason.
 const Set<String> _allowedFiles = {

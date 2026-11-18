@@ -89,12 +89,16 @@ void main() {
         .firstWhere((cut) => cut.id == cutId);
     session.renderCaches.brushFrameStore.storeBakedSurface(
       key,
-      BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+      BitmapSurface(
+        canvasSize: cut.canvasSize,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 9),
+            size: defaultCelTileSize,
+            pixels: Uint8List(BitmapTile.bytesFor(defaultCelTileSize))
+              ..fillRange(0, BitmapTile.bytesFor(defaultCelTileSize), 9),
           ),
         ),
       ]),

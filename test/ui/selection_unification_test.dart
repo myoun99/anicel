@@ -10,7 +10,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -27,6 +26,7 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// R28-S — the selection unification round.
 ///
@@ -121,7 +121,7 @@ void main() {
   }
 
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
         coordinator.currentSurfaceOf(coordinator.activeFrameKey),
         x,
         y,

@@ -506,7 +506,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (!mounted) {
       return;
     }
-    final carry = _shownAsset?.carriedAs;
+    final carry = _shownAsset?.carriedAs?.token;
     if (carry != _openedCarry) {
       final anew = carry != null && _openedCarry != null;
       _openedCarry = carry;
@@ -737,9 +737,20 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // A position past the end of a shorter document reads clamped
     // ([_turnToPage] and the build both clamp), never out of range.
     setState(_disposeContent);
-    _openedCarry = _shownAsset?.carriedAs;
+    _openedCarry = _shownAsset?.carriedAs?.token;
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
+    }
+    // Its sound is conformed now, before any press — as a project's are at
+    // its open and a pool import's at the import
+    // ([AudioConformStore.warmPaths]): a movie picked here or come back
+    // with a bookmark came through neither, and its first press waited
+    // for the whole of its sound (🔬11-18, card viewer-first-play-stalls,
+    // test VM: a 60 s 1080p24 movie's first page turned 5.4 s after the
+    // first press, 0.1 s after the second).
+    final sound = _soundPath;
+    if (sound != null) {
+      _sound.conformStore.warmPaths([sound]);
     }
     // ONE landing for every medium: open a document, or say why not. The
     // three arms this replaces differed only in HOW they opened and in
@@ -1429,7 +1440,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final pageIndex = _pageShown;
     _drawnName = _shownName;
     final carry = _shownAsset;
-    _drawnCarry = carry?.carriedAs;
+    _drawnCarry = carry?.carriedAs?.token;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1682,7 +1693,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                     box.biggest,
                     asking: !framingPending,
                   );
-                  final carried = carry?.carriedAs;
+                  final carried = carry?.carriedAs?.token;
                   final inkWindows = ink == null || carried == null
                       ? const <SheetInkWindow>[]
                       : _inkWindowsOf(

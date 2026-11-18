@@ -10,8 +10,9 @@ import 'transform_track.dart' show doubleKeySpace;
 /// 거기서 구현해서 점점 작아진다던가」, answered Q1 「행에 늘 있는 「오디오」
 /// 그룹」 · Q2 「%」 · Q3 「이번엔 한 값」. So the row's volume is keyed on the
 /// row's own frames — a pro tool's track keys, which stay where they are
-/// when a block moves — and read as a share of the sound (1 = 100%); the pan
-/// is one value, since the mixer takes one per sound.
+/// when a block moves — and read as a share of the sound (1 = 100%). The pan
+/// was one value, since the mixer took one per sound — keyed now beside the
+/// volume ([pan], Q7).
 ///
 /// 🗣️I-145 (유저 2026-10-30): 「역시 s행의 촐 볼륨 넣고싶음. 위치는 전처럼
 /// 스피커버튼안에 볼륨. 즉 오디오fx에서도 조절하고 스피커버튼에서도 총 볼륨
@@ -19,39 +20,75 @@ import 'transform_track.dart' show doubleKeySpace;
 /// keyed volume — a pro tool's track fader over its keys — one value, set
 /// from the group's lane and from the speaker's window alike.
 ///
+/// ↩️F-577 (유저 2026-11-10: 「사운드버튼안의 총볼륨 필요없어지니 삭제」): the
+/// second door is the S row's Total bar in the rail's blend column now —
+/// the opacity bar's own look — and the speaker is a mute toggle alone.
+///
+/// 🗣️I-177 (유저 2026-11-17): 「s행 오디오fx에 총 볼륨 똑같은거있는데 이건
+/// s행의 막대로서만 있도록. fx값으로선 존재안함」 — ONE door now: the S
+/// row's Total bar. The group's lane is gone, and the group's Reset leaves
+/// the Total as it is. The value itself is the same one value.
+///
 /// ↩️The speaker's mixer held a gain and a pan of the row that nothing could
 /// key, and each sound kept fades, a fade curve and a volume envelope of its
 /// own: this is the one place a row's sound is shaped now. What a BLOCK
 /// keeps is its own gain alone (`AudioClip.gain`) — the level an import or
 /// a take brings with that sound, a pro tool's clip gain.
 ///
-/// ⛔No static volume beside the keys: a value typed into a lane keys it
+/// ⛔No static volume or pan beside the keys: a value typed into a lane keys it
 /// (R9 #18, F-407), so a slot only an unkeyed lane reads would hold 100%
 /// forever — the row plays as recorded until its volume is keyed. The
 /// total is no such slot: it is a lane of its own, which the mix
 /// multiplies in.
 class SeSound {
   const SeSound({
-    this.pan = 0.0,
     this.totalVolume = 1.0,
+    this.enabled = true,
     PropertyTrack<double>? volume,
-  }) : _volume = volume;
-
-  /// Left −1 to right +1, equal power ([equalPowerPanGains]). One value
-  /// (I-140-Q3): the mixer takes one per sound.
-  final double pan;
+    PropertyTrack<double>? pan,
+  }) : _volume = volume,
+       _pan = pan;
 
   /// The whole row's level over its keyed [volume], a share of the sound
-  /// (1 = 100%, up to [maxVolume]) — one value, nothing to key (I-145-Q1).
+  /// (1 = 100%, up to [maxVolume]) — one value, nothing to key (I-145-Q1),
+  /// set by the S row's Total bar alone (I-177).
   final double totalVolume;
 
+  /// The 音声 group's fx switch — off, the row plays its volume keys and
+  /// its pan as though it had none: its sounds' own gain, from the centre,
+  /// the keys kept for when it is on again ([heard]). The row's total and
+  /// its speaker's mute still answer.
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros-Q6 (유저 2026-11-17): 「音量 키 · パン 을
+  /// 건너뛴다」 — 「적용안하니 기본값이라는 느낌? 변형도 그렇잖아」.
+  final bool enabled;
+
+  /// This sound as the mix plays it: itself, or — its switch off — its
+  /// total alone ([enabled]).
+  SeSound get heard => enabled ? this : SeSound(totalVolume: totalVolume);
+
   final PropertyTrack<double>? _volume;
+  final PropertyTrack<double>? _pan;
 
   /// The volume's keys, on the row's own frames, each a share of the sound
   /// — 0 silent, 1 as recorded, 2 twice as loud. Empty plays it as recorded.
   PropertyTrack<double> get volume => _volume ?? PropertyTrack<double>.empty();
 
-  /// The loudest a row is set to — the speaker's mixer fader's top, kept.
+  /// The pan's keys, on the row's own frames as the volume's are, each
+  /// left −1 to right +1, equal power ([equalPowerPanGains]). Empty plays
+  /// it from the centre.
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
+  /// 단다」. ↩️It was one value, I-140-Q3 「이번엔 한 값」 — the mixer took
+  /// one per sound until it took a pan line beside its volume line.
+  PropertyTrack<double> get pan => _pan ?? PropertyTrack<double>.empty();
+
+  /// The loudest a row is set to — the top of the S row's Total bar.
+  ///
+  /// Kept at 200% by the user's answer to audio-fx-grows-like-the-pros-Q1
+  /// (2026-11-17: 「200% 그대로」). Faders in the pro tools go past unity as
+  /// this does — Logic's and Ableton's to +6 dB, Pro Tools' to +12 dB — and
+  /// 2 is +6 dB.
   static const double maxVolume = 2.0;
 
   /// The volume at [time], a frame or between two — what the lane's value
@@ -60,45 +97,57 @@ class SeSound {
       .resolveAtTime(time: time, orElse: () => 1.0, space: doubleKeySpace)
       .clamp(0.0, maxVolume);
 
+  /// The pan at [time], read as [volumeAt] reads the volume.
+  double panAt(double time) => pan
+      .resolveAtTime(time: time, orElse: () => 0.0, space: doubleKeySpace)
+      .clamp(-1.0, 1.0);
+
   /// Whether the volume changes over time — keyed at all.
   bool get isKeyed => volume.isNotEmpty;
 
+  /// Whether the pan is keyed at all.
+  bool get isPanKeyed => pan.isNotEmpty;
+
   SeSound copyWith({
-    double? pan,
     double? totalVolume,
+    bool? enabled,
     PropertyTrack<double>? volume,
+    PropertyTrack<double>? pan,
   }) => SeSound(
-    pan: pan ?? this.pan,
     totalVolume: totalVolume ?? this.totalVolume,
+    enabled: enabled ?? this.enabled,
     volume: volume ?? _volume,
+    pan: pan ?? _pan,
   );
 
   Map<String, dynamic> toJson() => {
-    if (pan != 0.0) 'pan': pan,
     if (totalVolume != 1.0) 'totalVolume': totalVolume,
+    if (!enabled) 'enabled': false,
     if (isKeyed) 'volume': volume.toJson((v) => v),
+    if (isPanKeyed) 'pan': pan.toJson((v) => v),
   };
 
   factory SeSound.fromJson(Map<String, dynamic> json) => SeSound(
-    pan: (json['pan'] as num?)?.toDouble() ?? 0.0,
     totalVolume: ((json['totalVolume'] as num?)?.toDouble() ?? 1.0)
         .clamp(0.0, maxVolume),
-    volume: json['volume'] is List
-        ? PropertyTrack.fromJson(
-            json['volume'] as List?,
-            (v) => (v! as num).toDouble(),
-          )
-        : null,
+    enabled: json['enabled'] as bool? ?? true,
+    volume: _trackOf(json['volume']),
+    pan: _trackOf(json['pan']),
   );
+
+  static PropertyTrack<double>? _trackOf(Object? json) => json is List
+      ? PropertyTrack.fromJson(json, (v) => (v! as num).toDouble())
+      : null;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SeSound &&
-          other.pan == pan &&
           other.totalVolume == totalVolume &&
-          other.volume == volume;
+          other.enabled == enabled &&
+          other.volume == volume &&
+          other.pan == pan;
 
   @override
-  int get hashCode => Object.hash(pan, totalVolume, volume);
+  int get hashCode => Object.hash(totalVolume, enabled, volume, pan);
 }

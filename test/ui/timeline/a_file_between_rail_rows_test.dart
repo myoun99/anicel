@@ -336,6 +336,19 @@ void main() {
       reason: 'the caret is the answer — the entrance lights no border',
     );
 
+    // On the line itself: the lines paint over ALL of the rail, the
+    // entrance too (F-393 ①), and take no pointer from what is under them.
+    final line = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-row-caret-before-A')),
+    );
+    await gesture.moveTo(Offset(at.dx, line.center.dy));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-caret-before-A')),
+      findsOneWidget,
+      reason: 'held on its line, the entrance under it still answers',
+    );
+
     // A's bottom edge is the strip's end: the trailing gap, drawn under A.
     await gesture.moveTo(
       tester.getBottomLeft(railRowA) + const Offset(24, -3),

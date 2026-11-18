@@ -157,11 +157,10 @@ void main() {
       isNotEmpty,
       reason: 'its scans were counted on the way, not only its end',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️F-494: the window\'s line names what a file is going '
-      'through — a carried file\'s bytes held — and lets go once it is '
+      'through — a picture read in, its bytes held — and lets go once it is '
       'through (「하고있는 과정을 투명하게」)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -177,15 +176,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     final lines = watchTheLine(tester);
+    final counted = watchTheBar(tester);
     await pumpPastTheWaitWindow(tester);
 
     expect(
       lines,
-      ['', AppText.strings.imStepCarrying, ''],
-      reason: 'a row carries its file at first (seedImportSettings), so the '
-          'one long thing this file goes through is its bytes being held',
+      [
+        '',
+        AppText.strings.imStepReading,
+        AppText.strings.imStepCarrying,
+        '',
+      ],
+      reason: 'a picture is read in whole — one in the cloud comes down '
+          'inside that read (F-608-Q2) — and a row carries its file at '
+          'first (seedImportSettings), so its bytes are held after',
     );
-    s.playbackRig.prerenderScheduler.cancel();
+    // The read the first of a placed file's three stretches still to come.
+    expectOneBar(counted, [0, 1 / 3, 1]);
   });
 
   testWidgets('single files import with destination/fit defaults filled — '
@@ -229,7 +236,6 @@ void main() {
       isTrue,
       reason: 'the default is reference mode',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯F-405: one press of Import is ONE undo — every file it '
@@ -270,7 +276,6 @@ void main() {
       layersBefore,
       reason: 'both go with the one undo',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// The media pool's ＋ became a destination in this window rather
@@ -324,7 +329,6 @@ void main() {
 
       expect(s.mediaPool.mediaAssets.single.path, path.replaceAll('\\', '/'));
       expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
-      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the browser pins the pool — every row\'s 넣을 곳 says it, and '
@@ -412,15 +416,12 @@ void main() {
       return (s, path!);
     }
 
-    /// Imports what the window holds. It waits out the wait window, so it
-    /// ends by stopping playback's warmer (`pumpPastTheWaitWindow`) — for
-    /// every test that imports through it.
+    /// Imports what the window holds, the wait window waited out.
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
       await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
       await tester.pumpAndSettle();
-      s.playbackRig.prerenderScheduler.cancel();
     }
 
     testWidgets('it starts on Keep inside, on every platform', (tester) async {
@@ -589,7 +590,6 @@ void main() {
     expect(track.cuts.length, cutsBefore + 1);
     expect(track.cuts.last.duration, 2, reason: '1 page = 1 frame');
     expect(s.mediaPool.mediaAssets.single.pageCount, 2);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a PDF counts its pages into the run\'s % (F-282-Q1)', (
@@ -638,7 +638,6 @@ void main() {
       '',
     ]);
     expectOneBar(counted, [0.5, 0.625, 0.75, 0.875, 1]);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a PDF with NO renderer warns honestly instead of failing '
@@ -684,7 +683,6 @@ void main() {
       findsOneWidget,
     );
     expect(s.mediaPool.mediaAssets, isEmpty);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a large file bound for the project file is kept like any '
@@ -816,18 +814,15 @@ void main() {
       final c = await tester.runAsync(() => writePng('c.png'));
       await pump(tester, [a!, b!, c!]);
 
-      // The NAME, not the row's centre: the centre is a cell, and pressing
-      // a cell answers its question instead of selecting the row.
-      Future<void> selectRow(String name) async {
-        final rect = tester.getRect(
-          find.byKey(ValueKey<String>('import-row-$name')),
-        );
-        await tester.tapAt(Offset(rect.left + 20, rect.center.dy));
+      // The NAME: the row's centre is a cell, and pressing a cell answers
+      // its question; the row's left end is its switch (F-595 ②).
+      Future<void> selectRow(String path) async {
+        await tester.tap(find.byKey(ValueKey<String>('import-name-$path')));
         await tester.pump();
       }
 
-      await selectRow('a.png');
-      await selectRow('b.png');
+      await selectRow(a);
+      await selectRow(b);
       await pickCell(tester, column: 'file', path: a, option: 'reference');
 
       expect(cellText(tester, 'file', a), 'Link');
@@ -908,7 +903,6 @@ void main() {
         ['', AppText.strings.imStepCarrying, ''],
         reason: '🗣️F-494: carried as it placed, by its own door',
       );
-      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('an answer the KIND refuses still does not stick — a sound '
@@ -981,6 +975,27 @@ void main() {
       expect(cellText(tester, 'file', psd), 'Keep');
     });
 
+    testWidgets('🗣️F-608-Q2: an expanded PSD is read in under the window\'s '
+        'line — a stack in the cloud comes down inside that read', (
+      tester,
+    ) async {
+      final psd = await tester.runAsync(() => writePsd('BG.psd'));
+      await pump(tester, [psd!]);
+      expect(
+        await settleAsync(tester, () => tester.importPreviewImage != null),
+        isTrue,
+        reason: 'shown, its preview has been read and let go',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      final lines = watchTheLine(tester);
+      await pumpPastTheWaitWindow(tester);
+
+      expect(lines, ['', AppText.strings.imStepReading, '']);
+    });
+
     // ↩️The 넣을 곳 column went with them (09-11); it stands now, 「미디어」
     // locked — the window mock the user started this from (2026-10-09: 「미디어
     // 패널의 경우엔 굽기 맞춤 옵션안넣어도되 … 그거만 해서 시작해도되」), and
@@ -988,18 +1003,22 @@ void main() {
     testWidgets('🚨the pool asks nothing about placement — the questions a '
         'placement asks are not there at all (유저 2026-09-11: 「플레이스가 '
         '풀이면 넣을곳 맞춤 PSD 열 삭제」)', (tester) async {
-      final png = await tester.runAsync(() => writePng('a.png'));
-      await pump(tester, [png!], poolOnly: true);
+      final psd = await tester.runAsync(() => writePsd('BG.psd'));
+      await pump(tester, [psd!], poolOnly: true);
 
-      for (final id in ['bake', 'fit', 'option']) {
+      for (final id in ['bake', 'fit']) {
         expect(
           find.byKey(ValueKey<String>('import-column-$id')),
           findsNothing,
           reason: id,
         );
       }
+      // The 「옵션」 column stands for a movie's parts (I-171-Q2, 유저
+      // 2026-11-14: 「넣는다 — 옵션 열만」), and asks a Photoshop document
+      // nothing here: its layers kept or merged is a placement's question.
+      expect(cellText(tester, 'option', psd), '—');
       expect(
-        cellText(tester, 'file', png),
+        cellText(tester, 'file', psd),
         'Keep',
         reason: 'what the project holds is still a question here',
       );
@@ -1225,7 +1244,6 @@ void main() {
       isFalse,
       reason: 'the file the door read is gone — the staged copy is the only one',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯BAKED, a PDF placed with a range is drawn from the file '
@@ -1290,7 +1308,6 @@ void main() {
       reason: 'baked, it keeps no entry (유저 2026-10-09: 「구우면 풀에 안 '
           '남긴다」)',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a PDF REGISTERED with a range comes in as a piece of those '
@@ -1376,7 +1393,6 @@ void main() {
       cutsBefore,
       reason: 'registered, not placed',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// PLACE: the pool row's way onto the timeline. The same window, minus
@@ -1450,7 +1466,6 @@ void main() {
       hasLength(1),
       reason: 'the pool already knew this file',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯the run stands behind the app\'s wait window from its first '
@@ -1523,7 +1538,6 @@ void main() {
       reason: 'nothing is being waited for: there is nothing to stop',
     );
     expect(s.requireActiveCut.layers.length, layersBefore + 2);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a stop gives up the ONE file it was said to — the next '
@@ -1606,7 +1620,6 @@ void main() {
       findsOneWidget,
       reason: 'the one given up is named',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨 a placement WAITS for a file that has not arrived, says '
@@ -1697,7 +1710,6 @@ void main() {
       findsOneWidget,
       reason: 'the file given up is named in the import window\'s warnings',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// 🚨WHAT SUCCEEDED LEAVES THE LIST.
@@ -1717,9 +1729,7 @@ void main() {
       return file.path;
     }
 
-    /// Imports [paths] into a fresh session, and answers it. It waits out
-    /// the wait window, so it ends by stopping playback's warmer
-    /// (`pumpPastTheWaitWindow`) — for every test that imports through it.
+    /// Imports [paths] into a fresh session, and answers it.
     Future<EditorSessionManager> runImport(
       WidgetTester tester,
       List<String> paths,
@@ -1745,7 +1755,6 @@ void main() {
       // the real clock once more after the run — 20ms the preview's read
       // needed, and got by luck.
       await settleLoadedPages(tester);
-      session.playbackRig.prerenderScheduler.cancel();
       return session;
     }
 
@@ -1892,7 +1901,6 @@ void main() {
         tester,
         () => importWarningsButton.evaluate().isNotEmpty,
       );
-      session.playbackRig.prerenderScheduler.cancel();
       // 🚨A run that landed some of the files and not others leaves the
       // preview opening the next: its spinner never settles until that
       // page lands. ↩️The wait window's loop lent real time after its last
@@ -2209,7 +2217,6 @@ void main() {
         tester,
         () => importWarningsButton.evaluate().isNotEmpty,
       );
-      session.playbackRig.prerenderScheduler.cancel();
 
       expect(
         find.descendant(
@@ -2288,7 +2295,6 @@ void main() {
     final told = watchTheBar(tester);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
 
     // Four files, a quarter each: the pool's two — the kept one carried
     // before the linked one registers — then the placed two, from half the
@@ -2326,7 +2332,6 @@ void main() {
     final told = watchTheBar(tester);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
 
     expectOneBar(told, [0, 0.5, 1]);
     expect(

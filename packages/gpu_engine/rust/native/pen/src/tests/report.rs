@@ -1,6 +1,6 @@
 //! A report's flag word and pose, and what `qpr_poll` hands over of them,
-//! on answers worked out here: the C keeps both inside its observer, where
-//! only a digitizer's report reaches them.
+//! on answers worked out here: only a digitizer's report reaches them in
+//! the observer.
 
 use crate::report::{flags, pose, snapshot};
 

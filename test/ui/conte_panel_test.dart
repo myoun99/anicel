@@ -29,7 +29,6 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -45,6 +44,7 @@ import 'package:anicel/src/ui/text/app_strings.dart' show AppStrings;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import '../helpers/number_pad_keyboard.dart';
 import '../helpers/text_finders.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
 /// cell press picks that cut and frame, and the ACTION text lands on the
@@ -564,7 +564,7 @@ void main() {
           .canvasState
           .currentSurface;
       final pixel = window.placement.pixelOf(at);
-      return (surfacePixelRgba(
+      return (surfaceRgbaInPlace(
                 surface,
                 pixel.dx.floor(),
                 pixel.dy.floor(),

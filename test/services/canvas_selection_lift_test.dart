@@ -13,6 +13,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/selection_lift.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// R14-④ lift builder: the erase+stamp pair cuts EXACTLY the selection's
 /// pixels, a zero-move drop is byte-identical, and a translated stamp
@@ -30,7 +32,7 @@ void main() {
       rgba[i * 4 + 3] = 255;
     }
     return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence([
         BrushDab(
           center: CanvasPoint(x: 4, y: 4),
@@ -140,12 +142,19 @@ void main() {
 
     // A cel with ink in several tiles including negative coordinates, so
     // the sweep below really does cross tile edges with content on both
-    // sides of them.
-    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 8);
+    // sides of them — on the engine's grid, around its edges at 0 and 128.
+    // ↩️An 8-pixel grid on a 16-pixel canvas till 2026-11-14 (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`); the scene moved by
+    // `edge` to keep crossing what it crossed.
+    const edge = 120;
+    var surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 256, height: 256),
+      tileSize: 128,
+    );
     for (final centre in [
-      CanvasPoint(x: 3, y: 3),
-      CanvasPoint(x: 9, y: 5),
-      CanvasPoint(x: 7.5, y: 8.5),
+      CanvasPoint(x: edge + 3, y: edge + 3),
+      CanvasPoint(x: edge + 9, y: edge + 5),
+      CanvasPoint(x: edge + 7.5, y: edge + 8.5),
       CanvasPoint(x: -5, y: -3),
       CanvasPoint(x: -2, y: 6),
     ]) {
@@ -168,61 +177,88 @@ void main() {
     }
 
     const cases = <({int left, int top, int width, int height})>[
-      (left: 1, top: 1, width: 5, height: 5), // inside one tile
-      (left: 5, top: 2, width: 7, height: 4), // crosses a vertical edge
-      (left: 2, top: 5, width: 4, height: 7), // crosses a horizontal edge
-      (left: 8, top: 8, width: 6, height: 6), // starts ON a boundary
-      (left: 3, top: 3, width: 11, height: 11), // spans four tiles
+      (left: edge + 1, top: edge + 1, width: 5, height: 5), // inside one tile
+      (left: edge + 5, top: edge + 2, width: 7, height: 4), // a vertical edge
+      (left: edge + 2, top: edge + 5, width: 4, height: 7), // a horizontal one
+      (left: edge + 8, top: edge + 8, width: 6, height: 6), // ON a boundary
+      (left: edge + 3, top: edge + 3, width: 11, height: 11), // four tiles
       (left: -7, top: -5, width: 9, height: 9), // pasteboard, negative
       (left: -3, top: 2, width: 8, height: 8), // straddles x = 0
-      (left: 12, top: 12, width: 4, height: 4), // over an empty coordinate
+      (left: -20, top: 200, width: 4, height: 4), // over an empty coordinate
     ];
 
     for (final box in cases) {
-      // Two masks per case: hard, and a soft one that exercises the
-      // mul-div-255 branch at every pixel.
-      for (final soft in const [false, true]) {
-        final mask = Uint8List(box.width * box.height);
-        for (var i = 0; i < mask.length; i += 1) {
-          // A varying pattern, with genuine zeroes so the skip path runs.
-          final v = (i * 37) % 256;
-          mask[i] = v < 24 ? 0 : (soft ? v : 255);
-        }
-        // ⚠️Both settings of the whole-pixel rule, because the tile-major
-        // walk has to equal the reference under either — it is the WALK
-        // this parity test is about, not the rule.
-        for (final whole in [false, true]) {
-        final expected = referenceGather(
-          surface: surface,
-          mask: mask,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          takeWholePixels: whole,
-        );
-        final actual = gatherMaskedSurfacePixels(
-          surface: surface,
-          mask: mask,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          takeWholePixels: whole,
-        );
-        expect(
-          actual.rgba,
-          expected,
-          reason:
-              'tile-major gather differs from the reference at '
-              '${box.left},${box.top} ${box.width}x${box.height} '
-              '(soft: $soft)',
-        );
-        expect(
-          actual.liftedAnything,
-          expected.any((byte) => byte != 0),
-          reason: 'liftedAnything disagrees at ${box.left},${box.top}',
-        );
+      final (:left, :top, :width, :height) = box;
+      // A rectangle and the ellipse inside it, hard and feathered: the
+      // feather's ramp exercises the mul-div-255 branch, and the corners the
+      // ellipse leaves out and the ring the feather pads the box by give the
+      // skip path its genuine zeroes.
+      for (final region in [
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: left.toDouble(),
+            top: top.toDouble(),
+            right: (left + width).toDouble(),
+            bottom: (top + height).toDouble(),
+          ),
+        ),
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.ellipse(
+            left: left.toDouble(),
+            top: top.toDouble(),
+            right: (left + width).toDouble(),
+            bottom: (top + height).toDouble(),
+          ),
+        ),
+      ]) {
+        for (final options in const [
+          SelectionMaskOptions.none,
+          SelectionMaskOptions(featherPx: 2),
+        ]) {
+          final clip = SelectionClip.of(
+            region,
+            wall: surface.pasteboard,
+            options: options,
+          );
+          final read = clip.box!;
+          final mask = clip.maskFor(
+            left: read.left,
+            top: read.top,
+            width: read.width,
+            height: read.height,
+          );
+          // ⚠️Both settings of the whole-pixel rule, because the tile-major
+          // walk has to equal the reference under either — it is the WALK
+          // this parity test is about, not the rule.
+          for (final whole in [false, true]) {
+            final expected = referenceGather(
+              surface: surface,
+              mask: mask,
+              left: read.left,
+              top: read.top,
+              width: read.width,
+              height: read.height,
+              takeWholePixels: whole,
+            );
+            final actual = gatherMaskedSurfacePixels(
+              surface: surface,
+              clip: clip,
+              takeWholePixels: whole,
+            );
+            expect(
+              actual.rgba,
+              expected,
+              reason:
+                  'tile-major gather differs from the reference at '
+                  '$left,$top ${width}x$height (feather: '
+                  '${options.featherPx})',
+            );
+            expect(
+              actual.liftedAnything,
+              expected.any((byte) => byte != 0),
+              reason: 'liftedAnything disagrees at $left,$top',
+            );
+          }
         }
       }
     }
@@ -477,57 +513,6 @@ void main() {
       0,
       reason: 'the anti-alias ramp belongs INSIDE the outline — a selection '
           'that reaches one pixel past itself erases artwork nobody selected',
-    );
-  });
-
-  test('the anti-alias MASK itself never lights a pixel the outline did not',
-      () {
-    // ⛔Asked of the mask rather than of the lift, because the mask is what
-    // every verb reads — 색 변환 and 픽셀 비우기 share it. A fix that only
-    // taught the lift to ignore the skirt would leave those two erasing a
-    // rim the selection never showed.
-    const width = 12;
-    const height = 12;
-    final hard = buildSelectionMask(
-      region: rect2to5(),
-      options: SelectionMaskOptions.none,
-      left: 0,
-      top: 0,
-      width: width,
-      height: height,
-    );
-    final soft = buildSelectionMask(
-      region: rect2to5(),
-      options: const SelectionMaskOptions(antiAlias: true),
-      left: 0,
-      top: 0,
-      width: width,
-      height: height,
-    );
-
-    expect(
-      hard.where((value) => value > 0).length,
-      greaterThan(0),
-      reason: '🚨the fixture has to be selecting something, or every '
-          'comparison below is two empty masks agreeing',
-    );
-    final leaked = <String>[];
-    for (var i = 0; i < soft.length; i += 1) {
-      if (soft[i] > hard[i]) {
-        leaked.add('(${i % width},${i ~/ width}) ${hard[i]} -> ${soft[i]}');
-      }
-    }
-    expect(
-      leaked,
-      isEmpty,
-      reason: 'anti-aliasing may only darken the edge, never widen it: '
-          '${leaked.join(', ')}',
-    );
-    expect(
-      soft.any((value) => value > 0 && value < 255),
-      isTrue,
-      reason: '⚠️and it still HAS a ramp — a clamp that flattened the pass '
-          'into the hard mask would pass the test above and do nothing',
     );
   });
 

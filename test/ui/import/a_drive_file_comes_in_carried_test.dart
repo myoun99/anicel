@@ -129,9 +129,7 @@ void main() {
   }
 
   /// Presses Import and waits for the window to close — it closes once
-  /// every file has landed. It waits out the wait window, so it ends by
-  /// stopping [s]'s playback warmer (`pumpPastTheWaitWindow`) — for every
-  /// test that imports through it.
+  /// every file has landed.
   Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
@@ -147,7 +145,6 @@ void main() {
     );
     expect(closed, isTrue, reason: 'the window closes once the files landed');
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   }
 
   Finder fileCell(String path) =>
@@ -242,9 +239,17 @@ void main() {
       findsNothing,
     );
 
-    // Both rows selected: a cell press speaks for every selected row.
-    for (final row in ['A1.png', 'local.png']) {
-      await tester.tap(find.byKey(ValueKey<String>('import-row-$row')));
+    // Both rows selected: a cell press speaks for every selected row. Each
+    // is pressed on its NAME, brought back into view — the list is wider
+    // than this window and was slid sideways to reach the cell above, so a
+    // row's middle is no longer in the window (↩️it was pressed there until
+    // the place column kept its room, F-582-Q1, and the press fell on the
+    // barrier and closed the window).
+    for (final path in [copy, local]) {
+      final name = find.byKey(ValueKey<String>('import-name-$path'));
+      await tester.ensureVisible(name);
+      await tester.pump();
+      await tester.tap(name);
       await settleLoadedPages(tester);
     }
     await tester.ensureVisible(fileCell(local));

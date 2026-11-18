@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/selected_text_controller.dart';
+import '../text/typed_text.dart';
 
 /// The one "type a short string" window: rename a layer, a cut, a frame, a
 /// brush, a media asset; name a new folder or a preset.
@@ -206,6 +207,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
             }
           },
               onSubmitted: widget.multiline ? null : (_) => _submit(),
+              inputFormatters: typedText(),
             ),
             ),
           ),

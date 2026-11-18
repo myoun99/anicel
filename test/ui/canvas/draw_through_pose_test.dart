@@ -43,7 +43,7 @@ Future<void> _pumpPosedView(
                 CanvasViewport(),
               ),
               child: InteractiveBrushEditCanvasView(
-                celNow: blankCel(_canvasSize, tileSize: 2),
+                celNow: blankCel(_canvasSize, tileSize: 128),
                 layerId: const LayerId('layer-a'),
                 frameId: const FrameId('frame-a'),
                 inputSettings: BrushEditCanvasInputSettings.new,

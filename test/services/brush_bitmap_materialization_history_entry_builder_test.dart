@@ -22,7 +22,7 @@ void main() {
     BitmapSurface surface({
       int width = 4,
       int height = 4,
-      int tileSize = 2,
+      int tileSize = 128,
       Map<TileCoord, BitmapTile> tiles = const {},
     }) {
       return BitmapSurface(

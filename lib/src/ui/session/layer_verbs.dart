@@ -16,7 +16,7 @@ import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
-    show copyBakedPictures, copyConteHandwriting;
+    show copyBakedPictures, copyConteHandwriting, givePanelsTheirPictures;
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
@@ -293,9 +293,11 @@ class LayerVerbs {
   ///
   /// 🗣️F-455 (유저 2026-10-23): 「레이어는 지금 여러개 복제시 각자 선택한
   /// 레이어의 위에 생기는데, 그게아니라 선택한 레이어들 포함해서 그 위에
-  /// 생기도록. 사이사이에 생기지 않게」 — a paste's block ([seatAboveRow]),
-  /// each copy over the one before it. ↩️Each copy went right above its own
-  /// source, in the order the rows were picked.
+  /// 생기도록. 사이사이에 생기지 않게」 — a paste's block ([seatUnderBlock]):
+  /// the top copy first, each right under the copies before it in its
+  /// place. ↩️Each copy went right above its own source, in the order the
+  /// rows were picked; then each over the copy before it, which a copy of
+  /// another place carried past (F-596, to 2026-11-16).
   void duplicateSelectedLayers() {
     final ids = duplicatableSelectedLayerIds().toSet();
     final stack = [
@@ -305,27 +307,36 @@ class LayerVerbs {
     if (stack.isEmpty) {
       return;
     }
-    var over = stack.last;
-    _eachRowAsOneStep(
-      stack,
-      'Duplicate rows',
-      (cutId, layerId) => over = _duplicate(cutId, layerId, over: over),
-    );
+    final copies = <LayerId>[];
+    _eachRowAsOneStep(stack.reversed.toList(), 'Duplicate rows', (
+      cutId,
+      layerId,
+    ) {
+      copies.add(
+        _duplicate(cutId, layerId, block: (over: stack.last, down: copies)),
+      );
+      return copies.first;
+    });
   }
 
-  /// Duplicates [layerId] in [cutId] — right above it, or over the row
-  /// [over] names — and brings its pictures over: the copy mints every cel
-  /// afresh, and a picture lives under its cel's id (F-62's law at the
-  /// layer's scale). ↩️Nothing did until 2026-09-26 — a duplicated row came
-  /// out with no drawing at all (measured; card
+  /// Duplicates [layerId] in [cutId] — right above it, or as the next row
+  /// of a [block] ([seatUnderBlock]) — and brings its pictures over: the
+  /// copy mints every cel afresh, and a picture lives under its cel's id
+  /// (F-62's law at the layer's scale). ↩️Nothing did until 2026-09-26 — a
+  /// duplicated row came out with no drawing at all (measured; card
   /// `duplicates-lose-their-pictures`).
-  LayerId _duplicate(CutId cutId, LayerId layerId, {LayerId? over}) {
+  LayerId _duplicate(
+    CutId cutId,
+    LayerId layerId, {
+    ({LayerId? over, Iterable<LayerId> down})? block,
+  }) {
+    final stack = _project.requireActiveCut.layers;
     final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
-      insertionIndex: over == null
+      insertionIndex: block == null
           ? null
-          : seatAboveRow(_project.requireActiveCut.layers, over),
+          : seatUnderBlock(stack, block, kind: stack.byId(layerId)!.kind),
     );
     final cut = _project.requireActiveCut;
     copyBakedPictures(
@@ -334,6 +345,12 @@ class LayerVerbs {
       minted: copy.minted,
       from: (cut: cut, row: layerId),
       to: (cut: cut, row: copy.layerId),
+    );
+    givePanelsTheirPictures(
+      project: _project,
+      store: _renderCaches.brushFrameStore,
+      row: (cut: cut, row: copy.layerId),
+      panels: copy.picturedPanels,
     );
     copyConteHandwriting(
       store: _renderCaches.conteInkRowStore,
@@ -476,22 +493,23 @@ class LayerVerbs {
     );
   }
 
-  /// The selected rows whose attach group is linked — the ROWS rung of the
-  /// shared pill's link-independent button (I-45).
+  /// The selected rows 독립시키기 releases ([_leavesItsLinks]) — the ROWS
+  /// rung of the shared pill's link-independent button (I-45).
   List<LayerId> linkedSelectedLayerIds() {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
-    return selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
+    return selectedLayerIdsWhere(_leavesItsLinks(cut));
   }
 
   /// 독립시키기 for every selected linked row, as ONE undo step.
   void unlinkSelectedLayers() => unlinkLayers(linkedSelectedLayerIds());
 
-  /// 독립시키기 for each of [layerIds] whose group is linked, as ONE undo
-  /// step. Two rows of one attach group unlink once: the second finds its
-  /// group already forked, and the coordinator's own guard makes it a no-op.
+  /// 독립시키기 for each of [layerIds] it releases ([_leavesItsLinks]), as
+  /// ONE undo step. Two rows of one attach group unlink once: the second
+  /// finds its group already forked, and the coordinator's own guard makes
+  /// it a no-op.
   ///
   /// The link window's button (I-25) presses this with the rows a press acts
   /// on (`RowSelection.rowsActedOnBy`), the pill with the selection.
@@ -500,11 +518,12 @@ class LayerVerbs {
     if (cut == null) {
       return;
     }
+    final leaves = _leavesItsLinks(cut);
     _eachRowAsOneStep(
       [
         for (final id in layerIds)
           if (cut.layers.firstWhereOrNull((layer) => layer.id == id)
-              case final layer? when groupIsLinked(layer, cut))
+              case final layer? when leaves(layer))
             id,
       ],
       'Unlink rows',
@@ -528,12 +547,26 @@ class LayerVerbs {
   /// 때문에 불가능하다고 띄움. 링크컷아니면 해제해도 되니까 해제버튼 활성화」.
   bool get activeCutIsLinkedCut {
     final cut = _project.activeCutOrNull;
-    return cut != null &&
-        linkedCutsBeyondItsSync(
-          _project.repository.requireProject(),
-          cutId: cut.id,
-        ).isNotEmpty;
+    return cut != null && _isLinkedCut(cut);
   }
+
+  bool _isLinkedCut(Cut cut) => linkedCutsBeyondItsSync(
+    _project.repository.requireProject(),
+    cutId: cut.id,
+  ).isNotEmpty;
+
+  /// Whether 독립시키기 releases a row of [cut] from its links: its attach
+  /// group is linked ([groupIsLinked]) and [cut] is no linked cut — a linked
+  /// cut's rows share as the cut does, and one row cannot leave alone
+  /// ([activeCutIsLinkedCut]); the cut leaves its links whole
+  /// (`CutVerbs.unlinkCuts`).
+  ///
+  /// 🗣️F-573 (유저 2026-11-08): 「겸용컷은 레이어의 링크해제 불가능하게. 지금
+  /// 타임라인 공용알약의 링크독립 작동가능해서 링크해제 되버림」 — I-25's law
+  /// was the link window's alone, and the pill's rows rung never asked it.
+  bool Function(Layer layer) _leavesItsLinks(Cut cut) => _isLinkedCut(cut)
+      ? (_) => false
+      : (layer) => groupIsLinked(layer, cut);
 
   /// Where to stand once [ids] — top first, as they are deleted — are gone
   /// with what they hold: [stableLayerIdAfterDeleting]'s hand-off from the

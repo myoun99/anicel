@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -30,7 +29,6 @@ import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The audio scrub, driven for real on the null backend: each crossed
@@ -198,14 +196,8 @@ AudioConformStore _residentStore() => AudioConformStore(
 );
 
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -214,7 +206,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   CanvasPlaybackController buildController(Project project) =>
@@ -275,7 +266,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('🚨a release leaves another player\'s sound alone — it silences the '
       'scrub\'s own slice only', () async {
@@ -314,7 +305,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('active playback owns the device: the scrub stays visual', () async {
     openNullDevice();
@@ -338,7 +329,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('a cut with no sound never arms (no device churn for silence)',
       () async {
@@ -422,7 +413,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
 
     test('from a cut with sound into a silent one: the cut it left goes '
         'quiet — never played at the frame numbers of the cut it reached',
@@ -439,7 +430,7 @@ void main() {
       expect(scrubber.isArmed, isFalse);
       expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 
   group('🗣️F-341: where no cut is, a scrub hears the TRACK\'s sound — a sound '
@@ -487,7 +478,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
 
     test('out of a silent cut into the movie\'s trailing frames: the sound '
         'there, at the track\'s own frame', () async {
@@ -507,7 +498,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 
   test('missing PCM stands the gesture down and kicks the conform for the '
@@ -535,7 +526,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   group('🚨a sound past two minutes streams from a window, and a scrub hears '
       'it wherever the drag goes (scrub-recentres-by-its-own-rule)', () {
@@ -592,15 +583,28 @@ void main() {
       return scrubber;
     }
 
+    /// A gesture at [frame] over the long sound, armed: its first slice
+    /// stands down while the window there is read on a worker, and the
+    /// next one — once it landed — plays.
+    Future<void> armedAt(AudioScrubber scrubber, int frame) async {
+      scrubber.onScrubFrame(frame);
+      expect(scrubber.isArmed, isFalse, reason: 'its window on its way');
+      await pumpEventQueue();
+      scrubber.onScrubFrame(frame);
+      expect(scrubber.isArmed, isTrue, reason: 'the same gesture, landed');
+    }
+
     test('🚨a drag backwards past the window\'s trailing edge is '
         'heard', () async {
       final device = openNullDevice();
       final scrubber = await scrubbing();
-      scrubber.onScrubFrame(1000);
-      expect(scrubber.isArmed, isTrue);
+      await armedAt(scrubber, 1000);
       expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       device.stop(); // and the meter reads silence again
 
+      scrubber.onScrubFrame(950);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+      await pumpEventQueue(); // the window there lands
       scrubber.onScrubFrame(950);
       expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
 
@@ -612,7 +616,32 @@ void main() {
             'this slice played silence',
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
+
+    test('🚨a drag half a second back is heard at once — out of the window '
+        'as it stands, while the window there is read', () async {
+      final device = openNullDevice();
+      final scrubber = await scrubbing();
+      await armedAt(scrubber, 1000);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+      device.stop();
+
+      scrubber.onScrubFrame(994); // 0.6 s behind: past halfway to its trail
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+
+      expect(
+        device.peakFor(0),
+        closeTo(0.25 * audioMonoOnStereo, 0.01),
+        reason: '↩️moved only once behind its trailing edge, a window read '
+            'on a worker played this slice silent',
+      );
+      expect(
+        scrubber.debugWindow.centerSample,
+        1000 * 4800,
+        reason: 'the move lands on a later slice',
+      );
+      scrubber.onScrubEnd();
+    });
 
     test('a scrub\'s window reaches a second behind and two ahead — and moves '
         'once a drag is past half its lead', () async {
@@ -620,7 +649,7 @@ void main() {
       final scrubber = await scrubbing();
       final window = scrubber.debugWindow;
 
-      scrubber.onScrubFrame(1000);
+      await armedAt(scrubber, 1000);
       expect(window.reach, AudioStreamingWindow.scrubbing);
       expect(window.centerSample, 1000 * 4800);
       expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
@@ -636,6 +665,8 @@ void main() {
       scrubber.onScrubFrame(1010); // a second on: half the lead
       expect(window.centerSample, 1000 * 4800);
       scrubber.onScrubFrame(1011);
+      await pumpEventQueue(); // the window there lands
+      scrubber.onScrubFrame(1011);
       expect(
         window.centerSample,
         1011 * 4800,
@@ -643,6 +674,6 @@ void main() {
             'it only fifteen seconds on',
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 }

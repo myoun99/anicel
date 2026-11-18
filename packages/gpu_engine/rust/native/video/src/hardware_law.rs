@@ -37,9 +37,10 @@ pub fn may_encode(width: i32, height: i32, hevc: bool) -> bool {
     hevc || (width > FAILED_SIDE && height > FAILED_SIDE)
 }
 
-// The C's own cases (qa_video_hardware_law_test.c). What the law keeps out
-// of the hardware fails only on a machine whose encoder says yes and then
-// gives up, so without these nothing off that machine would notice it gone.
+// The C's own cases (↩️qa_video_hardware_law_test.c, until the connection
+// round deleted it). What the law keeps out of the hardware fails only on a
+// machine whose encoder says yes and then gives up, so without these nothing
+// off that machine would notice it gone.
 #[cfg(test)]
 #[test]
 fn the_small_jobs_stay_in_software() {

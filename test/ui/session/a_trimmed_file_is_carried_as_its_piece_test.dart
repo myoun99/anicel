@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,18 +8,20 @@ import 'package:anicel/src/models/kept_span.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/qa_audio_resampler.dart' show resampleAudio;
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/import/import_file_settings.dart'
+    show MovieParts;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -252,10 +255,6 @@ void main() {
   });
 
   group('with the engine', () {
-    final libraryPath = nativeEngineLibraryPathOrNull();
-    // `testWidgets` takes a bool, not a reason — the reason is
-    // [nativeEngineMissingSkipReason].
-    final skip = libraryPath == null;
 
     /// A stereo ramp, one sample a step, [seconds] long at 48kHz.
     String writeWav(String name, int seconds) {
@@ -301,7 +300,7 @@ void main() {
       expect(kept.samples.first, all.samples[from]);
       expect(kept.samples.last, all.samples[to - 1]);
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a sound is cut in its OWN time — at 1001/1000 project frame '
         'f plays source time f / rate × 1001/1000, and the piece starts there '
@@ -340,7 +339,7 @@ void main() {
       );
       expect(kept.samples.length, (sampleAt(36) - sampleAt(24)) * 2);
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a frame that starts between two samples starts where the '
         'MIXER starts it — rounded up, never a sample of the frame before '
@@ -376,7 +375,7 @@ void main() {
         reason: 'up to where the mixer starts frame 4',
       );
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a sound whose last frame the window counts only because its '
         'peaks round up is carried as EVERY frame of the span — silence past '
@@ -444,7 +443,7 @@ void main() {
             'door would keep one less',
       );
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     /// A watch over the engine calls of [test] — made on this isolate, where
     /// one that never returns stops every timer and held a CI shard to its
@@ -477,12 +476,15 @@ void main() {
     /// [speed], holds the piece against what the project showed — the span
     /// and the frames the movie's own clock gives, at [pace] frames a
     /// second — and answers how many frames it kept; null when this run
-    /// has no encoder to cut with, or no decoder to read it back.
+    /// has no encoder to cut with, or no decoder to read it back. With a
+    /// [pull] the piece is rewritten at the project's speed, its span
+    /// counted on the clock that pull reads it on (F-588).
     Future<int?> cutsWhatTheProjectShows(
       WidgetTester tester, {
       required ({int numerator, int denominator}) fps,
       required ({int numerator, int denominator}) speed,
       required double pace,
+      ({int numerator, int denominator}) pull = noPull,
     }) async {
       final watch = await watched(tester, 'a trimmed movie at $pace');
       final s = EditorSessionManager(
@@ -506,6 +508,7 @@ void main() {
           MediaAssetKind.video,
           inFrame: 3,
           outFrame: 8,
+          pull: pull,
         ),
       );
 
@@ -517,7 +520,7 @@ void main() {
       final original = decoder.openDocument(source)!;
       final clock = movieClockFor(
         projectRate: rate,
-        audioSpeed: speed,
+        audioSpeed: pullsTogether(speed, pull),
         movie: original.info,
       );
       final span = KeptSpan(
@@ -614,7 +617,7 @@ void main() {
       }
       watch.step('settling');
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
         'project shows, one per project frame', (tester) async {
@@ -627,7 +630,7 @@ void main() {
       if (kept != null) {
         expect(kept, 6, reason: 'project frames 4..9 of a 12fps take');
       }
-    }, skip: skip);
+    });
 
     testWidgets('🚨with the 1001/1000 pull on, a 23.976 take in a 24 project '
         'is cut FRAME FOR FRAME — the piece runs at 24000/1001, and its span '
@@ -648,6 +651,281 @@ void main() {
               'project frame would show the take\'s frame before',
         );
       }
-    }, skip: skip);
+    });
+
+    // 🗣️F-588 (유저 2026-11-14: 「이 영상만」 — the movie carried in is
+    // rewritten at the project's speed; the project keeps its own).
+    group('a movie fitted to the project', () {
+      const fitted = (numerator: 1001, denominator: 1000);
+      const ntsc = (numerator: 24000, denominator: 1001);
+
+      testWidgets('🎯a 23.976 take in a 24 project is rewritten FRAME FOR '
+          'FRAME at 24 — its span counted on the clock its pull reads it on', (
+        tester,
+      ) async {
+        final kept = await cutsWhatTheProjectShows(
+          tester,
+          fps: ntsc,
+          speed: noPull,
+          pull: fitted,
+          pace: 24,
+        );
+        if (kept != null) {
+          expect(
+            kept,
+            5,
+            reason: 'its eight frames are the piece\'s frames 0..7, so OUT 8 '
+                'stops at 7 — unfitted they would cover nine, and each '
+                'project frame would show the take\'s frame before',
+          );
+        }
+      });
+
+      testWidgets('🎯its sound is pulled with its pictures — a sound that '
+          'starts with the take\'s frame 484 starts with the piece\'s frame '
+          '4, IN 480 (unpulled, 20 ms later)', (tester) async {
+        final watch = await watched(tester, 'a fitted movie\'s sound');
+        final s = session();
+        final source = inTemp('long.mp4');
+        const rate = 44100;
+        const take = ProjectFrameRate.ntsc(24);
+        final starts = take.frameToSample(484, rate);
+        watch.step('asking for the encoder and writing the take');
+        final written = writeEncodedMovie(
+          source,
+          frames: 496,
+          fps: ntsc,
+          sampleRate: rate,
+          sound: (sample) => sample < starts
+              ? 0
+              : (12000 * math.sin(2 * math.pi * 1000 * sample / rate))
+                    .round(),
+        );
+        if (!written) {
+          return;
+        }
+
+        watch.step('cutting the piece');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            inFrame: 480,
+            outFrame: 487,
+            pull: fitted,
+          ),
+        );
+
+        expect(cut?.frames, 8);
+        final heard = decodeAudioFile(cut!.path)!;
+        expect(heard.sampleRate, rate);
+        final onset = ProjectFrameRate.fps24.frameToSample(4, rate);
+        var first = -1;
+        for (var at = 0; at < heard.samples.length; at += heard.channels) {
+          if (heard.samples[at].abs() > 0.2) {
+            first = at ~/ heard.channels;
+            break;
+          }
+        }
+        expect(
+          (first - onset).abs(),
+          lessThan(300),
+          reason: 'the sound begins at sample $first of the piece, its frame '
+              '4 at $onset — read on the wall clock and not pulled, the '
+              'piece would start at the take\'s sample '
+              '${ProjectFrameRate.fps24.frameToSample(480, rate)} and the '
+              'sound at the piece\'s '
+              '${starts - ProjectFrameRate.fps24.frameToSample(480, rate)}',
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('🚨a sound\'s piece lasts what its pull leaves of it — '
+          '12.5125 s of sound covers 300 frames of 24, not 301', (
+        tester,
+      ) async {
+        final s = session();
+        // 300 frames of 23.976 at 48 kHz: 1001 of the conform's buckets,
+        // so no bucket rounds the length up past the pull's 300.
+        final samples = Int16List(600600 * 2);
+        final data = samples.buffer.asUint8List();
+        final source = inTemp('take.wav');
+        File(source).writeAsBytesSync([
+          ...wav16HeaderBytes(
+            dataBytes: data.length,
+            sampleRate: 48000,
+            channels: 2,
+          ),
+          ...data,
+        ]);
+
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.audio,
+            pull: fitted,
+          ),
+        );
+
+        expect(cut?.frames, 300, reason: 'unpulled, 300.3 frames make 301');
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('🎯its sound alone is the take\'s sound played 0.1% faster '
+          '— sample for sample the resampler\'s, and silence after', (
+        tester,
+      ) async {
+        final watch = await watched(tester, 'a fitted movie\'s sound alone');
+        final s = session();
+        final source = inTemp('take.mp4');
+        watch.step('asking for the encoder and writing the take');
+        if (!writeMovie(source, ntsc)) {
+          return;
+        }
+
+        watch.step('cutting its sound');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            parts: MovieParts.sound,
+            pull: fitted,
+          ),
+        );
+
+        final kept = decodeAudioFile(cut!.path)!;
+        final all = decodeAudioFile(source)!;
+        final pulled = resampleAudio(
+          samples: all.samples,
+          channels: all.channels,
+          inputRate: all.sampleRate * fitted.numerator,
+          outputRate: all.sampleRate * fitted.denominator,
+        );
+        expect(
+          pulled.length,
+          lessThan(all.samples.length),
+          reason: 'the premise: played faster, it lasts less',
+        );
+        var furthest = 0.0;
+        for (var i = 0; i < pulled.length; i += 1) {
+          final apart = (kept.samples[i] - pulled[i]).abs();
+          furthest = apart > furthest ? apart : furthest;
+        }
+        expect(
+          furthest,
+          lessThanOrEqualTo(1 / 32768),
+          reason: 'unpulled, the sound runs 0.1% behind — seven samples by '
+              'the take\'s seventh frame',
+        );
+        expect(
+          kept.samples.skip(pulled.length).every((sample) => sample == 0),
+          isTrue,
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
+    });
+
+    // 🗣️I-171-Q1 (유저 2026-11-14: 「그 부분만 새 파일로 품는다」 — 「소리만 =
+    // WAV 로 떼어, 그림만 = 소리를 뺀 MP4, 자른 영상을 품는 길과 같은 코드」).
+    group('a movie\'s part is a piece of its own', () {
+      testWidgets('🎯its sound alone is a sound\'s piece — a WAV of the '
+          'sound its frames play, whole when nothing is trimmed', (
+        tester,
+      ) async {
+        final watch = await watched(tester, 'a movie\'s sound alone');
+        final s = session();
+        final source = inTemp('take.mp4');
+        watch.step('asking for the encoder and writing the take');
+        if (!writeMovie(source, (numerator: 12, denominator: 1))) {
+          return;
+        }
+
+        watch.step('cutting its sound');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            parts: MovieParts.sound,
+          ),
+        );
+
+        expect(cut?.kind, MediaAssetKind.audio, reason: 'placed as a sound');
+        final piece = cut!.path;
+        expect(mediaFileName(piece), 'take_1-${cut.frames}.wav');
+        final kept = decodeAudioFile(piece)!;
+        final all = decodeAudioFile(source)!;
+        expect(kept.sampleRate, all.sampleRate);
+        expect(kept.channels, all.channels);
+        final heard = all.samples.length;
+        expect(kept.samples.length, greaterThanOrEqualTo(heard));
+        var furthest = 0.0;
+        for (var i = 0; i < heard; i += 1) {
+          final apart = (kept.samples[i] - all.samples[i]).abs();
+          furthest = apart > furthest ? apart : furthest;
+        }
+        expect(
+          furthest,
+          lessThanOrEqualTo(1 / 32768),
+          reason: 'the movie\'s own sound, sample for sample, within the '
+              'one 16-bit step a WAV holds it to',
+        );
+        expect(
+          kept.samples.skip(heard).every((sample) => sample == 0),
+          isTrue,
+          reason: 'past the sound\'s end, the frames its window counts are '
+              'silence',
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('🎯its picture alone is an MP4 of the frames the project '
+          'shows, and no sound', (tester) async {
+        final watch = await watched(tester, 'a movie\'s picture alone');
+        final s = session();
+        final source = inTemp('take.mp4');
+        watch.step('asking for the encoder and writing the take');
+        if (!writeMovie(source, (numerator: 24, denominator: 1))) {
+          return;
+        }
+
+        watch.step('cutting its picture');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            parts: MovieParts.picture,
+          ),
+        );
+
+        expect(cut?.kind, MediaAssetKind.video);
+        expect(mediaFileName(cut!.path), 'take_1-8.mp4');
+        final decoder = osVideoDecoderOrSkip();
+        if (decoder == null) {
+          return;
+        }
+        watch.step('opening the piece');
+        final piece = decoder.openDocument(cut.path)!;
+        try {
+          expect(piece.info.frameCount, 8);
+        } finally {
+          decoder.closeDocument(piece);
+        }
+        expect(
+          decodeAudioFile(source),
+          isNotNull,
+          reason: 'the premise: the take has a sound',
+        );
+        expect(
+          decodeAudioFile(cut.path),
+          isNull,
+          reason: 'the picture alone carries no sound',
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
+    });
   });
 }

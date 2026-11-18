@@ -1,6 +1,5 @@
 import '../models/brush_tip_entry.dart';
 import '../models/brush_tip_mask.dart';
-import 'brush_tip_image_codec.dart';
 import 'brush_tip_mask_defaults.dart';
 import 'brush_preset_defaults.dart' show BuiltinBrushName;
 
@@ -43,7 +42,6 @@ BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(
   id: mask.id,
   name: name,
   size: mask.size,
-  thumbnail: brushTipThumbnailAlpha(mask, side: brushTipThumbnailSide),
   mask: mask,
   builtIn: true,
 );

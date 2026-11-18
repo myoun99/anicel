@@ -49,6 +49,8 @@ List<(int, int)> blocksOf(Layer layer) => [
 ];
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late EditorSessionManager session;
   late LayerId s1;
   late int cut2;

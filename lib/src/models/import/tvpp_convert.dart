@@ -1,3 +1,4 @@
+import '../../core/frozen_collections.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_camera_bake.dart';
 import 'tvpp_parse.dart';
@@ -273,7 +274,7 @@ TvpLayer _rasterLayer(
         file: b.file,
         sourceIndex: b.sourceIndex,
         isReexposure: false,
-        breakdownOffsets: List.unmodifiable(openMarks..sort()),
+        breakdownOffsets: frozenList(openMarks..sort()),
       ),
     );
     open = null;

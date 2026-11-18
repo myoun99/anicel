@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 
 /// Waits until [store] has nothing queued or in flight, and fails the test
 /// if that never comes. Idle is the store's word
@@ -16,11 +17,19 @@ import '../../helpers/poll_until.dart';
 /// await. Two of the four waits this replaces gave up a turn before asking,
 /// with no reason written, and the word held the pending requests already
 /// when they were.
+///
+/// A widget test hands its [tester]: a store its frames asked drains on the
+/// frames it pumps as well as in real time ([settleAsync]). 🔬The stand
+/// test's store never went idle in real time alone (11-07).
 Future<void> tileStoreIdle(
   TimelineGridTileStore store, {
+  WidgetTester? tester,
   String Function()? seen,
 }) async {
-  if (!await pollUntil(() => !store.debugBusy)) {
+  final idle = tester == null
+      ? await pollUntil(() => !store.debugBusy)
+      : await settleAsync(tester, () => !store.debugBusy);
+  if (!idle) {
     fail(
       'the tile store never went idle'
       '${seen == null ? '' : ' (${seen()})'}',

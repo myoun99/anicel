@@ -7,10 +7,13 @@ import '../text/app_strings.dart';
 import '../text/pixel_size_label.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
+import '../timeline/layer_label_controls.dart'
+    show layerRowNameStyleFor, layerSectionLabelSlotWidth;
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/icon_button_box.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 import '../input/control_press_claim.dart';
@@ -48,6 +51,7 @@ class ImportColumn<T> {
     required this.onPick,
     this.style = ImportColumnStyle.choice,
     this.wordOf,
+    this.keepsRoomFor,
     this.valuesFor,
     this.help,
   });
@@ -103,6 +107,28 @@ class ImportColumn<T> {
   /// symbol it rides, 「A에 어태치 (싱크)」.
   final String? Function(String path, T value)? wordOf;
 
+  /// The words this column keeps room for, where its rows say words of
+  /// their own ([wordOf], or an answer's label that carries a name): the
+  /// column is laid out for the widest of THESE and of its answers' labels,
+  /// never for what a row says, and a row's longer word is cut and says its
+  /// whole on hover ([EllipsisText]). One of each shape a row's word takes,
+  /// since which is the widest is the language's to say. Null where the
+  /// column is as wide as the widest word a row says.
+  ///
+  /// 🗣️F-582, 유저 2026-11-10: 「미디어 임포트시 옵션행이 길이에 따라 커져서
+  /// 임포트창이 커지는데, 해당 옵션행은 고정길이로 둬서 길어지면 앱 규칙에
+  /// 따라(ex: 파일이름 -> 파일이... 이런식으로 앱 규칙 따라서.) 생략. 풀네임은
+  /// 호버해서 툴팁으로 알도록. 터치가 호버못하는건 받아들임」. ↩️Every column
+  /// was measured by what its rows said (I-76, `6f2017e72` — nobody had
+  /// asked for that), so a run of long file names widened the list, and
+  /// again each time its span was picked on the preview.
+  ///
+  /// 🗣️F-582-Q1 (유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 ·
+  /// 넘치면 생략 · 호버로 전체」): the place column keeps one too — a long
+  /// layer's name no longer widens the window — and its rows' words take
+  /// more than one shape, so the room is of several words.
+  final List<String>? keepsRoomFor;
+
   /// The word [path]'s row says for [value].
   String wordFor(String path, T value) =>
       wordOf?.call(path, value) ?? labelOf(value);
@@ -143,6 +169,10 @@ class ImportFileRow {
   final String resolution;
 }
 
+/// What a row's switch says: whether the row comes in when Import is
+/// pressed ([on]), and whether that is the row's to change at all.
+typedef ImportRowSwitch = ({bool on, bool locked});
+
 class ImportFileTable extends StatefulWidget {
   const ImportFileTable({
     super.key,
@@ -152,6 +182,8 @@ class ImportFileTable extends StatefulWidget {
     required this.onRowTap,
     this.enabled = true,
     this.leadWidth = 0,
+    this.switchOf,
+    this.onSwitched,
   });
 
   final List<ImportFileRow> rows;
@@ -159,6 +191,27 @@ class ImportFileTable extends StatefulWidget {
   final Set<String> selected;
   final ValueChanged<String> onRowTap;
   final bool enabled;
+
+  /// The switch before a row's name — null for a row with nothing to
+  /// switch — and a row switched off is DRAWN off: the words the table
+  /// draws, and the [ImportFileRow.lead] its owner dims (🗣️F-595 ②, 유저
+  /// 2026-11-16: 「임포트시 이름왼쪽행으로 불리언버튼 만들어서 해제되있으면
+  /// 임포트버튼 눌렀을때 임포트안하도록. 해제하면 물론 해당 행 비활성화표시도
+  /// 같이」). Its slot is kept on every row and over the header, switch or
+  /// none.
+  ///
+  /// ⛔Its questions stay answerable: 「비활성화표시」 asked for a look, and a
+  /// settings row is switched off by its own 넣을 곳 (「제외」) — locked,
+  /// that row could not be answered back on where it was answered off.
+  final ImportRowSwitch? Function(String path)? switchOf;
+
+  /// [paths] switched [on] — the rows a press on one speaks for
+  /// ([importRowsPressedWith]).
+  final void Function(Iterable<String> paths, bool on)? onSwitched;
+
+  /// The switch's slot: the timeline rail's section band, where the export
+  /// window's cels list wears its own row switch.
+  static const double switchWidth = layerSectionLabelSlotWidth;
 
   /// The room before every row's name for its [ImportFileRow.lead] —
   /// kept on every row and over the header alike, so the names stand in
@@ -268,8 +321,13 @@ class _ImportTableMetrics {
         for (final column in columns)
           if (text.widest([
                 ...column.values.map(column.labelOf),
-                for (final row in rows)
-                  if (column.appliesTo(row.path)) column.cellWordOf(row.path),
+                // A room the column keeps is its width whatever its rows
+                // say ([ImportColumn.keepsRoomFor]), as the resolution's is.
+                if (column.keepsRoomFor case final kept?)
+                  ...kept
+                else
+                  for (final row in rows)
+                    if (column.appliesTo(row.path)) column.cellWordOf(row.path),
               ])
               case final word)
             math.max(
@@ -308,6 +366,7 @@ class _ImportTableMetrics {
   double get lineHeight => rowHeight - 2 * rowPadV;
 
   double get _fixedWidth =>
+      ImportFileTable.switchWidth +
       leadWidth +
       modifiedWidth +
       sizeWidth +
@@ -416,6 +475,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
   /// only the rows stood beside the scrollbar lane.
   Widget _tableLine(
     _ImportTableMetrics metrics, {
+    Widget? toggle,
     Widget? lead,
     required Widget name,
     required Widget modified,
@@ -424,6 +484,11 @@ class _ImportFileTableState extends State<ImportFileTable> {
     required Widget Function(ImportColumn<Object?> column) cell,
   }) => Row(
     children: [
+      SizedBox(
+        width: ImportFileTable.switchWidth,
+        height: metrics.lineHeight,
+        child: toggle,
+      ),
       SizedBox(
         width: metrics.leadWidth,
         height: metrics.lineHeight,
@@ -494,7 +559,14 @@ class _ImportFileTableState extends State<ImportFileTable> {
     _ImportTableMetrics metrics,
     ImportFileRow row,
   ) {
-    final dim = _dimStyle(theme);
+    final switched = widget.switchOf?.call(row.path);
+    final on = switched?.on ?? true;
+    // A row switched off reads as off in the rail's one language — its
+    // name's ink at [AppColors.offAlpha], as a hidden layer's name wears it
+    // ([layerRowNameStyleFor]) — and every word of the row with it.
+    TextStyle? ink(TextStyle? style) =>
+        style == null ? null : layerRowNameStyleFor(style, shown: on);
+    final dim = ink(_dimStyle(theme));
     final isSelected = widget.selected.contains(row.path);
     final tap = widget.enabled ? () => widget.onRowTap(row.path) : null;
     return ControlPressClaim(
@@ -513,6 +585,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
           ),
           child: _tableLine(
             metrics,
+            toggle: switched == null ? null : _switch(row, switched, metrics),
             lead: row.lead,
             name: Row(
               children: [
@@ -521,8 +594,10 @@ class _ImportFileTableState extends State<ImportFileTable> {
                     row.name,
                     key: ValueKey<String>('import-name-${row.path}'),
                     maxLines: 1,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: isSelected ? AppColors.accent : null,
+                    style: ink(
+                      theme.textTheme.labelSmall?.copyWith(
+                        color: isSelected ? AppColors.accent : AppColors.text,
+                      ),
                     ),
                   ),
                 ),
@@ -552,6 +627,32 @@ class _ImportFileTableState extends State<ImportFileTable> {
           ),
         ),
       ),
+    );
+  }
+
+  /// [row]'s switch: the app's boolean, in the box its slot promises, for
+  /// every row a press on it speaks for.
+  Widget _switch(
+    ImportFileRow row,
+    ImportRowSwitch switched,
+    _ImportTableMetrics metrics,
+  ) {
+    final switchRows = widget.onSwitched;
+    return BooleanDotButton(
+      keyValue: 'import-switch-${row.path}',
+      tooltip: AppText.strings.imImport,
+      value: switched.on,
+      size: AppIconButtonBox(
+        width: ImportFileTable.switchWidth,
+        height: metrics.lineHeight,
+        iconSize: 14,
+      ),
+      onChanged: widget.enabled && !switched.locked && switchRows != null
+          ? (bool on) => switchRows(
+              importRowsPressedWith(widget.selected, row.path),
+              on,
+            )
+          : null,
     );
   }
 
@@ -686,7 +787,7 @@ class _OptionCell extends StatelessWidget {
     final wordStyle = theme.textTheme.labelSmall?.copyWith(
       color: locked ? theme.disabledColor : null,
     );
-    return Center(
+    final cell = Center(
       child: ControlPressClaim(
         onPressed: press,
         child: InkWell(
@@ -727,7 +828,10 @@ class _OptionCell extends StatelessWidget {
                       ),
                     ),
                   ),
-                  child: Text(
+                  // Cut where the column keeps a room and the row says more
+                  // than it holds — the app's one cut, which says its whole
+                  // on hover (F-582).
+                  child: EllipsisText(
                     column.cellWordOf(path),
                     maxLines: 1,
                     style: wordStyle,
@@ -735,6 +839,22 @@ class _OptionCell extends StatelessWidget {
                 ),
         ),
       ),
+    );
+    // A column that keeps a room ([ImportColumn.keepsRoomFor]) holds its
+    // chip to it: a word cut to the room wears the chip the room's own word
+    // would, the column's gap left around it — unheld, the cut chip would
+    // run from one edge of the column to the other. ⛔Only that column: one
+    // measured from its rows' words has nothing longer to hold, and a hold
+    // there could only cut a word the measure came a hair short of
+    // ([TextMeasure] does not carry the OS's bold-text setting, which a
+    // `Text` merges in).
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: column.keepsRoomFor == null
+            ? 0
+            : _ImportTableMetrics.gap / 2,
+      ),
+      child: cell,
     );
   }
 }

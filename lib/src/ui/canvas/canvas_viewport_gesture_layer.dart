@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../core/one_way.dart';
 import '../../core/wrap_degrees.dart';
 import '../../models/canvas_viewport.dart';
@@ -567,21 +567,14 @@ class _CanvasViewportGestureLayerState
   /// ⚠️It changes WHEN the update runs, never what it computes — the
   /// arithmetic below is untouched, and a batch carrying one finger's
   /// event behaves exactly as before.
-  bool _groupUpdateScheduled = false;
-
-  void _scheduleGroupUpdate() {
-    if (_groupUpdateScheduled) {
+  late final _groupUpdate = OnceAMicrotask(() {
+    if (!mounted || !_groupLocked) {
       return;
     }
-    _groupUpdateScheduled = true;
-    scheduleMicrotask(() {
-      _groupUpdateScheduled = false;
-      if (!mounted || !_groupLocked) {
-        return;
-      }
-      _dispatchGroupUpdate();
-    });
-  }
+    _dispatchGroupUpdate();
+  });
+
+  void _scheduleGroupUpdate() => _groupUpdate.ask();
 
   /// How far a finger must travel before a group of [fingers] is DECIDED.
   ///

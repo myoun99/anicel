@@ -15,12 +15,14 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneRow;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowSubject, TimelineRowDragHooks;
-import 'package:anicel/src/ui/timeline/rail_eyes.dart' show RailEyeBuilder;
+import 'package:anicel/src/ui/timeline/rail_eyes.dart'
+    show RailEyeBuilder, RailSideBuilder;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 import 'package:anicel/src/ui/widgets/named.dart';
 
 import '../../helpers/named_finders.dart';
@@ -96,8 +98,19 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      Future<void> pick(WidgetTester tester, String opener, String key) async {
+      /// Opens [opener]'s list and picks [key] — through the second level
+      /// [through] opens, when the pick sits there.
+      Future<void> pick(
+        WidgetTester tester,
+        String opener,
+        String key, {
+        String? through,
+      }) async {
         await tapNamed(tester, opener);
+        if (through != null) {
+          await tester.tap(find.byKey(ValueKey<String>(through)));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(ValueKey<String>(key)));
         await tester.pumpAndSettle();
       }
@@ -166,7 +179,8 @@ void main() {
           (tester) => pick(
             tester,
             '$rail-layer-mark-${_two.draw}',
-            'layer-mark-option-paper',
+            'layer-mark-option-paper-layout',
+            through: 'layer-mark-stage-paper',
           ),
           'mark ${_two.draw}',
         ),
@@ -209,7 +223,20 @@ void main() {
         ),
         'the speaker': (
           (tester) => tapNamed(tester, '$rail-layer-mute-${_two.sound}'),
-          'mixer ${_two.sound}',
+          'mute ${_two.sound}',
+        ),
+        'the Total bar': (
+          (tester) async {
+            await tester.drag(
+              find.named('$rail-layer-total-volume-${_two.sound}'),
+              const {
+                TimelineOrientation.horizontal: Offset(-30, 0),
+                TimelineOrientation.vertical: Offset(0, 30),
+              }[orientation]!,
+            );
+            await tester.pumpAndSettle();
+          },
+          'total ${_two.sound}',
         ),
         'the camera\'s graph button': (
           (tester) => tapNamed(tester, '$rail-layer-graph-${_two.camera}'),
@@ -217,11 +244,12 @@ void main() {
         ),
         'the folder\'s twirl': (
           (tester) => tapNamed(tester, '$rail-folder-twirl-${_two.folder}'),
-          'fold ${_two.folder}',
+          'fold ${_two.folder} null',
         ),
-        'the attach base\'s twirl': (
-          (tester) => tapNamed(tester, '$rail-attach-twirl-${_two.base}'),
-          'attach ${_two.base}',
+        'the attach base\'s upper half': (
+          (tester) =>
+              tapNamed(tester, '$rail-attach-twirl-above-${_two.base}'),
+          'fold ${_two.base} above',
         ),
         'the lane twirl': (
           (tester) => tapNamed(tester, '$rail-lane-toggle-${_two.draw}'),
@@ -407,11 +435,18 @@ void main() {
           if (row != _two.draw) {
             // Its plate asks which layer the row stands for now, as its eye
             // does (I-22-rest); a plate is one box, so nothing builds under
-            // it.
+            // it — and the ground it says to its chips (Q12) tells none of
+            // them while it holds. A base's fold halves ask the rows on
+            // their side as its eye asks its own (I-175), kept as it is.
             expect(
               {
                 for (final type in types) '$type',
-              }.difference({'$RailEyeBuilder', '_StoodPlate'}),
+              }.difference({
+                '$RailEyeBuilder',
+                '$RailSideBuilder',
+                '_StoodPlate',
+                '$FaceGround',
+              }),
               isEmpty,
               reason: '$row shows what the row it was built for showed',
             );
@@ -531,7 +566,7 @@ TimelineRowDragHooks _dragsHeardBy(List<String> heard) => TimelineRowDragHooks(
       heard.add('drag ${layerId.value}');
     }
   },
-  onUpdate: (_, _, {pointerInRow}) {},
+  onUpdate: (_, _, {pointer}) {},
   onRowTarget: (_, _, _) {},
   onEffectUpdate: (_, _, _) {},
   onEnd: () {},
@@ -604,8 +639,8 @@ Widget _panel(
             id.value.startsWith('draw') ? const ['Elsewhere'] : const [],
         onOpenLayerLinks: (_, id, _) async => hear('links', id),
         onOpenLayerReference: (_, id) async => hear('reference', id),
-        isLayerSoloed: (_) => false,
-        onOpenLayerMixer: (_, id) => hear('mixer', id),
+        onToggleLayerMute: (id) => hear('mute', id),
+        onLayerTotalVolumeChangeEnd: (id, _) => hear('total', id),
         laneGraphVerbs: (
           toggle: (key) => heard.add('graph $key'),
           togglePin: (_) {},
@@ -616,8 +651,8 @@ Widget _panel(
           transformBox: (_) {},
           snap: (_) {},
         ),
-        onToggleLayerCollapsed: (id) => hear('fold', id),
-        onToggleAttachGroup: (id) => hear('attach', id),
+        onToggleGroupFold: (id, side) =>
+            heard.add('fold ${id.value} ${side?.name}'),
         // The drawing carries a lane in both cuts, so its row wears the
         // lane twirl and still comes back whole.
         lanesForLayer: (layer) => layer.name == 'Draw' ? _drawLanes : const [],

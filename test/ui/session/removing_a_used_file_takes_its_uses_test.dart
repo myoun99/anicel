@@ -177,7 +177,7 @@ void main() {
           // A sheet's photo — the sheets' ink is not the project's, and
           // removing a file takes it off there (I-97): the pool's own test
           // of that is a_pool_file_on_a_sheet_is_used_there_test.
-          SheetPhotoMediaUse(:final key) => (key.layerId, key.frameId),
+          SheetPhotoMediaUse(:final key) => key.cel,
         },
     ];
     expect(uses(), [

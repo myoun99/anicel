@@ -24,6 +24,7 @@ import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/text/word_bake.dart' show wordBakePixelRatio;
 import 'package:anicel/src/ui/text/word_condensation.dart'
     show maxGapTightening;
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
@@ -61,7 +62,7 @@ import 'storyboard_cut_block_probe.dart';
 /// frame block and prints as one.
 const _trackId = TrackId('band-track');
 
-const _art = LayerMark(process: LayerProcess.art);
+const _key = LayerMark(process: LayerProcess.key);
 const _conte = LayerMark(process: LayerProcess.conte);
 
 Cut _cut(
@@ -209,6 +210,26 @@ class _ParagraphOffsetSpy implements Canvas {
     xScales.add(_transform.storage[0]);
   }
 
+  /// Where each word drawn from its bake lands — the box of the narrowed
+  /// word, the bake's pixel of margin taken off (`paintBakedWord` tints it
+  /// in the word's ink; a panel's picture is drawn untinted). A screen
+  /// draws a narrowed word from its bake once one landed, the bake an
+  /// earlier test asked for among them.
+  final List<Rect> baked = [];
+
+  @override
+  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) {
+    if (paint.colorFilter == null) {
+      return;
+    }
+    baked.add(
+      MatrixUtils.transformRect(
+        _transform,
+        dst.deflate(1 / wordBakePixelRatio()!),
+      ),
+    );
+  }
+
   @override
   void drawCircle(Offset c, double radius, Paint paint) => circles.add((
     center: MatrixUtils.transformPoint(_transform, c),
@@ -267,9 +288,12 @@ _ParagraphOffsetSpy _paintedCreate(WidgetTester tester) {
   return spy;
 }
 
-/// The words laid in [band], left to right.
+/// The words laid in [band], left to right — set or drawn from their bake.
 List<Rect> _wordsIn(Rect band, _ParagraphOffsetSpy spy) =>
-    spy.rects.where((rect) => band.contains(rect.center)).toList()
+    [
+      ...spy.rects,
+      ...spy.baked,
+    ].where((rect) => band.contains(rect.center)).toList()
       ..sort((a, b) => a.left.compareTo(b.left));
 
 /// A copy of [painter] at another height, or under another selection — the
@@ -400,13 +424,13 @@ void main() {
     await _pump(
       tester,
       storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-      cutMark: _art,
+      cutMark: _key,
     );
     final block = requireCutBlock(tester, 'cut-1');
     final spy = _painted(tester);
 
-    expect(spy.fillOf(block.topBand), layerMarkColor(_art).toARGB32());
-    expect(spy.fillOf(block.bottomBand), layerMarkColor(_art).toARGB32());
+    expect(spy.fillOf(block.topBand), layerMarkColor(_key).toARGB32());
+    expect(spy.fillOf(block.bottomBand), layerMarkColor(_key).toARGB32());
     // ↩️The conte blocks' pair of bands, inside the cut block.
     final conteRow = conteRowPainter(tester, _trackId.value);
     for (final frame in [0, 4, 9, 11]) {
@@ -420,14 +444,14 @@ void main() {
 
   testWidgets('with no storyboard layer the conte row wears the PLATE — no '
       'layer, no label to wear — and its + reads against it', (tester) async {
-    await _pump(tester, cutMark: _art);
+    await _pump(tester, cutMark: _key);
     final block = requireCutBlock(tester, 'cut-1');
     final cut = _painted(tester);
     final cutPlate = cut.plates.single.color.toARGB32();
     final create = _paintedCreate(tester);
     final plate = conteCreatePlates(tester, _trackId.value).single;
 
-    expect(cut.fillOf(block.topBand), layerMarkColor(_art).toARGB32());
+    expect(cut.fillOf(block.topBand), layerMarkColor(_key).toARGB32());
     expect(
       create.plates.map((each) => (each.rect, each.color.toARGB32())),
       [(plate.outerRect, cutPlate)],
@@ -479,7 +503,7 @@ void main() {
       await _pump(
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-        cutMark: _art,
+        cutMark: _key,
         cutUnderPlayhead: under,
         selectedRow: on,
       );
@@ -504,7 +528,7 @@ void main() {
     testWidgets('on the V row: the bands, never the plate around its '
         'pictures — and they go with the cut', (tester) async {
       final under = await stand(tester, on: const TrackRowAddress(_trackId));
-      final cut = layerMarkColor(_art);
+      final cut = layerMarkColor(_key);
       final stood = painted(tester);
       expect(stood.bands, [washed(cut), washed(cut)]);
       expect(stood.plate, conteSheetInk.toARGB32());
@@ -523,7 +547,7 @@ void main() {
       await stand(tester);
       expect(
         painted(tester).bands.first,
-        layerMarkColor(_art).toARGB32(),
+        layerMarkColor(_key).toARGB32(),
       );
     });
 
@@ -532,8 +556,8 @@ void main() {
     testWidgets('standing on the CONTE row under it, none', (tester) async {
       await stand(tester, on: LayerRowAddress(trackConteRowId(_trackId)));
       expect(painted(tester).bands, [
-        layerMarkColor(_art).toARGB32(),
-        layerMarkColor(_art).toARGB32(),
+        layerMarkColor(_key).toARGB32(),
+        layerMarkColor(_key).toARGB32(),
       ]);
     });
 
@@ -552,7 +576,7 @@ void main() {
       addTearDown(under.dispose);
       final project = _project(
         storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-        cutMark: _art,
+        cutMark: _key,
       );
       await tester.binding.setSurfaceSize(const Size(1400, 700));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -583,7 +607,7 @@ void main() {
       final kept = tester.widget(row);
       expect(
         painted(tester).bands.first,
-        layerMarkColor(_art).toARGB32(),
+        layerMarkColor(_key).toARGB32(),
         reason: 'premise: standing nowhere on this rail',
       );
 
@@ -600,7 +624,7 @@ void main() {
         reason: 'the stand repaints the row',
       );
       await tester.pump();
-      final cut = layerMarkColor(_art);
+      final cut = layerMarkColor(_key);
       expect(painted(tester).bands, [washed(cut), washed(cut)]);
     });
 
@@ -615,7 +639,7 @@ void main() {
       final panel = await standingPanel(tester);
       await tester.pumpWidget(panel(current: nowhere));
       await tester.pumpAndSettle();
-      final cut = layerMarkColor(_art);
+      final cut = layerMarkColor(_key);
       expect(
         painted(tester).bands.first,
         cut.toARGB32(),
@@ -645,7 +669,7 @@ void main() {
     await _pump(
       tester,
       storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-      cutMark: _art,
+      cutMark: _key,
     );
     final painter = cutBlocksPainter(tester);
     final range = ValueNotifier<TrackFrameRangeSelection?>(
@@ -1011,7 +1035,7 @@ void main() {
     await _pump(
       tester,
       storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-      cutMark: _art,
+      cutMark: _key,
       pixelsPerFrame: cell,
       // Panel a's picture is there; b's and c's are still being made.
       thumbnailFor: (cut, frame, {required shownHeight, region}) =>
@@ -1025,8 +1049,8 @@ void main() {
       block.bottomBand,
     ]);
     expect(grounds.take(2).map((ground) => ground.color), [
-      layerMarkColor(_art),
-      layerMarkColor(_art),
+      layerMarkColor(_key),
+      layerMarkColor(_key),
     ]);
     // Panel a (4 frames) is wider than its picture, which is drawn the
     // strip's height tall in the panel's middle: either side of it, the
@@ -1091,7 +1115,7 @@ void main() {
     await _pump(
       tester,
       storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
-      cutMark: _art,
+      cutMark: _key,
       pixelsPerFrame: cell,
       thumbnailFor: (cut, frame, {required shownHeight, region}) =>
           frame == 0 ? picture : null,
@@ -1134,7 +1158,7 @@ void main() {
                         'cut-1',
                         mark: _conte,
                       ),
-                      mark: _art,
+                      mark: _key,
                     ),
                     _cut(
                       'cut-2',
@@ -1174,7 +1198,7 @@ void main() {
       expect(
         under.single.color,
         [
-          layerMarkColor(_art),
+          layerMarkColor(_key),
           layerMarkColor(const LayerMark(process: LayerProcess.key)),
           layerMarkColor(LayerMark.none),
         ][index],

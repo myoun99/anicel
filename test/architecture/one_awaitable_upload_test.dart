@@ -27,8 +27,9 @@ import '../helpers/dart_sources.dart';
 /// pass every test there is; what fails is the eighth, written next year by
 /// someone who reached for the SDK function because it was there. So the
 /// nail is a source scan, and the number is ZERO — `uploadRawRgba` and
-/// `decodeStraightRgbaImage` in `lib/src/services/straight_rgba_image.dart`
-/// are awaitable, and nothing needs a Completer to reach a picture any more.
+/// `decodeStraightRgbaImageOnAWorker` in
+/// `lib/src/services/straight_rgba_image.dart` are awaitable, and nothing
+/// needs a Completer to reach a picture any more.
 ///
 /// ⚠️This does NOT ban `ui.decodeImageFromPixels`. Five call sites use it as
 /// what it is — fire-and-forget, no future, nobody waiting — and converting
@@ -72,8 +73,9 @@ void main() {
           'and the only thing there is to bridge from is a callback that is '
           'never invoked on failure — so the await is one refusal away from '
           'lasting forever. Await `uploadRawRgba` (premultiplied bytes) or '
-          '`decodeStraightRgbaImage` (straight alpha) instead: they run the '
-          'identical six engine steps as a chain of awaits, and therefore '
+          '`decodeStraightRgbaImageOnAWorker` (straight alpha) instead: they '
+          'run the identical six engine steps as a chain of awaits, and '
+          'therefore '
           'reject. If a Completer is genuinely wanted for something else, '
           'say what and why here rather than deleting the check.\n'
           '${offenders.join('\n')}',

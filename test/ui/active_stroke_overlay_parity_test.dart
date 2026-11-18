@@ -137,7 +137,7 @@ Uint8List _materializedBytes(
 }) {
   final result = materializeBrushDabSequenceOnBitmapSurface(
     surface:
-        baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        baseSurface ?? BitmapSurface(canvasSize: _canvasSize),
     sequence: BrushDabSequence(dabs),
   );
   return _surfaceBytes(result.surface);
@@ -333,7 +333,7 @@ void main() {
           _dab(x: 8.5 + i * 4.0, y: 12.5, color: 0xCC994411, sequence: i),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -390,7 +390,7 @@ void main() {
           ),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -443,7 +443,7 @@ void main() {
           ),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -494,7 +494,7 @@ void main() {
       rasterizer.blendFrom(strokeDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
       );
@@ -517,7 +517,7 @@ void main() {
       final recorder = ui.PictureRecorder();
       BitmapSurfacePainter(
         surface:
-            baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+            baseSurface ?? BitmapSurface(canvasSize: _canvasSize),
         overlayModel: model,
         showTransparentBackground: false,
         // The shared tile-image cache's stale fallback is keyed by
@@ -620,7 +620,7 @@ void main() {
           ),
         ];
         final base = materializeBrushDabSequenceOnBitmapSurface(
-          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+          surface: BitmapSurface(canvasSize: _canvasSize),
           sequence: BrushDabSequence(baseDabs),
         ).surface;
 
@@ -672,7 +672,7 @@ void main() {
           ),
         ];
         final base = materializeBrushDabSequenceOnBitmapSurface(
-          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+          surface: BitmapSurface(canvasSize: _canvasSize),
           sequence: BrushDabSequence(baseDabs),
         ).surface;
 
@@ -713,29 +713,31 @@ void main() {
             baseSurface: committed.surface,
           );
 
-          // PROMOTION round: BOTH display routes must hold the parity —
-          // the ALIGNED grid (overlay tile == surface tile: the base
-          // pass skips replaced coordinates, srcOver result tiles, no
-          // isolation layer) and the MISMATCHED grid (isolation layer +
-          // BlendMode.src replacement).
-          for (final overlayTileSize in const [64, 16]) {
-            final model = ActiveStrokeOverlayModel(tileSize: overlayTileSize)
-              ..blendMode = mode
-              ..erase = mode == BrushBlendMode.erase
-              ..preBlendBase = base;
-            addTearDown(model.dispose);
-            updateRegion(model, rasterizer, region);
-            expect(model.preBlended, isTrue);
-
-            final route = overlayTileSize == 64
-                ? 'aligned replacement route'
-                : 'isolation fallback route';
-            _expectExact(
-              await paintedCanvasBytes(model, baseSurface: base),
-              committedDisplay,
-              '${mode.name} ($route): live display == committed display',
-            );
-          }
+          // The ALIGNED grid (overlay tile == surface tile): the base pass
+          // skips replaced coordinates and lays the result tiles srcOver.
+          // ↩️A MISMATCHED grid (isolation layer + BlendMode.src
+          // replacement) was held too till 2026-11-14, when a pre-blend on
+          // a grid parted from its cel's was refused (board
+          // `the-off-engine-cpu-commit-lives-only-for-tests`); the aligned
+          // one was 64 over a 128 cel — mismatched as well — before that.
+          // ↩️stroke_overlay_pre_blend_parity_test held the overlay's Dart
+          // pre-blend to the commit in all fifteen modes till then; the
+          // two are one landing now (the rasterizer's `_landOnEngine`, for
+          // the overlay and for `promoteStrokeTiles`), and each mode is
+          // pinned by blend/tests.rs
+          // `every_device_composites_the_pinned_grid_in_every_mode`.
+          final model = ActiveStrokeOverlayModel()
+            ..blendMode = mode
+            ..erase = mode == BrushBlendMode.erase
+            ..preBlendBase = base;
+          addTearDown(model.dispose);
+          updateRegion(model, rasterizer, region);
+          expect(model.preBlended, isTrue);
+          _expectExact(
+            await paintedCanvasBytes(model, baseSurface: base),
+            committedDisplay,
+            '${mode.name}: live display == committed display',
+          );
         }
       },
     );
@@ -745,15 +747,17 @@ void main() {
       'coordinate — the base pass skipped that tile, so a clamped image '
       'would cut a transparent strip through committed artwork',
       () async {
-        // The overlay grid divides the canvas but NOT the pasteboard, so
-        // the last coordinate is a partial rect and a 32px grid puts the
-        // wall mid-tile.
+        // The engine's grid does not divide the pasteboard, so the last
+        // coordinate is a partial rect: the wall stands at 80, mid-tile.
+        // ↩️A 32px grid till 2026-11-14, when a cel was drawn off the
+        // engine's grid too (board
+        // `the-off-engine-cpu-commit-lives-only-for-tests`).
         //
         // ⚠️H2 (2026-08-22) moved the wall in: the pasteboard now reaches
         // 2× the canvas, i.e. 40×2 = 80, not 120. The dabs below moved
         // with it — at their old places they sat entirely PAST the wall,
         // where nothing is written and there is no partial tile to test.
-        const overlayTile = 32;
+        const overlayTile = 128;
         final base = materializeBrushDabSequenceOnBitmapSurface(
           surface: BitmapSurface(canvasSize: _canvasSize, tileSize: overlayTile),
           sequence: BrushDabSequence([
@@ -789,6 +793,52 @@ void main() {
         }
       },
     );
+
+    // ↩️Till 2026-11-14 an overlay or a cel off the stroke's grid, or a
+    // source that is not the rasterizer, fell to a CPU pre-blend (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
+    test('a pre-blend is the engine\'s: an overlay or a cel off its grid, '
+        'or a source that is not the stroke on it, is turned away', () {
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
+      addTearDown(rasterizer.clear);
+      final region = rasterizer.blendFrom([_dab(x: 8.5, y: 8.5)], from: 0)!;
+      final cel = BitmapSurface(canvasSize: _canvasSize, tileSize: 128);
+      final coords = region.toTileCoords(tileSize: 128).toList();
+
+      ActiveStrokeOverlayModel overlay(int tileSize, BitmapSurface base) {
+        final model = ActiveStrokeOverlayModel(tileSize: tileSize)
+          ..preBlendBase = base;
+        addTearDown(model.dispose);
+        return model;
+      }
+
+      for (final (what, model, source)
+          in <(String, ActiveStrokeOverlayModel, ActiveStrokePixelSource)>[
+            ('an overlay off the grid', overlay(64, cel), rasterizer),
+            (
+              'a cel off the grid',
+              overlay(
+                128,
+                BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+              ),
+              rasterizer,
+            ),
+            ('a source not the stroke', overlay(128, cel), _NotTheStroke()),
+          ]) {
+        expect(
+          () => model.stageRegion(source: source, coords: coords),
+          throwsStateError,
+          reason: '$what: staged',
+        );
+        model.updateRegion(source: source, region: region);
+        expect(model.pictureOwed, throwsStateError, reason: '$what: shown');
+      }
+      expect(
+        overlay(128, cel).stageRegion(source: rasterizer, coords: coords),
+        isTrue,
+        reason: 'control: on the grid, the stroke itself pre-blends',
+      );
+    });
 
     test('reset clears the tile images and dabs', () async {
       final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
@@ -848,4 +898,13 @@ Uint8List _premultipliedCanvasBytes(Uint8List straight) {
 int _mul255Round(int value, int alpha) {
   final product = value * alpha + 128;
   return (product + (product >> 8)) >> 8;
+}
+
+/// A pixel source that is not the stroke on the engine.
+class _NotTheStroke implements ActiveStrokePixelSource {
+  @override
+  PasteboardWall get pasteboard => _pasteboard;
+
+  @override
+  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {}
 }

@@ -56,4 +56,81 @@ void main() {
       );
     });
   });
+
+  /// A stamp whose bytes are held elsewhere (`BrushStampImage.read`): the
+  /// engine's picture of a stamp carried through a placement, which lands
+  /// without its bytes ever coming to the CPU. What only counts or names it
+  /// must not be what reads them.
+  group('BrushStampImage.read', () {
+    ({BrushStampImage stamp, int Function() reads}) held({
+      int width = 3,
+      int height = 2,
+      int? bytes,
+    }) {
+      var reads = 0;
+      return (
+        stamp: BrushStampImage.read(
+          id: 'held',
+          width: width,
+          height: height,
+          rgba: () {
+            reads += 1;
+            return Uint8List(bytes ?? width * height * 4)..[0] = 7;
+          },
+        ),
+        reads: () => reads,
+      );
+    }
+
+    test('reads its bytes when they are first asked for, and once', () {
+      final (:stamp, :reads) = held();
+
+      expect(reads(), 0);
+      expect(stamp.rgba.first, 7);
+      expect(identical(stamp.rgba, stamp.rgba), isTrue);
+      expect(reads(), 1);
+    });
+
+    test('its size, its landing, its hash and its own identity read '
+        'nothing', () {
+      final (:stamp, :reads) = held();
+
+      stamp.landingRect(CanvasPoint(x: 5, y: 5));
+      stamp.hashCode;
+      stamp.toString();
+      expect(stamp == stamp, isTrue);
+      expect(<BrushStampImage>{stamp, stamp}, hasLength(1));
+      expect(reads(), 0);
+    });
+
+    test('hashes as a stamp of the same name and size does', () {
+      expect(
+        held().stamp.hashCode,
+        BrushStampImage(
+          id: 'held',
+          width: 3,
+          height: 2,
+          rgba: Uint8List(24),
+        ).hashCode,
+      );
+    });
+
+    test('bytes that are not its size are refused where they are read', () {
+      final (:stamp, reads: _) = held(bytes: 20);
+
+      expect(() => stamp.rgba, throwsArgumentError);
+    });
+
+    test('is named and sized as any stamp is', () {
+      Uint8List none() => Uint8List(0);
+      expect(
+        () => BrushStampImage.read(id: '', width: 1, height: 1, rgba: none),
+        throwsArgumentError,
+      );
+      expect(
+        () => BrushStampImage.read(id: 'a', width: 0, height: 1, rgba: none),
+        throwsArgumentError,
+      );
+    });
+  });
 }

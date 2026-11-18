@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -340,6 +342,52 @@ mpoints-1-bezieraftery=0.000000
         () => parseTvppStructure(TvppBuilder().bytes),
         throwsA(isA<TvppParseException>()),
       );
+    });
+
+    // 저장 2026-11-07: every clip but the last of the user's 82 files
+    // (builds of 2023 and 2025, no TMST) warned that its chain broke.
+    group('a clip with no TMST', () {
+      Uint8List twoClips({required List<int> between}) {
+        final b = TvppBuilder();
+        b.projectProperties(cameraWidth: 960, cameraHeight: 540);
+        for (final (k, name) in const ['first', 'second'].indexed) {
+          if (k > 0) {
+            b.raw(between);
+          }
+          b.clipProperties(name);
+          b.clipHeader(width: 32, height: 18);
+          b.layerHead('カメラ', headerChunk: 'LRCA');
+          b.layerExt(const {});
+          b.layerHead('A', end: 0, count: 1);
+          b.layerExt(const {});
+          b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+          b.clipConfig(timestamp: false);
+        }
+        return b.bytes;
+      }
+
+      test('ends where the next clip\'s record heads start — nothing is '
+          'dropped, so nothing is said', () {
+        final heads = TvppBuilder()..recordHeads();
+        final result = parseTvppStructure(twoClips(between: heads.bytes));
+        expect(result.warnings, isEmpty);
+        expect([for (final clip in result.clips) clip.name], [
+          'first',
+          'second',
+        ]);
+        for (final clip in result.clips) {
+          expect([for (final layer in clip.layers) layer.name], ['カメラ', 'A']);
+          expect(clip.layers[1].slots, hasLength(1));
+        }
+      });
+
+      test('still says so where what follows is no record head', () {
+        final result = parseTvppStructure(
+          twoClips(between: List.filled(24, 0x01)),
+        );
+        expect([for (final w in result.warnings) w.key], ['tvppChunkBroken']);
+        expect(result.warnings.single.values['n'], '1');
+      });
     });
   });
 }

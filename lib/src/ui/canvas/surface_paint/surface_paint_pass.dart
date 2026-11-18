@@ -89,10 +89,8 @@ class _SurfacePaintPass {
     _layerPaint = layerPaint;
     _scale = scale;
     _pixelRatio = pixelRatio;
-    _float = float == null || float.preview.drawnWorldRect.isEmpty
-        ? null
-        : float;
-    _floats = [?_float, ?_painter._ownFloat];
+    _float = drawnFloat(float);
+    _floats = _painter.floatsOver(float);
     _painter.pictureBudget.paintBegan(_painter.lineage);
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,
@@ -118,16 +116,16 @@ class _SurfacePaintPass {
     // or panel chrome below — until brush-fidelity-Q9 left no brush blend
     // drawn on the GPU.
     //
-    // PROMOTION round: a PRE-BLENDED _overlay on the SAME grid as the
-    // surface needs neither a layer nor a clip. A result tile carries
-    // the commit's finished pixels for its whole coordinate (base
+    // PROMOTION round: a PRE-BLENDED _overlay — on the surface's grid,
+    // the engine's — needs neither a layer nor a clip. A result tile
+    // carries the commit's finished pixels for its whole coordinate (base
     // included), so the base pass simply SKIPS the committed tile where
-    // an _overlay image exists and the _overlay pass lays the result tile
-    // with plain srcOver — one draw per coordinate, structurally the
-    // idle frame's cost however long the stroke gets. The isolation
-    // layer + src-replacement route stays for pre-blended overlays on a
-    // MISMATCHED grid (hosts/tests with their own tile sizes); both
-    // routes are display-parity-pinned.
+    // an _overlay image exists and lays the result tile in its place —
+    // one draw per coordinate, structurally the idle frame's cost however
+    // long the stroke gets. ↩️An isolation layer with the tiles laid `src`
+    // stood beside it for one on a MISMATCHED grid till 2026-11-14, when
+    // that pre-blend was refused (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
     _overlay = _painter.overlayModel;
     _overlayReplacesCoords = _painter._overlayReplacesCoords;
     _overlayBlendsInLayer = _painter._overlayBlendsInLayer;
@@ -254,9 +252,9 @@ class _SurfacePaintPass {
       // restore (outside a stroke's isolation layer), so [_layerPaint]
       // reached it — the user's 「레이어 블렌드모드나 **합성같은게 다**
       // 반영되는」. Since brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」)
-      // it is the OVERLAY's tiles — the click's own bytes, pre-blended on
-      // the CPU — which this pass draws in the layer's paint, so F-33 holds
-      // by construction.
+      // it is the OVERLAY's tiles — the click's own bytes, pre-blended (on
+      // the CPU then, by the engine now) — which this pass draws in the
+      // layer's paint, so F-33 holds by construction.
       _paintLandingPreviews();
     }
 
@@ -380,9 +378,11 @@ class _SurfacePaintPass {
     );
   }
 
-  /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
-  /// overlay blits (src where it replaces the committed tiles), an erasing
-  /// one cuts out (dstOut), else the tile paint.
+  /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with over the
+  /// committed tiles: an erasing one cuts out (dstOut), else the tile
+  /// paint. A pre-blended one draws over nothing — its tiles are their
+  /// coordinates' pictures ([_overlayReplacesCoords]). ↩️Off the surface's
+  /// grid it blitted (src) till 2026-11-14.
   ///
   /// 🚨★★★ONE FUNCTION FOR EVERY PREVIEW OF A LANDING, not just the stroke
   /// overlay's (유저 2026-09-10, F-69: 「프리뷰 그냥 어차피 브러시랑 똑같은데
@@ -397,19 +397,8 @@ class _SurfacePaintPass {
   /// of its own rather than being an overlay — until brush-fidelity-Q9 (유저
   /// 2026-10-18 「통일하면 좋음」): it lays the click's own dab through the
   /// overlay now, and takes the pre-blended road exactly as a stroke does.
-  Paint _livePreviewPaint({
-    required bool erase,
-    required bool preBlended,
-    required bool replacesCoords,
-  }) {
-    return preBlended
-        ? (replacesCoords
-              ? _tileImagePaint
-              : (Paint()
-                  ..filterQuality = FilterQuality.none
-                  ..isAntiAlias = false
-                  ..blendMode = BlendMode.src))
-        : erase
+  Paint _livePreviewPaint({required bool erase}) {
+    return erase
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false

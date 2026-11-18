@@ -498,21 +498,21 @@ void main() {
     tester,
   ) async {
     final session = await pump(tester, conteOnT2: true, riders: true);
-    Set<LayerId> folded() => session.railView.collapsedAttachBaseIds.value;
+    Set<LayerId> folded() => session.railView.attachFoldedRowIds.value;
     expect(folded(), isEmpty, reason: '⛔전제');
 
     await sweep(
       tester,
-      'storyboard-attach-twirl-a-conte',
-      'storyboard-attach-twirl-c-conte',
+      'storyboard-attach-twirl-above-a-conte',
+      'storyboard-attach-twirl-above-c-conte',
     );
 
     expect(
       folded(),
       containsAll(const [
-        LayerId('a-conte'),
-        LayerId('b-conte'),
-        LayerId('c-conte'),
+        LayerId('a-over'),
+        LayerId('b-over'),
+        LayerId('c-over'),
       ]),
       reason:
           'the press folded t1\'s head — cut b\'s group with cut a\'s — and '
@@ -528,16 +528,16 @@ void main() {
 
     await sweep(
       tester,
-      'storyboard-attach-twirl-c-conte',
-      'storyboard-attach-twirl-a-conte',
+      'storyboard-attach-twirl-above-c-conte',
+      'storyboard-attach-twirl-above-a-conte',
     );
 
     expect(
-      session.railView.collapsedAttachBaseIds.value,
+      session.railView.attachFoldedRowIds.value,
       containsAll(const [
-        LayerId('a-conte'),
-        LayerId('b-conte'),
-        LayerId('c-conte'),
+        LayerId('a-over'),
+        LayerId('b-over'),
+        LayerId('c-over'),
       ]),
     );
   });
@@ -545,11 +545,13 @@ void main() {
   testWidgets('🚨the head a sweep up folded stays folded while the cursor '
       'stays, the rows it lifted sliding under it', (tester) async {
     final session = await pump(tester, conteOnT2: true, riders: true);
-    Set<LayerId> folded() => session.railView.collapsedAttachBaseIds.value;
+    Set<LayerId> folded() => session.railView.attachFoldedRowIds.value;
     final start = tester.getCenter(
-      find.named('storyboard-attach-twirl-c-conte'),
+      find.named('storyboard-attach-twirl-above-c-conte'),
     );
-    final end = tester.getCenter(find.named('storyboard-attach-twirl-a-conte'));
+    final end = tester.getCenter(
+      find.named('storyboard-attach-twirl-above-a-conte'),
+    );
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
@@ -559,14 +561,14 @@ void main() {
       await gesture.moveTo(Offset.lerp(start, end, step / 16)!);
       await tester.pump(const Duration(milliseconds: 16));
     }
-    expect(folded(), contains(const LayerId('a-conte')), reason: '⛔전제');
+    expect(folded(), contains(const LayerId('a-over')), reason: '⛔전제');
 
     for (var nudge = 0; nudge < 6; nudge += 1) {
       await gesture.moveBy(Offset(0, nudge.isEven ? -1 : 1));
       await tester.pump(const Duration(milliseconds: 16));
       expect(
         folded(),
-        contains(const LayerId('a-conte')),
+        contains(const LayerId('a-over')),
         reason: 'nudge $nudge',
       );
     }
@@ -810,7 +812,8 @@ void main() {
         'storyboard-lane-group-toggle-$conteRow-transform-group',
       );
       await tap(tester, 'storyboard-lane-toggle-t2-s1');
-      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-transform-group');
+      // An S row's pose is its name tag's (audio-fx-grows-like-the-pros-Q3).
+      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-name-tag-group');
       session.selectCut(const CutId('c'));
       await tester.pumpAndSettle();
       final start = diamond(conteRow, 'position');

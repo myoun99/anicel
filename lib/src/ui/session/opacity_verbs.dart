@@ -12,6 +12,30 @@ import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 
+/// [layers] with the DRAGGED rows' opacity substituted in
+/// ([OpacityVerbs.dragPreview]) — display only, so whatever a row draws
+/// follows an opacity drag with no repo write per move: its picture in the
+/// cut's stack, an S row's cels, and an S row's name tags.
+///
+/// 🗣️F-605 (유저 2026-11-16): 「캔버스에서 행의 불투명도 조절은 실시간으로
+/// 반영되는게 기본인데 s행의 표시 불투명도가 실시간반영안됨」. ★ONE
+/// substitution for every reader of a row's opacity: the tags read it off
+/// the track's rows, which no drag preview reached till then — they took
+/// the new strength at the release.
+List<Layer> layersShowingOpacityPreview(
+  List<Layer> layers,
+  ({Set<LayerId> layerIds, double opacity})? preview,
+) => preview == null
+    ? layers
+    : [
+        for (final layer in layers)
+          if (preview.layerIds.contains(layer.id) &&
+              layer.kind.hasPictureOpacity)
+            layer.copyWith(opacity: preview.opacity)
+          else
+            layer,
+      ];
+
 /// The OPACITY VERBS — a layer's and several layers' opacity: what the
 /// stack shows, the preview while a slider moves and the commit when it
 /// lets go, and the editing fade of the active cut — as their own object.

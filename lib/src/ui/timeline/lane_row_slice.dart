@@ -1,8 +1,10 @@
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_name_tag.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'reference_lane_policy.dart' show laneIsReference;
-import 'se_name_tag_lane_policy.dart' show laneIsSeNameTag;
+import 'se_name_tag_lane_policy.dart'
+    show laneIsSeNameTag, seNameTagGroupLaneId;
 import 'se_sound_lane_policy.dart' show laneIsSeSound;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
@@ -49,8 +51,17 @@ Object laneRowSlice(Layer layer, String laneId) {
   if (laneIsSeSound(laneId)) {
     return layer.seSound;
   }
+  // The name tag's header shows its pose's keys beside its own
+  // (`SeNameTagPose`): two families, so the whole layer.
+  if (laneId == seNameTagGroupLaneId) {
+    return layer;
+  }
+  // A tag never typed is the default its rows read
+  // (`property_lanes_for_row`), not the whole layer — ↩️it was the layer,
+  // and with the pose's lanes beside them a pose scrub rebuilt every tag
+  // lane of a row whose tag was never typed.
   if (laneIsSeNameTag(laneId)) {
-    return layer.seNameTag ?? layer;
+    return layer.seNameTag ?? const SeNameTag();
   }
   // I-68: the reference fx's rows show its keys over the pose they rest on
   // (F-374), and only an edit of either makes a new reference.

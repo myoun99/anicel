@@ -116,9 +116,11 @@ fn blur_way_in_turn(
 // barriers stand where a dispatch's end stood: the rows' blur put before
 // the columns read it, the dab's pixels moved before the next dab reads
 // them. ⚠️No test sees one of them go, nor the workgroup barrier between
-// bands: one workgroup's threads keep step closely enough on the GPU here
-// that the race does not show (mutants u11 · u12 · u13, 11-06). WGSL's
-// memory model wants all three.
+// bands: one workgroup's threads keep step closely enough that the race
+// does not show — on the main PC's RTX 4080 (mutants u11 · u12 · u13,
+// 11-06) nor on the Surface's Arc 140V (each taken out alone, the dab blur
+// tests debug and release three times each, 11-07). WGSL's memory model
+// wants all three.
 @compute @workgroup_size(256)
 fn blur_dabs_in_turn(@builtin(local_invocation_index) lane: u32) {
   for (var k = 0u; k < blur_dab.y; k++) {

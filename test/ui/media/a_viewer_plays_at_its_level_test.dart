@@ -2,14 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★**THE VIEWER'S LEVEL, MEASURED WHERE IT IS HEARD** (F-289).
 ///
@@ -18,16 +16,11 @@ import '../../helpers/native_engine_path.dart';
 /// widget bench can see that line: every test above it runs a recorded
 /// sound, and a level that reached the recorder and never the mix would
 /// leave the whole suite green while the bar did nothing. So this drives
-/// the device for real — miniaudio's null backend, the actual callback on
+/// the device for real — the engine's null backend, the actual callback on
 /// an actual thread — and reads the bus it mixes into.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -36,7 +29,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   const tone = 'C:/work/tone.wav';
@@ -90,5 +82,5 @@ void main() {
     expect(await peakAt(0.5), closeTo(full / 2, full * 0.02));
     expect(await peakAt(0.25), closeTo(full / 4, full * 0.02));
     expect(await peakAt(0), 0, reason: 'muted is silence, still running');
-  }, skip: skip);
+  });
 }

@@ -7,6 +7,7 @@ import '../debug/key_trace.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
+import 'lone_modifiers.dart';
 import 'panel_actions.dart';
 import 'sheet_arrow.dart';
 import 'shortcut_activator_codec.dart';
@@ -32,6 +33,13 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Null disables persistence (tests, and FLUTTER_TEST runs).
   final ShortcutSettingsStore? store;
+
+  /// Modifiers pressed alone on the shell's road ([LoneModifiers]): heard
+  /// at every key and pointer event, app-wide, by the held keys' listener
+  /// (`EditorKeyHolds`) — that runs before any key reaches a focus — and
+  /// read by a pressed action's key that is modifiers alone, at the key-up
+  /// it was found at ([ModifiersLetGoActivator]).
+  final LoneModifiers lone = LoneModifiers();
 
   /// Every action a key can be put on: the registry's, then the workspace's
   /// panels ([setPanelActions]) and the brush library's ([setBrushActions])
@@ -254,11 +262,26 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   /// [activator]'s pressable forms for [actionId]: a DIRECTION key of a move
-  /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned.
+  /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned,
+  /// and a key that is modifiers alone is a HELD action's as they go down
+  /// ([ModifiersDownActivator]) and a pressed one's as they are let go
+  /// alone ([ModifiersLetGoActivator]).
+  ///
+  /// 🗣️F-603-Q1 (유저 2026-11-16): 「뗐을 때 — 그 사이에 다른 키나 클릭이
+  /// 없었으면 발동」 — Ctrl+Z goes through Ctrl alone on its way, and only
+  /// a Ctrl let go with nothing after it presses what Ctrl alone is.
   Iterable<ShortcutActivator> _formsOf(
     String actionId,
     SingleActivator activator,
   ) {
+    if (isModifiersAlone(activator)) {
+      return [
+        if (definitionFor(actionId)?.hold ?? false)
+          ModifiersDownActivator(activator)
+        else
+          ModifiersLetGoActivator(activator, lone),
+      ];
+    }
     final place = _turnOf(actionId, activator);
     return place == null
         ? pressableForms(activator)
@@ -402,6 +425,17 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether [actionId] holds [key] — the same key as a clash counts it
+  /// ([activatorKey]): what the shortcut window asks to find the actions of
+  /// a key (I-168), to name who still holds a clashed one (I-158), and to
+  /// give a key to one action alone.
+  bool holds(String actionId, SingleActivator key) {
+    final at = activatorKey(key);
+    return activatorsFor(
+      actionId,
+    ).any((activator) => activatorKey(activator) == at);
+  }
+
   /// [key] on [actionId] alone: taken off every other action that holds it,
   /// and put on [actionId] where it was not. Persists and notifies once.
   ///
@@ -412,7 +446,7 @@ class EditorShortcutBindings extends ChangeNotifier {
     final at = activatorKey(key);
     for (final definition in definitions) {
       final keys = activatorsFor(definition.id);
-      final held = keys.any((activator) => activatorKey(activator) == at);
+      final held = holds(definition.id, key);
       if (definition.id == actionId) {
         if (!held) {
           _record(actionId, [...keys, key]);
@@ -558,10 +592,16 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
   }
 
+  /// Whether [resetAll] would change anything — a key or a touch gesture
+  /// recorded over the preset in use. The button that presses it is out
+  /// where it would not (F-583).
+  bool get resetAllChanges =>
+      _overrides.isNotEmpty || _touchOverrides.isNotEmpty;
+
   /// Back to the keys the preset in use ships with, and the registry's touch
   /// gestures. What was recorded under another preset stays with it.
   void resetAll() {
-    if (_overrides.isEmpty && _touchOverrides.isEmpty) {
+    if (!resetAllChanges) {
       return;
     }
     _overrides.clear();
@@ -798,6 +838,63 @@ class ShiftTypedActivator extends ShortcutActivator {
 
   @override
   String debugDescribeKeys() => 'Shift-typed ${typed.debugDescribeKeys()}';
+}
+
+/// [alone] — a key that is modifiers alone ([modifiersAlone]) — pressed: one
+/// of its modifiers going down with every one of them held, and no other
+/// (F-603).
+class ModifiersDownActivator extends ShortcutActivator {
+  const ModifiersDownActivator(this.alone);
+
+  final SingleActivator alone;
+
+  @override
+  Iterable<LogicalKeyboardKey> get triggers => modifierKeysOf(alone);
+
+  /// ⚠️A modifier's key-down may be one the engine made up — a held key's
+  /// repeat, after a pen's move let go of it (`modifierHeld`): the
+  /// modifiers it is matched with are the held ones, so it presses what is
+  /// held all the same.
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) =>
+      event is KeyDownEvent &&
+      triggers.contains(event.logicalKey) &&
+      state.isControlPressed == alone.control &&
+      state.isShiftPressed == alone.shift &&
+      state.isAltPressed == alone.alt &&
+      state.isMetaPressed == alone.meta;
+
+  @override
+  String debugDescribeKeys() => 'held alone ${alone.debugDescribeKeys()}';
+}
+
+/// [alone] — a key that is modifiers alone ([modifiersAlone]) — pressed: its
+/// modifiers pressed alone and let go, at the key-up [lone] found that at
+/// (🗣️F-603-Q1: 「뗐을 때 — 그 사이에 다른 키나 클릭이 없었으면 발동」).
+///
+/// ⚠️A release found at no key-up — dropped under a pen's move, and found
+/// at the pen's next event — presses nothing: a pointer's event reaches no
+/// shortcut. While something plays, the gate eats the key-up it stopped at
+/// (`PlaybackActuationGate`), and this is never asked.
+class ModifiersLetGoActivator extends ShortcutActivator {
+  const ModifiersLetGoActivator(this.alone, this.lone);
+
+  final SingleActivator alone;
+  final LoneModifiers lone;
+
+  @override
+  Iterable<LogicalKeyboardKey> get triggers => modifierKeysOf(alone);
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) {
+    final pressed = lone.pressedAt(event);
+    return event is KeyUpEvent &&
+        pressed != null &&
+        activatorsEqual(pressed, alone);
+  }
+
+  @override
+  String debugDescribeKeys() => 'let go alone ${alone.debugDescribeKeys()}';
 }
 
 /// The app-level ShortcutManager, and what it leaves to a text field.

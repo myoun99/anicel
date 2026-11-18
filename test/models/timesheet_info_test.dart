@@ -343,6 +343,30 @@ void main() {
       expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
     });
 
+    test('F-576: the book names are shortened unless taken off, and taken '
+        'off travels with the work', () {
+      // 유저 2026-11-09: 「타임시트서식에 북 이름 생략? … 기본값은 on」.
+      expect(TimesheetInfo.empty.sheetBookNamesShortened, isTrue);
+      expect(TimesheetInfo.fromJson(const {}).sheetBookNamesShortened, isTrue);
+      expect(
+        TimesheetInfo.empty.toJson().containsKey('sheetBookNamesShortened'),
+        isFalse,
+      );
+      final info = TimesheetInfo.empty.copyWith(sheetBookNamesShortened: false);
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.sheetBookNamesShortened, isFalse);
+      expect(
+        restored.copyWith(sheetFixedText: false).sheetBookNamesShortened,
+        isFalse,
+        reason: 'another change keeps it',
+      );
+      expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
+    });
+
     // 🗣️유저 2026-10-30: 「그리고 기본값은 칸 안에가 되도록」.
     test('I-82: a moving camera\'s cell keeps its box unless the format lets '
         'it grow, and grown travels with the work', () {

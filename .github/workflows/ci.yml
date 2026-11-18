@@ -1,7 +1,8 @@
 name: CI
 
-# The cheap tier: analyze, the full test suite, and a portability check on
-# the native C core. PRs run against the virtual merge with master; pushes
+# The cheap tier: analyze and the full test suite (↩️and a portability
+# check on the native C core, till the C went — 2026-11-13). PRs run
+# against the virtual merge with master; pushes
 # to master verify the merged result. Branch pushes alone don't trigger —
 # every branch goes through a PR anyway, and running both events doubled
 # every run for nothing (workflow_dispatch covers the rare PR-less case).
@@ -49,12 +50,29 @@ jobs:
   # workflow reports NO check at all, and 「체크 0개」 is not green, it is
   # unverified — `merge_check.sh` counts checks and would have to learn a
   # second meaning for zero. A skipped JOB still posts its check.
+  #
+  # 🔁AND HAS THIS TREE BEEN TESTED GREEN ALREADY? (ci-takes-an-hour-on-lavapipe,
+  # 관제 2026-11-17 for 유저 「CI 너무 긴거아닌가」). A bundle PR merged with
+  # `gh pr merge --merge` pushes a merge commit whose tree is the PR head's —
+  # and master's run went through that same tree once more: 30 + 29 minutes
+  # on 11-06, 26 + 25 on 11-03, the second telling nothing the first had not.
+  # So a master push whose tree is a commit's that a pull_request run of this
+  # workflow passed (the pushed commit itself, or a merge's second parent)
+  # sets `again`, and every job below stands down; the run still ends green,
+  # which is what tool/build_check.sh reads. ⚠️A board-only push straight to
+  # master has no such run, so it runs as before — that run is its gate. The
+  # fail-safe above holds: a tree that differs, a call that fails, any doubt
+  # at all, and `again` stays false.
   scope:
     name: what changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       app: ${{ steps.what.outputs.app }}
+      again: ${{ steps.again.outputs.again }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -90,10 +108,85 @@ jobs:
           fi
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "app=$app  (${files:-<no diff read>})"
+      - id: again
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          again=false
+          head="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tree=$(git rev-parse --verify -q "$head^{tree}" || true)
+            second=$(git rev-parse --verify -q "$head^2" || true)
+            for c in "$head" $second; do
+              [ -n "$tree" ] || break
+              [ "$(git rev-parse --verify -q "$c^{tree}" || true)" = "$tree" ] \
+                || continue
+              green=$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$c&event=pull_request&status=success&per_page=1" \
+                --jq '.total_count' 2>/dev/null || true)
+              if [ "${green:-0}" -gt 0 ] 2>/dev/null; then
+                again=true
+                echo "tree ${tree:0:12} passed as pull-request head ${c:0:12}"
+                break
+              fi
+            done
+          fi
+          echo "again=$again" >> "$GITHUB_OUTPUT"
+          echo "again=$again"
+      # ⏱️WHAT EACH TEST FILE TOOK LAST TIME (ci-shards-dealt-by-measured-
+      # seconds, 2026-11-17): the shards deal their files by it
+      # (tool/test_shard.dart). Fetched HERE, once, and handed to every
+      # shard as one artifact — a shard that fetched for itself could catch
+      # a run that finished in between and deal other piles than its
+      # neighbours, and then a file runs twice or not at all.
+      #
+      # Each OS from the last run that left its shards' records, whatever
+      # its event: a master push a pull request already passed stands down
+      # (above), so nearly every run that tests is a bundle PR's. ⛔Nothing
+      # here fails the run: no record, an API that does not answer, an
+      # expired artifact — each leaves the OS's file empty, and its shards
+      # deal by size as they did before records.
+      - if: steps.again.outputs.again != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          out="$RUNNER_TEMP/shard-times"
+          mkdir -p "$out"
+          for os in Linux Windows; do
+            : > "$out/$os.tsv"
+            run=$(gh api \
+              "repos/${{ github.repository }}/actions/artifacts?name=test-times-$os-0&per_page=10" \
+              --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id // empty' \
+              2>/dev/null)
+            if [ -z "$run" ]; then
+              echo "$os: no run left a record — its shards deal by size"
+              continue
+            fi
+            got="$RUNNER_TEMP/got-$os"
+            gh run download "$run" -R "${{ github.repository }}" \
+              -p "test-times-$os-*" -D "$got" \
+              || echo "$os: run $run's records could not be fetched"
+            find "$got" -name test_times.tsv -exec cat {} + 2>/dev/null \
+              | LC_ALL=C sort > "$out/$os.tsv"
+            echo "$os: $(wc -l < "$out/$os.tsv") files timed by run $run"
+          done
+      - if: steps.again.outputs.again != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: shard-times
+          path: ${{ runner.temp }}/shard-times/
+          retention-days: 1
+          overwrite: true
 
-  # The C core compiled by a THIRD compiler (gcc) on a different OS —
-  # the fastest way to catch portability breakage before the platform
-  # builds get involved. Two minutes, every push.
+  # ↩️A job stood here that compiled the C core with gcc and clang on
+  # Linux — a third compiler on a different OS, the fastest way to catch
+  # portability breakage before the platform builds got involved — till
+  # the C went (2026-11-13). The Rust engine is built by every job that
+  # runs a test, and its own tests run on three hosts (gpu-engine.yml).
+  #
   # Every job below carries a timeout-minutes, and the reason is that
   # GitHub's default is 360. On 2026-08-15 one Windows shard stopped
   # inside `flutter test` and sat there: eleven of twelve jobs were green
@@ -117,44 +210,18 @@ jobs:
   # deadline while still passing tests — the real job this rule exists not
   # to kill. So the Linux shards' deadline is 45: just over 2x the 20-21
   # minutes a shard now takes, the same rule as before with today's numbers.
-  native-portability:
-    name: native C (gcc + clang)
-    needs: scope
-    if: needs.scope.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # The fx plugin test passes without its WebAssembly twin when the build
-    # found no engine; Linux x86_64 has one (fx-plugin-sdk-publish-Q2), so a
-    # run without it is a failure here.
-    env:
-      QA_REQUIRE_WASM: '1'
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build with gcc
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-gcc -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=gcc
-          cmake --build build/ci-gcc --config Release
-      - name: Build with clang (stricter warnings)
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-clang -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=clang
-          cmake --build build/ci-clang --config Release
-      # 🚨★★★**THE FIRST NATIVE CODE THIS REPO EVER RAN IN CI.** This job
-      # built the library twice and then printed `ls -la` — 「it compiles on
-      # two compilers」 is a real answer to a real question, and it was the
-      # ONLY question being asked. Both, because the point of two compilers
-      # is that they can disagree, and that goes for behaviour too.
-      #
-      # ⚠️If this ever says 「No tests were found」, that is a FAILURE wearing
-      # a success: `--output-on-failure` prints nothing when nothing ran, and
-      # a job that runs no tests looks exactly like a job that passes them.
-      - name: Run the native law tests (gcc)
-        run: ctest --test-dir build/ci-gcc --output-on-failure --no-tests=error
-      - name: Run the native law tests (clang)
-        run: ctest --test-dir build/ci-clang --output-on-failure --no-tests=error
-      - name: Show artifacts
-        run: ls -la build/ci-gcc build/ci-clang
+  #
+  # Re-measured 2026-11-17 (card ci-linux-shards-cannot-make-a-shown-surface),
+  # after the canvas went to the GPU engine (11-09) and these shards drew it
+  # on lavapipe — on the CPU: the shards were 26-29 min on 11-06 (run
+  # 42274839761) and every run of the bundle PR since has been killed at 45
+  # while still passing tests. Run 43891668921: shard 2's first pass took
+  # 41.7 min to the end, and shards 0 and 1 were cut at 44 min with 78% and
+  # 93% of a shard's tests behind them — 56 and 47 min to the end of the
+  # pass, about 59 for the slowest job. The files that grew most are the
+  # ones that open the workspace and draw it (the top strip's widths 24 s →
+  # 436 s, a float on a keyed row 75 → 467 s). So the deadline is 120: just
+  # over 2x the slowest, the same rule again.
 
   # Sharded by FILE LIST, and the distinction is the whole point.
   #
@@ -179,25 +246,25 @@ jobs:
   # that does it.
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
+    needs: scope
+    if: needs.scope.outputs.again != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     strategy:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
       fail-fast: false
-      # Three, because the job COUNT is now the thing that costs — see the
-      # note above the windows job. Linux shards are the cheap ones (33s of
-      # setup against Windows' 110s), so they are also the ones it costs
-      # least to give up.
+      # ↩️Three, while the job COUNT was the thing that cost — see the note
+      # above the windows job. Six from 2026-11-17 (ci-takes-an-hour-on-
+      # lavapipe): since the canvas went to the GPU engine (11-09) these
+      # shards draw it on the CPU and decide the run alone — 51.9, 56.1 and
+      # about 40 minutes of tests on 11-17, the Windows shards 11-15. The
+      # run is one bundle PR now, not five runs in flight (the 08-12
+      # saturation), and six makes it fifteen jobs against the limit of
+      # twenty. ⚠️The 120 above is still the three shards' rule — measure
+      # six on the next run and set it again.
       matrix:
-        shard: [0, 1, 2]
-    # Job-wide rather than on the test step: the step is a composite action
-    # now, and an env that has to travel through one is an env that can go
-    # missing. QA_REQUIRE_NATIVE turns "engine not found" from a skip into
-    # a failure, which is the only reason a parity suite means anything.
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
-      QA_REQUIRE_NATIVE: '1'
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -225,26 +292,77 @@ jobs:
       # zero (silent). 26s on one shard is the price of that asymmetry.
       - if: matrix.shard == 0
         run: flutter analyze
-      # The parity suites resolve a locally built engine or SKIP. This job
-      # used to run without one — the gcc build lives in a different job on
-      # a different runner, so its artifacts were never here — which meant
-      # every byte-parity pin quietly skipped on Linux. gcc on x86_64 is a
-      # genuinely distinct third compiler from MSVC and Apple clang, and
-      # #614 is the standing lesson about what an unexercised parity suite
-      # is worth: it stayed green for five rounds while Apple silicon
-      # rendered different pixels.
-      - uses: ./.github/actions/native-engine
+      # ↩️The C engine was built here, so the parity suites between it and
+      # its Dart reference ran instead of skipping — #614 is the standing
+      # lesson about what an unexercised parity suite is worth: it stayed
+      # green for five rounds while Apple silicon rendered different pixels
+      # — till the C went (2026-11-13). Nothing here can skip for want of
+      # an engine now: the one the tests open is built by this run.
+      # The GPU engine the tests open (packages/gpu_engine, built by the
+      # app's build hook) needs an adapter, and this runner has no GPU:
+      # lavapipe, Mesa's Vulkan on the CPU, which gpu-engine.yml's Linux
+      # job runs the engine's own tests on. Every test that reaches the
+      # engine runs here — the Windows shards leave them to these six
+      # (유저 gpu-engine-skeleton-Q16, below).
+      # (Readied by the action, with why it lends /dev/udmabuf and raises its
+      # limit on one buffer.)
+      - uses: ./.github/actions/lavapipe
+      # From the engine build master's engine-target job kept, rather than
+      # cold (the action says how the key chooses).
+      - uses: ./.github/actions/rust-engine
+        with:
+          target: restore
       # The project's green rule: the exit code decides, never the tail.
-      - name: Run tests against the gcc-built engine
+      - name: Run tests against the engine this run built
         uses: ./.github/actions/test-shard
         with:
-          total: 3
+          total: 6
           index: ${{ matrix.shard }}
+          times-artifact: shard-times
+
+  # 🦀THE ENGINE BUILD THE LINUX SHARDS START FROM (card
+  # ci-shards-build-the-engine-cold, 2026-11-17). A pull request's cache is
+  # its own, so only a master push can leave one every later run reads —
+  # and since a tested tree stands the master run down (scope's `again`),
+  # this job runs on every master push the app changed in, whatever
+  # `again` says. It builds the engine the way a shard does, through the
+  # app's build hook under a test run — one file that opens nothing, since
+  # the hook builds for any test, run by the plan as every run here is
+  # (a_file_that_needs_impeller_runs_apart_test) — and the action keeps the
+  # folder when the engine's files are new. The same files as a kept build
+  # find the library among its copies and keep nothing new.
+  engine-target:
+    name: keep the engine build (Linux)
+    needs: scope
+    if: github.event_name == 'push' && needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+      - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
+        with:
+          target: keep
+      - run: |
+          echo test/architecture/the_shards_weigh_files_that_are_there_test.dart \
+            > "$RUNNER_TEMP/engine_target_tests.txt"
+          dart tool/affected_tests.dart \
+            --files-from "$RUNNER_TEMP/engine_target_tests.txt" \
+            --outside-the-line --concurrency 1
 
   android:
     name: Android build
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -267,6 +385,7 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-android-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v5
         with:
@@ -284,7 +403,7 @@ jobs:
   windows-app:
     name: Windows app build
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -299,6 +418,7 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
       - run: flutter build windows --debug
 
   # The critical path, and the reason this file was restructured: measured
@@ -332,19 +452,18 @@ jobs:
   # fits one batch, and it is the floor for that reason and no other.
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
-    # ⚠️These run the suite against the NATIVE DLL — the parity watch. Board
+    # ⚠️These run the suite on Windows, beside the engine's library as
+    # this runner builds it (↩️and against the C engine's DLL, the parity
+    # watch the job is named for, till the C went — 2026-11-13). Board
     # tests are pure Dart and are covered by the Linux shards either way.
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' && needs.scope.outputs.again != 'true'
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3, 4, 5]
-    env:
-      QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
-      QA_REQUIRE_NATIVE: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -357,15 +476,29 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
-      # The engine DLL the parity tests need; without it those tests skip
-      # loudly rather than fail, so building it here is what actually
-      # exercises the C implementation against the Dart reference.
-      - uses: ./.github/actions/native-engine
+      # The app's build hook builds the GPU engine for every `flutter test`,
+      # whether a file here opens it or not.
+      - uses: ./.github/actions/rust-engine
       - name: Run tests with the engine on PATH
         uses: ./.github/actions/test-shard
         with:
           total: 6
           index: ${{ matrix.shard }}
+          times-artifact: shard-times
+          # 🗣️유저 gpu-engine-skeleton-Q16 (2026-11-07) 「윈도 샤드는 엔진에
+          # 닿는 시험을 리눅스에 맡긴다」: this runner has no GPU, and the one
+          # adapter the GPU engine opens on it, WARP, never finishes the
+          # engine's optimised shaders — blend, composite, dab blur,
+          # Gaussian, resample, warp; 15 minutes and still running on the
+          # main PC's WARP — and with the optimisation off each process's
+          # first compile is minutes and its first values wrong (WARP's).
+          # So the tests that reach the engine — 1472 of 3116 files on the
+          # day — run on the three Linux shards above, on lavapipe, and CI
+          # never draws through the engine on Windows: its DX12 kernels are
+          # the land gate's crate tests on the main PC's RTX, and the screen
+          # is the PCs'. ⛔Running them here again is not a fix but a new
+          # question for the user.
+          leave-out-package: gpu_engine
       # A step that stood past its limit leaves the process's threads in
       # build/native_call_watch before the run ends
       # (test/helpers/native_call_watch.dart) — kept from a red shard.

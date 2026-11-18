@@ -135,7 +135,7 @@ class _BrushEditPressure {
     }
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
-    final sidecar = PenSidecars.freshReading();
+    final sidecar = PenSidecars.readingOf(event);
     if (sidecar != null && sidecar.touching) {
       _sidecarTouched = true;
     }

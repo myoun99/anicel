@@ -1,5 +1,6 @@
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/cut.dart';
+import '../../models/project.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/xdts_sheet_half.dart';
@@ -68,14 +69,23 @@ TimesheetDocument cutSheetDocument(
           lines.writtenIn(words),
       ];
     },
-    linkedCuts: [
-      for (final other in LinkedCutGroups(
-        session.repository.requireProject(),
-      ).of(cut))
-        if (other.id != cut.id) other.name,
-    ],
+    linkedCuts: sheetLinkedCutNames(session.repository.requireProject(), cut),
   );
 }
+
+/// The cuts [cut] is 겸용 with, by name, as its sheet's header writes them
+/// (F-558) — what [cutSheetDocument] prints, and what the timesheet panel
+/// reprints on: a rename of one on another track leaves [cut] and its
+/// track the very objects they were.
+///
+/// Bare names, as the cut's own number above them — never `writtenCutName`'s
+/// `c265`: 유저's F-558 sketch wrote 312 · 265 · 266 under the box's カット,
+/// which already says they are cuts. A line has no such box, so the conte's
+/// cell writes `겸용 c98,c102` (F-531 · F-229).
+List<String> sheetLinkedCutNames(Project project, Cut cut) => [
+  for (final other in LinkedCutGroups(project).of(cut))
+    if (other.id != cut.id) other.name,
+];
 
 /// THE XDTS [cut] exports: the digital rendering of the projection its
 /// printed sheet reads (`SheetSources`), handed the same track rows on the

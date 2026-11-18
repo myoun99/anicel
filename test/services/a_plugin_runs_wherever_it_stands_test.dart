@@ -1,3 +1,4 @@
+import '../helpers/a_cut_as_surfaces.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/fx_plugin_file.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「머문다 — 어디에 걸어도 돌고 …」 — a
 /// plugin's effect runs wherever it stands: every one switched on, in every
@@ -26,15 +28,7 @@ import '../helpers/a_plugin_that_shifts.dart';
 /// over the cut.
 void main() {
   const paper = CanvasSize(width: 8, height: 8);
-  final other = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'test.other',
-    'name': 'Other',
-    'vendor': 'Test',
-    'version': '1',
-    'can': ['cpu'],
-    'params': <Object?>[],
-  })!;
+  final other = fxPluginDescriptionOf('test.other', name: 'Other');
   final reading = FxPluginDescription.fromJson({
     ...shiftingFxPluginDescription.toJson(),
     'params': [
@@ -107,7 +101,12 @@ void main() {
   );
   List<ResolvedLayerEffect> bound(List<LayerEffect> chain, int frame) =>
       binding(
-        resolveLayerEffectsAt(effects: chain, frameIndex: frame, blocks: null),
+        resolveLayerEffectsAt(
+          effects: chain,
+          frameIndex: frame,
+          blocks: null,
+          worn: null,
+        ),
         cut: cutOf(const []),
         frameIndex: frame,
       );
@@ -207,7 +206,12 @@ void main() {
       },
     );
     final run = binding(
-      resolveLayerEffectsAt(effects: [map], frameIndex: 7, blocks: null),
+      resolveLayerEffectsAt(
+        effects: [map],
+        frameIndex: 7,
+        blocks: null,
+        worn: null,
+      ),
       cut: cutOf([m]),
       frameIndex: 2,
     ).single.run!;

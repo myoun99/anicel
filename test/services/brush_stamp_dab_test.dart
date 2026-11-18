@@ -52,7 +52,7 @@ void main() {
   }
 
   test('a full-opacity stamp onto blank pixels lands byte-exactly 1:1', () {
-    // A 2x3 stamp with distinct pixels, placed at (3, 2).
+    // A 2x3 stamp with distinct pixels, placed across a tile edge.
     final rgba = Uint8List.fromList([
       // row 0
       255, 0, 0, 255, /**/ 0, 255, 0, 128,
@@ -68,26 +68,36 @@ void main() {
       rgba: rgba,
     );
 
+    // Across the engine's tile edge at 128 — ↩️the 4px edge of an 8-pixel
+    // canvas till 2026-11-14 (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
+    const left = 127;
     final result = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
-      sequence: BrushDabSequence([stampDab(left: 3, top: 2, stamp: stamp)]),
+      surface: BitmapSurface(
+        canvasSize: const CanvasSize(width: 256, height: 8),
+        tileSize: 128,
+      ),
+      sequence: BrushDabSequence([stampDab(left: left, top: 2, stamp: stamp)]),
     );
 
-    expect(pixelAt(result.surface, 3, 2), [255, 0, 0, 255]);
-    expect(pixelAt(result.surface, 4, 2), [0, 255, 0, 128]);
-    expect(pixelAt(result.surface, 3, 3), [0, 0, 255, 255]);
+    expect(pixelAt(result.surface, left, 2), [255, 0, 0, 255]);
+    expect(pixelAt(result.surface, left + 1, 2), [0, 255, 0, 128]);
+    expect(pixelAt(result.surface, left, 3), [0, 0, 255, 255]);
     expect(
-      pixelAt(result.surface, 4, 3),
+      pixelAt(result.surface, left + 1, 3),
       [0, 0, 0, 0],
       reason: 'alpha-0 stamp pixels leave the destination untouched',
     );
-    expect(pixelAt(result.surface, 3, 4), [200, 100, 50, 64]);
-    expect(pixelAt(result.surface, 4, 4), [255, 255, 255, 255]);
+    expect(pixelAt(result.surface, left, 4), [200, 100, 50, 64]);
+    expect(pixelAt(result.surface, left + 1, 4), [255, 255, 255, 255]);
     // Outside the stamp rect nothing changes.
-    expect(pixelAt(result.surface, 2, 2), [0, 0, 0, 0]);
-    expect(pixelAt(result.surface, 5, 2), [0, 0, 0, 0]);
-    // The stamp rect crosses the 4px tile boundary: both tiles dirty.
-    expect(result.dirtyTiles.isNotEmpty, isTrue);
+    expect(pixelAt(result.surface, left - 1, 2), [0, 0, 0, 0]);
+    expect(pixelAt(result.surface, left + 2, 2), [0, 0, 0, 0]);
+    // The stamp rect crosses the tile edge: both tiles dirty.
+    expect(result.dirtyTiles.coords, {
+      TileCoord(x: 0, y: 0),
+      TileCoord(x: 1, y: 0),
+    });
   });
 
   test('stamp opacity modulates like source-over paint', () {
@@ -98,7 +108,7 @@ void main() {
       rgba: Uint8List.fromList([255, 0, 0, 255]),
     );
     final result = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence([
         stampDab(left: 1, top: 1, stamp: stamp, opacity: 0.5),
       ]),
@@ -110,7 +120,7 @@ void main() {
   test('the LIFT pair — erase mask at the origin + stamp at the target — '
       'moves exactly the masked pixels', () {
     // Base: a 2x2 red block at (1,1)..(2,2).
-    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 4);
+    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 128);
     final red = Uint8List.fromList([
       for (var i = 0; i < 4; i += 1) ...[255, 0, 0, 255],
     ]);
@@ -194,7 +204,7 @@ void main() {
       for (var i = 0; i < 9; i += 1) ...[255, 0, 0, 255],
     ]);
     final surface = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence([
         stampDab(
           left: 2,

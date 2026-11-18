@@ -115,7 +115,7 @@ class RoundTipProfile {
   }
 
   /// [table] at [distance], between its two nearest entries — the one read
-  /// every route makes, operation by operation (`qa_round_profile_at`).
+  /// every route makes.
   @pragma('vm:prefer-inline')
   double readAt(Float64List table, double distance) {
     final x = distance * scale;
@@ -126,8 +126,7 @@ class RoundTipProfile {
 
   /// A square [table] ([rowLength]) at ([across], [down]) — both at or
   /// past 0 and short of [reach] — between its four nearest entries: along
-  /// the row, then down — the one read every route makes, operation by
-  /// operation (`qa_round_square_at`).
+  /// the row, then down — the one read every route makes.
   @pragma('vm:prefer-inline')
   double readSquareAt(Float64List table, double across, double down) {
     final x = across * scale;
@@ -324,9 +323,7 @@ class _RampPair {
   _RampPair(this.radius, double hardness, BrushTipEdge edge)
     : hardRadius = radius * hardness,
       edgeRim = radius - edge.inset * math.min(1.0, radius / edge.insetReach) {
-    final width =
-        edge.width + edge.widthPerRadius * math.min(radius, edge.widthReach);
-    edgeHard = math.max(0.0, edgeRim - width);
+    edgeHard = math.max(0.0, edgeRim - brushTipEdgeWidth(edge, radius));
     turn = _turn();
   }
 

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/engine_wave_band.dart';
+import '../audio/engine_wave_views.dart';
 import '../audio/waveform_painter.dart';
 import '../brush/canvas_stage.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -22,6 +24,7 @@ import '../timeline/timeline_beat_lines.dart'
 import '../timeline/timeline_frame_ruler_painter.dart'
     show timelineRulerPlayheadInk, timelineSecondsMark;
 import '../timeline/timeline_glyph_cache.dart' show timelineSecondsType;
+import '../timeline/timeline_grid_screen.dart';
 import '../timeline/timeline_ruler_playhead_writing.dart'
     show timelineMarkStandsDownFor;
 import '../timeline/timeline_second.dart'
@@ -179,6 +182,15 @@ class _SoundFaceState extends State<SoundFace> {
   /// The face itself, under the stage it stands on.
   final GlobalKey _grip = GlobalKey();
 
+  final _FaceBands _bands = (whole: EngineWaveBand(), near: EngineWaveBand());
+
+  @override
+  void dispose() {
+    _bands.whole.letGo();
+    _bands.near.letGo();
+    super.dispose();
+  }
+
   bool _takes(Offset global) {
     final box = _grip.currentContext?.findRenderObject();
     return box is RenderBox &&
@@ -256,8 +268,10 @@ class _SoundFaceState extends State<SoundFace> {
       },
       child: ValueListenableBuilder<FrameRulerView>(
         valueListenable: widget.rulerView,
-        builder: (context, view, _) => CustomPaint(
-          painter: _SoundFacePainter(
+        builder: (context, view, _) {
+          _SoundFacePainter face(_FaceLayer layer) => _SoundFacePainter(
+            layer: layer,
+            bands: _bands,
             peaks: widget.peaks,
             frameRate: widget.frameRate,
             lastFrame: _lastFrame,
@@ -288,9 +302,27 @@ class _SoundFaceState extends State<SoundFace> {
               words.fontSize ?? 14,
             ).copyWith(color: colorScheme.onSurfaceVariant),
             playheadWords: words.merge(timelineRulerPlayheadInk(colorScheme)),
-          ),
-          child: const SizedBox.expand(),
-        ),
+          );
+          // The bands on a screen of their own, between what lies under
+          // them and what stands over them — the order the face paints in.
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(painter: face(_FaceLayer.under)),
+              TimelineGridScreenHost(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    TimelineGridScreenSlot(
+                      child: CustomPaint(painter: face(_FaceLayer.bands)),
+                    ),
+                    CustomPaint(painter: face(_FaceLayer.over)),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -310,8 +342,18 @@ typedef _FaceInk = ({
   Color wash,
 });
 
+/// What of the face a painter paints: what lies under the grid's screen,
+/// the bands laid on it, and what stands over them.
+enum _FaceLayer { under, bands, over }
+
+/// The face's two bands as the engine keeps them ([EngineWaveBand]): the
+/// whole file's, and the stretch round the playhead's.
+typedef _FaceBands = ({EngineWaveBand whole, EngineWaveBand near});
+
 class _SoundFacePainter extends CustomPainter with RepaintOnProps {
   const _SoundFacePainter({
+    required this.layer,
+    required this.bands,
     required this.peaks,
     required this.frameRate,
     required this.lastFrame,
@@ -326,6 +368,8 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
     required this.playheadWords,
   });
 
+  final _FaceLayer layer;
+  final _FaceBands bands;
   final AudioPeaks peaks;
   final ProjectFrameRate frameRate;
   final int lastFrame;
@@ -354,18 +398,20 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final well = RRect.fromRectAndRadius(
-      (Offset.zero & size).deflate(_rim / 2),
-      const Radius.circular(AppShapes.wellRadius),
-    );
-    canvas.drawRRect(well, Paint()..color = ink.ground);
-    canvas.drawRRect(
-      well,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = _rim
-        ..color = ink.rule,
-    );
+    if (layer == _FaceLayer.under) {
+      final well = RRect.fromRectAndRadius(
+        (Offset.zero & size).deflate(_rim / 2),
+        const Radius.circular(AppShapes.wellRadius),
+      );
+      canvas.drawRRect(well, Paint()..color = ink.ground);
+      canvas.drawRRect(
+        well,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = _rim
+          ..color = ink.rule,
+      );
+    }
     if (nearPerFrame <= 0 || size.isEmpty) {
       return;
     }
@@ -375,19 +421,31 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
       nearPerFrame: nearPerFrame,
       currentFrame: currentFrame,
     );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        rows.near.rect.left,
-        rows.near.rect.top - 1,
-        rows.near.rect.width,
-        1,
-      ),
-      Paint()..color = ink.tick,
-    );
-    for (final row in [rows.whole, rows.near]) {
+    if (layer == _FaceLayer.under) {
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rows.near.rect.left,
+          rows.near.rect.top - 1,
+          rows.near.rect.width,
+          1,
+        ),
+        Paint()..color = ink.tick,
+      );
+    }
+    for (final (row, band) in [
+      (rows.whole, bands.whole),
+      (rows.near, bands.near),
+    ]) {
       canvas.save();
       canvas.clipRect(row.rect);
-      _paintRow(canvas, row);
+      switch (layer) {
+        case _FaceLayer.under:
+          _paintUnder(canvas, row);
+        case _FaceLayer.bands:
+          _paintBand(canvas, row, band);
+        case _FaceLayer.over:
+          _paintOver(canvas, row);
+      }
       canvas.restore();
     }
   }
@@ -395,13 +453,18 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
   double _xOf(_Row row, double frame) =>
       row.rect.left + (frame - row.from) * row.perFrame;
 
-  void _paintRow(Canvas canvas, _Row row) {
-    final lanes = Rect.fromLTRB(
-      row.rect.left,
-      row.rect.top + _rulerHeight + 1,
-      row.rect.right,
-      row.rect.bottom,
-    );
+  /// Where [row]'s bands stand: under its ruler.
+  static Rect _lanesOf(_Row row) => Rect.fromLTRB(
+    row.rect.left,
+    row.rect.top + _rulerHeight + 1,
+    row.rect.right,
+    row.rect.bottom,
+  );
+
+  /// What of [row] lies under its bands: past the file's ends, and a rule
+  /// through each band's share.
+  void _paintUnder(Canvas canvas, _Row row) {
+    final lanes = _lanesOf(row);
     // Past the file's ends, where a row round the playhead runs over them.
     final past = Paint()..color = ink.past;
     final start = _xOf(row, 0);
@@ -418,20 +481,6 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
         past,
       );
     }
-    _paintLanes(canvas, row, lanes);
-    _paintKept(canvas, row, lanes);
-    _paintRuler(canvas, row);
-    final x = _xOf(row, currentFrame.toDouble());
-    canvas.drawRect(
-      Rect.fromLTWH(x.floorToDouble(), row.rect.top, 1, row.rect.height),
-      Paint()..color = ink.line,
-    );
-  }
-
-  /// A band per channel, each in its share of [lanes] with its rule through
-  /// the middle — the timeline's own band ([WaveformPainter]), laid along
-  /// the row from the file's first frame.
-  void _paintLanes(Canvas canvas, _Row row, Rect lanes) {
     final rule = Paint()..color = ink.rule;
     final count = peaks.lanes.length;
     final share = lanes.height / math.max(1, count);
@@ -445,6 +494,37 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
         across(top);
       }
       across(top + share / 2);
+    }
+  }
+
+  /// A band per channel, each in its share of [row]'s lanes — the
+  /// timeline's own band, laid along the row from the file's first frame:
+  /// baked on the engine and laid on the grid's screen under the face's
+  /// rulers ([EngineWaveBand]), or drawn here where no screen lays.
+  void _paintBand(Canvas canvas, _Row row, EngineWaveBand band) {
+    final lanes = _lanesOf(row);
+    final views = engineWaveViewsOf(
+      (
+        peaks: peaks,
+        startFrame: 0,
+        audibleFrames: peaks.durationFrames(frameRate),
+        leadingFrames: 0,
+        gain: 1,
+      ),
+      on: (
+        along: (frame) => frame * row.perFrame,
+        origin: row.from * row.perFrame,
+        from: row.from.floor(),
+        to: (row.from + lanes.width / row.perFrame).ceil(),
+        axis: Axis.horizontal,
+        across: lanes.height,
+        devicePixelRatio: devicePixelRatio,
+        frameRate: frameRate,
+      ),
+      ink: ink.band,
+    );
+    if (band.layOn(lanes, [(peaks: peaks, views: views)], devicePixelRatio)) {
+      return;
     }
     canvas.save();
     canvas.clipRect(lanes);
@@ -463,6 +543,18 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
       ),
     );
     canvas.restore();
+  }
+
+  /// What of [row] stands over its bands: the span IN/OUT keep, the ruler,
+  /// and the playhead's line.
+  void _paintOver(Canvas canvas, _Row row) {
+    _paintKept(canvas, row, _lanesOf(row));
+    _paintRuler(canvas, row);
+    final x = _xOf(row, currentFrame.toDouble());
+    canvas.drawRect(
+      Rect.fromLTWH(x.floorToDouble(), row.rect.top, 1, row.rect.height),
+      Paint()..color = ink.line,
+    );
   }
 
   /// The span IN/OUT keep: washed, and edged where IN and OUT stand.
@@ -576,6 +668,9 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (
+    layer,
+    ByIdentity(bands.whole),
+    ByIdentity(bands.near),
     ByIdentity(peaks),
     frameRate,
     lastFrame,

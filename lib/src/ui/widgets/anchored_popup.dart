@@ -188,6 +188,9 @@ Future<T?> showAnchoredPopup<T>(
           // (R27 #5): Flutter's modal barrier closes on a completed TAP, so
           // a drag started outside — a slider grab, a canvas stroke — left
           // the popup hanging. "드래그든 뭐든 다른곳 조작하면 사라지도록".
+          // 🗣️fx-button-first-click-after-install-is-swallowed-Q1 (유저
+          // 11-11): 「지금대로 — 닫기만 한다」 — the press outside closes
+          // the popup and reaches nothing under it.
           Positioned.fill(
             key: ValueKey<String>('$label-dismiss-field'),
             child: Listener(

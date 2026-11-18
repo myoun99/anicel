@@ -4,13 +4,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/services/guide_stroke_input.dart';
-import 'package:flutter/services.dart'
-    show
-        KeyDownEvent,
-        KeyEvent,
-        KeyRepeatEvent,
-        LogicalKeyboardKey,
-        PhysicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 CanvasPoint _point(double x, double y) => CanvasPoint(x: x, y: y);
@@ -425,8 +418,8 @@ void main() {
     );
 
     /// A stroke under Shift from the origin, locked across: y = 0.
-    ShiftLine lockedAcross() {
-      final line = ShiftLine();
+    ShiftLine lockedAcross({bool Function()? held}) {
+      final line = ShiftLine(held: held);
       strokeFrom(_point(0, 0), line)
         ..follow(_point(10, 1), shift: true)
         ..follow(_point(20, 2), shift: true)
@@ -480,46 +473,54 @@ void main() {
       _expectPoint(line.onTheLine(_point(3, 8), space: stretched), 3, 0);
     });
 
-    test('🚨a Shift pressed anew lets the line go — not one the engine puts '
-        'back, not another key, not the key held down', () {
-      KeyEvent shift(
-        LogicalKeyboardKey key, {
-        bool synthesized = false,
-        bool repeat = false,
-      }) {
-        const physical = PhysicalKeyboardKey.shiftLeft;
-        const at = Duration.zero;
-        return repeat
-            ? const KeyRepeatEvent(
-                physicalKey: physical,
-                logicalKey: LogicalKeyboardKey.shiftLeft,
-                timeStamp: at,
-              )
-            : KeyDownEvent(
-                physicalKey: physical,
-                logicalKey: key,
-                timeStamp: at,
-                synthesized: synthesized,
-              );
-      }
+    // 🗣️F-592 (유저 2026-11-15): 「스냅확정되고 첫 선 그려지면 어디에 뭘
+    // 어떻게 그리던 거기에 스냅이된단거임. 이상한 규칙 만들지말고」 — the
+    // hold ends when Shift is let go and at nothing else, so the line asks
+    // what holds it, for as long as it keeps a ray.
+    testWidgets('🚨held, the line is kept however long till the next press, '
+        'and wherever that falls; let go, it is gone before one', (
+      tester,
+    ) async {
+      var held = true;
+      final line = lockedAcross(held: () => held);
+      addTearDown(line.letGo);
 
-      final line = lockedAcross();
-      for (final kept in [
-        shift(LogicalKeyboardKey.shiftLeft, synthesized: true),
-        shift(LogicalKeyboardKey.keyA),
-        shift(LogicalKeyboardKey.shiftLeft, repeat: true),
-      ]) {
-        expect(line.heardKey(kept), isFalse, reason: 'the key goes on');
-        _expectPoint(line.onTheLine(_point(5, 7)), 5, 0);
-      }
-      for (final key in [
-        LogicalKeyboardKey.shiftLeft,
-        LogicalKeyboardKey.shiftRight,
-      ]) {
-        final anew = lockedAcross();
-        expect(anew.heardKey(shift(key)), isFalse, reason: 'the key goes on');
-        _expectPoint(anew.onTheLine(_point(5, 7)), 5, 7);
-      }
+      await tester.pump(const Duration(seconds: 30));
+      _expectPoint(line.onTheLine(_point(5000, 7)), 5000, 0);
+
+      held = false;
+      await tester.pump(const Duration(milliseconds: 16));
+      // Pressed again: a new hold, with no line of the last.
+      held = true;
+      _expectPoint(line.onTheLine(_point(5, 7)), 5, 7);
+    });
+
+    testWidgets('it asks while it keeps a line, and at no other time', (
+      tester,
+    ) async {
+      var asked = 0;
+      final line = ShiftLine(
+        held: () {
+          asked += 1;
+          return true;
+        },
+      );
+      addTearDown(line.letGo);
+      await tester.pump(const Duration(seconds: 1));
+      expect(asked, 0, reason: 'no line kept yet');
+
+      strokeFrom(_point(0, 0), line)
+        ..follow(_point(10, 1), shift: true)
+        ..follow(_point(20, 2), shift: true)
+        ..finish();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(asked, greaterThan(0), reason: 'a line is kept');
+
+      line.letGo();
+      final then = asked;
+      await tester.pump(const Duration(seconds: 1));
+      expect(asked, then, reason: 'let go of');
+      _expectPoint(line.onTheLine(_point(5, 7)), 5, 7);
     });
   });
 

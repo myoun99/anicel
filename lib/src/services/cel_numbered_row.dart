@@ -5,11 +5,14 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 
 /// How a row composites, apart from its pixels and where it lies: its
-/// strength, its blend and its effect chain.
+/// strength, its blend and its effect chain — and an onion ghost's tint,
+/// taken last over what the three make (`onionTintColorMatrix`); null for
+/// every row but a ghost.
 typedef RowPaint = ({
   double opacity,
   LayerBlendMode blendMode,
   List<ResolvedLayerEffect> effects,
+  int? tint,
 });
 
 /// A row's nodes in its tree, bottom to top, as its chain [paint] makes
@@ -43,6 +46,14 @@ typedef RowPaint = ({
 /// ⚠️The links after a number apply to their group, in the space a
 /// folder's do: on a row that its transform turns or scales, a blur after
 /// the number spreads as a folder's blur, not as the row's own.
+///
+/// An onion ghost's tint goes where the row's strength does: over the
+/// letters and the links after the number too, once — a numbered ghost is
+/// one picture under it, the tint's colour taken last as on any ghost.
+/// 🗣️a-numbered-rows-ghost-resolves-its-chain-unsplit-Q1 a (유저
+/// 2026-11-17): 「그린다 — 고스트도 화면 그대로」, its letters the drawing's
+/// it ghosts. ↩️A ghost took its chain unsplit till then: the debug build
+/// asserted, and no picture of its frame was made.
 List<CompositeNode<P>> celNumberedRow<P>({
   required RowPaint paint,
   required P Function(RowPaint paint) rowOf,
@@ -63,6 +74,7 @@ List<CompositeNode<P>> celNumberedRow<P>({
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       effects: List.unmodifiable(effects.sublist(0, numbers.first)),
+      tint: null,
     )),
   );
   var nodes = <CompositeNode<P>>[row];
@@ -71,6 +83,7 @@ List<CompositeNode<P>> celNumberedRow<P>({
     final at = numbers[each];
     final opacity = last ? paint.opacity : 1.0;
     final blendMode = last ? paint.blendMode : LayerBlendMode.normal;
+    final tint = last ? paint.tint : null;
     final after = List<ResolvedLayerEffect>.unmodifiable(
       effects.sublist(at + 1, last ? effects.length : numbers[each + 1]),
     );
@@ -84,6 +97,7 @@ List<CompositeNode<P>> celNumberedRow<P>({
     if (after.isNotEmpty ||
         opacity < 1 ||
         blendMode != LayerBlendMode.normal ||
+        tint != null ||
         (last && asOnePicture)) {
       nodes = [
         CompositeGroup<P>(
@@ -91,6 +105,7 @@ List<CompositeNode<P>> celNumberedRow<P>({
           opacity: opacity,
           blendMode: blendMode,
           effects: after,
+          tint: tint,
         ),
       ];
     }

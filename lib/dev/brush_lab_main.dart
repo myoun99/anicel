@@ -27,7 +27,6 @@ import '../src/services/persistence/anicel_project_archive.dart';
 import '../src/services/persistence/app_ui_scale_store.dart';
 import '../src/models/canvas_resize_anchor.dart';
 import '../src/models/canvas_size.dart';
-import '../src/native/qa_native_engine.dart';
 import '../src/ui/brush/brush_tool_state.dart';
 import '../src/ui/canvas/bitmap_tile_image_cache.dart';
 import '../src/ui/canvas/brush_edit_canvas_view.dart';
@@ -312,9 +311,6 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     final session = workspace.session;
     final brushTool = workspace.brushTool;
     _log('lab starting (phase-ladder mode)');
-    // The load-fallback discipline is SILENT by design — the lab must not
-    // be: a stale/missing DLL would quietly measure the Dart path.
-    _log('native engine loaded: ${QaNativeEngine.instance != null}');
 
     // Optional worst-case canvas (R19: the user's 8000x8000 report):
     // --dart-define=BRUSH_LAB_CANVAS=8000 resizes the active cut before

@@ -6,8 +6,10 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
+import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
+import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
@@ -227,6 +229,33 @@ void main() {
         rectOf(tester, 'canvas-panbar-horizontal').bottom,
         panel.bottom - cover.bottom - overlay - marginOf(tester),
       );
+    });
+
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2): what a
+    // still capsule holds is not clipped to its corner — but the
+    // transport's playhead reaches into it at the first and the last frame
+    // ([CanvasCapsule.clipped]).
+    testWidgets('of the floor\'s capsules, the transport\'s alone clips', (
+      tester,
+    ) async {
+      await mount(
+        tester,
+        harness(onFloor: true, cover: cover, bottomOverlay: overlay),
+      );
+      final clips = {
+        for (final element in find.byType(CanvasCapsule).evaluate())
+          (element.widget as CanvasCapsule).keyValue: find
+              .descendant(
+                of: find.byWidget(element.widget),
+                matching: find.byType(SuperellipseClip),
+              )
+              .evaluate()
+              .length,
+      };
+      expect(clips['canvas-transport'], 1);
+      final others = {...clips}..remove('canvas-transport');
+      expect(others, isNotEmpty, reason: 'fixture: the floor holds others');
+      expect(others.values.toSet(), {0}, reason: '$others');
     });
 
     testWidgets('Fit centres the artwork in what the panels, the pill and '

@@ -423,6 +423,33 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🗣️F-608-Q2: importCutFolder tells how far it is as one bar '
+      '— each scan an even share of it, and within that share the scan '
+      'read in', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final told = <double>[];
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_075_gen';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}A2.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        onProgress: told.add,
+      );
+    });
+
+    expect(
+      told,
+      [0, 0.5, 0.5, 1],
+      reason: 'A1 read from none of it to all of it, the first half; A2 the '
+          'second',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('importCutFolder lands a correction as its base\'s SYNCED '
       'attach row — the pixels on the mirror of the cel it corrects, the '
       'other mirrors empty — and leaves the archived subfolder out',
@@ -488,7 +515,7 @@ void main() {
         edits: const CutFolderEdits(
           custom: true,
           into: {'A': ImportDestination.newCut},
-          fits: {'B': MediaFitMode.none},
+          fits: {'B': MediaFitMode.contain},
         ),
       );
     });
@@ -506,12 +533,17 @@ void main() {
             ?.tiles
             .length ??
         0;
-    expect(tiles(own, a), greaterThan(1), reason: 'contained: the canvas over');
+    expect(
+      tiles(own, a),
+      1,
+      reason: '1:1, eight pixels — the fit a row starts on (유저 2026-11-10 '
+          'F-581: 「기본값은 원본크기로」)',
+    );
     expect(
       tiles(joined, b),
-      1,
-      reason: '1:1, eight pixels — in the cut it joined, not the one the '
-          'import stands in after',
+      greaterThan(1),
+      reason: 'contained: the canvas over — in the cut it joined, not the '
+          'one the import stands in after',
     );
     await tester.pumpAndSettle();
   });

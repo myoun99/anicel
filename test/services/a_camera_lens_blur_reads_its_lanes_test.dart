@@ -3,17 +3,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/camera_lens_blur_passes.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/services/shaded_passes.dart';
 
-/// A camera lens blur's passes, as its lanes lay them: its rows summed
-/// ([rowSumPasses]), then its iris gathered out of them ([IrisGatherPass]),
-/// the light read where its Highlight or linear light asks. The iris's
-/// shape is the GPU's (`an_iris_table_covers_its_shape_test`).
+/// A camera lens blur's pass, as its lanes lay it: its iris gathered out of
+/// its rows summed ([IrisGatherPass]), the light read where its Highlight or
+/// linear light asks. The iris's shape is the GPU's
+/// (rust/src/kernels/effects/blur/iris_tests.rs).
 void main() {
   IrisProperties iris(
     int sides, {
@@ -29,32 +28,10 @@ void main() {
     fringe: fringe,
   );
 
-  test('a row sum covers every texel of its row up to it, in as few passes '
-      'as 64 taps a pass make', () {
-    for (final width in [1, 2, 63, 64, 65, 300, 4096, 4097]) {
-      final passes = rowSumPasses(width);
-      final taps = passes.first.taps;
-      expect(passes.map((pass) => pass.taps).toSet(), {taps});
-      expect(taps, inInclusiveRange(1, rowSumTapsAPass));
-      if (passes.length > 1) {
-        expect(math.pow(rowSumTapsAPass, passes.length - 1), lessThan(width));
-      }
-      // The passes run as `row_sum.frag` runs them, over a row of ones.
-      var row = List<double>.filled(width, 1);
-      for (final RowSumPass(:stride, :taps) in passes) {
-        row = [
-          for (var x = 0; x < width; x += 1)
-            [
-              for (var i = 0; i < taps && x - i * stride >= 0; i += 1)
-                row[x - i * stride],
-            ].fold(0.0, (sum, each) => sum + each),
-        ];
-      }
-      expect(row, [for (var x = 0; x < width; x += 1) x + 1.0]);
-    }
-    expect(rowSumPasses(4096), hasLength(2));
-    expect(rowSumPasses(4097), hasLength(3));
-  });
+  // ↩️Its row sums were passes of their own, pinned here as `row_sum.frag`
+  // ran them, till the engine summed a row itself and the Flutter chain
+  // went (the-flutter-fx-chain-is-a-second-chain): the engine's sums are
+  // pinned by hand (rust/src/kernels/effects/blur/lens_tests.rs).
 
   /// Read as stored, nothing boosted.
   const asStored = (
@@ -67,28 +44,20 @@ void main() {
   group('the light', () {
     List<ShadedPass> passesOf(LensLight light) => cameraLensBlurPasses(
       (radius: 6, iris: iris(5), light: light),
-      rasterWidth: 300,
       paper: null,
     );
 
     LensLight? lightOf(List<ShadedPass> passes) =>
-        (passes.last as IrisGatherPass).light;
+        (passes.single as IrisGatherPass).light;
 
-    test('is read by the first row sum, of the picture, and the iris — not '
-        'by the sums of sums', () {
+    test('is read by the iris, as it is boosted', () {
       const boosted = (
         gain: 40.0,
         threshold: 0.8,
         saturation: 0.5,
         linear: false,
       );
-      final passes = passesOf(boosted);
-      final sums = passes.whereType<RowSumPass>().toList();
-      expect(sums, hasLength(2), reason: 'fixture: 300 wide is two passes');
-      expect(sums.first.stride, 1);
-      expect(sums.first.light, boosted);
-      expect(sums.last.light, isNull);
-      expect(lightOf(passes), boosted);
+      expect(lightOf(passesOf(boosted)), boosted);
     });
 
     test('is none where it is read as stored and nothing is boosted', () {
@@ -106,10 +75,6 @@ void main() {
         reason: 'past white, nothing is boosted',
       );
       expect(lightOf(passesOf(boost(40, 0.99))), isNotNull);
-      expect(
-        passesOf(asStored).whereType<RowSumPass>().map((pass) => pass.light),
-        everyElement(isNull),
-      );
       const linear = (
         gain: 0.0,
         threshold: 1.0,
@@ -127,7 +92,6 @@ void main() {
     /// rest at their first values.
     IrisGatherPass irisOf(
       Map<String, double> lanes, {
-      DrawSpace? space,
       Map<String, LayerId?> layers = const {},
     }) =>
         shadedPassesOf(
@@ -139,9 +103,7 @@ void main() {
                 ],
                 layers: layers,
               ),
-              space ?? DrawSpace.canvas,
               paper: paper,
-              rasterWidth: 64,
             ).last
             as IrisGatherPass;
 
@@ -238,11 +200,8 @@ void main() {
       );
     });
 
-    test('its radius is canvas pixels: a raster at twice the scale spans '
-        'twice the rows', () {
-      const flat = {'blurRadius': 12.0};
-      expect(irisOf(flat).reach, 12);
-      expect(irisOf(flat, space: const DrawSpace.preScaled(2)).reach, 24);
+    test('its radius is canvas pixels, the rows it spans', () {
+      expect(irisOf(const {'blurRadius': 12.0}).reach, 12);
     });
 
     test('begins at the Square, and at no blur', () {

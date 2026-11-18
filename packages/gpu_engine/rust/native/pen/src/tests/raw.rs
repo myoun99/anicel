@@ -1,6 +1,6 @@
-//! The Raw Input half: its life held to the C's — started, polled,
-//! stopped — and its reading of a report on a HID parser's answers made up
-//! here, where the C's reading has no way in.
+//! The Raw Input half: its life — started, polled, stopped — as the C's was
+//! measured, and its reading of a report on a HID parser's answers made up
+//! here.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -30,18 +30,6 @@ const RUST: Observer = Observer {
     stop: crate::qpr_stop,
     poll: crate::qpr_poll,
 };
-
-fn c() -> Observer {
-    // SAFETY: qa_penraw_win.c's declarations of each.
-    unsafe {
-        Observer {
-            abi_version: oracle::sidecar_export("qa_tablet", "qpr_abi_version"),
-            start: oracle::sidecar_export("qa_tablet", "qpr_start"),
-            stop: oracle::sidecar_export("qa_tablet", "qpr_stop"),
-            poll: oracle::sidecar_export("qa_tablet", "qpr_poll"),
-        }
-    }
-}
 
 /// Room no observer wrote: a NaN no report holds.
 const UNWRITTEN: u32 = 0x7FC0_DEAD;
@@ -97,15 +85,16 @@ fn life(observer: Observer) -> Life {
     }
 }
 
+// Measured of the C 2026-11-07 and held since it is gone (connection-round-
+// checklist A): nothing before a start and after the stop, and live, a
+// record into room for two floats and more.
 #[test]
-fn the_observers_life_is_the_cs() {
+fn the_observers_life() {
     let _turn = one_at_a_time();
-    let theirs = life(c());
-    let ours = life(RUST);
-    assert_eq!(ours, theirs);
-    assert_eq!((theirs.abi, theirs.started), (3, [1, 1]), "LIVENESS — the C's observer started");
-    let written: Vec<_> = theirs.live.iter().map(|(_, written)| *written).collect();
-    assert_eq!(written, [0, 0, 0, 2, 2, 2, 5, 5, 7, 7], "answers worked out here");
+    let none = vec![(0, 0); 10];
+    let live = vec![(0, 0), (0, 0), (0, 0), (1, 2), (1, 2), (1, 2), (1, 5), (1, 5), (1, 7), (1, 7)];
+    let abi = super::bridge_asks("rawAbiVersion");
+    assert_eq!(life(RUST), Life { abi, before: none.clone(), started: [1, 1], live, into_nothing: 0, after: none });
 }
 
 #[test]

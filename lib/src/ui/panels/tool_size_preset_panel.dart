@@ -2,8 +2,16 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../brush/brush_value_group.dart' show BrushValueBars;
+import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../input/control_press_claim.dart';
+import '../text/app_strings.dart';
+import '../text/readout_text.dart' show columnValueOf;
 import '../theme/app_theme.dart';
+import '../widgets/app_icon_button.dart';
+import '../widgets/face_ink_well.dart';
+import '../widgets/number_pad.dart';
+import 'editor_panel_frame.dart';
 
 /// **The tool's sizes, as buttons** (I-2).
 ///
@@ -43,66 +51,36 @@ import '../theme/app_theme.dart';
 ///
 /// ⚠️Setting a size here writes it straight onto the tool, so a preset that
 /// is not a snap still lands exactly — the caller does not re-snap.
+///
+/// 🗣️**THE RACK IS THE USER'S TO EDIT** (I-170, 유저 2026-11-13): 「도구
+/// 브러시크기 프리셋패널, 슬슬 추가/삭제버튼 추가. 추가버튼 작동시 숫자입력
+/// 공용창? 열리고 입력한게 중복된거면 거부. 존재한다는 메시지창과함께.
+/// 정상적이면 프리셋에 추가. 삭제는 선택(강조색 되있는)되있는 크기를
+/// 삭제하는버튼」. The two stand in the panel's header whatever the rack
+/// holds; the delete is grey while no cell is lit. ↩️The rack was a const
+/// list here, the same for everyone — the one the app starts with now
+/// (`AppInputSettings.defaultToolSizes`).
 class ToolSizePresetPanel extends StatelessWidget {
   const ToolSizePresetPanel({
     super.key,
     required this.size,
     required this.onSizeSelected,
+    required this.presets,
+    required this.onPresetsChanged,
   });
 
   /// The tool's size right now — the cell matching it reads as selected.
   final double size;
   final ValueChanged<double> onSizeSelected;
 
-  /// The rack, as the screenshot on I-2 draws it: dense at the low end,
-  /// where a pen actually lives, and coarse above it.
-  ///
-  /// ⛔A LIST, NOT A FORMULA. It is read off the reference the user gave
-  /// (「무조건 스샷 참고」) rather than generated from a ratio, because the
-  /// steps are not one ratio — 0.7→1→1.5 is finer than 1200→1500→1700, and
-  /// a curve fitted to both would miss every value at one end.
-  static const List<double> presets = <double>[
-    0.7,
-    1,
-    1.5,
-    2,
-    2.5,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    10,
-    12,
-    15,
-    17,
-    20,
-    25,
-    30,
-    40,
-    50,
-    60,
-    70,
-    80,
-    100,
-    120,
-    150,
-    170,
-    200,
-    250,
-    300,
-    400,
-    500,
-    600,
-    700,
-    800,
-    1000,
-    1200,
-    1500,
-    1700,
-    2000,
-  ];
+  /// The rack as it stands (`AppInputSettings.toolSizes`), smallest first.
+  final List<double> presets;
+
+  /// The rack after a size was put on it or taken off it.
+  final ValueChanged<List<double>> onPresetsChanged;
+
+  static const String addKey = 'tool-size-preset-add';
+  static const String deleteKey = 'tool-size-preset-delete';
 
   /// How close a size has to be to a preset to read as that preset. The
   /// list is exact and a press writes it verbatim, so this only absorbs
@@ -112,10 +90,88 @@ class ToolSizePresetPanel extends StatelessWidget {
   static String label(double value) =>
       value == value.roundToDouble() ? '${value.round()}' : '$value';
 
+  /// The preset [value] reads as — the cell that is lit for it, the one
+  /// the delete takes off and the one a second ＋ of it would repeat. Null
+  /// when the rack holds none.
+  double? _presetAt(double value) {
+    for (final preset in presets) {
+      if ((preset - value).abs() < _match) {
+        return preset;
+      }
+    }
+    return null;
+  }
+
+  /// The ＋: the number pad under it, opened on the tool's size, and what
+  /// it comes back with put on the rack where its size stands — a size the
+  /// size bar writes ([BrushValueBars.heldSize]), as every size the tool is
+  /// set to is (F-488). One the rack already holds is refused, and said.
+  ///
+  /// ⚠️AFTER THE PAD HAS CLOSED, not from its `onSubmit`: the pad hands
+  /// its number over and then pops the route on top, which would be the
+  /// notice.
+  Future<void> _add(BuildContext anchor) async {
+    String? typed;
+    await showNumberPad(
+      anchor,
+      keyValue: addKey,
+      initialText: label(BrushValueBars.heldSize(size)),
+      keys: (minus: false, point: true),
+      fieldKey: const ValueKey<String>('$addKey-input'),
+      onSubmit: (text) => typed = text,
+    );
+    final value = columnValueOf(typed ?? '');
+    if (value == null || !anchor.mounted) {
+      return;
+    }
+    final added = BrushValueBars.heldSize(value);
+    if (_presetAt(added) != null) {
+      await showAppNotice(
+        anchor,
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.toolSizeAlreadyThere,
+      );
+      return;
+    }
+    onPresetsChanged([...presets, added]..sort());
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(8),
+    final lit = _presetAt(size);
+    return EditorPanelFrame(
+      title: AppText.strings.panelToolSize,
+      bodyPadding: const EdgeInsets.all(8),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Builder(
+            builder: (anchor) => AppIconButton(
+              keyValue: addKey,
+              tooltip: AppText.strings.commonAdd,
+              size: AppIconButtonSize.dense,
+              // 「＋가 있는 모든 곳, 공통적으로」 — the glyph, not the button.
+              icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
+              onPressed: () => _add(anchor),
+            ),
+          ),
+          AppIconButton(
+            keyValue: deleteKey,
+            tooltip: AppText.strings.commonDelete,
+            size: AppIconButtonSize.dense,
+            icon: Icon(
+              Icons.delete_outline,
+              color: AppColors.deleteGlyph(enabled: lit != null),
+            ),
+            onPressed: lit == null
+                ? null
+                : () => onPresetsChanged([
+                    for (final preset in presets)
+                      if (preset != lit) preset,
+                  ]),
+          ),
+        ],
+      ),
       child: Wrap(
         spacing: 4,
         runSpacing: 4,
@@ -124,7 +180,7 @@ class ToolSizePresetPanel extends StatelessWidget {
             _SizeCell(
               key: ValueKey<String>('tool-size-preset-${label(preset)}'),
               value: preset,
-              selected: (preset - size).abs() < _match,
+              selected: preset == lit,
               onTap: () => onSizeSelected(preset),
             ),
         ],
@@ -170,12 +226,10 @@ class _SizeCell extends StatelessWidget {
     final ink = selected ? AppColors.accent : colorScheme.onSurface;
     return Material(
       color: Colors.transparent,
-      shape: AppShapes.control(AppShapes.controlSmall),
-      clipBehavior: Clip.antiAlias,
       child: ControlPressClaim(
         onPressed: onTap,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
+          edge: AppShapes.control(AppShapes.controlSmall),
           onTap: silentPress(onTap),
           // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
           // whatever the label's line height happened to be — a number that

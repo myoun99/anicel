@@ -329,7 +329,7 @@ void main() {
                 id: const LayerId('book'),
                 name: 'BOOK',
                 kind: LayerKind.image,
-                mark: const LayerMark(process: LayerProcess.art),
+                mark: const LayerMark(process: LayerProcess.layout),
                 frames: [
                   Frame(
                     id: const FrameId('book-f'),

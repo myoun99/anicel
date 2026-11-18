@@ -40,13 +40,14 @@ void main() {
     expect(window.wantsRecentreAt(halfway + 1, rate), isTrue);
   });
 
-  test('and once it is behind the trailing edge', () {
+  test('and once it is past halfway to its trailing edge — moved before '
+      'what plays leaves it, backwards as forwards', () {
     final window = streaming(centre: rate * 10);
-    final trailing =
-        rate * 10 - AudioStreamingWindow.playing.backSeconds * rate;
+    final halfway =
+        rate * 10 - (AudioStreamingWindow.playing.backSeconds * rate) ~/ 2;
 
-    expect(window.wantsRecentreAt(trailing, rate), isFalse);
-    expect(window.wantsRecentreAt(trailing - 1, rate), isTrue);
+    expect(window.wantsRecentreAt(halfway, rate), isFalse);
+    expect(window.wantsRecentreAt(halfway - 1, rate), isTrue);
   });
 
   test('a stream still inside its window asks nothing of the '
@@ -66,31 +67,5 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(asked, 0);
-  });
-
-  test('an advance runs off the caller\'s stack, ONE at a time — and the '
-      'next tick may ask again once it is done', () async {
-    final window = streaming(centre: 0);
-    final conformStore = store();
-    var asked = 0;
-    void tick() => window.followPlayback(
-      positionSamples: rate * 20,
-      deviceRate: rate,
-      conformStore: conformStore,
-      current: () {
-        asked += 1;
-        return null;
-      },
-    );
-
-    tick();
-    expect(asked, 0, reason: 'off the stack — the tick does not wait on disk');
-    tick();
-    await Future<void>.delayed(Duration.zero);
-    expect(asked, 1, reason: 'a poll cannot stack a second read on the first');
-
-    tick();
-    await Future<void>.delayed(Duration.zero);
-    expect(asked, 2, reason: 'the guard lets go when the advance is done');
   });
 }

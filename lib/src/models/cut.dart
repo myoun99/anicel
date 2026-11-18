@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'canvas_size.dart';
 import 'cut_camera.dart';
 import 'cut_id.dart';
@@ -6,8 +7,22 @@ import 'cut_metadata.dart';
 import 'drawing_guide.dart';
 import 'layer.dart';
 import 'layer_section_defaults.dart';
+import 'layer_sections.dart';
 
 class Cut {
+  /// 🚨[layers] STAND IN SECTION ORDER, whatever order they were handed in
+  /// ([sectionedLayerOrder]): drawing rows, then SE, then the camera
+  /// section — direction, transition, camera.
+  ///
+  /// 🗣️F-596 (유저 2026-11-15): 「디렉션레이어는 위치적으로 이거보다 위
+  /// 레이어는 없기때문에 액션란들 그림보다 항상 위에 있어야하는데 그게
+  /// 아닌거같음」. The timeline sorted the rows into sections as it showed
+  /// them, and the picture painted them in the order they were stored, so
+  /// the two answered one question twice: a row made in a NEW cut (its
+  /// direction row and its camera, nothing else) went in above the
+  /// direction row it stands under on the timeline, and painted over its
+  /// drawings. Here, the one place a cut's rows are set, there is one
+  /// order — and every door that adds, moves or loads a row goes through it.
   Cut({
     required this.id,
     required this.name,
@@ -19,7 +34,9 @@ class Cut {
     CutCamera? camera,
     CutGuides? guides,
   }) : assert(leadingGapFrames >= 0),
-       layers = List.unmodifiable(layers),
+       layers = frozenList(
+         isInSectionOrder(layers) ? layers : sectionedLayerOrder(layers),
+       ),
        camera = camera ?? CutCamera.empty(),
        guides = guides ?? CutGuides.empty;
 

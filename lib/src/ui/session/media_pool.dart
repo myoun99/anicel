@@ -35,8 +35,10 @@ import '../../services/import/media_import_planner.dart'
 import '../../services/media/media_asset_uses.dart';
 import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/media_facts.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../services/project_lookup.dart'
+    show mediaKindCanCarrySound, requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -120,17 +122,25 @@ class MediaPool {
   /// ⚠️SOUNDS: every caller registers one — a clip's file, a take, a
   /// .tvpp's sounds — and the entry says so, as the model's default always
   /// did. The pool's import of any kind is [importMediaFiles].
-  Future<void> addMediaAssets(List<String> paths, {bool carried = false}) =>
-      _admit([
-        for (final path in paths)
-          importedMediaAsset(
-            path: path,
-            kind: MediaAssetKind.audio,
-            fit: MediaFitMode.contain,
-            identity: readMediaIdentity(path),
-            carried: carried,
-          ),
-      ]);
+  ///
+  /// [from]: the file [paths] were taken out of — a .clip's sounds — which
+  /// they say they were copied from ([MediaAsset.sourcePath]), and whose
+  /// date a carry of them records (🗣️F-589-Q1, [importedMediaAsset]): when
+  /// a copy was taken out is not when the file is from.
+  Future<void> addMediaAssets(
+    List<String> paths, {
+    bool carried = false,
+    String? from,
+  }) => _admit([
+    for (final path in paths)
+      importedMediaAsset(
+        path: path,
+        kind: MediaAssetKind.audio,
+        sourcePath: from,
+        identity: readMediaIdentity(path),
+        carried: carried,
+      ),
+  ]);
 
   /// Records the [entries] the pool does not have yet — once the bytes of
   /// every one that is CARRIED are held.
@@ -232,6 +242,25 @@ class MediaPool {
       for (final asset in mediaAssets)
         if (asset.path == path) asset.copyWith(name: name) else asset,
     ], description: 'Rename media');
+    _changes.notifyChanged();
+  }
+
+  /// [path]'s entry named [name] and placed by [preset] from now on — the
+  /// 배치 프리셋 window's answer, one undo step. What is placed already
+  /// stays as it was placed: a placement copies its preset and never
+  /// follows it (asset-placement-presets, 「놓을 때 복사」).
+  void editMediaPreset(
+    String path, {
+    required String name,
+    required MediaPreset preset,
+  }) {
+    _project.cutCommandCoordinator.updateMediaAssets([
+      for (final asset in mediaAssets)
+        if (asset.path == path)
+          asset.copyWith(name: name, preset: preset)
+        else
+          asset,
+    ], description: 'Edit placement preset');
     _changes.notifyChanged();
   }
 
@@ -405,7 +434,9 @@ class MediaPool {
           _project.cutCommandCoordinator.relinkMediaAsset(
             oldPath: oldPath,
             newPath: newPath,
-            carriedAs: carry?.token,
+            carriedAs: carry == null
+                ? null
+                : (token: carry.token, modified: readMediaModified(newPath)),
           )
           ? {oldPath: newPath}
           : const {},
@@ -484,8 +515,9 @@ class MediaPool {
   /// one repaint became one disk hit per asset.
   ///
   /// Nothing polls. This is refreshed when the project opens, after
-  /// anything that moves files, and when the user asks — the three moments
-  /// where the answer can actually have changed.
+  /// anything that moves files, when the user asks, and when the pool is
+  /// another list ([sweepWhereThePoolMoved]) — the moments where the
+  /// answer can actually have changed.
   Set<String> get missingMediaPaths => _missingMediaPaths;
   Set<String> _missingMediaPaths = const <String>{};
 
@@ -494,7 +526,9 @@ class MediaPool {
   @visibleForTesting
   bool Function(String path)? debugMediaFileExists;
 
-  /// When each pool file was last written, for the browser's rows.
+  /// When each pool file the project points at was last written, for the
+  /// browser's rows — a carried one shows its carry's date
+  /// ([MediaCarriedAs]).
   ///
   /// Filled by the same sweep that answers "is it still there", because
   /// the sweep is already touching every file: a row that asked the disk
@@ -504,9 +538,103 @@ class MediaPool {
   Map<String, DateTime> get mediaModifiedTimes => _mediaModifiedTimes;
   Map<String, DateTime> _mediaModifiedTimes = const <String, DateTime>{};
 
+  /// What the pool's columns say of each file beyond what its entry keeps —
+  /// its picture's size, its sound's rate and channels
+  /// (🗣️asset-placement-presets Q4, 유저 2026-11-17: 「프리미어처럼」): read
+  /// the first time a line asks, one file after another, and kept for the
+  /// session. Null while it is not read.
+  ///
+  /// The import window's resolution column asks the same of a file it lists
+  /// ([readMediaFacts], F-375) — the reading is one, the keeping is each
+  /// list's own.
+  ///
+  /// ⛔Never at registration: a file comes in by many doors, and a fact one
+  /// of them forgot to read would be a column some files say and others do
+  /// not. Asked by the list, it is asked of every file the list shows.
+  MediaPoolFacts? mediaFactsOf(String path) {
+    final read = _mediaFacts[path];
+    if (read == null && _mediaFactsAsked.add(path)) {
+      _mediaFactReads = _mediaFactReads.then((_) => _readMediaFacts(path));
+    }
+    return read;
+  }
+
+  final Map<String, MediaPoolFacts> _mediaFacts = {};
+  final Set<String> _mediaFactsAsked = {};
+  Future<void> _mediaFactReads = Future<void>.value();
+
+  /// Heard each time a file's facts come in ([mediaFactsOf]) — the pool's
+  /// list redraws on it, not the whole session.
+  Listenable get mediaFactsRead => _mediaFactsRead;
+  final ValueNotifier<int> _mediaFactsRead = ValueNotifier<int>(0);
+
+  Future<void> _readMediaFacts(String path) async {
+    final kind = _kindInThePool(path);
+    if (kind == null) {
+      // Gone before its turn came: asked again if it comes back.
+      _mediaFactsAsked.remove(path);
+      return;
+    }
+    final hold = _file.holdMediaBytes;
+    final picture = kind == MediaAssetKind.audio
+        ? null
+        : await readMediaFacts(kind, path, hold);
+    final sound = switch (kind) {
+      MediaAssetKind.audio || MediaAssetKind.video => await readSoundFacts(
+        path,
+        hold,
+      ),
+      MediaAssetKind.image || MediaAssetKind.pdf => null,
+    };
+    if (!_mediaFactsAsked.contains(path)) {
+      // Forgotten while it was read: its file changed under the read.
+      return;
+    }
+    _mediaFacts[path] = (picture: picture, sound: sound);
+    _mediaFactsRead.value += 1;
+  }
+
+  MediaAssetKind? _kindInThePool(String path) {
+    for (final asset in mediaAssets) {
+      if (asset.path == path) {
+        return asset.kind;
+      }
+    }
+    return null;
+  }
+
+  /// [path]'s facts are read again at the next ask — its file was written
+  /// since they were read ([refreshMediaExistence]).
+  void _forgetMediaFacts(String path) {
+    _mediaFacts.remove(path);
+    _mediaFactsAsked.remove(path);
+  }
+
+  /// The pool the last sweep walked — the list itself, which every change
+  /// of the pool replaces.
+  List<MediaAsset>? _sweptPool;
+
+  /// [refreshMediaExistence], where the pool is another list than the one
+  /// the last sweep walked: a file came in by any door — the pool's own
+  /// import, a placement, a paste from another project — or an undo took
+  /// one out or brought one back. Heard on every step of the history; a
+  /// step that left the pool as it was asks the disk nothing.
+  ///
+  /// 🚨A FILE LINKED IN SHOWED NO DATE TILL THE PROJECT WAS OPENED AGAIN
+  /// (검증 2026-11-15, F-589): the sweep ran on opening, on a relink and on
+  /// a .tvpp's import, and none of the doors that put a file in the pool
+  /// asked for it — the pool's own import, the placements, the cut folder,
+  /// a paste — each a call every new door would have had to remember.
+  void sweepWhereThePoolMoved() {
+    if (!identical(mediaAssets, _sweptPool)) {
+      refreshMediaExistence();
+    }
+  }
+
   /// Re-probes the pool. Notifies only when the answer changed, so calling
   /// it after an import that touched nothing missing is free.
   void refreshMediaExistence() {
+    _sweptPool = mediaAssets;
     final probe =
         debugMediaFileExists ?? (String path) => File(path).existsSync();
     final missing = <String>{};
@@ -524,11 +652,22 @@ class MediaPool {
         }
         continue;
       }
+      if (asset.carried) {
+        // Its row shows the date its carry recorded (F-589-Q1).
+        continue;
+      }
       try {
         modified[asset.path] = File(asset.path).lastModifiedSync();
       } on Object {
         // Present but unreadable — a network share mid-reconnect. The row
         // shows no date rather than a wrong one.
+      }
+    }
+    // A file written since its facts were read says them again.
+    for (final MapEntry(key: path, value: at) in modified.entries) {
+      final before = _mediaModifiedTimes[path];
+      if (before != null && before != at) {
+        _forgetMediaFacts(path);
       }
     }
     if (setEquals(missing, _missingMediaPaths) &&
@@ -610,8 +749,13 @@ class MediaPool {
     }
     // A carry of its own, even for a path carried once before and removed:
     // that one's bytes are an undo's to bring back ([MediaAsset.carriedAs]).
-    final carriedAs = mintMediaCarry(path);
-    await _staging.stageCarriedBytes([(poolPath: path, token: carriedAs)]);
+    final carriedAs = (
+      token: mintMediaCarry(path),
+      modified: readMediaModified(path),
+    );
+    await _staging.stageCarriedBytes([
+      (poolPath: path, token: carriedAs.token),
+    ]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         if (asset.path == path) asset.copyWith(carriedAs: carriedAs) else asset,
@@ -646,14 +790,17 @@ class MediaPool {
         if (asset.carried &&
             asked.contains(asset.path) &&
             File(asset.path).existsSync())
-          asset.path: mintMediaCarry(asset.path),
+          asset.path: (
+            token: mintMediaCarry(asset.path),
+            modified: readMediaModified(asset.path),
+          ),
     };
     if (anew.isEmpty) {
       return const {};
     }
     await _staging.stageCarriedBytes([
-      for (final MapEntry(key: path, value: token) in anew.entries)
-        (poolPath: path, token: token),
+      for (final MapEntry(key: path, value: carried) in anew.entries)
+        (poolPath: path, token: carried.token),
     ]);
     // Read after the wait, as [_admit] does: what changed meanwhile stays.
     _project.cutCommandCoordinator.updateMediaAssets([
@@ -727,7 +874,7 @@ class MediaPool {
   /// bytes INSIDE the archive, so the choice is recorded as
   /// [MediaAsset.carried] — where a choice belongs — instead of being
   /// smuggled into the path and read back off it later.
-  String importAudioFile(String sourcePath) {
+  String importSoundOf(String sourcePath) {
     final effectivePath = normalizedMediaPath(sourcePath);
     // Fresh conform + waveform budget: on a re-import the file may have
     // changed on disk. (A byte-identical reused copy re-fingerprints
@@ -765,8 +912,14 @@ class MediaPool {
       if (kind == null) {
         continue;
       }
-      if (kind == MediaAssetKind.audio) {
-        importAudioFile(source);
+      // ⛔It asks [mediaKindCanCarrySound] — what a project's open warms by
+      // and what the viewer plays by — so a movie's soundtrack is conformed
+      // here as a sound file's is. ↩️It asked for audio alone, from the
+      // import's first cut (07-30) before the conform could hear a movie:
+      // a movie's first play in the viewer then waited for the whole of its
+      // sound (card viewer-first-play-stalls).
+      if (mediaKindCanCarrySound(kind)) {
+        importSoundOf(source);
       }
       if (!known.add(source)) {
         continue;
@@ -775,7 +928,6 @@ class MediaPool {
         importedMediaAsset(
           path: source,
           kind: kind,
-          fit: MediaFitMode.contain,
           sourcePath: cutFrom[path],
           // Answers "which file is this?", so it is stamped for a carried
           // asset and a reference alike — a reference is exactly the one

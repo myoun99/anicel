@@ -1,16 +1,19 @@
 import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
+import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart';
 import '../../models/se_name_tag.dart';
+import '../../models/transform_track.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
 import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 
-/// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
-/// Transform, auto-present on every SE row and never removable.
+/// The SE row's NAME TAG group (R5 #7) — a fixed group, auto-present on
+/// every SE row and never removable, whose members hold the row's pose
+/// too ([SeNameTagPose]).
 ///
 /// Not an entry in the effect chain: like `Layer.transformTrack`, the tag
 /// is a field the row simply HAS, so there is no add, no delete, and no
@@ -172,12 +175,30 @@ Map<int, KeyMark> seNameTagLaneKeyMarks(SeNameTagTrack keys, String laneId) {
   return lens == null ? const {} : keyMarksOf(lens.get(keys));
 }
 
+/// The name tag's POSE — the S row's transform, which moves its tag: its
+/// keys, the fx's switch, the basis it reads them by and its member lanes.
+///
+/// 🗣️audio-fx-grows-like-the-pros-Q3 (유저 2026-11-17 「기존 변형fx는
+/// 없애고 이름표fx안에 편입」) and -Q4 (「이름표 머리로 옮긴다」): an S
+/// row's transform is no group of its own — its lanes are the name tag's
+/// members, and its switch and chip stand on the name tag's header. The
+/// chip reads the pose's lanes alone; the switch is the name tag fx's
+/// (-Q5 「이름표 전체를 끈다」: off, the tag is not drawn at all —
+/// `resolveSeNameTagsAt`).
+typedef SeNameTagPose = ({
+  TransformTrack track,
+  bool enabled,
+  FxBasis? basis,
+  List<PropertyLaneRow> lanes,
+});
+
 /// The lane rows for one SE row's name tag: the header, and its members
-/// while the group is twirled open.
+/// — the tag's own, then its [pose]'s — while the group is twirled open.
 List<PropertyLaneRow> seNameTagPropertyLanes(
   SeNameTag tag, {
   required bool expanded,
   required SeNameTag Function(int frameIndex) resolveAt,
+  required SeNameTagPose pose,
 }) {
   final keys = tag.track ?? SeNameTagTrack.empty();
 
@@ -191,17 +212,24 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
       keyMarks: unionKeyMarks([
         for (final laneId in seNameTagLaneDisplayOrder)
           seNameTagLaneKeyMarks(keys, laneId),
+        ...pose.track.lanes.map(keyMarksOf),
       ]),
       keyNames: unionKeyNames([
         for (final laneId in seNameTagLaneDisplayOrder)
           ?seNameTagLaneLens(laneId)?.get(keys),
+        ...pose.track.lanes,
       ]),
       showsKeyNavigator: false,
       isGroupHeader: true,
       groupExpanded: expanded,
-      // NO bypass switch: a fixed group has nothing to turn off — the SE
-      // row's own eye already decides whether its tag shows at all.
-      //
+      headsAGraph: true,
+      // The name tag fx's switch and the pose's basis chip
+      // ([SeNameTagPose], Q4 · Q5).
+      // ↩️It wore none — 「a fixed group has nothing to turn off」 — until
+      // Q4's note: 「애초에 이름표fx에 fx버튼이 없던게 버그아닌가? … 뭐든
+      // fx라면 있어야한다고생각」.
+      groupEnabled: pose.enabled,
+      groupBasis: pose.basis,
       // The preview's strings are FIXED and localized: it shows the look,
       // never the block's own text, so it says the same thing wherever the
       // playhead parks (the user: "프리뷰는 그냥 어떤식으로 될지 확인만
@@ -213,7 +241,7 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
         tagAt: resolveAt,
       ),
     ),
-    if (expanded)
+    if (expanded) ...[
       for (final laneId in seNameTagLaneDisplayOrder)
         PropertyLaneRow(
           laneId: laneId,
@@ -231,6 +259,8 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
               ? (label, delta) => scrubSeNameTagLaneValue(laneId, label, delta)
               : null,
         ),
+      ...pose.lanes,
+    ],
   ];
 }
 

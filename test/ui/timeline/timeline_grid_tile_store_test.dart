@@ -15,38 +15,36 @@
 library;
 
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
     show timelineFrameWindowSpanFor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/census_where_textures_are_ram.dart';
-import '../../helpers/native_engine_path.dart';
+import '../../helpers/grid_tile_drawn.dart';
 import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// UI-R18 O7 T2: the substrate tile store — engine-gated stand-down,
 /// probe-driven op emission, tile landing + look-identity invalidation.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -77,11 +75,12 @@ void main() {
     ValueListenable<int>? windowBucket,
     double viewportMainExtent = 0,
     int? Function(int frame)? stepsUntilShown,
+    double cellExtent = 24,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
-        frameCellExtent: 24,
+        frameCellExtent: cellExtent,
         frameEndIndexExclusive: 40,
         viewExtentPx: viewportMainExtent,
       ),
@@ -100,36 +99,17 @@ void main() {
     );
   }
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  // Before the app's engine opens the store stands down: a file of its own
+  // (the_tile_store_stands_down_before_the_engine_opens_test), since one
+  // open here stays open.
+  setUpAll(openAppGpuEngine);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  // ⛔premise: a word is baked in the ask that sets it — once the engine's
+  // faces are read, which the first test to ask would otherwise wait for.
+  readTheEnginesFacesFirst();
 
-  test('WITHOUT the native engine the store stands down entirely — the '
-      'classic paint path stays byte-for-byte (the suite-wide default)', () {
-    QaNativeEngine.debugForceDartFallback = true;
-    final store = TimelineGridTileStore.instance;
-    final revisionBefore = store.revision.value;
-
-    final image = store.tileFor(
-      painter: painterFor(blockLayer()),
-      spanStartIndex: 0,
-      spanEndIndexExclusive: 4,
-      devicePixelRatio: 1.0,
-    );
-
-    expect(image, isNull);
-    expect(store.revision.value, revisionBefore);
-  });
+  setUp(TimelineGridTileStore.instance.clear);
+  tearDown(TimelineGridTileStore.instance.clear);
 
   // ⚠️CONTRACT CHANGED THREE TIMES. D32/D38 (2026-08-18) took the per-cell
   // border stroke out of the substrate and put the painter's seams in as
@@ -173,21 +153,14 @@ void main() {
             TimelineGridTileOp.cornerBottomRight,
         timelineGridPackRgba(substrate.paper.single.color),
       );
-    Uint8List raster(Int32List ops) {
-      final pixels = Uint8List(4 * 24 * 28 * 4);
-      expect(
-        timelineGridRasterTileReference(
-          pixels: pixels,
-          tileWidth: 4 * 24,
-          tileHeight: 28,
-          backgroundRgba: 0,
-          ops: ops,
-        ),
-        0,
-      );
-      return pixels;
-    }
+    Uint8List raster(Int32List ops) => gridTileDrawn(4 * 24, 28, ops);
 
+    expect(
+      covered,
+      field.build(),
+      reason: 'one field op a piece — ↩️split into corner pieces and boxes '
+          'while the C rastered (grid-on-the-engine ⑥)',
+    );
     expect(raster(covered), equals(raster(field.build())));
 
     // 🚨D43-2 재개 (유저 2026-08-22): 「아직도 레이어행에만 그리드 없거든?」.
@@ -254,21 +227,15 @@ void main() {
         final across = (28 * dpr).ceil();
         final horizontal = axis == Axis.horizontal;
         final width = horizontal ? along : across;
-        final pixels = Uint8List(along * across * 4);
-        expect(
-          timelineGridRasterTileReference(
-            pixels: pixels,
-            tileWidth: width,
-            tileHeight: horizontal ? across : along,
-            backgroundRgba: 0,
-            ops: timelineGridSubstrateOps(
-              painter: painter,
-              spanStartIndex: 0,
-              spanEndIndexExclusive: span,
-              devicePixelRatio: dpr,
-            ),
+        final pixels = gridTileDrawn(
+          width,
+          horizontal ? across : along,
+          timelineGridSubstrateOps(
+            painter: painter,
+            spanStartIndex: 0,
+            spanEndIndexExclusive: span,
+            devicePixelRatio: dpr,
           ),
-          0,
         );
         int alphaAt(int main) {
           final middle = across ~/ 2;
@@ -307,26 +274,12 @@ void main() {
 
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s mark '
       'glyph shows up as a strong delta over the substrate alone', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
     final painter = painterFor(layer, store: store);
 
-    var landings = 0;
-    store.revision.addListener(() => landings += 1);
-    expect(
-      store.tileFor(
-        painter: painter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
-    );
-    await pollUntil(() => landings > 0);
+    // A ratio no test before it baked the mark's word at: the engine bakes
+    // it in the ask.
     final image = store.tileFor(
       painter: painter,
       spanStartIndex: 0,
@@ -334,26 +287,17 @@ void main() {
       devicePixelRatio: 1.0,
     );
     expect(image, isNotNull);
-    final tileData = await image!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    );
-    final tileBytes = tileData!.buffer.asUint8List();
+    final tileBytes = image!.picture.read();
 
-    final substrate = Uint8List(image.width * image.height * 4);
-    expect(
-      QaNativeEngine.instance!.gridRasterTileBytes(
-        pixels: substrate,
-        tileWidth: image.width,
-        tileHeight: image.height,
-        backgroundRgba: 0,
-        ops: timelineGridSubstrateOps(
-          painter: painter,
-          spanStartIndex: 0,
-          spanEndIndexExclusive: 4,
-          devicePixelRatio: 1.0,
-        ),
+    final substrate = gridTileDrawn(
+      image.width,
+      image.height,
+      timelineGridSubstrateOps(
+        painter: painter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
       ),
-      0,
     );
 
     // Cell 0 holds the drawing's ○ glyph: dark ink on the paper block —
@@ -379,12 +323,54 @@ void main() {
     );
   });
 
-  test('a cold span rasters off-frame, lands as a physical-resolution '
-      'image, and a changed LOOK invalidates it', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
+  // 🗣️관제 2026-11-15 07:0x (a-grid-row-paints-its-cells-on-a-canvas-beside-
+  // its-tiles): a word is narrowed only to its block, so a long name over a
+  // long block bakes past the batch's atlas. Data reaches that, so the span
+  // is the row's own to draw, as a span with no tile is — not a frame's
+  // batch refused.
+  test('a span whose word is past the atlas has no tile', () async {
+    final store = TimelineGridTileStore.instance;
+    final layer = Layer(
+      id: const LayerId('layer-a'),
+      name: 'A',
+      frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
+      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 40)},
+    );
+    TimelineGridTilePicture? tileAt(double dpr) => store.tileFor(
+      painter: TimelineRowCellsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: 24,
+          frameEndIndexExclusive: 40,
+        ),
+        crossAxisExtent: 28,
+        exposureStateForLayer: stateFor,
+        colorScheme: const ColorScheme.dark(),
+        baseTextStyle: const TextStyle(fontSize: 11),
+        frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 80 : null,
+        tileStore: store,
+      ),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: dpr,
+    );
+
+    // Some 800 px, inside its block: on the atlas at 1, past it at 3.
+    expect(tileAt(1), isNotNull, reason: 'premise: the word is set');
+    final baked = store.debugWordsBakedOnTheEngine;
+
+    expect(tileAt(3), isNull);
+    expect(
+      store.debugWordsBakedOnTheEngine,
+      greaterThan(baked),
+      reason: 'it was baked, and refused',
+    );
+    await tileStoreIdle(store);
+    expect(tileAt(3), isNull, reason: 'off the paint as in the ask');
+  });
+
+  test('a cold span is baked in the ask as a physical-resolution image, and '
+      'a changed LOOK invalidates it', () async {
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
     final painter = painterFor(layer, store: store);
@@ -392,18 +378,7 @@ void main() {
     var landings = 0;
     store.revision.addListener(() => landings += 1);
 
-    // Cold: null now, raster scheduled.
-    expect(
-      store.tileFor(
-        painter: painter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
-      ),
-      isNull,
-    );
-    await pollUntil(() => landings > 0);
-
+    // Cold: nothing stands in for it, so the ask bakes it.
     final image = store.tileFor(
       painter: painter,
       spanStartIndex: 0,
@@ -411,6 +386,7 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(image, isNotNull);
+    expect(landings, 1, reason: 'it landed in the ask');
     expect(image!.width, 4 * 24 * 2, reason: 'span cells × extent × DPR');
     expect(image.height, 28 * 2);
 
@@ -425,12 +401,16 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(landings, hits);
 
-    // A LOOK-only change (the base text style here) keeps showing the
-    // STALE tile while the fresh raster lands (UI-R20 #6: no
-    // classic-pass flicker) — a new type is a new word, every one of them
-    // (the X that opens the empty run too), and a word's first bake is the
-    // one wait an ask cannot make (F-314). The ACTIVE flag is no such
-    // lever anymore: it left the raster entirely (UI-R21 #2; the grid
+    // A LOOK-only change (the base text style here) is baked in the ask as
+    // well: a new type is a new word, every one of them (the X that opens
+    // the empty run too), and the engine bakes a word where it is asked
+    // (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4,
+    // 유저 2026-11-15). ↩️It kept showing the STALE tile while the fresh
+    // raster landed (UI-R20 #6: no classic-pass flicker) — a word's first
+    // bake was the one wait an ask could not make (F-314); the stale tile
+    // stands in now for a word that is not the engine's to set
+    // (an_edited_span_is_baked_in_its_paint_test). The ACTIVE flag is no
+    // such lever anymore: it left the raster entirely (UI-R21 #2; the grid
     // sheet paints the wash since I-44), so activation is a guaranteed
     // tile HIT by construction.
     final stylePainter = painterFor(
@@ -438,17 +418,6 @@ void main() {
       store: store,
       baseTextStyle: const TextStyle(fontSize: 12),
     );
-    expect(
-      store.tileFor(
-        painter: stylePainter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
-      ),
-      same(image),
-      reason: 'stale-while-revalidate while its words bake',
-    );
-    await pollUntil(() => landings != hits);
     final fresh = store.tileFor(
       painter: stylePainter,
       spanStartIndex: 0,
@@ -456,7 +425,8 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(fresh, isNotNull);
-    expect(identical(fresh, image), isFalse, reason: 'the re-raster landed');
+    expect(identical(fresh, image), isFalse, reason: 'the look moved');
+    expect(landings, hits + 1, reason: 'it landed in the ask');
 
     // A CONTENT change (new layer instance) over words already baked is
     // baked in the ask (F-314): the row's chrome follows the edit in this
@@ -520,8 +490,8 @@ void main() {
       reason: 'a 2× zoom step keeps showing the stale tile, scaled',
     );
 
-    // Bounded, though: an extreme jump would show mush, so that still
-    // takes the crisp classic path.
+    // Bounded, though: an extreme jump would show mush, so nothing stands
+    // in past it.
     expect(
       store.tileFor(
         painter: zoomedTo(4),
@@ -529,8 +499,8 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
-      isNull,
-      reason: 'past the rescale band the classic paint takes over',
+      isNot(same(reRastered)),
+      reason: 'past the rescale band no tile stands in',
     );
   });
 
@@ -539,25 +509,18 @@ void main() {
   // the ask that brings it (F-314).
   test('I-44: the paper\'s ground is part of the look — a new one '
       're-rasters the tile', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
-    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+    TimelineGridTilePicture? tile(TimelineRowCellsPainter painter) => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
     );
 
-    // Waited for by what lands, not by a landing count: a raster the last
-    // test left in flight can bump the revision first.
     final plain = painterFor(layer, store: store);
-    expect(tile(plain), isNull, reason: 'cold');
-    expect(await pollUntil(() => tile(plain) != null), isTrue);
-    final first = tile(plain)!;
+    final first = tile(plain);
+    expect(first, isNotNull, reason: 'cold: baked in the ask');
 
     final grounded = painterFor(
       layer,
@@ -572,7 +535,7 @@ void main() {
           'a fresh raster is baked for it',
     );
     expect(identical(fresh, first), isFalse);
-    expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
+    expect(first!.debugHolds, 0, reason: 'the tile it replaced went');
   });
 
   // 🗣️I-129: a folder's flip hides its rows without making a new layer of
@@ -580,13 +543,9 @@ void main() {
   // on it of its own.
   test('I-129: the row\'s eye is part of the look — hiding the row '
       're-rasters the tile, and showing it as before keeps it', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
-    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+    TimelineGridTilePicture? tile(TimelineRowCellsPainter painter) => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
@@ -594,9 +553,8 @@ void main() {
     );
 
     final shown = painterFor(layer, store: store);
-    expect(tile(shown), isNull, reason: 'cold');
-    expect(await pollUntil(() => tile(shown) != null), isTrue);
-    final first = tile(shown)!;
+    final first = tile(shown);
+    expect(first, isNotNull, reason: 'cold: baked in the ask');
     expect(
       tile(painterFor(layer, store: store, shown: true)),
       same(first),
@@ -606,25 +564,21 @@ void main() {
     final hidden = painterFor(layer, store: store, shown: false);
     await pollUntil(() => !identical(tile(hidden), first));
     expect(tile(hidden), isNotNull, reason: 'a fresh raster landed for it');
-    expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
+    expect(first!.debugHolds, 0, reason: 'the tile it replaced went');
   });
 
   test('🚨past its capacity the tile asked for longest ago goes, its picture '
       'disposed — not one a paint asked for again since', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance..debugCapacity = 2;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
     final painter = painterFor(blockLayer(), store: store);
-    ui.Image? tile(int span) => store.tileFor(
+    TimelineGridTilePicture? tile(int span) => store.tileFor(
       painter: painter,
       spanStartIndex: span * 4,
       spanEndIndexExclusive: span * 4 + 4,
       devicePixelRatio: 2.0,
     );
-    Future<ui.Image> landed(int span) async {
+    Future<TimelineGridTilePicture> landed(int span) async {
       expect(
         await pollUntil(() => tile(span) != null),
         isTrue,
@@ -638,9 +592,9 @@ void main() {
     expect(tile(0), same(first), reason: 'asked for again: the newest');
     final third = await landed(2);
 
-    expect(second.debugDisposed, isTrue, reason: 'asked for longest ago');
-    expect(first.debugDisposed, isFalse);
-    expect(third.debugDisposed, isFalse);
+    expect(second.debugHolds, 0, reason: 'asked for longest ago');
+    expect(first.debugHolds, isPositive);
+    expect(third.debugHolds, isPositive);
     expect(tile(0), same(first));
     // 🧮What the memory census reads of it is what the two kept weigh — the
     // one that went no longer (card census-misses-bake-once-images).
@@ -648,30 +602,45 @@ void main() {
       store.tileImageBytes,
       [first, third].fold(0, (sum, image) => sum + image.width * image.height * 4),
     );
+    // And what the batch that drew them keeps — its words' atlas, its
+    // planes — under the same row.
     expect(
       collectMemoryCensusWhereTexturesAreRam(
         const [],
       ).items.singleWhere((item) => item.id == 'timelineTiles').bytes,
-      store.tileImageBytes,
+      store.tileImageBytes + AppGpuGridBatch.keptGridBytes,
     );
+  });
+
+  test('a clear lets go of every tile it kept', () async {
+    final store = TimelineGridTileStore.instance;
+    final painter = painterFor(blockLayer(), store: store);
+    TimelineGridTilePicture? tile() => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(await pollUntil(() => tile() != null), isTrue, reason: 'premise');
+    final kept = tile()!;
+
+    store.clear();
+
+    expect(kept.debugHolds, 0);
   });
 
   test('🚨a sixteenth past its capacity it comes back to it in one letting '
       'go, not one tile at each landing', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance..debugCapacity = 16;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
     final painter = painterFor(blockLayer(), store: store);
-    ui.Image? tile(int span) => store.tileFor(
+    TimelineGridTilePicture? tile(int span) => store.tileFor(
       painter: painter,
       spanStartIndex: span * 2,
       spanEndIndexExclusive: span * 2 + 2,
       devicePixelRatio: 2.0,
     );
-    Future<ui.Image> landed(int span) async {
+    Future<TimelineGridTilePicture> landed(int span) async {
       expect(
         await pollUntil(() => tile(span) != null),
         isTrue,
@@ -683,28 +652,32 @@ void main() {
     final images = [
       for (var span = 0; span < 17; span += 1) await landed(span),
     ];
-    int goneOf(List<ui.Image> tiles) =>
-        tiles.where((image) => image.debugDisposed).length;
+    int goneOf(List<TimelineGridTilePicture> tiles) =>
+        tiles.where((image) => image.debugHolds == 0).length;
     expect(goneOf(images), 0, reason: 'a sixteenth past it: none let go yet');
 
     images.add(await landed(17));
 
     expect(goneOf(images), 2, reason: 'back at its capacity, in one go');
-    expect(images[0].debugDisposed, isTrue, reason: 'asked for longest ago');
-    expect(images[1].debugDisposed, isTrue);
+    expect(images[0].debugHolds, 0, reason: 'asked for longest ago');
+    expect(images[1].debugHolds, 0);
   });
 
   // 🚨playback-draws-frames-the-film-did-not-change-in (2026-10-24): a run
   // shows its pages in its own order and round again, so the tile asked for
   // longest ago is the next one it shows — what an LRU lets go of first.
   group('past its capacity, a row on screen lets its tiles go by the run', () {
+    // Cells as wide as a quarter of the narrowest span, so the row's 40
+    // frames hold ten spans (`timelineFrameWindowSpanFor`).
+    const cell = 128.0;
+
     /// A row on screen ([TimelineGridTileStore.noticesFor] heard), windowed
     /// so its first spans are shown and the three after them are not:
     /// those three's starts, the painter, and the tile of a span.
     ({
       List<int> past,
       TimelineRowCellsPainter painter,
-      ui.Image? Function(int start) tile,
+      TimelineGridTilePicture? Function(int start) tile,
     })
     rowOnScreen(int? Function(int frame) stepsUntilShown) {
       final store = TimelineGridTileStore.instance..debugCapacity = 2;
@@ -715,13 +688,14 @@ void main() {
         blockLayer(),
         store: store,
         windowBucket: bucket,
-        viewportMainExtent: 48,
+        viewportMainExtent: 2 * cell,
         stepsUntilShown: stepsUntilShown,
+        cellExtent: cell,
       );
       void heard() {}
       painter.addListener(heard);
       addTearDown(() => painter.removeListener(heard));
-      final span = timelineFrameWindowSpanFor(24);
+      final span = timelineFrameWindowSpanFor(cell);
       final shownEnd = painter.tileSpans.shown.last.$2;
       final past = [for (var i = 0; i < 3; i += 1) shownEnd + i * span];
       expect(
@@ -741,17 +715,13 @@ void main() {
       );
     }
 
-    Future<ui.Image> landed(ui.Image? Function() tile) async {
+    Future<TimelineGridTilePicture> landed(TimelineGridTilePicture? Function() tile) async {
       expect(await pollUntil(() => tile() != null), isTrue);
       return tile()!;
     }
 
     test('🚨while a run plays, the tile it shows LATEST goes — though a '
         'paint asked for it since', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final steps = <int, int>{};
       final row = rowOnScreen((frame) => steps[frame]);
       final past = row.past;
@@ -762,17 +732,13 @@ void main() {
       expect(row.tile(past[0]), same(latest), reason: 'asked for again');
       final next = await landed(() => row.tile(past[2]));
 
-      expect(latest.debugDisposed, isTrue, reason: 'shown 30 steps on');
-      expect(soon.debugDisposed, isFalse, reason: 'shown next');
-      expect(next.debugDisposed, isFalse);
+      expect(latest.debugHolds, 0, reason: 'shown 30 steps on');
+      expect(soon.debugHolds, isPositive, reason: 'shown next');
+      expect(next.debugHolds, isPositive);
     });
 
     test('wherever nothing plays, the tile asked for longest ago goes, as '
         'before', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final row = rowOnScreen((_) => null);
       final past = row.past;
 
@@ -781,17 +747,13 @@ void main() {
       expect(row.tile(past[0]), same(first));
       final third = await landed(() => row.tile(past[2]));
 
-      expect(second.debugDisposed, isTrue, reason: 'asked for longest ago');
-      expect(first.debugDisposed, isFalse);
-      expect(third.debugDisposed, isFalse);
+      expect(second.debugHolds, 0, reason: 'asked for longest ago');
+      expect(first.debugHolds, isPositive);
+      expect(third.debugHolds, isPositive);
     });
 
     test('a tile of a row nothing shows goes first, though its own window '
         'holds it and the run shows it soonest', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final steps = <int, int>{};
       final row = rowOnScreen((frame) => steps[frame]);
       final past = row.past;
@@ -812,8 +774,9 @@ void main() {
         ),
         store: store,
         stepsUntilShown: (_) => 0,
+        cellExtent: cell,
       );
-      final span = timelineFrameWindowSpanFor(24);
+      final span = timelineFrameWindowSpanFor(cell);
 
       final hidden = await landed(
         () => store.tileFor(
@@ -826,17 +789,13 @@ void main() {
       final sooner = await landed(() => row.tile(past[0]));
       final later = await landed(() => row.tile(past[1]));
 
-      expect(hidden.debugDisposed, isTrue, reason: 'no row on screen');
-      expect(sooner.debugDisposed, isFalse);
-      expect(later.debugDisposed, isFalse);
+      expect(hidden.debugHolds, 0, reason: 'no row on screen');
+      expect(sooner.debugHolds, isPositive);
+      expect(later.debugHolds, isPositive);
     });
 
     test('a span the row shows NOW stays, however late the run shows it '
         'again', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final row = rowOnScreen((frame) => 1000 - frame);
       final shown = row.painter.tileSpans.shown.first.$1;
       final past = row.past;
@@ -845,10 +804,10 @@ void main() {
       final farther = await landed(() => row.tile(past[0]));
       final nearer = await landed(() => row.tile(past[1]));
 
-      expect(onScreen.debugDisposed, isFalse, reason: 'it is on screen');
-      expect(farther.debugDisposed, isTrue, reason: 'off screen, shown '
+      expect(onScreen.debugHolds, isPositive, reason: 'it is on screen');
+      expect(farther.debugHolds, 0, reason: 'off screen, shown '
           '${1000 - past[0]} steps on — after the other');
-      expect(nearer.debugDisposed, isFalse);
+      expect(nearer.debugHolds, isPositive);
     });
   });
 
@@ -860,13 +819,9 @@ void main() {
   test('the lines and the unnamed mark are part of the look — flipping the '
       'switch, the fps while they show, or the mark re-rasters the tile',
       () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
-    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+    TimelineGridTilePicture? tile(TimelineRowCellsPainter painter) => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
@@ -874,9 +829,9 @@ void main() {
     );
     // Bounded: a key that forgot the fact never lands a fresh tile, and
     // that has to fail here rather than hang the file.
-    Future<ui.Image> landed(
+    Future<TimelineGridTilePicture> landed(
       TimelineRowCellsPainter painter,
-      ui.Image? stale,
+      TimelineGridTilePicture? stale,
     ) async {
       bool fresh() {
         final image = tile(painter);

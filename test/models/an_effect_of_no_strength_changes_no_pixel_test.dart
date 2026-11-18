@@ -4,42 +4,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 
+import '../helpers/an_effect_sampled.dart';
+
 /// 🗣️fx-made-light-by-one-law (유저 2026-10-29 「fx들 가볍게 하는 로직은
 /// 서로 최대한 법 통일하면서 알아서해줘. 근본구조적으로」): an effect at its
 /// kind's strength of nothing changes no pixel whatever its other values say
 /// — ONE law ([EffectKind.strength]) where each blur used to ask its own
 /// `<= 0` — so the resolver drops it and nothing downstream pays for it.
 void main() {
-  /// [kind] at its defaults but [moved], an index each.
-  ResolvedLayerEffect sample(EffectKind kind, Map<String, double> moved) =>
-      ResolvedLayerEffect(
-        kind: kind,
-        values: [
-          for (final spec in kind.parameters)
-            moved[spec.id] ?? spec.defaultValue,
-        ],
-      );
-
   // A strength of nothing with something else moved: the case the defaults
   // alone never caught.
   final noStrength = <String, ResolvedLayerEffect>{
-    'a Gaussian of no blurriness, repeating the edge': sample(
+    'a Gaussian of no blurriness, repeating the edge': fx(
       EffectKind.blur,
       {'blurriness': 0, 'repeatEdgePixels': 1},
     ),
-    'a directional blur of no length, turned': sample(
+    'a directional blur of no length, turned': fx(
       EffectKind.directionalBlur,
       {'blurLength': 0, 'direction': 45},
     ),
-    'a radial blur of no amount, zooming': sample(EffectKind.radialBlur, {
+    'a radial blur of no amount, zooming': fx(EffectKind.radialBlur, {
       'amount': 0,
       'type': 1,
     }),
-    'a camera lens blur of no radius, its iris turned': sample(
+    'a camera lens blur of no radius, its iris turned': fx(
       EffectKind.cameraLensBlur,
       {'blurRadius': 0, 'irisRotation': 30},
     ),
-    'a colour key of no amount, wide': sample(EffectKind.colorKey, {
+    'a colour key of no amount, wide': fx(EffectKind.colorKey, {
       'amount': 0,
       'tolerance': 90,
     }),
@@ -62,7 +54,7 @@ void main() {
   // — asks the same question once, where its paint is resolved.
   for (final MapEntry(key: name, value: effect) in noStrength.entries) {
     if (effect.kind == EffectKind.colorKey) {
-      // Split off before a paint is resolved (splitSourceEffects).
+      // Split off before a paint is resolved (celSourceKeys).
       continue;
     }
     test('$name takes no step and grows no buffer', () {
@@ -71,7 +63,7 @@ void main() {
       ], paper: const Rect.fromLTWH(0, 0, 64, 48));
       expect(plan.isSingleDraw, isTrue);
       expect(plan.outsetPixels, 0);
-      expect(plan.finalPaint.isEmpty, isTrue);
+      expect(plan.finalEffects, isEmpty);
     });
   }
 
@@ -82,7 +74,7 @@ void main() {
         continue;
       }
       expect(
-        sample(kind, {strength: 1}).isNoOp,
+        fx(kind, {strength: 1}).isNoOp,
         isFalse,
         reason: '$kind at a $strength of 1',
       );
@@ -91,9 +83,9 @@ void main() {
 
   test('a kind with no strength is a no-op only at its defaults', () {
     expect(EffectKind.brightnessContrast.strength, isNull);
-    expect(sample(EffectKind.brightnessContrast, const {}).isNoOp, isTrue);
+    expect(fx(EffectKind.brightnessContrast, const {}).isNoOp, isTrue);
     expect(
-      sample(EffectKind.brightnessContrast, const {'brightness': 10}).isNoOp,
+      fx(EffectKind.brightnessContrast, const {'brightness': 10}).isNoOp,
       isFalse,
     );
   });

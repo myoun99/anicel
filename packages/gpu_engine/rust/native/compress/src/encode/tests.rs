@@ -1,28 +1,13 @@
-//! The Rust compressor against the engine's C (native/oracle): every frame
-//! held to the bytes `qa_zstd_compress(…, 9)` writes, and decoded back by
-//! the Rust decoder.
-
-use oracle::export;
+//! The Rust compressor held to the bytes the C engine's
+//! `qa_zstd_compress(…, 9)` wrote — every frame's, kept in the ledger — and
+//! decoded back by the Rust decoder. ↩️Until the connection round deleted
+//! the C (connection-round-checklist H, 2026-11-08) each frame was held to
+//! the C's itself (native/oracle), byte for byte; the rows were pinned
+//! while both answered alike (connection-round-checklist A, 관제
+//! 2026-11-07).
 
 use super::compress;
-use crate::tests::{Noise, compressed, kinds};
-
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
-
-/// The C's answer for `data` into `capacity` bytes: its frame, or None
-/// where it answers 0.
-fn c_compress(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_compress(uint8_t*, int64_t, const uint8_t*, int64_t, int32_t)`.
-    let compress = unsafe { export::<Compress>("qa_zstd_compress") };
-    let mut frame = vec![0u8; capacity.max(1)];
-    // SAFETY: both buffers hold the sizes passed.
-    let written = unsafe { compress(frame.as_mut_ptr(), capacity as i64, data.as_ptr(), data.len() as i64, 9) };
-    (written > 0).then(|| {
-        frame.truncate(written as usize);
-        frame
-    })
-}
+use crate::tests::{Answers, Noise, kinds};
 
 /// The Rust's answer for `data` into `capacity` bytes.
 fn ours(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
@@ -34,28 +19,19 @@ fn ours(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
 }
 
 fn bound(size: usize) -> usize {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_compress_bound(int64_t)`.
-    let bound = unsafe { export::<Bound>("qa_zstd_compress_bound") };
-    bound(size as i64) as usize
+    crate::qa_zstd_compress_bound(size as i64) as usize
 }
 
-/// The Rust's frame of `data` is the C's, and decodes to `data`.
-fn same_frame(data: &[u8], what: &str) {
-    let theirs = compressed(data, 9);
+/// The Rust's frame of `data`, which decodes to `data` — into the row the
+/// ledger holds to the C's.
+fn same_frame(answers: &mut Answers, data: &[u8], what: &str) {
     let mine = ours(data, bound(data.len())).unwrap_or_else(|| panic!("{what}: the Rust compresses it"));
-    let first = mine.iter().zip(&theirs).position(|(a, b)| a != b);
-    assert!(
-        first.is_none() && mine.len() == theirs.len(),
-        "{what}: {} bytes where the C writes {}, first apart at {first:?}",
-        mine.len(),
-        theirs.len(),
-    );
     let mut back = vec![0u8; data.len()];
     assert_eq!(crate::frame::decompress(&mut back, &mine), Ok(data.len()), "{what}: decoded whole");
     assert!(back == data, "{what}: the input back");
+    answers.add(mine.len() as i64, &mine);
 }
 
-// Sizes at each turn of level 9: the window shrunk to small inputs, the
 // tree up to 16 KiB and the rows past it, the parameter rows at 128 KiB
 // and 256 KiB, the content size's forms, stored blocks under 7 bytes, and
 // blocks of 128 KiB in a row behind a window of 4 MiB.
@@ -66,11 +42,13 @@ const SIZES: [usize; 30] = [
 
 #[test]
 fn every_input_compresses_to_the_c_s_frame() {
+    let mut answers = Answers::default();
     for &size in &SIZES {
         for (kind, data) in kinds(size, size as u64) {
-            same_frame(&data, &format!("{kind} × {size}"));
+            same_frame(&mut answers, &data, &format!("{kind} × {size}"));
         }
     }
+    answers.pinned("compress/encode-every-input");
 }
 
 /// `size` bytes cut from every kind at random lengths.
@@ -91,35 +69,40 @@ fn cut(noise: &mut Noise, size: usize) -> Vec<u8> {
 // never.
 #[test]
 fn mixed_inputs_compress_to_the_c_s_frame() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x9E37_79B9_7F4A_7C15);
     for round in 0..40 {
         let size = noise.below(400_000) + 1;
-        same_frame(&cut(&mut noise, size), &format!("round {round}, {size} bytes"));
+        same_frame(&mut answers, &cut(&mut noise, size), &format!("round {round}, {size} bytes"));
     }
     for &(head, tail) in &[(131_072, 131_072), (131_072, 5), (131_072, 30), (16_384, 1), (200_000, 300_000)] {
         let mut data = kinds(head, head as u64).swap_remove(2).1;
         data.extend(std::iter::repeat_n(7u8, tail));
-        same_frame(&data, &format!("text × {head}, then 7 × {tail}"));
+        same_frame(&mut answers, &data, &format!("text × {head}, then 7 × {tail}"));
     }
+    answers.pinned("compress/encode-mixed-inputs");
 }
 
-// Too small a destination: the Rust refuses where the C answers 0, and
-// writes what the C writes where it does not — a block stored, say, that
-// the room did not take coded.
+// Too small a destination: the Rust refuses where the C answered 0, and
+// writes what the C wrote where it did not (the ledger's) — a block stored,
+// say, that the room did not take coded.
 #[test]
 fn a_short_destination_is_answered_as_the_c_answers_it() {
+    let mut answers = Answers::default();
     for &size in &[1, 7, 100, 5000, 16_385, 140_000] {
         for (kind, data) in kinds(size, size as u64 + 1) {
-            let whole = compressed(&data, 9).len();
+            let whole = ours(&data, bound(size)).unwrap_or_else(|| panic!("{kind} × {size}: the Rust compresses it")).len();
             let mut capacities: Vec<usize> = (0..24).collect();
             capacities.extend([whole / 2, whole - 4, whole - 3, whole - 1, whole, whole + 1]);
             capacities.extend((0..8).map(|k| whole * (k + 1) / 9));
             for capacity in capacities {
-                let what = format!("{kind} × {size} into {capacity}");
-                assert!(ours(&data, capacity) == c_compress(&data, capacity), "{what}: the Rust's answer is the C's");
+                let mine = ours(&data, capacity);
+                // 0 for a refusal, as qa_zstd_compress answers it.
+                answers.add(mine.as_ref().map_or(0, |frame| frame.len() as i64), mine.as_deref().unwrap_or_default());
             }
         }
     }
+    answers.pinned("compress/encode-short-destination");
 }
 
 #[test]
@@ -197,32 +180,36 @@ fn weighted(noise: &mut Noise, count: usize, max: usize, spread: usize) -> Vec<u
 // out of a match's reach.
 #[test]
 fn a_frame_past_its_window_states_the_window() {
+    let mut answers = Answers::default();
     for &size in &[4 << 20, (4 << 20) + 1, 8 << 20] {
         for (kind, data) in kinds(size, size as u64) {
             if matches!(kind, "text" | "cel" | "mixed") {
-                same_frame(&data, &format!("{kind} × {size}"));
+                same_frame(&mut answers, &data, &format!("{kind} × {size}"));
             }
         }
     }
     let mut noise = Noise(0x2F2C_9B6E_0A3D_57E1);
     for round in 0..3 {
         let size = (4 << 20) + noise.below(5 << 20);
-        same_frame(&cut(&mut noise, size), &format!("past the window, round {round}, {size} bytes"));
+        same_frame(&mut answers, &cut(&mut noise, size), &format!("past the window, round {round}, {size} bytes"));
     }
+    answers.pinned("compress/encode-past-the-window");
 }
 
 // The same cel again after other bytes: up to 4 MiB back the C matches it,
 // past that it cannot reach it, and neither may the Rust.
 #[test]
 fn a_cel_seen_again_is_reached_back_as_far_as_the_window() {
+    let mut answers = Answers::default();
     let cel = kinds(1 << 20, 11).into_iter().find(|(kind, _)| *kind == "cel").expect("a cel").1;
     let mut noise = Noise(0x7137_4491_B5C0_FBCF);
     for &between in &[(3 << 20) - 64, (3 << 20) - 1, 3 << 20, (3 << 20) + 1, (3 << 20) + 64, 9 << 19] {
         let mut data = cel.clone();
         data.extend(letters(&mut noise, between, 64, b'!'));
         data.extend_from_slice(&cel);
-        same_frame(&data, &format!("a cel, {between} letters, the cel again"));
+        same_frame(&mut answers, &data, &format!("a cel, {between} letters, the cel again"));
     }
+    answers.pinned("compress/encode-cel-seen-again");
 }
 
 // A block sent as its byte repeated hands the next block the repeat
@@ -231,15 +218,17 @@ fn a_cel_seen_again_is_reached_back_as_far_as_the_window() {
 // sequences to pay for tables of its own, repeating that block's.
 #[test]
 fn a_run_s_block_hands_on_what_it_was_handed() {
+    let mut answers = Answers::default();
     for kind in ["text", "cel", "mixed"] {
         let piece = |seed: u64| kinds(131_072, seed).into_iter().find(|(name, _)| *name == kind).expect("a kind").1;
         for after in [300, 3000, 131_072] {
             let mut data = piece(1);
             data.extend(std::iter::repeat_n(7u8, 131_072));
             data.extend_from_slice(&piece(2)[..after]);
-            same_frame(&data, &format!("{kind}, a block of 7s, {after} bytes of {kind}"));
+            same_frame(&mut answers, &data, &format!("{kind}, a block of 7s, {after} bytes of {kind}"));
         }
     }
+    answers.pinned("compress/encode-run-block");
 }
 
 // A literal section at each turn of its form — one stream below 256
@@ -247,13 +236,15 @@ fn a_run_s_block_hands_on_what_it_was_handed() {
 // the letters, then a run whose first byte is a literal too.
 #[test]
 fn a_literal_section_at_each_turn_of_its_form() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x2545_F491_4F6C_DD1D);
     let all = letters(&mut noise, 1100, 64, b'!');
     for count in (236..=276).chain(1004..=1044) {
         let mut data = all[..count].to_vec();
         data.extend(std::iter::repeat_n(0u8, 300));
-        same_frame(&data, &format!("{count} letters, then a run"));
+        same_frame(&mut answers, &data, &format!("{count} letters, then a run"));
     }
+    answers.pinned("compress/encode-literal-sections");
 }
 
 // A block at each count of sequences around 128, where the count's field
@@ -261,6 +252,7 @@ fn a_literal_section_at_each_turn_of_its_form() {
 // new letters before each.
 #[test]
 fn a_block_at_each_count_of_sequences() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x6A09_E667_F3BC_C909);
     let mut data = letters(&mut noise, 4096, 64, b'!');
     for copies in 1..=144 {
@@ -268,9 +260,10 @@ fn a_block_at_each_count_of_sequences() {
         data.extend(letters(&mut noise, 2, 64, b'!'));
         data.extend_from_within(from..from + 12);
         if copies >= 112 {
-            same_frame(&data, &format!("{copies} copies"));
+            same_frame(&mut answers, &data, &format!("{copies} copies"));
         }
     }
+    answers.pinned("compress/encode-sequence-counts");
 }
 
 // Literals at the C's bars for "not worth a tree" — the first and last
@@ -279,6 +272,7 @@ fn a_block_at_each_count_of_sequences() {
 // common a step at a time, across the sample's bar and then the count's.
 #[test]
 fn literals_at_the_bars_for_not_worth_a_tree() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0xBB67_AE85_84CA_A73B);
     let even = rounds(&mut noise, 512);
     let end = even.len();
@@ -286,15 +280,16 @@ fn literals_at_the_bars_for_not_worth_a_tree() {
         let mut data = even.clone();
         boost(&mut data, 0..4096, 200, extra / 2);
         boost(&mut data, end - 4096..end, 200, extra - extra / 2);
-        same_frame(&data, &format!("{extra} more of one letter at the ends"));
+        same_frame(&mut answers, &data, &format!("{extra} more of one letter at the ends"));
         // Each end past the sample's bar with a letter of its own; the one
         // letter between them across the count's.
         let mut data = even.clone();
         boost(&mut data, 0..4096, 140, 3);
         boost(&mut data, end - 4096..end, 150, 3);
         boost(&mut data, 4096..end - 4096, 200, extra);
-        same_frame(&data, &format!("past the sample's bar, {extra} more in between"));
+        same_frame(&mut answers, &data, &format!("past the sample's bar, {extra} more in between"));
     }
+    answers.pinned("compress/encode-literal-bars");
 }
 
 // Twenty literals to a sequence is where the C starts to suspect them of
@@ -304,6 +299,7 @@ fn literals_at_the_bars_for_not_worth_a_tree() {
 // where the sample does not.
 #[test]
 fn literals_suspected_from_twenty_to_a_sequence() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x3C6E_F372_FE94_F82B);
     let mut literals = rounds(&mut noise, 512);
     let end = literals.len();
@@ -316,8 +312,9 @@ fn literals_suspected_from_twenty_to_a_sequence() {
                 copy(&mut data, 1000, 4);
             }
         }
-        same_frame(&data, &format!("{run} literals to a sequence"));
+        same_frame(&mut answers, &data, &format!("{run} literals to a sequence"));
     }
+    answers.pinned("compress/encode-literals-suspected");
 }
 
 // Trees over alphabets up to every last byte: their weights coded, or
@@ -325,15 +322,17 @@ fn literals_suspected_from_twenty_to_a_sequence() {
 // description leaves too little room for what they code.
 #[test]
 fn trees_of_every_width_are_described_as_the_c_describes_them() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0xA54F_F53A_5F1D_36F1);
     for &max in &[20, 40, 64, 100, 126, 127, 128, 129, 160, 200, 255] {
         for &spread in &[3, 6, 10] {
             for &count in &[72, 96, 128, 200, 3000, 20_000] {
                 let data = weighted(&mut noise, count, max, spread);
-                same_frame(&data, &format!("{count} over 0..={max}, spread {spread}"));
+                same_frame(&mut answers, &data, &format!("{count} over 0..={max}, spread {spread}"));
             }
         }
     }
+    answers.pinned("compress/encode-tree-widths");
 }
 
 // Letters exactly as common as each other, in a bucket past the counts
@@ -342,6 +341,7 @@ fn trees_of_every_width_are_described_as_the_c_describes_them() {
 // stops.
 #[test]
 fn letters_as_common_as_each_other_are_ordered_as_the_c_orders_them() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x510E_527F_ADE6_82D1);
     for tied in [8u8, 9, 10, 16, 17] {
         for &each in &[200, 300, 600] {
@@ -350,9 +350,10 @@ fn letters_as_common_as_each_other_are_ordered_as_the_c_orders_them() {
                 ties.swap(at, noise.below(at + 1));
             }
             let data: Vec<u8> = ties.iter().flat_map(|&letter| [letter, 32 + noise.below(224) as u8]).collect();
-            same_frame(&data, &format!("{tied} letters {each} times each"));
+            same_frame(&mut answers, &data, &format!("{tied} letters {each} times each"));
         }
     }
+    answers.pinned("compress/encode-tied-letters");
 }
 
 // Past a match 384 long the C enters only its first 96 and last 32
@@ -361,6 +362,7 @@ fn letters_as_common_as_each_other_are_ordered_as_the_c_orders_them() {
 // bytes it copied.
 #[test]
 fn a_long_match_is_entered_as_the_c_enters_it() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x9B05_688C_2B3E_6C1F);
     let start = letters(&mut noise, 20_000, 64, b'!');
     let tail = letters(&mut noise, 2000, 64, b'!');
@@ -370,8 +372,9 @@ fn a_long_match_is_entered_as_the_c_enters_it() {
         data.extend(letters(&mut noise, 40, 64, b'!'));
         copy(&mut data, length + 40 - 200, 24);
         data.extend_from_slice(&tail);
-        same_frame(&data, &format!("a match {length} long, then a look into it"));
+        same_frame(&mut answers, &data, &format!("a match {length} long, then a look into it"));
     }
+    answers.pinned("compress/encode-long-match");
 }
 
 // A block that ends inside a long match has the next one start with only
@@ -379,6 +382,7 @@ fn a_long_match_is_entered_as_the_c_enters_it() {
 // block to each position about the 192nd.
 #[test]
 fn a_block_after_a_long_match_sees_back_as_far_as_the_c_does() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x1F83_D9AB_FB41_BD6B);
     let mut start = letters(&mut noise, 131_072 - 1000, 64, b'!');
     start.extend_from_within(5000..6000);
@@ -387,8 +391,9 @@ fn a_block_after_a_long_match_sees_back_as_far_as_the_c_does() {
         let mut data = start.clone();
         copy(&mut data, back, 24);
         data.extend_from_slice(&tail);
-        same_frame(&data, &format!("a look {back} back from the block after a long match"));
+        same_frame(&mut answers, &data, &format!("a look {back} back from the block after a long match"));
     }
+    answers.pinned("compress/encode-after-a-long-match");
 }
 
 // The second repeat offset is taken straight after a match up to the last
@@ -397,6 +402,7 @@ fn a_block_after_a_long_match_sees_back_as_far_as_the_c_does() {
 // across that position — for the tree's limit and the rows'.
 #[test]
 fn the_second_repeat_is_taken_up_to_the_last_position_searched() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0xCBBB_9D5D_C105_9ED8);
     for &lead in &[600, 20_000] {
         for round in 0..3 {
@@ -406,10 +412,11 @@ fn the_second_repeat_is_taken_up_to_the_last_position_searched() {
                 copy(&mut data, 300, 12);
                 copy(&mut data, 211, 12);
                 copy(&mut data, 300, length);
-                same_frame(&data, &format!("{lead} letters ({round}), the second repeat {length} long"));
+                same_frame(&mut answers, &data, &format!("{lead} letters ({round}), the second repeat {length} long"));
             }
         }
     }
+    answers.pinned("compress/encode-second-repeat");
 }
 
 // A block that only just pays coded: bytes too random for a tree, and one
@@ -417,6 +424,7 @@ fn the_second_repeat_is_taken_up_to_the_last_position_searched() {
 // one length the coded block is the size from which the C stores it.
 #[test]
 fn a_block_that_only_just_pays_is_coded_as_the_c_codes_it() {
+    let mut answers = Answers::default();
     let mut noise = Noise(0x5BE0_CD19_137E_2179);
     let random: Vec<u8> = (0..4000).map(|_| noise.next() as u8).collect();
     let tail: Vec<u8> = (0..16).map(|_| noise.next() as u8).collect();
@@ -424,6 +432,7 @@ fn a_block_that_only_just_pays_is_coded_as_the_c_codes_it() {
         let mut data = random.clone();
         data.extend_from_within(1000..1000 + length);
         data.extend_from_slice(&tail);
-        same_frame(&data, &format!("a copy {length} long among random bytes"));
+        same_frame(&mut answers, &data, &format!("a copy {length} long among random bytes"));
     }
+    answers.pinned("compress/encode-just-pays");
 }

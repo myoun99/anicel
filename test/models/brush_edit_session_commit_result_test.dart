@@ -21,7 +21,7 @@ void main() {
 
     BitmapSurface surface({int width = 4, int height = 4}) => BitmapSurface(
       canvasSize: CanvasSize(width: width, height: height),
-      tileSize: 2,
+      tileSize: 128,
     );
 
     BrushDab dab() => BrushDab(

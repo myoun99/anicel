@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/drawn_shapes.dart';
 import '../helpers/vertical_text_finder.dart';
 import '../helpers/text_finders.dart';
 
@@ -134,11 +135,11 @@ void main() {
     );
     expect(
       fillOf(tester, 'before', 1),
-      paints..rect(color: const Color(0xFF112233)),
+      paintsShape(color: const Color(0xFF112233)),
     );
     expect(
       fillOf(tester, 'after', 1),
-      paints..rect(color: const Color(0xFF445566)),
+      paintsShape(color: const Color(0xFF445566)),
     );
 
     final bar = tester.getRect(peg('before', 1));
@@ -149,7 +150,7 @@ void main() {
     await tester.pump();
     expect(
       fillOf(tester, 'before', 1),
-      paints..rect(color: const Color(0xFF112233)),
+      paintsShape(color: const Color(0xFF112233)),
       reason: 'dragged',
     );
     await hand.up();

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../../core/convex_clip.dart' show convexContains, convexInset;
 import '../../models/bitmap_surface.dart';
@@ -15,7 +14,6 @@ import '../../models/viewport_point.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/guide_stroke_input.dart' show ShiftLine;
-import '../../services/input/modifier_keys.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/selection_clip.dart';
@@ -570,7 +568,7 @@ void printSheetInkAsLive(
       surface: surface,
       viewport: viewport,
       showTransparentBackground: false,
-      lineage: (window.key.layerId, window.key.frameId),
+      lineage: window.key.cel,
       devicePixelRatio: view.devicePixelRatio,
     ).paint(canvas, view.size);
     canvas.restore();
@@ -805,36 +803,13 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   final Map<String, ViewHand<ShapeShow>> _shapeShows = {};
 
   /// Each window's line Shift holds past a stroke ([ShiftLine], I-121) —
-  /// its own, as its view draws in its own cel. The layer hears the
-  /// keyboard for them all ([_heardKey]), and the glass
-  /// ([_heardAFingerLift]).
+  /// its own, as its view draws in its own cel. Each asks whether Shift is
+  /// still held as the canvas's does ([CanvasTouchContacts.shiftIsHeld],
+  /// F-592), and goes with its window ([_releaseWindowsGone]).
   final Map<String, ShiftLine> _shiftLines = {};
 
-  bool _heardKey(KeyEvent event) {
-    for (final line in _shiftLines.values) {
-      line.heardKey(event);
-    }
-    return false;
-  }
-
-  /// A finger left the glass: each line goes unless Shift is still held —
-  /// by the key, or by a finger still resting
-  /// ([CanvasTouchContacts.aFingerDownBesides]).
-  void _heardAFingerLift() {
-    final held =
-        ModifierKeys.isShiftPressed ||
-        CanvasTouchContacts.aFingerDownBesides(null);
-    for (final line in _shiftLines.values) {
-      line.heldNow(held);
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    HardwareKeyboard.instance.addHandler(_heardKey);
-    CanvasTouchContacts.addAppWideLiftListener(_heardAFingerLift);
-  }
+  static ShiftLine _aShiftLine() =>
+      ShiftLine(held: CanvasTouchContacts.shiftIsHeld);
 
   /// Where the sheet's panel asks what takes a shape (F-420).
   SheetShapeTargets? _shapeTargets;
@@ -858,8 +833,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   @override
   void dispose() {
     _shapeTargets?.stopAnswering(_shapeAnswer);
-    HardwareKeyboard.instance.removeHandler(_heardKey);
-    CanvasTouchContacts.removeAppWideLiftListener(_heardAFingerLift);
+    for (final line in _shiftLines.values) {
+      line.letGo();
+    }
     super.dispose();
   }
 
@@ -1021,7 +997,13 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     _shapeShows.removeWhere(
       (id, hand) => hand.now == null && !mountedIds.contains(id),
     );
-    _shiftLines.removeWhere((id, _) => !mountedIds.contains(id));
+    _shiftLines.removeWhere((id, line) {
+      if (mountedIds.contains(id)) {
+        return false;
+      }
+      line.letGo();
+      return true;
+    });
     final gone = [
       for (final id in _stroking)
         if (!mountedIds.contains(id)) id,
@@ -1184,7 +1166,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       paintsContent: window.overlay == null,
       // F-420: the shape tool's drag lands what it traced in this view.
       shapeShow: _shapeShows.putIfAbsent(window.id, ViewHand.new),
-      shiftLine: _shiftLines.putIfAbsent(window.id, ShiftLine.new),
+      shiftLine: _shiftLines.putIfAbsent(window.id, _aShiftLine),
       onActiveStrokeChanged: (stroke) => _windowStroking(
         window.id,
         active: stroke != StrokeInFlight.none,

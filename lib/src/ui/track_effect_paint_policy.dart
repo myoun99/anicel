@@ -2,6 +2,7 @@ import '../models/composite_tree.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show LayerEffect, ResolvedLayerEffect, resolveLayerEffectsAt;
+import '../models/track_id.dart';
 
 /// The V row's EFFECT chain, for every route that draws a cut.
 ///
@@ -36,10 +37,14 @@ import '../models/layer_effect.dart'
 ///
 /// [enabled] is the V row's fx master ([Track.fxEnabled]): off bypasses the
 /// chain. It has nothing else left to bypass.
+///
+/// [track] is the track whose chain it is — its own, worn by itself
+/// ([resolveLayerEffectsAt]'s `worn`); null on a route that runs no plugin.
 List<ResolvedLayerEffect> trackEffectsAt(
   List<LayerEffect> effects,
   int frameIndex, {
   bool enabled = true,
+  required TrackId? track,
 }) {
   if (!enabled || effects.isEmpty) {
     return const <ResolvedLayerEffect>[];
@@ -49,6 +54,7 @@ List<ResolvedLayerEffect> trackEffectsAt(
     effects: effects,
     frameIndex: frameIndex,
     blocks: null,
+    worn: track == null ? null : (owner: track, wearer: track),
   );
 }
 

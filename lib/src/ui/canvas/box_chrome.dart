@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 /// The Ctrl+T box chrome in viewport space: the transformed box outline,
 /// the scale handles, and the anchor cross.
 ///
@@ -111,10 +113,16 @@ void paintBoxTangents(
 /// has changed anything, a row's box wears the accent (F-222-box-Q5 「지금의
 /// 강조색」). An empty [SelectionTransformChrome.box] draws no outline — the
 /// camera's frame is its own line.
+///
+/// The handles [inHand] names — by their place among [chrome]'s — are
+/// filled in the accent where the rest are white: the transform tool's warp
+/// point last pressed or written (F-586). Colour alone tells it, as every
+/// selection is told.
 void paintBoxChrome(
   Canvas canvas,
   SelectionTransformChrome chrome, {
   required Color color,
+  List<int> inHand = const [],
 }) {
   final stroke = Paint()
     ..style = PaintingStyle.stroke
@@ -124,8 +132,11 @@ void paintBoxChrome(
   if (chrome.box.isNotEmpty) {
     canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
   }
-  for (final handle in chrome.handles) {
-    canvas.drawRect(_handleSquare(handle), Paint()..color = Colors.white);
+  for (final (at, handle) in chrome.handles.indexed) {
+    canvas.drawRect(
+      _handleSquare(handle),
+      Paint()..color = inHand.contains(at) ? AppColors.accent : Colors.white,
+    );
     canvas.drawRect(_handleSquare(handle), stroke);
   }
   final anchor = chrome.anchor;

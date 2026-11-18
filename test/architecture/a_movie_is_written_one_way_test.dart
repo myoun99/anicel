@@ -28,11 +28,16 @@ void main() {
         'is the call, not a movie to read',
   };
 
-  final writesAFrame = RegExp(r'\.writeFrame\(');
+  /// A frame written as RGBA or as NV12: since 2026-11-15 every H.26x
+  /// writer takes NV12 alone (board trimmed-movie-decodes-to-nv12-Q2), so a
+  /// copy that writes its own would spell `writeNv12`. ↩️Till then the scan
+  /// saw `writeFrame` alone.
+  final writesAFrame = RegExp(r'\.write(Frame|Nv12)\(');
 
   test('the scan sees what it forbids', () {
     expect(writesAFrame.hasMatch('encoder.writeFrame(grey)'), isTrue);
     expect(writesAFrame.hasMatch('expect(e.writeFrame(\n rgba), isTrue)'), isTrue);
+    expect(writesAFrame.hasMatch('e.writeNv12(nv12, stride: 64)'), isTrue);
     expect(writesAFrame.hasMatch('writeEncodedMovie(path, frames: 6)'), isFalse);
     expect(writesAFrame.hasMatch('void writeFrameCount()'), isFalse);
   });

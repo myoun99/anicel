@@ -4,10 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/native/qa_audio_native.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 
-import '../../helpers/native_engine_path.dart';
 
 /// 2B: the native mixer must be BIT-IDENTICAL to the Dart reference.
 ///
@@ -20,30 +18,15 @@ import '../../helpers/native_engine_path.dart';
 /// `expect(a, b)` on doubles here is exact equality, deliberately. A mixer
 /// that is merely CLOSE is a mixer that will drift.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-
-  setUp(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
-  tearDown(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
   QaAudioNative requireNative() {
     final native = QaAudioNative.instance;
     expect(
       native,
       isNotNull,
       reason:
-          'the binary at $libraryPath loaded but the audio entry points did '
-          'not bind — an ABI or struct-layout mismatch, which is exactly '
-          'what this suite exists to catch',
+          'the engine lays the audio structs out otherwise than Dart — a '
+          'struct-layout mismatch, which is exactly what this suite exists '
+          'to catch',
     );
     return native!;
   }
@@ -66,7 +49,7 @@ void main() {
   }
 
   group('native mixer byte parity', () {
-    test('the struct layouts agree on both sides', requireNative, skip: available ? false : nativeEngineMissingSkipReason);
+    test('the struct layouts agree on both sides', requireNative);
 
     test('randomized clip layouts stay bit-identical', () {
       final native = requireNative();
@@ -150,7 +133,97 @@ void main() {
         );
         expectIdentical(fromNative, fromDart, what: 'round $round');
       }
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    });
+
+    // audio-fx-grows-like-the-pros-Q7: a keyed pan's line, its sides drawn
+    // straight between its points. Its own seed, so the layouts above keep
+    // theirs.
+    test('randomized pan lines stay bit-identical', () {
+      final native = requireNative();
+      final random = Random(20261118);
+      final data = Float32List(2 * 64);
+      for (var i = 0; i < data.length; i += 1) {
+        data[i] = random.nextDouble() * 2.0 - 1.0;
+      }
+      final sources = [
+        AudioMixSource(samples: data, channels: 2),
+        AudioMixSource(
+          samples: Float32List.sublistView(data, 0, 64),
+          channels: 1,
+        ),
+      ];
+
+      for (var round = 0; round < 200; round += 1) {
+        final clips = <AudioMixClip>[];
+        final clipCount = 1 + random.nextInt(3);
+        for (var index = 0; index < clipCount; index += 1) {
+          final start = random.nextInt(32) - 8;
+          final pointCount = random.nextInt(5);
+          // Points may lie before the clip too — the trimmed-lead shape.
+          var at = -6 + random.nextInt(8);
+          final points = [
+            for (var point = 0; point < pointCount; point += 1)
+              (
+                sample: at += 1 + random.nextInt(12),
+                sides: equalPowerPanGains(random.nextDouble() * 2.0 - 1.0),
+              ),
+          ];
+          // Now and then one side keyed alone.
+          final (keepsLeft, keepsRight) = switch (random.nextInt(4)) {
+            0 => (true, false),
+            1 => (false, true),
+            _ => (true, true),
+          };
+          final pan = equalPowerPanGains(random.nextDouble() * 2.0 - 1.0);
+          clips.add(
+            AudioMixClip(
+              sourceIndex: random.nextInt(2),
+              startSample: start,
+              endSample: start + 1 + random.nextInt(48),
+              panLeft: pan.left,
+              panRight: pan.right,
+              panLeftLine: [
+                if (keepsLeft)
+                  for (final point in points)
+                    AudioEnvelopePoint(
+                      sample: point.sample,
+                      gain: point.sides.left,
+                    ),
+              ],
+              panRightLine: [
+                if (keepsRight)
+                  for (final point in points)
+                    AudioEnvelopePoint(
+                      sample: point.sample,
+                      gain: point.sides.right,
+                    ),
+              ],
+            ),
+          );
+        }
+
+        final startSample = random.nextInt(40) - 8;
+        final sampleCount = 1 + random.nextInt(48);
+        final outChannels = 1 + random.nextInt(2);
+        expectIdentical(
+          native.mix(
+            clips: clips,
+            sources: sources,
+            startSample: startSample,
+            sampleCount: sampleCount,
+            outChannels: outChannels,
+          ),
+          mixAudioReference(
+            clips: clips,
+            sources: sources,
+            startSample: startSample,
+            sampleCount: sampleCount,
+            outChannels: outChannels,
+          ),
+          what: 'round $round',
+        );
+      }
+    });
 
     test('a long timeline position does not drift', () {
       // Sample-exact at any distance from zero is the mixer's whole
@@ -194,7 +267,7 @@ void main() {
         );
         expectIdentical(fromNative, fromDart, what: 'start $start');
       }
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    });
 
     test('dense overlap sums identically', () {
       // The case where a float bus would diverge from Dart: 40 clips
@@ -233,7 +306,7 @@ void main() {
         outChannels: 2,
       );
       expectIdentical(fromNative, fromDart, what: 'dense overlap');
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    });
 
     test('the output stage converts identically', () {
       final native = requireNative();
@@ -253,7 +326,7 @@ void main() {
 
       expect(native.busToFloat(bus).toList(), audioBusToFloat(bus).toList());
       expect(native.busToInt16(bus).toList(), int16PcmOf(bus).toList());
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    });
 
     test('degenerate input agrees instead of crashing', () {
       final native = requireNative();
@@ -299,6 +372,6 @@ void main() {
           what: 'degenerate case $index',
         );
       }
-    }, skip: available ? false : nativeEngineMissingSkipReason);
+    });
   });
 }

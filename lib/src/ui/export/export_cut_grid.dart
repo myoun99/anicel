@@ -4,9 +4,11 @@ import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
-import '../theme/app_theme.dart' show AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppCursors;
 import '../repaint_props.dart';
 import '../widgets/ellipsis_text.dart';
+import 'export_settings_modules.dart' show ExportResetChip;
+import '../text/typed_text.dart';
 
 /// One grid cell: the cut — or the 겸용 group — it stands for. [ids] toggle
 /// together, [label] is what the cell prints (one cut's name, or the
@@ -88,42 +90,14 @@ class _ExportCutGridState extends State<ExportCutGrid> {
       children: [
         Row(
           children: [
-            ControlPressClaim(
-              onPressed: widget.enabled && anyExcluded
-                  ? widget.onAllIncluded
-                  : null,
-              child: InkWell(
-                mouseCursor: AppCursors.press,
-                key: const ValueKey<String>('export-cut-grid-all'),
-                onTap: silentPress(
-                  widget.enabled && anyExcluded ? widget.onAllIncluded : null,
-                ),
-                customBorder: AppShapes.container(AppShapes.wellRadius),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: ShapeDecoration(
-                    shape: AppShapes.container(
-                      AppShapes.wellRadius,
-                      side: BorderSide(
-                        color: anyExcluded
-                            ? theme.dividerColor
-                            : Colors.transparent,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    AppText.strings.exIncludeAll,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: anyExcluded
-                          ? theme.colorScheme.onSurface
-                          : theme.disabledColor.withValues(alpha: 0.4),
-                    ),
-                  ),
-                ),
-              ),
+            // ↩️A hand copy of [ExportResetChip] stood here, whose colour
+            // followed only whether a cut was out — live-looking under an
+            // export that took no press.
+            ExportResetChip(
+              key: const ValueKey<String>('export-cut-grid-all'),
+              label: AppText.strings.exIncludeAll,
+              enabled: widget.enabled && anyExcluded,
+              onPressed: widget.onAllIncluded,
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -145,7 +119,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                 controller: _rangeController,
                 enabled: widget.enabled,
                 style: theme.textTheme.labelSmall,
-                inputFormatters: halfWidthNumberRanges,
+                inputFormatters: typedText(halfWidthNumberRanges),
                 decoration: const InputDecoration(
                   isDense: true,
                   hintText: '1-200',

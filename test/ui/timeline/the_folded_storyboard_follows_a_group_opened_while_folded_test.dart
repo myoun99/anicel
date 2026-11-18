@@ -160,9 +160,10 @@ typedef _Fold = ({
 });
 
 /// The storyboard folded while it stands on S2's rotation lane, its
-/// Transform group shut — S1's and S2's lanes twirled down, so the S rows'
-/// own rows are drawn either way — and the lane's height as the open rail
-/// draws it, its group twirled down.
+/// name tag group shut — an S row's pose is its name tag's
+/// (audio-fx-grows-like-the-pros-Q3) — S1's and S2's lanes twirled down, so
+/// the S rows' own rows are drawn either way — and the lane's height as the
+/// open rail draws it, its group twirled down.
 Future<_Fold> _foldedOnALaneOfAClosedGroup(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -186,7 +187,7 @@ Future<_Fold> _foldedOnALaneOfAClosedGroup(WidgetTester tester) async {
   final track = session.repository.requireProject().tracks.first;
   final s1 = track.seLayers[0].id;
   final s2 = track.seLayers[1].id;
-  final group = laneGroupKey(s2, 'transform-group');
+  final group = laneGroupKey(s2, 'name-tag-group');
   presses.toggleLanes(s1);
   presses.toggleLanes(s2);
   presses.toggleLaneGroup(group);

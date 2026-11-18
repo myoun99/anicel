@@ -52,6 +52,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 import '../../helpers/exposure_of.dart';
+import '../../helpers/grid_tile_drawn.dart';
 import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
 import '../../helpers/dots_at.dart';
@@ -398,18 +399,7 @@ void main() {
     Uint8List raster(void Function(TimelineGridTileOpWriter) lay) {
       final writer = TimelineGridTileOpWriter();
       lay(writer);
-      final pixels = Uint8List(8 * 8 * 4);
-      expect(
-        timelineGridRasterTileReference(
-          pixels: pixels,
-          tileWidth: 8,
-          tileHeight: 8,
-          backgroundRgba: 0,
-          ops: writer.build(),
-        ),
-        0,
-      );
-      return pixels;
+      return gridTileDrawn(8, 8, writer.build());
     }
 
     const box = (

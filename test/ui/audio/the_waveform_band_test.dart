@@ -230,38 +230,6 @@ void main() {
     }
   });
 
-  /// 🚨★★★**THE SECONDS ENTRANCE IS THE SAME PAINTER, PIXEL FOR PIXEL.**
-  ///
-  /// The media viewer thinks in seconds and the timeline in frames, and a
-  /// second painter written for the viewer would be a clone whatever its
-  /// text (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」). This is the
-  /// assertion that keeps [WaveformPainter.perSecond] an ENTRANCE rather
-  /// than a second implementation: same band, same pixels, from the two
-  /// ways of saying the one number the arithmetic actually wants.
-  test('perSecond lands on the same pixels as the frame-based band', () async {
-    // 24fps × 2 px/frame = 48 pixels per second, said both ways.
-    final byFrames = await paint(
-      WaveformPainter(
-        peaks: loud(),
-        frameRate: rate,
-        pixelsPerFrame: 2,
-        color: ink,
-        devicePixelRatio: 1,
-      ),
-    );
-    final bySeconds = await paint(
-      WaveformPainter.perSecond(
-        peaks: loud(),
-        pixelsPerSecond: 2 * rate.approximateFps,
-        color: ink,
-        devicePixelRatio: 1,
-      ),
-    );
-
-    expect(inkTotal(byFrames), greaterThan(0), reason: 'fixture: it drew');
-    expect(bySeconds, byFrames);
-  });
-
   /// 🚨I-57 (10-13, profile, the user's project): a sound running far past
   /// the window built every bucket of its length into the band at every
   /// paint — 6–20ms of a cut crossing's frame. The band is drawn as far as
@@ -489,6 +457,23 @@ void main() {
       final halves = await twice(1);
       expect(thicknessAt(halves, 0, width: 128), device(1 / 8));
       expect(thicknessAt(halves, 1, width: 128), device(1 / 8));
+    });
+
+    test('🚨a lane stops a DEVICE pixel short of half its share, as the '
+        'engine\'s pass does', () async {
+      // At a ratio of 2 a 64 px lane is 128 device rows: its reach a device
+      // pixel inside 64 either side of 64 is 126 of them. ⛔A logical pixel
+      // inside is 124 — a device pixel either side short of the engine's
+      // (rust/src/kernels/timeline/wave `reach_q8`).
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..scale(2);
+      painter(devicePixelRatio: 2).paint(canvas, const Size(size, size));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(128, 128);
+      final pixels = (await image.toByteData())!.buffer.asUint32List();
+      image.dispose();
+      picture.dispose();
+      expect(thicknessAt(pixels, 0, width: 128), closeTo(126, 0.6));
     });
   });
 }

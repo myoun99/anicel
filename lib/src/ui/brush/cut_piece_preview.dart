@@ -80,7 +80,7 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
     // observed at all: `decodeStraightRgbaImage` was a callback the SDK
     // simply never invoked on failure.
     final image = await decodedImageStillWanted(
-      decodeStraightRgbaImage(
+      decodeStraightRgbaImageOnAWorker(
         rgba: piece.image.rgba,
         width: piece.image.width,
         height: piece.image.height,
@@ -127,7 +127,7 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
 /// stamp's opacity and composite (F-69), held to its rect (F-243), the
 /// layer's paint left to the buffer around it (F-33) — until
 /// brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved the stamp
-/// ghost to the overlay's CPU pre-blended tiles. What is left draws what is
+/// ghost to the overlay's pre-blended tiles. What is left draws what is
 /// HELD, so it takes neither the stamp's opacity nor its composite.
 void paintCutPiece(
   Canvas canvas,
@@ -240,7 +240,7 @@ class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
 /// [BitmapSurfacePainter] to draw the ghost with on the GPU, in a slot of
 /// its own because the overlay's tile slots retire the image they replace —
 /// until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved the stamp
-/// ghost to the overlay's CPU pre-blended tiles.
+/// ghost to the overlay's pre-blended tiles.
 class CutStampPreview {
   const CutStampPreview({
     required this.piece,

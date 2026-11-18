@@ -244,5 +244,57 @@ void main() {
       }
     });
 
+    // F-571 (유저 2026-11-07): 「아래 고정팔레트에서 검정고르면 컬러휠에
+    // 반영안됨」 — after the wheel's own drag into its black corner.
+    testWidgets('F-571: a black from outside reaches the wheel after the '
+        "wheel's own black, and its own echo keeps the hue", (tester) async {
+      var color = 0xFF00FF00;
+      late StateSetter host;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 220,
+                height: 300,
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    host = setState;
+                    return ColorWheelPanel(
+                      color: color,
+                      onColorChanged: (argb) => setState(() => color = argb),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final wheel = find.byKey(const ValueKey<String>('color-wheel'));
+      HSVColor shown() => tester.widget<ColorWheel>(wheel).hsv;
+      final wheelRect = tester.getRect(wheel);
+
+      final geometry = ColorWheelGeometry(wheelRect.size, hue: 120);
+      final gesture = await tester.startGesture(
+        wheelRect.topLeft + geometry.center,
+      );
+      final pastBlack =
+          geometry.blackCorner + (geometry.blackCorner - geometry.center);
+      await gesture.moveTo(wheelRect.topLeft + pastBlack);
+      await gesture.up();
+      await tester.pump();
+      expect(color, 0xFF000000);
+      expect(shown().hue, closeTo(120, 1e-6), reason: 'its own echo');
+
+      // The palette below: another colour, then its black.
+      host(() => color = 0xFFFF0000);
+      await tester.pump();
+      expect(shown().toColor().toARGB32(), 0xFFFF0000);
+      host(() => color = 0xFF000000);
+      await tester.pump();
+      expect(shown().toColor().toARGB32(), 0xFF000000);
+    });
+
   });
 }

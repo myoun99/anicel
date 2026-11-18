@@ -18,7 +18,8 @@ import 'mark_under_a_pixel.dart';
 ///  - Rotation is baked into the mask (1° steps), so every dab —
 ///    including direction-following rotated raster tips, previously the
 ///    slow per-pixel-rotation path — rides the fast unrotated-lattice
-///    path in the rasterizers AND the C kernel, with NO engine changes.
+///    path in the rasterizers (and the C kernel that stood then), with
+///    NO engine changes.
 ///    ↩️Not raster tips any more — see below.
 ///  - Subpixel placement needs no phase quantization: the existing
 ///    bilinear lattice sampling shifts the mask continuously.
@@ -78,9 +79,17 @@ class BrushTipStampCache {
   /// (lift/fill pixels) pass through untouched, but for a size under a
   /// pixel ([liftedToOnePixel] — every dab a stroke lays comes through
   /// here).
+  ///
+  /// A dab of no size passes through too: it lays nothing
+  /// (`dirtyRegionForBrushDab`), and the lift leaves it as it is — 「nothing
+  /// here says what it is」 (`markUnderAPixel`). ↩️Till 2026-11-12 its size
+  /// went on to the smallest step ([quantizeSizeStep]'s floor, from before
+  /// a mark under a pixel was lifted to one): a quarter of a pixel at the
+  /// dab's whole opacity, a speck where a pen's pressure — or a vector
+  /// line's width (`clipVectorTiles`) — came to nothing.
   BrushDab resolveDab(BrushDab raw) {
     final dab = liftedToOnePixel(raw);
-    if (dab.stamp != null || dab.tipMask != null) {
+    if (dab.stamp != null || dab.tipMask != null || dab.size <= 0.0) {
       return dab;
     }
     final sizeQ = quantizeSizeStep(dab.size);

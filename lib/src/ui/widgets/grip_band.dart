@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../repaint_props.dart';
 import '../theme/app_theme.dart';
 import 'drag_chip.dart';
 import 'owning_draggable.dart';
+import 'superellipse_clip.dart';
 
 /// THE app's grip band: a thin rule along an edge saying "there is a handle
 /// here", plus the one colour ladder every grip climbs.
@@ -53,8 +55,8 @@ abstract final class GripBand {
 }
 
 /// THE band that LIFTS what it stands in — a panel's tab, and a strip's
-/// button: [GripBand.hitExtent] along one edge, laid over the thing inside
-/// its own box, with the band in it climbing [GripBand.ink]; pressed and
+/// button: laid over the whole thing, a target [GripBand.hitExtent] along
+/// one edge, with the band in it climbing [GripBand.ink]; pressed and
 /// moved, it carries [data] ([OwningDraggable]).
 ///
 /// 🗣️I-147 (유저 2026-10-30): 「패널의 아이콘 작은거 버튼있잖아. 그 위에
@@ -75,12 +77,17 @@ class LiftingGripBand<T extends Object> extends StatefulWidget {
     required this.data,
     required this.chip,
     required this.nearby,
+    required this.shape,
     this.atBottom = false,
     this.edgeOutline = 0,
     this.onLifted,
   });
 
   final Key gripKey;
+
+  /// The shape of the thing the band stands in, whose corners cut it —
+  /// laid over the whole of that thing ([Positioned.fill]).
+  final RoundedSuperellipseBorder shape;
 
   /// What the band carries; null for a thing that cannot be lifted, which
   /// keeps the target's footprint and never arms.
@@ -145,51 +152,45 @@ class _LiftingGripBandState<T extends Object>
       cursor: _armed ? SystemMouseCursors.grab : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: SizedBox(
-        key: widget.gripKey,
-        height: GripBand.hitExtent,
-        // The TARGET is a constant 8px of the edge; the band inside it
-        // grows toward the frame, so a pointer resting on the grip never
-        // finds the thing it is over moving out from under it.
-        //
-        // The band itself starts where an outline over that edge ends
-        // (F-257, [EditorPanelTabs.stripEdgeOutline]) — the target does
-        // not move for it.
-        child: Padding(
-          padding: widget.atBottom
-              ? EdgeInsets.only(bottom: widget.edgeOutline)
-              : EdgeInsets.only(top: widget.edgeOutline),
-          child: Align(
-            alignment: widget.atBottom
-                ? Alignment.bottomCenter
-                : Alignment.topCenter,
-            child: _band(),
+      // The TARGET is a constant 8px of the edge; the band inside it grows
+      // toward the frame, so a pointer resting on the grip never finds the
+      // thing it is over moving out from under it.
+      child: SizedBox(key: widget.gripKey, height: GripBand.hitExtent),
+    );
+    // A pointer meets the band in the thing's shape, as it met it inside
+    // the thing's clip.
+    return SuperellipseHit(
+      shape: widget.shape,
+      child: Stack(
+        children: [
+          Positioned.fill(child: _band()),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: widget.atBottom ? null : 0,
+            bottom: widget.atBottom ? 0 : null,
+            child: switch (widget.data) {
+              null => grip,
+              final data => _lifting(data, grip),
+            },
           ),
-        ),
+        ],
       ),
     );
-    return switch (widget.data) {
-      null => grip,
-      final data => _lifting(data, grip),
-    };
   }
 
   Widget _band() => ValueListenableBuilder<bool>(
     valueListenable: widget.nearby,
-    builder: (context, nearby, _) => SizedBox(
-      // BOTH axes, not just the height. `Align` hands its child LOOSE
-      // constraints, and a `ColoredBox` with no child takes
-      // `constraints.smallest` — so a band told only how THICK to be laid
-      // out 0px wide. It was coloured correctly, on the right edge,
-      // climbing the right ladder, and invisible: the whole handle simply
-      // did not exist on screen (유저, R4 #6).
-      //
-      // ⚠️Third time this trap has bitten: R1a collapsed a grip's HEIGHT
-      // the same way. A `ColoredBox` is a leaf — it never has a size of its
-      // own to fall back on.
-      width: double.infinity,
-      height: _bandExtent,
-      child: ColoredBox(color: _bandColor(nearby)),
+    builder: (context, nearby, _) => CustomPaint(
+      painter: _GripBandPainter(
+        shape: widget.shape.borderRadius.resolve(
+          Directionality.maybeOf(context),
+        ),
+        color: _bandColor(nearby),
+        extent: _bandExtent,
+        edgeOutline: widget.edgeOutline,
+        atBottom: widget.atBottom,
+      ),
     ),
   );
 
@@ -212,4 +213,49 @@ class _LiftingGripBandState<T extends Object>
     },
     child: grip,
   );
+}
+
+/// The band: the thing's shape, filled where the band lies along its edge
+/// — the band starting where an outline over that edge ends (F-257,
+/// `EditorPanelTabs.stripEdgeOutline`).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10: the band is cut by the
+/// thing's corners as the shape's own fill, not by clipping it to the shape
+/// — the tab and the strip's buttons stand in still regions
+/// ([SuperellipseClip]). ↩️It was a [ColoredBox] the thing clipped.
+class _GripBandPainter extends CustomPainter with RepaintOnProps {
+  const _GripBandPainter({
+    required this.shape,
+    required this.color,
+    required this.extent,
+    required this.edgeOutline,
+    required this.atBottom,
+  });
+
+  /// The corners of the thing the band runs along.
+  final BorderRadius shape;
+  final Color color;
+  final double extent;
+  final double edgeOutline;
+  final bool atBottom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (color.a == 0) {
+      return;
+    }
+    final from = atBottom ? size.height - edgeOutline - extent : edgeOutline;
+    canvas.drawRSuperellipseCut(
+      shape.toRSuperellipse(Offset.zero & size),
+      Rect.fromLTWH(0, from, size.width, extent),
+      Paint()..color = color,
+    );
+  }
+
+  /// The band is painted; the target under it is what a pointer meets.
+  @override
+  bool? hitTest(Offset position) => false;
+
+  @override
+  Object get props => (shape, color, extent, edgeOutline, atBottom);
 }

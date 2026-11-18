@@ -91,7 +91,7 @@ void main() {
   };
 
   void fold(EditorSessionManager s) =>
-      setRowFolds(s, _b, collapsed: true);
+      setRowFolds(s, _b, foldedAttaches: everySide);
 
   test('folded, the base\'s eye is the group\'s — every rider goes where the '
       'base goes, off and back on, as ONE undo', () {
@@ -145,6 +145,18 @@ void main() {
     expect(eyes(s), {_a: true, _b: false, _below: true, _above: true});
   });
 
+  // I-175: a base folds each side on its own. A rider is the base's to
+  // set while the fold shuts it away — so a side left open keeps its own.
+  test('folded on one side, the base\'s eye is that side\'s — a rider on '
+      'the open side keeps its own', () {
+    final s = session();
+    setRowFolds(s, _b, foldedAttaches: {AttachedPlacement.above});
+
+    SessionRowButtonPresses(s).toggleVisibility(_b);
+
+    expect(eyes(s), {_a: true, _b: false, _below: true, _above: false});
+  });
+
   // 🚨F-266 (유저 2026-10-03): 「어태치 레이어가 있을떄, 기준레이어
   // 접혀있을때 비지블 on off가 내부 어태치된 레이어들한테도 적용되는데, 이거
   // 불투명도 조절도 똑같이 접혀있을때 모두한테 적용되도록. 접혀있을떄만」 —
@@ -191,6 +203,15 @@ void main() {
 
       presses.commitOpacity(_b, 0.4);
       expect(strengths(s), {_a: 1.0, _b: 0.4, _below: 1.0, _above: 1.0});
+    });
+
+    test('folded on one side, the base\'s slider is that side\'s (I-175)', () {
+      final s = session();
+      setRowFolds(s, _b, foldedAttaches: {AttachedPlacement.below});
+
+      SessionRowButtonPresses(s).commitOpacity(_b, 0.4);
+
+      expect(strengths(s), {_a: 1.0, _b: 0.4, _below: 0.4, _above: 1.0});
     });
 
     test('pressed inside the row selection, every selected row\'s slider '

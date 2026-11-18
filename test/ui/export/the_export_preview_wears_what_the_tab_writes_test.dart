@@ -171,7 +171,6 @@ void main() {
     await openTab(tester, 'cels');
     expect(tester.exportPreviewDocument!.shape, ExportPreviewShape.single);
     expect(find.byKey(transport), findsNothing);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a page is the pixels its FILE is written at: the camera\'s, '
@@ -204,7 +203,6 @@ void main() {
       isFalse,
       reason: 'a document is its paper',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a tab is another subject: its picture does not linger under '
@@ -225,7 +223,6 @@ void main() {
     expect(identical(tester.exportPreviewImage, sequence), isFalse);
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a setting of the tab stood on asks the picture again, in its '
@@ -260,7 +257,6 @@ void main() {
     expect(tester.exportPreviewImage, isNotNull);
     expect(identical(tester.exportPreviewImage, before), isFalse);
     expect(loading, findsNothing);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a cel\'s plate is its file — and a file the run does not '
@@ -284,7 +280,6 @@ void main() {
 
     await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
     expect(tester.exportPreviewNameAbsent, isFalse);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the conte: the PDF is one name whatever page is up; as '
@@ -302,7 +297,6 @@ void main() {
     expect(tester.exportPreviewName, 'Project_p2.png');
     await press(tester, 'export-preview-previous-page-button');
     expect(tester.exportPreviewName, 'Project_p1.png');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with nothing to write the panel says so in the tab\'s own '
@@ -323,6 +317,5 @@ void main() {
       findsOneWidget,
     );
     expect(tester.exportPreviewName, isNull);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

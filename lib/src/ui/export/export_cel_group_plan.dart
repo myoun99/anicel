@@ -18,6 +18,7 @@ import '../../models/timeline_coverage.dart';
 import '../../models/xdts_sheet_half.dart';
 import '../../services/commands/link_mirror.dart'
     show linkCounterpartIn, linkedCutGroupInTrackOrder;
+import '../../services/cut_frame_composite_plan.dart' show exposedCelIdAt;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'export_cels_selection.dart';
@@ -323,7 +324,15 @@ class ExportCelGroupPlan {
 ///   so the honest correspondence is whatever it EXPOSES where the axis cel
 ///   first shows (what you see when that cel is up). 유저 2026-09-09: 「1이랑
 ///   2에는 프리 부속 레이어의 같은 그림이 적용되있도록」.
+///
+/// 🐞EXPOSES AS [cut]'s PICTURE READS IT ([exposedCelIdAt]) — a synced attach
+/// row through its own base's exposure and its cell links. Till 2026-11-16
+/// this read the member's OWN timeline, which a synced attach row keeps
+/// empty, so a 용지-작감 riding 용지-LO laid nothing under the LO 작감
+/// filter (F-594 ②, 유저 2026-11-15: 「코드대로 작동해야하는 상황에서
+/// 그러지 않았음」).
 Frame? celGroupMemberFrame({
+  required Cut cut,
   required Layer base,
   required Layer member,
   required Frame baseFrame,
@@ -347,7 +356,10 @@ Frame? celGroupMemberFrame({
     // defined counterpart for it.
     return null;
   }
-  return byId(member, exposedFrameIdAt(member.timeline, firstExposure));
+  return byId(
+    member,
+    exposedCelIdAt(cut: cut, layerId: member.id, frameIndex: firstExposure),
+  );
 }
 
 /// The frame of its cut [frameId] FIRST shows on [axis]'s timeline, or null
@@ -695,6 +707,7 @@ _PlacedCel? _placedIn(List<_BundleIn> group, Frame axisFrame) {
     frames: [
       for (final member in shown.bundle.members)
         celGroupMemberFrame(
+          cut: shown.cut,
           base: shown.bundle.axis,
           member: member,
           baseFrame: baseFrame,

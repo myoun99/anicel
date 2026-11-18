@@ -1,0 +1,300 @@
+//! A frame's last picture on the engine (gpu-export-path ①⑵): a frame the
+//! export makes ([`Shown::blank`]) and a picture laid over it at a
+//! strength, under a cover where one is given — its ground, the cut's
+//! picture cut at the canvas's edge, what is drawn over it, a track's
+//! units and a fade. `lay.wgsl` has the law.
+
+use std::ops::Range;
+
+use super::{Picture, Pipelines, Shown};
+use crate::device::Engine;
+use crate::fail;
+use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::shared::{
+    Encoded, ISQRT_WGSL, bands, buffer_holds, encode, fits, flat, plane, room, whole, words_bound,
+    words_buffer,
+};
+
+/// How much of what is laid each pixel of a frame takes: a byte each, four
+/// a word, the low byte first — the canvas's edge as a view cuts it, which
+/// the app rasters ([`Lay::run`]).
+pub struct Cover {
+    bytes: wgpu::Buffer,
+    width: u32,
+    height: u32,
+}
+
+impl Cover {
+    /// `alpha`, a byte a pixel of `picture` row after row — none, with why,
+    /// unless it holds as many.
+    pub(crate) fn of(engine: &Engine, alpha: &[u8], picture: Picture) -> Option<Self> {
+        picture.check()?;
+        let pixels = picture.pixels();
+        if alpha.len() as u64 != pixels {
+            return fail(format!(
+                "a {}x{} cover is {pixels} bytes, not {}",
+                picture.width,
+                picture.height,
+                alpha.len()
+            ));
+        }
+        let mut words = vec![0u32; alpha.len().div_ceil(4)];
+        for (at, &byte) in alpha.iter().enumerate() {
+            words[at / 4] |= u32::from(byte) << (at % 4 * 8);
+        }
+        buffer_holds(engine, words.len() as u64 * 4)?;
+        Some(Self {
+            bytes: words_buffer(engine, "export cover", &words, wgpu::BufferUsages::STORAGE),
+            width: picture.width,
+            height: picture.height,
+        })
+    }
+}
+
+impl Shown {
+    /// A frame of `picture` the export makes, nothing laid on it yet — or
+    /// none, with why.
+    pub(crate) fn blank(engine: &Engine, picture: Picture) -> Option<Self> {
+        picture.check()?;
+        let bytes = picture.pixels() * 4;
+        buffer_holds(engine, bytes)?;
+        Some(Self::rgba(plane(engine, "export frame", bytes), picture))
+    }
+
+    /// `rgba`, a picture's premultiplied pixels four bytes each, red first,
+    /// row after row — what the app rasters to lay over a frame — or none,
+    /// with why, unless it holds `picture`'s.
+    pub(crate) fn uploaded(engine: &Engine, rgba: &[u8], picture: Picture) -> Option<Self> {
+        picture.check()?;
+        let bytes = picture.pixels() * 4;
+        if rgba.len() as u64 != bytes {
+            return fail(format!(
+                "a {}x{} picture is {bytes} bytes, not {}",
+                picture.width,
+                picture.height,
+                rgba.len()
+            ));
+        }
+        buffer_holds(engine, bytes)?;
+        let words: Vec<u32> = rgba
+            .chunks_exact(4)
+            .map(|pixel| u32::from_le_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]))
+            .collect();
+        let rows = words_buffer(engine, "export picture", &words, wgpu::BufferUsages::STORAGE);
+        Some(Self::rgba(rows, picture))
+    }
+
+    /// A frame the export made as it lies — its premultiplied RGBA, row
+    /// after row with nothing between — and its bytes, to read back: what a
+    /// picture of a panel is made of. None, with why, for a frame the
+    /// export did not make.
+    pub(crate) fn laid_rows(&self) -> Option<(wgpu::Buffer, u64)> {
+        if !self.rows.usage().contains(wgpu::BufferUsages::COPY_SRC) || self.stride != self.width {
+            return fail("a frame is read back where the export made it".to_owned());
+        }
+        Some((self.rows.clone(), u64::from(self.width) * u64::from(self.height) * 4))
+    }
+
+    fn rgba(rows: wgpu::Buffer, Picture { width, height }: Picture) -> Self {
+        Self { rows, stride: width, width, height, bgra: false }
+    }
+}
+
+/// What is laid over a frame.
+#[derive(Clone, Copy)]
+pub(crate) enum Source<'a> {
+    /// A frame's picture, its top-left at a pixel of the frame laid onto —
+    /// past its edges where it lies past them.
+    Frame { frame: &'a Shown, x: i32, y: i32 },
+    /// One colour everywhere: straight, red the low byte.
+    Solid(u32),
+}
+
+/// The lay pass.
+pub(crate) struct Lay {
+    pub(super) pipelines: Pipelines,
+}
+
+impl Lay {
+    pub(crate) const fn new() -> Self {
+        Self {
+            pipelines: Pipelines::new(&[ISQRT_WGSL, BLEND_WGSL, include_str!("lay.wgsl")], "lay_pass"),
+        }
+    }
+
+    /// Lays `source` over `onto` at `opacity`, each pixel taking of it what
+    /// `cover` says where one is given — and only within the pixels
+    /// `within`, [left, top, right, bottom), where those are — and submits
+    /// the work — none, with why, where `onto` is not laid as the export
+    /// lays a frame or `cover` is not its size.
+    pub(crate) fn run(
+        &self,
+        engine: &Engine,
+        onto: &Shown,
+        source: Source,
+        opacity: u16,
+        cover: Option<&Cover>,
+        within: Option<[i32; 4]>,
+    ) -> Option<()> {
+        self.laid_by(engine, (onto, source), (opacity, cover, within), room(engine))
+    }
+
+    /// [`Self::run`], each pass binding no more than `room` bytes of a
+    /// plane — a test's fewer than the device's, to see a frame laid a
+    /// band of rows at a time.
+    ///
+    /// 🚨A PASS BINDS THE ROWS IT LAYS, NOT THE FRAMES WHOLE, and lays no
+    /// more rows than each plane's fit a binding (board
+    /// the-engine-binds-a-plane-past-the-device-limit, 2026-11-17: a bake's
+    /// frame of 139,332,960 bytes was refused past lavapipe's 128 MiB). Each
+    /// band's bindings begin where the device lets them, at or before its
+    /// first row, and lay.wgsl counts from there (`onto_base`, `cover_base`;
+    /// the source's by `sx`).
+    pub(super) fn laid_by(
+        &self,
+        engine: &Engine,
+        (onto, source): (&Shown, Source),
+        (opacity, cover, within): (u16, Option<&Cover>, Option<[i32; 4]>),
+        room: u64,
+    ) -> Option<()> {
+        if onto.bgra {
+            return fail("a frame is laid onto as the export lays one: RGBA, not BGRA".to_owned());
+        }
+        if let Some(cover) = cover
+            && (cover.width, cover.height) != (onto.width, onto.height)
+        {
+            return fail(format!(
+                "a {}x{} cover is not a {}x{} frame's",
+                cover.width, cover.height, onto.width, onto.height
+            ));
+        }
+        let (rows, bgra, stride, [x0, y0, width, height, sx, sy], solid, colour) = match source {
+            Source::Frame { frame, x, y } => (
+                Some(&frame.rows),
+                frame.bgra,
+                frame.stride,
+                overlap(region(onto, within), (frame.width, frame.height), (x, y)),
+                0,
+                0,
+            ),
+            Source::Solid(colour) => (
+                None,
+                false,
+                0,
+                overlap(region(onto, within), (onto.width, onto.height), (0, 0)),
+                1,
+                colour,
+            ),
+        };
+        if width == 0 || height == 0 {
+            return Some(());
+        }
+        let step = u64::from(engine.device().limits().min_storage_buffer_offset_alignment);
+        // The words of a plane `stride` words a row that rows `top` to
+        // `bottom` hold from `left` on, `width` of each.
+        let words_of = |stride: u32, (left, top, bottom): (u32, u32, u32)| {
+            let (stride, left, top, last) =
+                (u64::from(stride), u64::from(left), u64::from(top), u64::from(bottom - 1));
+            top * stride + left..last * stride + left + u64::from(width)
+        };
+        // The words of the frame laid onto, of the source — none where it
+        // lays a colour — and of the cover — none where it takes none — a
+        // band of the frame's rows lies on: a cover's a byte a pixel of the
+        // frame's, four a word.
+        let planes = |band: Range<u32>| {
+            let onto_words = words_of(onto.stride, (x0, band.start, band.end));
+            let source_top = sy + (band.start - y0);
+            let source = rows.map(|_| words_of(stride, (sx, source_top, source_top + band.len() as u32)));
+            let cover = cover.map(|_| onto_words.start / 4..onto_words.end.div_ceil(4));
+            (onto_words, source, cover)
+        };
+        let bands = bands(y0..y0 + height, 1, (room, step), |band| {
+            let (onto, source, cover) = planes(band);
+            [Some(onto), source, cover].into_iter().flatten().collect()
+        })?;
+        let groups = |band: &Range<u32>| (width.div_ceil(64), band.end - band.start);
+        fits(engine, &[], bands.iter().map(groups))?;
+        // A binding the pass reads nothing of where it lays a colour, or
+        // takes no cover.
+        let nothing = plane(engine, "export lay nothing", 4);
+        let mut params = Vec::new();
+        let mut bound = Vec::new();
+        for band in &bands {
+            let (top, bottom) = (band.start, band.end);
+            let (onto_words, source_words, cover_words) = planes(band.clone());
+            let (onto_bound, onto_base) = words_bound(&onto.rows, onto_words, step);
+            let source_top = sy + (top - y0);
+            let (rows_bound, source_base) = match (rows, source_words) {
+                (Some(rows), Some(words)) => words_bound(rows, words, step),
+                _ => (nothing.as_entire_binding(), 0),
+            };
+            let (cover_bound, cover_base) = match (cover, cover_words) {
+                (Some(cover), Some(words)) => words_bound(&cover.bytes, words, step),
+                _ => (nothing.as_entire_binding(), 0),
+            };
+            let words = [
+                stride,
+                onto.stride,
+                x0,
+                top,
+                width,
+                bottom - top,
+                sx,
+                source_top,
+                u32::from(opacity),
+                solid,
+                colour,
+                u32::from(cover.is_some()),
+                onto_base as u32,
+                cover_base as u32,
+                source_base as u32,
+                0,
+            ];
+            params.push(words_buffer(engine, "export lay params", &words, wgpu::BufferUsages::UNIFORM));
+            bound.push([(1, rows_bound), (2, onto_bound), (3, cover_bound)]);
+        }
+        let pipeline = self.pipelines.reading(engine, bgra);
+        let passes: Vec<Encoded> = params
+            .iter()
+            .zip(bound)
+            .zip(&bands)
+            .map(|((params, planes), band)| {
+                let mut entries = whole(&[(0, params)]);
+                entries.extend(
+                    planes.map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource }),
+                );
+                Encoded { pipeline, bound: entries, groups: flat(groups(band)) }
+            })
+            .collect();
+        encode(engine, &passes);
+        Some(())
+    }
+}
+
+/// The pixels of `onto` a pass may lay — [left, top, right, bottom) — all
+/// of it, cut to `within` where that is given.
+fn region(onto: &Shown, within: Option<[i32; 4]>) -> [i64; 4] {
+    let [left, top, right, bottom] =
+        within.map_or([i64::MIN, i64::MIN, i64::MAX, i64::MAX], |edges| edges.map(i64::from));
+    [left.max(0), top.max(0), right.min(i64::from(onto.width)), bottom.min(i64::from(onto.height))]
+}
+
+/// Where a picture of `width` x `height`, its top-left at (`x`, `y`),
+/// meets `region`: the box's top-left, its size, and the picture's pixel
+/// at its top-left — an empty box where they do not meet.
+fn overlap([left, top, right, bottom]: [i64; 4], (width, height): (u32, u32), (x, y): (i32, i32)) -> [u32; 6] {
+    let span = |at: i32, own: u32, low: i64, high: i64| {
+        let at = i64::from(at);
+        let start = at.max(low);
+        let end = (at + i64::from(own)).min(high);
+        if end <= start {
+            return (0, 0, 0);
+        }
+        // Inside u32: the box lies in the frame laid onto, and what is
+        // skipped of the picture is under its own size.
+        (start as u32, (end - start) as u32, (start - at) as u32)
+    };
+    let (x0, width, sx) = span(x, width, left, right);
+    let (y0, height, sy) = span(y, height, top, bottom);
+    [x0, y0, width, height, sx, sy]
+}

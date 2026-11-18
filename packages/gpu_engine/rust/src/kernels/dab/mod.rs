@@ -32,8 +32,12 @@
 // which 관제 opens (gpu-canonical-store 21:41).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod abi;
 pub(crate) mod blur;
+pub(crate) mod landing;
+pub(crate) mod mix;
 pub(crate) mod stamp;
+pub(crate) mod stroke;
 #[cfg(test)]
 mod tests;
 
@@ -45,8 +49,9 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
+use mix::MixRun;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, whole,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, sixteen_bit, whole,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -54,12 +59,16 @@ const TILE: i32 = 128;
 const HEAD_WORDS: usize = 7;
 const TILE_WORDS: usize = 7;
 const DAB_WORDS: usize = 29;
+/// Where a record's colour is, its alpha the word after (dab.wgsl's
+/// DAB_COLOUR, DAB_NORM): what a mixing brush's run puts (`mix`).
+const COLOUR_AT: u32 = 7;
 const NO_TABLE: u32 = u32::MAX;
 /// pile.wgsl's: the plan, the run, then the pages — of the planes, of their
 /// view and of the second plane, as many of each.
 const PILE_PAGES_AT: u32 = 2;
 
-// The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
+// A dab's flags, as dab.wgsl reads them (the numbers were the C dab
+// kernel's QA_DAB_FLAG_* and outlived it).
 const ERASE: u32 = 1;
 const ROUND: u32 = 2;
 const THRESHOLD: u32 = 32;
@@ -112,7 +121,7 @@ impl Texture {
         Some(Texture {
             id: MADE.fetch_add(1, Ordering::Relaxed),
             side,
-            words: texels.iter().map(|&texel| wide(texel)).collect(),
+            words: texels.iter().map(|&texel| sixteen_bit(texel)).collect(),
         })
     }
 }
@@ -137,7 +146,7 @@ pub(crate) struct Paper<'a> {
     pub(crate) height: bool,
 }
 
-/// A stroke's second tip (`BrushSecondStroke`, `qa_dual_view_rows`): the
+/// A stroke's second tip (`BrushSecondStroke`, `dualViewAlpha`): the
 /// plane its dabs pile on — alpha alone, a word a pixel, on pages as the
 /// planes, a tile at its page and slot —, and the view the stroke shows of
 /// the two: the second's
@@ -179,7 +188,7 @@ pub(crate) enum Edge {
     Contrast(f64),
 }
 
-/// A dab as the app has it (`qa_dab_spec`).
+/// A dab as the app has it (`BrushDabPlan`).
 #[derive(Clone, Copy)]
 pub(crate) struct Dab<'a> {
     pub(crate) centre: [f64; 2],
@@ -333,12 +342,12 @@ impl Plans {
                 (placed, floor) = (HashMap::new(), held);
                 placing(&textures, &mut placed, &mut floor)?;
                 let words = HEAD_WORDS + planned_with_more(&placed)?.frame.len() + held;
-                let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
+                let most = engine.device().limits().max_storage_buffer_binding_size as usize / 4;
                 if words > most {
                     return fail(format!("a plan of {words} words exceeds a binding's {most}"));
                 }
                 self.capacity = (2 * words).min(most);
-                self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
+                self.buffer = Some(engine.device().create_buffer(&wgpu::BufferDescriptor {
                     label: Some("dab plan"),
                     size: self.capacity as u64 * 4,
                     // A uniform too: a pile's passes' own words are on it.
@@ -382,6 +391,10 @@ impl Dabs {
     /// bytes: `planes` two words a pixel and `view` one, a tile at its page
     /// and slot of each. Submits the work, the caller waits. A dab's pixels
     /// on a tile not among `tiles` are the caller's to have given.
+    ///
+    /// A mixing brush's steps run first, where `mix` has them, and colour
+    /// the records of the dabs it names ([`mix::Mixes::run`]) — run where
+    /// no dab reaches a tile as well: the reservoir is a chain.
     pub(crate) fn pile(
         &mut self,
         engine: &Engine,
@@ -390,9 +403,11 @@ impl Dabs {
         paper: Option<&Paper>,
         second: Option<&Second>,
         (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
+        mix: Option<MixRun>,
     ) -> Option<()> {
         let pages_per_pass = self.widest.planes.per_pass();
-        self.pile_by(engine, tiles, dabs, (paper, second), (planes, view), pages_per_pass)
+        let (pages, papers) = ((planes, view), (paper, second));
+        self.pile_by(engine, tiles, dabs, papers, pages, pages_per_pass, mix)
     }
 
     /// `pile`, a pass binding no more than `pages_per_pass` pages of each —
@@ -406,9 +421,17 @@ impl Dabs {
         (paper, second): (Option<&Paper>, Option<&Second>),
         (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
         pages_per_pass: usize,
+        mix: Option<MixRun>,
     ) -> Option<()> {
+        let colours = || mix.iter().flat_map(|mix| mix.colours);
+        if let Some(&(dab, _)) = colours().find(|(dab, _)| *dab >= dabs.len()) {
+            return fail(format!("a mixing step colours dab {dab} of {}", dabs.len()));
+        }
         if tiles.is_empty() {
-            return Some(());
+            return match mix {
+                Some(mix) => mix.mixes.run(engine, mix.mixing, mix.ground, None),
+                None => Some(()),
+            };
         }
         on_pages(tiles, planes)?;
         on_pages(tiles, view)?;
@@ -420,7 +443,7 @@ impl Dabs {
         }
         // A pass a run of the tiles, in their order: on no more pages than it
         // binds, and no more tiles than a dispatch reaches.
-        let most = engine.device.limits().max_compute_workgroups_per_dimension as usize;
+        let most = engine.device().limits().max_compute_workgroups_per_dimension as usize;
         let runs = runs(tiles.iter().map(|tile| Some(tile.at.page)), None, pages_per_pass, most);
         // Each tile's k: its page's binding among its run's.
         let ks: Option<Vec<u32>> = runs
@@ -438,9 +461,12 @@ impl Dabs {
         // page whole, of 106 to 121 (11-06, the main PC, by turns). The
         // second of two such uniforms, the other a blur dab's dispatches'
         // (blur.rs).
-        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
+        let stride = engine.device().limits().min_uniform_buffer_offset_alignment as usize / 4;
         let runs_at = Cell::new(0);
+        let records = Cell::new(Vec::new());
         let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
+            let place = |&(dab, step): &(usize, u32)| (plan.record_at(dab) + COLOUR_AT, step);
+            records.set(colours().map(place).collect());
             let ks_at = plan.end();
             let at = (ks_at + ks.len()).next_multiple_of(stride);
             runs_at.set(at);
@@ -452,6 +478,9 @@ impl Dabs {
             }
             Some(words)
         })?;
+        if let Some(mix) = mix {
+            mix.mixes.run(engine, mix.mixing, mix.ground, Some((plan, &records.take())))?;
+        }
         let dispatches: Vec<Encoded> = runs
             .iter()
             .enumerate()
@@ -614,7 +643,7 @@ fn planned(
         ]);
     }
     if let Some(second) = second {
-        head[5..].copy_from_slice(&[second.mode, wide(second.density)]);
+        head[5..].copy_from_slice(&[second.mode, sixteen_bit(second.density)]);
     }
     let listed: usize = lists.iter().map(Vec::len).sum();
     let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
@@ -679,15 +708,10 @@ impl Tables {
             return place;
         }
         let place = (self.at + self.words.len()) as u32;
-        self.words.extend(table.iter().map(|&entry| wide(entry)));
+        self.words.extend(table.iter().map(|&entry| sixteen_bit(entry)));
         self.placed.insert(key, place);
         place
     }
-}
-
-/// A number on 0..=1 on the 16-bit scale, rounded once.
-fn wide(value: f64) -> u32 {
-    (value * 65535.0).round() as u32
 }
 
 /// A scale as `per_unit` × 2^point in an integer under [`SCALE_BOUND`],
@@ -727,13 +751,13 @@ fn record(
         flags,
         red | green << 8 | blue << 16,
         alpha * 257,
-        wide(dab.opacity),
-        wide(dab.flow),
+        sixteen_bit(dab.opacity),
+        sixteen_bit(dab.flow),
         contrast,
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
     words[26] = NO_TABLE;
-    words[28] = dab.density.map_or(NO_TABLE, wide);
+    words[28] = dab.density.map_or(NO_TABLE, sixteen_bit);
     // How far from the centre anything is laid, and the major axis's reach.
     let (extent, major) = match dab.shape {
         Shape::Square => return Some(words),

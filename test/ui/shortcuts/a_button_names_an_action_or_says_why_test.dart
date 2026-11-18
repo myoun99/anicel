@@ -159,6 +159,9 @@ const ledger = <String, Why>{
   // and runs nothing.
   "brush/brush_settings_panel.dart | 'brush-detail-button'":
       Why.aSecondLevel,
+  // The tool size rack's ＋ (I-170): it opens the number pad on the size in
+  // hand and runs nothing — the rack takes what the pad's ✓ hands back.
+  'panels/tool_size_preset_panel.dart | addKey': Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
@@ -181,11 +184,13 @@ const ledger = <String, Why>{
       Why.inAWindow,
   "dialogs/memory_settings_section.dart | 'memory-allowance-automatic'":
       Why.inAWindow,
-  'shortcuts/shortcut_settings_dialog.dart | '
-          "'shortcut-record-\${definition.id}'":
-      Why.inAWindow,
+  // The ⌨ of a row and of the search by key (I-168): one button, built by
+  // `_recordButton`.
+  'shortcuts/shortcut_settings_dialog.dart | keyValue': Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-reset-\${definition.id}'":
+      Why.inAWindow,
+  "shortcuts/shortcut_settings_dialog.dart | 'shortcut-search-by-key-clear'":
       Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-unassign-\${definition.id}'":
@@ -228,6 +233,30 @@ const ledger = <String, Why>{
       Why.declined,
   "widgets/page_turn_bar.dart | '\$keyPrefix-previous-page-button'":
       Why.declined,
+  // 🗣️F-580 (유저 2026-11-10): 「브러시 가져오기 버튼등이 있는 브러시
+  // 라이브러리, 단축키로 있을 필요없어보이니 해당 항목 깔끔하게 삭제 …
+  // 패널 안의 미디어-임포트 이런식으로 패널 안 항목도 깔끔하게 삭제」 — the
+  // shelves 「브러시 라이브러리」 and 「패널 안」 with every button they held
+  // (I-148's reset beside the wrench was the library's too).
+  "brush/brush_preset_panel.dart | 'brush-preset-import-button'":
+      Why.declined,
+  "brush/brush_preset_panel.dart | 'brush-preset-save-button'": Why.declined,
+  "brush/brush_settings_panel.dart | 'brush-reset-button'": Why.declined,
+  "color/color_palettes.dart | 'palette-new'": Why.declined,
+  "conte/conte_tab_host.dart | 'conte-format-button'": Why.declined,
+  "envelope/cut_envelope_tab_host.dart | 'envelope-format-button'":
+      Why.declined,
+  "media/media_pool_panel.dart | 'media-import-button'": Why.declined,
+  // The pool's two view buttons (asset-placement-presets Q6): a way of
+  // looking at the panel, as the import button is a way into it.
+  "media/media_pool_panel.dart | 'media-view-icons'": Why.declined,
+  "media/media_pool_panel.dart | 'media-view-presets'": Why.declined,
+  "timesheet_tab_host.dart | 'timesheet-format-button'": Why.declined,
+  "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'":
+      Why.declined,
+  // The tool size rack's delete (I-170, 2026-11-14): a button inside a
+  // panel, as the pool's import above is — F-580's 「패널 안 항목」.
+  'panels/tool_size_preset_panel.dart | deleteKey': Why.declined,
 };
 
 void main() {

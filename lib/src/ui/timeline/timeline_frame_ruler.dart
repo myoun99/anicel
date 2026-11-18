@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import '../../models/cut_id.dart';
 import '../widgets/tick_layer.dart';
 import 'frame_ruler_view.dart';
+import 'ruler_marker_layer.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline_frame_header_row.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_grid_metrics.dart';
@@ -27,12 +29,14 @@ class TimelineFrameRuler extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.dragPreview,
     this.previewCutId,
     this.movieEndUnder,
     this.noriShiro,
     this.axis = Axis.horizontal,
     this.playhead,
+    this.markers,
   });
 
   final int frameStartIndex;
@@ -53,6 +57,10 @@ class TimelineFrameRuler extends StatelessWidget {
   /// the quantized bucket — pass the full bounds, repaint per crossing.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the strip is laid in — its host's rows', handed to the
+  /// header row ([TimelineFrameHeaderRow.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   /// End-line live follow (UI-R18 #14): while a trim drag targets
   /// [previewCutId], the ruler's boundary line rides the previewed
@@ -78,6 +86,10 @@ class TimelineFrameRuler extends StatelessWidget {
   /// header row; null mounts no writing.
   final ValueListenable<int?>? playhead;
 
+  /// The ruler's markers and their verbs (I-169), handed to the header row;
+  /// null mounts none.
+  final RulerMarkerHooks? markers;
+
   /// The frame axis direction — horizontal for the timeline ruler, vertical
   /// for the X-sheet's frame-number rail.
   final Axis axis;
@@ -100,7 +112,9 @@ class TimelineFrameRuler extends StatelessWidget {
           pages: pages,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          geometry: geometry,
           playhead: playhead,
+          markers: markers,
         ),
         // 🚨F-244: the two marks a drag moves are asked on EVERY step of every
         // drag, so they lay out and paint on a layer of their own — rebuilt

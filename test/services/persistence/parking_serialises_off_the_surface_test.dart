@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -26,14 +27,18 @@ import 'package:anicel/src/services/persistence/compress_in_worker.dart';
 /// ⚠️**THE SPEED-UP IS NOT A "MOVE".** `TransferableTypedData.fromList`
 /// copies its lists into one external buffer and the caller's list stays
 /// readable — I asserted the opposite here first and the probe said no.
-/// What it buys is the crossing (see `compressAnicelPayloadInWorker` for
-/// the table). That is a timing property, so it is documented there
-/// rather than pinned as a test; what IS pinned here is that the blob made
-/// around the worker's bytes is the one made here.
+/// What it buys is the crossing (see `compressCelOnAWorker` for the
+/// table). That is a timing property, so it is documented there rather
+/// than pinned as a test; what IS pinned here is that the blob made around
+/// the worker's bytes is the one made here.
 ///
 /// ↩️It also pinned that the stream off the surface was the one an entry
 /// wrote: that second writer went with format 29 (2026-10-24), when every
 /// blob came to be made from a picture.
+///
+/// ↩️The stream was made here and only compressed on the worker; the worker
+/// makes it now, of a copy handed to it a batch of tiles at a time (card
+/// `the-cooling-serialises-each-hot-cel-on-the-ui-isolate`, 2026-11-13).
 void main() {
   const tileSize = 128;
   const key = BrushFrameKey(
@@ -63,13 +68,18 @@ void main() {
 
   test('a blob built around worker bytes is byte-identical to one made '
       'here', () async {
+    // The road production takes: a worker of its own.
+    debugWorkersRunHere = false;
+    addTearDown(() => debugWorkersRunHere = true);
     final surface = celOf(2);
     final inline = AnicelCelBlob.ofSurface(key, surface);
-
-    final body = encodeCelEntryFromSurface(key, surface);
     // Anti-vacuity: this is a real payload, not an empty buffer.
-    expect(body.length, greaterThan(2 * BitmapTile.bytesFor(tileSize)));
-    final compressed = await compressAnicelPayloadInWorker(body);
+    expect(
+      encodeCelEntryFromSurface(key, surface).length,
+      greaterThan(2 * BitmapTile.bytesFor(tileSize)),
+    );
+
+    final compressed = await compressCelOnAWorker(key, surface);
     final assembled = AnicelCelBlob.fromCompressedBody(
       key: key,
       canvasSize: surface.canvasSize,

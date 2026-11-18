@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 
+import '../../helpers/a_row_by_its_name.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
 
@@ -157,14 +158,14 @@ void main() {
     expect(from, findsOneWidget, reason: '⛔전제: $rowId shows its Blur');
     expect(past, findsOneWidget, reason: '⛔전제: $rowId shows its Hue');
     final step = tester.getCenter(past).dy - tester.getCenter(from).dy;
-    await tester.drag(from, Offset(0, step));
+    await tester.drag(theNameOf(from), Offset(0, step));
     await tester.pumpAndSettle();
     expect(
       chainOf(session, layerId),
       [blur, hue],
       reason: 'the first drag selected and moved nothing',
     );
-    await tester.drag(from, Offset(0, step));
+    await tester.drag(theNameOf(from), Offset(0, step));
     await tester.pumpAndSettle();
   }
 

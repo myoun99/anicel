@@ -67,6 +67,5 @@ void main() {
       hasLength(2),
       reason: 'CONTROL: both came in',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

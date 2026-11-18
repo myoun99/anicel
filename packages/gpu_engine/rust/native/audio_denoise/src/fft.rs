@@ -43,7 +43,7 @@ impl Fft {
         for (i, twiddle) in twiddles.iter_mut().enumerate() {
             // compute_twiddles: the phase in double, each part rounded once.
             let phase = (-2.0 * std::f64::consts::PI / NFFT as f64) * i as f64;
-            *twiddle = Complex { r: phase.cos() as f32, i: phase.sin() as f32 };
+            *twiddle = Complex { r: libm::cos(phase) as f32, i: libm::sin(phase) as f32 };
         }
         let mut bitrev = [0; NFFT];
         bitrev_table(0, &mut bitrev, 0, 1, &STAGES);

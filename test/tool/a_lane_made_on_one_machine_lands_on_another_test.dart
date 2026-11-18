@@ -448,8 +448,15 @@ void main() {
 
     test('🚨a landed lane leaves the mirror — its offer, its stamp and its '
         'copy — after the merge, and without asking for a login', () {
-      final land = lane.codeOf('cmd_land');
-      final merged = at(land, 'merge --ff-only');
+      final command = lane.codeOf('cmd_land');
+      expect(
+        at(command, r'lanes_landed "$name"'),
+        greaterThan(at(command, 'merge --ff-only')),
+        reason: 'what follows the merge is the one function a bundle runs '
+            'too (A BUNDLE)',
+      );
+      final land = lane.codeOf('lanes_landed');
+      final merged = at(land, r'branch -d "work/$name"');
       final names = at(
         land,
         r'for gone in "sent/$name" "gated/$name" "work/$name"; do',
@@ -472,13 +479,14 @@ void main() {
   });
 
   group('one lane, wherever it was cut', () {
+    // ↩️Nor had any an engine copy of its own, while `furnish` copied the
+    // trunk's C engine in — till the C went (2026-11-13).
     test('🚨`open`, `receive` and `furnish` ready a worktree through one '
-        'function — none has an engine copy or a pub get of its own', () {
+        'function — none has a pub get of its own', () {
       for (final function in ['cmd_open', 'cmd_receive', 'cmd_furnish']) {
         final code = lane.codeOf(function).join('\n');
         expect(code, contains(r'furnish "$p"'), reason: function);
         expect(code, isNot(contains('pub get')), reason: function);
-        expect(code, isNot(contains('ensure_engine')), reason: function);
       }
       final furnish = lane.codeOf('furnish').join('\n');
       expect(furnish, contains(r'resolve_offline "$p"'));
@@ -486,7 +494,6 @@ void main() {
         lane.codeOf('resolve_offline').join('\n'),
         contains('flutter pub get --offline'),
       );
-      expect(furnish, contains(r'ensure_engine "$p"'));
     });
 
     test('a lane\'s directory never nests: the slash of another machine\'s '

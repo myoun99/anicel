@@ -3,9 +3,11 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import '../../../core/rgba_premultiply.dart';
 import '../../../core/sync_image_upload.dart';
+import '../../../models/bitmap_tile.dart';
 import '../../../models/dirty_region.dart';
+import '../../../models/tile_coord.dart';
+import '../../../services/bitmap_surface_geometry.dart' show tilesOfRegion;
 import '../deferred_image_disposal.dart';
 import '../display_resample.dart' show drawImageRectOnThePixelGrid;
 import '../landing_preview.dart';
@@ -64,6 +66,9 @@ class CelTextFloat implements LandingPreview {
   }
 
   @override
+  List<HeldTiles> get heldTiles => [...held.heldTiles, ...?above?.heldTiles];
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CelTextFloat && other.held == held && other.above == above;
@@ -99,27 +104,61 @@ class CelTextFloat implements LandingPreview {
 ///
 /// ⚠️[picture] is let go of by whoever shows this, once it shows it no
 /// more ([letGo]).
-@immutable
 class CelTextLanding implements LandingPreview {
-  const CelTextLanding({
-    required this.picture,
+  CelTextLanding({
+    required Image picture,
+    required this.tiles,
     required this.left,
     required this.top,
-  });
+  }) : _picture = picture,
+       _width = picture.width,
+       _height = picture.height,
+       _straight = null;
+
+  /// [tiles] — where a landing left them, over [region] — shown as they
+  /// stand: nothing of them comes off the engine to be carried, and a
+  /// picture of [straight] is made only for a canvas that asks ([picture]).
+  ///
+  /// 🔬A float on a posed row is its landing, made again at each place a
+  /// hand carries it to, and read back here it was a GPU wait a tile: about
+  /// 187 a frame on S5_BA's paper, a whole-paper float dragged at 360–480 ms
+  /// a frame (Surface Pro 11, 검증/서피스 11-10, flip lane).
+  CelTextLanding.standing(
+    DirtyRegion region,
+    this.tiles,
+    Uint8List Function() straight,
+  ) : _picture = null,
+      _width = region.width,
+      _height = region.height,
+      _straight = straight,
+      left = region.left,
+      top = region.top;
 
   /// The picture of [straight] — rgba of [region], a row its width —
   /// through the door every tile takes ([pictureOf]), so its bytes are the
-  /// bytes the landed tiles are pictured to.
+  /// bytes the landed tiles are pictured to; and those bytes as tiles.
   factory CelTextLanding.of(DirtyRegion region, Uint8List straight) =>
       CelTextLanding(
         picture: pictureOf(
-          _StraightRows(straight, region.width, region.height),
+          StraightRgbaRows(straight, region.width, region.height),
         ),
+        tiles: tilesOfRegion(region, straight),
         left: region.left,
         top: region.top,
       );
 
-  final Image picture;
+  final int _width;
+  final int _height;
+  final Uint8List Function()? _straight;
+  Image? _picture;
+
+  Image get picture => _picture ??= pictureOf(
+    StraightRgbaRows(_straight!(), _width, _height),
+  );
+
+  /// [picture]'s bytes as tiles, where they stand: what the engine lays
+  /// ([heldTiles]).
+  final Map<TileCoord, BitmapTile> tiles;
   final int left;
   final int top;
 
@@ -132,8 +171,8 @@ class CelTextLanding implements LandingPreview {
   Rect get drawnWorldRect => Rect.fromLTWH(
     left.toDouble(),
     top.toDouble(),
-    picture.width.toDouble(),
-    picture.height.toDouble(),
+    _width.toDouble(),
+    _height.toDouble(),
   );
 
   /// Its edge cut on the grid, as the coordinates it stands over are
@@ -152,27 +191,21 @@ class CelTextLanding implements LandingPreview {
     );
   }
 
+  @override
+  List<HeldTiles> get heldTiles => [
+    (
+      tiles: tiles,
+      dx: 0,
+      dy: 0,
+      laying: LaidReplacing(drawnWorldRect),
+    ),
+  ];
+
   /// Lets [picture] go — past the frames that may still draw it
   /// ([DeferredImageDisposer]).
-  void letGo() => DeferredImageDisposer.instance.retire(picture);
-}
-
-/// Straight rgba rows held in a list, as the picture door reads them.
-class _StraightRows implements PictureBytes {
-  _StraightRows(this._straight, this.width, this.height);
-
-  final Uint8List _straight;
-
-  @override
-  final int width;
-
-  @override
-  final int height;
-
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) => use(_straight);
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(premultipliedRgbaCopy(_straight));
+  void letGo() {
+    if (_picture case final made?) {
+      DeferredImageDisposer.instance.retire(made);
+    }
+  }
 }

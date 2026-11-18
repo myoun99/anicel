@@ -103,6 +103,16 @@ class TransformToolOptions {
   /// affine, and a corner keeps the proportions it has.
   bool get isUniform => mode == TransformMode.normal;
 
+  /// The points [mode]'s warp holds, as a list reads them row by row
+  /// (`BoxWarp.asRead`): how many stand in a row and how many rows there
+  /// are — the 퍼스 quad's two by two, a 메쉬 grid's cells and one more each
+  /// way, none in 일반.
+  ({int across, int down}) get warpPoints => switch (mode) {
+    TransformMode.normal => (across: 0, down: 0),
+    TransformMode.perspective => (across: 2, down: 2),
+    TransformMode.mesh => (across: meshColumns + 1, down: meshRows + 1),
+  };
+
   /// 안티앨리어스: [resampleMode] read as the switch every door turns — the
   /// settings' and the box's pill's (I-165) — on for the tent mean, off for
   /// the two-value copy (유저 08-13's polarity).

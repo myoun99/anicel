@@ -10,7 +10,7 @@ import 'brush_stroke_dynamics.dart';
 /// 🚨★★★THE SECOND TIP IS A SECOND STROKE (board
 /// an-imported-pencil-drops-its-second-brush Q3 b, 유저 2026-10-25 「두 번째
 /// 획으로 다시 만든다」) — what the stroke shows of it is beside
-/// `qa_dual_view_rows` (qa_engine.c, ABI 60). This is where its dabs come
+/// `dualViewAlpha` (ABI 60). This is where its dabs come
 /// from, and the ONE place every producer makes them — the live stroke and
 /// the brush list's swatch: the same interpolator the first tip's dabs come
 /// out of walks the first tip's path at the second tip's own size and

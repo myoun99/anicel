@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/no_guides_laid.dart';
 
 /// **CAM (I-89-Q18)** — the camera's work laid over a cel is written into
@@ -82,19 +83,20 @@ void main() {
     addTearDown(session.dispose);
     // One black pixel in the corner: a cel with no artwork has nothing to
     // lay anything over.
-    const tile = 256;
+    const tile = defaultCelTileSize;
     final pixels = Uint8List(tile * tile * 4)..[3] = 255;
     final cut = session.requireActiveCut;
-    session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-      key: session.brushFrameKeyForCut(cut, layerId, drawing.id),
-      previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-          .putTiles([
-            (
-              coord: TileCoord(x: 0, y: 0),
-              tile: BitmapTile(size: tile, pixels: pixels),
-            ),
-          ]),
-    );
+    parkCold(session.renderCaches.brushFrameStore, {
+      session.brushFrameKeyForCut(cut, layerId, drawing.id): BitmapSurface(
+        canvasSize: canvas,
+        tileSize: tile,
+      ).putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(size: tile, pixels: pixels),
+        ),
+      ]),
+    });
     return session;
   }
 

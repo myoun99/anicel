@@ -4,16 +4,14 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 
 /// The device stage, driven for real.
 ///
-/// miniaudio's NULL backend runs the actual callback on an actual thread
+/// The engine's null backend runs the actual callback on an actual thread
 /// with no hardware, so everything below is genuinely exercised on a CI
 /// runner with no sound card: the transport advances, the mixer is called,
 /// the position moves, looping wraps on the sample.
@@ -22,14 +20,8 @@ import '../../helpers/native_engine_path.dart';
 /// the right speaker — that needs hardware and a person. The line is drawn
 /// here on purpose rather than left implied.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -39,7 +31,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   QaAudioDevice openNull({int sampleRate = 48000, int channels = 2}) {
@@ -83,7 +74,7 @@ void main() {
       );
       expect(rate, greaterThan(0));
       device.close();
-    }, skip: skip);
+    });
 
     test('a bogus index FAILS instead of opening something else', () {
       final device = QaAudioDevice.instance!;
@@ -104,7 +95,7 @@ void main() {
         greaterThan(0),
       );
       device.close();
-    }, skip: skip);
+    });
 
     test('name-to-index mapping finds the enumerated device; the helper '
         'maps null and missing names to the default', () {
@@ -173,7 +164,7 @@ void main() {
           );
         }
       }
-    }, skip: skip);
+    });
 
     test('openAudioOutput opens on an unattached NAME — the fallback is to '
         'the system default, never to silence (AUDIO-PRO R4)', () {
@@ -212,7 +203,7 @@ void main() {
         reason: 'no preference is the same default',
       );
       device.close();
-    }, skip: skip);
+    });
   });
 
   group('the device opens and reports itself', () {
@@ -228,13 +219,13 @@ void main() {
       );
       device.close();
       expect(device.isOpen, isFalse);
-    }, skip: skip);
+    });
 
     test('opening twice is idempotent rather than a second device', () {
       final device = openNull();
       expect(device.open(useNullBackend: true), device.sampleRate);
       expect(device.isOpen, isTrue);
-    }, skip: skip);
+    });
   });
 
   group('the transport is the clock', () {
@@ -263,7 +254,7 @@ void main() {
         parked,
         reason: 'a stopped transport must not keep counting',
       );
-    }, skip: skip);
+    });
 
     test('playback starts where it is told, not at zero', () async {
       final device = openNull();
@@ -278,7 +269,7 @@ void main() {
         isTrue,
       );
       expect(device.positionSamples, greaterThanOrEqualTo(start));
-    }, skip: skip);
+    });
 
     test('a seek moves the transport without restarting anything', () async {
       // Because the mixer BUILDS a mix rather than starting clips, seeking
@@ -300,7 +291,7 @@ void main() {
         isTrue,
       );
       expect(device.isPlaying, isTrue, reason: 'a seek must not stop playback');
-    }, skip: skip);
+    });
 
     test('the meter reads the pre-clip bus peak and zeroes on stop '
         '(AUDIO-PRO R2)', () async {
@@ -331,7 +322,7 @@ void main() {
       expect(device.peakFor(0), 0,
           reason: 'a stopped transport meters silence, not a frozen bar');
       expect(device.peakFor(1), 0);
-    }, skip: skip);
+    });
 
     test('a stop point ends playback instead of running on', () async {
       final device = openNull();
@@ -346,7 +337,7 @@ void main() {
         greaterThanOrEqualTo(24000),
         reason: 'it should reach the stop point, not fall short',
       );
-    }, skip: skip);
+    });
 
     test('looping wraps on the sample, not the buffer boundary', () async {
       // The wrap has to land exactly, or every loop pass would drift by up
@@ -375,7 +366,7 @@ void main() {
         lessThanOrEqualTo(12000),
         reason: 'a looping transport must never leave its window',
       );
-    }, skip: skip);
+    });
   });
 
   // board a-start-is-heard-ahead-of-its-first-picture: a run's first sample
@@ -436,7 +427,7 @@ void main() {
         greaterThan(first),
         reason: 'its sound begins on its first sample',
       );
-    }, skip: skip);
+    });
 
     test('🚨the sound begins ON its first sample — where the lead ends '
         'inside a callback, a sound sixteen samples long there is heard',
@@ -491,7 +482,7 @@ void main() {
         reason: 'a lead held silent to the end of the callback it ends in '
             'drops what the run sounds first',
       );
-    }, skip: skip);
+    });
 
     test('a loop wraps to its first sample: the lead is its first lap\'s '
         'alone', () async {
@@ -518,7 +509,7 @@ void main() {
         isFalse,
         reason: 'wrapped into the lead, every lap would start silent',
       );
-    }, skip: skip);
+    });
 
     test('the meter reads silence through the lead, after a run that '
         'sounded', () async {
@@ -549,7 +540,7 @@ void main() {
         [0, 0],
         reason: 'the bars must not hold the last run\'s sound',
       );
-    }, skip: skip);
+    });
 
     test('a seek ends the lead: where it lands is heard', () async {
       final device = openNull();
@@ -567,7 +558,7 @@ void main() {
         lessThan(480000 - 48000),
         reason: '⛔premise: nowhere near where the lead would have ended',
       );
-    }, skip: skip);
+    });
   });
 
   // 유저 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로
@@ -601,7 +592,7 @@ void main() {
         lessThan(Duration.microsecondsPerSecond),
         reason: 'stamped on the clock that says now, a moment ago',
       );
-    }, skip: skip);
+    });
 
     test('the points move on with the stair, a step at a time', () async {
       final device = openNull();
@@ -622,7 +613,7 @@ void main() {
       );
       final next = device.clockPoint!;
       expect(next.atMicros, greaterThan(first.atMicros));
-    }, skip: skip);
+    });
 
     test('🚨an arm drops the old run\'s point: until the new arm\'s first '
         'callback speaks there is only the stair', () async {
@@ -684,7 +675,7 @@ void main() {
         reason: 'a device just opened has no run: what the one before it '
             'played is not its point',
       );
-    }, skip: skip);
+    });
   });
 
   group('the schedule handoff', () {
@@ -697,7 +688,7 @@ void main() {
         ),
         isTrue,
       );
-    }, skip: skip);
+    });
 
     test('a schedule SWAPS while playing (AUDIO-PRO R3): the transport '
         'never stops, and the new mix is heard within a block', () async {
@@ -761,7 +752,7 @@ void main() {
       }
       expect(device.isPlaying, isTrue);
       device.stop();
-    }, skip: skip);
+    });
 
     test('an empty schedule plays silence rather than failing', () async {
       final device = openNull();
@@ -775,7 +766,7 @@ void main() {
         isTrue,
         reason: 'the clock must run even with nothing to play',
       );
-    }, skip: skip);
+    });
   });
 
   group('the device plays its own PCM where it lies '
@@ -812,7 +803,7 @@ void main() {
         1,
         reason: 'the replaced slot let go of what it played',
       );
-    }, skip: skip);
+    });
 
     test('a list the device made plays where it lies: what is written into '
         'it after the schedule is what is heard', () async {
@@ -836,7 +827,7 @@ void main() {
         reason: 'the slot plays the buffer itself — nothing was copied',
       );
       device.stop();
-    }, skip: skip);
+    });
 
     test('a list the device did not make plays as it was when scheduled — '
         'the callback never reads the Dart heap', () async {
@@ -867,7 +858,7 @@ void main() {
       expect(device.peakFor(0), closeTo(0.25, 0.01));
       expect(device.debugHoldsOf(plain), -1);
       device.stop();
-    }, skip: skip);
+    });
   });
 
   group('capture (AUDIO-PRO R5)', () {
@@ -908,7 +899,7 @@ void main() {
 
       device.captureStop();
       expect(device.captureIsOpen, isFalse);
-    }, skip: skip);
+    });
 
     // take-head-trims-at-the-playback-start (10-15): the playback's own
     // shape, so a take is placed by what the microphone had taken in when
@@ -983,7 +974,7 @@ void main() {
         reason: 'the stopped capture\'s point, ${fresh?.positionSamples} '
             'frames, read as this one\'s',
       );
-    }, skip: skip);
+    });
 
     test('a bad device index fails rather than opening something else', () {
       final device = QaAudioDevice.instance!;
@@ -998,7 +989,7 @@ void main() {
         0,
       );
       expect(device.captureIsOpen, isFalse);
-    }, skip: skip);
+    });
 
     test('capture runs BESIDE playback on one context '
         '(record along to the cut)', () async {
@@ -1013,7 +1004,7 @@ void main() {
       device.captureStop();
       expect(device.isOpen, isTrue,
           reason: 'closing the microphone must not stop playback');
-    }, skip: skip);
+    });
   });
 
   group('AudioRecorder (AUDIO-PRO R5)', () {
@@ -1046,7 +1037,7 @@ void main() {
       expect(recording.droppedFrames, 0);
       expect(QaAudioDevice.instance!.captureIsOpen, isFalse,
           reason: 'stop() must release the microphone');
-    }, skip: skip);
+    });
 
     // take-head-trims-at-the-playback-start (10-15).
     test('🚨what the microphone had taken in at a moment: on the capture\'s '
@@ -1103,12 +1094,12 @@ void main() {
       recorder.stop();
       expect(recorder.capturedAt(device.clockNowMicros), isNull,
           reason: 'stopped, it takes nothing in');
-    }, skip: skip);
+    });
 
     test('stopping without starting reports null, not a crash', () {
       final recorder = AudioRecorder(device: QaAudioDevice.instance);
       expect(recorder.stop(), isNull);
-    }, skip: skip);
+    });
 
     test('a vanished saved microphone falls back to the default', () {
       final recorder = AudioRecorder(device: QaAudioDevice.instance);
@@ -1123,6 +1114,6 @@ void main() {
       );
       expect(rate, 48000);
       expect(recorder.stop(), isNotNull);
-    }, skip: skip);
+    });
   });
 }

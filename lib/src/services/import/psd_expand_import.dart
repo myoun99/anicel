@@ -9,11 +9,12 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
+import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import '../photoshop/psd_reader.dart';
-import 'cel_picture.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'psd_layer_plan.dart';
 import 'raster_cel_import.dart';
+import 'tile_cutter.dart' show TileCutter, giveBackCut, laidCelOf, tileCutOf;
 import '../../models/import/import_warning.dart';
 
 /// The pixel half of EXPAND: read the document, plan the stack, and turn
@@ -60,6 +61,13 @@ class PsdExpansion {
 ///
 /// [newCut]: the stack makes a cut of its own — laid out at the document's
 /// own size, and standing in it unwrapped ([planPsdExpansion]).
+///
+/// Each layer's pixels are cut where the document is read ([_readAndCut]):
+/// the isolate that paints takes their tiles, and lays on the engine only
+/// those a fit resamples ([layCut]). ↩️(2026-11-14, card
+/// a-raster-import-goes-gpu-cpu-gpu-cpu) the document's pixels came here
+/// and each layer was cut here — 10 layers of 2400×1600 held it 185 ms
+/// laid 1:1, 411 ms fitted (Surface, test engine).
 Future<PsdExpansion?> readPsdExpansion({
   required Uint8List bytes,
   required String displayName,
@@ -72,7 +80,69 @@ Future<PsdExpansion?> readPsdExpansion({
 }) async {
   // Off the UI isolate: a layout PSD is routinely a hundred megabytes, and
   // its layer section is the expensive half.
-  final document = await Isolate.run(() => readPsdDocument(bytes));
+  final read = await Isolate.run(
+    () => _readAndCut(bytes, canvas: canvas, fit: fit, newCut: newCut),
+  );
+  if (read == null) {
+    return null;
+  }
+  final (:document, :laidOn, :cuts) = read;
+  try {
+    final plan = planPsdExpansion(
+      document: document,
+      displayName: displayName,
+      cutId: cutId,
+      duration: duration,
+      canvas: laidOn,
+      fit: fit,
+      mint: mint,
+      newCut: newCut,
+    );
+    final cels = <PsdExpandedCel>[];
+    for (final placement in plan.placements) {
+      final cut = cuts.remove(placement.sourceIndex);
+      cels.add(
+        PsdExpandedCel(
+          layerId: placement.layerId,
+          frameId: placement.frameId,
+          surface: cut == null
+              ? nothingLaid(laidOn)
+              : await layCut(cut.lay, cut.cel),
+        ),
+      );
+    }
+    return PsdExpansion(
+      layers: plan.layers,
+      cels: cels,
+      warnings: plan.warnings,
+      canvas: laidOn,
+    );
+  } finally {
+    // A cut no cel took: nothing adopts its blocks, so they go back here.
+    for (final cut in cuts.values) {
+      giveBackCut(cut.cel.tiles);
+    }
+  }
+}
+
+/// What the isolate that read a Photoshop document hands back: the
+/// document, the canvas its stack is laid on, and each layer an expansion
+/// lays cut there by its lay — by the layer's index.
+typedef _ReadAndCut = ({
+  PsdDocument document,
+  CanvasSize laidOn,
+  Map<int, ({CelLay lay, AnicelLaidCel cel})> cuts,
+});
+
+/// [bytes] read as a Photoshop document and each layer an expansion lays
+/// ([psdLayersLaid]) cut where it was read — or null when it has no layers.
+_ReadAndCut? _readAndCut(
+  Uint8List bytes, {
+  required CanvasSize canvas,
+  required MediaFitMode fit,
+  required bool newCut,
+}) {
+  final document = readPsdDocument(bytes);
   if (document.layers.isEmpty) {
     return null;
   }
@@ -81,78 +151,46 @@ Future<PsdExpansion?> readPsdExpansion({
   final laidOn = newCut
       ? CanvasSize(width: document.width, height: document.height)
       : canvas;
-  final plan = planPsdExpansion(
-    document: document,
-    displayName: displayName,
-    cutId: cutId,
-    duration: duration,
-    canvas: laidOn,
-    fit: fit,
-    mint: mint,
-    newCut: newCut,
-  );
-
-  final cels = <PsdExpandedCel>[];
-  for (final placement in plan.placements) {
-    final source = document.layers[placement.sourceIndex];
-    final pixels = source.pixels;
-    if (pixels == null) {
-      continue;
-    }
-    final crop = placement.crop;
-    final picture = await pictureOfPixels(
-      _croppedTo(crop, pixels, source.width),
-      width: crop.width,
-      height: crop.height,
-    );
-    try {
-      cels.add(
-        PsdExpandedCel(
-          layerId: placement.layerId,
-          frameId: placement.frameId,
-          // The rect comes from the plan, which already carried the
-          // document's fit — fitting each layer on its own would scatter a
-          // stack that lines up in Photoshop.
-          surface: await layCelPicture(
-            picture: picture,
-            canvas: laidOn,
-            placement: rectPlacement(
-              placement.rect,
-              width: crop.width,
-              height: crop.height,
-            ),
-          ),
+  final laid = psdLayersLaid(document: document, canvas: laidOn, fit: fit);
+  final cuts = <int, ({CelLay lay, AnicelLaidCel cel})>{};
+  try {
+    for (final MapEntry(key: index, value: at) in laid.entries) {
+      final source = document.layers[index];
+      final crop = at.crop;
+      final lay = celLayOf(
+        picture: CanvasSize(width: crop.width, height: crop.height),
+        canvas: laidOn,
+        // The rect already carries the document's fit — fitting each layer
+        // on its own would scatter a stack that lines up in Photoshop.
+        placement: rectPlacement(
+          at.rect,
+          width: crop.width,
+          height: crop.height,
         ),
       );
-    } finally {
-      // One layer's picture at a time: eighty full-canvas layers held at
-      // once is how expanding a background runs a tablet out of memory.
-      picture.dispose();
+      if (lay == null) {
+        continue;
+      }
+      // Its rows packed one at a time straight into the tiles they land in
+      // — the layer is never held whole, only its planes and the row under
+      // way, as a PNG's rows go in as they are inflated (`cutFileInWorker`).
+      // ↩️Each layer was packed whole as the document was read and cropped
+      // to a copy of its own here till 2026-11-16 (card
+      // psd-planes-pack-on-the-engine) — 6 % of the worker's pack and cut,
+      // measured (`PsdPlanes`).
+      final picture = source.picture!;
+      final tiles = TileCutter.cutting(
+        tileCutOf(lay.cut),
+        crop.width,
+        (row) => picture.rows(crop, row: row),
+      );
+      cuts[index] = (lay: lay, cel: laidCelOf(lay.cut.layout, tiles));
     }
+  } on Object {
+    for (final cut in cuts.values) {
+      giveBackCut(cut.cel.tiles);
+    }
+    rethrow;
   }
-
-  return PsdExpansion(
-    layers: plan.layers,
-    cels: cels,
-    warnings: plan.warnings,
-    canvas: laidOn,
-  );
-}
-
-/// [rgba], a picture [width] wide, cut down to [crop] — the same bytes
-/// when [crop] is all of it.
-Uint8List _croppedTo(PsdLayerCrop crop, Uint8List rgba, int width) {
-  final row = crop.width * 4;
-  if (crop.left == 0 &&
-      crop.top == 0 &&
-      crop.width == width &&
-      rgba.length == row * crop.height) {
-    return rgba;
-  }
-  final out = Uint8List(row * crop.height);
-  for (var y = 0; y < crop.height; y += 1) {
-    final from = ((crop.top + y) * width + crop.left) * 4;
-    out.setRange(y * row, (y + 1) * row, rgba, from);
-  }
-  return out;
+  return (document: document, laidOn: laidOn, cuts: cuts);
 }

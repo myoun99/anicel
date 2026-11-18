@@ -7,7 +7,6 @@
 /// they are spelled here once.
 library;
 
-import 'dart:convert' show ByteConversionSink;
 import 'dart:io' show ZLibEncoder;
 import 'dart:typed_data';
 
@@ -40,7 +39,8 @@ Uint8List pngHeader({
   0, 0, 0, // compression, filter, interlace
 ]);
 
-/// A still picture: [imageData] (a finished [PngImageData]) as its one IDAT.
+/// A still picture: [imageData] (its rows deflated, [pngDeflated]) as its one
+/// IDAT.
 Uint8List encodeStillPng({
   required int width,
   required int height,
@@ -85,141 +85,39 @@ Uint8List pngChunk(String type, List<int> data, {int? sequence}) {
 Uint8List pngUint32(int value) =>
     (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
 
-/// One picture's rows, filtered and deflated as they come — the body of its
-/// IDAT (or of an animation frame's fdAT). It holds a few rows, never the
-/// picture.
+/// [pixels]' rows of [rowBytes], each led by filter 0 — none: what a
+/// palette's rows take (the PNG spec's own advice for one), and what a
+/// picture of flat colours packs smallest as (`rgbPngOf`).
 ///
-/// [filtered] puts each row under the filter that leaves it smallest by
-/// libpng's guess — the least sum of its bytes read as signed, a tie to the
-/// lower filter. Unfiltered, every row is under filter 0: the PNG spec's own
-/// advice for a palette.
-final class PngImageData {
-  PngImageData({
-    required int width,
-    required this.bytesPerPixel,
-    this.filtered = true,
-  }) : _stride = width * bytesPerPixel {
-    _deflate = ZLibEncoder().startChunkedConversion(
-      ByteConversionSink.withCallback(
-        (bytes) =>
-            _out = bytes is Uint8List ? bytes : Uint8List.fromList(bytes),
-      ),
+/// ⛔No row is put under a filter here: every one that is, is on the engine
+/// (`png.wgsl`, `GpuReadout.takePngRows`). ↩️Till 2026-11-16 a writer
+/// streamed its rows through `PngImageData`, which tried all five filters
+/// a row in Dart — the animated PNG's frames the last (card
+/// the-trimmed-apng-filters-its-rows-in-dart).
+Uint8List pngUnfiltered(Uint8List pixels, int rowBytes) {
+  final height = pixels.length ~/ rowBytes;
+  final rows = Uint8List(height * (rowBytes + 1));
+  for (var y = 0; y < height; y += 1) {
+    rows.setRange(
+      y * (rowBytes + 1) + 1,
+      (y + 1) * (rowBytes + 1),
+      pixels,
+      y * rowBytes,
     );
   }
-
-  final int bytesPerPixel;
-  final bool filtered;
-  final int _stride;
-  late final ByteConversionSink _deflate;
-
-  /// What [finish] hands back, set when the deflate closes.
-  late Uint8List _out;
-
-  /// The row before the one being filtered; null on the first.
-  Uint8List? _above;
-
-  /// Each filter's answer for the row being filtered, by filter number.
-  late final List<Uint8List> _candidates = [
-    for (var type = 0; type < _filterTypes.length; type += 1)
-      Uint8List(_stride),
-  ];
-
-  /// The byte that leads a row under each filter.
-  static final _filterTypes = [
-    for (var type = 0; type < 5; type += 1) Uint8List.fromList([type]),
-  ];
-
-  /// The next row down: [bytesPerPixel] bytes a pixel, a row's worth.
-  void add(Uint8List row) {
-    if (row.length != _stride) {
-      throw ArgumentError.value(row.length, 'row', 'a row is $_stride bytes');
-    }
-    if (!filtered) {
-      _deflate
-        ..add(_filterTypes[0])
-        ..add(row);
-      return;
-    }
-    var best = 0;
-    var bestCost = _filter(0, row);
-    // A filter that leaves nothing cannot be beaten — a tie goes to the
-    // lower — so the rest are not tried: on a page's flat paper, Up leaves
-    // nothing on every row but the first (🔬2026-10-20, an A4 page of the
-    // conte in the test VM: 190 → 115 ms, the same bytes).
-    for (var type = 1; type < _filterTypes.length && bestCost > 0; type += 1) {
-      final cost = _filter(type, row);
-      if (cost < bestCost) {
-        bestCost = cost;
-        best = type;
-      }
-    }
-    _deflate
-      ..add(_filterTypes[best])
-      ..add(_candidates[best]);
-    (_above ??= Uint8List(_stride)).setAll(0, row);
-  }
-
-  /// The deflated rows; nothing more can be added.
-  Uint8List finish() {
-    _deflate.close();
-    return _out;
-  }
-
-  /// [row] under filter [type] into its candidate, and what that costs.
-  ///
-  /// ⚠️One loop a filter, not one predictor switched per byte: this runs
-  /// five times over every byte of the picture (measured 10-11, a 2436×1678
-  /// RGB picture compiled ahead of time: about 100 ms, against 145–170 ms
-  /// switched).
-  int _filter(int type, Uint8List row) {
-    final into = _candidates[type];
-    final above = _above;
-    final bpp = bytesPerPixel;
-    var cost = 0;
-    switch (type) {
-      case 0:
-        for (var i = 0; i < _stride; i += 1) {
-          final f = row[i];
-          into[i] = f;
-          cost += f < 128 ? f : 256 - f;
-        }
-      case 1:
-        for (var i = 0; i < _stride; i += 1) {
-          final f = (row[i] - (i < bpp ? 0 : row[i - bpp])) & 0xFF;
-          into[i] = f;
-          cost += f < 128 ? f : 256 - f;
-        }
-      case 2:
-        for (var i = 0; i < _stride; i += 1) {
-          final f = (row[i] - (above == null ? 0 : above[i])) & 0xFF;
-          into[i] = f;
-          cost += f < 128 ? f : 256 - f;
-        }
-      case 3:
-        for (var i = 0; i < _stride; i += 1) {
-          final left = i < bpp ? 0 : row[i - bpp];
-          final up = above == null ? 0 : above[i];
-          final f = (row[i] - ((left + up) >> 1)) & 0xFF;
-          into[i] = f;
-          cost += f < 128 ? f : 256 - f;
-        }
-      default:
-        for (var i = 0; i < _stride; i += 1) {
-          final left = i < bpp ? 0 : row[i - bpp];
-          final up = above == null ? 0 : above[i];
-          final upLeft = above == null || i < bpp ? 0 : above[i - bpp];
-          final f = (row[i] - pngPaeth(left, up, upLeft)) & 0xFF;
-          into[i] = f;
-          cost += f < 128 ? f : 256 - f;
-        }
-    }
-    return cost;
-  }
+  return rows;
 }
 
+/// [rows] deflated: the body of a PNG's IDAT, or of an animation frame's
+/// fdAT.
+Uint8List pngDeflated(Uint8List rows) => switch (ZLibEncoder().convert(rows)) {
+  final Uint8List bytes => bytes,
+  final bytes => Uint8List.fromList(bytes),
+};
+
 /// The Paeth predictor: of [a] (left), [b] (up) and [c] (up-left), the one
-/// nearest to a + b − c, ties to the earlier — what a row is filtered by
-/// here, and unfiltered by when one is read (`readPngRows`).
+/// nearest to a + b − c, ties to the earlier — what the engine filters a
+/// row by (`png.wgsl`) and the reader unfilters one by (`readPngRows`).
 int pngPaeth(int a, int b, int c) {
   final p = a + b - c;
   final pa = (p - a).abs();

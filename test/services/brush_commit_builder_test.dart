@@ -16,8 +16,10 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapSurface surface() =>
-        BitmapSurface(canvasSize: const CanvasSize(width: 4, height: 4), tileSize: 2);
+    BitmapSurface surface({int width = 4}) => BitmapSurface(
+      canvasSize: CanvasSize(width: width, height: 4),
+      tileSize: 128,
+    );
 
     BrushDab onePixelDab({required double globalX, required double globalY}) {
       return BrushDab(
@@ -92,8 +94,8 @@ void main() {
 
     test('cache invalidation tile coords match dirtyTiles', () {
       final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: surface(),
-        sequence: BrushDabSequence([onePixelDab(globalX: 2, globalY: 0)]),
+        surface: surface(width: 256),
+        sequence: BrushDabSequence([onePixelDab(globalX: 130, globalY: 0)]),
         layerId: layerId,
         frameId: frameId,
       );

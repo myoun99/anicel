@@ -163,7 +163,13 @@ void main() {
     await tester.tap(_button('mark', 'b-over'));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+      find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-paper-layout'),
+      ),
     );
     await tester.pumpAndSettle();
 

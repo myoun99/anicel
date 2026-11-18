@@ -4,6 +4,8 @@ import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 
+import '../../helpers/fake_tablet_bridge.dart';
+
 /// PEN-2: the Wintab pressure sidecar — settings model + the polling
 /// service against a fake driver stream.
 void main() {
@@ -94,6 +96,25 @@ void main() {
       wintab.copyWith(tabletService: TabletService.standard).tabletService,
       TabletService.standard,
     );
+  });
+
+  test('the context opens with the window a packet is fresh in, and its '
+      'queue says what it heard while it is open', () {
+    final service = WintabPenService.instance;
+    final bridge = FakeTabletBridge();
+    service.debugBridge = bridge;
+    expect(service.heard(), isNull, reason: 'not open');
+
+    service.start();
+    service.freshPacket();
+    expect(bridge.within, WintabPenService.freshWindow);
+    expect(service.heard(), (gapMs: 7, overflowed: 3));
+    bridge.gap = null;
+    expect(service.heard(), (gapMs: null, overflowed: 3));
+
+    service.stop();
+    expect(bridge.closed, isTrue);
+    expect(service.heard(), isNull, reason: 'closed');
   });
 
   test('the service follows the settings: wintab starts, standard stops', () {

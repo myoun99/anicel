@@ -53,7 +53,7 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
   if (after == null || identical(before, after)) {
     return const {};
   }
-  final was = _cutsById(before);
+  final was = cutsOfEveryTimelineById(before);
   final given = <LayerId>{};
   for (final track in after.tracks) {
     for (final cut in track.cuts) {
@@ -83,7 +83,7 @@ typedef ConteHeadPut = ({CutId cutId, Layer laid, ConteHead own});
 /// The heads laying [written] into [laid] put on rows [before] held in no
 /// conte — a row made a cut's conte wears its track's head
 /// (I-73), and the undo of the write that made it takes that head off
-/// again (`ConteStepScope`).
+/// again (`RepositoryStepScope`).
 ///
 /// 🗣️F-424 (유저 2026-10-21): 「기존 레이어 콘티레이어 변경하고 언두하면
 /// 색라벨도 돌아오도록」 — the undo gave the kind back, and the row went on
@@ -97,10 +97,10 @@ List<ConteHeadPut> conteHeadsPut(
   if (identical(written, laid)) {
     return const [];
   }
-  final was = _cutsById(before);
-  final wrote = _cutsById(written);
+  final was = cutsOfEveryTimelineById(before);
+  final wrote = cutsOfEveryTimelineById(written);
   final put = <ConteHeadPut>[];
-  for (final cut in _cutsById(laid).values) {
+  for (final cut in cutsOfEveryTimelineById(laid).values) {
     final own = wrote[cut.id];
     final old = was[cut.id];
     if (own == null || old == null || identical(own, cut)) {
@@ -123,13 +123,6 @@ List<ConteHeadPut> conteHeadsPut(
   }
   return put;
 }
-
-/// Every cut of [project] by its id, every timeline's — none for no project.
-/// A cut another timeline opened on is no cut a write made (I-150).
-Map<CutId, Cut> _cutsById(Project? project) => {
-  for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
-    for (final cut in track.cuts) cut.id: cut,
-};
 
 /// [row] with the head [put] laid on it taken off: each field it still
 /// wears as laid goes back to its own, and one changed since stays.
@@ -251,7 +244,7 @@ List<LayerLinkGroup> _groupsOfRowsGiven(Project project, Set<LayerId> given) {
 /// and nothing here can tell a drawn one from an empty one: a picture is
 /// not in the model. What goes, goes by a verb the user can take back (a
 /// delete takes a row from every cut at once, `existenceMirrorTargets`),
-/// or with the step that made it (`ConteStepScope`). A folder the
+/// or with the step that made it (`RepositoryStepScope`). A folder the
 /// structure forgot holds no picture, so the one the structure gave goes,
 /// and the cut's own steps out of the group.
 ///

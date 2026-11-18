@@ -18,10 +18,12 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 /// 🚨★★★**THE FLOOR IS SILENT, SO SOMETHING HAS TO WATCH IT.**
 ///
 /// A cel is compressed when it COOLS, and cooling runs in a background
-/// isolate (`BrushFrameStore._coolLoop`). Statics do not cross an isolate
-/// boundary, so `QaCelCompressor.instance` re-probes for the engine over
-/// there — and if it ever failed to find what the main isolate found,
-/// [compressAnicelPayload] would quietly write deflate instead.
+/// isolate (`BrushFrameStore._coolLoop`) — and if the compressor ever
+/// refused over there what the main isolate takes, [compressAnicelPayload]
+/// would quietly write deflate instead. ↩️Until the connection round
+/// (connection-round-checklist H) each isolate probed for the C engine on
+/// its own, and a pin here said the probe survived the hop; the names are
+/// the code asset's now, bound in every isolate alike.
 ///
 /// ⛔Nothing would go red. Deflate is a legitimate answer by design ("a
 /// file this app writes must never need a library that might not be
@@ -49,44 +51,9 @@ void main() {
     ),
   );
 
-  /// Whether THIS run has an engine at all. A machine without one cannot
-  /// answer the question, and must say so rather than pass.
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
-  test(
-    'the compressor survives the isolate hop the cooling loop makes',
-    () async {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run — nothing to compare against');
-        return;
-      }
-      // ⛔The assertion is CONDITIONAL on the main isolate having one, which
-      // is what makes it meaningful: "both absent" is a fine state, "here
-      // but not there" is the regression.
-      final overThere = await Isolate.run(() {
-        final compressor = QaCelCompressor.instance;
-        return compressor != null && compressor.isSupported;
-      });
-      expect(
-        overThere,
-        isTrue,
-        reason:
-            'the main isolate found the engine and the background one did '
-            'not, so every cooled cel would silently become deflate',
-      );
-    },
-  );
-
   test(
     'a cel cooled in a background isolate carries the zstd codec byte',
     () async {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // The blob a cel cools into, made in the same kind of isolate.
       final codec = await Isolate.run(() => cooled().codec);
       expect(
@@ -101,32 +68,26 @@ void main() {
 
   test('and the main isolate agrees, so a hot cel encoded at save time '
       'matches what cooling wrote', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     expect(cooled().codec, anicelCodecZstd);
   });
 
-  /// The other half of the contract, and the one every machine can run.
-  group('without an engine', () {
-    setUp(() => QaCelCompressor.debugInstanceOverride = () => null);
-    tearDown(() {
-      QaCelCompressor.debugInstanceOverride = null;
-      QaCelCompressor.debugResetForTests();
-    });
+  /// The other half of the contract. ↩️「without an engine」 until the
+  /// connection round: a refusal is what is left of that world.
+  group('where zstd refuses', () {
+    setUp(() => QaCelCompressor.debugForceRefusal = true);
+    tearDown(() => QaCelCompressor.debugForceRefusal = false);
 
     test('the floor is deflate, and it still round-trips', () {
       final blob = cooled();
       expect(
         blob.codec,
         anicelCodecDeflate,
-        reason: 'no engine means the payload must be readable by dart:io',
+        reason: 'a refusal means the payload must be readable by dart:io',
       );
       expect(blob.decoded((back) => back.key), key);
     });
 
-    test('and a deflate payload decompresses without the engine', () {
+    test('and a deflate payload decompresses through dart:io alone', () {
       final bytes = Uint8List.fromList(
         List<int>.generate(4096, (i) => i & 0xFF),
       );

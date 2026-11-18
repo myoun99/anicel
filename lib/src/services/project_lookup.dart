@@ -191,6 +191,19 @@ CutId? cutWritingRow(
   required CutId? standing,
 }) => cutIdOfLayer(project, layerId) ?? standing;
 
+/// The stack [layerId]'s row stands in — the layers of the cut writing it
+/// ([cutWritingRow]), wherever that is: the storyboard's rail presses the
+/// conte rows of cuts that are not the one stood in (I-73). Null in a gap.
+/// What a fold asks of the row's attach group ([groupFoldOpen]).
+List<Layer>? stackWritingRow(
+  Project project,
+  LayerId layerId, {
+  required CutId? standing,
+}) {
+  final cutId = cutWritingRow(project, layerId, standing: standing);
+  return cutId == null ? null : cutPositionOf(project, cutId)?.cut.layers;
+}
+
 /// [attachRowWearsBaseComposite] asked of the cut holding [layer], wherever
 /// it is — what a lane verb names a row by id from. A track's own row, which
 /// no cut holds, wears nothing of a base's.

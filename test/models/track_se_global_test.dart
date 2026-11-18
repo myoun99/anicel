@@ -437,13 +437,18 @@ void main() {
       seSound: sound,
     );
 
-    test('the Volume\'s keys move onto the cut-local axis, the ones an '
-        'earlier cut made are dropped, and the Pan rides as it is', () {
+    test('the Volume\'s and the Pan\'s keys move onto the cut-local axis, '
+        'the ones an earlier cut made are dropped (Q7)', () {
       final rebased = window
           .displayLayer(
             soundRow(
               SeSound(
-                pan: -0.4,
+                pan: PropertyTrack<double>(
+                  keys: {
+                    6: const PropertyKey(-0.4),
+                    16: const PropertyKey(0.2),
+                  },
+                ),
                 volume: PropertyTrack<double>(
                   keys: {
                     4: const PropertyKey(0.2),
@@ -458,7 +463,21 @@ void main() {
 
       expect(rebased.volume.keys.keys, [0, 8]);
       expect(rebased.volume.keyAt(8)!.value, 1.5);
-      expect(rebased.pan, -0.4);
+      expect(rebased.pan.keys.keys, [4]);
+      expect(rebased.pan.keyAt(4)!.value, 0.2);
+    });
+
+    test('a Pan keyed alone moves onto the cut-local axis too', () {
+      final rebased = window
+          .displayLayer(
+            soundRow(
+              SeSound(
+                pan: PropertyTrack<double>(keys: {16: const PropertyKey(0.2)}),
+              ),
+            ),
+          )
+          .seSound;
+      expect(rebased.pan.keys.keys, [4]);
     });
 
     test('a window at the track\'s start and an unkeyed sound keep the '
@@ -474,8 +493,8 @@ void main() {
         keyed,
       );
       expect(
-        window.displayLayer(soundRow(const SeSound(pan: 0.3))).seSound,
-        const SeSound(pan: 0.3),
+        window.displayLayer(soundRow(const SeSound(totalVolume: 0.3))).seSound,
+        const SeSound(totalVolume: 0.3),
       );
     });
   });

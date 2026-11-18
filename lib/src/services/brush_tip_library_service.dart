@@ -101,7 +101,10 @@ class BrushTipLibraryService {
       id: mask.id,
       name: name,
       size: mask.size,
-      thumbnail: brushTipThumbnailAlpha(mask, side: brushTipThumbnailSide),
+      thumbnail: await brushTipThumbnailAlpha(
+        mask,
+        side: brushTipThumbnailSide,
+      ),
       mask: mask,
     );
   }

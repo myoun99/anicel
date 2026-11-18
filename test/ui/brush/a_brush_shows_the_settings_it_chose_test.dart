@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ import '../../helpers/settle_async.dart';
 /// left side as the brush library's are (Q4 「클튜처럼 왼쪽에 두자.
 /// 브러시그룹/브러시목록이랑 비슷한느낌으로」).
 void main() {
+  opensTheEnginesScreens();
   final plain = BrushSettings();
   final some = plain.copyWith(
     shown: {BrushSettingsRow.spacing, BrushSettingsRow.flow},

@@ -3,7 +3,7 @@
 // test/architecture say a number grew; this says WHICH rows are new, by
 // scanning two trees and subtracting.
 //
-//   dart run tool/refactor/clean_code_diff.dart <beforeLibDir> <afterLibDir>
+//   dart tool/refactor/clean_code_diff.dart <beforeLibDir> <afterLibDir>
 //
 // ⚠️It compares by FILE + MEMBER with a leading `_` stripped off the class
 // name: this round made 38 private collaborator classes public, so a

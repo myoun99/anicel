@@ -41,6 +41,7 @@
 # cannot read `/c/…`.
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && { pwd -W 2>/dev/null || pwd; })"
 . "$TOOL_DIR/exe_stamp.sh"
+. "$TOOL_DIR/machine_folder.sh"
 NAME="${1:?usage: bash tool/run.sh <tool> [arguments…]}"
 shift
 # 🚨THE MACHINE'S LINE IS ONE VERSION (유저 10-20: 「계속 10줄 중 아까 낮처럼
@@ -88,11 +89,7 @@ jit() { exec "$DART" "$ENTRY" "$@"; }
 # shell on a busy machine pays each process it starts many times over — so
 # what bash can say itself is not asked of a program.
 case "$OSTYPE" in msys* | cygwin*) EXT=.exe ;; *) EXT= ;; esac
-if [ -n "${LOCALAPPDATA:-}" ]; then
-  CACHE="${LOCALAPPDATA//\\//}/anicel/tools"
-else
-  CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/anicel/tools"
-fi
+CACHE="$MACHINE_FOLDER/tools"
 sum() { if command -v sha1sum >/dev/null 2>&1; then sha1sum; else shasum; fi; }
 read -r KEY _ < <({ cat "${DART%/*}/../version" 2>/dev/null; stamp_of "$ENTRY"; } | sum)
 KEY="${KEY:0:16}"

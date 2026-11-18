@@ -1,99 +1,102 @@
+// The engine's Rust library carries the decoder (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import 'qa_engine_abi.dart';
+import 'gpu_engine_asset.dart';
+
+@Native<Int32 Function()>(symbol: 'qa_video_decode_supported')
+external int _supported();
+
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'qa_video_decode_open')
+external int _open(Pointer<Utf8> utf8Path);
+
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'qa_video_decode_open_nv12')
+external int _openNv12(Pointer<Utf8> utf8Path);
+
+@Native<Int32 Function(Int32, Pointer<Int32>)>(
+  symbol: 'qa_video_decode_colours',
+)
+external int _colours(int handle, Pointer<Int32> colours);
+
+@Native<Int32 Function(Pointer<Utf8>, Int64, Int64, Int32)>(
+  symbol: 'qa_video_decode_open_span',
+)
+external int _openSpan(
+  Pointer<Utf8> utf8Path,
+  int offset,
+  int length,
+  int framed,
+);
+
+@Native<
+  Int32 Function(
+    Int32,
+    Pointer<Int32>,
+    Pointer<Int32>,
+    Pointer<Int64>,
+    Pointer<Int32>,
+    Pointer<Int32>,
+  )
+>(symbol: 'qa_video_decode_info')
+external int _info(
+  int handle,
+  Pointer<Int32> width,
+  Pointer<Int32> height,
+  Pointer<Int64> frames,
+  Pointer<Int32> fpsNumerator,
+  Pointer<Int32> fpsDenominator,
+);
+
+@Native<Int32 Function(Int32, Int64, Pointer<Uint8>, Int32)>(
+  symbol: 'qa_video_decode_frame',
+)
+external int _frame(int handle, int index, Pointer<Uint8> rgba, int capacity);
+
+@Native<Void Function(Int32)>(symbol: 'qa_video_decode_close')
+external void _close(int handle);
+
+@Native<Void Function()>(symbol: 'qa_video_decode_close_all')
+external void _closeAll();
+
+@Native<Pointer<Utf8> Function()>(symbol: 'qa_video_decode_last_error')
+external Pointer<Utf8> _lastError();
 
 /// The OS video DECODER — a movie in, one RGBA frame out.
 ///
 /// The export path's mirror ([QaVideoEncoder]): both go through the
 /// operating system's own codec stack rather than an ffmpeg binary a
 /// tablet does not have. Windows reads through Media Foundation's Source
-/// Reader, Apple through AVAssetImageGenerator, Android through the NDK
-/// media codecs; anything else answers [isSupported] false, and the app
-/// says "no decoder in this build" instead of failing as a corrupt file.
+/// Reader, Apple through AVAssetReader, Android through the NDK media
+/// codecs; anything else answers [isSupported] false, and the app says "no
+/// decoder in this build" instead of failing as a corrupt file.
 ///
 /// 2026-08-25: this paragraph used to say the non-Windows readers were not
 /// written yet. They were, and the stale note had readers believing in a
 /// limit that no longer existed. Decision comments are never deleted here,
 /// which only works if a wrong one is CORRECTED.
 ///
+/// Wherever the app runs it is there — the engine's library ships with the
+/// app, and `flutter test` builds it too — so [instance] is always one.
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// it was the C engine's (`qa_video_decode.c`), which a machine could be
+/// without, and the instance was null there.
+///
 /// MANY documents at once, each a HANDLE the caller keeps. It held one at a
 /// time while scrubbing a preview was the only caller; a movie kept as a
 /// reference put three more in the room — the canvas, the playback warmer
 /// and export — and one document means a re-open per switch (~111ms).
 final class QaVideoDecoder {
-  QaVideoDecoder._(this._library);
+  QaVideoDecoder._();
 
-  final DynamicLibrary _library;
-
-  static QaVideoDecoder? _instance;
-  static bool _tried = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  static QaVideoDecoder? get instance {
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null ? null : QaVideoDecoder._(library);
-    }
-    return _instance;
-  }
-
-  late final _supported = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_video_decode_supported',
-      );
-  late final _open = _library
-      .lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>(
-        'qa_video_decode_open',
-      );
-  late final _openSpan = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Utf8>, Int64, Int64, Int32),
-        int Function(Pointer<Utf8>, int, int, int)
-      >('qa_video_decode_open_span');
-  late final _info = _library
-      .lookupFunction<
-        Int32 Function(
-          Int32,
-          Pointer<Int32>,
-          Pointer<Int32>,
-          Pointer<Int64>,
-          Pointer<Int32>,
-          Pointer<Int32>,
-        ),
-        int Function(
-          int,
-          Pointer<Int32>,
-          Pointer<Int32>,
-          Pointer<Int64>,
-          Pointer<Int32>,
-          Pointer<Int32>,
-        )
-      >('qa_video_decode_info');
-  late final _frame = _library
-      .lookupFunction<
-        Int32 Function(Int32, Int64, Pointer<Uint8>, Int32),
-        int Function(int, int, Pointer<Uint8>, int)
-      >('qa_video_decode_frame');
-  late final _close = _library
-      .lookupFunction<Void Function(Int32), void Function(int)>(
-        'qa_video_decode_close',
-      );
-  late final _closeAll = _library
-      .lookupFunction<Void Function(), void Function()>(
-        'qa_video_decode_close_all',
-      );
-  late final _lastError = _library
-      .lookupFunction<Pointer<Utf8> Function(), Pointer<Utf8> Function()>(
-        'qa_video_decode_last_error',
-      );
+  /// The isolate's decoder: its documents are the engine's, its scratch
+  /// its own.
+  static final QaVideoDecoder instance = QaVideoDecoder._();
 
   /// Whether THIS build can decode at all. False is an answer the caller
   /// shows, never a crash it recovers from.
@@ -129,25 +132,57 @@ final class QaVideoDecoder {
     String path, {
     ({int offset, int length, bool framed})? span,
   }) {
-    final utf8Path = path.toNativeUtf8(allocator: malloc);
-    final int handle;
-    try {
-      handle = span == null
+    final handle = _opened(
+      path,
+      (utf8Path) => span == null
           ? _open(utf8Path)
           : _openSpan(
               utf8Path,
               span.offset,
               span.length,
               span.framed ? 1 : 0,
-            );
+            ),
+    );
+    return _documentOf(handle, path, span, QaVideoPixels.rgba);
+  }
+
+  /// Opens [path] as [openDocument] does, for the movie's own 4:2:0
+  /// ([QaVideoPixels.nv12]): [frameOf] hands each frame as the decoder
+  /// made it, with no sum, and [QaVideoDocument.colours] says what the
+  /// movie calls it — what a trimmed piece is written of (🗣️유저
+  /// 2026-11-14, trimmed-movie-decodes-to-nv12-Q1: 「원본의 색을 그대로 따라
+  /// 쓴다」).
+  QaVideoDocument? openNv12Document(String path) => _documentOf(
+    _opened(path, _openNv12),
+    path,
+    null,
+    QaVideoPixels.nv12,
+  );
+
+  /// The handle [open] answers for [path], spelled for the native side.
+  static int _opened(String path, int Function(Pointer<Utf8> path) open) {
+    final utf8Path = path.toNativeUtf8(allocator: malloc);
+    try {
+      return open(utf8Path);
     } finally {
       malloc.free(utf8Path);
     }
+  }
+
+  /// The document [handle] holds, as it says itself — or none, and the
+  /// handle let go, when it opened nothing or will not say.
+  QaVideoDocument? _documentOf(
+    int handle,
+    String path,
+    ({int offset, int length, bool framed})? span,
+    QaVideoPixels pixels,
+  ) {
     if (handle == 0) {
       return null;
     }
     final info = _infoOf(handle);
-    if (info == null) {
+    final colours = _coloursOf(handle);
+    if (info == null || colours == null) {
       _close(handle);
       return null;
     }
@@ -156,13 +191,15 @@ final class QaVideoDecoder {
       path: path,
       span: span,
       info: info,
+      pixels: pixels,
+      colours: colours,
     );
   }
 
-  /// The frame at [index] OF [document]. Null when it could not be read —
-  /// [lastError] says why.
+  /// The frame at [index] OF [document], in its [QaVideoDocument.pixels].
+  /// Null when it could not be read — [lastError] says why.
   Uint8List? frameOf(QaVideoDocument document, int index, {Uint8List? into}) {
-    final bytes = document.info.width * document.info.height * 4;
+    final bytes = document.frameBytes;
     if (bytes <= 0) {
       return null;
     }
@@ -216,6 +253,21 @@ final class QaVideoDecoder {
         ..free(fpsDen);
     }
   }
+
+  /// What a document says its pictures are.
+  static MovieColours? _coloursOf(int handle) => using((arena) {
+    final codes = arena<Int32>(4);
+    if (_colours(handle, codes) == 0) {
+      return null;
+    }
+    return (
+      primaries: codes[0],
+      transfer: codes[1],
+      matrix: codes[2],
+      range: codes[3],
+    );
+  });
+
   /// 🚨★★★**NOTHING IS MINTED PER FRAME.** Playing a 4K movie at 24fps used
   /// to allocate a 32MB native buffer AND a 32MB Dart list every frame —
   /// 1.5GB of churn a second, on the device class this app promises to run
@@ -229,9 +281,12 @@ final class QaVideoDecoder {
   /// frees in [close].
   ///
   /// ⚠️Reusing `into` is safe because every consumer copies it
-  /// SYNCHRONOUSLY — `decodeStraightRgbaImage` premultiplies into its own
-  /// scratch (or a fresh list) before the async decode begins. A consumer
-  /// that held this buffer across an await would read the NEXT frame.
+  /// SYNCHRONOUSLY — the two that pass it write each frame out before they
+  /// read the next: `movie_span` to its encoder, the decode worker's frame
+  /// arm into its transfer (`_frameInTheRoom`). ↩️So did
+  /// `decodeStraightRgbaImage`, premultiplying into its own scratch before
+  /// its async decode began. A consumer that held this buffer across an
+  /// await would read the NEXT frame.
   Pointer<Uint8> _scratch = nullptr;
   int _scratchBytes = 0;
 
@@ -264,6 +319,8 @@ final class QaVideoDocument {
     required this.path,
     required this.span,
     required this.info,
+    required this.pixels,
+    required this.colours,
   });
 
   /// The native document. ⛔Never 0: that is how the native side spells
@@ -273,7 +330,37 @@ final class QaVideoDocument {
   final String path;
   final ({int offset, int length, bool framed})? span;
   final QaVideoInfo info;
+
+  /// What [QaVideoDecoder.frameOf] hands of this document.
+  final QaVideoPixels pixels;
+
+  /// What the movie says its pictures are.
+  final MovieColours colours;
+
+  /// The bytes of one frame in [pixels]: RGBA at the shown size, or NV12
+  /// of it padded even — the Y rows, then the CbCr pairs side by side,
+  /// every row the padded width apart.
+  int get frameBytes {
+    final (width, height) = (info.width, info.height);
+    return switch (pixels) {
+      QaVideoPixels.rgba => width * height * 4,
+      QaVideoPixels.nv12 =>
+        (width + width % 2) * (height + height % 2) * 3 ~/ 2,
+    };
+  }
 }
+
+/// What a document hands for a frame: straight RGBA — what every surface
+/// shows — or the movie's own 4:2:0 as NV12, for a piece written of it
+/// with no sum ([QaVideoDecoder.openNv12Document]).
+enum QaVideoPixels { rgba, nv12 }
+
+/// What a movie says its pictures are, in the code points containers and
+/// bitstreams spell them in (ITU-T H.273): its primaries, transfer curve
+/// and YCbCr matrix, and its range — 0 studio, 1 full; 2 for each it does
+/// not name. A piece of the movie is written naming the same
+/// ([QaVideoEncoder.open]'s `colours`).
+typedef MovieColours = ({int primaries, int transfer, int matrix, int range});
 
 /// What a document says about itself.
 class QaVideoInfo {

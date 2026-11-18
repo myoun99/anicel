@@ -1,7 +1,6 @@
 import 'dart:collection';
 
 import '../../models/canvas_size.dart';
-import '../../models/fx_basis.dart';
 import '../../models/layer_effect.dart';
 import '../../models/timeline_exposure.dart';
 import 'ae_script.dart';
@@ -47,7 +46,10 @@ AeEffect? aeEffectOf(
     EffectKind.radialBlur => kin.radialBlur(),
     EffectKind.cameraLensBlur => kin.cameraLensBlur(),
     EffectKind.colorKey => kin.linearColorKey(),
-    EffectKind.celNumber || EffectKind.plugin => null,
+    EffectKind.celNumber ||
+    EffectKind.plugin ||
+    EffectKind.equalizer ||
+    EffectKind.compressor => null,
   };
 }
 
@@ -78,7 +80,10 @@ class _AeKin {
          for (var frame = 0; frame < frames; frame += 1)
            sampleLayerEffectAt(
              effect,
-             fxReadFrame(effect.basis, blocks, frame),
+             frameIndex: frame,
+             blocks: blocks,
+             // A script for After Effects runs no plugin of this device.
+             worn: null,
            ),
        ];
 

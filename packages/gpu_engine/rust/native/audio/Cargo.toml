@@ -13,9 +13,18 @@ audio_mix = { path = "../audio_mix" }
 # The bundled decoders (native-to-rust-Q4, the user: 「오디오는 symphonia
 # 하나로」). ⛔Its defaults stay off: `opt-simd` sums the FFT in another
 # order on each instruction set, and a sound decodes alike on every device
-# (관제 audio-same-across-devices ③). The formats are the ones the C's
+# (관제 audio-same-across-devices ③) — for which its maths is `libm`'s too:
+# the workspace patches four of its crates (vendor/, native-to-rust-Q14).
+# The formats are the ones the C's
 # bundled decoders read — dr_wav · dr_flac · dr_mp3 · stb_vorbis — and the
 # AAC-LC and ALAC of a movie the C left to the OS (native-to-rust-Q6).
+# ⛔No ffmpeg on any audio path (the EXPORT-AUDIO round removed it): every
+# format is decoded once at import, natively, tablets included — ogg was
+# why stb_vorbis came, the one format dr_libs did not read. ↩️dr_libs and
+# stb_vorbis were vendored at a pinned commit, so that a commit of this
+# repository always built the same decoder bytes, until the connection round
+# deleted them (connection-round-checklist H, 2026-11-08); symphonia is held
+# to that by the lock and the vendored patch.
 symphonia = { version = "0.6.1", default-features = false, features = [
   "aac",
   "adpcm",
@@ -32,6 +41,36 @@ symphonia = { version = "0.6.1", default-features = false, features = [
   "wav",
 ] }
 
-# The C answer key: the engine's qa_audio_* (native/oracle).
+# The OS stage on Windows: Media Foundation's source reader (os/
+# media_foundation.rs); the crate is already in the lock as wgpu-hal's
+# major.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Media_MediaFoundation", "Win32_System_Com"] }
+
+# The OS stage on Android: the NDK's MediaExtractor and MediaCodec (os/
+# ndk.rs), through ndk-sys — bindings made from the NDK's own headers, never
+# a table by hand (media's served_span.rs says why); already in the lock as
+# cpal's.
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys = { version = "0.6", features = ["media"] }
+
+# The OS stage on Apple's: AudioToolbox's ExtAudioFile over the container's
+# bytes (os/audio_toolbox.rs); both crates are already in the lock as
+# cpal's, taken without their default features, which would pull in
+# frameworks it has not.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+objc2-audio-toolbox = { version = "0.3", default-features = false, features = [
+  "std",
+  "AudioFile",
+  "ExtendedAudioFile",
+  "objc2-core-audio-types",
+] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+
+# The app's ledger (native/ledger), and a medium framed as the save frames
+# it (native/oracle's `framed`). ↩️And the C answer key, the engine's
+# qa_audio_*, until the connection round deleted it
+# (connection-round-checklist H, 2026-11-08).
 [dev-dependencies]
+ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }

@@ -6,6 +6,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedLayerName;
+import '../../models/timeline_coverage.dart' show exposedFrameIdAt;
 import '../../models/timeline_exposure.dart';
 
 LayerId defaultLayerIdForSequence(int sequence) {
@@ -127,6 +128,40 @@ const String conteRowBornName = 'Conte';
   return (
     frame: Frame(id: frameId, duration: duration, strokes: const []),
     timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
+  );
+}
+
+/// The cel [source]'s 겸용 copy is born covering a cut of [cutDuration]
+/// frames with — [frameId], its fresh panel (F-99) — and the cel of
+/// [source] whose picture it is born with, null for a blank one. Every
+/// command that makes a 겸용 copy of a covering row asks this.
+///
+/// 🗣️I-120-Q24 (유저 2026-11-07 「참조 행의 겸용 복사본은 같은 파일 그림의
+/// 셀로 태어난다」): a reference row's copy is born showing the picture of the
+/// file its source shows — still a cel of its own, unnamed and no other
+/// cut's (F-98) — as the row was born with it when the file came in. So
+/// every cel of the bank the two share stays a picture of the file, and the
+/// row's 参照 header stands in every cut (`referenceRedrawFor`). ↩️It was
+/// born blank, which took that header off every cut of the row.
+({Frame frame, Map<int, TimelineExposure> timeline, FrameId? picturedFrom})
+linkedCopyCoveringCelFor(
+  Layer source, {
+  required FrameId frameId,
+  required int cutDuration,
+}) {
+  final cel = coveringCelFor(frameId: frameId, cutDuration: cutDuration);
+  final shownId = source.mediaReference == null
+      ? null
+      : exposedFrameIdAt(source.timeline, 0);
+  final shown = source.frames.where((frame) => frame.id == shownId);
+  final picture = shown.firstOrNull?.filePicture;
+  if (picture == null) {
+    return (frame: cel.frame, timeline: cel.timeline, picturedFrom: null);
+  }
+  return (
+    frame: cel.frame.copyWith(filePicture: picture),
+    timeline: cel.timeline,
+    picturedFrom: shownId,
   );
 }
 

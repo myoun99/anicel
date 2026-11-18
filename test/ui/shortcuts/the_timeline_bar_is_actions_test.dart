@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/ruler_marker.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -108,6 +109,64 @@ void main() {
     await pressKeyOf(tester, EditorActionIds.timelineOrientationToggle);
     await workIn(tester, WorkingPanel.timeline);
     expect(tip(), AppText.strings.tlShowXSheet);
+  });
+
+  // 🗣️I-169 (유저 2026-11-12): 「타임라인 룰러에 북마크? 메모 넣는기능」 — a
+  // marker is made by the ruler's double click and by this key, at the
+  // playhead of the panel worked in (the two ways the question offered).
+  // And I-169-Q2: 「컷(로컬)이랑 콘티(글로벌)이랑 마커 독립적으로」.
+  testWidgets('the marker key opens the marker of the panel worked in, at '
+      'its playhead: the cut\'s on the timeline, the open timeline\'s on '
+      'the conte', (tester) async {
+    final session = await pumpApp(tester);
+    final cut = RulerMarkerHolder.cut(session.activeCutId!);
+    const movie = RulerMarkerHolder.timeline();
+    const window = ValueKey<String>('instance-edit-dialog');
+    Future<void> typeAndPressEnter(String text) async {
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ruler-marker-text-field')),
+        text,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    await workIn(tester, WorkingPanel.timeline);
+    session.selectFrameIndex(7);
+    await tester.pumpAndSettle();
+    await pressKeyOf(tester, EditorActionIds.rulerMarkerEdit);
+    expect(find.byKey(window), findsOneWidget);
+    expect(find.text(AppText.strings.rulerMarkerNewTitle), findsOneWidget);
+    await typeAndPressEnter('cut');
+    expect(session.rulerMarkers.markersOn(cut).inOrder, const [
+      RulerMarker(start: 7, text: 'cut'),
+    ]);
+    expect(session.rulerMarkers.markersOn(movie).isEmpty, isTrue);
+
+    // The same key on the same frame opens the marker that stands there.
+    await pressKeyOf(tester, EditorActionIds.rulerMarkerEdit);
+    expect(find.text(AppText.strings.rulerMarkerEditTitle), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    // From a second cut, where the movie's frame is not the cut's.
+    session.cutVerbs.createCut();
+    session.selectFrameIndex(3);
+    await tester.pumpAndSettle();
+    await workIn(tester, WorkingPanel.storyboard);
+    final at = session.playheadCursors.trackFrameNow()!;
+    expect(at, isNot(session.currentFrameIndex), reason: 'premise');
+    await pressKeyOf(tester, EditorActionIds.rulerMarkerEdit);
+    expect(find.text(AppText.strings.rulerMarkerNewTitle), findsOneWidget);
+    await typeAndPressEnter('movie');
+    expect(session.rulerMarkers.markersOn(movie).inOrder, [
+      RulerMarker(start: at, text: 'movie'),
+    ]);
+    expect(session.rulerMarkers.markersOn(cut).inOrder, const [
+      RulerMarker(start: 7, text: 'cut'),
+    ]);
   });
 
   testWidgets('the camera view key is the sill\'s switch', (tester) async {

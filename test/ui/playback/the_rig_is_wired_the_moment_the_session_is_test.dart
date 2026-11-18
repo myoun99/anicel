@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
@@ -24,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/the_apps_engine_let_go.dart';
 
 /// What the playback rig owes the session — that it is wired the moment
 /// the session exists, that it goes down with it, and that its warmer
@@ -44,7 +46,7 @@ void main() {
   tearDown(() => session.dispose());
 
   // One picture: a cut's composite, and the canvas's image of a cel inked over
-  // it — the canvas is one tile, so both are its size.
+  // it — the ink covers every tile of the canvas, so both are its size.
   const picture = 256 * 256 * 4;
 
   /// [twoPictures]' cut, its two cels not inked yet.
@@ -156,6 +158,24 @@ void main() {
     );
   });
 
+  // ⚠️It loses the app's engine, twice: the tests after it find the next.
+  test('…and the app\'s engine stops being heard: the frames\' pictures, '
+      'told of the engine let go while the session is, are told of none '
+      'once it is down', () {
+    final own = EditorSessionManager(initialProject: createDefaultProject());
+    var told = 0;
+    own.playbackRig.framePictures.store.wentWithItsTools.addListener(
+      () => told += 1,
+    );
+    theAppsEngineLostAndLetGo();
+    expect(told, 1, reason: '⛔premise: it hears while it is');
+
+    own.dispose();
+    theAppsEngineLostAndLetGo();
+
+    expect(told, 1);
+  });
+
   test('the playback mode is a setting: it starts as every picture, a new '
       'one lands and announces, the same one changes nothing', () {
     var notices = 0;
@@ -239,6 +259,37 @@ void main() {
 
     expect(wantedAsItEnded, [null]);
   });
+
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」. ⚠️It loses the app's engine: the
+  // tests after it find the next.
+  testWidgets('🚨the frames\' pictures go with the app\'s engine — and the '
+      'warmer, at rest with every one made, makes them again on the '
+      'next', (tester) async {
+    await tester.runAsync(() async {
+      final s = twoPictures();
+      addTearDown(s.dispose);
+      s.warmActiveCut();
+      expect(
+        await pollUntil(() => held(s, 0) && held(s, 2)),
+        isTrue,
+        reason: '⛔premise: made ahead',
+      );
+      await patiently(playbackRigOf(s).prerenderScheduler.idle);
+      // What a device takes with it is what landed since the last copy came
+      // here: the cels copied, they are drawn on the next engine still.
+      // ↩️Not copied till 2026-11-16, the ink went with the device and
+      // nothing said so — this read the frames as still drawn, until a
+      // frame's key kept said otherwise.
+      while (await EngineTileLedger.instance.copyHereABatch()) {}
+
+      theAppsEngineLostAndLetGo();
+
+      expect([held(s, 0), held(s, 2)], [false, false]);
+      expect(await pollUntil(() => held(s, 0) && held(s, 2)), isTrue);
+    });
+  });
+
   // The same laws on both screens a run is shown on: the canvas, from its
   // own pictures, for a cut played alone — through the camera or not
   // (playback-plays-the-screen-material) — and the track stack the whole
@@ -556,14 +607,6 @@ void main() {
               '2026-10-10; then it played the canvas\'s row images',
         );
 
-        // An export run borrows half the line.
-        rig.playbackCache.lend(2 * picture);
-        expect(
-          [held(s, 0), held(s, 2)],
-          [true, true],
-          reason: 'what is left of the line holds them',
-        );
-        rig.playbackCache.lend(0);
       });
     });
 

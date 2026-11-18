@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_drag_in_flight.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
@@ -137,6 +138,162 @@ void main() {
     }
   });
 
+  // 🔎I-110 (검증/서피스 11-17, 실기): Alt pressed while a lasso fill was
+  // traced painted nothing — the eyedropper took the tool from under the
+  // drag. A held key waits for what the canvas is in the middle of — a
+  // stroke, a drag on a selection layer — as a mapped button does, and then
+  // takes the tool.
+  testWidgets('🚨Alt pressed in the middle of a drag takes the tool only as '
+      'the hand comes up, under every tool', (tester) async {
+    // ⛔Spelled here, not asked of the code: the tools whose press is a
+    // drag the canvas is in the middle of — a stroke, a selection layer's
+    // outline, a text box traced, the stamp's trail (the cut before it put
+    // a piece in the hand).
+    const dragged = {
+      CanvasTool.brush,
+      CanvasTool.eraser,
+      CanvasTool.fillShape,
+      CanvasTool.cut,
+      CanvasTool.cutStamp,
+      CanvasTool.text,
+      CanvasTool.shape,
+    };
+    const keepsItsAlt = {CanvasTool.select, CanvasTool.move};
+    // Where the drag leaves the tool, Alt or none: a fresh cut arms its
+    // stamp ([WorkspaceBrushPresets.armStampOnFreshCut]).
+    const endsAt = {CanvasTool.cut: CanvasTool.cutStamp};
+    final brush = await pumpShell(tester);
+    final at = visibleCanvasPoint(tester);
+    for (final tool in CanvasTool.values) {
+      if (keepsItsAlt.contains(tool)) continue;
+      await take(tester, brush, tool);
+      final hand = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var step = 1; step <= 4; step += 1) {
+        await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+        await tester.pump();
+      }
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        dragged.contains(tool) ? tool : CanvasTool.eyedropper,
+        reason: '${tool.name}, Alt in the middle of the drag',
+      );
+      await hand.moveTo(at + const Offset(20, 60));
+      await tester.pump();
+      await hand.up();
+      await tester.pump();
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        CanvasTool.eyedropper,
+        reason: '${tool.name}, the hand up with Alt held',
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(
+        brush.value.tool,
+        endsAt[tool] ?? tool,
+        reason: '${tool.name}, Alt let go',
+      );
+      expect(tester.takeException(), isNull, reason: tool.name);
+    }
+  });
+
+  // ⚠️What the keys wait for is the app's (`CanvasDragInFlight`): a canvas
+  // taken down in the middle of its drag lets go of it, or every key held
+  // after would wait for a hand that never comes up — the selection's
+  // drag, the text's and the stamp's alike.
+  testWidgets('a canvas taken down in the middle of a drag leaves no key '
+      'waiting for it', (tester) async {
+    Future<void> drag(TestGesture hand, Offset at, {bool up = true}) async {
+      for (var step = 1; step <= 4; step += 1) {
+        await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+        await tester.pump();
+      }
+      if (up) {
+        await hand.up();
+        await tester.pump();
+      }
+    }
+
+    for (final tool in const [
+      CanvasTool.fillShape,
+      CanvasTool.text,
+      CanvasTool.cutStamp,
+    ]) {
+      var brush = await pumpShell(tester);
+      final at = visibleCanvasPoint(tester);
+      if (tool == CanvasTool.cutStamp) {
+        // A piece in the hand first: a stroke, and a fresh cut of it arms
+        // the stamp.
+        for (final pen in const [CanvasTool.brush, CanvasTool.cut]) {
+          await take(tester, brush, pen);
+          await drag(
+            await tester.startGesture(at, kind: PointerDeviceKind.mouse),
+            at,
+          );
+        }
+      } else {
+        await take(tester, brush, tool);
+      }
+      expect(brush.value.tool, tool, reason: 'premise');
+      final hand = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag(hand, at, up: false);
+      await tester.pumpWidget(const SizedBox());
+      expect(
+        CanvasDragInFlight.live.value,
+        isFalse,
+        reason: '${tool.name}: let go as the canvas went, before the hand',
+      );
+      await hand.up();
+
+      brush = await pumpShell(tester);
+      await take(tester, brush, CanvasTool.brush);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+      expect(brush.value.tool, CanvasTool.eyedropper, reason: tool.name);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pump();
+    }
+  });
+
+  // ⚠️Another hand can still take the tool mid drag (the rail, a tool's
+  // key): the text layer, taken away under its press, hears the hand no
+  // more and leaves nothing waiting for it.
+  testWidgets('a tool taken from under a text drag leaves the text layer '
+      'deaf to the hand and no key waiting', (tester) async {
+    final brush = await pumpShell(tester);
+    await take(tester, brush, CanvasTool.text);
+    final at = visibleCanvasPoint(tester);
+    final hand = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 1; step <= 4; step += 1) {
+      await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+      await tester.pump();
+    }
+    await take(tester, brush, CanvasTool.brush);
+    await hand.moveTo(at + const Offset(20, 60));
+    await tester.pump();
+    await hand.up();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(brush.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+  });
+
   // 🚨The BUTTONS, through the real shell: every tool's own layer is
   // mounted over the canvas when the press comes, and goes away under the
   // pointer when the hold takes the tool.
@@ -242,6 +399,20 @@ void main() {
       // Off the canvas: a notch turned with Alt zooms a sheet's frames
       // (I-155 — After Effects' and Premiere Pro's zoom of time).
       'lib/src/ui/input/wheel_law.dart',
+      // The held keys: a modifier going down with Alt held, under a tool
+      // that keeps its Alt by the predicate above, holds nothing — whatever
+      // Alt holds (F-299-Q1, F-603). It reads the predicate; it keeps none.
+      'lib/src/ui/shortcuts/editor_key_holds.dart',
+      // A key that is modifiers alone, pressed with just its own held
+      // (F-603) — a key, no tool's.
+      'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
+      // Modifiers pressed alone — Alt among them, held or not: one gone down
+      // with nothing after it is a press of its own (I-19, F-603-Q1, card
+      // a-held-modifiers-repeat-is-heard-as-a-press). It keeps no tool's Alt.
+      'lib/src/ui/shortcuts/lone_modifiers.dart',
+      // Whether a modifier's key is held, asked for every reader of one as
+      // the engine may have let go of it (F-603) — no tool's.
+      'lib/src/ui/shortcuts/shortcut_activator_codec.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
       // Off the canvas: a header graph's Alt-click on a line, which picks

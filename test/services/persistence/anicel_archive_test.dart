@@ -39,16 +39,17 @@ void main() {
         MediaAsset(path: 'E:/elsewhere/hiss.wav', name: 'hiss'),
       ],
     );
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 37) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 8,
+      canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
       tiles: {
         TileCoord(x: 1, y: 0): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
       },
@@ -74,7 +75,7 @@ void main() {
     );
     final reopened = contents.cels.single.toSurface();
     expect(reopened.canvasSize, surface.canvasSize);
-    expect(reopened.tileSize, 8);
+    expect(reopened.tileSize, side);
     expect(
       reopened.tiles[TileCoord(x: 1, y: 0)]!.pixels,
       pixels,
@@ -127,20 +128,21 @@ void main() {
 
   test('pasteboard tiles (negative coords) round-trip through the cel '
       'blob (v2 signed coords)', () {
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 11) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 8,
+      canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
       tiles: {
         TileCoord(x: -1, y: -2): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
         TileCoord(x: 3, y: 0): BitmapTile.blank(
-          size: 8,
+          size: side,
         ),
       },
     );
@@ -344,12 +346,56 @@ void main() {
   // drops the word and its next save writes the rows back linked across
   // timelines with no sync, nothing said — so a file this build writes says
   // a number a v33 build refuses as a newer Anicel's. No older shape went
-  // for it: a v33 file is read here, the floor.
+  // for it, so a v33 file was read here, until format 35's floor.
   test('🚨a file that may hold a 동기컷 says a format a v33 build refuses '
       'as newer', () {
     expect(anicelFormatVersion, greaterThan(33));
-    final v33 = decodeAnicelProjectDocument(documentSaying(33)).project;
-    expect(v33.linkRegistry.syncs, isEmpty);
+  });
+
+  // F-578 (format 35): a colour label has no 美術. A v34 file's `"process":
+  // "art"` names no process here and would open unlabelled, its revise gone
+  // with it — so it is refused by its number, to be carried over by hand.
+  test('🚨a v34 file is refused by its number — its labels may say 美術', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(34)),
+      refusesNaming('format 34,'),
+    );
+    expect(anicelFormatVersion, greaterThan(34));
+  });
+
+  // F-589 (format 36): a carry records when the file its bytes came from
+  // had last changed (`carriedModified`). A v35 build drops the word and its
+  // next save writes the carry back with no date, nothing said — so a file
+  // this build writes says a number a v35 build refuses as newer. No older
+  // shape went for it, so a v35 file was read here, until format 38's floor.
+  test('🚨a file that may hold a carry\'s date says a format a v35 build '
+      'refuses as newer', () {
+    expect(anicelFormatVersion, greaterThan(35));
+  });
+
+  // I-169 (format 37): a ruler holds its markers — a cut's and a
+  // timeline's. A v36 build drops the lists and its next save writes the
+  // cut and the timeline back with no marker, nothing said — so a file this
+  // build writes says a number a v36 build refuses as newer. No older shape
+  // went for it, so a v36 file was read here, until format 38's floor.
+  test('🚨a file that may hold a ruler marker says a format a v36 build '
+      'refuses as newer', () {
+    expect(anicelFormatVersion, greaterThan(36));
+  });
+
+  // I-175 (format 38): a base folds each side of its attach group on its
+  // own (`foldedAttaches`), and `collapsed` is a folder's alone. A v37
+  // base's `"collapsed": true` is not read — its group would open, and the
+  // next save would make that the truth — so a v37 file is refused by its
+  // number, to be carried over by hand; and a file this build writes says
+  // a number a v37 build refuses as newer.
+  test('🚨a v37 file is refused by its number — a base may say its whole '
+      'group is folded', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(37)),
+      refusesNaming('format 37,'),
+    );
+    expect(anicelFormatVersion, greaterThan(37));
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

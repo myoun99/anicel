@@ -12,7 +12,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -21,14 +20,13 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// Card playback-picture-weight-estimates (F-365 ③): the warmer asks the
 /// playback line for room before it makes a picture, and it weighed a row as
@@ -39,13 +37,12 @@ import '../../helpers/poll_until.dart';
 /// shape by a row's kind at every level, until no row image was made
 /// (one-picture-per-frame ②-5b-1).
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
-  // The canvas as its picture lies ([pictureExtentOf]).
-  final canvasPicture = pictureExtentOf(canvasSize.canvasRect);
-  final canvasBytes = estimatedImageBytes(
-    canvasPicture.width.round(),
-    canvasPicture.height.round(),
-  );
+  opensTheEnginesScreens();
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
+  // The canvas as its picture lies.
+  final canvasBytes = EngineStackScreen.bytesOver(canvasSize.canvasRect);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -64,15 +61,15 @@ void main() {
   final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
   BitmapTile red() => BitmapTile(
-    size: 4,
+    size: tileSide,
     pixels: Uint8List.fromList([
-      for (var i = 0; i < 4 * 4; i += 1) ...[255, 0, 0, 255],
+      for (var i = 0; i < tileSide * tileSide; i += 1) ...[255, 0, 0, 255],
     ]),
   );
 
   BitmapSurface inkedAt(List<TileCoord> tiles) => BitmapSurface(
     canvasSize: canvasSize,
-    tileSize: 4,
+    tileSize: tileSide,
     tiles: {for (final at in tiles) at: red()},
   );
 
@@ -87,7 +84,7 @@ void main() {
     LayerFrameImageCache images, {
     List<CompositeNode<CanvasStackRow>> Function(int frame)? rowsAt,
   }) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -160,9 +157,9 @@ void main() {
         layerId: const LayerId('m'),
         frameId: const FrameId('b'),
       );
-      final store = BrushFrameStore();
+      final store = _LooksRecorded();
       keepInAFile(store, {key: inACorner(), other: inACorner()});
-      final images = _ReadsRecorded(frameStore: store);
+      final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(
         images,
@@ -174,7 +171,7 @@ void main() {
       );
       await pictures.readIn(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
-      images.read.clear();
+      store.looked.clear();
 
       await pictures.readIn((
         cut: cut,
@@ -183,16 +180,16 @@ void main() {
         ghosts: FrameGhosts.none,
       ));
 
-      expect(images.read, [other]);
+      expect(store.looked, [other]);
     });
   });
 
   testWidgets('🚨a walk reading its picture in asks the room for nothing once '
       'it has been replaced', (tester) async {
     await tester.runAsync(() async {
-      final store = BrushFrameStore();
+      final store = _LookAheadHeld();
       keepInAFile(store, {key: inACorner()});
-      final images = _ReadInHeld(frameStore: store);
+      final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final room = _Asked();
       final scheduler = PlaybackPrerenderScheduler(
@@ -217,10 +214,10 @@ void main() {
           playlistFrameOf: (_, frame) => frame,
         ),
       );
-      await images.asked.future;
+      await store.asked.future;
       scheduler.cancel();
-      images.held.complete();
-      await images.reading;
+      store.held.complete();
+      await store.reading;
       await pumpEventQueue();
 
       expect(room.asked, isEmpty);
@@ -268,36 +265,39 @@ void main() {
   });
 }
 
-/// An image cache whose reading in waits for [held], saying when it is
-/// asked.
-class _ReadInHeld extends LayerFrameImageCache {
-  _ReadInHeld({required super.frameStore});
-
+/// A store whose look ahead waits for [held], saying when it is asked —
+/// a walk reads its picture's cels in as looks (card
+/// `one-cut-of-fnk02-holds-nine-gigabytes`, Q1).
+class _LookAheadHeld extends BrushFrameStore {
   final Completer<void> asked = Completer();
   final Completer<void> held = Completer();
-  late Future<void> reading;
+  late Future<BitmapSurface?> reading;
 
   @override
-  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) {
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
     if (!asked.isCompleted) {
       asked.complete();
     }
     return reading = held.future.then(
-      (_) => super.readIn(key, canvasSize: canvasSize),
+      (_) => super.lookAhead(key, canvasSize: canvasSize),
     );
   }
 }
 
-/// An image cache saying which cels it was asked to read in.
-class _ReadsRecorded extends LayerFrameImageCache {
-  _ReadsRecorded({required super.frameStore});
-
-  final List<BrushFrameKey> read = [];
+/// A store saying which cels it was asked to look at ahead.
+class _LooksRecorded extends BrushFrameStore {
+  final List<BrushFrameKey> looked = [];
 
   @override
-  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) {
-    read.add(key);
-    return super.readIn(key, canvasSize: canvasSize);
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
+    looked.add(key);
+    return super.lookAhead(key, canvasSize: canvasSize);
   }
 }
 

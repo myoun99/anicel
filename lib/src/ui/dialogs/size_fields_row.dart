@@ -9,6 +9,7 @@ import '../text/pixel_size_label.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
+import '../text/typed_text.dart';
 
 /// The width × height pair every size window asks for: two emphasised
 /// numeric fields on one row, the width focused first.
@@ -47,7 +48,7 @@ class SizeFieldsRow extends StatelessWidget {
               controller: widthController,
               autofocus: true,
               keyboardType: TextInputType.number,
-              inputFormatters: halfWidthDigitsOnly,
+              inputFormatters: typedText(halfWidthDigitsOnly),
               enabled: onChanged != null,
               onChanged: (_) => onChanged?.call(),
             ),
@@ -65,7 +66,7 @@ class SizeFieldsRow extends StatelessWidget {
               key: ValueKey<String>('$keyPrefix-height-field'),
               controller: heightController,
               keyboardType: TextInputType.number,
-              inputFormatters: halfWidthDigitsOnly,
+              inputFormatters: typedText(halfWidthDigitsOnly),
               enabled: onChanged != null,
               onChanged: (_) => onChanged?.call(),
             ),

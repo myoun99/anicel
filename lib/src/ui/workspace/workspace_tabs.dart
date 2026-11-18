@@ -548,6 +548,9 @@ class _WorkspaceTabs {
                                 _state._brushPresets.arrangeGroups,
                             onLibraryReset:
                                 _state._brushPresets.resetLibrary,
+                            canResetLibrary: _state
+                                ._brushPresets
+                                .libraryResetChanges,
                             onPresetExported: (id) {
                               unawaited(
                                 _state._brushPresets._exportAndNotice([
@@ -819,21 +822,35 @@ class _WorkspaceTabs {
       // snap list (유저 2026-08-29 threw out the "one list" premise; a snap
       // is where a drag catches, a preset is what you point at). See
       // [ToolSizePresetPanel] for the user's own words.
+      //
+      // I-170: the rack is the user's to edit — kept with the input
+      // settings, where the size bar's ± and the size drag's snap read it.
       case EditorWorkspace.toolSizeTabId:
         return EditorPanelTab(
           id: tabId,
           label: AppText.strings.panelToolSize,
           icon: Icons.line_weight,
           locked: locked,
-          builder: (context) => ValueListenableBuilder<BrushToolState>(
-            valueListenable: _state._brushTool,
-            builder: (context, tool, _) => ToolSizePresetPanel(
-              size: tool.activeSize,
-              onSizeSelected: (size) => _state._brushTool.value = _state
-                  ._brushTool
-                  .value
-                  .withActiveSize(size),
-            ),
+          builder: (context) => ValueListenableBuilder<AppInputSettings>(
+            valueListenable: AppInput.settings,
+            builder: (context, input, _) =>
+                ValueListenableBuilder<BrushToolState>(
+                  valueListenable: _state._brushTool,
+                  builder: (context, tool, _) => ToolSizePresetPanel(
+                    size: tool.activeSize,
+                    onSizeSelected: (size) => _state._brushTool.value = _state
+                        ._brushTool
+                        .value
+                        .withActiveSize(size),
+                    presets: input.toolSizes,
+                    // The settings as they are at the press, not as they
+                    // were when this was built.
+                    onPresetsChanged: (rack) =>
+                        _state.widget.session.setInputSettings(
+                          AppInput.settings.value.copyWith(toolSizes: rack),
+                        ),
+                  ),
+                ),
           ),
         );
       case EditorWorkspace.mediaTabId:
@@ -848,6 +865,10 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state.widget.session.mediaPool.sheetPhotoWrites,
+              // The pool's columns: a file's facts as they are read, and how
+              // the pool shows its files.
+              _state.widget.session.mediaPool.mediaFactsRead,
+              _state._mediaPoolView,
             ]),
             builder: (context, _) => MediaPoolPanel(
               assets: _state.widget.session.mediaPool.mediaAssets,
@@ -903,6 +924,23 @@ class _WorkspaceTabs {
                 initialPaths: [asset.path],
                 placeOnly: true,
               ),
+              onEditPreset: (asset) => unawaited(
+                editMediaPreset(
+                  context,
+                  _state.widget.session,
+                  asset,
+                  pictures: _state._views._poolPictures,
+                ),
+              ),
+              view: _state._mediaPoolView.value,
+              onViewChanged: (view) => _state._mediaPoolView.value = view,
+              factsOf: _state.widget.session.mediaPool.mediaFactsOf,
+              // A sound's waveform where its conform is held — never asking
+              // for one (`heldPeaksFor`).
+              soundOf: _state.widget.session.audioConformStore.heldPeaksFor,
+              frameRate:
+                  _state.widget.session.projectSettings.projectFrameRate,
+              pictures: _state._views._poolPictures,
             ),
           ),
         );

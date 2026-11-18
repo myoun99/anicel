@@ -16,9 +16,9 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 /// [MediaFramedBytes] over one where the compressor is available. This
 /// switch had no case for the wrapper, so it answered null the moment the
 /// engine was actually there — and nine tests died on the `!` at their call
-/// sites. ⛔They had never run with one, because the conform reader resolves
-/// the engine through `QA_ENGINE_PATH` and `flutter test` sets none
-/// (2026-09-08).
+/// sites. ⛔They had never run with one, because the conform reader resolved
+/// the C engine through a variable `flutter test` set none of (2026-09-08;
+/// the compressor is the GPU engine library's now, which every run builds).
 ///
 /// ⚠️The file it names then holds COMPRESSED BLOCKS. A test that wants the
 /// conform's own bytes reads the SOURCE (`readSync`), never the file — that

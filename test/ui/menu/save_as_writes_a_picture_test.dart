@@ -44,10 +44,6 @@ import '../../helpers/settle_async.dart';
 /// here is the road to it: where it is chosen, what it is asked, what it
 /// writes, what the windows say on the way — and that the project stays
 /// the file it was.
-///
-/// ⚠️Every test that lets the real clock run ends by stopping playback's
-/// warmer, as 88 others do: it starts after 400ms of REAL quiet, and one
-/// left between two pictures holds a timer past the body.
 void main() {
   late Directory folder;
 
@@ -330,7 +326,6 @@ void main() {
       pathBefore,
       reason: 'a picture is a copy — never where the project saves from now',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨F-371: the PNG stands on the paper the canvas shows — its '
@@ -358,7 +353,6 @@ void main() {
       0x80,
       reason: 'a thinned paper keeps its alpha in the file',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨I-117-Q1: BMP, TGA, TIFF and WEBP are written as their rows '
@@ -415,16 +409,11 @@ void main() {
         reason: '$format: 「캔버스색이 없으면 투명」',
       );
     }
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨F-371: the JPG stands on the paper too — its colour, and '
       'white where the paper is absent or thin, as a file with no alpha '
       'can only show it', (tester) async {
-    if (QaImageEncoder.instance == null) {
-      markTestSkipped('no native JPG encoder in this run');
-      return;
-    }
     final strip = await pumpApp(tester);
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
@@ -452,16 +441,11 @@ void main() {
       near([0x80, 0x80, 0x80]),
       reason: 'a thinned paper lets the white through as much as it is thin',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('JPG writes a JPEG of the same frame at the canvas\'s size', (
     tester,
   ) async {
-    if (QaImageEncoder.instance == null) {
-      markTestSkipped('no native JPG encoder in this run');
-      return;
-    }
     final strip = await pumpApp(tester);
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
@@ -497,13 +481,12 @@ void main() {
       everyElement(lessThan(200)),
       reason: 'and the dab is in it',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('⛔a picture with no bytes to write fails — the window goes, '
       'and a notice says why', (tester) async {
-    QaImageEncoder.debugForceAbsent = true;
-    addTearDown(() => QaImageEncoder.debugForceAbsent = false);
+    QaImageEncoder.debugForceRefusal = true;
+    addTearDown(() => QaImageEncoder.debugForceRefusal = false);
     final target = '${folder.path}${Platform.pathSeparator}frame.jpg';
     FolderPicker.debugSaveDestinationPicker = ({
       required String suggestedName,
@@ -513,8 +496,7 @@ void main() {
     final session = strip.projects.active;
     final said = find.text(AppText.strings.exNothingInFrame);
 
-    // What the row runs — the row itself is dim here, as the test below
-    // pins: this is the answer for the day an encoder fails after all.
+    // What the row runs, when the encoder refuses the picture.
     unawaited(
       saveFrameAsImage(
         tester.element(find.byType(EditorTopStrip)),
@@ -532,7 +514,6 @@ void main() {
       reason: 'the window goes',
     );
     expect(File(target).existsSync(), isFalse);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   group('a row that cannot write is dim — nothing fails only once it is '
@@ -544,24 +525,6 @@ void main() {
     ) => strip
         .menuRows(tester.element(find.byType(EditorTopStrip)))
         .singleWhere((row) => row.shortcuts.contains(action));
-
-    testWidgets('without a JPG encoder, JPG — and every other picture stays '
-        'live', (tester) async {
-      QaImageEncoder.debugForceAbsent = true;
-      addTearDown(() => QaImageEncoder.debugForceAbsent = false);
-      final strip = await pumpApp(tester);
-
-      expect(rowOf(strip, tester, 'file-save-as-jpg').enabled, isFalse);
-      for (final action in [
-        'file-save-as-png',
-        'file-save-as-bmp',
-        'file-save-as-tga',
-        'file-save-as-tiff',
-        'file-save-as-webp',
-      ]) {
-        expect(rowOf(strip, tester, action).enabled, isTrue, reason: action);
-      }
-    });
 
     testWidgets('off a cut, every picture — as Export is — and the project '
         'is still saved as', (tester) async {
@@ -613,7 +576,6 @@ void main() {
     expect(watched.labels, [
       AppText.strings.saveProgressRunning,
     ], reason: 'no picker after it to back out of: SAVING, never READY');
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨where the picker PLACES it (iPad), the write says it is '
@@ -665,6 +627,5 @@ void main() {
       reason: '🗣️no window follows the picker to say 「Saved」: no wait '
           'window says its work is over (11-05)',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

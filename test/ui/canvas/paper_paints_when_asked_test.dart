@@ -7,6 +7,7 @@
 // flag, and the one that reads pixels has ink over the whole page. This
 // pin renders an EMPTY stack over a dark backdrop and counts the paper's
 // own colour.
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -22,6 +23,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 200, height: 100);
   const screen = Size(300, 200);
   // A colour no backdrop or default paper shares.

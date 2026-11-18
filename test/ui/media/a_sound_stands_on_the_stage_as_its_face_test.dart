@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -17,9 +18,11 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/sound_face.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/tiles_laid.dart';
 
 /// 🗣️F-71 (유저 09-11 카드): 「오디오를 뷰어에서 재생시 파형이 진짜 뒤 흰
 /// 용지 위에 래스터화시킨거처럼 보이는데, 그게아니라 진짜 미디어
@@ -44,6 +47,9 @@ void main() {
     const faceSize = Size(402, 202);
     const lastFrame = 48;
     const upperPerFrame = 400 / lastFrame;
+    // One sound for every pump: a face handed the same file keeps its
+    // bands as they were baked.
+    final peaks = peaksOfSeconds(2.05);
 
     Future<List<int>> pumpFace(
       WidgetTester tester, {
@@ -64,7 +70,7 @@ void main() {
               size: faceSize,
               child: SoundFace(
                 keyValue: 'face',
-                peaks: peaksOfSeconds(2.05),
+                peaks: peaks,
                 frameRate: ProjectFrameRate.fps24,
                 frameCount: lastFrame + 1,
                 framesPerSecond: 24,
@@ -86,14 +92,15 @@ void main() {
       matching: find.byType(CustomPaint),
     );
 
-    /// What the face draws, on a canvas that answers its clip as the band
-    /// asks it (`WaveformPainter`) — the test's recording canvas cannot.
+    /// What the face draws — its layers in the order they stand, under its
+    /// bands, the bands, over them — on a canvas that answers its clip as
+    /// the band asks it (`WaveformPainter`): the test's recording canvas
+    /// cannot. Painted outside a screen's slot, the bands are drawn there.
     _Drawn drawn(WidgetTester tester) {
       final canvas = _Drawn();
-      tester
-          .widget<CustomPaint>(painted())
-          .painter!
-          .paint(canvas, tester.getSize(painted()));
+      for (final layer in tester.widgetList<CustomPaint>(painted())) {
+        layer.painter!.paint(canvas, tester.getSize(painted().first));
+      }
       return canvas;
     }
 
@@ -158,7 +165,8 @@ void main() {
     testWidgets('the place it writes is the transport\'s, as the timeline\'s '
         'rulers count (F-71-Q1)', (tester) async {
       String place() =>
-          (tester.widget<CustomPaint>(painted()).painter as dynamic).place
+          (tester.widgetList<CustomPaint>(painted()).first.painter as dynamic)
+                  .place
               as String;
 
       await pumpFace(tester, currentFrame: 24);
@@ -252,6 +260,104 @@ void main() {
       await tester.pump();
 
       expect(seeks, [28]);
+    });
+
+    /// 🗣️the-waveform-is-drawn-on-the-cpu-beside-its-kernel ③ (가) (관제
+    /// 2026-11-15 09:21): the face's bands are the timeline's own wave,
+    /// baked on the engine and laid on the grid's screen its rulers stand
+    /// over.
+    group('on the engine', () {
+      setUpAll(() async {
+        await openAppGpuEngine();
+        await appGpuGridKernels.ready;
+      });
+
+      /// The tiles the face's bands lay, painted through [slot] as a
+      /// screen would paint them, and the canvas they were painted on.
+      ({List<TimelineGridScreenTile> tiles, _Drawn canvas}) laidThrough(
+        WidgetTester tester,
+        TimelineGridScreenDebugSlot slot,
+      ) {
+        final canvas = _Drawn();
+        final bands = tester.widget<CustomPaint>(
+          find.descendant(
+            of: find.byType(TimelineGridScreenSlot),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        final tiles = slot.paintThrough(
+          () => bands.painter!.paint(canvas, tester.getSize(painted().first)),
+        );
+        return (tiles: tiles, canvas: canvas);
+      }
+
+      testWidgets('each row\'s band is laid onto its lanes, under its ruler, '
+          'and none is drawn on the canvas', (tester) async {
+        await pumpFace(tester);
+
+        final (:tiles, :canvas) = laidThrough(tester, rowSlot());
+
+        expect([for (final tile in tiles) tile.onto.topLeft], const [
+          Offset(1, 24),
+          Offset(1, 109),
+        ], reason: 'the whole file\'s row, then the one round the playhead');
+        expect(canvas.bandInks, isEmpty);
+      });
+
+      testWidgets('the playhead moving bakes the row round it again, and '
+          'lays the whole file\'s as it was baked', (tester) async {
+        final slot = rowSlot();
+        await pumpFace(tester, currentFrame: 24);
+        final before = laidThrough(tester, slot).tiles;
+        await pumpFace(tester, currentFrame: 30);
+        final after = laidThrough(tester, slot).tiles;
+
+        expect(identical(after.first.picture, before.first.picture), isTrue);
+        expect(identical(after.last.picture, before.last.picture), isFalse);
+      });
+
+      testWidgets('a face that goes lets go of what its bands keep', (
+        tester,
+      ) async {
+        await pumpFace(tester);
+        final tiles = laidThrough(tester, rowSlot()).tiles;
+        List<int> holds() => [
+          for (final tile in tiles) tile.picture.debugHolds,
+        ];
+        expect(holds(), [2, 2], reason: '⛔전제: each band, and the slot');
+
+        await tester.pumpWidget(const SizedBox());
+
+        expect(holds(), [1, 1], reason: 'the slot\'s alone');
+      });
+
+      testWidgets('the row round the playhead lays the sound from where the '
+          'file starts, and nothing before it', (tester) async {
+        // At frame 0 the file starts under the playhead, the row's middle:
+        // 200 pixels into its lanes.
+        await pumpFace(tester, currentFrame: 0);
+
+        final near = laidThrough(tester, rowSlot()).tiles.last;
+        final width = near.from.width.toInt();
+        final height = near.from.height.toInt();
+        final ratio = width / near.onto.width;
+        final bytes = near.picture.picture.read();
+        bool inked(int x) => [
+          for (var y = 0; y < height; y += 1) bytes[(y * width + x) * 4 + 3],
+        ].any((alpha) => alpha > 0);
+
+        final start = (200 * ratio).round();
+        expect(
+          [for (var x = 0; x < start - 1; x += 1) x].where(inked),
+          isEmpty,
+          reason: 'before the file',
+        );
+        expect(
+          [for (var x = start + 1; x < start + 40; x += 1) x].every(inked),
+          isTrue,
+          reason: 'the file\'s first frames',
+        );
+      });
     });
   });
 

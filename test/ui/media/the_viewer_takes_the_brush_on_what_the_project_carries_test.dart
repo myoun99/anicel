@@ -8,8 +8,6 @@ import 'package:anicel/src/models/app_input_settings.dart'
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/viewer_ink_keys.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart'
-    show surfacePixelRgba;
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -26,6 +24,7 @@ import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-114 (유저 2026-10-21): 「뷰어패널(서브던 메인이던) 새 기능. 다른
 /// 캔버스 베이스패널의 브러시 허용이랑 똑같은 직접 그릴수있는기능 법
@@ -125,7 +124,8 @@ void main() {
     final carry = session.repository
         .requireProject()
         .mediaAssetByPath(path)!
-        .carriedAs!;
+        .carriedAs!
+        .token;
     final (:slot, :ink) = await view(tester, session, path);
 
     expect(
@@ -412,7 +412,7 @@ void main() {
           .canvasState
           .currentSurface;
       final pixel = window.placement.pixelOf(doc);
-      return (surfacePixelRgba(
+      return (surfaceRgbaInPlace(
                 surface,
                 pixel.dx.floor(),
                 pixel.dy.floor(),

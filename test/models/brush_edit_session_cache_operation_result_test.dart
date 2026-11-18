@@ -25,7 +25,7 @@ void main() {
       canvasState: CanvasSurfaceState(
         currentSurface: BitmapSurface(
           canvasSize: const CanvasSize(width: 4, height: 4),
-          tileSize: 2,
+          tileSize: 128,
         ),
       ),
       materializationHistoryState: BrushBitmapMaterializationHistoryState(),

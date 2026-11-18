@@ -7,6 +7,51 @@ import 'brush_tip_shape.dart';
 import 'canvas_point.dart';
 import 'separable_blend_mode.dart';
 
+/// A mixing brush's step, as its dab was made (`BrushGroundColorMixer`):
+/// where the ground under it is read — [center], [radius] —, the drawing
+/// colour, and what the brush's curves and dice made of its paint. The
+/// engine walks the steps in [step]'s order, the reservoir their chain,
+/// and resolves each one's colour (gpu_engine `GpuMixStep`).
+final class BrushDabMix {
+  const BrushDabMix({
+    required this.step,
+    required this.center,
+    required this.radius,
+    required this.color,
+    required this.refill,
+    required this.laid,
+    required this.density,
+    required this.take,
+    required this.share,
+    required this.pick,
+    required this.dry,
+  });
+
+  /// Its place in the stroke's chain, from 0.
+  final int step;
+  final CanvasPoint center;
+  final double radius;
+
+  /// The drawing colour, ARGB.
+  final int color;
+
+  /// A loaded brush's refill toward the drawing colour, the share of it
+  /// laid over what the brush carries, and how thick it lays.
+  final double refill;
+  final double laid;
+  final double density;
+
+  /// A dry brush's pickup.
+  final double take;
+
+  /// The share of a whole stamp it is, and what a whole one lifts.
+  final double share;
+  final double pick;
+
+  /// A brush with no paint of its own (`paintAmount` 0).
+  final bool dry;
+}
+
 class BrushDab {
   BrushDab({
     required this.center,
@@ -36,6 +81,7 @@ class BrushDab {
     this.blurs = false,
     this.stamp,
     this.pathStep,
+    this.mix,
   }) {
     if (!textureScale.isFinite || textureScale <= 0.0) {
       throw ArgumentError.value(
@@ -142,10 +188,10 @@ class BrushDab {
 
   /// How the stroke shows its second tip — carried by EVERY dab of a stroke
   /// that has one, the first tip's and the second's alike, null on every
-  /// dab of a stroke that has none. The law is beside `qa_dual_view_rows`
-  /// (qa_engine.c, ABI 60): the second tip is a second stroke along the
-  /// same path, piling on a plane of its own ([second]), and what the
-  /// stroke shows is the two planes through this view.
+  /// dab of a stroke that has none. The law is beside `dualViewAlpha` (ABI
+  /// 60): the second tip is a second stroke along the same path, piling on
+  /// a plane of its own ([second]), and what the stroke shows is the two
+  /// planes through this view.
   final BrushDualView? dual;
 
   /// Whether this is a dab of the second tip's stroke: its [tipMask] is the
@@ -205,6 +251,18 @@ class BrushDab {
   /// kernels even that out on the laid alpha (`stampShareOf`).
   final double? pathStep;
 
+  /// A mixing brush's dab whose colour the engine resolves as the stroke
+  /// goes: it lays the colour of this step of the stroke's chain, not
+  /// [color] — the drawing colour it was made with. A symmetry's copies
+  /// share their dab's. Pen-up bakes the colour in and lets this go
+  /// ([mixedAs]): a dab kept, stored or laid again holds its colour, and
+  /// this is never stored.
+  final BrushDabMix? mix;
+
+  /// This dab laying [argb], the colour its [mix] step resolved, as its
+  /// own.
+  BrushDab mixedAs(int argb) => copyWith(color: argb, mix: null);
+
   /// This dab as a tool set to [blend] lays it.
   ///
   /// 🚨ERASE rides a flag on the DAB, not the blend mode — the materializer
@@ -246,6 +304,7 @@ class BrushDab {
     bool? blurs,
     BrushStampImage? stamp,
     double? pathStep,
+    Object? mix = _same,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -275,8 +334,12 @@ class BrushDab {
       blurs: blurs ?? this.blurs,
       stamp: stamp ?? this.stamp,
       pathStep: pathStep ?? this.pathStep,
+      mix: identical(mix, _same) ? this.mix : mix as BrushDabMix?,
     );
   }
+
+  /// [copyWith]'s [mix] left as it is — null lets it go.
+  static const Object _same = Object();
 
   Map<String, dynamic> toJson() => {
     'center': center.toJson(),
@@ -389,7 +452,8 @@ class BrushDab {
           other.erase == erase &&
           other.blurs == blurs &&
           other.stamp == stamp &&
-          other.pathStep == pathStep;
+          other.pathStep == pathStep &&
+          other.mix == mix;
 
   @override
   int get hashCode => Object.hashAll([
@@ -420,6 +484,7 @@ class BrushDab {
     blurs,
     stamp,
     pathStep,
+    mix,
   ]);
 
   @override
@@ -575,7 +640,7 @@ void _validateSequence(int value) {
 
 /// How a stroke with a second tip shows its two planes — the first tip's
 /// alpha combined with the second tip's through [compositeMode] at
-/// [density] (`qa_dual_view_rows`, and [BrushDab.dual]).
+/// [density] (`dualViewAlpha`, and [BrushDab.dual]).
 ///
 /// 🚨Both formats say a second tip has a mode and ours had none. Clip
 /// Studio writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and

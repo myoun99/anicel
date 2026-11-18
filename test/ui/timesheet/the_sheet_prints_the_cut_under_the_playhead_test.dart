@@ -81,7 +81,6 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session,
   ) async {
-    session.playbackRig.prerenderScheduler.cancel();
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
   }

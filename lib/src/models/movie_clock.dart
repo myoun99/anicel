@@ -84,6 +84,45 @@ typedef ProjectClock = ({
   ({int numerator, int denominator}) speed,
 });
 
+/// [clock] with its sounds pulled by [pull] on top — the clock a movie laid
+/// frame for frame ([framePullOf]) is read on.
+ProjectClock clockPulledBy(
+  ProjectClock clock,
+  ({int numerator, int denominator}) pull,
+) => (rate: clock.rate, speed: pullsTogether(clock.speed, pull));
+
+/// The pull that lays [movie] FRAME FOR FRAME on [clock] — each of its
+/// pictures one project frame, its sound pulled with them — or null where
+/// it lies so already, or names no rate.
+///
+/// 🗣️F-588 (유저 2026-11-14: 「이 영상만」 — the movie carried in is
+/// rewritten at the project's speed, and nothing else changes): on
+/// [clockPulledBy] this, [MovieClock.movieFrameAt] answers n for project
+/// frame n exactly, as the pull is the ratio of the two frames' lengths
+/// ([audioPullBetween]). Asked of a movie at the project's pulldown
+/// partner, so the counting base is the clock's own.
+///
+/// ⚠️From the rate the movie's decoder names, not its partner's: a decoder
+/// may spell 23.976 as 2997/125, and pulled by 24000/1001's ratio instead
+/// every project frame but the first would land a frame short of its
+/// picture.
+({int numerator, int denominator})? framePullOf(
+  ProjectClock clock,
+  QaVideoInfo movie,
+) {
+  if (movie.fpsNumerator <= 0 || movie.fpsDenominator <= 0) {
+    return null;
+  }
+  return audioPullBetween(
+    ProjectFrameRate(
+      numerator: movie.fpsNumerator,
+      denominator: movie.fpsDenominator,
+      countingBase: clock.rate.countingBase,
+    ),
+    clock.rate.inSourceTime(clock.speed),
+  );
+}
+
 /// The clock [movie] runs on in a project at [projectRate] whose sounds
 /// carry [audioSpeed].
 ///

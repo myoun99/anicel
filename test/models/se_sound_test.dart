@@ -2,41 +2,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_sound.dart';
 
-/// An SE row's SOUND (I-140): its keyed volume and its one pan — what the
+/// An SE row's SOUND (I-140): its keyed volume and its keyed pan — what the
 /// row plays, one reading for the lane, the graph and the mix.
 void main() {
+  PropertyTrack<double> keyed(Map<int, double> keys) => PropertyTrack<double>(
+    keys: {
+      for (final MapEntry(:key, :value) in keys.entries)
+        key: PropertyKey(value),
+    },
+  );
+
   test('an unkeyed sound plays as recorded, centred', () {
     const sound = SeSound();
     expect(sound.volumeAt(0), 1.0);
     expect(sound.volumeAt(37.5), 1.0);
-    expect(sound.pan, 0.0);
+    expect(sound.panAt(0), 0.0);
     expect(sound.isKeyed, isFalse);
+    expect(sound.isPanKeyed, isFalse);
   });
 
   test('a keyed volume is read between its keys, and held inside 0–200 %', () {
-    final ramp = SeSound(
-      volume: PropertyTrack<double>(
-        keys: {0: const PropertyKey(0.0), 10: const PropertyKey(1.0)},
-      ),
-    );
+    final ramp = SeSound(volume: keyed({0: 0.0, 10: 1.0}));
     expect(ramp.isKeyed, isTrue);
     expect(ramp.volumeAt(5), closeTo(0.5, 1e-9));
     expect(ramp.volumeAt(2.5), closeTo(0.25, 1e-9), reason: 'between frames');
     expect(ramp.volumeAt(40), 1.0, reason: 'held past the last key');
 
-    final loud = SeSound(
-      volume: PropertyTrack<double>(keys: {0: const PropertyKey(3.0)}),
-    );
-    expect(loud.volumeAt(0), SeSound.maxVolume);
-    final under = SeSound(
-      volume: PropertyTrack<double>(keys: {0: const PropertyKey(-1.0)}),
-    );
-    expect(under.volumeAt(0), 0.0);
+    expect(SeSound(volume: keyed({0: 3.0})).volumeAt(0), SeSound.maxVolume);
+    expect(SeSound(volume: keyed({0: -1.0})).volumeAt(0), 0.0);
+  });
+
+  // 🗣️audio-fx-grows-like-the-pros-Q7 (유저 2026-11-17): 「音量처럼 키를
+  // 단다」.
+  test('🎯a keyed pan is read between its keys as the volume is, and held '
+      'inside left and right', () {
+    final sweep = SeSound(pan: keyed({0: -1.0, 10: 1.0}));
+    expect(sweep.isPanKeyed, isTrue);
+    expect(sweep.isKeyed, isFalse, reason: 'the volume is its own');
+    expect(sweep.panAt(5), closeTo(0, 1e-9));
+    expect(sweep.panAt(2.5), closeTo(-0.5, 1e-9), reason: 'between frames');
+    expect(sweep.panAt(40), 1.0, reason: 'held past the last key');
+    expect(SeSound(pan: keyed({0: 3.0})).panAt(0), 1.0);
+    expect(SeSound(pan: keyed({0: -3.0})).panAt(0), -1.0);
   });
 
   test('it round-trips through JSON, and a default sound writes nothing', () {
     final shaped = SeSound(
-      pan: -0.25,
+      pan: PropertyTrack<double>(
+        keys: {4: const PropertyKey(-0.25, name: 'P')},
+      ),
       volume: PropertyTrack<double>(
         keys: {
           2: const PropertyKey(0.5, name: 'N'),
@@ -47,8 +61,13 @@ void main() {
     expect(SeSound.fromJson(shaped.toJson()), shaped);
 
     expect(const SeSound().toJson(), isEmpty);
-    expect(const SeSound(pan: 0.5).toJson().keys, ['pan']);
+    expect(SeSound(pan: keyed({0: 0.5})).toJson().keys, ['pan']);
     expect(SeSound.fromJson(const {}), const SeSound());
+    expect(
+      SeSound.fromJson(const SeSound(enabled: false).toJson()),
+      const SeSound(enabled: false),
+      reason: 'its switch off is kept',
+    );
   });
 
   // 🗣️I-145-Q1 (유저 2026-10-30): 「따로 한 값 — 두 입구」.
@@ -59,22 +78,25 @@ void main() {
     expect(quiet.toJson(), {'totalVolume': 0.4});
     expect(SeSound.fromJson(quiet.toJson()), quiet);
     expect(quiet, isNot(const SeSound()));
+    final pan = keyed({0: 0.5});
     expect(
-      const SeSound().copyWith(pan: 0.5).copyWith(totalVolume: 0.4),
-      const SeSound(pan: 0.5, totalVolume: 0.4),
+      const SeSound().copyWith(pan: pan).copyWith(totalVolume: 0.4),
+      SeSound(pan: pan, totalVolume: 0.4),
       reason: 'copyWith keeps what it was not given',
     );
     expect(SeSound.fromJson(const {'totalVolume': 5}).totalVolume, 2.0);
     expect(SeSound.fromJson(const {'totalVolume': -1}).totalVolume, 0.0);
   });
 
-  test('an empty volume is no volume — one sound, however it was made', () {
+  test('an empty volume or pan is none — one sound, however it was made', () {
     expect(SeSound(volume: PropertyTrack<double>.empty()), const SeSound());
+    expect(SeSound(pan: PropertyTrack<double>.empty()), const SeSound());
+    final pan = keyed({0: 0.5});
     expect(
-      const SeSound().copyWith(pan: 0.5),
-      const SeSound(pan: 0.5),
+      SeSound(pan: pan).copyWith(totalVolume: 0.5).pan,
+      pan,
       reason: 'copyWith keeps what it was not given',
     );
-    expect(const SeSound(pan: 0.5), isNot(const SeSound()));
+    expect(SeSound(pan: pan), isNot(const SeSound()));
   });
 }

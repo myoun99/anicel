@@ -48,7 +48,7 @@ void main() {
     final width = (m.bodyWidth * scale).ceil();
     final height = (m.bodyHeight * scale).ceil();
     final ink = ContePdfPicture(
-      rgba: Uint8List(width * height * 4),
+      pixels: Uint8List(width * height * 4),
       width: width,
       height: height,
     );

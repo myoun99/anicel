@@ -155,66 +155,35 @@ void main() {
   testWidgets('🚨a storm of settings bakes ONE at a time, newest last', (
     tester,
   ) async {
-    final asked = <double>[];
-    final gates = <Completer<BrushStrokeSample>>[];
-    Future<BrushStrokeSample> rasterize(
-      BrushSettings settings,
-      int width,
-      int height,
-    ) {
-      asked.add(settings.size);
-      final gate = Completer<BrushStrokeSample>();
-      gates.add(gate);
-      return gate.future;
-    }
+    final bakes = _GatedBakes();
+    final give = await _pumpLive(tester, bakes);
 
-    var settings = BrushSettings(size: 1);
-    late StateSetter setOuter;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 120,
-              height: 60,
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  setOuter = setState;
-                  return BrushStrokeLivePreview(
-                    settings: settings,
-                    rasterize: rasterize,
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
+    expect(
+      bakes.asked,
+      [1],
+      reason: 'the first build asks for what it is showing',
     );
 
-    expect(asked, [1], reason: 'the first build asks for what it is showing');
-
     for (var size = 2; size <= 9; size += 1) {
-      settings = BrushSettings(size: size.toDouble());
-      setOuter(() {});
-      await tester.pump();
+      await give(size);
     }
     expect(
-      asked,
+      bakes.asked,
       [1],
       reason:
           '⛔여덟 번 바뀌는 동안 **굽는 것은 여전히 하나** — 중간값마다 워커에 '
           '쌓았으면 낡은 그림이 다 구워진 뒤에야 손이 멈춘 값이 나온다',
     );
 
-    gates.first.complete(BrushStrokeSample(image: await _pixel()));
-    await tester.pump();
-    await tester.pump();
+    bakes.gates.first.complete(BrushStrokeSample(image: await _pixel()));
+    await tester.idle();
     expect(
-      asked,
+      bakes.asked,
       [1, 9],
       reason:
-          '🚨그리고 다음에 굽는 것은 **손이 멈춘 값**이다 — 큐가 아니라 한 칸',
+          '🚨그리고 다음에 굽는 것은 **손이 멈춘 값**이다 — 큐가 아니라 한 칸. '
+          '앞의 것이 끝난 그 자리에서, 프레임을 기다리지 않고 — 굽기마다 한 '
+          '프레임씩 늦으면 구형 기기에선 그만큼 덜 따라온다',
     );
   });
 
@@ -232,60 +201,68 @@ void main() {
   /// ([BrushStrokePreview]) — **화면에 있는 것은 다시 요청할 값이 아니다.**
   testWidgets('🚨once it has what it asked for it stops asking — and asks '
       'again only when the value changes', (tester) async {
-    final asked = <double>[];
-    final gates = <Completer<BrushStrokeSample>>[];
-    Future<BrushStrokeSample> rasterize(
-      BrushSettings settings,
-      int width,
-      int height,
-    ) {
-      asked.add(settings.size);
-      final gate = Completer<BrushStrokeSample>();
-      gates.add(gate);
-      return gate.future;
-    }
+    final bakes = _GatedBakes();
+    final give = await _pumpLive(tester, bakes);
+    expect(bakes.asked, [1], reason: 'the first build asks for what it shows');
 
-    var settings = BrushSettings(size: 1);
-    late StateSetter setOuter;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 120,
-              height: 60,
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  setOuter = setState;
-                  return BrushStrokeLivePreview(
-                    settings: settings,
-                    rasterize: rasterize,
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    expect(asked, [1], reason: 'the first build asks for what it shows');
-
-    gates.single.complete(BrushStrokeSample(image: await _pixel()));
+    bakes.gates.single.complete(BrushStrokeSample(image: await _pixel()));
     for (var frame = 0; frame < 5; frame += 1) {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(
-      asked,
+      bakes.asked,
       [1],
       reason:
           '⛔구운 그림이 이미 화면에 있다 — 그것을 또 굽는 것은 아무것도 바꾸지 '
           '않으면서 워커와 프레임만 먹는다',
     );
 
-    settings = BrushSettings(size: 4);
-    setOuter(() {});
+    await give(4);
+    expect(bakes.asked, [1, 4], reason: '「값이 바뀔때만 구우면 되는게 맞지않나?」');
+  });
+
+  testWidgets('🚨the hand went back to the stroke on screen while another '
+      'was baking: that one never comes up, and its image is let go', (
+    tester,
+  ) async {
+    final bakes = _GatedBakes();
+    final give = await _pumpLive(tester, bakes);
+    final first = await bakes.finish(tester, 0);
+    await give(2);
+    await give(1);
+
+    final other = await bakes.finish(tester, 1);
+
+    expect(
+      tester.widget<RawImage>(find.byType(RawImage)).image,
+      same(first),
+      reason: '「한 프레임 보이는 건 무조건 걸린다」 — 2 는 손이 떠난 값이다',
+    );
+    expect(other.debugDisposed, isTrue, reason: 'it owns what it baked');
+    expect(bakes.asked, [1, 2], reason: '1 is up — nothing to bake');
+  });
+
+  testWidgets('a bake that fails leaves the stroke up, and bakes the newest '
+      'asked meanwhile — not itself again', (tester) async {
+    final bakes = _GatedBakes();
+    final give = await _pumpLive(tester, bakes);
+    final first = await bakes.finish(tester, 0);
+    await give(2);
+
+    bakes.gates[1].completeError(StateError('a dead worker'));
     await tester.pump();
-    expect(asked, [1, 4], reason: '「값이 바뀔때만 구우면 되는게 맞지않나?」');
+    await tester.pump();
+
+    expect(tester.widget<RawImage>(find.byType(RawImage)).image, same(first));
+    expect(bakes.asked, [1, 2], reason: '⛔a bake that cannot be made, '
+        'begun again and again, keeps a worker busy for ever');
+
+    await give(3);
+    bakes.gates[2].completeError(StateError('a dead worker'));
+    await give(4);
+    await tester.pump();
+    await tester.pump();
+    expect(bakes.asked, [1, 2, 3, 4]);
   });
 
   /// ⛔**그리고 그 그림들은 프리셋 캐시에 들어가지 않는다.** 행동으로는 못
@@ -316,4 +293,66 @@ Future<ui.Image> _pixel() {
     Paint()..color = const Color(0xFFFFFFFF),
   );
   return recorder.endRecording().toImage(1, 1);
+}
+
+/// A bake that waits for the test, and what each was asked at, by size.
+class _GatedBakes {
+  final asked = <double>[];
+  final gates = <Completer<BrushStrokeSample>>[];
+
+  Future<BrushStrokeSample> rasterize(
+    BrushSettings settings,
+    int width,
+    int height,
+  ) {
+    asked.add(settings.size);
+    final gate = Completer<BrushStrokeSample>();
+    gates.add(gate);
+    return gate.future;
+  }
+
+  /// Finishes the [index]th bake with a pixel of its own, and answers it.
+  Future<ui.Image> finish(WidgetTester tester, int index) async {
+    final image = await _pixel();
+    gates[index].complete(BrushStrokeSample(image: image));
+    await tester.pump();
+    await tester.pump();
+    return image;
+  }
+}
+
+/// The live preview in a box at a brush of size 1, baking through [bakes];
+/// answers a way to give it a brush of another size, pumped.
+Future<Future<void> Function(int size)> _pumpLive(
+  WidgetTester tester,
+  _GatedBakes bakes,
+) async {
+  var settings = BrushSettings(size: 1);
+  late StateSetter setOuter;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 120,
+            height: 60,
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                setOuter = setState;
+                return BrushStrokeLivePreview(
+                  settings: settings,
+                  rasterize: bakes.rasterize,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  return (int size) async {
+    settings = BrushSettings(size: size.toDouble());
+    setOuter(() {});
+    await tester.pump();
+  };
 }

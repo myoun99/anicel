@@ -1,7 +1,9 @@
 //! The still-image encoder (EX4): baseline JPEG, memory to memory — the
-//! engine's `qa_image_encode.c` over stb_image_write, in Rust
-//! (native-to-rust, 저장). Until the connection round the C is the answer
-//! key: the tests hold every byte to the engine's `qa_image_encode_jpg`.
+//! C engine's `qa_image_encode.c` over stb_image_write, in Rust
+//! (native-to-rust, 저장). The C was the answer key until the connection
+//! round deleted it (connection-round-checklist H, 2026-11-08): the tests
+//! hold every byte to what its `qa_image_encode_jpg` wrote, kept in the
+//! ledger.
 //!
 //! Why native: Flutter's engine encodes PNG only, and the pub 'image'
 //! package would drag a large pure-Dart dependency for one codec. stb's

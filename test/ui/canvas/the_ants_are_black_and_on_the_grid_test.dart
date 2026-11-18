@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -61,16 +62,17 @@ void main() {
 
   SelectionAntsPainter antsFor(
     CanvasSelectionRegion? region, {
-    bool live = false,
-  }) => SelectionAntsPainter(
-    repaint: const AlwaysStoppedAnimation<double>(0),
-    viewport: CanvasViewport(zoom: zoom),
-    committedRegion: region,
-    screenOffset: Offset.zero,
-    marqueeShapes: const [],
-    openTrails: const [],
-    outlineIsLive: live,
-  );
+    Offset screenOffset = Offset.zero,
+    double turn = 0,
+  }) =>
+      SelectionAntsPainter(
+        repaint: AlwaysStoppedAnimation<double>(turn),
+        viewport: CanvasViewport(zoom: zoom),
+        committedRegion: region,
+        screenOffset: screenOffset,
+        marqueeShapes: const [],
+        openTrails: const [],
+      );
 
   /// The box around every pixel the painter put ink on.
   ({double left, double top, double right, double bottom})? inkBounds(
@@ -117,6 +119,71 @@ void main() {
     expect(ink.top, closeTo(336, 1));
     expect(ink.right, closeTo(480, 1));
     expect(ink.bottom, closeTo(640, 1));
+  });
+
+  testWidgets('a screen offset moves the committed outline by as much', (
+    tester,
+  ) async {
+    // The brush panel draws its ants off its own origin
+    // (`brush_canvas_panel.dart`): the whole outline goes with the offset.
+    const size = ui.Size(700, 700);
+    final bytes = await render(
+      tester,
+      antsFor(fractionalRect(), screenOffset: const Offset(40, 24)),
+      size,
+    );
+    final ink = inkBounds(bytes, 700, 700)!;
+
+    expect(ink.left, closeTo(200, 1));
+    expect(ink.top, closeTo(360, 1));
+    expect(ink.right, closeTo(520, 1));
+    expect(ink.bottom, closeTo(664, 1));
+  });
+
+  testWidgets('a dash is five pixels of the screen at any zoom, and the '
+      'march moves it by pixels of the screen', (tester) async {
+    // The dashes are cut on the canvas and moved to the screen with the
+    // outline (card pixel-ants-cost-a-frame-while-moving), so at ×16 they
+    // must be cut sixteen times shorter. The top side runs right from
+    // (160, 336); three tenths of a turn marches the pattern 2.7 pixels,
+    // so the first dash covers 166.3 to 171.3 and each next one starts
+    // nine on. ⛔Cut at the canvas's own lengths a dash would be eighty
+    // pixels long, and a march of 2.7 canvas pixels would land it at 161.8.
+    const size = ui.Size(700, 700);
+    final bytes = await render(
+      tester,
+      antsFor(fractionalRect(), turn: 0.3),
+      size,
+    );
+    // Both strokes half-cover row 336 (the line is on the boundary), so a
+    // dash reads as a third white and a gap as all white once
+    // un-premultiplied; a dash's end pixel sits between.
+    bool dark(int x) {
+      final at = (336 * 700 + x) * 4;
+      final a = bytes.getUint8(at + 3);
+      return a > 0 && bytes.getUint8(at) * 255 ~/ a < 128;
+    }
+
+    final runs = <(int, int)>[];
+    for (var x = 162; x < 230; x += 1) {
+      if (!dark(x)) {
+        continue;
+      }
+      if (runs.isNotEmpty && runs.last.$2 == x - 1) {
+        runs.last = (runs.last.$1, x);
+      } else {
+        runs.add((x, x));
+      }
+    }
+
+    expect(runs.length, greaterThanOrEqualTo(6), reason: '$runs');
+    expect(runs.first.$1, closeTo(167, 1), reason: '$runs');
+    for (final (start, end) in runs.take(runs.length - 1)) {
+      expect(end - start + 1, inInclusiveRange(3, 5), reason: '$runs');
+    }
+    for (var run = 1; run < runs.length; run += 1) {
+      expect(runs[run].$1 - runs[run - 1].$1, closeTo(9, 1), reason: '$runs');
+    }
   });
 
   testWidgets('and the ants themselves are black', (tester) async {
@@ -170,24 +237,29 @@ void main() {
     );
   });
 
-  // 유저: 「**라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도
-  // 상관없는데**, 선택 커밋될떈 픽셀에 제대로 안착한 상태로」 — the other half
-  // of the same sentence, and the half that keeps a transform drag cheap.
-  testWidgets('a LIVE outline still traces the polygon', (tester) async {
+  // 🗣️F-591 (유저 2026-11-15): 「변형중에 선택도구 개미행렬 형태가 벡터로
+  // 돌아감. 비트맵이니까 픽셀 따라서 격자여야하는데」 — a selection a transform
+  // moves is still a selection, on the grid as it will land. ↩️It traced
+  // its polygon till then: F-65's 「라이브로 선택중일땐 … 벡터로 보여도
+  // 상관없는데」 is about a selection still being drawn.
+  testWidgets('a selection a transform moves sits on the pixel grid too', (
+    tester,
+  ) async {
     const size = ui.Size(700, 700);
-    final bytes = await render(
-      tester,
-      antsFor(fractionalRect(), live: true),
-      size,
+    final moved = fractionalRect().mapped(
+      (point) => CanvasPoint(x: point.x + 3.3, y: point.y + 2.2),
     );
+    final bytes = await render(tester, antsFor(moved), size);
     final ink = inkBounds(bytes, 700, 700);
 
     expect(ink, isNotNull);
-    // 10.3 × 16 = 164.8 and 20.7 × 16 = 331.2, against the settled
-    // outline's 160 and 336 above. ⚠️±1.5: a 1px stroke straddles the line
-    // and the ink lands on the pixel below it.
-    expect(ink!.left, closeTo(164.8, 1.5));
-    expect(ink.top, closeTo(331.2, 1.5));
+    // The polygon is (13.6, 22.9)–(33.7, 42.4), so the pixels by centre are
+    // x 14…33 and y 23…41: (224, 368)–(544, 672) at ×16. ⛔The polygon
+    // would be (217.6, 366.4)–(539.2, 678.4).
+    expect(ink!.left, closeTo(224, 1));
+    expect(ink.top, closeTo(368, 1));
+    expect(ink.right, closeTo(544, 1));
+    expect(ink.bottom, closeTo(672, 1));
   });
 
   testWidgets('no committed region draws no ants at all', (tester) async {

@@ -1,3 +1,4 @@
+import '../core/frozen_collections.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_folder.dart' show attachGroupBaseOf;
@@ -144,7 +145,7 @@ List<ConteSeat> _conteGroupReadOff(Cut cut) {
     for (var index = baseIndex - 1; index >= 0; index -= 1)
       if (attachGroupBaseOf(layers[index], layers) == base.id) layers[index],
   ];
-  return List.unmodifiable([
+  return frozenList([
     for (var k = above.length; k >= 1; k -= 1) (seat: k, row: above[k - 1]),
     (seat: 0, row: base),
     for (var k = 1; k <= below.length; k += 1) (seat: -k, row: below[k - 1]),

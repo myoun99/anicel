@@ -12,13 +12,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cache_budgets.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// The hot cel budget scales to the MACHINE (유저 확정 2026-08-16): a
 /// quarter of physical RAM clamped to [384MB, 1536MB], with the OS
@@ -84,7 +81,7 @@ void main() {
       // A direct field write is exactly what pressure does internally —
       // and it must NOT cool by itself, or the kick assertion below
       // would be vacuous.
-      store.hotCelByteBudget = 300;
+      store.hotCelByteBudget = _tight;
       await store.drainCooling();
       expect(
         store.isCelCold(_k1),
@@ -106,7 +103,7 @@ void main() {
       );
       expect(
         store.hotCelByteBudget,
-        300,
+        _tight,
         reason: 'the floor never raises a deliberately tight budget',
       );
     });
@@ -128,7 +125,9 @@ void main() {
     expect(store.isCelCold(_k1), isFalse, reason: 'CONTROL: both hot');
 
     session.renderCaches.applyCacheBudgets(
-      CacheBudgets.of({for (final line in CacheBudgetLine.values) line: 300}),
+      CacheBudgets.of({
+        for (final line in CacheBudgetLine.values) line: _tight,
+      }),
     );
     await store.drainCooling();
     expect(store.isCelCold(_k1), isTrue, reason: 'over the new budget');
@@ -146,9 +145,9 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    // The seed is the device law at the automatic allowance: with no
-    // engine (a host test run) the desktop default, byte for byte; with
-    // one (the native parity run) this machine's.
+    // The seed is the device law at the automatic allowance: this
+    // machine's, or the desktop default, byte for byte, where the RAM is
+    // not said.
     expect(
       session.renderCaches.brushFrameStore.hotCelByteBudget,
       session.deviceCacheBudgets
@@ -165,28 +164,8 @@ void main() {
     );
   });
 
-  test('the engine answers physical RAM with a sane number (needs the '
-      'standalone binary)', () {
-    final path = nativeEngineLibraryPathOrNull();
-    if (path == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    debugQaEngineLibraryPathOverride = path;
-    QaNativeEngine.debugResetForTests();
-    addTearDown(() {
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugResetForTests();
-    });
-
-    final engine = QaNativeEngine.instance;
-    expect(
-      engine,
-      isNotNull,
-      reason: 'a null engine here means the standalone binary does not '
-          'speak ABI v$kQaEngineAbiVersion — rebuild it',
-    );
-    final bytes = engine!.physicalMemoryBytes;
+  test('the engine answers physical RAM with a sane number', () {
+    final bytes = QaMemory.physicalMemoryBytes;
     expect(bytes, isNotNull, reason: 'a real machine knows its RAM');
     expect(
       bytes,
@@ -212,18 +191,26 @@ const _k2 = BrushFrameKey(
   frameId: FrameId('f2'),
 );
 
+const _tileSide = defaultCelTileSize;
+
+/// What one of [_ink]'s cels weighs in the store: its one tile.
+final _celBytes = BitmapTile.bytesFor(_tileSide);
+
+/// A deliberately tight budget: room for one of [_ink]'s cels, never two.
+final _tight = _celBytes + _celBytes ~/ 6;
+
 /// A one-tile cel whose bytes depend on [seed], so two of them differ.
 BitmapSurface _ink(int seed) {
-  final pixels = Uint8List(8 * 8 * 4);
+  final pixels = Uint8List(BitmapTile.bytesFor(_tileSide));
   for (var i = 0; i < pixels.length; i += 1) {
     pixels[i] = (i * seed * 31 + seed) & 0xFF;
   }
   return BitmapSurface(
-    canvasSize: const CanvasSize(width: 16, height: 16),
-    tileSize: 8,
+    canvasSize: const CanvasSize(width: 2 * _tileSide, height: 2 * _tileSide),
+    tileSize: _tileSide,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        size: 8,
+        size: _tileSide,
         pixels: pixels,
       ),
     },

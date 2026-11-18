@@ -14,9 +14,10 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
@@ -28,6 +29,7 @@ import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★A STROKE IS THE WINDOW'S IT STARTS IN — 유저 2026-09-30 (H49):
 /// 「그냥 선 시작한곳에따라 칸 나누자 … 일반칸은 일반칸내에서만 지정된 범위
@@ -44,7 +46,7 @@ void main() {
   const cutId = CutId('cut-1');
 
   bool inkAt(BitmapSurface surface, Offset pixel) =>
-      (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
+      (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
       0;
 
   group('the timesheet', () {
@@ -404,7 +406,7 @@ void main() {
 
     // 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는
     // 같은스냅」 — on the timesheet too: each window keeps the line its
-    // strokes' Shift locked onto, and the layer hears the keyboard for it.
+    // strokes' Shift locked onto, for as long as Shift is held.
     group('the line Shift holds past the pen (I-121)', () {
       /// A point of page 0's grid, [dx] and [dy] on from a corner of it.
       Offset grid(double dx, double dy) => Offset(
@@ -430,13 +432,16 @@ void main() {
         expect(inkUnder(page, grid(100, 120)), isFalse);
       });
 
-      testWidgets('🚨Shift pressed anew between them is a new hold: the press '
-          'lands where it is', (tester) async {
+      // A hand's release lasts longer than the line's question takes to
+      // come round (`ShiftLine`): time passes between the two.
+      testWidgets('🚨let go and pressed again between them is a new hold: the '
+          'press lands where it is', (tester) async {
         final origin = await pumpSheet(tester);
         final page = window('page-0');
         await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
         await alongTheDiagonal(tester, origin);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump(const Duration(milliseconds: 20));
         await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
         await stroke(tester, origin, [grid(100, 120)]);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
@@ -445,9 +450,40 @@ void main() {
         expect(inkUnder(page, grid(110, 110)), isFalse);
       });
 
-      // I-121-Q1: a finger's Shift (the switch on) let go is the key let go,
-      // and the layer — the lines' owner — hears it from the count of the
-      // fingers on the glass ([CanvasTouchContacts]).
+      // 🗣️F-592 (유저 2026-11-15): 「어디에 뭘 어떻게 그리던 거기에
+      // 스냅이된단거임. 이상한 규칙 만들지말고」 — on Windows a pen hovering
+      // lets Shift go in the engine's record with the key still down, and
+      // the key's own repeat then comes as a key-down like any other
+      // (`ShiftLine`). Windows holds Shift all along: so does the window's
+      // line.
+      testWidgets('🚨held, the next press lands on the line however long '
+          'after, whatever the keyboard said of Shift meanwhile', (
+        tester,
+      ) async {
+        ModifierKeys.debugWindowsKeyDown = (key) => key == vkShift;
+        addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await alongTheDiagonal(tester, origin);
+        for (var repeat = 0; repeat < 3; repeat += 1) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump(const Duration(seconds: 1));
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump(const Duration(milliseconds: 30));
+        }
+        // (100, 120) falls across the diagonal at (110, 110).
+        await stroke(tester, origin, [grid(100, 120)]);
+        ModifierKeys.debugWindowsKeyDown = null;
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(inkUnder(page, grid(110, 110)), isTrue);
+        expect(inkUnder(page, grid(100, 120)), isFalse);
+      });
+
+      // I-121-Q1: a finger's Shift (the switch on) let go is the key let go:
+      // the one question the windows' lines ask counts the fingers on the
+      // glass with the key ([CanvasTouchContacts.shiftIsHeld]).
       testWidgets('🚨a finger holding Shift, lifted and laid down again, is a '
           'new hold: the press lands where it is', (tester) async {
         AppInput.settings.value = AppInputSettings.testCorpusBaseline
@@ -475,7 +511,7 @@ void main() {
           grid(62, 60),
         ], kind: PointerDeviceKind.stylus);
         await finger.up();
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 20));
         finger = await rest(10);
         await stroke(tester, origin, [
           grid(100, 120),

@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/windows_key_state.dart'
+    show vkControl, vkMenu;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
@@ -59,9 +62,11 @@ void main() {
         EditorActionIds.canvasPanHold,
         EditorActionIds.canvasRotateHold,
         EditorActionIds.canvasLineHold,
+        EditorActionIds.eyedropperHold,
       ],
       reason: 'the view\'s two held actions — the pan, and the turn (I-88) '
-          '— and the line from the last stroke (I-119)',
+          '— the line from the last stroke (I-119), and the eyedropper '
+          '(I-15, a key since F-603)',
     );
     final pan = bindings.activatorsFor(EditorActionIds.canvasPanHold);
     expect(pan, hasLength(1));
@@ -171,8 +176,31 @@ void main() {
       containsAll({EditorActionIds.frameNext, EditorActionIds.toolEraser}),
     );
 
+    expect(
+      bindings.resetAllChanges,
+      isTrue,
+      reason: 'a key recorded over the preset is something to reset',
+    );
     bindings.resetAll();
     expect(bindings.conflictedActionIds, isEmpty);
+    expect(
+      bindings.resetAllChanges,
+      isFalse,
+      reason: 'the preset as it ships has nothing to reset (F-583)',
+    );
+  });
+
+  test('a touch gesture recorded over the preset, with no key, is as much '
+      'to reset as a key', () {
+    final bindings = EditorShortcutBindings();
+    addTearDown(bindings.dispose);
+    expect(bindings.resetAllChanges, isFalse, reason: '⛔premise');
+
+    bindings.setTouchGesture(EditorActionIds.undo, null);
+
+    expect(bindings.resetAllChanges, isTrue);
+    bindings.resetAll();
+    expect(bindings.resetAllChanges, isFalse);
   });
 
   // 🗣️I-158 (유저 2026-11-04): 「펜(Y)이런식으로 이 텍스트를 버튼으로
@@ -336,6 +364,102 @@ void main() {
     expect(
       singleActivatorLabel(const SingleActivator(LogicalKeyboardKey.backspace)),
       'Backspace',
+    );
+  });
+
+  // 🗣️F-603 (유저 2026-11-16): 「단축키등록시 alt나 컨트롤키를 눌러도
+  // 단축키등록안됨. 다 가능하게」.
+  test('a key that is modifiers alone keeps through the file and reads as '
+      'its modifiers — and one with none of them is no key', () {
+    final ctrlAlt = modifiersAloneActivator(control: true, alt: true);
+    final restored = singleActivatorFromJson(singleActivatorToJson(ctrlAlt))!;
+    expect(activatorsEqual(restored, ctrlAlt), isTrue);
+    expect(isModifiersAlone(restored), isTrue);
+
+    expect(singleActivatorLabel(ctrlAlt, TargetPlatform.windows), 'Ctrl+Alt');
+    expect(singleActivatorLabel(ctrlAlt, TargetPlatform.macOS), '⌃⌥');
+    expect(
+      singleActivatorLabel(
+        modifiersAloneActivator(alt: true),
+        TargetPlatform.windows,
+      ),
+      'Alt',
+    );
+    expect(
+      singleActivatorFromJson({'key': modifiersAlone.keyId}),
+      isNull,
+      reason: 'modifiers alone with none of them held is malformed',
+    );
+    expect(
+      activatorsEqual(
+        modifiersAloneActivator(alt: true),
+        modifiersAloneActivator(control: true, alt: true),
+      ),
+      isFalse,
+      reason: 'Alt alone is not Ctrl+Alt',
+    );
+  });
+
+  testWidgets('🚨a key that is modifiers alone presses a HELD action as they '
+      'go down — every one held and no other — and a pressed one as they '
+      'are let go alone (F-603-Q1)', (tester) async {
+    final bindings = EditorShortcutBindings()
+      ..setPreset(ShortcutPreset.anicel);
+    final alt = modifiersAloneActivator(alt: true);
+    bindings
+      ..setActivators(EditorActionIds.canvasPanHold, [alt])
+      ..setActivators(EditorActionIds.undo, [alt]);
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+
+    KeyDownEvent down(LogicalKeyboardKey key) => KeyDownEvent(
+      physicalKey: PhysicalKeyboardKey.altLeft,
+      logicalKey: key,
+      timeStamp: Duration.zero,
+    );
+    // The modifiers held, as Windows says (the record is a test's: empty).
+    void hold(Set<int> virtualKeys) =>
+        ModifierKeys.debugWindowsKeyDown = virtualKeys.contains;
+
+    hold({vkMenu});
+    final press = down(LogicalKeyboardKey.altRight);
+    bindings.lone.hearKey(press);
+    expect(bindings.presses(EditorActionIds.canvasPanHold, press), isTrue);
+    expect(
+      bindings.presses(EditorActionIds.undo, press),
+      isFalse,
+      reason: 'a pressed one is not pressed as they go down',
+    );
+    expect(
+      bindings.shortcuts.keys.whereType<ModifiersDownActivator>(),
+      isEmpty,
+      reason: 'nor is a held one in the map the pressed actions run through',
+    );
+    expect(bindings.shortcuts.keys.whereType<ModifiersLetGoActivator>(), [
+      isA<ModifiersLetGoActivator>(),
+    ]);
+
+    hold({});
+    const release = KeyUpEvent(
+      physicalKey: PhysicalKeyboardKey.altRight,
+      logicalKey: LogicalKeyboardKey.altRight,
+      timeStamp: Duration.zero,
+    );
+    bindings.lone.hearKey(release);
+    expect(bindings.presses(EditorActionIds.undo, release), isTrue);
+    expect(
+      bindings.presses(EditorActionIds.canvasPanHold, release),
+      isFalse,
+      reason: 'a held one let go is let go',
+    );
+
+    hold({vkMenu, vkControl});
+    expect(
+      bindings.presses(
+        EditorActionIds.canvasPanHold,
+        down(LogicalKeyboardKey.altLeft),
+      ),
+      isFalse,
+      reason: 'Ctrl+Alt is not Alt alone',
     );
   });
 

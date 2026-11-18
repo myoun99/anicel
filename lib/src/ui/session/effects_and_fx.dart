@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
+import '../../services/commands/update_layer_se_sound_command.dart';
 import '../../services/commands/update_layer_transform_enabled_command.dart';
 import '../../services/commands/update_track_effects_command.dart';
 import '../timeline/effect_lane_editing.dart'
@@ -73,7 +74,9 @@ class EffectsAndFx {
   /// Whether the ACTIVE row can take an effect of [kind]: a row that carries
   /// its own FX — and, for a kind that draws a cel number
   /// ([EffectKind.drawsItsOwnPicture]), one whose drawings carry one
-  /// ([LayerKind.numbersItsDrawings]): the letters print it.
+  /// ([LayerKind.numbersItsDrawings]): the letters print it. A sound's
+  /// filter goes on a row that plays sound and a picture's on any other
+  /// ([EffectKind.isTakenByARow] — Q3 of audio-fx-grows-like-the-pros).
   ///
   /// ↩️A track-owned SE row was fenced off here since R6a (2026-07-30: 「its
   /// display clone strips FX」). The clone projects the track's chain now,
@@ -92,6 +95,7 @@ class EffectsAndFx {
           layer,
           _project.activeCutOrNull?.layers ?? const [],
         ) &&
+        kind.isTakenByARow(playsSound: layer.kind.playsSound) &&
         (!kind.drawsItsOwnPicture || layer.kind.numbersItsDrawings);
   }
 
@@ -219,8 +223,9 @@ class EffectsAndFx {
     }
   }
 
-  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
-  /// plus every effect's own switch, read as one answer for the layer-label
+  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled]),
+  /// an S row's 音声 switch ([SeSound.enabled]) and every effect's own
+  /// switch, read as one answer for the layer-label
   /// button — AE's fx column, and a MASTER over the per-group switches
   /// (user, 2026-07-30: "통합토글버튼").
   ///
@@ -234,6 +239,7 @@ class EffectsAndFx {
     }
     final switches = <bool>[
       if (layer.kind.hasTransformFxSwitch) layer.transformEnabled,
+      if (layer.kind == LayerKind.se) layer.seSound.enabled,
       for (final effect in layer.effects) effect.enabled,
     ];
     if (switches.isEmpty) {
@@ -321,6 +327,20 @@ class EffectsAndFx {
         )
       : null;
 
+  /// The 音声 group's switch of an S row ([SeSound.enabled]) set to
+  /// [enabled] — null where the row has none or it reads so already.
+  UpdateLayerSeSoundCommand? _soundSwitch(
+    Layer layer, {
+    required bool enabled,
+  }) => layer.kind == LayerKind.se && layer.seSound.enabled != enabled
+      ? UpdateLayerSeSoundCommand(
+          repository: _project.repository,
+          layerId: layer.id,
+          seSound: layer.seSound.copyWith(enabled: enabled),
+          description: enabled ? 'Apply sound FX' : 'Bypass sound FX',
+        )
+      : null;
+
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
     final commands = <Command>[];
@@ -330,6 +350,10 @@ class EffectsAndFx {
       final transform = _transformSwitch(layer, enabled: enabled);
       if (transform != null) {
         commands.add(transform);
+      }
+      final sound = _soundSwitch(layer, enabled: enabled);
+      if (sound != null) {
+        commands.add(sound);
       }
       if (layer.effects.isEmpty) {
         continue;
@@ -420,9 +444,12 @@ class EffectsAndFx {
   /// is there, and not a kind that draws a cel number
   /// ([EffectKind.drawsItsOwnPicture]), by the law the row gate keeps
   /// ([canAddEffectToActiveLayer]): the V row has no drawing whose number
-  /// the letters would print.
+  /// the letters would print — and a picture's alone: it plays no sound
+  /// ([EffectKind.isTakenByARow]).
   bool canAddEffectToTrack(TrackId trackId, EffectKind kind) =>
-      _project.trackById(trackId) != null && !kind.drawsItsOwnPicture;
+      _project.trackById(trackId) != null &&
+      kind.isTakenByARow(playsSound: false) &&
+      !kind.drawsItsOwnPicture;
 
   /// Adds an effect to the V row's chain, as [addEffectToActiveLayer] does
   /// to a layer's.
@@ -495,12 +522,26 @@ class EffectsAndFx {
       _editTrackEffects(
         trackId,
         description: 'Reset group',
-        edit: (fx) => effectsWithGroupReset(
-          fx,
-          laneId: headerLaneId,
-          frameIndexes: [_selection.currentFrameIndex],
-        ),
+        edit: (fx) => _trackGroupReset(fx, headerLaneId),
       );
+
+  /// Whether [resetTrackEffectGroup] would change anything now — what
+  /// lights its button, as `LaneVerbs.resetsLaneGroup` lights a layer's
+  /// (F-583).
+  bool resetsTrackEffectGroup(TrackId trackId, String headerLaneId) {
+    final track = _project.trackById(trackId);
+    return track != null &&
+        _trackGroupReset(track.effects, headerLaneId) != null;
+  }
+
+  List<LayerEffect>? _trackGroupReset(
+    List<LayerEffect> effects,
+    String headerLaneId,
+  ) => effectsWithGroupReset(
+    effects,
+    laneId: headerLaneId,
+    frameIndexes: [_selection.currentFrameIndex],
+  );
 
   /// One effect's own bypass on the V row — the switch on its group header,
   /// the twin of a layer effect's.

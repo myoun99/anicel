@@ -19,7 +19,7 @@ Future<String?> installFxPluginFile(
   final strings = AppText.strings;
   final outcome = await plugins.install(
     bytes,
-    confirm: (description, {required native, required replacing}) async {
+    confirm: (description, {required replacing}) async {
       if (!context.mounted) {
         return false;
       }
@@ -28,11 +28,7 @@ Future<String?> installFxPluginFile(
         ConfirmQuestion(
           keys: confirmDialogKeys('install-fx-plugin'),
           title: strings.fxPluginInstallTitle,
-          message: _questionOf(
-            description,
-            native: native,
-            replacing: replacing,
-          ),
+          message: _questionOf(description, replacing: replacing),
         ),
         accept: ConfirmChoice(strings.fxPluginInstall),
       );
@@ -49,11 +45,9 @@ Future<String?> installFxPluginFile(
   };
 }
 
-/// Who the plugin says it is, the version it replaces, and — a warning —
-/// that a native build of it runs outside the sandbox.
+/// Who the plugin says it is, and the version it replaces.
 String _questionOf(
   FxPluginDescription description, {
-  required bool native,
   required FxPluginDescription? replacing,
 }) {
   final strings = AppText.strings;
@@ -64,6 +58,5 @@ String _questionOf(
       description.version,
     ),
     if (replacing != null) strings.fxPluginReplaces(replacing.version),
-    if (native) strings.fxPluginRunsNatively,
   ].join('\n\n');
 }

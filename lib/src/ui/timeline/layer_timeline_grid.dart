@@ -3,12 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../../models/layer.dart';
 import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
@@ -168,6 +169,48 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// ruler content re-window from it (sub-cell movement rebuilds nothing).
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
+  /// The window the cells' rows are laid in, which their body publishes
+  /// ([TimelineFrameRowsScrollBody.geometry]) — held here so the grid sheet
+  /// under them is laid by the same, as the X-sheet's and the conte's are
+  /// by theirs (Q8 「타임라인 · X시트 · 콘티 한 법」).
+  final TimelineFrameGeometryHandle _windowedFrameGeometry =
+      TimelineFrameGeometryHandle(
+        const TimelineFrameGeometry(
+          frameCellExtent: 1,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
+
+  /// The window the ruler is laid in — the rows' ([_windowedFrameGeometry]),
+  /// the same frames through the same [TimelineFrameGeometry.windowedAt],
+  /// published where the ruler is laid out and at every bucket crossing.
+  ///
+  /// ⚠️A handle of its own, not the rows': their body publishes theirs
+  /// while it is laid out, and a render object outside it — the ruler, in
+  /// the header beside it — may not be marked from there (Flutter asserts
+  /// it; 🧪card conte-sideways-scroll-build-spikes, 11-16). The X-sheet and
+  /// the conte publish one handle above both and share it.
+  final TimelineFrameGeometryHandle _rulerFrameGeometry =
+      TimelineFrameGeometryHandle(
+        const TimelineFrameGeometry(
+          frameCellExtent: 1,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
+
+  /// How far along the frames the ruler's view reaches, as its last layout
+  /// measured it — what a bucket crossing windows the ruler by.
+  double _rulerViewExtent = 0;
+
+  void _rewindowRuler() => _rulerFrameGeometry.value = TimelineFrameGeometry(
+    frameCellExtent: _metrics.frameCellWidth,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _renderedFrameCount,
+    viewExtentPx: _rulerViewExtent,
+  ).windowedAt(_frameWindowBucket.value);
+
   /// The LAYER-axis twin of [_frameWindowBucket]: moves when the scroll
   /// carries the rows into another window ([_LayerGridScroll.standAt]). Only
   /// what lays the window's rows subscribes — the rail's rows, its selection
@@ -277,6 +320,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.hooks.frameCursor.addListener(_handlePlaybackPage);
+    // Last: the frame axis stands its bucket where the scroll was kept as
+    // it is first read above, and the ruler's window reads that axis.
+    _frameWindowBucket.addListener(_rewindowRuler);
   }
 
   /// The reveal runs AFTER the frame the selection moved in: the rows this
@@ -355,6 +401,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // whole reason it is the host's.
     _ownedFrameAxisOffset.dispose();
     _frameWindowBucket.dispose();
+    _frameWindowBucket.removeListener(_rewindowRuler);
+    _rulerFrameGeometry.dispose();
+    _windowedFrameGeometry.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();
     super.dispose();
@@ -417,6 +466,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    hold: () => _frameAxis.hold(),
+    letGo: () => _frameAxis.letGo(),
   );
 
   /// Brings the SELECTION back into view on both axes (R5, user
@@ -687,6 +738,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       viewportMainExtent: viewportWidth,
       frameAxisController: _horizontalScrollController,
       nextPage: _nextPage,
+      geometry: _windowedFrameGeometry,
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
@@ -707,6 +759,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       frameCellExtent: _metrics.frameCellWidth,
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
+      geometry: _windowedFrameGeometry,
+      windowBucket: _frameWindowBucket,
     );
   }
 
@@ -1111,6 +1165,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                     _renderedFrameCount,
                                                     _metrics.frameCellWidth,
                                                   );
+                                              _rulerViewExtent = viewportWidth;
+                                              _rewindowRuler();
 
                                               // PRO-TIMELINE scrolling (UI-R15):
                                               // the strip builds ONCE at full width
@@ -1174,9 +1230,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                             _frameWindowBucket,
                                                         viewportMainExtent:
                                                             viewportWidth,
+                                                        geometry:
+                                                            _rulerFrameGeometry,
                                                         dragPreview: widget
                                                             .hooks
                                                             .dragPreview,
+                                                        markers: widget
+                                                            .hooks
+                                                            .rulerMarkers,
                                                         previewCutId:
                                                             widget
                                                                 .hooks
@@ -1199,6 +1260,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                             _frameWindowBucket,
                                                         viewportMainExtent:
                                                             viewportWidth,
+                                                        geometry:
+                                                            _rulerFrameGeometry,
                                                         renderedFrames:
                                                             _renderedFrameCount,
                                                         cellWidth: _metrics
@@ -1221,11 +1284,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                         .translucent,
                                                 onPointerDown: (event) {
                                                   // R26 #34: a press that
-                                                  // pans is the pan's.
-                                                  if (canvasPressPans(
-                                                    canvasPressButtons(
-                                                      event,
-                                                    ),
+                                                  // pans is the pan's —
+                                                  // and a marker's is the
+                                                  // marker's (I-169).
+                                                  if (!rulerPressScrubs(
+                                                    event,
                                                   )) {
                                                     return;
                                                   }

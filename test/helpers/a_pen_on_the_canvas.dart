@@ -43,7 +43,7 @@ drawWithPen(
   final laid = debugStrokeDabsLaid = <BrushDab>[];
   final cel = BitmapSurface(
     canvasSize: const CanvasSize(width: 200, height: 40),
-    tileSize: 16,
+    tileSize: defaultCelTileSize,
   );
   await tester.pumpWidget(
     MaterialApp(

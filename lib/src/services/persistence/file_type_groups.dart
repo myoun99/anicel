@@ -77,7 +77,8 @@ const String _utiPdf = 'com.adobe.pdf';
 /// [FileTypeGroups.brushes].
 const String _utiData = 'public.data';
 
-/// Brush files Anicel can import — the two it borrows, and its own.
+/// Brush files Anicel can import — the three it borrows (TVPaint's custom
+/// panel export since 2026-11-14, card I-86), and its own.
 ///
 /// ⚠️`anibrush` is in here because import and export are one door: a format
 /// the app writes and cannot read back would leave every exported brush
@@ -87,6 +88,7 @@ const List<String> brushFileExtensions = [
   'abr',
   'sut',
   'sutg',
+  'tvpx',
 ];
 
 /// Font files this device's letters can be set in — the text tool's

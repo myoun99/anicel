@@ -6,15 +6,18 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Compiled, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS,
-    TileAt, TileSet, check_depth, cut,
+    Batch, Budget, BufferChain, Compiled, Composite, DEPTH, KeyChain, Laid, NO_EDGE, Plan, Step,
+    TILE, TILE_TEXELS, TileAt, TileSet, WHOLE, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{
     DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, PLUS, SCREEN,
 };
-use crate::kernels::dab::stamp::tests::stamps;
+use crate::kernels::chain::{Chained, Op};
+use crate::kernels::dab::stamp::tests::{EVERYWHERE, stamps};
 use crate::kernels::dab::stamp::{Paint, Source, Stamped};
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::tests::masked;
@@ -22,11 +25,7 @@ use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes, words_buffer};
 use crate::kernels::warp::Boxed;
-use crate::testing::{assert_pinned, first_engine, read_buffer};
-
-const WHOLE: u32 = 65535;
-/// An output with no edge: every pixel of every output tile as it is.
-const EVERYWHERE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
+use crate::testing::{a_device_of_its_own, assert_pinned, first_engine, read_buffer};
 
 pub(crate) struct Rig {
     pub(crate) engine: &'static Engine,
@@ -153,34 +152,32 @@ impl Pool {
     /// The pages, as the store keeps them: read in a pass, written by the
     /// write path's copies (kernels/write) and read back.
     pub(crate) fn upload(&self, engine: &Engine) -> Vec<wgpu::Buffer> {
-        use wgpu::util::DeviceExt;
         self.pages
             .iter()
             .map(|words| {
                 let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-                engine
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("test page"),
-                        contents: if bytes.is_empty() { &[0; 4] } else { &bytes },
-                        usage: wgpu::BufferUsages::STORAGE
-                            | wgpu::BufferUsages::COPY_DST
-                            | wgpu::BufferUsages::COPY_SRC,
-                    })
+                engine.filled(
+                    "test page",
+                    if bytes.is_empty() { &[0; 4] } else { &bytes },
+                    wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST
+                        | wgpu::BufferUsages::COPY_SRC,
+                )
             })
             .collect()
     }
 }
 
 /// Tile set `set` moved by (`dx`, `dy`) whole pixels.
-fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
+pub(crate) fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
     with_map(set, ResampleMap::moved(dx, dy), opacity, mode)
 }
 
-fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
+pub(crate) fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
     Step::Row {
         set,
         keys: None,
+        chain: None,
         map,
         matrix: None,
         opacity,
@@ -190,7 +187,7 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
 }
 
 /// `row` keyed by chain `chain`.
-fn keyed(mut row: Step, chain: usize) -> Step {
+pub(crate) fn keyed(mut row: Step, chain: usize) -> Step {
     let Step::Row { keys, .. } = &mut row else {
         unreachable!("only a row is keyed");
     };
@@ -199,7 +196,7 @@ fn keyed(mut row: Step, chain: usize) -> Step {
 }
 
 /// `row` through matrix `matrix`.
-fn matrixed(mut row: Step, at: usize) -> Step {
+pub(crate) fn matrixed(mut row: Step, at: usize) -> Step {
     let Step::Row { matrix, .. } = &mut row else {
         unreachable!("only a row runs a matrix");
     };
@@ -207,12 +204,29 @@ fn matrixed(mut row: Step, at: usize) -> Step {
     row
 }
 
+/// `step` through effect chain `at` — a close's whole.
+pub(crate) fn chained(step: Step, at: usize) -> Step {
+    mixed(step, at, WHOLE)
+}
+
+/// `step` through effect chain `at`, a close's at `mix`.
+pub(crate) fn mixed(mut step: Step, at: usize, mix: u32) -> Step {
+    match &mut step {
+        Step::Row { chain, .. } => *chain = Some(at),
+        Step::Close { chain, .. } => *chain = Some(BufferChain { chain: at, mix }),
+        _ => unreachable!("only a row or a close runs a chain"),
+    }
+    step
+}
+
+
 /// A plan, what it lays and where it is looked at.
 struct Scene {
     pool: Pool,
     sets: Vec<TileSet>,
     keys: Vec<KeyChain>,
     matrices: Vec<[u32; MATRIX_WORDS]>,
+    chains: Vec<Chained<'static>>,
     steps: Vec<Step>,
     tiles: Vec<(i32, i32)>,
 }
@@ -225,6 +239,7 @@ impl Scene {
             sets: &self.sets,
             keys: &self.keys,
             matrices: &self.matrices,
+            chains: &self.chains,
             steps: &self.steps,
             mask: None,
         }
@@ -241,7 +256,7 @@ fn composite_on(rig: &Rig, scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let Rig { engine, composite } = rig;
     let pages = scene.pool.upload(engine);
     let done = composite
-        .run(engine, &scene.plan(&pages), &scene.tiles, EVERYWHERE, budget)
+        .run(engine, &scene.plan(&pages), &scene.tiles, NO_EDGE, budget)
         .expect("composite");
     (read_buffer(engine, &done.out), done.passes)
 }
@@ -274,6 +289,27 @@ pub(crate) fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u
     let texel = tile * TILE_TEXELS as usize
         + (y.rem_euclid(side) * side + x.rem_euclid(side)) as usize;
     bytes[texel * 4..texel * 4 + 4].try_into().unwrap()
+}
+
+/// Fails `what` unless `got` is `want`, two pictures of the output
+/// `tiles`, tile after tile — saying how many pixels part, and the first
+/// of them: its place on the canvas and both its bytes. A composite
+/// test that went red on the Surface alone, once in many runs, said no
+/// more than its name (engine-pictures-keep-to-pool-pages, 11-14).
+#[track_caller]
+fn assert_same(got: &[u8], want: &[u8], tiles: &[(i32, i32)], what: impl std::fmt::Display) {
+    assert_eq!(got.len(), want.len(), "{what}: the bytes of the pictures");
+    let pixel = |bytes: &[u8], texel: usize| -> [u8; 4] { bytes[texel * 4..texel * 4 + 4].try_into().unwrap() };
+    let parted: Vec<usize> = (0..want.len() / 4).filter(|&texel| pixel(got, texel) != pixel(want, texel)).collect();
+    let Some(&first) = parted.first() else {
+        return;
+    };
+    let side = TILE as i32;
+    let (tile, within) = (first / TILE_TEXELS as usize, (first % TILE_TEXELS as usize) as i32);
+    let (column, row) = tiles[tile];
+    let (x, y) = (column * side + within % side, row * side + within / side);
+    let (holds, should) = (pixel(got, first), pixel(want, first));
+    panic!("{what}: {} pixels part, the first at ({x}, {y}): {holds:?}, not {should:?}", parted.len());
 }
 
 // ---- Keys ----
@@ -346,6 +382,7 @@ fn rows() -> Scene {
         pool.set(3, (1, 1), (1, 1), |_, _| Some(2)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -370,6 +407,7 @@ fn folders() -> Scene {
         pool.set(14, (1, 0), (1, 1), |_, _| Some(4)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -384,11 +422,13 @@ fn folders() -> Scene {
                 opacity: 30000,
                 mode: MULTIPLY,
                 matrix: None,
+                chain: None,
             },
             Step::Close {
                 opacity: 50000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
             row(3, (-3, 100), WHOLE, LINEAR_BURN),
         ],
@@ -409,6 +449,7 @@ fn clips() -> Scene {
         pool.set(26, (0, 1), (2, 1), |_, _| Some(2)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -425,6 +466,7 @@ fn clips() -> Scene {
                 opacity: 45000,
                 mode: SCREEN,
                 matrix: None,
+                chain: None,
             },
             Step::Open,
             row(4, (0, 0), WHOLE, NORMAL),
@@ -435,6 +477,7 @@ fn clips() -> Scene {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -458,9 +501,11 @@ fn spanning() -> Scene {
         opacity: 60000,
         mode: DIFFERENCE,
         matrix: None,
+        chain: None,
     });
     steps.push(row(6, (3, 3), WHOLE, modes[6]));
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -472,7 +517,7 @@ fn spanning() -> Scene {
 
 /// Poses R1 takes, canvas pixel to the row's own, over a canvas of two by
 /// two tiles. No sin or cos: the spec's 대조 필요 ①.
-fn pose(name: &str) -> ResampleMap {
+pub(crate) fn pose(name: &str) -> ResampleMap {
     use ResampleMode::{Blend, Pick};
     let affine = |a, b, c, d, e, f| [a, b, c, d, e, f, 0.0, 0.0, 1.0];
     // 1.3 times larger, a 3-4-5 turn.
@@ -480,6 +525,9 @@ fn pose(name: &str) -> ResampleMap {
     // Twice smaller, the other turn.
     let shrink = affine(1.6, -1.2, 30.0, 1.2, 1.6, -90.0);
     let tilt = [1.1, -0.3, 14.0, 0.05, 1.2, 1.0, 0.002, -0.001, 1.0];
+    // w from 1 to 2 and to a half: divided through by 2, g and h are whole
+    // at Q.33.
+    let held = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0 / 256.0, -1.0 / 512.0, 1.0];
     let (inverse, floor, mode) = match name {
         "turn" => (turn, 1.0, Blend),
         "turn-pick" => (turn, 1.0, Pick),
@@ -491,13 +539,18 @@ fn pose(name: &str) -> ResampleMap {
         "tilt-pick" => (tilt, 1.0, Pick),
         // A 16 px tent half a pixel up and left.
         "blur" => (affine(1.0, 0.0, -0.5, 0.0, 1.0, -0.5), 16.0, Blend),
+        "held" => (held, 1.0, Blend),
         _ => unreachable!("{name}"),
     };
-    ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands")
+    let map = ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands");
+    // Held three bits coarser with a shift of 3 taking them back, as a
+    // steep homography's g and h are (resample.rs): the executor reads the
+    // shift word as R1 does.
+    if name == "held" { map.coarser(3).expect("g and h whole at Q.33") } else { map }
 }
 
 /// Every pose [`pose`] names.
-const POSES: [&str; 8] = [
+const POSES: [&str; 9] = [
     "turn",
     "turn-pick",
     "shrink",
@@ -506,6 +559,7 @@ const POSES: [&str; 8] = [
     "tilt",
     "tilt-pick",
     "blur",
+    "held",
 ];
 
 /// Rows posed every way R1 takes among moved ones: in a folder, a turn in
@@ -522,6 +576,7 @@ fn posed() -> Scene {
         pool.set(65, (0, 0), (2, 2), |_, _| Some(1)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -535,6 +590,7 @@ fn posed() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
             Step::Open,
             row(3, (0, 10), WHOLE, NORMAL),
@@ -545,6 +601,7 @@ fn posed() -> Scene {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -575,6 +632,7 @@ fn keyed_rows() -> Scene {
         },
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys,
@@ -589,6 +647,7 @@ fn keyed_rows() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -619,6 +678,7 @@ fn matrixed_rows() -> Scene {
     tint[18] = 0.5;
     let words = |matrix: &Matrix| matrix_words(matrix).expect("a matrix in range");
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: vec![KeyChain {
@@ -635,6 +695,7 @@ fn matrixed_rows() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: Some(0),
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -669,6 +730,7 @@ fn deep() -> Scene {
                 opacity: 65535 - d as u32 * 2500,
                 mode: modes[(d + 3) % 6],
                 matrix: None,
+                chain: None,
             }
         });
         if d % 4 == 1 {
@@ -676,6 +738,7 @@ fn deep() -> Scene {
         }
     }
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -685,7 +748,68 @@ fn deep() -> Scene {
     }
 }
 
-fn scenes() -> [(&'static str, Scene); 8] {
+/// Effect chains among the rows, over a rectangle wider than the output
+/// and left of it: a row blurred, then in a folder two rows closed through
+/// a blur down the columns and a matrix. A chain reads past the output
+/// tiles a pass takes, so a pass that takes fewer lays what the whole
+/// rectangle puts (관제, connection-round-checklist 2026-11-08 00:28 ①).
+fn chained_rows() -> Scene {
+    let mut pool = Pool::default();
+    let sets = (0..3u32)
+        .map(|n| pool.set(71 + n, (-1, 0), (3, 2), |_, _| Some(n as u16)))
+        .collect();
+    let rect = TileRect {
+        x0: -1,
+        y0: 0,
+        columns: 3,
+        rows: 2,
+    };
+    let blur = |sigmas: (f64, f64), reaches: (u32, u32)| {
+        Op::Gaussian(Blur {
+            across: Way { sigma: sigmas.0, reach: reaches.0 },
+            down: Way { sigma: sigmas.1, reach: reaches.1 },
+            picture: rect.pixels(),
+            edge: Edge::Nothing,
+            puts: rect.pixels(),
+        })
+    };
+    let contrast = matrix_words(&contrast()).expect("a matrix in range");
+    let closing = Step::Close {
+        opacity: 45000,
+        mode: OVERLAY,
+        matrix: None,
+        chain: None,
+    };
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        chains: vec![
+            Chained {
+                ops: vec![blur((1.0, 0.7), (3, 2))],
+                rect,
+                held: None,
+            },
+            Chained {
+                ops: vec![blur((0.0, 1.3), (0, 4)), Op::Matrix(contrast)],
+                rect,
+                held: None,
+            },
+        ],
+        steps: vec![
+            row(0, (0, 0), WHOLE, NORMAL),
+            chained(row(1, (5, -3), 50000, MULTIPLY), 0),
+            Step::Open,
+            row(2, (-7, 2), 40000, SCREEN),
+            row(0, (3, 9), 30000, NORMAL),
+            chained(closing, 1),
+        ],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+fn scenes() -> [(&'static str, Scene); 9] {
     [
         ("rows", rows()),
         ("folders", folders()),
@@ -695,6 +819,7 @@ fn scenes() -> [(&'static str, Scene); 8] {
         ("keyed", keyed_rows()),
         ("deep", deep()),
         ("matrices", matrixed_rows()),
+        ("chained", chained_rows()),
     ]
 }
 
@@ -719,7 +844,7 @@ fn a_plan_cut_into_passes_composites_as_in_one() {
         }
         for pages in 1..most {
             let (cut, passes) = composite(&scene, within(pages, usize::MAX));
-            assert!(cut == whole, "{name} at {pages} pages a pass");
+            assert_same(&cut, &whole, &scene.tiles, format_args!("{name} at {pages} pages a pass"));
             if name == "spanning" && pages == 1 {
                 assert!(passes > 1, "the folder was never cut");
             }
@@ -731,7 +856,8 @@ fn a_plan_cut_into_passes_composites_as_in_one() {
                     ..within(pages, usize::MAX)
                 };
                 let (cut, _) = composite(&scene, budget);
-                assert!(cut == whole, "{name} at {levels} levels and {pages} pages a pass");
+                let what = format_args!("{name} at {levels} levels and {pages} pages a pass");
+                assert_same(&cut, &whole, &scene.tiles, what);
             }
         }
     }
@@ -747,7 +873,8 @@ fn output_tiles_taken_a_few_at_a_time_composite_as_all_at_once() {
         let whole = widest(&scene);
         for (pages, tiles) in [(most, 1), (most, 3), (1, 1), (1, 3)] {
             let (cut, passes) = composite(&scene, within(pages, tiles));
-            assert!(cut == whole, "{name} at {pages} pages and {tiles} tiles a pass");
+            let what = format_args!("{name} at {pages} pages and {tiles} tiles a pass");
+            assert_same(&cut, &whole, &scene.tiles, what);
             let runs = scene.tiles.len().div_ceil(tiles);
             assert!(passes >= runs, "{name}: {passes} passes for {runs} runs of tiles");
         }
@@ -771,6 +898,7 @@ fn a_row_alone_is_its_own_pixels_moved() {
     })];
     let (dx, dy) = (45, -77);
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -811,6 +939,7 @@ fn on_the_paper(x: i32, y: i32) -> bool {
 #[test]
 fn a_solid_over_nothing_is_its_colour_on_its_rect() {
     let scene = Scene {
+        chains: Vec::new(),
         pool: Pool::default(),
         sets: Vec::new(),
         keys: Vec::new(),
@@ -846,6 +975,7 @@ fn papered(paper: Step) -> Scene {
         pool.set(6, (0, 0), (2, 2), |_, _| Some(1)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -863,6 +993,7 @@ fn papered(paper: Step) -> Scene {
                 opacity: 40000,
                 mode: MULTIPLY,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)],
@@ -888,6 +1019,7 @@ fn a_row_at_no_strength_lays_nothing() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(42, (0, 0), (1, 1), |_, _| Some(0))];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -906,6 +1038,7 @@ fn a_folder_of_one_row_is_that_row() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(43, (0, 0), (2, 1), |_, _| Some(0))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -922,6 +1055,7 @@ fn a_folder_of_one_row_is_that_row() {
             opacity: WHOLE,
             mode: NORMAL,
             matrix: None,
+            chain: None,
         },
     ]));
     assert!(alone == folded);
@@ -935,6 +1069,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(44, (0, 0), (2, 1), |_, _| Some(0))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -948,6 +1083,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let alone = widest(&scene(vec![a_row]));
     let nested: Vec<Step> = (0..12)
@@ -977,6 +1113,7 @@ fn crossfaded(u: impl Fn(i32, i32) -> u32, f: impl Fn(i32, i32) -> u32, mix: u32
         pool.drawn(f, (0, 0), (2, 1), |_, _| Some(1)),
     ];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -989,6 +1126,7 @@ fn crossfaded(u: impl Fn(i32, i32) -> u32, f: impl Fn(i32, i32) -> u32, mix: u32
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0)],
@@ -1001,6 +1139,7 @@ fn alone(pixel: impl Fn(i32, i32) -> u32) -> Vec<u8> {
     let mut pool = Pool::default();
     let sets = vec![pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(0))];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1061,6 +1200,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
         pool.drawn(move |_, _| clipped, (0, 0), (1, 1), |_, _| Some(1)),
     ];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1075,6 +1215,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0)],
@@ -1106,7 +1247,7 @@ fn a_clipped_multiply_reads_the_base_made_opaque() {
 
 /// `pixel` over `size` from canvas (0, 0), as R1's own harness takes a
 /// source: nothing past it, as nothing is past a tile set.
-fn picture_of(pixel: impl Fn(i32, i32) -> u32, (width, height): (u32, u32)) -> Picture {
+pub(crate) fn picture_of(pixel: impl Fn(i32, i32) -> u32, (width, height): (u32, u32)) -> Picture {
     let mut picture = Picture::filled(width, height, 0);
     for y in 0..height {
         for x in 0..width {
@@ -1133,6 +1274,7 @@ fn posed_alone(name: &str) -> Scene {
     let mut pool = Pool::default();
     let sets = vec![pool.set(51, (0, 0), (2, 2), |c, r| Some((r * 2 + c) as u16))];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1150,7 +1292,7 @@ fn a_posed_row_lays_what_r1_resamples() {
     for name in POSES {
         let scene = posed_alone(name);
         let want = resampled(&pose(name), &picture, &scene.tiles);
-        assert!(widest(&scene) == want, "{name}");
+        assert_same(&widest(&scene), &want, &scene.tiles, name);
     }
 }
 
@@ -1169,6 +1311,7 @@ fn a_row_binds_the_pages_its_pixels_read() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(52, (0, 0), (4, 1), |c, _| Some(c as u16))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1210,28 +1353,38 @@ fn a_row_is_keyed_before_its_pose() {
             .collect(),
         ..picture
     };
-    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
-    for name in ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"] {
-        let map = match name {
-            "move" => ResampleMap::moved(17, -5),
-            _ => pose(name),
-        };
-        let mut pool = Pool::default();
-        let sets = vec![pool.drawn(|x, y| spotted(53, x, y), (0, 0), (2, 2), |c, r| {
-            Some((r * 2 + c) as u16)
-        })];
-        let scene = Scene {
-            pool,
-            sets,
-            keys: vec![KeyChain {
-                runs: vec![key_run(KEY_RED, false, half)],
-            }],
-            matrices: Vec::new(),
-            steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
-            tiles: tiles.clone(),
-        };
-        assert!(widest(&scene) == resampled(&map, &keyed_picture, &tiles), "{name}");
+    for name in KEYED_POSES {
+        let (map, scene) = keyed_in(name);
+        assert!(widest(&scene) == resampled(&map, &keyed_picture, &scene.tiles), "{name}");
     }
+}
+
+/// The poses a keyed row is laid in.
+const KEYED_POSES: [&str; 7] = ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"];
+
+/// The map of the pose `name`, and the spotted picture's row under a red
+/// key in it, over its two tiles by two.
+fn keyed_in(name: &str) -> (ResampleMap, Scene) {
+    let map = match name {
+        "move" => ResampleMap::moved(17, -5),
+        _ => pose(name),
+    };
+    let mut pool = Pool::default();
+    let sets = vec![pool.drawn(|x, y| spotted(53, x, y), (0, 0), (2, 2), |c, r| {
+        Some((r * 2 + c) as u16)
+    })];
+    let scene = Scene {
+        chains: Vec::new(),
+        pool,
+        sets,
+        keys: vec![KeyChain {
+            runs: vec![key_run(KEY_RED, false, half)],
+        }],
+        matrices: Vec::new(),
+        steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    };
+    (map, scene)
 }
 
 // A row's colour matrix runs on what R1 lays — the app's paint filter runs
@@ -1253,6 +1406,7 @@ fn a_row_s_matrix_runs_on_what_r1_lays() {
             Some((r * 2 + c) as u16)
         })];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1270,7 +1424,7 @@ fn a_row_s_matrix_runs_on_what_r1_lays() {
             .map(|word| if word >> 24 == 0 { 0 } else { word })
             .flat_map(u32::to_le_bytes)
             .collect();
-        assert!(widest(&scene) == want, "{name}");
+        assert_same(&widest(&scene), &want, &scene.tiles, name);
     }
 }
 
@@ -1293,6 +1447,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
             sets.push(pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(3)));
         }
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1310,6 +1465,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
                 opacity,
                 mode,
                 matrix,
+                chain: None,
             },
         ]
     };
@@ -1326,7 +1482,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
     let base = row(0, (2, 3), WHOLE, NORMAL);
     let laid = |steps: Vec<Step>| widest(&scene(Some(&through), [vec![base], steps].concat()));
     let want = laid(vec![row(3, (0, 0), 45000, SCREEN)]);
-    assert!(laid(buffer(45000, SCREEN, Some(0))) == want);
+    assert_same(&laid(buffer(45000, SCREEN, Some(0))), &want, &tiles, "the buffer through its matrix");
     assert!(laid(buffer(45000, SCREEN, None)) != want);
 }
 
@@ -1347,6 +1503,7 @@ fn every_run_of_a_chain_keys_against_the_stored_alpha() {
         let mut pool = Pool::default();
         let sets = vec![pool.drawn(move |_, _| stored, (0, 0), (1, 1), |_, _| Some(0))];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: vec![KeyChain { runs }],
@@ -1374,6 +1531,7 @@ fn each_row_is_keyed_by_its_own_chain() {
     };
     let side = TILE as i32;
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: vec![erase(KEY_GREEN), erase(KEY_RED)],
@@ -1401,32 +1559,34 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
-    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0).is_some());
-    assert!(check_depth(&[Step::Open], 1, 0, 0).is_none());
-    assert!(check_depth(&[close], 1, 0, 0).is_none());
-    assert!(check_depth(&[Step::CloseAtop], 1, 0, 0).is_none());
-    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0, 0).is_none());
+    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0, 0).is_some());
+    assert!(check_depth(&[Step::Open], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[close], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[Step::CloseAtop], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0, 0, 0).is_none());
     let keyed_by_the_second = keyed(row(0, (0, 0), WHOLE, NORMAL), 1);
-    assert!(check_depth(&[keyed_by_the_second], 1, 2, 0).is_some());
-    assert!(check_depth(&[keyed_by_the_second], 1, 1, 0).is_none());
+    assert!(check_depth(&[keyed_by_the_second], 1, 2, 0, 0).is_some());
+    assert!(check_depth(&[keyed_by_the_second], 1, 1, 0, 0).is_none());
     let through_the_second = matrixed(row(0, (0, 0), WHOLE, NORMAL), 1);
-    assert!(check_depth(&[through_the_second], 1, 0, 2).is_some());
-    assert!(check_depth(&[through_the_second], 1, 0, 1).is_none());
+    assert!(check_depth(&[through_the_second], 1, 0, 2, 0).is_some());
+    assert!(check_depth(&[through_the_second], 1, 0, 1, 0).is_none());
     let closed_through_the_second = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: Some(1),
+        chain: None,
     };
     let scope = [Step::Open, closed_through_the_second];
-    assert!(check_depth(&scope, 1, 0, 2).is_some());
-    assert!(check_depth(&scope, 1, 0, 1).is_none());
+    assert!(check_depth(&scope, 1, 0, 2, 0).is_some());
+    assert!(check_depth(&scope, 1, 0, 1, 0).is_none());
     // Past what a pass holds is a plan like any other: it is cut there.
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
         .chain((0..DEPTH).map(|_| close))
         .collect();
-    assert!(check_depth(&deeper, 0, 0, 0).is_some());
+    assert!(check_depth(&deeper, 0, 0, 0, 0).is_some());
 }
 
 // Pages 0, 1 | 2, 0 | 3 at two a pass: a pass ends where a third page would
@@ -1443,6 +1603,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let plan = [
         laid(&[0], a_row),
@@ -1489,6 +1650,7 @@ fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let plan = [
         laid(Step::Open),
@@ -1526,6 +1688,7 @@ fn a_pass_closing_out_of_its_levels_holds_the_depth_in_the_middle() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let a_row = row(0, (0, 0), WHOLE, NORMAL);
     let steps: Vec<Step> = (0..7)
@@ -1574,6 +1737,7 @@ fn a_pass_holds_two_levels_to_depth() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1582,7 +1746,7 @@ fn a_pass_holds_two_levels_to_depth() {
             levels,
             ..composite.widest()
         };
-        composite.run(engine, &plan, &[(0, 0)], EVERYWHERE, budget).is_some()
+        composite.run(engine, &plan, &[(0, 0)], NO_EDGE, budget).is_some()
     };
     assert_eq!([run(1), run(2), run(DEPTH), run(DEPTH + 1)], [false, true, true, false]);
 }
@@ -1604,6 +1768,7 @@ fn canvas_scene() -> Scene {
         pool.set(62, (0, 0), (2, 2), |c, r| Some(1 + ((r * 2 + c) % 2) as u16)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1674,8 +1839,13 @@ fn cameras() -> [(&'static str, ResampleMap); 5] {
 }
 
 /// A surface a test can fill first and read back.
-fn surface((width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
-    rig().engine.device.create_texture(&wgpu::TextureDescriptor {
+pub(crate) fn surface(size: (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+    surface_on(rig().engine, size, format)
+}
+
+/// [`surface`] on `engine`.
+pub(crate) fn surface_on(engine: &Engine, (width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+    engine.device().create_texture(&wgpu::TextureDescriptor {
         label: Some("test surface"),
         size: wgpu::Extent3d {
             width,
@@ -1719,6 +1889,7 @@ fn shown_on(
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1779,7 +1950,7 @@ fn an_output_holds_nothing_past_its_extent() {
         let done = composite.run(engine, &plan, &scene.tiles, extent, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
     };
-    let whole = run(EVERYWHERE);
+    let whole = run(NO_EDGE);
     let ended = run([3, 5, 200, 150]);
     for y in 0..2 * TILE as i32 {
         for x in 0..2 * TILE as i32 {
@@ -1829,7 +2000,7 @@ fn a_surface_is_written_inside_its_rectangle_only() {
 // (platform::Surface), so there is nothing to show on it.
 #[test]
 fn a_bgra_surface_holds_the_rgba_pixels_red_and_blue_swapped() {
-    if !rig().engine.device.features().contains(wgpu::Features::BGRA8UNORM_STORAGE) {
+    if !rig().engine.device().features().contains(wgpu::Features::BGRA8UNORM_STORAGE) {
         return;
     }
     let (page, _) = composited_canvas();
@@ -1852,6 +2023,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
     let mut pool = Pool::default();
     let sets = vec![pool.drawn(|_, _| 0x8032_64c8, (0, 0), (1, 1), |_, _| Some(0))];
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1876,6 +2048,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1907,6 +2080,7 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1945,13 +2119,56 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
         levels: 1,
         masked: false,
     };
-    let taken = apart().composite.pass(apart().engine, own);
-    let passes = apart().composite.passes.lock();
-    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
-    for compiled in [own, Compiled::full(own.surface)] {
-        assert_eq!(passes.asked.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
+    let composite = &apart().composite;
+    let taken = composite.pass(apart().engine, own);
+    assert_eq!(composite.passes.asked_for().iter().filter(|asked| **asked == own).count(), 1);
+    assert_eq!(composite.fulls.outputs().iter().filter(|of| **of == own.surface).count(), 1);
+    assert!(composite.fulls.cell(own.surface).get().is_some());
+    assert_eq!(composite.passes.made(own), Some(taken));
+}
+
+// 🚨A pass of a plan's own is not compiled while what is compiled apart is
+// held — the app compiles ahead what a hand waits for meanwhile — and comes
+// once it is let go (`Apart`, in device.rs; gpu-canonical-store ④). On a
+// device of its own: a hold stops every composite's passes on its engine.
+#[test]
+fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("compile the composite");
+    let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
+    let made = || composite.passes.made(own);
+    engine.apart.hold();
+    let any = composite.pass(&engine, own);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while engine.apart.waiting() == 0 {
+        assert!(std::time::Instant::now() < deadline, "the pass did not wait for the hold");
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    assert_eq!(passes.made(own), Some(taken));
+    assert!(made().is_none(), "⛔not compiled while it is held");
+    assert!(composite.pass(&engine, own) == any, "the pass that takes any serves meanwhile");
+    engine.apart.let_go();
+    composite.settle();
+    assert!(made().is_some_and(|its_own| its_own != any));
+}
+
+// The executor an app opens has the tiles' full pass and the surface's,
+// both made as it is (`Composite::showing`): its first show compiles
+// nothing, and nothing is left to compile apart. Where the adapter stores
+// to no such surface it has the tiles' alone.
+#[test]
+fn an_executor_opened_to_show_has_both_full_passes() {
+    let engine = first_engine();
+    for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Bgra8Unorm] {
+        let composite = Composite::showing(engine, Some(format)).expect("the executor");
+        let made = |output| composite.fulls.cell(output).get().is_some();
+        assert!(made(None), "the tiles' ({format:?})");
+        let shown = super::storage_format(format).filter(|_| crate::platform::stores(engine, format));
+        assert!(made(shown), "the surface's ({format:?})");
+        assert_eq!(composite.fulls.outputs().len(), 1 + usize::from(shown.is_some()), "no other ({format:?})");
+        assert!(composite.passes.asked_for().is_empty(), "nor a plan's own ({format:?})");
+        assert!(!composite.passes.compiling(), "nothing compiled apart ({format:?})");
+    }
 }
 
 // A plan's pass compiled for its own R1 modes, stack levels and masked
@@ -1987,10 +2204,36 @@ fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
     let turned = ResampleModes::default().with(&pose("turn").words());
     let masked_turn = Compiled { modes: turned, masked: true, ..copies };
-    let passes = apart().composite.passes.lock();
-    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
+    let passes = &apart().composite.passes;
     assert!(passes.made(copies).is_some());
     assert!(passes.made(masked_turn).is_some());
+}
+
+// A keyed row in every pose comes out the same from the full pass and from
+// its plan's own once made. On a composite asked for nothing yet, the first
+// plan of each pass is the full pass's — blur's of Blend, turn-pick's of
+// Pick, move's of the copies.
+// 🔬The keyed blur went red on the Surface alone, in the whole crate's run
+// and never in the composite's tests five times over (캔버스 베이스,
+// 11-14/15): there the one thread that compiles plans' passes has every
+// test's, so which pass the shared rig's run took was the run's timing.
+// The main PC's two passes laid the same bytes in every pose (11-15).
+#[test]
+fn a_keyed_row_composites_as_the_full_pass_through_its_plans_own() {
+    let rig = Rig::new();
+    assert!(rig.composite.passes.asked_for().is_empty());
+    let first_of_each = ["blur", "turn-pick", "move"];
+    let rest = KEYED_POSES.into_iter().filter(|name| !first_of_each.contains(name));
+    let by_the_full: Vec<(&str, Vec<u8>)> = first_of_each
+        .into_iter()
+        .chain(rest)
+        .map(|name| (name, widest_on(&rig, &keyed_in(name).1)))
+        .collect();
+    rig.composite.settle();
+    for (name, by_the_full) in &by_the_full {
+        let (_, scene) = keyed_in(name);
+        assert_same(&widest_on(&rig, &scene), by_the_full, &scene.tiles, format_args!("keyed {name}"));
+    }
 }
 
 // ---- Where a row is live ----
@@ -2073,6 +2316,7 @@ fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
             pool.set(58, (0, 0), (4, 1), |_, _| Some(4)),
         ];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2113,6 +2357,7 @@ fn an_output_tile_reading_past_a_pass_s_pages_reads_them_gathered() {
             pool.set(62, (0, 0), (3, 2), |_, _| Some(6)),
         ];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2146,15 +2391,16 @@ fn a_row_lays_nothing_where_it_is_not_live() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
     let tiles = [(0, 0), (1, 0)];
-    let whole = composite.run(engine, &plan, &tiles, EVERYWHERE, composite.widest());
+    let whole = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest());
     let whole = read_buffer(engine, &whole.expect("composite").out);
     let mut laid = super::lay(&steps, &sets, &tiles, 1, 1).expect("lay");
     laid[0].live[1] = false;
-    let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("test out"),
         size: 2 * TILE_TEXELS * 4,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
@@ -2166,7 +2412,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
             &plan,
             &laid,
             &tiles,
-            EVERYWHERE,
+            NO_EDGE,
             None,
             &super::Target::Tiles(&out),
             composite.widest(),
@@ -2198,10 +2444,11 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
             sets: &sets,
             keys: &[],
             matrices: &[],
+            chains: &[],
             steps,
             mask: None,
         };
-        let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], EVERYWHERE, composite.widest());
+        let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], NO_EDGE, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
     };
     let step = |k: usize| {
@@ -2220,7 +2467,7 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
 // ---- Under a selection (R28) ----
 
 /// `row` laid under the plan's mask.
-fn masked_row(mut row: Step) -> Step {
+pub(crate) fn masked_row(mut row: Step) -> Step {
     let Step::Row { masked, .. } = &mut row else {
         unreachable!("only a row is masked");
     };
@@ -2241,7 +2488,7 @@ fn under_on(rig: &Rig, scene: &Scene, mask: Option<&Mask>, budget: Budget) -> Op
         mask,
         ..scene.plan(&pages)
     };
-    let done = composite.run(engine, &plan, &scene.tiles, EVERYWHERE, budget)?;
+    let done = composite.run(engine, &plan, &scene.tiles, NO_EDGE, budget)?;
     Some(read_buffer(engine, &done.out))
 }
 
@@ -2257,6 +2504,7 @@ fn red_over_blue() -> Scene {
         pool.drawn(|_, _| RED, (0, 0), (1, 1), |_, _| Some(0)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2315,8 +2563,8 @@ fn a_mask_no_step_lies_under_changes_nothing() {
     let mut scene = red_over_blue();
     scene.steps[1] = row(1, (0, 0), WHOLE, NORMAL);
     let mask = masked((1, 1), (5, 5), |_, _| 0);
-    let got = under(&scene, Some(&mask.mask()), rig().composite.widest());
-    assert!(got == Some(widest(&scene)));
+    let got = under(&scene, Some(&mask.mask()), rig().composite.widest()).expect("composite");
+    assert_same(&got, &widest(&scene), &scene.tiles, "under the mask");
 }
 
 /// A mask's box, off the tile grid, and its bytes there, each its own.
@@ -2336,6 +2584,7 @@ fn over_blue(pixel: impl Fn(i32, i32) -> u32, posed: Step) -> Scene {
         pool.drawn(pixel, (-1, -1), (5, 5), |_, _| Some(0)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2368,7 +2617,7 @@ fn a_posed_row_reads_its_mask_as_it_reads_its_pixels() {
         let want = widest(&over_blue(alpha, pose_row(1, name, WHOLE, NORMAL)));
         for budget in [rig().composite.widest(), within(1, 1), within(1, 3)] {
             let got = under(&white, Some(&mask.mask()), budget).expect("composite");
-            assert!(got == want, "{name} at {budget:?}");
+            assert_same(&got, &want, &white.tiles, format_args!("{name} at {budget:?}"));
         }
     }
 }
@@ -2415,6 +2664,7 @@ const PRESSES: [[i32; 2]; 4] = [
 /// `steps` under `range` over tiles (0, 0) and (1, 0).
 fn marked(steps: Vec<Step>, range: &Mask) -> (Vec<u8>, Vec<(i32, i32)>) {
     let scene = Scene {
+        chains: Vec::new(),
         pool: Pool::default(),
         sets: Vec::new(),
         keys: Vec::new(),
@@ -2476,6 +2726,7 @@ fn a_mark_lies_in_its_row_s_space() {
         Some(0)
     })];
     let cells = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2522,6 +2773,7 @@ fn a_mark_lays_as_a_row_of_its_colours() {
             pool.drawn(colour, (0, 0), (2, 1), |_, _| Some(0)),
         ];
         let mut scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2531,8 +2783,8 @@ fn a_mark_lays_as_a_row_of_its_colours() {
         };
         let want = widest(&scene);
         scene.steps[1] = Step::Mark { map: ResampleMap::moved(0, 0), shift };
-        let got = under(&scene, Some(&range.mask()), rig().composite.widest());
-        assert!(got == Some(want), "{shift:?}");
+        let got = under(&scene, Some(&range.mask()), rig().composite.widest()).expect("composite");
+        assert_same(&got, &want, &scene.tiles, format_args!("{shift:?}"));
     }
 }
 
@@ -2561,12 +2813,13 @@ fn stamped_on_blue(source: &Source, mode: u32) -> (Vec<u8>, [(i32, i32); 2]) {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
     let tiles = [(0, 0), (1, 0)];
     let budget = composite.widest();
-    let done = composite.run(engine, &plan, &tiles, EVERYWHERE, budget).expect("composite");
+    let done = composite.run(engine, &plan, &tiles, NO_EDGE, budget).expect("composite");
     (read_buffer(engine, &done.out), tiles)
 }
 
@@ -2624,7 +2877,7 @@ fn a_picture_s_stamp_lands_as_its_words() {
     let words = [RED, RED & 0x00ff_ffff | 128 << 24, 0x00ff_ffff];
     let pixels = words_buffer(rig().engine, "picture", &words, wgpu::BufferUsages::STORAGE);
     let boxed = Boxed { pixels: &pixels, size: (3, 1) };
-    let source = Source::Picture { picture: &boxed, at: (127, 5) };
+    let source = Source::Picture { picture: &boxed, at: (127, 5), within: EVERYWHERE };
     let (out, tiles) = stamped_on_blue(&source, NORMAL);
     let at = |x, y| pixel_at(&out, &tiles, x, y);
     let blue = bytes_of(BLUE);
@@ -2653,9 +2906,9 @@ fn a_row_under_a_whole_mask_lays_as_under_none() {
     let mask = masked((-256, -256), (768, 768), |_, _| 255);
     let scenes = [rows(), posed()].into_iter().chain(POSES.map(posed_alone));
     for (index, scene) in scenes.enumerate() {
-        let want = widest(&scene);
+        let (want, tiles) = (widest(&scene), scene.tiles.clone());
         let got = under(&all_masked(scene), Some(&mask.mask()), rig().composite.widest());
-        assert!(got == Some(want), "scene {index}");
+        assert_same(&got.expect("composite"), &want, &tiles, format_args!("scene {index}"));
     }
 }
 
@@ -2685,6 +2938,7 @@ fn three_rows(top: Option<Step>) -> Scene {
         pool.set(62, (-1, 0), (3, 3), |c, r| Some((c + r).rem_euclid(2) as u16)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2736,4 +2990,34 @@ fn a_masked_row_needs_a_mask_that_holds_its_box() {
     };
     assert!(under(&scene, Some(&short), budget).is_none());
     assert!(under(&scene, Some(&mask.mask()), budget).is_some());
+}
+
+/// A tile's word is its page over its slot, each whole, and a set read
+/// from words holds each tile where its word names it, none where it
+/// names none — the app's sets over the C ABI, a plan's and the ink
+/// scan's alike.
+#[test]
+fn a_tile_set_read_from_words_holds_each_tile_its_word_names() {
+    let far = TileAt { page: 0xfffe, slot: 0xfffd };
+    let near = TileAt { page: 0, slot: 1 };
+    assert_eq!(far.word(), 0xfffe_fffd);
+    let set = TileSet::from_words(-3, 4, 3, 1, &[far.word(), super::NO_TILE, near.word()]);
+    assert_eq!((set.x0, set.y0, set.columns, set.rows), (-3, 4, 3, 1));
+    assert_eq!(set.tiles, vec![Some(far), None, Some(near)]);
+}
+
+/// The pass calls R1 once and blend_laid once (composite.wgsl's ⚠️ above
+/// `step_sampled`): the shader compiler writes each call out whole, and
+/// the pass every plan takes held R1 three times and the blend four, which
+/// DXC took twice as long over on a Surface Pro 11 (2026-11-13). The calls
+/// are counted in the code, its comments left out.
+#[test]
+fn the_pass_calls_r1_once_and_the_blend_once() {
+    let code: Vec<&str> = include_str!("composite.wgsl")
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect();
+    let calls = |name: &str| code.iter().map(|line| line.matches(name).count()).sum::<usize>();
+    assert_eq!(calls("resample("), 1);
+    assert_eq!(calls("blend_laid("), 1);
 }

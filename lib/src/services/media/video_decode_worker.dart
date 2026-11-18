@@ -4,8 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/rgba_premultiply.dart';
 import '../flutter_test_run.dart';
-import '../../native/qa_engine_abi.dart';
+import '../import/tile_cutter.dart';
 import '../../native/qa_video_decoder.dart';
 
 /// Where a movie is decoded, and — the whole point — WHICH THREAD pays.
@@ -72,6 +73,33 @@ abstract interface class VideoDecodeBackend {
   /// handing every caller a view that the next frame overwrites.
   Future<Uint8List?> frame(int token, int index);
 
+  /// [frame], premultiplied by the app's one law (`rgba_premultiply.dart`)
+  /// where the frame is decoded — what a picture of it is uploaded from.
+  ///
+  /// 🚨★★★**THE PREMULTIPLY IS THE DECODER'S SIDE'S, TOO** (card
+  /// viewer-frame-premultiply-on-the-worker). 🔬Measured 2026-11-07, one
+  /// real 1080p frame, release AOT on the main PC: 13–17 ms a frame to
+  /// premultiply a copy of it, C or Dart alike — a third of a 24fps frame
+  /// again, on the isolate that paints it, after the decode itself left
+  /// for the same reason. Done where the frame is copied out of the
+  /// decoder's scratch anyway, it costs that isolate nothing.
+  ///
+  /// ⛔Not [frame] in another form: straight is the app's storage
+  /// convention, and a crop of a frame ([ViewerDocument.readRegionRgba])
+  /// reads the colours as the movie holds them.
+  Future<Uint8List?> premultipliedFrame(int token, int index);
+
+  /// [frame] cut into [cut]'s tile blocks where it is decoded — what a cel
+  /// laid 1:1 from it adopts — or null.
+  ///
+  /// 🚨★★★**THE FRAME STAYS WHERE IT IS DECODED** (2026-11-14, card
+  /// a-raster-import-goes-gpu-cpu-gpu-cpu). A movie row's cel is the frame
+  /// laid 1:1, and the cut is a copy into tiles: done here, out of the
+  /// worker's own room, the frame never crosses the port — only its tiles'
+  /// blocks, which every isolate's tiles adopt (`TileBlocks`) — and the
+  /// isolate that paints neither receives it nor cuts it.
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut);
+
   /// Why the last open or frame failed, for the sentence a window shows.
   Future<String> lastError();
 
@@ -103,7 +131,7 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   const DirectVideoDecodeBackend();
 
   @override
-  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
+  bool get supported => QaVideoDecoder.instance.isSupported;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
@@ -111,7 +139,7 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
     ({int offset, int length, bool framed})? span,
   }) async {
     final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    if (!decoder.isSupported) {
       return null;
     }
     final document = decoder.openDocument(path, span: span);
@@ -124,26 +152,49 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   }
 
   @override
-  Future<Uint8List?> frame(int token, int index) async {
-    final document = _documentAt(token);
-    if (document == null) {
-      return null;
+  Future<Uint8List?> frame(int token, int index) async =>
+      _frameOf(token, index);
+
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) async {
+    final rgba = _frameOf(token, index);
+    if (rgba != null) {
+      premultiplyRgbaInPlace(rgba);
     }
-    final rgba = QaVideoDecoder.instance?.frameOf(document, index);
-    // ⚠️Copied, because the direct path decodes into scratch the next frame
-    // overwrites and the isolate path hands over a buffer of its own. One
-    // contract, or callers learn which backend they have.
-    return rgba == null ? null : Uint8List.fromList(rgba);
+    return rgba;
   }
 
   @override
-  Future<String> lastError() async => QaVideoDecoder.instance?.lastError ?? '';
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut) async {
+    final document = _documentAt(token);
+    return document == null
+        ? null
+        : _cutOfFrame(QaVideoDecoder.instance, document, index, cut);
+  }
+
+  /// Frame [index] of the document [token] names, in a buffer of the
+  /// caller's own — the decoder copies it out of its scratch into a fresh
+  /// one when it is given none to fill ([QaVideoDecoder.frameOf]).
+  ///
+  /// ⚠️The isolate path hands over a buffer of its own too, the transfer's.
+  /// One contract, or callers learn which backend they have. ↩️Until
+  /// 2026-11-13 this copied the decoder's fresh buffer once more, on the
+  /// word that it was the scratch.
+  Uint8List? _frameOf(int token, int index) {
+    final document = _documentAt(token);
+    return document == null
+        ? null
+        : QaVideoDecoder.instance.frameOf(document, index);
+  }
+
+  @override
+  Future<String> lastError() async => QaVideoDecoder.instance.lastError;
 
   @override
   Future<void> close(int token) async {
     final document = _documentAt(token);
     if (document != null) {
-      QaVideoDecoder.instance?.closeDocument(document);
+      QaVideoDecoder.instance.closeDocument(document);
     }
   }
 
@@ -166,6 +217,7 @@ const int _opOpen = 0;
 const int _opFrame = 1;
 const int _opLastError = 2;
 const int _opClose = 3;
+const int _opCutFrame = 4;
 
 final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   IsolateVideoDecodeBackend();
@@ -173,7 +225,7 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   /// ⚠️Answered on THIS isolate: whether the library loads is a property of
   /// the build, and asking a worker would mean starting one to find out.
   @override
-  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
+  bool get supported => QaVideoDecoder.instance.isSupported;
 
   SendPort? _worker;
   Future<SendPort>? _starting;
@@ -183,9 +235,11 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   ///
   /// 🚨★★★**A REQUEST THAT WAS SENT ALWAYS GETS AN ANSWER.** `Isolate.spawn`
   /// defaults to `errorsAreFatal: true`, and the worker's body allocates
-  /// three full frames per decode (a native scratch, a `Uint8List`, and the
-  /// copy into the transfer — 8.3 MB each at 1080p, 33 MB at 4K on the
-  /// tablets this app is written for). Any of those throwing used to KILL
+  /// full frames per decode (the copy into the transfer, and the native
+  /// scratch and the room it is copied into when a frame of a new size
+  /// comes — 8.3 MB each at 1080p, 33 MB at 4K on the tablets this app is
+  /// written for).
+  /// Any of those throwing used to KILL
   /// the isolate with nothing on this side listening: `reply.first` never
   /// completed, [_queue] never settled, and every later request — the
   /// viewer's AND the import preview's, since they share one backend —
@@ -243,12 +297,11 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
       });
       await Isolate.spawn(
         _videoDecodeWorker,
-        (
-          ready: ready.sendPort,
-          // The override has to travel: a fresh isolate resolves the binary
-          // from scratch, and a test that built one locally says where.
-          libraryPath: debugQaEngineLibraryPathOverride,
-        ),
+        // ↩️A test's engine path travelled beside it while a fresh isolate
+        // resolved the C engine from scratch; the decoder is the Rust
+        // engine's, found with no path named (the connection round,
+        // connection-round-checklist H, 2026-11-08).
+        ready.sendPort,
         debugName: 'qa-video-decode',
         onError: stopped.sendPort,
         onExit: stopped.sendPort,
@@ -342,8 +395,28 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   }
 
   @override
-  Future<Uint8List?> frame(int token, int index) async {
-    final answer = await _ask(_opFrame, (token: token, index: index));
+  Future<Uint8List?> frame(int token, int index) =>
+      _frame(token, index, premultiplied: false);
+
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) =>
+      _frame(token, index, premultiplied: true);
+
+  @override
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut) async =>
+      await _ask(_opCutFrame, (token: token, index: index, cut: cut))
+          as CutTiles?;
+
+  Future<Uint8List?> _frame(
+    int token,
+    int index, {
+    required bool premultiplied,
+  }) async {
+    final answer = await _ask(_opFrame, (
+      token: token,
+      index: index,
+      premultiplied: premultiplied,
+    ));
     if (answer == null) {
       return null;
     }
@@ -362,12 +435,9 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
 
 /// The worker's body: it owns the decoder, and nothing else in the process
 /// touches one.
-void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
-  if (start.libraryPath != null) {
-    debugQaEngineLibraryPathOverride = start.libraryPath;
-  }
+void _videoDecodeWorker(SendPort ready) {
   final requests = ReceivePort();
-  start.ready.send(requests.sendPort);
+  ready.send(requests.sendPort);
 
   // 🚨★★★KEYED BY THE HANDLE THE ASKER MINTED, not by this list's own
   // index. This map is created fresh on every spawn, so an index would
@@ -392,8 +462,8 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
 /// 🚨★★★**IT ANSWERS BEFORE IT DIES.** Every allocation in the frame arm
 /// throws rather than returning null: `malloc` raises
 /// `ArgumentError('Could not allocate …')` and `Uint8List` raises
-/// `OutOfMemoryError`, three full frames' worth per decode (8.3 MB each at
-/// 1080p, 33 MB at 4K on the tablets this app is written for). An uncaught
+/// `OutOfMemoryError`, full frames' worth per decode (8.3 MB each at 1080p,
+/// 33 MB at 4K on the tablets this app is written for). An uncaught
 /// throw here is FATAL to this isolate — `Isolate.spawn` defaults to
 /// `errorsAreFatal: true` — and the asker would then be left waiting on a
 /// port nobody holds, with [IsolateVideoDecodeBackend._queue] jammed behind
@@ -444,7 +514,7 @@ void _serve(
                 String path,
                 ({int offset, int length, bool framed})? span,
               });
-      final document = decoder == null || !decoder.isSupported
+      final document = !decoder.isSupported
           ? null
           : decoder.openDocument(args.path, span: args.span);
       if (document == null) {
@@ -461,21 +531,11 @@ void _serve(
         fpsDenominator: document.info.fpsDenominator,
       ));
     case _opFrame:
-      final args = request.args! as ({int token, int index});
-      final document = documentAt(args.token);
-      final rgba = document == null
-          ? null
-          : decoder?.frameOf(document, args.index);
-      request.reply.send(
-        rgba == null
-            ? null
-            // ⚠️A copy INTO the transfer, because the decoder hands back a
-            // view of scratch it reuses. The copy stays on this isolate,
-            // which is the one with time to spare.
-            : TransferableTypedData.fromList([Uint8List.fromList(rgba)]),
-      );
+      request.reply.send(_frameAsked(decoder, documentAt, request.args!));
+    case _opCutFrame:
+      request.reply.send(_cutAsked(decoder, documentAt, request.args!));
     case _opLastError:
-      request.reply.send(decoder?.lastError ?? '');
+      request.reply.send(decoder.lastError);
     case _opClose:
       // ⚠️Removed, not just closed. The handle is the ASKER's now and never
       // repeats, so an entry left behind is a closed document a stale
@@ -484,10 +544,118 @@ void _serve(
       // after it — which is why the old code deliberately left it.
       final document = documents.remove(request.args! as int);
       if (document != null) {
-        decoder?.closeDocument(document);
+        decoder.closeDocument(document);
       }
       request.reply.send(null);
     default:
       request.reply.send(null);
   }
+}
+
+/// What the frame arm sends of [rgba] — the worker's room
+/// ([_frameInTheRoom]), its own to change — in the form asked: as it is, or
+/// [premultiplied] there, by the app's one law
+/// ([VideoDecodeBackend.premultipliedFrame]).
+///
+/// ⚠️A copy INTO the transfer, because the room is the next frame's too —
+/// `fromList` IS that copy. The copy stays on this isolate, which is the
+/// one with time to spare, and so does the premultiply. ↩️Until 2026-11-13
+/// a frame took three copies here and a fresh buffer: the decoder's out of
+/// its scratch into a fresh `Uint8List` (it was given no `into`), the
+/// premultiply's into a second kept buffer, and the transfer.
+@visibleForTesting
+TransferableTypedData transferOfFrame(
+  Uint8List rgba, {
+  required bool premultiplied,
+}) {
+  if (premultiplied) {
+    premultiplyRgbaInPlace(rgba);
+  }
+  return TransferableTypedData.fromList([rgba]);
+}
+
+/// The worker's one buffer a frame is decoded into, out of the decoder's
+/// scratch, and premultiplied in before the transfer copies it out — kept,
+/// and made anew only when a frame of another size comes.
+///
+/// 🔬KEPT BECAUSE A FRESH ONE STOPPED THE UI ISOLATE (2026-11-07, card
+/// viewer-frame-premultiply-on-the-worker — a 1080p movie's 240 frames in
+/// the viewer's document on this worker, the engine's upload stood in for,
+/// a 1 ms ticker on the UI isolate): a fresh 8 MB `Uint8List` a frame here
+/// held the UI isolate 9 ms a frame; this one kept, 5 ms. The worker is in
+/// the UI isolate's group (`Isolate.spawn`) and shares its heap — the
+/// likeliest road, not measured on its own.
+///
+/// ↩️That kept the premultiply's buffer alone: the decoder's copy out of
+/// its scratch still made a fresh one a frame, under it, until 2026-11-13
+/// (the CPU audit), when the two became this one.
+Uint8List? _frameRoom;
+
+/// [_frameRoom] of the isolate that asks — this one's when a test serves
+/// a request here ([serveVideoDecodeRequest]).
+@visibleForTesting
+Uint8List? get debugFrameRoom => _frameRoom;
+
+/// Frame [index] of [document], decoded into [_frameRoom].
+///
+/// ⚠️Valid until the next frame: [transferOfFrame] copies it out at once,
+/// and the worker answers one request at a time — the synchronous use
+/// [QaVideoDecoder.frameOf]'s `into` asks of whoever passes it.
+Uint8List? _frameInTheRoom(
+  QaVideoDecoder decoder,
+  QaVideoDocument document,
+  int index,
+) {
+  final bytes = document.info.width * document.info.height * 4;
+  final kept = _frameRoom;
+  final room = kept != null && kept.length == bytes
+      ? kept
+      : (_frameRoom = Uint8List(bytes));
+  return decoder.frameOf(document, index, into: room);
+}
+
+/// What the frame arm sends for [args]: the frame in the form asked
+/// ([transferOfFrame]), or null where its document or frame is not there.
+TransferableTypedData? _frameAsked(
+  QaVideoDecoder decoder,
+  QaVideoDocument? Function(int token) documentAt,
+  Object args,
+) {
+  final (:token, :index, :premultiplied) =
+      args as ({int token, int index, bool premultiplied});
+  final document = documentAt(token);
+  final rgba = document == null
+      ? null
+      : _frameInTheRoom(decoder, document, index);
+  return rgba == null
+      ? null
+      : transferOfFrame(rgba, premultiplied: premultiplied);
+}
+
+/// What the cut arm sends for [args]: the frame's tiles ([_cutOfFrame]), or
+/// null where its document or frame is not there.
+CutTiles? _cutAsked(
+  QaVideoDecoder decoder,
+  QaVideoDocument? Function(int token) documentAt,
+  Object args,
+) {
+  final (:token, :index, :cut) = args as ({int token, int index, TileCut cut});
+  final document = documentAt(token);
+  return document == null ? null : _cutOfFrame(decoder, document, index, cut);
+}
+
+/// Frame [index] of [document] cut into [cut]'s tile blocks out of
+/// [_frameRoom] ([VideoDecodeBackend.cutFrame]) — or null where it does not
+/// decode. The room is free again the moment it returns.
+CutTiles? _cutOfFrame(
+  QaVideoDecoder decoder,
+  QaVideoDocument document,
+  int index,
+  TileCut cut,
+) {
+  final rgba = _frameInTheRoom(decoder, document, index);
+  final QaVideoInfo(:width, :height) = document.info;
+  return rgba == null
+      ? null
+      : cutRgbaRows(rgba, width: width, height: height, cut: cut);
 }

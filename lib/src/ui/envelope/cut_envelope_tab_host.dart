@@ -14,8 +14,6 @@ import '../brush/brush_tool_state.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/envelope_format_window.dart';
 import '../editor_session_manager.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../shortcuts/panel_keys.dart';
 import '../text/app_strings.dart';
 import '../timeline/memo_token.dart' show ByIdentity;
 import '../widgets/app_icon_button.dart';
@@ -118,15 +116,10 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     super.dispose();
   }
 
+  // ↩️A key pressed the format window (I-40) until F-580 took 「패널 안」 off
+  // the shortcut list.
   @override
-  Widget build(BuildContext context) {
-    // A key presses the format window — the envelope is one panel,
-    // whatever is in hand (I-40).
-    return PanelKeysBinding(
-      buttons: {EditorActionIds.envelopeFormat: _formatEditor},
-      child: _sheet(),
-    );
-  }
+  Widget build(BuildContext context) => _sheet();
 
   Widget _sheet() {
     final session = widget.session;
@@ -212,7 +205,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     AppIconButton(
       keyValue: 'envelope-format-button',
       tooltip: AppText.strings.envelopeFormatTitle,
-      shortcuts: const [EditorActionIds.envelopeFormat],
       icon: const Icon(Icons.edit_note),
       size: AppIconButtonSize.strip,
       onPressed: _formatEditor,

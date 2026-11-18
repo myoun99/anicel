@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
+import 'audio_peaks_extractor.dart' show AudioPeaks;
 import 'conform_pcm_codec.dart';
 import 'wav16_header.dart';
 
@@ -62,10 +63,11 @@ bool conformStaysOnDisk({
 /// each one. The cost is tens of microseconds against a read measured in
 /// megabytes, and there is nothing left to close.
 ///
-/// Reads are synchronous and run on the CONTROL side (the schedule
-/// refresh and the scrubber's re-centre, and a worker's for a playing
-/// stream's advance), never the audio callback — the realtime thread only
-/// ever touches memory the C side already owns.
+/// Reads are synchronous and run on the CONTROL side — a worker's, for
+/// every move of a streaming window (long-sound-windows-are-read-on-the-
+/// ui-isolate, 11-15) — never the audio callback: the realtime thread only
+/// ever touches memory the C side already owns. ↩️The schedule refresh and
+/// the scrubber's re-centre read on the thread that draws.
 ///
 /// 🚨**WHICH IS WHAT MAKES COMPRESSION SAFE HERE** (유저 2026-08-30:
 /// 「재생시 압축해제때문에 오디오가 싱크 안맞으면 절대 안되니 그부분만
@@ -190,6 +192,23 @@ class ConformPcmStreamReader {
     }
   }
 
+  /// The waveform's peaks the conform was made with, read from behind its
+  /// PCM — none of which is read ([ConformHeader.peaksFrom]); null over a
+  /// WAV ([overWav16]), which holds none. Throws [ConformFormatException]
+  /// where they do not read whole.
+  AudioPeaks? peaks() {
+    final header = this.header;
+    if (header == null) {
+      return null;
+    }
+    final bytes = Uint8List(header.peaksBytes);
+    if (_source.readIntoSync(bytes, header.peaksOffset, bytes.length) <
+        bytes.length) {
+      throw const ConformFormatException('the peaks do not read whole');
+    }
+    return header.peaksFrom(bytes);
+  }
+
   /// [startSample] and [sampleCount] CLAMPED into the file: where a window
   /// asked for there starts, and how many samples per channel it holds when
   /// it lands whole ([readWindow]).
@@ -217,37 +236,95 @@ class ConformPcmStreamReader {
     int sampleCount, {
     Float32List? Function(int floats)? place,
   }) {
-    final (:start, :count) = windowAt(startSample, sampleCount);
-    if (count == 0) {
+    Float32List? out;
+    // The float list's upper half, where its 16-bit samples land.
+    Int16List upperHalf(int floats) {
+      final made = out = place?.call(floats) ?? Float32List(floats);
+      return Int16List.view(
+        made.buffer,
+        made.offsetInBytes + floats * 2,
+        floats,
+      );
+    }
+
+    final (:start, samples: pcm) = _int16Into(
+      startSample,
+      sampleCount,
+      upperHalf,
+    );
+    final into = out;
+    if (into == null || pcm.isEmpty) {
       return (startSample: start, samples: Float32List(0));
     }
-    final floats = count * channels;
-    final out = place?.call(floats) ?? Float32List(floats);
+    // 🔑Through the codec's own converter, so the streamed path and the
+    // resident decode cannot land the same audio at two levels.
+    conformPcmToFloat32(
+      Uint8List.view(pcm.buffer, pcm.offsetInBytes, pcm.lengthInBytes),
+      pcm.length,
+      into: into,
+    );
+    return (
+      startSample: start,
+      samples: pcm.length == into.length
+          ? into
+          : Float32List.sublistView(into, 0, pcm.length),
+    );
+  }
+
+  /// The same window as [readWindow], as the 16-bit samples the file holds
+  /// — for a writer that hands them on as 16-bit (an export's encoder, the
+  /// tail of a mix put before a movie's).
+  ///
+  /// ↩️Each read the window as floats and narrowed it back
+  /// (`int16PcmOf`): an exact round trip ([conformPcmToFloat32]'s
+  /// 「bit-exactly」), every sample twice, for nothing (card
+  /// `the-export-sound-blocks-the-ui-isolate`, the CPU census — 관제
+  /// 2026-11-13). In the platform's byte order, as [conformPcmToFloat32]'s
+  /// view reads them.
+  ({int startSample, Int16List samples}) readInt16Window(
+    int startSample,
+    int sampleCount,
+  ) {
+    final (:start, :samples) = _int16Into(
+      startSample,
+      sampleCount,
+      Int16List.new,
+    );
+    return (startSample: start, samples: samples);
+  }
+
+  /// The window [startSample] .. + [sampleCount], CLAMPED into the file
+  /// ([windowAt]), read as the 16-bit samples the file holds into the list
+  /// [place] makes for that many — the part of it that landed: shorter
+  /// where the file ends short of its header, empty where it will not read
+  /// (a file replaced mid-run, a drive gone: silence for this window, and
+  /// the next refresh tries again). [place] is not asked for an empty
+  /// window.
+  ({int start, Int16List samples}) _int16Into(
+    int startSample,
+    int sampleCount,
+    Int16List Function(int samples) place,
+  ) {
+    final (:start, :count) = windowAt(startSample, sampleCount);
+    if (count == 0) {
+      return (start: start, samples: Int16List(0));
+    }
     try {
-      final pcm = Uint8List.view(
-        out.buffer,
-        out.offsetInBytes + floats * 2,
-        floats * 2,
-      );
+      final out = place(count * channels);
       final read = _source.readIntoSync(
-        pcm,
+        Uint8List.view(out.buffer, out.offsetInBytes, out.lengthInBytes),
         _dataOffset + start * 2 * channels,
-        pcm.length,
+        out.lengthInBytes,
       );
-      final got = read ~/ (2 * channels);
-      // 🔑Through the codec's own converter, so the streamed path and the
-      // resident decode cannot land the same audio at two levels.
-      conformPcmToFloat32(pcm, got * channels, into: out);
+      final landed = read ~/ (2 * channels) * channels;
       return (
-        startSample: start,
-        samples: got == count
+        start: start,
+        samples: landed == out.length
             ? out
-            : Float32List.sublistView(out, 0, got * channels),
+            : Int16List.sublistView(out, 0, landed),
       );
     } on Object {
-      // A failed read (file replaced mid-run, drive gone) degrades to
-      // silence for this window; the next refresh tries again.
-      return (startSample: start, samples: Float32List(0));
+      return (start: start, samples: Int16List(0));
     }
   }
 }

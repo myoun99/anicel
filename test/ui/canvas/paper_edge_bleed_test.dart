@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -49,6 +50,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// and the blit cannot dilute it). Over a dark backdrop, ink pixels read 0
 /// and the backdrop 16 — ANY bright pixel is the bug.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 4096, height: 1266);
   final tileCache = BitmapTileImageCache.instance;
 
@@ -70,7 +72,9 @@ void main() {
         tiles[coord] = BitmapTile(size: 256, pixels: pixels);
       }
     }
-    return BitmapSurface(canvasSize: canvasSize, tileSize: 256, tiles: tiles);
+    return onTheEnginesTiles(
+      BitmapSurface(canvasSize: canvasSize, tileSize: 256, tiles: tiles),
+    );
   }
 
   void decodeAll(BitmapSurface surface) {

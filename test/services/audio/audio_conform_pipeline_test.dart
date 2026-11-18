@@ -6,7 +6,6 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_decode_stream.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart'
     show mediaFramedOrPlainPaths;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/audio_resampler_reference.dart';
 import '../../helpers/conform_file_path.dart';
 import '../../helpers/memory_decode_stream.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -500,7 +500,8 @@ void main() {
       final conformPath = '${temp.path}/Conformed/swapped.wav.wav';
       pipelineFor().ensureConform(sourcePath: source, conformPath: conformPath);
 
-      final other = writeSource('other.wav', rate: 44100);
+      // 88.2k, so its peaks are as many buckets as the 48k one's: two.
+      final other = writeSource('other.wav', rate: 88200);
       final swapped = File(other).readAsBytesSync();
       expect(
         swapped.length,
@@ -547,7 +548,7 @@ void main() {
 
       final statBefore = MediaFileBytes(source).statSync();
 
-      final other = writeSource('other2.wav', rate: 44100);
+      final other = writeSource('other2.wav', rate: 88200);
       File(source).writeAsBytesSync(File(other).readAsBytesSync());
       File(source).setLastModifiedSync(stampedAt);
 
@@ -790,6 +791,117 @@ void main() {
       );
       expect(memoryOnly.conformBytes, isNull);
       expect(memoryOnly.samples?.length, long, reason: 'resident, then');
+    });
+
+    test('🎯a reuse hands back the peaks its making folded, read from behind '
+        'the PCM — which is never folded again: a long one\'s PCM is not '
+        'read at all, a short one\'s is read to be played', () {
+      // Card a-sound-folds-its-peaks-again-at-every-open (관제 2026-11-14):
+      // every open used to read the whole PCM back to fold the peaks again.
+      // The PCM of the copy reused here is SILENCED — peaks folded from it
+      // would be flat.
+      const rate = 100;
+      final pipeline = pipelineFor(projectSampleRate: rate);
+      for (final (name, frames) in [('long', rate * 121), ('short', rate * 3)]) {
+        final source = '${temp.path}/$name.wav';
+        File(source).writeAsBytesSync(
+          encodeConform(samples: tone(frames), channels: 1, sampleRate: rate),
+        );
+        final built = pipeline.ensureConform(
+          sourcePath: source,
+          conformPath: '${temp.path}/Conformed/$name.wav.wav',
+        );
+        expect(built.outcome, ConformOutcome.built, reason: name);
+        final made = built.conformBytes!.readSync();
+        final head = ConformHeader.parse(made);
+        final silenced = '${temp.path}/$name.silenced';
+        File(silenced).writeAsBytesSync(
+          Uint8List.fromList(made)
+            ..fillRange(ConformHeader.length, head.peaksOffset, 0),
+        );
+
+        final reused = pipeline.ensureConform(
+          sourcePath: source,
+          conformPath: null,
+          carriedConform: MediaFileBytes(silenced),
+        );
+        expect(reused.outcome, ConformOutcome.reused, reason: name);
+        expect(reused.peaks!.peaks, built.peaks!.peaks, reason: name);
+        expect(
+          built.peaks!.peaks.any((peak) => peak > 0),
+          isTrue,
+          reason: '$name — premise: the sound is not silent',
+        );
+        if (name == 'short') {
+          expect(
+            reused.samples?.every((sample) => sample == 0),
+            isTrue,
+            reason: 'premise: what it plays is the silenced PCM',
+          );
+        } else {
+          expect(reused.samples, isNull, reason: 'premise: it is long');
+        }
+      }
+    });
+
+    test('a conform whose peaks were folded at another bucket rate is made '
+        'again — they are handed back as they lie', () {
+      final source = writeSource('rated.wav');
+      final conform = '${temp.path}/Conformed/rated.wav.wav';
+      final base = pipelineFor();
+      AudioConformPipeline at(int buckets) => AudioConformPipeline(
+        decode: base.decode,
+        resample: base.resample,
+        bucketsPerSecond: buckets,
+      );
+
+      expect(
+        at(40).ensureConform(sourcePath: source, conformPath: conform).outcome,
+        ConformOutcome.built,
+      );
+      final again = at(80).ensureConform(
+        sourcePath: source,
+        conformPath: conform,
+      );
+      expect(again.outcome, ConformOutcome.built);
+      expect(again.peaks!.bucketsPerSecond, 80);
+      expect(
+        at(80).ensureConform(sourcePath: source, conformPath: conform).outcome,
+        ConformOutcome.reused,
+        reason: 'and kept at the rate it was asked for',
+      );
+    });
+
+    test('a conform written before its peaks were kept — none behind its PCM, '
+        'their rate 0 — is made again from its source', () {
+      final source = writeSource('old.wav');
+      final pipeline = pipelineFor();
+      final made = pipeline
+          .ensureConform(
+            sourcePath: source,
+            conformPath: '${temp.path}/Conformed/old.wav.wav',
+          )
+          .conformBytes!
+          .readSync();
+      final head = ConformHeader.parse(made);
+      // As one was written before the peaks: their two words reserved (0),
+      // and the file ending with the PCM.
+      final old = Uint8List.fromList(made.sublist(0, head.peaksOffset))
+        ..fillRange(44, 48, 0)
+        ..fillRange(60, 64, 0);
+      final path = '${temp.path}/old.conform';
+      File(path).writeAsBytesSync(old);
+
+      expect(
+        pipeline
+            .ensureConform(
+              sourcePath: source,
+              conformPath: null,
+              carriedConform: MediaFileBytes(path),
+            )
+            .outcome,
+        ConformOutcome.built,
+      );
     });
 
     test('🎯a conform made a window at a time is the whole one byte for '

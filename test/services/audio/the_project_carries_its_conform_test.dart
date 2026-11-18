@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/conform_file_path.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -217,11 +216,6 @@ void main() {
   });
 
   test('framed bytes are carried and restored AS THEY ARE', () {
-    final compressor = QaCelCompressor.instance;
-    if (compressor == null || !compressor.isSupported) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = writeSource('대사.wav', frames: 400000);
     final built = pipelineAt(48000).pipeline.ensureConform(
       sourcePath: source,

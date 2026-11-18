@@ -12,7 +12,7 @@
 // landing.
 //
 // It runs in a lane of its own ([kCheckLane]), moved from commit to commit
-// and given each one's engine and packages — never in the main checkout,
+// and given each one's packages — never in the main checkout,
 // whose files `lane.sh land` moves while a run would be reading them.
 //
 // What it keeps, in [machineCacheFolder]:
@@ -36,6 +36,7 @@ import 'dart:io';
 
 import 'bash_executable.dart';
 import 'import_graph.dart';
+import 'process_tree.dart';
 import 'test_seconds.dart';
 
 /// The lane the check runs in.
@@ -199,6 +200,7 @@ int? importsAway(
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final records = MasterRecords.of(Platform.environment);
   if (records == null) {
     stderr.writeln('master_check: this machine names no folder to keep in.');
@@ -345,7 +347,10 @@ Future<Set<String>> _redsAt(String root, String lane, List<String> args) async {
   return reds;
 }
 
-/// The check's lane, moved to [sha] with that commit's packages and engine.
+/// The check's lane, moved to [sha] with that commit's packages. ↩️And
+/// its C engine, built there from that commit's C, till the C went
+/// (2026-11-13): a commit from before it runs its C pins against no
+/// engine, and they skip.
 Future<String> _laneAt(String root, String sha) async {
   final lane = _lanePath(root);
   if (!File('$lane/.git').existsSync()) {
@@ -363,7 +368,6 @@ Future<String> _laneAt(String root, String sha) async {
   if (packages.exitCode != 0) {
     await _run('flutter', ['pub', 'get'], lane, shell: true);
   }
-  await _bash(root, ['tool/lane.sh', 'engine', kCheckLane]);
   return lane;
 }
 

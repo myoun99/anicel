@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// buffer came out all zero and the commit was a no-op.
 ///
 /// ⛔The law was already written one file over, in
-/// `rasterizeStrokeForClipping`: 「Erase dabs rasterize with the flag
+/// `rasterizeStrokeCoverage`: 「Erase dabs rasterize with the flag
 /// flipped OFF: what is wanted here is the stroke's COVERAGE, which the
 /// commit then re-applies as one erase stamp」. There were two
 /// implementations of that one algorithm and only one of them knew it.
@@ -50,7 +50,7 @@ void main() {
   ).copyWith(erase: erase);
 
   BitmapSurface painted() => materializeBrushDabSequenceOnBitmapSurface(
-    surface: BitmapSurface(canvasSize: canvas, tileSize: 4),
+    surface: BitmapSurface(canvasSize: canvas, tileSize: 128),
     sequence: BrushDabSequence([dabAt(0, 0), dabAt(3, 3)]),
   ).surface;
 

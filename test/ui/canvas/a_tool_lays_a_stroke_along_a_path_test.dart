@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
@@ -31,6 +32,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 
+import '../../helpers/fill_pieces.dart';
 import '../brush_canvas_test_helpers.dart';
 
 /// I-69 (유저 2026-10-04): 「브러시 상태를 그대로 사용해서 도형그림. 샤프
@@ -520,6 +522,12 @@ void main() {
       debugStrokeDabsLaid = null;
     });
 
+    // A path into the cel's second tile, where a short one keeps to its
+    // first: which of the two is up is told by the tiles shown. ↩️`corner`
+    // told it till 2026-11-14, past the first three tiles of a 16px grid
+    // (board `the-off-engine-cpu-commit-lives-only-for-tests`).
+    final across = [p(10, 10), p(150, 10), p(150, 50)];
+
     Future<ActiveStrokeOverlayModel> pumpShown(
       WidgetTester tester,
       _Host host,
@@ -648,10 +656,10 @@ void main() {
       final host = _Host();
       final overlay = await pumpShown(tester, host);
 
-      host.show!.showStroke(corner);
+      host.show!.showStroke(across);
       await untilShown(tester, overlay);
       final first = Map.of(overlay.tileImages);
-      expect(first.keys.any((tile) => tile.x > 2), isTrue, reason: 'fixture');
+      expect(first.keys.any((tile) => tile.x > 0), isTrue, reason: 'fixture');
 
       host.show!.showStroke(short);
       await tester.pump();
@@ -663,9 +671,9 @@ void main() {
         }
       }
       expect(
-        overlay.tileImages.keys.every((tile) => tile.x <= 2),
+        overlay.tileImages.keys.every((tile) => tile.x == 0),
         isTrue,
-        reason: 'then the newest alone, 10..30 in the first three tiles',
+        reason: 'then the newest alone, 10..30 in the first tile',
       );
 
       host.show!.landStroke(short);
@@ -769,7 +777,7 @@ void main() {
       final host = _Host();
       final overlay = await pumpShown(tester, host);
 
-      host.show!.showStroke(corner);
+      host.show!.showStroke(across);
       for (var frame = 0; frame < 400 && overlay.stagedCount == 0; frame++) {
         await tester.pump();
       }
@@ -777,7 +785,7 @@ void main() {
       expect(overlay.hasStrokeContent, isFalse, reason: '⛔premise: unshown');
       var strayShown = false;
       void watch() =>
-          strayShown |= overlay.tileImages.keys.any((tile) => tile.x > 2);
+          strayShown |= overlay.tileImages.keys.any((tile) => tile.x > 0);
       overlay.addListener(watch);
       addTearDown(() => overlay.removeListener(watch));
       host.show!.showStroke(short);
@@ -787,54 +795,113 @@ void main() {
       expect(host.committed, hasLength(1));
     });
 
-    // An AREA is shown the same way (the shape tool's 「일반」 line and its
-    // fill — their pins drive the panel, `a_dragged_shape_shows_what_it_will
-    // _lay_test`); this one needs a cel on a grid the panel never uses.
-    testWidgets('an area whose pieces share a tile of the cel comes up, and '
-        'lands, as that tile with every piece', (tester) async {
-      // Pieces are cut on 128px rows of tiles; a cel on a 256px grid holds
-      // two of them in one tile.
+    // `LaidWhole.laid`: a piece whose want went back to what is up is not
+    // put up — up, it would show for a frame before the screen went back.
+    testWidgets('🚨the hand went back to the path on screen while another was '
+        'being laid: that one never comes up, and the path on screen lands '
+        'as the stroke laid in one go', (tester) async {
+      shapeShowFrameShare = Duration.zero;
+      final short = [p(10, 10), p(30, 10)];
+      final once = await laidInOneGo(tester, corner);
+      final host = _Host();
+      final overlay = await pumpShown(tester, host);
+      host.show!.showStroke(corner);
+      await untilShown(tester, overlay);
+      final up = Map.of(overlay.tileImages);
+
+      host.show!.showStroke(short);
+      await tester.pump();
+      host.show!.showStroke(corner);
+      var cameUp = false;
+      void watch() => cameUp |= !mapEquals(overlay.tileImages, up);
+      overlay.addListener(watch);
+      addTearDown(() => overlay.removeListener(watch));
+      for (var frame = 0; frame < 400; frame++) {
+        await tester.pump();
+      }
+
+      expect(cameUp, isFalse, reason: 'the short path came up');
+      expect(host.show!.landStroke(corner), isTrue);
+      expect(_look(host.committed.single), _look(once.committed.single));
+      expect(_tiles(host.data.single), _tiles(once.data.single));
+    });
+
+    testWidgets('🚨an area went back to the one on screen while another was '
+        'being laid: that one never comes up, and the one on screen lands', (
+      tester,
+    ) async {
+      shapeShowFrameShare = Duration.zero;
       final big = BitmapSurface(
         canvasSize: const CanvasSize(width: 256, height: 256),
-        tileSize: 256,
+        tileSize: gpuTileSide,
       );
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
       await _pump(tester, host, _brush(), overlay: overlay, cel: big);
-      final region = CanvasSelectionRegion.shape(
-        CanvasSelectionShape.rect(left: 10, top: 100, right: 60, bottom: 160),
-      );
-      final area = (
-        shape: region,
-        pieces: () => regionFillPieces(
-          region: region,
-          color: 0xFFFF0000,
-          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        ),
-        blend: BrushBlendMode.color,
-        selection: null,
-      );
-      expect(area.pieces(), hasLength(2), reason: 'fixture: one tile, two');
+      ShapeArea areaOf(CanvasSelectionShape shape) {
+        final region = CanvasSelectionRegion.shape(shape);
+        return (
+          shape: region,
+          pieces: () => regionFillPieces(
+            region: region,
+            color: 0xFFFF0000,
+            options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+          ),
+          blend: BrushBlendMode.color,
+          selection: () => null,
+        );
+      }
 
-      host.show!.show(area);
+      final small = areaOf(
+        CanvasSelectionShape.rect(left: 10, top: 10, right: 40, bottom: 40),
+      );
+      final tall = areaOf(
+        CanvasSelectionShape.rect(left: 100, top: 10, right: 200, bottom: 240),
+      );
+      expect(tall.pieces().length, greaterThan(1), reason: 'fixture: frames');
+      host.show!.show(small);
       await untilShown(tester, overlay);
-      expect(host.show!.land(area), isTrue);
+      final up = Map.of(overlay.tileImages);
 
-      final landed = host.data.single.promotedTiles!.single.tile.pixels;
-      int alphaAt(int x, int y) => landed[(y * 256 + x) * 4 + 3];
-      expect(alphaAt(30, 110), 255, reason: 'the piece above 128');
-      expect(alphaAt(30, 150), 255, reason: 'the piece below');
+      host.show!.show(tall);
+      await tester.pump();
+      host.show!.show(small);
+      var cameUp = false;
+      void watch() => cameUp |= !mapEquals(overlay.tileImages, up);
+      overlay.addListener(watch);
+      addTearDown(() => overlay.removeListener(watch));
+      for (var frame = 0; frame < 400; frame++) {
+        await tester.pump();
+      }
+
+      expect(cameUp, isFalse, reason: 'the tall area came up');
+      expect(host.show!.land(small), isTrue);
+      final landed = host.data.single.promotedTiles!.single;
+      expect(landed.coord, TileCoord(x: 0, y: 0));
+      int alphaAt(int x, int y) =>
+          landed.tile.pixels[(y * gpuTileSide + x) * 4 + 3];
+      expect(alphaAt(20, 20), 255, reason: 'the small area landed');
+      expect(alphaAt(110, 100), 0, reason: 'and nothing of the tall one');
     });
+
+    // An AREA is shown the same way (the shape tool's 「일반」 line and its
+    // fill — their pins drive the panel, `a_dragged_shape_shows_what_it_will
+    // _lay_test`). ↩️Till 2026-11-14 a case held an area whose pieces share
+    // a tile of the cel — pieces are cut on the cel's own grid
+    // (canvas_flood_fill.dart `_pieceSize`), so it took a cel on a 256px
+    // grid, one the app never draws on (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
 
     // brush-fidelity-Q11: the dabs a shape lands with are what the commit
     // re-derives it from, and what 확정 lays again. Cut already, the
-    // selection's ramp would be taken twice.
+    // selection's ramp would be taken twice. On the engine's grid, where a
+    // selection cuts (`drawnByTheEngineAlone`).
     testWidgets('an area is cut through its selection once: the tiles are '
         'cut, the dabs it lands with stay whole', (tester) async {
       final big = BitmapSurface(
         canvasSize: const CanvasSize(width: 256, height: 256),
-        tileSize: 256,
+        tileSize: gpuTileSide,
       );
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
@@ -843,6 +910,13 @@ void main() {
       final region = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 10, top: 40, right: 60, bottom: 90),
       );
+      final selection = SelectionClip.of(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 50, right: 256, bottom: 80),
+        ),
+        wall: big.pasteboard,
+        options: const SelectionMaskOptions(featherPx: 4),
+      );
       final area = (
         shape: region,
         pieces: () => regionFillPieces(
@@ -851,13 +925,7 @@ void main() {
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         ),
         blend: BrushBlendMode.color,
-        selection: SelectionClip.of(
-          CanvasSelectionRegion.shape(
-            CanvasSelectionShape.rect(left: 0, top: 50, right: 256, bottom: 80),
-          ),
-          wall: big.pasteboard,
-          options: const SelectionMaskOptions(featherPx: 4),
-        ),
+        selection: () => selection,
       );
 
       host.show!.show(area);
@@ -865,16 +933,24 @@ void main() {
       expect(host.show!.land(area), isTrue);
 
       final data = host.data.single;
-      final landed = data.promotedTiles!.single.tile.pixels;
-      int alphaAt(int x, int y) => landed[(y * 256 + x) * 4 + 3];
+      final landed = data.promotedTiles!.single.tile;
+      int alphaAt(int x, int y) => landed.readPixels(
+        (_, pixels) => pixels[(y * gpuTileSide + x) * 4 + 3],
+      );
       expect(alphaAt(30, 45), 0, reason: 'above the selection');
       expect(alphaAt(30, 50), greaterThan(0));
       expect(alphaAt(30, 50), lessThan(255), reason: 'the selection\'s ramp');
       expect(alphaAt(30, 65), 255, reason: 'deep inside it');
 
-      final piece = data.sourceDabs.single.stamp!;
+      final dab = data.sourceDabs.single;
+      final alone = [dab];
+      final piece = dab.stamp!.landingRect(dab.center);
       expect(
-        [for (var i = 3; i < piece.rgba.length; i += 4) piece.rgba[i]],
+        [
+          for (var y = piece.top; y < piece.bottomExclusive; y += 1)
+            for (var x = piece.left; x < piece.rightExclusive; x += 1)
+              piecesAlphaAt(alone, x, y),
+        ],
         everyElement(255),
         reason: 'the dab the commit would cut again is the whole piece',
       );
@@ -917,7 +993,7 @@ Map<TileCoord, List<int>> _tiles(BrushStrokeCommitData data) => {
 
 final _cel = BitmapSurface(
   canvasSize: const CanvasSize(width: 160, height: 64),
-  tileSize: 16,
+  tileSize: 128,
 );
 
 /// [stabilizer] null: switched off.

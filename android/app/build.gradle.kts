@@ -46,19 +46,19 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // B1 (R24): arm64 first — the shipping tablet ABI (the engine's
-        // pthread pool + scalar kernels are NDK-compile-verified).
+        // B1 (R24): arm64 first — the shipping tablet ABI (↩️the C engine's
+        // pthread pool and scalar kernels were NDK-compile-verified for it,
+        // till they went — C ABI 80).
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
     }
 
-    // B1/2A: the native engine rides in through the qa_native FFI plugin
-    // (its Gradle drives the same packages/qa_native/src CMake every
-    // platform uses); libqa_engine.so lands in the APK from there and the
-    // Dart loader picks it up (engine-less devices keep the Dart
-    // fallback). The app-level externalNativeBuild that predated the
-    // plugin retired with the native/ shim.
+    // ↩️B1/2A: the C engine rode in through the qa_native FFI plugin, and
+    // the app-level externalNativeBuild that predated the plugin had retired
+    // with the native/ shim, until the package went (connection-round-
+    // checklist, 2026-11-13). The GPU engine's library is built by its own
+    // hook (packages/gpu_engine/hook/build.dart) and ships as a code asset.
     signingConfigs {
         if (uploadKeyMissing.isEmpty()) {
             create("upload") {

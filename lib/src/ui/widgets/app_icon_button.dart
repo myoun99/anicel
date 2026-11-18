@@ -118,6 +118,7 @@ class AppIconButton extends StatelessWidget {
     this.size = AppIconButtonSize.bar,
     this.outlined = false,
     this.danger = false,
+    this.resets = false,
     this.shortcuts = const [],
   });
 
@@ -167,6 +168,11 @@ class AppIconButton extends StatelessWidget {
   /// colour for a different question.
   final bool danger;
 
+  /// The button puts something back to its default: lit in the accent
+  /// whenever [onPressed] is live ([resetWearsAccent] — I-176), so its
+  /// [onPressed] is null where pressing would change nothing (F-583).
+  final bool resets;
+
   @override
   Widget build(BuildContext context) {
     // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
@@ -210,6 +216,7 @@ class AppIconButton extends StatelessWidget {
       onPressed: onPressed,
       isSelected: isSelected,
       danger: danger,
+      resets: resets,
       outlined: outlined,
       size: size,
       icon: icon,
@@ -234,6 +241,7 @@ class AppIconButtonFace extends StatefulWidget {
     required this.onPressed,
     required this.isSelected,
     required this.danger,
+    required this.resets,
     required this.outlined,
     required this.size,
     required this.icon,
@@ -246,6 +254,9 @@ class AppIconButtonFace extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool isSelected;
   final bool danger;
+
+  /// [AppIconButton.resets].
+  final bool resets;
   final bool outlined;
   final AppIconButtonMetrics size;
   final Widget icon;
@@ -278,6 +289,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace>
         size: widget.size,
         isSelected: widget.isSelected,
         danger: widget.danger,
+        resets: widget.resets,
         outlined: widget.outlined,
         focus: focus,
       ),
@@ -338,6 +350,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace>
       context,
       isSelected: widget.isSelected,
       danger: widget.danger,
+      litReset: resetWearsAccent(resets: widget.resets, live: _enabled),
     );
     // The glyph's ink, for every state this widget knows. The hover and the
     // press live in the face's render object and are not asked: no step of
@@ -454,6 +467,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
     focus: focus,
     ink: ink,
     shape: shape,
+    ground: FaceGround.of(context),
     minWidth: minWidth,
     maxWidth: maxWidth,
     minHeight: minHeight,
@@ -474,6 +488,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     required this.focus,
     required this.ink,
     required this.shape,
+    required this.ground,
     required this.minWidth,
     required this.maxWidth,
     required this.minHeight,
@@ -488,6 +503,9 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   final IconButtonFocus focus;
   final IconButtonInk ink;
   final ShapeBorder shape;
+
+  /// The ground it stands on ([FaceGround]).
+  final Color? ground;
   final double minWidth;
   final double maxWidth;
   final double minHeight;
@@ -523,6 +541,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
           (focus == IconButtonFocus.shown) &&
       other.ink == ink &&
       other.shape == shape &&
+      other.ground == ground &&
       other.textDirection == textDirection;
 
   @override
@@ -542,6 +561,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     focus,
     ink,
     shape,
+    ground,
     minWidth,
     maxWidth,
     minHeight,
@@ -680,7 +700,11 @@ class RenderIconButtonPressFace extends RenderShiftedBox
     _layer.paint(
       context.canvas,
       offset & size,
-      ShapeDecoration(shape: _spec.shape, color: _spec.ink.overlay(_states)),
+      iconButtonLayerOf(
+        _spec.shape,
+        _spec.ink.overlay(_states),
+        ground: _spec.ground,
+      ),
       _spec.textDirection,
     );
     super.paint(context, offset);

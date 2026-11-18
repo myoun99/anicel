@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -26,6 +27,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
+import '../../helpers/panel_finders.dart';
 import '../../helpers/rail_group_button.dart';
 
 /// 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
@@ -174,6 +176,45 @@ void main() {
       CanvasTool.cut,
       reason: 'a sub-tool of the cut, like the stamp',
     );
+  });
+
+  // ↩️Nothing over the canvas took the whole cut's press, and a drag under
+  // it went down to the drawing view and painted the brush (found
+  // 2026-11-17 by I-110's eyedropper sweep).
+  testWidgets('a drag on the canvas with the whole cut in hand marks '
+      'nothing — it runs from its settings', (tester) async {
+    final session = await pump(tester);
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    final layer = session.layers.firstWhere((l) => l.frames.length == 2);
+    final key = session.brushFrameKeyForCut(
+      session.requireActiveCut,
+      layer.id,
+      const FrameId('c0'),
+    );
+    final cels = session.renderCaches.brushFrameStore;
+    expect(cels.celHasRenderableContent(key), isFalse, reason: 'premise');
+    workspace.brushTool!.value = workspace.brushTool!.value.copyWith(
+      tool: CanvasTool.cutWhole,
+    );
+    await tester.pumpAndSettle();
+
+    final at = visibleCanvasPoint(tester);
+    final hand = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 1; step <= 4; step += 1) {
+      await hand.moveTo(at + Offset(15.0 * step, 6.0 * step));
+      await tester.pump();
+    }
+    expect(session.brushInputActive.value, isFalse, reason: 'no stroke');
+    await hand.up();
+    await tester.pumpAndSettle();
+
+    expect(cels.celHasRenderableContent(key), isFalse);
+    expect(workspace.brushTool!.value.tool, CanvasTool.cutWhole);
   });
 
   testWidgets('「실행」 in the tool settings runs it, with the 대상 and the '

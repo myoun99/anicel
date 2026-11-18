@@ -30,7 +30,6 @@ import 'package:anicel/src/services/audio/audio_conform_runner.dart'
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
@@ -247,8 +246,7 @@ void main() {
     expect(mediaFileName(asset.path), 'door_3-6.wav');
     expect(asset.sourcePath, path, reason: 'the original, as provenance');
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
-  }, skip: nativeEngineLibraryPathOrNull() == null);
+  });
 
   testWidgets('🚨a sound the POOL already holds is placed from as it is — its '
       'IN/OUT picks a stretch of the pooled file, and no piece is cut', (
@@ -282,7 +280,6 @@ void main() {
           'carried, so nothing is cut',
     );
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with the SECOND cut open the sound starts at that cut\'s start '
@@ -367,7 +364,6 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     expect(s.activeTrack.seLayers.first.timeline[start], isNotNull);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   group('a sound let go on an SE row\'s EMPTY CELL (「SE 행의 빈 칸 → 새 '
@@ -582,7 +578,6 @@ void main() {
       final s = gapped();
       final s1 = s.activeTrack.seLayers.first;
       final frame = gapFrameOf(s);
-      s.playbackRig.prerenderScheduler.cancel();
 
       expect(
         s.storyboardDropSpotFor(LayerRowAddress(s1.id), frame, 'door.wav'),
@@ -609,7 +604,6 @@ void main() {
           spot: s.storyboardDropSpotFor(LayerRowAddress(s1.id), frame, path),
         );
       });
-      s.playbackRig.prerenderScheduler.cancel();
 
       expect(landed, isTrue);
       expect(s.activeTrack.seLayers.first.timeline[frame], isNotNull);

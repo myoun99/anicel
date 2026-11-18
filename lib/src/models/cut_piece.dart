@@ -123,7 +123,18 @@ class CutPiece {
   /// Flipping is a row/column re-order, so it costs one copy and no
   /// resampling — the scale is applied later, by the stamp path, so that a
   /// flipped piece at 100% is still byte-exact with the source.
-  BrushStampImage flippedImage() {
+  ///
+  /// 🚨ONE RE-ORDER A PIECE (board a-flipped-piece-is-reordered-at-every-
+  /// ghost-move, 11-17): the stamp's ghost asks for its piece at every move
+  /// of the hand, and each ask re-ordered the whole piece on the thread
+  /// that draws. A piece and its pose never change — a new pose is a new
+  /// piece ([copyWith]) — so the re-order is made the first time it is
+  /// asked for and handed back after.
+  BrushStampImage flippedImage() => _flipped;
+
+  late final BrushStampImage _flipped = _reordered();
+
+  BrushStampImage _reordered() {
     if (!flipHorizontal && !flipVertical) {
       return image;
     }

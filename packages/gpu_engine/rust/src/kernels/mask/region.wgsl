@@ -26,8 +26,8 @@
 // Needs shared/wide.wgsl before it.
 
 // The box in canvas pixels; a bit plane's words a row; the polygon a
-// toggle pass lays, as its first vertex and their count; and how a fold
-// combines its planes.
+// toggle pass lays, as its first vertex and their count; and how a scan or
+// a fold folds into its plane.
 struct Region {
   left: i32,
   top: i32,
@@ -99,9 +99,14 @@ fn region_toggle(@builtin(global_invocation_id) id: vec3<u32>) {
   atomicXor(&toggles[id.y * region.stride + at / 32u], 1u << (at % 32u));
 }
 
-// A thread a row: each pixel's parity — the XOR of the toggles past it —
-// joined to the row of `into` (the union of an act's polygons), taking the
-// toggles back to nothing for the next polygon.
+// A thread a row: each pixel's parity — the XOR of the toggles past it,
+// the polygon itself — folded into the row of `into` by `op`, taking the
+// toggles back to nothing for the next polygon. A polygon folds straight
+// into the plane it changes: ↩️each was joined into a plane of its own
+// first and that plane folded in after, two passes and a plane more a
+// step (L2e, board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+// ⛔Not a workgroup a row, each thread a share of its words: measured no
+// faster on the Surface (L2e) — the passes' cost was not the scan's.
 @compute @workgroup_size(64, 1, 1)
 fn region_scan(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= region.height) {
@@ -118,7 +123,7 @@ fn region_scan(@builtin(global_invocation_id) id: vec3<u32>) {
     past ^= past >> 4u;
     past ^= past >> 8u;
     past ^= past >> 16u;
-    into[at] |= (past >> 1u) ^ carry;
+    into[at] = region_folded(into[at], (past >> 1u) ^ carry);
     carry ^= 0u - (past & 1u);
   }
 }
@@ -142,20 +147,24 @@ fn region_fold(@builtin(global_invocation_id) id: vec3<u32>) {
     return;
   }
   let at = id.y * region.stride + id.x;
-  let inside = into[at];
-  let hit = operand[at];
+  into[at] = region_folded(into[at], operand[at]);
+}
+
+// `hit` folded into `inside` by the pass's `op` — the mode table, a word of
+// pixels at a time.
+fn region_folded(inside: u32, hit: u32) -> u32 {
   switch (region.op) {
     case REGION_REPLACE: {
-      into[at] = hit;
+      return hit;
     }
     case REGION_ADD: {
-      into[at] = inside | hit;
+      return inside | hit;
     }
     case REGION_SUBTRACT: {
-      into[at] = inside & ~hit;
+      return inside & ~hit;
     }
     default: {
-      into[at] = inside & hit;
+      return inside & hit;
     }
   }
 }

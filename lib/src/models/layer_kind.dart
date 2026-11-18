@@ -59,6 +59,7 @@ enum LayerKind {
     numbersItsDrawings: true,
     posesInTheShot: false,
     takesClipping: true,
+    playsSound: false,
   ),
 
   storyboard(
@@ -90,6 +91,7 @@ enum LayerKind {
     numbersItsDrawings: true,
     posesInTheShot: false,
     takesClipping: true,
+    playsSound: false,
   ),
 
   /// A PICTURE layer (BG/BOOK, imported stills): ONE cel a cut by
@@ -135,6 +137,7 @@ enum LayerKind {
     numbersItsDrawings: true,
     posesInTheShot: false,
     takesClipping: true,
+    playsSound: false,
   ),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
@@ -173,6 +176,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: false,
     takesClipping: true,
+    playsSound: false,
   ),
 
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
@@ -210,6 +214,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: true,
     takesClipping: false,
+    playsSound: true,
   ),
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
@@ -250,6 +255,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: false,
     takesClipping: false,
+    playsSound: false,
   ),
 
   /// The TRANSITION row: the same instruction events one level up —
@@ -308,6 +314,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: false,
     takesClipping: false,
+    playsSound: false,
   ),
 
   /// The cut's camera track: selecting it puts the canvas into camera
@@ -346,6 +353,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: false,
     takesClipping: false,
+    playsSound: false,
   ),
 
   /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
@@ -401,6 +409,7 @@ enum LayerKind {
     numbersItsDrawings: false,
     posesInTheShot: false,
     takesClipping: false,
+    playsSound: false,
   );
 
   const LayerKind(
@@ -429,6 +438,7 @@ enum LayerKind {
     required this.numbersItsDrawings,
     required this.posesInTheShot,
     required this.takesClipping,
+    required this.playsSound,
   });
 
   final String jsonValue;
@@ -737,6 +747,15 @@ enum LayerKind {
   /// (유저 2026-10-25): 「se행, 디렉션행은 아래 레이어 클리핑 버튼/기능 삭제」.
   final bool takesClipping;
 
+  /// Whether a row of this kind PLAYS SOUND — the S row's spans — so its
+  /// effects are the sound's filters (`EffectKind.filtersSound`) and no
+  /// picture's: the one fact both of a kind's gates ask
+  /// (`canAddEffectToActiveLayer`).
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros Q3 (유저 2026-11-17): 「s행은 그냥
+  /// 영상fx안붙게? 오디오fx만 기본으로」.
+  final bool playsSound;
+
   /// The space this kind's rows are posed in: [shot] for a kind posed there
   /// ([posesInTheShot]), else [canvas] — null where there is none, a gap.
   CanvasSize? poseSpace({required CanvasSize shot, CanvasSize? canvas}) =>
@@ -907,6 +926,16 @@ enum LayerKind {
   /// ↩️The storyboard's panels wore the mark since F-149 (09-16: 「이름 없는
   /// 기본상태를 속이 찬 동그라미로 통일」); the image layer stopped on 09-25.
   bool get unnamedDrawingIsInbetween => this == LayerKind.animation;
+
+  /// The kind a row of ONE picture comes in as until someone picks another
+  /// — a cut folder's picture, a file of one picture in the import window,
+  /// and a pool file's preset alike. A row of more takes the kind as far as
+  /// its cels allow ([holdsSingleCel]).
+  ///
+  /// 🗣️F-429 (유저 2026-10-21): 「1장짜리 그림을 기본 이미지레이어로
+  /// 자동지정해두지만 같은창에서 애니메이션레이어로 변경가능」. 🗣️유저
+  /// 2026-11-17 (card 「파일마다 배치 기본값」-Q4): 「기본 그림한장은 이미지」.
+  static const LayerKind bornOfOnePicture = LayerKind.image;
 
   String toJson() => jsonValue;
 

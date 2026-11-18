@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'export_overrides.dart';
@@ -12,8 +13,11 @@ import 'project_font_file.dart';
 import 'project_frame_rate.dart';
 import 'project_id.dart';
 import 'project_timeline.dart';
+import 'ruler_marker.dart';
 import 'timeline_id.dart';
 import 'timesheet_info.dart';
+import 'cut.dart';
+import 'cut_id.dart';
 import 'track.dart';
 
 const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
@@ -39,8 +43,8 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 ///
 /// ⚠️Must stay in step with `AppPalette.dark.backdrop`, the same colour
 /// stated in the UI layer (the models layer may not import the theme). On
-/// screen this value is read as 「the floor」 of whichever palette is worn
-/// (`stageColorOnScreen`, I-143-Q5).
+/// screen it is the colour it says in either palette (`stageColorOnScreen`,
+/// F-598 — ↩️I-143-Q5 had read it as the floor of the palette worn).
 const defaultProjectBackdropArgb = 0xFF141517;
 
 /// The default PASTEBOARD: the same as the backdrop (유저, R3 #4, held).
@@ -83,12 +87,12 @@ class Project {
     ExportProjectOverrides? exportOverrides,
     MediaViewerBookmarks mediaViewerBookmarks = const {},
     List<ProjectFontFile> fonts = const [],
-  }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
-       fonts = List.unmodifiable(fonts),
+  }) : mediaViewerBookmarks = frozenMap(mediaViewerBookmarks),
+       fonts = frozenList(fonts),
        // A project is given its timelines, or the tracks of its one.
        assert(timelines == null || (tracks == null && trailingFrames == 0)),
        assert(timelines?.isNotEmpty ?? tracks != null),
-       timelines = List.unmodifiable(
+       timelines = frozenList(
          timelines ??
              [
                ProjectTimeline(
@@ -143,6 +147,10 @@ class Project {
 
   /// The current timeline's trailing gap ([ProjectTimeline.trailingFrames]).
   int get trailingFrames => currentTimeline.trailingFrames;
+
+  /// The markers on the current timeline's ruler
+  /// ([ProjectTimeline.rulerMarkers]).
+  RulerMarkers get rulerMarkers => currentTimeline.rulerMarkers;
 
   /// The tracks of every timeline, the current one's among them.
   Iterable<Track> get tracksOfEveryTimeline =>
@@ -322,6 +330,7 @@ class Project {
     List<MediaAsset>? mediaAssets,
     MediaViewerBookmarks? mediaViewerBookmarks,
     int? trailingFrames,
+    RulerMarkers? rulerMarkers,
     List<ProjectTimeline>? timelines,
     TimelineId? currentTimelineId,
     LayerLinkRegistry? linkRegistry,
@@ -336,8 +345,10 @@ class Project {
     return Project(
       id: id ?? this.id,
       name: name ?? this.name,
-      // The tracks and the trailing gap given are the current timeline's.
-      timelines: tracks == null && trailingFrames == null
+      // The tracks, the trailing gap and the ruler's markers given are the
+      // current timeline's.
+      timelines:
+          tracks == null && trailingFrames == null && rulerMarkers == null
           ? standing
           : [
               for (final timeline in standing)
@@ -345,6 +356,7 @@ class Project {
                   timeline.copyWith(
                     tracks: tracks,
                     trailingFrames: trailingFrames,
+                    rulerMarkers: rulerMarkers,
                   )
                 else
                   timeline,
@@ -558,6 +570,15 @@ class Project {
       'createdAt: $createdAt, frameRate: $frameRate, '
       'cameraSize: $cameraSize)';
 }
+
+/// Every cut of [project] by its id, every timeline's — none for no project.
+/// A cut another timeline opened on is no cut a write made (I-150). What a
+/// write gave the cuts is read against it: the conte's rows
+/// (`conteFillsGiven`) and the attach rows' mirrors (`attachedMirrorsGiven`).
+Map<CutId, Cut> cutsOfEveryTimelineById(Project? project) => {
+  for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
+    for (final cut in track.cuts) cut.id: cut,
+};
 
 /// [stored] plus a synthesized entry (file-name display name) for every
 /// clip-referenced path the pool does not know yet, in first-reference

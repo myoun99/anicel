@@ -786,7 +786,7 @@ void main() {
 
   // 🗣️F-424 (유저 2026-10-21): 「기존 레이어 콘티레이어 변경하고 언두하면
   // 색라벨도 돌아오도록」 — what a write's laying put on a row that joined a
-  // conte is what that write's undo takes off (`ConteStepScope`).
+  // conte is what that write's undo takes off (`RepositoryStepScope`).
   group('the heads a write puts on rows', () {
     Project projectOf(Track track) => Project(
       id: const ProjectId('heads'),

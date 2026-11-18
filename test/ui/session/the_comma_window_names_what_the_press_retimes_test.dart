@@ -27,6 +27,8 @@ StoryboardCursor cursorOf(EditorSessionManager session) =>
 typedef _Shown = ({List<CommaTargetKind> kinds, int? length});
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late EditorSessionManager session;
   late LayerId s1;
   late int cut2;

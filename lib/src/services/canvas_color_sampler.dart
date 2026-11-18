@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
+import '../core/lru.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
+import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/layer.dart';
@@ -8,6 +13,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
+import '../native/engine_tile_ledger.dart';
 import 'composite_effect_paint.dart' show pixelThroughChain;
 import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
@@ -32,17 +38,11 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
     return null;
   }
   final tileSize = surface.tileSize;
-  // 🚀`tileAt`, not `tiles[...]`, and `readPixels`, not `pixels` — this
-  // reads FOUR BYTES and used to make two whole copies to get them
+  // 🚀`tileAt`, not `tiles[...]` — `BitmapSurface.tiles` is
+  // `Map.unmodifiable(_tiles)`, so the subscript rebuilt the entire tile
+  // map, per contributing layer, per POINTER EVENT, and Flutter delivers
+  // every queued event: a 200Hz pen bills this a dozen-odd times a frame
   // (유저, R4 #3: 스포이드 커서).
-  //
-  // `BitmapSurface.tiles` is `Map.unmodifiable(_tiles)`, so the subscript
-  // rebuilt the entire tile map; `BitmapTile.pixels` is
-  // `Uint8List.fromList(_view)`, so the read memcpy'd a whole 256 KiB tile.
-  // Both, per contributing layer, per POINTER EVENT — and Flutter delivers
-  // every queued event, so a 200Hz pen bills this a dozen-odd times a
-  // frame. `bitmap_tile.dart`'s own doc already says hot paths use
-  // `readPixels`; this was one and did not.
   final tile = surface.tileAt(
     TileCoord(x: floorDiv(x, tileSize), y: floorDiv(y, tileSize)),
   );
@@ -50,13 +50,32 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
     return 0;
   }
   final index = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
-  return tile.readPixels(
-    (_, pixels) =>
-        (pixels[index] << 24) |
-        (pixels[index + 1] << 16) |
-        (pixels[index + 2] << 8) |
-        pixels[index + 3],
-  );
+  final pixels = _tilesPicked.resolve(tile, () => _readBack(tile));
+  return (pixels[index] << 24) |
+      (pixels[index + 1] << 16) |
+      (pixels[index + 2] << 8) |
+      pixels[index + 3];
+}
+
+/// The bytes of the tiles a pick last read back: a read waits for the GPU,
+/// [surfacePixelRgba] is asked a dozen times a frame for every layer under
+/// the pointer, and a tile's bytes never change — so a pick waits only as
+/// the pointer comes onto a tile. By the object: a tile's `==` reads every
+/// byte.
+///
+/// 🔢64 tiles, 4 MiB: a stack of more than that under one pixel reads again
+/// at every event (flip lane ⓓ-5, 브러시/렌더링's pick).
+final Lru<BitmapTile, Uint8List> _tilesPicked = Lru(
+  entryCap: () => 64,
+  byIdentity: true,
+);
+
+Uint8List _readBack(BitmapTile tile) {
+  late final Uint8List bytes;
+  EngineTileLedger.instance.readEach(BrushFrameKey.noCel, [tile], (view) {
+    bytes = Uint8List.fromList(view);
+  });
+  return bytes;
 }
 
 /// A stack laid up so far, PREMULTIPLIED: its colour and its coverage.
@@ -65,7 +84,8 @@ typedef _Stack = ({double r, double g, double b, double coverage});
 /// What an ADJUSTMENT row makes of [stack] — everything laid up below it —
 /// as the paint routes grade its scope: its chain run over the pixel in
 /// the chain's order, as a row's own runs ([pixelThroughChain]), and that
-/// crossfaded with the pixel by the row's MIX ([resolveAdjustmentScopePass]).
+/// crossfaded with the pixel by the row's MIX, as the engine lays it
+/// (composite_tree_plan.dart).
 /// Null when the row filters nothing this walk can answer (hidden, in a
 /// hidden folder, mix 0, nothing laid up to grade).
 ///
@@ -100,6 +120,7 @@ _Stack? _throughAdjustment(
       effects: adjustment.effects,
       frameIndex: frameIndex,
       blocks: adjustment.fxBlocks,
+      worn: (owner: adjustment.id, wearer: adjustment.id),
     ),
     red: r / coverage,
     green: g / coverage,

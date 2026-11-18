@@ -53,15 +53,11 @@ class AudioDeviceTransport {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     int Function(int sampleRate)? resolveUserOffsetSamples,
-    this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
     this.resolveCueClips,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
-
-  /// The session's solo set (monitoring state, AUDIO-PRO R1).
-  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   /// The armed lane while a take rolls (REC1-B) — muted on top of the
   /// layers' own flags, never written into them.
@@ -94,7 +90,8 @@ class AudioDeviceTransport {
 
   /// Whether THIS activation runs on the device — decided where the run
   /// starts ([_startsAt]), and again as what its sound waited on lands
-  /// ([_soundMayHaveCome]).
+  /// ([_soundMayHaveCome]) — and not while an arm waits for its windows
+  /// ([_arm]).
   bool _carrying = false;
 
   /// The run the latest arm put on the device — all this transport
@@ -129,8 +126,13 @@ class AudioDeviceTransport {
 
   /// The streaming window this run plays out of — the activation's mix,
   /// whether it streams, and where the window sits. The scrubber owns one
-  /// of the same kind, which is what keeps the two on one geometry.
-  final AudioStreamingWindow _window = AudioStreamingWindow();
+  /// of the same kind, which is what keeps the two on one geometry. Its
+  /// windows landing are what a run waiting for them hears
+  /// ([_soundMayHaveCome]); one carried puts them as it plays
+  /// ([AudioStreamingWindow.followPlayback]).
+  late final AudioStreamingWindow _window = AudioStreamingWindow(
+    onLanded: _soundMayHaveCome,
+  );
 
   /// The frame the current arm started at: the clock clamp while the
   /// device's own latency drains (pressing play at frame 100 must not
@@ -263,7 +265,9 @@ class AudioDeviceTransport {
   /// unless this transport carries the run. A clip whose PCM is not
   /// resident yet (a just-imported file mid-conform) keeps the OLD
   /// schedule playing rather than dropping sound — the conform was
-  /// kicked, and the next refresh or activation picks it up.
+  /// kicked, and the next refresh or activation picks it up. So does a
+  /// long sound's window, read on a worker: the run's next look after it
+  /// lands puts it ([AudioStreamingWindow.followPlayback]).
   void refreshSchedule() {
     final device = _device;
     if (!_carrying || device == null) {
@@ -290,7 +294,6 @@ class AudioDeviceTransport {
     project: resolveProject(),
     rate: _rate,
     durationSecondsFor: conformStore.durationSecondsFor,
-    soloedLayerIds: resolveSoloedLayerIds?.call(),
     mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     extraClips: resolveCueClips?.call(),
   );
@@ -453,14 +456,22 @@ class AudioDeviceTransport {
   /// Something the run's sound waited on landed: it is made ready again
   /// where the run stands — and once it has come, or will never come, the
   /// run looks again ([CanvasPlaybackController.lookAgain]) and goes on, with
-  /// it or without it.
+  /// it or without it. A run whose clock had not come to stand — a seek
+  /// whose windows landed within the frame it stands on — goes on from
+  /// nowhere, and nothing would arm its sound: it is armed here, where the
+  /// run stands.
   void _soundMayHaveCome() {
     if (!_coming.isComing) {
       return;
     }
     _activate(from: controller.playlistFrame);
-    if (!_coming.isComing) {
+    if (_coming.isComing) {
+      return;
+    }
+    if (controller.isWaiting) {
       controller.lookAgain();
+    } else if (_carrying) {
+      _arm(controller.playlistFrame);
     }
   }
 
@@ -479,13 +490,27 @@ class AudioDeviceTransport {
     // re-centred, and a run going on from where its activation had just
     // centred the window read and copied it twice: 🔬66ms and a GC on the
     // AMMI OP press (play-press-first-frame-stall, 10-15).
-    _window.cover(
+    if (_window.cover(
       startSample,
       device: device,
       conformStore: conformStore,
       deviceRate: _deviceRate,
-    );
-    _armDevice(device, startSample: startSample, looping: loop && frame == 0);
+    )) {
+      _armDevice(device, startSample: startSample, looping: loop && frame == 0);
+      return;
+    }
+    // Its windows there are on their way — a seek past the window, a picture
+    // that came far from where the run waited for it: the run waits for its
+    // sound where it stands, as at a press ([_activate]), and is made ready
+    // there once they land ([_soundMayHaveCome]). ↩️They were read here.
+    //
+    // 🚨NOT CARRIED MEANWHILE: a silent device read as the run's clock
+    // ([clockStatus]) is a pass that ran out — a run that plays once ended
+    // there, and one that loops was started again from the top (🧪the first
+    // look after a seek past the window, 11-15, before this landed).
+    _carrying = false;
+    _stopDevice();
+    _coming.waitOn(device);
   }
 
   /// Arms the device at [startSample], and the line that reads it — started
@@ -670,7 +695,9 @@ class AudioDeviceTransport {
 
 /// A run's sound on its way ([AudioDeviceTransport.soundIsComing]): whether
 /// it is, and its landing heard — a source by the store's notify, the output
-/// by its open ([QaAudioDevice.opening]) — each heard once, from the run's
+/// by its open ([QaAudioDevice.opening]), a long sound's windows by their
+/// window's own word ([AudioStreamingWindow.onLanded], heard by the
+/// transport for good) — each heard once, from the run's
 /// first wait for its sound to the run's end, however often the run is made
 /// ready meanwhile.
 final class _SoundOnItsWay {

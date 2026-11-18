@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -19,18 +17,15 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
-import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// ⛔**A TRIPWIRE, and it now pins the OPPOSITE of what it used to.** No
 /// canvas-content picture carries `willChange: true` any more; the
@@ -120,6 +115,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///  · 2026-10-10 — three: the composite playback view went, the camera
 ///    view's run with it onto the canvas's own stack (pinned above).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('project');
   const trackId = TrackId('track');
@@ -146,7 +142,7 @@ void main() {
   StackRun pictures() {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final landings = ValueNotifier<int>(0);
     addTearDown(landings.dispose);
@@ -165,69 +161,6 @@ void main() {
       ),
     );
   }
-
-  testWidgets(
-    'the editing stack picture no longer refuses the raster cache — '
-    'willChange pinned ABSENT (R13: the tie is closed at the snap)',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 100,
-              height: 100,
-              // The canvas standing on its frame's one picture.
-              child: FramePictureView(
-                run: pictures(),
-                picture: (
-                  cut: cut(),
-                  frameIndex: 0,
-                  paintPaper: true,
-                  ghosts: FrameGhosts.none,
-                ),
-                nodes: const [
-                  CompositeLeaf<CanvasStackRow>(
-                    CanvasActiveLayerRow(opacity: 1),
-                  ),
-                ],
-                viewport: CanvasViewport(zoom: 1),
-                live: (
-                  activeSurfacePainter: null,
-                  floatOverlay: null,
-                  liftedRows: const {},
-                ),
-                laysWhatItMisses: true,
-                wholeFrames: false,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final stackPaint = tester
-          .widgetList<CustomPaint>(
-            find.descendant(
-              of: find.byType(FramePictureView),
-              matching: find.byType(CustomPaint),
-            ),
-          )
-          .firstWhere((paint) => paint.painter != null);
-
-      expect(
-        stackPaint.willChange,
-        isFalse,
-        reason: 'R13: the cached and the live render of this picture read '
-            'the same texel now — the render snap keeps every sample off '
-            'the texel boundary (the_snap_keeps_every_sample_off_the_texel_'
-            'boundary_test.dart) — so there is nothing for the hint to hide '
-            'and the picture is cacheable like every other. If a hop is '
-            'reported again, read the history at the top before reaching '
-            'for the hint: check the zoom against the p-odd/q-even set '
-            'first, and the pinned grid line on the inspector card second.',
-      );
-    },
-  );
 
   testWidgets(
     'no parked track-stack picture refuses the raster cache any more — a '

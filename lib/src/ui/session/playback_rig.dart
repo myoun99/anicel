@@ -12,13 +12,13 @@
 // and if the rig reached back out for `selectCut` neither could be built.
 
 
-import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
+import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_audio_device.dart'
     show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -51,7 +51,6 @@ class PlaybackRig implements PlaybackRun {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required EditorAppSettings appSettings,
-    required ValueListenable<Set<LayerId>> soloedSeLayerIds,
     required RenderCaches renderCaches,
     required ProjectSettings settings,
     required EditorVoiceRecording voiceRecording,
@@ -69,13 +68,14 @@ class PlaybackRig implements PlaybackRun {
       DemandedPicture picture,
     )
     stackOf,
+    required Object Function() treeStamp,
   }) : _stackOf = stackOf,
+       _treeStamp = treeStamp,
        _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _appSettings = appSettings,
-       _soloedSeLayerIds = soloedSeLayerIds,
        _renderCaches = renderCaches,
        _settings = settings,
        _voiceRecording = voiceRecording,
@@ -90,10 +90,6 @@ class PlaybackRig implements PlaybackRun {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final EditorAppSettings _appSettings;
-
-  /// The SE rows soloed for monitoring (`VisibilitySolo` holds it) — every
-  /// audio path narrows to them while any are.
-  final ValueListenable<Set<LayerId>> _soloedSeLayerIds;
   final RenderCaches _renderCaches;
   final ProjectSettings _settings;
   final EditorVoiceRecording _voiceRecording;
@@ -114,6 +110,10 @@ class PlaybackRig implements PlaybackRun {
   final List<CompositeNode<CanvasStackRow>> Function(DemandedPicture picture)
   _stackOf;
 
+  /// What the trees [_stackOf] stacks read past their cut, page and
+  /// cels ([FramePictures.treeStamp]).
+  final Object Function() _treeStamp;
+
   // ── what the screen shows a frame from ──────────────────────────────
 
   /// A frame as every screen shows it — the canvas a cut, the track stack
@@ -125,6 +125,7 @@ class PlaybackRig implements PlaybackRun {
     store: _renderCaches.framePictureStore,
     layerImages: _renderCaches.layerFrameImageCache,
     stackOf: _stackOf,
+    treeStamp: _treeStamp,
     pageOf: (picture) => (
       canvasSize: picture.cut.canvasSize,
       pasteboardReach: _project.repository.requireProject().pasteboardReach,
@@ -178,6 +179,18 @@ class PlaybackRig implements PlaybackRun {
         idleDelay: underFlutterTest
             ? Duration.zero
             : const Duration(milliseconds: 1200),
+        // Widget tests: the walk steps aside by a microtask, for the same
+        // teardown (card a-test-lending-the-real-clock-leaves-the-warmer-
+        // running, 11-16). A test that lends the real clock — a screen's
+        // pixels read, a file waited out — lets the engine make a picture
+        // there, and the walk lands it in the pump after the body, which
+        // runs no time: the zero timer it stepped aside on was found
+        // pending once the tree was gone, 「A Timer is still pending」, the
+        // busier the machine the likelier — and every such test had to stop
+        // the warmer by hand (`a_warmer_handed_the_real_clock_ends_with_the_
+        // test_test`). That pump runs a microtask. How a step lets the
+        // event loop in is the scheduler's own tests', which keep the timer.
+        yieldsToTheEventLoop: !underFlutterTest,
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
         onionPlacement: () => _appSettings.onionSkinSettings.value.placement,
@@ -329,7 +342,6 @@ class PlaybackRig implements PlaybackRun {
     // Widget tests must never open a real OS audio device.
     resolveDevice: () => debugTransportOutput(),
     resolveUserOffsetSamples: userOffsetSamples,
-    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
@@ -369,7 +381,6 @@ class PlaybackRig implements PlaybackRun {
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
     resolveDevice: audioDeviceUnlessTesting,
-    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
@@ -390,7 +401,20 @@ class PlaybackRig implements PlaybackRun {
     _renderCaches.brushFrameStore.celPixelRevision.addListener(
       framePictures.letGoOfLeftRevisions,
     );
+    _onTheEngine.start();
   }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — the frames' pictures are laid
+  /// with the app's engine's tools (`RenderCaches.framePictureStore`), and
+  /// go with that engine ([FramePictures.letGoWithTheirEngine]); the warmer
+  /// looks again from the start, nothing it walked over being there.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      framePictures.letGoWithTheirEngine();
+      prerenderScheduler.wake(fromTheStart: true);
+    },
+  );
 
   /// A run that ends is followed no further. What is wanted next is the
   /// session's to say — its warm of the cut the playhead lands on — and
@@ -408,6 +432,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _onTheEngine.stop();
     _renderCaches.brushFrameStore.celPixelRevision.removeListener(
       framePictures.letGoOfLeftRevisions,
     );

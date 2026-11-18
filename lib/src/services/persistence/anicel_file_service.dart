@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
@@ -25,6 +27,7 @@ import 'save_failure.dart' show SaveNotSwappedIn;
 import 'save_stretch.dart';
 import 'scratch_file.dart';
 import 'session_scratch.dart';
+import 'worker_file_reads.dart';
 import '../media/media_moves.dart';
 import 'anicel_project_archive.dart';
 
@@ -91,7 +94,7 @@ class _CelWork {
   /// A cel still in RAM: its payload serialised straight off the surface
   /// and handed over as one flat buffer that crosses into the isolate
   /// without being written out again — the park road's shape
-  /// ([compressAnicelPayloadInWorker]).
+  /// ([compressCelOnAWorker]).
   ///
   /// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이
   /// 멈추고」. ↩️It was an [AnicelCelEntry] — a defensive copy of every
@@ -405,9 +408,9 @@ Future<R> _reportingProgress<R>(
 class AnicelFileService {
   const AnicelFileService();
 
-  /// Test hook: told after each cel a save serialised on the UI isolate,
-  /// once the screen has had its turn ([_workForDirtyKey]) — what lets a
-  /// pin see that the event loop really ran between two cels.
+  /// Test hook: told after each cel in RAM a save made ready, once the
+  /// screen has had its turn ([_celWorksTwoUnderWay]) — what lets a pin see
+  /// that the event loop really ran between two cels.
   @visibleForTesting
   static void Function()? debugAfterScreenTurn;
 
@@ -541,7 +544,7 @@ class AnicelFileService {
     /// unaffected: it wrote into [filePath] and there is nothing to swap.
     ///
     /// Why a callback and not a return: the swap is synchronous below for a
-    /// reason ([renameWithRetry] — the refs carry the OLD layout until the
+    /// reason ([replaceWithRetry] — the refs carry the OLD layout until the
     /// caller adopts), and a coordinated replace is a channel call that
     /// cannot be. So the caller takes the swap, and with it the shape the
     /// staging road already had: adopt the temp, replace, repoint.
@@ -551,7 +554,7 @@ class AnicelFileService {
     /// readers holding that file open let go of it
     /// (`ProjectFile.readersLetGoOf`) — Windows refuses a rename onto a file
     /// anything in this process holds open. The session's own cel handle is
-    /// [renameWithRetry]'s to let go; the media readers are the session's.
+    /// [replaceWithRetry]'s to let go; the media readers are the session's.
     Future<void> Function()? beforeReplacing,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
@@ -747,10 +750,15 @@ class AnicelFileService {
     })
     baked,
   ) async {
+    final keys = [...dirty];
     final works = <_CelWork>[];
     final removedNames = <String>[];
-    for (final key in dirty) {
-      final work = await _workForDirtyKey(key, baked);
+    final resolved = await _celWorksTwoUnderWay(
+      keys,
+      (key) => _workForDirtyKey(key, baked),
+    );
+    for (final (index, key) in keys.indexed) {
+      final work = resolved[index];
       if (work == null) {
         removedNames.add(anicelCelEntryName(key));
       } else {
@@ -760,14 +768,64 @@ class AnicelFileService {
     return (works: works, removedNames: removedNames);
   }
 
+  /// [resolve] of each of [keys], answered in their order — the next begun
+  /// before the one before it is done, never more than two under way.
+  ///
+  /// A cel in RAM is read here and serialised on a worker
+  /// ([_workForDirtyKey]); taken one at a time, the worker stood idle while
+  /// this isolate read and this isolate waited while the worker wrote
+  /// (🧪Surface Pro 11, profile, 2026-11-13: 33–38 ms a whole-canvas cel,
+  /// half of it waiting). ⚠️Two, not all: a cel under way holds its copy and
+  /// its stream on its worker, 40 MB for a whole-canvas cel.
+  ///
+  /// 🚨A cel in RAM is the save's one stretch of work on the UI isolate —
+  /// its tiles are the engine's, which only this isolate reads — so after
+  /// each one the screen gets its turn (a frame, the save window's spinner
+  /// its next step) before the next is taken (F-304: 「멈추는게 아니라 뭔가
+  /// 하고있다라는걸 제대로 표시하기위해」). ⚠️Taken HERE, in their order: two
+  /// under way end together, and a turn each took for itself was one turn.
+  static Future<List<W>> _celWorksTwoUnderWay<W extends _CelWork?>(
+    Iterable<BrushFrameKey> keys,
+    Future<W> Function(BrushFrameKey key) resolve,
+  ) async {
+    final done = <W>[];
+    final underWay = <Future<W>>[];
+    Future<void> take(Future<W> next) async {
+      final work = await next;
+      done.add(work);
+      if (work?.hot != null) {
+        await Future<void>.delayed(Duration.zero);
+        debugAfterScreenTurn?.call();
+      }
+    }
+
+    for (final key in keys) {
+      // ⚠️Heard at once, and so not an error nobody handled where it fails
+      // while the one before it is still awaited: it is thrown at its turn.
+      underWay.add(resolve(key)..ignore());
+      if (underWay.length == 2) {
+        await take(underWay.removeAt(0));
+      }
+    }
+    for (final next in underWay) {
+      await take(next);
+    }
+    return done;
+  }
+
   /// Resolves a dirty key's current content to a [_CelWork], or null for
   /// a removed cel (its entry name must vanish from the archive).
   ///
-  /// 🚨A cel still in RAM is serialised HERE, on the UI isolate, and that
-  /// is the save's one stretch of work there — so after each one the
-  /// screen gets its turn (a frame, the save window's spinner its next
-  /// step) before the next cel is taken (F-304: 「멈추는게 아니라 뭔가
-  /// 하고있다라는걸 제대로 표시하기위해」).
+  /// ↩️A cel in RAM was serialised here, the whole cel in one stretch: its
+  /// tiles read back, written into the stream and the stream copied for the
+  /// save's isolate — 🧪30–43 ms a whole-canvas cel (315 tiles, 20.6 MB;
+  /// the heavy save benchmark under `flutter test`, Surface Pro 11,
+  /// 2026-11-13: read back 10–18 ms, the stream 12–23, its copy 6–11). A
+  /// worker serialises it now from a copy it is handed a batch of tiles at
+  /// a time ([onAWorkerWithCelStream]), and the screen has its turns between
+  /// the batches; what stays here is the read (card
+  /// `a-save-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
+  /// 관제 2026-11-13).
   static Future<_CelWork?> _workForDirtyKey(
     BrushFrameKey key,
     ({
@@ -780,19 +838,14 @@ class AnicelFileService {
     final name = anicelCelEntryName(key);
     final surface = baked.hot[key];
     if (surface != null) {
-      final work = _CelWork(
+      return _CelWork(
         key: key,
         name: name,
         hot: (
-          payload: TransferableTypedData.fromList([
-            encodeCelEntryFromSurface(key, surface),
-          ]),
+          payload: await onAWorkerWithCelStream(key, surface, _toCross),
           showsSomething: surface.showsSomething,
         ),
       );
-      await Future<void>.delayed(Duration.zero);
-      debugAfterScreenTurn?.call();
-      return work;
     }
     final cold = baked.cold[key];
     if (cold != null) {
@@ -826,6 +879,12 @@ class AnicelFileService {
     }
     return null;
   }
+
+  /// What a worker makes of a hot cel's stream for the save
+  /// ([_workForDirtyKey]): one flat buffer that crosses into the save's
+  /// isolate without being written out again.
+  static TransferableTypedData _toCross(Uint8List stream) =>
+      TransferableTypedData.fromList([stream]);
 
   /// Whether the archive at [filePath] is the one [projectIdValue] names.
   ///
@@ -1353,7 +1412,6 @@ class AnicelFileService {
       ...baked.cold.keys,
       ...baked.fileRefs.keys,
     };
-    final works = <_CelWork>[];
     // 🚨A CLEAN CEL THAT IS STILL HOT IS NOT ONLY IN THE FILE. Its ref is
     // the cheapest source, but when the file behind it is GONE — descriptor
     // and all, the one loss the rescue above cannot undo — the same bytes
@@ -1364,26 +1422,23 @@ class AnicelFileService {
     final missing = <String, bool>{};
     bool fileMissing(String path) =>
         missing[path] ??= !File(path).existsSync();
-    for (final key in allKeys) {
+    final works = await _celWorksTwoUnderWay(allKeys, (key) async {
       final ref = baked.fileRefs[key];
       if (ref != null &&
           !dirty.contains(key) &&
           !(baked.hot.containsKey(key) && fileMissing(ref.filePath))) {
         // Clean + file-backed: the cheapest source is the file itself
         // (no re-encode; the isolate streams the exact bytes through).
-        works.add(
-          _CelWork(
-            key: key,
-            name: anicelCelEntryName(key),
-            refPath: ref.filePath,
-            refOffset: ref.dataOffset,
-            refLength: ref.length,
-          ),
+        return _CelWork(
+          key: key,
+          name: anicelCelEntryName(key),
+          refPath: ref.filePath,
+          refOffset: ref.dataOffset,
+          refLength: ref.length,
         );
-      } else {
-        works.add((await _workForDirtyKey(key, baked))!);
       }
-    }
+      return (await _workForDirtyKey(key, baked))!;
+    });
 
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.parent.create(recursive: true);
@@ -1437,9 +1492,10 @@ class AnicelFileService {
     // awaited here, before the swap, where the refs still read the old file
     // in its place; nothing may wait between the swap and the adopt below.
     await beforeReplacing?.call();
-    // SYNC rename: existing refs into the replaced file carry offsets of
-    // the OLD layout, so no event may run between the swap and the
-    // caller's adoptSavedFile — sync-to-return is microtask-tight.
+    // The rename itself is SYNC, run the moment no worker reads the file
+    // ([replaceWithRetry]): existing refs into the replaced file carry
+    // offsets of the OLD layout, so no event may run between the swap and
+    // the caller's adoptSavedFile — swap-to-return is microtask-tight.
     //
     // Retried on failure: the moment after a file changes is exactly when
     // a sync client, indexer or AV holds it — and cloud-synced folders are
@@ -1450,7 +1506,7 @@ class AnicelFileService {
     // only then lets the temp go (유저 2026-09-23, whole-write-temp-beside-
     // the-file: 「실패 시 앱 룸으로 옮겨 보관」, never beside the file).
     try {
-      renameWithRetry(temp, filePath);
+      await replaceWithRetry(temp, filePath);
     } on FileSystemException catch (error) {
       throw SaveNotSwappedIn(archive: tempPath, error: error);
     }
@@ -1458,11 +1514,30 @@ class AnicelFileService {
     return refs;
   }
 
+  /// [temp] put in [filePath]'s place ([_renameWithRetry]) once no worker
+  /// reads [filePath] — the ONE door a file is replaced by a rename
+  /// through.
+  ///
+  /// 🚨★★★A WORKER THAT READS A KEPT CEL HOLDS THE FILE OPEN WHILE IT DOES
+  /// ([WorkerFileReads], card a-thawed-cel-is-adopted-on-the-ui-thread),
+  /// and that handle is this process's as the session's is: Windows
+  /// refuses the rename under it. ⛔Not left to the retry below — its
+  /// sleeps would outlast one read, and a frame's rows thawing one after
+  /// another could hold a handle at every attempt; then the save fails
+  /// and blames a sync client. So the reads in flight end first, none
+  /// begins meanwhile, and the rename runs with nothing between
+  /// ([WorkerFileReads.replacing]).
+  static Future<void> replaceWithRetry(File temp, String filePath) =>
+      WorkerFileReads.replacing(
+        filePath,
+        () => _renameWithRetry(temp, filePath),
+      );
+
   /// [temp] onto [filePath], absorbing the moment-after-write lock a sync
   /// client or scanner can hold on the destination. Bounded: this blocks
   /// the UI isolate on purpose (the swap must stay microtask-tight), so
   /// the worst case is a beat, not a hang.
-  static void renameWithRetry(File temp, String filePath) {
+  static void _renameWithRetry(File temp, String filePath) {
     // 🚨★★★**OUR OWN HANDLE FIRST, OR THE RETRY BELOW IS RETRYING US.**
     // The session holds the project file open so the user cannot delete the
     // cold tier out from under it ([OpenProjectFile]) — and renaming ONTO a
@@ -1639,6 +1714,10 @@ class AnicelFileService {
     );
   }
 
+  /// How much of a cel's entry an open reads first for its head — more
+  /// only where the head says it is longer.
+  static const int _celHeadRead = 4096;
+
   /// Opens [filePath].
   ///
   /// 🪦It took a recovery `overlayPath` to lay over the base until
@@ -1646,13 +1725,17 @@ class AnicelFileService {
   /// merged in here so the caller never had to know which file a cel came
   /// from. The autosave tick saves the project file itself now, so there is
   /// no delta to merge and no stamp to refuse.
+  ///
+  /// [onRead] is told how much of what it reads is in — the project's
+  /// entry, then each cel's head — as its 0–1, on this isolate.
   Future<AnicelOpenResult> open({
     required String filePath,
+    void Function(double fraction)? onRead,
   }) async {
     // Everything off the UI isolate; only the project + small refs come
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
-    final (:document, :cels) = await Isolate.run(() {
+    final (:document, :cels) = await onAWorkerReporting(onRead, (report) {
       // A save that died partway opens as the last one that finished (plus,
       // if it died committing, what it had fully written). The file stays
       // torn on disk until the next save — which the service forces down
@@ -1663,6 +1746,18 @@ class AnicelFileService {
       if (projectEntry == null) {
         throw const FormatException('Not an Anicel project (.anicel).');
       }
+      final celEntries = [
+        for (final entry in layout.entries)
+          if (entry.name.endsWith('.celz')) entry,
+      ];
+      // What this read reads of the file — the project's entry and each
+      // cel's head — counted for the window's bar (F-608-Q2).
+      final budget = celEntries.fold(
+        projectEntry.length,
+        (sum, entry) => sum + math.min(entry.length, _celHeadRead),
+      );
+      var done = 0;
+      report(doneShare(done, budget));
       final raf = File(filePath).openSync();
       try {
         raf.setPositionSync(projectEntry.dataOffset);
@@ -1677,14 +1772,13 @@ class AnicelFileService {
             raf.readSync(projectEntry.length),
           ),
         );
+        done += projectEntry.length;
+        report(doneShare(done, budget));
         final cels = <BrushFrameKey, AnicelCelFileRef>{};
-        for (final entry in layout.entries) {
-          if (!entry.name.endsWith('.celz')) {
-            continue;
-          }
+        for (final entry in celEntries) {
           raf.setPositionSync(entry.dataOffset);
           var headerBytes = raf.readSync(
-            entry.length < 4096 ? entry.length : 4096,
+            math.min(entry.length, _celHeadRead),
           );
           // A cel's photo index can outgrow the first read (I-97) — many
           // photos, or long paths — and its head says how long it is.
@@ -1703,6 +1797,8 @@ class AnicelFileService {
             photoPaths: header.photoPaths,
             showsSomething: header.showsSomething,
           );
+          done += math.min(entry.length, _celHeadRead);
+          report(doneShare(done, budget));
         }
         return (document: document, cels: cels);
       } finally {

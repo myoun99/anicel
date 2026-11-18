@@ -1,10 +1,10 @@
-// D24 후반 — THE SHEET MARKS ITS BOOKS (유저 2026-09-25, 사진 셋; 09-26
-// 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면 수정공정뭐던간에
-// 북표시」): an image row labelled 美術, whatever its name and its revise,
-// is a book; it sits at the boundary of the cel columns under it, tagged
-// with its row's name and its picture's; several at one boundary share a
-// tag (`a,b`); none under the first cel column, the one over the last
-// marked.
+// D24 후반 — THE SHEET MARKS ITS BOOKS (유저 2026-09-25, 사진 셋; F-578
+// 11-10 「이미지레이어고 타임시트on이면 북으로 인식」): an image row the
+// ACTION block counts — LO, ラフ原, 原画 or no label —, whatever its name
+// and its revise, is a book; it sits at the boundary of the cel columns
+// under it, tagged with its row's name and its picture's; several at one
+// boundary share a tag (`a,b`); none under the first cel column, the one
+// over the last marked. ↩️An image row labelled 美術 was the book (09-26).
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -20,6 +20,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 
 Layer cels(String name, {bool onTimesheet = true}) => Layer(
   id: LayerId(name),
@@ -35,7 +36,7 @@ var _pictures = 0;
 Layer picture(
   String name, {
   String? frame,
-  LayerMark mark = const LayerMark(process: LayerProcess.art),
+  LayerMark mark = const LayerMark(process: LayerProcess.layout),
   bool onTimesheet = true,
   String? attachedTo,
 }) {
@@ -67,6 +68,21 @@ Cut cutOf(List<Layer> layers) => Cut(
   layers: layers,
 );
 
+extension on SheetSources {
+  /// Each boundary's books as a sheet tags them with every name written
+  /// out.
+  List<SheetBook> get tagged => actionBookTags(shortened: false);
+}
+
+/// [names] as books, each `row` or `row:picture`.
+List<SheetBookName> booksNamed(List<String> names) => [
+  for (final name in names)
+    switch (name.split(':')) {
+      [final row, final picture] => (row: row, picture: picture),
+      _ => (row: name, picture: null),
+    },
+];
+
 void main() {
   test('a book sits at the boundary of the cel columns under it, tagged '
       'with its row\'s name and its picture\'s — by its label, never by '
@@ -83,17 +99,17 @@ void main() {
           'LO',
           frame: '3',
           mark: const LayerMark(
-            process: LayerProcess.art,
+            process: LayerProcess.layout,
             revise: LayerRevise.director,
           ),
         ),
         picture(
           'BOOK',
           frame: '4',
-          mark: const LayerMark(process: LayerProcess.layout),
+          mark: const LayerMark.paper(LayerProcess.layout),
         ),
       ]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, [
       (boundary: 1, label: 'BOOK1'),
@@ -101,10 +117,38 @@ void main() {
     ]);
   });
 
+  test('🗣️F-578: an image row is a book where a cel row would print in '
+      'the ACTION block — LO, ラフ原, 原画 and no label; never the conte\'s, '
+      'the paper\'s, 動画 or 仕上げ', () {
+    // 유저 2026-11-10: Q3 「용지라벨만 북에서 빼는거 ok이고, 애초에
+    // 레이아웃,러프원,원화 이외 공정이면 북쪽에 안넣음」 · Q5 「라벨없음도
+    // 액션란 취급인걸로 ok」.
+    const books = {
+      null,
+      LayerProcess.layout,
+      LayerProcess.roughKey,
+      LayerProcess.key,
+    };
+    for (final process in [null, ...LayerProcess.values]) {
+      final marked = SheetSources.of(
+        cut: cutOf([
+          cels('A'),
+          picture('BOOK', frame: '1', mark: process == null ? LayerMark.none : labelsOf(process).first),
+        ]),
+      ).tagged;
+
+      expect(
+        marked,
+        books.contains(process) ? [(boundary: 1, label: 'BOOK1')] : isEmpty,
+        reason: '$process',
+      );
+    }
+  });
+
   test('a picture without a name tags the book with its row\'s alone', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '  ')]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK')]);
   });
@@ -123,14 +167,14 @@ void main() {
           id: const LayerId('book'),
           name: 'BOOK',
           kind: LayerKind.image,
-          mark: const LayerMark(process: LayerProcess.art),
+          mark: const LayerMark(process: LayerProcess.layout),
           frames: [cel('theirs', '7'), cel('mine', '2')],
           timeline: const {
             0: TimelineExposure.drawing(FrameId('mine'), length: 1),
           },
         ),
       ]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK2')]);
   });
@@ -142,7 +186,7 @@ void main() {
         cels('A'),
         picture('BOOK', frame: '1', onTimesheet: false),
       ]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, isEmpty);
   });
@@ -151,12 +195,12 @@ void main() {
       'own (W5)', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '1', attachedTo: 'A')]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, isEmpty);
   });
 
-  test('only an image row is a book — another row labelled 美術 is not', () {
+  test('only an image row is a book — another row labelled LO is not', () {
     final books = SheetSources.of(
       cut: cutOf([
         cels('A'),
@@ -165,10 +209,10 @@ void main() {
           name: 'BOOK',
           kind: LayerKind.storyboard,
           frames: const [],
-          mark: const LayerMark(process: LayerProcess.art),
+          mark: const LayerMark(process: LayerProcess.layout),
         ),
       ]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, isEmpty);
   });
@@ -180,7 +224,7 @@ void main() {
         cels('B', onTimesheet: false),
         picture('BOOK', frame: '1'),
       ]),
-    ).actionBooks;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK1')]);
   });
@@ -193,5 +237,65 @@ void main() {
     );
 
     expect(document.books, [(boundary: 1, label: 'BOOK1')]);
+  });
+
+  group('🗣️F-576 (유저 2026-11-09): a tag leaves out the names the book '
+      'before it wrote', () {
+    test('a row named as the one before prints its picture alone — the '
+        'user\'s own example', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:3', 'boo:1', 'boo:2', 'BOOK:4']),
+          shortened: true,
+        ),
+        'BOOK1,2,3,boo1,2,BOOK4',
+      );
+    });
+
+    test('a book named as the one before, picture and all, is left out — '
+        'and one with no picture name keeps its row\'s', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:2', 'BOOK', 'BOOK']),
+          shortened: true,
+        ),
+        'BOOK1,2,BOOK',
+      );
+    });
+
+    test('taken off, every name is written out', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:2', 'BOOK']),
+          shortened: false,
+        ),
+        'BOOK1,BOOK2,BOOK2,BOOK',
+      );
+    });
+
+    test('the sheet tags its books as the work\'s format says — shortened '
+        'unless taken off', () {
+      final cut = cutOf([
+        cels('A'),
+        picture('BOOK', frame: '1'),
+        picture('BOOK', frame: '2'),
+      ]);
+      TimesheetDocument sheet(TimesheetInfo info) => TimesheetDocument.fromCut(
+        cut: cut,
+        projectName: 'P',
+        fps: 24,
+        info: info,
+      );
+
+      expect(sheet(TimesheetInfo.empty).books, [
+        (boundary: 1, label: 'BOOK1,2'),
+      ]);
+      expect(
+        sheet(
+          TimesheetInfo.empty.copyWith(sheetBookNamesShortened: false),
+        ).books,
+        [(boundary: 1, label: 'BOOK1,BOOK2')],
+      );
+    });
   });
 }

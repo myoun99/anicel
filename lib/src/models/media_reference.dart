@@ -94,6 +94,16 @@ class MediaReference {
   TransformPose poseAtTime(double time) =>
       fx.resolveAtTime(time: time, orElse: () => pose);
 
+  /// Whether the file stands where its pixels are laid at every frame:
+  /// its fx holds no key, and its unkeyed value is [laid].
+  bool get standsWhereLaid => fx.isEmpty && pose == laid;
+
+  /// This reference with no fx: the file standing where its pixels are
+  /// laid — what an output's 끔 hands the plan (`layerAsOutput`), and what
+  /// a row wearing its base's fx wears of its own (`rowAsItWearsItsFile`).
+  MediaReference get standingWhereLaid =>
+      copyWith(pose: laid, fx: TransformTrack.empty());
+
   MediaReference copyWith({
     String? assetPath,
     int? frameOffset,

@@ -73,8 +73,6 @@ void main() {
         ),
       ),
     );
-    // The warm scheduler arms an idle timer whenever the playhead moves.
-    s.playbackRig.prerenderScheduler.cancel();
     return ok!;
   }
 

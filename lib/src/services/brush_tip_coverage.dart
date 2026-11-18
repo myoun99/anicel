@@ -71,14 +71,14 @@ Uint8List brushTipCoverageOfRgba(Uint8List rgba) {
 /// the layer order forbids a model reaching out to it. [BrushTipMask] and
 /// [maxBrushTipMaskSide] stay inward, where the pure-Dart importers can
 /// still name them.
-BrushTipMask brushTipMaskFromCoverage(
+Future<BrushTipMask> brushTipMaskFromCoverage(
   Uint8List coverage, {
   required ({int width, int height}) size,
   required String id,
-}) {
+}) async {
   final fit = brushTipMaskFitted(size.width, size.height);
   if (fit.width != size.width || fit.height != size.height) {
-    coverage = resampleCoverage(
+    coverage = await resampleCoverage(
       coverage,
       width: size.width,
       height: size.height,

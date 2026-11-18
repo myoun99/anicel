@@ -6,6 +6,7 @@
 
 import 'dart:io';
 
+import '../../core/progress_share.dart';
 import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
@@ -67,12 +68,13 @@ class CutFolderImportDoor {
   /// the window lists them as files of their own and registers or places
   /// each as its row says (F-429-Q4).
   ///
-  /// [onProgress] hears each scan baked — the import window's wait counts
-  /// them (F-282-Q1).
+  /// [onProgress] hears how far the folder is, as 0–1: each scan an even
+  /// share of it — the import window's wait counts them (F-282-Q1) — and
+  /// within that share, the scan's file read in (F-608-Q2).
   Future<List<ImportWarning>?> importCutFolder({
     required String folderPath,
     CutFolderEdits edits = const CutFolderEdits(),
-    void Function(int baked, int total)? onProgress,
+    void Function(double fraction)? onProgress,
   }) async {
     final directory = Directory(folderPath);
     if (!directory.existsSync()) {
@@ -131,8 +133,15 @@ class CutFolderImportDoor {
     // stays ONE image no matter how large the folder (the measured folders
     // run past 100 scanned cels).
     for (final (index, bake) in plan.bakes.indexed) {
-      onProgress?.call(index, plan.bakes.length);
-      await _bake(bake, plan.fits[bake.layerId]!);
+      await _bake(
+        bake,
+        plan.fits[bake.layerId]!,
+        onRead: onProgress == null
+            ? null
+            : (fraction) => onProgress(
+                pieceShare(fraction, index: index, count: plan.bakes.length),
+              ),
+      );
     }
 
     _changes.refreshAfterCutCommand();
@@ -141,8 +150,13 @@ class CutFolderImportDoor {
   }
 
   /// [bake]'s file laid on its cut's canvas with [fit] and baked into its
-  /// cel — an unreadable file leaves the cel empty.
-  Future<void> _bake(PlannedCelBake bake, MediaFitMode fit) async {
+  /// cel — an unreadable file leaves the cel empty. [onRead] hears the file
+  /// read in ([readHeldMediaBytes]).
+  Future<void> _bake(
+    PlannedCelBake bake,
+    MediaFitMode fit, {
+    void Function(double fraction)? onRead,
+  }) async {
     final cut = _project.cutById(bake.cutId);
     if (cut == null) {
       return;
@@ -150,7 +164,7 @@ class CutFolderImportDoor {
     final List<DecodedImageFrame> frames;
     try {
       frames = await decodeImageFrames(
-        await readHeldMediaBytes(_holdBytes, bake.sourceFile),
+        await readHeldMediaBytes(_holdBytes, bake.sourceFile, onRead: onRead),
       );
     } on Object {
       return;

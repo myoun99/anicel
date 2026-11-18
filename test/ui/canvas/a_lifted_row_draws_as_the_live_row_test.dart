@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -22,13 +23,10 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -59,9 +57,8 @@ typedef _RowPaint = ({
 /// moves-on-vulkan); the stacks are handed over as the plan hands them
 /// ([stackAsThePlanHandsIt]).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
-
-  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -72,14 +69,14 @@ void main() {
   );
 
   BitmapSurfacePainter surfaceOf(Map<(int, int), RgbaColor> pixels) {
-    var tile = BitmapTile.blank(size: 8);
+    var tile = BitmapTile.blank(size: defaultCelTileSize);
     for (final MapEntry(key: (x, y), value: color) in pixels.entries) {
       tile = writeRgbaColorToBitmapTile(tile: tile, x: x, y: y, color: color);
     }
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 8,
+        tileSize: defaultCelTileSize,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
@@ -117,14 +114,14 @@ void main() {
     return float;
   }
 
-  /// [cel] as the canvas draws the LIVE row: through the seam every cel is
-  /// shown through, with its row's keys — as the view draws a lifted one.
-  BitmapSurfacePainter liveAs(BitmapSurfacePainter cel, _RowPaint paint) =>
+  /// [cel] as the canvas draws the LIVE row: its texts laid, its row's
+  /// chain run over it on the engine — as the view draws a lifted one.
+  /// ↩️Through the seam every cel was shown through, with its row's keys,
+  /// while a plugin at a chain's head ran there
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+  BitmapSurfacePainter liveAs(BitmapSurfacePainter cel) =>
       BitmapSurfacePainter(
-        surface: celSurfaceAsShown(
-          cel.surface,
-          splitSourceEffects(paint.effects).source,
-        ),
+        surface: cel.surface,
         showTransparentBackground: false,
       );
 
@@ -239,6 +236,8 @@ void main() {
     // A colour key LEADING the chain runs on the cel's own pixels, which
     // the surface's painter carries — the paint takes the rest alone. Here
     // the key takes every pixel, so a paint that ran it too keys it all.
+    // Every colour named, at half Amount: what floats is half there — not
+    // gone, which a route that drew no float would show as well.
     'a keyed row': (
       opacity: 1.0,
       blendMode: LayerBlendMode.normal,
@@ -246,7 +245,7 @@ void main() {
       effects: [
         ResolvedLayerEffect(
           kind: EffectKind.colorKey,
-          values: [0, 0xFF000000, 255, 100],
+          values: [0, 0xFF000000, 255, 50],
         ),
         ResolvedLayerEffect(
           kind: EffectKind.brightnessContrast,
@@ -264,7 +263,7 @@ void main() {
       final live = await pumpStack(
         tester,
         nodes: [liveRow(paint)],
-        live: liveAs(cel, paint),
+        live: liveAs(cel),
         liveFloat: float,
       );
       final asLive = await shot(tester, live);
@@ -302,7 +301,7 @@ void main() {
           tester,
           nodes: [liveRow(paint)],
           live: BitmapSurfacePainter(
-            surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+            surface: BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
             showTransparentBackground: false,
             landingPreview: landing,
           ),
@@ -340,7 +339,7 @@ void main() {
     final withLiveTop = await pumpStack(
       tester,
       nodes: [folder(liveRow(overPaint))],
-      live: liveAs(over, overPaint),
+      live: liveAs(over),
       liveFloat: overFloat,
       lifted: {keyOf('under'): (surface: under.surface, float: underFloat)},
     );
@@ -405,24 +404,6 @@ void main() {
       reason: 'the lifted cel was not drawn — the row drew what an image '
           'row with nothing held draws',
     );
-  });
-
-  testWidgets('a lifted row does not answer for the live row\'s route', (
-    tester,
-  ) async {
-    // The live row rides the draws (nothing overlaps on it); the lifted row
-    // above it cannot (its float overlaps its cel). The probe is the LIVE
-    // row's, so the lifted row's paint after it must not overwrite it.
-    debugLiveLayerRodeTheDraws = null;
-    final painter = await pumpStack(
-      tester,
-      nodes: [liveRow(plain), liftedRow('a', plain)],
-      live: holedCel(2),
-      lifted: {keyOf('a'): (surface: holedCel(1).surface, float: floatOf(1))},
-    );
-    await shot(tester, painter);
-
-    expect(debugLiveLayerRodeTheDraws, isTrue);
   });
 
   // Whether the picture a canvas keeps is shown under it:

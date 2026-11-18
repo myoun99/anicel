@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -15,6 +14,8 @@ import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
+
+import '../../helpers/fx_plugin_file.dart';
 
 /// 🗣️F-388 (유저 2026-10-17): 「키도 복붙기능 제대로 만들고 기존것들이랑 법
 /// 통일하고」 — and F-388-Q1 (10-20): 「프레임과 똑같이 끼워 넣기 — 그냥
@@ -402,14 +403,10 @@ void main() {
   // and 'amount' its point, where a radial blur has them the other way
   // round. A copy is what its own row said of it, never its id.
   group('a plugin\'s lane goes as its plugin says, whatever its id', () {
-    final plugin = FxPluginDescription.fromJson({
-      'spec': 1,
-      'id': 'com.example.swap',
-      'name': 'Swap',
-      'vendor': 'Example',
-      'version': '1',
-      'can': ['cpu'],
-      'params': [
+    final plugin = fxPluginDescriptionOf(
+      'com.example.swap',
+      name: 'Swap',
+      params: [
         {
           'id': 'center',
           'kind': 'number',
@@ -420,7 +417,7 @@ void main() {
         },
         {'id': 'amount', 'kind': 'point', 'label': 'Amount'},
       ],
-    })!;
+    );
     late EffectId fx;
     setUp(() {
       s.effectsAndFx.addEffectToActiveLayer(EffectKind.plugin, plugin: plugin);

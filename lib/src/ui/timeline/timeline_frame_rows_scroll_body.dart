@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -10,7 +8,7 @@ import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart'
-    show TimelineNextPage, timelineFrameWindowSpanFor;
+    show TimelineNextPage;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_graph.dart';
 import 'timeline_row_edges.dart';
@@ -47,7 +45,14 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.viewportMainExtent = 0,
     this.frameAxisController,
     this.nextPage,
+    this.geometry,
   });
+
+  /// The handle this body publishes its rows' window into — the host's, so
+  /// the grid sheet under the rows is laid by the same window
+  /// ([TimelineGridSheet.geometry]). Null keeps one of the body's own; a
+  /// handed one is the host's to let go of, as a scroll controller is.
+  final TimelineFrameGeometryHandle? geometry;
 
   /// What the session answers to the rows — the grid's ONE bundle, which
   /// the x-sheet's columns read too ([timelineCellsRowFacts]). The body
@@ -139,7 +144,10 @@ class _TimelineFrameRowsScrollBodyState
   /// rows and an open graph's lanes alike.
   final WindowMoveKeep _keep = WindowMoveKeep();
 
-  /// The LIVE frame-axis geometry every painted row follows (R28 #4).
+  /// The LIVE frame-axis geometry every row follows (R28 #4), seen through
+  /// the frame-axis WINDOW (zoom round): the rows' boxes stop being
+  /// `frames * cellWidth`, and a zoom step re-lays-out one box per row
+  /// instead of everything in it.
   ///
   /// It lives here, in State, so its IDENTITY survives the rebuilds this
   /// body does on every zoom step — that identity is what lets the memo hand
@@ -148,24 +156,17 @@ class _TimelineFrameRowsScrollBodyState
   /// a render object (the row painters' `repaint`, the axis box's relayout):
   /// both marks are honoured later in the same frame. Never attach a
   /// `ValueListenableBuilder` or a `setState` listener to it.
-  late final ValueNotifier<TimelineFrameGeometry> _geometry = ValueNotifier(
-    _geometryFromWidget(),
-  );
-
-  /// The same geometry seen through the frame-axis WINDOW (zoom round) —
-  /// handed to the rows whose every consumer reads it live, so their boxes
-  /// stop being `frames * cellWidth` and a zoom step re-lays-out one box per
-  /// row instead of everything in it.
-  ///
-  /// The SPARSE kinds keep [_geometry]: their span overlays are widgets
-  /// positioned from build-time scalars, so a window that slides under them
-  /// without a rebuild would leave them behind.
   ///
   /// It follows the window bucket DIRECTLY (not through build) because a
   /// scroll must not rebuild this body — the same render-object-only
-  /// listener contract as [_geometry].
-  late final ValueNotifier<TimelineFrameGeometry> _windowedGeometry =
-      ValueNotifier(_windowedGeometryFromWidget());
+  /// listener contract. ↩️The sparse kinds kept a handle of their own, the
+  /// whole cut's, until their spans were placed at layout time (07-26).
+  late final TimelineFrameGeometryHandle _windowedGeometry =
+      widget.geometry ??
+      TimelineFrameGeometryHandle(_windowedGeometryFromWidget());
+
+  /// Whether [_windowedGeometry] is this body's own to let go of.
+  late final bool _ownsGeometry = widget.geometry == null;
 
   TimelineFrameGeometry _geometryFromWidget() => TimelineFrameGeometry(
     frameCellExtent: widget.metrics.frameCellWidth,
@@ -176,28 +177,13 @@ class _TimelineFrameRowsScrollBodyState
     viewExtentPx: widget.viewportMainExtent,
   );
 
-  /// The window for the CURRENT bucket: origin quantized to the shared
-  /// bucket span (so it moves once per crossing, exactly when the painters
-  /// re-window), extent a constant pixel span around the viewport.
-  ///
-  /// Without a bucket or a measured viewport there is no window at all and
-  /// every row keeps the content-sized box.
+  /// The window for the CURRENT bucket ([TimelineFrameGeometry.windowedAt]);
+  /// without a bucket there is no window at all and every row keeps the
+  /// content-sized box.
   TimelineFrameGeometry _windowedGeometryFromWidget() {
     final base = _geometryFromWidget();
     final bucket = widget.windowBucket;
-    final viewport = widget.viewportMainExtent;
-    final cellExtent = base.frameCellExtent;
-    if (bucket == null || viewport <= 0 || cellExtent <= 0) {
-      return base;
-    }
-    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
-    return base.windowed(
-      originPx: math.max(
-        0.0,
-        bucket.value * spanPx - timelineFrameWindowMarginPx,
-      ),
-      extentPx: viewport + 2 * timelineFrameWindowMarginPx,
-    );
+    return bucket == null ? base : base.windowedAt(bucket.value);
   }
 
   void _handleWindowBucket() {
@@ -207,6 +193,9 @@ class _TimelineFrameRowsScrollBodyState
   @override
   void initState() {
     super.initState();
+    if (!_ownsGeometry) {
+      _windowedGeometry.value = _windowedGeometryFromWidget();
+    }
     widget.windowBucket?.addListener(_handleWindowBucket);
   }
 
@@ -219,8 +208,9 @@ class _TimelineFrameRowsScrollBodyState
   @override
   void dispose() {
     widget.windowBucket?.removeListener(_handleWindowBucket);
-    _geometry.dispose();
-    _windowedGeometry.dispose();
+    if (_ownsGeometry) {
+      _windowedGeometry.dispose();
+    }
     super.dispose();
   }
 
@@ -235,8 +225,6 @@ class _TimelineFrameRowsScrollBodyState
   TimelineLaneRowSpan get _laneRowSpan => (
     startIndex: widget.frameStartIndex,
     endIndexExclusive: widget.frameEndIndexExclusive,
-    leadingSpacer: widget.leadingFrameSpacerWidth,
-    trailingSpacer: widget.trailingFrameSpacerWidth,
     laneRange: widget.laneRange,
   );
 
@@ -308,7 +296,6 @@ class _TimelineFrameRowsScrollBodyState
     _keep.lay(widget.pass);
     // Republish BEFORE the rows read it: the painted rows' render objects
     // take the mark now and settle it during this frame's layout/paint.
-    _geometry.value = _geometryFromWidget();
     _windowedGeometry.value = _windowedGeometryFromWidget();
     final pinnedLeading = widget.pinnedLeadingRow;
     final pinnedTrailing = widget.pinnedTrailingRow;

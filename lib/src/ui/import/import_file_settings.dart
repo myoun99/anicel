@@ -1,5 +1,6 @@
 import '../../models/import/import_destination.dart';
 import '../../models/kept_span.dart';
+import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../text/app_strings.dart';
@@ -76,17 +77,19 @@ class ImportFileSettings {
     this.mode = ImportFileMode.keepInside,
     this.bake = false,
     this.into = ImportDestination.activeCutLayer,
-    this.fit = MediaFitMode.contain,
+    this.fit = MediaFitMode.born,
     // ↩️F-306-Q1 (유저 2026-10-07: 「psd는 기본값 펼치기. 합치기 남김」) —
     // MERGE was the default from 08-14. The import brings everything the
     // file holds, so a PSD comes in as its stack unless the row says merge.
     this.psd = PsdPlaceMode.expand,
+    this.pictureKind = LayerKind.bornOfOnePicture,
     this.inFrame = 0,
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
     this.runIn = 0,
     this.runOut,
     this.intoPool = false,
+    this.imports = true,
   });
 
   final ImportFileMode mode;
@@ -102,6 +105,12 @@ class ImportFileSettings {
   /// another.
   final bool intoPool;
 
+  /// Whether the file's row comes in at all when Import is pressed — the
+  /// switch before its name (🗣️F-595 ②, 유저 2026-11-16: 「해제되있으면
+  /// 임포트버튼 눌렀을때 임포트안하도록」). A row answers it for the pictures
+  /// it brings, as it answers every question for them.
+  final bool imports;
+
   /// Whether the placed layer is BAKED into cels instead of drawing from the
   /// file — the layer's question, asked only where something is placed.
   ///
@@ -116,6 +125,12 @@ class ImportFileSettings {
 
   final MediaFitMode fit;
   final PsdPlaceMode psd;
+
+  /// The kind of layer a row of ONE picture comes in as — 이미지 or
+  /// 애니메이션, an image until someone picks another
+  /// ([LayerKind.bornOfOnePicture]). A row of more pictures takes it as far
+  /// as its cels allow, as a cut folder's row does (F-429).
+  final LayerKind pictureKind;
 
   /// The trim, in source frames/pages. [outFrame] null means "to the end",
   /// which is what an un-trimmed source is — storing the last index would
@@ -151,6 +166,7 @@ class ImportFileSettings {
     ImportDestination? into,
     MediaFitMode? fit,
     PsdPlaceMode? psd,
+    LayerKind? pictureKind,
     int? inFrame,
     int? outFrame,
     bool clearOut = false,
@@ -159,18 +175,21 @@ class ImportFileSettings {
     int? runOut,
     bool clearRunOut = false,
     bool? intoPool,
+    bool? imports,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
     into: into ?? this.into,
     fit: fit ?? this.fit,
     psd: psd ?? this.psd,
+    pictureKind: pictureKind ?? this.pictureKind,
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
     runIn: runIn ?? this.runIn,
     runOut: clearRunOut ? null : (runOut ?? this.runOut),
     intoPool: intoPool ?? this.intoPool,
+    imports: imports ?? this.imports,
   );
 
   @override
@@ -181,12 +200,14 @@ class ImportFileSettings {
       other.into == into &&
       other.fit == fit &&
       other.psd == psd &&
+      other.pictureKind == pictureKind &&
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.movieParts == movieParts &&
       other.runIn == runIn &&
       other.runOut == runOut &&
-      other.intoPool == intoPool;
+      other.intoPool == intoPool &&
+      other.imports == imports;
 
   @override
   int get hashCode => Object.hash(
@@ -195,12 +216,14 @@ class ImportFileSettings {
     into,
     fit,
     psd,
+    pictureKind,
     inFrame,
     outFrame,
     movieParts,
     runIn,
     runOut,
     intoPool,
+    imports,
   );
 }
 
@@ -246,14 +269,19 @@ bool importBakeAllowed({required MediaAssetKind? kind, required bool placing}) =
         kind == MediaAssetKind.pdf ||
         kind == MediaAssetKind.video);
 
-/// Whether the 「소리」 question is asked: of a MOVIE being placed, and only
-/// one that has a sound (라운드 6 확인: 「소리열: 추천대로」 — 소리가 있는
-/// 동영상 행에만).
+/// Whether the 「소리」 question is asked: of a MOVIE that has a sound (라운드
+/// 6 확인: 「소리열: 추천대로」 — 소리가 있는 동영상 행에만), placed or only
+/// put in the pool.
+///
+/// 🗣️I-171-Q1 (유저 2026-11-14: 「그 부분만 새 파일로 품는다」): in the pool
+/// it says what is CARRIED — the part alone, as a file of its own
+/// ([importCutsAPart]). ↩️Asked only of a placed movie (`fbbb2f17d`,
+/// 2026-09-12): the column asked then whether the SE rows got the sound,
+/// and a row that only registers places nothing.
 bool importSoundAllowed({
   required MediaAssetKind? kind,
-  required bool placing,
   required bool hasSound,
-}) => placing && kind == MediaAssetKind.video && hasSound;
+}) => kind == MediaAssetKind.video && hasSound;
 
 /// Whether the PLACE answers for a movie's sound: a movie let go on an SE
 /// row's empty cell IS its sound (「SE 행 드롭은 켬으로 잠김」) — and what
@@ -266,10 +294,28 @@ bool importSoundLocked(ImportLayerSpot? spot) => spot is SeCellSpot;
 /// alone would leave the row nothing, so it is not an answer there.
 bool importPictureLocked(ImportLayerSpot? spot) => spot is RowFramesSpot;
 
-/// [parts] as the place leaves it: an SE row's cell takes the sound alone
-/// ([importSoundLocked]), and a picture row's frames keep the picture in,
-/// with the sound if it was asked for ([importPictureLocked]).
-MovieParts importMovieParts(MovieParts parts, ImportLayerSpot? spot) {
+/// Whether a row takes its movie WHOLE: one that only puts the file in the
+/// pool by pointing at it — there is nothing to cut a part into, and
+/// nothing placed to choose one (I-171-Q1: 「참조로 넣을 때는 떼어 낼 파일이
+/// 없어 옵션이 안 선다」).
+bool importTakesTheWholeFile({
+  required bool placing,
+  required ImportFileMode mode,
+}) => !placing && mode == ImportFileMode.reference;
+
+/// [parts] as the row can take it: a row that takes the whole file
+/// ([wholeFile], [importTakesTheWholeFile]) takes both parts; an SE row's
+/// cell takes the sound alone ([importSoundLocked]), and a
+/// picture row's frames keep the picture in, with the sound if it was asked
+/// for ([importPictureLocked]).
+MovieParts importMovieParts(
+  MovieParts parts,
+  ImportLayerSpot? spot, {
+  bool wholeFile = false,
+}) {
+  if (wholeFile) {
+    return MovieParts.pictureAndSound;
+  }
   if (importSoundLocked(spot)) {
     return MovieParts.sound;
   }
@@ -278,6 +324,20 @@ MovieParts importMovieParts(MovieParts parts, ImportLayerSpot? spot) {
   }
   return parts;
 }
+
+/// Whether a row brings PART of its movie — the picture alone or the sound
+/// alone, of a movie the 「소리」 question is asked of
+/// ([importSoundAllowed]): carried, that part comes in as a file of its own,
+/// the way a trimmed file comes in as its span (`TrimmedPieces`, 🗣️I-171-Q1:
+/// 「그 부분만 새 파일로 품는다」 — 「소리만 = WAV 로 떼어, 그림만 = 소리를 뺀
+/// MP4」).
+bool importCutsAPart({
+  required MediaAssetKind? kind,
+  required bool hasSound,
+  required ImportFileSettings settings,
+}) =>
+    importSoundAllowed(kind: kind, hasSound: hasSound) &&
+    settings.movieParts != MovieParts.pictureAndSound;
 
 /// Whether a row of [kind] lands as a SOUND on the SE rows — a sound file,
 /// or a movie that brings its sound alone (MovieParts.sound): one door
@@ -396,7 +456,19 @@ ImportFileSettings resolvedImportSettings(
   int? runLength,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
-  final movieParts = importMovieParts(settings.movieParts, spot);
+  final mode = importModeAllowed(
+    mode: settings.mode,
+    trimmed: settings.isTrimmed,
+    lasting: lasting,
+  )
+      ? settings.mode
+      // Carrying is never refused, so a refused pointer lands there.
+      : ImportFileMode.keepInside;
+  final movieParts = importMovieParts(
+    settings.movieParts,
+    spot,
+    wholeFile: importTakesTheWholeFile(placing: placing, mode: mode),
+  );
   // A bake is a PICTURE's answer: a movie that brings its sound alone
   // places none, so a bake pressed before 「소리만」 does not stand.
   final bake =
@@ -415,14 +487,6 @@ ImportFileSettings resolvedImportSettings(
                 runLength != null &&
                 importRunSpan(settings, runLength).count > 1,
           ));
-  final mode = importModeAllowed(
-    mode: settings.mode,
-    trimmed: settings.isTrimmed,
-    lasting: lasting,
-  )
-      ? settings.mode
-      // Carrying is never refused, so a refused pointer lands there.
-      : ImportFileMode.keepInside;
   // The destination the settings hold is ONE answer: the drop's, when it
   // answered the cut (a row it was let go on is in the active cut, whatever
   // was pressed before); a new cut when there is no cut to put a layer in

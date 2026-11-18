@@ -4,14 +4,12 @@ import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
-import '../../helpers/native_engine_path.dart';
 
 /// play-press-first-frame-stall-Q1 (유저 10-15: 「프로젝트를 열면 미리 연다(UI
 /// 스레드 밖에서)」) and Q2 (유저 10-16: 「모든 프로젝트를 열 때 미리 연다」 —
@@ -21,16 +19,11 @@ import '../../helpers/native_engine_path.dart';
 ///
 /// The bench never hears what a session plays (`audioDeviceUnlessTesting`),
 /// so this hands the rig's transport a device it has opened once on
-/// miniaudio's null backend (`PlaybackRig.debugTransportOutput`) — and every
+/// the engine's null backend (`PlaybackRig.debugTransportOutput`) — and every
 /// open after that is on the null backend too.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -39,7 +32,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   /// The default project with a sound on its first SE row.
@@ -116,7 +108,7 @@ void main() {
     await pumpEventQueue();
 
     expect(device.isOpen, isTrue);
-  }, skip: skip);
+  });
 
   test('🚨a project with no sound opens it too — ↩️only one with sound did, '
       'and its first play opened the output inside the press', () async {
@@ -125,7 +117,7 @@ void main() {
     await opened(session);
 
     expect(device.isOpen, isTrue);
-  }, skip: skip);
+  });
 
   group('the cues ring the output a run plays on', () {
     test('🚨the test tone rings on the output opened ahead — ↩️it asked '
@@ -136,7 +128,7 @@ void main() {
       expect(device.isOpen, isTrue, reason: 'fixture');
 
       expect(session.voiceRecording.playOutputTestTone(), isTrue);
-    }, skip: skip);
+    });
 
     test('the test tone refuses while a run holds the output', () async {
       final (:session, device: _) = sessionOver(withSound());
@@ -145,7 +137,7 @@ void main() {
       addTearDown(session.playbackRig.playback.stop);
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
-    }, skip: skip);
+    });
 
     test('the test tone refuses while the output is being opened ahead — it '
         'would open it here as well, and wait out the worker', () async {
@@ -154,7 +146,7 @@ void main() {
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
       await pumpEventQueue();
-    }, skip: skip);
+    });
 
     test('🚨the test tone refuses while anything sounds on the output — a '
         'viewer\'s sound, which the tone\'s schedule would cut', () async {
@@ -165,7 +157,7 @@ void main() {
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
       device.stop();
       expect(session.voiceRecording.playOutputTestTone(), isTrue);
-    }, skip: skip);
+    });
 
     test('the test tone refuses an output open for another setting than the '
         'chosen one — it rings the CHOSEN output', () async {
@@ -178,7 +170,7 @@ void main() {
       );
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
-    }, skip: skip);
+    });
 
     // A tone lasts half a second and lets go at 700 ms.
     const pastTheTone = Duration(milliseconds: 900);
@@ -191,7 +183,7 @@ void main() {
 
       await Future<void>.delayed(pastTheTone);
       expect(device.isOpen, isTrue, reason: 'the transport keeps it');
-    }, skip: skip);
+    });
 
     test('a cue that opened the output closes it as it ends, where nothing '
         'else keeps it — a session in no tab', () async {
@@ -201,7 +193,7 @@ void main() {
 
       await Future<void>.delayed(pastTheTone);
       expect(device.isOpen, isFalse, reason: 'nobody keeps it');
-    }, skip: skip);
+    });
 
     test('🚨a cue ending under a run leaves the run\'s sound alone — never '
         'yank ITS device', () async {
@@ -219,7 +211,7 @@ void main() {
 
       await Future<void>.delayed(pastTheTone);
       expect(device.isPlaying, isTrue);
-    }, skip: skip);
+    });
 
     test('🚨a cue ending under another player\'s sound — a viewer\'s, no run '
         'anywhere — leaves it alone too', () async {
@@ -240,7 +232,7 @@ void main() {
         reason: '↩️the cue stopped the output unless the canvas ran: the '
             'viewer\'s sound went silent, its picture running on',
       );
-    }, skip: skip);
+    });
 
     test('a session going lets its cue go — the output the cue opened '
         'closes, in no tab', () async {
@@ -252,6 +244,6 @@ void main() {
 
       session.dispose();
       expect(device.isOpen, isFalse);
-    }, skip: skip);
+    });
   });
 }

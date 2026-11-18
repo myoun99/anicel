@@ -16,7 +16,6 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
@@ -28,6 +27,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️유저 I-97 (2026-10-15): a pool picture dropped on a box of the cut's
 /// 봉투 is a PHOTO kept in that box's handwriting — 「사진으로 남게(셀의
@@ -170,7 +170,7 @@ void main() {
     expect(reference.pose.center.x, closeTo(at.dx, 1e-3));
     expect(reference.pose.center.y, closeTo(at.dy, 1e-3));
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             ink.surfaceFor(null, box.key)!,
             at.dx.floor(),
             at.dy.floor(),

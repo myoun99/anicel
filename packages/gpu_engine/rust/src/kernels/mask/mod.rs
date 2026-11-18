@@ -1,24 +1,23 @@
 //! A coverage mask's finishing passes on the GPU, by gpu-int-spec-canvas
 //! 1b S2, with no CPU copy of a formula (`kernels/mod.rs`): what the
 //! selection does to its hard mask before a verb reads it — grow or shrink
-//! (S2a, the app's `dilateMask4` · `erodeMask4`), feather (S2b, its
-//! `chamferDistance34` and `_featherMask`'s ramp) and anti-alias inside the
-//! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
+//! (S2a), feather inward (S2b, a ramp over the 3-4 chamfer distance) and
+//! anti-alias inside the outline (S2c), in that order. ↩️The app spelled
+//! them itself (`buildSelectionMask`) till 2026-11-14.
 //! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
 //! fill finishes what it flooded with the same grow and soften
-//! (`_cropAndFinishFloodRegion`, gpu-canonical-store stage 5), its soften
-//! past the outline as well, and its gap close measures by the feather's
-//! distances (`_gapCloseFloodRegion`).
+//! (gpu-canonical-store stage 5), its soften past the outline as well, and
+//! its gap close measures by the feather's distances.
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
 //! layout.
 
-// ⏳Nothing outside the tests reads a mask until the canvas's verbs come to
-// the engine (gpu-canonical-store, stage 4).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
+pub(crate) mod contours;
 pub(crate) mod region;
+pub(crate) mod runs;
+pub(crate) mod within;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -41,9 +40,9 @@ const GROUP: u32 = 8;
 /// is a word.
 const MOST_FEATHER: f64 = (u32::MAX / 3 / 256) as f64;
 /// The distance the box's edge lies at in the selection's feather — a
-/// pixel on it ramps as if the one past it were out (`_featherMask`'s
-/// `borderDistance`) — and in the fill's gap close, where the canvas edge
-/// is no barrier: none, which no distance passes.
+/// pixel on it ramps as if the one past it were out — and in the fill's
+/// gap close, where the canvas edge is no barrier: none, which no distance
+/// passes.
 const SELECTION_EDGE: u32 = 3;
 const NO_EDGE: u32 = u32::MAX;
 
@@ -65,14 +64,73 @@ impl MaskBox {
         u64::from(self.stride()) * u64::from(self.height) * 4
     }
 
+    /// `bytes` — a byte a pixel, row after row, the app's `Uint8List` as it
+    /// is — as the plane holds them: each row padded to whole words with 0.
+    pub(crate) fn words_of(&self, bytes: &[u8]) -> Vec<u32> {
+        let word = |four: &[u8]| {
+            let mut word = [0; 4];
+            word[..four.len()].copy_from_slice(four);
+            u32::from_le_bytes(word)
+        };
+        bytes.chunks_exact(self.width as usize).flat_map(|row| row.chunks(4).map(word)).collect()
+    }
+
+    /// `plane` — the plane's bytes as a pass put them — row after row
+    /// without the padding: the app's `Uint8List` again
+    /// ([`Self::words_of`], back).
+    pub(crate) fn rows_of<'a>(&self, plane: &'a [u8]) -> impl Iterator<Item = &'a [u8]> {
+        let (stride, width) = (self.stride() as usize * 4, self.width as usize);
+        plane.chunks_exact(stride).take(self.height as usize).map(move |row| &row[..width])
+    }
+
+    /// `plane` — its bytes on the GPU — copied into `into` once the GPU is
+    /// done: a byte a pixel, row after row, the app's `Uint8List` as it is.
+    /// False where `into` is not the box's width × height, or on failure;
+    /// see the last error. ⛔ONE READ: the fill's finished mask was read so
+    /// on its own, and the app's masks came as a second (11-14, the same
+    /// lines).
+    pub(crate) fn read_into(&self, engine: &Engine, plane: &wgpu::Buffer, into: &mut [u8]) -> bool {
+        let width = self.width as usize;
+        if into.len() != width * self.height as usize {
+            fail::<()>(format!("{} bytes are not a mask of {self:?}", into.len()));
+            return false;
+        }
+        let Some(read) = engine.read_buffer(plane) else {
+            return false;
+        };
+        for (into, row) in into.chunks_exact_mut(width).zip(self.rows_of(&read)) {
+            into.copy_from_slice(row);
+        }
+        true
+    }
+
     /// A distance plane's bytes: two distances to a word.
     fn distance_bytes(&self) -> u64 {
         u64::from(self.width.div_ceil(2)) * u64::from(self.height) * 4
     }
 
-    /// A pass's workgroups over words of `per` pixels.
+    /// The part that is all of it.
+    pub(crate) fn whole(&self) -> Part {
+        Part { left: 0, top: 0, right: self.width, bottom: self.height }
+    }
+
+    /// A pass's workgroups over its words of `per` pixels.
     fn groups(&self, per: u32) -> (u32, u32) {
-        (self.width.div_ceil(per).div_ceil(GROUP), self.height.div_ceil(GROUP))
+        self.whole().groups(per)
+    }
+
+    /// Fails unless every one of `parts` holds a pixel and lies in it.
+    fn holds(&self, parts: &[Part]) -> Option<()> {
+        let held = |part: &Part| {
+            part.left < part.right
+                && part.top < part.bottom
+                && part.right <= self.width
+                && part.bottom <= self.height
+        };
+        match parts.iter().find(|part| !held(part)) {
+            Some(part) => fail(format!("{part:?} is no part of {self:?}")),
+            None => Some(()),
+        }
     }
 
     /// Fails unless it holds a pixel and `mask` holds its plane.
@@ -84,9 +142,34 @@ impl MaskBox {
     }
 }
 
+/// A part of a mask's box — its left and top pixels, and the right and
+/// bottom past it: what a pass runs over (mask.wgsl's `windows`), or a crop
+/// takes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Part {
+    pub(crate) left: u32,
+    pub(crate) top: u32,
+    pub(crate) right: u32,
+    pub(crate) bottom: u32,
+}
+
+impl Part {
+    /// A pass's workgroups over its words of `per` pixels: a word its edge
+    /// crosses is the part's as well.
+    fn groups(&self, per: u32) -> (u32, u32) {
+        let words = self.right.div_ceil(per) - self.left / per;
+        (words.div_ceil(GROUP), (self.bottom - self.top).div_ceil(GROUP))
+    }
+
+    /// The part as its own box.
+    pub(crate) fn size(&self) -> MaskBox {
+        MaskBox { width: self.right - self.left, height: self.bottom - self.top }
+    }
+}
+
 /// A selection as a pass reads it: a byte plane (mask.wgsl's layout) over
-/// the box `size` whose top-left pixel is `at` on the canvas — the app's
-/// `selectionMaskOnPasteboard`. A pass is given the rows of it it reads,
+/// the box `size` whose top-left pixel is `at` on the canvas — what the
+/// app's `SelectionClip` reads. A pass is given the rows of it it reads,
 /// copied on the GPU. ⛔ONE MASK: the cel pixel verbs and the lift took it
 /// from here, and the executor's masked rows came as a third (11-06).
 pub(crate) struct Mask<'a> {
@@ -159,16 +242,26 @@ impl Finish {
     }
 }
 
-/// What a run's passes read past the box — the app's arguments to the
-/// functions they are: the feather's ramp, 3 chamfer units a pixel, Q.8,
-/// softenMaskBoundary's `insideOutlineOnly`, and chamferDistance34's
-/// `zeroWhen` and `borderDistance`.
+/// What a run's passes read past the box: the feather's ramp, 3 chamfer
+/// units a pixel, Q.8, whether the soften keeps inside the outline, and
+/// where a distance starts — the byte it is measured from and the distance
+/// the box's edge lies at (mask.wgsl's `Mask`).
 #[derive(Clone, Copy)]
 struct Knobs {
     ramp: u32,
     inside_outline_only: bool,
     zero_when: u8,
     border: u32,
+}
+
+impl Knobs {
+    /// What a pass that reads no knob is given: a crop's.
+    const UNREAD: Knobs = Knobs {
+        ramp: 0,
+        inside_outline_only: false,
+        zero_when: 0,
+        border: NO_EDGE,
+    };
 }
 
 /// What a run put last: its bytes, and its distances where it measured.
@@ -207,6 +300,7 @@ pub(crate) struct MaskPasses {
     seed: wgpu::ComputePipeline,
     relax: wgpu::ComputePipeline,
     feather: wgpu::ComputePipeline,
+    crop: wgpu::ComputePipeline,
 }
 
 impl MaskPasses {
@@ -220,12 +314,13 @@ impl MaskPasses {
             seed: compile("mask_seed"),
             relax: compile("mask_relax"),
             feather: compile("mask_feather"),
+            crop: compile("mask_crop"),
         }
     }
 
     /// `mask` — bytes over `size` — finished as the selection finishes its
-    /// hard mask (`buildSelectionMask`): grown or shrunk a generation a
-    /// pixel, feathered inward over its edge, then softened inside its
+    /// hard mask: grown or shrunk a generation a pixel, feathered inward
+    /// over its edge, then softened inside its
     /// outline. A new plane — or none for a `finish` that `is_hard`, whose
     /// mask is finished as it is. Submits the work; the caller waits.
     pub(crate) fn selection(
@@ -272,14 +367,22 @@ impl MaskPasses {
             zero_when: 0,
             border: SELECTION_EDGE,
         };
-        self.run(engine, mask, size, &steps, knobs)?.bytes
+        self.run(engine, mask, size, &steps, knobs, &[size.whole()])?.bytes
     }
 
     /// `mask` — bytes over `size`, 255 where a fill flooded — finished as
-    /// the fill finishes it (`_cropAndFinishFloodRegion`): grown `expand`
+    /// the fill finishes it: grown `expand`
     /// generations, then, where it anti-aliases, softened past its outline
     /// as well as in. A new plane — or none where neither runs, whose mask
     /// is finished as it is. Submits the work; the caller waits.
+    ///
+    /// Finished `over` those parts of the box alone, 0 past them: the whole
+    /// box (a bucket's flood), or the tiles an area reaches (the app's
+    /// `regionFillPieces`). ⚠️Exact only where `over` holds every pixel
+    /// the finish leaves any of: what lies past it is read as it stands at
+    /// every generation, and that is the 0 it is only where nothing reaches
+    /// — a grow reaches a 4-neighbour a generation, a soften one more
+    /// (board `an-areas-finish-is-a-second-spelling-of-the-floods`).
     pub(crate) fn fill(
         &self,
         engine: &Engine,
@@ -287,8 +390,10 @@ impl MaskPasses {
         size: MaskBox,
         expand: u32,
         anti_alias: bool,
+        over: &[Part],
     ) -> Option<wgpu::Buffer> {
         size.held_by(mask)?;
+        size.holds(over)?;
         let mut steps = vec![Step::Grow; expand as usize];
         if anti_alias {
             steps.push(Step::Soften);
@@ -302,13 +407,13 @@ impl MaskPasses {
             zero_when: 0,
             border: NO_EDGE,
         };
-        self.run(engine, mask, size, &steps, knobs)?.bytes
+        self.run(engine, mask, size, &steps, knobs, over)?.bytes
     }
 
-    /// The 3-4 chamfer distance (`chamferDistance34`, in mask.wgsl's layout)
+    /// The 3-4 chamfer distance (in mask.wgsl's layout)
     /// from every pixel of `mask` — bytes over `size` — to the nearest whose
-    /// byte is `zero_when`, as the fill's gap close measures it
-    /// (`_gapCloseFloodRegion`): the box's edge is no barrier. Relaxed
+    /// byte is `zero_when`, as the fill's gap close measures it: the box's
+    /// edge is no barrier. Relaxed
     /// `generations` times: a distance a path of no more steps reaches —
     /// every one up to 3 × `generations`, a step being 3 or 4 — is the
     /// app's, and the rest lie no nearer than theirs. Submits the work; the
@@ -333,12 +438,75 @@ impl MaskPasses {
             zero_when,
             border: NO_EDGE,
         };
-        self.run(engine, mask, size, &steps, knobs)?.distances
+        self.run(engine, mask, size, &steps, knobs, &[size.whole()])?.distances
+    }
+
+    /// `mask` — bytes over `size` — cut into a plane of its own for each of
+    /// `parts`, over that part: what an area's pieces are laid of, each
+    /// its own run of tiles (the app's `regionFillPieces`). Submits the
+    /// work; the caller waits.
+    pub(crate) fn crop(
+        &self,
+        engine: &Engine,
+        mask: &wgpu::Buffer,
+        size: MaskBox,
+        parts: &[Part],
+    ) -> Option<Vec<wgpu::Buffer>> {
+        size.held_by(mask)?;
+        size.holds(parts)?;
+        let windows = self.windows(engine, parts)?;
+        let groups = parts.iter().map(|part| part.size().groups(4));
+        let planes = parts.iter().map(|part| part.size().bytes()).collect::<Vec<_>>();
+        fits(engine, &planes, groups)?;
+        let cut: Vec<_> = planes.iter().map(|&bytes| plane(engine, "mask crop", bytes)).collect();
+        let words: Vec<_> = (0..parts.len() as u32)
+            .map(|at| self.words(engine, size, Knobs::UNREAD, at))
+            .collect();
+        let encoded: Vec<_> = parts
+            .iter()
+            .zip(&cut)
+            .zip(&words)
+            .map(|((part, into), words)| Encoded {
+                pipeline: &self.crop,
+                bound: whole(&[(0, words), (1, mask), (2, into), (5, &windows)]),
+                groups: flat(part.size().groups(4)),
+            })
+            .collect();
+        encode(engine, &encoded);
+        Some(cut)
+    }
+
+    /// `parts` as mask.wgsl's `windows` reads them.
+    fn windows(&self, engine: &Engine, parts: &[Part]) -> Option<wgpu::Buffer> {
+        if parts.is_empty() {
+            return fail("a pass over no part of its box");
+        }
+        let words: Vec<u32> =
+            parts.iter().flat_map(|part| [part.left, part.top, part.right, part.bottom]).collect();
+        Some(words_buffer(engine, "mask windows", &words, wgpu::BufferUsages::STORAGE))
+    }
+
+    /// mask.wgsl's `Mask` for a pass over `size` reading `knobs`, a crop
+    /// taking the window `window`.
+    fn words(&self, engine: &Engine, size: MaskBox, knobs: Knobs, window: u32) -> wgpu::Buffer {
+        let words = [
+            size.width,
+            size.height,
+            size.stride(),
+            knobs.ramp,
+            u32::from(knobs.inside_outline_only),
+            u32::from(knobs.zero_when),
+            knobs.border,
+            window,
+        ];
+        words_buffer(engine, "mask", &words, wgpu::BufferUsages::UNIFORM)
     }
 
     /// Runs `steps` over `mask` in order, each reading what the one before
     /// put and all reading `knobs`, and returns what the last byte pass and
-    /// the last distance pass put.
+    /// the last distance pass put — over `over`'s parts of the box alone,
+    /// each pass putting only theirs, so past them a plane holds the 0 it
+    /// was made with.
     fn run(
         &self,
         engine: &Engine,
@@ -346,32 +514,32 @@ impl MaskPasses {
         size: MaskBox,
         steps: &[Step],
         knobs: Knobs,
+        over: &[Part],
     ) -> Option<Put> {
         let puts_bytes = steps.iter().any(|step| step.per_word() == 4);
         let measures = steps.contains(&Step::Seed);
         let byte_bytes = if puts_bytes { size.bytes() } else { 0 };
         let distance_bytes = if measures { size.distance_bytes() } else { 0 };
-        let groups = steps.iter().map(|step| size.groups(step.per_word()));
-        fits(engine, &[byte_bytes, distance_bytes], groups)?;
+        let Ok(deep) = u32::try_from(over.len()) else {
+            return fail("more parts than a pass reaches");
+        };
+        // The most a part's pass has across and down, and the parts deep.
+        let groups_of = |per: u32| {
+            let most = over.iter().map(|part| part.groups(per)).fold((0, 0), |most, groups| {
+                (most.0.max(groups.0), most.1.max(groups.1))
+            });
+            (most.0, most.1, deep)
+        };
+        let groups = steps.iter().map(|step| groups_of(step.per_word()));
+        fits(engine, &[byte_bytes, distance_bytes], groups.flat_map(|(a, d, z)| [(a, d), (z, 1)]))?;
+        let windows = &self.windows(engine, over)?;
         let bytes: Vec<wgpu::Buffer> = (0..if puts_bytes { 2 } else { 0 })
             .map(|_| plane(engine, "mask", byte_bytes))
             .collect();
         let distances: Vec<wgpu::Buffer> = (0..if measures { 2 } else { 0 })
             .map(|_| plane(engine, "mask distances", distance_bytes))
             .collect();
-        let inside = u32::from(knobs.inside_outline_only);
-        let zero_when = u32::from(knobs.zero_when);
-        let words = [
-            size.width,
-            size.height,
-            size.stride(),
-            knobs.ramp,
-            inside,
-            zero_when,
-            knobs.border,
-            0,
-        ];
-        let words = &words_buffer(engine, "mask", &words, wgpu::BufferUsages::UNIFORM);
+        let words = &self.words(engine, size, knobs, 0);
         // The byte plane the next pass reads — none: `mask` itself — and
         // the distance plane.
         let (mut bytes_at, mut distances_at) = (None, 0);
@@ -387,29 +555,29 @@ impl MaskPasses {
                         Step::Shrink => &self.shrink,
                         _ => &self.soften,
                     };
-                    (pipeline, vec![(0, words), (1, from), (2, &bytes[to])])
+                    (pipeline, vec![(0, words), (1, from), (2, &bytes[to]), (5, windows)])
                 }
                 Step::Seed => {
-                    let bound = vec![(0, words), (1, from), (4, &distances[distances_at])];
+                    let bound = vec![(0, words), (1, from), (4, &distances[distances_at]), (5, windows)];
                     (&self.seed, bound)
                 }
                 Step::Relax => {
                     let (read, put) = (distances_at, 1 - distances_at);
                     distances_at = put;
-                    let bound = vec![(0, words), (3, &distances[read]), (4, &distances[put])];
+                    let bound = vec![(0, words), (3, &distances[read]), (4, &distances[put]), (5, windows)];
                     (&self.relax, bound)
                 }
                 Step::Feather => {
                     bytes_at = Some(to);
                     let distances = &distances[distances_at];
-                    let bound = vec![(0, words), (1, from), (2, &bytes[to]), (3, distances)];
+                    let bound = vec![(0, words), (1, from), (2, &bytes[to]), (3, distances), (5, windows)];
                     (&self.feather, bound)
                 }
             };
             encoded.push(Encoded {
                 pipeline,
                 bound: whole(&bound),
-                groups: flat(size.groups(step.per_word())),
+                groups: groups_of(step.per_word()),
             });
         }
         encode(engine, &encoded);

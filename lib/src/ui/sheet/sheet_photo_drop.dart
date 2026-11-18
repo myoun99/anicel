@@ -11,7 +11,7 @@ import '../../models/sheet_marks.dart' show SheetInkPlacement;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/cel_photo_edit_command.dart';
 import '../../services/import/raster_cel_import.dart' show fitPose;
-import '../../services/media/media_pixel_size.dart';
+import '../../services/media/media_facts.dart';
 import '../editor_session_manager.dart';
 import '../media/media_asset_drag_data.dart';
 import '../media/media_asset_drop_target.dart';
@@ -26,8 +26,10 @@ import 'sheet_ink_layer.dart';
 /// never grown ([fitPose]'s contain, else its 1:1) — its centre where it
 /// was dropped. The cell clips it as it clips the ink.
 ///
-/// ⛔Not the pool's own fit ([MediaAsset.fitMode]) — that one places the
-/// picture on a canvas; a sheet's cell is answered by Q2 c.
+/// ⛔Not a fit the pool keeps for the picture — it keeps none (↩️an entry
+/// had a `fitMode` until 2026-11-10, [MediaAsset]), and the import
+/// window's 「맞춤」 places a picture on a canvas; a sheet's cell is
+/// answered by Q2 c.
 MediaReference droppedSheetPhoto({
   required String path,
   required CanvasSize picture,
@@ -162,11 +164,11 @@ class _SheetPhotoDropState extends State<SheetPhotoDrop> {
   /// was read (a form switched, a page added) is asked again, as a stroke
   /// started there would ask it.
   Future<void> _land(Offset paper, String path) async {
-    final picture = await readMediaPixelSize(
+    final picture = (await readMediaFacts(
       MediaAssetKind.image,
       path,
       widget.session.projectFile.holdMediaBytes,
-    );
+    ))?.size;
     if (picture == null || !mounted) {
       return;
     }

@@ -89,6 +89,20 @@ final class _SettingsRowsOfTheWindow {
     }
   });
 
+  /// [key]'s switch before its name: on while the row is put in place —
+  /// 「제외」 is it off, one answer its switch and its Into column both say
+  /// (F-595 ②) — and locked where this build cannot read the row, which
+  /// goes nowhere whatever is pressed.
+  ImportRowSwitch switchOf(String key) =>
+      (on: answerOf(key) is _IntoTheSettings, locked: !_reads(key));
+
+  /// [keys] switched [on]: answered the settings, or 「제외」 — each that
+  /// can give the answer.
+  void switchRows(Iterable<String> keys, bool on) => pick([
+    for (final key in keys)
+      if (_reads(key)) key,
+  ], on ? const _IntoTheSettings() : const _LeftOut());
+
   bool _reads(String key) {
     final held = _rows[key]!;
     return held.row.readsIn(held.file);
@@ -141,6 +155,7 @@ final class _SettingsRowsOfTheWindow {
       valuesFor: (key) => holds(key) ? answers(key) : column.answersFor(key),
       wordOf: (key, value) =>
           holds(key) ? wordOf(key, value) : column.wordOf?.call(key, value),
+      keepsRoomFor: column.keepsRoomFor,
       valueOf: (key) => holds(key) ? answerOf(key) : column.valueOf(key),
       appliesTo: (key) =>
           holds(key) ? answers(key).isNotEmpty : column.appliesTo(key),

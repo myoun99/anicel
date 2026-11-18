@@ -1,3 +1,5 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -39,6 +41,7 @@ import '../../helpers/poll_until.dart';
 /// through the body frame's index key. The runway cel here appears NOWHERE
 /// inside the duration.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   // duration 4; body cel at 0..1, a HOLE at 2..3, and a runway cel at
@@ -96,7 +99,7 @@ void main() {
           at: corner,
           size: 2,
           tipShape: BrushTipShape.square,
-          tileSize: 4,
+          tileSize: defaultCelTileSize,
         );
       }
     }
@@ -249,10 +252,6 @@ void main() {
     );
     expect(s.playbackRig.demand!.length, cutWarmFrameCount(activeCut));
 
-    // Stand the run down INSIDE the test: its zero-length yield timer
-    // otherwise trips the binding's timer invariant, which runs before
-    // the teardown dispose (the scheduler's own documented hazard).
-    s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
   });
 

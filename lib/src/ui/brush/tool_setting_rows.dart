@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart' show ControlPressClaim;
 import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
 import '../text/app_strings.dart' show AppText;
-import '../theme/app_theme.dart' show AppColors, AppCursors;
+import '../theme/app_theme.dart' show AppColors, AppCursors, SuperellipseFace;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/flip_glyph.dart';
+import '../widgets/icon_button_box.dart' show resetWearsAccent;
 import '../widgets/pill_strip.dart';
 import 'tool_settings_section.dart' show ToolSettingsSection;
 
@@ -115,6 +116,7 @@ class ToolSettingRow extends StatelessWidget {
     required this.child,
     this.labelEnd,
   }) : _lay = _Lay.fill,
+       labelLit = false,
        trailing = null;
 
   /// A control that stands at the END of the control column — a swatch,
@@ -124,6 +126,7 @@ class ToolSettingRow extends StatelessWidget {
     required this.label,
     required this.child,
   }) : _lay = _Lay.atEnd,
+       labelLit = false,
        labelEnd = null,
        trailing = null;
 
@@ -137,6 +140,7 @@ class ToolSettingRow extends StatelessWidget {
     required Widget bar,
     this.labelEnd,
     this.trailing,
+    this.labelLit = false,
   }) : child = bar,
        _lay = _Lay.bar;
 
@@ -158,6 +162,7 @@ class ToolSettingRow extends StatelessWidget {
          ],
        ),
        _lay = _Lay.fill,
+       labelLit = false,
        trailing = null;
 
   /// The row's name. Empty for a row that continues the one above it (the
@@ -167,6 +172,11 @@ class ToolSettingRow extends StatelessWidget {
   /// What stands at the end of the name's cell — the scale row's chain.
   final Widget? labelEnd;
 
+  /// Whether the row's name reads in the accent — the one of a list of
+  /// like rows that is in hand (the transform tool's warp point, F-586).
+  /// Colour alone, as every selection is told.
+  final bool labelLit;
+
   final Widget child;
   final Widget? trailing;
   final _Lay _lay;
@@ -174,7 +184,8 @@ class ToolSettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final end = ToolSettingEnd.of(context);
-    final style = Theme.of(context).textTheme.labelSmall;
+    final named = Theme.of(context).textTheme.labelSmall;
+    final style = labelLit ? named?.copyWith(color: AppColors.accent) : named;
     return Padding(
       padding: const EdgeInsets.only(bottom: ToolSettingsSection.rowGap),
       child: LayoutBuilder(
@@ -349,6 +360,7 @@ class ToolSettingAction extends StatefulWidget {
     required this.onPressed,
     this.shortcuts = const [],
     this.decides = false,
+    this.resets = false,
   }) : glyph = null,
        isSelected = false;
 
@@ -361,7 +373,8 @@ class ToolSettingAction extends StatefulWidget {
     required this.onPressed,
     this.shortcuts = const [],
   }) : decides = false,
-       isSelected = false;
+       isSelected = false,
+       resets = false;
 
   /// The flip, in the view pill's own glyphs: the one button every panel
   /// flips by, [horizontal] or up and down, [isSelected] where the flip stays
@@ -381,7 +394,8 @@ class ToolSettingAction extends StatefulWidget {
            ? AppText.strings.trFlipHorizontal
            : AppText.strings.trFlipVertical,
        glyph = flipGlyph(horizontal: horizontal),
-       decides = false;
+       decides = false,
+       resets = false;
 
   final String keyValue;
   final String label;
@@ -391,6 +405,11 @@ class ToolSettingAction extends StatefulWidget {
 
   /// Whether what it switches is on — shown by the accent alone.
   final bool isSelected;
+
+  /// It puts what the panel poses back to its default — the accent ground
+  /// while it can be pressed ([resetWearsAccent], I-176), so it can be
+  /// pressed only where that would change something (F-583).
+  final bool resets;
 
   /// The actions it is the button of (I-40) — its panel binds them to the
   /// same press (`PanelKeysBinding`), and their live keys join its tooltip
@@ -408,7 +427,10 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
   @override
   Widget build(BuildContext context) {
     final live = widget.onPressed != null;
-    final ground = widget.decides || widget.isSelected
+    final ground =
+        widget.decides ||
+            widget.isSelected ||
+            resetWearsAccent(resets: widget.resets, live: live)
         ? AppColors.accent
         : AppColors.surface;
     final hovered = live && _hovering;
@@ -443,9 +465,9 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
           child: DecoratedBox(
             key: ValueKey<String>(widget.keyValue),
             // The frame's hairline, on the button's own ground.
-            decoration: ShapeDecoration(
+            decoration: SuperellipseFace(
               color: dimmedIfDisabled(shown, enabled: live),
-              shape: frame.shape,
+              edge: frame.edge,
             ),
             child: SizedBox(
               height: FieldSlider.defaultHeight,

@@ -34,12 +34,12 @@ fn view() -> WaveView {
         across_q8: 8 * 256,
         gain_q16: 65536,
         rgba: WHITE,
-        background: 0,
+        length: 1 << 20,
     }
 }
 
-/// `lanes` drawn as `view` shows them on a `width` x `height` tile — None
-/// where the pass refuses them.
+/// `lanes` drawn as `view` shows them on a clear `width` x `height` tile
+/// — None where the pass refuses them.
 fn drawn(
     engine: &Engine,
     (width, height): (u32, u32),
@@ -48,7 +48,52 @@ fn drawn(
     view: &WaveView,
 ) -> Option<Vec<u8>> {
     let peaks = WavePeaks::new(engine, lanes)?;
-    let texture = storage_texture(&engine.device, width, height, format);
+    let texture = storage_texture(engine.device(), width, height, format);
+    WaveTile::new(engine).run(engine, &texture, &peaks, view)?;
+    engine.read_texture(&texture)
+}
+
+/// The same over a tile every pixel of which is `ground`, an RGBA word.
+fn drawn_over(
+    engine: &Engine,
+    (width, height): (u32, u32),
+    format: wgpu::TextureFormat,
+    ground: u32,
+    lanes: &[&[u16]],
+    view: &WaveView,
+) -> Option<Vec<u8>> {
+    let peaks = WavePeaks::new(engine, lanes)?;
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let texture = engine.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("wave ground"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::STORAGE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    // The word's bytes as the format stores them.
+    let [r, g, b, a] = ground.to_le_bytes();
+    let texel = if format == BGRA { [b, g, r, a] } else { [r, g, b, a] };
+    let bytes: Vec<u8> = (0..width * height).flat_map(|_| texel).collect();
+    engine.queue.write_texture(
+        texture.as_image_copy(),
+        &bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        size,
+    );
     WaveTile::new(engine).run(engine, &texture, &peaks, view)?;
     engine.read_texture(&texture)
 }
@@ -69,12 +114,11 @@ fn column(bytes: &[u8], (width, height): (u32, u32), x: u32) -> Vec<[u8; 4]> {
     (0..height).map(|y| at(bytes, width, x, y)).collect()
 }
 
-/// White as it lands over clear at `alpha`, stored premultiplied: every
-/// channel `alpha`, 255·a / 255. A q8 overlap o of a row gives it the
-/// 16-bit alpha (o·65535 + 128) >> 8, stored as the byte (alpha + 128) /
-/// 257.
+/// White as it lands over clear at `alpha`, stored straight: white, and
+/// `alpha`. A q8 overlap o of a row gives it the 16-bit alpha (o·65535 +
+/// 128) >> 8, stored as the byte (alpha + 128) / 257.
 fn white(alpha: u8) -> [u8; 4] {
-    [alpha; 4]
+    [255, 255, 255, alpha]
 }
 
 const NONE: [u8; 4] = [0; 4];
@@ -301,20 +345,42 @@ fn a_strip_running_down_is_the_same_band_turned() {
     }
 }
 
-// The band is laid over the background word by the normal composite: half
+// The band is laid over what the tile holds by the normal composite: half
 // white over opaque black is opaque grey, 128·257 + 0 over 32896 of
 // weight — (65535·32896 + 32767) / 65535 → 32896, a byte of 128.
 #[test]
-fn the_band_is_laid_over_the_background() {
+fn the_band_is_laid_over_what_the_tile_holds() {
     let engine = first_engine();
     let view = WaveView {
         rgba: rgba(255, 255, 255, 128),
-        background: rgba(0, 0, 0, 255),
         ..view()
     };
-    let bytes = lane(engine, (1, 8), &[FULL; 4], &view);
+    let black = rgba(0, 0, 0, 255);
+    let bytes = drawn_over(engine, (1, 8), RGBA, black, &[&[FULL; 4]], &view).unwrap();
     assert_eq!(at(&bytes, 1, 0, 0), [0, 0, 0, 255]);
     assert_eq!(at(&bytes, 1, 0, 3), [128, 128, 128, 255]);
+}
+
+// A strip 4 pixels long from the tile's column 2, a frame into its sound: the
+// sound goes on before it and after, but the band only where the strip is —
+// the rest of the tile is what it held.
+#[test]
+fn a_column_past_either_end_of_the_strip_shows_what_the_tile_holds() {
+    let engine = first_engine();
+    let view = WaveView {
+        along0: -2,
+        length: 4,
+        leading_frames: 1,
+        ..view()
+    };
+    let black = rgba(0, 0, 0, 255);
+    let bytes = drawn_over(engine, (8, 8), RGBA, black, &[&[FULL; 8]], &view).unwrap();
+    let ground = vec![[0, 0, 0, 255]; 8];
+    let band = vec![[0, 0, 0, 255], ALL, ALL, ALL, ALL, ALL, ALL, [0, 0, 0, 255]];
+    for x in 0..8 {
+        let expected = if (2..6).contains(&x) { &band } else { &ground };
+        assert_eq!(&column(&bytes, (8, 8), x), expected, "column {x}");
+    }
 }
 
 // 16 pixels a frame at 24000/1001 frames a second, 80 buckets a second:
@@ -358,12 +424,14 @@ fn a_sound_or_a_view_the_pass_cannot_draw_is_refused() {
         WaveView { across_q8: 0, ..view() },
         WaveView { across_q8: 1 << 24, ..view() },
         WaveView { gain_q16: -1, ..view() },
+        WaveView { length: -1, ..view() },
     ];
     for view in views {
         assert!(refused(&[peaks], view), "{view:?}");
     }
     assert!(!refused(&[peaks], WaveView { across_q8: (1 << 24) - 1, ..view() }));
     assert!(!refused(&[peaks], WaveView { gain_q16: 0, ..view() }));
+    assert!(!refused(&[peaks], WaveView { length: 0, ..view() }));
 }
 
 /// Two lanes of a sound's peaks at 23.976 frames a second with a trim, a
@@ -382,10 +450,11 @@ fn mixed(engine: &Engine, format: wgpu::TextureFormat, vertical: bool) -> Vec<u8
         across_q8: 24 * 256 - 40,
         gain_q16: 52429,
         rgba: rgba(100, 180, 255, 200),
-        background: rgba(30, 30, 34, 255),
+        length: 1 << 20,
     };
     let size = if vertical { (24, 160) } else { (160, 24) };
-    drawn(engine, size, format, &[&left, &right], &view).unwrap()
+    let grey = rgba(30, 30, 34, 255);
+    drawn_over(engine, size, format, grey, &[&left, &right], &view).unwrap()
 }
 
 #[test]
@@ -400,7 +469,7 @@ fn every_device_writes_the_pinned_bytes() {
 fn the_two_orders_differ_only_by_red_and_blue() {
     let engine = first_engine();
     let storable = engine
-        .device
+        .device()
         .features()
         .contains(wgpu::Features::BGRA8UNORM_STORAGE);
     assert!(storable, "this adapter cannot store to bgra8unorm");

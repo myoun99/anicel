@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import '../../helpers/temp_dir.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
@@ -23,16 +22,13 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 /// reader that quietly pulled the whole entry would round-trip perfectly and
 /// have thrown the entire point away.
 ///
-/// 🚨★★★**AND THE FILES ARE WRITTEN BY THE DART WRITER AND READ BY THE C
-/// READER** — the one pairing that ships. `qa_media_span_test.c` pins the
-/// reader against a fixture of its own; this is where the two sides of the
-/// format meet, so a writer and a reader that drifted apart go red here.
+/// 🚨★★★**AND THE FILES ARE WRITTEN BY THE DART WRITER AND READ BY THE
+/// ENGINE'S READER** — the one pairing that ships. native/media's span
+/// tests pin the reader against a fixture of their own (↩️the C's
+/// `qa_media_span_test.c` until the connection round); this is where the
+/// two sides of the format meet, so a writer and a reader that drifted apart
+/// go red here.
 void main() {
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   late Directory directory;
   late List<({int blocksDecoded, int storedBytesRead})> costs;
 
@@ -81,10 +77,6 @@ void main() {
   }
 
   test('a window reads only the block it lands in', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, :entry, :blocks, :index) = written(source);
 
@@ -104,10 +96,6 @@ void main() {
   });
 
   test('a window straddling a boundary reads both blocks and no third', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, entry: _, :blocks, :index) = written(source);
 
@@ -121,10 +109,6 @@ void main() {
   });
 
   test('the whole file comes back byte for byte', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     expect(framed.lengthSync(), source.length);
@@ -132,10 +116,6 @@ void main() {
   });
 
   test('a read past the end is short, not a throw and not garbage', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(200 * 1024);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     final window = Uint8List(500);
@@ -149,10 +129,6 @@ void main() {
 
   test('🚨many small windows through ONE reader decode their block ONCE — '
       'PDFium reads a few hundred bytes at a time', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, entry: _, :blocks, :index) = written(source);
 
@@ -171,10 +147,6 @@ void main() {
   });
 
   test('a reader reads across the file, and back', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     final reader = framed.openWindowReader();
@@ -216,10 +188,6 @@ void main() {
   });
 
   test('a truncated entry says so rather than returning short data', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final (framed: _, :entry, blocks: _, index: _) = written(
       sourceOf(300 * 1024),
     );
@@ -235,10 +203,6 @@ void main() {
   });
 
   test('🚨an entry written at ANOTHER block size still windows correctly', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     // 4MB is what this app wrote until the decompression measurement moved
     // [mediaBlockBytes] to 512KB, and those entries live in .anicel files
     // that are already on people's disks. The reader's authority is the
@@ -270,10 +234,6 @@ void main() {
 
   test('incompressible bytes are stored, so a window into them never comes '
       'here at all', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final random = Random(4);
     final noise = Uint8List.fromList(
       List<int>.generate(128 * 1024, (_) => random.nextInt(256)),

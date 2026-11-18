@@ -13,10 +13,13 @@ import '../../models/brush_preset_id.dart';
 import '../../models/brush_library_tabs.dart';
 import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
+import '../../services/brush_import_result.dart';
 import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
+import '../../services/brush_tip_thumbnails.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
+import '../../services/tvpx/tvpx_decoder.dart';
 import '../dialogs/handed_text_file.dart';
 import '../dialogs/open_file_flow.dart' show fileIsSupported;
 import 'brush_import_merge.dart';
@@ -158,10 +161,21 @@ class BrushPresetLibrary extends ChangeNotifier {
       resolveTip: _tipLibrary?.maskFor,
       nameBuiltIn: _nameInProgramLanguage,
     );
+    _hold(library);
+    await _adoptCarriedTips();
+  }
+
+  /// Takes [library] whole — read, imported into or seeded again — and asks
+  /// for the picture of each preset's tip as the list draws it
+  /// ([BrushTipThumbnails]), ahead of the list
+  /// (tip-coverage-is-a-second-r1-Q1).
+  void _hold(BrushPresetLibraryData library) {
     _groups = library.groups;
     _presets = library.presets;
+    BrushTipThumbnails.instance.want([
+      for (final preset in _presets) ?preset.settings.tipMask,
+    ]);
     _notify();
-    await _adoptCarriedTips();
   }
 
   /// Moves any tip that came in ON a preset into the tip library.
@@ -310,11 +324,24 @@ class BrushPresetLibrary extends ChangeNotifier {
     _persist();
   }
 
+  /// The built-ins, named in the program's language — what
+  /// [resetToDefaults] re-seeds and [atDefaults] compares with.
+  BrushPresetLibraryData get _builtIns => (
+    groups: namedDefaultBrushGroups(_nameInProgramLanguage),
+    presets: namedDefaultBrushPresets(_nameInProgramLanguage),
+  );
+
+  /// Whether the library is the built-ins as they are seeded — so
+  /// [resetToDefaults] would change nothing of it.
+  bool get atDefaults {
+    final builtIns = _builtIns;
+    return listEquals(_groups, builtIns.groups) &&
+        listEquals(_presets, builtIns.presets);
+  }
+
   /// Throws the whole library away and re-seeds the built-ins.
   void resetToDefaults() {
-    _groups = namedDefaultBrushGroups(_nameInProgramLanguage);
-    _presets = namedDefaultBrushPresets(_nameInProgramLanguage);
-    _notify();
+    _hold(_builtIns);
     _persist();
   }
 
@@ -474,15 +501,11 @@ class BrushPresetLibrary extends ChangeNotifier {
       if (lowerName.endsWith('.$anicelBrushExtension')) {
         imported = brushesAsHanded(decodeBrushPack(utf8.decode(pick.bytes)));
         warnings = const [];
-      } else if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
-        final result = await decodeSutBrushFile(
+      } else {
+        final result = await _brushReaderFor(lowerName)(
           pick.bytes,
           sourceName: baseName,
         );
-        imported = result.presets;
-        warnings = result.warnings;
-      } else {
-        final result = decodeAbrBrushFile(pick.bytes, sourceName: baseName);
         imported = result.presets;
         warnings = result.warnings;
       }
@@ -499,9 +522,7 @@ class BrushPresetLibrary extends ChangeNotifier {
       imported: imported,
       sourceName: baseName,
     );
-    _groups = merged.groups;
-    _presets = merged.presets;
-    _notify();
+    _hold(merged);
     _persist();
     // The pack's tips become library tips in their own right, so they can be
     // put on any brush and survive the preset they arrived with.
@@ -535,4 +556,17 @@ class BrushPresetLibrary extends ChangeNotifier {
   /// ([saveVersionedSettings]), and a failed one never reaches the editor.
   void _persist() =>
       unawaited(_fileService.save((groups: _groups, presets: _presets)));
+}
+
+/// The reader a brush file of [lowerName] is read by — every one answers
+/// the same [BrushImportResult], so the library takes them alike. Photoshop's
+/// reads what no other claims, as before there were three.
+BrushFileReader _brushReaderFor(String lowerName) {
+  if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
+    return decodeSutBrushFile;
+  }
+  if (lowerName.endsWith('.tvpx')) {
+    return decodeTvpxBrushFile;
+  }
+  return decodeAbrBrushFile;
 }

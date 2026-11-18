@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -220,30 +221,39 @@ void main() {
     final moves = <String>[];
     var parkedMoves = 0;
     final crossedUnder = <CutId>{};
+    Set<CutId> cutsUnder() {
+      final at = session.editingSession.gapGlobalFrame;
+      return at == null
+          ? const {}
+          : {
+              for (final under in session.rowSpans.trackStackContributionsAt(
+                at,
+              ))
+                under.cut.id,
+            };
+    }
+
+    var under = cutsUnder();
     for (var move = 1; move < 20; move += 1) {
       // The move that takes the canvas INTO the gap swaps its content for
       // the track stack — once, and a new content is laid out whole. What
       // is measured is every move the stack was already showing.
       final parked = find.byType(CanvasTrackStackView).evaluate().isNotEmpty;
       await gesture.moveBy(Offset(step, 0));
-      if (!parked) {
+      final crossed = !setEquals(under, under = cutsUnder());
+      crossedUnder.addAll(under);
+      if (!parked || crossed) {
         // ⚠️A whole frame for a move not measured: the swap mounts new
         // repaint boundaries, and a frame stopped after its layout leaves
         // them queued with no layer — every later paint then stops at them
         // (a framework assertion), and each move after looks like a stray.
+        // So does a cut's screen leaving the stack under one.
         await tester.pump(const Duration(milliseconds: 16));
         continue;
       }
       await tester.pump(const Duration(milliseconds: 16), EnginePhase.layout);
       final now = strays();
       parkedMoves += 1;
-      final at = session.editingSession.gapGlobalFrame;
-      if (at != null) {
-        crossedUnder.addAll([
-          for (final under in session.rowSpans.trackStackContributionsAt(at))
-            under.cut.id,
-        ]);
-      }
       if (now.isNotEmpty) {
         moves.add('move $move:\n${now.join('\n')}');
       }

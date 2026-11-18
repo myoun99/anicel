@@ -17,6 +17,7 @@ import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
+import 'package:anicel/src/services/brush_import_result.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
@@ -43,7 +44,7 @@ void main() {
 
   /// What [result] says of anything but its previews: the fixture's
   /// materials hold a preview alone, and each says so.
-  List<String> noted(SutImportResult result) => [
+  List<String> noted(BrushImportResult result) => [
     for (final warning in result.warnings)
       if (!warning.endsWith('imported from its preview.')) warning,
   ];
@@ -1682,7 +1683,7 @@ void main() {
   });
 
   group('紙質適用方法', () {
-    Future<SutImportResult> papered(int? mode, {bool paper = true}) async {
+    Future<BrushImportResult> papered(int? mode, {bool paper = true}) async {
       final path = await buildFixture(
         tipPng: await blackPng(4, 4),
         texturePng: paper ? await blackPng(8, 8) : null,
@@ -1694,7 +1695,7 @@ void main() {
       );
     }
 
-    BrushTextureMode modeOf(SutImportResult result) =>
+    BrushTextureMode modeOf(BrushImportResult result) =>
         result.presets.first.settings.textureMode;
 
     test('乗算 and 高さ come in as themselves and say nothing', () async {

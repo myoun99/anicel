@@ -18,6 +18,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/services/persistence/thaw_in_worker.dart'
+    show celThawTurns;
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
@@ -35,7 +37,15 @@ void main() {
   setUp(() => debugWorkersRunHere = false);
   tearDown(() => debugWorkersRunHere = true);
 
-  const canvasSize = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
+  const bigger = CanvasSize(
+    width: 4 * defaultCelTileSize,
+    height: 4 * defaultCelTileSize,
+  );
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -49,16 +59,16 @@ void main() {
   /// the other's block reads wrong.
   BitmapSurface inkSurface({int seed = 1, CanvasSize canvas = canvasSize}) {
     BitmapTile tile(int salt) {
-      final pixels = Uint8List(8 * 8 * 4);
+      final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
       for (var i = 0; i < pixels.length; i += 1) {
         pixels[i] = (i * seed * 31 + salt) & 0xFF;
       }
-      return BitmapTile(size: 8, pixels: pixels);
+      return BitmapTile(size: defaultCelTileSize, pixels: pixels);
     }
 
     return BitmapSurface(
       canvasSize: canvas,
-      tileSize: 8,
+      tileSize: defaultCelTileSize,
       tiles: {
         TileCoord(x: 0, y: 0): tile(3),
         TileCoord(x: 1, y: 1): tile(7),
@@ -152,10 +162,7 @@ void main() {
         await answeredAtOnce([
           store.thawAhead(hotKey, canvasSize: canvasSize),
           store.thawAhead(key('empty'), canvasSize: canvasSize),
-          store.thawAhead(
-            other,
-            canvasSize: const CanvasSize(width: 32, height: 32),
-          ),
+          store.thawAhead(other, canvasSize: bigger),
         ]),
         isTrue,
         reason: 'none of them stood in line',
@@ -194,7 +201,6 @@ void main() {
 
     await whileNoWorkerIsFree(() async {
       thaw = store.thawAhead(k, canvasSize: canvasSize);
-      const bigger = CanvasSize(width: 32, height: 32);
       parkCold(store, {k: inkSurface(canvas: bigger)});
     });
     await thaw;
@@ -298,15 +304,12 @@ void main() {
     expect(pixelsOf(store.bakedSurfaceOrNull(k)!), pixelsOf(again));
   });
 
-  test('🚨bytes that will not decode: the thaw completes and throws '
-      'nothing, and the cel stays parked — its only copy', () async {
-    final store = BrushFrameStore();
-    final k = key('a');
+  /// [k] parked as bytes no read decodes.
+  BrushFrameStore storeOfBrokenBytes(BrushFrameKey k) {
     final bytes = Uint8List.fromList(coldBlobOf(k, inkSurface()).bytes);
     for (var i = bytes.length - 16; i < bytes.length; i += 1) {
       bytes[i] ^= 0xFF;
     }
-    store.restoreBaked({k: AnicelCelBlob(bytes)});
     expect(
       () => BrushFrameStore()
         ..restoreBaked({k: AnicelCelBlob(bytes)})
@@ -314,9 +317,134 @@ void main() {
       throwsA(anything),
       reason: 'premise: the read here refuses them too',
     );
+    return BrushFrameStore()..restoreBaked({k: AnicelCelBlob(bytes)});
+  }
+
+  test('🚨bytes that will not decode: the thaw completes and throws '
+      'nothing, and the cel stays parked — its only copy', () async {
+    final k = key('a');
+    final store = storeOfBrokenBytes(k);
 
     await store.thawAhead(k, canvasSize: canvasSize);
 
     expect(store.isCelCold(k), isTrue);
+  });
+
+  group('a look made ahead ([BrushFrameStore.lookAhead]) — card '
+      'one-cut-of-fnk02-holds-nine-gigabytes, Q1', () {
+    test('🚨a parked cel looked at ahead is handed over, and the store is '
+        'as it stood — parked, nothing hot, no picture seeded', () async {
+      final store = BrushFrameStore();
+      final k = key('a');
+      final source = inkSurface();
+      parkCold(store, {k: source});
+
+      final looked = await store.lookAhead(k, canvasSize: canvasSize);
+
+      expect(pixelsOf(looked!), pixelsOf(source));
+      expect(store.isCelCold(k), isTrue);
+      expect(store.hotBakedSurfaceOrNull(k), isNull);
+      expect(store.hotBakedBytes, 0);
+      expect(store.displayCacheOrNull(k), isNull);
+    });
+
+    test('🚨a cel in the saved file is thawed on a worker — while none is '
+        'free the look waits, the cel not read here', () async {
+      final store = BrushFrameStore();
+      final k = key('f');
+      final source = inkSurface(seed: 5);
+      keepInAFile(store, {k: source});
+      late final Future<BitmapSurface?> look;
+
+      await whileNoWorkerIsFree(() async {
+        look = store.lookAhead(k, canvasSize: canvasSize);
+        expect(
+          await answeredAtOnce([look]),
+          isFalse,
+          reason: 'it waits for a worker\'s turn',
+        );
+      });
+
+      expect(pixelsOf((await look)!), pixelsOf(source));
+      expect(store.isCelFileBacked(k), isTrue);
+      expect(store.hotBakedBytes, 0);
+    });
+
+    test('nothing to thaw answers at once, as a look reads it — a hot cel '
+        'as it is, an empty one, and one kept at another size', () async {
+      final store = BrushFrameStore();
+      final other = key('other');
+      // A restore swaps the WHOLE store, so it goes first.
+      parkCold(store, {other: inkSurface()});
+      final hotKey = key('hot');
+      store.storeBakedSurface(hotKey, inkSurface());
+      final hot = store.hotBakedSurfaceOrNull(hotKey);
+
+      await whileNoWorkerIsFree(() async {
+        final looks = [
+          store.lookAhead(hotKey, canvasSize: canvasSize),
+          store.lookAhead(key('empty'), canvasSize: canvasSize),
+          store.lookAhead(other, canvasSize: bigger),
+        ];
+        expect(
+          await answeredAtOnce(looks),
+          isTrue,
+          reason: 'none of them stood in line',
+        );
+        expect(await looks[0], same(hot));
+        expect(await looks[1], isNull);
+        expect(await looks[2], isNull);
+      });
+
+      expect(store.isCelCold(other), isTrue, reason: 'still parked');
+    });
+
+    test('🚨a cel drawn on while it is looked at ahead: the look is of the '
+        'drawing, which stays', () async {
+      final store = BrushFrameStore();
+      final k = key('a');
+      parkCold(store, {k: inkSurface()});
+
+      final look = store.lookAhead(k, canvasSize: canvasSize);
+      final drawn = inkSurface(seed: 9);
+      store.storeBakedSurface(k, drawn);
+
+      expect(pixelsOf((await look)!), pixelsOf(drawn));
+      expect(store.bakedSurfaceOrNull(k), same(drawn));
+    });
+
+    test('🚨a cel a use is thawing ahead is thawed once — a look of it '
+        'waits for that thaw and reads the cel hot', () async {
+      final store = BrushFrameStore();
+      final k = key('a');
+      parkCold(store, {k: inkSurface()});
+
+      final thaw = store.thawAhead(k, canvasSize: canvasSize);
+      final look = store.lookAhead(k, canvasSize: canvasSize);
+
+      expect(
+        celThawTurns.running,
+        1,
+        reason: 'one worker thaws it (⚠️a machine of one worker says so '
+            'either way)',
+      );
+      await thaw;
+      final looked = await look;
+      expect(looked, isNotNull);
+      expect(looked, same(store.hotBakedSurfaceOrNull(k)));
+    });
+
+    test('🚨bytes that will not decode: the look throws what the read here '
+        'throws, and the cel stays parked — its only copy', () async {
+      final k = key('a');
+      final store = storeOfBrokenBytes(k);
+
+      await expectLater(
+        store.lookAhead(k, canvasSize: canvasSize),
+        throwsA(anything),
+      );
+
+      expect(store.isCelCold(k), isTrue);
+    });
   });
 }

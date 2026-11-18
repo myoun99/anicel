@@ -77,16 +77,25 @@ class _LayerGridRailRows {
   /// The memo gate for the rail's rows (UI-R7 #1): a controls row whose
   /// facts match hands back the CACHED widget instance — a zoom step (or any
   /// rebuild that didn't touch the row) skips its whole Material subtree.
-  /// Lane label rows stay unmemoized: they subscribe to the frame cursor
-  /// themselves and their lane models churn identity per build.
+  /// A lane's row too, kept while its lane is the same object
+  /// ([TimelineLaneControlsRow.facts] has why it stood unkept).
   ///
   /// The memo is the x-sheet header's too ([KeptLayerControlsRows]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
   Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
-    if (row.isLane) {
-      return _state._rowDrags.draggable(row, _laneRow(row));
-    }
     final grid = _controlsRowGrid;
+    if (row.isLane) {
+      return _state._railRowMemo.keepLane(
+        berths,
+        row,
+        (
+          committed: _laneControls(row, row.layer),
+          dragPreview: grid.hooks.dragPreview,
+          drag: _state._rowDrags.inputsFor(row),
+        ),
+        () => _laneRow(row),
+      );
+    }
     final fold = _groupFoldFor(row);
     final facts = layerControlsRowFacts(
       row,
@@ -168,45 +177,50 @@ class _LayerGridRailRows {
       dragPreview: _state.widget.hooks.dragPreview,
       layer: row.layer,
       slice: (layer) => laneRowSlice(layer, row.lane!.laneId),
-      rowBuilder: (context, layer) => TimelineLaneControlsRow(
-        layer: layer,
-        lane: previewedLaneRow(
-          row: row,
-          previewLayer: layer,
-          lanesForLayer: _state.widget.hooks.lanesOf,
-        ),
-        metrics: _state._metrics,
-        frameCursor: _state.widget.hooks.frameCursor,
-        onSelectFrame: _state.widget.hooks.onSelectFrame,
-        laneEdit: _state.widget.hooks.laneEdit,
-        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-        onToggleLaneGroupEnabled:
-            _state.widget.hooks.onToggleLaneGroupEnabled,
-        onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
-        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
-        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-        currentRowHooks: _state.widget.hooks.currentRowHooks,
-        leadingInset: layerSectionLabelSlotWidth,
-        // The SAME answer the layer row reads, so a group
-        // header's fx lands in the layer rows' fx column (R5 #7).
-        optionalColumns: _state.widget.hooks.optionalRailColumns,
-        laneGraphs: _state.widget.hooks.laneGraphs,
-        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
-        seat: row.graph,
-        height: timelineDisplayRowExtent(row, _state._metrics),
-        folded: row.folded,
-      ),
+      rowBuilder: (context, layer) => _laneControls(row, layer),
     );
   }
+
+  /// [row]'s controls as [layer] shows it: the committed layer's are what
+  /// the row is kept by, a preview's what the gate builds mid-drag.
+  TimelineLaneControlsRow _laneControls(
+    TimelineDisplayRow row,
+    Layer layer,
+  ) => TimelineLaneControlsRow(
+    layer: layer,
+    lane: previewedLaneRow(
+      row: row,
+      previewLayer: layer,
+      lanesForLayer: _state.widget.hooks.lanesOf,
+    ),
+    metrics: _state._metrics,
+    frameCursor: _state.widget.hooks.frameCursor,
+    onSelectFrame: _state.widget.hooks.onSelectFrame,
+    laneEdit: _state.widget.hooks.laneEdit,
+    onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+    onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
+    onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+    onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
+    onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    laneSpan: _state.widget.hooks.laneRange?.selection,
+    currentRowHooks: _state.widget.hooks.currentRowHooks,
+    leadingInset: layerSectionLabelSlotWidth,
+    // The SAME answer the layer row reads, so a group
+    // header's fx lands in the layer rows' fx column (R5 #7).
+    optionalColumns: _state.widget.hooks.optionalRailColumns,
+    laneGraphs: _state.widget.hooks.laneGraphs,
+    laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+    seat: row.graph,
+    height: timelineDisplayRowExtent(row, _state._metrics),
+    folded: row.folded,
+  );
 
   /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
       timelineGroupFoldFor(
         row: row,
         layers: _state.widget.layers,
-        collapsedAttachBaseIds: _state.widget.hooks.collapsedAttachBaseIds,
-        onToggleLayerCollapsed: _state.widget.hooks.onToggleLayerCollapsed,
-        onToggleAttachGroup: _state.widget.hooks.onToggleAttachGroup,
+        onToggle: _state.widget.hooks.onToggleGroupFold,
       );
 
   /// The rail column: every layer row is its controls, inside the window
@@ -241,70 +255,70 @@ class _LayerGridRailRows {
             axis: Axis.vertical,
             columns: swipeColumns,
             rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window.now),
-            child: Stack(
-              children: [
-                RailRowLines(
-                  drag: _state.widget.hooks.rowDragHooks?.drag,
-                  child: window.laid(
-                    (window) => _windowedRailRows(rows, window),
-                  ),
-                ),
-                // The section ZONES over the
-                // rows' reserved band slots
-                // (UI-R7 #2): the old gutter
-                // bracket inside the rows.
-                // Full rows, not the window
-                // (A3) — labels anchor to the
-                // section's true extent.
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  child: _state._sectionBandOverlay(rows, window.edges),
-                ),
-                // T1's one band
-                // per contiguous
-                // run — but only
-                // over the LAYER
-                // area (A2
-                // 2026-08-17
-                // reversed T1's
-                // full-width
-                // call): the
-                // section zone
-                // is the
-                // sections' own
-                // plate, not
-                // part of the
-                // selection.
-                if (_state.widget.hooks.rowSelection case final selection?)
+            // The lines a carry draws over ALL of the rail, the selection's
+            // bands too ([RailRowLines]).
+            child: RailRowLines(
+              drag: _state.widget.hooks.rowDragHooks?.drag,
+              child: Stack(
+                children: [
+                  window.laid((window) => _windowedRailRows(rows, window)),
+                  // The section ZONES over the
+                  // rows' reserved band slots
+                  // (UI-R7 #2): the old gutter
+                  // bracket inside the rows.
+                  // Full rows, not the window
+                  // (A3) — labels anchor to the
+                  // section's true extent.
                   Positioned(
-                    left: layerSectionLabelSlotWidth,
+                    left: 0,
                     top: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: window.laid(
-                      (window) => TimelineRowSelectionBands(
-                        selection: selection,
-                        rows: [for (final row in window.rows) row.address],
-                        edges: window.edges,
-                        firstRow: window.range.startIndex,
-                        crossExtent:
-                            _state._metrics.layerControlsWidth -
-                            layerSectionLabelSlotWidth,
+                    child: _state._sectionBandOverlay(rows, window.edges),
+                  ),
+                  // T1's one band
+                  // per contiguous
+                  // run — but only
+                  // over the LAYER
+                  // area (A2
+                  // 2026-08-17
+                  // reversed T1's
+                  // full-width
+                  // call): the
+                  // section zone
+                  // is the
+                  // sections' own
+                  // plate, not
+                  // part of the
+                  // selection.
+                  if (_state.widget.hooks.rowSelection case final selection?)
+                    Positioned(
+                      left: layerSectionLabelSlotWidth,
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: window.laid(
+                        (window) => TimelineRowSelectionBands(
+                          selection: selection,
+                          rows: [for (final row in window.rows) row.address],
+                          edges: window.edges,
+                          firstRow: window.range.startIndex,
+                          crossExtent:
+                              _state._metrics.layerControlsWidth -
+                              layerSectionLabelSlotWidth,
+                        ),
                       ),
                     ),
-                  ),
-                // The layer area as a place entrance, on top so a file let
-                // go anywhere on the rail finds it — an empty box the rest
-                // of the time, so every row keeps its own pointer.
-                if (placementEntrance(
-                      key: const ValueKey<String>(
-                        'timeline-layer-placement-entrance',
-                      ),
-                    )
-                    case final entrance?)
-                  Positioned.fill(child: entrance),
-              ],
+                  // The layer area as a place entrance, on top so a file let
+                  // go anywhere on the rail finds it — an empty box the rest
+                  // of the time, so every row keeps its own pointer.
+                  if (placementEntrance(
+                        key: const ValueKey<String>(
+                          'timeline-layer-placement-entrance',
+                        ),
+                      )
+                      case final entrance?)
+                    Positioned.fill(child: entrance),
+                ],
+              ),
             ),
           ),
         ),

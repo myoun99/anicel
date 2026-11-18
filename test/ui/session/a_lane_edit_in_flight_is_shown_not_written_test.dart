@@ -32,6 +32,8 @@ import '../../helpers/placement_reading.dart';
 LaneVerbs laneVerbsOf(EditorSessionManager session) => session.laneVerbs;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   EditorSessionManager open() {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),

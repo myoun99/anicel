@@ -1,8 +1,9 @@
 //! The colour key walk on a real GPU, checked against what C's walk
-//! (`qa_key_rgba`) gives by hand over tables made for each case — never
-//! against a CPU copy of the walk (`kernels/mod.rs` has why). The tables
-//! are the app's to make; these are made to put one question each. Its
-//! case runner runs the colour matrix's cases too (`matrix_tests.rs`).
+//! (`qa_key_rgba`, until ABI 77) gave by hand over tables made for each
+//! case — never against a CPU copy of the walk (`kernels/mod.rs` has
+//! why). The tables are the app's to make; these are made to put one
+//! question each. Its case runner runs the colour matrix's cases too
+//! (`matrix_tests.rs`).
 
 use std::sync::OnceLock;
 

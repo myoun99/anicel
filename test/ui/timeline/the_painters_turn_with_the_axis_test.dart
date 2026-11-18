@@ -44,6 +44,22 @@ class _CanvasSpy implements Canvas {
   final paths = <Path>[];
   final pathInks = <int>[];
 
+  /// What a fill was cut to, and the shapes filled under each cut
+  /// ([SuperellipseCut.drawRSuperellipseCut]).
+  final cuts = <Rect>[];
+  final shapes = <ui.RSuperellipse>[];
+
+  @override
+  void clipRect(
+    Rect rect, {
+    ui.ClipOp clipOp = ui.ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => cuts.add(rect);
+
+  @override
+  void drawRSuperellipse(ui.RSuperellipse rsuperellipse, Paint paint) =>
+      shapes.add(rsuperellipse);
+
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) =>
       lines.add((from: p1, to: p2));
@@ -657,13 +673,18 @@ void main() {
     testWidgets('horizontal: the fill grows rightward from the left, and it '
         'is the ONLY mark of the value', (tester) async {
       final spy = await track(tester, Axis.horizontal, const Size(100, 20));
-      expect(spy.rects, [const Rect.fromLTWH(0, 0, 50, 20)]);
+      // The track's shape, cut where the fill lies (Q10).
+      expect(spy.cuts, [const Rect.fromLTWH(0, 0, 50, 20)]);
+      expect(spy.shapes, hasLength(1));
+      expect(spy.rects, isEmpty);
     });
 
     testWidgets('vertical: the fill grows upward from the bottom, and it is '
         'the ONLY mark of the value', (tester) async {
       final spy = await track(tester, Axis.vertical, const Size(20, 100));
-      expect(spy.rects, [const Rect.fromLTWH(0, 50, 20, 50)]);
+      expect(spy.cuts, [const Rect.fromLTWH(0, 50, 20, 50)]);
+      expect(spy.shapes, hasLength(1));
+      expect(spy.rects, isEmpty);
     });
   });
 

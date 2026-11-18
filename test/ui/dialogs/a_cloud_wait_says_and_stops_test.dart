@@ -1,6 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/services/persistence/folder_grant.dart'
-    show FileArrival;
 import 'package:anicel/src/ui/dialogs/cloud_wait.dart';
 import 'package:anicel/src/ui/text/cloud_wait_line.dart';
 
@@ -11,10 +9,11 @@ void main() {
     final wait = CloudWait();
     addTearDown(wait.dispose);
     const waited = Duration(seconds: 3);
+    const quiet = Duration(seconds: 1);
 
-    wait.report(waited, FileArrival.partway);
+    wait.report(waited, quiet);
 
-    expect(wait.status.value, cloudWaitLine(waited, FileArrival.partway));
+    expect(wait.status.value, cloudWaitLine(waited, quiet));
     expect(wait.waiting.value, isTrue);
   });
 
@@ -34,7 +33,7 @@ void main() {
     addTearDown(wait.dispose);
     wait
       ..begin()
-      ..report(const Duration(seconds: 12), FileArrival.nothing)
+      ..report(const Duration(seconds: 12), const Duration(seconds: 12))
       ..cancel()
       ..ended();
 

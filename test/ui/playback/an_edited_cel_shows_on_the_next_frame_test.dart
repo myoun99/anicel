@@ -18,7 +18,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart' show StackRun;
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -41,9 +41,10 @@ import '../../helpers/settle_async.dart';
 /// edit kept on a cold miss — until a frame's one picture was all a screen
 /// drew (one-picture-per-frame ②-5b-1).
 void main() {
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 16);
-  const viewSize = Size(32, 16);
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: tileSize);
+  const viewSize = Size(2.0 * tileSize, 1.0 * tileSize);
   const under = Color(0xFF000000);
   const red = [0xFF, 0x00, 0x00, 0xFF];
   const blue = [0x00, 0x00, 0xFF, 0xFF];
@@ -105,12 +106,12 @@ void main() {
   List<int> pixelAt(Shot shot, int x, int y) =>
       shot.rgba.sublist((y * shot.width + x) * 4, (y * shot.width + x) * 4 + 4);
 
-  ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
+  ({BrushFrameStore cels, StackRun run, EngineFramePictureStore<FramePictureKey> store})
   standing() {
     final cels = BrushFrameStore()..storeBakedSurface(key, filled(red));
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final run = runOver(
       images,

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'brush_settings.dart';
 import 'stroke_id.dart';
 import 'stroke_point.dart';
@@ -8,7 +9,7 @@ class Stroke {
     required this.id,
     required List<StrokePoint> points,
     required this.brushSettings,
-  }) : points = List.unmodifiable(points);
+  }) : points = frozenList(points);
 
   final StrokeId id;
   final List<StrokePoint> points;

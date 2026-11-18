@@ -8,12 +8,8 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// H39 (유저 2026-09-11): 「팁 이미지인 브러시는 aa off시 팁 이미지 그대로
 /// 되는거 문제없는데, 그게아닌 원형인것들? G펜이나 뭐 펜 그룹에 있는것들
@@ -24,17 +20,8 @@ import '../helpers/native_engine_path.dart';
 /// the reference oracle. A pen stroke is a pressure taper — dabs from a few
 /// pixels down to under one — resolved through the tip-stamp cache the way
 /// the canvas resolves every dab (`brush_edit_stroke.dart`) and landed by the
-/// pen-up commit, through the Dart kernel and, when the engine is built, the
-/// C one.
+/// pen-up commit, through the Dart tile kernel.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
-
   /// The roster's G-Pen nib (`builtin-g-pen`): size 10 under a curve that
   /// snaps open — (0, 0.08) (0.6, 0.4) (1, 1).
   double gPenSize(double pressure) {
@@ -102,42 +89,22 @@ void main() {
     return (partly: partly, solid: solid);
   }
 
-  final routes = <({String name, bool native})>[
-    (name: 'Dart kernel', native: false),
-    if (libraryPath != null) (name: 'C kernel', native: true),
-  ];
-
-  for (final route in routes) {
-    void useRoute() {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = !route.native;
-      debugQaEngineLibraryPathOverride = route.native ? libraryPath : null;
-      expect(
-        QaNativeEngine.instance != null,
-        route.native,
-        reason: 'the route must be the one it says it is',
+  for (final hardness in [1.0, 0.85]) {
+    test('🚨AA none: a pen stroke lays NO partly covered pixel — '
+        'hardness $hardness', () {
+      final hard = coverageOf(
+        penStroke(hardness: hardness, antiAlias: BrushAntiAlias.none),
       );
-    }
+      expect(hard.solid, greaterThan(200), reason: 'premise: it drew');
+      expect(hard.partly, 0, reason: '「진짜 안티앨리어싱 완전없었으면」');
+    });
 
-    for (final hardness in [1.0, 0.85]) {
-      test('🚨AA none: a pen stroke lays NO partly covered pixel — '
-          '${route.name}, hardness $hardness', () {
-        useRoute();
-        final hard = coverageOf(
-          penStroke(hardness: hardness, antiAlias: BrushAntiAlias.none),
-        );
-        expect(hard.solid, greaterThan(200), reason: 'premise: it drew');
-        expect(hard.partly, 0, reason: '「진짜 안티앨리어싱 완전없었으면」');
-      });
-
-      test('premise: the counter sees the soft edge AA 3 lays — '
-          '${route.name}, hardness $hardness', () {
-        useRoute();
-        final soft = coverageOf(
-          penStroke(hardness: hardness, antiAlias: BrushAntiAlias.high),
-        );
-        expect(soft.partly, greaterThan(0));
-      });
-    }
+    test('premise: the counter sees the soft edge AA 3 lays — '
+        'hardness $hardness', () {
+      final soft = coverageOf(
+        penStroke(hardness: hardness, antiAlias: BrushAntiAlias.high),
+      );
+      expect(soft.partly, greaterThan(0));
+    });
   }
 }

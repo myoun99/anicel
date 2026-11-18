@@ -1,27 +1,14 @@
-//! The Rust decoder against the engine's C (native/oracle): frames the C
-//! compresses, decoded by both — every answer and every byte written held
-//! to the C's, on good frames and on damaged ones.
-
-use oracle::export;
+//! The Rust decoder held to what the C engine's decoder answered: the
+//! frames the C wrote that outlive it decoded — every answer and every
+//! byte written held to the ledger, on good frames and on damaged ones.
+//! ↩️Until the connection round deleted the C (connection-round-checklist
+//! H, 2026-11-08) both decoders were asked side by side (native/oracle),
+//! on the C's every frame; what outlives it was kept before it went
+//! (connection-round-checklist A, 관제 2026-11-07).
 
 use crate::{frame_header, sequences, xxhash};
 
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
 type Decompress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64) -> i64;
-type Size = unsafe extern "C" fn(*const u8, i64) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
-
-/// The C's frame of `data` at `level`.
-pub(crate) fn compressed(data: &[u8], level: i32) -> Vec<u8> {
-    // SAFETY: qa_compress.c's declarations.
-    let (bound, compress) = unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
-    let mut frame = vec![0u8; bound(data.len().max(1) as i64) as usize];
-    // SAFETY: both buffers hold the sizes passed.
-    let written = unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, data.as_ptr(), data.len() as i64, level) };
-    assert!(written > 0, "the C compresses {} bytes at level {level}", data.len());
-    frame.truncate(written as usize);
-    frame
-}
 
 /// What a decoder answers for `frame` into `capacity` bytes, and the bytes
 /// it says it wrote.
@@ -33,20 +20,72 @@ fn decoded(decompress: Decompress, frame: &[u8], capacity: usize) -> (i64, Vec<u
     (answer, out)
 }
 
-fn c_decompress() -> Decompress {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_decompress(uint8_t*, int64_t, const uint8_t*, int64_t)`.
-    unsafe { export::<Decompress>("qa_zstd_decompress") }
+/// A test's answers in a row, fingerprinted for the ledger: each the
+/// number answered, little-endian, then the bytes written — so the C's
+/// answers stay held once the C is deleted (connection-round-checklist A,
+/// 관제 2026-11-07).
+#[derive(Default)]
+pub(crate) struct Answers(ledger::Running);
+
+impl Answers {
+    pub(crate) fn add(&mut self, answer: i64, written: &[u8]) {
+        self.0.add(&answer.to_le_bytes());
+        self.0.add(written);
+    }
+
+    pub(crate) fn pinned(self, id: &str) {
+        self.0.assert_pinned(id);
+    }
 }
 
-/// Both decoders on `frame` into `capacity`: the Rust's answer is the C's.
-fn same_answer(frame: &[u8], capacity: usize, what: &str) -> i64 {
-    let theirs = decoded(c_decompress(), frame, capacity);
+// The C's frames below level 9 that outlive it: each of at most
+// 10 KiB that a test here decodes — the C's compressor frozen
+// for small inputs before it went (connection-round-checklist A ②,
+// 관제 2026-11-07). Level 9 needs none: it is the Rust compressor's own.
+// A frame of the C's past 10 KiB went with it, and its case with it.
+// Records, little-endian: the level (i32), the input's length (u64) and
+// its fingerprint (8 hex digits), the frame's length (u32), the frame.
+const C_FRAMES: &[u8] = include_bytes!("../fixtures/c_frames.bin");
+
+/// The frame of `data` at `level` that outlives the C, if there is one.
+pub(crate) fn kept_frame(data: &[u8], level: i32) -> Option<Vec<u8>> {
+    if level == 9 {
+        let mut frame = vec![0u8; crate::qa_zstd_compress_bound(data.len() as i64) as usize];
+        let written = crate::encode::compress(&mut frame, data).expect("the Rust compresses it");
+        frame.truncate(written);
+        return Some(frame);
+    }
+    let (size, fingerprint) = (data.len() as u64, ledger::fingerprint(data));
+    let mut at = 0;
+    while at < C_FRAMES.len() {
+        let field = |from: usize, to: usize| &C_FRAMES[at + from..at + to];
+        let length = u32::from_le_bytes(field(20, 24).try_into().unwrap()) as usize;
+        let frame = field(24, 24 + length);
+        if field(0, 4) == level.to_le_bytes() && field(4, 12) == size.to_le_bytes() && field(12, 20) == fingerprint.as_bytes()
+        {
+            return Some(frame.to_vec());
+        }
+        at += 24 + length;
+    }
+    None
+}
+
+/// The frame of `data` at `level` that outlives the C, which a case says
+/// it decodes.
+fn kept(data: &[u8], level: i32, what: &str) -> Vec<u8> {
+    kept_frame(data, level).unwrap_or_else(|| panic!("{what}: c_frames.bin keeps the C's frame at level {level}"))
+}
+
+/// The decoder on `frame` into `capacity`: its answer — which goes into
+/// `answers`, where there are any, with the bytes it wrote.
+fn answer(answers: Option<&mut Answers>, frame: &[u8], capacity: usize) -> i64 {
     let ours = decoded(crate::qa_zstd_decompress, frame, capacity);
-    assert!(ours.0 == theirs.0, "{what}: the Rust answers {} where the C answers {}", ours.0, theirs.0);
-    let first = ours.1.iter().zip(&theirs.1).position(|(a, b)| a != b);
-    assert!(first.is_none(), "{what}: {} bytes written, first apart at {first:?}", ours.0);
+    if let Some(answers) = answers {
+        answers.add(ours.0, &ours.1);
+    }
     ours.0
 }
+
 
 /// xorshift64: the same "random" bytes on every machine.
 pub(crate) struct Noise(pub(crate) u64);
@@ -123,23 +162,24 @@ const SIZES: [usize; 21] = [
 ];
 
 // Every kind of input at every size the block and literal limits turn on,
-// at the app's level and around it: the Rust writes what the C writes,
-// into an exact buffer, one with room to spare, one with room for its
-// literals behind the block, and one a byte short.
+// at the app's level and around it — each frame that outlives the C — into
+// an exact buffer, one with room to spare, one with room for its literals
+// behind the block, and one a byte short: the input back, or nothing.
 #[test]
 fn every_frame_the_c_makes_decodes_to_the_c_s_bytes() {
     for &size in &SIZES {
         for (kind, data) in kinds(size, size as u64) {
             let levels: &[i32] = if size <= 131_073 { &[-5, 1, 3, 9, 19] } else { &[1, 9] };
             for &level in levels {
-                let frame = compressed(&data, level);
+                let Some(frame) = kept_frame(&data, level) else { continue };
                 let what = format!("{kind} × {size} at level {level}");
-                let answer = same_answer(&frame, size, &what);
-                assert_eq!(answer, size as i64, "{what}: decoded whole");
-                assert_eq!(decoded(crate::qa_zstd_decompress, &frame, size).1, data, "{what}: the input back");
-                same_answer(&frame, size + 100, &format!("{what}, room to spare"));
-                same_answer(&frame, size + 300_000, &format!("{what}, literals behind the block"));
-                same_answer(&frame, size - 1, &format!("{what}, a byte short"));
+                for (capacity, room) in [(size, ""), (size + 100, ", room to spare"), (size + 300_000, ", literals behind the block")] {
+                    let what = format!("{what}{room}");
+                    let (written, back) = decoded(crate::qa_zstd_decompress, &frame, capacity);
+                    assert_eq!(written, size as i64, "{what}: decoded whole");
+                    assert_eq!(back, data, "{what}: the input back");
+                }
+                assert_eq!(answer(None, &frame, size - 1), 0, "{what}, a byte short: nothing");
             }
         }
     }
@@ -154,21 +194,24 @@ fn with(frame: &[u8], at: usize, value: u8) -> Vec<u8> {
 
 // Damage a frame as a disk or a cut-off save does — a bit flipped, a byte
 // replaced, the end cut, a byte inserted — and the Rust refuses what the C
-// refuses and writes what the C writes from what it accepts: no checksum
+// refused and writes what the C wrote from what it accepts: no checksum
 // guards a frame the app writes, so a damaged one can decode to other
-// bytes, and those must be the C's.
+// bytes, and those must be the C's (the ledger's). Each frame is damaged by
+// noise of its own: one frame gone with the C leaves the others' damage as
+// it was.
 #[test]
 fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
-    let mut noise = Noise(0x5EED);
+    let mut answers = Answers::default();
     let mut refused = 0;
     let mut runs = 0;
     for &size in &[33, 1000, 4095, 65537, 131073, 300_000] {
-        for (kind, data) in kinds(size, size as u64 ^ 0xC0FFEE) {
+        for (k, (_, data)) in kinds(size, size as u64 ^ 0xC0FFEE).into_iter().enumerate() {
             for level in [1, 9, 19] {
                 if level == 19 && size > 131_073 {
                     continue;
                 }
-                let frame = compressed(&data, level);
+                let Some(frame) = kept_frame(&data, level) else { continue };
+                let mut noise = Noise(0x5EED ^ (size as u64) << 16 ^ (level as u64) << 8 ^ k as u64);
                 for damage in 0..60 {
                     let at = noise.below(frame.len());
                     let damaged = match damage % 4 {
@@ -181,9 +224,8 @@ fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
                             longer
                         }
                     };
-                    let what = format!("{kind} × {size} at level {level}, damage {damage} at {at}");
                     for capacity in [size, size + 300_000] {
-                        refused += usize::from(same_answer(&damaged, capacity, &what) == 0);
+                        refused += usize::from(answer(Some(&mut answers), &damaged, capacity) == 0);
                         runs += 1;
                     }
                 }
@@ -192,6 +234,7 @@ fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
     }
     // LIVENESS — the damage reached both outcomes.
     assert!(refused > runs / 4 && refused < runs, "{refused} of {runs} refused");
+    answers.pinned("compress/decode-damaged");
 }
 
 /// A skippable frame of `payload`, with magic variant `variant`.
@@ -206,28 +249,32 @@ fn skippable(variant: u8, payload: &[u8]) -> Vec<u8> {
 // over after them.
 #[test]
 fn frames_in_a_row_decode_as_the_c_decodes_them() {
+    let mut answers = Answers::default();
     let parts: Vec<Vec<u8>> = kinds(70_000, 7).into_iter().take(5).map(|(_, data)| data).collect();
-    let frames: Vec<Vec<u8>> = parts.iter().enumerate().map(|(k, data)| compressed(data, [1, 9, 3, 19, -5][k])).collect();
+    let frames: Vec<Vec<u8>> =
+        parts.iter().enumerate().map(|(k, data)| kept(data, [1, 9, 3, 19, -5][k], "a frame of the row")).collect();
     let total: usize = parts.iter().map(Vec::len).sum();
     let mut row = Vec::new();
     for (k, frame) in frames.iter().enumerate() {
         row.extend(skippable(k as u8, &vec![k as u8; k * 3]));
         row.extend_from_slice(frame);
     }
-    assert_eq!(same_answer(&row, total, "frames in a row"), total as i64);
+    assert_eq!(answer(Some(&mut answers), &row, total), total as i64);
     let all: Vec<u8> = parts.concat();
     assert_eq!(decoded(crate::qa_zstd_decompress, &row, total).1, all);
-    same_answer(&row, total - 1, "a byte short of the last");
+    answer(Some(&mut answers), &row, total - 1);
     for tail in [&[0u8][..], &[1, 2, 3, 4], &[0x28, 0xB5, 0x2F, 0xFD], &[0x28, 0xB5, 0x2F, 0xFD, 0x20], &[0x50, 0x2A, 0x4D, 0x18, 9, 0, 0, 0]] {
         let mut trailed = row.clone();
         trailed.extend_from_slice(tail);
-        same_answer(&trailed, total, &format!("trailed by {tail:?}"));
+        answer(Some(&mut answers), &trailed, total);
     }
-    same_answer(&skippable(15, b"alone"), 16, "a skippable frame alone");
-    same_answer(&[skippable(0, &[]), frames[0].clone()].concat(), parts[0].len(), "an empty skippable first");
+    answer(Some(&mut answers), &skippable(15, b"alone"), 16);
+    answer(Some(&mut answers), &[skippable(0, &[]), frames[0].clone()].concat(), parts[0].len());
     let mut overlong = skippable(1, b"xx");
     overlong[4] = 0xFF;
-    same_answer(&[overlong, frames[0].clone()].concat(), parts[0].len(), "a skippable frame longer than what is left");
+    let overlong = [overlong, frames[0].clone()].concat();
+    answer(Some(&mut answers), &overlong, parts[0].len());
+    answers.pinned("compress/decode-frames-in-a-row");
 }
 
 /// The blocks of a frame: where each one's body starts, its kind, and the
@@ -252,11 +299,11 @@ fn blocks(frame: &[u8]) -> Vec<(usize, usize, usize)> {
 #[test]
 fn literals_repeat_only_a_tree_already_read() {
     let data = kinds(20_000, 5).swap_remove(2).1;
-    let frame = compressed(&data, 9);
+    let frame = kept(&data, 9, "text × 20000");
     let (body, kind, _) = blocks(&frame)[0];
     assert_eq!((kind, frame[body] & 3), (2, 2), "the first block's literals are Huffman-coded");
     let repeated = with(&frame, body, frame[body] | 3);
-    assert_eq!(same_answer(&repeated, data.len(), "the first literals repeating a tree"), 0);
+    assert_eq!(answer(None, &repeated, data.len()), 0);
 }
 
 // A match far behind and long, a few literals into a block, whose offset
@@ -265,13 +312,15 @@ fn literals_repeat_only_a_tree_already_read() {
 // of the sequence.
 #[test]
 fn a_far_long_match_decodes_as_the_c_s() {
+    let mut answers = Answers::default();
     let mut noise = Noise(77);
     let mut echo: Vec<u8> = (0..(256 << 10) + 5).map(|_| noise.next() as u8).collect();
     echo.extend_from_within(50_000..50_000 + 65_536);
     for level in [1, 9, 19] {
-        let frame = compressed(&echo, level);
-        assert_eq!(same_answer(&frame, echo.len(), &format!("level {level}")), echo.len() as i64);
+        let Some(frame) = kept_frame(&echo, level) else { continue };
+        assert_eq!(answer(Some(&mut answers), &frame, echo.len()), echo.len() as i64, "level {level}");
     }
+    answers.pinned("compress/decode-far-long-match");
 }
 
 // The sequence count in each of its forms, the three-byte one included —
@@ -326,35 +375,37 @@ fn reheaded(frame: &[u8], window: u8, state_size: bool, checksum: Option<&[u8]>)
 // reserved bits.
 #[test]
 fn every_header_decodes_as_the_c_reads_it() {
+    let mut answers = Answers::default();
     for (kind, data) in kinds(150_000, 99).into_iter().step_by(2) {
-        let frame = compressed(&data, 9);
+        let frame = kept(&data, 9, kind);
         let windows = [0x00, 0x08, 0x0F, 0x10, 0x17, 0x18, 0x1D, 0x20, 0x2B, 0x38, 0x3F, 0x40, 0x48, 0x58, 0x70, 0xA8, 0xF8, 0xFF];
         for window in windows {
             for state_size in [true, false] {
-                let what = format!("{kind}, window {window:#x}, size stated {state_size}");
-                same_answer(&reheaded(&frame, window, state_size, None), data.len(), &what);
+                answer(Some(&mut answers), &reheaded(&frame, window, state_size, None), data.len());
                 let checked = reheaded(&frame, window, state_size, Some(&data));
-                same_answer(&checked, data.len(), &format!("{what}, checksum"));
+                answer(Some(&mut answers), &checked, data.len());
                 let wrong = checked.len() - 1;
-                same_answer(&with(&checked, wrong, checked[wrong] ^ 1), data.len(), &format!("{what}, checksum wrong"));
-                same_answer(&checked[..checked.len() - 2], data.len(), &format!("{what}, checksum cut"));
+                let damaged = with(&checked, wrong, checked[wrong] ^ 1);
+                answer(Some(&mut answers), &damaged, data.len());
+                answer(Some(&mut answers), &checked[..checked.len() - 2], data.len());
             }
         }
         // The dictionary's id goes after the window byte, before the size.
         let mut dictionary = frame.clone();
         dictionary[4] |= 1;
         dictionary.insert(frame_header::PREFIX + usize::from(frame[4] >> 5 & 1 == 0), 7);
-        same_answer(&dictionary, data.len(), &format!("{kind}, a dictionary asked for"));
-        same_answer(&with(&frame, 4, frame[4] | 0x08), data.len(), &format!("{kind}, a reserved bit"));
+        answer(Some(&mut answers), &dictionary, data.len());
+        answer(Some(&mut answers), &with(&frame, 4, frame[4] | 0x08), data.len());
     }
     // Every length of checksummed frame up to two stripes and a tail (the
     // C compresses nothing to no frame).
     for size in 1..80 {
         let data: Vec<u8> = (0..size).map(|k| (k * 7 + 1) as u8).collect();
-        let frame = compressed(&data, 3);
+        let frame = kept(&data, 3, &format!("checksummed {size}"));
         let checked = reheaded(&frame, 0x50, true, Some(&data));
-        assert_eq!(same_answer(&checked, size, &format!("checksummed {size}")), size as i64);
+        assert_eq!(answer(Some(&mut answers), &checked, size), size as i64);
     }
+    answers.pinned("compress/decode-every-header");
 }
 
 // A block that writes a little past a window smaller than itself — of a
@@ -363,6 +414,7 @@ fn every_header_decodes_as_the_c_reads_it() {
 // write is its window or the buffer, by where the C keeps its literals.
 #[test]
 fn a_block_past_a_small_window_stops_where_the_c_s_does() {
+    let mut answers = Answers::default();
     let (mut accepted, mut refused) = (0, 0);
     for window in [0x00u8, 0x07, 0x08, 0x0F, 0x10, 0x13, 0x17, 0x18] {
         let log = u32::from(window >> 3) + 10;
@@ -370,10 +422,9 @@ fn a_block_past_a_small_window_stops_where_the_c_s_does() {
         for size in (window_size + 16..window_size + 100).step_by(3) {
             let chosen = ["period-7", "text", "sparse", "mixed"];
             for (kind, data) in kinds(size, size as u64).into_iter().filter(|(kind, _)| chosen.contains(kind)) {
-                let frame = reheaded(&compressed(&data, 9), window, true, None);
+                let frame = reheaded(&kept(&data, 9, kind), window, true, None);
                 for capacity in (size..size + 96).step_by(2).chain([size + 5000]) {
-                    let what = format!("{kind} × {size}, window {window:#x}, room {capacity}");
-                    match same_answer(&frame, capacity, &what) {
+                    match answer(Some(&mut answers), &frame, capacity) {
                         0 => refused += 1,
                         _ => accepted += 1,
                     }
@@ -383,17 +434,17 @@ fn a_block_past_a_small_window_stops_where_the_c_s_does() {
     }
     // LIVENESS — the window let some blocks through and stopped others.
     assert!(accepted > 0 && refused > 0, "{accepted} accepted, {refused} refused");
+    answers.pinned("compress/decode-small-window");
 }
 
-// The size Dart allocates by: the C's answer for every frame header, for
-// every prefix of one, and for what is not one.
+// The size Dart allocates by: the C's answer (the ledger's) for every frame
+// header, for every prefix of one, and for what is not one.
 #[test]
 fn the_stated_size_is_the_c_s() {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_decompressed_size(const uint8_t*, int64_t)`.
-    let c = unsafe { export::<Size>("qa_zstd_decompressed_size") };
-    let mut frames: Vec<Vec<u8>> = SIZES.iter().map(|&size| compressed(&vec![9u8; size], 9)).collect();
+    let mut answers = Answers::default();
+    let mut frames: Vec<Vec<u8>> = SIZES.iter().map(|&size| kept(&vec![9u8; size], 9, "nines")).collect();
     let data = vec![1u8; 70_000];
-    let frame = compressed(&data, 1);
+    let frame = kept(&data, 1, "ones × 70000");
     frames.extend([0x00, 0x48, 0xF0, 0xF8].map(|window| reheaded(&frame, window, true, None)));
     frames.push(reheaded(&frame, 0x48, false, None));
     frames.push(skippable(3, b"skip"));
@@ -403,32 +454,48 @@ fn the_stated_size_is_the_c_s() {
         for end in 0..=frame.len().min(24) {
             let prefix = &frame[..end];
             // SAFETY: the slice holds the length passed.
-            let theirs = unsafe { c(prefix.as_ptr(), prefix.len() as i64) };
-            // SAFETY: as above.
             let ours = unsafe { crate::qa_zstd_decompressed_size(prefix.as_ptr(), prefix.len() as i64) };
-            assert_eq!(ours, theirs, "{:02x?}", prefix);
+            answers.add(ours, &[]);
         }
     }
+    answers.pinned("compress/stated-size");
     // SAFETY: null is nothing.
     assert_eq!(unsafe { crate::qa_zstd_decompressed_size(std::ptr::null(), 8) }, -1);
 }
 
-// The bound every buffer is sized by, at the sizes its margin turns on.
+// The bound every buffer is sized by, at the sizes its margin turns on —
+// the C's answers, measured 2026-11-07 (connection-round-checklist A):
+// nothing for no size, and past i64's end the sum wraps, as the C's does.
 #[test]
 fn the_bound_is_the_c_s() {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_compress_bound(int64_t)`.
-    let c = unsafe { export::<Bound>("qa_zstd_compress_bound") };
-    let sizes = [i64::MIN, -1, 0, 1, 2, 255, 256, 2047, 2048, 131_071, 131_072, 131_073, 1 << 30, (1 << 40) + 5];
-    for size in sizes.into_iter().chain([0xFF00_FF00_FF00_FEFFu64 as i64, 0xFF00_FF00_FF00_FF00u64 as i64, i64::MAX]) {
-        assert_eq!(crate::qa_zstd_compress_bound(size), c(size), "{size}");
+    for (size, bound) in [
+        (i64::MIN, 0),
+        (-1, 0),
+        (0, 0),
+        (1, 64),
+        (2, 65),
+        (255, 318),
+        (256, 320),
+        (2047, 2117),
+        (2048, 2119),
+        (131_071, 131_582),
+        (131_072, 131_584),
+        (131_073, 131_585),
+        (1 << 30, 1_077_936_128),
+        ((1 << 40) + 5, 1_103_806_595_077),
+        (0xFF00_FF00_FF00_FEFFu64 as i64, 0),
+        (0xFF00_FF00_FF00_FF00u64 as i64, 0),
+        (i64::MAX, -9_187_343_239_835_811_842),
+    ] {
+        assert_eq!(crate::qa_zstd_compress_bound(size), bound, "{size}");
     }
 }
 
 // Pointers that are null and sizes that are not sizes come back 0, as the
-// C's do.
+// C's did.
 #[test]
 fn nothing_to_decode_is_refused() {
-    let frame = compressed(b"cel", 9);
+    let frame = kept(b"cel", 9, "cel");
     let mut out = [0u8; 8];
     for (dst, capacity, src, size) in [
         (std::ptr::null_mut(), 8, frame.as_ptr(), frame.len() as i64),
@@ -439,38 +506,27 @@ fn nothing_to_decode_is_refused() {
         (out.as_mut_ptr(), 8, frame.as_ptr(), -1),
     ] {
         // SAFETY: every pointer passed is null or holds what is passed.
-        let answers = unsafe { (crate::qa_zstd_decompress(dst, capacity, src, size), c_decompress()(dst, capacity, src, size)) };
-        assert_eq!(answers, (0, 0));
+        assert_eq!(unsafe { crate::qa_zstd_decompress(dst, capacity, src, size) }, 0);
     }
-}
-
-/// The C's predefined sequence table `name`, as zstd.c prints it.
-fn c_default_table(name: &str) -> Vec<sequences::Cell> {
-    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
-    let path = format!("{crate_dir}/../../../../qa_native/src/third_party/zstd/zstd.c");
-    let c = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
-    let start = c.find(&format!("static const ZSTD_seqSymbol {name}[")).unwrap_or_else(|| panic!("zstd.c declares {name}"));
-    let body = &c[start..start + c[start..].find("};").expect("the table ends")];
-    // Past the declaration, the array's own brace and the header cell.
-    let numbers: Vec<u32> = body
-        .split('{')
-        .skip(3)
-        .flat_map(|cell| cell.split('}').next().unwrap().split(',').map(|n| n.trim().parse().unwrap()).collect::<Vec<u32>>())
-        .collect();
-    numbers
-        .chunks(4)
-        .map(|cell| sequences::Cell { next_state: cell[0] as u16, extra_bits: cell[1] as u8, nb_bits: cell[2] as u8, base: cell[3] })
-        .collect()
 }
 
 // The predefined tables the Rust builds from the default distributions are
-// the ones zstd ships precomputed.
+// the ones zstd ships precomputed — `LL_defaultDTable`, `OF_defaultDTable`
+// and `ML_defaultDTable` of zstd 1.5.6, held to the ledger: each table's
+// cells, then each cell's fields. ↩️Read from the vendored zstd.c's text
+// until the connection round deleted it (connection-round-checklist H,
+// 2026-11-08), and pinned from that text before it went (관제 20:18).
 #[test]
 fn the_predefined_tables_are_zstd_s() {
-    let ours = sequences::defaults();
-    for (k, name) in ["LL_defaultDTable", "OF_defaultDTable", "ML_defaultDTable"].into_iter().enumerate() {
-        let theirs = c_default_table(name);
-        assert_eq!(theirs.len(), 1 << ours[k].log, "{name}: every cell parsed");
-        assert_eq!(ours[k].cells[..theirs.len()], theirs, "{name}");
+    let mut tables = ledger::Running::new();
+    for table in sequences::defaults() {
+        let cells = &table.cells[..1 << table.log];
+        tables.add(&(cells.len() as u32).to_le_bytes());
+        for cell in cells {
+            tables.add(&cell.next_state.to_le_bytes());
+            tables.add(&[cell.extra_bits, cell.nb_bits]);
+            tables.add(&cell.base.to_le_bytes());
+        }
     }
+    tables.assert_pinned("compress/default-tables");
 }

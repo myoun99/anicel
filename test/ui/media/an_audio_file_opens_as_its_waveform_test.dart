@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -35,6 +36,8 @@ void main() {
   );
 
   group('the document', () {
+    setUpAll(openAppGpuEngine);
+
     test('its page is as wide as the sound is long', () {
       final short = AudioViewerDocument(
         peaks: peaksOfSeconds(2),
@@ -92,7 +95,7 @@ void main() {
     /// completes inside the widget tester's fake-async zone (measured — it
     /// hung the whole file), and the band's own tests already know this.
     test('it renders at exactly the pixels it was asked for, and paints '
-        'the band', () async {
+        'the band across all of them', () async {
       final document = AudioViewerDocument(
         peaks: peaksOfSeconds(2),
       );
@@ -109,6 +112,16 @@ void main() {
         isTrue,
         reason: 'an all-transparent page would mean the band never landed — '
             'the page IS the waveform, so nothing drawn is nothing shown',
+      );
+      // The whole file across the width: every bucket holds a peak, so the
+      // band crosses the middle row from the first column to where the
+      // last bucket stands — the envelope runs through the buckets' peaks,
+      // and the last of 160 stands 159 ÷ 80 s in, 238.5 px of the 240.
+      int alphaAt(int x) => bytes.getUint8((32 * 240 + x) * 4 + 3);
+      expect(
+        [alphaAt(0), alphaAt(120), alphaAt(237)].every((alpha) => alpha > 0),
+        isTrue,
+        reason: 'the band stopped short of the page',
       );
     });
   });

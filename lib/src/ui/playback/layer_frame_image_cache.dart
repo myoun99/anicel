@@ -38,10 +38,10 @@ class LayerFrameImageCache {
   }
 
   /// [key]'s cel's stored pixels at [canvasSize] — what every picture of it
-  /// is made of (`FramePictures`), before its texts and colour keys are laid
-  /// (`celSurfaceAsShown`) — or null where they are held at ANOTHER canvas
-  /// size: a picture made of the blank stand-in would bank the cel blank
-  /// under a revision no heal moves. Throws where the cel cannot be read,
+  /// is made of (`FramePictures`), before its texts are laid
+  /// (`celSurfaceWithTextsLaid`) — or null where they are held at ANOTHER
+  /// canvas size: a picture made of the blank stand-in would bank the cel
+  /// blank under a revision no heal moves. Throws where the cel cannot be read,
   /// and notes it ([unreadable]).
   ///
   /// ⚠️Ask [BrushFrameStore.celHasRenderableContent] first: an empty cel

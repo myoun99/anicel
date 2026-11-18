@@ -13,7 +13,9 @@ BrushTipEntry _tip(String id, String name) {
     id: id,
     name: name,
     size: 4,
-    thumbnail: alpha,
+    // A solid tip's picture: every cell ink.
+    thumbnail: Uint8List(brushTipThumbnailSide * brushTipThumbnailSide)
+      ..fillRange(0, brushTipThumbnailSide * brushTipThumbnailSide, 255),
     mask: BrushTipMask(id: id, size: 4, alpha: alpha),
   );
 }

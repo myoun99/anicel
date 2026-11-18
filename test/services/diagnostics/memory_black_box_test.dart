@@ -1,7 +1,10 @@
 import 'dart:io';
 
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/a_reading_held_between.dart';
 
 /// The instrument that survives a kill.
 ///
@@ -90,6 +93,30 @@ void main() {
           'nothing, which is the one outcome this must not have',
     );
     expect(file.readAsStringSync(), contains('BEGIN tvpp-import'));
+  });
+
+  test('with nothing standing in, the reading is the engine\'s — what the '
+      'process holds, and what more it may take', () {
+    MemoryBlackBox.debugReading = null;
+    int? megabytes(int? bytes) =>
+        bytes == null ? null : (bytes / (1024 * 1024)).round();
+    int? logged(String name) {
+      MemoryBlackBox.reset();
+      MemoryBlackBox.begin('save');
+      final value = RegExp('$name=' r'(\d+)MB')
+          .firstMatch(MemoryBlackBox.unfinishedEntry() ?? '')
+          ?.group(1);
+      return value == null ? null : int.parse(value);
+    }
+
+    expectReadingHeldBetween(
+      () => megabytes(QaMemory.processFootprintBytes),
+      () => logged('footprint'),
+    );
+    expectReadingHeldBetween(
+      () => megabytes(QaMemory.availableMemoryBytes),
+      () => logged('available'),
+    );
   });
 
   test('a platform that will not answer says so instead of guessing', () {

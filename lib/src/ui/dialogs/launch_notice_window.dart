@@ -37,8 +37,8 @@ Future<void> showLaunchNoticeIfDue(
 }
 
 /// The launch notice: the pre-release notice, what changed in this build
-/// and where feedback goes, in the program language — each section the
-/// bundled file's words ([LaunchNoticeSection]).
+/// (a round's build only) and where feedback goes, in the program language
+/// — each section the bundled file's words ([LaunchNoticeSection]).
 ///
 /// The feedback section's button is the ⚙ menu's 「의견 보내기」 row: its
 /// window and its name (I-139), one action wherever it is pressed.
@@ -111,14 +111,19 @@ class LaunchNoticeWindow extends StatelessWidget {
   /// 아래의 의견보내기항목을 그 위로 올리자」 — the feedback before the
   /// what's-new, and the what's-new folded under its own heading. ↩️The
   /// what's-new stood open between the notice and the feedback.
+  ///
+  /// 🗣️유저 2026-11-16 (launch-notice-says-debug-build): a debug build has
+  /// no what's-new, and no place kept for it — the notice and what it
+  /// carries are [LaunchNoticeContent]'s to say.
   Widget _sections(BuildContext context) {
+    final language = AppText.language;
     String text(LaunchNoticeSection section) =>
-        content.textOf(AppText.language, section);
+        content.textOf(language, section);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MarkdownSubset(text(LaunchNoticeSection.notice)),
+        MarkdownSubset(content.noticeIn(language)),
         const Divider(height: 24),
         MarkdownSubset(text(LaunchNoticeSection.feedback)),
         const SizedBox(height: 8),
@@ -132,8 +137,10 @@ class LaunchNoticeWindow extends StatelessWidget {
             ),
           ),
         ),
-        const Divider(height: 24),
-        _whatsNew(text(LaunchNoticeSection.whatsNew)),
+        if (content.showsWhatsNew) ...[
+          const Divider(height: 24),
+          _whatsNew(text(LaunchNoticeSection.whatsNew)),
+        ],
       ],
     );
   }

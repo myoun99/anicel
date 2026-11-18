@@ -1,6 +1,7 @@
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart' show EffectId;
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
@@ -10,17 +11,20 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart'
     show referenceGroupLaneId, referenceLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
-    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
+    show
+        seNameTagGroupLaneId,
+        seNameTagLaneDisplayOrder,
+        seNameTagSizeLaneId;
 import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
     show seSoundGroupLaneId, seSoundLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart'
-    show laneGroupOf;
+    show laneGroupOf, laneIsInGroup;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_runs.dart';
 import 'package:anicel/src/ui/timeline/timeline_visible_range.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
+    show transformGroupHeaderLane, transformLaneDisplayOrder;
 import 'package:flutter_test/flutter_test.dart';
 
 /// I-89 ③ — where every drawn row sits is ONE answer.
@@ -223,32 +227,76 @@ void main() {
     List<TimelineDisplayRow> seatOpen(Map<String, LaneGraph> open) =>
         seatLaneGraphs(rows, LaneGraphsView(open: open), selection: const {});
 
+    const kind = LayerKind.animation;
     test('a lane answers with its group; a header and a layer with none', () {
-      expect(laneGroupOf('position'), 'transform-group');
-      expect(laneGroupOf('opacity'), 'transform-group');
+      expect(laneGroupOf('position', kind: kind), 'transform-group');
+      expect(laneGroupOf('opacity', kind: kind), 'transform-group');
       expect(
-        laneGroupOf(effectLaneId(blur, 'radius')),
+        laneGroupOf(effectLaneId(blur, 'radius'), kind: kind),
         effectGroupLaneId(blur),
       );
-      expect(laneGroupOf('transform-group'), isNull);
-      expect(laneGroupOf(effectGroupLaneId(blur)), isNull);
+      expect(laneGroupOf('transform-group', kind: kind), isNull);
+      expect(laneGroupOf(effectGroupLaneId(blur), kind: kind), isNull);
     });
 
     test('the fixed groups\' lanes answer with their own header — the '
         'reference fx\'s Position is not the transform\'s (F-374)', () {
       for (final laneId in referenceLaneDisplayOrder) {
-        expect(laneGroupOf(laneId), referenceGroupLaneId, reason: laneId);
+        expect(
+          laneGroupOf(laneId, kind: kind),
+          referenceGroupLaneId,
+          reason: laneId,
+        );
       }
       for (final laneId in seNameTagLaneDisplayOrder) {
-        expect(laneGroupOf(laneId), seNameTagGroupLaneId, reason: laneId);
+        expect(
+          laneGroupOf(laneId, kind: LayerKind.se),
+          seNameTagGroupLaneId,
+          reason: laneId,
+        );
       }
-      expect(laneGroupOf(referenceGroupLaneId), isNull);
-      expect(laneGroupOf(seNameTagGroupLaneId), isNull);
+      expect(laneGroupOf(referenceGroupLaneId, kind: kind), isNull);
+      expect(laneGroupOf(seNameTagGroupLaneId, kind: LayerKind.se), isNull);
       // I-140: the 「오디오」 group's too.
       for (final laneId in seSoundLaneDisplayOrder) {
-        expect(laneGroupOf(laneId), seSoundGroupLaneId, reason: laneId);
+        expect(
+          laneGroupOf(laneId, kind: LayerKind.se),
+          seSoundGroupLaneId,
+          reason: laneId,
+        );
       }
-      expect(laneGroupOf(seSoundGroupLaneId), isNull);
+      expect(laneGroupOf(seSoundGroupLaneId, kind: LayerKind.se), isNull);
+    });
+
+    test('🎯an S row\'s transform lanes answer with its name tag, whose '
+        'pose they are (audio-fx-grows-like-the-pros-Q3 · Q4)', () {
+      for (final laneId in transformLaneDisplayOrder) {
+        expect(
+          laneGroupOf(laneId, kind: LayerKind.se),
+          seNameTagGroupLaneId,
+          reason: laneId,
+        );
+        expect(
+          laneGroupOf(laneId, kind: kind),
+          transformGroupHeaderLane.laneId,
+          reason: laneId,
+        );
+        for (final header in [
+          seNameTagGroupLaneId,
+          transformGroupHeaderLane.laneId,
+        ]) {
+          expect(laneIsInGroup(laneId, header), isTrue, reason: laneId);
+        }
+        expect(laneIsInGroup(laneId, seSoundGroupLaneId), isFalse);
+      }
+      expect(
+        laneIsInGroup(seNameTagSizeLaneId, transformGroupHeaderLane.laneId),
+        isFalse,
+      );
+      expect(
+        laneIsInGroup(seNameTagGroupLaneId, seNameTagGroupLaneId),
+        isFalse,
+      );
     });
 
     test('only the pressed group\'s lanes take a seat', () {
@@ -274,6 +322,45 @@ void main() {
         reason: 'the rows are the same rows — 「서는곳 법 그대로」',
       );
       expect(seatOpen(const {}), same(rows));
+    });
+
+    test('🎯an S row\'s pose lanes are seated in its name tag\'s graph, '
+        'and picked there', () {
+      final se = Layer(
+        id: const LayerId('s'),
+        name: 'S',
+        frames: const [],
+        kind: LayerKind.se,
+      );
+      TimelineDisplayRow seLane(String laneId, {bool header = false}) =>
+          TimelineDisplayRow.lane(
+            se,
+            PropertyLaneRow(
+              laneId: laneId,
+              label: laneId,
+              keyMarks: const {},
+              isGroupHeader: header,
+            ),
+            layerIndex: 1,
+          );
+      final nameTagKey = laneGroupKey(se.id, seNameTagGroupLaneId);
+      final seated = seatLaneGraphs(
+        [
+          TimelineDisplayRow.layer(se, layerIndex: 1),
+          seLane(seNameTagGroupLaneId, header: true),
+          seLane(seNameTagSizeLaneId),
+          seLane('position'),
+        ],
+        LaneGraphsView(open: {nameTagKey: const LaneGraph()}),
+        selection: {LaneRowAddress(se.id, 'position')},
+      );
+      expect([for (final row in seated) row.graph?.groupKey], [
+        null,
+        null,
+        nameTagKey,
+        nameTagKey,
+      ]);
+      expect(seated.last.graph!.picked, ['position']);
     });
 
     test('each open graph is one block of its seated lanes', () {

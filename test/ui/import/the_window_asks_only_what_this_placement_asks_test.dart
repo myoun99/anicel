@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/path_names.dart' show fileNameOfPath;
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -107,9 +110,14 @@ void main() {
     // A pool's door asks no placement's questions — they cannot be asked
     // there at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
     // 안넣어도되」).
-    for (final id in ['bake', 'fit', 'option']) {
+    for (final id in ['bake', 'fit']) {
       expect(column(id), findsNothing, reason: id);
     }
+    // The 「옵션」 column stands, a dash on a row it asks nothing of
+    // (I-171-Q2, 유저 2026-11-14: 「넣는다 — 옵션 열만(굽기 · 맞춤은 그대로
+    // 없음)」).
+    expect(column('option'), findsOneWidget);
+    expect(cellWord(tester, 'option', png), '—');
     // Where it goes is said — the pool, locked (F-282: the strip's 「풀」
     // came down to the row).
     expect(column('into'), findsOneWidget);
@@ -132,7 +140,9 @@ void main() {
 
   testWidgets('a NEW file placed on the timeline is asked how it is kept, '
       'whether it is baked, where it goes, how it fits and its kind\'s own '
-      'question — a dash, for a plain picture', (tester) async {
+      'question — for a plain picture, the kind of layer it comes in as', (
+    tester,
+  ) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     await open(tester, session(), [png!]);
 
@@ -141,9 +151,11 @@ void main() {
     }
     expect(
       cellWord(tester, 'option', png),
-      '—',
-      reason: 'a plain picture is asked no kind\'s own question — the PSD '
-          'column that stood for one kind is a cell of the 옵션 column now',
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'a plain picture is asked the kind of layer it comes in as, an '
+          'image first (asset-placement-presets Q4, 유저 2026-11-17: 「기본 '
+          '그림한장은 이미지」) — the PSD column that stood for one kind is a '
+          'cell of the 옵션 column too',
     );
     expect(
       cellWord(tester, 'bake', png),
@@ -185,14 +197,45 @@ void main() {
     );
   });
 
+  testWidgets('a file\'s 맞춤 starts on 원본 크기 — the first answer, still '
+      'asked (유저 2026-11-10 F-581: 「파일 임포트시, 기본값 지금 비율유지 '
+      '늘림 이건거같은데 기본값은 원본크기로」)', (tester) async {
+    final png = await tester.runAsync(() => writePng('a.png'));
+    await open(tester, session(), [png!]);
+
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitOriginal);
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    expect(openOptions(), {
+      'import-option-fit-none',
+      'import-option-fit-contain',
+      'import-option-fit-stretch',
+    });
+  });
+
   testWidgets('🚨a NEW cut is made at the file\'s own size, so its fit shows '
       '1:1 — locked, not hidden (「1:1로 고정시켜서 노출시키도록. '
       '비활성화된상태로」)', (tester) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     await open(tester, session(), [png!]);
 
+    // The row answers another fit first: the one a file starts on is 1:1
+    // too, and would say nothing of the lock.
+    //
     // The table scrolls sideways when its columns outgrow the window (the
     // test font's glyphs are wide), so a cell is brought into view first.
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
+    );
+    await tester.pumpAndSettle();
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitStretch);
+
     await tester.ensureVisible(cell('into', png));
     await tester.pumpAndSettle();
     await tester.tap(cell('into', png));
@@ -297,7 +340,6 @@ void main() {
       isEmpty,
       reason: 'the pixels are the layer\'s own — ↩️「구워도 풀에 남음」',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯one window places one file and registers another — each row '
@@ -337,6 +379,5 @@ void main() {
       containsAll(['kept.png']),
       reason: 'the other only registered',
     );
-    s.playbackRig.prerenderScheduler.cancel();
   });
 }

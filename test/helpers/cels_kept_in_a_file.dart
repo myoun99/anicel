@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -23,12 +24,13 @@ Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
   BrushFrameStore store,
   Map<BrushFrameKey, BitmapSurface> cels, {
   PasteboardReach pasteboardReach = PasteboardReach.whole,
+  TileBytesOf? bytesOf,
 }) {
   final directory = Directory.systemTemp.createTempSync('qa-kept-cels');
   deleteAfterSessionEnds(directory);
   final refs = <BrushFrameKey, AnicelCelFileRef>{};
   for (final (index, MapEntry(:key, value: surface)) in cels.entries.indexed) {
-    final blob = coldBlobOf(key, surface);
+    final blob = coldBlobOf(key, surface, bytesOf: bytesOf);
     final path = '${directory.path}/cel$index.bin';
     File(path).writeAsBytesSync(blob.bytes);
     refs[key] = AnicelCelFileRef(

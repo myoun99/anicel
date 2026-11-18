@@ -62,6 +62,10 @@ class BakeOnceLru<K, V> {
     );
   }
 
+  /// [value] as [key]'s finished bake: one made where it was asked, with
+  /// nothing to wait for. A bake of [key] in flight lands over it.
+  void keep(K key, V value) => _done.keep(key, value);
+
   /// Every finished value, oldest first — for a store that has to walk
   /// what it holds (a teardown).
   Iterable<MapEntry<K, V>> get entries => _done.entries;

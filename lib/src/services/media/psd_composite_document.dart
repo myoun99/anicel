@@ -7,11 +7,12 @@ import 'viewer_document.dart';
 
 /// A Photoshop document as a page: its composite, read once and kept as the
 /// straight RGBA the reader gives back, rendered at the size asked — a
-/// premultiplied copy each time, as a movie frame is.
+/// premultiplied copy each time, as a movie frame is, on a worker
+/// ([decodeStraightRgbaImageOnAWorker]).
 ///
 /// ⚠️There is no smaller read. The parse takes the whole file and answers
 /// with the picture at its own size, which is the price every entry point
-/// already pays for a PSD ([decodePsdCompositeImage]); what this keeps is
+/// already pays for a PSD ([readPsdComposite]); what this keeps is
 /// that one buffer, where the platform codec's document keeps the encoded
 /// file ([ImageViewerDocument]).
 final class PsdCompositeDocument implements ViewerDocument {
@@ -50,7 +51,7 @@ final class PsdCompositeDocument implements ViewerDocument {
     int pageIndex, {
     required int width,
     required int height,
-  }) => decodeStraightRgbaImage(
+  }) => decodeStraightRgbaImageOnAWorker(
     rgba: _rgba,
     width: _width,
     height: _height,

@@ -35,7 +35,7 @@ import 'same_file.dart';
 /// file and `rename` it onto the project path, and **renaming ONTO a file
 /// this process holds open is blocked too**. Left alone, a session-long
 /// handle would break every full save on Windows, and it would look exactly
-/// like the foreign lock `renameWithRetry` already retries for. So the one
+/// like the foreign lock `replaceWithRetry` already retries for. So the one
 /// funnel that replaces the project file lets go of ours first.
 ///
 /// ⚠️Letting go is cheap and needs no bookkeeping: the next read opens it
@@ -70,8 +70,9 @@ class OpenProjectFile {
   /// time.
   ///
   /// ⚠️Sequential by nature — the callers are the sessions' cel stores on
-  /// one isolate. A second reader would need its own handle, not a share of
-  /// this one, and there is no such caller.
+  /// one isolate. A second reader needs a handle of its own, not a share of
+  /// this one: a worker that reads a kept cel off this thread opens one for
+  /// that read (`WorkerFileReads`).
   ///
   /// 🚨★★★**A FAILED READ DROPS THE HANDLE AND TRIES ONCE MORE, BECAUSE
   /// OTHERWISE THIS CLASS TURNS A BAD MOMENT INTO A BAD SESSION.** Opening

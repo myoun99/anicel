@@ -2,30 +2,15 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
-/// ABI v21: the container/codec surface. Real-binary-or-skip, like every
-/// native suite; the assertions stay machine-honest (an HEVC MFT may or
-/// may not exist) by pinning CONSISTENCY between probe and open.
+/// ABI v21: the container/codec surface. Codec-or-skip
+/// (`osVideoEncoderOrSkip`); the assertions stay machine-honest (an HEVC
+/// MFT may or may not exist) by pinning CONSISTENCY between probe and open.
 void main() {
-  final enginePath = nativeEngineLibraryPathOrNull();
-
-  setUp(() {
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = enginePath;
-  });
-
-  tearDown(() {
-    debugQaEngineLibraryPathOverride = null;
-    QaVideoEncoder.debugResetForTests();
-  });
-
   test('the baseline pair always probes true', () {
     final encoder = osVideoEncoderOrSkip();
     if (encoder == null) {
@@ -96,12 +81,13 @@ void main() {
       codec: 1,
     );
     if (opened) {
-      // Drive a real tiny encode so "openable" is proven end-to-end.
-      final frame = Uint8List.fromList(
-        List<int>.filled(width * height * 4, 0x80),
-      );
+      // Drive a real tiny encode so "openable" is proven end-to-end: a grey
+      // frame of the NV12 the writer takes, as every H.26x writer does.
+      final shape = encoder.nv12Frame!;
+      final bytes = shape.width * shape.height * 3 ~/ 2;
+      final frame = Uint8List(bytes)..fillRange(0, bytes, 0x80);
       watch.step('writing a frame');
-      expect(encoder.writeFrame(frame), isTrue);
+      expect(encoder.writeNv12(frame, stride: shape.width), isTrue);
       watch.step('finishing the movie');
       expect(encoder.finish(), isTrue);
       expect(File(path).lengthSync(), greaterThan(500));

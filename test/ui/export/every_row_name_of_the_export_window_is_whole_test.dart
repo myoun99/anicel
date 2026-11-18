@@ -122,7 +122,6 @@ void main() {
         }
       }
       expect(names, greaterThan(0), reason: 'the premise: rows were read');
-      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 }

@@ -153,7 +153,7 @@ class TimelineCutEndDragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final grip = EndLineGrip(
+    final grip = WholeFramesGrip(
       axis: axis,
       cellExtent: cellExtent,
       onBegin: callbacks.onBegin,
@@ -184,11 +184,13 @@ class TimelineCutEndDragHandle extends StatelessWidget {
   }
 }
 
-/// The grip an END LINE is dragged by — the timeline's cut end and the conte
-/// panel's movie end, each placing it over its own line: the press is the
-/// line's, and [onUpdate] hears the whole frames the hand has moved along
-/// [axis] since it went down (frames of [cellExtent] px). [onBegin] refusing
-/// leaves the rest of the gesture unheard.
+/// The grip a thing on the frame axis is dragged by, in WHOLE FRAMES — an
+/// end line (the timeline's cut end and the conte panel's movie end, each
+/// placing it over its own line) and a ruler's marker (I-169, which is its
+/// [child]): the press is the thing's, and [onUpdate] hears the whole frames
+/// the hand has moved along [axis] since it went down (frames of
+/// [cellExtent] px). [onBegin] refusing leaves the rest of the gesture
+/// unheard.
 ///
 /// 🗣️F-445 (유저 2026-10-23): 「엔드라인 손으로 드래그할때 가끔 프레임영역
 /// 가로 스크롤 작동함. 엔드라인은 조작 위젯이니까 작동안하게 제대로 다른위젯처럼
@@ -196,8 +198,11 @@ class TimelineCutEndDragHandle extends StatelessWidget {
 /// own, a plain one-axis drag, after the timeline's had been given the strong
 /// claim below; the frame area's two-axis touch scroll beat it to a finger
 /// that left a little off its axis. Both lines are dragged by this one now.
-class EndLineGrip extends StatefulWidget {
-  const EndLineGrip({
+///
+/// ↩️`EndLineGrip` until the ruler's markers were the third thing dragged
+/// so (2026-11-14) — the same press, the same count, another cursor.
+class WholeFramesGrip extends StatefulWidget {
+  const WholeFramesGrip({
     super.key,
     required this.axis,
     required this.cellExtent,
@@ -205,10 +210,19 @@ class EndLineGrip extends StatefulWidget {
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
+    this.cursor,
+    this.child,
   });
 
   final Axis axis;
   final double cellExtent;
+
+  /// The cursor over the grip — null wears an end line's, the arrows along
+  /// [axis].
+  final MouseCursor? cursor;
+
+  /// What the grip is seen as, where it is more than a line to hold.
+  final Widget? child;
   final bool Function() onBegin;
 
   /// Reports the cumulative whole-frame delta since drag start.
@@ -217,10 +231,10 @@ class EndLineGrip extends StatefulWidget {
   final VoidCallback onCancel;
 
   @override
-  State<EndLineGrip> createState() => _EndLineGripState();
+  State<WholeFramesGrip> createState() => _WholeFramesGripState();
 }
 
-class _EndLineGripState extends State<EndLineGrip> {
+class _WholeFramesGripState extends State<WholeFramesGrip> {
   double _delta = 0;
   bool _dragging = false;
 
@@ -262,9 +276,11 @@ class _EndLineGripState extends State<EndLineGrip> {
     // F-495-Q1: a block's warning under the grip still hears the hover.
     return HoverGoesUnder(
       child: MouseRegion(
-        cursor: horizontal
-            ? SystemMouseCursors.resizeColumn
-            : SystemMouseCursors.resizeRow,
+        cursor:
+            widget.cursor ??
+            (horizontal
+                ? SystemMouseCursors.resizeColumn
+                : SystemMouseCursors.resizeRow),
         // 🚨THE THIRD GRIP OF ONE LAW (F-163 재발, 유저 2026-09-23: 「버튼은
         // 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). ↩️A plain
         // one-axis drag, so a pull across it walked over to the scroller,
@@ -278,6 +294,7 @@ class _EndLineGripState extends State<EndLineGrip> {
             ..onUpdate = ((details) => _update(details.primaryDelta!))
             ..onEnd = ((_) => _end())
             ..onCancel = _cancel,
+          child: widget.child,
         ),
       ),
     );

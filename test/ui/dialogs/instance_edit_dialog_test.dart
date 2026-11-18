@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/pasted_from_the_clipboard.dart';
 import '../../helpers/text_finders.dart';
 
 /// The preview's paper — the timeline's own row painter.
@@ -71,6 +72,18 @@ String _previewDialogue(WidgetTester tester) {
         ),
       )
       .text;
+}
+
+/// Enter as the platform hands it to [field]: the action that field asked
+/// the keyboard for — `done` from a one-line field, `newline` from one
+/// taking lines, which breaks the line there and submits nothing.
+Future<void> _pressEnterIn(WidgetTester tester, String field) async {
+  await tester.showKeyboard(find.byKey(ValueKey<String>(field)));
+  final asked = tester.testTextInput.setClientArgs!['inputAction'] as String;
+  await tester.testTextInput.receiveAction(
+    TextInputAction.values.firstWhere((action) => '$action' == asked),
+  );
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -311,6 +324,125 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(result, isNull);
+  });
+
+  // 🗣️F-584 (유저 2026-11-12): 「se블록의 이름/대사는 1줄만 허용.
+  // 엔터누르면 해당 편집창의 저장버튼 작동하도록」.
+  for (final field in ['se-name-field', 'se-dialogue-field']) {
+    testWidgets('SE dialog: Enter in $field is the window\'s primary '
+        'button', (tester) async {
+      SeInstanceDialogResult? result;
+      await _openDialog<SeInstanceDialogResult>(
+        tester,
+        const SeInstanceDialog(initialSeName: '앨리스', initialDialogue: '응'),
+        (r) => result = r,
+      );
+
+      await _pressEnterIn(tester, field);
+
+      expect(
+        find.byKey(const ValueKey<String>('instance-edit-dialog')),
+        findsNothing,
+      );
+      expect(result!.seName, '앨리스');
+      expect(result!.dialogue, '응');
+    });
+  }
+
+  testWidgets('SE dialog: the dialogue is one line — a line break handed '
+      'to it is not kept', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
+      '응\n그래',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result!.dialogue, '응그래');
+  });
+
+  // 🐛F-584 (검증/서피스 2026-11-15, 서피스 프로 11): two lines copied on
+  // Windows and pasted into the dialogue left a ⊠ where they broke, on the
+  // field and on the block — the clipboard ends a line in CR LF, and the
+  // one-line field let the CR through.
+  testWidgets('SE dialog: two lines pasted from a Windows clipboard are one '
+      'line too — no CR is left where they broke', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+
+    await pasteInto(
+      tester,
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
+      windowsLines(['응', '그래']),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result!.dialogue, '응그래');
+  });
+
+  for (final field in [
+    'instruction-text-field',
+    'instruction-value-a-field',
+    'instruction-value-b-field',
+  ]) {
+    testWidgets('instruction dialog: Enter in $field is the window\'s '
+        'primary button', (tester) async {
+      InstructionEventDialogResult? result;
+      await _openDialog<InstructionEventDialogResult>(
+        tester,
+        InstructionEventDialog(
+          instructionSet: CameraInstructionSet.standard,
+          initialInstructionId: 'ol',
+          initialValueA: 'C',
+        ),
+        (r) => result = r,
+      );
+
+      await _pressEnterIn(tester, field);
+
+      expect(
+        find.byKey(const ValueKey<String>('instance-edit-dialog')),
+        findsNothing,
+      );
+      expect(result!.instructionId, 'ol');
+      expect(result!.valueA, 'C');
+    });
+  }
+
+  testWidgets('instruction dialog: Enter submits nothing while the primary '
+      'button is off', (tester) async {
+    var popped = false;
+    await _openDialog<InstructionEventDialogResult>(
+      tester,
+      InstructionEventDialog(
+        instructionSet: CameraInstructionSet(defs: const []),
+      ),
+      (_) => popped = true,
+    );
+
+    await _pressEnterIn(tester, 'instruction-text-field');
+
+    expect(
+      find.byKey(const ValueKey<String>('instance-edit-dialog')),
+      findsOneWidget,
+    );
+    expect(popped, isFalse);
   });
 
   testWidgets('instruction dialog: rides the shared shell and returns what '

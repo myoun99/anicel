@@ -492,6 +492,11 @@ class ProjectFileDoor {
     List<String> leftBehind,
   ) async {
     final cause = saveFailureCauseOf(error, projectPath: filePath);
+    // The failed copy asks the engine for the same bytes, and could only
+    // say the same — with a file in the room to show for it.
+    if (cause == SaveFailureCause.engineRead) {
+      return SaveFailure(cause: cause, error: error);
+    }
     final copy = _file.failedCopy ?? FailedSaveCopies.addressFor(filePath);
     try {
       await _writeFailedCopy(copy, filePath, told: told);
@@ -1299,12 +1304,19 @@ class ProjectFileRead {
 ///
 /// [bindTo] is where saves go when [filePath] is not the project's own
 /// address ([ProjectFileDoor.settle]).
+///
+/// [onRead] is told how much of what the open reads is in
+/// ([AnicelFileService.open]): the window's bar, while the file comes down.
 Future<ProjectFileRead> readProjectFile(
   String filePath, {
   String? bindTo,
   bool Function()? isCancelled,
+  void Function(double fraction)? onRead,
 }) async {
-  final result = await const AnicelFileService().open(filePath: filePath);
+  final result = await const AnicelFileService().open(
+    filePath: filePath,
+    onRead: onRead,
+  );
   // The read is the wait, and nothing has been made of it yet: a press on
   // the wait window's Cancel during it is honoured HERE, before a bookmark
   // is handed back to the OS — past this line the project is resolved and
@@ -1380,7 +1392,7 @@ class _InkOwners {
   late final Set<CutId> _cuts = _everyCutId(_project);
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
   late final Set<String> _carries = {
-    for (final asset in _project.mediaAssets) ?asset.carriedAs,
+    for (final asset in _project.mediaAssets) ?asset.carriedAs?.token,
   };
 
   bool stillHold(BrushFrameKey key) {

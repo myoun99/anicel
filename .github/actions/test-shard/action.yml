@@ -11,6 +11,21 @@ inputs:
   index:
     description: Which shard this job runs (0-based, less than total).
     required: true
+  leave-out-package:
+    description: >
+      A package whose tests this runner cannot run — every test file that
+      reaches it (tool/tests_reaching_package.dart) is left out before the
+      deal. Empty leaves out nothing.
+    required: false
+    default: ''
+  times-artifact:
+    description: >
+      The artifact this run's scope job left the record of CI's last run in
+      (ci.yml) — `<os>.tsv`, each test file's milliseconds. The shard deals
+      by it and leaves its own times for the next run. Empty deals by size
+      alone and leaves nothing.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -32,6 +47,11 @@ runs:
         key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
         restore-keys: |
           testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-
+    - if: inputs.times-artifact != ''
+      uses: actions/download-artifact@v5
+      with:
+        name: ${{ inputs.times-artifact }}
+        path: ${{ runner.temp }}/shard-times
     - shell: bash
       run: |
         set -euo pipefail
@@ -40,52 +60,45 @@ runs:
         # the measured spread was still 1.64x (224s to 362s), so one
         # unlucky shard decided the round while the others sat finished.
         #
-        # So weight each file and pack longest-first into the lightest
-        # shard. The weight is the file's SIZE, not a recorded duration:
-        # a checked-in timings table is more accurate on the day it is
-        # generated and wrong every day after, and it goes stale silently
-        # — the failure mode is a slow shard, which looks exactly like
-        # normal. Size is 86% as good and cannot rot, because it is
-        # measured from the tree being tested.
+        # So weigh each file and pack longest-first into the lightest
+        # shard — by the milliseconds it took in CI's last run, and by its
+        # size where no run timed it (tool/test_shard.dart, which says why
+        # and how, and test_seconds.dart's `dealt`, the deal this machine's
+        # batches are cut by too). ↩️Till 2026-11-17 by size alone, here in
+        # awk (card ci-shards-dealt-by-measured-seconds).
         #
-        # Every shard job runs this same computation over the same commit
-        # and takes only its own slice, so the deal MUST be deterministic:
-        # hence the explicit sort (size descending, then path) under
-        # LC_ALL=C. If two jobs disagreed, files would silently run twice
-        # or not at all.
-        # Batched wc -c rather than find -printf: -printf is GNU find's
-        # own, and the macOS suite shards (apple.yml) run on BSD find,
-        # which has no such option. One xargs batch keeps this at three
-        # processes — a per-file loop measured 2+ minutes on a Windows
-        # runner's fork costs. The awk drops xargs' per-batch "total"
-        # rows and BSD wc's column padding while keeping any spaces in
-        # the path itself.
-        find test -name '*_test.dart' -print0 \
-          | xargs -0 wc -c \
-          | awk '{sz=$1; $1=""; sub(/^ /, "");
-                  if ($0 != "total") printf "%s\t%s\n", sz, $0}' \
-          | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
-        total_files=$(wc -l < "$RUNNER_TEMP/weighted.txt")
-        # `want`, not `index` — index() is a gawk builtin and awk dies with
-        # "cannot use gawk builtin as variable name", which on CI would be
-        # every shard failing at once.
-        awk -v total="${{ inputs.total }}" -v want="${{ inputs.index }}" '
-          BEGIN { for (i = 0; i < total; i++) load[i] = 0 }
-          {
-            lightest = 0
-            for (i = 1; i < total; i++) {
-              if (load[i] < load[lightest]) lightest = i
-            }
-            load[lightest] += $1
-            if (lightest == want) {
-              sub(/^[0-9]+\t/, "")
-              print
-            }
-          }
-        ' "$RUNNER_TEMP/weighted.txt" > "$RUNNER_TEMP/shard_tests.txt"
+        # Every shard job runs this same deal over the same commit and the
+        # same record — the scope job fetched it once for all of them — and
+        # takes only its own slice, so the deal MUST be deterministic. If
+        # two jobs disagreed, files would silently run twice or not at all.
+        #
+        # The record is also laid over this runner's own (`seed`), so the
+        # slice's run orders and batches its files by it — longest first.
+        times=()
+        record="$RUNNER_TEMP/shard-times/${{ runner.os }}.tsv"
+        if [ -s "$record" ]; then
+          times=(--times "$record")
+          dart tool/test_shard.dart seed --times "$record"
+        fi
+        # Left out before the deal, not after it, so the shards that are
+        # left stay even.
+        leave=()
+        if [ -n "${{ inputs.leave-out-package }}" ]; then
+          dart tool/tests_reaching_package.dart \
+            "${{ inputs.leave-out-package }}" > "$RUNNER_TEMP/left_out.txt"
+          leave=(--leave-out "$RUNNER_TEMP/left_out.txt")
+          echo "$(wc -l < "$RUNNER_TEMP/left_out.txt") test files reach" \
+            "package:${{ inputs.leave-out-package }} — not run here"
+        fi
+        # ${a[@]+"${a[@]}"}: an empty array is "unbound" to the Mac's bash
+        # 3.2 under set -u (apple-nightly runs this too).
+        dart tool/test_shard.dart deal \
+          --total "${{ inputs.total }}" --index "${{ inputs.index }}" \
+          ${times[@]+"${times[@]}"} ${leave[@]+"${leave[@]}"} \
+          > "$RUNNER_TEMP/shard_tests.txt"
         shard_files=$(wc -l < "$RUNNER_TEMP/shard_tests.txt")
         echo "shard ${{ inputs.index }} of ${{ inputs.total }}:" \
-          "$shard_files of $total_files files"
+          "$shard_files files"
         # A selector that matched nothing would otherwise sail through
         # green — the one way sharding could silently drop coverage.
         if [ "$shard_files" -eq 0 ]; then
@@ -109,12 +122,38 @@ runs:
         # step's `flutter test` ran a shard at before — package:test's own
         # default, half the cores — so the move changes where files run,
         # not how many run at once.
+        #
+        # ⛔`dart tool/…`, not `dart run tool/…`: `dart run` runs every
+        # package's build hook for the Dart VM first — the GPU engine's
+        # Rust among them — for a tool that imports none of them
+        # (tool/session_hooks/guard_dart_run.sh; 관제 2026-11-08,
+        # ci-dart-run-tools-build-the-engine-again). The release
+        # workflows' parity runs are the same.
         cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)
         half=$(( cores / 2 ))
         [ "$half" -ge 1 ] || half=1
-        dart run tool/affected_tests.dart \
+        dart tool/affected_tests.dart \
           --files-from "$RUNNER_TEMP/shard_tests.txt" \
           --outside-the-line --concurrency "$half"
+    # What this slice took, for the next run's deal — kept red or green,
+    # and from a run cut short too: each batch that ended was timed. Only
+    # this slice's files, so the shards' records never overlap and the
+    # scope job's join of them needs no rule for two values of one file.
+    # overwrite: a re-run of a failed shard lands in the same run.
+    - if: always() && inputs.times-artifact != ''
+      shell: bash
+      run: |
+        dart tool/test_shard.dart keep \
+          --files "$RUNNER_TEMP/shard_tests.txt" \
+          --to "$RUNNER_TEMP/test_times.tsv"
+    - if: always() && inputs.times-artifact != ''
+      uses: actions/upload-artifact@v5
+      with:
+        name: test-times-${{ runner.os }}-${{ inputs.index }}
+        path: ${{ runner.temp }}/test_times.tsv
+        retention-days: 14
+        if-no-files-found: ignore
+        overwrite: true
     # One writer per run per OS, and only from master: thirteen shards
     # racing to save the same key would leave twelve "cache already exists"
     # warnings, and a pull request has no business seeding the cache every
@@ -124,6 +163,15 @@ runs:
     # Schedule counts as master here too: the macOS suite only ever runs
     # on schedule/dispatch, and without its own seed those shards would
     # compile cold every night.
+    #
+    # ⚖️Fewer master runs reach here since one whose tree a pull request
+    # already tested green stands down (ci.yml's scope job, 2026-11-17), and
+    # that was weighed: every Linux run since 11-06 found no seed, and the
+    # seedless 11-06 shards reached their first test 14-20 s after the batch
+    # began. 11-17's took 4.9 min, the Windows shards 7: what came between
+    # is the GPU engine's Rust, built cold by the app's build hook (315 s on
+    # the Surface, .github/actions/rust-engine) — not timed apart from the
+    # compile here, but no seed of this cache reaches it.
     - if: (github.event_name == 'push' || github.event_name == 'schedule') && inputs.index == '0'
       uses: actions/cache/save@v4
       with:

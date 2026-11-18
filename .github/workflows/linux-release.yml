@@ -13,8 +13,8 @@
 # (2026-08-31). One run per release round, asked for by hand.
 #
 # ⚠️NOBODY HERE OWNS A LINUX MACHINE (유저 2026-08-29: 「나 리눅스없는데
-# 가능한가」). This file proves the bundle builds, that the engine it ships
-# draws the bytes every other platform draws, and that it opens its window.
+# 가능한가」). This file proves the bundle builds, that the engine draws the
+# bytes every other platform draws, and that the bundle opens its window.
 # Whether a pen's pressure arrives, or a real GPU keeps up, nobody has seen.
 name: Linux (release bundle)
 
@@ -30,8 +30,54 @@ env:
   FLUTTER_VERSION: '3.47.4'
 
 jobs:
+  # The release path's check of the engine, as TestFlight and the Mac build
+  # run it: the tests that call into the engine's library
+  # (tool/native_parity_tests.sh). The library they open is the one this
+  # job's build hook builds for them — never the bundle's: the tests open
+  # what the hook leaves for a test run, the bundle holds what ships.
+  # ↩️Till 2026-11-13 it was the C engine's parity check, against the engine
+  # the bundle SHIPPED: the plugin build left a standalone .so, made by
+  # Flutter's clang rather than the gcc build the CI shards tested; the pins
+  # took it where its build left it — not the bundle's copy, which holds
+  # only what ships (run 41038440055) — once `cmp` showed it was the
+  # bundle's own bytes, so the file handed out was the file checked; and
+  # QA_REQUIRE_NATIVE made a missing engine fail rather than skip. The C
+  # went, and its .so with it.
+  # ↩️A JOB OF ITS OWN, NOT A STEP OF THE BUNDLE'S (2026-11-16). On the
+  # bundle's 22.04 runner every one of these tests was `Bad state: no
+  # adapter` (round 1091, run 43724312633): it has no Vulkan. Lavapipe
+  # shows the engine's surfaces only through a dma-buf export that has been
+  # seen working on Mesa 25.2.8 and 26.0.8 (gpu-engine.yml's 24.04 job,
+  # ci.yml's ubuntu-latest shards) — 22.04's is 23.2.1, never tried. So the
+  # tests run where ci.yml's run the same tests, readied the same way; the
+  # bundle still compiles on 22.04 for the reason beside it, and waits for
+  # this job, so a red engine hands nothing out, as when this was its step.
+  engine:
+    name: Tests on the engine (lavapipe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - uses: ./.github/actions/lavapipe
+      - uses: ./.github/actions/rust-engine
+      - name: Tests on the engine as this runner builds it
+        run: |
+          set -euo pipefail
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
+          echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          # Run by the run plan, as every list run goes: the pins that wait
+          # for the collector alone and last (tool/affected_tests.dart).
+          dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
+
   bundle:
     name: Linux bundle
+    needs: engine
     # 🚨22.04, NOT ubuntu-latest. The runner, the plugins and the engine are
     # compiled HERE, and a binary asks for the newest symbol versions of the
     # glibc and libstdc++ it was linked against — so the runner's are the
@@ -67,6 +113,7 @@ jobs:
             clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
             xvfb xdotool libgl1-mesa-dri
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # 🔢One number per round, the round's TestFlight number (유저
       # 2026-10-02: 「제일 높은 테스트플라이트 숫자로 통일」). Required here,
@@ -79,51 +126,6 @@ jobs:
           BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           bash tool/release_build.sh linux "$BUILD_NUMBER"
-
-      # The release path's parity check, as TestFlight and the Mac build run
-      # it, but against the engine the bundle SHIPS. On Apple the engine is
-      # compiled into the app binary, so those two build a dylib beside it to
-      # have something to load. Here the plugin build leaves a standalone .so
-      # in the bundle, made by Flutter's clang rather than the gcc build the
-      # CI shards test — so the file handed out is the file checked.
-      # The pins take the engine where its build left it, beside what that
-      # build makes with it (test/helpers/native_engine_path.dart) — not
-      # the bundle's copy, which holds only what ships (run 41038440055).
-      # So they run on the plugin build's .so once `cmp` shows it is the
-      # bundle's own bytes: the bundle copies it unchanged (install(FILES)),
-      # and a build that ever stops doing so fails here rather than checks
-      # another file.
-      #
-      # The SDK's example, which the fx pin opens beside that engine
-      # (an_fx_plugin_answers_through_the_engine), is made only by the
-      # engine's own build — packages/qa_native/src/CMakeLists.txt builds it
-      # where that file is the top of the build, as CI and the lane gate run
-      # it, and never in the app's (run 41951941230 failed on it). So that
-      # build makes it here, the one target, and it goes beside the engine.
-      # It ships in nothing, and a missing one fails the pin, never skips it.
-      - name: The SDK example beside the engine
-        run: |
-          set -euo pipefail
-          cmake -S packages/qa_native/src -B build/fx-sdk-example -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/fx-sdk-example --target qa_fx_sdk_example
-          cp build/fx-sdk-example/libqa_fx_sdk_example.so \
-            build/linux/x64/release/plugins/qa_native/shared/
-      - name: Parity against the shipped engine
-        env:
-          # A missing engine must FAIL rather than skip: a skipped parity
-          # suite and a passing one look identical in a summary.
-          QA_REQUIRE_NATIVE: '1'
-        run: |
-          set -euo pipefail
-          built=build/linux/x64/release/plugins/qa_native/shared/libqa_engine.so
-          cmp "$built" build/linux/x64/release/bundle/lib/libqa_engine.so
-          export QA_ENGINE_PATH="$GITHUB_WORKSPACE/$built"
-          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
-          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
-          # Run by the run plan, as every list run goes: the pins that wait
-          # for the collector alone and last (tool/affected_tests.dart).
-          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
 
       # The launch the Windows zip gets on the desk: still alive after 15 s,
       # with its window titled Anicel. Xvfb is the screen and Mesa's llvmpipe

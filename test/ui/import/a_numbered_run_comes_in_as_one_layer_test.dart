@@ -12,17 +12,24 @@
 // picture the one before it showed folding into that one's exposure.
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -42,6 +49,7 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(tempDir));
+  tearDown(SummonedTooltip.dismiss);
 
   /// `A1` and `A2` the same picture, `A3` another, and `B1` alone.
   Future<Map<String, String>> writeFolder(WidgetTester tester) async =>
@@ -69,13 +77,16 @@ void main() {
 
   /// The window on [paths], once the pictures each of [runs] runs with are
   /// measured — every picked path, unless the test names fewer: a run is
-  /// known when its sizes are (F-392).
+  /// known when its sizes are (F-392). The window is [width] wide: past
+  /// what its two zones ask together, the list is laid out as wide as it
+  /// asks to be rather than as wide as the window lets it.
   Future<EditorSessionManager> open(
     WidgetTester tester,
     List<String> paths, {
     List<String>? runs,
+    double width = 1400,
   }) async {
-    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.physicalSize = Size(width, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -103,9 +114,7 @@ void main() {
   }
 
   /// Places what the window holds, and answers the layers that brought —
-  /// by id: the default project has an `A` of its own. It waits out the
-  /// wait window, so it ends by stopping playback's warmer
-  /// (`pumpPastTheWaitWindow`) — for every test that places through it.
+  /// by id: the default project has an `A` of its own.
   Future<List<Layer>> place(WidgetTester tester, EditorSessionManager s) async {
     final before = {for (final layer in s.requireActiveCut.layers) layer.id};
     List<Layer> added() => [
@@ -116,12 +125,11 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     await settleAsync(tester, () => added().isNotEmpty);
     await tester.pumpAndSettle();
-    s.playbackRig.prerenderScheduler.cancel();
     return added();
   }
 
   testWidgets('the row says the run it would bring, and a picture alone in '
-      'its symbol says nothing', (tester) async {
+      'its symbol is asked the kind of one picture', (tester) async {
     final files = await writeFolder(tester);
     await open(
       tester,
@@ -133,7 +141,12 @@ void main() {
       cellText(tester, 'option', files['A1']!),
       AppText.strings.imRunSpan('A1', 'A3', 3),
     );
-    expect(cellText(tester, 'option', files['B1']!), '—');
+    expect(
+      cellText(tester, 'option', files['B1']!),
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'a picture alone in its symbol is one picture, asked the kind '
+          'of layer it comes in as (asset-placement-presets Q4)',
+    );
   });
 
   testWidgets('numbers alone run too: `1` · `2` come in as one layer named by '
@@ -187,7 +200,11 @@ void main() {
       cellText(tester, 'option', files['A5']!),
       AppText.strings.imRunSpan('A4', 'A5', 2),
     );
-    expect(cellText(tester, 'option', files['A3']!), '—');
+    expect(
+      cellText(tester, 'option', files['A3']!),
+      layerKindDisplayName(LayerKind.bornOfOnePicture),
+      reason: 'cut off by its size, it is one picture — asked its kind',
+    );
 
     final added = await place(tester, s);
 
@@ -207,26 +224,76 @@ void main() {
     );
   });
 
-  testWidgets('a run\'s word is never cut — its column is as wide as the '
-      'widest word a row says, not only its answers\'', (tester) async {
-    final paths = (await tester.runAsync(
-      () async => [
+  // ↩️「a run's word is never cut — its column is as wide as the widest word
+  // a row says」 (I-76). 🗣️F-582, 유저 2026-11-10: 「옵션행이 길이에 따라
+  // 커져서 임포트창이 커지는데, 해당 옵션행은 고정길이로 둬서 길어지면 …
+  // 생략. 풀네임은 호버해서 툴팁으로 알도록」 — the option column keeps one
+  // room whatever the files are named.
+  testWidgets('🚨a run of long names widens nothing: its span is cut where '
+      'the option column\'s room ends and says its whole on a hover, and a '
+      'span the room holds is whole (F-582)', (tester) async {
+    const long = 'background_street_night_take';
+    final (short, wide) = (await tester.runAsync(() async {
+      await writeSolidPng(tempDir, 'ABCD123.png');
+      await writeSolidPng(tempDir, '${long}0002.png');
+      return (
         await writeSolidPng(tempDir, 'ABCD1.png'),
-        await writeSolidPng(tempDir, 'ABCD123.png'),
-      ],
-    ))!;
-    await open(tester, [paths.first]);
-    final cell = find.byKey(ValueKey<String>('import-cell-option-${paths.first}'));
+        await writeSolidPng(tempDir, '${long}0001.png'),
+      );
+    }))!;
+    RenderParagraph spanOf(String path) => tester.renderObject(
+      find.descendant(
+        of: find.byKey(ValueKey<String>('import-cell-option-$path')),
+        matching: find.anyRichText(),
+      ),
+    );
+    final list = find.byType(ImportFileTable);
+    double listWidth() => tester.getSize(list).width;
+    // What the list asks to be, of the rows and columns it was given.
+    double asked() {
+      final table = tester.widget<ImportFileTable>(list);
+      return ImportFileTable.preferredWidth(
+        tester.element(list),
+        rows: table.rows,
+        columns: table.columns,
+        leadWidth: table.leadWidth,
+      );
+    }
+
+    // A window with room for what the list asks: in a narrower one the
+    // list is as wide as the window lets it, whatever its rows say.
+    const roomy = 3000.0;
+    await open(tester, [short], width: roomy);
     expect(
-      cellText(tester, 'option', paths.first),
+      cellText(tester, 'option', short),
       AppText.strings.imRunSpan('ABCD1', 'ABCD123', 2),
       reason: '⛔전제: a word longer than either answer\'s',
     );
+    expect(listWidth(), asked(), reason: '⛔전제: as wide as it asks to be');
+    expect(spanOf(short).didExceedMaxLines, isFalse, reason: 'it fits');
+    final width = listWidth();
 
-    final word = tester.renderObject<RenderParagraph>(
-      find.descendant(of: cell, matching: find.anyRichText()),
+    await tester.pumpWidget(const SizedBox());
+    await open(tester, [short, wide], width: roomy);
+    final whole = AppText.strings.imRunSpan('${long}0001', '${long}0002', 2);
+    expect(cellText(tester, 'option', wide), whole);
+    expect(listWidth(), asked(), reason: '⛔전제: as wide as it asks to be');
+    expect(listWidth(), width, reason: 'the list is no wider for the run');
+    expect(spanOf(short).didExceedMaxLines, isFalse);
+    expect(spanOf(wide).didExceedMaxLines, isTrue, reason: 'cut at the room');
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await tester.pump();
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(ValueKey<String>('import-cell-option-$wide')),
+      ),
     );
-    expect(word.didExceedMaxLines, isFalse, reason: 'the word fits its line');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(SummonedTooltip.debugShownMessage, whole);
   });
 
   testWidgets('🚨together, the run is ONE layer named by its symbol, its '
@@ -424,15 +491,78 @@ void main() {
     expect([for (final frame in added.single.frames) frame.name], ['1', '3']);
   });
 
-  testWidgets('two pictures of one run picked together bring it once',
-      (tester) async {
+  // 🗣️F-595 ① (유저 2026-11-15: 「A1부터 A8까지 … 8개 선택해서 드롭해서
+  // 스샷과 같은 동일한것이 생기는 상황이 발생. 그러니 이 경우 하나로
+  // 합쳐지도록. 여러개 중복으로 안생기고」).
+  testWidgets('🚨pictures of one run handed in together stand as ONE row — '
+      'the run\'s, as its first handed in alone does — and bring it once '
+      '(F-595 ①)', (tester) async {
     final files = await writeFolder(tester);
-    final s = await open(tester, [files['A1']!, files['A3']!]);
+    final s = await open(
+      tester,
+      [files['A1']!, files['A2']!, files['A3']!],
+      runs: [files['A1']!],
+    );
+
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      AppText.strings.imRunSpan('A1', 'A3', 3),
+    );
+    for (final brought in ['A2', 'A3']) {
+      expect(
+        find.byKey(ValueKey<String>('import-cell-option-${files[brought]}')),
+        findsNothing,
+        reason: '$brought is A1\'s row\'s — no row of its own',
+      );
+    }
 
     final added = await place(tester, s);
 
     expect(added, hasLength(1));
     expect(added.single.frames, hasLength(2));
+  });
+
+  testWidgets('the row answers for the pictures it brings: sent to the pool, '
+      'each is a file of the pool\'s again, a row of its own', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!, files['A3']!], runs: [files['A1']!]);
+    expect(
+      find.byKey(ValueKey<String>('import-cell-option-${files['A3']}')),
+      findsNothing,
+      reason: 'fixture: A3 is A1\'s row\'s',
+    );
+
+    // Answered by hand: the rows the pool takes read their files again, and
+    // the window does not settle while they are read.
+    final cell = find.byKey(
+      ValueKey<String>('import-cell-into-${files['A1']}'),
+    );
+    await tester.ensureVisible(cell);
+    await settleLoadedPages(tester);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-pool')),
+    );
+    expect(
+      await settleAsync(
+        tester,
+        () => find
+            .byKey(ValueKey<String>('import-cell-into-${files['A3']}'))
+            .evaluate()
+            .isNotEmpty,
+      ),
+      isTrue,
+      reason: 'A3 stands as a row again',
+    );
+
+    for (final file in ['A1', 'A3']) {
+      expect(
+        cellText(tester, 'into', files[file]!),
+        cellText(tester, 'into', files['A1']!),
+        reason: '$file stands as a row of its own, bound for the pool',
+      );
+    }
   });
 
   testWidgets('a picture of the run gone by the time Import is pressed is '
@@ -459,69 +589,75 @@ void main() {
     );
   });
 
-  /// Answers [option] in [column] for [path]'s row alone.
-  Future<void> answer(
-    WidgetTester tester,
-    String column,
-    String path,
-    String option,
-  ) async {
-    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
-    await tester.ensureVisible(cell);
-    await settleLoadedPages(tester);
-    await tester.tap(cell);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(ValueKey<String>('import-option-$column-$option')),
-    );
-    await tester.pumpAndSettle();
-  }
+  // 🗣️F-595 ② (유저 2026-11-16): 「임포트시 이름왼쪽행으로 불리언버튼
+  // 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록. 해제하면 물론
+  // 해당 행 비활성화표시도 같이」.
+  group('the switch before a row\'s name (F-595 ②)', () {
+    Finder switchOf(String path) =>
+        find.byKey(ValueKey<String>('import-switch-$path'));
 
-  // A row brings what its cells say: two rows of one run bring one layer
-  // only when they would hand the run's door the same — the span, where it
-  // goes, how it fits (`importPictureRun` reads those two answers).
-  for (final (differs, answerOtherwise) in <(
-    String,
-    Future<void> Function(WidgetTester, Map<String, String> files),
-  )>[
-    ('span\'s start', (tester, _) => keepImportSpan(tester, 2, 3)),
-    ('span\'s end', (tester, _) => keepImportSpan(tester, 1, 2)),
-    (
-      'place',
-      (tester, files) async {
-        // A new cut takes its picture 1:1 (`importFitLocked`), so the other
-        // row is answered 1:1 too: the rows differ in where they go alone.
-        await answer(tester, 'fit', files['A3']!, 'none');
-        await answer(tester, 'into', files['A1']!, 'newCut');
-      },
-    ),
-    ('fit', (tester, files) => answer(tester, 'fit', files['A1']!, 'none')),
-  ]) {
-    testWidgets('two pictures of one run whose rows answer otherwise — '
-        'another $differs — bring a layer each', (tester) async {
+    Color? nameInk(WidgetTester tester, String path) => tester
+        .widget<Text>(find.byKey(ValueKey<String>('import-name-$path')))
+        .style
+        ?.color;
+
+    VoidCallback? importPress(WidgetTester tester) => tester
+        .widget<ButtonStyleButton>(
+          find.byKey(const ValueKey<String>('import-run-button')),
+        )
+        .onPressed;
+
+    testWidgets('🚨a row switched off does not come in — not one picture its '
+        'run brings — and stands in the window drawn off', (tester) async {
       final files = await writeFolder(tester);
-      final s = await open(tester, [files['A1']!, files['A3']!]);
-      List<Object> runLayers() => [
-        for (final track in s.repository.requireProject().tracks)
-          for (final cut in track.cuts)
-            for (final layer in cut.layers)
-              if (layer.name == 'A') layer.id,
-      ];
-      final before = runLayers().toSet();
-      // The preview shows the first row while none is picked: A1's.
-      await answerOtherwise(tester, files);
+      final s = await open(
+        tester,
+        [files['A1']!, files['B1']!],
+        runs: [files['A1']!],
+      );
 
-      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-      await pumpPastTheWaitWindow(tester);
-      List<Object> brought() => [
-        for (final id in runLayers())
-          if (!before.contains(id)) id,
-      ];
-      await settleAsync(tester, () => brought().length >= 2);
-      await tester.pumpAndSettle();
+      await tester.tap(switchOf(files['A1']!));
+      await tester.pump();
 
-      expect(brought(), hasLength(2), reason: 'each row brings its own');
-      s.playbackRig.prerenderScheduler.cancel();
+      expect(
+        nameInk(tester, files['A1']!),
+        AppColors.text.withValues(alpha: AppColors.offAlpha),
+      );
+      expect(nameInk(tester, files['B1']!), AppColors.text);
+
+      final added = await place(tester, s);
+
+      expect([for (final layer in added) layer.name], ['B1']);
     });
-  }
+
+    testWidgets('a press on a selected row\'s switch speaks for the '
+        'selection — every row off, and Import has nothing to do', (
+      tester,
+    ) async {
+      final files = await writeFolder(tester);
+      await open(
+        tester,
+        [files['A1']!, files['B1']!],
+        runs: [files['A1']!],
+      );
+      for (final path in [files['A1']!, files['B1']!]) {
+        await tester.tap(find.byKey(ValueKey<String>('import-name-$path')));
+        await tester.pump();
+      }
+      // A selected row's name wears the accent.
+      final off = AppColors.accent.withValues(alpha: AppColors.offAlpha);
+
+      await tester.tap(switchOf(files['B1']!));
+      await tester.pump();
+
+      expect(nameInk(tester, files['A1']!), off);
+      expect(importPress(tester), isNull);
+
+      await tester.tap(switchOf(files['A1']!));
+      await tester.pump();
+
+      expect(nameInk(tester, files['B1']!), AppColors.accent);
+      expect(importPress(tester), isNotNull);
+    });
+  });
 }

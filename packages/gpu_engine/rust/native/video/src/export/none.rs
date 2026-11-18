@@ -20,6 +20,17 @@ pub unsafe fn write_frame(_rgba: *const u8) -> bool {
     false
 }
 
+/// None: there is no writer to take a frame.
+pub fn nv12_shape() -> Option<(usize, usize)> {
+    None
+}
+
+/// # Safety
+/// Nothing is read.
+pub unsafe fn write_nv12(_bytes: *const u8, _stride: i64) -> bool {
+    false
+}
+
 /// # Safety
 /// Nothing is read.
 pub unsafe fn write_audio(_interleaved: *const i16, _frames: i32) -> bool {

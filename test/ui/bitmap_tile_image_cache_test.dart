@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 
 BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
   final pixels = Uint8List(size * size * BitmapTile.bytesPerPixel);
@@ -54,6 +55,56 @@ void main() {
       expect(identical(first, second), isTrue);
       expect(first.image.width, tile.size);
       expect(first.image.height, tile.size);
+    });
+
+    // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): a tile of
+    // one colour holds its colour's block, and the block is its picture's
+    // key — as the engine's tile ledger keys its slot.
+    test('🚨the tiles of one colour are one picture, made once — a twin of '
+        'bytes of its own another', () {
+      final cache = BitmapTileImageCache();
+      final white = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+      final again = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+
+      final picture = cache.pictureFor(white);
+
+      expect(cache.heldFor(again), same(picture));
+      expect(cache.pictureFor(again), same(picture));
+      expect(cache.pictured.alive(), hasLength(1));
+      final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
+      final twin = BitmapTile(size: tile.size, pixels: tile.pixels);
+      expect(cache.pictureFor(twin), isNot(same(cache.pictureFor(tile))));
+    });
+
+    test("a colour's picture is let go through whichever tile of it", () {
+      final cache = BitmapTileImageCache();
+      final white = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+      final again = BitmapTile.ofOneColour(size: 4, word: 0xFFFFFFFF);
+      cache.pictureFor(white);
+
+      cache.releasePicture(again);
+
+      expect(cache.heldFor(white), isNull);
+    });
+
+    test("🚨a colour's picture stays while a tile of it is shown, whichever, "
+        'and goes once none is', () {
+      final cache = BitmapTileImageCache();
+      final budget = TilePictureBudget(cache: cache)..byteBudget = 0;
+      final shown = BitmapTile.ofOneColour(size: 4, word: 0xFF102030);
+      final pictured = BitmapTile.ofOneColour(size: 4, word: 0xFF102030);
+      cache.pictureFor(pictured);
+
+      budget.paintBegan('canvas');
+      budget.shown('canvas', shown);
+
+      expect(budget.letGo(), 0, reason: 'shown, through another tile of it');
+      expect(cache.heldFor(pictured), isNotNull);
+      for (var paint = 0; paint < TilePictureBudget.recentPaints; paint++) {
+        budget.paintBegan('another canvas');
+      }
+      expect(budget.letGo(), 1);
+      expect(cache.heldFor(shown), isNull);
     });
 
     test(

@@ -1,20 +1,25 @@
-//! The Wintab half held to the C's: both are played the same driver
-//! (wintab_fake) and asked the same, and what they answer and what they ask
-//! the driver are the same, bit for bit.
+//! The Wintab half played a driver (wintab_fake) and asked as the bridge
+//! asks: what it answers and what it asks the driver, bit for bit, as the
+//! C's were measured on the same packets (2026-11-07) and on answers worked
+//! out here.
 
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use windows::Win32::Foundation::{HMODULE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
+use windows::Win32::Foundation::POINT;
+use windows::Win32::UI::Input::Pointer::POINTER_INFO;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, SW_SHOWNOACTIVATE,
-    ShowWindow, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
-    WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, PT_PEN, PT_TOUCH,
+    RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_LBUTTONDOWN, WNDCLASSW, WS_EX_NOACTIVATE,
+    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
 };
-use windows::core::{HSTRING, s, w};
+use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
     Axis, Context, MOVE_MASK, OPTIONS, PACKET_DATA, PACKET_MODE, Packet, Script, Seen,
 };
+
+use crate::wintab::{self, Heard, QUEUE};
 
 /// The `qat_*` exports of one reader.
 #[derive(Clone, Copy)]
@@ -22,7 +27,7 @@ struct Reader {
     abi_version: unsafe extern "C" fn() -> i32,
     available: unsafe extern "C" fn() -> i32,
     device_name: unsafe extern "C" fn(*mut u16, i32) -> i32,
-    open: unsafe extern "C" fn() -> i32,
+    open: unsafe extern "C" fn(i32) -> i32,
     poll: unsafe extern "C" fn(*mut f32, i32) -> i32,
     close: unsafe extern "C" fn(),
 }
@@ -36,30 +41,15 @@ const RUST: Reader = Reader {
     close: crate::qat_close,
 };
 
-fn c() -> Reader {
-    // SAFETY: qa_tablet_win.c's declarations of each.
-    unsafe {
-        Reader {
-            abi_version: oracle::sidecar_export("qa_tablet", "qat_abi_version"),
-            available: oracle::sidecar_export("qa_tablet", "qat_available"),
-            device_name: oracle::sidecar_export("qa_tablet", "qat_device_name"),
-            open: oracle::sidecar_export("qa_tablet", "qat_open"),
-            poll: oracle::sidecar_export("qa_tablet", "qat_poll"),
-            close: oracle::sidecar_export("qa_tablet", "qat_close"),
-        }
-    }
-}
-
 /// The fake driver's own exports.
 struct Driver {
     play: unsafe extern "C" fn(*const Script),
     seen: unsafe extern "C" fn(*mut Seen),
 }
 
-/// The fake driver, loaded before either reader looks for wintab32.dll —
-/// and so the one they find — with the tests that play it one at a time:
-/// the driver, both readers' contexts and the app's window are the
-/// process's own.
+/// The fake driver, loaded before the reader looks for wintab32.dll — and
+/// so the one it finds — with the tests that play it one at a time: the
+/// driver, the reader's context and the app's window are the process's own.
 fn driver() -> (&'static Driver, MutexGuard<'static, ()>) {
     static DRIVER: OnceLock<Driver> = OnceLock::new();
     static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
@@ -72,7 +62,7 @@ fn driver() -> (&'static Driver, MutexGuard<'static, ()>) {
         let fake = unsafe { LoadLibraryW(&HSTRING::from(path.as_os_str())) }.expect("the fake");
         // SAFETY: a query of a loaded module, by its name.
         let found = unsafe { GetModuleHandleW(w!("wintab32.dll")) }.expect("a wintab32");
-        assert_eq!(found, fake, "LIVENESS — the readers would find another wintab32.dll");
+        assert_eq!(found, fake, "LIVENESS — the reader would find another wintab32.dll");
         let entry = |name| {
             // SAFETY: the fake's own export of that name.
             unsafe { GetProcAddress(fake, name) }.unwrap_or_else(|| panic!("the fake's {name:?}"))
@@ -106,9 +96,9 @@ impl Driver {
     }
 }
 
-/// A window the app's would be found as: shown, without an owner, of this
-/// process. It draws nothing and stands one pixel tall for the second it
-/// stands.
+/// A window the app's would be found as: of the runner's class, shown, of
+/// this process (display's app_window). It draws nothing and stands one
+/// pixel tall for the second it stands.
 struct AppWindow(HWND);
 
 unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -116,20 +106,21 @@ unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARA
     unsafe { DefWindowProcW(window, message, w, l) }
 }
 
+/// The class the runner gives its window (windows/runner/win32_window.cpp).
+const RUNNER: PCWSTR = w!("FLUTTER_RUNNER_WIN32_WINDOW");
+
 impl AppWindow {
     fn show() -> Self {
-        Self::make(None, true)
+        Self::make(RUNNER, true)
     }
 
-    /// Two windows of this process the app's is not: one not shown, and one
-    /// shown but owned by it.
+    /// Two windows of this process the app's is not: one of the runner's
+    /// class not shown, and one shown of another class.
     fn not_the_apps() -> [Self; 2] {
-        let owner = Self::make(None, false);
-        [Self::make(Some(owner.0), true), owner]
+        [Self::make(RUNNER, false), Self::make(w!("AnicelPenTestWindow"), true)]
     }
 
-    fn make(owner: Option<HWND>, shown: bool) -> Self {
-        let class = w!("AnicelPenTestWindow");
+    fn make(class: PCWSTR, shown: bool) -> Self {
         // SAFETY: this process's module, a class of it, and a window of that
         // class, shown without taking the focus.
         unsafe {
@@ -151,7 +142,7 @@ impl AppWindow {
                 0,
                 1,
                 1,
-                owner,
+                None,
                 None,
                 Some(module.into()),
                 None,
@@ -188,8 +179,10 @@ struct Reading {
 }
 
 /// What `reader` answers and asks the driver as `script` plays: its name
-/// into rooms of none to a hundred characters, opened twice, polled for
-/// records `polls` at a time, closed twice.
+/// into rooms of none to a hundred characters, opened twice, the queue
+/// drained as a press drains it ([`wintab::drain`]) — so what was queued is
+/// heard whenever the reader's own thread drains —, polled for records
+/// `polls` at a time, closed twice.
 fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Reading {
     driver.play(script);
     // SAFETY: each export of its declaration, with the room it is told of.
@@ -201,7 +194,8 @@ fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Read
             let length = (reader.device_name)(room.as_mut_ptr(), cap);
             names.push((length, room));
         }
-        let opened = [(reader.open)(), (reader.open)()];
+        let opened = [(reader.open)(150), (reader.open)(150)];
+        wintab::drain();
         let polls = polls
             .iter()
             .map(|&cap| {
@@ -216,13 +210,78 @@ fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Read
     }
 }
 
-/// Both readers' readings of `script`, the same.
-fn held(driver: &Driver, script: &Script, polls: &[i32]) -> Reading {
-    let theirs = read(driver, c(), script, polls);
-    let ours = read(driver, RUST, script, polls);
-    assert_eq!(ours, theirs);
-    ours
+/// A reading as it reads, step by step: each room as what was written and
+/// how much after it was left as it was, each record as its eight values,
+/// the context as the system's and the words it changed, and whether a
+/// window was handed — not which: its handle is each run's.
+fn told(reading: &Reading) -> Vec<String> {
+    let mut told = vec![format!("available {}", reading.available)];
+    for (length, room) in &reading.names {
+        let untouched = room.iter().rev().take_while(|&&unit| unit == 0xFFFF).count();
+        let written = String::from_utf16_lossy(&room[..room.len() - untouched]);
+        told.push(format!("name {length} {written:?} +{untouched}"));
+    }
+    told.push(format!("opened {:?}", reading.opened));
+    for (count, room) in &reading.polls {
+        let unwritten = room.iter().rev().take_while(|&&bits| bits == UNWRITTEN).count();
+        let records: Vec<Vec<f32>> = room[..room.len() - unwritten]
+            .chunks(8)
+            .map(|record| record.iter().map(|&bits| f32::from_bits(bits)).collect())
+            .collect();
+        told.push(format!("poll {count} {records:?} +{unwritten}"));
+    }
+    let seen = &reading.seen;
+    let handed = if seen.window == 0 { "no window" } else { "a window" };
+    let (opens, closes, queue, enable) = (seen.opens, seen.closes, seen.queue_size, seen.enable);
+    told.push(format!("seen {opens} opens, {closes} closes, queue {queue}, enable {enable}, {handed}"));
+    let system = system_context();
+    let context = if seen.context.0 == [0; 53] {
+        "none".to_owned()
+    } else {
+        let changed: Vec<_> = (0..53)
+            .filter(|&at| seen.context.0[at] != system.0[at])
+            .map(|at| format!("{at}={:#x}", seen.context.0[at]))
+            .collect();
+        format!("the system's but {}", changed.join(" "))
+    };
+    told.push(format!("context {context}"));
+    // How many times it was asked is the reader's own thread's to say: what
+    // each drain asked for, told once.
+    let mut asked = seen.asked[..seen.asks.clamp(0, 8) as usize].to_vec();
+    asked.dedup();
+    told.push(format!("asked {asked:?}"));
+    told
 }
+
+/// The lines of a reading, in order.
+fn tells(parts: &[&[&str]]) -> Vec<String> {
+    parts.concat().into_iter().map(str::to_owned).collect()
+}
+
+// What the readers told of the fake driver, measured of the C 2026-11-07 —
+// so held once it is gone (connection-round-checklist A); the driver is
+// this crate's, and lives on after it.
+
+/// An installed driver's, before anything opens: there, and its name into
+/// each room — none at all, of nothing, one, five, 64 and 100.
+const INSTALLED: [&str; 7] = [
+    "available 1",
+    r#"name 0 "" +0"#,
+    r#"name 0 "" +101"#,
+    r#"name 0 "\0" +100"#,
+    r#"name 4 "Waco\0" +96"#,
+    r#"name 19 "Wacom Cintiq 24 Pen\0" +81"#,
+    r#"name 19 "Wacom Cintiq 24 Pen\0" +81"#,
+];
+
+/// A driver nothing was asked of.
+const NOT_ASKED: [&str; 2] = ["seen 0 opens, 0 closes, queue 0, enable 0, no window", "context none"];
+
+/// A driver whose context was opened once and closed once.
+const OPENED_ONCE: [&str; 2] = [
+    "seen 1 opens, 1 closes, queue 1024, enable 1, a window",
+    "context the system's but 20=0x5a15 26=0x15c6 27=0x0 28=0x15c6",
+];
 
 fn name(text: &str) -> [u16; 80] {
     let mut name = [0; 80];
@@ -237,7 +296,7 @@ fn axis(min: i32, max: i32) -> Axis {
 }
 
 fn packet(pressure: u32, azimuth: i32, altitude: i32, twist: i32) -> Packet {
-    Packet { time: 123_456, buttons: 3, x: 40, y: 50, pressure, azimuth, altitude, twist }
+    Packet { status: 0, time: 123_456, buttons: 3, x: 40, y: 50, pressure, azimuth, altitude, twist }
 }
 
 /// The default system context, every word told apart.
@@ -271,74 +330,103 @@ fn bits(record: [f32; 8]) -> Vec<u32> {
 
 #[test]
 fn both_halves_keep_the_abi_their_bridge_asks_for() {
-    // SAFETY: qa_tablet_win.c's declaration.
-    assert_eq!(unsafe { (c().abi_version)() }, 2);
-    // SAFETY: the same.
-    assert_eq!(unsafe { (RUST.abi_version)() }, 2);
+    let asks = super::bridge_asks("abiVersion");
+    // SAFETY: an int out.
+    assert_eq!(unsafe { (RUST.abi_version)() }, asks);
 }
 
 #[test]
 fn without_a_driver_nothing_opens() {
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
-    let reading = held(driver, &Script::QUIET, &[64]);
+    let reading = read(driver, RUST, &Script::QUIET, &[64]);
     assert_eq!((reading.available, reading.opened, reading.polls[0].0), (0, [0, 0], 0));
     assert_eq!(reading.seen, Seen::NOTHING);
+    let nameless = [r#"name 0 "" +101"#; 5];
+    let nothing = ["opened [0, 0]", "poll 0 [] +520"];
+    let none = ["available 0", r#"name 0 "" +0"#];
+    assert_eq!(told(&reading), tells(&[&none, &nameless, &nothing, &NOT_ASKED, &["asked []"]]));
 }
 
 #[test]
 fn without_the_apps_window_nothing_opens() {
     let (driver, _turn) = driver();
     let _others = AppWindow::not_the_apps();
-    let reading = held(driver, &installed(&[packet(500, 0, 0, 0)]), &[64]);
+    let reading = read(driver, RUST, &installed(&[packet(500, 0, 0, 0)]), &[64]);
     assert_eq!((reading.available, reading.opened), (1, [0, 0]));
     assert_eq!(reading.seen.opens, 0, "the driver is not asked without a window");
+    let nothing = ["opened [0, 0]", "poll 0 [] +520"];
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &nothing, &NOT_ASKED, &["asked []"]]));
 }
 
 #[test]
 fn a_driver_without_a_system_context_or_that_opens_none() {
     let (driver, _turn) = driver();
     let window = AppWindow::show();
+    let nothing = ["opened [0, 0]", "poll 0 [] +520"];
     let script = Script { has_context: false, ..installed(&[packet(500, 0, 0, 0)]) };
-    assert_eq!(held(driver, &script, &[64]).opened, [0, 0]);
+    let reading = read(driver, RUST, &script, &[64]);
+    assert_eq!(reading.opened, [0, 0]);
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &nothing, &NOT_ASKED, &["asked []"]]));
     let script = Script { opens: false, ..installed(&[packet(500, 0, 0, 0)]) };
-    let reading = held(driver, &script, &[64]);
+    let reading = read(driver, RUST, &script, &[64]);
     assert_eq!((reading.opened, reading.polls[0].0), ([0, 0], 0));
     assert_eq!((reading.seen.opens, reading.seen.window), (2, window.0.0 as isize));
+    let refused = [
+        "seen 2 opens, 0 closes, queue 0, enable 1, a window",
+        "context the system's but 20=0x5a15 26=0x15c6 27=0x0 28=0x15c6",
+        "asked []",
+    ];
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &nothing, &refused]));
 }
 
 #[test]
 fn the_context_asked_for_is_the_systems_observing_alongside_it() {
     let (driver, _turn) = driver();
     let window = AppWindow::show();
-    let reading = held(driver, &installed(&[]), &[]);
+    let reading = read(driver, RUST, &installed(&[]), &[]);
     assert_eq!(reading.opened, [1, 1]);
     let seen = reading.seen;
-    assert_eq!((seen.opens, seen.closes, seen.queue_size), (1, 1, 128), "once each");
+    assert_eq!((seen.opens, seen.closes, seen.queue_size), (1, 1, QUEUE as i32), "once each");
     assert_eq!((seen.window, seen.enable), (window.0.0 as isize, 1));
     let mut asked = system_context();
     asked.0[OPTIONS] |= 0x0001; // CXO_SYSTEM
-    asked.0[PACKET_DATA] = 0x15C4; // TIME | BUTTONS | X | Y | NORMAL_PRESSURE | ORIENTATION
+    // STATUS | TIME | BUTTONS | X | Y | NORMAL_PRESSURE | ORIENTATION
+    asked.0[PACKET_DATA] = 0x15C6;
     asked.0[PACKET_MODE] = 0; // absolute
-    asked.0[MOVE_MASK] = 0x15C4;
+    asked.0[MOVE_MASK] = 0x15C6;
     assert_eq!(seen.context, asked);
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &["opened [1, 1]"], &OPENED_ONCE, &["asked [1024]"]]));
 }
 
 #[test]
 fn the_name_is_what_room_there_is_for() {
     let (driver, _turn) = driver();
-    let reading = held(driver, &installed(&[]), &[]);
+    let reading = read(driver, RUST, &installed(&[]), &[]);
     let lengths: Vec<_> = reading.names.iter().map(|(length, _)| *length).collect();
     assert_eq!(lengths, [0, 0, 0, 4, 19, 19], "no room, none, one, five, 64, 100");
+    let closed = ["opened [0, 0]", NOT_ASKED[0], NOT_ASKED[1], "asked []"];
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &closed]));
     let long = "x".repeat(63);
     let script = Script { name: name(&long), ..installed(&[]) };
-    assert_eq!(held(driver, &script, &[]).names[5].0, 63);
+    let reading = read(driver, RUST, &script, &[]);
+    assert_eq!(reading.names[5].0, 63);
+    let named = [
+        "available 1",
+        r#"name 0 "" +0"#,
+        r#"name 0 "" +101"#,
+        r#"name 0 "\0" +100"#,
+        r#"name 4 "xxxx\0" +96"#,
+        r#"name 63 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\0" +37"#,
+        r#"name 63 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\0" +37"#,
+    ];
+    assert_eq!(told(&reading), tells(&[&named, &closed]));
 }
 
 #[test]
 fn a_name_longer_than_the_c_had_room_for_is_cut_where_it_cut() {
-    // The C hands the driver 64 characters of room, and a longer name runs
-    // past them: only the Rust is played one.
+    // The C handed the driver 64 characters of room, and a longer name ran
+    // past them: the C was never played one.
     let (driver, _turn) = driver();
     let script = Script { name: name(&"y".repeat(79)), ..installed(&[]) };
     let reading = read(driver, RUST, &script, &[]);
@@ -364,19 +452,30 @@ fn a_pen_that_leans_and_turns() {
         orientation: [axis(0, 3599), axis(-900, 900), axis(0, 359)],
         ..installed(&packets)
     };
-    let reading = held(driver, &script, &[0, 2, 100, 1]);
+    let reading = read(driver, RUST, &script, &[0, 100, 1]);
     let counts: Vec<_> = reading.polls.iter().map(|(count, _)| *count).collect();
-    assert_eq!(counts, [0, 2, 3, 0], "none asked, two, the rest, none left");
-    let asked = &reading.seen.asked[..reading.seen.asks as usize];
-    assert_eq!(asked, &[2, 64, 1], "a hundred asked for is its room of 64");
-    let first = &reading.polls[1].1;
+    assert_eq!(counts, [0, 5, 0], "none asked, all five, none new");
+    let asked = &reading.seen.asked[..reading.seen.asks.clamp(0, 8) as usize];
+    assert!(!asked.is_empty() && asked.iter().all(|&size| size == 1024), "each drain asks for the whole queue");
+    let records = &reading.polls[1].1;
     let want = [(1024.0 * (1.0 / 2047.0)) as f32, 90.0, 0.5, 123_456.0, 3.0, 1.0, 270.0, 1.0];
-    assert_eq!(first[..8], bits(want), "answers worked out here");
+    assert_eq!(records[..8], bits(want), "answers worked out here");
     let second = [0.0, 359.9, -300.0 / 900.0, 123_456.0, 3.0, 1.0, 0.0, 1.0];
-    assert_eq!(first[8..16], bits(second));
-    assert!(first[16..].iter().all(|&value| value == UNWRITTEN), "two records, no more");
-    let past = &reading.polls[2].1;
-    assert_eq!(past[8], 1.0f32.to_bits(), "pressure past the axis is whole, not more");
+    assert_eq!(records[8..16], bits(second));
+    assert_eq!(records[24], 1.0f32.to_bits(), "pressure past the axis is whole, not more");
+    assert!(records[40..].iter().all(|&value| value == UNWRITTEN), "five records, no more");
+    let polled = [
+        "opened [1, 1]",
+        "poll 0 [] +8",
+        "poll 5 [[0.50024426, 90.0, 0.5, 123456.0, 3.0, 1.0, 270.0, 1.0], \
+         [0.0, 359.9, -0.33333334, 123456.0, 3.0, 1.0, 0.0, 1.0], \
+         [1.0, 0.0, 1.0, 123456.0, 3.0, 1.0, 359.0, 1.0], \
+         [1.0, 180.0, 0.0, 123456.0, 3.0, 1.0, 90.0, 1.0], \
+         [0.0004885198, 0.2, 0.0033333334, 123456.0, 3.0, 1.0, 4.0, 1.0]] +768",
+        "poll 0 [] +16",
+    ];
+    let asked = ["asked [1024]"];
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &polled, &OPENED_ONCE, &asked]));
 }
 
 #[test]
@@ -399,10 +498,12 @@ fn a_pen_with_no_lean_or_turn_reads_as_none() {
     let boundless = Script { orientation: [all, axis(-900, 900), all], ..flat };
     let unscaled = Script { has_pressure: false, ..flat };
     let narrow = Script { pressure: axis(7, 7), ..bare };
+    let polled = ["opened [1, 1]", "poll 1 [[0.50048876, 0.0, 0.0, 123456.0, 3.0, 0.0, 0.0, 0.0]] +512"];
     for script in [bare, flat, aimless, boundless, unscaled, narrow] {
-        let record = &held(driver, &script, &[64]).polls[0].1[..8];
+        let reading = read(driver, RUST, &script, &[64]);
         let want = [(512.0 * (1.0 / 1023.0)) as f32, 0.0, 0.0, 123_456.0, 3.0, 0.0, 0.0, 0.0];
-        assert_eq!(record, bits(want));
+        assert_eq!(reading.polls[0].1[..8], bits(want));
+        assert_eq!(told(&reading), tells(&[&INSTALLED, &polled, &OPENED_ONCE, &["asked [1024]"]]));
     }
 }
 
@@ -415,22 +516,315 @@ fn a_pressure_axis_below_zero_counts_from_its_bottom() {
         pressure: axis(-100, 100),
         ..installed(&[packet(50, 0, 0, 0), packet(u32::MAX, 0, 0, 0)])
     };
-    let record = held(driver, &script, &[64]).polls[0].1.clone();
+    let reading = read(driver, RUST, &script, &[64]);
+    let record = &reading.polls[0].1;
     assert_eq!(record[0], 0.25f32.to_bits());
     assert_eq!(record[8], 1.0f32.to_bits(), "a count past i32 is still past the top");
+    let polled = [
+        "opened [1, 1]",
+        "poll 2 [[0.25, 0.0, 0.0, 123456.0, 3.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 123456.0, 3.0, 0.0, 0.0, 0.0]] +504",
+    ];
+    assert_eq!(told(&reading), tells(&[&INSTALLED, &polled, &OPENED_ONCE, &["asked [1024]"]]));
 }
 
 #[test]
 fn a_driver_is_not_read_past_what_it_was_asked_for() {
-    // The C reads on past its room for a count it is handed: only the Rust
-    // is played a driver that says it gave more.
+    // The C read on past its room for a count it was handed: it was never
+    // played a driver that says it gave more than the room it was asked to
+    // fill — the whole queue's.
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
     let packets = [packet(100, 0, 0, 0), packet(200, 0, 0, 0), packet(300, 0, 0, 0)];
-    let script = Script { claims_more: 70, ..installed(&packets) };
+    let script = Script { claims_more: QUEUE as i32, ..installed(&packets) };
     let reading = read(driver, RUST, &script, &[2]);
     let (count, room) = &reading.polls[0];
     assert_eq!(*count, 2);
     assert!(room[16..].iter().all(|&value| value == UNWRITTEN), "two records, no more");
 }
 
+#[test]
+fn a_poll_is_handed_the_newest_of_the_packets_it_was_not_handed() {
+    // ↩️A poll took the OLDEST 64 queued and left the rest to the next: after
+    // a stall, the packet the app read as the pen now was the 64th oldest.
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    let packets: Vec<Packet> =
+        (1..=70).map(|at| Packet { time: at, ..packet(at, 0, 0, 0) }).collect();
+    let script = Script { has_pressure: true, pressure: axis(0, 100), ..installed(&packets) };
+    let reading = read(driver, RUST, &script, &[2, 64]);
+    let counts: Vec<_> = reading.polls.iter().map(|(count, _)| *count).collect();
+    assert_eq!(counts, [2, 0], "the newest two, then none new");
+    let records = &reading.polls[0].1;
+    let newest = |at: u32| bits([(f64::from(at) * (1.0 / 100.0)) as f32, 0.0, 0.0, at as f32, 3.0, 0.0, 0.0, 0.0]);
+    assert_eq!(records[..8], newest(69));
+    assert_eq!(records[8..16], newest(70));
+}
+
+#[test]
+fn the_queue_asked_for_halves_till_the_driver_takes_one() {
+    // A size refused leaves no queue at all (Wintab 1.4): the next is asked.
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    for (most, taken) in [(i32::MAX, 1024), (1023, 512), (300, 256), (1, 1), (0, 1)] {
+        let script = Script { queue_most: most, ..installed(&[]) };
+        let reading = read(driver, RUST, &script, &[]);
+        assert_eq!(reading.seen.queue_size, taken, "a driver taking {most} at most");
+    }
+}
+
+/// A packet heard at `time` on the message clock, of `pressure`.
+fn heard_at(time: u32, pressure: u32) -> wintab::Packet {
+    wintab::Packet { time, normal_pressure: pressure, ..Default::default() }
+}
+
+/// What was heard of `packets`, in their order.
+fn hearing(packets: &[wintab::Packet]) -> Heard {
+    let mut heard = Heard::default();
+    heard.hear(packets);
+    heard
+}
+
+/// The times of the packets handed to a poll of `room`.
+fn handed(heard: &mut Heard, room: usize) -> Vec<u32> {
+    heard.hand(room).map(|packet| packet.time).collect()
+}
+
+#[test]
+fn what_was_heard_is_handed_the_newest_first_and_once() {
+    let mut heard = hearing(&(1..=5).map(|at| heard_at(at, 0)).collect::<Vec<_>>());
+    assert_eq!(handed(&mut heard, 2), [4, 5]);
+    assert_eq!(handed(&mut heard, 10), [] as [u32; 0], "and the older ones not after");
+    heard.hear(&[heard_at(6, 0), heard_at(7, 0)]);
+    assert_eq!(handed(&mut heard, 10), [6, 7], "what came since");
+    assert_eq!(handed(&mut heard, 0), [] as [u32; 0]);
+}
+
+#[test]
+fn the_most_heard_is_a_queue_s_worth_the_oldest_going_first() {
+    let mut heard = hearing(&(1..=QUEUE as u32 + 5).map(|at| heard_at(at, at)).collect::<Vec<_>>());
+    assert_eq!(heard.near(5, 0), None, "the five oldest went");
+    assert_eq!(heard.near(6, 0).map(|packet| packet.time), Some(6));
+    let all = handed(&mut heard, usize::MAX);
+    assert_eq!((all.len(), all[0]), (QUEUE, 6), "a queue's worth handed, and no more");
+}
+
+#[test]
+fn a_packet_that_says_the_queue_overflowed_is_counted() {
+    let statuses = [0, 0x2, 0x3, 0x1, 0x12, 0x4];
+    let packets: Vec<_> = statuses.iter().map(|&status| wintab::Packet { status, ..heard_at(1, 0) }).collect();
+    assert_eq!(hearing(&packets).overflowed, 3, "TPS_QUEUE_ERR, whatever else beside it");
+}
+
+#[test]
+fn a_move_is_given_the_packet_nearest_it_within_the_window() {
+    let heard = hearing(&[heard_at(100, 1), heard_at(110, 2), heard_at(120, 3), heard_at(500, 4)]);
+    let near = |time, within| heard.near(time, within).map(|packet| packet.normal_pressure);
+    assert_eq!(near(104, 150), Some(1));
+    assert_eq!(near(106, 150), Some(2));
+    assert_eq!(near(105, 150), Some(2), "of two as near, the newer");
+    assert_eq!(near(270, 150), Some(3), "at the window's edge");
+    assert_eq!(near(271, 150), None, "past it");
+    assert_eq!(near(0, 150), Some(1), "a move before every packet");
+    assert_eq!(near(500, 0), Some(4));
+    assert_eq!(near(499, 0), None, "a window of nothing is the same millisecond");
+}
+
+#[test]
+fn the_message_clock_wraps_for_a_packet_as_for_a_move() {
+    let heard = hearing(&[heard_at(u32::MAX - 5, 1), heard_at(4, 2)]);
+    let near = |time| heard.near(time, 150).map(|packet| packet.normal_pressure);
+    assert_eq!(near(u32::MAX), Some(2), "five either side of the wrap: the newer");
+    assert_eq!(near(u32::MAX - 6), Some(1));
+    assert_eq!(near(3), Some(2));
+}
+
+#[test]
+fn a_packet_older_than_the_window_ends_the_search() {
+    // The packets run in time: one older than the window has none newer
+    // before it.
+    let heard = hearing(&[heard_at(300, 1), heard_at(100, 2), heard_at(200, 3)]);
+    assert_eq!(heard.near(300, 50), None);
+}
+
+#[test]
+fn how_far_the_newest_packet_is_behind_a_message_is_noted() {
+    let mut heard = Heard::default();
+    heard.behind(100);
+    assert_eq!(heard.gap, None, "nothing heard");
+    heard.hear(&[heard_at(100, 0), heard_at(120, 0)]);
+    heard.behind(130);
+    assert_eq!(heard.gap, Some(10));
+    heard.behind(110);
+    assert_eq!(heard.gap, Some(-10), "a packet newer than the message");
+}
+
+/// A packet of the fake driver's, at `time` on the message clock, of
+/// `pressure`.
+fn queued(time: u32, pressure: u32) -> Packet {
+    Packet { time, ..packet(pressure, 0, 0, 0) }
+}
+
+#[test]
+fn a_mouse_move_is_given_the_pressure_of_the_packet_nearest_it() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    let packets = [queued(1000, 100), queued(1010, 200), queued(1020, 300)];
+    let script = Script { has_pressure: true, pressure: axis(0, 1000), ..installed(&packets) };
+    driver.play(&script);
+    let mut gap = 0;
+    // SAFETY: room for an int.
+    let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
+    assert_eq!((crate::qat_open(20), gapped), (1, 0), "no gap before a message");
+    wintab::drain();
+    let pressures = wintab::pressures_at(1030, &[1004, 1016, 1040, 1041, 980, 979]);
+    let scale = |pressure: f64| pressure * (1.0 / 1000.0);
+    let want = [scale(100.0), scale(300.0), scale(300.0), f64::NAN, scale(100.0), f64::NAN];
+    let bits = |values: &[f64]| values.iter().map(|value| value.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&pressures), bits(&want), "within the 20 ms the app opened with");
+    // SAFETY: room for an int.
+    let gapped = unsafe { crate::qat_clock_gap(&mut gap) };
+    assert_eq!((gapped, gap, crate::qat_overflowed()), (1, 10, 0));
+    crate::qat_close();
+    let closed = wintab::pressures_at(1030, &[1020]);
+    assert!(closed[0].is_nan(), "no context, no pressure");
+    // SAFETY: room for an int.
+    assert_eq!(unsafe { crate::qat_clock_gap(&mut gap) }, 0);
+}
+
+#[test]
+fn the_overflows_the_driver_said_are_counted_from_the_opening() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    let overflowed = Packet { status: 0x2, ..queued(1000, 100) };
+    driver.play(&installed(&[overflowed, queued(1001, 100), overflowed]));
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    assert_eq!(crate::qat_overflowed(), 2);
+    crate::qat_close();
+    assert_eq!(crate::qat_overflowed(), 0, "none open");
+}
+
+#[test]
+fn a_mouse_message_gives_its_point_the_driver_s_pressure() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    // SAFETY: the time of the last message this thread took.
+    let time = unsafe { GetMessageTime() } as u32;
+    let script = Script {
+        has_pressure: true,
+        pressure: axis(0, 1000),
+        ..installed(&[queued(time.wrapping_sub(3), 250)])
+    };
+    driver.play(&script);
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    // A place no mouse is: no history of it kept, the message's own move
+    // alone.
+    let far: i16 = -20_000;
+    let word = (far as u16) as isize;
+    let words = word | (word << 16);
+    crate::points_win::mouse(window.0, LPARAM(words));
+    crate::qat_close();
+    let points = crate::points::book().take((f64::from(far), f64::from(far)));
+    let points = points.expect("the message's");
+    let driven: Vec<f64> = points.iter().map(|point| point.driven).collect();
+    assert_eq!(driven, [250.0 * (1.0 / 1000.0)]);
+    assert!(points[0].pressure.is_nan(), "a mouse says no pressure of its own");
+}
+
+/// Polls of up to eight records until one is handed, for two seconds at
+/// most: their count.
+fn handed_soon() -> i32 {
+    let mut room = [0.0f32; 64];
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        // SAFETY: room for eight records.
+        let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+        if count > 0 || std::time::Instant::now() > deadline {
+            return count;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn the_reader_s_own_thread_hears_the_queue_unasked() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100), queued(1004, 200)]));
+    assert_eq!(crate::qat_open(150), 1);
+    let count = handed_soon();
+    crate::qat_close();
+    assert_eq!(count, 2, "heard with no poll, no move and no press draining it");
+}
+
+#[test]
+fn a_poll_and_a_point_ask_the_driver_nothing() {
+    // 🔬A call into the driver is a quarter of a millisecond (F-600): the
+    // app's thread reads what was heard.
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100)]));
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    let before = driver.seen().asks;
+    let began = std::time::Instant::now();
+    let mut room = [0.0f32; 64];
+    for _ in 0..1000 {
+        // SAFETY: room for eight records.
+        let _ = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+        let _ = wintab::pressures_at(1001, &[1000, 1001]);
+    }
+    let thread_drains = began.elapsed().as_millis() / 4 + 2;
+    let asks = driver.seen().asks - before;
+    crate::qat_close();
+    assert!(i128::from(asks) <= thread_drains as i128, "{asks} asks in a thousand polls and points");
+}
+
+#[test]
+fn a_press_drains_the_queue_before_its_point_is_read() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    let script = installed(&[]);
+    driver.play(&script);
+    assert_eq!(crate::qat_open(150), 1);
+    wintab::drain();
+    // The pen touches down: its packet is queued as the press comes.
+    driver.play(&installed(&[queued(1000, 900)]));
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let mut room = [0.0f32; 64];
+    // SAFETY: room for eight records.
+    let count = unsafe { crate::qat_poll(room.as_mut_ptr(), 8) };
+    crate::qat_close();
+    assert_eq!(count, 1, "the contact heard at the press, not a drain later");
+}
+
+#[test]
+fn a_pen_s_points_are_given_the_driver_s_pressure_as_a_mouse_s_are() {
+    let (driver, _turn) = driver();
+    let window = AppWindow::show();
+    let script = Script {
+        has_pressure: true,
+        pressure: axis(0, 1000),
+        ..installed(&[queued(1000, 100), queued(1010, 200), queued(1020, 300)])
+    };
+    driver.play(&script);
+    assert_eq!(crate::qat_open(20), 1);
+    wintab::drain();
+    let entry = |kind, time| POINTER_INFO {
+        pointerType: kind,
+        dwTime: time,
+        ptPixelLocation: POINT { x: -20_000, y: -20_000 },
+        PerformanceCount: 1,
+        ..POINTER_INFO::default()
+    };
+    // The newest first, as the OS keeps a pointer's history.
+    let history = [entry(PT_PEN, 1019), entry(PT_PEN, 1004), entry(PT_PEN, 900)];
+    let points = crate::points_win::points_of(window.0, &history, None);
+    let finger = crate::points_win::points_of(window.0, &[entry(PT_TOUCH, 1019)], None);
+    crate::qat_close();
+    let driven: Vec<u64> = points.iter().map(|point| point.driven.to_bits()).collect();
+    let want = [f64::NAN, 100.0 * (1.0 / 1000.0), 300.0 * (1.0 / 1000.0)];
+    assert_eq!(driven, want.map(f64::to_bits), "the oldest first, each its nearest within 20 ms");
+    assert!(finger[0].driven.is_nan(), "a finger is not the pen");
+}

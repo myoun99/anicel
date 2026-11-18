@@ -90,8 +90,6 @@ class _XSheetGridColumns {
   TimelineLaneRowSpan get _laneSpan => (
     startIndex: 0,
     endIndexExclusive: _state._frameScroll.renderedFrameCount,
-    leadingSpacer: 0,
-    trailingSpacer: 0,
     laneRange: _state._laneRange,
   );
 

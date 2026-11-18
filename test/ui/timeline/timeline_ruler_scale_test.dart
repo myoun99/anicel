@@ -431,6 +431,48 @@ void main() {
       expect(rungs, containsAll([6, 12]), reason: 'the premise');
     });
 
+    // 🔬F-539 ④ (서피스 2026-11-16): zoomed out, the numbers ran `97 · 1 ·
+    // 49` and stood where the seconds line wrote nothing — two lines that
+    // could not be read as one scale (I-102 「위 숫자(초)를 기준으로」).
+    test('the numbers fit the page as the seconds do, and a number a second '
+        'or more from the next stands only under a second the seconds line '
+        'writes', () {
+      final cadences = <int>{};
+      for (var cell = 2.0; cell > 1 / 64; cell /= 1.15) {
+        final strip = paged(cell: cell, frames: 14400);
+        final every = strip.labelEveryFrames;
+        cadences.add(every);
+        if (every < 24) {
+          continue;
+        }
+        expect(
+          144 % every == 0 || every % 144 == 0,
+          isTrue,
+          reason: 'numbers every $every at $cell',
+        );
+        for (final frame in strip.framesWrittenIn((
+          startIndex: 0,
+          endIndexExclusive: 1440,
+        ))) {
+          final model = strip.modelAt(frame);
+          if (model.label.isEmpty) {
+            continue;
+          }
+          expect(
+            model.secondsLabel,
+            isNotEmpty,
+            reason: 'number ${model.label} at frame $frame stands under no '
+                'second, numbers every $every at $cell',
+          );
+        }
+      }
+      expect(
+        cadences.where((every) => every >= 24),
+        containsAll([48, 72, 144, 288]),
+        reason: 'the premise: the sweep reaches every kind of rung',
+      );
+    });
+
     test('where a rung is fitted, what a second takes is still measured: a '
         'page\'s last second, not the strip\'s', () {
       final sheet = paged(cell: 1, frames: 144000);
@@ -546,7 +588,11 @@ void main() {
       expect(strip.labelEveryFrames % marks, 0, reason: 'on the marks');
       var written = 0;
       for (var frame = 0; frame < 14400; frame += 1) {
-        final there = frame % strip.labelEveryFrames == 0;
+        // Under a second a page's mark kept clear, no number either
+        // (F-539 ④).
+        final there =
+            frame % strip.labelEveryFrames == 0 &&
+            strip.modelAt(frame).secondsLabel.isNotEmpty;
         expect(
           strip.modelAt(frame).label,
           there ? '${frame % 72 + 1}' : isEmpty,

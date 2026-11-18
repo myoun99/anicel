@@ -7,8 +7,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -16,7 +16,6 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../helpers/collect_garbage.dart';
 import '../helpers/draw_on_current_frame.dart';
-import '../helpers/native_engine_path.dart';
 import '../helpers/settle_async.dart';
 
 /// 🗣️F-505 (유저 2026-10-29): 「프로젝트 2개연상태서 하나 무거운거, 하나
@@ -37,14 +36,12 @@ import '../helpers/settle_async.dart';
 /// the path walks and the collector does not; letting the pictures go is
 /// what made it collectable.
 void main() {
-  final enginePath = nativeEngineLibraryPathOrNull();
+  setUpAll(openAppGpuEngine);
 
   testWidgets('a closed project lets go of its pictures and its history, the '
       'app\'s timeline tiles and its rows\' kept pictures go with them, the '
       'engine gives back what it parked of them, and the session itself is '
       'collected', (tester) async {
-    debugQaEngineLibraryPathOverride = enginePath;
-    addTearDown(() => debugQaEngineLibraryPathOverride = null);
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -65,7 +62,6 @@ void main() {
 
     await tapKey('top-strip-project-button');
     await tapKey('menu-file-new');
-    final engine = QaNativeEngine.instance!;
 
     // In a frame of its own, so the test holds the session no longer once
     // it is closed: whatever still reaches it then is the app's.
@@ -117,10 +113,10 @@ void main() {
 
     final closed = await closeAHeavyOne();
     await tester.runAsync(
-      () => collectGarbageUntil(() => engine.tilePoolParkedBytes == 0),
+      () => collectGarbageUntil(() => TileBlocks.parkedBytes == 0),
     );
     expect(
-      engine.tilePoolParkedBytes,
+      TileBlocks.parkedBytes,
       0,
       reason: 'what came back of its tiles is not kept for reuse',
     );
@@ -133,7 +129,7 @@ void main() {
       reason: 'and nothing holds the session itself — the rows\' kept '
           'pictures held it by what each was drawn from, as the tiles did',
     );
-  }, skip: enginePath == null);
+  });
 }
 
 /// [count] cels of ink on [s]'s first layer, each a dab across some tiles.

@@ -297,6 +297,60 @@ CanvasPoint? _parsePoint(String input) => switch (columnPairOf(input)) {
 };
 
 
+/// [lane], a lane of a group Reset puts back, at [value] at [frame] — a
+/// key of it there, by [keyed] where its keys walk a path — but left as
+/// it is where it already shows [value] there with no key: a reset puts
+/// back values, and one already at rest is none to put back, so a reset
+/// that would change nothing is one whose every value stands at rest
+/// (🗣️F-583, 유저 2026-11-11 「값이 안바뀌었으면 비활성화로. 동일하게
+/// 리셋버튼도 …」 — every group's Reset takes this one step).
+PropertyTrack<T> laneResetAt<T>(
+  PropertyTrack<T> lane,
+  int frame,
+  T value, {
+  required KeyValueSpace<T> space,
+  KeyExit? outgoing,
+  PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
+  keyed,
+}) {
+  if (lane.keyAt(frame) == null &&
+      lane.resolveAt(frameIndex: frame, orElse: () => value, space: space) ==
+          value) {
+    return lane;
+  }
+  return keyed?.call(lane, frame, value) ??
+      lane.withKey(frame, value, outgoing: outgoing);
+}
+
+/// [lane] put back at each of [frames] by [resetAt] — [laneResetAt] at
+/// the group's rest — at every one, or, [keyedFramesOnly], at the keys it
+/// holds there alone: the one walk every group's Reset takes. An unkeyed
+/// lane already shows its rest everywhere and comes back as it is: a Reset
+/// never authors animation (R5, 유저 2026-08-09: 「키를 삭제하진 않고 값만
+/// 리셋」).
+///
+/// ↩️Each group walked its own copy — the transform's, the name tag's,
+/// the effect's colour and number, the sound's — until the sound's
+/// second lane made the scan see the fourth (audio-fx-grows-like-the-pros
+/// -Q7).
+PropertyTrack<T> laneResetOver<T>(
+  PropertyTrack<T> lane,
+  Iterable<int> frames,
+  PropertyTrack<T> Function(PropertyTrack<T> lane, int frame) resetAt, {
+  required bool keyedFramesOnly,
+}) {
+  if (lane.isEmpty) {
+    return lane;
+  }
+  var next = lane;
+  for (final frame in frames) {
+    if (!keyedFramesOnly || lane.keyAt(frame) != null) {
+      next = resetAt(next, frame);
+    }
+  }
+  return next;
+}
+
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).
 ///
 /// The rule, in the user's words: **키를 삭제하진 않고 값만 리셋**. So this
@@ -310,7 +364,8 @@ CanvasPoint? _parsePoint(String input) => switch (columnPairOf(input)) {
 /// those two apart — resetting AT the playhead has to write a key on an
 /// animated lane (that is the only way the value THERE can be the default),
 /// while resetting a SELECTION means "reset the selected keys" and must not
-/// invent one at every frame the band happens to cross.
+/// invent one at every frame the band happens to cross. A value already at
+/// its default there takes no key either ([laneResetAt], F-583).
 ///
 /// Returns null when nothing changed.
 TransformTrack? transformTrackWithGroupReset(
@@ -327,30 +382,40 @@ TransformTrack? transformTrackWithGroupReset(
 
   PropertyTrack<T>? reset<T>(
     PropertyTrack<T> lane,
-    T value, [
+    T value,
+    KeyValueSpace<T> space, [
     PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
         keyed,
   ]) {
-    // Untouched by design: no keys means the lane already resolves to its
-    // default everywhere.
-    if (lane.isEmpty) {
-      return null;
-    }
-    var next = lane;
-    for (final frame in frames) {
-      if (keyedFramesOnly && lane.keyAt(frame) == null) {
-        continue;
-      }
-      next = keyed?.call(next, frame, value) ?? next.withKey(frame, value);
-    }
+    final next = laneResetOver(
+      lane,
+      frames,
+      (next, frame) =>
+          laneResetAt(next, frame, value, space: space, keyed: keyed),
+      keyedFramesOnly: keyedFramesOnly,
+    );
     return next == lane ? null : next;
   }
 
-  final anchor = reset(track.anchorPoint, defaultAnchorPoint, pathLaneKeyed);
-  final position = reset(track.position, identity.center, pathLaneKeyed);
-  final scale = reset(track.scale, identity.scale);
-  final rotation = reset(track.rotation, identity.rotationDegrees);
-  final opacity = reset(track.opacity, 1.0);
+  final anchor = reset(
+    track.anchorPoint,
+    defaultAnchorPoint,
+    pathKeySpace,
+    pathLaneKeyed,
+  );
+  final position = reset(
+    track.position,
+    identity.center,
+    pathKeySpace,
+    pathLaneKeyed,
+  );
+  final scale = reset(track.scale, identity.scale, pointKeySpace);
+  final rotation = reset(
+    track.rotation,
+    identity.rotationDegrees,
+    doubleKeySpace,
+  );
+  final opacity = reset(track.opacity, 1.0, doubleKeySpace);
   if (anchor == null &&
       position == null &&
       scale == null &&

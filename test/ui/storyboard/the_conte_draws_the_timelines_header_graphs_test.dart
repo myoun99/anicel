@@ -53,14 +53,22 @@ import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
         laneGraphAlong;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow, TimelineLaneKeyMarker;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show
+        seNameTagGroupLaneId,
+        seNameTagLaneDisplayOrder,
+        seNameTagSizeLaneId,
+        seNameTagTrackingLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
+    show transformLaneDisplayOrder;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_row_by_its_name.dart';
 import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -79,10 +87,12 @@ void main() {
   const s2 = LayerId('s2');
   const blur = EffectId('blur');
   const hue = EffectId('hue');
-  final transform = transformGroupHeaderLane.laneId;
+  // An S row's pose group: its name tag, its transform's lanes among its
+  // members (audio-fx-grows-like-the-pros-Q3 · Q4).
+  const pose = seNameTagGroupLaneId;
   final carrier = trackTransformLaneCarrierId(trackId);
 
-  /// An S row twirled open — to its Transform group's members, unless
+  /// An S row twirled open — to its name tag's members, unless
   /// [shut] (F-360: the row keeps its twirls).
   Layer seLayer(LayerId id, {bool shut = false}) => Layer(
     id: id,
@@ -95,7 +105,7 @@ void main() {
       0: TimelineExposure.drawing(FrameId('${id.value}-f'), length: 8),
     },
     lanesExpanded: true,
-    expandedLaneGroups: {if (!shut) transform},
+    expandedLaneGroups: {if (!shut) pose},
   );
 
   /// One track of one cut, its [cutLayers] — S rows [seLayers], the V row
@@ -232,7 +242,7 @@ void main() {
   // 🗣️F-514 (유저 2026-10-30): a graph shows what it picked itself.
   testWidgets('🎯a lane in an open graph wears no band, whatever is picked '
       'on it', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     final picked = ValueNotifier<TimelineLaneSelection?>(
       const TimelineLaneSelection(
         layerId: s1,
@@ -273,23 +283,29 @@ void main() {
       'as the timeline\'s — the rail and the sheet stand as far beside it', (
     tester,
   ) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     await pump(
       tester,
       project(),
       graphs: LaneGraphsView(open: {key: const LaneGraph()}),
     );
 
-    final laneHeight = tester.getSize(labelOf(s1, transform)).height;
+    final laneHeight = tester.getSize(labelOf(s1, pose)).height;
     final extent = const LaneGraph().extentAt(laneHeight);
     expect(graphOf(key), findsOneWidget);
-    // Seven rows tall as it opens ([laneGraphOpeningRows]): its lanes and
-    // the room after them, ONE picture.
-    expect(tester.getSize(graphOf(key)).height, extent);
+    // Seven rows tall as it opens ([laneGraphOpeningRows]) — or its lanes,
+    // where they stand taller: the name tag's own and its pose's
+    // (audio-fx-grows-like-the-pros-Q3 · Q4). Its lanes and the room after
+    // them, ONE picture.
+    final lanes =
+        (seNameTagLaneDisplayOrder.length + transformLaneDisplayOrder.length) *
+        laneHeight;
+    final stands = lanes > extent ? lanes : extent;
+    expect(tester.getSize(graphOf(key)).height, stands);
     // It stands from its first member, under the header that heads it.
     expect(
       tester.getTopLeft(graphOf(key)).dy,
-      tester.getBottomLeft(labelOf(s1, transform)).dy,
+      tester.getBottomLeft(labelOf(s1, pose)).dy,
     );
     // And the rail stands as far: the V row under the S row starts where
     // the graph ends, on both sides.
@@ -301,15 +317,15 @@ void main() {
     final sheet = tester.widget<TimelineGridSheet>(
       find.byKey(const ValueKey<String>('storyboard-grid-sheet')),
     );
-    expect([for (final row in sheet.rows.rows) row.extent], contains(extent));
+    expect([for (final row in sheet.rows.rows) row.extent], contains(stands));
   });
 
   testWidgets('the S header\'s graph button is the timeline\'s: it opens '
       'and shuts the group\'s graph, and reads it so', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     final session = await pump(tester, project());
     final button = find.named(
-      'storyboard-lane-group-graph-${s1.value}-$transform',
+      'storyboard-lane-group-graph-${s1.value}-$pose',
     );
     bool lit() => tester
         .widget<LaneGraphToggle>(
@@ -338,6 +354,9 @@ void main() {
     final session = await pump(
       tester,
       project(
+        // The S row above shut: its name tag open would stand the V row
+        // below the view.
+        seLayers: [seLayer(s1, shut: true)],
         effects: [LayerEffect.defaults(id: blur, kind: EffectKind.blur)],
         lanesExpanded: true,
       ),
@@ -363,14 +382,14 @@ void main() {
   testWidgets('an enlarged graph folds every other lane of the conte to a '
       'thin strip, rail and strips alike, and stands as far as the view '
       'lets one', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     await pump(
       tester,
       project(seLayers: [seLayer(s1), seLayer(s2)]),
       graphs: LaneGraphsView(open: {key: const LaneGraph(enlarged: true)}),
     );
 
-    final laneHeight = tester.getSize(labelOf(s1, transform)).height;
+    final laneHeight = tester.getSize(labelOf(s1, pose)).height;
     // Another row's member lane: its label and its strip, thin — its plate
     // alone.
     expect(
@@ -392,7 +411,7 @@ void main() {
       laneGraphFoldedExtent,
     );
     // Its header stands whole, as every header does.
-    expect(tester.getSize(labelOf(s2, transform)).height, laneHeight);
+    expect(tester.getSize(labelOf(s2, pose)).height, laneHeight);
     // The sheet rules a thin lane as thin as it stands: one table.
     final sheet = tester.widget<TimelineGridSheet>(
       find.byKey(const ValueKey<String>('storyboard-grid-sheet')),
@@ -415,7 +434,7 @@ void main() {
 
   testWidgets('an enlarged graph folds a projection row\'s lanes as well — '
       'the camera row\'s, rail and strips alike', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     await pump(
       tester,
       project(
@@ -457,8 +476,8 @@ void main() {
 
   testWidgets('another open graph the enlarged one folds stands as its '
       'first lane\'s strip — its other lanes stand nowhere', (tester) async {
-    final enlarged = laneGroupKey(s1, transform);
-    final folded = laneGroupKey(s2, transform);
+    final enlarged = laneGroupKey(s1, pose);
+    final folded = laneGroupKey(s2, pose);
     await pump(
       tester,
       project(seLayers: [seLayer(s1), seLayer(s2)]),
@@ -472,7 +491,7 @@ void main() {
 
     // Its first member's label is the strip; the rest build nothing.
     expect(
-      tester.getSize(labelOf(s2, 'anchor-point')).height,
+      tester.getSize(labelOf(s2, seNameTagSizeLaneId)).height,
       laneGraphFoldedExtent,
     );
     expect(labelOf(s2, 'scale'), findsNothing);
@@ -482,7 +501,7 @@ void main() {
 
   testWidgets('what a graph draws follows the row selection, which the conte '
       'draws without building its rows again', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
     addTearDown(selection.dispose);
     await pump(
@@ -511,9 +530,85 @@ void main() {
     expect(pickedOn('scale'), ['position']);
   });
 
+  // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail (11-11):
+  // the conte keeps a lane's label while what it shows holds, so rows that
+  // open above it leave it standing — further down. What its graph draws
+  // as picked is read where it stands when the selection moves.
+  testWidgets('🚨a graph\'s label kept through rows opened above it reads '
+      'the selection where it stands now', (tester) async {
+    const above = LayerId('above');
+    final key = laneGroupKey(s1, pose);
+    final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
+    addTearDown(selection.dispose);
+    Cut cutOf(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 24,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: const [],
+    );
+    final session = await pump(
+      tester,
+      Project(
+        id: const ProjectId('project'),
+        name: 'Graphs',
+        createdAt: DateTime.utc(2026, 11, 11),
+        tracks: [
+          Track(
+            id: const TrackId('above'),
+            name: 'Above',
+            cuts: [cutOf('cut-above')],
+            seLayers: [
+              seLayer(above, shut: true).copyWith(lanesExpanded: false),
+            ],
+          ),
+          Track(
+            id: trackId,
+            name: 'Video',
+            cuts: [cutOf('cut')],
+            seLayers: [seLayer(s1)],
+          ),
+        ],
+      ),
+      graphs: LaneGraphsView(open: {key: const LaneGraph()}),
+      rowSelection: selection,
+    );
+    // The name tag's first member: its lanes stand above its pose's
+    // (audio-fx-grows-like-the-pros-Q3 · Q4).
+    TimelineLaneControlsRow size() => tester.widget<TimelineLaneControlsRow>(
+      labelOf(s1, seNameTagSizeLaneId),
+    );
+    final before = size();
+
+    session.layerSwitches.toggleLayerLanes(above);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TimelineLaneControlsRow && widget.layer.id == above,
+      ),
+      findsWidgets,
+      reason: '⛔premise: the row above twirled its lanes open',
+    );
+    expect(
+      identical(size(), before),
+      isTrue,
+      reason: '⛔premise: nothing the label shows changed — it is kept',
+    );
+
+    selection.value = const [LaneRowAddress(s1, seNameTagTrackingLaneId)];
+    await tester.pump();
+    expect(
+      size().seat?.picked,
+      [seNameTagTrackingLaneId],
+      reason: 'seated where it stood before the rows above opened, the '
+          'label reads another row\'s graph',
+    );
+  });
+
   testWidgets('a pinned lane of another row is a guest in every open graph '
       '— an S row\'s and the V row\'s, their groups shut', (tester) async {
-    final key = laneGroupKey(s1, transform);
+    final key = laneGroupKey(s1, pose);
     final blurriness = effectLaneId(blur, 'blurriness');
     await pump(
       tester,
@@ -543,7 +638,7 @@ void main() {
       'row\'s and the V row\'s fx alike (F-195)', (tester) async {
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);
-    final seKey = laneGroupKey(s1, transform);
+    final seKey = laneGroupKey(s1, pose);
     final fxKey = laneGroupKey(carrier, effectGroupLaneId(blur));
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
     final hued = LayerEffect.defaults(
@@ -653,7 +748,7 @@ void main() {
   testWidgets('a handle pulled in a graph writes its key as the timeline\'s '
       'does — an S row\'s and the V row\'s fx alike, by the edits their '
       'strips key by', (tester) async {
-    final seKey = laneGroupKey(s1, transform);
+    final seKey = laneGroupKey(s1, pose);
     final fxKey = laneGroupKey(carrier, effectGroupLaneId(blur));
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
     final blurriness = blurred.parameters['blurriness']!;
@@ -736,7 +831,7 @@ void main() {
   testWidgets('a key\'s mark in a graph is as big as a member lane marks '
       'it, as on the timeline — where a frame is the tighter side of a cell '
       'and where a lane\'s row is (F-367-Q3)', (tester) async {
-    final seKey = laneGroupKey(s1, transform);
+    final seKey = laneGroupKey(s1, pose);
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
     final blurriness = blurred.parameters['blurriness']!;
     final seen = <Size>{};
@@ -785,7 +880,7 @@ void main() {
         ),
         matching: find.byType(CustomPaint),
       );
-      final canvas = TestRecordingCanvas();
+      final canvas = DrawnShapes();
       tester
           .widget<CustomPaint>(paint)
           .painter!
@@ -793,11 +888,9 @@ void main() {
       // Each key's mark as drawn — the whole of its box, whatever its
       // shape, to a float's precision: a path keeps its points in floats.
       final marks = [
-        for (final call in canvas.invocations)
-          if (call.invocation.memberName == #drawPath &&
-              (call.invocation.positionalArguments[1] as Paint).style ==
-                  PaintingStyle.fill)
-            (call.invocation.positionalArguments[0] as Path).getBounds().size,
+        for (final shape in canvas.shapes)
+          if (shape.paint.style == PaintingStyle.fill)
+            shape.outline.getBounds().size,
       ];
       expect(marks, hasLength(2), reason: '⛔전제: the rotation\'s keys');
       for (final mark in marks) {
@@ -818,6 +911,9 @@ void main() {
     final session = await pump(
       tester,
       project(
+        // The S row above shut: its name tag open would stand the V row
+        // below the view.
+        seLayers: [seLayer(s1, shut: true)],
         effects: [
           LayerEffect.defaults(id: blur, kind: EffectKind.blur),
           LayerEffect.defaults(id: hue, kind: EffectKind.hueSaturation),
@@ -840,7 +936,8 @@ void main() {
     final lastMember = tester
         .getBottomLeft(labelOf(carrier, effectLaneId(blur, 'blurDimensions')))
         .dy;
-    final from = tester.getCenter(first);
+    // Taken by its name, where a hand takes a row ([theNameOf]).
+    final from = tester.getCenter(theNameOf(first));
 
     // Into the middle of the room: the gap before the next header, where
     // the chain already is.
@@ -874,12 +971,12 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final presses = SessionRowButtonPresses(session);
-    final key = laneGroupKey(conteSeId, transform);
+    final key = laneGroupKey(conteSeId, pose);
 
     presses.toggleLanes(conteSeId);
     await tester.pumpAndSettle();
     expect(
-      find.named('storyboard-lane-group-graph-${conteSeId.value}-$transform'),
+      find.named('storyboard-lane-group-graph-${conteSeId.value}-$pose'),
       findsOneWidget,
     );
     presses.toggleLaneGraph(key);
@@ -908,7 +1005,7 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final presses = SessionRowButtonPresses(session);
-    final key = laneGroupKey(conteSeId, transform);
+    final key = laneGroupKey(conteSeId, pose);
     presses
       ..toggleLanes(conteSeId)
       ..toggleLaneGraph(key);
@@ -956,7 +1053,7 @@ void main() {
           laneGraphAcross(
             line.lane.curve!.at(5).single,
             fit.ranges.single,
-            box.size.height,
+            painter.depthIn(box.size),
             Axis.horizontal,
           ),
         ),

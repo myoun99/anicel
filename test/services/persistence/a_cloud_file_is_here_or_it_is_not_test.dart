@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/cloud_wait_line.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -147,16 +149,9 @@ void main() {
     expect(told, inInclusiveRange(1, 4));
   });
 
-  /// Counted on the wait's own clock, held here, as THE BEAT above is.
-  /// ↩️It ran 60 real milliseconds, and a busy machine spent them before
-  /// the wait's first slice — the wait ran out before it spoke, and the pin
-  /// went red with nothing seen at all (board
-  /// `the-cloud-wait-saw-pin-runs-out-before-it-speaks`).
-  test('🚨the wait reports WHAT IT SAW, so the sentence can be true', () async {
-    final path = at('slowly.anicel');
-    File(path).writeAsBytesSync(const [1, 2, 3]);
-    FolderPicker.debugArrival = (_) async => FileArrival.partway;
-    FolderPicker.debugDownloadRequester = (_) async {};
+  /// The wait's own clock, held here as THE BEAT above holds it — and read
+  /// back, so a probe can say when the bytes stop coming.
+  Duration Function() holdTheClock() {
     var now = Duration.zero;
     FolderPicker.debugWaitClock = () => (
       elapsed: () => now,
@@ -164,23 +159,77 @@ void main() {
         now += slice;
       },
     );
-    final arrivals = <FileArrival>[];
+    return () => now;
+  }
+
+  /// ↩️It ran 60 real milliseconds, and a busy machine spent them before
+  /// the wait's first slice — the wait ran out before it spoke, and the pin
+  /// went red with nothing seen at all (board
+  /// `the-cloud-wait-saw-pin-runs-out-before-it-speaks`).
+  test('🚨a front that reads is ARRIVING — the line counts on for it, '
+      'however long the tail takes', () async {
+    FolderPicker.debugOperatingSystem = 'windows';
+    final path = at('slowly.anicel');
+    File(path).writeAsBytesSync(const [1, 2, 3]);
+    holdTheClock();
+    FolderPicker.debugArrival = (_) async => FileArrival.partway;
+    FolderPicker.debugDownloadRequester = (_) async {};
+    final told = <({Duration waited, Duration quiet})>[];
 
     await expectLater(
       FolderPicker.materializeOpenedFile(
         path,
-        within: const Duration(milliseconds: 60),
-        step: const Duration(milliseconds: 5),
-        onWaiting: (_, arrival) => arrivals.add(arrival),
+        within: const Duration(seconds: 30),
+        onWaiting: (waited, quiet) => told.add((waited: waited, quiet: quiet)),
       ),
       throwsA(isA<FileSystemException>()),
     );
 
-    expect(arrivals, isNotEmpty);
     expect(
-      arrivals,
-      everyElement(FileArrival.partway),
+      told.last.waited,
+      greaterThan(cloudWaitSaysNothingAfter),
+      reason: '⛔premise: the wait ran past the floor',
+    );
+    expect(
+      [for (final beat in told) beat.quiet < cloudWaitSaysNothingAfter],
+      everyElement(isTrue),
       reason: 'the line must not claim nothing arrived while it is arriving',
+    );
+  });
+
+  /// 🚨F-608 ① (2026-11-17). A probe cannot make a placeholder stop
+  /// halfway, so the arrivals are written here; what is pinned is the
+  /// clock: the quiet is counted from the last of them.
+  test('🚨the quiet is counted from the LAST arrival, not from the start of '
+      'the wait — and that is the number the stalled line says', () async {
+    FolderPicker.debugOperatingSystem = 'windows';
+    final path = at('stopped-halfway.anicel');
+    File(path).writeAsBytesSync(const [1, 2, 3]);
+    final now = holdTheClock();
+    FolderPicker.debugArrival = (_) async => now() < const Duration(seconds: 6)
+        ? FileArrival.partway
+        : FileArrival.nothing;
+    FolderPicker.debugDownloadRequester = (_) async {};
+    final told = <({Duration waited, Duration quiet})>[];
+
+    await expectLater(
+      FolderPicker.materializeOpenedFile(
+        path,
+        within: const Duration(seconds: 30),
+        onWaiting: (waited, quiet) => told.add((waited: waited, quiet: quiet)),
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    // Probes at 0.25 · 0.75 · 1.75 · 3.75 · 5.75 s (the spacing backing off
+    // to two seconds) — the one at 5.75 s is the last that saw the front.
+    expect(told.last, (
+      waited: const Duration(milliseconds: 30750),
+      quiet: const Duration(seconds: 25),
+    ));
+    expect(
+      cloudWaitLine(told.last.waited, told.last.quiet),
+      AppText.strings.openWaitingStalledTemplate.replaceAll('{sec}', '25'),
     );
   });
 

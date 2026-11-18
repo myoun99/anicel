@@ -1,12 +1,16 @@
 // Sets up THIS MACHINE'S clone for its sessions: the hooks, the memory
-// folder and the board's address, written into `.claude/settings.local.json`
+// folder, the board's address and, on Windows, the Rust homes its own
+// settings hold ([kMachineVariables]), written into `.claude/settings.local.json`
 // — the one settings file that is this machine's alone (git ignores it).
 // And two things in the clone's own git settings: where its git hooks are,
 // and — only where the clone has none — the author it commits as, the
 // trunk's ([authorGiven]).
 //
-//   dart run tool/session_hooks/install.dart --board <folder> --memory <folder>
+//   dart tool/session_hooks/install.dart --board <folder> --memory <folder>
 //       [--home <http://host:4321>] [--dry]
+//
+// ⛔Not `dart run`, which builds the GPU engine's hook once more in the
+// checkout (guard_dart_run.sh says why, and refuses it).
 //
 //   --board       this machine's BOARD FOLDER: a local folder for the flags
 //                 and the two exes — and, on the machine that holds the
@@ -40,6 +44,8 @@
 // permissions, whatever a person added — is kept as it was.
 import 'dart:convert';
 import 'dart:io';
+
+import '../machine_variables.dart';
 
 /// What one machine's settings are made from. Every path with forward
 /// slashes: they go into commands a POSIX shell reads.
@@ -119,6 +125,13 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'type': 'command',
             'command': run('guard_shared_target.sh'),
             'if': 'Bash(*cargo*)',
+            'timeout': 10,
+          },
+          // The same on both sides: dart behind the SDK's full path.
+          {
+            'type': 'command',
+            'command': run('guard_dart_run.sh'),
+            'if': 'Bash(*dart*)',
             'timeout': 10,
           },
         ],
@@ -213,17 +226,20 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
 }
 
 /// [existing] as this machine's settings: the hooks written whole, the
-/// memory folder and the board's variables set, and everything else kept.
+/// memory folder, the board's variables and the [machine]'s own
+/// ([machineVariables]) set, and everything else kept.
 Map<String, dynamic> settingsWith(
   Map<String, dynamic> existing,
-  MachineSetup setup,
-) => {
+  MachineSetup setup, {
+  Map<String, String> machine = const {},
+}) => {
   ...existing,
   'hooks': hooksFor(setup),
   'autoMemoryDirectory': setup.memory,
   'env': {
     ...?(existing['env'] as Map?)?.cast<String, dynamic>(),
     ...environmentFor(setup),
+    ...machine,
   },
 };
 
@@ -298,14 +314,6 @@ Map<String, String> authorGiven({
     'user.email': trunkEmail.trim(),
 };
 
-/// [path] the way a POSIX shell and a settings file both read it.
-String slashed(String path) {
-  final forward = path.replaceAll('\\', '/');
-  return forward.length > 1 && forward.endsWith('/')
-      ? forward.substring(0, forward.length - 1)
-      : forward;
-}
-
 void main(List<String> args) {
   final repo = File.fromUri(Platform.script).parent.parent.parent.path;
   final machine = Process.runSync('git', [
@@ -330,9 +338,11 @@ void main(List<String> args) {
 
   final file = File(settingsPathOf(setup));
   final before = file.existsSync() ? file.readAsStringSync() : '{}';
+  final variables = thisMachinesVariables();
   final settings = settingsWith(
     jsonDecode(before) as Map<String, dynamic>,
     setup,
+    machine: variables,
   );
   final after = '${const JsonEncoder.withIndent('  ').convert(settings)}\n';
   if (args.contains('--dry')) {
@@ -366,6 +376,9 @@ void main(List<String> args) {
   stdout.writeln('  보드 폴더    ${setup.board}');
   stdout.writeln('  메모리 폴더  ${setup.memory}');
   stdout.writeln('  보드 주소    ${boardAddressOf(setup)}');
+  for (final variable in variables.entries) {
+    stdout.writeln('  ${variable.key.padRight(11)} ${variable.value}');
+  }
   if (given.isNotEmpty) {
     stdout.writeln('  커밋 작성자  ${given.values.join(' · ')} — 이 클론에 '
         '없어서, 본진의 커밋과 같은 것을 이 클론에만 넣었습니다.');

@@ -16,25 +16,34 @@
 //!   reach − distance + ½, which draws a line of half a pixel through
 //!   silence.
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
+// ↩️Nothing outside the tests called it until the app's bridge round
 // (gpu-int-spec-timeline, 관제 13:5x — the app connects after the bridges
-// land).
-#![cfg_attr(not(test), allow(dead_code))]
+// land): its C ABI came with the card
+// the-waveform-is-drawn-on-the-cpu-beside-its-kernel (관제 2026-11-14).
+// ↩️🔜The lane that lays that bridge puts this pass in the list the app
+// compiles ahead (`compileAppKernelsAhead`, app_kernels_ahead.dart): it
+// is compiled where a tile of a format is first run
+// (`WaveTile::pipeline`), and the thread an app's frames are built on
+// compiles no kernel (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦:
+// 「선 = UI 스레드가 직접 하는 커널 컴파일 0개」; left out of card
+// a-first-mesh-warp-…, 2026-11-14 03:02, the app having no way to it
+// yet). It is: the grids' set (`appGpuGridKernels`), which that list
+// compiles and a grid's screen warms, has it compiled for the pictures it
+// draws ([`WaveTile::for_pictures`]).
 
+pub(crate) mod abi;
 #[cfg(test)]
 mod tests;
-
-use std::time::Instant;
-
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::composite::Work;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
+    Encoded, ISQRT_WGSL, aligned, encode_on, fits, flat, pipeline, range, storage_format,
 };
 use crate::kernels::timeline::LAID_WGSL;
+use crate::kernels::timeline::grid::GridPicture;
 
 /// The most lanes a sound may bring.
 ///
@@ -76,7 +85,7 @@ impl WavePeaks {
         }
         let levels = buckets.ilog2() as usize + 1;
         let bytes = (lanes.len() * levels * buckets).div_ceil(2) * 4;
-        let most = engine.device.limits().max_storage_buffer_binding_size as usize;
+        let most = engine.device().limits().max_storage_buffer_binding_size as usize;
         if bytes > most {
             return fail(format!("a table of {bytes} bytes is past the {most} bound"));
         }
@@ -99,13 +108,7 @@ impl WavePeaks {
             .map(|pair| pair[0] as u32 | (*pair.get(1).unwrap_or(&0) as u32) << 16)
             .flat_map(|word| word.to_le_bytes())
             .collect();
-        let words = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wave peaks"),
-                contents: &words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let words = engine.filled("wave peaks", &words, wgpu::BufferUsages::STORAGE);
         Some(Self {
             words,
             lanes: lanes.len() as u32,
@@ -121,6 +124,10 @@ impl WavePeaks {
 pub(crate) struct WaveView {
     /// The strip pixel the tile's first column (or row, running down) is.
     pub along0: i32,
+    /// How many pixels long the strip is: a column before its first or past
+    /// its last shows what the tile holds — a tile of a row's frames ends
+    /// where it ends, and a sound's strip where its block does.
+    pub length: i32,
     pub vertical: bool,
     /// Pixels a frame, q8.
     pub frame_q8: i32,
@@ -135,8 +142,6 @@ pub(crate) struct WaveView {
     pub gain_q16: i32,
     /// The band's straight colour, r | g<<8 | b<<16 | a<<24.
     pub rgba: u32,
-    /// The tile's bytes before the band, as an RGBA word.
-    pub background: u32,
 }
 
 /// Why `view` cannot be drawn, if it cannot.
@@ -152,6 +157,9 @@ fn fault_in(view: &WaveView) -> Option<String> {
     }
     if view.gain_q16 < 0 {
         return Some(format!("a gain of {} is below none", view.gain_q16));
+    }
+    if view.length < 0 {
+        return Some(format!("a strip {} long is shorter than none", view.length));
     }
     None
 }
@@ -175,25 +183,44 @@ fn edge_of(view: &WaveView, buckets: u32, e: i64) -> [u32; 2] {
     [bucket as u32, (((numer % denom) << 16) / denom) as u32]
 }
 
+/// A sound a batch lays over a tile: `peaks` over what `tile` holds as
+/// `view` shows them.
+pub(crate) struct Waved<'a> {
+    pub(crate) tile: &'a wgpu::Texture,
+    pub(crate) peaks: &'a WavePeaks,
+    pub(crate) view: WaveView,
+}
+
 /// A waveform tile's pass, one pipeline per texture format it has been run
 /// on.
 pub(crate) struct WaveTile {
-    params: wgpu::Buffer,
+    /// The plane a batch's words and edges lie on, a part a sound.
+    work: Work,
+    /// What a tile holds is read from as the band is laid over it, one a
+    /// format, as big as the largest tile it has held: the batch copies
+    /// each tile into it before the tile's pass — a storage texture is not
+    /// read where it is written. ↩️A texture was made for each sound drawn.
+    unders: Vec<wgpu::Texture>,
     pipelines: Vec<(wgpu::TextureFormat, wgpu::ComputePipeline)>,
 }
 
 impl WaveTile {
-    pub(crate) fn new(engine: &Engine) -> Self {
-        let params = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("wave params"),
-            size: 48,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+    pub(crate) fn new(_engine: &Engine) -> Self {
         Self {
-            params,
+            work: Work::default(),
+            unders: Vec::new(),
             pipelines: Vec::new(),
         }
+    }
+
+    /// The pass with its pipeline for a frame grid's picture compiled where
+    /// the caller is — what a strip's waveform is drawn into and its screen
+    /// lays ([`GridPicture`]) — so the first sound drawn compiles nothing,
+    /// as the grid's tile pass is made (`GridTile::for_pictures`).
+    pub(crate) fn for_pictures(engine: &Engine) -> Self {
+        let mut tile = Self::new(engine);
+        tile.pipeline(engine, GridPicture::FORMAT);
+        tile
     }
 
     fn pipeline(
@@ -210,85 +237,193 @@ impl WaveTile {
         let body = include_str!("wave.wgsl").replace("__FORMAT__", token);
         let pipeline = pipeline(
             engine,
-            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body],
+            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body],
             "wave",
         );
         self.pipelines.push((format, pipeline.clone()));
         Some(pipeline)
     }
 
-    /// Draws `peaks` into `tile` as `view` shows them, and waits for the
-    /// GPU. Returns the wall time from submit to completion, in
-    /// nanoseconds; None, with the last error, for a view it refuses.
-    pub(crate) fn run(
+    /// The under of `format` at least `width` × `height`: the one kept, or
+    /// one made in its place.
+    fn under(&mut self, engine: &Engine, format: wgpu::TextureFormat, (width, height): (u32, u32)) -> wgpu::Texture {
+        let kept = self.unders.iter().position(|under| under.format() == format);
+        if let Some(index) = kept {
+            let under = &self.unders[index];
+            if under.width() >= width && under.height() >= height {
+                return under.clone();
+            }
+            self.unders.swap_remove(index);
+        }
+        let under = engine.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("wave under"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.unders.push(under.clone());
+        under
+    }
+
+    /// The bytes it keeps between its batches: the plane, and the unders.
+    pub(crate) fn kept_bytes(&self) -> u64 {
+        let unders: u64 = self
+            .unders
+            .iter()
+            .map(|under| u64::from(under.width()) * u64::from(under.height()) * 4)
+            .sum();
+        unders + self.work.bytes()
+    }
+
+    /// What it keeps between its batches, let go: the next makes its own.
+    pub(crate) fn let_go_kept(&mut self) {
+        self.unders.clear();
+        self.work.let_go();
+    }
+
+    /// Encodes each of `waved` on `encoder`, in order: the tile copied to
+    /// its under, then a pass laying the band over it — each sound's words
+    /// and edges a part of the one plane the batch's passes share
+    /// ([`Work`], [`range`]); the caller submits, and what reads a tile
+    /// after comes after it on the same queue. None, with the last error,
+    /// for a view it refuses or a batch past what the device binds: nothing
+    /// is encoded then. Every tile is copied from, as every grid picture
+    /// may be. ↩️Each sound was drawn and submitted alone
+    /// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q2, 유저
+    /// 2026-11-15 「(라)」). ↩️It waited for the GPU and gave back the wall
+    /// time, which nothing read.
+    pub(crate) fn encode(
         &mut self,
         engine: &Engine,
-        tile: &wgpu::Texture,
-        peaks: &WavePeaks,
-        view: &WaveView,
-    ) -> Option<u64> {
-        if let Some(fault) = fault_in(view) {
-            return fail(fault);
+        encoder: &mut wgpu::CommandEncoder,
+        waved: &[Waved],
+    ) -> Option<()> {
+        for (index, wave) in waved.iter().enumerate() {
+            if let Some(fault) = fault_in(&wave.view) {
+                return fail(format!("sound {index}: {fault}"));
+            }
         }
-        let pipeline = self.pipeline(engine, tile.format())?;
-        // A lane's reach stops a pixel inside half its share; the gain is
-        // drawn into it and held to 1 — the band cannot outgrow its lane
-        // (WaveformPainter's `gain`).
-        let reach_q8 = (view.across_q8 as u64 / (2 * peaks.lanes as u64)).saturating_sub(256);
-        let gain = (view.gain_q16 as u64).min(65536);
-        let scale_q8 = ((reach_q8 * gain + 32768) >> 16) as u32;
-        let params: Vec<u8> = [
-            tile.width(),
-            tile.height(),
-            view.vertical as u32,
-            peaks.lanes,
-            peaks.buckets,
-            peaks.levels,
-            view.across_q8 as u32,
-            scale_q8,
-            view.rgba,
-            view.background,
-            0,
-            0,
-        ]
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-        engine.queue.write_buffer(&self.params, 0, &params);
-        let along = if view.vertical { tile.height() } else { tile.width() };
-        let edges: Vec<u8> = (0..=along as i64)
-            .flat_map(|x| edge_of(view, peaks.buckets, view.along0 as i64 + x))
-            .flat_map(|word| word.to_le_bytes())
+        if waved.is_empty() {
+            return Some(());
+        }
+        let align = engine.device().limits().min_storage_buffer_offset_alignment as usize;
+        let mut bytes = Vec::new();
+        let mut parts = Vec::with_capacity(waved.len());
+        for &Waved { tile, peaks, ref view } in waved {
+            // A lane's reach stops a pixel inside half its share; the gain
+            // is drawn into it and held to 1 — the band cannot outgrow its
+            // lane (WaveformPainter's `gain`).
+            let reach_q8 = (view.across_q8 as u64 / (2 * peaks.lanes as u64)).saturating_sub(256);
+            let gain = (view.gain_q16 as u64).min(65536);
+            let scale_q8 = ((reach_q8 * gain + 32768) >> 16) as u32;
+            let words_at = aligned(&mut bytes, align);
+            for value in [
+                tile.width(),
+                tile.height(),
+                view.vertical as u32,
+                peaks.lanes,
+                peaks.buckets,
+                peaks.levels,
+                view.across_q8 as u32,
+                scale_q8,
+                view.rgba,
+                0,
+                0,
+                0,
+            ] {
+                bytes.extend(value.to_le_bytes());
+            }
+            let edges_at = aligned(&mut bytes, align);
+            let along = if view.vertical { tile.height() } else { tile.width() };
+            // A column past either end of the strip has its two edges at
+            // the same place, and shows nothing of the band.
+            for x in 0..=along as i64 {
+                let e = (view.along0 as i64 + x).clamp(0, view.length as i64);
+                for word in edge_of(view, peaks.buckets, e) {
+                    bytes.extend(word.to_le_bytes());
+                }
+            }
+            parts.push((words_at..edges_at, edges_at..bytes.len() as u64));
+        }
+        let groups: Vec<(u32, u32)> = waved
+            .iter()
+            .map(|wave| (wave.tile.width().div_ceil(8), wave.tile.height().div_ceil(8)))
             .collect();
-        let edges = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wave edges"),
-                contents: &edges,
-                usage: wgpu::BufferUsages::STORAGE,
+        fits(engine, &[bytes.len() as u64], groups.iter().copied())?;
+        let mut pipelines = Vec::with_capacity(waved.len());
+        let mut unders = Vec::with_capacity(waved.len());
+        for wave in waved {
+            let format = wave.tile.format();
+            pipelines.push(self.pipeline(engine, format)?);
+            let widest = waved.iter().filter(|other| other.tile.format() == format);
+            let size = widest.fold((1, 1), |(width, height), other| {
+                (width.max(other.tile.width()), height.max(other.tile.height()))
             });
-        let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut bound = whole(&[(0, &self.params), (1, &peaks.words), (2, &edges)]);
-        bound.push(wgpu::BindGroupEntry {
-            binding: 3,
-            resource: wgpu::BindingResource::TextureView(&tile_view),
-        });
-        let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
+            unders.push(self.under(engine, format, size));
+        }
+        let plane = self.work.of(engine, bytes.len() as u64);
+        engine.queue.write_buffer(&plane, 0, &bytes);
+        for ((((wave, (words, edges)), pipeline), under), groups) in
+            waved.iter().zip(parts).zip(&pipelines).zip(&unders).zip(groups)
+        {
+            encoder.copy_texture_to_texture(
+                wave.tile.as_image_copy(),
+                under.as_image_copy(),
+                wave.tile.size(),
+            );
+            let tile_view = wave.tile.create_view(&wgpu::TextureViewDescriptor::default());
+            let under_view = under.create_view(&wgpu::TextureViewDescriptor::default());
+            encode_on(
+                engine,
+                encoder,
+                &[Encoded {
+                    pipeline,
+                    bound: vec![
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: range(&plane, words),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wave.peaks.words.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: range(&plane, edges),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&tile_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&under_view),
+                        },
+                    ],
+                    groups: flat(groups),
+                }],
+            );
+        }
+        Some(())
+    }
+
+    /// `peaks` laid over what `tile` holds as `view` shows them, alone — a
+    /// batch of one, submitted.
+    #[cfg(test)]
+    pub(crate) fn run(&mut self, engine: &Engine, tile: &wgpu::Texture, peaks: &WavePeaks, view: &WaveView) -> Option<()> {
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encode_on(
-            engine,
-            &mut encoder,
-            &[Encoded {
-                pipeline: &pipeline,
-                bound,
-                groups,
-            }],
-        );
-        let start = Instant::now();
+        self.encode(engine, &mut encoder, &[Waved { tile, peaks, view: *view }])?;
         engine.queue.submit([encoder.finish()]);
-        engine.wait()?;
-        Some(start.elapsed().as_nanos() as u64)
+        Some(())
     }
 }

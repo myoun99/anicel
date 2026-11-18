@@ -810,4 +810,167 @@ void main() {
       isNotNull,
     );
   });
+
+  // 🔬conte-one-eye-repaints-every-track (2026-11-08): one conte row's eye on
+  // one track re-rendered its pictures, and every landing repainted every
+  // track's V row — each painter heard the whole store.
+  group('🚨a painter hears its own cuts\' pictures, never another cut\'s', () {
+    Cut named(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 24,
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      layers: [
+        Layer(
+          id: LayerId('$id-layer'),
+          name: 'A',
+          frames: [
+            Frame(id: FrameId('$id-f1'), duration: 1, strokes: const []),
+          ],
+        ),
+      ],
+    );
+    final a = named('a');
+    final b = named('b');
+
+    /// How many times the painter of each of [cuts] alone heard [store].
+    Map<CutId, int> listenedBy(
+      StoryboardCutThumbnailStore store,
+      List<Cut> cuts,
+    ) {
+      final heard = {for (final cut in cuts) cut.id: 0};
+      for (final cut in cuts) {
+        store.thumbnails
+            .noticesFor([cut.id])
+            .addListener(() => heard[cut.id] = heard[cut.id]! + 1);
+      }
+      return heard;
+    }
+
+    testWidgets('a landing tells the painters of its cut', (tester) async {
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) => tinyImage(),
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+
+      await tester.runAsync(() async {
+        store.thumbnailFor(a, 0, shownHeight: 72);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+
+      expect(heard, {a.id: 1, b.id: 0});
+    });
+
+    testWidgets('🚨and the painters of every cut asked for while it was out: '
+        'what they asked is gone, so they ask again (2026-09-28)', (
+      tester,
+    ) async {
+      // Made on the real clock, where it is completed: a completer made on
+      // the fake one tells its listeners only when that clock turns.
+      late final Completer<ui.Image> aRendered;
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (cut, _, _, _) =>
+            cut.id == a.id ? aRendered.future : tinyImage(),
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+
+      await tester.runAsync(() async {
+        aRendered = Completer<ui.Image>();
+        store.thumbnailFor(a, 0, shownHeight: 72);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        store.thumbnailFor(b, 0, shownHeight: 72);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(heard, {a.id: 0, b.id: 0}, reason: 'the premise: a is out');
+        aRendered.complete(await tinyImage());
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+
+      expect(heard, {a.id: 1, b.id: 1});
+      expect(store.pending, isFalse, reason: 'b waits for its painter');
+    });
+
+    testWidgets('and the painters of every cut whose picture it let go', (
+      tester,
+    ) async {
+      // Four 2×2 pictures fill the budget ('bounded in bytes, like a viewer').
+      ViewerRasterBudget.debugPageBytesOverride = 16;
+      addTearDown(() => ViewerRasterBudget.debugPageBytesOverride = null);
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) => tinyImage(),
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+      await tester.runAsync(() async {
+        for (final frame in [0, 1, 2, 3]) {
+          store.thumbnailFor(a, frame, shownHeight: 72);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(heard, {a.id: 4, b.id: 0}, reason: 'the premise: a\'s four');
+
+      await tester.runAsync(() async {
+        store.thumbnailFor(b, 0, shownHeight: 72);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+
+      expect(heard, {a.id: 5, b.id: 1}, reason: 'b\'s landing let a\'s go');
+    });
+
+    testWidgets('and the memory warning tells every painter that shows a '
+        'picture: what it gave back is asked for again', (tester) async {
+      ViewerRasterBudget.debugPageBytesOverride = 16;
+      addTearDown(() => ViewerRasterBudget.debugPageBytesOverride = null);
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) => tinyImage(),
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+      await tester.runAsync(() async {
+        for (final (cut, frame) in [(a, 0), (a, 1), (b, 0), (b, 1)]) {
+          store.thumbnailFor(cut, frame, shownHeight: 72);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(heard, {a.id: 2, b.id: 2}, reason: 'the premise: four landed');
+
+      store.respondToMemoryPressure();
+
+      expect(store.thumbnailBytes, 32, reason: 'the premise: two given back');
+      expect(heard, {a.id: 3, b.id: 3});
+    });
+
+    test('a stroke tells the painters of the cut it is on', () async {
+      final hub = EditorCacheInvalidationHub();
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) => tinyImage(),
+        invalidationHub: hub,
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+
+      for (final frame in ['a-f1', 'a-f1']) {
+        hub.invalidateBrushFrame(
+          BrushFrameCacheInvalidation.wholeFrame(
+            BrushFrameKey(
+              projectId: const ProjectId('project'),
+              trackId: const TrackId('track'),
+              cutId: a.id,
+              layerId: const LayerId('a-layer'),
+              frameId: FrameId(frame),
+            ),
+          ),
+        );
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      expect(heard, {a.id: 1, b.id: 0}, reason: 'once for the batch');
+    });
+  });
 }

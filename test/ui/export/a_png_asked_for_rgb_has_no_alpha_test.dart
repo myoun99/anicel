@@ -3,10 +3,13 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/export_format_selection.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
 import 'package:anicel/src/services/media/png_writing.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/png_chunks.dart';
 
 /// 🗣️F-335 (유저 10-10): 「알파채널 아예없는걸 원하거든? RGBA가 아닌 RGB는
@@ -29,14 +32,18 @@ void main() {
     return recorder.endRecording().toImage(width, height);
   }
 
+  Future<Uint8List> writtenFrom(
+    GpuShown frame,
+    ExportFormatSelection format,
+  ) async {
+    final bytes = await stillEncoderFor(format)!(frame);
+    return Uint8List.fromList(bytes!);
+  }
+
   Future<Uint8List> written(
     ui.Image image,
     ExportFormatSelection format,
-  ) async {
-    final bytes = await stillEncoderFor(format)!(image);
-    image.dispose();
-    return Uint8List.fromList(bytes!);
-  }
+  ) async => writtenFrom(await filmFrameOf(image), format);
 
   /// [png] through the engine's codec: the RGBA of the pixel at [x], [y].
   Future<List<int>> pixelAt(Uint8List png, int x, int y) async {
@@ -101,26 +108,22 @@ void main() {
     const height = 256;
     const stride = width * 3;
 
-    /// [image]'s rows — opaque, so its RGB as it is — deflated both ways
-    /// here: (filtered, unfiltered) sizes.
-    Future<(int, int)> bothWays(ui.Image image) async {
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      final rgba = Uint8List.sublistView(data!);
-      final filtered = PngImageData(width: width, bytesPerPixel: 3);
-      final unfiltered = PngImageData(
-        width: width,
-        bytesPerPixel: 3,
-        filtered: false,
-      );
-      final row = Uint8List(stride);
-      for (var y = 0; y < height; y += 1) {
-        for (var x = 0; x < width; x += 1) {
-          row.setRange(x * 3, x * 3 + 3, rgba, (y * width + x) * 4);
-        }
-        filtered.add(row);
-        unfiltered.add(row);
+    /// [frame]'s rows — opaque, so its RGB as it is — deflated both ways by
+    /// the passes the writer takes (`rgbPngOf`): (filtered, unfiltered)
+    /// sizes.
+    (int, int) bothWays(GpuShown frame) {
+      final rgb = appGpuExport.overGround(frame, width, height, 0xFFFFFF);
+      try {
+        final filtered = appGpuExport
+            .pngRgb(rgb, width, height)
+            .takePngRows(width, height, 3);
+        return (
+          pngDeflated(filtered).length,
+          pngDeflated(pngUnfiltered(rgb.copy(), stride)).length,
+        );
+      } finally {
+        rgb.free();
       }
-      return (filtered.finish().length, unfiltered.finish().length);
     }
 
     test('a cel — flat colours inside drawn lines: unfiltered', () async {
@@ -155,10 +158,11 @@ void main() {
             );
         }
       });
-      final (filtered, unfiltered) = await bothWays(image);
+      final frame = await filmFrameOf(image);
+      final (filtered, unfiltered) = bothWays(frame);
       expect(unfiltered, lessThan(filtered), reason: '⛔fixture premise');
 
-      final png = await written(image, rgb);
+      final png = await writtenFrom(frame, rgb);
       expect(pngRowFiltersOf(png, stride: stride), List.filled(height, 0));
     });
 
@@ -173,10 +177,11 @@ void main() {
             ),
         );
       });
-      final (filtered, unfiltered) = await bothWays(image);
+      final frame = await filmFrameOf(image);
+      final (filtered, unfiltered) = bothWays(frame);
       expect(filtered, lessThan(unfiltered), reason: '⛔fixture premise');
 
-      final png = await written(image, rgb);
+      final png = await writtenFrom(frame, rgb);
       expect(pngRowFiltersOf(png, stride: stride), contains(isNot(0)));
     });
   });

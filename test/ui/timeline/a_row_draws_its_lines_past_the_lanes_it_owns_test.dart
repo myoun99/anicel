@@ -20,10 +20,10 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 
+import '../../helpers/a_row_by_its_name.dart';
 import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
-import '../../helpers/text_finders.dart';
 
 /// 🚨sheet-gap-stands-inside-open-lanes (10-25): a row's UNIT is itself and
 /// the lanes it opens — after it on the rail, before it on the sheet (R9
@@ -74,16 +74,13 @@ void main() {
 
     final lines = await _linesOfACarry(
       tester,
-      find
-          .descendant(
-            of: find.byKey(
-              ValueKey<String>(
-                'timeline-lane-label-b-${effectGroupLaneId(_e1)}',
-              ),
-            ),
-            matching: find.anyText(),
-          )
-          .first,
+      theNameOf(
+        find.byKey(
+          ValueKey<String>(
+            'timeline-lane-label-b-${effectGroupLaneId(_e1)}',
+          ),
+        ),
+      ),
       _stops(header.top, second.bottom + 12),
       axis: Axis.horizontal,
     );
@@ -132,8 +129,10 @@ void main() {
 
     final lines = await _linesOfACarry(
       tester,
-      find.byKey(
-        ValueKey<String>('xsheet-lane-label-b-${effectGroupLaneId(_e1)}'),
+      theNameOf(
+        find.byKey(
+          ValueKey<String>('xsheet-lane-label-b-${effectGroupLaneId(_e1)}'),
+        ),
       ),
       _stops(second.left - 12, first.right),
       axis: Axis.vertical,

@@ -39,6 +39,8 @@ StoryboardCursor storyboardCursorOf(EditorSessionManager session) =>
     session.storyboardCursor;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const trackId = TrackId('h11-track');
   const seLayerId = LayerId('h11-se');
 

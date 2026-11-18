@@ -33,16 +33,16 @@ import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/brush_frame_store.dart' show CelRead;
-import '../../services/brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../../services/commands/rasterize_layer_reference_command.dart';
 import '../../services/commands/swap_layer_reference_command.dart';
-import '../../services/cut_frame_composite_plan.dart' show referenceMoveAt;
+import '../../services/cut_frame_composite_plan.dart'
+    show referenceMoveAt, rowAsItWearsItsFile;
 import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, picturePlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/editing/layer_merge_plan.dart'
-    show kindHoldingPictures, tailedName;
+    show kindShowingCelsAt, tailedName;
 import '../../services/editing/timeline_showing.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/cel_picture.dart';
@@ -66,10 +66,10 @@ import '../../services/persistence/media_staging_store.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
 import 'import_landing.dart';
+import 'independent_clip_mint.dart' show givePanelsTheirPictures;
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
-import '../canvas/tiled_surface_compose.dart'
-    show composePositionedSurfaceImage, surfaceContentWorldRect;
+import '../canvas/tile_origin.dart' show surfaceContentWorldRect;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
@@ -251,7 +251,11 @@ class ProjectImportDoors {
     required ImportDestination destination,
     required bool copyIntoProject,
     bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
+
+    /// What ONE picture comes in as — an image layer holding over the cut,
+    /// or an animation layer's one cel ([placesAStill]).
+    LayerKind pictureKind = LayerKind.bornOfOnePicture,
     int? lengthFrames,
     int inFrame = 0,
     int? outFrame,
@@ -265,6 +269,10 @@ class ProjectImportDoors {
     /// — a big file's copy is the long wait of a carried placement
     /// (F-494).
     void Function(double fraction)? onCarrying,
+
+    /// Hears the file read in, as 0–1 ([readHeldMediaBytes]) — a picture
+    /// from the cloud comes down inside this read (F-608-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -274,7 +282,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await readHeldMediaBytes(_holdBytes, path);
+      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
     } on Object {
       return false;
     }
@@ -327,13 +335,16 @@ class ProjectImportDoors {
     final List<MediaAsset> assets;
     // A drop on a row's frames takes every picture as frames: a still is
     // ONE cell there (「한 장이면 한 칸」), not a hold over the cut.
-    if (decoded.length == 1 && spot is! RowFramesSpot) {
+    if (placesAStill(
+      decoded.length,
+      pictureKind,
+      ontoFrames: spot is RowFramesSpot,
+    )) {
       final plan = planStillImageLayer(
         sourceFile: source,
         displayName: arrival.displayName,
         cutId: cutId,
         duration: stillDuration,
-        fit: fit,
         reference: reference,
         mint: arrival.mint,
         identity: identity,
@@ -356,13 +367,13 @@ class ProjectImportDoors {
         frameFingerprints: fingerprints,
         displayName: arrival.displayName,
         cutId: cutId,
-        fit: fit,
         mint: arrival.mint,
         reference: reference,
         identity: identity,
         carried: copyIntoProject,
         sourcePath: sourcePath,
         firstPicture: kept.first,
+        frameCount: allFrames.length,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -376,7 +387,7 @@ class ProjectImportDoors {
       duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
       assets: assets,
     );
-    if (!landed) {
+    if (landed == null) {
       for (final frame in decoded) {
         frame.picture.dispose();
       }
@@ -399,6 +410,7 @@ class ProjectImportDoors {
         layer,
         bakes,
         rowId: _rowOf(spot),
+        picturedPanels: landed.picturedPanels,
         standing: _standingFor(reference, fit),
         pictureOf: (bake, _) async =>
             _pictureOf(decoded[bake.sourceFrameIndex].picture, owned: false),
@@ -424,7 +436,9 @@ class ProjectImportDoors {
   /// Always baked: a layer's reference names ONE file, and these are many
   /// — the cut folder's law, which always bakes. So nothing registers
   /// ([placementRegisters], F-282-Q6). ↩️Each file registered on its own
-  /// (유저 2026-09-11: 「구워도 풀에 남음」).
+  /// (유저 2026-09-11: 「구워도 풀에 남음」). And the row shows no file, so
+  /// no 겸용 copy of it is born showing one: nothing is left to give a panel
+  /// ([ImportLanded]).
   ///
   /// One file is decoded at a time — to fold, then again to bake — so a run
   /// of full-page scans never sits in memory whole.
@@ -464,12 +478,13 @@ class ProjectImportDoors {
       mint: arrival.mint,
       frameNames: [for (final file in files) file.label],
     );
-    if (!_landing.land(
+    final landed = _landing.land(
       [plan.layer],
       arrival: arrival,
       duration: _sequenceLength(plan.layer),
       assets: const [],
-    )) {
+    );
+    if (landed == null) {
       return false;
     }
     await _bakeLandedCels(
@@ -567,9 +582,13 @@ class ProjectImportDoors {
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
     int? lengthFrames,
     ImportLayerSpot? spot,
+
+    /// Hears the document read in, as 0–1 ([readHeldMediaBytes]) — a big
+    /// stack from the cloud comes down inside this read (F-608-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     // Same order as the image path: the destination gate runs before any
     // read, so a refused import never has pixels to leak.
@@ -579,7 +598,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await readHeldMediaBytes(_holdBytes, path);
+      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
     } on Object {
       return null;
     }
@@ -607,6 +626,8 @@ class ProjectImportDoors {
     }
     final arrival = newCut ? gate.withCanvasSize(expansion.canvas) : gate;
 
+    // A document's rows show no file, so no copy of them is born showing
+    // one: nothing is left to give a panel ([ImportLanded]).
     _landing.land(
       expansion.layers,
       arrival: arrival,
@@ -653,7 +674,10 @@ class ProjectImportDoors {
     required ImportDestination destination,
     required bool copyIntoProject,
     bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
+
+    /// What a span of ONE page comes in as ([placesAStill]).
+    LayerKind pictureKind = LayerKind.bornOfOnePicture,
     int inFrame = 0,
     int? outFrame,
     void Function(int done, int total)? onRenderProgress,
@@ -719,15 +743,18 @@ class ProjectImportDoors {
       final List<PlannedCelBake> bakes;
       final List<MediaAsset> assets;
       // A row's frames take one cell per page, a single page too.
-      if (spanCount == 1 && spot is! RowFramesSpot) {
-        // A one-page span is a still: an image-kind layer holding over the
-        // cut, exactly like a placed PNG.
+      if (placesAStill(
+        spanCount,
+        pictureKind,
+        ontoFrames: spot is RowFramesSpot,
+      )) {
+        // A one-page span placed as an image is a still: an image-kind
+        // layer holding over the cut, exactly like a placed PNG.
         final plan = planStillImageLayer(
           sourceFile: source,
           displayName: arrival.displayName,
           cutId: cutId,
           duration: arrival.stillDuration(),
-          fit: fit,
           reference: reference,
           mint: arrival.mint,
           identity: identity,
@@ -750,7 +777,6 @@ class ProjectImportDoors {
           ],
           displayName: arrival.displayName,
           cutId: cutId,
-          fit: fit,
           mint: arrival.mint,
           reference: reference,
           identity: identity,
@@ -772,7 +798,7 @@ class ProjectImportDoors {
         duration: spanCount > 1 ? _sequenceLength(layer) : arrival.projectFps,
         assets: assets,
       );
-      if (!landed) {
+      if (landed == null) {
         return false;
       }
       // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
@@ -794,6 +820,7 @@ class ProjectImportDoors {
         layer,
         bakes,
         rowId: _rowOf(spot),
+        picturedPanels: landed.picturedPanels,
         standing: standing,
         onProgress: onRenderProgress,
         // The bake counts within the SPAN; the document counts from its
@@ -871,7 +898,7 @@ class ProjectImportDoors {
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
-          await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
+          await _conforms.ensurePeaksFor(_pool.importSoundOf(source)) !=
               null;
       // A baked picture leaves the file nothing to be for — unless its
       // sound lands beside it, which reads the file ([placementRegisters]).
@@ -999,7 +1026,6 @@ class ProjectImportDoors {
   ) => importedMediaAsset(
     path: source,
     kind: MediaAssetKind.video,
-    fit: settings.fit,
     sourcePath: sourcePath,
     identity: readMediaIdentity(source),
     carried: settings.mode == ImportFileMode.keepInside,
@@ -1011,6 +1037,11 @@ class ProjectImportDoors {
   /// two blocks (「짝 = 따로따로」). The sound starts where the picture
   /// starts and runs as long (「같은 시작 · 같은 구간」), and it is landed
   /// only when [withSound] says the movie brought one.
+  ///
+  /// It answers only whether the picture landed: a movie's row shows no file
+  /// in a cel — read from the file unbaked, its cels its own baked — so no
+  /// 겸용 copy of it is born showing one, and nothing is left to give a panel
+  /// ([ImportLanded]).
   bool _landMovieWithSound(
     _MoviePlacement planned,
     List<MediaAsset> assets, {
@@ -1020,12 +1051,14 @@ class ProjectImportDoors {
     final kept = planned.kept;
     var landed = false;
     _project.historyManager.runAsOneStep(arrival.undoDescription, () {
-      landed = _landing.land(
-        [planned.layer],
-        arrival: arrival,
-        duration: kept.count,
-        assets: assets,
-      );
+      landed =
+          _landing.land(
+            [planned.layer],
+            arrival: arrival,
+            duration: kept.count,
+            assets: assets,
+          ) !=
+          null;
       if (!landed || !withSound) {
         return;
       }
@@ -1060,8 +1093,8 @@ class ProjectImportDoors {
   /// reference is let go of, and the pool entry stays: it was made when the
   /// reference was placed, and a later bake does not empty the pool (「구워도
   /// 풀에 남음」 — what a PLACEMENT registers is [placementRegisters]'s,
-  /// F-282-Q6). A row holding more than one picture becomes a drawing row
-  /// ([kindHoldingPictures]).
+  /// F-282-Q6). A row one of whose uses shows more than one picture becomes
+  /// a drawing row ([kindShowingCelsAt]).
   ///
   /// Where it shows each picture is [referenceLetGo]'s (F-374-Q7): its
   /// reference fx's move carried into the row's own transform and the
@@ -1254,7 +1287,7 @@ class ProjectImportDoors {
     Cut cut,
     Layer layer,
   ) async {
-    final move = referenceMoveAt(layer, 0);
+    final move = referenceMoveAt(rowAsItWearsItsFile(cut, layer), 0);
     final moved = <BrushFrameKey, BitmapSurface>{};
     if (move == null) {
       return moved;
@@ -1273,10 +1306,10 @@ class ProjectImportDoors {
   }
 
   /// [cel]'s picture where [move] carries it, on a cel of the same canvas —
-  /// laid as every picture a door bakes is ([layCelPicture]),
-  /// whole (F-374-Q8).
+  /// laid from the cel's own tiles as every picture a door bakes is laid
+  /// ([layCelRegion]), whole (F-374-Q8).
   ///
-  /// 🚨Composed over where its FILE lies, not over the cel: the clear canvas
+  /// 🚨Laid from where its FILE lies, not from the cel: the clear canvas
   /// round a small picture is no part of it, and a move that grows the
   /// picture grows that too — an 8×8 still fitted ×206 to its canvas asked
   /// ONE raster 590080×538240 for its 8×8 of ink, and the raster failed. No
@@ -1286,43 +1319,15 @@ class ProjectImportDoors {
   static Future<BitmapSurface> _celMoved(
     BitmapSurface cel,
     LayerPlacement move,
-  ) async {
-    final held = await _celPicture(cel);
-    try {
-      return await layCelPicture(
-        picture: held.picture,
-        canvas: cel.canvasSize,
-        placement: move.compose(held.at),
-        tileSize: cel.tileSize,
-        whole: cel.laidBounds != null,
-      );
-    } finally {
-      held.picture.dispose();
-    }
-  }
-
-  /// [cel]'s picture over where its file lies ([_celMoved]), and where that
-  /// stands on the canvas: composed — or, past the side this device's
-  /// engine hands a picture back at, the bytes the cel holds, kept off the
-  /// engine as its file was when it was laid ([pictureSideLimit]). A
-  /// compose past the side comes back in pieces (`piecesOver`), and a
-  /// picture is one image. 🔬Before it did, it came back smaller (20480×1024
-  /// asked, 16384×819 made), and the move would have laid it so. A cel that
-  /// does not know where its file lies is asked the same over all it holds.
-  static Future<({CelPicture picture, LayerPlacement at})> _celPicture(
-    BitmapSurface cel,
-  ) async {
+  ) {
     final laid = cel.laidBounds;
     final region =
         laid ?? DirtyRegion.wholePixelsOf(surfaceContentWorldRect(cel));
-    if (isPastTheSide(region.width, region.height, await pictureSideLimit())) {
-      return (
-        picture: PixelsPicture(
-          bitmapSurfaceRegionPixels(cel, region),
-          width: region.width,
-          height: region.height,
-        ),
-        at: GuideTransform(
+    return layCelRegion(
+      cel: cel,
+      region: region,
+      placement: move.compose(
+        GuideTransform(
           1,
           0,
           0,
@@ -1330,19 +1335,8 @@ class ProjectImportDoors {
           region.left.toDouble(),
           region.top.toDouble(),
         ),
-      );
-    }
-    final composed = await composePositionedSurfaceImage(
-      cel,
-      over: laid?.rect,
-    );
-    if (composed == null) {
-      throw StateError('The cel did not compose.');
-    }
-    final at = composed.worldRect.topLeft;
-    return (
-      picture: EnginePicture(composed.pieces.single.image),
-      at: GuideTransform(1, 0, 0, 1, at.dx, at.dy),
+      ),
+      whole: laid != null,
     );
   }
 
@@ -1728,18 +1722,19 @@ class ProjectImportDoors {
 
   /// What [use] shows at each position of its [block] — the picture of its
   /// file there, the movie frame the sound's clock of [info] reads or a
-  /// still cel's own, standing where its reference fx stands it at that
-  /// position where its cels take the picture as it shows it ([asShown]),
-  /// else where its file is laid, the move its own transform's now — and
-  /// the cels that makes: one wherever the picture or the move changes
-  /// (「중복 접기」, the fold the placement window's bake uses).
+  /// still cel's own, standing where the reference fx it wears stands it
+  /// ([rowAsItWearsItsFile]) at that position where its cels take the
+  /// picture as it shows it ([asShown]), else where its file is laid, the
+  /// move its own transform's now — and the cels that makes: one wherever
+  /// the picture or the move changes (「중복 접기」, the fold the placement
+  /// window's bake uses).
   _PlannedBlock _plannedBlock(
     ReferenceUse use,
     TimelineDrawingBlock block, {
     required QaVideoInfo? info,
     required bool asShown,
   }) {
-    final reference = use.layer.mediaReference!;
+    final reference = rowAsItWearsItsFile(use.cut, use.layer).mediaReference!;
     final clock = info == null ? null : _movieClock(info);
     final still = use.layer.frameById(block.frameId)?.filePicture;
     final shown = [
@@ -1779,7 +1774,7 @@ class ProjectImportDoors {
   /// that carries it, as a still's is (F-374-Q3 · Q7 · Q10), the bank
   /// [cels] holds, each use's blocks parted where its pictures are
   /// ([timelineShowing] — the head keeps the memo and the marks), its kind
-  /// the one a row of so many pictures is ([kindHoldingPictures]), and
+  /// the one its uses' lanes leave it ([kindShowingCelsAt]), and
   /// every reference let go of — through the edit funnels every transform
   /// and timeline change uses. The pixels follow it, as a landed import's
   /// do. Answers [layerId]'s row as it lands.
@@ -1812,7 +1807,8 @@ class ProjectImportDoors {
         // ⛔`plan.assets` is dropped: the pool entry is already there, and
         // it stays there — baking does not unregister a file.
         final rasterized = carried.copyWith(
-          kind: kindHoldingPictures(carried.kind, cels.frames.length),
+          // 🗣️F-572-Q2 (유저 11-11): each use's lane, as a merge counts.
+          kind: kindShowingCelsAt(carried.kind, cels.celAt),
           frames: cels.frames,
           timeline: timelines[index],
           mediaReference: null,
@@ -1832,22 +1828,16 @@ class ProjectImportDoors {
 
   /// One movie frame as a picture — the same read for the door that PLACES
   /// a movie baked and the verb that RASTERIZES one placed as a reference.
+  /// A frame the decoder does not give throws as it is laid
+  /// ([MovieFrameUnread]).
   Future<_BakePicture> _moviePicture(
     int token,
     QaVideoInfo info,
     PlannedCelBake bake,
-  ) async {
-    final rgba = await videoDecodeBackend.frame(token, bake.sourceFrameIndex);
-    if (rgba == null) {
-      throw StateError('Movie frame ${bake.sourceFrameIndex} did not decode.');
-    }
-    final picture = await pictureOfPixels(
-      rgba,
-      width: info.width,
-      height: info.height,
-    );
-    return _pictureOf(picture, owned: true);
-  }
+  ) async => _pictureOf(
+    MovieFramePicture(videoDecodeBackend, token, bake.sourceFrameIndex, info),
+    owned: true,
+  );
 
   /// The row a [spot] names, when it names one — frames let go of on a
   /// row are that row's cels.
@@ -1872,6 +1862,12 @@ class ProjectImportDoors {
   /// a half-baked import is one the window would retry as a duplicate.
   /// Without it the throw is the caller's.
   ///
+  /// Then [picturedPanels] — the panels the landed rows' 겸용 copies were
+  /// born showing those pictures in — take them ([ImportLanded]): a still's
+  /// and a PDF's. None where no copy is born showing a file — a run's row
+  /// and a movie's show none in a cel — nor where the bake lands no row, as
+  /// a rasterize does.
+  ///
   /// ⛔ONE TAIL, FOUR DOORS. The still/GIF door and the PDF door each wrote
   /// it out — the cut, the loop, the row to stand on — the movie door was
   /// the third, and rasterizing a movie in place is the fourth.
@@ -1880,6 +1876,7 @@ class ProjectImportDoors {
     Layer layer,
     List<PlannedCelBake> bakes, {
     required LayerId? rowId,
+    Map<LayerId, Map<FrameId, FrameId>> picturedPanels = const {},
     required _Standing standing,
     required Future<_BakePicture> Function(
       PlannedCelBake bake,
@@ -1920,9 +1917,27 @@ class ProjectImportDoors {
         done += 1;
         onProgress?.call(done, bakes.length);
       }
+      _givePanelsTheirPictures(cut, picturedPanels);
     }
     _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
     _changes.notifyChanged();
+  }
+
+  /// The panels the landed rows' 겸용 copies were born showing their
+  /// pictures in, by row ([ImportLanded.picturedPanels]), given them now
+  /// [cut] holds them — the last of a landing's bake (🗣️I-120-Q29).
+  void _givePanelsTheirPictures(
+    Cut cut,
+    Map<LayerId, Map<FrameId, FrameId>> picturedPanels,
+  ) {
+    for (final MapEntry(key: row, value: panels) in picturedPanels.entries) {
+      givePanelsTheirPictures(
+        project: _project,
+        store: _renderCaches.brushFrameStore,
+        row: (cut: cut, row: row),
+        panels: panels,
+      );
+    }
   }
 
   /// [picture] laid on a [canvas]-sized cel where it stands at [pose]
@@ -1996,7 +2011,7 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final source = _pool.importAudioFile(path);
+    final source = _pool.importSoundOf(path);
     final peaks = await _conforms.ensurePeaksFor(source);
     if (peaks == null) {
       return false;
@@ -2013,7 +2028,6 @@ class ProjectImportDoors {
         // pair, so a relink finds both (「리링크는 풀 항목이 하나라 둘 다
         // 한 번에 따라간다」).
         kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
-        fit: MediaFitMode.contain,
         sourcePath: sourcePath,
         identity: readMediaIdentity(source),
         carried: copyIntoProject,

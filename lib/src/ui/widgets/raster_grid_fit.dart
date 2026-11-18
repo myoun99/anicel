@@ -124,6 +124,115 @@ class RasterGridFit {
     } on Object catch (_) {
       return null;
     }
+    return _fitOf(toGlobal, ratio);
+  }
+
+  /// [of], for a frame laid out and painted — asked as its scene is built:
+  /// [box]'s transform to the root multiplied off its parent's as this
+  /// [frame] already holds it, so an ancestor every region under it asks
+  /// through is multiplied once a frame, not once a region.
+  ///
+  /// 🔬Card row-images-placement-check-ui-cost: a scroll moves every row's
+  /// ancestors, and each row asked the whole way to the root — 32 a frame
+  /// on the main PC at about 14 µs each, 0.45 ms of the UI thread. The
+  /// rows meet four parents up, 114 from the root (11-15, the timeline
+  /// dock in a test).
+  ///
+  /// 🚨The same products in the same order as [of]'s `getTransformTo`, so
+  /// the same bits: a fit compared against one [of] took must read equal
+  /// wherever the region sits where it did. ⛔Only once the frame is laid
+  /// out — a parent's transform is kept for the whole [frame] — and not
+  /// under a follower, whose transform is the one it was last added with.
+  /// ⚠️[frame] is [StaticRaster.debugFrameSerial], which reads the same in
+  /// the frame its clock was installed in and the next: nothing has been
+  /// held still long enough to ask in the first. ⛔Not between frames
+  /// either: the serial there is already the next frame's.
+  static RasterGridFit? ofPainted(
+    RenderObject box,
+    double devicePixelRatio, {
+    required int frame,
+  }) {
+    final toGlobal = _toRootIn(box, frame);
+    return toGlobal == null ? null : _fitOf(toGlobal, devicePixelRatio);
+  }
+
+  /// The transform to the root ([ofPainted]) of each render object where
+  /// ways up meet ([_waysMeetAt]), and the frame it was multiplied in —
+  /// held as weakly as the object is.
+  static final Expando<({int frame, Matrix4 toRoot})> _toRoot = Expando(
+    'a render object\'s transform to the root, this frame',
+  );
+
+  /// [box]'s transform to its tree's root as `getTransformTo(null)`
+  /// multiplies it — down from the root's child, which stands at identity,
+  /// each parent's [RenderObject.applyPaintTransform] of the child on the
+  /// way — from the nearest ancestor where ways meet that [frame] already
+  /// multiplied, keeping each such one it passes. Null where [box] is not
+  /// in its owner's tree.
+  ///
+  /// 🔬Kept only where ways meet (11-15, 32 rows meeting four parents up,
+  /// 108 from the root, in a test): asked the whole way 73–86 µs a frame,
+  /// kept at every parent 19–22, kept where ways meet 13 — a copy and an
+  /// entry at every parent cost more than the products they saved.
+  static Matrix4? _toRootIn(RenderObject box, int frame) {
+    final below = <RenderObject>[];
+    var node = box;
+    Matrix4 transform;
+    var kept = false;
+    while (true) {
+      final keptHere = _keptAt(node, frame);
+      if (keptHere != null) {
+        transform = keptHere;
+        kept = true;
+        break;
+      }
+      final parent = node.parent;
+      if (parent == null) {
+        return null;
+      }
+      if (parent.parent == null) {
+        if (!identical(parent, box.owner?.rootNode)) {
+          return null;
+        }
+        transform = Matrix4.identity();
+        break;
+      }
+      below.add(node);
+      node = parent;
+    }
+    for (final child in below.reversed) {
+      if (kept) {
+        transform = transform.clone();
+        kept = false;
+      }
+      child.parent!.applyPaintTransform(child, transform);
+      if (_waysMeetAt(child)) {
+        _toRoot[child] = (frame: frame, toRoot: transform);
+        kept = true;
+      }
+    }
+    return transform;
+  }
+
+  /// Whether ways up from more than one region can meet at [node]: it has
+  /// children of its own. 🔬Every row of the timeline dock meets the others
+  /// at a [RenderFlex] (11-15). One that holds its children otherwise is
+  /// only walked past, to the next above it.
+  static bool _waysMeetAt(RenderObject node) =>
+      node is ContainerRenderObjectMixin;
+
+  /// [node]'s transform to the root as [frame] keeps it, if it does.
+  static Matrix4? _keptAt(RenderObject node, int frame) {
+    if (!_waysMeetAt(node)) {
+      return null;
+    }
+    final kept = _toRoot[node];
+    return kept != null && kept.frame == frame ? kept.toRoot : null;
+  }
+
+  /// The fit of a surface [toGlobal] maps to the root's logical pixels,
+  /// on a view of [ratio] device pixels to one of those.
+  static RasterGridFit? _fitOf(Matrix4 toGlobal, double ratio) {
     final uniformScale = uniformScaleOf(toGlobal);
     if (uniformScale == null) {
       return null;
@@ -143,13 +252,39 @@ class RasterGridFit {
       return null;
     }
     return RasterGridFit(
-      shift: Offset(
-        (left - left.floorToDouble()) / scale,
-        (top - top.floorToDouble()) / scale,
-      ),
+      shift: Offset(_phaseOf(left) / scale, _phaseOf(top) / scale),
       scale: scale,
     );
   }
+
+  /// How far into the device pixel it begins in [device] lies, in whole
+  /// [_phaseStep]s — the same pixels read the same phase however the sum
+  /// that placed them rounded.
+  ///
+  /// 🚨THE PHASE IS COMPARED, so its last bits are a question of their own
+  /// (11-07, card a-live-dock-frame-costs-a-whole-draw). A region's corner
+  /// is a sum of its ancestors' offsets times the ratio, rounded on the
+  /// grid of the largest number it passed through. 🔬A conte row at 150%
+  /// scrolled sideways by whole device pixels read 0 at device 1042 and
+  /// 7.6e-14 at 1021, either side of 1024 — its image dropped and the row
+  /// drawn live; and a sum that lands an ulp short of a whole pixel floors
+  /// to the one before it, a phase of a whole pixel less an ulp.
+  ///
+  /// ⛔Not `DeviceGrid`'s relative slack: that floors a POSITION something
+  /// is laid out at, where any overshoot shows. A phase lies between 0 and
+  /// 1, and what is in its last bits is the coordinate's rounding — a few
+  /// ulps of it, under 2e-9 of a pixel at a million pixels — so a fixed
+  /// step far above that and far below a visible edge serves every
+  /// coordinate: an edge moved by 1/65536 of a pixel changes its coverage
+  /// by less than a 255th of a level. A phase that rounds up to the next
+  /// pixel is that pixel's zero.
+  static double _phaseOf(double device) {
+    final steps = ((device - device.floorToDouble()) / _phaseStep)
+        .roundToDouble();
+    return steps * _phaseStep % 1;
+  }
+
+  static const double _phaseStep = 1 / 65536;
 
   /// The scale in [transform] when it is a translation and a single
   /// positive uniform scale, and null for anything else — a rotation, a

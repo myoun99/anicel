@@ -60,7 +60,10 @@ void main() {
           MediaAsset(
             path: audioPath,
             name: '대사.wav',
-            carriedAs: mediaCarryNamed(audioPath, 'c1'),
+            carriedAs: (
+              token: mediaCarryNamed(audioPath, 'c1'),
+              modified: null,
+            ),
           ),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
+import '../../native/qa_pen_points.dart';
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_sidecars.dart';
@@ -620,7 +621,18 @@ class _InspectorCard extends StatelessWidget {
                     // while it was the thing being diagnosed.
                     ' seen=${InputInspector.arrivals}'
                     // F-400: and what the binding kept out ahead of it.
-                    ' echo=${InputInspector.echoes}',
+                    ' echo=${InputInspector.echoes}'
+                    // H56: and the messages whose points the OS saw
+                    // no datum took — each a stretch of a line lost.
+                    ' passed=${QaPenPoints.passed}'
+                    // H59 법 A: and those whose points did not all
+                    // reach the book, by why.
+                    ' lost=${_lostSaid(QaPenPoints.lost)}'
+                    // And while the tablet driver's stream is open, how far
+                    // its newest packet ran behind the mouse message and
+                    // the overflows its queue said: a pkTime on another
+                    // clock pairs no mouse point with the driver.
+                    '${_wintabHeard()}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
@@ -641,3 +653,17 @@ class _InspectorCard extends StatelessWidget {
     );
   }
 }
+
+/// What the tablet driver's queue said ([WintabPenService.heard]), as the
+/// strip says it.
+String _wintabHeard() {
+  final heard = WintabPenService.instance.heard();
+  return heard == null
+      ? ''
+      : ' wt gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
+}
+
+/// What the point book lost ([QaPenPoints.lost]), by why, as the strip
+/// says it.
+String _lostSaid(({int full, int unread}) lost) =>
+    'full ${lost.full} unread ${lost.unread}';

@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨A STOPPED EXPORT SAYS HOW MUCH IT KEPT, IN THE RIGHT PLURAL.
@@ -29,6 +31,7 @@ import '../../helpers/temp_dir.dart';
 /// completion (2026-09-04). One frame reads the same either way, so this
 /// stops the encoder after TWO.
 void main() {
+  opensTheEnginesScreens();
   late Directory temp;
 
   setUp(() async {
@@ -96,6 +99,8 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.runAsync(state.export);

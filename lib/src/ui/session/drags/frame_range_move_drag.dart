@@ -30,6 +30,7 @@ import '../../timeline/timeline_section_policy.dart';
 import '../active_cut_controllers.dart';
 import '../block_move_commands.dart';
 import '../folders_and_attachments.dart';
+import '../frame_verbs.dart' show blocksLandAsPicturesOn;
 import '../lane_edit_subject.dart' show LaneEdit;
 import '../lane_verbs.dart';
 import '../range_selections.dart';
@@ -612,8 +613,8 @@ class FrameRangeMoveDrag {
         (lanes.isEmpty ? null : (singleRow: null, multiSources: []));
     final attachTrade = _attachTradeOf(span, roles.project);
     if (subjects == null) {
-      return singleRowId == null
-          ? _tradingMirrors(
+      return _picturesOnly(singleRowId, roles.project)
+          ? _tradingPictures(
               roles,
               span,
               attachTrade,
@@ -703,7 +704,7 @@ class FrameRangeMoveDrag {
   /// group.
   ///
   /// Null when the span moves nothing — a span of nothing but SYNCED attach
-  /// rows among them ([_tradingMirrors]).
+  /// rows among them ([_tradingPictures]).
   static _MoveSubjects? _multiSourceSubjects(
     TimelineFrameRangeSelection span,
     KeySources keys, {
@@ -742,10 +743,30 @@ class FrameRangeMoveDrag {
     return (singleRow: null, multiSources: sources);
   }
 
+  /// Whether a span [begin] found no block to move in drags as a trade
+  /// ([_tradingPictures]): one that is no single row's ([_singleRowOf]) —
+  /// mirrors alone — or whose one row blocks land on as pictures
+  /// ([blocksLandAsPicturesOn]): a picture row holding its picture, whose
+  /// block is pinned ([_singleRowSubjects]).
+  static bool _picturesOnly(LayerId? singleRowId, ProjectAccess project) {
+    if (singleRowId == null) {
+      return true;
+    }
+    final row = project.layerById(singleRowId);
+    return row != null && blocksLandAsPicturesOn(row);
+  }
+
   /// The drag of a span that moves no block — a span of nothing but SYNCED
-  /// attach rows: it trades their pictures inside their group, and nothing
-  /// else (F-330, [_picturesTradedTo]). Null where there is no trade to
-  /// make.
+  /// attach rows: it trades their pictures inside their group (F-330,
+  /// [_picturesTradedTo]) and with the blocks they land on (F-546,
+  /// [_picturesTradedInLanding]), and nothing else. Null where there is no
+  /// trade to make.
+  ///
+  /// A PICTURE row's span is such a span too ([_picturesOnly]), and trades
+  /// as a synced row's does. 🗣️F-593-Q1 (유저 2026-11-15, 「(가) 맞바꾼다 —
+  /// 싱크행과 같게」). ↩️It began no drag. The pill is a synced row's alone
+  /// ([FoldersAndAttachments.noticeSyncedAttachRefusal]): a picture row's
+  /// release that traded nothing says nothing, as its press did.
   ///
   /// Their blocks are borrowed exposures, so a move of them is refused with
   /// the "edit the owner" pill (the synced-block UI made the row look
@@ -758,7 +779,7 @@ class FrameRangeMoveDrag {
   /// come of the drag. A trade can, so it comes at the release that traded
   /// nothing ([commit]) — and at the press only where the span covers no
   /// block a trade could take.
-  static FrameRangeMoveDrag? _tradingMirrors(
+  static FrameRangeMoveDrag? _tradingPictures(
     FrameRangeMoveRoles roles,
     TimelineFrameRangeSelection span,
     _AttachTrade? attachTrade, {
@@ -937,9 +958,10 @@ class FrameRangeMoveDrag {
   /// (F-330), or null when its rows are not one group's ([_attachTradeOf]).
   final _AttachTrade? _attachTrade;
 
-  /// The "edit the owner" pill a span of nothing but mirrors says when its
-  /// release traded nothing ([_tradingMirrors]) — and so the fact that the
-  /// span moves no block: non-null exactly for such a span.
+  /// What a span that moves no block says when its release traded nothing
+  /// ([_tradingPictures]) — the "edit the owner" pill, a span of mirrors;
+  /// a picture row's, nothing — and so the fact that the span moves no
+  /// block: non-null exactly for such a span.
   final void Function()? _refuseUntraded;
 
   DrawingBlockMovePlan? _plan;
@@ -1994,19 +2016,32 @@ class FrameRangeMoveDrag {
   /// blocks are its base's, so none of them can go, and each row of the span
   /// trades with the blocks it lands on ([picturesTradedInBlocks], F-546).
   ///
-  /// Null where the hand is on the row it grabbed, where a row of the span
-  /// would land as a move, or where no block stands at the landing: the
-  /// step is a move then. ⚠️Mine: the span's rows land together or not at
-  /// all as a trade — a block leaving a row and a picture staying on it want
-  /// the same frames — and a landing that gives a cel twice is no trade (the
-  /// rows it passes over are the rows it left), so it holds.
+  /// Null where a row of the span would land as a move, or where no block
+  /// stands at the landing: the step is a move then. ⚠️Mine: the span's rows
+  /// land together or not at all as a trade — a block leaving a row and a
+  /// picture staying on it want the same frames — and a landing that gives a
+  /// cel twice is no trade (the rows it passes over are the rows it left),
+  /// so it holds.
+  ///
+  /// 🗣️I-166 (유저 2026-11-07): 「어태치 싱크행의 블록의 세로 행이동이
+  /// 그림교체로 작동하는것처럼 좌우이동도 그림교체로 작동하게」 — for a span
+  /// whose pictures come from synced rows alone, the row the hand grabbed is
+  /// a landing too: slid along it, its blocks trade with the blocks they
+  /// land on, as onto any other row. ↩️It was no landing, and such a span
+  /// slid along its own row moved nothing and said to edit the owner. A span
+  /// with blocks of its own still slides them along the row it was grabbed
+  /// by, a mirror of theirs included (F-546's ⛔slid along by its own mirror).
   _PictureTrade? _picturesTradedInLanding(int frameDelta, LayerId? pointedAt) {
     final cut = _project.activeCutOrNull;
-    if (cut == null || pointedAt == null || pointedAt == _grabbedRow) {
+    if (cut == null || pointedAt == null) {
       return null;
     }
     final rows = sectionedLayerOrder(_project.layers);
     final sources = _rowsGivingPictures();
+    if (pointedAt == _grabbedRow &&
+        sources.any((row) => !isSyncedAttachedLayer(row))) {
+      return null;
+    }
     final hop = layerIndexDelta(
       rows,
       sources.any((row) => row.id == _grabbedRow) ? _grabbedRow! : _hopOrigin,
@@ -2083,12 +2118,18 @@ class FrameRangeMoveDrag {
     ];
   }
 
-  /// Whether a hop from [source] onto [landing] is a trade: a synced row on
-  /// one end at least, and on the other a row a block move would take.
+  /// Whether a hop from [source] onto [landing] is a trade: a row blocks
+  /// land on as pictures ([blocksLandAsPicturesOn]) on one end at least,
+  /// and on the other a row a block move would take.
+  ///
+  /// 🗣️F-593-Q1 (유저 2026-11-15, 「(가) 맞바꾼다 — 싱크행과 같게」): a
+  /// picture row holding its picture is such a row, as it is to a paste.
+  /// ↩️A synced row was the only one, and a block dragged onto a picture
+  /// row moved nothing: its block is pinned.
   bool _tradesPictures(Layer source, Layer landing) {
     final own = [
       for (final row in [source, landing])
-        if (!isSyncedAttachedLayer(row)) row,
+        if (!blocksLandAsPicturesOn(row)) row,
     ];
     return own.length < 2 &&
         own.every((row) => _retime.blockMoveEligible(row.id));

@@ -31,11 +31,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeHooks;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
-    show seNameTagGroupLaneId;
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
     show seSoundGroupLaneId;
-import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/models/track_frame_range.dart';
@@ -1561,11 +1559,14 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         // An S row's twirl is its SE row's, and its groups key like the
-        // timeline's (F-101 · F-360).
+        // timeline's (F-101 · F-360) — its name tag open, whose members its
+        // transform's lanes are (audio-fx-grows-like-the-pros-Q3 · Q4), on a
+        // surface tall enough to hold them all.
+        surface: const Size(1400, 900),
         expandedLaneLayerIds: {for (final row in track.seLayers) row.id},
         expandedLaneGroupKeys: {
           for (final row in track.seLayers)
-            laneGroupKey(row.id, transformGroupHeaderLane.laneId),
+            laneGroupKey(row.id, seNameTagGroupLaneId),
         },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
@@ -1607,18 +1608,20 @@ void main() {
       final seId = log.track.seLayers.single.id;
       expect(positionLane(), findsOneWidget);
 
-      // The rail above the position lane: anchor-point (26), the Transform
-      // header (26), the name tag's (26), the 「오디오」 header (26 — every
-      // S row has one, I-140), then the SE row (30). -119 from the press
-      // point (13px into the 26px lane) puts the pointer 106px above the
-      // lane top: inside the SE row by the painted heights, but a fifth
-      // uniform 26px row up — the exact reach a uniform resolve
-      // mis-answers (R9 #25's mutation pin).
+      // The rail above the position lane: anchor-point (26), the name tag's
+      // ten members (26 each) and its header (26) — the transform's lanes
+      // are its members (audio-fx-grows-like-the-pros-Q3 · Q4) — the
+      // 「오디오」 header (26 — every S row has one, I-140), then the SE row
+      // (30). -353 from the press point (13px into the 26px lane) puts the
+      // pointer 340px above the lane top: inside the SE row by the painted
+      // heights, 28px below its top, but a fourteenth uniform 26px row up —
+      // the exact reach a uniform resolve mis-answers (R9 #25's mutation
+      // pin).
       final gesture = await tester.startGesture(
         tester.getCenter(positionLane()),
         kind: PointerDeviceKind.mouse,
       );
-      await gesture.moveBy(const Offset(4, -119));
+      await gesture.moveBy(const Offset(4, -353));
       await tester.pump();
       await gesture.up();
       await tester.pump();
@@ -1631,7 +1634,8 @@ void main() {
         LayerRowAddress(seId),
         LaneRowAddress(seId, seSoundGroupLaneId),
         LaneRowAddress(seId, seNameTagGroupLaneId),
-        LaneRowAddress(seId, transformGroupHeaderLane.laneId),
+        for (final laneId in seNameTagLaneDisplayOrder)
+          LaneRowAddress(seId, laneId),
         LaneRowAddress(seId, 'anchor-point'),
         LaneRowAddress(seId, 'position'),
       ], reason: 'the display slice, top to bottom');
@@ -2000,7 +2004,7 @@ void main() {
         expandedLaneGroupKeys: {
           laneGroupKey(
             track.seLayers.single.id,
-            transformGroupHeaderLane.laneId,
+            seNameTagGroupLaneId,
           ),
         },
         laneRange: TimelineLaneRangeHooks(
@@ -2065,12 +2069,13 @@ Future<void> _pumpStoryboardPanel(
   void Function(TrackId trackId, int globalFrame)? onEditCutBlock,
   void Function(TrackId trackId, LayerId layerId, int globalFrame)?
   onEditConteBlock,
+  Size surface = const Size(1400, 600),
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
   // unified the two widths (2026-08-04), 443 since the OPAC column widened
   // (2026-09-25) — so the surface must stay wide
   // enough to keep every cut block of the three-cut fixtures on screen.
-  await tester.binding.setSurfaceSize(const Size(1400, 600));
+  await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(

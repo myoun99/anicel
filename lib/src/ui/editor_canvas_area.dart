@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_frame_grid_settings.dart';
+import '../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
 import '../models/brush_frame_key.dart';
 import '../models/cel_number_letters.dart' show celNumberText;
 import '../models/layer_effect.dart';
@@ -49,10 +51,9 @@ import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
-import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/paper_background.dart' show paintAbsentPlane;
 import 'canvas/stage_planes_painter.dart'
-    show StagePlane, backdropOnScreen, stageColorOnScreen, stageGroundOf;
+    show StagePlane, backdropOnScreen, stageColorOnScreen, stageGround;
 import 'canvas/viewport_canvas_transform.dart';
 import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
@@ -82,11 +83,12 @@ import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'playback/camera_shot.dart';
 import 'playback/canvas_track_stack_view.dart';
+import 'playback/fill_picture_over.dart';
 import 'playback/frame_picture_view.dart';
+import 'playback/frame_wait_mark.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
-import 'panels/tool_size_preset_panel.dart' show ToolSizePresetPanel;
 import 'debug/device_grid_probe.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
@@ -830,7 +832,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
-        seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         run: mount.run,
         viewport: viewport,
         background: session.projectSettings.projectBackground,
@@ -950,7 +951,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (snap) {
       // 🗣️F-391 (유저 2026-10-17): 「브러시 크기 스냅은 … 툴 사이즈 패널을
       // 바탕으로」 — the rack the size bar's ± step through (F-325).
-      next = AppInput.snapToList(next, ToolSizePresetPanel.presets);
+      next = AppInput.snapToList(next, AppInput.settings.value.toolSizes);
     }
     widget.onBrushToolStateChanged?.call(
       widget.brushToolState.value.withActiveSize(
@@ -1450,11 +1451,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final space = _shownThrough(
       session.frameVerbs.layerCanvasPoseSample(row.id),
     );
-    final resolved = resolveLayerEffectsAt(
-      effects: [boxed.effect],
+    final resolved = sampleLayerEffectAt(
+      boxed.effect,
       frameIndex: at.frame,
       blocks: row.fxBlocks,
-    ).single;
+      worn: (owner: row.id, wearer: row.id),
+    );
     final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture
         ? _effectPictureBox(
@@ -2025,7 +2027,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 backdrop: backdropOnScreen((
                   color: stageColorOnScreen(project.backdropArgb),
                   none: project.backdropNone,
-                ), stageGroundOf(context)),
+                ), stageGround),
                 share: backdropShareUnder(cutFadeOpacity, [
                   for (final partner in partners) partner.opacity,
                 ]),
@@ -2065,29 +2067,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             session.trackOwningCut(contribution.cutId)?.id == trackId)
           contribution,
     ];
-  }
-
-  Positioned _seNameTagOverlay(
-    CanvasViewport viewport,
-    CanvasSize canvasSize,
-    List<ResolvedSeNameTag> seNameTags,
-    BuildContext context,
-  ) {
-    return Positioned.fill(
-      // Rides the cut pose like the gizmo: the tag
-      // annotates the posed picture, exactly as the
-      // frame painter draws it inside the pose.
-      child: IgnorePointer(
-        child: CustomPaint(
-          painter: _SeNameTagOverlayPainter(
-            viewport: viewport,
-            canvasSize: canvasSize,
-            tags: seNameTags,
-            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-          ),
-        ),
-      ),
-    );
   }
 
   Positioned _guideEditLayer(
@@ -2220,48 +2199,6 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props =>
       (viewport, unit, ByList(veils), backdrop, share, devicePixelRatio);
-}
-
-/// The editing canvas's SE name tags (R5b): the same draw the frame
-/// painter makes during playback — each tag in its shot, laid on the
-/// canvas — so what you edit against is what plays and what exports.
-class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameTagOverlayPainter({
-    required this.viewport,
-    required this.canvasSize,
-    required this.tags,
-    required this.devicePixelRatio,
-  });
-
-  final CanvasViewport viewport;
-  final CanvasSize canvasSize;
-  final List<ResolvedSeNameTag> tags;
-
-  /// The pan-phase snap's device grid — the tags annotate the snapped
-  /// picture, so they ride the same phase.
-  final double devicePixelRatio;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(
-      canvas,
-      viewport,
-      devicePixelRatio: devicePixelRatio,
-    );
-    paintSeNameTags(
-      canvas,
-      tags: tags,
-      canvasSize: canvasSize,
-      rasterScale: displayScaleOf(viewport.zoom, devicePixelRatio),
-    );
-    canvas.restore();
-  }
-
-  @override
-  Object get props =>
-      (viewport, canvasSize, devicePixelRatio, seNameTagSignature(tags));
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

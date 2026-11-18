@@ -18,8 +18,8 @@ import 'package:anicel/src/ui/ui_scale_binding.dart';
 
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
-import '../helpers/settle_async.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/until_the_brushes_land.dart';
 
 /// 🚨**H30 — 「그리다가 언두하고 빠르게 다음 스트로크 그리면 렉이 심하거든?
 /// 0.1초정도 끊긴다해야하나?」** (유저 실기 2026-09-10).
@@ -144,11 +144,7 @@ void main() {
           ),
         ),
       );
-      await settleAsync(tester, () {
-        final panels = find.byType(BrushPresetPanel).evaluate();
-        return panels.isNotEmpty &&
-            (panels.first.widget as BrushPresetPanel).presets.isNotEmpty;
-      });
+      await untilTheBrushesLand(tester);
     } else {
       await tester.pumpWidget(const MaterialApp(home: HomePage()));
     }

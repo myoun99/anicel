@@ -14,8 +14,10 @@
 // Needs shared/wide.wgsl before it.
 
 // The output's top-left pixel and width; the triangle's order and its box
-// within the output, top-left and size; d0 and the edges to d1 and d2, Q.8;
-// den = e1 × e2, Q.16, low word first.
+// within the output, top-left and size — no more of it than a band of the
+// output's rows holds; d0 and the edges to d1 and d2, Q.8; den = e1 × e2,
+// Q.16, low word first; the word of the owners the band's binding begins
+// on (mod.rs's `owners`: the owners are bound a band of rows at a time).
 struct Triangle {
   left: i32,
   top: i32,
@@ -33,6 +35,10 @@ struct Triangle {
   e2y: i32,
   den_low: u32,
   den_high: u32,
+  owners_base: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> triangle: Triangle;
@@ -56,12 +62,13 @@ fn mesh_holds(x: i32, y: i32) -> bool {
   return mesh_on_side(n0, den) && mesh_on_side(n1, den) && mesh_on_side(n2, den);
 }
 
-// A thread a pixel of the output (the box is the whole of it): no triangle
-// yet.
+// A thread a pixel of the output (the box is the whole of a band of it): no
+// triangle yet.
 @compute @workgroup_size(8, 8, 1)
 fn mesh_clear(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x < triangle.box_width && id.y < triangle.box_height) {
-    atomicStore(&owners[id.y * triangle.width + id.x], MESH_NONE);
+    let row = u32(triangle.box_top - triangle.top) + id.y;
+    atomicStore(&owners[row * triangle.width + id.x - triangle.owners_base], MESH_NONE);
   }
 }
 
@@ -79,6 +86,6 @@ fn mesh_own(@builtin(global_invocation_id) id: vec3<u32>) {
   let y = triangle.box_top + i32(id.y);
   if (mesh_holds(x, y)) {
     let at = u32(y - triangle.top) * triangle.width + u32(x - triangle.left);
-    atomicMin(&owners[at], triangle.order);
+    atomicMin(&owners[at - triangle.owners_base], triangle.order);
   }
 }

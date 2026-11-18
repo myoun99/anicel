@@ -7,12 +7,14 @@ import '../../models/cel_rekey.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/folder_band_rows.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/ruler_marker.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
@@ -22,7 +24,7 @@ import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
 import 'berth_row.dart';
-import 'property_lane_model.dart' show folderBandOf, folderBandRowsOf;
+import 'property_lane_model.dart' show folderBandOf;
 
 /// The scoped edit-drag preview channel.
 ///
@@ -552,6 +554,39 @@ class MovieEndDragPreview extends TimelineDragPreview {
   int get hashCode => trailingFrames.hashCode;
 }
 
+/// A ruler marker's drag in flight (I-169): [holder]'s markers as the drag
+/// leaves them. The ruler's own marker layer reads it
+/// ([rulerMarkersUnder]) and nothing else does — no row and no project view
+/// shows a marker — so a step repaints that layer alone.
+class RulerMarkerDragPreview extends TimelineDragPreview {
+  const RulerMarkerDragPreview({required this.holder, required this.markers});
+
+  final RulerMarkerHolder holder;
+  final RulerMarkers markers;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RulerMarkerDragPreview &&
+      other.holder == holder &&
+      other.markers == markers;
+
+  @override
+  int get hashCode => Object.hash(holder, markers);
+}
+
+/// The markers [holder]'s ruler shows: the drag in flight's where [preview]
+/// is one of that ruler's, and [held] — the project's — otherwise.
+RulerMarkers rulerMarkersUnder(
+  TimelineDragPreview? preview,
+  RulerMarkerHolder holder,
+  RulerMarkers held,
+) => switch (preview) {
+  RulerMarkerDragPreview(holder: final dragged, :final markers)
+      when dragged == holder =>
+    markers,
+  _ => held,
+};
+
 /// The preview layer for [layerId], or null when [preview] does not target
 /// it.
 Layer? timelineDragPreviewLayerFor(
@@ -841,6 +876,11 @@ Project projectWithTimelineDragPreview(
       return _projectWithLayersSubstituted(project, previewLayers);
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
+    case RulerMarkerDragPreview():
+      // No project view shows a marker: its ruler's own layer reads the
+      // drag ([rulerMarkersUnder]), and the views are handed the project as
+      // it stands — itself, so nothing built from it is built again.
+      return project;
     case final LaneEditPreview edit:
       // The edited row, its track's chain or its cut's camera — reaching the
       // project views the way a block move's rows and camera keys do.

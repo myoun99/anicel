@@ -301,7 +301,20 @@ mod session {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(target_os = "android")]
+mod session {
+    /// Up once the plugin has handed the context cpal's AAudio host asks
+    /// the JVM through (`crate::android`) — before, the OS's context does
+    /// not come up, and an open fails as one the OS refused rather than
+    /// panicking in the host.
+    pub(super) fn begin() -> Option<()> {
+        crate::android::context_handed().then_some(())
+    }
+
+    pub(super) fn end() {}
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod session {
     pub(super) fn begin() -> Option<()> {
         Some(())

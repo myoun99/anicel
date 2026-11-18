@@ -75,7 +75,5 @@ void main() {
       isTrue,
       reason: 'the comma buttons did not change, so they must not be rebuilt',
     );
-
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

@@ -7,7 +7,7 @@
 //! H.264+AAC encoding and an MP4 muxer as system API:
 //!
 //!   Windows  — Media Foundation's Sink Writer
-//!   Apple    — AVAssetWriter (still the engine's `qa_video_apple.m`)
+//!   Apple    — AVAssetWriter
 //!   Android  — NDK AMediaCodec + AMediaMuxer
 //!
 //! The contract with Dart (`lib/src/native/qa_video_encoder.dart`) is the
@@ -19,16 +19,28 @@
 //!     what the machine cannot write instead of failing at Export.
 //!   - `open()` takes the frame geometry, the fps as an exact fraction, the
 //!     audio shape (channels 0 = silent video), and the container/codec
-//!     pair plus alpha and bitrate knobs (ABI v21). The audio codec follows
-//!     the video codec: ProRes carries PCM (the delivery convention),
-//!     H.264/H.265 carry AAC.
-//!   - `write_frame()` takes top-down RGBA (exactly what the renderer's
-//!     rawRgba hands over); any BGRA/NV12 conversion happens HERE, beside
-//!     the encoder that wants it.
+//!     pair plus alpha and bitrate knobs (ABI v21) — and, for a piece of a
+//!     movie, the colours that movie names (`colour`). The audio codec
+//!     follows the video codec: ProRes carries PCM (the delivery
+//!     convention), H.264/H.265 carry AAC.
+//!   - `nv12_shape()` says whether the open writer takes NV12, and
+//!     `write_nv12()` takes it as it was made — every H.26x writer: an
+//!     export's frames as the GPU engine made them (gpu-export-path ⑶;
+//!     Windows' since 2026-11-14), a trimmed piece's as its movie's decoder
+//!     did (2026-11-15; ↩️they came as RGBA, converted twice — board
+//!     trimmed-movie-decodes-to-nv12). `write_frame()` takes top-down RGBA
+//!     where the writer takes no NV12: ProRes, BGRA for its OS to convert.
+//!     ↩️H.26x took RGBA too, made NV12 here, till 2026-11-15
+//!     ([`H26X_TAKES_NV12`]).
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
-//!     the frames by the caller so no side buffers the whole track.
+//!     the frames by the caller so no side buffers the whole track. Windows
+//!     puts a frame before the first (`windows.rs`, `AUDIO_LEAD`):
+//!     `audio_lead()` says how long it is — 0 where a writer puts none —
+//!     and `write_lead()` takes the sound just before the mix to fill it,
+//!     silence going there when it is handed none.
 //!   - `finish()` finalizes the file (a cancelled run finalizes a playable
-//!     partial, matching the ffmpeg path's behavior); `abort()` discards.
+//!     partial, matching the ffmpeg path's behavior) — and on Windows writes
+//!     into it where its sound starts (`edit_list`); `abort()` discards.
 //!
 //! One export at a time, like the capture device: this is an offline render
 //! driven by one dialog.
@@ -36,30 +48,56 @@
 use std::ffi::{CStr, c_char};
 use std::sync::{Mutex, MutexGuard};
 
+use crate::colour::{self, Colours};
+
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 mod os;
-#[cfg(not(any(windows, target_os = "android")))]
+#[cfg(target_vendor = "apple")]
+#[path = "apple.rs"]
+mod os;
+#[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
 #[path = "none.rs"]
 mod os;
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod os;
 
+// Windows' writer alone goes back into its movie; what it writes there is
+// read on every machine that runs the tests.
+#[cfg(any(windows, test))]
+mod edit_list;
+
+// The H.26x writers take the engine's NV12; what they lay of it is read on
+// every machine that runs the tests.
+#[cfg(any(windows, target_os = "android", target_vendor = "apple", test))]
+mod nv12;
+
 // The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes. The
-// Dart enums map 1:1 onto these values. What follows down to `Job` is the
-// writers' — a build without one reads none of it.
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+// Dart enums map 1:1 onto these values. The containers are the law's; the
+// codecs down to `Job` are the writers' — a build without one reads none.
 const CONTAINER_MP4: i32 = 0;
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+const CONTAINER_MOV: i32 = 1;
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CODEC_H264: i32 = 0;
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CODEC_HEVC: i32 = 1;
+// ProRes, lightest to heaviest; only Apple writes it.
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_PROXY: i32 = 2;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_LT: i32 = 3;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_422: i32 = 4;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_HQ: i32 = 5;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_4444: i32 = 6;
 
 /// What `open` was asked for, as Dart passed it.
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 struct Job<'a> {
-    path: Option<&'a CStr>,
+    path: &'a CStr,
     width: i32,
     height: i32,
     fps_num: i32,
@@ -68,8 +106,90 @@ struct Job<'a> {
     channels: i32,
     container: i32,
     codec: i32,
+    /// Whether ProRes 4444 keeps the picture's alpha. MF and the NDK write
+    /// H.26x, which is opaque: their pad/alpha byte stays 0xFF and YUV420
+    /// carries no alpha.
+    #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+    alpha: bool,
     bitrate_bps: i32,
+    /// What the pictures are said to be: the colours of the movie this is
+    /// a piece of, its own YCbCr handed as NV12 and named as that movie
+    /// names it (`colour`: 유저 2026-11-14, trimmed-movie-decodes-to-nv12-
+    /// Q1) — or none, for pictures the app made, written in the app's law
+    /// and named [`Colours::LAW`].
+    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+    colours: Option<Colours>,
 }
+
+/// What an open says of a job it is not given — one that is no job at all,
+/// or one asked for while the writer's other runs.
+const BAD_OPEN: &str = "video export: bad open parameters";
+
+/// Whether `container` is one the lineup has — asked of every open and
+/// every probe before any platform answers.
+///
+/// ↩️2026-11-07: each platform's pair law asked it in its own way, and
+/// Apple's never did: it takes H.264 in any container, so a container that
+/// is none of them was written there as an MP4 and turned away on Windows
+/// and Android (bundle GPU CI 42353590096). 관제's judgment, CLAUDE.md
+/// 절대명령 2 (connection-round-checklist, 11-07 18:15): the lineup is the
+/// law's, not an accident of which pair law asks. The app sends only these
+/// two.
+fn in_the_lineup(container: i32) -> bool {
+    container == CONTAINER_MP4 || container == CONTAINER_MOV
+}
+
+impl Job<'_> {
+    /// Whether this is a job at all: a picture, a frame rate, a container
+    /// of the lineup, and sound — if any — at a rate. The path is the last
+    /// of it, and a job without one is not built ([`qa_video_export_open`]).
+    ///
+    /// ↩️2026-11-07: ASKED ONCE, before any platform answers. It was asked
+    /// inside each writer, the same line three times, and the platform with
+    /// no writer (`none.rs`) never asked it: Linux CI said 「no OS encoder
+    /// on this platform」 of sound at no rate where the three writers say
+    /// 「bad open parameters」 (bundle GPU CI 1cca0c1de,
+    /// `sound_at_no_rate_is_no_job`; CLAUDE.md 절대명령 2, 관제 11-07). The
+    /// C's Linux stub answered so of every job and is not followed.
+    ///
+    /// 🚨ONE LAW FOR THE THREE WRITERS. The C spelled it once per platform,
+    /// all three born in one commit (000cf76c4, AUDIO-PRO R7, 2026-07-21):
+    /// Windows turned away sound at no rate, Android and Apple let it through
+    /// to their encoders, and Android said 「unsupported or bad parameters」
+    /// for the rest. Apple's writer joining Rust (2026-11-07) made it the
+    /// third copy, and the copies became this — Windows's, the one that asks
+    /// no encoder for sound it cannot have (관제 took the merge, 11-07). The
+    /// app's own jobs never meet the difference: their sound is the mix WAV
+    /// the export dialog wrote at the project's rate, and only a WAV whose
+    /// header says 0 Hz would reach here (`ConformPcmStreamReader.overWav16`
+    /// turns away no channels, not no rate).
+    fn well_formed(&self) -> bool {
+        self.width > 0
+            && self.height > 0
+            && self.fps_num > 0
+            && self.fps_den > 0
+            && in_the_lineup(self.container)
+            && self.channels >= 0
+            && (self.channels == 0 || self.sample_rate > 0)
+    }
+
+    /// The four the pictures are named: a piece's movie's, or the law's.
+    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+    fn named(&self) -> Colours {
+        self.colours.unwrap_or(Colours::LAW)
+    }
+}
+
+/// What a writer says of RGBA handed to H.264 or H.265: their frames come
+/// as NV12 (`qa_video_export_write_nv12`) — an export's made by the GPU
+/// engine's pass in the app's law, a piece's by its movie's decoder. RGBA
+/// goes only to ProRes, which its OS converts (`export/apple.rs`).
+/// ↩️Till 2026-11-15 RGBA was made NV12 in the app's law on the CPU
+/// (`colour::from_rgba`) — refused for a piece alone, and handed by
+/// nothing the app made once the export and the piece came as NV12 (board
+/// trimmed-movie-decodes-to-nv12-Q2).
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+const H26X_TAKES_NV12: &str = "video export: H.264 and H.265 are written of NV12, not of RGBA";
 
 /// What the C's buffer held: the message's first 255 bytes.
 const ERROR_BYTES: usize = 255;
@@ -116,11 +236,17 @@ pub extern "C" fn qa_video_export_supported() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_video_export_probe(container: i32, codec: i32) -> i32 {
-    os::probe(container, codec) as i32
+    (in_the_lineup(container) && os::probe(container, codec)) as i32
 }
 
+/// `colours`: null for pictures the app made, written in its law; or the
+/// four a piece's movie says (`decode::qa_video_decode_colours` — its
+/// primaries, transfer, matrix and range as H.273 code points, 2 for one it
+/// does not name), and the piece's frames come as that movie's NV12.
+///
 /// # Safety
-/// `utf8_path` is null or a NUL-terminated string.
+/// `utf8_path` is null or a NUL-terminated string; `colours` is null or
+/// holds four.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_video_export_open(
     utf8_path: *const c_char,
@@ -132,17 +258,43 @@ pub unsafe extern "C" fn qa_video_export_open(
     channels: i32,
     container: i32,
     codec: i32,
-    // MF and the NDK write H.26x, which is opaque: the pad/alpha byte stays
-    // 0xFF and YUV420 carries no alpha.
-    _alpha: i32,
+    alpha: i32,
     bitrate_bps: i32,
+    colours: *const i32,
 ) -> i32 {
     // SAFETY: the caller's contract.
     let path = (!utf8_path.is_null()).then(|| unsafe { CStr::from_ptr(utf8_path) });
-    let job = Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, bitrate_bps };
+    let alpha = alpha != 0;
+    // SAFETY: the caller's contract.
+    let colours = (!colours.is_null()).then(|| unsafe { std::slice::from_raw_parts(colours, 4) });
+    let colours = colours.map(|codes| {
+        let code = |at: usize| u8::try_from(codes[at]).unwrap_or(colour::UNSPECIFIED);
+        Colours { primaries: code(0), transfer: code(1), matrix: code(2), range: code(3) }
+    });
+    let job = path.map(|path| Job {
+        path,
+        width,
+        height,
+        fps_num,
+        fps_den,
+        sample_rate,
+        channels,
+        container,
+        codec,
+        alpha,
+        bitrate_bps,
+        colours,
+    });
+    let Some(job) = job.filter(|job| job.well_formed()) else {
+        set_error(BAD_OPEN);
+        return 0;
+    };
     os::open(&job) as i32
 }
 
+/// A ProRes writer's next frame, of `rgba`; H.264 and H.265 refuse it
+/// ([`H26X_TAKES_NV12`]).
+///
 /// # Safety
 /// `rgba` is null or holds the frame `open` was given, top-down RGBA.
 #[unsafe(no_mangle)]
@@ -157,6 +309,73 @@ pub unsafe extern "C" fn qa_video_export_write_frame(rgba: *const u8) -> i32 {
 pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, frames: i32) -> i32 {
     // SAFETY: the caller's contract.
     unsafe { os::write_audio(interleaved, frames) as i32 }
+}
+
+/// Whether the open writer takes its frames as NV12
+/// ([`qa_video_export_write_nv12`]) — 1, its frame's width and height into
+/// `shape` — or as RGBA ([`qa_video_export_write_frame`]), 0. Every H.26x
+/// writer takes the engine's NV12 (gpu-export-path ⑶, 2026-11-12): the
+/// colour law's bytes (`colour`), made on the GPU before the readback —
+/// and a piece's movie's own. ProRes is not 4:2:0. ↩️Media
+/// Foundation kept its own conversion until 2026-11-14 (`windows.rs` says
+/// why it no longer does).
+///
+/// # Safety
+/// `shape` is null or holds two.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_nv12_shape(shape: *mut i32) -> i32 {
+    let Some((width, height)) = os::nv12_shape().filter(|_| !shape.is_null()) else {
+        return 0;
+    };
+    // SAFETY: the caller's contract.
+    unsafe {
+        *shape = width as i32;
+        *shape.add(1) = height as i32;
+    }
+    1
+}
+
+/// One frame as the engine made it NV12, for a writer that takes it
+/// ([`qa_video_export_nv12_shape`]): its height of Y rows, then half its
+/// height of CbCr rows, each `stride` bytes after the last.
+///
+/// # Safety
+/// `bytes` is null or holds that frame.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_write_nv12(bytes: *const u8, stride: i64) -> i32 {
+    // SAFETY: the caller's contract.
+    unsafe { os::write_nv12(bytes, stride) as i32 }
+}
+
+/// The frames of sound this build's writer puts before the mix, for the
+/// caller to fill ([`qa_video_export_write_lead`]): 0 where it puts none.
+/// Only Windows' writer puts one (`windows.rs`, `AUDIO_LEAD`) — Apple's and
+/// Android's muxers lay their own start and are handed nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_video_export_audio_lead() -> i32 {
+    #[cfg(windows)]
+    return os::AUDIO_LEAD as i32;
+    #[cfg(not(windows))]
+    0
+}
+
+/// The sound just before the mix — [`qa_video_export_audio_lead`] frames of
+/// it, before any other sound. A writer that puts no frame there takes
+/// none.
+///
+/// # Safety
+/// `interleaved` is null or holds `frames` × the channels `open` was given.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_write_lead(interleaved: *const i16, frames: i32) -> i32 {
+    #[cfg(windows)]
+    // SAFETY: the caller's contract.
+    return unsafe { os::write_lead(interleaved, frames) as i32 };
+    #[cfg(not(windows))]
+    {
+        let _ = (interleaved, frames);
+        set_error("video export: this writer puts no frame before the sound");
+        0
+    }
 }
 
 #[unsafe(no_mangle)]

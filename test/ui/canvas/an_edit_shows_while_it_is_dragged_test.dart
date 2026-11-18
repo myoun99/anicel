@@ -22,7 +22,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -35,12 +34,16 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../../helpers/name_tags_laid.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/placement_reading.dart';
+import '../../helpers/roll_rows_until_built.dart';
 
 /// F-195 — 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이
 /// 실시간으로 화면에 보이도록. 레이어에서 값편집이든 캔버스에서 편집이든」.
@@ -618,21 +621,12 @@ void main() {
     await tapNamed(tester, 'timeline-lane-toggle-${se.id.value}');
     await tapNamed(
       tester,
-      'timeline-lane-group-toggle-${se.id.value}-'
-      '${transformGroupHeaderLane.laneId}',
+      // Its name tag, whose members its transform's lanes are
+      // (audio-fx-grows-like-the-pros-Q3 · Q4).
+      'timeline-lane-group-toggle-${se.id.value}-$seNameTagGroupLaneId',
     );
     CanvasPoint tagOnTheCanvas() {
-      final overlay = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .firstWhere(
-            (painter) =>
-                painter.runtimeType.toString() == '_SeNameTagOverlayPainter',
-          );
-      // The overlay's painter is private; its tags are read through it.
-      // ignore: avoid_dynamic_calls
-      final tags = (overlay as dynamic).tags as List<ResolvedSeNameTag>;
-      final tag = tags.single;
+      final tag = nameTagsLaidBy(tester, theCanvasOwnPictures()).single;
       return tag.placement.apply(
         CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
       );
@@ -641,6 +635,14 @@ void main() {
     final before = tagOnTheCanvas();
     final value = find.byKey(
       ValueKey<String>('timeline-lane-value-${se.id.value}-position'),
+    );
+    // Under the tag's own lanes, past the view: rolled to.
+    await rollRowsUntilBuilt(
+      tester,
+      value,
+      inRowsOf: find.named(
+        'timeline-lane-group-toggle-${se.id.value}-$seNameTagGroupLaneId',
+      ),
     );
     await tester.ensureVisible(value);
     await tester.pumpAndSettle();
@@ -659,6 +661,25 @@ void main() {
       tagOnTheCanvas(),
       isNot(before),
       reason: 'the tag the canvas draws follows the scrub',
+    );
+
+    final rebuilt = <String>[];
+    debugOnRebuildDirtyWidget = (element, _) {
+      final widget = element.widget;
+      if (widget is TimelineLaneControlsRow) {
+        rebuilt.add(widget.lane.laneId);
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    await gesture.moveBy(const Offset(10, 0));
+    await tester.pump();
+    debugOnRebuildDirtyWidget = null;
+    expect(
+      rebuilt.toSet(),
+      {'position'},
+      reason: 'the tag\'s own lanes beside the pose\'s show what they '
+          'showed — a tag never typed included (the header, rolled out of '
+          'the view, is pinned in se_name_tag_lanes_test)',
     );
 
     await gesture.up();

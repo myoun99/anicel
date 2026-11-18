@@ -10,7 +10,7 @@ use crate::device::Engine;
 use crate::kernels::composite::tests::mix;
 use crate::kernels::mesh::{MeshGrid, MeshOwners, affines};
 use crate::kernels::shared::{ResampleMap, ResampleMode, plane, words_buffer};
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{a_device_of_its_own, assert_pinned, first_engine, last_error, read_buffer};
 
 struct Rig {
     engine: &'static Engine,
@@ -24,7 +24,7 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        Rig { engine, warp: Warp::new(engine), owners: MeshOwners::new(engine) }
+        Rig { engine, warp: Warp::new(engine).expect("compiled"), owners: MeshOwners::new(engine) }
     })
 }
 
@@ -67,10 +67,10 @@ fn meshed(
     window: Window,
     mode: ResampleMode,
 ) -> Option<Vec<u32>> {
-    let Rig { engine, warp, .. } = rig();
+    let Rig { engine, warp, owners } = rig();
     let pixels = boxed(pixels);
     let picture = Boxed { pixels: &pixels, size };
-    let warped = warp.mesh(engine, mesh, &picture, source_at, window, 1.0, mode)?;
+    let warped = warp.mesh(engine, (owners, mesh), &picture, source_at, window, 1.0, mode)?;
     Some(words(&read_buffer(engine, &warped)))
 }
 
@@ -233,4 +233,90 @@ fn every_device_warps_the_pinned_mesh() {
         bytes.extend(warped.iter().flat_map(|word| word.to_le_bytes()));
     }
     assert_pinned("warp/mesh", &bytes);
+}
+
+/// How a parity case warps its picture: by one map, or by a mesh's.
+enum How {
+    One(ResampleMap),
+    Mesh(MeshGrid),
+}
+
+/// `pixels`, a box `size` at the canvas's origin, warped into `window` as
+/// `how` says, on `engine` with its own `warp` and `owners` — read back.
+fn warped_on(
+    (engine, warp, owners): (&Engine, &Warp, &MeshOwners),
+    (pixels, size): (&[u32], (u32, u32)),
+    how: &How,
+    window: Window,
+) -> Vec<u32> {
+    let buffer = words_buffer(engine, "warp picture", pixels, wgpu::BufferUsages::STORAGE);
+    let picture = Boxed { pixels: &buffer, size };
+    let warped = match how {
+        How::One(map) => warp.one(engine, &picture, Some(map), window),
+        How::Mesh(mesh) => {
+            let blend = ResampleMode::Blend;
+            warp.mesh(engine, (owners, mesh), &picture, (0.0, 0.0), window, 1.0, blend)
+        }
+    };
+    let warped = warped.unwrap_or_else(|| panic!("warp: {}", last_error()));
+    words(&read_buffer(engine, &warped))
+}
+
+// On a device whose binding holds less than the picture and the window, a
+// warp puts what one that binds both whole puts — a move; a quarter turn,
+// whose every row of the window reads a row of every page of the picture;
+// a mesh — and the device refuses no binding (board
+// conversions-bind-a-frame-past-the-device-limit, 2026-11-17).
+#[test]
+fn a_picture_and_a_window_past_a_binding_are_warped_as_ones_bound_whole() {
+    let (width, height) = (300, 200);
+    let pixels = picture(width, height);
+    let turned = [0.0, 1.0, 0.0, -1.0, 0.0, f64::from(height), 0.0, 0.0, 1.0];
+    let quarter = ResampleMap::new(turned, 1.0, ResampleMode::Blend, height, width).expect("lands");
+    let rest: Vec<[f64; 2]> = (0..3)
+        .flat_map(|row| (0..3).map(move |column| [150.0 * column as f64, 100.0 * row as f64]))
+        .collect();
+    let mut dragged = rest.clone();
+    dragged[4] = [171.25, 84.5];
+    let cases = [
+        (How::One(ResampleMap::moved(3, -2)), Window { at: (-4, -4), size: (width + 8, height + 8) }),
+        (How::One(quarter), Window { at: (0, 0), size: (height, width) }),
+        (How::Mesh(mesh(2, 2, &rest, &dragged)), Window { at: (-2, -2), size: (width + 4, height + 4) }),
+    ];
+    let Rig { engine, warp, owners } = rig();
+    let whole: Vec<_> = cases
+        .iter()
+        .map(|(how, window)| warped_on((*engine, warp, owners), (&pixels, (width, height)), how, *window))
+        .collect();
+
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(1 << 16);
+    let (warp, owners) = (Warp::new(&engine).expect("compiled"), MeshOwners::new(&engine));
+    for (at, (how, window)) in cases.iter().enumerate() {
+        let banded = warped_on((&engine, &warp, &owners), (&pixels, (width, height)), how, *window);
+        assert!(banded == whole[at], "case {at}");
+    }
+    engine.wait().expect("the device refused no binding");
+}
+
+// Where a picture takes more pages than a pass binds, the warp is refused,
+// with why — not bound past.
+#[test]
+fn a_picture_of_more_pages_than_a_pass_binds_is_refused() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine_binding(1 << 16);
+    let warp = Warp::new(&engine).expect("compiled");
+    let per_pass = warp.pictures.per_pass() as u32;
+    // A page of 64 KiB holds 16 rows of 1024 pixels.
+    let size = (1024, per_pass * 16 + 1);
+    let buffer = plane(&engine, "warp picture", u64::from(size.0 * size.1) * 4);
+    let picture = Boxed { pixels: &buffer, size };
+    let window = Window { at: (0, 0), size: (4, 4) };
+
+    assert!(warp.one(&engine, &picture, Some(&ResampleMap::moved(0, 0)), window).is_none());
+    let bytes = size.0 * size.1 * 4;
+    let pages = per_pass + 1;
+    let why = format!("a plane of {bytes} bytes takes {pages} pages of 65536; a pass binds {per_pass}");
+    assert_eq!(last_error(), why);
+    engine.wait().expect("the device refused no binding");
 }

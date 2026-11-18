@@ -7,8 +7,6 @@ import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
-import '../theme/app_theme.dart' show AppShapes;
-import '../widgets/superellipse_clip.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -279,7 +277,7 @@ class RailButton extends StatelessWidget {
   /// The actions this square presses — [AppIconButton.shortcuts].
   final List<String> shortcuts;
 
-  /// The band laid along the square's top edge, inside it and inside its
+  /// The band laid over the square along its top edge, inside its
   /// press (`LiftingGripBand`) — null for a button that lifts nothing.
   final Widget? band;
 
@@ -303,14 +301,11 @@ class RailButton extends StatelessWidget {
         // The whole square, so the band runs its full width, cut by the
         // square's own corners as the tab's band is cut by the tab's.
         final band => SizedBox.expand(
-          child: SuperellipseClip(
-            shape: AppShapes.control(AppIconButtonSize.tool.height),
-            child: Stack(
-              children: [
-                Center(child: Icon(icon)),
-                Positioned(left: 0, right: 0, top: 0, child: band),
-              ],
-            ),
+          child: Stack(
+            children: [
+              Center(child: Icon(icon)),
+              Positioned.fill(child: band),
+            ],
           ),
         ),
       },

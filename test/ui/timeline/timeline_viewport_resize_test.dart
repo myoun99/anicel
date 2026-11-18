@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
@@ -12,7 +11,6 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
 import 'timeline_cell_probe.dart';
@@ -34,6 +32,7 @@ import 'timeline_cell_probe.dart';
 /// the view rides the live geometry the kept rows follow now
 /// ([TimelineFrameGeometry.viewExtentPx], 2026-10-30).
 void main() {
+  setUpAll(openAppGpuEngine);
   // 🚨THE STORE IS A SINGLETON WITH AN EVICTION BUDGET, so what this test
   // can measure depends on what ran before it in the same process. Any
   // widget test that pumps a timeline fills it, and this one asserts that a
@@ -41,9 +40,6 @@ void main() {
   // previous file's leftovers. (Found by adding two unrelated rail tests:
   // the file order shifted and this went red without its own code moving.)
   setUp(TimelineGridTileStore.instance.clear);
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final dllAvailable = dllPath != null;
 
   const cellWidth = 24.0;
 
@@ -102,7 +98,8 @@ void main() {
   /// A span-aligned frame index that the ENLARGED viewport shows but the
   /// small-window request set never covered — kept clear of the small
   /// window's one-span prefetch too, so under the broken shape nothing
-  /// has ever requested it.
+  /// has ever requested it. Spans are 512px at the least, so the enlarged
+  /// window is wide enough to show a frame that far.
   int newlyExposedSpanStart(
     ({int startIndex, int endIndexExclusive}) smallWindow,
   ) {
@@ -133,7 +130,7 @@ void main() {
     );
 
     // ---- the resize: same session, same scroll offset, wider glass ----
-    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.physicalSize = const Size(4000, 900);
     await tester.pumpAndSettle();
 
     final probeFrame = newlyExposedSpanStart(smallWindow);
@@ -162,20 +159,8 @@ void main() {
   testWidgets('the spans the resize exposed actually get substrate tiles', (
     tester,
   ) async {
-    if (!dllAvailable) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     TimelineGridTileStore.instance.clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      TimelineGridTileStore.instance.clear();
-    });
+    addTearDown(TimelineGridTileStore.instance.clear);
 
     final zoom = ValueNotifier<double>(cellWidth);
     addTearDown(zoom.dispose);
@@ -190,7 +175,11 @@ void main() {
       layerId,
     ).visibleFrameWindow();
 
-    tester.view.physicalSize = const Size(1600, 900);
+    // The landings counted from here: a tile drawn on the engine lands in
+    // the frames the resize pumps, before any wait below begins.
+    final store = TimelineGridTileStore.instance;
+    final atResize = store.revision.value;
+    tester.view.physicalSize = const Size(4000, 900);
     await tester.pumpAndSettle();
 
     // Let the raster drains converge: a landing repaints the rows, which
@@ -212,15 +201,12 @@ void main() {
     // exactly when it is busiest. The cap ([waitPatience]) is only the
     // failure deadline; a fast machine never waits for it. ↩️It was a cap of
     // 600 rounds, which a loaded machine stretches as it stretches a delay.
-    final store = TimelineGridTileStore.instance;
+    // ↩️And the landings were counted from the wait's first look, which an
+    // upload's real await always came after; one drawn on the engine lands
+    // in the resize's own frames, and a wait that missed them never saw one.
     var landed = false;
-    int? before;
     final idle = await settleAsync(tester, () {
-      final now = store.revision.value;
-      if (before != null && now != before) {
-        landed = true;
-      }
-      before = now;
+      landed = store.revision.value != atResize;
       return landed && !store.debugBusy;
     }, beat: const Duration(milliseconds: 50));
     expect(

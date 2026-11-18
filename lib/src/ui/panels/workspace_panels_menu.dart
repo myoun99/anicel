@@ -17,6 +17,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   List<WorkspacePanelEntry> Function()? _entriesProvider;
   void Function(String tabId)? _toggler;
   void Function()? _layoutReset;
+  bool Function()? _canResetLayout;
   Listenable? _relay;
 
   List<WorkspacePanelEntry> get entries => _entriesProvider?.call() ?? const [];
@@ -25,8 +26,11 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
 
   void toggle(String tabId) => _toggler?.call(tabId);
 
-  /// Restores the factory dock layout (Window > Reset Workspace Layout).
-  bool get canResetLayout => _layoutReset != null;
+  /// Whether [resetLayout] — the factory arrangement back (Window > Reset
+  /// Workspace Layout) — would change anything: its row is out where it
+  /// would not (F-583) and lit where it would (I-176). ↩️It said only that
+  /// a workspace was attached.
+  bool get canResetLayout => _canResetLayout?.call() ?? false;
 
   void resetLayout() => _layoutReset?.call();
 
@@ -132,6 +136,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     required void Function(String tabId) toggler,
     required Listenable relay,
     void Function()? layoutReset,
+    bool Function()? canResetLayout,
     bool Function()? toolRailOnRight,
     void Function(bool onRight)? toolRailMover,
     String? Function()? floorTabId,
@@ -150,6 +155,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _entriesProvider = entriesProvider;
     _toggler = toggler;
     _layoutReset = layoutReset;
+    _canResetLayout = canResetLayout;
     _toolRailOnRight = toolRailOnRight;
     _toolRailMover = toolRailMover;
     _floorTabId = floorTabId;
@@ -181,6 +187,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _entriesProvider = null;
     _toggler = null;
     _layoutReset = null;
+    _canResetLayout = null;
     _toolRailOnRight = null;
     _toolRailMover = null;
     _floorTabId = null;

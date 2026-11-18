@@ -9,6 +9,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -44,9 +45,15 @@ void main() {
   Frame frame(String id) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: '1');
 
-  Layer drawing(String id, String name, {LayerMark? mark}) => Layer(
+  Layer drawing(
+    String id,
+    String name, {
+    LayerMark? mark,
+    LayerKind kind = LayerKind.animation,
+  }) => Layer(
     id: LayerId(id),
     name: name,
+    kind: kind,
     frames: [frame('$id-f1')],
     mark: mark ?? const LayerMark(process: LayerProcess.key),
     isVisible: true,
@@ -60,7 +67,7 @@ void main() {
     canvasSize: const CanvasSize(width: 8, height: 8),
     // MODEL order — the x-sheet's reading order, left to right.
     layers: [
-      drawing('art', '미술', mark: const LayerMark(process: LayerProcess.art)),
+      drawing('art', '미술', kind: LayerKind.image),
       drawing('a', 'A'),
       drawing('b', 'B'),
       drawing('c', 'C'),

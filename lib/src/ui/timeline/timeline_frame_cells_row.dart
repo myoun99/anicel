@@ -21,6 +21,7 @@ import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'memo_token.dart';
 import 'rail_eyes.dart';
+import 'still_row.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -34,6 +35,7 @@ import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
+import 'timeline_block_look.dart' show TimelineBlockRow;
 import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -52,6 +54,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.layer,
     required this.drawnFrameCount,
     required this.geometry,
+    this.windowIsStill = false,
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -119,6 +122,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// and stay in the memo key by value — they rebuild on zoom exactly as
   /// before.
   final TimelineFrameGeometryHandle geometry;
+
+  /// Whether the row's WINDOW is a still region of its own ([stillRow]) —
+  /// every row of the dock's grids; not the collapsed overlay's.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 —
+  /// 행 그림 영역을 창 상자로」): the window, not the row's box. The box
+  /// reaches the axis' end, so the runway a drag past the end grows widened
+  /// the region and threw away every row's image it showed; the window is
+  /// the same pixels wide wherever the axis ends. Its price: where the axis
+  /// is shorter than the window, a row's image is the window's width.
+  final bool windowIsStill;
 
   /// Row height (horizontal) / column width (X-sheet). NOT a zoom field.
   final double crossAxisExtent;
@@ -289,13 +303,22 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the largest share of a crossing frame once the waveform stopped
   /// drawing what nobody sees.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TimelineRowGripStateHolder(
+    builder: (grips) => _row(context, grips),
+  );
+
+  /// The row, its [grips]' state held for its chrome to tell and its cells
+  /// to draw by (F-604, [TimelineRowPaperGrips]).
+  Widget _row(
+    BuildContext context,
+    ValueNotifier<TimelineRowGripState> grips,
+  ) {
     final stack = Stack(
       // The frame-axis box below sizes this row, so the cell strip (the one
       // non-positioned child) takes the box outright instead of sizing it.
       fit: StackFit.expand,
       children: [
-        _cellsPaintArea(context),
+        _cellsPaintArea(context, grips),
         _shownSpans(_silhouetteSpans),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
@@ -304,7 +327,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // are already dark — the gray wash is print-sheet-only.
         if (_mountsOverlays) _shownSpans(_spanOverlays),
         ?_rangeGestureLayer(),
-        ?_editChromeLayer(),
+        ?_editChromeLayer(grips),
         // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
         if (_mountsSpanGrips) _shownSpans(_spanGrips),
         ?_assetDropTarget(),
@@ -328,7 +351,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       // row shows one layer and then another in the same elements.
       child: Named(
         '$keyPrefix-frame-$_axisWord-area-${layer.id}',
-        child: stack,
+        child: windowIsStill ? stillRow(stack) : stack,
       ),
     );
     // The X-sheet column is cross-axis sized to the layer's row height (its
@@ -480,13 +503,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
     ];
   }
 
-  /// SE rows: audio clips painted over the paper cells (clipped to the
-  /// row's drawing blocks — no block, no waveform), the sheet's writing on
-  /// the blocks (name box at the block start plus the dialogue fitted across
-  /// the span), the cut-boundary `~` marks (UI-R7 #6: a
-  /// sound running past the cut end / spilling in from the previous cut
-  /// announces its other half), and the media-browser drop targets (sound →
-  /// block frame).
+  /// SE rows: the sheet's writing on the blocks (name box at the block start
+  /// plus the dialogue fitted across the span), the cut-boundary `~` marks
+  /// (UI-R7 #6: a sound running past the cut end / spilling in from the
+  /// previous cut announces its other half), and the media-browser drop
+  /// targets (sound → block frame). ↩️And the audio clips' strips over the
+  /// paper cells, which the cells bake into their own tiles now
+  /// ([_soundsOf], the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2).
   List<Widget> _seOverlays(
     BuildContext context,
     _Shows shows,
@@ -494,22 +517,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
   ) {
     final layer = shows.shown;
     if (!layerKindUsesSeSheetCells(layer.kind)) return const [];
-    final peaksFor = audioPeaksFor;
     final onDropAsset = onDropMediaAssetOnSeBlock;
     final spillInLeadFrames = shows.world.spillInLeadFrames;
     return [
-      if (peaksFor != null)
-        ...timelineRowAudioOverlays(
-          context,
-          layer: layer,
-          frameStartIndex: frames.frameStartIndex,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
-          axis: axis,
-          frameRate: projectFrameRate,
-          audioPeaksFor: peaksFor,
-          leadInAtStart: spillInLeadFrames ?? 0,
-          keyPrefix: keyPrefix,
-        ),
       ...timelineRowSeLabelOverlays(
         layer: layer,
         frameStartIndex: frames.frameStartIndex,
@@ -656,10 +666,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// render a widget per cell, which is what made a zoom step rebuild
   /// 140-180 widgets on four rows alone. The span overlays still position
   /// themselves as widgets — the cells beneath them are canvas work now.
-  Widget _cellsPaintArea(BuildContext context) => timelineRowCellsPaintArea(
+  Widget _cellsPaintArea(
+    BuildContext context,
+    ValueListenable<TimelineRowGripState> grips,
+  ) => timelineRowCellsPaintArea(
     context: context,
     keyPrefix: keyPrefix,
     layer: layer,
+    // The grips are the paper's corners, inked: drawn with it (F-604).
+    paperGripsFor: _wantsGrips
+        ? (context) => _paperGrips(context, grips)
+        : null,
     geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     axis: axis,
@@ -668,6 +685,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     stepsUntilShown: stepsUntilShown,
     substrateGeneration: substrateGeneration,
     foregroundPainterFor: layer.kind.hasBlocks ? _runLabelsPainter : null,
+    soundsFor: layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null
+        ? _soundsOf
+        : null,
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -687,6 +707,26 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ? onActivateCell
         : null,
   );
+
+  /// The sounds an SE row draws on its paper, for the layer it shows: those
+  /// over the frames it builds, from where the cut's frame 0 is into the
+  /// block spilling in ([timelineRowSoundsOf]).
+  TimelineRowSounds _soundsOf(BuildContext context, Layer shown) {
+    final frames = geometry.value;
+    return timelineRowSoundsOf(
+      context,
+      shown,
+      (
+        frameRate: projectFrameRate,
+        audioPeaksFor: audioPeaksFor!,
+        leadInAtStart: _showsAt(context).world.spillInLeadFrames ?? 0,
+      ),
+      window: (
+        startIndex: frames.frameStartIndex,
+        endIndexExclusive: frames.frameEndIndexExclusive,
+      ),
+    );
+  }
 
   /// R26 #7 / R27 #3: each block prints ITS OWN length at its end cell. It
   /// rides the cells painter as a FOREGROUND pass — above the tiles, so the
@@ -763,7 +803,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   ///
   /// It draws what the row shows, so it is one of the pieces built again
   /// when that changes ([_Shown]) — in its slot, keeping its State.
-  Widget? _editChromeLayer() {
+  Widget? _editChromeLayer(ValueNotifier<TimelineRowGripState> grips) {
     if (!_wantsGrips && !_wantsRunEdges) return null;
     final drag = commaDrag;
     return Positioned.fill(
@@ -774,25 +814,18 @@ class TimelineFrameCellsRow extends StatelessWidget {
         row: this,
         builder: (context, shows) {
           final layer = shows.shown;
+          final (:ground, :row) = _gripsStandOn(context, layer);
           return TimelineRowEditChromeLayer(
             paintName: '$keyPrefix-edit-chrome-${layer.id}',
             layerId: layer.id,
             resolver: _chromeResolver(shows),
             geometry: geometry,
             axis: axis,
-            // The grips sit on THIS row's blocks, and the blocks are the
-            // layer's color label (⑲) — so a purple row's bars go black by
-            // the same ground law its numbers follow.
-            gripGround: layerMarkColor(layer.mark),
-            // …each grip on its block as the cells draw the block (I-129):
-            // the row's eye, its cels and the host's ground, as the 코마
-            // numbers take them.
-            gripRow: (
-              layer: layer,
-              shown: RailEyes.of(context, layer).shown,
-              content: celContent,
-              ground: TimelineGridLaw.maybeOf(context)?.ground,
-            ),
+            gripGround: ground,
+            gripRow: row,
+            // The cells draw the grips with their paper; this layer takes
+            // their pointer and tells the cells what it rests on (F-604).
+            paperGrips: _wantsGrips ? grips : null,
             // The cells' window: what the chrome draws, as the cells under
             // it.
             windowBucket: windowBucket,
@@ -812,6 +845,39 @@ class TimelineFrameCellsRow extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  /// What a row's grips stand on: the ground its blocks' colour label is
+  /// (⑲ — a purple row's grips go black by the same ground law its numbers
+  /// follow), and each block as the cells draw it (I-129): the row's eye,
+  /// its cels and the host's ground, as the 코마 numbers take them.
+  ({Color ground, TimelineBlockRow row}) _gripsStandOn(
+    BuildContext context,
+    Layer layer,
+  ) => (
+    ground: layerMarkColor(layer.mark),
+    row: (
+      layer: layer,
+      shown: RailEyes.of(context, layer).shown,
+      content: celContent,
+      ground: TimelineGridLaw.maybeOf(context)?.ground,
+    ),
+  );
+
+  /// The row's grips as its cells draw them with their paper: where its
+  /// chrome stands them, on what it shows, in the inks [state] says.
+  TimelineRowPaperGrips _paperGrips(
+    BuildContext context,
+    ValueListenable<TimelineRowGripState> state,
+  ) {
+    final shows = _showsAt(context);
+    final (:ground, :row) = _gripsStandOn(context, shows.shown);
+    return TimelineRowPaperGrips(
+      resolver: _chromeResolver(shows),
+      state: state,
+      gripGround: ground,
+      gripRow: row,
     );
   }
 

@@ -3,6 +3,7 @@ import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/laid_whole.dart';
 import '../../../models/bitmap_surface.dart';
 import '../../../models/bitmap_tile.dart';
 import '../../../models/brush_frame_key.dart';
@@ -92,7 +93,7 @@ typedef CelTextMoveOrigin = ({
 /// exist: the box and the caret are read off the shown one, so they cannot
 /// lead the letters (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로
 /// 다르면 안 되」). The newest want wins; the ones a bake overtook are never
-/// set at all.
+/// set at all — the law of [LaidWhole], the shape tool's and the screen's.
 class CelTextSession extends ChangeNotifier {
   CelTextSession({
     required this.key,
@@ -103,13 +104,15 @@ class CelTextSession extends ChangeNotifier {
     required TextLetterStyle nextLetterStyle,
     CelTextBaker? bake,
   }) : _standing = standing,
-       _wanted = content,
        _nextLetterStyle = nextLetterStyle,
        _bake = bake ?? bakeCelTextPlate,
-       _showing = ValueNotifier(_shownOf(standing, content, nextLetterStyle)),
        // ⚠️A text that is not on the cel yet starts with NO letters — there
        // is then nothing of it to draw, and so nothing to wait for.
        assert(standing != null || content.isEmpty) {
+    _texts.stand(
+      _TextPiece.made(_shownOf(standing, content, nextLetterStyle)),
+      content,
+    );
     // A text with no letters is measured by the letter about to be typed,
     // in whatever face that is. Where that face is still on its way, what
     // is shown was measured in another, and is set again when it is here.
@@ -117,7 +120,7 @@ class CelTextSession extends ChangeNotifier {
         celTextFacesArriving(content, nextLetterStyle: nextLetterStyle) !=
             null) {
       _stale = true;
-      unawaited(_pump());
+      _layOn(begun: _texts.layTheNewest());
     }
   }
 
@@ -155,18 +158,24 @@ class CelTextSession extends ChangeNotifier {
   /// Which text of the cel this is; null until a new one has landed.
   int? get textId => _standing?.id;
 
+  /// What the person wants, what is being made of it and what is up
+  /// ([LaidWhole]): a piece is made where none is being made ([_make]).
+  late final LaidWhole<CelTextContent, _TextPiece> _texts = LaidWhole(
+    begin: _TextPiece.new,
+    holds: (piece, content) => !_stale && piece.content == content,
+  );
+
   /// What the person has made of the text — possibly ahead of [shown].
-  CelTextContent get content => _wanted;
-  CelTextContent _wanted;
+  CelTextContent get content => _texts.wanted!;
 
   /// What is on screen.
   CelTextShown get shown => _shown;
-  CelTextShown get _shown => _showing.value;
+  CelTextShown get _shown => _texts.shown!.made!;
 
   /// What is on screen, told whenever it is another: a bake made, or a
   /// hand carried it ([showMoved]) — the one change told here alone.
   ValueListenable<CelTextShown> get showing => _showing;
-  final ValueNotifier<CelTextShown> _showing;
+  late final _Showing _showing = _Showing(() => _shown);
 
   /// What the first letter typed into a text with none will wear.
   TextLetterStyle get nextLetterStyle => _nextLetterStyle;
@@ -175,7 +184,6 @@ class CelTextSession extends ChangeNotifier {
   /// Whether [shown] has yet to be set again for a letter style that
   /// changed under a text with no letters.
   bool _stale = false;
-  bool _baking = false;
   bool _disposed = false;
   final List<Completer<void>> _waiting = [];
 
@@ -185,7 +193,7 @@ class CelTextSession extends ChangeNotifier {
   Object? _failure;
 
   /// Whether what is on screen is what the person wants.
-  bool get settled => !_baking && !_stale && _wanted == _shown.content;
+  bool get settled => _texts.laying == null && !_texts.behind;
 
   /// Completes once [settled] — at once when it already is.
   Future<void> whenSettled() {
@@ -200,16 +208,16 @@ class CelTextSession extends ChangeNotifier {
   /// Makes the text [content]: shown as soon as its pixels are made.
   void set(CelTextContent content, {TextLetterStyle? nextLetterStyle}) {
     final letters = nextLetterStyle ?? _nextLetterStyle;
-    if (content == _wanted && letters == _nextLetterStyle) {
+    if (content == _texts.wanted && letters == _nextLetterStyle) {
       return;
     }
     // A text with no letters is measured by the letter about to be typed,
     // so a change of that alone is a change of what is shown.
     _stale = _stale || (letters != _nextLetterStyle && content.isEmpty);
-    _wanted = content;
     _nextLetterStyle = letters;
+    final begun = _texts.ask(content);
     notifyListeners();
-    unawaited(_pump());
+    _layOn(begun: begun);
   }
 
   /// Shows [origin] standing ([dx], [dy]) whole pixels from where it stood
@@ -239,22 +247,27 @@ class CelTextSession extends ChangeNotifier {
     required int dy,
   }) {
     final moved = celTextContentMoved(origin.content, dx: dx, dy: dy);
-    if (_baking || !_movesWhole(origin.ink, dx: dx, dy: dy)) {
+    if (_texts.laying != null || !_movesWhole(origin.ink, dx: dx, dy: dy)) {
       set(moved);
       return;
     }
-    if (moved == _shown.content && moved == _wanted) {
+    if (moved == _shown.content && moved == _texts.wanted) {
       return;
     }
     final before = _shown;
-    _wanted = moved;
     _stale = false;
-    _showing.value = CelTextShown._carried(
-      content: moved,
-      layout: layoutCelText(moved, nextLetterStyle: _nextLetterStyle),
-      pixels: (plate: origin.plate, dx: dx, dy: dy),
-      grid: (pasteboard: pasteboard, tileSize: tileSize),
+    _texts.stand(
+      _TextPiece.made(
+        CelTextShown._carried(
+          content: moved,
+          layout: layoutCelText(moved, nextLetterStyle: _nextLetterStyle),
+          pixels: (plate: origin.plate, dx: dx, dy: dy),
+          grid: (pasteboard: pasteboard, tileSize: tileSize),
+        ),
+      ),
+      moved,
     );
+    _showing.told();
     before.layout.dispose();
   }
 
@@ -278,83 +291,108 @@ class CelTextSession extends ChangeNotifier {
         inside(ink.shift(Offset(dx.toDouble(), dy.toDouble())));
   }
 
-  Future<void> _pump() async {
-    if (_baking || _disposed) {
-      return;
-    }
-    _baking = true;
-    try {
-      while (!_disposed && (_stale || _wanted != _shown.content)) {
-        final content = _wanted;
-        final letters = _nextLetterStyle;
-        // Letters are not set — and no plate is made of them — in a face
-        // that is still on its way: they would be set in another, and that
-        // is what would land.
-        final arriving = celTextFacesArriving(
-          content,
-          nextLetterStyle: letters,
-        );
-        if (arriving != null) {
-          await arriving;
-          continue;
-        }
-        final layout = layoutCelText(content, nextLetterStyle: letters);
-        final Map<TileCoord, BitmapTile> plate;
-        try {
-          // A text with no letters is not drawn ([_laidInto]): the engine
-          // is not asked for the pixels of nothing.
-          plate = content.isEmpty
-              ? const <TileCoord, BitmapTile>{}
-              : await _bake(
-                  layout,
-                  pasteboard: pasteboard,
-                  tileSize: tileSize,
-                  previous: _shown.plate,
-                );
-        } on Object catch (error) {
-          layout.dispose();
-          _refused(error);
-          break;
-        }
-        if (_disposed) {
-          layout.dispose();
-          return;
-        }
-        // 🚨A WANT THAT WENT BACK TO WHAT IS ON SCREEN while this was being
-        // made — a step back given it up ([standBackOn]) — is no want of
-        // it: shown, it would flash for a frame before the screen went
-        // back.
-        if (!_stale && _wanted == _shown.content) {
-          layout.dispose();
-          continue;
-        }
-        _show(CelTextShown(content: content, layout: layout, plate: plate));
-      }
-    } finally {
-      _baking = false;
-    }
-    if (!_disposed) {
+  /// Makes the piece just begun ([begun]) — or, where none was and none is
+  /// being made, says the making has stopped ([_makingStopped]).
+  void _layOn({required bool begun}) {
+    if (begun) {
+      unawaited(_make(_texts.laying!));
+    } else if (_texts.laying == null && !_disposed) {
       _makingStopped();
     }
   }
 
-  /// [made] is what is on screen from here on.
-  void _show(CelTextShown made) {
-    _failure = null;
+  Future<void> _make(_TextPiece piece) async {
+    // Letters are not set — and no plate is made of them — in a face that
+    // is still on its way: they would be set in another, and that is what
+    // would land.
+    while (true) {
+      final arriving = celTextFacesArriving(
+        piece.content,
+        nextLetterStyle: _nextLetterStyle,
+      );
+      if (arriving == null) {
+        break;
+      }
+      await arriving;
+      if (_disposed) {
+        return;
+      }
+      if (_texts.wanted != piece.content) {
+        // A newer want made while it waited is the one made.
+        _texts.layingGivenUp();
+        _layOn(begun: _texts.layTheNewest());
+        return;
+      }
+    }
+    final layout = layoutCelText(
+      piece.content,
+      nextLetterStyle: _nextLetterStyle,
+    );
+    final Map<TileCoord, BitmapTile> plate;
+    try {
+      // A text with no letters is not drawn ([_laidInto]): the engine
+      // is not asked for the pixels of nothing.
+      plate = piece.content.isEmpty
+          ? const <TileCoord, BitmapTile>{}
+          : await _bake(
+              layout,
+              pasteboard: pasteboard,
+              tileSize: tileSize,
+              previous: _shown.plate,
+            );
+    } on Object catch (error) {
+      layout.dispose();
+      if (!_disposed) {
+        _refused(error);
+      }
+      return;
+    }
+    if (_disposed) {
+      layout.dispose();
+      return;
+    }
+    piece.made = CelTextShown(
+      content: piece.content,
+      layout: layout,
+      plate: plate,
+    );
     final before = _shown;
+    // 🚨A WANT THAT WENT BACK TO WHAT IS ON SCREEN while this was being
+    // made — a step back given it up ([standBackOn]) — is no want of it:
+    // shown, it would flash for a frame before the screen went back
+    // ([LaidWhole.laid], where this law now lives).
+    if (_texts.laid() == null) {
+      layout.dispose();
+    } else {
+      _shownAnew(before);
+    }
+    _layOn(begun: _texts.layTheNewest());
+  }
+
+  /// What is up stands in place of [before]: told, and [before] let go.
+  void _shownAnew(CelTextShown before) {
+    _failure = null;
     _stale = false;
-    _showing.value = made;
+    _showing.told();
     before.layout.dispose();
     notifyListeners();
   }
 
   /// The engine made no plate: what is shown is still the last text it did
   /// make, and the want goes back to it rather than be asked of the engine
-  /// again and again.
+  /// again and again — unless another was made meanwhile, which is asked
+  /// next ([LaidWhole.layingGivenUp]).
+  ///
+  /// ↩️Till 2026-11-12 a want made meanwhile went back too: the session's
+  /// own loop had one slot for both (bcaeef502), and nobody asked for it.
   void _refused(Object error) {
     _failure = error;
-    _wanted = _shown.content;
+    if (_texts.layingGivenUp()) {
+      _layOn(begun: _texts.layTheNewest());
+      return;
+    }
     _stale = false;
+    _layOn(begun: _texts.ask(_shown.content));
   }
 
   /// Nothing more is being made: whoever waited for the text on screen to
@@ -497,12 +535,12 @@ class CelTextSession extends ChangeNotifier {
     final before = _shown;
     _standing = text;
     _shownOver = null;
-    _wanted = text.content;
     _stale = false;
-    _failure = null;
-    _showing.value = _shownOf(text, text.content, _nextLetterStyle);
-    before.layout.dispose();
-    notifyListeners();
+    _texts.stand(
+      _TextPiece.made(_shownOf(text, text.content, _nextLetterStyle)),
+      text.content,
+    );
+    _shownAnew(before);
   }
 
   @override
@@ -516,4 +554,28 @@ class CelTextSession extends ChangeNotifier {
     _waiting.clear();
     super.dispose();
   }
+}
+
+/// A text a session puts up whole ([CelTextSession._texts]): what it says,
+/// and — once made, or where it stands without being made — it as shown.
+final class _TextPiece {
+  _TextPiece(this.content);
+
+  _TextPiece.made(CelTextShown this.made) : content = made.content;
+
+  final CelTextContent content;
+  CelTextShown? made;
+}
+
+/// What a session has up, told whenever it is another ([told]).
+final class _Showing extends ChangeNotifier
+    implements ValueListenable<CelTextShown> {
+  _Showing(this._up);
+
+  final CelTextShown Function() _up;
+
+  @override
+  CelTextShown get value => _up();
+
+  void told() => notifyListeners();
 }

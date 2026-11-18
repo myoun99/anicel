@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/timeline_row_address.dart';
 import '../editor_session_manager.dart';
+import '../playback/playback_stillness.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../text/app_strings.dart';
@@ -39,7 +40,8 @@ import 'toolbar_panel_context.dart';
 /// list now ([toolbarGateNews] — the bands and the stand its scope reads
 /// were heard only through the bar's host) through the one slice every
 /// group on the bar answers with (a-gate-rebuilds-the-whole-toolbar,
-/// 2026-10-24).
+/// 2026-10-24) — and holds still with them while a run moves the playhead
+/// (F-587, [PlaybackStillness]).
 class TimelineShiftButtons extends StatelessWidget {
   const TimelineShiftButtons({super.key, required this.session, this.panel});
 
@@ -68,6 +70,7 @@ class TimelineShiftButtons extends StatelessWidget {
   Widget build(BuildContext context) => SlicedListenableBuilder(
     listenable: toolbarGateNews(session),
     slice: _shown,
+    stillWhile: PlaybackStillness.of(context),
     builder: (context, shown) {
       final (canPush, canPull, currentRow, _) = shown;
       return Row(

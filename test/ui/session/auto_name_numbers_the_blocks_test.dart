@@ -24,6 +24,8 @@ import '../../helpers/an_empty_drawing_row.dart';
 /// The collaborator is held BY ITS OWN TYPE so the mutation runner names this
 /// file as its witness (it picks witnesses by import).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   BlockNaming namingOf(EditorSessionManager s) => s.blockNaming;
 
   EditorSessionManager session() {

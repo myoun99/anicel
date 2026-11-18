@@ -173,9 +173,11 @@ abstract class SheetInkController<P> extends ChangeNotifier {
   }
 }
 
-/// [coordinator] resized to [canvasSize], or a fresh one over [store] when
-/// the plane has none yet — the sync every ink plane runs once its own
-/// geometry rule has picked the size.
+/// [coordinator] on [canvasSize], or a fresh one over [store] when the
+/// plane has none yet — the sync every ink plane runs once its own
+/// geometry rule has picked the size. No cel is rewritten: each is laid
+/// on the new size as a window's session seeds from it, its pixels where
+/// they were (`BrushFrameEditingCoordinator.overInk`).
 ///
 /// 🚨ONE law for the conte, envelope and timesheet inks (the audit's clone
 /// scan, 2026-09-03); each keeps only its initial frame key.
@@ -186,7 +188,7 @@ BrushFrameEditingCoordinator inkCoordinatorSynced(
   required BrushFrameKey initialFrameKey,
 }) {
   if (coordinator != null) {
-    coordinator.resizeCanvasAllCuts(canvasSize);
+    coordinator.adoptCanvasSize(canvasSize);
     return coordinator;
   }
   return BrushFrameEditingCoordinator.overInk(

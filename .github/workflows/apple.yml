@@ -8,10 +8,9 @@ name: Apple (macOS + iOS)
 on:
   workflow_dispatch:
   push:
-    # Also whenever the native core or the Apple projects change - those
-    # are exactly the edits this workflow exists to catch.
+    # Also whenever a package or the Apple projects change - those are
+    # exactly the edits this workflow exists to catch.
     paths:
-      - 'packages/qa_native/**'
       - 'packages/**'
       - 'ios/**'
       - 'macos/**'
@@ -32,89 +31,32 @@ env:
 
 jobs:
   apple:
-    name: macOS app + iOS simulator + native C
+    name: macOS app + iOS simulator
     runs-on: macos-latest
     # Compile verification only — the suite lives in apple-suite below,
     # on the cadence where nobody waits on it. ~8 minutes warm; 20 bounded
-    # a hang without ever touching a real run. 45 since the iPad's fx engine
-    # is built here from source when its cache is cold (below) — two Rust
-    # builds, guessed at 10-20 minutes and not yet measured: a cold run must
-    # not be the one that times out.
+    # a hang without ever touching a real run. 45 since the fx plugins'
+    # engine is built here: the Rust engine's build hook now builds Wasmtime
+    # with it (native/fx_plugin), twice — the Mac app and the simulator —
+    # and from cold every run (rust-engine says why its target is not kept):
+    # 315 s a build on the Surface against 60 without it (2026-11-08). ↩️It
+    # was C's prebuilt engine and an iPad build from source until then.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
-      # The fx plugins' engine, which packages/qa_native/src/wasmtime.cmake
-      # fetches — and for iOS builds from source — once per machine. A runner
-      # is a new machine every time, so its folder is kept between runs,
-      # keyed by the script that pins it.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/anicel/third_party
-          key: wasmtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/qa_native/src/wasmtime.cmake') }}
-
-      # The pods ask for these as they install; asked here first, a cold
-      # build's minutes and any failure of it show as a step of their own.
-      - name: The iPad's fx engine from source (device + simulator)
-        run: |
-          for target in aarch64-ios aarch64-ios-sim; do
-            cmake -DQA_WASMTIME_TARGET=$target -P packages/qa_native/src/wasmtime.cmake
-          done
-
-      # Cheapest signal first: does the portable C core compile with
-      # Apple clang for both host and iOS targets?
-      - name: Native core (Apple clang, host)
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/ci-apple --config Release
-          ls -la build/ci-apple
-
-      # The Mac's engine writes code as a plugin opens, which nothing else
-      # here does: its fx plugin test asks the WebAssembly twin, and a build
-      # that found no engine is a failure (fx-plugin-sdk-publish-Q2). Every
-      # test of that name: the twin is asked again interpreting, as an iPad
-      # asks it, and an arm64 Mac is the nearest machine to one. And the
-      # engine's script answers as the pods below read it, here where they do.
-      - name: A .wasm answers as its native twin does (Apple clang, host)
-        env:
-          QA_REQUIRE_WASM: '1'
-        run: ctest --test-dir build/ci-apple -R '^qa_(fx_plugin|wasmtime_script)' --output-on-failure --no-tests=error
-
-      - name: Native core (arm64 iOS target)
-        run: |
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_engine.c \
-            -o /tmp/qa_engine_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99 -Wall
-          # The decoder TU carries the AudioToolbox (AAC) path — compile it
-          # for the DEVICE target too, not just the simulator pod build.
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_audio_decode.c \
-            -o /tmp/qa_audio_decode_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99
-          # The denoise TU carries the vendored RNNoise bundle — device
-          # target too, same as the decoder.
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_audio_denoise.c \
-            -o /tmp/qa_audio_denoise_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99
-          # The fx plugin host with the engine the device links — the pod
-          # build below is the simulator's.
-          WASMTIME=$(cmake -DQA_WASMTIME_TARGET=aarch64-ios -P packages/qa_native/src/wasmtime.cmake | head -n 1)
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_fx_plugin.c \
-            -o /tmp/qa_fx_plugin_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99 -Wall \
-            -DQA_FX_WASM=1 -DWASM_API_EXTERN= -DWASI_API_EXTERN= -I"$WASMTIME/include"
-          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o /tmp/qa_audio_denoise_ios.o /tmp/qa_fx_plugin_ios.o
-
+      # ↩️The cheapest signal came first here: the portable C core compiled
+      # with Apple clang for the host and for the arm64 iOS target, till the
+      # C went (2026-11-13). The Rust engine is compiled by the two builds
+      # below, through its build hook: for the Mac and for the iOS
+      # simulator. The device's is testflight.yml's build.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # No signing needed for either of these: the macOS build is local,
       # and simulator builds never sign.

@@ -18,6 +18,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_mount.dart'
+    show LayerAttachDrop;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
@@ -153,13 +156,6 @@ void main() {
           );
   }
 
-  Future<void> stopTheWarmer(
-    WidgetTester tester,
-    EditorSessionManager s,
-  ) async {
-    s.playbackRig.prerenderScheduler.cancel();
-    await tester.pump();
-  }
 
   /// Where the editing canvas's stack draws [row]'s cel at frame 0 of the
   /// cut stood in — a movie's picture decoded where [movieLaidAt] says.
@@ -231,7 +227,6 @@ void main() {
         reason: 'a transform lane\'s navigator, as every fx\'s (F-374)',
       );
     }
-    await stopTheWarmer(tester, s);
   });
 
   /// A GIF row whose cels do not say which picture of the file each is, so
@@ -338,7 +333,6 @@ void main() {
       reason: 'its own step from the moment it was written — 「언두도 '
           '가능하게」',
     );
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('Scale is typed as the transform lane\'s two — linked or not '
@@ -357,7 +351,6 @@ void main() {
     expect(keyed.poseAt(0).rotationDegrees, 30);
     expect(transformLaneKeyFrames(keyed.fx, 'scale'), {0});
     expect(transformLaneKeyFrames(keyed.fx, 'rotation'), {0});
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('a paper placed at twice its size reads a linked Scale '
@@ -382,7 +375,6 @@ void main() {
       CanvasPoint(x: 3, y: 3),
       reason: 'down was left as shown, so the chain carries it',
     );
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('a scrub shows the picture where the value stands — its cel '
@@ -453,7 +445,6 @@ void main() {
 
     s.laneVerbs.endLaneEditPreview();
     expect(s.dragPreview.value, isNull);
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('🎯the ◆ on a reference lane keys it where it stands — as a '
@@ -495,7 +486,34 @@ void main() {
     s.redo();
     diamond();
     expect(referenceOf(s, row).fx.isEmpty, isTrue);
-    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('an attach row wears its base\'s fx, not its own reference '
+      'fx: its group\'s Reset is out, moved or not (F-583)', (tester) async {
+    final (s, row) = await placed(tester);
+    typed(s, row, referencePositionLaneId, '1210, 800');
+    expect(
+      s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId),
+      isTrue,
+      reason: '⛔premise: its own fx off rest',
+    );
+    final base = s.requireActiveCut.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.animation,
+    );
+    s.cutCommandCoordinator.setLayerAttachment(
+      cutId: s.requireActiveCut.id,
+      attach: LayerAttachDrop(
+        mounts: [
+          (
+            layerId: row.id,
+            baseId: base.id,
+            placement: AttachedPlacement.above,
+          ),
+        ],
+      ),
+    );
+
+    expect(s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId), isFalse);
   });
 
   testWidgets('🎯the group\'s Reset puts the fx back where its file was '
@@ -510,7 +528,13 @@ void main() {
     );
     typed(s, row, referencePositionLaneId, '1210, 800');
 
+    expect(s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId), isTrue);
     expect(s.laneVerbs.resetLaneGroup(row.id, referenceGroupLaneId), isTrue);
+    expect(
+      s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId),
+      isFalse,
+      reason: 'back where its file was placed, its Reset is out (F-583)',
+    );
 
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1170, y: 827));
     expect(
@@ -526,7 +550,6 @@ void main() {
 
     s.undo();
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1210, y: 800));
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('🎯I-120-Q11 「래스터라이즈 버튼만 둔다(지금 참조 래스터라이즈와 '
@@ -612,7 +635,6 @@ void main() {
     s.undo();
     s.cutVerbs.createLinkedCutFromActiveCut();
     expect(rasterizeLaneGroupOf(context, s, row, header)!.press, isNull);
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('🎯a span over the row\'s own Position and its reference fx\'s '
@@ -657,7 +679,6 @@ void main() {
     keysAt({}, 'deleted');
     s.undo();
     keysAt({0}, 'both given back at once');
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('a span over the group\'s header keys all three of its members '
@@ -684,7 +705,6 @@ void main() {
       reference.pose,
       reason: 'frozen where it was placed',
     );
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('🎯a row of a cut NOT stood in is keyed where it is — the '
@@ -715,7 +735,6 @@ void main() {
 
     s.undo();
     expect(rowAtHome(), before, reason: 'the key, one undo');
-    await stopTheWarmer(tester, s);
   });
 
   test('a reference lane\'s row stands on the reference: a transform edit '
@@ -791,7 +810,6 @@ void main() {
       CanvasPoint(x: 1170, y: 827),
       reason: 'laid 100 to the left of where the row stands it',
     );
-    await stopTheWarmer(tester, s);
   });
 
   testWidgets('a still laid elsewhere than its row stands it is drawn — and '
@@ -822,7 +840,6 @@ void main() {
       )!.apply(CanvasPoint(x: 1070, y: 827)),
       CanvasPoint(x: 1170, y: 827),
     );
-    await stopTheWarmer(tester, s);
   });
 
   test('an fx that moves over the cut moves the picture each frame from '

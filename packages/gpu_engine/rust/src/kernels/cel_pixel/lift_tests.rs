@@ -172,7 +172,7 @@ fn a_lift_cut_into_passes_lays_what_one_pass_lays() {
 fn a_lift_pass_takes_as_many_tiles_as_a_binding_holds() {
     let Rig { engine, .. } = rig();
     let room = room(engine);
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     let reach = u64::from(limits.max_compute_workgroups_per_dimension);
     let align = u64::from(limits.min_storage_buffer_offset_alignment);
     let width = (room / reach / 512 + 1) as u32;

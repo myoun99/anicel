@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/machine_variables.dart';
 import '../../tool/session_hooks/install.dart';
 
 /// 유저 2026-10-07: 「작업을 노트북이 해줫으면 한단거지」 — a second machine
@@ -85,6 +86,7 @@ void main() {
           'board_gate_test.sh',
           'board_up_test.sh',
           'guard_bare_cd_test.sh',
+          'guard_dart_run_test.sh',
           'guard_git_add_test.sh',
           'guard_shared_target_test.sh',
           'hook_says_test.sh',
@@ -328,6 +330,24 @@ void main() {
       );
     });
 
+    // 관제 2026-11-07 (connection-round-checklist 22:10): `dart run` builds
+    // the GPU engine's Rust once more for the Dart VM — 485 MB a checkout —
+    // where a tool's exe and its JIT build nothing. What the guard refuses
+    // is pinned by guard_dart_run_test.sh, run by hand.
+    test('🚨a Bash call with dart in it goes past the dart-run guard first',
+        () {
+      final guards = {
+        for (final group in hooksFor(holder)['PreToolUse'] as List)
+          if ((group as Map)['matcher'] == 'Bash')
+            for (final hook in group['hooks'] as List)
+              '${(hook as Map)['if']}': '${hook['command']}',
+      };
+      expect(
+        guards['Bash(*dart*)'],
+        endsWith('/tool/session_hooks/guard_dart_run.sh"'),
+      );
+    });
+
     test('🚨the size guard is handed the very index its `if` watches', () {
       final watched = {
         for (final group in hooksFor(holder)['PostToolUse'] as List)
@@ -404,6 +424,54 @@ void main() {
     test('running it twice writes the same file', () {
       final once = settingsWith(written, holder);
       expect(jsonEncode(settingsWith(once, holder)), jsonEncode(once));
+    });
+
+    // 유저 2026-11-07 (gpu-engine-skeleton-Q7): a session started before
+    // Rust was installed kept a second cargo home on C:.
+    test('🚨the Rust homes the machine\'s own settings hold are handed to '
+        'every session, beside what was there', () {
+      final settings = settingsWith(
+        written,
+        holder,
+        machine: machineVariables(
+          (name) => {
+            'CARGO_HOME': r'D:\rust\cargo',
+            'RUSTUP_HOME': ' ',
+          }[name],
+        ),
+      );
+      expect(settings['env'], {
+        'THEIRS': 'kept',
+        'ANICEL_BOARD': 'http://localhost:4321',
+        'ANICEL_BOARD_TOKEN_FILE': 'C:/local/board/.board-token',
+        'ANICEL_BOARD_FOLDER': 'C:/local/board',
+        'CARGO_HOME': 'D:/rust/cargo',
+      });
+    });
+  });
+
+  group('what Windows keeps for the user', () {
+    const printed = '\r\nHKEY_CURRENT_USER\\Environment\r\n'
+        '    CARGO_HOME    REG_SZ    D:\\rust\\cargo\r\n'
+        '    Path    REG_EXPAND_SZ    %USERPROFILE%\\bin;D:\\rust\\cargo\\bin\r\n'
+        '\r\n';
+    String expand(String variable) =>
+        {'USERPROFILE': r'C:\Users\me'}[variable] ?? '?';
+
+    test('a plain value is read as it is', () {
+      expect(registryValue(printed, 'CARGO_HOME', expand), r'D:\rust\cargo');
+    });
+
+    test('an expandable one has its variables expanded', () {
+      expect(
+        registryValue(printed, 'Path', expand),
+        r'C:\Users\me\bin;D:\rust\cargo\bin',
+      );
+    });
+
+    test('and one it does not hold is none', () {
+      expect(registryValue(printed, 'RUSTUP_HOME', expand), isNull);
+      expect(registryValue(printed, 'CARGO', expand), isNull);
     });
   });
 

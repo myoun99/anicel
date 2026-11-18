@@ -18,7 +18,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
@@ -29,7 +28,6 @@ import 'package:anicel/src/ui/playback/audio_device_transport.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨AN ARM READS NO WINDOW IT ALREADY HOLDS (play-press-first-frame-stall
@@ -45,8 +43,6 @@ import '../../helpers/temp_dir.dart';
 /// The conform's bytes count the windows read; the device is the null
 /// backend at 8 kHz, so a sound past the threshold stays small on disk.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
   const deviceRate = 8000;
   const fps = ProjectFrameRate.integer(10);
   const soundFrames = deviceRate * (conformStreamingThresholdSeconds + 1);
@@ -56,7 +52,6 @@ void main() {
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-arm-window');
   });
 
@@ -67,7 +62,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
 
@@ -129,19 +123,120 @@ void main() {
     addTearDown(transport.dispose);
 
     controller.play(scope: PlaybackScope.activeCut);
-    expect(transport.carryingPlayback, isTrue, reason: 'fixture');
     expect(conform.windowsRead, 1, reason: 'the press centres it, once');
+    expect(transport.soundIsComing, isTrue, reason: 'read on a worker');
+    await pumpEventQueue();
+    expect(transport.carryingPlayback, isTrue, reason: 'it landed');
+    expect(conform.windowsRead, 1, reason: 'made ready from what landed');
 
     controller.seekToGlobalFrame(100); // 10 s — inside its near half
     expect(conform.windowsRead, 1, reason: 'it holds ten seconds in');
 
     controller.seekToGlobalFrame(300); // 30 s — past its near half
     expect(conform.windowsRead, 2, reason: 'thirty seconds in, it reads there');
+    await pumpEventQueue();
 
     controller.seekToGlobalFrame(290); // a second behind the new centre
     expect(conform.windowsRead, 2, reason: 'a step back inside reads nothing');
     controller.stop();
-  }, skip: skip);
+  });
+
+  group('🚨a run that plays, seeked past its window, waits for its sound '
+      'there in silence, and sounds from there once the window has landed '
+      '(long-sound-windows-are-read-on-the-ui-isolate)', () {
+    late CanvasPlaybackController controller;
+    late AudioDeviceTransport transport;
+    late QaAudioDevice device;
+
+    /// A run that sounds from the top of the long sound, wired as the app
+    /// wires it (`PlaybackRig`): its clock waits for its sound.
+    Future<void> sounding() async {
+      final store = await streamingStore();
+      controller = CanvasPlaybackController(
+        resolveProject: () => _project,
+        resolveActiveCutId: () => const CutId('cut'),
+        resolveActiveTrackId: () => const TrackId('track'),
+        resolveFrameRate: () => fps,
+      );
+      addTearDown(controller.dispose);
+      transport = AudioDeviceTransport(
+        controller: controller,
+        resolveFrameRate: () => fps,
+        resolveProject: () => _project,
+        conformStore: store,
+        resolveDevice: () => QaAudioDevice.instance,
+      )..attach();
+      addTearDown(transport.dispose);
+      controller.waitsOn = (_, {required placed}) => transport.soundIsComing;
+      device = QaAudioDevice.instance!;
+
+      controller.play(scope: PlaybackScope.activeCut);
+      await pumpEventQueue();
+      transport.clockStatus(); // the clock's first look starts the device
+      expect(device.isPlaying, isTrue, reason: 'fixture: the run sounds');
+    }
+
+    test('its clock not yet come to stand — the window landed within the '
+        'frame: the landing itself arms it, where the run stands', () async {
+      await sounding();
+
+      controller.seekToGlobalFrame(350); // 35 s — past its leading edge
+      expect(conform.windowsRead, 2, reason: 'fixture: read on a worker');
+      expect(controller.isWaiting, isFalse, reason: 'fixture: asked before');
+      expect(
+        transport.soundIsComing,
+        isTrue,
+        reason: 'the run waits for its sound where it was put',
+      );
+      expect(
+        device.isPlaying,
+        isFalse,
+        reason: 'in silence: what played at the top is not what is shown',
+      );
+      // The clock's looks until it comes to stand before the next frame.
+      expect(
+        transport.clockStatus(),
+        isNull,
+        reason: 'a silent device is not the run\'s clock: ↩️read as a pass '
+            'that ran out, a looping run started again from the top and one '
+            'that plays once ended there',
+      );
+      expect(device.isPlaying, isFalse, reason: 'and no look starts it');
+
+      await pumpEventQueue();
+      expect(transport.soundIsComing, isFalse, reason: 'it has come');
+      final says = transport.clockStatus();
+      expect(device.isPlaying, isTrue, reason: 'and it sounds again');
+      expect(
+        says?.globalFrame,
+        inInclusiveRange(350, 351),
+        reason: 'from where the run stands — its clock never stood, so '
+            'nothing but the landing says so',
+      );
+      expect(says?.ended, isFalse);
+      controller.stop();
+    });
+
+    test('its clock come to stand for it — a drag going on: the run goes '
+        'on from the frame it waits on, and is armed there', () async {
+      await sounding();
+
+      controller.seekToGlobalFrame(350);
+      controller.seekToGlobalFrame(351); // put again: its sound on its way
+      expect(controller.isWaiting, isTrue, reason: 'fixture: it stands');
+      expect(conform.windowsRead, 2, reason: 'read once: the one on its way');
+      expect(device.isPlaying, isFalse);
+      expect(transport.clockStatus(), isNull, reason: 'a run that waits');
+
+      await pumpEventQueue();
+      expect(controller.isWaiting, isFalse, reason: 'its sound came');
+      final says = transport.clockStatus();
+      expect(device.isPlaying, isTrue, reason: 'armed as it went on');
+      expect(says?.globalFrame, inInclusiveRange(351, 352));
+      expect(conform.windowsRead, 2, reason: 'out of the window that landed');
+      controller.stop();
+    });
+  });
 
   test('🚨the media viewer\'s sound, put back past its window\'s trailing '
       'edge, reads the window there — and picks up inside it reading '
@@ -155,22 +250,42 @@ void main() {
 
     expect(
       sound.play('long.wav', fromSeconds: 60),
-      isA<OutputArmed>(),
-      reason: 'fixture',
+      isA<OutputComing>(),
+      reason: 'its window read on a worker',
     );
     expect(conform.windowsRead, 1, reason: 'the press centres it, once');
+    await pumpEventQueue();
+    expect(
+      sound.play('long.wav', fromSeconds: 60),
+      isA<OutputArmed>(),
+      reason: 'asked again once it landed (MediaRun asks at every look)',
+    );
+    expect(conform.windowsRead, 1, reason: 'made ready from what landed');
 
-    sound.resume(59); // a second back — a run going on, a short put-back
+    // A second back — a run going on, a short put-back.
+    expect(sound.resume(59), isTrue);
     expect(conform.windowsRead, 1, reason: 'it holds a second back');
+    final device = QaAudioDevice.instance!;
+    sound.keepStreaming(frameTime: null); // the run's look starts it
+    expect(device.isPlaying, isTrue, reason: 'fixture: heard from there');
 
-    sound.resume(50); // a run put back as far as the app was late
+    // A run put back as far as the app was late.
+    expect(sound.resume(50), isFalse, reason: 'its sound there on its way');
     expect(
       conform.windowsRead,
       2,
       reason: 'ten seconds back is past its trailing two: ↩️it played out of '
           'the window as it stood — silence',
     );
-  }, skip: skip);
+    expect(
+      device.isPlaying,
+      isFalse,
+      reason: 'and nothing is heard meanwhile: what played a second back '
+          'is not what the run waits for',
+    );
+    sound.keepStreaming(frameTime: null); // the waiting run's next look
+    expect(device.isPlaying, isFalse, reason: 'nor started by a look');
+  });
 }
 
 /// Forty seconds of film at 10 fps, one sound under all of it.

@@ -13,7 +13,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// R11-⑦: opening a frame seeds the edit session from a VALID display
 /// cache instead of replaying its whole stroke history; any command
@@ -65,8 +65,8 @@ void main() {
       reason: 'a valid display cache must seed the session directly',
     );
     // And the seeded pixels are the strokes' pixels.
-    expect(surfacePixelRgba(surface, 20, 20)! & 0xFF, isNonZero);
-    expect(surfacePixelRgba(surface, 60, 60)! & 0xFF, isNonZero);
+    expect(surfaceRgbaInPlace(surface, 20, 20)! & 0xFF, isNonZero);
+    expect(surfaceRgbaInPlace(surface, 60, 60)! & 0xFF, isNonZero);
   });
 
   test('seeded pixels equal a full replay byte-for-byte at probes', () {
@@ -86,8 +86,8 @@ void main() {
 
     for (final (x, y) in [(20, 20), (24, 22), (26, 25), (15, 18), (0, 0)]) {
       expect(
-        surfacePixelRgba(seeded, x, y),
-        surfacePixelRgba(replayed, x, y),
+        surfaceRgbaInPlace(seeded, x, y),
+        surfaceRgbaInPlace(replayed, x, y),
         reason: 'seed and replay must agree at ($x, $y)',
       );
     }
@@ -110,12 +110,12 @@ void main() {
       store,
     ).activeSessionState.canvasState.currentSurface;
     expect(
-      surfacePixelRgba(surface, 20, 20),
+      surfaceRgbaInPlace(surface, 20, 20),
       isNonZero,
       reason: 'the surviving stroke seeds from baked',
     );
     expect(
-      surfacePixelRgba(surface, 90, 90),
+      surfaceRgbaInPlace(surface, 90, 90),
       anyOf(isNull, 0),
       reason: 'the undone stroke must NOT come back from a stale cache',
     );

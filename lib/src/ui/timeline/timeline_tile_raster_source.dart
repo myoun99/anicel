@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuWaveView;
 
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
+import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../text/word_condensation.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -62,6 +65,11 @@ typedef TimelineRowSubstrate = ({
   List<TimelineRowRing> rings,
 });
 
+/// A sound's wave a tile bakes over its ink
+/// ([TimelineTileRasterSource.wavesIn]): the file's peaks, and the stretch
+/// of its strip the tile shows.
+typedef TimelineTileWave = ({AudioPeaks peaks, GpuWaveView view});
+
 /// A block's outline over a run of its cells: [width] wide inside [rect],
 /// round where [radius] is. [open] names the sides it leaves open — where
 /// the block runs on past the run, into the cells another stretch of the
@@ -72,6 +80,17 @@ typedef TimelineRowRing = ({
   BorderRadius? radius,
   double width,
   ({bool left, bool top, bool right, bool bottom}) open,
+});
+
+/// A block's edge grip as the painter of its paper draws it
+/// ([TimelineTileRasterSource.gripsIn]): its [box] (row-local), the [edge]
+/// whose corner it is, the paper's [paperCorner] its round end follows,
+/// and the [color] its state and its block give it.
+typedef TimelineRowGrip = ({
+  Rect box,
+  TimelineBlockEdge edge,
+  double paperCorner,
+  Color color,
 });
 
 /// The hold ghost's glyph — the probe VALUE tests read from
@@ -250,6 +269,30 @@ abstract interface class TimelineTileRasterSource {
   /// has. The length stays out of the tiles, as the out-of-cut wash and the
   /// X (2026-08-02) already keep it out.
   Iterable<int> bakedWritingCellsIn(int from, int to);
+
+  /// The waves of the sounds frames [from, to) lay over their ink, each as
+  /// the span's tile shows it at [devicePixelRatio] — in the integers the
+  /// engine's waveform pass takes ([GpuWaveView]). The tile bakes exactly
+  /// these over its ink, as the classic pass paints the same sounds over
+  /// the same ink. Part of the look: a tile that holds other waves shows
+  /// another row.
+  List<TimelineTileWave> wavesIn(int from, int to, double devicePixelRatio);
+
+  /// The grips whose boxes reach the cells of frames [from, to), in the ink
+  /// each wears now — none on a row whose grips its chrome draws. The tile
+  /// bakes exactly these after its words, as the classic pass paints them
+  /// after its own. Part of the look, asked of the span as [wavesIn] is: a
+  /// grip the pointer comes to rest on changes no layer.
+  ///
+  /// 🗣️F-604 (유저 2026-11-16): 「엣지랑 블록이랑 따로논다 … 진짜
+  /// 근본/구조적으로해결」. A grip is the paper's corner, inked
+  /// (`blockEdgeGripPath`): drawn by whoever draws that paper, it is laid
+  /// where the paper is laid, stretched where a zoom stretches it, by one
+  /// rounding. ↩️The row's chrome drew it over the tiles in Flutter, at the
+  /// block's exact place, while the tile's paper landed on whole device
+  /// pixels — a pixel of paper above it at a ratio of 0.9, and the two
+  /// apart through a zoom drag.
+  List<TimelineRowGrip> gripsIn(int from, int to);
 }
 
 /// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the

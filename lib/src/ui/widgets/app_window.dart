@@ -38,6 +38,7 @@ class AppWindowAction {
     this.emphasis = AppWindowActionEmphasis.quiet,
     this.tooltip,
     this.autofocus = false,
+    this.resets = false,
   });
 
   final String label;
@@ -60,6 +61,11 @@ class AppWindowAction {
   /// presses it with no Tab first (F-479).
   final bool autofocus;
 
+  /// The action puts something back to its default: its word in the accent
+  /// while it can be pressed ([resetWearsAccent], I-176), so [onPressed] is
+  /// null where it would change nothing (F-583).
+  final bool resets;
+
   /// This action, opening its window with the keyboard on it.
   AppWindowAction get focused => AppWindowAction(
     label: label,
@@ -68,6 +74,7 @@ class AppWindowAction {
     emphasis: emphasis,
     tooltip: tooltip,
     autofocus: true,
+    resets: resets,
   );
 }
 
@@ -466,6 +473,13 @@ class AppWindowActionButton extends StatelessWidget {
         autofocus: action.autofocus,
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
+          foregroundColor:
+              resetWearsAccent(
+                resets: action.resets,
+                live: action.onPressed != null,
+              )
+              ? AppColors.accent
+              : null,
         ),
         child: label,
       )),

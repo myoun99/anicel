@@ -94,13 +94,20 @@ class _StoryboardRowsWindow {
 
   /// The rows the view stands over now, or null while it has no extent —
   /// before the panel is laid out, when every row is built.
+  ///
+  /// ↩️The view is the one this pass lays ([_StoryboardPanelState.
+  /// _middleViewportHeight]), as the timeline's is (its rows' extent off the
+  /// constraints it lays them in). It was the scroll position's, which a
+  /// build reads from the LAST layout: a window resized under rows that
+  /// stood still cut them to the old view, and with no scroll to move the
+  /// window again, a grown view's new rows stayed unbuilt until the next
+  /// resize (검증/서피스 11-08 01:23, card
+  /// the-conte-panel-builds-the-rows-its-window-reaches).
   TimelineVisibleRange? _now() {
     final edges = _state._railRows.windowTable.edges;
     final controller = _state._verticalController;
     final position = controller.hasClients ? controller.position : null;
-    final viewport = position != null && position.hasViewportDimension
-        ? position.viewportDimension
-        : _state._middleViewportHeight;
+    final viewport = _state._middleViewportHeight;
     if (viewport <= 0) {
       return null;
     }

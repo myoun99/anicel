@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 /// result bytes exactly. ↩️That call was the flush until F-533; a flush
 /// nothing reads pictures nothing now.
 void main() {
-  const tileSize = 8;
+  const tileSize = 128;
   const canvasSize = CanvasSize(width: 32, height: 32);
 
   List<BrushDab> strokeDabs() {
@@ -69,8 +69,16 @@ void main() {
 
     final rasterizer = stroke(model);
 
-    final pictured = model.tileImages.length;
-    expect(pictured, greaterThan(0), reason: 'the flush pictured the tiles');
+    // The read a screen that draws pictures makes of each: a picture is
+    // made when a screen asks for one. ↩️On the 8px Dart grid every
+    // coordinate was pictured on the spot, till 2026-11-14 (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
+    final coords = model.tileImages.keys.toList();
+    for (final coord in coords) {
+      expect(model.tileImages[coord], isNotNull, reason: '$coord: read');
+    }
+    final pictured = coords.length;
+    expect(pictured, greaterThan(0), reason: 'the read pictured the tiles');
     final promoted = rasterizer.promoteStrokeTiles(
       base: base,
       mode: BrushBlendMode.color,
@@ -139,7 +147,6 @@ void main() {
       isNotNull,
       reason: 'at the revision of the last flush',
     );
-    blended.free();
   });
 
   test('a stroke let go owes nothing: no read pictures it', () {
@@ -182,11 +189,29 @@ void main() {
     model.showResultTiles([
       PromotedStrokeTile(coord, BitmapTile.blank(size: tileSize), 77),
     ]);
+    // The read a screen that draws pictures makes of it, which makes its
+    // picture.
+    expect(model.tileImages[coord], isNotNull);
     expect(
       model.takeTileImageAt(coord, revision: 77),
       isNotNull,
       reason: 'a read after it does not lay the stroke back over the fill',
     );
+  });
+
+  test('🚨a result shown has no picture till a screen reads one: the screen '
+      'that lays tiles is handed the tile', () {
+    final model = ActiveStrokeOverlayModel(tileSize: tileSize);
+    addTearDown(model.dispose);
+    final coord = TileCoord(x: 0, y: 0);
+    final result = BitmapTile.blank(size: tileSize);
+    model.showResultTiles([PromotedStrokeTile(coord, result, 77)]);
+
+    expect(model.shownBy[coord], same(result));
+    expect(model.shownTiles[coord], same(result));
+    // ⛔Mutation: every result pictured as it is shown → of a tile the
+    // engine laid, a wait for the GPU apiece, for a picture nobody draws.
+    expect(model.takeTileImageAt(coord, revision: 77), isNull);
   });
 
   test('the picture holds the pre-blended result bytes exactly', () async {
@@ -208,7 +233,6 @@ void main() {
       erase: false,
     )!;
     final expected = blended.readPremultiplied(Uint8List.fromList);
-    blended.free();
     final data = await image!.toByteData(format: ui.ImageByteFormat.rawRgba);
     // ⛔Mutation: picture the straight bytes as if premultiplied, or a
     // stale tile → the readback is not the result.

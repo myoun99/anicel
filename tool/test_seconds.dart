@@ -11,26 +11,17 @@
 // the time, and a run leaves it in a JSON report beside its console
 // (`--file-reporter`), so the console a session reads is unchanged.
 //
-// WHERE: the machine's own cache, beside `tool/run.sh`'s exes —
-// `%LOCALAPPDATA%\anicel` on Windows, `~/.cache/anicel` elsewhere. ⛔The
-// same place spelled twice (here and in run.sh): change both or neither.
-// Per machine on purpose: a file's time is this machine's, and every
-// worktree on it shares the one record.
+// WHERE: the machine's own cache (machine_cache.dart, which says where
+// that is and why it is a file of its own). Per machine on purpose: a
+// file's time is this machine's, and every worktree on it shares the one
+// record.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
-/// This machine's folder for what the tools keep between runs, or null if
-/// the environment names none.
-String? machineCacheFolder(Map<String, String> environment) {
-  final local = environment['LOCALAPPDATA'];
-  if (local != null && local.isNotEmpty) {
-    return '${local.replaceAll('\\', '/')}/anicel';
-  }
-  final xdg = environment['XDG_CACHE_HOME'];
-  if (xdg != null && xdg.isNotEmpty) return '$xdg/anicel';
-  final home = environment['HOME'];
-  return home == null || home.isEmpty ? null : '$home/.cache/anicel';
-}
+import 'machine_cache.dart';
+
+export 'machine_cache.dart';
 
 /// `<path>\t<value>` per line — every record the tools keep in
 /// [machineCacheFolder]. A line that is not one is skipped: two runs that
@@ -72,6 +63,25 @@ Map<String, int> timesIn(Map<String, String> pairs) => {
     path: ?int.tryParse(ms),
 };
 
+/// The file this machine keeps its test times in, in [machineCacheFolder] —
+/// or null when [environment] names no such folder.
+File? timesRecord(Map<String, String> environment) {
+  final folder = machineCacheFolder(environment);
+  return folder == null ? null : File('$folder/test_times.tsv');
+}
+
+/// This machine's test times ([readTimes]), or none when it keeps none.
+Map<String, int> timesOnThisMachine() {
+  final file = timesRecord(Platform.environment);
+  try {
+    return file != null && file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const {};
+  } on FileSystemException {
+    return const {};
+  }
+}
+
 /// What a `json` report says of one test file, by its path from the
 /// repository's root with `/`: how long it took from its loading to its
 /// last test, and whether it was green — null for either when the report
@@ -88,15 +98,79 @@ typedef SuiteRun = ({String path, int? ms, bool? green});
 /// counts as passed; a file that failed to load is a hidden test that
 /// ends in `error`, and red.
 List<SuiteRun> suiteRuns(String report, {required String root}) {
-  final prefix = '${root.replaceAll('\\', '/')}/'.toLowerCase();
-  final path = <int, String>{};
-  final first = <int, int>{};
-  final last = <int, int>{};
-  final suiteOf = <int, int>{};
-  final open = <int, int>{};
-  final red = <int>{};
-  var ended = false;
-  for (final line in const LineSplitter().convert(report)) {
+  final read = readReport(report);
+  final prefix = _prefixOf(root);
+  final testsOf = <int, List<ReportedTest>>{};
+  for (final test in read.tests) {
+    (testsOf[test.suite] ??= []).add(test);
+  }
+  SuiteRun runOf(int suite, String path) {
+    final tests = testsOf[suite] ?? const <ReportedTest>[];
+    final ends = [for (final test in tests) ?test.end];
+    final first = tests.isEmpty ? null : tests.first.start;
+    final last = ends.isEmpty ? null : ends.reduce(math.max);
+    final open = tests.any((test) => test.end == null);
+    return (
+      path: _fromRoot(path, prefix),
+      ms: first != null && last != null ? last - first : null,
+      green: !read.ended || last == null || open
+          ? null
+          : !tests.any((test) => test.red),
+    );
+  }
+
+  return [
+    for (final MapEntry(key: suite, value: path) in read.paths.entries)
+      runOf(suite, path),
+  ];
+}
+
+/// One test as a `json` file report tells it ([readReport]).
+final class ReportedTest {
+  ReportedTest(this.suite, this.name, this.start);
+
+  /// The file it is in, by the id [Report.paths] names it by.
+  final int suite;
+  final String name;
+
+  /// When it started and when it ended, in milliseconds from the run's
+  /// start; an [end] of null is a test that never finished.
+  final int start;
+  int? end;
+
+  /// Whether it ended in anything but success — a failure, an error.
+  bool red = false;
+
+  /// A file's load, which the report tells as a test of its own: the
+  /// compile, not a test of the file.
+  bool get isLoading => name.startsWith('loading ');
+}
+
+/// What a `json` file report says ([readReport]).
+final class Report {
+  /// Each test file by its id, as the report spells it, with `/`.
+  final paths = <int, String>{};
+
+  /// Every test, in the order it started.
+  final tests = <ReportedTest>[];
+
+  /// Whether the run reached its `done`.
+  bool ended = false;
+}
+
+/// 🚨THE ONE READING OF A `json` FILE REPORT (2026-11-17, card
+/// a-slow-test-cannot-creep). What a file took and whether it was green
+/// ([suiteRuns]), what a silent batch is still running (affected_tests'
+/// `stillRunning`) and which tests took a minute ([slowTests]) are three
+/// views of the same events. ↩️Till then the first two read the report
+/// each for itself, and the minute would have been a third — so they are
+/// one reader now (the_test_report_is_read_in_one_place_test scans for a
+/// fourth). An event with no time is not one: the reporter stamps every
+/// event, and only a broken line lacks it.
+Report readReport(String text) {
+  final report = Report();
+  final byId = <int, ReportedTest>{};
+  for (final line in const LineSplitter().convert(text)) {
     final Object? event;
     try {
       event = jsonDecode(line);
@@ -109,38 +183,79 @@ List<SuiteRun> suiteRuns(String report, {required String root}) {
     switch (event['type']) {
       case 'suite':
         final suite = event['suite'] as Map<String, dynamic>;
-        final p = (suite['path'] as String?)?.replaceAll('\\', '/');
-        if (p != null) path[suite['id'] as int] = p;
+        final path = (suite['path'] as String?)?.replaceAll('\\', '/');
+        if (path != null) report.paths[suite['id'] as int] = path;
       case 'testStart':
         final test = event['test'] as Map<String, dynamic>;
-        final suite = test['suiteID'] as int;
-        suiteOf[test['id'] as int] = suite;
-        first.putIfAbsent(suite, () => time);
-        open[suite] = (open[suite] ?? 0) + 1;
+        final started = ReportedTest(
+          test['suiteID'] as int,
+          test['name'] as String? ?? '',
+          time,
+        );
+        byId[test['id'] as int] = started;
+        report.tests.add(started);
       case 'testDone':
-        final suite = suiteOf[event['testID'] as int];
-        if (suite == null) continue;
-        last[suite] = time;
-        open[suite] = open[suite]! - 1;
-        if (event['result'] != 'success') red.add(suite);
+        final test = byId[event['testID']];
+        if (test == null) continue;
+        test
+          ..end = time
+          ..red = event['result'] != 'success';
       case 'done':
-        ended = true;
+        report.ended = true;
     }
   }
+  return report;
+}
+
+/// How [root] begins a path the report spells, compared with no regard to
+/// case: Windows' drive letter comes either way.
+String _prefixOf(String root) => '${root.replaceAll('\\', '/')}/'.toLowerCase();
+
+/// [path] from the repository's root, when it is under [prefix].
+String _fromRoot(String path, String prefix) =>
+    path.toLowerCase().startsWith(prefix)
+        ? path.substring(prefix.length)
+        : path;
+
+/// 🆕A TEST THAT TAKES A MINUTE IS SAID (2026-11-17, card
+/// a-slow-test-cannot-creep; 🗣️유저 11-17 「시험 시간 긴거 줄인다던가?
+/// 넓은검사 너무 기니까」 — 관제 chose the knob). Google gives each size
+/// of test a time and fails the one past it; here it is a WARNING, never a
+/// red (관제, as CLAUDE.md keeps the complexity line: a gate makes the
+/// work a game of the number). A minute because that is what a wait for
+/// what cannot come costs since 10-16 (`waitPatience`, test/helpers/
+/// poll_until.dart): on 10-19 the large share of the heaviest files was
+/// such waits, each one test of 60 s and more — and one that comes back
+/// says nothing unless the run says it. Per TEST, from the report's own
+/// testStart → testDone, not per file from a machine's record: a file's
+/// time is many tests. ⚠️BUT A CROWDED MACHINE STRETCHES A TEST TOO, so
+/// one named is one to run alone, not yet a wait. 🔬The reports this
+/// machine still held that day (134 batches, 126,700 tests): 30 tests of a
+/// minute or more, most of them 61–79 s — and the one of them run alone
+/// (layer_delete_test's cancel, 67 s in a batch) took 5 s, its file whole.
+const kSlowTest = Duration(seconds: 60);
+
+/// A test that took [kSlowTest] or more ([slowTests]).
+typedef SlowTest = ({String path, String name, int ms});
+
+/// The tests [report] says took [kSlowTest] or more, slowest first, each by
+/// its file's path from [root]. ⛔Not a file's load (the compile, which a
+/// crowded machine stretches) nor a test that never finished — the batch
+/// cut by its silence says those ([readReport]).
+List<SlowTest> slowTests(String report, {required String root}) {
+  final read = readReport(report);
+  final prefix = _prefixOf(root);
   return [
-    for (final MapEntry(key: suite, value: p) in path.entries)
-      (
-        path: p.toLowerCase().startsWith(prefix)
-            ? p.substring(prefix.length)
-            : p,
-        ms: first[suite] != null && last[suite] != null
-            ? last[suite]! - first[suite]!
-            : null,
-        green: !ended || last[suite] == null || open[suite] != 0
-            ? null
-            : !red.contains(suite),
-      ),
-  ];
+    for (final test in read.tests)
+      if (test.end case final end?
+          when !test.isLoading &&
+              end - test.start >= kSlowTest.inMilliseconds)
+        (
+          path: _fromRoot(read.paths[test.suite] ?? '?', prefix),
+          name: test.name,
+          ms: end - test.start,
+        ),
+  ]..sort((a, b) => b.ms.compareTo(a.ms));
 }
 
 /// Each test file's time among [runs] ([suiteRuns]).
@@ -207,18 +322,40 @@ List<List<String>> timedBatches(
   for (var count = (workOf(files, known) / work).ceil().clamp(1, files.length);
       ;
       count++) {
-    final batches = [for (var i = 0; i < count; i++) <String>[]];
-    final load = List.filled(count, 0);
-    for (final file in ordered) {
-      var least = 0;
-      for (var i = 1; i < count; i++) {
-        if (load[i] < load[least]) least = i;
-      }
-      batches[least].add(file);
-      load[least] += known[file] ?? kUntimedFileMs;
-    }
+    final batches = dealt(
+      ordered,
+      count,
+      (file) => known[file] ?? kUntimedFileMs,
+    );
     if (count == files.length || batches.every(fits)) return batches;
   }
+}
+
+/// [ordered] dealt to [count] piles, each file to the pile that holds the
+/// least of [weightOf] so far — the first such pile when two hold the same.
+/// Given longest first ([longestFirst]), this is the longest-processing-time
+/// rule: the heavy files spread first and the light ones even the piles out.
+///
+/// The same deal cuts this machine's batches ([timedBatches]) and CI's
+/// shards (tool/test_shard.dart) — and nothing in it is left to chance, so
+/// every shard that deals the same files by the same weights holds the
+/// same piles.
+List<List<String>> dealt(
+  List<String> ordered,
+  int count,
+  int Function(String file) weightOf,
+) {
+  final piles = [for (var i = 0; i < count; i++) <String>[]];
+  final load = List.filled(count, 0);
+  for (final file in ordered) {
+    var least = 0;
+    for (var i = 1; i < count; i++) {
+      if (load[i] < load[least]) least = i;
+    }
+    piles[least].add(file);
+    load[least] += weightOf(file);
+  }
+  return piles;
 }
 
 bool _anyLength(List<String> batch) => true;

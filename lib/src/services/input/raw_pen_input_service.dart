@@ -87,8 +87,8 @@ class RawPenInputService {
     if (debugPollOverride == null) {
       _bridge ??= QaTabletBridge.instanceOrNull;
       final bridge = _bridge;
-      if (bridge == null || !bridge.rawInputSupported) {
-        return; // Older DLL or non-Windows — stay idle.
+      if (bridge == null) {
+        return; // Not Windows — stay idle.
       }
       _observing = bridge.startRawInput();
       if (!_observing) {

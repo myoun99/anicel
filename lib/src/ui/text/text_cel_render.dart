@@ -8,6 +8,7 @@ import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
 import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
+import 'canvas_letter_shapes.dart';
 import 'canvas_letter_style.dart';
 import 'text_measure.dart';
 
@@ -38,6 +39,7 @@ class TextCelLayout {
     required this.style,
     required this.pad,
     required this.textSize,
+    required this.letterSize,
   }) : _letters = letters,
        _lines = lines;
 
@@ -57,6 +59,10 @@ class TextCelLayout {
   /// The text block's laid-out size.
   final ui.Size textSize;
 
+  /// The letters' size as they are drawn: the style's, or less where the
+  /// block was shrunk to fit ([layoutTextCel]'s `maxWidth`).
+  final double letterSize;
+
   /// The letters, set for drawing — stroke under fill, smooth or hard
   /// (the passes a text on a cel is drawn in too).
   final CanvasLetterPasses<TextPainter> _letters;
@@ -69,21 +75,71 @@ class TextCelLayout {
   void paint(ui.Canvas canvas) {
     final background = style.backgroundColor;
     if (background != null) {
-      // The アフレコ box: text bounds plus breathing room, the SE red-box
-      // vocabulary.
-      _letters.paintBoxBehind(
-        canvas,
-        ui.Rect.fromLTWH(
-          topLeft.dx - pad,
-          topLeft.dy - pad,
-          textSize.width + pad * 2,
-          textSize.height + pad * 2,
-        ),
-        background,
-      );
+      _letters.paintBoxBehind(canvas, box, background);
     }
     _letters.paintAt(canvas, topLeft, within: paintBounds, lines: _lines);
   }
+
+  /// The アフレコ box: text bounds plus breathing room, the SE red-box
+  /// vocabulary.
+  ui.Rect get box => ui.Rect.fromLTWH(
+    topLeft.dx - pad,
+    topLeft.dy - pad,
+    textSize.width + pad * 2,
+    textSize.height + pad * 2,
+  );
+
+  /// The layers [paint] draws, bottom to top, as the shapes each covers in
+  /// its one paint — the box behind the letters, then the letters' own
+  /// layers ([letterLayers]) — for an engine that sets the letters itself
+  /// (`engine_letters.dart`).
+  List<CanvasLetterShapes> get shapes => [
+    if (style.backgroundColor case final background?)
+      rectLayer(box, background),
+    ...letterLayers,
+  ];
+
+  /// [rect] in [argb] as a layer of the block's, cut as its box is
+  /// ([CanvasLetterPasses.boxIsHard]): the box behind its letters — its
+  /// own, or the one a host has grown round it (the SE name tag's,
+  /// `se_name_tag_paint.dart`) — and a rule drawn in that box.
+  CanvasLetterShapes rectLayer(ui.Rect rect, int argb) => (
+    argb: argb,
+    hard: _letters.boxIsHard,
+    outline: 0,
+    shapes: [CanvasLetterRect(rect)],
+  );
+
+  /// The letters' own layers ([CanvasLetterPasses.layers]), bottom to top
+  /// — [shapes] with no box behind them.
+  List<CanvasLetterShapes> get letterLayers => [
+    for (final (:set, :pass, :hard) in _letters.layers)
+      if (pass.draws(style))
+        _shapesOf(set, pass.paintOf(style), hard: hard),
+  ];
+
+  /// The shapes [set] covers in a pass that draws the block's one style —
+  /// the letters in [paint] (null being their own colour), cut in [hard]
+  /// where it is named — and the lines they wear there, every one of them
+  /// the style's.
+  CanvasLetterShapes _shapesOf(
+    TextPainter set,
+    ui.Paint? paint, {
+    required int? hard,
+  }) => (
+    argb: hard ?? paint?.color.toARGB32() ?? style.color,
+    hard: hard != null,
+    outline: paint?.style == ui.PaintingStyle.stroke ? paint!.strokeWidth : 0,
+    shapes: [
+      for (final clusters in canvasLetterClustersOf(set, topLeft))
+        CanvasLetterClusters(
+          letters: style,
+          size: letterSize,
+          clusters: clusters,
+        ),
+      for (final rect in _lines.rects) CanvasLetterRect(rect),
+    ],
+  );
 
   /// Where the block may paint, in canvas coordinates: ⚠️a letter's size
   /// past the ink the layout counts — that box is the lines' own, and a
@@ -232,5 +288,6 @@ TextCelLayout layoutTextCel({
     style: style,
     pad: pad,
     textSize: textSize,
+    letterSize: drawnSize,
   );
 }

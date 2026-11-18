@@ -30,6 +30,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
+import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_row_filter.dart';
 import 'frame_ruler_view.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
@@ -104,8 +105,8 @@ class TimelineGridHooks {
     this.onHoverMediaAssetOnLayer,
     this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
     this.onOpenCameraPath,
@@ -118,7 +119,7 @@ class TimelineGridHooks {
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
-    this.onToggleLayerCollapsed,
+    this.onToggleGroupFold,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
@@ -157,13 +158,13 @@ class TimelineGridHooks {
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.legend = const TimelineGridLegend(),
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    this.attachFoldedRowIds = const {},
     this.dragPreview,
     this.opacityDragPreview,
     this.spillInLeadFrames = const {},
     this.cutId,
     this.cutEndDrag,
+    this.rulerMarkers,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
@@ -179,6 +180,10 @@ class TimelineGridHooks {
   /// playing). ONLY the cursor layer, the ruler and the lane labels
   /// subscribe — a tick never rebuilds the grid or its cells (the
   /// playback-performance architecture).
+  ///
+  /// ↩️F-587 (유저 2026-11-13): the lane labels hear it and keep what they
+  /// showed while a run plays — they are asked again as it ends
+  /// (`PlaybackStillness`).
   final ValueListenable<int> frameCursor;
 
   /// Repaints the ruler's cached-range green strip as frames warm; never
@@ -361,13 +366,11 @@ class TimelineGridHooks {
   final void Function(List<Layer> displayLayers, int slot, String path)?
   onDropMediaAssetBetweenLayers;
 
-  /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
-  /// that opens the window carrying mute/solo/fader/pan. Null hides the
-  /// speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// The S row's speaker — a mute toggle — and its Total bar's release, in
+  /// the blend column (F-577). Null hides each.
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// A reference row's file button: the popover that bakes it (미디어 배치
   /// 라운드 3). Null hides the button.
@@ -424,16 +427,18 @@ class TimelineGridHooks {
   /// other timelines, when the layer is a row they share. Null shows none.
   final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
-  /// The row twirl that folds a FOLDER's members (the attach fold has its
-  /// own hook because it is session state, not layer state).
+  /// The GROUP-FOLD twirl's press — a folder folding its members ([side]
+  /// null), a base folding its attach rows on [side] (I-175). One verb:
+  /// the host's was one already behind the two hooks this was (I-32 — a
+  /// folder's and a base's both pressed `toggleGroupFold`).
   ///
-  /// (x-sheet) The GROUP-FOLD twirl's two commits — a folder folding its members, an
-  /// attach base folding its rows. R5 #2: the sheet already HID what those
-  /// sets say (it reads [collapsedAttachBaseIds] and `subtreeCollapsed`
-  /// like the rail does), but it carried no control to say it with, so a
-  /// folder could only be folded from the other panel. One skeleton, one
-  /// row vocabulary — a column that shows a fold has to offer it.
-  final ValueChanged<LayerId>? onToggleLayerCollapsed;
+  /// (x-sheet) R5 #2: the sheet already HID what the folds say (it reads
+  /// [attachFoldedRowIds] and `subtreeCollapsed` like the rail does), but
+  /// it carried no control to say it with, so a folder could only be
+  /// folded from the other panel. One skeleton, one row vocabulary — a
+  /// column that shows a fold has to offer it.
+  final void Function(LayerId layerId, AttachedPlacement? side)?
+  onToggleGroupFold;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -554,10 +559,12 @@ class TimelineGridHooks {
   /// (`isLayerClipping`).
   final bool Function(LayerId layerId)? layerClipsOf;
 
-  /// A LIVE read of a row's group fold — a folder's, or a base's attach
-  /// group — for the same reason as [laneOpenOf]: [collapsedAttachBaseIds]
-  /// and the row's layer reach here a build late (`isGroupFoldOpen`).
-  final bool Function(LayerId layerId)? groupFoldOpenOf;
+  /// A LIVE read of a row's group fold as a press on [side] reaches it — a
+  /// folder's, or a base's attach rows — for the same reason as
+  /// [laneOpenOf]: the row's layer reaches here a build late
+  /// (`isGroupFoldOpen`).
+  final bool Function(LayerId layerId, AttachedPlacement? side)?
+  groupFoldOpenOf;
 
   /// A LIVE read of a lane GROUP's twirl, named by the group's header, for
   /// the same reason as [laneOpenOf] (`isLaneGroupOpen`).
@@ -592,10 +599,10 @@ class TimelineGridHooks {
   onSetLaneGroupBasis;
 
   /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// Sections folded to one stub row (SE/camera; drawing never folds) and
   /// the gutter-label toggle.
@@ -610,16 +617,10 @@ class TimelineGridHooks {
   /// ([TimelineGridLegend], F-408 ②).
   final TimelineGridLegend legend;
 
-  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// rows contribute no display rows; the base row's chevron reflects it.
-  ///
-  /// (x-sheet) Bases whose attach group is twirled shut (UI-R20 #9): their attach
-  /// columns drop — the shared view state; the fold toggle lives on the
-  /// horizontal rail.
-  final Set<LayerId> collapsedAttachBaseIds;
-
-  /// The base-row chevron's toggle; null hides the twirl UI.
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rows a base's attach fold takes off the screen (UI-R20 #9; by
+  /// side since I-175): they contribute no display rows — and, on the
+  /// sheet, no columns.
+  final Set<LayerId> attachFoldedRowIds;
 
   /// The session's edit-drag preview channel: a comma-drag step rebuilds
   /// only the dragged layer's row (its gate) and the cursor overlay —
@@ -646,6 +647,11 @@ class TimelineGridHooks {
   /// grip that end-trims the ACTIVE cut through the session's trim
   /// channel; the line follows the live preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// The cut's ruler markers and their verbs (I-169): the ruler across and
+  /// the sheet's rail down show the one set. Null shows none (a grid in no
+  /// cut).
+  final RulerMarkerHooks? rulerMarkers;
 
   /// #29: the (project, cut) world the rows' resolvers answer from — see
   /// [TimelineRowCellsPainter.substrateGeneration]. Joins the row MEMO key
@@ -710,7 +716,7 @@ class TimelineGridHooks {
         lanesForLayer: lanesForLayer,
         hiddenSections: hiddenSections,
         rowFilter: rowFilter,
-        collapsedAttachBaseIds: collapsedAttachBaseIds,
+        attachFoldedRowIds: attachFoldedRowIds,
         activeLayerId: activeLayerId,
         fxEnabledOf: isLayerFxEnabled,
       ),

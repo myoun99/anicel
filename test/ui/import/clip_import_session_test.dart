@@ -5,6 +5,7 @@ import 'package:flutter/material.dart'
     show Builder, MaterialApp, Scaffold, Text, TextButton, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId;
 import 'package:anicel/src/models/canvas_point.dart';
@@ -13,7 +14,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart';
@@ -74,18 +77,24 @@ void main() {
   /// and beside its strokes a render whose blocks the file does not hold, as
   /// the one sample with vectors keeps. Its strokes ([_Strokes.held]): one 0
   /// … 40 across at its row 10, six across, and one record of a kind not
-  /// drawn.
+  /// drawn — and after it a record cut short, for [_Strokes.cut].
   ///
   /// [papered] puts a paper 0x204060 under BG.
   ///
   /// [masked] gives BG a mask that is on, standing 5 across from BG's
   /// top-left: it hides all it covers, and past its edges shows all — its
   /// blocks held, or not in the file.
+  ///
+  /// [clearBg] leaves BG's picture with no ink.
+  ///
+  /// [bgAt] is where BG's top-left stands.
   String writeClip({
     bool troubled = false,
     _Strokes? strokes,
     bool papered = false,
     _Masked? masked,
+    bool clearBg = false,
+    (int, int) bgAt = (120, 50),
   }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
@@ -94,7 +103,7 @@ void main() {
       rows: 1,
     );
     final externals = <String, List<int>>{
-      externalId(1): square(0, 10, (200, 0, 0)),
+      externalId(1): square(0, clearBg ? 0 : 10, (200, 0, 0)),
       externalId(2): square(0, 4, (0, 0, 200)),
       externalId(3): square(0, 6, (0, 200, 0)),
       externalId(4): square(0, 8, (200, 200, 200)),
@@ -103,6 +112,10 @@ void main() {
       externalId(20): [
         ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
         ...vectorStrokeBytes([(0, 0, 1)], flags: 2),
+      ],
+      externalId(21): [
+        ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
+        ...Uint8List(8),
       ],
       externalId(30): blockRecordsBytes({0: Uint8List(256 * 256)}),
       // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
@@ -168,7 +181,7 @@ void main() {
       for (final row in <List<Object?>>[
         [1, '', 256, 1, 0, '', 0, 0, bottom, 0, 0, 0],
         if (papered) [12, 'paper', 1584, 0, 0, '', 0, 0, 0, 2, 0, 0],
-        [2, 'BG', 1, 0, 0, uuidBg, 120, 50, 0, 3, 100, 0],
+        [2, 'BG', 1, 0, 0, uuidBg, bgAt.$1, bgAt.$2, 0, 3, 100, 0],
         [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, onTopOfA, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
         [5, 'under', 1, 0, 0, '', 0, 0, 0, 6, 101, 0],
@@ -242,7 +255,11 @@ void main() {
             'VectorData) VALUES (1, 1, 11, ?)',
             [
               Uint8List.fromList(
-                externalId(strokes == _Strokes.lost ? 97 : 20).codeUnits,
+                externalId(switch (strokes) {
+                  _Strokes.lost => 97,
+                  _Strokes.cut => 21,
+                  _ => 20,
+                }).codeUnits,
               ),
             ],
           );
@@ -461,7 +478,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('app-progress-cancel')));
     await pumpPastTheWaitWindow(tester);
 
-    expect(told, [0.25], reason: 'one picture of four, then the stop');
+    // The bar's first half is the file read; its second the bake
+    // (F-608-Q2).
+    expect(
+      [
+        for (final fraction in told)
+          if (fraction > 0.5) fraction,
+      ],
+      [0.5 + 0.25 / 2],
+      reason: 'one picture of four, then the stop',
+    );
+    expect(told, contains(0.5), reason: 'the database read whole');
     expect(
       projects.sessions,
       hasLength(1),
@@ -477,10 +504,25 @@ void main() {
       isNull,
       reason: 'a stop is not a kill',
     );
+  });
 
-    for (final session in projects.sessions) {
-      session.playbackRig.prerenderScheduler.cancel();
-    }
+  /// F-608-Q2 (유저 2026-11-17: 「내려받는중에 퍼센테이지가 조금이라도
+  /// 안느는게 문제」).
+  test('the read crosses on the road production takes — a worker of its '
+      'own — and the bar hears its database come in', () async {
+    debugWorkersRunHere = false;
+    addTearDown(() => debugWorkersRunHere = true);
+    final told = <double>[];
+
+    final read = await readClipProject(
+      clipPath: writeClip(),
+      isCancelled: () => false,
+      onRead: told.add,
+    );
+
+    expect(read, isNotNull);
+    expect(told, isNotEmpty);
+    expect(told.first, 0);
   });
 
   test('a picture lands where it stands on the canvas', () async {
@@ -516,6 +558,51 @@ void main() {
     expect(alphaAt(27, 37), 255);
     expect(alphaAt(19, 30), 0);
     expect(alphaAt(28, 38), 0);
+  });
+
+  test('a picture with no ink leaves its cel as one never drawn on — '
+      'nothing baked, and no picture of it kept for the screen', () async {
+    final opened = await openedClip(writeClip(clearBg: true));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    final key = session.brushFrameKeyForCut(cut, bg.id, bg.frames.single.id);
+    final store = session.renderCaches.brushFrameStore;
+
+    expect(store.bakedSurfaceOrNull(key), isNull);
+    expect(
+      store.displayCacheOrNull(key),
+      isNull,
+      reason: 'the store drops an empty picture it is given, but keeps the '
+          'screen\'s copy of it — so an empty one is never given',
+    );
+  });
+
+  // 🗣️clip-cels-cut-at-the-canvas-Q1 (유저 2026-11-17): 「벽까지 담는다 —
+  // 앱의 다른 셀과 같은 자리」.
+  test('🎯a picture past the paper is kept on the pasteboard, as the app\'s '
+      'other cels are', () async {
+    // BG stands at (-30, 50): its 10 × 10 square of ink, -30 … -21 across,
+    // lies wholly left of the paper.
+    final opened = await openedClip(writeClip(bgAt: (-30, 50)));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    final store = session.renderCaches.brushFrameStore;
+    final surface = store.bakedSurfaceOrNull(
+      session.brushFrameKeyForCut(cut, bg.id, bg.frames.single.id),
+    )!;
+
+    expect(store.pasteboardReach, PasteboardReach.whole);
+    expect(surface.tiles.keys, [TileCoord(x: -1, y: 0)]);
+    // The tile left of the paper: its column 128 + x is the canvas's x.
+    int alphaAt(int x, int y) =>
+        surface.tiles.values.single.pixels[(y * 128 + 128 + x) * 4 + 3];
+    expect(alphaAt(-30, 50), 255);
+    expect(alphaAt(-21, 59), 255);
+    expect(alphaAt(-31, 50), 0);
   });
 
   test('what cannot be drawn is said by name — a grey layer, a picture its '
@@ -664,6 +751,28 @@ void main() {
     expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
   });
 
+  test('strokes that would not read are said by name, and the layer '
+      'stays, empty — the rest of the file comes in', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.cut));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('celUnreadable', 'lines'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
+  });
+
   test('a vector layer with no stroke is an empty picture — not one 「that '
       'could not be read」 for the render it keeps without blocks', () async {
     final opened = await openedClip(writeClip(strokes: _Strokes.none));
@@ -792,6 +901,8 @@ void main() {
       ),
     );
 
+    File(path).setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
+
     final opened = await openedClip(path);
     final session = opened!.session;
     addTearDown(session.dispose);
@@ -808,6 +919,12 @@ void main() {
       (asset) => asset.path == clip.filePath,
     );
     expect(asset.carriedAs, isNotNull, reason: 'carried, as a recording is');
+    expect(
+      (asset.sourcePath, asset.carriedAs!.modified),
+      (path, DateTime(2026, 9, 2, 8, 15)),
+      reason: 'taken out of the .clip, with its date — not the moment the '
+          'copy was taken out (F-589)',
+    );
     expect(session.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
     expect(
       File(clip.filePath).existsSync(),
@@ -985,8 +1102,8 @@ void main() {
 }
 
 /// What the vector layer of [writeClip] holds: its strokes, strokes the file
-/// does not hold, or none at all.
-enum _Strokes { held, lost, none }
+/// does not hold, strokes whose last record is cut short, or none at all.
+enum _Strokes { held, lost, cut, none }
 
 /// Whether the file of [writeClip] holds the blocks of BG's mask.
 enum _Masked { held, lost }

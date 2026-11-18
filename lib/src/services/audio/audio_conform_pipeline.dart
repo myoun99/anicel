@@ -458,13 +458,17 @@ class AudioConformPipeline {
   /// There is no eviction any more: a conform lives in the run's scratch
   /// until the save absorbs it, and the room goes when the run does.
   ///
-  /// 🚨★★★**A LONG CONFORM IS MEASURED A WINDOW AT A TIME** — its peaks
-  /// folded as it is read ([peaksFromWindows]), its samples left on disk
-  /// ([conformStaysOnDisk]). This answer used to decode the whole conform to
-  /// count its peaks and hand every sample back, on every open of a project
-  /// that holds one — an hour of dialogue is 0.7 GB of PCM in the worker
-  /// before the store let go of it. Null when the PCM does not read to its
-  /// end: rebuilt, as a conform that will not decode always was.
+  /// 🚨★★★**A LONG CONFORM'S PCM IS NOT READ AT ALL** — its samples stay on
+  /// disk ([conformStaysOnDisk]), and its peaks are the ones the pass folded
+  /// as it made it, read from behind the PCM ([ConformPcmStreamReader.peaks]).
+  /// A short one's PCM is read for the device to play, and not folded.
+  /// ↩️The whole PCM was decoded on every open of a project to count the
+  /// peaks — an hour of dialogue was 0.7 GB in the worker, then (from
+  /// 2026-10-10) a window at a time: 2.6 s of a worker for half an hour of
+  /// stereo, half of it the fold (card
+  /// `a-sound-folds-its-peaks-again-at-every-open`, measured 2026-11-14).
+  /// Null when the conform does not read to its end: rebuilt, as a conform
+  /// that will not decode always was.
   ConformResult? _reuse(
     ConformPcmStreamReader reader,
     MediaByteSource readFrom,
@@ -479,12 +483,7 @@ class AudioConformPipeline {
       return ConformResult(
         outcome: ConformOutcome.reused,
         conformBytes: readFrom,
-        peaks: peaksFromWindows(
-          windows: samples == null ? _windowsOf(reader) : [samples],
-          channels: reader.channels,
-          sampleRate: reader.sampleRate,
-          bucketsPerSecond: bucketsPerSecond,
-        ),
+        peaks: reader.peaks(),
         samples: samples,
         channels: reader.channels,
         sampleRate: reader.sampleRate,
@@ -497,30 +496,11 @@ class AudioConformPipeline {
     }
   }
 
-  /// [reader]'s PCM a window at a time, in order — or a
-  /// [ConformFormatException] where one comes back short of the end.
-  static Iterable<Float32List> _windowsOf(
-    ConformPcmStreamReader reader,
-  ) sync* {
-    for (var start = 0; start < reader.length; start += conformWindowFrames) {
-      final want = reader.length - start < conformWindowFrames
-          ? reader.length - start
-          : conformWindowFrames;
-      yield _read(reader, start, want);
-    }
-  }
-
-  /// All of [reader]'s PCM — a conform short enough to stay in memory.
-  static Float32List _wholeOf(ConformPcmStreamReader reader) =>
-      _read(reader, 0, reader.length);
-
-  static Float32List _read(
-    ConformPcmStreamReader reader,
-    int start,
-    int frames,
-  ) {
-    final samples = reader.readWindow(start, frames).samples;
-    if (samples.length != frames * reader.channels) {
+  /// All of [reader]'s PCM — a conform short enough to stay in memory — or a
+  /// [ConformFormatException] where it comes back short of the end.
+  static Float32List _wholeOf(ConformPcmStreamReader reader) {
+    final samples = reader.readWindow(0, reader.length).samples;
+    if (samples.length != reader.length * reader.channels) {
       throw const ConformFormatException('the conform does not read whole');
     }
     return samples;
@@ -577,12 +557,16 @@ class AudioConformPipeline {
     // 0.1% of drift back in the door. And for a conform another decode made
     // ([conformDecodeRecipe]): the same file decodes to other samples now —
     // an m4a made before 2026-10-09 still holds its encoder's 1,024 frames.
+    // And for peaks folded at another bucket rate — or at none, a conform
+    // written before they were kept (0, [ConformHeader]): they are handed
+    // back as they lie ([_reuse]), so they have to be the ones asked for.
     final settingsMatch =
         existing != null &&
         existing.sampleRate == projectSampleRate &&
         existing.speedNumerator == speedNumerator &&
         existing.speedDenominator == speedDenominator &&
-        existing.decodeRecipe == conformDecodeRecipe;
+        existing.decodeRecipe == conformDecodeRecipe &&
+        existing.peaksPerSecond == bucketsPerSecond;
 
     // FAST PATH: the source still has the length and timestamp it had when
     // this conform was written, so nothing on this machine has touched it
@@ -714,6 +698,7 @@ class AudioConformPipeline {
           frames: pass.frames,
           channels: pass.channels,
           sampleRate: projectSampleRate,
+          peaks: pass.peaks,
           fingerprint: fingerprint,
           // Recorded from the stat taken BEFORE the read, so the hint
           // describes the file this conform actually came from. Re-statting
@@ -777,7 +762,7 @@ class AudioConformPipeline {
     String? cacheError;
     if (scratch != null) {
       try {
-        cachedAt = scratch.keep(header);
+        cachedAt = scratch.keep(header, pass.peaks);
       } on Object catch (error) {
         cacheError = 'could not cache the conform: $error';
       }

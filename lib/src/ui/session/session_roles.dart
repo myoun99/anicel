@@ -113,7 +113,6 @@ abstract interface class ChangeSink {
     bool reveal = false,
     bool filterSparesStanding = true,
   });
-  void refreshLiveAudioSchedule();
   void warmActiveCut();
 }
 

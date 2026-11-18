@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -16,6 +18,8 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkChip;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -35,6 +39,7 @@ import '../../helpers/wait_window.dart';
 /// the table in the timeline's order, wearing the rail's own cells; its
 /// scans and movie files of their own; what it leaves out a row of its own.
 void main() {
+  opensTheEnginesScreens();
   late Directory tempDir;
 
   setUp(() async {
@@ -109,7 +114,6 @@ void main() {
   ) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
   }
 
   Cut cutNamed(EditorSessionManager session, String name) => session
@@ -211,7 +215,7 @@ void main() {
 
     final fit = column(tester, 'fit');
     expect(fit.answersFor(a), MediaFitMode.values);
-    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.contain));
+    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.none));
     expect(fit.appliesTo(scan), isFalse, reason: 'registered, not placed');
     final fitCell = find.byKey(const ValueKey<String>('import-cell-fit-$a'));
     await tester.ensureVisible(fitCell);
@@ -219,12 +223,12 @@ void main() {
     await tester.tap(fitCell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-fit-none')),
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
     );
     await tester.pumpAndSettle();
     expect(
       column(tester, 'fit').cellWordOf(a),
-      importFitLabel(MediaFitMode.none),
+      importFitLabel(MediaFitMode.stretch),
     );
 
     final option = column(tester, 'option');
@@ -548,7 +552,6 @@ void main() {
     final told = watchTheBar(tester);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    session.playbackRig.prerenderScheduler.cancel();
 
     // Two cels and one file: the cels hold two thirds of the bar.
     expectOneBar(told, [1 / 3, 2 / 3, 1]);
@@ -624,5 +627,76 @@ void main() {
     session.undo();
     expect(cuts().where((cut) => cut.name == 'A'), isEmpty);
     expect(openLayers(), isNot(contains('B')));
+  });
+
+  // 🗣️F-595 ② (유저 2026-11-16): 「임포트시 이름왼쪽행으로 불리언버튼
+  // 만들어서 해제되있으면 임포트버튼 눌렀을때 임포트안하도록」.
+  testWidgets('a layer row switched off does not come in — its correction, '
+      'left nothing to ride, comes in as a layer of its own — and every row '
+      'off leaves Import nothing to do', (tester) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      'A2.png',
+      'A1s.png',
+      'B1.png',
+    ]);
+    final session = aSession();
+    await openOn(tester, session, folder);
+    const correction = 'folder:A animation-director';
+    Future<void> press(String row) async {
+      await tester.tap(find.byKey(ValueKey<String>('import-switch-$row')));
+      await tester.pumpAndSettle();
+    }
+
+    VoidCallback? importPress() => tester
+        .widget<ButtonStyleButton>(
+          find.byKey(const ValueKey<String>('import-run-button')),
+        )
+        .onPressed;
+
+    expect(
+      find.named('import-layer-attach-arrow-$correction'),
+      findsOneWidget,
+    );
+    for (final row in ['folder:A', 'folder:B', correction]) {
+      await press(row);
+    }
+    expect(importPress(), isNull);
+    for (final row in ['folder:B', correction]) {
+      await press(row);
+    }
+    expect(
+      find.named('import-layer-attach-arrow-$correction'),
+      findsNothing,
+      reason: 'its symbol does not come in',
+    );
+    bool labelLit(String row) => tester
+        .widget<LayerMarkChip>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is LayerMarkChip && widget.layerId == LayerId(row),
+          ),
+        )
+        .isVisible;
+    expect(
+      labelLit('folder:A'),
+      isFalse,
+      reason: 'drawn off, as a hidden layer',
+    );
+    expect(labelLit('folder:B'), isTrue);
+    List<Cut> cuts() => session.repository.requireProject().tracks.first.cuts;
+    final before = {for (final cut in cuts()) cut.id};
+    await importAll(tester, session);
+
+    final [landed] = [
+      for (final cut in cuts())
+        if (!before.contains(cut.id)) cut,
+    ];
+    Iterable<Layer> named(String name) =>
+        landed.layers.where((layer) => layer.name == name);
+    expect(named('B'), hasLength(1));
+    final [a] = named('A').toList();
+    expect(a.attachedToLayerId, isNull);
+    expect(a.frames, hasLength(1), reason: 'A1s alone — no A1, no A2');
   });
 }

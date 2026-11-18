@@ -12,6 +12,7 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🗣️F-192 (유저 2026-09-27): 「컷의 f.i은 빈공간에서가 생기는게 아니라,
 /// 컷의 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음. 화이트인은 쌩
@@ -45,6 +46,7 @@ void main() {
   }
 
   Future<void> pumpArea(WidgetTester tester, EditorSessionManager s) async {
+    await itsToolsOpen(tester, s.renderCaches.framePictureStore);
     final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     final cameraView = ValueNotifier<bool>(false);
     final cameraDim = ValueNotifier<double>(0.5);

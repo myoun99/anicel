@@ -49,6 +49,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
@@ -61,6 +62,7 @@ import '../../helpers/text_finders.dart';
 /// under the preview, the cut's rows as the timeline draws them: a switch on
 /// every row, a block for every drawing.
 void main() {
+  opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -141,7 +143,7 @@ void main() {
                 layers: [
                   drawing('paper', 'Paper', [
                     frame('p1'),
-                  ], mark: const LayerMark(process: LayerProcess.paper)),
+                  ], mark: const LayerMark.paper(LayerProcess.key)),
                   drawing('a', 'A', [frame('f1'), frame('f2')]),
                   drawing(
                     'a-color',
@@ -359,7 +361,7 @@ void main() {
     // The kinds' defaults: 셀 and 미술. The filters': 기준 and 부속 on, 시트
     // off. And the label reads its own name — nothing has left its rule.
     expect(pill(tester, 'export-cels-kind-cel').selected, isTrue);
-    expect(pill(tester, 'export-cels-kind-art').selected, isTrue);
+    expect(pill(tester, 'export-cels-kind-image').selected, isTrue);
     expect(pill(tester, 'export-cels-kind-conte').selected, isFalse);
     expect(pill(tester, 'export-cels-kind-direction').selected, isFalse);
     expect(pill(tester, 'export-cels-select-base').selected, isTrue);
@@ -443,6 +445,8 @@ void main() {
 
     Future<void> pickTheKeyLabelAgain() async {
       await tapKey(tester, 'export-cels-label-picker');
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
@@ -1120,7 +1124,7 @@ void main() {
       ExportCelKind.cel: strings.exCels,
       // The conte ROW's word (콘티) — not the sheet panel's (콘티 용지).
       ExportCelKind.conte: strings.tlKindStoryboard,
-      ExportCelKind.art: strings.exArtLabel,
+      ExportCelKind.image: strings.tlKindImage,
       ExportCelKind.direction: strings.exSelDirection,
       // A document wears its panel's name.
       ExportCelKind.timesheet: strings.panelTimesheet,
@@ -1149,6 +1153,8 @@ void main() {
     );
 
     await tapKey(tester, 'export-cels-label-picker');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('layer-mark-option-none')));
     await tester.pumpAndSettle();
@@ -1191,6 +1197,8 @@ void main() {
     );
 
     await tapKey(tester, 'export-cels-take-picker');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('layer-take-option-latest')),
@@ -1211,6 +1219,8 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('layer-take-option-latest')),
     );
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, isNull);
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
@@ -1257,9 +1267,9 @@ void main() {
     expect(state.debugSpecs.cels.applyPaper, isFalse);
     expect(pill(tester, 'export-cels-apply-paper').selected, isFalse);
 
-    await tapKey(tester, 'export-cels-kind-art');
+    await tapKey(tester, 'export-cels-kind-image');
     expect(state.debugSpecs.cels.kinds, {ExportCelKind.cel});
-    expect(pill(tester, 'export-cels-kind-art').selected, isFalse);
+    expect(pill(tester, 'export-cels-kind-image').selected, isFalse);
   });
 
   testWidgets('🗣️접두사: a text field a kind in the naming module — what is '
@@ -1281,7 +1291,7 @@ void main() {
       {
         ExportCelKind.cel: '',
         ExportCelKind.conte: '',
-        ExportCelKind.art: '_',
+        ExportCelKind.image: '_',
         ExportCelKind.direction: '_',
         ExportCelKind.timesheet: '_',
         ExportCelKind.envelope: '_',
@@ -1294,9 +1304,9 @@ void main() {
     expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.cel), 'k_');
     expect(tester.exportPreviewLine, 'k_A1.png · 1 / 2');
 
-    await tester.enterText(field(ExportCelKind.art), '');
+    await tester.enterText(field(ExportCelKind.image), '');
     await tester.pump();
-    expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.art), '');
+    expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.image), '');
 
     // The field typed in last pulled the column to itself.
     final reset = find.descendant(
@@ -1309,7 +1319,7 @@ void main() {
     await tester.pump();
     expect(state.debugSpecs.cels.naming, const ExportCelNaming());
     expect(typedIn(ExportCelKind.cel), '');
-    expect(typedIn(ExportCelKind.art), '_');
+    expect(typedIn(ExportCelKind.image), '_');
     expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 

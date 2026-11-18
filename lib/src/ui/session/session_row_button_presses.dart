@@ -1,5 +1,11 @@
 import '../../models/attached_layer_resolve.dart'
-    show attachRowWearsBaseComposite, attachedLayersOf;
+    show
+        attachGroupSideOf,
+        attachRowWearsBaseComposite,
+        attachSidesReached,
+        attachedLayersOf,
+        groupFoldOpen;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -7,9 +13,8 @@ import '../../models/layer_kind.dart';
 import '../../models/track_row_twirls.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart'
-    show cutPositionOf, cutWritingRow, layerAnywhereOrNull, rowTwirlsOf;
+    show layerAnywhereOrNull, rowTwirlsOf, stackWritingRow;
 import '../editor_session_manager.dart';
-import '../text/readout_text.dart' show columnValueText;
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsOpacityControl, layerRowWearsFxSwitch;
 import '../timeline/lane_graph.dart'
@@ -17,13 +22,11 @@ import '../timeline/lane_graph.dart'
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
-import '../timeline/se_sound_lane_policy.dart' show seSoundTotalVolumeLaneId;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
 /// them — the one wiring behind the timeline rail (the x-sheet's column
-/// headers are that rail stood up), the storyboard's rows, and the SE
-/// mixer their speaker opens.
+/// headers are that rail stood up) and the storyboard's rows.
 ///
 /// 🚨A PRESS INSIDE THE ROW SELECTION IS A PRESS ON EVERY SELECTED ROW, as
 /// one undo; outside it, that row's alone (row-buttons-act-on-the-selection,
@@ -141,14 +144,18 @@ class SessionRowButtonPresses {
     description: 'Toggle layer lanes',
   );
 
-  /// The GROUP fold: ONE chevron with two verbs (`timelineGroupFoldFor`) — a
-  /// folder's own fold, or the attach group riding a base — so across the
-  /// selection a folder and a base fold together (I-32).
-  void toggleGroupFold(LayerId pressed) =>
+  /// The GROUP fold: a folder's own fold, or — across the selection — the
+  /// attach group riding a base, BOTH its sides (🗣️I-175-Q5 (가) 「양쪽 다 —
+  /// 지금처럼」), so a folder and a base fold together (I-32). With [side],
+  /// one HALF of a base's fold (I-175): its attach rows on that side, and
+  /// across the selection that side of every base and every folder's own
+  /// fold (🗣️I-175-Q3 (가) 「폴더도 접힌다 — 누른 반쪽은 레이어마다 같은
+  /// 쪽」). Open or shut is the one predicate's ([groupFoldOpen]).
+  void toggleGroupFold(LayerId pressed, AttachedPlacement? side) =>
       session.rowSelectionVerbs.pressAcross(
         pressed,
-        valueOf: _groupOpen,
-        flip: _toggleGroupOf,
+        valueOf: (id) => _groupOpen(id, side),
+        flip: (id) => _toggleGroupOf(id, side),
         description: 'Toggle group fold',
       );
 
@@ -405,32 +412,37 @@ class SessionRowButtonPresses {
     ];
   }
 
-  bool? _groupOpen(LayerId id) {
+  bool? _groupOpen(LayerId id, AttachedPlacement? side) {
     final layer = _row(id);
     final layers = _stackOf(id);
     if (layer == null || layers == null) {
       return null;
     }
-    if (!layer.kind.groupsLayers && attachedLayersOf(id, layers).isEmpty) {
-      return null;
-    }
-    return !layer.collapsed;
+    return groupFoldOpen(layer, layers, side: side);
   }
 
-  void _toggleGroupOf(LayerId id) {
+  void _toggleGroupOf(LayerId id, AttachedPlacement? side) {
     if (_row(id)?.kind.groupsLayers ?? false) {
       session.folders.toggleLayerCollapsed(id);
       return;
     }
-    _toggleAttachFoldOf(id);
+    _toggleAttachFoldOf(id, side);
   }
 
-  /// A base's attach group, folded or opened — undoable like the lane
+  /// A base's attach rows on the sides a press reaches
+  /// ([attachSidesReached]), folded or opened — undoable like the lane
   /// twirl beside it (「아무튼 레이어에 있는 버튼 싹다」), which it was not
-  /// until I-32 pressed it across a selection. The base's own `collapsed`,
-  /// the folder's field and command (F-360).
-  void _toggleAttachFoldOf(LayerId baseId) {
-    if (!(_row(baseId)?.collapsed ?? false)) {
+  /// until I-32 pressed it across a selection. The base's own
+  /// `foldedAttaches` (F-360, I-175).
+  void _toggleAttachFoldOf(LayerId baseId, AttachedPlacement? side) {
+    final base = _row(baseId);
+    final layers = _stackOf(baseId);
+    if (base == null || layers == null) {
+      return;
+    }
+    final reached = attachSidesReached(baseId, layers, side: side);
+    final folding = !base.foldedAttaches.containsAll(reached);
+    if (folding) {
       // FOLDING while one of the group's attach rows is active (UI-R24
       // #4): hand the selection to the BASE so the group actually
       // disappears — the active-attach-stays-visible rule otherwise kept
@@ -446,11 +458,16 @@ class SessionRowButtonPresses {
       // Every use the fold shuts hands on, as every use folds (F-302) — the
       // conte pressed in one cut shuts the group in the cut you stand in.
       for (final use in session.rowsFoldingWith(baseId)) {
-        session.handOffCurrentRowOnAttachFold(use);
+        session.handOffCurrentRowOnAttachFold(use, reached);
       }
     }
     // F-302: every use of a linked base folds its group with it.
-    session.folders.toggleAttachGroup(baseId);
+    session.folders.setAttachFolds(
+      baseId,
+      folding
+          ? {...base.foldedAttaches, ...reached}
+          : base.foldedAttaches.difference(reached),
+    );
   }
 
   void previewOpacity(LayerId pressed, double opacity) =>
@@ -464,49 +481,29 @@ class SessionRowButtonPresses {
     }, description: 'Set opacity');
   }
 
-  // ── the SE mixer: the speaker's window, pressed as the speaker ────────
+  // ── the S row's blend cell: its speaker and its Total bar ─────────
 
   void toggleMute(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
     pressed,
-    valueOf: (id) => _ifRow(id, _hasMixer, (id) => _row(id)!.muted),
+    valueOf: (id) => _ifRow(id, _hasSpeaker, (id) => _row(id)!.muted),
     flip: session.layerSwitches.toggleLayerMuted,
     description: 'Toggle layer mute',
   );
 
-  /// Solo is monitoring — never saved, never exported — so it spreads like
-  /// the rest and leaves nothing to undo, as the eye's Solo does (F-125).
-  void toggleSolo(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
-    pressed,
-    valueOf: (id) => _ifRow(
-      id,
-      _hasMixer,
-      (id) => session.visibilitySolo.soloedSeLayerIds.value.contains(id),
-    ),
-    flip: session.visibilitySolo.toggleLayerSolo,
-    description: 'Toggle solo',
-  );
-
-  /// The window's bar (I-145-Q1 「따로 한 값 — 두 입구」): the row's Total,
-  /// written as a value typed into its 「오디오」 group's lane is — one field,
-  /// two doors. The Total holds no keys, so the frame names nothing.
+  /// The Total bar (F-577): the row's Total, its one door (🗣️I-177 —
+  /// `SeSound`). ↩️It wrote through its 「오디오」 group's lane, the other
+  /// door of I-145-Q1 「따로 한 값 — 두 입구」.
   void setTotalVolume(LayerId pressed, double share) =>
       session.rowSelectionVerbs.pickAcross(pressed, (id) {
         final layer = _row(id);
-        if (layer != null && _hasMixer(layer)) {
-          session.laneVerbs.setLaneValueAt(
-            id,
-            seSoundTotalVolumeLaneId,
-            0,
-            columnValueText(share * 100),
-            frameIsGlobal: true,
-            description: 'Set total volume',
-            scaleLinked: false,
-          );
+        if (layer != null && _hasSpeaker(layer)) {
+          session.layerSwitches.setLayerTotalVolume(id, share);
         }
       }, description: 'Set total volume');
 
-  /// The rows the speaker is drawn on (`_muteButton` in the rail row).
-  static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;
+  /// The rows the speaker is drawn on (`_speaker` in the rail row's blend
+  /// cell, F-577).
+  static bool _hasSpeaker(Layer layer) => layer.kind == LayerKind.se;
 
   /// The rows a slider press moves: what the slider of each row it acts on
   /// moves ([_sliderRowsOf]).
@@ -558,14 +555,18 @@ class SessionRowButtonPresses {
     }
   }
 
-  /// The attach layers riding [base] while its group is folded on the rail
-  /// — none while it is open.
+  /// The attach layers riding [base] on a side its fold has shut on the
+  /// rail (I-175) — none while every side is open.
   List<Layer> _foldedRidersOf(LayerId base) {
     final layers = _stackOf(base);
-    if (layers == null || !(_row(base)?.collapsed ?? false)) {
+    final folded = _row(base)?.foldedAttaches ?? const {};
+    if (layers == null || folded.isEmpty) {
       return const [];
     }
-    return attachedLayersOf(base, layers);
+    return [
+      for (final rider in attachedLayersOf(base, layers))
+        if (folded.contains(attachGroupSideOf(rider, layers))) rider,
+    ];
   }
 
   Layer? _row(LayerId id) =>
@@ -580,11 +581,11 @@ class SessionRowButtonPresses {
   /// active one (I-73). ↩️The active cut's, always; a base pressed from
   /// that rail under another cut was then asked about a stack it is not in,
   /// and answered that it carries no attach group.
-  List<Layer>? _stackOf(LayerId id) {
-    final project = session.repository.requireProject();
-    final cutId = cutWritingRow(project, id, standing: session.activeCutId);
-    return cutId == null ? null : cutPositionOf(project, cutId)?.cut.layers;
-  }
+  List<Layer>? _stackOf(LayerId id) => stackWritingRow(
+    session.repository.requireProject(),
+    id,
+    standing: session.activeCutId,
+  );
 
   /// [read] for a row that has the button ([has]); null for one that has
   /// not, or for an id no row answers to.

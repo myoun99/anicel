@@ -193,7 +193,7 @@ typedef _Found = ({_Plane plane, int position, CelPlace place});
 class _CelPlaceIndex {
   _CelPlaceIndex(Project project) {
     for (final asset in project.mediaAssets) {
-      if (asset.carriedAs case final carry?) {
+      if (asset.carriedAs?.token case final carry?) {
         _viewers[carry] = (
           plane: _Plane.viewer,
           position: _viewers.length,
@@ -258,7 +258,7 @@ class _CelPlaceIndex {
         ? _timesheets[key.cutId]
         : isViewerInkKey(key)
         ? _viewers[viewerInkCarryOf(key)]
-        : _drawings[(key.layerId, key.frameId)];
+        : _drawings[key.cel];
     return found ??
         (plane: _Plane.gone, position: 0, place: const GoneCelPlace());
   }

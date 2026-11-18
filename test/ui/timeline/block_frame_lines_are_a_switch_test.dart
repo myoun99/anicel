@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_playhead.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/grid_tile_drawn.dart';
 import 'timeline_cell_probe.dart' show isInbetweenMarkShape;
 import 'timeline_frame_geometry_probe.dart';
 
@@ -306,20 +307,7 @@ void main() {
         }
         final width = ((end - start) * 24 * dpr).ceil();
         final height = (28 * dpr).ceil();
-        Uint8List raster(Int32List ops) {
-          final pixels = Uint8List(width * height * 4);
-          expect(
-            timelineGridRasterTileReference(
-              pixels: pixels,
-              tileWidth: width,
-              tileHeight: height,
-              backgroundRgba: 0,
-              ops: ops,
-            ),
-            0,
-          );
-          return pixels;
-        }
+        Uint8List raster(Int32List ops) => gridTileDrawn(width, height, ops);
 
         expect(
           raster(baked),

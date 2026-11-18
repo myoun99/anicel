@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 import '../core/in_flight.dart';
+import '../core/one_pass_at_a_time.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
@@ -14,8 +17,9 @@ import '../models/cut_id.dart';
 import '../models/movie_cel.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
+import '../native/drawing_engines.dart';
 import 'bitmap_surface_geometry.dart';
+import 'cel_shells.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -25,6 +29,7 @@ import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
 import 'persistence/scratch_file.dart';
 import 'persistence/thaw_in_worker.dart';
+import 'persistence/worker_file_reads.dart';
 import 'undo_surface_snapshot.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
@@ -70,7 +75,26 @@ enum CelRead {
 }
 
 class BrushFrameStore {
-  BrushFrameStore();
+  /// [shells] keeps what the engine holds of a cel a look let go of
+  /// ([keepShellOf]) — the app's engine's where none is given
+  /// ([DrawingEngines.celShells]): every store's looks keep the same.
+  BrushFrameStore({CelShells? shells})
+    : _celShells = shells ?? DrawingEngines.celShells;
+
+  final CelShells _celShells;
+
+  /// The shell of each cel a look let go of ([keepShellOf]), under the kept
+  /// bytes it was read from: what the next look at those bytes is handed
+  /// ([lookAhead]). Hot wins — a cel made hot lets its shell go
+  /// ([_storeHot]) —, and a shell whose bytes are kept no more, or some of
+  /// whose slots the engine let go, is let go where it is asked for.
+  final Map<BrushFrameKey, ({AnicelCelFileRef ref, BitmapSurface shell})>
+  _shells = {};
+
+  /// The shells kept now ([keepShellOf]), for whoever weighs what the
+  /// engine holds of cels that are not hot.
+  Iterable<BitmapSurface> get shells =>
+      _shells.values.map((kept) => kept.shell);
 
   /// Link resolution (L1): every SINGLE-CEL public operation resolves its
   /// key through this first, so linked layers address ONE physical cel —
@@ -180,6 +204,7 @@ class BrushFrameStore {
       return const {};
     }
     final shrinks = wallShrinksTo(reach);
+    final from = _pasteboardReach;
     _pasteboardReach = reach;
     clearDisplayCaches();
     final cut = <BrushFrameKey, BitmapSurface>{};
@@ -204,16 +229,7 @@ class BrushFrameStore {
     // Kept bytes carry no reach: a wall that grows reaches them on their
     // next read, and only one that shrinks has anything of theirs to cut.
     if (shrinks) {
-      final kept = _rewriteKeptCels(
-        skips: (key, ref) => _wallPasses(key, ref, reach),
-        rewrite: (surface) => cutBehindReach(surface, reach),
-        ahead: ahead?.reach == reach ? ahead?.answers : null,
-        stands: (ref) => _standsBehind[ref] = reach,
-      );
-      for (final key in kept.keys) {
-        _recordCelContent(key);
-      }
-      cut.addAll(kept);
+      cut.addAll(_cutKeptCels(reach, from: from, ahead: ahead));
     }
     _dropCutAhead(ahead);
     final named = <BrushFrameKey, WallCut>{};
@@ -231,6 +247,27 @@ class BrushFrameStore {
     _announceCrossings();
     _scheduleCooling();
     return named;
+  }
+
+  /// The kept cels a wall moved [from] one reach to [reach] cuts, cut —
+  /// what [ahead] worked out of them taken — each as it was, behind the
+  /// wall it was kept at.
+  Map<BrushFrameKey, BitmapSurface> _cutKeptCels(
+    PasteboardReach reach, {
+    required PasteboardReach from,
+    required _CutAhead? ahead,
+  }) {
+    final kept = _rewriteKeptCels(
+      skips: (key, ref) => _wallPasses(key, ref, reach),
+      remake: cutBehind(reach),
+      wasBehind: from,
+      ahead: ahead?.reach == reach ? ahead?.answers : null,
+      stands: (ref) => _standsBehind[ref] = reach,
+    );
+    for (final key in kept.keys) {
+      _recordCelContent(key);
+    }
+    return kept;
   }
 
   /// What [adoptPasteboardReach] to [reach] will make of the cels, worked
@@ -266,10 +303,10 @@ class BrushFrameStore {
     if (!wallShrinksTo(reach)) {
       return;
     }
-    final jobs = <_KeptRead>[
-      for (final (from, read) in _keptSources)
+    final jobs = [
+      for (final from in [_coldCels, _fileCels])
         for (final MapEntry(:key, value: ref) in from.entries)
-          if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
+          if (!_wallPasses(key, ref, reach)) (key: key, ref: ref),
     ];
     final hotCels = {..._bakedSurfaces};
     var done = 0;
@@ -283,7 +320,7 @@ class BrushFrameStore {
         _cutHotAhead(key, surface, ahead).whenComplete(counted),
       for (final job in jobs)
         celThawTurns
-            .run(() => _cutKeptAhead(job, ahead))
+            .run(() => _cutKeptAhead(job.key, job.ref, ahead))
             .whenComplete(counted),
     ]);
   }
@@ -304,21 +341,25 @@ class BrushFrameStore {
     }
   }
 
-  /// A KEPT cel's bytes, read as [job] says, cut behind [ahead]'s wall on a
-  /// worker and parked under a name of their own, held in [ahead] by the
-  /// ref they were read off.
-  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead) async {
-    final (:key, :ref, :read) = job;
+  /// A KEPT cel's bytes — [key]'s, by [ref] — read
+  /// ([_keptBlobOffThisThread]) and cut behind [ahead]'s wall on workers,
+  /// parked under a name of their own and held in [ahead] by the ref they
+  /// were read off.
+  Future<void> _cutKeptAhead(
+    BrushFrameKey key,
+    AnicelCelFileRef ref,
+    _CutAhead ahead,
+  ) async {
     try {
-      final blob = read(ref);
+      final blob = await _keptBlobOffThisThread(key, ref);
       if (blob == null) {
         return;
       }
       final standsBehind = _pasteboardReach;
-      final cut = await cutCelInWorker(
+      final cut = await remakeKeptCelInWorker(
         key,
         blob,
-        (from: standsBehind, to: ahead.reach),
+        cutBehind(ahead.reach),
         // ⛔Never the name the cel is parked under: these bytes are not the
         // cel's until the move takes them ([ScratchCelFiles.newPath]) — and
         // the room can tell what was worked out ahead from what was not.
@@ -326,13 +367,11 @@ class BrushFrameStore {
           _scratchNamespace,
           '${anicelCelEntryName(key)}-ahead',
         ),
+        wasBehind: standsBehind,
       );
       ahead.answers[ref] = cut == null
           ? null
-          : (
-              kept: _parkedRef(cut.path, cut.blob),
-              was: laidCelSurface(cut.was, standsBehind: standsBehind),
-            );
+          : _keptRewrite(cut.path, cut.blob, cut.was, standsBehind);
       if (!identical(_cutAhead?.answers, ahead.answers)) {
         _dropCutAhead(ahead);
       }
@@ -389,6 +428,28 @@ class BrushFrameStore {
   final Expando<PasteboardReach> _standsBehind = Expando('stands behind');
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
+
+  /// How many times a cel's revision has moved here ([sourceRevisionOf]) —
+  /// an edit's new one, an undo's way back, a copy, a move to another key,
+  /// a whole store laid anew: for whoever keeps what it read of the cels'
+  /// revisions, and reads them again only once this moved
+  /// (`FramePictures`' kept keys). Every state is put through [_put].
+  ///
+  /// ⛔Not [celPixelRevision]: a copy kept at its source's size gives its
+  /// cel a revision and announces no pixels (`_keepCopy`), and a reader
+  /// waiting on that bump would go on reading the revision it had.
+  int get revisionsMoved => _revisionsMoved;
+  int _revisionsMoved = 0;
+
+  /// [state] made [key]'s — what moves [revisionsMoved] where its revision
+  /// is not the one [key] had.
+  void _put(BrushFrameKey key, BrushFrameDrawingState state) {
+    final had = _frames[key]?.sourceRevision ?? 0;
+    _frames[key] = state;
+    if (state.sourceRevision != had) {
+      _revisionsMoved += 1;
+    }
+  }
 
   /// R27 #13: bumps whenever a cel crosses the EMPTY ↔ has-picture line.
   ///
@@ -508,6 +569,37 @@ class BrushFrameStore {
     celContentRevision.value += 1;
   }
 
+  /// Records every cel's content anew as the app lets go of an engine whose
+  /// device is gone — told by the session's caches (`RenderCaches`), for
+  /// each of its cel stores.
+  ///
+  /// 🚨A DEVICE GONE EMPTIES CELS NO EDIT DID. A tile whose only copy was
+  /// there reads as the picture it landed on (`EngineTileLedger`), and
+  /// what its maker said of its ink was said of the pixels that went
+  /// ([BitmapTile.forgetInk]): a cel that held nothing but what landed
+  /// since the last copy came here is empty now, and one cleared since may
+  /// be drawn again. Its crossing is told as every other is
+  /// ([celContentRevision]) — the block's tint, a frame's key
+  /// (`FramePictures`). ↩️Told by none till 2026-11-16: a frame's key was
+  /// kept over a row its cel no longer drew
+  /// (the_rig_is_wired_the_moment_the_session_is_test.dart).
+  ///
+  /// ⚠️EVERY CEL, not only one holding such a tile: a read between the loss
+  /// and this has laid some already, telling no crossing.
+  void recordWhatWentWithTheDevice() {
+    for (final surface in _bakedSurfaces.values) {
+      for (final tile in surface.tiles.values) {
+        if (tile.isOnlyOnEngine) {
+          tile.forgetInk();
+        }
+      }
+    }
+    for (final key in _bakedSurfaces.keys) {
+      _recordCelContent(key);
+    }
+    _announceCrossings();
+  }
+
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
   /// baked-seeded entry ALIASES the cel's [_bakedSurfaces] truth (the same
   /// immutable surface object), so evicting one freed nothing — the old
@@ -623,10 +715,32 @@ class BrushFrameStore {
     }
     _movieCelHolders[surface] = holders + 1;
     _fitMovieCels();
+    _movieCelChanged(key);
+  }
+
+  /// Lets go of [key]'s movie picture because it is no longer the row's —
+  /// its movie no longer opens, or the frame no longer decodes — where
+  /// [installMovieCel] put one. The revision moves as an install moves it,
+  /// so nothing made with the picture stays shown; a key with none moves
+  /// nothing.
+  ///
+  /// ⛔Not the budget's letting go ([_fitMovieCels]), which keeps the
+  /// revision because what was drawn with the picture is still right.
+  void forgetMovieCel(BrushFrameKey key) {
+    key = _canonicalize(key);
+    if (!_movieCels.containsKey(key)) {
+      return;
+    }
+    _releaseMovieCel(key);
+    _movieCelChanged(key);
+  }
+
+  /// [key]'s movie picture changed: its caches go and its revision moves.
+  void _movieCelChanged(BrushFrameKey key) {
     _displayCaches.remove(key);
     final state = getOrCreateFrame(key);
     _leave(state.sourceRevision);
-    _frames[key] = state.copyWith(sourceRevision: _nextRevision());
+    _put(key, state.copyWith(sourceRevision: _nextRevision()));
     _announcePixels();
   }
 
@@ -670,9 +784,10 @@ class BrushFrameStore {
 
   /// What [surface] holds in RAM — ONE measure for the hot drawings and the
   /// movie pictures, because the two are paid from one budget. The plates of
-  /// the texts a picture carries are tiles like its own, and counted.
-  static int _residentBytes(BitmapSurface surface) =>
-      surface.keptTileCount * surface.tileBytes;
+  /// the texts a picture carries are tiles like its own, and counted; a tile
+  /// of one colour holds no block of its own, and weighs nothing
+  /// (`BitmapTile.ownBytes`).
+  static int _residentBytes(BitmapSurface surface) => surface.keptTileBytes;
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.
@@ -690,7 +805,7 @@ class BrushFrameStore {
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].
   //  - COLD-PARKED: one file per cel in the run's 이사대기 room, holding
   //    the cel encoded + COMPRESSED — the SAME bytes the .anicel archive
-  //    stores. zstd where the engine answered, deflate as the floor, and
+  //    stores. zstd unless the engine refuses, deflate as the floor, and
   //    the blob's codec byte says which (see [compressAnicelPayload] — ONE
   //    place decides). Over-budget hot cels cool here in a background
   //    isolate.
@@ -1037,15 +1152,15 @@ class BrushFrameStore {
   /// • it never throws: a read or a decode that fails leaves the kept bytes
   ///   as they are, and the next read tries again here, as it always did.
   ///
-  /// ⚠️The bytes are still READ here — the saved file's through the
-  /// session's one handle ([_readFileRefBytes]) — so a thaw reads exactly
-  /// what [bakedSurfaceOrNull] would.
+  /// The bytes are read on a worker too ([_keptBlobOffThisThread]) — the
+  /// very bytes [bakedSurfaceOrNull] would read here, by a handle of the
+  /// worker's own.
   Future<void> thawAhead(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
   }) {
     key = _canonicalize(key);
-    if (_bakedSurfaces.containsKey(key) || _keptAt(key, canvasSize) == null) {
+    if (!_thawsAt(key, canvasSize)) {
       return Future<void>.value();
     }
     return _thawing.join(
@@ -1056,31 +1171,152 @@ class BrushFrameStore {
 
   final InFlight<BrushFrameKey, void> _thawing = InFlight();
 
-  /// [key]'s kept bytes — while they are what [keptNow] names — thawed on a
-  /// worker by [thaw] and kept hot here: the surface kept, or null when the
-  /// cel moved on meanwhile (made hot, kept anew, gone) and keeps what it
-  /// has, or when the bytes would not read.
+  /// Whether reading [key] at [canvasSize] thaws its kept bytes here
+  /// ([currentSurfaceWithoutReplay]) — the work a thaw made ahead takes off
+  /// the UI thread.
+  bool _thawsAt(BrushFrameKey key, CanvasSize canvasSize) =>
+      !_bakedSurfaces.containsKey(key) && _keptAt(key, canvasSize) != null;
+
+  /// [key]'s pixels at [canvasSize] as a look reads them
+  /// ([currentSurfaceWithoutReplay], [CelRead.look]) — what that read would
+  /// thaw here thawed AHEAD, on a worker, as [thawAhead] thaws it, and
+  /// handed over where [thawAhead] keeps it: no hot tier, no place in line,
+  /// no display cache, the kept bytes where they were. What the asker holds
+  /// is outside every budget of this store (`CelLooks` holds it, and says
+  /// for how long).
+  ///
+  /// Where the worker gave nothing — the cel moved on meanwhile, its bytes
+  /// would not read — it is read here as a look always was, and that read
+  /// says why: this throws what it throws.
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) async {
+    key = _canonicalize(key);
+    // A use thawing it ahead ([thawAhead]) thaws it for this look too: the
+    // cel is read hot once that lands, where both at once thawed it twice
+    // and let one go (저장 2026-11-15 20:12). That thaw never throws.
+    await _thawing.runOf(key);
+    final shell = _shellAt(key, canvasSize);
+    if (shell != null) {
+      return shell;
+    }
+    final thawed = _thawsAt(key, canvasSize)
+        ? await _thawOnAWorker(
+            key,
+            () => _keptAt(key, canvasSize),
+            _layThawed,
+            read: CelRead.look,
+          )
+        : null;
+    return thawed ??
+        currentSurfaceWithoutReplay(
+          key,
+          canvasSize: canvasSize,
+          read: CelRead.look,
+        );
+  }
+
+  /// Keeps what the engine holds of [looked] — [key]'s pixels at
+  /// [canvasSize] as a look read them at [revision] and lets them go — for
+  /// the next look at the same kept bytes ([lookAhead]), which is handed
+  /// them where it would thaw the file again and put every tile back on the
+  /// engine (card `let-go-cels-keep-their-gpu-tiles`; 유저 2026-11-16
+  /// 03:10). Nothing where the cel is hot, edited since, or kept at another
+  /// size: those pixels are not what its kept bytes hold.
+  void keepShellOf(
+    BrushFrameKey key,
+    BitmapSurface looked, {
+    required CanvasSize canvasSize,
+    required int revision,
+  }) {
+    key = _canonicalize(key);
+    final ref = _keptAt(key, canvasSize);
+    if (ref == null ||
+        _bakedSurfaces.containsKey(key) ||
+        sourceRevisionOf(key) != revision) {
+      return;
+    }
+    final shell = _celShells.shellOf(
+      looked,
+      readAgain: () => _readAgain(key, canvasSize, revision),
+    );
+    if (shell == null) {
+      _shells.remove(key);
+      return;
+    }
+    _shells[key] = (ref: ref, shell: shell);
+  }
+
+  /// [key]'s pixels at [canvasSize] as they stood at [revision], read
+  /// again for a shell's tile whose slot the engine let go ([CelShells]) —
+  /// decoded for that read alone ([CelRead.look]). Refused where the cel
+  /// has moved on since: a picture made of that shell is of a content
+  /// nothing asks for.
+  BitmapSurface _readAgain(
+    BrushFrameKey key,
+    CanvasSize canvasSize,
+    int revision,
+  ) {
+    final surface = sourceRevisionOf(key) == revision
+        ? bakedSurfaceOrNull(key, read: CelRead.look)
+        : null;
+    if (surface == null || surface.canvasSize != canvasSize) {
+      throw StateError('a shell of a cel that has moved on was read');
+    }
+    return surface;
+  }
+
+  /// [key]'s shell ([keepShellOf]) where its kept bytes at [canvasSize] are
+  /// still those it was read from and the engine holds every tile of it;
+  /// else none, and a shell that is not so let go.
+  BitmapSurface? _shellAt(BrushFrameKey key, CanvasSize canvasSize) {
+    final kept = _shells[key];
+    if (kept == null) {
+      return null;
+    }
+    if (identical(kept.ref, _keptAt(key, canvasSize)) &&
+        !_bakedSurfaces.containsKey(key) &&
+        _celShells.isWhole(kept.shell)) {
+      return kept.shell;
+    }
+    _shells.remove(key);
+    return null;
+  }
+
+  /// [key]'s kept bytes — while they are what [keptNow] names — read
+  /// ([_keptBlobOffThisThread]) and thawed by [thaw], both on workers, and,
+  /// where the [read] is a use, kept hot here: the surface thawed, or null
+  /// when the cel moved on meanwhile (made hot, kept anew, gone) and keeps
+  /// what it has, or when the bytes would not read. A look
+  /// ([CelRead.look]) is handed its surface, and nothing of it is kept.
   Future<BitmapSurface?> _thawOnAWorker(
     BrushFrameKey key,
     AnicelCelFileRef? Function() keptNow,
-    Future<BitmapSurface> Function(AnicelCelBlob blob) thaw,
-  ) => celThawTurns.run(() async {
+    Future<BitmapSurface> Function(AnicelCelBlob blob) thaw, {
+    CelRead read = CelRead.use,
+  }) => celThawTurns.run(() async {
     // Asked again in its turn: the cel may have moved on in the line.
     final kept = keptNow();
     if (_bakedSurfaces.containsKey(key) || kept == null) {
       return null;
     }
+    bool movedOn() =>
+        _bakedSurfaces.containsKey(key) || !identical(_kept(key)?.ref, kept);
     try {
-      final blob = _keptBlobOrNull(key);
-      if (blob == null) {
+      final blob = await _keptBlobOffThisThread(key, kept);
+      // Asked with the bytes in hand too: a cel made hot while they were
+      // read is not thawed again for nothing.
+      if (blob == null || movedOn()) {
         return null;
       }
       final surface = await thaw(blob);
-      if (_bakedSurfaces.containsKey(key) ||
-          !identical(_kept(key)?.ref, kept)) {
+      if (movedOn()) {
         return null;
       }
-      _keepThawed(key, surface);
+      if (read == CelRead.use) {
+        _keepThawed(key, surface);
+      }
       return surface;
     } on Object {
       // The kept bytes stay as they are; the next read tries again.
@@ -1088,12 +1324,56 @@ class BrushFrameStore {
     }
   });
 
+  /// The bytes [key] is kept as by [ref], read off this thread
+  /// ([WorkerFileReads.read]) — null where they would not read, or where
+  /// [key] no longer keeps [ref] once they are read.
+  ///
+  /// 🗣️Card a-thawed-cel-is-adopted-on-the-ui-thread: these were read HERE
+  /// — the saved file's through the session's one handle
+  /// ([_readFileRefBytes]) — before a worker was handed them, a cel a row
+  /// of a frame at once. 🔬The read alone, where the user keeps a project
+  /// (a Google Drive folder, FNK_02 v35, 2026-11-15): 4.3 ms a cel the
+  /// median and 112 the longest ([WorkerFileReads] holds the table).
+  ///
+  /// 🚨★★★A REF THE CEL NO LONGER KEEPS NAMES BYTES THAT MAY BE ANOTHER'S
+  /// BY NOW ([WorkerFileReads]): a save that moves a stretch of the file
+  /// moves the refs off it first and then writes over it, in another
+  /// isolate, while this read is on its way. So they are made a blob only
+  /// under the very ref they were read by — which every move re-issues
+  /// ([AnicelCelFileRef.movedTo]) — and otherwise never looked at.
+  ///
+  /// ⚠️A worker opens the file by its name, where [_readFileRefBytes] reads
+  /// through the handle the session holds — so a file whose NAME is gone
+  /// (POSIX: deleted or moved under the session) reads there and not here:
+  /// null, and the read that needs the cel reads it there, as after any
+  /// read that fails. A park let go while a worker still reads it is left
+  /// to the room's own ending, as a removal that fails is
+  /// ([ScratchFile.letGo]).
+  Future<AnicelCelBlob?> _keptBlobOffThisThread(
+    BrushFrameKey key,
+    AnicelCelFileRef ref,
+  ) async {
+    final Uint8List bytes;
+    try {
+      bytes = await WorkerFileReads.read(
+        ref.filePath,
+        ref.dataOffset,
+        ref.length,
+      );
+    } on Object {
+      return null;
+    }
+    final keepsIt =
+        identical(_coldCels[key], ref) || identical(_fileCels[key], ref);
+    return keepsIt ? AnicelCelBlob(bytes) : null;
+  }
+
   /// [blob] thawed on a worker as a read here would thaw it — behind the
   /// wall there too.
   Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async {
     final reach = _pasteboardReach;
     return _adoptedBehind(
-      await layCelInWorker(blob, BitmapTile.blocks, reach: reach),
+      await layCelInWorker(blob, reach: reach),
       reach,
     );
   }
@@ -1125,9 +1405,9 @@ class BrushFrameStore {
   /// gone), so carrying on asks the same failing question once per cel
   /// while the user waits.
   ///
-  /// 🚨And the pass then DISARMS its own reschedule. `_scheduleCooling`
-  /// re-runs on completion for exactly the case where a pass could not
-  /// finish — which is this case, for ever: the budget is still exceeded,
+  /// 🚨And the pass then DISARMS the next. Another pass is begun once one
+  /// ends ([_cooling]) for exactly the case where a pass could not finish —
+  /// which is this case, for ever: the budget is still exceeded,
   /// so it fires again immediately, fails again, and spins the isolate for
   /// as long as the room stays unwritable. A test found that as a
   /// 30-second hang; a user would have found it as a hot device.
@@ -1143,15 +1423,37 @@ class BrushFrameStore {
 
   /// [ref] — bytes already in the room, under a name of their own
   /// ([ScratchCelFiles.newPath]) — made [key]'s cold bytes, and the file it
-  /// was kept in before let go.
+  /// was kept in before let go, unless another cel keeps it.
+  ///
+  /// 🚨★★★**A PARKED FILE IS KEPT BY EVERY CEL WHOSE REF IS THAT VERY REF,
+  /// AND GOES WITH THE LAST.** A copy at its source's size keeps its
+  /// source's ref ([copyCel]), as a copy of a stretch of the saved file
+  /// does — so "is this file still kept" is asked of [_coldCels] itself,
+  /// never of a count beside it that could disagree with it.
   void _keepCold(BrushFrameKey key, AnicelCelFileRef ref) {
-    final previous = _coldCels[key];
-    if (previous != null) {
-      _coldBytes -= previous.length;
-      ScratchFile.letGo(previous.filePath);
+    if (!_parkedFileKept(ref)) {
+      _coldBytes += ref.length;
     }
+    final previous = _coldCels[key];
     _coldCels[key] = ref;
-    _coldBytes += ref.length;
+    if (previous != null) {
+      _letGoUnlessKept(previous);
+    }
+  }
+
+  /// Whether a cel keeps [ref]'s file — by the very ref, the one way a
+  /// parked file comes to be kept twice ([_keepCold]).
+  bool _parkedFileKept(AnicelCelFileRef ref) =>
+      _coldCels.values.any((kept) => identical(kept, ref));
+
+  /// [ref]'s file let go, now that a cel let go of it — unless another
+  /// still keeps it ([_keepCold]).
+  void _letGoUnlessKept(AnicelCelFileRef ref) {
+    if (_parkedFileKept(ref)) {
+      return;
+    }
+    _coldBytes -= ref.length;
+    ScratchFile.letGo(ref.filePath);
   }
 
   /// The ref of [blob] parked alone at [path]: one cel, one file.
@@ -1166,14 +1468,12 @@ class BrushFrameStore {
         showsSomething: blob.showsSomething,
       );
 
-  /// Drops [key]'s cold ref and the file behind it.
+  /// Drops [key]'s cold ref, and the file behind it once no cel keeps it.
   void _dropCold(BrushFrameKey key) {
     final gone = _coldCels.remove(key);
-    if (gone == null) {
-      return;
+    if (gone != null) {
+      _letGoUnlessKept(gone);
     }
-    _coldBytes -= gone.length;
-    ScratchFile.letGo(gone.filePath);
   }
 
   /// The blob [ref] names, read back out of the scratch room.
@@ -1198,6 +1498,7 @@ class BrushFrameStore {
     // Behind this store's wall, whatever it came from ([pasteboardReach]).
     final kept = _behind(surface);
     final estimate = _residentBytes(kept);
+    _shells.remove(key);
     _bakedSurfaces.remove(key);
     _bakedSurfaces[key] = kept;
     _hotByteEstimates[key] = estimate;
@@ -1330,7 +1631,7 @@ class BrushFrameStore {
 
   /// A CLOSED project's store lets go of every cel it holds — and the
   /// engine gives back its parking once the collector has found them
-  /// ([QaNativeEngine.giveBackOnceCollected]).
+  /// ([DrawingEngines.giveBackOnceCollected]).
   ///
   /// 🗣️유저 2026-10-29 (F-505): 「무거운거 닫으면 … 초기프로젝트분만큼만
   /// 메모리 존재해야하는데 무거운 프로젝트의 메모리가 아직 남아있는듯함」.
@@ -1345,7 +1646,7 @@ class BrushFrameStore {
   /// closed project's crossings.
   void dispose() {
     for (final surface in [..._bakedSurfaces.values, ..._movieCels.values]) {
-      QaNativeEngine.giveBackOnceCollected(surface);
+      DrawingEngines.giveBackOnceCollected(surface);
     }
     _dropMovieCels();
     _letGoOfEveryCel();
@@ -1353,8 +1654,10 @@ class BrushFrameStore {
 
   void _letGoOfEveryCel() {
     _frames.clear();
+    _revisionsMoved += 1;
     clearDisplayCaches();
     _bakedSurfaces.clear();
+    _shells.clear();
     _coldCels.clear();
     _fileCels.clear();
     _hotByteEstimates.clear();
@@ -1401,9 +1704,9 @@ class BrushFrameStore {
     _clearAllTiers();
     _pasteboardReach = reach;
     for (final entry in cels.entries) {
-      _frames[entry.key] = BrushFrameDrawingState(
-        key: entry.key,
-        sourceRevision: _seeded,
+      _put(
+        entry.key,
+        BrushFrameDrawingState(key: entry.key, sourceRevision: _seeded),
       );
       place(entry.key, entry.value);
       _noteCelContent(entry.key);
@@ -1614,41 +1917,59 @@ class BrushFrameStore {
 
   // --- Cooling (hot → cold) -------------------------------------------
 
-  Future<void>? _activeCooling;
+  /// The cooling passes: one at a time, and another once one ends while
+  /// the budget is still exceeded — work stored while it ran, or that it
+  /// could not cool yet.
+  late final _cooling = OnePassAtATime(
+    // The length guard both mirrors the loop's never-cool-the-last-hot rule
+    // and keeps the next pass from spinning when the one remaining cel alone
+    // exceeds the budget.
+    due: () =>
+        !_coolingStoodDown &&
+        _hotBytes > hotCelByteBudget &&
+        _bakedSurfaces.length > 1,
+    pass: _coolAPass,
+  );
 
   /// Completes when no cooling pass is running (tests).
-  Future<void> drainCooling() async {
-    while (_activeCooling != null) {
-      await _activeCooling;
-    }
-  }
+  Future<void> drainCooling() => _cooling.settled();
 
-  /// Set when a pass could not park a cel, and cleared by anything that
-  /// could plausibly change the answer — a new edit, a project swap.
+  /// Set when a pass could not park a cel — refused, or thrown — and
+  /// cleared by anything that could plausibly change the answer — a new
+  /// edit, a project swap.
   ///
-  /// ⛔Without it the completion re-schedule is an infinite loop: the pass
-  /// stands down BECAUSE the budget is still exceeded, which is the very
-  /// condition the re-schedule fires on.
+  /// ⛔Without it the next pass is an infinite loop: the pass stands down
+  /// BECAUSE the budget is still exceeded, which is the very condition the
+  /// next one is begun on. A pass that throws before its first wait (a
+  /// cel's read back from the engine, flip lane ⓓ) spun it on microtasks
+  /// and starved the screen.
   bool _coolingStoodDown = false;
 
-  void _scheduleCooling() {
-    if (_activeCooling != null ||
-        _coolingStoodDown ||
-        _hotBytes <= hotCelByteBudget ||
-        _bakedSurfaces.length <= 1) {
-      // The length guard both mirrors the loop's never-cool-the-last-hot
-      // rule and keeps the completion re-schedule from spinning when the
-      // one remaining cel alone exceeds the budget.
-      return;
+  void _scheduleCooling() => unawaited(_cooling.ask());
+
+  Future<bool> _coolAPass() async {
+    try {
+      await _coolLoop();
+    } on Object {
+      _coolingStoodDown = true;
+      rethrow;
     }
-    _activeCooling = _coolLoop().whenComplete(() {
-      _activeCooling = null;
-      // Work stored while this pass ran (or that this pass could not cool
-      // yet — e.g. a lone hot cel that stopped the loop) gets a fresh
-      // pass; without this, a skipped schedule during an active pass
-      // would never retry.
-      _scheduleCooling();
-    });
+    return true;
+  }
+
+  /// [surface]'s stream compressed to park ([compressCelOnAWorker]), or null
+  /// where the engine will not give it back: no one waits on a cooling pass
+  /// to be told, so that ends the pass as a refused park ends it, the cel
+  /// still hot (저장's review of the flip lane, 11-09).
+  Future<({int codec, Uint8List bytes})?> _compressedToPark(
+    BrushFrameKey key,
+    BitmapSurface surface,
+  ) async {
+    try {
+      return await compressCelOnAWorker(key, surface);
+    } on GpuReadFailed {
+      return null;
+    }
   }
 
   /// Cools LRU hot cels until the budget holds, one at a time: snapshot
@@ -1660,14 +1981,15 @@ class BrushFrameStore {
   /// A save passes a cold blob through byte-for-byte, so whatever this
   /// wrote is what the .anicel gets. Two consequences worth knowing:
   ///
-  /// • The isolate re-probes for the engine, because statics do not cross
-  ///   an isolate boundary. If it could not find it there while the main
-  ///   isolate could, every cel would cool to deflate and NOTHING would
-  ///   say so — the floor is silent by design. `the_cooling_path_is_zstd_test`
-  ///   is the only thing standing between that and a silent regression.
+  /// • The isolate finds the engine's compressor by its code asset, as the
+  ///   main isolate does. If it could not, every cel would cool wrong and
+  ///   only a test would say so — `the_cooling_path_is_zstd_test` holds a
+  ///   background isolate's cooled cel to zstd. ↩️Until the connection round
+  ///   (connection-round-checklist H) it re-probed for the C engine, and a
+  ///   miss there cooled every cel to deflate in silence.
   /// • A「save at maximum compression」cannot be a flag on the save: the
   ///   cold and file-ref tiers hand over bytes that were compressed here,
-  ///   minutes earlier, at [anicelZstdLevel] — the only level there is.
+  ///   minutes earlier, at zstd's one level (native/compress's `compress`).
   /// The most recently used cel never cools — the one being painted or
   /// displayed must not thrash even if it alone exceeds the budget.
   ///
@@ -1692,9 +2014,12 @@ class BrushFrameStore {
       // 🎯The park path's shape, and DELIBERATELY the same one: these
       // two were matched on purpose (fixing one alone would make it a
       // copy of the other), so they moved together. One copy of the
-      // payload instead of four — see [compressAnicelPayloadInWorker].
-      final body = encodeCelEntryFromSurface(key, surface);
-      final compressed = await compressAnicelPayloadInWorker(body);
+      // payload instead of four — see [compressCelOnAWorker].
+      final compressed = await _compressedToPark(key, surface);
+      if (compressed == null) {
+        _coolingStoodDown = true;
+        return;
+      }
       final blob = AnicelCelBlob.fromCompressedBody(
         key: key,
         canvasSize: surface.canvasSize,
@@ -1789,9 +2114,14 @@ class BrushFrameStore {
   ///
   /// · Hot: the surface itself ([storeCopiedSurface]) — the tiles are shared.
   /// · Kept at [canvasSize]: the bytes as they are kept, which the save
-  ///   writes under the copy's own name. A stretch of the saved file is the
-  ///   copy's stretch too; a parked one is parked again for the copy — one
-  ///   cel, one file, since a parked file goes with its cel ([_dropCold]).
+  ///   writes under the copy's own name — the very ref, a stretch of the
+  ///   saved file or a parked file alike, nothing read and nothing written:
+  ///   a parked file goes once no cel keeps it ([_dropCold]).
+  ///   ↩️Until 2026-11-14 a parked one was parked again for the copy — one
+  ///   cel, one file, when a parked file went with its cel — read and
+  ///   written on the UI thread: 🔬3 ms a cel on the Surface, for small
+  ///   ones (card
+  ///   `a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-thread`).
   /// · Kept at another size: read for this copy alone, laid to
   ///   [canvasSize] and parked — never hot.
   /// · Nothing kept, or bytes that will not read right now: nothing, as a
@@ -1828,47 +2158,60 @@ class BrushFrameStore {
     }
     final size = canvasSize ?? kept.ref.canvasSize;
     final key = _canonicalize(to);
-    if (!kept.parked && kept.ref.canvasSize == size) {
-      _keepCopy(key, () => _fileCels[key] = kept.ref);
+    if (kept.ref.canvasSize == size) {
+      _keepCopy(key, kept);
       return size;
     }
     final blob = _keptBlobOrNull(source);
     if (blob == null) {
       return null;
     }
-    final copy = kept.ref.canvasSize == size
-        ? blob
-        : AnicelCelBlob.ofSurface(
-            key,
-            resizeBitmapSurfaceCanvas(
-              _behind(blob.toSurface()),
-              size,
-            ),
-          );
-    final path = ScratchCelFiles.write(
-      _scratchNamespace,
-      anicelCelEntryName(key),
-      copy.bytes,
-    );
-    if (path == null) {
-      storeBakedSurface(key, copy.toSurface());
-      return size;
+    // ⚠️Laid HERE, on the UI thread, and no step works it out ahead: 🔬card
+    // `a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-thread`
+    // (저장 11-14) read every door that copies, and none copies onto a
+    // canvas of another size — a copy stays in its cut, goes to the cut's
+    // own copy, or parts a link whose cuts a resize keeps at one size
+    // (`linkedCutSiblings`). This is the guard for a cut that is not, where
+    // a copy kept at its source's size would show EMPTY and be lost to the
+    // first stroke (the D5 loss); 🔬~23 ms a cel of 2436×1524.
+    switch (remakeKeptCel(
+      key,
+      blob,
+      laidOn(size, reach: _pasteboardReach),
+      parkAt: ScratchCelFiles.newPath(
+        _scratchNamespace,
+        anicelCelEntryName(key),
+      ),
+    )) {
+      case (blob: final copy, path: final path?, was: _):
+        _keepCopy(key, (ref: _parkedRef(path, copy), parked: true));
+      case (blob: final copy, path: null, was: _):
+        storeBakedSurface(key, copy.toSurface());
+      case null:
+        return null;
     }
-    _keepCopy(key, () => _keepCold(key, _parkedRef(path, copy)));
     return size;
   }
 
-  /// [key] keeping, from now on, only the copy [place] keeps — a picture
-  /// new to its key, and unsaved.
-  void _keepCopy(BrushFrameKey key, void Function() place) {
+  /// [key] keeping, from now on, only [kept] — its source's own bytes, or
+  /// the copy's — a picture new to its key, and unsaved.
+  void _keepCopy(
+    BrushFrameKey key,
+    ({AnicelCelFileRef ref, bool parked}) kept,
+  ) {
     final estimate = _hotByteEstimates.remove(key);
     if (estimate != null) {
       _hotBytes -= estimate;
     }
     _bakedSurfaces.remove(key);
-    _dropCold(key);
-    _fileCels.remove(key);
-    place();
+    if (kept.parked) {
+      _fileCels.remove(key);
+      // Kept BEFORE what the key kept is let go: it can be the very file.
+      _keepCold(key, kept.ref);
+    } else {
+      _dropCold(key);
+      _fileCels[key] = kept.ref;
+    }
     _update(key, _markCacheDirty);
     _markDirty(key);
     _noteCelContent(key);
@@ -1905,7 +2248,7 @@ class BrushFrameStore {
       final revision = state == null ? null : _nextRevision();
       if (state != null) {
         _leave(state.sourceRevision);
-        _frames[to] = state.copyWithKey(to).copyWith(sourceRevision: revision);
+        _put(to, state.copyWithKey(to).copyWith(sourceRevision: revision));
       }
       // 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로
       // 만드는 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」): the
@@ -2186,32 +2529,20 @@ class BrushFrameStore {
       if (key.cutId == cutId) key,
   }.toList();
 
-  /// Adopts a new canvas size for every baked surface (R19: a resize is
-  /// a raster crop/extend — top-left anchored, every tile kept, so
-  /// shrinking then growing back restores exactly). Cold cels transform
+  /// Adopts a new canvas size for [cutId]'s baked surfaces (R19: a resize
+  /// is a raster crop/extend — top-left anchored, every tile kept, so
+  /// shrinking then growing back restores exactly). Kept cels transform
   /// one at a time through a decode→resize→re-encode round trip and STAY
-  /// cold — a 1500-cel project must never materialize whole for a resize.
-  /// Resizes EVERY cel regardless of cut — ONLY for single-canvas
-  /// dedicated stores (the timesheet ink planes, whose band keys spread
-  /// across sentinel cut ids but share one page geometry). The MAIN
-  /// canvas store must never call this: its canvas sizes are per-cut
-  /// (see [resizeBakedSurfaces]).
-  void resizeAllBakedSurfacesSingleCanvas(CanvasSize canvasSize) {
-    final cutIds = <CutId>{
-      for (final key in _bakedSurfaces.keys) key.cutId,
-      for (final key in _coldCels.keys) key.cutId,
-      for (final key in _fileCels.keys) key.cutId,
-    };
-    for (final cutId in cutIds) {
-      resizeBakedSurfaces(canvasSize, cutId: cutId);
-    }
-  }
-
+  /// kept — a 1500-cel project must never materialize whole for a resize.
+  ///
   /// R27: STRICTLY cut-scoped. Canvas sizes are PER-CUT, and the old
   /// store-global resize ran on every cut SWITCH between different
   /// sizes — clipping every other-sized cut's cels to the new active
   /// size (954 of 1024 tiles of an 8K fill deleted by one visit to a
-  /// default-sized cut; the user's data-loss report).
+  /// default-sized cut; the user's data-loss report). ↩️A sheet's ink
+  /// store kept a store-global resize of its own until 2026-11-14 — its
+  /// cels are laid on their paper one at a time now, as a brush comes to
+  /// them (`BrushFrameEditingCoordinator._laysCelsOnItsCanvas`).
   void resizeBakedSurfaces(CanvasSize canvasSize, {required CutId cutId}) {
     for (final key in _bakedSurfaces.keys.toList()) {
       if (key.cutId != cutId) {
@@ -2230,17 +2561,17 @@ class BrushFrameStore {
     _announceCrossings();
     _rewriteKeptCels(
       skips: (key, ref) => key.cutId != cutId || ref.canvasSize == canvasSize,
-      rewrite: (surface) =>
-          resizeBitmapSurfaceCanvas(_behind(surface), canvasSize),
+      remake: laidOn(canvasSize, reach: _pasteboardReach),
     );
   }
 
   /// Rewrites every cel whose bytes are kept in a FILE — parked in the
-  /// run's room or in the saved project — that [rewrite] changes: decoded,
-  /// rewritten, re-encoded and re-parked in the room. [skips] answers from
-  /// the ref alone, before a byte is read; [rewrite] answers null for a
-  /// picture that stays as it is. Returns the pictures rewritten, as they
-  /// were read.
+  /// run's room or in the saved project — that [remake] changes: decoded,
+  /// remade, re-encoded and re-parked in the room ([remakeKeptCel]).
+  /// [skips] answers from the ref alone, before a byte is read; [remake]
+  /// answers null for a picture that stays as it is. Returns the pictures
+  /// remade as they were, behind the wall [wasBehind] names — none where
+  /// it names none.
   ///
   /// 🚨★★★**ONE LOOP, BECAUSE THE TWO WERE THE SAME ALGORITHM.** The
   /// parked half and the project-file half differ in exactly one thing —
@@ -2259,9 +2590,27 @@ class BrushFrameStore {
   /// out from ([cutCelsAhead]) — null for a cel left as it is — and a
   /// ref it holds is not read again. [stands] hears each ref the pass
   /// leaves standing: one left as it is, and one kept anew.
+  ///
+  /// ⚠️**WHAT IS NOT WORKED OUT AHEAD IS WORKED OUT HERE, ON THE UI THREAD —
+  /// and only where nothing could wait for it.** 🔬Card
+  /// `a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-thread`
+  /// (저장 11-14, every caller read): a step behind a wait window works its
+  /// cels out ahead — the pasteboard's ([cutCelsAhead]) and the canvas
+  /// resize's, which thaws them hot before this pass ever sees them
+  /// ([moveCutCelsAhead]). What is left comes here:
+  /// • an open healing a cel kept at a size its cut no longer has;
+  /// • a cel kept anew while the window was up — cooled behind the cut the
+  ///   ahead made of it hot — whose ref the ahead does not hold: an answer
+  ///   can go stale, and never wrong.
+  /// The canvas host's own resize passes here too, and finds every cel at
+  /// its size already: the resize step laid them there. ↩️A sheet's ink
+  /// came here too, every kept cel of every cut as its panel built, until
+  /// 2026-11-14 — it rewrites none now, and lays a cel on its paper as a
+  /// brush comes to it (`BrushFrameEditingCoordinator._laysCelsOnItsCanvas`).
   Map<BrushFrameKey, BitmapSurface> _rewriteKeptCels({
     required bool Function(BrushFrameKey key, AnicelCelFileRef ref) skips,
-    required BitmapSurface? Function(BitmapSurface surface) rewrite,
+    required KeptCelRemake remake,
+    PasteboardReach? wasBehind,
     Map<AnicelCelFileRef, _KeptCelRewrite?>? ahead,
     void Function(AnicelCelFileRef ref)? stands,
   }) {
@@ -2274,7 +2623,7 @@ class BrushFrameStore {
         }
         final worked = ahead != null && ahead.containsKey(ref)
             ? (rewrite: ahead.remove(ref))
-            : _rewriteHere(key, read(ref), rewrite);
+            : _rewriteHere(key, read(ref), remake, wasBehind: wasBehind);
         if (worked == null) {
           continue;
         }
@@ -2292,39 +2641,63 @@ class BrushFrameStore {
         _keepCold(key, next.kept);
         stands?.call(next.kept);
         _markDirty(key);
-        rewritten[key] = next.was;
+        if (next.was case final was?) {
+          rewritten[key] = was;
+        }
       }
     }
     return rewritten;
   }
 
-  /// [key]'s kept [blob] rewritten HERE: its rewrite — null for a picture
-  /// left as it is — or null when there is nothing to read or the room
-  /// would not take the rewritten bytes, and the cel waits for the next
-  /// pass exactly as it was.
+  /// [key]'s kept [blob] remade HERE ([remakeKeptCel]): its rewrite — null
+  /// for a picture left as it is — or null when there is nothing to read or
+  /// the room would not take the remade bytes, and the cel waits for the
+  /// next pass exactly as it was.
   ({_KeptCelRewrite? rewrite})? _rewriteHere(
     BrushFrameKey key,
     AnicelCelBlob? blob,
-    BitmapSurface? Function(BitmapSurface surface) rewrite,
-  ) {
+    KeptCelRemake remake, {
+    PasteboardReach? wasBehind,
+  }) {
     if (blob == null) {
       return null;
     }
-    final was = blob.toSurface();
-    final cut = rewrite(was);
-    if (cut == null) {
+    final remade = remakeKeptCel(
+      key,
+      blob,
+      remake,
+      parkAt: ScratchCelFiles.newPath(
+        _scratchNamespace,
+        anicelCelEntryName(key),
+      ),
+      wasBehind: wasBehind,
+    );
+    if (remade == null) {
       return (rewrite: null);
     }
-    final kept = AnicelCelBlob.ofSurface(key, cut);
-    final path = ScratchCelFiles.write(
-      _scratchNamespace,
-      anicelCelEntryName(key),
-      kept.bytes,
-    );
+    final path = remade.path;
     return path == null
         ? null
-        : (rewrite: (kept: _parkedRef(path, kept), was: was));
+        : (rewrite: _keptRewrite(path, remade.blob, remade.was, wasBehind));
   }
+
+  /// [blob], parked at [path], as a pass keeps it — with the picture it
+  /// [was], laid behind [wasBehind], adopted standing there.
+  static _KeptCelRewrite _keptRewrite(
+    String path,
+    AnicelCelBlob blob,
+    AnicelLaidCel? was,
+    PasteboardReach? wasBehind,
+  ) => (
+    kept: _parkedRef(path, blob),
+    was: switch ((was, wasBehind)) {
+      (final laid?, final behind?) => laidCelSurface(
+        laid,
+        standsBehind: behind,
+      ),
+      _ => null,
+    },
+  );
 
   /// Where a cel that is not hot keeps its bytes, each with how they are
   /// read: parked in the run's room, or in the saved project — what a pass
@@ -2399,7 +2772,7 @@ class BrushFrameStore {
       return cache;
     }
     _putDisplayCache(key, cache);
-    _frames[key] = state.copyWith(inactivePreviewDirty: false);
+    _put(key, state.copyWith(inactivePreviewDirty: false));
     return cache;
   }
 
@@ -2467,7 +2840,7 @@ class BrushFrameStore {
     BrushFrameDrawingState Function(BrushFrameDrawingState state) update,
   ) {
     final next = update(getOrCreateFrame(key));
-    _frames[key] = next;
+    _put(key, next);
     return next;
   }
 }
@@ -2546,8 +2919,9 @@ class AnicelCelFileRef {
 typedef WallCut = ({BitmapSurface picture, int revision});
 
 /// A kept cel rewritten: the bytes it is [kept] as now, in the room, and the
-/// picture it [was] — what the move that rewrote it hands its undo.
-typedef _KeptCelRewrite = ({AnicelCelFileRef kept, BitmapSurface was});
+/// picture it [was] — what the move that rewrote it hands its undo; null
+/// for a pass whose undo keeps none.
+typedef _KeptCelRewrite = ({AnicelCelFileRef kept, BitmapSurface? was});
 
 /// What a move of the wall to [reach] makes of the cels, worked out
 /// ahead of it ([BrushFrameStore.cutCelsAhead]): the kept ones by the ref
@@ -2562,14 +2936,6 @@ typedef _CutAhead = ({
 /// A hot cel made anew on a worker, with the picture it was made [from]:
 /// [made] null where the work left it as it is.
 typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
-
-/// A kept cel and how its bytes are [read] off its [ref], as
-/// [BrushFrameStore.cutCelsAhead] walks them.
-typedef _KeptRead = ({
-  BrushFrameKey key,
-  AnicelCelFileRef ref,
-  AnicelCelBlob? Function(AnicelCelFileRef ref) read,
-});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});

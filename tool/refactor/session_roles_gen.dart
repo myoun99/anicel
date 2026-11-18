@@ -2,7 +2,7 @@
 // Drafts the role interfaces the EditorSessionManager collaborators need
 // (round 8, 2026-09-06), from the map session_map.dart measures.
 //
-//   dart run tool/refactor/session_roles_gen.dart <repoRoot> <session_map.json> <outDir>
+//   dart tool/refactor/session_roles_gen.dart <repoRoot> <session_map.json> <outDir>
 //
 // For every host name a collaborator reads or calls, the host's own
 // declaration is copied as an abstract member (a field becomes a getter,

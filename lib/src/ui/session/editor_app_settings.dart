@@ -81,7 +81,8 @@ class EditorAppSettings {
     AptabaseClient? usageStatsClient,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
-       _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
+       _deviceLanguageCodes =
+           deviceLanguageCodes ?? AppText.deviceLanguageCodes,
        _accentSettingsStore = accentSettingsStore,
        _workspaceColorsStore = workspaceColorsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -205,6 +206,15 @@ class EditorAppSettings {
     AppFrameCountSettings.settings,
     settings,
     _frameCountSettingsStore?.save,
+  );
+
+  /// Keeps the way a count was just switched to be typed — what every
+  /// count window opens on next, across a restart too. 🗣️I-24-open-entry-Q1
+  /// (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」. One writer for every
+  /// window that holds a count field (the count windows, an SE block's, a
+  /// ruler marker's).
+  void rememberFrameCountEntry(FrameCountEntry entry) => setFrameCountSettings(
+    AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
   );
 
   // --- Camera path (I-89 ④) -------------------------------------------------
@@ -416,14 +426,6 @@ class EditorAppSettings {
   /// the machine it ran on.
   final Iterable<String> Function() _deviceLanguageCodes;
 
-  /// What the running app reads. ⛔MUTANT SURVIVES: every test injects the
-  /// device, so emptying this list stays green — it is the one line only
-  /// the real app exercises.
-  static Iterable<String> _platformLanguageCodes() => [
-    for (final locale in PlatformDispatcher.instance.locales)
-      locale.languageCode,
-  ];
-
   Future<void> _restoreLanguageSettings() async {
     final store = _languageSettingsStore;
     if (store == null) {
@@ -440,8 +442,8 @@ class EditorAppSettings {
       _restored(languageSettings, loaded);
       return;
     }
-    languageSettings.value = AppLanguageSettings(
-      programLanguage: AppLanguage.forDevice(_deviceLanguageCodes()),
+    languageSettings.value = AppLanguageSettings.ofDevice(
+      _deviceLanguageCodes(),
     );
   }
 

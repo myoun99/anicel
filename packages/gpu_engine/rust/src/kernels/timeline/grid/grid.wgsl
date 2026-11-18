@@ -11,21 +11,26 @@
 // pixel is straight on the 16-bit scale between ops, as every engine
 // pixel is (blend.wgsl, 1a ①).
 //
-// ⚠️Mine (11-05, 관제 20:29 asked it settled before the app is wired): it
-// is STORED premultiplied, by the app's one premultiply (premultiply.wgsl)
-// — the tile is no engine pixel another pass reads, it is a surface
-// Flutter shows, and Flutter reads one premultiplied. The tiles are clear
-// (timeline_grid_tile_ops.dart, background 0), so a translucent run or an
-// edge's coverage stored straight would show brighter than it is. The
-// wave tile is stored the same way, for the same reason. ↩️Stored
-// straight; no pixel had reached a screen yet.
+// It is STORED straight, as every engine pixel is: the view's screen reads
+// it through R1, which takes straight words, and premultiplies once as it
+// lays it (lay.wgsl) — Flutter reads the screen, not the tile
+// (grid-on-the-engine ⓑ, 관제 2026-11-08 16:42).
+// ↩️⚠️Mine (11-05, 관제 20:29 asked it settled before the app is wired):
+// stored premultiplied, by the app's one premultiply — the tile was to be
+// no engine pixel another pass reads but a surface Flutter shows, and
+// Flutter reads one premultiplied; a translucent run or an edge's coverage
+// stored straight over the clear tile would show brighter than it is. The
+// wave tile is stored so still, for that reason. ↩️Stored straight before
+// that; no pixel had reached a screen yet. ↩️The wave tile is stored
+// straight too since its picture reached a screen through the lay
+// (wave.wgsl, 2026-11-14).
 //
 // Integers only, as fill.wgsl has why. A rounded rect's field is taken in
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's
 // centre is too; its one square root is isqrt_round.
 //
-// Needs shared/isqrt.wgsl, blend/blend.wgsl, laid.wgsl and
-// shared/premultiply.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl and laid.wgsl
+// before it.
 
 struct Params {
   width: u32,
@@ -40,7 +45,8 @@ struct Params {
   pad1: u32,
 }
 
-@group(0) @binding(0) var<uniform> params: Params;
+// A part of the batch's one plane, as the stream is (mod.rs, `GridTile::encode`).
+@group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> ops: array<i32>;
 @group(0) @binding(2) var atlas: texture_2d<u32>;
 @group(0) @binding(3) var tile: texture_storage_2d<__FORMAT__, write>;
@@ -51,6 +57,7 @@ const OP_VLINE: i32 = 3;
 const OP_GLYPH: i32 = 4;
 const OP_RRECT_FILL: i32 = 5;
 const OP_RRECT_RING: i32 = 6;
+const OP_GRIP: i32 = 7;
 
 // A pixel's whole width in q9, and half of it.
 const ONE: i32 = 512;
@@ -96,7 +103,7 @@ fn field_at(at: u32) -> Field {
 // corners `line` tighter, never below square. Every edge is even in q9,
 // so its halves are whole.
 //
-// No hold to what the hole can hold, though the C rasterizer has one: the
+// No hold to what the hole can hold, though the C rasterizer had one: the
 // outer corner is held to the outer box's shorter half and each half of
 // the hole is that half less `line` or more, so a corner `line` tighter
 // always fits.
@@ -137,6 +144,64 @@ fn coverage(f: Field, p: vec2<i32>) -> i32 {
   let outside = i32(isqrt_round(square.x + square.y));
   let within = min(max(reach.x, reach.y), 0);
   return clamp(HALF - (outside + within - radius), 0, ONE);
+}
+
+// How much of the pixel `p` the grip at `at` covers, in q9: the right
+// triangle in its box's one corner the mask names, its legs on the box's two
+// sides there and its far side from the end of one to the end of the other —
+// and that corner cut by the PAPER'S circle, `radius` in from both legs and
+// `bleed` wider (timeline_exposure_comma_drag_handle.dart, blockEdgeGripPath).
+// Each of the three takes half a pixel less the centre's signed distance past
+// it, and the pixel the least of them: where two meet, at a tip, it is the
+// nearer one's.
+fn grip_coverage(at: u32, p: vec2<i32>) -> i32 {
+  let x = 2 * ops[at + 1u];
+  let y = 2 * ops[at + 2u];
+  let w = 2 * ops[at + 3u];
+  let h = 2 * ops[at + 4u];
+  let radius = 2 * ops[at + 5u];
+  let bleed = 2 * ops[at + 6u];
+  let corner = ops[at + 7u];
+  let centre = p * ONE + vec2<i32>(HALF);
+  // (u, v): how far in from the corner, along x and along y.
+  let u = select(centre.x - x, x + w - centre.x, (corner & 10) != 0);
+  let v = select(centre.y - y, y + h - centre.y, (corner & 12) != 0);
+  if (u < -HALF || v < -HALF || u > w + HALF || v > h + HALF) {
+    return 0;
+  }
+  let legs = clamp(HALF + min(u, v), 0, ONE);
+  // The far side, h·u + w·v = w·h, over its length — the sum taken whole on
+  // two words (shared/wide.wgsl), which a long box takes past an i32. A
+  // centre half a pixel or more past it, either way, is all out or all in;
+  // only nearer than that is the sum small enough to divide. The length is
+  // taken of the sides shifted to under 2^15, so its squares stay in a u32:
+  // a box that long loses a part in 2^15 of it.
+  let shift = u32(max(i32(firstLeadingBit(u32(max(w, h)))) - 14, 0));
+  let ws = u32(w) >> shift;
+  let hs = u32(h) >> shift;
+  let side = i32(isqrt_round(ws * ws + hs * hs) << shift);
+  let sum = wide_add(wide_mul_i32(h, u), wide_mul_i32(w, v - h));
+  // HALF·side stays in an i32: each side is held under 2^22 (mod.rs).
+  let reach = HALF * side;
+  var far = clamp(HALF - bitcast<i32>(sum.x) / side, 0, ONE);
+  if (!wide_less(sum, wide(reach))) {
+    far = 0;
+  } else if (!wide_less(wide(-reach), sum)) {
+    far = ONE;
+  }
+  // The round end: the circle's centre `radius` in from both legs, and how
+  // far past it toward the corner the pixel's centre lies. It cuts only
+  // there, where the centre is nearer the corner than the circle's both
+  // ways: anywhere else the paper is square, and a corner of none cuts
+  // nothing the legs keep.
+  let past = max(vec2<i32>(radius) - vec2<i32>(u, v), vec2<i32>(0));
+  var cut = ONE;
+  if (past.x > 0 && past.y > 0) {
+    let square = vec2<u32>(past) * vec2<u32>(past);
+    let beyond = i32(isqrt_round(square.x + square.y)) - (radius + bleed);
+    cut = clamp(HALF - beyond, 0, ONE);
+  }
+  return min(legs, min(far, cut));
 }
 
 // `rgba`'s alpha on the 16-bit scale times a q9 coverage, rounded half up.
@@ -217,12 +282,24 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         at += 10u;
       }
+      case OP_GRIP: {
+        // x, y, w, h, the paper's corner, its bleed, the corner (one mask
+        // bit), rgba.
+        let rgba = bitcast<u32>(ops[at + 8u]);
+        if (ops[at + 3u] > 0 && ops[at + 4u] > 0) {
+          let c = grip_coverage(at, p);
+          if (c > 0) {
+            pixel = laid(pixel, rgba, covered(rgba, c));
+          }
+        }
+        at += 9u;
+      }
       default: {
         at = params.words;
       }
     }
   }
-  let packed = premultiply8(blend_pack8(pixel));
+  let packed = blend_pack8(pixel);
   // The one float step, as fill.wgsl's: k/255 stored to an 8-bit unorm
   // texel comes back k on every device.
   textureStore(tile, id.xy, unpack4x8unorm(packed));

@@ -36,8 +36,8 @@ class ColorPickerPanel extends StatelessWidget {
 
   /// CONTROLLED: the eyedropper, a preset and a recent colour recorded on
   /// stroke commit all have to land here while the panel is open. Live
-  /// dragging does not snap back because [ColorWheelPanel] already ignores
-  /// the echo of its own last emission.
+  /// dragging does not snap back because [ColorWheelPanel] keeps its hue
+  /// for a colour it already shows — its own emission's echo among them.
   final int color;
   final ColorPaletteState palette;
 

@@ -14,6 +14,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/one_pass_at_a_time.dart';
+
 /// The document in [filePath], or null when it is missing, unreadable, or
 /// stamped with a version this build does not know.
 ///
@@ -204,7 +206,10 @@ final class _SettingsFileWrites {
   final String _filePath;
   ({String? text})? _waiting;
   Completer<void>? _waitingLanded;
-  bool _writing = false;
+  late final _writes = OnePassAtATime(
+    due: () => _waiting != null,
+    pass: _writeTheWaiting,
+  );
 
   Future<void> save(String text) => _wait((text: text));
 
@@ -213,31 +218,26 @@ final class _SettingsFileWrites {
   Future<void> _wait(({String? text}) next) {
     _waiting = next;
     final landed = _waitingLanded ??= Completer<void>();
-    if (!_writing) {
-      unawaited(_drain());
-    }
+    unawaited(_writes.ask());
     return landed.future;
   }
 
-  Future<void> _drain() async {
-    _writing = true;
-    while (_waiting != null) {
-      final next = _waiting!;
-      final landed = _waitingLanded!;
-      _waiting = null;
-      _waitingLanded = null;
-      try {
-        if (next.text case final text?) {
-          await (_writeOverride ?? _writeSettingsFile)(_filePath, text);
-        } else {
-          await _removeSettingsFile(_filePath);
-        }
-      } on Object {
-        // Best-effort: the file keeps what it had, and the next save runs.
+  Future<bool> _writeTheWaiting() async {
+    final next = _waiting!;
+    final landed = _waitingLanded!;
+    _waiting = null;
+    _waitingLanded = null;
+    try {
+      if (next.text case final text?) {
+        await (_writeOverride ?? _writeSettingsFile)(_filePath, text);
+      } else {
+        await _removeSettingsFile(_filePath);
       }
-      landed.complete();
+    } on Object {
+      // Best-effort: the file keeps what it had, and the next save runs.
     }
-    _writing = false;
+    landed.complete();
+    return true;
   }
 }
 

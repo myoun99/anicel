@@ -129,7 +129,7 @@ void main() {
       final pills = tester.widgetList<Pill>(inTheBoard(find.byType(Pill)));
       expect(
         [for (final pill in pills) pill.label],
-        containsAll(['셀', '콘티', '미술', '디렉션', '기준', '어태치', '시트만']),
+        containsAll(['셀', '콘티', '이미지', '디렉션', '기준', '어태치', '시트만']),
         reason: 'LIVENESS — these are the words being measured',
       );
       for (final pill in pills) {

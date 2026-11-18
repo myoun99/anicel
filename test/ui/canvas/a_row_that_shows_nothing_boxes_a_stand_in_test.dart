@@ -98,9 +98,13 @@ void main() {
     return s;
   }
 
-  /// Ink on [s]'s cel: one opaque tile, 64..80 across and 32..48 down.
+  /// Ink on [s]'s cel: 64..80 across and 32..48 down, opaque.
   void ink(EditorSessionManager s) {
-    const tileSize = 16;
+    const tileSize = defaultCelTileSize;
+    final pixels = Uint8List(BitmapTile.bytesFor(tileSize));
+    for (var y = 32; y < 48; y += 1) {
+      pixels.fillRange((y * tileSize + 64) * 4, (y * tileSize + 80) * 4, 0xFF);
+    }
     s.renderCaches.brushFrameStore.storeBakedSurface(
       const BrushFrameKey(
         projectId: ProjectId('nb-project'),
@@ -113,14 +117,7 @@ void main() {
         canvasSize: canvas,
         tileSize: tileSize,
         tiles: {
-          TileCoord(x: 4, y: 2): BitmapTile(
-            size: tileSize,
-            pixels: Uint8List(tileSize * tileSize * 4)..fillRange(
-              0,
-              tileSize * tileSize * 4,
-              0xFF,
-            ),
-          ),
+          TileCoord(x: 0, y: 0): BitmapTile(size: tileSize, pixels: pixels),
         },
       ),
     );

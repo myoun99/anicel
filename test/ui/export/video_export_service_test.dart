@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import 'fake_ffmpeg_process.dart';
 
 /// The frame walk and the ffmpeg pipe — the service with no OS encoder
@@ -13,36 +15,14 @@ import 'fake_ffmpeg_process.dart';
 /// ffmpeg is started for a movie that size, and every frame goes down the
 /// pipe as its own raw bytes.
 void main() {
-  /// Every frame made here: a run lets go of each one it is handed,
-  /// however it ends.
-  final made = <ui.Image>[];
-
-  tearDown(() {
-    expect(
-      [
-        for (final (index, image) in made.indexed)
-          if (!image.debugDisposed) index,
-      ],
-      isEmpty,
-      reason: 'frames still held when the run was over',
-    );
-    made.clear();
-  });
-
-  /// A [width]×[height] frame, all of it [color].
-  Future<ui.Image?> frame({
+  /// A [width]×[height] frame on the engine, all of it [color].
+  Future<GpuShown?> frame({
     int width = 4,
     int height = 2,
     ui.Color color = const ui.Color(0xFF204060),
-  }) async {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawColor(color, ui.BlendMode.src);
-    final image = await recorder.endRecording().toImage(width, height);
-    made.add(image);
-    return image;
-  }
+  }) => filmFrameIn(color, width: width, height: height);
 
-  Future<ui.Image?> noImage(int index) => Future<ui.Image?>.value();
+  Future<GpuShown?> noFrame(int index) => Future<GpuShown?>.value();
 
   /// The service over [process], writing down what ffmpeg was started with.
   ({VideoExportService service, List<List<String>> started}) over(
@@ -67,7 +47,7 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 3,
-      renderImage: (_) => frame(),
+      renderFrame: (_) => frame(),
       outputFilePath: 'C:/out/take.mp4',
       frameRate: const ProjectFrameRate.integer(12),
     );
@@ -93,7 +73,7 @@ void main() {
     await service.exportVideo(
       count: 1,
       // Half clear: premultiplied it is (128, 0, 0, 128).
-      renderImage: (_) => frame(color: const ui.Color(0x80FF0000)),
+      renderFrame: (_) => frame(color: const ui.Color(0x80FF0000)),
       outputFilePath: 'out.mov',
       frameRate: ProjectFrameRate.fps24,
     );
@@ -111,7 +91,7 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 4,
-      renderImage: (index) => index < 2 ? noImage(index) : frame(width: 6),
+      renderFrame: (index) => index < 2 ? noFrame(index) : frame(width: 6),
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
       onProgress: (completed, _) => progress.add(completed),
@@ -128,7 +108,7 @@ void main() {
     await expectLater(
       service.exportVideo(
         count: 3,
-        renderImage: noImage,
+        renderFrame: noFrame,
         outputFilePath: 'out.mp4',
         frameRate: ProjectFrameRate.fps24,
       ),
@@ -149,7 +129,7 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 0,
-      renderImage: (_) {
+      renderFrame: (_) {
         rendered += 1;
         return frame();
       },
@@ -225,7 +205,7 @@ void main() {
     await expectLater(
       service.exportVideo(
         count: 1,
-        renderImage: (_) => frame(),
+        renderFrame: (_) => frame(),
         outputFilePath: 'out.mp4',
         frameRate: ProjectFrameRate.fps24,
       ),
@@ -249,7 +229,7 @@ void main() {
     await expectLater(
       service.exportVideo(
         count: 1,
-        renderImage: (_) => frame(),
+        renderFrame: (_) => frame(),
         outputFilePath: 'out.mp4',
         frameRate: ProjectFrameRate.fps24,
       ),
@@ -276,7 +256,7 @@ void main() {
     await expectLater(
       service.exportVideo(
         count: 5,
-        renderImage: (_) {
+        renderFrame: (_) {
           rendered += 1;
           return frame();
         },
@@ -303,7 +283,7 @@ void main() {
     await expectLater(
       service.exportVideo(
         count: 3,
-        renderImage: (index) => frame(width: index == 1 ? 2 : 4),
+        renderFrame: (index) => frame(width: index == 1 ? 2 : 4),
         outputFilePath: 'out.mp4',
         frameRate: ProjectFrameRate.fps24,
       ),
@@ -323,7 +303,7 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 5,
-      renderImage: (_) => frame(),
+      renderFrame: (_) => frame(),
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
       isCancelled: () => true,
@@ -340,9 +320,9 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 5,
-      renderImage: (index) {
+      renderFrame: (index) {
         rendered += 1;
-        return noImage(index);
+        return noFrame(index);
       },
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
@@ -363,7 +343,7 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 5,
-      renderImage: (_) {
+      renderFrame: (_) {
         rendered += 1;
         return frame();
       },
@@ -377,27 +357,19 @@ void main() {
     expect(process.killed, isFalse);
   });
 
-  test('🚨a frame that is the frame before it — the SAME image, handed again '
+  test('🚨a frame that is the frame before it — the SAME frame, handed again '
       '— is not read back: it goes down the pipe as the bytes read then', () async {
     final process = FakeFfmpegProcess();
     final (:service, started: _) = over(process);
     final held = (await frame())!;
-    addTearDown(held.dispose);
     final other = (await frame(color: const ui.Color(0xFF000000)))!;
     final readBefore = VideoExportService.debugReadbacks;
 
     final summary = await service.exportVideo(
       count: 4,
       // 0 and 1 are one picture, 2 is another, 3 is the first again — each
-      // handed as a picture of the run's own to let go of.
-      renderImage: (index) async {
-        if (index == 2) {
-          return other;
-        }
-        final again = held.clone();
-        made.add(again);
-        return again;
-      },
+      // handed as the renderer hands a frame it holds.
+      renderFrame: (index) async => index == 2 ? other : held,
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
     );
@@ -433,19 +405,40 @@ void main() {
     );
     final (:service, started: _) = over(process);
     final held = (await frame())!;
-    addTearDown(held.dispose);
 
     await service.exportVideo(
       count: 6,
-      renderImage: (_) async {
-        final again = held.clone();
-        made.add(again);
-        return again;
-      },
+      renderFrame: (_) async => held,
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
     );
 
     expect(turnsByFrame, [0, 1, 2, 3, 4, 5]);
+  });
+
+  // ⛔A run ends ONE of two ways (`_FrameSink`): one a frame threw in is
+  // abandoned too — ffmpeg's pipe closed for it to go — and the error is
+  // the run's, as it was thrown.
+  test('🚨a frame that throws ends the run abandoned, the error going on as '
+      'it was', () async {
+    final process = FakeFfmpegProcess();
+    final (:service, started: _) = over(process);
+    var exited = false;
+    final refused = StateError('the engine refused the frame');
+
+    await expectLater(
+      service.exportVideo(
+        count: 3,
+        renderFrame: (index) => index == 1 ? throw refused : frame(),
+        outputFilePath: 'out.mp4',
+        frameRate: ProjectFrameRate.fps24,
+      ),
+      throwsA(same(refused)),
+    );
+    unawaited(process.exitCode.then((_) => exited = true));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(exited, isTrue, reason: 'the pipe was closed and ffmpeg let go');
+    expect(process.receivedFrameCount, 1);
   });
 }

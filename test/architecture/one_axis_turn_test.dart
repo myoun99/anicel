@@ -483,15 +483,10 @@ void main() {
   /// Two swapped picks with no home to say them, each with why — counted,
   /// and the counts only fall.
   const swappedByHand = <String, int>{
-    // The caret's badge, pinned at one end along the rail and left to the
-    // stack's alignment across it — one of its kind.
-    'lib/src/ui/timeline/layer_row_drag.dart': 1,
     // A tile's pixel counts, ints and not a box — and the test that reads
     // them back.
     'lib/src/ui/timeline/timeline_grid_tile_store.dart': 1,
     'test/ui/timeline/timeline_grid_tile_store_test.dart': 1,
-    // A line on a raster, by its pixel index — no widget's axis.
-    'test/services/fill_gap_close_test.dart': 1,
   };
 
   /// Lines where a pick's arms come back swapped in the next pick of the

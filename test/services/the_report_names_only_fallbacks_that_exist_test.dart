@@ -12,12 +12,12 @@ import '../helpers/dart_sources.dart';
 /// start a process are both video export. So the panel answered「something
 /// still works」 for a subsystem that had stood down.
 ///
-/// ⚠️**Source-scanning, and not by preference.** The lying branch is the one
-/// taken when there is no engine, and a test cannot get there: a bogus
-/// `debugQaEngineLibraryPathOverride` falls THROUGH to the platform defaults
-/// by design, so on any machine that has an engine the absent branch is
-/// unreachable. Calling `collectRuntimePathReport()` would assert the branch
-/// that was never wrong.
+/// ⚠️**Source-scanning, and not by preference.** The lying branch was the
+/// one taken where there was no engine, and a test could not get there on a
+/// machine that had one: the C engine's path override fell THROUGH to the
+/// platform defaults by design (↩️that loader went with the C,
+/// 2026-11-13). Calling `collectRuntimePathReport()` asserts only the
+/// branches this host takes — never the one that was wrong.
 ///
 /// The law it pins is one line: **in that file, ffmpeg is a video-export
 /// word.** If a real audio fallback is ever built, this test is the place

@@ -181,6 +181,7 @@ void main() {
           axis: Axis.horizontal,
           frameRate: ProjectFrameRate.fps24,
           audioPeaksFor: (_) => peaks,
+          keyPrefix: 'storyboard',
         ),
       );
 

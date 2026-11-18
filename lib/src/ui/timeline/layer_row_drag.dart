@@ -11,6 +11,8 @@
 /// inside a scroll view (measured, R10).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../models/layer_kind.dart';
@@ -26,7 +28,7 @@ import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
 import 'axis_turn.dart'
-    show centerStartAlong, partAcross, sizeAlong, stripAcross;
+    show extentAcross, offsetAlong, partAcross, sizeAlong, stripAcross;
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart'
     show layerKindIcon, layerSectionLabelSlotWidth;
@@ -35,6 +37,7 @@ import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
 import 'row_control_surface.dart';
+import 'still_row.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineRowDeltaAt;
@@ -339,14 +342,14 @@ class TimelineRowDragHooks {
   /// the list the SURFACE renders, so the session can map the slot onto the
   /// model without guessing which way this rail runs.
   ///
-  /// F-31②: [pointerInRow] is the row the pointer stands IN — null over a
-  /// lane, or from a surface with no rail rows to name. The gap alone
-  /// cannot say which side of a group's boundary the drag came to rest on;
-  /// this is the half that can.
+  /// F-31②: [pointer] is where the pointer stands — in a row (a lane names
+  /// its layer) or past the rail's rows — or null from a surface with no
+  /// rail rows to name. The gap alone cannot say which side of a group's
+  /// boundary the drag came to rest on; this is the half that can.
   final void Function(
     List<Layer> displayLayers,
     int slot, {
-    LayerId? pointerInRow,
+    RowPointer? pointer,
   })
   onUpdate;
 
@@ -656,7 +659,7 @@ class LayerRowDragTarget extends StatefulWidget {
 }
 
 class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
-  /// The rail that draws this row's line after it ([RailRowLines]).
+  /// The rail that draws this row's lines over its rows ([RailRowLines]).
   _RailRowLinesState? _railLines;
 
   @override
@@ -966,9 +969,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
             showing != null &&
             showing.onRowTarget != null &&
             widget.subject.namesRow(showing.onRowTarget!);
-        final caretShowing = showing != null && showing.onRowTarget == null;
-        final leading =
-            caretShowing && showing.caretSlot == widget.slotBefore;
+        final leading = _railLines == null && _drawsLineBefore(showing);
         final trailing = _railLines == null && _drawsLineAfter(showing);
         final lifted = drag?.subject == widget.subject || _lifting;
         return Stack(
@@ -979,7 +980,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
             Opacity(opacity: lifted ? 0.45 : 1, child: child),
             if (onRow) _swallowHighlight(colorScheme, showing.joinLabel),
             if (leading)
-              _caret(colorScheme, atStart: true, label: showing.joinLabel),
+              _caret(colorScheme, atStart: true, label: showing?.joinLabel),
             if (trailing)
               _caret(colorScheme, atStart: false, label: showing?.joinLabel),
           ],
@@ -999,6 +1000,12 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
       ? drag
       : null;
 
+  /// Whether the line [showing] draws is the one before this row.
+  bool _drawsLineBefore(LayerRowDragState? showing) =>
+      showing != null &&
+      showing.onRowTarget == null &&
+      showing.caretSlot == widget.slotBefore;
+
   /// Whether the line [showing] draws is the one past this row.
   bool _drawsLineAfter(LayerRowDragState? showing) {
     final slot = widget.slotBefore;
@@ -1009,19 +1016,34 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
         showing.caretSlot == slot + 1;
   }
 
-  /// The line past this row as its rail draws it over the rows, or null
-  /// where [drag] draws none here.
-  Widget? _lineOverRows(LayerRowDragState? drag, ColorScheme colorScheme) {
+  /// The lines at this row's two edges as its rail draws them over the
+  /// rows — none where [drag] draws none here, or where the rail's rows no
+  /// longer hold this one (it says where its lines stand no more).
+  Iterable<Widget> _linesOverRows(
+    LayerRowDragState? drag,
+    ColorScheme colorScheme,
+  ) sync* {
     final showing = _showing(drag);
-    if (!_drawsLineAfter(showing)) {
-      return null;
+    final beyond = widget.linesBeyond?.call();
+    if (showing == null || beyond == null) {
+      return;
     }
-    return _caret(
-      colorScheme,
-      atStart: false,
-      label: showing!.joinLabel,
-      overRowsAt: widget.linesBeyond?.call()?.end,
-    );
+    if (_drawsLineBefore(showing)) {
+      yield _caret(
+        colorScheme,
+        atStart: true,
+        label: showing.joinLabel,
+        overRowsAt: beyond.start,
+      );
+    }
+    if (_drawsLineAfter(showing)) {
+      yield _caret(
+        colorScheme,
+        atStart: false,
+        label: showing.joinLabel,
+        overRowsAt: beyond.end,
+      );
+    }
   }
 
   // The rail SCROLLS along the same axis this drag runs, so the device
@@ -1079,7 +1101,6 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
               ? null
               : Stack(
                   clipBehavior: Clip.none,
-                  alignment: centerStartAlong(widget.axis),
                   children: [_dropWord(colorScheme, label)],
                 ),
         ),
@@ -1089,40 +1110,60 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
 
   /// The word a drop says before the release — whose attach, out of the
   /// folder — in ONE place for a line and for a row: [_dropWordInset] past
-  /// where the row's layer area starts, centred across. Placed, not laid
-  /// out, so it never votes on the size of what it stands on (F-31①).
+  /// where the row's layer area starts, centred across, and inside the
+  /// rail's rows where [room] says how far they run ([_DropWordPlace]).
+  /// Placed, not laid out, so it never votes on the size of what it stands
+  /// on (F-31①).
   ///
   /// 🗣️F-436① (유저 2026-10-21): 「어태치 장착 텍스트가 블렌드쪽에 뜨는데,
   /// 그게아니라 C에 어태치 라는 텍스트가 뜨는 위치처럼 왼쪽에 통일해서.
   /// 가로선 텍스트 위치는 이 위치로 통일」. ↩️A row's word stood at its far
   /// end, by the blend column, and the line's at its start — the same badge
   /// written twice.
-  Widget _dropWord(ColorScheme colorScheme, String label) {
-    final horizontal = widget.axis == Axis.horizontal;
-    return Positioned(
-      left: horizontal ? _dropWordInset : null,
-      top: horizontal ? null : _dropWordInset,
-      child: DecoratedBox(
-        // The app's own corner, not a circular one: a badge is a small
-        // control, and `app_shapes_coverage_test` is what keeps that from
-        // being decided per widget.
-        decoration: ShapeDecoration(
-          color: colorScheme.primary,
-          shape: AppShapes.control(14),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              height: 1.1,
-              color: colorScheme.onPrimary,
+  Widget _dropWord(
+    ColorScheme colorScheme,
+    String label, {
+    _RoomAround? room,
+  }) {
+    return Positioned.fill(
+      child: CustomSingleChildLayout(
+        delegate: _DropWordPlace(axis: widget.axis, room: room),
+        child: DecoratedBox(
+          // The app's own corner, not a circular one: a badge is a small
+          // control, and `app_shapes_coverage_test` is what keeps that from
+          // being decided per widget.
+          decoration: ShapeDecoration(
+            color: colorScheme.primary,
+            shape: AppShapes.control(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.1,
+                color: colorScheme.onPrimary,
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// How far the rail's rows run on either side of the line [beyond] puts
+  /// before the row ([atStart]) or after it; null where the rail says
+  /// nothing of its rows.
+  static _RoomAround? _roomAround(
+    RowLinesBeyond? beyond, {
+    required bool atStart,
+  }) {
+    if (beyond == null) {
+      return null;
+    }
+    final line = atStart ? beyond.start : beyond.end;
+    return (before: line, after: beyond.rail - line);
   }
 
   Widget _caret(
@@ -1141,11 +1182,11 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
       height: barSize.height,
       color: colorScheme.primary,
     );
+    final beyond = widget.linesBeyond?.call();
     final content = label == null
         ? bar
         : Stack(
             clipBehavior: Clip.none,
-            alignment: centerStartAlong(widget.axis),
             children: [
               bar,
               // The drop does something structural, so it says so BEFORE
@@ -1162,14 +1203,16 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
               // line moved only when the drop had something to announce,
               // which is exactly the attach drags the report came from.
               //
-              // With one axis pinned and the other left null, the stack's
-              // own alignment still places the badge (centred across the
-              // bar), it hangs off the line under `Clip.none`, and it can
-              // no longer vote on where the line is.
-              _dropWord(colorScheme, label),
+              // Placed over the bar's box ([_DropWordPlace]), it hangs off
+              // the line under `Clip.none` and can no longer vote on where
+              // the line is.
+              _dropWord(
+                colorScheme,
+                label,
+                room: _roomAround(beyond, atStart: atStart),
+              ),
             ],
           );
-    final beyond = widget.linesBeyond?.call();
     final past = (atStart ? beyond?.lead : beyond?.trail) ?? 0;
     return stripAcross(
       widget.axis,
@@ -1185,7 +1228,57 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
   }
 }
 
-/// A rail's [child] rows and, over them, the line a carry draws after a row.
+/// How far a rail's rows run before a line and after it, from the line.
+typedef _RoomAround = ({double before, double after});
+
+/// Where a drop's word stands on what it is drawn on: [_dropWordInset]
+/// along, centred across — and, where [room] says how far the rail's rows
+/// run from its centre, never past them.
+///
+/// 🚨F-393 ② (검증 2026-11-16, 서피스): the rider at the end of the list,
+/// carried past it, drew its line at the rail's last edge and its word
+/// 「アタッチを解除」 centred across it — the half past the rows was cut off
+/// where the rail ends (its stack clips there; the view past the rows is
+/// another box). The law it broke is the user's (F-423②, 10-20): 「가로선
+/// 안에 다 보이도록」. Every rail's line and a row's swallow say their word
+/// here, so both ends of all three rails stand inside at once.
+class _DropWordPlace extends SingleChildLayoutDelegate {
+  const _DropWordPlace({required this.axis, required this.room});
+
+  final Axis axis;
+
+  /// How far the rail's rows run on either side of the centre of what the
+  /// word is drawn on — null for a row's own box, which is inside them.
+  final _RoomAround? room;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      const BoxConstraints();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final extent = extentAcross(axis, size);
+    final word = extentAcross(axis, childSize);
+    final centred = (extent - word) / 2;
+    final room = this.room;
+    // Moved no further than it must; against the rail's start where the
+    // rail is shorter than the word.
+    final across = room == null
+        ? centred
+        : math.max(
+            extent / 2 - room.before,
+            math.min(centred, extent / 2 + room.after - word),
+          );
+    return offsetAlong(axis, along: _dropWordInset, across: across);
+  }
+
+  @override
+  bool shouldRelayout(_DropWordPlace oldDelegate) =>
+      axis != oldDelegate.axis || room != oldDelegate.room;
+}
+
+/// A rail's [child] rows and, over them, the lines a carry draws at a row's
+/// edges.
 ///
 /// 🔬sheet-gap-stands-inside-open-lanes (11-01, 서피스 검증: 맨 아래 레이어의
 /// 레인을 펼치고 그 뒤로 끌면 가로선이 어디에도 없다 — 착지는 맞다). Rows
@@ -1197,9 +1290,21 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
 ///
 /// 🚨The row still says whether there is a line and where, for every kind
 /// of row a rail carries; only the painting moves here, after every row.
-/// ⛔The line BEFORE a row needs none of this: that row paints after what
-/// it stands beside. And the sheet stands none over its columns, whose line
-/// after one stands at the column's own edge.
+///
+/// ↩️The line BEFORE a row stayed in that row's stack — its bar paints
+/// after what it stands beside — and the sheet had none of this. But the
+/// WORD a line says hangs across it (F-393 ②, 검증 2026-11-16), and the
+/// sheet's columns are narrower than a word: the columns after it painted
+/// over 60% of 「アタッチを解除」. Both lines are painted here, on the
+/// sheet's header strip as on the two rails.
+///
+/// 🔬F-393 ① (검증 2026-11-17, 서피스): over ALL of a rail, not only its
+/// rows. The carried row is a selected one, and the selection's band —
+/// painted after the rows — ran its edge, the line's own colour, through
+/// the middle of 「アタッチを解除」 where the line stands at that row's top.
+/// A rail wears this around everything it stacks, and the lines take no
+/// pointer: what stands under them (the rows, a file's place entrance)
+/// keeps its own.
 class RailRowLines extends StatefulWidget {
   const RailRowLines({super.key, required this.drag, required this.child});
 
@@ -1226,18 +1331,20 @@ class _RailRowLinesState extends State<RailRowLines> {
           widget.child,
           if (drag != null)
             Positioned.fill(
-              child: ValueListenableBuilder<LayerRowDragState?>(
-                valueListenable: drag,
-                builder: (context, carried, _) {
-                  final colorScheme = Theme.of(context).colorScheme;
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      for (final row in _rows)
-                        ?row._lineOverRows(carried, colorScheme),
-                    ],
-                  );
-                },
+              child: IgnorePointer(
+                child: ValueListenableBuilder<LayerRowDragState?>(
+                  valueListenable: drag,
+                  builder: (context, carried, _) {
+                    final colorScheme = Theme.of(context).colorScheme;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final row in _rows)
+                          ...row._linesOverRows(carried, colorScheme),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
         ],
@@ -1382,6 +1489,9 @@ Widget layerRowDragWrapper({
   HeldRowPin? pin,
   required Widget child,
 }) {
+  // The row is a still region of its own, inside every branch's target:
+  // the caret a target draws hangs across the row's boundary.
+  final content = stillRow(child);
   // The held row is PINNED in the row window while its grip is taken (the
   // window would otherwise unmount it mid-drag). Derived ONCE from the
   // row's address, whichever branch below takes the grip.
@@ -1397,7 +1507,7 @@ Widget layerRowDragWrapper({
   final lane = row.lane;
   if (lane != null) {
     return hooks == null
-        ? child
+        ? content
         : _laneRowDragTarget(
             (row: row, lane: lane),
             hooks,
@@ -1410,7 +1520,7 @@ Widget layerRowDragWrapper({
               onGripTaken: onGripTaken,
               onGripReleased: onGripReleased,
             ),
-            child: child,
+            child: content,
           );
   }
   final unmovable = unmovableRowSelectTarget(
@@ -1424,14 +1534,14 @@ Widget layerRowDragWrapper({
     grip: grip,
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
-    child: child,
+    child: content,
   );
   if (unmovable != null) {
     return unmovable;
   }
   final caret = LayerRowCaret.of(dragRows(), row.layer.id);
   if (caret == null) {
-    return child;
+    return content;
   }
   return LayerRowDragTarget(
     subject: LayerRowSubject(row.layer.id),
@@ -1462,13 +1572,13 @@ Widget layerRowDragWrapper({
       hooks.onUpdate(
         drawn.layers,
         slot,
-        pointerInRow: drawn.layerUnder(inRow)?.id,
+        pointer: drawn.pointerAt(inRow),
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null
         ? null
         : (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
-    child: child,
+    child: content,
   );
 }
 

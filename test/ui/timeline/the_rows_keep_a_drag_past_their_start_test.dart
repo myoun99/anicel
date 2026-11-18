@@ -113,7 +113,6 @@ void main() {
       );
       expect(rows.rest, 0, reason: 'the release brings the rows home');
 
-      session.playbackRig.prerenderScheduler.cancel();
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     },

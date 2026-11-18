@@ -33,7 +33,7 @@ void premultiplyRgbaInPlace(Uint8List bytes) {
 /// with.
 ///
 /// ONE law for a clear pixel's bytes. A stroke's landing writes one so
-/// (its srcOver skips α==0 — `preBlendStrokeOverlayPixels` mirrors it), and
+/// (blend.wgsl's `blend_pack8`), and
 /// the engine's decoder hands one back so, as the app's own decoders of a
 /// picture past its side do (`readPngRows`, `readFramesByPackage`) — the
 /// third to carry the loop (2026-10-20), so it is one.
@@ -64,8 +64,12 @@ Uint8List premultipliedRgbaCopy(Uint8List straight) {
 /// one whose premultiply IS the channel, so the picture's bytes are the
 /// raster's to the last one. A channel over its alpha, which no premultiply
 /// makes, takes 255.
-Uint8List straightRgbaFor(Uint8List premultiplied) {
-  final bytes = Uint8List.fromList(premultiplied);
+Uint8List straightRgbaFor(Uint8List premultiplied) =>
+    straightRgbaInPlace(Uint8List.fromList(premultiplied));
+
+/// [straightRgbaFor] IN PLACE, for bytes that are the caller's own:
+/// [bytes], straight now.
+Uint8List straightRgbaInPlace(Uint8List bytes) {
   for (var offset = 0; offset < bytes.length; offset += 4) {
     final alpha = bytes[offset + 3];
     if (alpha == 255 || alpha == 0) {

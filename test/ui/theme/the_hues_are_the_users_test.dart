@@ -11,14 +11,15 @@ import 'package:anicel/src/ui/theme/layer_mark_palette.dart';
 /// here once already, while their reference sat unopened.
 ///
 /// A mark's colour is not a small swatch: it is the PAPER of that layer's
-/// frame blocks, so it lands across whole rows. This pins the three things
-/// the user said out loud, plus the rule that makes the revise column work.
+/// frame blocks, so it lands across whole rows. This pins the things the
+/// user said out loud, plus the rule that makes the revise column work.
+/// ↩️「BG는 파랑색」 was 美術's, and went with it (F-578, 유저 2026-11-10).
 void main() {
   const none = Color(0xFF123456);
 
   Color colorOf(LayerMark mark) => resolveLayerMarkColor(mark, noneColor: none);
 
-  /// A colour's dominant channel, which is how "흰색 / 초록색 / 파랑색"
+  /// A colour's dominant channel, which is how "흰색 / 초록색"
   /// reads back out of an ARGB value.
   String hueOf(Color color) {
     final r = (color.toARGB32() >> 16) & 0xFF;
@@ -29,9 +30,6 @@ void main() {
     }
     if (g > r && g > b) {
       return 'green';
-    }
-    if (b > r && b > g) {
-      return 'blue';
     }
     return 'other';
   }
@@ -47,10 +45,6 @@ void main() {
     expect(hueOf(colorOf(const LayerMark(process: LayerProcess.key))), 'green');
   });
 
-  test('🚨BG(art)는 파랑색', () {
-    expect(hueOf(colorOf(const LayerMark(process: LayerProcess.art))), 'blue');
-  });
-
   test('an UNLABELLED row wears the paper the theme passed in — this file '
       'knows labels, not chrome', () {
     expect(colorOf(LayerMark.none), none);
@@ -58,32 +52,65 @@ void main() {
 
   test('🚨the REVISE colour is the same whatever the stage — 「LO연출이던 '
       '원화연출이던 같은색」, because on paper the revise is what you read', () {
-    for (final process in LayerProcess.values) {
+    // Every label that carries 연출, 용지-연출 among them (F-578).
+    final directed = [
+      for (final mark in everyLayerMark())
+        if (mark.revise == LayerRevise.direction) mark,
+    ];
+    expect(directed, contains(const LayerMark.paper(LayerRevise.direction)));
+    for (final mark in directed) {
       expect(
-        colorOf(LayerMark(process: process, revise: LayerRevise.direction)),
+        colorOf(mark),
         colorOf(
           const LayerMark(
             process: LayerProcess.layout,
             revise: LayerRevise.direction,
           ),
         ),
-        reason: '$process',
+        reason: '$mark',
       );
     }
   });
 
   test('every stage has a colour of its own — a table with a hole would '
       'throw on the row that used it', () {
+    final stages = [
+      for (final process in LayerProcess.values)
+        if (process != LayerProcess.paper) process,
+    ];
     final seen = <Color>{};
-    for (final process in LayerProcess.values) {
-      final color = colorOf(LayerMark(process: process));
+    for (final process in stages) {
+      final color = colorOf(labelsOf(process).first);
       expect(color, isNot(none));
       seen.add(color);
     }
     expect(
       seen,
-      hasLength(LayerProcess.values.length),
+      hasLength(stages.length),
       reason: 'two stages sharing a paper would be unreadable on the sheet',
+    );
+  });
+
+  test('🚨a 用紙 label wears what it is the paper of — 「용지LO면 레이아웃 '
+      '소재의 색」 (F-594 ①): every one, the stages\' and the '
+      'corrections\'', () {
+    final papers = labelsOf(LayerProcess.paper);
+    expect(papers, isNotEmpty, reason: 'fixture');
+    for (final paper in papers) {
+      final worn = switch (paper.step) {
+        final LayerProcess stage => LayerMark(process: stage),
+        final LayerRevise correction => LayerMark(
+          process: LayerProcess.key,
+          revise: correction,
+        ),
+        null => fail('$paper names nothing it is the paper of'),
+      };
+      expect(colorOf(paper), colorOf(worn), reason: '$paper');
+    }
+    expect(
+      colorOf(const LayerMark.paper(LayerProcess.layout)),
+      colorOf(const LayerMark(process: LayerProcess.layout)),
+      reason: '🗣️「용지LO면 레이아웃 소재의 색」',
     );
   });
 
@@ -103,7 +130,7 @@ void main() {
       'through and read as a different colour', () {
     for (final process in LayerProcess.values) {
       expect(
-        colorOf(LayerMark(process: process)).toARGB32() >>> 24,
+        colorOf(labelsOf(process).first).toARGB32() >>> 24,
         0xFF,
         reason: '$process',
       );

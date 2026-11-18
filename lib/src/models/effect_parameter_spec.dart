@@ -64,6 +64,24 @@ enum EffectParameterUnit {
   /// into another cut — reads as none, as a dangling attach does
   /// (`attachedBaseOf`).
   layer,
+
+  /// Hertz — a sound filter's corner (an equalizer's cuts).
+  ///
+  /// 🗣️audio-fx-grows-like-the-pros Q2 (유저 2026-11-17): 「시안 3 · 시안 1
+  /// + 성격 프리셋」 — the drawn lanes are ローカット (Hz) · ハイカット (Hz).
+  hertz,
+
+  /// Decibels — a sound filter's gain (an equalizer's shelves), the lanes
+  /// 低域 (dB) · 高域 (dB) of the same design.
+  decibels,
+
+  /// Milliseconds — a sound filter's time (a compressor's attack and
+  /// release; audio-fx-second-effect-and-presets ①).
+  milliseconds,
+
+  /// How many to one — a compressor's ratio, the decibels over its
+  /// threshold that go in for each that comes out.
+  ratio,
 }
 
 /// One word of a menu parameter ([EffectParameterUnit.choice]).

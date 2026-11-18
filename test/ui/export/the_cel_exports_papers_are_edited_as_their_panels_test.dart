@@ -49,6 +49,7 @@ import 'package:anicel/src/ui/shortcuts/editor_key_funnel.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_paper.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -65,6 +66,7 @@ import '../../helpers/paper_editing_kit.dart';
 /// window takes the editor's tool keys and its undo; and what the window
 /// shows is what the film is after them.
 void main() {
+  opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -275,7 +277,6 @@ void main() {
       isTrue,
       reason: 'the stroke lands on the page\'s paper',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   /// 🗣️실기 (I-127, 2026-11-01): 「끄는 동안은 보이고 떼는 순간 미리보기에서
@@ -336,7 +337,6 @@ void main() {
     await standOn(tester, 'document-timesheet');
 
     await expectInkShownAsItIs(tester, session, kit.timesheetInk);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨the cut envelope shows its ink as it is, the same', (
@@ -358,7 +358,6 @@ void main() {
     await standOn(tester, 'document-envelope');
 
     await expectInkShownAsItIs(tester, session, kit.envelopeInk);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the cut envelope is its panel\'s paper too, ruled onto the '
@@ -381,7 +380,6 @@ void main() {
     expect(overlay.controller, same(kit.envelopeInk));
     expect(overlay.brushToolState, same(kit.tool));
     expect(overlay.windows, isNotEmpty);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-127-Q1 (유저 2026-10-25): 「봉투 용지 패널에도 넣고, 셀 출력은 그대로
@@ -416,7 +414,6 @@ void main() {
       (paperShown(tester) as ExportEnvelopePage).source.staff[key.keySlug],
       'ユキ',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   // 🗣️I-127-Q2 (유저 2026-10-27): 「같은 값을 찍는 칸은 전부 — 타임시트
@@ -448,7 +445,6 @@ void main() {
       (paperShown(tester) as ExportEnvelopePage).source.cuts.single.name,
       '302',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('on a paper too small to set a line in, a press on the staff '
@@ -461,7 +457,6 @@ void main() {
     await standOn(tester, 'document-envelope');
 
     expect(onPaper('cut-envelope-staff-name-genga-edit'), findsNothing);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a box typed in writes its cut and the page prints it at '
@@ -492,7 +487,6 @@ void main() {
     expect(printed(tester, TimesheetHeaderField.title), isNot('夜に駆ける'));
     await undoKey(tester);
     expect(printed(tester, TimesheetHeaderField.name), isNot('ユキ'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a tool key and the undo keys reach the window; a key of the '
@@ -520,7 +514,6 @@ void main() {
     await tester.pump();
 
     expect(invoked, [EditorActionIds.toolEraser, EditorActionIds.undo]);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a drawing among the papers keeps their brush switch\'s '
@@ -544,7 +537,6 @@ void main() {
     expect(find.byType(ExportPaperPanel), findsNothing);
     expect(find.byType(ExportPreviewPanel), findsOneWidget);
     expect(keyed('export-cel-brush-toggle-button'), findsNothing);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a drawing\'s picture is drawn again when the history moves '
@@ -574,7 +566,6 @@ void main() {
       reason: 'premise: the film is the one it was',
     );
     expect(tester.exportPreviewDocument!.look, isNot(before));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨the cut the window is built around is read again when the '
@@ -589,7 +580,6 @@ void main() {
     session.cutVerbs.renameCuts({cutId: '302'});
     await tester.pump();
     expect(tester.exportPreviewName, startsWith('302'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯from the editor: the window opens over the workspace\'s own '
@@ -602,13 +592,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     final strip = tester.widget<EditorTopStrip>(find.byType(EditorTopStrip));
-    final session = strip.projects.active;
     final tool = strip.brushTool!;
     expect(tool.value.tool, isNot(CanvasTool.eraser), reason: 'premise');
 
     await press(tester, 'top-strip-project-button');
     await tester.pumpAndSettle();
     await press(tester, 'menu-file-export');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     final window = tester.widget<ExportDialog>(find.byType(ExportDialog));
     expect(window.keys, isNotNull);
@@ -624,6 +615,5 @@ void main() {
     expect(printed(tester, TimesheetHeaderField.name), 'ユキ');
     await undoKey(tester);
     expect(printed(tester, TimesheetHeaderField.name), isNot('ユキ'));
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

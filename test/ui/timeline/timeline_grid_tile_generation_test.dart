@@ -16,21 +16,20 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show filmSubstrateGeneration;
 
-import '../../helpers/native_engine_path.dart';
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -57,9 +56,11 @@ import 'timeline_frame_geometry_probe.dart';
 /// be the cross-generation guard.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
+  /// [name] as a word its tile waits for: Flutter's to raster, never baked.
+  String waits(String name) => '$name$aLetterNoBundledFaceHas';
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -83,6 +84,7 @@ void main() {
     required String generation,
     TimelineGridTileStore? store,
     bool followsTheLiveCut = true,
+    String? celName,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -92,6 +94,7 @@ void main() {
       ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
+      frameNameForLayer: celName == null ? null : (_, _) => celName,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
@@ -100,44 +103,34 @@ void main() {
     );
   }
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  setUp(TimelineGridTileStore.instance.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  tearDown(TimelineGridTileStore.instance.clear);
 
   test('a request whose generation died before the drain is discarded — '
       'rastering it would consult resolvers that no longer describe its '
       'rows', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
 
-    // The gesture: cut A's row asks for a tile...
+    // The gesture: cut A's row asks for a tile — queued, its word one that
+    // is waited for (a paint bakes what it can in its ask, and a paint is
+    // the live state's)...
     expect(
       store.tileFor(
         painter: painterFor(
           blockLayer(),
           generation: 'p:cut-a',
           store: store,
+          celName: waits('cut-a'),
         ),
         spanStartIndex: 0,
         spanEndIndexExclusive: 4,
         devicePixelRatio: 1.0,
       ),
       isNull,
+      reason: '⛔premise: its word is waited for, so the ask is queued',
     );
     // ...and the user switches cuts before the drain reaches it. The next
     // paint carries the new generation — that IS the liveness signal.
@@ -145,6 +138,7 @@ void main() {
       blockLayer(id: 'layer-b'),
       generation: 'p:cut-b',
       store: store,
+      celName: waits('cut-b'),
     );
     expect(
       store.tileFor(
@@ -176,28 +170,17 @@ void main() {
       isNotNull,
       reason: 'the live generation landed normally',
     );
+    // Asked for nothing: an ask is a paint's, and would bake cut A's row as
+    // the live one's.
     expect(
-      store.tileFor(
-        painter: painterFor(
-          blockLayer(),
-          generation: 'p:cut-a',
-          store: store,
-        ),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
+      store.debugRowsKept,
+      1,
       reason: 'nothing was stored for the dead generation',
     );
   });
 
   test('a same-id row in another generation is never served this '
       'generation\'s pixels — old files carry duplicate ids across cuts', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
@@ -239,6 +222,12 @@ void main() {
       generation: 'p:cut-b',
       store: store,
     );
+    final aTile = store.tileFor(
+      painter: cutA,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
     expect(
       store.tileFor(
         painter: cutB,
@@ -246,7 +235,7 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 1.0,
       ),
-      isNull,
+      isNot(same(aTile)),
       reason: 'cut B must go cold rather than wear cut A\'s pixels — '
           'this is the arm that turned a mid-drain grey into a resident',
     );
@@ -255,10 +244,6 @@ void main() {
   test('stale-while-revalidate WITHIN a generation still serves the old '
       'tile — a content edit is a new instance that must find it (R26 #27)',
       () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
@@ -298,61 +283,85 @@ void main() {
 
   group('a row that follows no live cut — the storyboard\'s conte row, '
       'laid over the film (frame-panels-build-in-one-frame)', () {
-    TimelineRowCellsPainter conteRow(TimelineGridTileStore store) =>
-        painterFor(
-          blockLayer(id: 'conte'),
-          generation: filmSubstrateGeneration,
-          store: store,
-          followsTheLiveCut: false,
-        );
+    // 🚨EVERY ASK HERE WAITS IN THE QUEUE, AND SAYS SO (2026-11-15,
+    // 검증/서피스: both pins stood green with the law taken out of the
+    // store). The law is the DRAIN's — it rasters a request that waited or
+    // lets it go — and a span is baked in the paint that asks wherever its
+    // words are baked already (F-314; …beside-its-tiles-Q1 「(다)」). The
+    // pins asked a span whose words the tests above had baked, so nothing
+    // waited and nothing could die; and they read the answer with another
+    // ask, which bakes it. A name Flutter rasters ([waits]) that no test
+    // before it set is a word waited for — the one wait a paint has left,
+    // since the engine bakes every word it can set in the ask (Q3 · Q4,
+    // 11-15) — and what was kept is read without asking
+    // ([TimelineGridTileStore.standInFor]).
+    TimelineRowCellsPainter conteRow(
+      TimelineGridTileStore store, {
+      required String celName,
+    }) => painterFor(
+      blockLayer(id: 'conte'),
+      generation: filmSubstrateGeneration,
+      store: store,
+      followsTheLiveCut: false,
+      celName: celName,
+    );
+
+    void expectQueued(
+      TimelineGridTileStore store,
+      TimelineRowCellsPainter painter,
+    ) => expect(
+      store.tileFor(
+        painter: painter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+      reason: '⛔premise: its word is waited for, so the ask waits for the '
+          'drain — an ask baked in the call says nothing of the law',
+    );
+
+    Object? keptOf(
+      TimelineGridTileStore store,
+      TimelineRowCellsPainter painter,
+    ) => store.standInFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
 
     test('keeps its request when a timeline row paints after it — its '
         'resolvers describe its rows whatever cut is live', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final store = TimelineGridTileStore.instance;
       var landings = 0;
       store.revision.addListener(() => landings += 1);
 
       // Both panels shown: the conte row asks, then a timeline row does.
-      final film = conteRow(store);
-      store.tileFor(
-        painter: film,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
+      final film = conteRow(store, celName: waits('conte-first'));
+      final timelineRow = painterFor(
+        blockLayer(),
+        generation: 'p:cut-a',
+        store: store,
+        celName: waits('timeline-second'),
       );
-      store.tileFor(
-        painter: painterFor(blockLayer(), generation: 'p:cut-a', store: store),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
+      expectQueued(store, film);
+      expectQueued(store, timelineRow);
 
       // The drain is one serial walk: idle after a landing, it has done
       // with both requests.
       await pollUntil(() => landings > 0 && !store.debugBusy);
       expect(
-        store.tileFor(
-          painter: film,
-          spanStartIndex: 0,
-          spanEndIndexExclusive: 4,
-          devicePixelRatio: 1.0,
-        ),
+        keptOf(store, film),
         isNotNull,
         reason: '↩️the one live world was the timeline\'s, and the conte '
             'row\'s request died as a dead generation\'s',
       );
+      expect(keptOf(store, timelineRow), isNotNull);
     });
 
     test('never takes the live world from the timeline — a timeline row\'s '
         'request survives the conte row painting after it', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final store = TimelineGridTileStore.instance;
       var landings = 0;
       store.revision.addListener(() => landings += 1);
@@ -361,34 +370,22 @@ void main() {
         blockLayer(),
         generation: 'p:cut-a',
         store: store,
+        celName: waits('timeline-first'),
       );
-      store.tileFor(
-        painter: timelineRow,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
-      store.tileFor(
-        painter: conteRow(store),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      );
+      final film = conteRow(store, celName: waits('conte-second'));
+      expectQueued(store, timelineRow);
+      expectQueued(store, film);
 
       // The drain is one serial walk: idle after a landing, it has done
       // with both requests.
       await pollUntil(() => landings > 0 && !store.debugBusy);
       expect(
-        store.tileFor(
-          painter: timelineRow,
-          spanStartIndex: 0,
-          spanEndIndexExclusive: 4,
-          devicePixelRatio: 1.0,
-        ),
+        keptOf(store, timelineRow),
         isNotNull,
         reason: 'the conte row\'s world is no cut\'s: had its paint made it '
             'the live one, every timeline row\'s request would die',
       );
+      expect(keptOf(store, film), isNotNull);
     });
   });
 }

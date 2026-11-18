@@ -136,14 +136,36 @@ void main() {
         reason: 'a coloured plate draws no hairline around itself',
       );
     }
-    await tester.pumpWidget(
-      harness(PanelFlyoutButton(label: 'Key', entriesBuilder: () => const [])),
-    );
-    expect(plateOf(tester).color, isNull);
-    expect(
-      (plateOf(tester).shape as OutlinedBorder).side.color,
-      AppColors.hairline,
-    );
+    // A clear chip has no plate: its edge is the press's face, which fills
+    // its inside with the ground it stands on (Q12).
+    for (final enabled in [true, false]) {
+      await tester.pumpWidget(
+        harness(
+          PanelFlyoutButton(
+            label: 'Key',
+            enabled: enabled,
+            entriesBuilder: () => const [],
+          ),
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(PanelFlyoutButton),
+          matching: find.byType(DecoratedBox),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<RailFlyoutTrigger>(find.byType(RailFlyoutTrigger))
+            .shape
+            ?.side
+            .color,
+        enabled
+            ? AppColors.hairline
+            : AppColors.hairline.withValues(alpha: 0.5),
+      );
+    }
   });
 
   testWidgets('a label alone ellipsises in a slot narrower than itself '
@@ -262,6 +284,53 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('trigger-item-a')));
     await tester.pumpAndSettle();
     expect(picked, 1);
+  });
+
+  testWidgets('a RESET row accents while it would change something and '
+      'dims while it would not (I-176, F-583)', (tester) async {
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutButton(
+          key: const ValueKey<String>('flyout-under-test'),
+          label: 'Test',
+          entriesBuilder: () => const [
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-lit',
+              label: 'Lit',
+              icon: Icons.restart_alt,
+              resets: true,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-out',
+              label: 'Out',
+              icon: Icons.restart_alt,
+              resets: true,
+              enabled: false,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-plain',
+              label: 'Plain',
+              icon: Icons.restart_alt,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-under-test')));
+    await tester.pumpAndSettle();
+
+    Color? inkOf(String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.anyText(),
+          ),
+        )
+        .style
+        ?.color;
+    expect(inkOf('flyout-item-lit'), AppColors.accent);
+    expect(inkOf('flyout-item-out'), isNot(AppColors.accent));
+    expect(inkOf('flyout-item-plain'), AppColors.text);
   });
 
   testWidgets('a SELECTED row accents and grows no glyph — 유저 R11-①: '

@@ -21,7 +21,9 @@ void main() {
       // and a header's graph button out of them.
       // 563 → 519 (I-89 Q1): a row's own buttons come out of its name.
       // 519 → 461 (F-409): a layer row's name went to two thirds.
-      expect(metrics.layerControlsWidth, 461);
+      // 461 → 441 (I-177): the S row's Total back to the opacity bar's
+      // length, the blend column with it, and the name kept as it was.
+      expect(metrics.layerControlsWidth, 441);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);

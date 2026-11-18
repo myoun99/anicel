@@ -53,7 +53,7 @@ const _vRow = 'storyboard-plate';
 const _conteRow = 'storyboard';
 
 /// The cut's own colour label — what its two bands wear.
-const _cutLabel = LayerMark(process: LayerProcess.art);
+const _cutLabel = LayerMark(process: LayerProcess.key);
 
 Project _project() => Project(
   id: const ProjectId('ink-project'),

@@ -36,14 +36,19 @@ void main() {
   /// A track whose SE row already carries a block at frames 6..10, under a
   /// cut that starts at the project's first frame — so the cut's axis and
   /// the track's coincide and the numbers below read as they are written.
-  EditorSessionManager session() {
+  EditorSessionManager session({MediaPreset preset = const MediaPreset()}) {
     final manager = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('se-project'),
         name: 'SE',
         createdAt: DateTime.utc(2026, 9, 12),
         mediaAssets: [
-          MediaAsset(path: sound, name: 'door_close', kind: MediaAssetKind.audio),
+          MediaAsset(
+            path: sound,
+            name: 'door_close',
+            kind: MediaAssetKind.audio,
+            preset: preset,
+          ),
         ],
         tracks: [
           Track(
@@ -104,6 +109,27 @@ void main() {
       (layerId: seId, startIndex: 0, endIndexExclusive: 6),
       reason: 'six frames of sound from the cell it stands on',
     );
+  });
+
+  // 🗣️Card 「파일마다 배치 기본값」: the block is as long as the span the
+  // sound's preset places — never past the sound's end.
+  test('🚨as long as the span its preset places — and never longer than '
+      'the sound', () async {
+    for (final (preset, frames) in [
+      (const MediaPreset(inFrame: 1, outFrame: 3), 3),
+      (const MediaPreset(inFrame: 4, outFrame: 40), 2),
+    ]) {
+      final s = session(preset: preset);
+      await s.audioConformStore.ensurePeaksFor(sound);
+
+      s.showMediaPlacement(seId, 0, sound);
+
+      expect(
+        shown(s)?.silhouette,
+        (layerId: seId, startIndex: 0, endIndexExclusive: frames),
+        reason: '${preset.toJson()} of six frames',
+      );
+    }
   });
 
   test('and no longer than the gap — 「다음 블록까지」', () async {

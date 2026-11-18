@@ -6,9 +6,9 @@ import 'brush_tip_mask.dart';
 
 /// Edge length of the preview alpha the tip index carries inline.
 ///
-/// 16 because that is exactly what `BrushTipPreview` renders — it averages a
-/// mask into a 16x16 grid of cells — so a larger thumbnail would be sampled
-/// straight back down and cost bytes for nothing.
+/// 16 because that is exactly the grid `BrushTipPreview` draws, a cell a byte
+/// — so a larger thumbnail would be read straight back down and cost bytes
+/// for nothing.
 const int brushTipThumbnailSide = 16;
 
 /// One tip in the shared library.
@@ -23,10 +23,10 @@ class BrushTipEntry {
     required this.id,
     required this.name,
     required this.size,
-    required Uint8List thumbnail,
+    Uint8List? thumbnail,
     this.mask,
     this.builtIn = false,
-  }) : thumbnail = Uint8List.fromList(thumbnail);
+  }) : thumbnail = thumbnail == null ? null : Uint8List.fromList(thumbnail);
 
   /// Library identity. It is also the PNG's FILE NAME, so it is restricted
   /// to a filename-safe alphabet (see `sanitizeBrushTipId`).
@@ -40,8 +40,11 @@ class BrushTipEntry {
   /// the mask itself is read.
   final int size;
 
-  /// [brushTipThumbnailSide]² alpha bytes.
-  final Uint8List thumbnail;
+  /// [brushTipThumbnailSide]² alpha bytes: what the index carries for a tip
+  /// of the user's, made as it was registered — null for a built-in, whose
+  /// picture the grids ask of its mask (`BrushTipThumbnails`). ↩️A built-in
+  /// carried one too, made at every launch and drawn by nothing.
+  final Uint8List? thumbnail;
 
   /// The full mask; `null` until the tip's image has been decoded.
   final BrushTipMask? mask;
@@ -70,7 +73,7 @@ class BrushTipEntry {
     'id': id,
     'name': name,
     'size': size,
-    'thumbnail': base64Encode(thumbnail),
+    'thumbnail': base64Encode(thumbnail!),
   };
 
   factory BrushTipEntry.fromJson(Map<String, dynamic> json) => BrushTipEntry(
@@ -89,7 +92,7 @@ class BrushTipEntry {
           other.size == size &&
           other.builtIn == builtIn &&
           other.mask == mask &&
-          listEquals(other.thumbnail, thumbnail);
+          _sameBytes(other.thumbnail, thumbnail);
 
   @override
   int get hashCode => Object.hash(id, name, size, builtIn, mask);
@@ -99,3 +102,7 @@ class BrushTipEntry {
       'BrushTipEntry(id: $id, name: $name, size: $size, '
       'builtIn: $builtIn, loaded: $isLoaded)';
 }
+
+/// Whether [a] and [b] are the same bytes, or both none.
+bool _sameBytes(Uint8List? a, Uint8List? b) =>
+    a == null || b == null ? a == b : listEquals(a, b);

@@ -1,9 +1,11 @@
 // A coverage mask's finishing passes, by gpu-int-spec-canvas 1b S2: a
-// generation of the 4-neighbour grow or shrink (S2a — the app's
-// mask_morphology.dart), the boundary soften (S2c — softenMaskBoundary),
-// and the feather (S2b): the 3-4 chamfer distance (chamferDistance34)
-// relaxed a generation at a time, then the ramp over it. The fill's gap
-// close measures by the same distances (_gapCloseFloodRegion).
+// generation of the 4-neighbour grow or shrink (S2a), the boundary soften
+// (S2c), and the feather (S2b): the 3-4 chamfer distance relaxed a
+// generation at a time, then the ramp over it. The fill's gap close
+// measures by the same distances. ↩️The app spelled each in Dart beside
+// these: the distance (chamferDistance34) till 2026-11-14, the grow
+// (dilateMask4) and the fill's soften (softenMaskBoundary) till
+// 2026-11-15, when an area's finish came here as the bucket's had.
 //
 // A mask is a plane of bytes over its box, `width` × `height`, four to a
 // word with the leftmost in the low byte, each row `stride` words — the
@@ -27,22 +29,23 @@ struct Mask {
   height: u32,
   stride: u32,
   ramp: u32,
-  // Whether the soften keeps inside the outline — softenMaskBoundary's
-  // `insideOutlineOnly`: the selection's does, the fill's does not.
+  // Whether the soften keeps inside the outline (`mask_softened`): the
+  // selection's does, the fill's does not.
   inside_outline_only: u32,
-  // Where a distance starts — chamferDistance34's `zeroWhen` and
-  // `borderDistance`: the byte of the pixels it is measured from, and the
-  // distance the box's edge lies at. The selection's feather measures from
-  // what is out, its edge 3 (`_featherMask`: a pixel on it ramps as if the
-  // one past it were out); the fill's gap close from what may not fill and
-  // then from what it flooded, with no edge — u32's most, which no
+  // Where a distance starts — the byte of the pixels it is measured from,
+  // and the distance the box's edge lies at. The selection's feather
+  // measures from what is out, its edge 3 (a pixel on it ramps as if the
+  // one past it were out); the fill's gap close from what may not fill
+  // and then from what it flooded, with no edge — u32's most, which no
   // distance passes (the canvas edge is no barrier).
   zero_when: u32,
   border: u32,
-  unused_0: u32,
+  // The window a crop takes (`mask_crop`); every other pass runs over the
+  // window its threads' `z` names.
+  window: u32,
 }
 
-// The farthest distance — chamferDistance34's `infinity`.
+// The farthest distance: what a pixel no source reaches holds.
 const MASK_FAR: u32 = 60000u;
 
 @group(0) @binding(0) var<uniform> mask: Mask;
@@ -50,6 +53,10 @@ const MASK_FAR: u32 = 60000u;
 @group(0) @binding(2) var<storage, read_write> bytes_out: array<u32>;
 @group(0) @binding(3) var<storage, read> distances_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> distances_out: array<u32>;
+// The boxes of the box a pass runs over — left, top, right, bottom, in
+// pixels, right and bottom past it: the whole box, or the tiles an area
+// reaches (`MaskPasses::fill`'s `over`).
+@group(0) @binding(5) var<storage, read> windows: array<vec4<u32>>;
 
 // Whether (x, y) is in the box — a negative wraps past either side.
 fn mask_inside(x: i32, y: i32) -> bool {
@@ -96,10 +103,16 @@ fn mask_shrunk(x: i32, y: i32) -> u32 {
 // sum is never a half over it, so + 3 rounds it as the app's double
 // rounding does. A pixel whose four sides are its own sums to its own byte
 // (the app skips it). ⚠️THE SELECTION'S INSIDE THE OUTLINE ONLY (유저
-// 2026-08-27, softenMaskBoundary's head): it never rises past the pixel's
-// own byte, so a selection lifts no ring of its neighbour's art. ⛔The
-// fill's rises (canvas_flood_fill.dart's ⛔UNCLAMPED): paint that stops dead
-// on the outline reads as a hard edge, so its ramp goes a pixel past it.
+// 2026-08-27, after looking at TVPaint: 「애초 tvp 보니까 **선택의 aa가 선택
+// 바깥에 걸리는게 아니라 선택 안쪽에 걸고있는거같거든**?」): it never rises
+// past the pixel's own byte, so a selection lifts no ring of its
+// neighbour's art — since #1288 a pixel the mask touches at all travels
+// whole. ⛔The fill's rises (canvas_flood_fill.dart's ⛔UNCLAMPED): paint
+// that stops dead on the outline reads as a hard edge, so its ramp goes a
+// pixel past it. ⛔SO THE TWO ARE NOT ONE ANSWER (the card that opened it:
+// 「억지로 하나로 만들면 안 된다 — 뜻이 둘이다」) — the arithmetic is shared and
+// the clamp is an argument. ↩️The app spelled the selection's in Dart too
+// (softenMaskBoundary's `insideOutlineOnly`) till 2026-11-14.
 fn mask_softened(x: i32, y: i32) -> u32 {
   let centre = mask_byte(x, y);
   let sides = mask_sides(x, y);
@@ -134,6 +147,19 @@ fn mask_feathered(x: i32, y: i32) -> u32 {
 // row's padding, which no pass reads.
 fn mask_pixel(id: vec3<u32>, k: u32, per: u32) -> vec2<i32> {
   return vec2<i32>(i32(id.x * per + k), i32(id.y));
+}
+
+// The word of the box thread `thread` puts, `per` pixels to a word: in the
+// window its `z` names, on from the window's first word and row — past
+// every word of a row where it lies past that window, so it puts none. A
+// word a window's edge crosses is put whole, by each window it lies in: a
+// pass puts what it reads, so each puts the same.
+fn mask_windowed(thread: vec3<u32>, per: u32) -> vec3<u32> {
+  let window = windows[thread.z];
+  let x = window.x / per + thread.x;
+  let y = window.y + thread.y;
+  let inside = x < (window.z + per - 1u) / per && y < window.w;
+  return vec3<u32>(select(0xffffffffu, x, inside), y, 0u);
 }
 
 fn mask_put_byte_words(id: vec3<u32>) -> bool {
@@ -173,22 +199,23 @@ fn mask_put_stencil(id: vec3<u32>, kind: u32) {
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_grow(@builtin(global_invocation_id) id: vec3<u32>) {
-  mask_put_stencil(id, MASK_GROW);
+fn mask_grow(@builtin(global_invocation_id) thread: vec3<u32>) {
+  mask_put_stencil(mask_windowed(thread, 4u), MASK_GROW);
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_shrink(@builtin(global_invocation_id) id: vec3<u32>) {
-  mask_put_stencil(id, MASK_SHRINK);
+fn mask_shrink(@builtin(global_invocation_id) thread: vec3<u32>) {
+  mask_put_stencil(mask_windowed(thread, 4u), MASK_SHRINK);
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_soften(@builtin(global_invocation_id) id: vec3<u32>) {
-  mask_put_stencil(id, MASK_SOFTEN);
+fn mask_soften(@builtin(global_invocation_id) thread: vec3<u32>) {
+  mask_put_stencil(mask_windowed(thread, 4u), MASK_SOFTEN);
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_feather(@builtin(global_invocation_id) id: vec3<u32>) {
+fn mask_feather(@builtin(global_invocation_id) thread: vec3<u32>) {
+  let id = mask_windowed(thread, 4u);
   if (!mask_put_byte_words(id)) {
     return;
   }
@@ -245,7 +272,8 @@ fn mask_distance_word(id: vec3<u32>) -> u32 {
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_seed(@builtin(global_invocation_id) id: vec3<u32>) {
+fn mask_seed(@builtin(global_invocation_id) thread: vec3<u32>) {
+  let id = mask_windowed(thread, 2u);
   if (!mask_put_distance_words(id)) {
     return;
   }
@@ -261,7 +289,8 @@ fn mask_seed(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn mask_relax(@builtin(global_invocation_id) id: vec3<u32>) {
+fn mask_relax(@builtin(global_invocation_id) thread: vec3<u32>) {
+  let id = mask_windowed(thread, 2u);
   if (!mask_put_distance_words(id)) {
     return;
   }
@@ -274,4 +303,26 @@ fn mask_relax(@builtin(global_invocation_id) id: vec3<u32>) {
     word = word | (mask_relaxed(at.x, at.y) << (k * 16u));
   }
   distances_out[mask_distance_word(id)] = word;
+}
+
+// A crop: the bytes of the window `mask.window` names, as a plane of their
+// own over that window — its rows of whole words, the leftmost byte low,
+// as every mask is laid.
+@compute @workgroup_size(8, 8, 1)
+fn mask_crop(@builtin(global_invocation_id) id: vec3<u32>) {
+  let window = windows[mask.window];
+  let width = window.z - window.x;
+  let stride = (width + 3u) / 4u;
+  if (id.x >= stride || id.y >= window.w - window.y) {
+    return;
+  }
+  var word = 0u;
+  for (var k = 0u; k < 4u; k++) {
+    let x = id.x * 4u + k;
+    if (x >= width) {
+      break;
+    }
+    word = word | (mask_byte(i32(window.x + x), i32(window.y + id.y)) << (k * 8u));
+  }
+  bytes_out[id.y * stride + id.x] = word;
 }

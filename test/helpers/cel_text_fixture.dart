@@ -19,10 +19,14 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 
-/// The grid the cel-text tests stand on: small tiles, so a test can name
-/// every pixel it cares about and a failure prints something readable.
-const int celTextTestTileSize = 8;
-const CanvasSize celTextTestCanvas = CanvasSize(width: 32, height: 32);
+/// The grid the cel-text tests stand on: the engine's own tile, the only
+/// side it stores, on a canvas four tiles a side — a test still names the
+/// pixels it cares about, and leaves the rest of a tile clear.
+const int celTextTestTileSize = defaultCelTileSize;
+const CanvasSize celTextTestCanvas = CanvasSize(
+  width: 4 * celTextTestTileSize,
+  height: 4 * celTextTestTileSize,
+);
 
 /// The cel the cel-text tests set their texts on.
 const BrushFrameKey celTextTestKey = BrushFrameKey(

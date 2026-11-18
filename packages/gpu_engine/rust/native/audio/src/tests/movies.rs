@@ -1,7 +1,10 @@
 //! Movies whose sound is uncompressed, made up here in the shapes the C's
-//! own test makes (`qa_audio_range_test.c`), each decoded by both.
+//! own test made (`qa_audio_range_test.c`), each decode held to the
+//! ledger — the C's samples. ↩️Each was decoded by both until the
+//! connection round deleted the C (connection-round-checklist H,
+//! 2026-11-08).
 
-use super::{Span, TempFile, between_junk, c_window, expect_same, framed, noise, rust_window};
+use super::{Sounds, Span, TempFile, between_junk, decode, expect_the_same_sound, expect_window_of, framed, noise};
 use crate::FORMAT_MOVIE_PCM;
 
 /// How a writer stores a movie's sound: the description's type, its
@@ -270,15 +273,17 @@ fn movie_naming(sound: &Sound, channels: u16, layout: &Layout, reference: u16) -
     if layout.movie_first { [ftyp, moov, mdat].concat() } else { [ftyp, mdat, moov].concat() }
 }
 
-fn expect_movie(what: &str, bytes: &[u8]) {
+fn expect_movie(pins: &mut Sounds, what: &str, bytes: &[u8]) {
     let file = TempFile::new("movie.mov", bytes);
-    let decoded = expect_same(what, &Span::whole(file.path()), 0, -1);
+    let decoded = decode(&Span::whole(file.path()), 0, -1);
     assert_eq!(decoded.format, FORMAT_MOVIE_PCM, "{what}: read as a movie's uncompressed sound");
+    pins.add(&decoded);
 }
 
 #[test]
 fn every_shape_of_a_movie_s_sound_reads_as_the_c_reads_it() {
     let lpcm = Sound { kind: b"lpcm", version: 2, enda: 0, ..SOWT };
+    let mut pins = Sounds::default();
     let sounds = [
         ("sowt 16", SOWT),
         ("twos 16", Sound { kind: b"twos", ..SOWT }),
@@ -301,14 +306,16 @@ fn every_shape_of_a_movie_s_sound_reads_as_the_c_reads_it() {
             let bytes = movie(&sound, channels, &Layout::default());
             // The float ones are noise read as floats: some are NaN, and a
             // NaN's bits are held like any other's.
-            expect_movie(&format!("{what}, {channels} channels"), &bytes);
+            expect_movie(&mut pins, &format!("{what}, {channels} channels"), &bytes);
         }
     }
+    pins.pinned("audio/movie-shapes");
 }
 
 #[test]
 fn every_layout_of_a_movie_s_sound_reads_as_the_c_reads_it() {
     let reel = Layout { chunks: vec![250, 250, 70, 250, 30], between: 1000, ..Layout::default() };
+    let mut pins = Sounds::default();
     // iTunes' words: 0, the frames before the sound, the frames after it,
     // the sound's own length.
     let note = " 00000000 00000100 000000AB 00000000000001F4";
@@ -340,25 +347,28 @@ fn every_layout_of_a_movie_s_sound_reads_as_the_c_reads_it() {
         ("1,500 chunks", Layout { chunks: (0..1500).map(|index| 3 + index % 2).collect(), ..Layout::default() }),
     ];
     for (what, layout) in layouts {
-        expect_movie(what, &movie(&SOWT, 2, &layout));
+        expect_movie(&mut pins, what, &movie(&SOWT, 2, &layout));
     }
     // The second of two data references named, this file's.
     let two = Layout { references: Some(vec![false, true]), ..reel.clone() };
-    expect_movie("the second data reference", &movie_naming(&SOWT, 2, &two, 2));
+    expect_movie(&mut pins, "the second data reference", &movie_naming(&SOWT, 2, &two, 2));
     // Carried, and framed as a save frames it.
     let bytes = movie(&SOWT, 2, &reel);
+    let plain = TempFile::new("plain.mov", &bytes);
+    let whole = decode(&Span::whole(plain.path()), 0, -1);
     let (carried, offset) = between_junk("carried.mov", &bytes);
     let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-    expect_same("carried", &span, 0, -1);
+    expect_the_same_sound("carried", &decode(&span, 0, -1), &whole);
     let blob = framed(&bytes, 1000);
     let (kept, offset) = between_junk("framed.mov", &blob);
     let span = Span { path: kept.path(), offset, length: blob.len() as i64, framed: true };
-    expect_same("framed", &span, 0, -1);
-    expect_same("framed, a window", &span, 333, 222);
+    expect_the_same_sound("framed", &decode(&span, 0, -1), &whole);
+    expect_window_of("framed, a window", &decode(&span, 333, 222), &whole, 333, 222);
     // Cut short in the middle of a chunk.
     let mut cut = movie(&SOWT, 2, &Layout { movie_first: true, ..reel });
     cut.truncate(cut.len() - 1801);
-    expect_movie("cut short", &cut);
+    expect_movie(&mut pins, "cut short", &cut);
+    pins.pinned("audio/movie-layouts");
 }
 
 #[test]
@@ -399,7 +409,5 @@ fn a_movie_whose_sound_this_does_not_read_is_left_as_the_c_leaves_it() {
 fn expect_refused(what: &str, bytes: &[u8]) {
     let file = TempFile::new("refused.mov", bytes);
     let span = Span::whole(file.path());
-    let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-    assert_ne!(rust.format, FORMAT_MOVIE_PCM, "{what}");
-    assert_ne!(c.format, FORMAT_MOVIE_PCM, "{what}: the C's");
+    assert_ne!(decode(&span, 0, -1).format, FORMAT_MOVIE_PCM, "{what}");
 }

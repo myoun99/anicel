@@ -112,8 +112,6 @@ void main() {
         session.edgeDrag.endExposureEdgeDrag();
         await tester.pump();
         expect(dotCells(), cells, reason: 'after it');
-
-        session.playbackRig.prerenderScheduler.cancel();
       });
     }
   }

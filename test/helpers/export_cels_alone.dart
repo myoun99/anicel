@@ -10,7 +10,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 /// every expectation it makes. What the default itself lists and writes is
 /// pinned where the documents are
 /// (`the_cuts_documents_are_kinds_of_the_cels_tab_test.dart`).
-const Set<ExportCelKind> celKindsAlone = {ExportCelKind.cel, ExportCelKind.art};
+const Set<ExportCelKind> celKindsAlone = {ExportCelKind.cel, ExportCelKind.image};
 
 /// A cels spec writing [celKindsAlone].
 const CelsExportSpec celsAlone = CelsExportSpec(kinds: celKindsAlone);

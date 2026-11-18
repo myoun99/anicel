@@ -410,12 +410,17 @@ void main() {
     const folds = ['f2', 'f1', 'f0', 'b'];
 
     Finder twirl(String id) => find.named(
-      id == 'b' ? 'timeline-attach-twirl-b' : 'timeline-folder-twirl-$id',
+      id == 'b'
+          ? 'timeline-attach-twirl-above-b'
+          : 'timeline-folder-twirl-$id',
     );
 
+    /// A folder by its own fold, the base by its folded sides (I-175).
     List<String> folded(EditorSessionManager s) => [
       for (final id in folds)
-        if (layerOf(s, LayerId(id)).collapsed) id,
+        if (layerOf(s, LayerId(id)) case final row
+            when row.collapsed || row.foldedAttaches.isNotEmpty)
+          id,
     ];
 
     /// The moves from [from]'s twirl to [to]'s, in [steps] even steps.

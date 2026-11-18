@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -45,8 +47,14 @@ BitmapSurface _surface({
   final map = <TileCoord, BitmapTile>{};
   for (var i = 0; i < tiles; i++) {
     final coord = TileCoord(x: i, y: 0);
+    // Of two colours: a tile of one holds no block of its own, and would
+    // weigh nothing whoever held it (`BitmapTile.ownBytes`).
     map[coord] =
-        reuse[coord] ?? BitmapTile.blank(size: size);
+        reuse[coord] ??
+        BitmapTile(
+          size: size,
+          pixels: Uint8List(BitmapTile.bytesFor(size))..[3] = 255,
+        );
   }
   return BitmapSurface(
     canvasSize: const CanvasSize(width: 4000, height: 4000),
@@ -221,7 +229,7 @@ void main() {
 
     test('the memo is what the entry actually holds', () {
       final region = regionOf(64);
-      expect(region.pixelOutlineContours, isNotEmpty);
+      expect(region.pixelContours.points, isNotEmpty);
       expect(region.estimatedRetainedBytes, greaterThan(0));
     });
   });

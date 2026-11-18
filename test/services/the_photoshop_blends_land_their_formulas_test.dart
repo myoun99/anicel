@@ -1,27 +1,23 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 
+import '../helpers/pixels_laid_in_a_mode.dart';
+
 /// brush-fidelity (유저 2026-10-17 Q3: 「13개 + 클튜의 발광 둘」): the
 /// thirteen blends Photoshop and Clip Studio share beyond the first twelve,
-/// pinned by their FORMULAS — the native parity suite holds C to the Dart
-/// reference byte for byte, but two transcriptions of one wrong formula
-/// agree with each other perfectly.
+/// pinned by their FORMULAS on the engine that lays them — two
+/// transcriptions of one wrong formula agree with each other perfectly.
+/// ↩️Held to the stroke blend written in doubles till 2026-11-14, which the
+/// app never ran (board `the-off-engine-cpu-commit-lives-only-for-tests`).
 ///
 /// Every expectation was worked by hand and checked against an independent
 /// transcription of the W3C pseudo-code (SetSat by ranking max/mid/min, not
 /// the kernel's Skia form). Opaque over opaque, the composite is B itself.
 void main() {
   List<int> land(BrushBlendMode mode, List<int> src, List<int> dst) =>
-      blendStrokeRegionPixels(
-        dst: Uint8List.fromList(dst),
-        src: Uint8List.fromList(src),
-        mode: mode,
-        pixelCount: src.length ~/ 4,
-      );
+      pixelsLaidInAMode(mode, src: src, dst: dst);
 
   group('the seven that blend channel by channel', () {
     test('linear burn adds the two and takes a whole away — not colour '

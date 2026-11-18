@@ -19,7 +19,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
@@ -38,6 +37,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/sheet_photo_drops.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨F-420 — A SHEET RUNS THE TOOL IN HAND (유저 2026-10-20: 「캔버스
 /// 베이스패널에서 브러시허용일때, 도형도구 선택되있는데 브러시가 그려짐.
@@ -106,7 +106,7 @@ void main() {
         .sessionStateFor(window)
         .canvasState
         .currentSurface;
-    return (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ??
+    return (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ??
             0) !=
         0;
   }

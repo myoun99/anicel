@@ -1,13 +1,47 @@
+// The engine's Rust library carries the compressor (rust/src/lib.rs), and
+// its names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'gpu_engine_asset.dart';
 import 'native_scratch.dart';
-import 'qa_engine_abi.dart';
+
+@Native<Int64 Function(Int64)>(symbol: 'qa_zstd_compress_bound')
+external int _bound(int srcSize);
+
+@Native<Int64 Function(Pointer<Uint8>, Int64, Pointer<Uint8>, Int64)>(
+  symbol: 'qa_zstd_compress',
+)
+external int _compress(
+  Pointer<Uint8> dst,
+  int dstCapacity,
+  Pointer<Uint8> src,
+  int srcSize,
+);
+
+@Native<Int64 Function(Pointer<Uint8>, Int64)>(
+  symbol: 'qa_zstd_decompressed_size',
+)
+external int _sizeOf(Pointer<Uint8> src, int srcSize);
+
+@Native<Int64 Function(Pointer<Uint8>, Int64, Pointer<Uint8>, Int64)>(
+  symbol: 'qa_zstd_decompress',
+)
+external int _decompress(
+  Pointer<Uint8> dst,
+  int dstCapacity,
+  Pointer<Uint8> src,
+  int srcSize,
+);
 
 /// zstd for cel blobs — the compressor whose DEcompression is on the frame
-/// path.
+/// path, in the engine (native/compress, at its one level — which says
+/// why there is one).
 ///
 /// 🚨★★★**THE SPEED THAT MATTERS IS THE READ.** A cel is compressed once
 /// per save, on a background isolate. It is DECOMPRESSED on the main
@@ -17,85 +51,23 @@ import 'qa_engine_abi.dart';
 /// zstd. At 60fps a frame is 16.7ms, so deflate was spending a fifth of
 /// one on a single cel.
 ///
-/// ⛔It does NOT replace deflate. `dart:io` has zlib and always works —
-/// tests, host runs, any build where the engine did not load. The blob
-/// carries a codec byte, both are read, and zstd is chosen only when the
-/// engine answered. **A file this app writes must never need a library
-/// that might not be there.**
-final class QaCelCompressor {
-  QaCelCompressor._(this._library);
+/// ⛔It does NOT replace deflate. `dart:io` has zlib and always works. The
+/// blob carries a codec byte, both are read, and deflate is written where
+/// zstd refuses ([compress] answers null). **A file this app writes must
+/// never need a library that might not be there.** ↩️Until the connection
+/// round (connection-round-checklist H, 2026-11-08) the compressor was the
+/// C engine's, which a build could be without, and zstd was written only
+/// where it loaded; the engine's ships with the app, so it is there
+/// wherever a file is written or read.
+abstract final class QaCelCompressor {
+  /// Test hook: refuse every input, as the compressor refuses an empty one
+  /// — what a save writes where zstd refuses is otherwise out of reach.
+  static bool debugForceRefusal = false;
 
-  final DynamicLibrary _library;
-
-  static QaCelCompressor? _instance;
-  static bool _tried = false;
-
-  /// Test seam, the same shape [PdfRenderService.debugOpenerOverride] uses:
-  /// when set, [instance] answers this instead of probing.
-  ///
-  /// ⛔`() => null` is the ONLY way a test can say「no engine」on a machine
-  /// that has one — a bogus library path cannot, because
-  /// [openQaEngineLibrary] deliberately falls THROUGH a bad override to the
-  /// default search. CI runs two jobs with the engine on PATH, and a test
-  /// that assumed its own runner went red only there.
-  static QaCelCompressor? Function()? debugInstanceOverride;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  static QaCelCompressor? get instance {
-    final override = debugInstanceOverride;
-    if (override != null) {
-      return override();
-    }
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null ? null : QaCelCompressor._(library);
-    }
-    return _instance;
-  }
-
-  late final _bound = _library
-      .lookupFunction<Int64 Function(Int64), int Function(int)>(
-        'qa_zstd_compress_bound',
-      );
-  late final _compress = _library
-      .lookupFunction<
-        Int64 Function(Pointer<Uint8>, Int64, Pointer<Uint8>, Int64, Int32),
-        int Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int)
-      >('qa_zstd_compress');
-  late final _sizeOf = _library
-      .lookupFunction<
-        Int64 Function(Pointer<Uint8>, Int64),
-        int Function(Pointer<Uint8>, int)
-      >('qa_zstd_decompressed_size');
-  late final _decompress = _library
-      .lookupFunction<
-        Int64 Function(Pointer<Uint8>, Int64, Pointer<Uint8>, Int64),
-        int Function(Pointer<Uint8>, int, Pointer<Uint8>, int)
-      >('qa_zstd_decompress');
-
-  /// False on an older engine binary that predates these exports — the
-  /// same shape every other surface here uses to survive a stale DLL.
-  bool get isSupported {
-    try {
-      _bound;
-      _compress;
-      _sizeOf;
-      _decompress;
-      return true;
-    } on Object {
-      return false;
-    }
-  }
-
-  /// Compresses [bytes] at [level], or null when the engine refused —
-  /// null means "write deflate instead", never "lose the cel".
-  Uint8List? compress(Uint8List bytes, {required int level}) {
-    if (bytes.isEmpty) {
+  /// Compresses [bytes], or null when the engine refused — null means
+  /// "write deflate instead", never "lose the cel".
+  static Uint8List? compress(Uint8List bytes) {
+    if (debugForceRefusal || bytes.isEmpty) {
       return null;
     }
     final capacity = _bound(bytes.length);
@@ -106,7 +78,7 @@ final class QaCelCompressor {
     try {
       final written = withNativeBytes(
         bytes,
-        (src) => _compress(dst, capacity, src, bytes.length, level),
+        (src) => _compress(dst, capacity, src, bytes.length),
       );
       if (written <= 0) {
         return null;
@@ -135,7 +107,7 @@ final class QaCelCompressor {
   /// ⚠️The size comes from the FRAME, not from our own header: zstd
   /// records it, and storing it a second time would be two numbers that
   /// can disagree.
-  R? readFrame<R extends Object>(
+  static R? readFrame<R extends Object>(
     Uint8List frame,
     R Function(Uint8List bytes) read,
   ) {

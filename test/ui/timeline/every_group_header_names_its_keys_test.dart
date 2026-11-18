@@ -83,6 +83,12 @@ void main() {
       tag,
       expanded: true,
       resolveAt: (_) => tag,
+      pose: (
+        track: TransformTrack.empty(),
+        enabled: true,
+        basis: null,
+        lanes: const [],
+      ),
     );
     expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');
     expect(lanes.first.keyNames, {3: 'A'}, reason: 'the header');
@@ -91,5 +97,23 @@ void main() {
           .keyNames,
       {3: 'A'},
     );
+  });
+
+  test('🎯the name tag\'s header names its pose\'s keys too — the S row\'s '
+      'transform is its member (audio-fx-grows-like-the-pros-Q3 · Q4)', () {
+    const tag = SeNameTag();
+    final lanes = seNameTagPropertyLanes(
+      tag,
+      expanded: false,
+      resolveAt: (_) => tag,
+      pose: (
+        track: TransformTrack.empty().copyWith(rotation: namedAtThree()),
+        enabled: true,
+        basis: null,
+        lanes: const [],
+      ),
+    );
+    expect(lanes.single.keyNames, {3: 'A'});
+    expect(lanes.single.keyMarks.keys, [3]);
   });
 }

@@ -1,0 +1,535 @@
+//! The letters' C ABI (cel-number-on-the-engine-letters): the app hands
+//! the engine its faces once — each family's files, families in the order
+//! a letter goes down them — and a picture of letters a pass at a time,
+//! each run as the app's layout set it, and lands what they make — the
+//! straight RGBA8 tiles of one rectangle of the grid — in a pool's slots,
+//! which the app holds as it holds a row's picture. Where a letter stands is the app's to say
+//! ([`Run`]); which glyphs it takes and how they raster, the engine's.
+
+#[cfg(test)]
+mod tests;
+
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, taken_bytes};
+use crate::fail;
+use crate::kernels::composite::Composite;
+use crate::kernels::dab::abi::reported;
+use crate::kernels::dab::landing::placed;
+use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::write::Change;
+
+use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
+use super::{Lettered, Pass, set, words};
+
+/// A picture of letters as the app builds it: its passes, bottom to top.
+#[derive(Default)]
+pub(crate) struct Lettering {
+    passes: Vec<Pass>,
+}
+
+impl Lettering {
+    /// The pass the shapes being added go to.
+    fn last(&mut self) -> Option<&mut Pass> {
+        match self.passes.last_mut() {
+            Some(pass) => Some(pass),
+            None => fail("a shape is added to a pass — none was begun"),
+        }
+    }
+}
+
+/// False, `message` the last error.
+fn refused(message: impl Into<String>) -> bool {
+    fail::<()>(message);
+    false
+}
+
+/// Null, `message` the last error.
+fn none<T>(message: impl Into<String>) -> *mut T {
+    fail::<()>(message);
+    std::ptr::null_mut()
+}
+
+/// # Safety
+/// `at` is null or holds six floats: a, b, c, d, e, f.
+unsafe fn affine(at: *const f32) -> Option<Affine> {
+    if at.is_null() {
+        return fail("a shape stands somewhere — no placement was given");
+    }
+    // SAFETY: see the function's contract.
+    let [a, b, c, d, e, f] = unsafe { *at.cast::<[f32; 6]>() };
+    Some(Affine { a, b, c, d, e, f })
+}
+
+/// The faces being handed to the engine a file at a time
+/// ([`gpu_engine_faces_file`]), each family's files together, till
+/// [`gpu_engine_faces_of`] sets them up — and the first thing it refused.
+#[derive(Default)]
+pub struct FacesHanded {
+    families: Vec<Vec<Vec<u8>>>,
+    refused: Option<String>,
+}
+
+/// Nothing handed yet: what [`gpu_engine_faces_file`] is handed each file
+/// into, and [`gpu_engine_faces_of`] takes.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_faces_handed() -> *mut FacesHanded {
+    hands_bytes(FacesHanded::default())
+}
+
+/// Copies a file — `length` bytes at `bytes`, alive for the call — into
+/// `handed` as one of family `family`'s: 0 first and each one the last's
+/// or the next, so a family's files lie together in the order its family
+/// is handed over. What it refuses, [`gpu_engine_faces_of`] says.
+///
+/// ⛔ONE COPY: the app calls this as a leaf, handing the bytes its bundle
+/// read where they lie, and this copy is the only one made — the app held
+/// them in a block it zeroed and filled first, and the engine copied that
+/// (🔬저장 11-14, the surface's AOT profiler: 35 MB three times over, a
+/// 50–120 ms stop of the UI the first time letters were set). ⚠️Nothing
+/// here may call back into the app's runtime, as no leaf may.
+///
+/// # Safety
+/// `handed` came from [`gpu_engine_faces_handed`] and is not yet set up;
+/// `bytes` holds `length`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_file(
+    handed: *mut FacesHanded,
+    family: u32,
+    bytes: *const u8,
+    length: usize,
+) {
+    // SAFETY: see the function's contract.
+    let handed = unsafe { &mut *handed };
+    if handed.refused.is_some() {
+        return;
+    }
+    let families = &mut handed.families;
+    if family as usize == families.len() {
+        families.push(Vec::new());
+    } else if family as usize + 1 != families.len() {
+        handed.refused = Some(format!("family {family} is not the last one's nor the next"));
+        return;
+    }
+    // SAFETY: see the function's contract.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+    families.last_mut().expect("pushed above").push(bytes.to_vec());
+}
+
+/// The faces letters are set in, of the files `handed` was handed — which
+/// it takes and lets go of. Null on failure; see the last error.
+///
+/// # Safety
+/// `handed` came from [`gpu_engine_faces_handed`] and is set up once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_of(handed: *mut FacesHanded) -> *mut Faces {
+    // SAFETY: see the function's contract.
+    let FacesHanded { families, refused } = unsafe { taken_bytes(handed) };
+    if let Some(why) = refused {
+        return none(why);
+    }
+    let mut set_in = Vec::with_capacity(families.len());
+    for (family, files) in families.into_iter().enumerate() {
+        let Some(faces) = Family::of_files(files) else {
+            return none(format!("family {family} holds no face"));
+        };
+        set_in.push(faces);
+    }
+    Faces::new(set_in).map_or(std::ptr::null_mut(), hands_bytes)
+}
+
+/// The families of `faces` in the order `order` names them — `count`
+/// places, each where a family stands in `faces` —, sharing their files:
+/// let go of on its own, before `faces` or after. Null on failure; see the
+/// last error.
+///
+/// # Safety
+/// `faces` came from [`gpu_engine_faces_of`] or this, and `order` holds
+/// `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_ordered(faces: *const Faces, order: *const u32, count: usize) -> *mut Faces {
+    // SAFETY: see the function's contract.
+    let (faces, order) = unsafe { (&*faces, std::slice::from_raw_parts(order, count)) };
+    faces.ordered(order).map_or(std::ptr::null_mut(), hands_bytes)
+}
+
+/// # Safety
+/// `faces` came from `gpu_engine_faces_of` or `gpu_engine_faces_ordered`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(faces) };
+}
+
+/// A picture of letters of no pass.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_letters_new() -> *mut Lettering {
+    hands_bytes(Lettering::default())
+}
+
+/// # Safety
+/// `letters` came from `gpu_engine_letters_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_letters_free(letters: *mut Lettering) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(letters) };
+}
+
+/// Begins a pass over the ones before it: its shapes in `colour` —
+/// straight RGBA8, A<<24|B<<16|G<<8|R, its alpha the pass's strength —,
+/// `hard` or not (`TextLetterStyle.antialias` off), filled where
+/// `outline` is 0 and else outlined that wide, 1/64 px of the layout.
+/// False on failure; see the last error.
+///
+/// # Safety
+/// `letters` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_letters_pass(
+    letters: *mut Lettering,
+    colour: u32,
+    hard: bool,
+    outline: i32,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let letters = unsafe { &mut *letters };
+    let paint = match outline {
+        0 => Paint::Fill,
+        width if width > 0 => Paint::Stroke { width },
+        width => return refused(format!("an outline {width} wide")),
+    };
+    letters.passes.push(Pass {
+        colour,
+        hard,
+        paint,
+        shapes: Vec::new(),
+    });
+    true
+}
+
+/// Adds to the pass begun last a run of letters in one style — `size`
+/// 64ths of a px, `weight` — `FontWeight`'s, 1 to 1000 — and `italic` —
+/// standing in the layout where `at` puts its own space: `text`, `length`
+/// bytes of UTF-8, cut into `count` clusters, the i-th ending at byte
+/// `ends[i]` and set with its box's left and its line's baseline at
+/// `origins[2i]`, `origins[2i + 1]`, 64ths of a px. False on failure; see
+/// the last error.
+///
+/// # Safety
+/// `letters` is live, `at` holds six floats, `text` holds `length` bytes
+/// and `ends` `count` words, `origins` `2 × count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_letters_run(
+    letters: *mut Lettering,
+    at: *const f32,
+    size: i32,
+    weight: u32,
+    italic: bool,
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (letters, at) = unsafe { (&mut *letters, affine(at)) };
+    let Some(at) = at else {
+        return false;
+    };
+    // SAFETY: see the function's contract.
+    let Some(run) = (unsafe { run_of(size, weight, italic, text, length, ends, origins, count) }) else {
+        return false;
+    };
+    let Some(pass) = letters.last() else {
+        return false;
+    };
+    pass.shapes.push(Placed {
+        at,
+        shape: Shape::Letters(run),
+    });
+    true
+}
+
+/// `weight` as a run takes it — None, with the last error, for one that is
+/// no `FontWeight`'s.
+fn weight_of(weight: u32) -> Option<u16> {
+    match u16::try_from(weight) {
+        Ok(weight) if WEIGHTS.contains(&weight) => Some(weight),
+        _ => fail(format!("a weight of {weight}: a run's is 1 to 1000")),
+    }
+}
+
+/// `text`, `length` bytes of UTF-8, cut into `count` clusters, the i-th
+/// ending at byte `ends[i]` and set at `origins[2i]`, `origins[2i + 1]`.
+/// None on failure; see the last error.
+///
+/// # Safety
+/// `text` holds `length` bytes, `ends` `count` words and `origins`
+/// `2 × count`.
+unsafe fn clusters_of(
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> Option<Vec<Cluster>> {
+    // SAFETY: see the function's contract.
+    let (bytes, ends, origins) = unsafe {
+        (
+            std::slice::from_raw_parts(text, length),
+            std::slice::from_raw_parts(ends, count),
+            std::slice::from_raw_parts(origins, 2 * count),
+        )
+    };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return fail("letters are UTF-8");
+    };
+    let mut clusters = Vec::with_capacity(count);
+    let mut start = 0;
+    for (cluster, &end) in ends.iter().enumerate() {
+        let end = end as usize;
+        let Some(letter) = text.get(start..end).filter(|letter| !letter.is_empty()) else {
+            return fail(format!("cluster {cluster} ends at {end}: past {start}, within {length}"));
+        };
+        clusters.push(Cluster {
+            text: letter.to_owned(),
+            origin: [origins[2 * cluster], origins[2 * cluster + 1]],
+        });
+        start = end;
+    }
+    if start != length {
+        return fail(format!("the clusters end at {start}, the letters at {length}"));
+    }
+    Some(clusters)
+}
+
+/// A run of letters in one style as a verb is handed it: `size` 64ths of a
+/// px, `weight` — `FontWeight`'s, 1 to 1000 — and `italic`, its clusters
+/// read as [`clusters_of`] reads them. None on failure; see the last
+/// error.
+///
+/// # Safety
+/// `text` holds `length` bytes, `ends` `count` words and `origins`
+/// `2 × count`.
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_of(
+    size: i32,
+    weight: u32,
+    italic: bool,
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> Option<Run> {
+    let weight = weight_of(weight)?;
+    // SAFETY: see the function's contract.
+    let clusters = unsafe { clusters_of(text, length, ends, origins, count) }?;
+    Some(Run {
+        size,
+        weight,
+        italic,
+        clusters,
+    })
+}
+
+/// A word as the app builds it: its runs, each in one style, where the
+/// word's layout set them.
+#[derive(Default)]
+pub struct Wording {
+    shapes: Vec<Placed>,
+}
+
+/// A word of no run.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_word_new() -> *mut Wording {
+    hands_bytes(Wording::default())
+}
+
+/// # Safety
+/// `word` came from `gpu_engine_word_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_free(word: *mut Wording) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(word) };
+}
+
+/// Adds to `word` a run of letters in one style, handed as
+/// [`gpu_engine_letters_run`] is handed a pass's, standing where the
+/// word's layout set it. False on failure; see the last error.
+///
+/// # Safety
+/// `word` is live, `text` holds `length` bytes and `ends` `count` words,
+/// `origins` `2 × count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_word_run(
+    word: *mut Wording,
+    size: i32,
+    weight: u32,
+    italic: bool,
+    text: *const u8,
+    length: usize,
+    ends: *const u32,
+    origins: *const i32,
+    count: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let word = unsafe { &mut *word };
+    // SAFETY: see the function's contract.
+    let Some(run) = (unsafe { run_of(size, weight, italic, text, length, ends, origins, count) }) else {
+        return false;
+    };
+    word.shapes.push(Placed {
+        at: Affine { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
+        shape: Shape::Letters(run),
+    });
+    true
+}
+
+/// Whether every letter of `word` is one some family of `faces` has
+/// ([`words::whole`]): false for a word a letter of which the engine
+/// would set as an empty box.
+///
+/// # Safety
+/// `word` and `faces` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_whole(word: *const Wording, faces: *const Faces) -> bool {
+    // SAFETY: see the function's contract.
+    let (word, faces) = unsafe { (&*word, &*faces) };
+    words::whole(faces, &word.shapes)
+}
+
+/// Rasters `word`, set in `faces` and laid by `to_raster` — the layout's
+/// space to the raster's, six floats —, over `bytes`: the raster's
+/// `width` × `height` pixels row by row, a byte of coverage each
+/// ([`words::rastered`]). On the CPU, where it is called: no device is
+/// taken in hand. False on failure, `bytes` as they were; see the last
+/// error.
+///
+/// # Safety
+/// `word` and `faces` are live, `to_raster` holds six floats and `bytes`
+/// `width × height`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_word_raster(
+    word: *const Wording,
+    faces: *const Faces,
+    to_raster: *const f32,
+    width: u32,
+    height: u32,
+    bytes: *mut u8,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (word, faces, to_raster) = unsafe { (&*word, &*faces, affine(to_raster)) };
+    let (Some(to_raster), Some(count)) = (to_raster, words::pixels([width, height])) else {
+        return false;
+    };
+    // SAFETY: see the function's contract.
+    let bytes = unsafe { std::slice::from_raw_parts_mut(bytes, count) };
+    words::rastered(faces, &word.shapes, to_raster, width, bytes);
+    true
+}
+
+/// Adds to the pass begun last a box or a line — `rect`, [left, top,
+/// right, bottom), 64ths of a px — standing in the layout where `at` puts
+/// its own space. False on failure; see the last error.
+///
+/// # Safety
+/// `letters` is live, `at` holds six floats and `rect` four words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_letters_rect(letters: *mut Lettering, at: *const f32, rect: *const i32) -> bool {
+    // SAFETY: see the function's contract.
+    let (letters, at, rect) = unsafe { (&mut *letters, affine(at), *rect.cast::<[i32; 4]>()) };
+    let (Some(at), Some(pass)) = (at, letters.last()) else {
+        return false;
+    };
+    pass.shapes.push(Placed {
+        at,
+        shape: Shape::Rect(rect),
+    });
+    true
+}
+
+/// Sets `letters` in `faces` and lays them on the grid by `to_grid` — the
+/// layout's space to the grid's, six floats —, and submits the work: the
+/// picture, its rectangle written to `rect` as its first tile's column and
+/// row and how many columns and rows of tiles it spans. Null for letters
+/// that cover no pixel, `rect` none — zero columns of zero rows —, and on
+/// failure, `rect` as it was; see the last error.
+///
+/// # Safety
+/// Every pointer is live, the executor made on `engine`; `to_grid` holds
+/// six floats and `rect` four words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_letters_set(
+    letters: *const Lettering,
+    engine: *const Engine,
+    composite: *const Composite,
+    faces: *const Faces,
+    to_grid: *const f32,
+    rect: *mut i32,
+) -> *mut Lettered {
+    // SAFETY: see the function's contract.
+    let (letters, engine, composite, faces, to_grid) =
+        unsafe { (&*letters, &*engine, &*composite, &*faces, affine(to_grid)) };
+    engine.on_thread(|| {
+        let Some(to_grid) = to_grid else {
+            return std::ptr::null_mut();
+        };
+        let Some(lettered) = set(engine, composite, faces, to_grid, &letters.passes) else {
+            return std::ptr::null_mut();
+        };
+        let at = lettered.as_ref().map_or([0; 4], |lettered| {
+            let at = lettered.rect;
+            [at.x0, at.y0, at.columns as i32, at.rows as i32]
+        });
+        // SAFETY: `rect` holds four words.
+        unsafe { *rect.cast::<[i32; 4]>() = at };
+        lettered.map_or(std::ptr::null_mut(), |lettered| engine.hands(lettered))
+    })
+}
+
+/// Puts each of `lettered`'s tiles that `asks` names — its column and row
+/// on the grid, `count` of them — in a fresh slot of `cel`, as a landing
+/// puts what it made ([`placed`]): the engine's alone, with no wait for the
+/// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
+///
+/// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
+///
+/// # Safety
+/// `engine`, `lettered` and `pool` are live, the pool made on `engine`;
+/// `asks` holds `2 × count`, and `places` and `changes` hold `count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_lettered_land(
+    engine: *const Engine,
+    lettered: *const Lettered,
+    pool: *mut Pool,
+    cel: u32,
+    asks: *const i32,
+    count: usize,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (engine, lettered, pool) = unsafe { (&*engine, &*lettered, &mut *pool) };
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
+        let landed = asks
+            .chunks_exact(2)
+            .map(|tile| lettered.rect.index_of(tile[0], tile[1]))
+            .collect::<Option<Vec<usize>>>()
+            .and_then(|indices| {
+                let inked = indices.into_iter().map(|index| (index, Change::Inked));
+                placed(engine, (pool, Cel(cel)), &lettered.tiles, inked)
+            });
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
+}
+
+/// # Safety
+/// `lettered` came from `gpu_engine_letters_set`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_lettered_free(lettered: *mut Lettered) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go(lettered) };
+}

@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_block_look.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker;
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
@@ -124,17 +125,22 @@ void main() {
       expect(row.shown, folderShown, reason: 'the head\'s eye, folder and all');
       expect(row.content, isNotNull, reason: 'the cels it asks');
 
-      final canvas = TestRecordingCanvas();
-      painter.paint(
-        canvas,
-        tester.getSize(
-          timelineRowChromeFinder(trackId.value, prefix: 'storyboard'),
-        ),
-      );
+      // The cells draw the grips with their paper; the chrome takes their
+      // pointer and draws none (F-604).
+      final cells =
+          tester
+                  .widget<CustomPaint>(
+                    find.byKey(
+                      ValueKey<String>(
+                        'storyboard-conte-cells-${trackId.value}',
+                      ),
+                    ),
+                  )
+                  .painter!
+              as TimelineRowCellsPainter;
+      expect(painter.gripsOnPaper, isTrue);
       final inks = {
-        for (final call in canvas.invocations)
-          if (call.invocation.memberName == #drawPath)
-            (call.invocation.positionalArguments[1] as Paint).color.toARGB32(),
+        for (final grip in cells.gripsIn(0, 24)) grip.color.toARGB32(),
       };
       // No panel holds a picture: every grip is an empty block's, on any
       // row (「꺼진 행의 빈블록은 말한 빈블록이랑 동일하게」).

@@ -16,7 +16,7 @@ void main() {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
 
-    BitmapSurface surface({int width = 4, int height = 4, int tileSize = 2}) {
+    BitmapSurface surface({int width = 4, int height = 4, int tileSize = 128}) {
       return BitmapSurface(
         canvasSize: CanvasSize(width: width, height: height),
         tileSize: tileSize,

@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -5,6 +8,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -15,6 +19,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/fill_gradient.dart';
@@ -25,13 +30,16 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/panel_finders.dart';
 import '../../helpers/rail_group_button.dart';
 
 /// I-160: the fill's knobs — 「연속 채우기」 (Q6) and the gradient (Q3 · Q4)
 /// with the sub colour it runs to — are what the canvas a press lands on
 /// asks, through the real app, so every hand the answer passes through on
-/// its way down is in the path.
+/// its way down is in the path. And the fill it is asked for is laid at the
+/// fill's own opacity, from every copy the guide makes of the press.
 void main() {
   setUp(() => AppInput.settings.value = const AppInputSettings());
   tearDown(() => AppInput.settings.value = const AppInputSettings());
@@ -176,6 +184,113 @@ void main() {
         sub: 0xFF123456,
       )),
     );
+  });
+
+  // What a press asks the canvas for a fill by, beside the fill's options:
+  // the fill's own opacity (TP1 — the strip's bar writes the fill's field,
+  // not the brush's) and the guide the view read — a symmetry floods from
+  // every copy it makes of the press (mutants GI3 · GI4 lived, 2026-11-12).
+  group('a fill the canvas is asked for', () {
+    // It reads the frame's picture on the engine.
+    opensTheEnginesScreens();
+
+    testWidgets('is laid at the fill\'s own opacity, and floods from every '
+        'copy a symmetry makes of the press', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: project())),
+      );
+      await tester.pumpAndSettle();
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final session = workspace.session;
+      const layer = LayerId('cf-layer');
+      session.selectLayer(layer);
+      await tester.pumpAndSettle();
+
+      // A closed loop, right of the canvas's middle.
+      final pen = await tester.startGesture(
+        visibleCanvasPoint(tester, offset: const Offset(60, -30)),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      for (final side in const [
+        Offset(10, 0),
+        Offset(0, 10),
+        Offset(-10, 0),
+        Offset(0, -10),
+      ]) {
+        for (var step = 0; step < 6; step += 1) {
+          await pen.moveBy(side);
+          await tester.pump();
+        }
+      }
+      await pen.up();
+      await tester.pumpAndSettle();
+
+      // What the loop encloses: the middle of its ink's box.
+      final surface = session.pixelEditing.coordinator!.currentSurfaceOf(
+        session.brushFrameKeyForCut(
+          session.requireActiveCut,
+          layer,
+          const FrameId('cf-cel'),
+        ),
+      );
+      var (left, top, right, bottom) = (1 << 30, 1 << 30, -1, -1);
+      for (final MapEntry(key: at, value: tile) in surface.tiles.entries) {
+        final ink = tile.inkBounds;
+        if (ink == null || ink.rightExclusive <= ink.left) {
+          continue;
+        }
+        final (x, y) = (at.x * surface.tileSize, at.y * surface.tileSize);
+        left = min(left, x + ink.left);
+        top = min(top, y + ink.top);
+        right = max(right, x + ink.rightExclusive);
+        bottom = max(bottom, y + ink.bottomExclusive);
+      }
+      expect(right, greaterThan(left), reason: '⛔CONTROL: the loop is drawn');
+      final inside = CanvasPoint(x: (left + right) / 2, y: (top + bottom) / 2);
+
+      final brush = workspace.brushTool!;
+      brush.value = brush.value.copyWith(
+        tool: CanvasTool.fill,
+        fillOpacity: 0.5,
+      );
+      await tester.pumpAndSettle();
+
+      // Where a half turn about the canvas's middle brings the loop's
+      // inside from: the open canvas, left of the middle.
+      const size = defaultCutCanvasSize;
+      final press = CanvasPoint(
+        x: size.width - inside.x,
+        y: size.height - inside.y,
+      );
+      final halfTurn = SymmetryShape(
+        axis: GuideAxis(
+          origin: CanvasPoint(x: size.width / 2, y: size.height / 2),
+          angleDegrees: 90,
+        ),
+        lineSymmetry: false,
+      );
+      final fills = asked<FillRangeAt?>(
+        tester,
+        (view) => view.fillRangeAt,
+      ).nonNulls.toList();
+      expect(fills, isNotEmpty, reason: '⛔CONTROL');
+      for (final fillRangeAt in fills) {
+        final alone = fillRangeAt(press, null)!;
+        expect(
+          alone.covers(inside),
+          isFalse,
+          reason: '⛔premise: the loop walls its inside off',
+        );
+        expect(alone.dabsIn(0xFF3366CC).first.opacity, 0.5);
+        expect(fillRangeAt(press, halfTurn)!.covers(inside), isTrue);
+      }
+    });
   });
 
   testWidgets('the shape fill: what its outline covers is a range the '

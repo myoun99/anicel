@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../text/app_face.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'frame_ruler_view.dart';
+import 'ruler_marker_layer.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_grid_metrics.dart';
@@ -36,7 +38,9 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.geometry,
     this.playhead,
+    this.markers,
   });
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the painter
@@ -44,6 +48,10 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// bounds; repaints land once per span crossing.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The window box the strip is laid in — its host's rows'
+  /// ([TimelineRulerScale.geometry]).
+  final TimelineFrameGeometryHandle? geometry;
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -68,8 +76,12 @@ class TimelineFrameHeaderRow extends StatelessWidget {
 
   /// The playhead the strip writes its own pair at (I-16), on a layer of
   /// its own above the strip — a null VALUE writes none; a strip without
-  /// one (null) never mounts the writing.
+  /// one (null) mounts the writing for its [markers] alone.
   final ValueListenable<int?>? playhead;
+
+  /// The ruler's markers and their verbs (I-169) — over the strip, under
+  /// the playhead's writing; null mounts none and takes no double click.
+  final RulerMarkerHooks? markers;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +111,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
+      geometry: geometry,
     );
     return SizedBox(
       width: width,
@@ -106,15 +119,15 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       child: timelineRulerStripWithWriting(
         strip: CustomPaint(
           key: const ValueKey<String>('timeline-frame-ruler-paint'),
-          size: Size(width, metrics.layerRowHeight),
           painter: TimelineFrameRulerPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('timeline-ruler-playhead-writing'),
-        playhead: playhead,
-        writing: (held) => TimelineRulerPlayheadWritingPainter(
+        markersKey: const ValueKey<String>('timeline-ruler-markers'),
+        writing: TimelineRulerPlayheadWritingPainter(
           scale: scale,
-          playhead: held,
+          playhead: playhead,
           layout: TimelineFrameRulerPainter.glyphsAt,
+          markers: markers,
         ),
       ),
     );

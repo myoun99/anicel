@@ -1,14 +1,15 @@
+import 'dart:ffi';
 import 'dart:ui' as ui;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/sync_image_upload.dart';
-import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
-import '../../native/qa_native_engine.dart';
+import '../../models/tile_roll.dart';
+import '../../native/premultiplied_copy.dart';
 import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
-import 'pictured_tiles.dart';
 import 'tile_pages.dart';
 
 /// The pictures of immutable [BitmapTile]s, keyed by tile identity, for
@@ -19,6 +20,20 @@ import 'tile_pages.dart';
 /// the tile object's identity is a stable cache key: an unchanged tile
 /// keeps its picture across surface updates, and a changed tile is a new
 /// object whose picture is made once.
+///
+/// 🚨THE TILES OF ONE COLOUR ARE ONE PICTURE (card
+/// uniform-tiles-take-a-pool-slot-each, 관제 2026-11-16 — the engine's
+/// tile ledger keys its slots the same way, and its note pairs the two). A
+/// tile of one colour holds its colour's block, one object for every tile
+/// of the colour alive, and the block is the key ([BitmapTile.pixelsKey]):
+/// found, rolled, stamped shown and let go with it. Still no pixel is
+/// compared — two tiles alike of bytes of their own are two pictures.
+/// ↩️The law of 2026-09-09 (8ccce8cdb, 「The picture belongs to the
+/// pixels, not to the tile object」) keyed pictures by the tile whose
+/// buffer a renamed tile shared; it went the same day with the sharing
+/// (09c58cae5). A colour's block is that buffer again, held by every tile
+/// of the colour — and the entry and its finalizer are both the block's,
+/// the asymmetry that commit ended not spelled again.
 ///
 /// 🚨★★★A TILE'S PICTURE IS MADE THE MOMENT IT IS NEEDED, FROM ITS OWN
 /// BYTES, INSIDE THE CALL ([pictureFor] — the one door, [pictureOf],
@@ -44,8 +59,8 @@ import 'tile_pages.dart';
 /// picture budget lets pictures go EARLY ([releasePicture]) when the device
 /// cannot hold every one; a tile asked for again is simply pictured again.
 class BitmapTileImageCache {
-  BitmapTileImageCache({PicturedTiles? pictured, TilePages? pages})
-    : pictured = pictured ?? PicturedTiles.instance,
+  BitmapTileImageCache({TileRoll? pictured, TilePages? pages})
+    : pictured = pictured ?? TileRoll(),
       pages = pages ?? TilePages.instance;
 
   /// Shared instance used by the display painter. A render cache, not app
@@ -54,7 +69,7 @@ class BitmapTileImageCache {
 
   /// The roll of every tile given a picture here — the one way the pictures
   /// held can be walked ([TilePictureBudget]), since [_pictures] cannot be.
-  final PicturedTiles pictured;
+  final TileRoll pictured;
 
   /// Where the pictures this makes lie, where the engine writes pages.
   final TilePages pages;
@@ -100,7 +115,11 @@ class BitmapTileImageCache {
 
   /// The picture [tile] already has, or `null` — nothing is made here.
   /// Callers deciding what to DRAW want [pictureFor].
-  TilePicture? heldFor(BitmapTile tile) => _pictures[tile];
+  TilePicture? heldFor(BitmapTile tile) => heldUnder(tile.pixelsKey);
+
+  /// The picture held under [key] ([BitmapTile.pixelsKey]), or `null` —
+  /// what the budget's walk of the roll ([pictured]) asks.
+  TilePicture? heldUnder(Object key) => _pictures[key];
 
   /// [tile]'s picture: the one it has, or the one made now from its own
   /// bytes through the door and kept — the ONE way a committed tile gets a
@@ -111,7 +130,7 @@ class BitmapTileImageCache {
   /// coordinate fallback's bucket. Nothing is looked up by coordinate any
   /// more, so the cache does not ask where a tile is.
   TilePicture pictureFor(BitmapTile tile) {
-    final existing = _pictures[tile];
+    final existing = heldFor(tile);
     if (existing != null) {
       return existing;
     }
@@ -128,7 +147,7 @@ class BitmapTileImageCache {
   /// A page carries no chain, so a tile in a slot drawn reduced leaves its
   /// slot for a picture of its own.
   ui.Image chainedPictureFor(BitmapTile tile) {
-    final held = _pictures[tile];
+    final held = heldFor(tile);
     if (held is OwnTilePicture && carriesChain(held.image)) {
       return held.image;
     }
@@ -164,7 +183,7 @@ class BitmapTileImageCache {
   /// A tile that somehow already has a picture keeps it and the incoming
   /// one is retired — never two owners for one image.
   void adoptDecoded(BitmapTile tile, ui.Image image) {
-    if (_pictures[tile] != null) {
+    if (heldFor(tile) != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
@@ -172,10 +191,11 @@ class BitmapTileImageCache {
   }
 
   void _own(BitmapTile tile, TilePicture picture) {
-    _pictures[tile] = picture;
-    _pictureFinalizer.attach(tile, picture, detach: tile);
+    final key = tile.pixelsKey;
+    _pictures[key] = picture;
+    _pictureFinalizer.attach(key, picture, detach: key);
     _hold(picture);
-    pictured.hold(tile);
+    pictured.hold(key);
   }
 
   /// Lets [tile]'s picture go while the tile itself lives on — the door
@@ -186,13 +206,17 @@ class BitmapTileImageCache {
   /// Detached first: without it the finalizer lets the same picture go a
   /// second time when the tile is eventually collected. An image is retired
   /// through the deferred disposer like every picture here.
-  void releasePicture(BitmapTile tile) {
-    final picture = _pictures[tile];
+  void releasePicture(BitmapTile tile) => releasePictureUnder(tile.pixelsKey);
+
+  /// [releasePicture] of the picture held under [key]
+  /// ([BitmapTile.pixelsKey]) — what the budget's walk of the roll lets go.
+  void releasePictureUnder(Object key) {
+    final picture = _pictures[key];
     if (picture == null) {
       return;
     }
-    _pictures[tile] = null;
-    _pictureFinalizer.detach(tile);
+    _pictures[key] = null;
+    _pictureFinalizer.detach(key);
     _release(picture);
   }
 
@@ -203,9 +227,7 @@ class BitmapTileImageCache {
   /// engine interprets raw rgba8888 uploads as premultiplied. Premultiplies
   /// using Skia's own mul-div-255 rounding so the result matches what Skia
   /// produces when rasterizing straight-alpha colors — which is what makes
-  /// the door's two roads one picture. A compose's picture of a block of
-  /// tiles (`SurfaceRegionBytes`) runs the same kernel a row at a time, so
-  /// every tile upload in the app rounds identically.
+  /// the door's two roads one picture.
   ///
   /// Returns a buffer the caller must [PremultipliedTileUpload.free] once
   /// the upload has consumed it — the reason nothing here lifts the bytes
@@ -220,22 +242,16 @@ class BitmapTileImageCache {
   static PremultipliedTileUpload premultipliedTileUpload(BitmapTile tile) {
     // R18 A-2a / R19-Z: the fused native kernel reads the tile's NATIVE
     // buffer directly and premultiplies in one pass — byte-identical to
-    // the Dart reference below (parity-pinned). The scratch it writes is
-    // per-call, so it can be handed to the engine as-is and released
-    // right after.
-    final native = QaNativeEngine.instance;
-    if (native != null) {
-      final scratch = tile.readPixels(
-        (pointer, _) =>
-            native.premultipliedTileScratch(pointer, tile.size * tile.size),
-      );
-      return PremultipliedTileUpload._(scratch.view, scratch);
-    }
-    final pixels = tile.pixels;
-    premultiplyRgbaInPlace(pixels);
-    // The fallback's list is already the caller's own, so its release is
-    // the garbage collector's job.
-    return PremultipliedTileUpload._(pixels, null);
+    // the app's law (`premultiplyRgbaInPlace`, parity-pinned). The block
+    // it writes is per-call, so it can be handed to the engine as-is and
+    // released right after.
+    // ↩️Where no C engine was loaded the tile's bytes were lifted into a
+    // list and the law premultiplied them there; the kernel is the engine
+    // library's now, in every isolate and every build (C ABI 83).
+    final pixelCount = tile.size * tile.size;
+    return tile.readPixels(
+      (straight, _) => PremultipliedTileUpload._of(straight, pixelCount),
+    );
   }
 }
 
@@ -263,7 +279,7 @@ class _TilePictureBytes implements PictureBytes {
     try {
       return use(upload.view);
     } finally {
-      // ⚠️No earlier: the bytes may be a window onto native memory, and
+      // ⚠️No earlier: the bytes are a window onto native memory, and
       // the engine copies them into its own memory during the upload
       // itself. No later either — a staged 256 KB the frame keeps holding
       // is the cost this handoff exists to avoid paying twice.
@@ -275,20 +291,61 @@ class _TilePictureBytes implements PictureBytes {
 /// Premultiplied tile bytes staged for ONE upload, plus the release that
 /// goes with them.
 ///
-/// [view] may be a window onto native memory ([BitmapTileImageCache
-/// .premultipliedTileUpload] with the engine loaded), which is what keeps
-/// a 256KB VM copy out of every picture. The engine copies the bytes into
-/// its own memory during the upload call itself, so releasing right after
-/// it returns is safe — and releasing any earlier is not.
+/// [view] is a window onto native memory, which is what keeps a 256KB VM
+/// copy out of every picture. The engine copies the bytes into its own
+/// memory during the upload call itself, so releasing right after it
+/// returns is safe — and releasing any earlier is not.
 class PremultipliedTileUpload {
-  const PremultipliedTileUpload._(this.view, this._scratch);
+  PremultipliedTileUpload._(this._block, int byteLength)
+    : view = _block.asTypedList(byteLength) {
+    _live += 1;
+  }
+
+  /// [pixelCount] straight pixels at [straight], premultiplied into a
+  /// block of their own.
+  factory PremultipliedTileUpload._of(Pointer<Uint8> straight, int pixelCount) {
+    final block = malloc<Uint8>(pixelCount * 4);
+    premultiplyRgbaCopy(block, straight, pixelCount);
+    return PremultipliedTileUpload._(block, pixelCount * 4);
+  }
 
   /// The bytes to hand the engine. Valid until [free].
   final Uint8List view;
 
-  /// Null when [view] is an ordinary Dart list (the no-engine fallback).
-  final QaStampScratch? _scratch;
+  final Pointer<Uint8> _block;
 
   /// Call once the upload has consumed [view] — never before.
-  void free() => _scratch?.free();
+  ///
+  /// ⛔**NOT in a decode callback.** The staging's own note said so once,
+  /// and it was the bug: `ui.decodeImageFromPixels` does not invoke its
+  /// callback when it REFUSES, so a failed decode leaked the whole block.
+  /// Every call site was moved to a `finally` (see [debugLiveCount], and
+  /// the note beside the one in `straight_rgba_image.dart` — "THE
+  /// `finally` IS THE FIX") and the sentence outlived them, telling the
+  /// next reader to put it back.
+  void free() {
+    malloc.free(_block);
+    _live -= 1;
+  }
+
+  static int _live = 0;
+
+  /// How many of these are alive right now.
+  ///
+  /// 🧪★★★**A LEAK HERE IS INVISIBLE TO EVERYTHING ELSE.** This is a bare
+  /// `malloc` with no `NativeFinalizer` behind it, so an unfreed block is
+  /// not reclaimed by the GC, does not show up in Dart heap numbers, and
+  /// costs a whole tile — 256 KB at a 256 px tile. ↩️Four call sites freed
+  /// such a block inside a decode CALLBACK, which
+  /// `ui.decodeImageFromPixels` does not invoke when it refuses; every one
+  /// was moved to a `finally`, and without a count the difference between
+  /// those two shapes is something no test can see. Three of the four went
+  /// with the C brush's stamps (C ABI 80); the one that stays is a tile's
+  /// picture ([BitmapTileImageCache.pictureFor]), held by
+  /// a_tile_upload_is_the_apps_premultiply_test.
+  ///
+  /// ⛔Read it around an operation, never as an absolute: this is a
+  /// process-wide counter and other work holds blocks at the same time.
+  @visibleForTesting
+  static int get debugLiveCount => _live;
 }

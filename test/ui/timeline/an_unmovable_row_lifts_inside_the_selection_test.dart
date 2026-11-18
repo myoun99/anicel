@@ -32,7 +32,7 @@ void main() {
       TimelineRowDragHooks(
         drag: drag ?? ValueNotifier<LayerRowDragState?>(null),
         onBegin: (_) => events.add('begin'),
-        onUpdate: (_, _, {pointerInRow}) => events.add('update'),
+        onUpdate: (_, _, {pointer}) => events.add('update'),
         onRowTarget: (_, _, _) => events.add('rowTarget'),
         onEffectUpdate: (_, _, _) {},
         onEnd: () => events.add('end'),

@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
 void main() {
@@ -100,7 +101,10 @@ void main() {
       // rest (F-244: a drag step lays out and paints alone).
       expect(stack.children, hasLength(4));
       expect((stack.children[0] as Positioned).child, isA<IgnorePointer>());
-      expect(stack.children[1].key, rowsBodyKey);
+      expect(
+        (stack.children[1] as TimelineGridScreenHost).child.key,
+        rowsBodyKey,
+      );
       final playheadPositioned = stack.children[2] as Positioned;
       // The playhead brings its own layer (the cursor layer is a
       // `TickLayer`), so the slot adds none: only the box that gives it its

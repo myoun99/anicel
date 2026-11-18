@@ -98,6 +98,7 @@ void main() {
             effects: picked,
             frameIndex: 3,
             blocks: null,
+            worn: null,
           ).single.color(parameter),
           red,
         );
@@ -125,6 +126,7 @@ void main() {
           effects: effects,
           frameIndex: 5,
           blocks: null,
+          worn: null,
         ).single.color(parameter);
         // A number's walk from 0xFF000000 to 0xFFFFFFFF passes 0xFF7FFFFF.
         expect(halfway, 0xFF808080);

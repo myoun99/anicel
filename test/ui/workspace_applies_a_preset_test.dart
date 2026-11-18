@@ -21,11 +21,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
-import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
-    show BrushLibraryActionIds;
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
-import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
@@ -34,6 +31,7 @@ import '../helpers/brush_values_on_strip.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/until_the_brushes_land.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -95,25 +93,7 @@ void main() {
       ),
     );
     await beforeTheLibraryLands?.call();
-    // The loads are real file IO started on the fake clock: each step
-    // completes in real time (a runAsync window) and its continuation runs
-    // on the fake one (a pump). Alternate until the panel has presets.
-    //
-    // Loaded = the presets are listed AND a brush is in hand: the opening
-    // brush is taken up only once the hand-settings bank has landed too
-    // (H25-again), and that is one more file read after the libraries'.
-    await settleAsync(tester, () {
-      final panels = find.byType(BrushPresetPanel).evaluate();
-      final shown = panels.isEmpty
-          ? null
-          : tester.widget<BrushPresetPanel>(
-              find.byType(BrushPresetPanel).first,
-            );
-      return shown != null &&
-          shown.presets.isNotEmpty &&
-          shown.selectedPresetId != null;
-    });
-    await tester.pumpAndSettle();
+    await untilTheBrushesLand(tester);
     // The size bar these sequences drag is the strip's (I-34: by default
     // the canvas's pill holds the bars).
     await standBrushValuesOnStrip(tester);
@@ -685,6 +665,28 @@ void main() {
     );
   });
 
+  testWidgets('a size the hand set on a brush of a library as it ships is '
+      'something for the library reset to put back (F-583 · I-176)', (
+    tester,
+  ) async {
+    await pumpWithPresets(tester);
+    final one = onScreen(tester)[0];
+    await pick(tester, one);
+    expect(panel(tester).canResetLibrary!(), isFalse, reason: '⛔premise');
+    final own = size(tester);
+
+    await setSizeAt(tester, 0.8);
+    expect(size(tester), isNot(own), reason: '⛔premise: the hand set it');
+
+    expect(panel(tester).canResetLibrary!(), isTrue);
+    await fromTheMenu(tester, 'Reset brush library');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(panel(tester).canResetLibrary!(), isFalse);
+  });
+
   // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저
   // 2026-10-01): 「아날로그가 아닌 일반수채등 질감이 없어야하는게 아직있거든?
   // … 초기화가 설마 텍스처항목은 초기화안하나?」 — F-181 again. Its pin read
@@ -879,8 +881,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    // 🗣️F-580 (유저 2026-11-10): 「브러시 가져오기 버튼등이 있는 브러시
+    // 라이브러리, 단축키로 있을 필요없어보이니 해당 항목 깔끔하게 삭제」 — the
+    // shelf it named, and with it this button's key. ↩️It named one from
+    // I-148 until then.
     testWidgets('it stands dead on a brush the hand left alone, and names '
-        'its action', (tester) async {
+        'no action', (tester) async {
       await pumpWithPresets(tester);
       await openBrushSettings(tester);
 
@@ -894,7 +900,7 @@ void main() {
               ),
             )
             .shortcuts,
-        [BrushLibraryActionIds.resetHeldBrush],
+        isEmpty,
       );
     });
 
@@ -930,20 +936,6 @@ void main() {
       await pick(tester, shown[0]);
       expect(settings(tester).state.size, own.size);
       expect(held(tester), isNull);
-    });
-
-    testWidgets('a key is the same press', (tester) async {
-      await pumpWithPresets(tester);
-      await openBrushSettings(tester);
-      final own = settings(tester).state.flow;
-      await edit(tester, (state) => state.copyWith(flow: 0.3));
-
-      PanelKeysScope.maybeOf(
-        tester.element(find.byType(BrushSettingsPanel)),
-      )!.press(BrushLibraryActionIds.resetHeldBrush, CanvasTool.brush);
-      await tester.pumpAndSettle();
-
-      expect(settings(tester).state.flow, own);
     });
 
     testWidgets('a brush the user saved goes back to what was saved', (

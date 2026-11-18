@@ -1,12 +1,11 @@
 /// Whether two files are the SAME FILE — the question relink asks.
 ///
-/// Deliberately not [MediaAsset.sourceStamp], which answers a different
-/// question that looks identical from a distance: "did the original change
-/// since we took our copy?" (the re-import badge, §6-g). That stamp carries
-/// the modification time, so it stops matching the moment a file is moved,
-/// copied or restored from a backup — which is precisely the situation
-/// relink exists for. One field cannot answer both: the badge NEEDS to
-/// notice a touched file, and identity needs to survive one.
+/// Deliberately without a modification time. That answers a different
+/// question that looks identical from a distance — "when was the file last
+/// changed?", which a carry records ([MediaCarriedAs]) — and it stops
+/// matching the moment a file is moved, copied or restored from a backup,
+/// which is precisely the situation relink exists for. Identity has to
+/// survive a touched file.
 ///
 /// So identity carries only what travels with the bytes.
 library;
@@ -69,8 +68,8 @@ class MediaIdentity {
         : MediaIdentityMatch.different;
   }
 
-  /// `<length>` or `<length>:<crc32 hex>` — a string like the stamp beside
-  /// it, so `project.json` gains a short value rather than an object.
+  /// `<length>` or `<length>:<crc32 hex>` — a string, so `project.json`
+  /// gains a short value rather than an object.
   String toJson() => crc32 == null
       ? '$lengthBytes'
       : '$lengthBytes:${crc32!.toRadixString(16)}';

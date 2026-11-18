@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -18,7 +19,6 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -48,6 +48,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// and its twin does not, and the pixel and session tests below cover the two
 /// ways a field that DOES exist can still be dropped.
 void main() {
+  opensTheEnginesScreens();
   group('L1 — the two node kinds carry the same render properties', () {
     test('every render property of a cached row has a live-surface twin', () {
       final source = File(
@@ -115,12 +116,8 @@ void main() {
   group('L2 — the painter puts the property on the pixels', () {
     const canvasSize = CanvasSize(width: 4, height: 4);
 
-    // The row is handed over as the plan hands it: in an advanced blend,
-    // the source of one over its backdrop.
-    setUpAll(LayerBlendShader.load);
-
     BitmapSurfacePainter redSurfacePainter() {
-      var tile = BitmapTile.blank(size: 4);
+      var tile = BitmapTile.blank(size: defaultCelTileSize);
       tile = writeRgbaColorToBitmapTile(
         tile: tile,
         x: 0,
@@ -130,7 +127,7 @@ void main() {
       return BitmapSurfacePainter(
         surface: BitmapSurface(
           canvasSize: canvasSize,
-          tileSize: 4,
+          tileSize: defaultCelTileSize,
           tiles: {TileCoord(x: 0, y: 0): tile},
         ),
         showTransparentBackground: false,

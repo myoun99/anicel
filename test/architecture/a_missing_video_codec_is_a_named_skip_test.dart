@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
-import '../helpers/native_engine_path.dart';
 import '../helpers/os_video_codec.dart';
 import '../helpers/source_ledger.dart';
 
@@ -17,43 +16,18 @@ import '../helpers/source_ledger.dart';
 /// source scan, and it proves it can see what it forbids.
 void main() {
   group('what a test does where there is no OS codec', () {
-    ({bool fails, String reason}) absence({
-      bool engineBound = true,
-      bool hostHasOne = true,
-      bool engineRequired = true,
-    }) => videoCodecAbsence(
-      what: 'video encoder',
-      engineBound: engineBound,
-      hostHasOne: hostHasOne,
-      engineRequired: engineRequired,
-    );
-
-    test('a run that builds its engine on a host with one fails', () {
-      expect(absence(), (
+    test('a host with one fails', () {
+      expect(videoCodecAbsence(what: 'video encoder', hostHasOne: true), (
         fails: true,
-        reason: 'QA_REQUIRE_NATIVE=1 but no OS video encoder: the engine '
-            'has no OS video encoder on this platform',
-      ));
-      expect(absence(engineBound: false), (
-        fails: true,
-        reason: 'QA_REQUIRE_NATIVE=1 but no OS video encoder: '
-            '$nativeEngineMissingSkipReason',
+        reason: 'the engine has no OS video encoder on this platform, and '
+            'this host has one',
       ));
     });
 
-    test('a host with none, or a run that does not build its engine, '
-        'skips with why', () {
-      expect(absence(hostHasOne: false), (
+    test('a host with none skips with why', () {
+      expect(videoCodecAbsence(what: 'video encoder', hostHasOne: false), (
         fails: false,
         reason: 'the engine has no OS video encoder on this platform',
-      ));
-      expect(absence(engineRequired: false), (
-        fails: false,
-        reason: 'the engine has no OS video encoder on this platform',
-      ));
-      expect(absence(engineBound: false, engineRequired: false), (
-        fails: false,
-        reason: nativeEngineMissingSkipReason,
       ));
     });
   });
@@ -73,15 +47,15 @@ void main() {
     };
 
     /// Reading a codec, not letting one go: a test that closes or aborts
-    /// what an earlier one left is not asking whether there is one.
+    /// what an earlier one left — called, or torn off for a `tearDown` — is
+    /// not asking whether there is one.
     final readsTheCodec = RegExp(
-      r'QaVideo(?:De|En)coder\.instance(?!\?\.(?:close|abort)\(\))',
+      r'QaVideo(?:De|En)coder\.instance(?!\.(?:close|abort)\b)',
     );
 
     test('it sees what it forbids', () {
-      expect(readsTheCodec.hasMatch('QaVideoDecoder.instance!'), isTrue);
       expect(
-        readsTheCodec.hasMatch('QaVideoEncoder.instance?.isSupported'),
+        readsTheCodec.hasMatch('QaVideoDecoder.instance.isSupported'),
         isTrue,
       );
       expect(
@@ -89,10 +63,10 @@ void main() {
         isTrue,
       );
       for (final notARead in [
-        'QaVideoDecoder.instance?.close()',
-        'QaVideoEncoder.instance?.abort()',
+        'QaVideoDecoder.instance.close()',
+        'QaVideoEncoder.instance.abort()',
+        'tearDown(QaVideoDecoder.instance.close);',
         'osVideoDecoderOrSkip()',
-        'QaVideoEncoder.debugResetForTests()',
       ]) {
         expect(readsTheCodec.hasMatch(notARead), isFalse, reason: notARead);
       }
