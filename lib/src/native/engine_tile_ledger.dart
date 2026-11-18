@@ -866,16 +866,38 @@ final GpuEngine _engine;
     debugSlotsAsked += tiles.length;
     _refuseOtherGrids(tiles);
     hold._keys.addAll(tiles.map((tile) => tile.pixelsKey));
-    // Once a key: two tiles of a colour asked together are one store.
-    final asked = Set<Object>.identity();
-    final missing = [
-      for (final tile in tiles)
-        if (_slotNow(tile) == null && asked.add(tile.pixelsKey)) tile,
+    var missing = _withNoSlot(tiles);
+    // 🚨A TILE ANOTHER ENGINE ALONE HELD IS READ HERE BEFORE THE STORE, NOT
+    // INSIDE IT: with no slot here and no bytes, it is a tile of an engine
+    // that went, and its read may make it again ([_makesAgain]) — a
+    // landing on THIS ledger, which stores the tile it lands on. Read while
+    // the store gathered its bytes, that tile was stored there and then
+    // and, listed with no slot before, once more by the store around it
+    // (🔬found by reading, 2026-11-19: six slots for five tiles).
+    final lost = [
+      for (final tile in missing)
+        if (tile.isOnlyOnEngine) tile,
     ];
+    if (lost.isNotEmpty) {
+      for (final tile in lost) {
+        tile.readPixels((_, _) {});
+      }
+      missing = _withNoSlot(tiles);
+    }
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
     }
     return [for (final tile in tiles) _slotNow(tile)!];
+  }
+
+  /// Those of [tiles] with no slot here, once a key: two tiles of a colour
+  /// asked together are one store.
+  List<BitmapTile> _withNoSlot(List<BitmapTile> tiles) {
+    final asked = Set<Object>.identity();
+    return [
+      for (final tile in tiles)
+        if (_slotNow(tile) == null && asked.add(tile.pixelsKey)) tile,
+    ];
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the

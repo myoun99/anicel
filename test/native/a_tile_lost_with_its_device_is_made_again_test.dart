@@ -23,18 +23,20 @@ final class _Adds implements LandsAgain {
   final EngineTileLedger Function() on;
   final List<List<TileAsk>> asked = [];
 
+  /// Every tile made again, kept: its slot stays while the test counts.
+  final List<BitmapTile> made = [];
+
   @override
   List<LandedTile> again(List<TileAsk> asks) {
     asked.add(asks);
-    return [
+    final tiles = [
       for (final ask in asks)
-        (
-          change: GpuChange.inked,
-          tile: landedOn(on(), _cel, [
-            ask.under,
-          ], (ask.under?.pixels.first ?? 0) + add).single,
-        ),
+        landedOn(on(), _cel, [
+          ask.under,
+        ], (ask.under?.pixels.first ?? 0) + add).single,
     ];
+    made.addAll(tiles);
+    return [for (final tile in tiles) (change: GpuChange.inked, tile: tile)];
   }
 }
 
@@ -143,6 +145,38 @@ void main() {
     expect(second.pixels, everyElement(11));
     expect(first.pixels, everyElement(9));
   });
+
+  // 🔬Found by reading, before any run (2026-11-19): a tile made again
+  // INSIDE the store that asked for its bytes lands on the ledger that is
+  // storing — which stores the tile it lands on then and there —, and the
+  // store around it, which had listed that tile as one with no slot, gave
+  // it a second.
+  for (final (order, named) in [
+    ((int a, int b) => [a, b], 'the one it landed on first'),
+    ((int a, int b) => [b, a], 'the one it landed on last'),
+  ]) {
+    test('asked their slots together by the ledger of the next engine — '
+        '$named — a lost tile and the lost tile it landed on are each '
+        'stored once', () {
+      final adds = _Adds(2, () => next);
+      final under = tileOf(7);
+      final first = landedOn(ledger, _cel, [under], 9, again: adds).single;
+      final second = landedOn(ledger, _cel, [first], 11, again: adds).single;
+      final both = [first, second];
+
+      engine.debugLose();
+      final slots = next.held(
+        (hold) => hold.slotsOf(_cel, [for (final at in order(0, 1)) both[at]]),
+      );
+
+      expect(slots.toSet(), hasLength(2));
+      expect(second.pixels, everyElement(11));
+      expect(first.pixels, everyElement(9));
+      expect(adds.made, hasLength(2), reason: '⛔premise: both made again');
+      // The tile under both, the two, and the two made to read them.
+      expect(next.slotCount, 5);
+    });
+  }
 
   test('a landing that leaves a tile as it was, made again, gives the bytes '
       'of the tile under it', () {
