@@ -58,7 +58,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // next run's is handed: a file there is used only where all that was
   // asked of the compiler is the same, and is written beside its name and
   // renamed to it, so runs side by side share the folder
-  // (rust/vendor/wgpu-hal, dxil_cache.rs).
+  // (rust/vendor/wgpu-hal, compile_cache.rs).
   //
   // A run is a launch, and the container it stands in is new and its own
   // (`testContainerFolder`), so each run compiled every kernel it drew

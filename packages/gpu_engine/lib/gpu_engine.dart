@@ -259,8 +259,9 @@ class GpuEngine {
 
   /// Names [folder] as where each engine opened from now on keeps the
   /// shaders it compiles, for the next launch to hand its driver instead
-  /// of compiling them again — on Windows what DXC made
-  /// (rust/vendor/wgpu-hal, dxil_cache.rs). 🗣️유저 2026-11-13,
+  /// of compiling them again — on Windows what DXC made, and what the
+  /// driver made of each pipeline on it (rust/vendor/wgpu-hal,
+  /// compile_cache.rs). 🗣️유저 2026-11-13,
   /// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
   static void keepShadersIn(String folder) => using((arena) {
     final bytes = utf8.encode(folder);

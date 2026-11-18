@@ -199,7 +199,7 @@ void main() {
 
   // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
   // 「디스크 캐시」): what the list compiled is kept for the next launch, in
-  // the app's folder for it (rust/vendor/wgpu-hal, dxil_cache.rs).
+  // the app's folder for it (rust/vendor/wgpu-hal, compile_cache.rs).
   test(
     'what the list compiled is kept for the next launch',
     () {

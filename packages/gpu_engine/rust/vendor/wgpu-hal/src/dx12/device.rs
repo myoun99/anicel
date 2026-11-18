@@ -20,7 +20,10 @@ use windows::{
     },
 };
 
-use super::{conv, descriptor, D3D12Lib};
+use super::{
+    compile_cache::{self, Made, Turn},
+    conv, descriptor, D3D12Lib,
+};
 use crate::{
     auxil::{
         self,
@@ -62,6 +65,7 @@ impl super::Device {
 
         let mem_allocator =
             suballocation::Allocator::new(&raw, memory_hints, memory_budget_thresholds)?;
+        let adapter_named = adapter_named(&adapter);
 
         let idle_fence: Direct3D12::ID3D12Fence = unsafe {
             profiling::scope!("ID3D12Device::CreateFence");
@@ -227,7 +231,8 @@ impl super::Device {
             mem_allocator,
             compiler_container,
             shader_cache: Default::default(),
-            dxil_cache: Default::default(),
+            compile_cache: Default::default(),
+            adapter_named,
             counters: Default::default(),
             limits: limits.clone(),
         })
@@ -463,18 +468,107 @@ impl super::Device {
         &self.present_queue
     }
 
-    /// ANICEL — not wgpu's: keeps what DXC makes for this device in
-    /// `folder` from now on, and hands what an earlier compile kept there
-    /// to the driver instead of compiling it again — or nowhere where
-    /// `folder` is `None`, as wgpu-hal does (`super::dxil_cache`).
-    pub fn keep_dxil_in(&self, folder: Option<std::path::PathBuf>) {
-        self.dxil_cache.keep_in(folder);
+    /// ANICEL — not wgpu's: keeps what DXC and the driver make for this
+    /// device in `folder` from now on, and hands what an earlier compile
+    /// kept there to the driver instead of compiling it again — or nowhere
+    /// where `folder` is `None`, as wgpu-hal does (`super::compile_cache`).
+    pub fn keep_shaders_in(&self, folder: Option<std::path::PathBuf>) {
+        self.compile_cache.keep_in(folder);
     }
 
     /// ANICEL — not wgpu's: how many compiles of this device the folder
-    /// [`Self::keep_dxil_in`] names has answered, DXC asked for none of them.
+    /// [`Self::keep_shaders_in`] names has answered, DXC asked for none of
+    /// them.
     pub fn dxil_found(&self) -> u64 {
-        self.dxil_cache.found()
+        self.compile_cache.found(Made::Dxil)
+    }
+
+    /// ANICEL — not wgpu's: how many pipelines of this device the folder
+    /// [`Self::keep_shaders_in`] names has answered, the driver making none
+    /// of them again.
+    pub fn pipelines_found(&self) -> u64 {
+        self.compile_cache.found(Made::Pipeline)
+    }
+
+    /// ANICEL — not wgpu's: the pipeline state of `cs` on `layout` — what
+    /// the driver made of it before, where all it was made of is the same
+    /// ([`Made::Pipeline`]), waiting for it where another process makes it
+    /// now; else made here, and kept.
+    fn compute_pipeline_state(
+        &self,
+        layout: &super::PipelineLayout,
+        cs: Direct3D12::D3D12_SHADER_BYTECODE,
+    ) -> windows::core::Result<Direct3D12::ID3D12PipelineState> {
+        let make = |cached: Option<&[u8]>| {
+            profiling::scope!("ID3D12Device::CreateComputePipelineState");
+            let cached = cached.map_or_else(Default::default, |blob| {
+                Direct3D12::D3D12_CACHED_PIPELINE_STATE {
+                    pCachedBlob: blob.as_ptr().cast(),
+                    CachedBlobSizeInBytes: blob.len(),
+                }
+            });
+            unsafe {
+                self.raw
+                    .CreateComputePipelineState::<Direct3D12::ID3D12PipelineState>(
+                        &Direct3D12::D3D12_COMPUTE_PIPELINE_STATE_DESC {
+                            pRootSignature: borrow_optional_interface_temporarily(
+                                &layout.shared.signature,
+                            ),
+                            CS: cs,
+                            NodeMask: 0,
+                            CachedPSO: cached,
+                            Flags: Direct3D12::D3D12_PIPELINE_STATE_FLAG_NONE,
+                        },
+                    )
+            }
+        };
+        let asked = self.pipeline_asked(layout, &cs);
+        let kept = &self.compile_cache;
+        // Held till what the driver made is kept, or the pipeline fails.
+        let _turn = match kept.turn(Made::Pipeline, &asked) {
+            Turn::Kept(blob) => match make(Some(&blob)) {
+                Ok(raw) => {
+                    kept.used(Made::Pipeline);
+                    return Ok(raw);
+                }
+                // What the key does not name refused it — the D3D12
+                // runtime's own version — so made again, and kept over it.
+                Err(refused) => {
+                    log::warn!("compile cache: a kept pipeline refused: {refused}");
+                    None
+                }
+            },
+            Turn::Compile(turn) => turn,
+        };
+        let raw = make(None)?;
+        match unsafe { raw.GetCachedBlob() } {
+            Ok(blob) => kept.write(Made::Pipeline, &asked, unsafe {
+                super::D3DBlob(blob).as_slice()
+            }),
+            Err(error) => log::warn!("compile cache: GetCachedBlob: {error}"),
+        }
+        Ok(raw)
+    }
+
+    /// ANICEL — not wgpu's: all the pipeline state of `cs` on `layout` is
+    /// made of, as a key ([`compile_cache::asked`]): the adapter and its
+    /// driver, which refuse what another made (`CachedPSO`:
+    /// `D3D12_ERROR_ADAPTER_NOT_FOUND`, `D3D12_ERROR_DRIVER_VERSION_MISMATCH`),
+    /// the root signature and the shader.
+    fn pipeline_asked(
+        &self,
+        layout: &super::PipelineLayout,
+        cs: &Direct3D12::D3D12_SHADER_BYTECODE,
+    ) -> Vec<u8> {
+        // SAFETY: the shader as the driver is handed it.
+        let shader = unsafe {
+            core::slice::from_raw_parts(cs.pShaderBytecode.cast::<u8>(), cs.BytecodeLength)
+        };
+        compile_cache::asked([
+            self.adapter_named.as_slice(),
+            &layout.signature_bytes,
+            shader,
+        ])
     }
 
     pub unsafe fn texture_from_raw(
@@ -1405,6 +1499,7 @@ impl crate::Device for super::Device {
                 .CreateRootSignature::<Direct3D12::ID3D12RootSignature>(0, blob.as_slice())
         }
         .into_device_result("Root signature creation")?;
+        let signature_bytes = unsafe { blob.as_slice() }.to_vec();
 
         let special_constants = if let Some(root_index) = special_constants_root_index {
             let cmd_signatures = if desc
@@ -1513,6 +1608,7 @@ impl crate::Device for super::Device {
                 mesh_shader_primitive_indices_clamp: true,
                 ray_query_initialization_tracking: true,
             },
+            signature_bytes,
         })
     }
 
@@ -2221,26 +2317,12 @@ impl crate::Device for super::Device {
         let blob_cs =
             self.load_shader(&desc.stage, desc.layout, naga::ShaderStage::Compute, None)?;
 
-        let pair = {
-            profiling::scope!("ID3D12Device::CreateComputePipelineState");
-            unsafe {
-                self.raw.CreateComputePipelineState(
-                    &Direct3D12::D3D12_COMPUTE_PIPELINE_STATE_DESC {
-                        pRootSignature: borrow_optional_interface_temporarily(
-                            &desc.layout.shared.signature,
-                        ),
-                        CS: blob_cs.create_native_shader(),
-                        NodeMask: 0,
-                        CachedPSO: Direct3D12::D3D12_CACHED_PIPELINE_STATE::default(),
-                        Flags: Direct3D12::D3D12_PIPELINE_STATE_FLAG_NONE,
-                    },
-                )
-            }
-        };
-
-        let raw: Direct3D12::ID3D12PipelineState = pair.map_err(|err| {
-            crate::PipelineError::Linkage(wgt::ShaderStages::COMPUTE, err.to_string())
-        })?;
+        // ANICEL: what the driver made kept on disk (`compute_pipeline_state`).
+        let raw = self
+            .compute_pipeline_state(desc.layout, blob_cs.create_native_shader())
+            .map_err(|err| {
+                crate::PipelineError::Linkage(wgt::ShaderStages::COMPUTE, err.to_string())
+            })?;
 
         if let Some(label) = desc.label {
             raw.set_name(label)?;
@@ -2703,4 +2785,20 @@ impl crate::Device for super::Device {
 
         Ok(())
     }
+}
+
+/// ANICEL — not wgpu's: which adapter `adapter` is and which driver runs
+/// it, as bytes — what the driver made of a pipeline is kept by them
+/// ([`super::Device::pipeline_asked`]). Empty where DXGI says neither.
+fn adapter_named(adapter: &auxil::dxgi::factory::DxgiAdapter) -> Vec<u8> {
+    let mut named = Vec::new();
+    if let Ok(desc) = unsafe { adapter.GetDesc2() } {
+        for word in [desc.VendorId, desc.DeviceId, desc.SubSysId, desc.Revision] {
+            named.extend_from_slice(&word.to_le_bytes());
+        }
+    }
+    if let Ok(driver) = unsafe { adapter.CheckInterfaceSupport(&Dxgi::IDXGIDevice::IID) } {
+        named.extend_from_slice(&driver.to_le_bytes());
+    }
+    named
 }
