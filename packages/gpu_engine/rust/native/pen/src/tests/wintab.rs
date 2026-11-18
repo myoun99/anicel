@@ -1091,8 +1091,8 @@ fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     let mut there = POINT { x: far.into(), y: far.into() };
     // SAFETY: the window shown, and a local.
     let _ = unsafe { ClientToScreen(window.0, &mut there) };
-    let mut kept = crate::mouse_kept::Kept::from((there.x - 20, there.y, time));
-    kept.hear(&[(there.x, there.y, time), (there.x - 10, there.y, time)], 2);
+    let mut kept = crate::mouse_kept::Kept::from((there.x - 20, there.y, time), 1_000);
+    kept.hear(&[(there.x, there.y, time), (there.x - 10, there.y, time)], 2, 3_000);
     crate::mouse_kept::keep_from(kept);
     let word = (far as u16) as isize;
     crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
@@ -1101,6 +1101,8 @@ fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
     let points = crate::points::book().take(crate::points::Kind::Mouse, at).expect("the message's");
     let places: Vec<f64> = points.iter().map(|point| point.x).collect();
     assert_eq!(places, [f64::from(far) - 10.0, f64::from(far)], "the move kept before it, then its own");
+    let times: Vec<i64> = points.iter().map(|point| point.micros).collect();
+    assert_eq!(times, [2_000, 3_000], "each at when it was heard, not its millisecond");
 }
 
 #[test]

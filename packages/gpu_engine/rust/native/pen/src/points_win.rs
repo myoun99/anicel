@@ -38,8 +38,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
+use crate::mouse_kept::{self, Told};
 use crate::points::{Batch, Kind, Lost, Point, book};
-use crate::{mouse_kept, wintab};
+use crate::wintab;
 
 /// The mouse's name among the contacts: past every pointer id, which is
 /// a word.
@@ -189,7 +190,7 @@ fn in_view(view: HWND, screen: POINT) -> POINT {
 /// Now, in the microseconds of the clock the embedder stamps its pointer
 /// data by: `std::chrono::high_resolution_clock`, which MSVC reads off the
 /// performance counter (flutter_windows_view.cc).
-fn now_micros() -> i64 {
+pub(crate) fn now_micros() -> i64 {
     let mut count = 0;
     // SAFETY: a local to write.
     let _ = unsafe { QueryPerformanceCounter(&mut count) };
@@ -304,16 +305,15 @@ fn since_message(time: u32) -> i64 {
 
 /// A mouse move's points: the moves since the newest written — taken from
 /// what was kept off the UI's thread while a button is down, else from the
-/// OS's 64 (mouse_kept.rs `history_of`) —, the oldest first, each timed
-/// back from now by its milliseconds — and each with the tablet driver's
-/// reading of the packet at its place where a Wintab context is open
-/// ([`wintab::readings_at`]).
+/// OS's 64 (mouse_kept.rs `history_of`) —, the oldest first, each at the
+/// time it was heard where it was kept, else timed back from now by its
+/// milliseconds — and each with the tablet driver's reading of the packet
+/// at its place where a Wintab context is open ([`wintab::readings_at`]).
 ///
 /// 🚨PAIRED HERE, AT THE MOVE'S OWN POINT: a pen the OS hands over as a
 /// mouse (Windows Ink off) carries no pressure, and the driver's packet the
 /// app read at the event was the NEWEST — after a stall, one taken long
-/// after the move (pen-points-are-taken-off-the-ui-thread). A move's
-/// microseconds are counted back from the message's handling.
+/// after the move (pen-points-are-taken-off-the-ui-thread).
 /// ↩️Paired by the move's own milliseconds till H61 (11-18): the message
 /// clock steps 15.6 ms, and a step's moves took one packet
 /// ([`wintab::Heard::at`]).
@@ -321,24 +321,36 @@ pub(crate) fn mouse(view: HWND, l: LPARAM) {
     let client = of(l);
     let own = message_move(view, l);
     let time = own.2;
-    let (history, found) = mouse_kept::history_of(own);
+    let (history, heard, found) = match mouse_kept::history_of(own) {
+        Told::Kept(taken) => {
+            let (history, heard): (Vec<Move>, Vec<i64>) = taken.into_iter().unzip();
+            (history, heard, None)
+        }
+        Told::Read(history, found) => (history, Vec::new(), Some(found)),
+    };
     let mut written = MOUSE_WRITTEN.lock().unwrap_or_else(PoisonError::into_inner);
     let now = now_micros();
     let moves = moves_since(own, &history, *written);
     let lost = found.and_then(|found| mouse_lost(found, moves.len(), *written));
     *written = Some(own);
+    // A move kept is at the time it was heard (mouse_kept.rs `Kept::hear`);
+    // one read here is timed back from now by its milliseconds.
+    let micros = |nth: usize, at_time: u32| match heard.get(nth) {
+        Some(&heard) if history[nth] == moves[nth] => heard,
+        _ => now - i64::from(time.wrapping_sub(at_time)) * 1000,
+    };
     let readings = wintab::readings_at(time, &moves);
     let points = moves
         .iter()
         .zip(readings)
+        .enumerate()
         .rev()
-        .map(|(&(x, y, at_time), driven)| {
+        .map(|(nth, (&(x, y, at_time), driven))| {
             let at = in_view(view, POINT { x, y });
-            let micros = now - i64::from(time.wrapping_sub(at_time)) * 1000;
             Point {
                 driven,
                 asked: Some((x, y, at_time)),
-                ..Point::at(f64::from(at.x), f64::from(at.y), micros)
+                ..Point::at(f64::from(at.x), f64::from(at.y), micros(nth, at_time))
             }
         })
         .collect();

@@ -33,7 +33,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::points::{Lost, book};
-use crate::points_win::{Move, mouse_history, mouse_lost, newer_than, told_alike};
+use crate::points_win::{Move, mouse_history, mouse_lost, newer_than, now_micros, told_alike};
 
 /// How often the history is read while a button is down: well inside the
 /// 64 moves Windows keeps — 64 ms of a 1 kHz mouse, 8 ms of an 8 kHz one.
@@ -45,42 +45,78 @@ use crate::points_win::{Move, mouse_history, mouse_lost, newer_than, told_alike}
 pub(crate) const KEEP_EVERY: Duration = Duration::from_millis(4);
 
 /// What was kept since a button went down: the moves past the press no
-/// message has taken yet, the oldest first, and the newest move read —
-/// where the next read goes on from.
+/// message has taken yet, the oldest first, each with when it was heard
+/// ([`Kept::hear`]); the newest move read — where the next read goes on
+/// from —; and when the history was last read, on the clock the points are
+/// stamped by.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Kept {
-    pub(crate) moves: VecDeque<Move>,
+    pub(crate) moves: VecDeque<(Move, i64)>,
     pub(crate) newest: Move,
+    pub(crate) read_at: i64,
 }
 
 impl Kept {
-    /// What is kept from a press at `at`: nothing yet.
-    pub(crate) fn from(at: Move) -> Self {
-        Self { moves: VecDeque::new(), newest: at }
+    /// What is kept from a press at `at`, made at `pressed_at`: nothing yet.
+    pub(crate) fn from(at: Move, pressed_at: i64) -> Self {
+        Self { moves: VecDeque::new(), newest: at, read_at: pressed_at }
     }
 
     /// Keeps the moves `history` — the newest first, its read having
-    /// `found` — holds past the newest kept. What was lost: where the
-    /// history was full and every move of it newer, the moves before it
-    /// went. ⛔Not a read refused: the next is a moment away, and the
-    /// message's own read is still there.
-    pub(crate) fn hear(&mut self, history: &[Move], found: i32) -> Option<Lost> {
+    /// `found` at `read_at` — holds past the newest kept, each timed where
+    /// it falls among them, evenly, since the read before. What was lost:
+    /// where the history was full and every move of it newer, the moves
+    /// before it went. ⛔Not a read refused: the next is a moment away, and
+    /// the message's own read is still there — and it says nothing of when
+    /// what it did not hear was made.
+    ///
+    /// 🚨EACH MOVE AT A TIME OF ITS OWN (pen-points-are-taken-off-the-ui-thread,
+    /// 2026-11-19 — 🤖AI 검증 실패 of ②): the history times a move by the
+    /// system's clock, which steps 15.6 ms (🔬Surface Pro 11: 58 of 63 steps
+    /// between the 64 moves 0 ms), and the moves a stood UI's message
+    /// handed on were each timed back from it by that clock — sixteen at a
+    /// time on one time at 1 kHz. The steadied line closes on the pen only
+    /// as the pen's time goes on (stroke_stabilizer.dart `_closeTo`), so it
+    /// went to the first of each sixteen and straight on: 134 of 301 points
+    /// of a stood circle more than 4 px off it — at times of their own, none
+    /// (브러시 11-19: 「의도한 법이 아니라 모델의 귀결」 — a point's time is
+    /// given where the point is heard, and it must go up through
+    /// a stroke, spread evenly, and not past its read). A move read now and
+    /// not before was made since the read before and by now: they are put
+    /// there in order, the newest at now.
+    pub(crate) fn hear(&mut self, history: &[Move], found: i32, read_at: i64) -> Option<Lost> {
+        if found < 0 {
+            return None;
+        }
         let newer = newer_than(history, Some(self.newest));
         let lost = mouse_lost(found, newer.len(), Some(self.newest)).filter(|why| *why == Lost::Full);
-        self.moves.extend(newer.iter().rev());
+        let (since, count) = (read_at - self.read_at, newer.len() as i64);
+        let heard = newer.iter().rev().zip(1..).map(|(&at, nth)| (at, self.read_at + since * nth / count));
+        self.moves.extend(heard);
         if let Some(&newest) = newer.first() {
             self.newest = newest;
         }
+        self.read_at = read_at;
         lost
     }
 
     /// The moves a message at `own` hands on — the newest first, `own` the
-    /// first of them — taken out of what was kept, where `own` was kept;
-    /// the moves after it wait for the messages that are theirs.
-    pub(crate) fn take_through(&mut self, own: Move) -> Option<Vec<Move>> {
-        let at = self.moves.iter().position(|&kept| told_alike(kept, own))?;
+    /// first of them, each with when it was heard — taken out of what was
+    /// kept, where `own` was kept; the moves after it wait for the messages
+    /// that are theirs.
+    pub(crate) fn take_through(&mut self, own: Move) -> Option<Vec<(Move, i64)>> {
+        let at = self.moves.iter().position(|&(kept, _)| told_alike(kept, own))?;
         Some(self.moves.drain(..=at).rev().collect())
     }
+}
+
+/// The moves a mouse message hands on, the newest first, as they were told
+/// it: taken from what was kept, each with when it was heard, or read off
+/// the OS's 64 at the message, with how many that read found.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Told {
+    Kept(Vec<(Move, i64)>),
+    Read(Vec<Move>, i32),
 }
 
 /// Whether `message` to the view starts keeping (true) or ends it (false)
@@ -99,19 +135,18 @@ pub(crate) fn keeping_after(message: u32, w: WPARAM, pen: bool) -> Option<bool> 
     }
 }
 
-/// The history a mouse message at `own` hands on, the newest first, and
-/// what its read found where it was read here: the moves `kept` took
-/// through `own`, else the OS's own read of it (`read`).
+/// What a mouse message at `own` hands on ([`Told`]): the moves `kept`
+/// took through `own`, else the OS's own read of it (`read`).
 pub(crate) fn history_for(
     own: Move,
     kept: Option<&mut Kept>,
     read: impl FnOnce(Move) -> (Vec<Move>, i32),
-) -> (Vec<Move>, Option<i32>) {
+) -> Told {
     match kept.and_then(|kept| kept.take_through(own)) {
-        Some(taken) => (taken, None),
+        Some(taken) => Told::Kept(taken),
         None => {
             let (history, found) = read(own);
-            (history, Some(found))
+            Told::Read(history, found)
         }
     }
 }
@@ -127,7 +162,7 @@ static KEEPER: Mutex<Option<Thread>> = Mutex::new(None);
 
 /// Starts keeping from a press at `at`, the thread made at the first.
 pub(crate) fn press(at: Move) {
-    *kept() = Some(Kept::from(at));
+    *kept() = Some(Kept::from(at, now_micros()));
     let mut keeper = KEEPER.lock().unwrap_or_else(PoisonError::into_inner);
     if keeper.is_none() {
         let made = std::thread::Builder::new().name("mouse history".to_owned()).spawn(keep);
@@ -185,7 +220,7 @@ fn read() {
     }
     // Of no millisecond: the newest move at the cursor's place.
     let (history, found) = mouse_history((cursor.x, cursor.y, 0));
-    let lost = kept().as_mut().and_then(|kept| kept.hear(&history, found));
+    let lost = kept().as_mut().and_then(|kept| kept.hear(&history, found, now_micros()));
     if let Some(why) = lost {
         book().lose(why);
     }
@@ -193,7 +228,7 @@ fn read() {
 
 /// The history a mouse message at `own` hands on ([`history_for`]): read
 /// once more first while a button is down, for the moves up to `own`.
-pub(crate) fn history_of(own: Move) -> (Vec<Move>, Option<i32>) {
+pub(crate) fn history_of(own: Move) -> Told {
     if kept().is_some() {
         read();
     }
