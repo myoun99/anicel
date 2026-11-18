@@ -229,11 +229,15 @@ class ExposureVerbs {
     // ⛔No active-cut guard: the starts are commit keys and the retime
     // applies no lens, so a track band parked in a gap is re-timed like any
     // other (H11).
+    //
+    // Held BEFORE the retime: a conte row's comma moves its cut, and the
+    // cut's refresh lets the band go (F-619).
+    final band = _rangeSelections.holdBand();
     retimeKeepingTheCutOnItsRow({
       for (final entry in targets.entries)
         entry.key: {for (final start in entry.value) start: comma},
     });
-    _rangeSelections.reselectRetimedSelection(targets);
+    band?.follow();
     _changes.warmActiveCut();
     _changes.notifyChanged();
   }

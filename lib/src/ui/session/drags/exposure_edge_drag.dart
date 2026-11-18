@@ -6,10 +6,13 @@ import '../../../models/attached_layer_resolve.dart'
 import '../../../models/cut.dart';
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
+import '../../../models/held_blocks.dart' show HeldBand;
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../../models/timeline_frame_range.dart'
+    show TimelineFrameRangeSelection;
 import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -49,12 +52,10 @@ typedef ExposureBeginRoles = ({
   RangeSelections rangeSelections,
 });
 
-/// Captures the bulk-retime set when the dragged edge sits inside the live
-/// selection (UI-R17 #3 → UI-R18 #1: SE rows join through the commit-key
-/// seam — starts and before-layers are COMMIT forms). Null when this is a
-/// single-block drag.
-Map<LayerId, BulkRetimeRow>? _captureBulk({
-  required EdgeDragRoles roles,
+/// The live selection, when the dragged edge acts on it: a drawing block's
+/// edge inside it, on a row it covers (UI-R17 #3). Null when the grip is
+/// the block's alone.
+TimelineFrameRangeSelection? _bandTheGripActsOn({
   required ExposureBeginRoles beginRoles,
   required ExposureGrip grip,
   required bool isDrawingBlock,
@@ -68,6 +69,44 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
       beginRoles.retime.standsDownFromRetime(grip.layerId) ||
       !live.coversLayer(grip.layerId) ||
       !live.contains(grip.blockStartIndex)) {
+    return null;
+  }
+  return live;
+}
+
+/// The live selection held for the drag when the grip acts on it, so it
+/// follows its blocks through the drag (F-619). However many blocks it
+/// holds — one is the single-block drag's, more the bulk's — it is held:
+/// the count picks which retime answers, never whether the band follows.
+HeldBand? _holdTheBandTheGripActsOn({
+  required ExposureBeginRoles beginRoles,
+  required ExposureGrip grip,
+  required bool isDrawingBlock,
+}) {
+  final band = _bandTheGripActsOn(
+    beginRoles: beginRoles,
+    grip: grip,
+    isDrawingBlock: isDrawingBlock,
+  );
+  return band == null ? null : beginRoles.rangeSelections.holdBand();
+}
+
+/// Captures the bulk-retime set when the dragged edge sits inside the live
+/// selection (UI-R17 #3 → UI-R18 #1: SE rows join through the commit-key
+/// seam — starts and before-layers are COMMIT forms). Null when this is a
+/// single-block drag.
+Map<LayerId, BulkRetimeRow>? _captureBulk({
+  required EdgeDragRoles roles,
+  required ExposureBeginRoles beginRoles,
+  required ExposureGrip grip,
+  required bool isDrawingBlock,
+}) {
+  final live = _bandTheGripActsOn(
+    beginRoles: beginRoles,
+    grip: grip,
+    isDrawingBlock: isDrawingBlock,
+  );
+  if (live == null) {
     return null;
   }
   final rows = <LayerId, BulkRetimeRow>{};
@@ -231,13 +270,15 @@ class ExposureEdgeDrag implements EditorDragSession {
     required int blockStart,
     required Map<LayerId, BulkRetimeRow>? bulk,
     required CutSyncCapture? cutSync,
+    required HeldBand? band,
   }) : _roles = roles,
        _trackSe = trackSe,
        _before = before,
        _edge = edge,
        _blockStart = blockStart,
        _bulk = bulk,
-       _cutSync = cutSync;
+       _cutSync = cutSync,
+       _band = band;
 
   /// Grabs the [grip]'s edge; null when there is no such block. A direction
   /// row's spans are its blocks (R27), so they retime here as blocks — the
@@ -299,6 +340,11 @@ class ExposureEdgeDrag implements EditorDragSession {
       blockStart: grip.blockStartIndex,
       bulk: bulk,
       cutSync: _captureCutSync(roles: roles, bulk: bulk, anchor: layer),
+      band: _holdTheBandTheGripActsOn(
+        beginRoles: beginRoles,
+        grip: grip,
+        isDrawingBlock: isDrawingBlock,
+      ),
     );
   }
 
@@ -352,6 +398,13 @@ class ExposureEdgeDrag implements EditorDragSession {
       cutSync: grip.startIsGlobal
           ? null
           : _captureCutSync(roles: roles, bulk: bulk, anchor: null),
+      band: grip.startIsGlobal
+          ? null
+          : _holdTheBandTheGripActsOn(
+              beginRoles: beginRoles,
+              grip: grip,
+              isDrawingBlock: true,
+            ),
     );
   }
 
@@ -430,6 +483,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       cutSync: ridesCutLength(row)
           ? cutSyncSnapshotFor(project: roles.project, cut: cut, row: row)
           : null,
+      band: null,
     );
   }
 
@@ -491,6 +545,11 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// with it — previewed together, committed as ONE undo step.
   final CutSyncCapture? _cutSync;
 
+  /// The live selection when the grip acts on it, held so it follows its
+  /// blocks — each step over the preview, on release over what landed, and
+  /// back as it was found when the drag is let go of (F-619).
+  final HeldBand? _band;
+
   /// What the release would commit: the layer edits and, when a storyboard
   /// row's end moved with them, the synced cut resize. Null while the delta
   /// lands on "no change".
@@ -503,9 +562,16 @@ class ExposureEdgeDrag implements EditorDragSession {
   ({List<({Layer before, Layer after})> edits, CutResize? resize})? _result;
 
   /// Applies the drag's current cumulative frame delta as a live preview on
-  /// the session's `dragPreview` — the repository is NOT touched.
+  /// the session's `dragPreview` — the repository is NOT touched — with the
+  /// band it acts on over the blocks as previewed.
   @override
   void update(int cumulativeDelta) {
+    _preview(cumulativeDelta);
+    final edits = _result?.edits ?? const [];
+    _band?.follow({for (final edit in edits) edit.after.id: edit.after});
+  }
+
+  void _preview(int cumulativeDelta) {
     // Bulk selection retime (UI-R17 #3/#8): the edge delta becomes a LENGTH
     // delta on every selected block of every spanned layer (end edge:
     // +delta, start edge: dragging right shrinks); the ripple packs/pushes
@@ -675,9 +741,16 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// Commits the drag as a single undo step (no-op when nothing changed):
   /// the command's execute applies the final result to the repository — and,
   /// for a storyboard row, the cut resize its comma implied (feedback #9:
-  /// one undo restores both or a drawing lands outside its cut).
+  /// one undo restores both or a drawing lands outside its cut) — and the
+  /// band it acts on over the blocks as they landed. After the write: a
+  /// cut that moved with its conte row refreshes and lets the band go.
   @override
   void commit() {
+    _land();
+    _band?.follow();
+  }
+
+  void _land() {
     final result = _result;
     _roles.dragPreview.value = null;
     if (result == null) {
@@ -712,10 +785,12 @@ class ExposureEdgeDrag implements EditorDragSession {
   }
 
   /// Drops an in-flight drag preview without touching history (the
-  /// repository was never written during the drag).
+  /// repository was never written during the drag), the band back where
+  /// it was found.
   @override
   void cancel() {
     _roles.dragPreview.value = null;
+    _band?.restore();
   }
 }
 

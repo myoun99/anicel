@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/attached_layer_resolve.dart' show isSyncedAttachedLayer;
+import '../../models/held_blocks.dart' show HeldBand, HeldRun, heldRunOn;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
@@ -291,19 +292,43 @@ class RangeSelections {
   /// buttons, the N/H/R tag and the ＋, both ask this, so how many rows or
   /// runs a band holds never picks the code that answers.
   Map<LayerId, List<int>> runsActedOnBy(LayerId layerId, int blockStartIndex) {
+    final press = _runPress(layerId, blockStartIndex);
+    if (press == null) {
+      return const {};
+    }
+    return press.inBand
+        ? press.band
+        : {
+            layerId: [press.run],
+          };
+  }
+
+  /// Whether a press on the run edge of [layerId]'s run at
+  /// [blockStartIndex] acts on the live band ([runsActedOnBy]) — the band
+  /// an add to its runs holds, to follow them (F-619).
+  bool runPressActsOnBand(LayerId layerId, int blockStartIndex) =>
+      _runPress(layerId, blockStartIndex)?.inBand ?? false;
+
+  /// The run a press on [layerId]'s run edge at [blockStartIndex] lands
+  /// on, the runs the live band holds and whether the pressed one is among
+  /// them; null on a row whose runs take no run-edge press.
+  ({int run, Map<LayerId, List<int>> band, bool inBand})? _runPress(
+    LayerId layerId,
+    int blockStartIndex,
+  ) {
     final pressed = _project.rangeLayerById(layerId);
     final run = pressed == null || !_takesRunEdges(pressed)
         ? null
         : gluedRunAt(pressed, blockStartIndex);
     if (run == null) {
-      return const {};
+      return null;
     }
     final band = _runsInBand();
-    return band[layerId]?.contains(run.startIndex) ?? false
-        ? band
-        : {
-            layerId: [run.startIndex],
-          };
+    return (
+      run: run.startIndex,
+      band: band,
+      inBand: band[layerId]?.contains(run.startIndex) ?? false,
+    );
   }
 
   /// The runs the live band holds a block of ([selectionBlockStarts]), by
@@ -902,41 +927,57 @@ class RangeSelections {
     return byLayer.isEmpty ? null : byLayer;
   }
 
-  /// Re-snaps THE selection to the SAME cels after a retime: each layer's
-  /// first retimed block kept its start; the span now ends where the last
-  /// of its retimed blocks ends (max across layers).
+  /// THE live band, held for an edit acting on it so the band follows the
+  /// blocks it holds wherever the edit puts them ([HeldBand]) — null when
+  /// there is no band.
   ///
-  /// [startsByLayer] is in COMMIT keys ([selectionBlockStartsByLayer]), so
-  /// each row is read in its commit form and its end brought back onto the
-  /// selection's own axis. ↩️It read the row the panel SHOWS: a track-owned
-  /// S row past the first cut holds no key as large as its commit starts
-  /// there, so nothing matched and the comma press let the selection go
-  /// (F-283, 🧪measured 2026-10-06 — the same axis the cursor's half missed).
+  /// Its blocks are every row's own, in COMMIT keys — the ones a delete
+  /// takes ([selectionBlocksToDeleteByLayer]): a row whose timing an edit
+  /// leaves alone still has blocks the band reaches over. Each row is read
+  /// in its commit form and its span brought back onto the band's own axis.
+  /// ↩️The comma read the row the panel SHOWS: a track-owned S row past the
+  /// first cut holds no key as large as its commit starts there, so nothing
+  /// matched and the comma press let the selection go (F-283, 🧪measured
+  /// 2026-10-06 — the same axis the cursor's half missed).
   ///
-  /// Whichever axis the selection is in, and over the rows it swept. ↩️A
-  /// band swept on the TRACK's axis was left where it stood, so the second
+  /// Whichever axis the band is in, and over the rows it swept. ↩️A band
+  /// swept on the TRACK's axis was left where it stood, so the second comma
   /// press found only the blocks still starting inside it (🧪measured the
   /// same day: three sounds on ones, pressed 2 then 1, left the third on
   /// twos); and the cut's band came back naming its layers alone, so a lane
   /// it had swept was let go by the press.
-  void reselectRetimedSelection(Map<LayerId, List<int>> startsByLayer) {
-    final inCut = _selection.frameRangeSelection.value;
-    if (inCut != null) {
-      final end = _retimedEndOf(startsByLayer, behind: _project.rowAxisOffset);
-      _selection.frameRangeSelection.value = end == null
-          ? null
-          : inCut.endingAt(end);
-      return;
+  HeldBand? holdBand() {
+    final rows = <LayerId, HeldRun>{
+      for (final MapEntry(key: id, value: starts)
+          in (selectionBlocksToDeleteByLayer() ?? const {}).entries)
+        if (_project.commitLayerById(id) case final layer?)
+          id: ?heldRunOn(layer, starts),
+    };
+    if (_selection.frameRangeSelection.value case final inCut?) {
+      return HeldBand(
+        band: (start: inCut.startIndex, endExclusive: inCut.endIndexExclusive),
+        rows: rows,
+        behind: _project.rowAxisOffset,
+        committed: _project.commitLayerById,
+        write: (span) =>
+            _selection.frameRangeSelection.value = inCut.spanning(span),
+      );
     }
-    final onTrack = _selection.trackFrameRangeSelection.value;
-    if (onTrack == null) {
-      return;
+    if (_selection.trackFrameRangeSelection.value case final onTrack?) {
+      return HeldBand(
+        band: (
+          start: onTrack.startFrame,
+          endExclusive: onTrack.endFrameExclusive,
+        ),
+        rows: rows,
+        // The track's rows key the track's own axis: nothing lies behind it.
+        behind: (_) => 0,
+        committed: _project.commitLayerById,
+        write: (span) =>
+            _selection.trackFrameRangeSelection.value = onTrack.spanning(span),
+      );
     }
-    // The track's rows key the track's own axis: nothing lies behind it.
-    final end = _retimedEndOf(startsByLayer, behind: (_) => 0);
-    _selection.trackFrameRangeSelection.value = end == null
-        ? null
-        : onTrack.endingAt(end);
+    return null;
   }
 
   /// THE band a shove left standing, grown over the blocks it holds now —
@@ -1003,39 +1044,6 @@ class RangeSelections {
       if (_project.rangeLayerById(id) case final layer?)
         (layer: layer, runs: _rowSpans.aggregateRunsForRow(layer)),
   ];
-
-  /// Where the last retimed block of [startsByLayer] ends now (max across
-  /// rows), each row's commit keys brought [behind] frames back onto the
-  /// axis asking. Null when no row answers.
-  int? _retimedEndOf(
-    Map<LayerId, List<int>> startsByLayer, {
-    required int Function(LayerId id) behind,
-  }) {
-    int? end;
-    for (final entry in startsByLayer.entries) {
-      final layer = _project.commitLayerById(entry.key);
-      if (layer == null) {
-        continue;
-      }
-      final offset = behind(entry.key);
-      var remaining = entry.value.length;
-      for (final timelineEntry in layer.timeline.entries) {
-        if (timelineEntry.key < entry.value.first ||
-            !timelineEntry.value.isDrawing ||
-            timelineEntry.value.ghost) {
-          continue;
-        }
-        final blockEnd =
-            timelineEntry.key + timelineEntry.value.length! - offset;
-        end = end == null ? blockEnd : math.max(end, blockEnd);
-        remaining -= 1;
-        if (remaining == 0) {
-          break;
-        }
-      }
-    }
-    return end;
-  }
 
   /// D40: whether the standing row has an authored span for
   /// [selectRowSpanForCurrentRow] to select (one resolver for the pair —

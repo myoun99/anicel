@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
+import 'held_blocks.dart' show FrameSpan;
 import 'layer.dart';
 import 'layer_id.dart';
 import 'range_snap.dart';
@@ -105,12 +106,17 @@ class TimelineFrameRangeSelection {
   /// This selection ending at [endExclusive] — the same rows from the same
   /// start, over the cels a retime made longer or shorter.
   TimelineFrameRangeSelection endingAt(int endExclusive) =>
+      spanning((start: startIndex, endExclusive: endExclusive));
+
+  /// This selection over [span] — the same rows, over the blocks an edit
+  /// acting on it moved (a held band following them).
+  TimelineFrameRangeSelection spanning(FrameSpan span) =>
       TimelineFrameRangeSelection(
         layerId: layerId,
         layerIds: layerIds,
         rows: rows,
-        startIndex: startIndex,
-        endIndexExclusive: endExclusive,
+        startIndex: span.start,
+        endIndexExclusive: span.endExclusive,
       );
 
   @override

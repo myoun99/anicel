@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'held_blocks.dart' show FrameSpan;
 import 'timeline_row_address.dart';
 import 'track_id.dart';
 
@@ -58,13 +59,17 @@ class TrackFrameRangeSelection {
   /// This selection ending at [endExclusive] — the same rows from the same
   /// start, over the blocks a retime made longer or shorter.
   TrackFrameRangeSelection endingAt(int endExclusive) =>
-      TrackFrameRangeSelection(
-        trackId: trackId,
-        anchorRow: anchorRow,
-        rows: rows,
-        startFrame: startFrame,
-        endFrameExclusive: endExclusive,
-      );
+      spanning((start: startFrame, endExclusive: endExclusive));
+
+  /// This selection over [span] — the same rows, over the blocks an edit
+  /// acting on it moved (a held band following them).
+  TrackFrameRangeSelection spanning(FrameSpan span) => TrackFrameRangeSelection(
+    trackId: trackId,
+    anchorRow: anchorRow,
+    rows: rows,
+    startFrame: span.start,
+    endFrameExclusive: span.endExclusive,
+  );
 
   @override
   bool operator ==(Object other) =>

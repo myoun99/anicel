@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../models/frame_id.dart';
+import '../../../models/held_blocks.dart' show HeldBand;
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/timeline_repeat.dart';
@@ -26,15 +27,17 @@ class RunFramesAddDrag implements EditorDragSession {
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(List<({Layer before, Layer after})> edits)
     commitLayerDrags,
+    required HeldBand? band,
   }) : _rows = rows,
        _atEnd = atEnd,
        _drawnFrameCount = drawnFrameCount,
        _preview = preview,
-       _commitLayerDrags = commitLayerDrags;
+       _commitLayerDrags = commitLayerDrags,
+       _band = band;
 
   /// Starts the drag at the edge of [runs] — each row's runs named by their
   /// first block's start; null when no row of them stands — no object, no
-  /// drag.
+  /// drag. [band] is the live band when the runs are its (F-619).
   static RunFramesAddDrag? begin({
     required Map<LayerId, List<int>> runs,
     required bool atEnd,
@@ -43,6 +46,7 @@ class RunFramesAddDrag implements EditorDragSession {
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(List<({Layer before, Layer after})> edits)
     commitLayerDrags,
+    required HeldBand? band,
   }) {
     final rows = [
       for (final MapEntry(key: id, value: starts) in runs.entries)
@@ -60,6 +64,7 @@ class RunFramesAddDrag implements EditorDragSession {
       drawnFrameCount: drawnFrameCount,
       preview: preview,
       commitLayerDrags: commitLayerDrags,
+      band: band,
     );
   }
 
@@ -84,6 +89,11 @@ class RunFramesAddDrag implements EditorDragSession {
   /// controller as ONE undo step, with the warm + notify epilogue behind it.
   final void Function(List<({Layer before, Layer after})> edits)
   _commitLayerDrags;
+
+  /// The live band when the runs are its, held so it follows them over the
+  /// frames they gain — each step, on release, and back as it was found
+  /// when the drag is let go of (F-619).
+  final HeldBand? _band;
 
   /// Reserves the drag's new frame ids, deterministically: the same row,
   /// run and ordinal always resolve the same id, so every preview step and
@@ -115,6 +125,7 @@ class RunFramesAddDrag implements EditorDragSession {
               for (final edit in _edits) edit.after.id: edit.after,
             },
           );
+    _band?.follow({for (final edit in _edits) edit.after.id: edit.after});
   }
 
   /// [row] with [count] new one-frame drawings at the edge of each of its
@@ -144,14 +155,15 @@ class RunFramesAddDrag implements EditorDragSession {
   void commit() {
     final edits = _edits;
     _preview.value = null;
-    if (edits.isEmpty) {
-      return;
+    if (edits.isNotEmpty) {
+      _commitLayerDrags(edits);
     }
-    _commitLayerDrags(edits);
+    _band?.follow();
   }
 
   @override
   void cancel() {
     _preview.value = null;
+    _band?.restore();
   }
 }

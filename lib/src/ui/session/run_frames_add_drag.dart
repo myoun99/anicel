@@ -56,6 +56,9 @@ class RunFramesAddDragVerbs {
         _changes.warmActiveCut();
         _changes.notifyChanged();
       },
+      band: _rangeSelections.runPressActsOnBand(layerId, blockStartIndex)
+          ? _rangeSelections.holdBand()
+          : null,
     );
     if (drag == null) {
       // A refused grip leaves an in-flight drag exactly as it was.

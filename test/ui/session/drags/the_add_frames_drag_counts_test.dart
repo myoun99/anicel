@@ -57,6 +57,7 @@ void main() {
         drawnFrameCount: () => 12,
         preview: preview,
         commitLayerDrags: commits.add,
+        band: null,
       ),
       preview: preview,
       commits: commits,
@@ -210,6 +211,7 @@ void main() {
       drawnFrameCount: () => 12,
       preview: preview,
       commitLayerDrags: (_) {},
+      band: null,
     )!;
 
     drag.update(2);
