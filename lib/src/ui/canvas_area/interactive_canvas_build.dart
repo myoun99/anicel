@@ -174,7 +174,7 @@ class _InteractiveCanvasBuild {
             cameraFrameSize: session.camera.cameraFrameSize,
           )
         : null;
-    return RepaintBoundary(
+    final canvas = RepaintBoundary(
       // D13: the actuation gate's navigation region — the canvas PANEL's
       // rect (viewport gestures, zoom buttons, panbars), measured by the
       // gate at event time. Attached here so the region is exactly what
@@ -233,6 +233,11 @@ class _InteractiveCanvasBuild {
           ),
         ),
       ),
+    );
+    // A press while a move waits for its frame is the frame moved to's.
+    return PressesWaitForTheFrame(
+      moves: _isPlaybackActive ? null : session.standsWithItsPicture,
+      child: canvas,
     );
   }
 

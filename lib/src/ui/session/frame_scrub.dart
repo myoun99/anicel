@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'playback_rig.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
+import 'stands_with_its_picture.dart';
 
 /// The FRAME SCRUB — dragging the playhead: the cuts it crosses into while
 /// the finger is down, the gap it may stand in, and the commit or abandon
@@ -31,6 +32,7 @@ class FrameScrub {
     required ValueListenable<bool> brushInputActive,
     required ValueNotifier<int> editingFrameCursor,
     required PlaybackRig playbackRig,
+    required StandsWithItsPicture moves,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -38,7 +40,8 @@ class FrameScrub {
        _controllers = controllers,
        _brushInputActive = brushInputActive,
        _editingFrameCursor = editingFrameCursor,
-       _playbackRig = playbackRig;
+       _playbackRig = playbackRig,
+       _moves = moves;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -50,6 +53,9 @@ class FrameScrub {
   final ValueListenable<bool> _brushInputActive;
   final ValueNotifier<int> _editingFrameCursor;
   final PlaybackRig _playbackRig;
+
+  /// Where a scrub's move waits for its frame's pictures.
+  final StandsWithItsPicture _moves;
 
   /// True while a ruler scrub is in flight.
   ///
@@ -193,21 +199,31 @@ class FrameScrub {
   /// it, so this is what makes the scrub show the crossed frame. It fires on
   /// the same-frame branch too — a tap that lands where it already was is a
   /// no-op the retarget scope swallows by index.
+  ///
+  /// A canvas that stands goes there with its picture ([_moves]): the
+  /// playhead stands on the frame it shows until then, and a frame the hand
+  /// only passes over is never stood on.
   void scrubFrameIndex(int frameIndex) {
     // R15-⑤: scrubs are seeks too — refused under a live stroke.
     if (_brushInputActive.value) {
       return;
     }
+    if (frameIndex != _controllers.timelineController.currentFrameIndex &&
+        !active.value) {
+      active.value = true;
+      // One warm per gesture. A scrub is a seek and every other seek
+      // warms; per-move warms would only thrash the scheduler's ordering.
+      _changes.warmActiveCut();
+    }
+    _moves.moveTo(frameIndex, () => _scrubbedTo(frameIndex));
+  }
+
+  /// [scrubFrameIndex] as it lands.
+  void _scrubbedTo(int frameIndex) {
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
       _standTheCursorAt(frameIndex);
-      // Each crossed frame plays its slice of the mix (2D audio scrub).
+      // Each frame stood on plays its slice of the mix (2D audio scrub).
       _playbackRig.audioScrubber.onScrubFrame(frameIndex);
-      if (!active.value) {
-        active.value = true;
-        // One warm per gesture. A scrub is a seek and every other seek
-        // warms; per-move warms would only thrash the scheduler's ordering.
-        _changes.warmActiveCut();
-      }
     } else {
       _editingFrameCursor.value = frameIndex;
     }
@@ -280,8 +296,11 @@ class FrameScrub {
       _selection.selectGlobalFrame(parked);
       return;
     }
+    // The frame the hand let go on — the one a move still waits for, where
+    // it does: what the playhead stands on meanwhile is not where it goes.
     _selection.selectFrameIndex(
-      _controllers.timelineController.currentFrameIndex,
+      _moves.waitsFor.value ??
+          _controllers.timelineController.currentFrameIndex,
     );
   }
 }

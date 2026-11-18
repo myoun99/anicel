@@ -52,6 +52,7 @@ import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/paper_background.dart' show paintAbsentPlane;
+import 'canvas/presses_wait_for_the_frame.dart';
 import 'canvas/stage_planes_painter.dart'
     show StagePlane, backdropOnScreen, stageColorOnScreen, stageGround;
 import 'canvas/viewport_canvas_transform.dart';

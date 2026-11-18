@@ -136,6 +136,7 @@ import 'session/project_audio.dart';
 import 'session/movie_cel_hydrator.dart';
 import 'session/playback_rig.dart';
 import 'session/render_caches.dart';
+import 'session/stands_with_its_picture.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -1836,6 +1837,8 @@ class EditorSessionManager extends ChangeNotifier
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),
     voiceRecording.dispose,
+    // Off the landings it hears, before the rig that rings them goes.
+    standsWithItsPicture.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
     audioConformStore.dispose,
@@ -3641,11 +3644,22 @@ class EditorSessionManager extends ChangeNotifier
   /// seek-dependent surfaces (editing canvas, timeline toolbar enablement,
   /// camera pose panel, timesheet playhead) subscribe to
   /// [frameSeekCommitted] and rebuild once per committed seek.
+  ///
+  /// A canvas that stands goes there with its picture
+  /// ([standsWithItsPicture]): the seek lands once it is there.
   @override
   void selectFrameIndex(int frameIndex) {
     // R15-⑤: a live STROKE refuses the seek outright — a
     // flip under an in-flight edit tore widgets down inside the build
     // phase (red screens) and could land the edit on the wrong cel.
+    if (strokeInFlight) {
+      return;
+    }
+    standsWithItsPicture.moveTo(frameIndex, () => _standOnFrame(frameIndex));
+  }
+
+  /// [selectFrameIndex] as it lands.
+  void _standOnFrame(int frameIndex) {
     if (strokeInFlight) {
       return;
     }
@@ -3925,6 +3939,17 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive: brushInputActive,
     editingFrameCursor: editingFrameCursor,
     playbackRig: playbackRig,
+    moves: standsWithItsPicture,
+  );
+
+  /// Where a move of the playhead waits for its frame's pictures while a
+  /// canvas stands to show them ([StandsWithItsPicture]).
+  late final StandsWithItsPicture standsWithItsPicture = StandsWithItsPicture(
+    pictures: () => playbackRig.framePictures,
+    landings: playbackRig.prerenderScheduler.landings,
+    cut: () => activeCutOrNull,
+    frame: () => activeCutControllers.timelineController.currentFrameIndex,
+    placement: () => onionSkin.settings.value.placement,
   );
 
   // ── the onion skin: its own object, in its own file ─────────────────
