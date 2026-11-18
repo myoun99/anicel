@@ -1151,6 +1151,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
         playing: _run.playing,
         onSeek: (frame) => _run.seekToFrame(frame, rate),
+        onStep: (by) => _run.stepBy(by, rate),
         onPlayPause: _run.toggle,
         sound: _run.soundCell(onChanged: _setLoudness),
       ),

@@ -241,8 +241,87 @@ class ShownRasters<K extends Object, A extends Object> {
         evictToBudget(keeping: key);
       });
       _askIsOver(key);
-    }());
+    }().whenComplete(() {
+      if (generation == _generation) {
+        _over.remove((key, at))?.complete();
+        _askTheOneBehind();
+      }
+    }));
   }
+
+  /// [ask] in a line of one, answering once [key]'s render at [at] is over
+  /// — landed, refused, or passed over; at once where it is held at that
+  /// look, or was refused. A move that waits for its picture waits on this
+  /// (`MediaRun.moves`, F-617).
+  ///
+  /// 🚨ONE RENDER OUT AT A TIME, AND IT IS THE LATEST — the preview's law
+  /// (`DocumentPreviewPanel`: 「a hand running along the track passes frames
+  /// nobody will look at」): asked while another is out, it goes once that
+  /// one is over, and the last asked meanwhile only; one passed over
+  /// answers then, unasked. ↩️Each went out at once — a hand on the track
+  /// sent one for every frame it passed, as the panels' asks did on the
+  /// day the tablet crashed (2026-09-28, [want]).
+  Future<void> asked(K key, A at, Future<ui.Image> Function() render) {
+    if (_answered(key, at)) {
+      return Future<void>.value();
+    }
+    final over = _over.putIfAbsent((key, at), Completer<void>.new);
+    if (_renders.containsKey((key, at))) {
+      return over.future;
+    }
+    if (rendering) {
+      final passed = _behind;
+      _behind = (key: key, at: at, render: render);
+      if (passed != null && (passed.key, passed.at) != (key, at)) {
+        _over.remove((passed.key, passed.at))?.complete();
+      }
+      return over.future;
+    }
+    ask(key, at, render);
+    return over.future;
+  }
+
+  /// Whether an ask for [key] at [at] has its answer: held at that look, or
+  /// refused.
+  bool _answered(K key, A at) =>
+      readyAt(key, at) || _renders[(key, at)] == _RenderAsk.failed;
+
+  /// What waits for an ask to be over ([asked]), by (key, look).
+  final Map<(K, A), Completer<void>> _over = {};
+
+  /// The ask [asked] keeps behind the one out — the latest.
+  ({K key, A at, Future<ui.Image> Function() render})? _behind;
+
+  /// An ask is over: the one behind it goes, where nothing else is out.
+  void _askTheOneBehind() {
+    final behind = _behind;
+    if (behind == null || rendering) {
+      return;
+    }
+    _behind = null;
+    final (:key, :at, :render) = behind;
+    if (_answered(key, at)) {
+      _over.remove((key, at))?.complete();
+      return;
+    }
+    ask(key, at, render);
+  }
+
+  /// Ends every wait on an ask ([asked]), and the one behind: what they
+  /// waited on went with the generation.
+  void _endTheWaits() {
+    _behind = null;
+    for (final over in _over.values) {
+      over.complete();
+    }
+    _over.clear();
+  }
+
+  /// How many times what these are pictures of has gone ([clear]): what a
+  /// move among them waits in, which lands nowhere once it has gone
+  /// (`MediaRun.moves`).
+  int get clears => _clears;
+  int _clears = 0;
 
   /// Asks for [key] at [at] off the paint that wants it — 🚨★★★ONE RENDER
   /// AT A TIME, AND ONLY WHAT IS SHOWN NOW (2026-09-28 — 유저: 「fu파일로,
@@ -384,12 +463,15 @@ class ShownRasters<K extends Object, A extends Object> {
   void turnAway() {
     _generation += 1;
     _renders.clear();
+    _endTheWaits();
   }
 
   /// Nothing kept — what these are pictures of is gone, or draws another
   /// way.
   void clear() {
+    _clears += 1;
     _generation += 1;
+    _endTheWaits();
     for (final held in _held.values) {
       held.image.dispose();
     }

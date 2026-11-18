@@ -338,11 +338,14 @@ void main() {
       .documentName;
 
   testWidgets('the preview pages through the run — its transport counts the '
-      'run\'s pictures, and its plate names the one stood on',
-      (tester) async {
+      'run\'s pictures, and its plate names the one stood on; 🗣️F-617: a '
+      'step stands on the picture shown until the next has opened, and goes '
+      'with it (「연번이면 재생헤드 이전위치,이전그림」)', (tester) async {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
     await settleLoadedPages(tester);
+    int stoodOn() =>
+        tester.widget<TransportBar>(find.byType(TransportBar)).currentFrame;
 
     expect(previewPages(tester), 3, reason: 'A1 · A2 · A3, a page each');
     expect(plate(tester), 'A1.png');
@@ -350,9 +353,16 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('transport-step-forward')),
     );
-    await settleLoadedPages(tester);
+    await tester.pump();
+    expect(plate(tester), 'A1.png', reason: 'A2 has not opened yet');
+    expect(stoodOn(), 0);
 
-    expect(plate(tester), 'A2.png', reason: '시안: 「A2.png · 2 / 3」');
+    expect(
+      await settleAsync(tester, () => plate(tester) == 'A2.png'),
+      isTrue,
+      reason: '시안: 「A2.png · 2 / 3」',
+    );
+    expect(stoodOn(), 1);
   });
 
   testWidgets('a row that only registers is no run: the preview shows its '

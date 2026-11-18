@@ -441,6 +441,7 @@ class _ImportPreviewState extends State<ImportPreview>
       currentFrame: _run.frameAt(widget.frameRate).clamp(0, frameCount - 1),
       playing: _run.playing,
       onSeek: (frame) => _run.seekToFrame(frame, widget.frameRate),
+      onStep: (by) => _run.stepBy(by, widget.frameRate),
       // A still or a PDF has nothing that advances by itself and no sound:
       // the button stays where it is, and says so by being off.
       onPlayPause: _run.canPlay ? _run.toggle : null,

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import '../../models/canvas_size.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/media/viewer_document.dart';
@@ -49,15 +51,32 @@ class PageRasters extends ShownRasters<int, double> {
     if (document == null) {
       return;
     }
-    ask(pageIndex, at, () {
-      final CanvasSize(:width, :height) = pagePixelSize(
-        document,
-        pageIndex,
-        at: at,
-      );
-      return document.renderPage(pageIndex, width: width, height: height);
-    });
+    ask(pageIndex, at, _renderOf(document, pageIndex, at));
   }
+
+  /// [ensureRendered], answering once the render is over ([asked]) — at
+  /// once where there is no document to ask.
+  Future<void> rendered(int pageIndex, double at) {
+    final document = _document();
+    if (document == null) {
+      return Future<void>.value();
+    }
+    return asked(pageIndex, at, _renderOf(document, pageIndex, at));
+  }
+
+  /// [document]'s [pageIndex] rendered at [at].
+  static Future<ui.Image> Function() _renderOf(
+    ViewerDocument document,
+    int pageIndex,
+    double at,
+  ) => () {
+    final CanvasSize(:width, :height) = pagePixelSize(
+      document,
+      pageIndex,
+      at: at,
+    );
+    return document.renderPage(pageIndex, width: width, height: height);
+  };
 
   /// Makes room for [page] at [at] by letting go of the pages wanted LATER
   /// than [step] ([makeRoom]) — and answers whether it fits.

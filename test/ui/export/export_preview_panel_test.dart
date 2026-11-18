@@ -375,37 +375,122 @@ void main() {
       expect(pagesAsked(), [0, 3]);
     });
 
-    // 🗣️F-315 (유저 2026-10-08): 「준비안된상태면 지금 이전그림 보여주는데
-    // 그게아니라 … 로딩창같은거 해당패널중앙에 위젯 띄우도록」.
-    testWidgets('🚨a hand on the track: the frame it stands on is drawn, or '
-        'the panel says it is loading — never the frame before', (
-      tester,
-    ) async {
+    // 🗣️F-617 (유저 2026-11-19): 「법을 그냥 타임라인 플립이랑 똑같이
+    // 준비안되면 이전 재생헤드에 서고 이전 그림 보여주게 통일」 · 「첫 로딩?
+    // 전엔 로딩창띄우고」. ↩️F-315 (10-08, 「준비안된상태면 지금 이전그림
+    // 보여주는데 그게아니라 … 로딩창같은거」) took the frame before down
+    // under a playhead that had gone on, and the ring stood in its place.
+    testWidgets('🚨a hand on the transport: the playhead and the picture '
+        'stand on the frame shown until the frame it goes to has landed, and '
+        'go together — the first frame is waited for under the loading '
+        'ring', (tester) async {
       await pump(tester, document());
       expect(loading, findsOneWidget, reason: 'nothing has landed yet');
       final first = await landed(tester, 0);
       expect(loading, findsNothing);
 
-      at.value = 2;
+      tester.exportTransport.onSeek!(2);
       await tester.pump();
-      expect(tester.exportTransport.currentFrame, 2);
+      expect(pagesAsked().last, 2, reason: 'the frame it goes to is asked');
       expect(
-        tester.exportPreviewImage,
-        isNull,
-        reason: 'the frame before stood in for it',
+        tester.exportTransport.currentFrame,
+        0,
+        reason: 'the playhead went before its picture',
       );
-      expect(loading, findsOneWidget);
+      expect(at.value, 0);
+      expect(identical(tester.exportPreviewImage, first), isTrue);
+      expect(loading, findsNothing);
 
       await land(tester);
+      expect(tester.exportTransport.currentFrame, 2);
+      expect(at.value, 2);
       expect(tester.exportPreviewImage, isNotNull);
       expect(identical(tester.exportPreviewImage, first), isFalse);
       expect(loading, findsNothing);
+
       // A frame already drawn is there the moment it is turned back to.
-      at.value = 0;
+      tester.exportTransport.onSeek!(0);
       await tester.pump();
+      expect(at.value, 0);
       expect(identical(tester.exportPreviewImage, first), isTrue);
-      expect(loading, findsNothing);
       expect(pending, isEmpty, reason: 'and nothing is asked for it again');
+    });
+
+    testWidgets('🗣️F-617: every step pressed is a step taken — two pressed '
+        'while a frame is on its way walk two, each once its frame is '
+        'there; and a step stops at the end', (tester) async {
+      await pump(tester, document(pages: 3));
+      await landed(tester, 0);
+      final forward = find.byKey(
+        const ValueKey<String>('export-transport-step-forward'),
+      );
+
+      await tester.tap(forward);
+      await tester.pump();
+      await tester.tap(forward);
+      await tester.pump();
+      expect(at.value, 0, reason: 'frame 1 is on its way');
+      expect(pagesAsked(), [0, 1], reason: 'the second waits its turn');
+
+      await land(tester);
+      expect(at.value, 2, reason: 'the second counted from where it stood');
+      expect(pagesAsked(), [0, 1, 2]);
+
+      await tester.tap(forward);
+      await tester.pump();
+      expect(at.value, 2);
+      expect(pending, isEmpty);
+    });
+
+    testWidgets('🚨a hand running along the track while a frame is on its '
+        'way sends ONE more: the last it stops on', (tester) async {
+      await pump(tester, document(pages: 6));
+      await landed(tester, 0);
+      for (final frame in [1, 2, 3, 4, 5]) {
+        tester.exportTransport.onSeek!(frame);
+        await tester.pump();
+      }
+      expect(pagesAsked(), [0, 1], reason: 'one out at a time');
+
+      await land(tester);
+      expect(pagesAsked(), [0, 1, 5], reason: 'the frames passed are not');
+      expect(at.value, 5);
+    });
+
+    testWidgets('🗣️F-617: a book\'s page lands at once, under the loading '
+        'ring on that page alone (「pdf 볼때처럼 여러 페이지가 존재할땐 해당 '
+        '페이지만 로딩창」)', (tester) async {
+      await pump(tester, document(shape: ExportPreviewShape.book, pages: 3));
+      await landed(tester, 0);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-preview-next-page-button')),
+      );
+      await tester.pump();
+      expect(at.value, 1);
+      expect(tester.exportPreviewImage, isNull);
+      expect(loading, findsOneWidget);
+    });
+
+    testWidgets('🚨a move that waits when the document becomes another lands '
+        'nowhere — and the steps after it are not kept waiting', (
+      tester,
+    ) async {
+      await pump(tester, document());
+      await landed(tester, 0);
+      tester.exportTransport.onSeek!(2);
+      await tester.pump();
+      expect(at.value, 0, reason: 'frame 2 is on its way');
+
+      await pump(tester, document(subject: 'another'));
+      await land(tester);
+      expect(at.value, 0, reason: 'a frame of the document gone');
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-transport-step-forward')),
+      );
+      await tester.pump();
+      await land(tester);
+      expect(at.value, 1);
     });
 
     testWidgets('🚨a setting that changes the LOOK takes the picture down: the '

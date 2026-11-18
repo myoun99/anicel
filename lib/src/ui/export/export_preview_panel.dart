@@ -281,6 +281,9 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
         onSeek: widget.enabled
             ? (frame) => _run.seekToFrame(frame, rate)
             : null,
+        onStep: widget.enabled
+            ? (by) => _run.stepBy(by, rate)
+            : null,
         onPlayPause: widget.enabled && _run.canPlay ? _run.toggle : null,
         range: range,
       ),
