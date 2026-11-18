@@ -119,6 +119,17 @@ void main() {
     });
 
     test('start edge grows to frame 0 and no further', () {
+      expect(
+        instructionMapWithEdgeShifted(
+          _map({0: pan}),
+          spanStartIndex: 0,
+          startEdge: true,
+          delta: -3,
+        ),
+        isNull,
+        reason: 'at the head already, nothing moves',
+      );
+
       final clampedAtZero = instructionMapWithEdgeShifted(
         _map({2: pan}),
         spanStartIndex: 2,

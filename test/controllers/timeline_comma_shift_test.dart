@@ -210,6 +210,17 @@ void main() {
         8: _drawing('d', 1),
       });
 
+      expect(
+        harness.controller.clampExposureEdgeDelta(
+          layer: harness.layer,
+          blockStartIndex: 2,
+          edge: TimelineBlockEdge.start,
+          delta: 99,
+        ),
+        7,
+        reason: 'from frame 2 to the row\'s last frame, 9',
+      );
+
       harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: 99);
 
       harness.expectTimeline({0: _drawing('a', 9)});

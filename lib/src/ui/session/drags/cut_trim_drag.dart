@@ -17,6 +17,7 @@ import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../../models/track_id.dart';
 import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
+import '../../../services/editing/cut_deletion_helpers.dart' show CutsLeaving;
 import '../../../services/project_lookup.dart' show celBankLanesOf;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -202,7 +203,6 @@ sealed class CutTrimDrag implements EditorDragSession {
     // to the real answer on pointer-up.
     final rowEdits = _rowEditsForPlan(planned);
     final changed =
-        planned.removed.isNotEmpty ||
         planned.durations[_cutId] != _beforeDurations[_cutId] ||
         planned.gaps.entries.any(
           (entry) => _beforeGaps[entry.key] != entry.value,
@@ -299,14 +299,7 @@ sealed class CutTrimDrag implements EditorDragSession {
             afterDurations: after.durations,
             beforeGaps: scopedBeforeGaps,
             afterGaps: after.gaps,
-            // The cuts go the way a delete takes them, in the same step.
-            leaving: leaving == null
-                ? null
-                : (
-                    deletions: _roles.project.cutCommandCoordinator
-                        .deletionOf(leaving.cuts.toList()),
-                    trailingFrames: leaving.trailingFrames,
-                  ),
+            leaving: _deleting(leaving),
             description: 'Trim cut duration',
           );
       _roles.changes.refreshAfterCutCommand();
@@ -324,6 +317,18 @@ sealed class CutTrimDrag implements EditorDragSession {
     _roles.changes.refreshAfterCutCommand();
     _roles.changes.notifyChanged();
   }
+
+  /// The cuts [leaving] go the way the cut delete takes them — its own
+  /// commands, in the drag's step — the end line held after them.
+  CutsLeaving? _deleting(({Set<CutId> cuts, int trailingFrames})? leaving) =>
+      leaving == null
+      ? null
+      : (
+          deletions: _roles.project.cutCommandCoordinator.deletionOf(
+            leaving.cuts.toList(),
+          ),
+          trailingFrames: leaving.trailingFrames,
+        );
 
   /// Drops an in-flight trim preview without touching history (the
   /// repository was never written during the drag).
@@ -480,7 +485,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     );
     final delta = _cameraBounded(cumulativeDelta);
     var layout = planned(delta);
-    final short = delta > 0 ? _cameraShortfall(panels, layout.lengths) : 0;
+    final short = _cameraShortfall(panels, layout.lengths);
     if (short > 0) {
       layout = planned(delta - short);
     }
@@ -502,7 +507,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   /// inside its own cut, whose length stays. A pull back is
   /// [_cameraShortfall]'s.
   int _cameraBounded(int cumulativeDelta) {
-    if (_panelIndex != 0 || cumulativeDelta > 0) {
+    if (_panelIndex != 0) {
       return cumulativeDelta;
     }
     final index = _order.indexOf(_cutId);
@@ -517,8 +522,9 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   /// its camera's keys: shrinking it from its front pushes them in until
   /// they have no frames left, and the edge HOLDS there until it has passed
   /// the cut whole — then the cut is gone, keys and all (I-179), as a frame
-  /// block keeps its one frame and then goes. Only a cut the drag shortened
-  /// and kept is asked: one behind it never moved, one in front only grew.
+  /// block keeps its one frame and then goes. A cut that left asks nothing;
+  /// one the drag did not shorten — behind the edge, or the one in front
+  /// that grew — is never short.
   int _cameraShortfall(List<StoryboardPanelSlot> panels, List<int> lengths) {
     final kept = <CutId, int>{};
     for (var i = 0; i < panels.length; i += 1) {
@@ -527,7 +533,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     var short = 0;
     for (final MapEntry(key: id, value: length) in kept.entries) {
       final duration = _roles.project.cutById(id)?.duration ?? length;
-      if (length > 0 && length < duration) {
+      if (length > 0) {
         short = math.max(short, duration - _cameraRoomOf(id) - length);
       }
     }

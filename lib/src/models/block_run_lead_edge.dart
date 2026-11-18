@@ -118,8 +118,12 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   if (frameDelta > 0) {
     _sweepBack(
       slots,
-      (targetIndex: targetIndex, pull: frameDelta, minLength: minLength),
-      starts: starts,
+      (
+        targetIndex: targetIndex,
+        pull: frameDelta,
+        minLength: minLength,
+        starts: starts,
+      ),
       newStarts: newStarts,
       lengths: lengths,
     );
@@ -156,8 +160,14 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
 }
 
 /// What a pull back of a lead edge reads: the dragged block, how far the
-/// hand pulled and the floor a block the edge stands in keeps.
-typedef _PullInput = ({int targetIndex, int pull, int minLength});
+/// hand pulled, the floor a block the edge stands in keeps and where every
+/// block sat before the drag.
+typedef _PullInput = ({
+  int targetIndex,
+  int pull,
+  int minLength,
+  List<int> starts,
+});
 
 /// The lead edge of `slots[input.targetIndex]` pulled back [_PullInput.pull]
 /// frames, as far as the row's last frame (I-179): each block the edge has
@@ -175,10 +185,10 @@ typedef _PullInput = ({int targetIndex, int pull, int minLength});
 void _sweepBack(
   List<BlockMoveSlot> slots,
   _PullInput input, {
-  required List<int> starts,
   required List<int> newStarts,
   required List<int> lengths,
 }) {
+  final starts = input.starts;
   final target = input.targetIndex;
   final from = starts[target];
   var edge = math.min(from + input.pull, starts.last + slots.last.length);

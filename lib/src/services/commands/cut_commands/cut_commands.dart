@@ -506,22 +506,11 @@ class _CutCommands {
   /// clear the track, and the replacement was indistinguishable from a
   /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    final parting = _partingLinksOf({cutId});
-    final delete = DeleteCutCommand(
-      repository: _coordinator.repository,
-      editingSession: _coordinator.editingSession,
-      cutId: cutId,
-      brushFrameStore: _coordinator.brushFrameStore,
-      sheetInkStores: _coordinator.sheetInkStores,
+    final steps = deletionOf([cutId]);
+    _coordinator.historyManager.executeAsOneStep(
+      steps.first.description,
+      steps,
     );
-    if (parting == null) {
-      _coordinator.historyManager.execute(delete);
-    } else {
-      _coordinator.historyManager.executeAsOneStep(delete.description, [
-        delete,
-        parting,
-      ]);
-    }
   }
 
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
@@ -530,9 +519,9 @@ class _CutCommands {
       .historyManager
       .executeAsOneStep('Delete cuts', deletionOf(cutIds));
 
-  /// What deleting [cutIds] runs — [deleteCuts]' step, and a lead edge's
-  /// when it is pulled back past whole cuts (I-179), which deletes them
-  /// inside its own.
+  /// What deleting [cutIds] runs — [deleteCut]'s and [deleteCuts]' step,
+  /// and a lead edge's when it is pulled back past whole cuts (I-179),
+  /// which deletes them inside its own.
   List<Command> deletionOf(List<CutId> cutIds) => [
     for (final cutId in cutIds)
       DeleteCutCommand(

@@ -194,6 +194,38 @@ void main() {
     );
   });
 
+  test('two cuts in a row that left hand the next one both their gaps, and '
+      'the cut after that one says nothing', () {
+    const cutC = CutId('c');
+    const cutD = CutId('d');
+    const cutE = CutId('e');
+    final before = [
+      cut(cutA, duration: 8),
+      cut(cutB, duration: 6, gap: 2),
+      cut(cutC, duration: 4, gap: 3),
+      cut(cutD, duration: 5, gap: 1),
+      cut(cutE, duration: 2),
+    ];
+    final panels = panelSlotsOfCuts(before);
+    // B's front, at 10, pulled back 15: B and C go whole, D starts at 25.
+    final layout = planBlockRunLeadEdge(
+      slots: [for (final panel in panels) panel.slot],
+      targetIndex: 1,
+      frameDelta: 15,
+    );
+
+    final read = cutsFromPanelLayout(
+      panels: panels,
+      leadingGaps: layout.leadingGaps,
+      lengths: layout.lengths,
+      before: before,
+    );
+
+    expect(read.removed, {cutB, cutC});
+    expect(read.durations, {cutD: 4});
+    expect(read.gaps, {cutD: 17}, reason: 'from A\'s end at 8 to 25');
+  });
+
   test('the cut behind the ones that left says its gap even where the number '
       'did not change — it stands on a new boundary', () {
     const cutC = CutId('c');

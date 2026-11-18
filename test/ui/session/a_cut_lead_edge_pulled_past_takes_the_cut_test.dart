@@ -191,8 +191,13 @@ void main() {
 
   test('a cut\'s camera keys hold the edge at their floor until it has '
       'passed the cut whole — then the cut goes, keys and all', () {
-    // b's keys 0, 4 and 7 ask a frame each: b may shrink to 3.
-    final s = open([cutOf(a, 10), cutOf(b, 8, keys: [0, 4, 7])]);
+    // b's keys 0, 4 and 7 ask a frame each: b may shrink to 3. c, behind
+    // it, is not asked — it never moved.
+    final s = open([
+      cutOf(a, 10),
+      cutOf(b, 8, keys: [0, 4, 7]),
+      cutOf(c, 5),
+    ]);
 
     pull(s, b, 6);
     expect(durationOf(s, b), 3);
@@ -203,7 +208,7 @@ void main() {
     s.historyManager.undo();
 
     pull(s, b, 8);
-    expect(cutsOn(s), [a]);
+    expect(cutsOn(s), [a, c]);
     expect(durationOf(s, a), 18);
   });
 

@@ -202,6 +202,29 @@ void main() {
     );
     expect(panelLengthsOf(s, first), [head + tail + secondDuration]);
   });
+
+  test('a cut with a conte row pulled back past whole goes, row and all — '
+      'the cut behind starts where the edge stands', () {
+    final (s, first, second) = twoCutsWithConteInFront();
+    addTearDown(s.dispose);
+    final firstDuration = durationOf(s, first);
+    final secondDuration = durationOf(s, second);
+
+    s.edgeDrag.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+    s.edgeDrag.updateCutEdgeDrag(firstDuration + 2);
+    s.edgeDrag.endCutEdgeDrag();
+
+    expect(
+      s.repository.requireProject().tracks.first.cuts.map((cut) => cut.id),
+      [second],
+    );
+    expect(durationOf(s, second), secondDuration - 2);
+    expect(layoutStart(s, second), firstDuration + 2);
+
+    s.historyManager.undo();
+    expect(panelLengthsOf(s, first), hasLength(2));
+    expect(durationOf(s, second), secondDuration);
+  });
 }
 
 /// [project] with [layer] added to [cutId] — the one bit of assembly the
