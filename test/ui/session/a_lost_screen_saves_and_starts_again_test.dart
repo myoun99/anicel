@@ -78,6 +78,15 @@ void main() {
     ]);
   });
 
+  testWidgets('a screen gone before the shell listened — a reset as the app '
+      'launched — is asked of as the shell comes up', (tester) async {
+    answers.add(1);
+    LostScreen.debugGo();
+    await pumpShell(tester);
+
+    expect(methods(), [LostScreen.askMethod]);
+  });
+
   testWidgets('[저장하고 다시 시작] starts Anicel again for the projects that '
       'have a file — one with nothing to lose saved over nothing — and '
       'for none never saved and empty', (tester) async {

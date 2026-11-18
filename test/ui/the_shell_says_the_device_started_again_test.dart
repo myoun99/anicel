@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuDeviceWent, GpuReadFailed;
+    show GpuDeviceWent, GpuReadFailed, GpuRefused;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/app_kernels_ahead.dart';
@@ -200,6 +200,20 @@ void main() {
     await tester.runAsync(pumpEventQueue);
     await tester.pump();
     expect(says, findsNothing);
+    expect(askedWithWindows, hasLength(1), reason: 'nor by Windows');
+    // And a refusal of the device the app stands on: told of no more, in
+    // either window, while the screen draws no more.
+    final wasReported = FlutterError.onError;
+    final wasUncaught = PlatformDispatcher.instance.onError;
+    EngineRefusals.install();
+    final noRoom = GpuRefused('no room');
+    FlutterError.reportError(FlutterErrorDetails(exception: noRoom));
+    FlutterError.onError = wasReported;
+    PlatformDispatcher.instance.onError = wasUncaught;
+    expect(tester.takeException(), same(noRoom), reason: 'still reported');
+    await tester.pump();
+    await tester.pump();
+    expect(refused, findsNothing);
     expect(askedWithWindows, hasLength(1), reason: 'nor by Windows');
     LostScreen.debugForget();
     await tester.pumpWidget(const SizedBox());
