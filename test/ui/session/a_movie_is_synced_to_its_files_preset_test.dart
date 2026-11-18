@@ -33,7 +33,7 @@ import 'package:anicel/src/ui/media/media_sync_flow.dart' show syncLengthsOf;
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/stand_in_movie.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 const _take = 'C:/media/take.mp4';
 const _cloud = 'C:/media/cloud.png';
@@ -243,7 +243,7 @@ void main() {
       'in the project\'s frames once the pool has read its rate, none '
       'before', () async {
     final dir = Directory.systemTemp.createTempSync('anicel-sync-movie');
-    addTearDown(() => deleteTempQuietly(dir));
+    deleteAfterSessionEnds(dir);
     final take = normalizedMediaPath(
       (File('${dir.path}${Platform.pathSeparator}take.mp4')
             ..writeAsBytesSync(standInMovieBytes))

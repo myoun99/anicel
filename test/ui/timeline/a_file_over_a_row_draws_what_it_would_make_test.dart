@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/stand_in_movie.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨A FILE HELD OVER A ROW DRAWS WHAT LETTING GO WOULD MAKE — 「끄는 동안
 /// 보이는 것은 놓았을 때 생길 것이다」 (미디어 배치 라운드 2d 2부).
@@ -139,7 +139,7 @@ void main() {
       'its PROJECT frames, once the pool has read its rate; one cell '
       'before', () async {
     final dir = Directory.systemTemp.createTempSync('anicel-sil-movie');
-    addTearDown(() => deleteTempQuietly(dir));
+    deleteAfterSessionEnds(dir);
     final path = File('${dir.path}${Platform.pathSeparator}take.mp4')
       ..writeAsBytesSync(standInMovieBytes);
     // The pool's own spelling, as a file dragged from it is named.
