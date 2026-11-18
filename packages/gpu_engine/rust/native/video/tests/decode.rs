@@ -422,16 +422,21 @@ fn flat_nv12(width: usize, height: usize, stride: usize, [y, cb, cr]: [u8; 3]) -
     nv12
 }
 
-// 🚨A flat colour comes back through the reader within 3 a channel, HD and
+// 🚨A flat colour comes back through the reader within 4 a channel, HD and
 // SD — the names the writer gives its pictures agreeing with what the
 // reader makes of them. Each colour is handed as the law's YCbCr of it,
 // worked by hand (BT.601 studio, as `kernels/export/tests.rs` works its
 // own). ⚠️Measured on Windows alone (2026-11-14, `export/windows.rs` says
-// what each name kept off). ↩️Each was also handed as RGBA, the law made
-// on the CPU, till that went (2026-11-15).
+// what each name kept off — 13 and more). ↩️Each was also handed as RGBA,
+// the law made on the CPU, till that went (2026-11-15).
+// ↩️Within 3 till 2026-11-18, which was the Surface's hardware encoder. The
+// OS's own software H.264 — what a machine with none takes, CI's Windows
+// ARM64 runner among them (board windows-arm64-video-decode-tests-red) —
+// hands [30, 30, 200] back as [31, 29, 196], there and on the Surface made
+// to take it: its quantizing, not the names.
 #[cfg(windows)]
 #[test]
-fn a_flat_colour_comes_back_within_three() {
+fn a_flat_colour_comes_back_within_four() {
     let _turn = one_at_a_time();
     let colours: [([u8; 3], [u8; 3]); 4] = [
         ([110, 60, 200], [94, 182, 140]),
@@ -449,7 +454,7 @@ fn a_flat_colour_comes_back_within_three() {
             let frame = read[1].as_ref().expect("the second frame");
             let middle = &frame[((info.1 as usize / 2) * info.0 as usize + info.0 as usize / 2) * 4..][..3];
             let off = middle.iter().zip(rgb).map(|(back, was)| back.abs_diff(was)).max();
-            assert!(off <= Some(3), "{width}×{height}: {rgb:?} came back {middle:?}");
+            assert!(off <= Some(4), "{width}×{height}: {rgb:?} came back {middle:?}");
         }
     }
 }
@@ -659,6 +664,11 @@ fn shown(path: &std::path::Path, (width, height): (usize, usize), count: usize) 
 // a piece written of those frames says them too, holds the same bytes, and
 // is shown as the movie is. ↩️Pieces were RGBA made BT.601 again: the
 // movie's BT.709 read as the app's law (`colour`).
+// ⚠️As they were written is within 3 of it: the OS's software H.264 (CI's
+// Windows ARM64 runner, board windows-arm64-video-decode-tests-red) codes
+// a flat frame's first block that far off in its luma — [60, 160, 100]
+// came back [63, 159, 100] at the top-left, 2026-11-18. ↩️Within 2 till
+// then, the Surface's hardware encoder. The piece holds those bytes still.
 #[test]
 fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
     let _turn = one_at_a_time();
@@ -675,7 +685,7 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
     assert_eq!(decoded.len(), written.len(), "every frame");
     for (k, frame) in decoded.iter().enumerate() {
         for point in points_of(frame, size.0, size.1) {
-            assert!(near(point, written[k], 2), "frame {k}: {:?} came back {point:?}", written[k]);
+            assert!(near(point, written[k], 3), "frame {k}: {:?} came back {point:?}", written[k]);
         }
     }
     let piece = write_named("bt709-piece", size, named, &decoded);

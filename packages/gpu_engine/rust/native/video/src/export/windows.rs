@@ -215,7 +215,8 @@ fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job
         // (2026-11-14), the app's reader asking Media Foundation for RGB32:
         // with no transfer named the matrix did not reach the movie, and a
         // 1920×1080 one read as BT.709 — green 200 came back 173. With all
-        // four, within 3 (`tests/decode.rs`). SMPTE C's primaries are
+        // four, within 3 on its hardware encoder (`tests/decode.rs` — the
+        // OS's software H.264 within 4, 2026-11-18). SMPTE C's primaries are
         // SMPTE170M here: named SMPTE_C, the muxer wrote 8 — generic film —
         // in the file's `colr` (export tests), and the readers took those
         // two ways: Surface's (Intel) converted from them beside BT.709's
