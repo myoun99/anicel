@@ -26,7 +26,8 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
-import '../../services/command.dart' show PressedStep, WorkAhead;
+import '../../services/command.dart'
+    show PressedStep, WorkAhead, WorksAheadCommand, oneStepOf;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart'
@@ -867,27 +868,24 @@ class PixelVerbs {
       _pixelEditing.coordinator != null &&
       _cellsTheLadderNames().isNotEmpty;
 
-  /// The 색 편집 list's clipboard row [verb], pressed — the step it takes,
-  /// with nothing worked out ahead of it, as [pixelVerbStep]'s rows hand
-  /// theirs to the door that stands them behind the wait window.
-  PressedStep pixelClipboardVerbStep(
-    PixelClipboardVerb verb,
-  ) => (ahead: null, step: () => _runPixelClipboardVerb(verb));
-
-  void _runPixelClipboardVerb(PixelClipboardVerb verb) {
+  /// The 색 편집 list's clipboard row [verb], pressed — the step it takes
+  /// and what it works out ahead of it, as [pixelVerbStep]'s rows hand
+  /// theirs to the door that stands them behind the wait window: a paste
+  /// its cels' landings ([_land]), a copy nothing. A press the row could
+  /// not run is a step that does nothing.
+  PressedStep pixelClipboardVerbStep(PixelClipboardVerb verb) {
     if (!canRunPixelClipboardVerb(verb)) {
-      return;
+      return (ahead: null, step: () {});
     }
-    switch (verb) {
-      case PixelClipboardVerb.cut:
-        _copyPixels(takeWhatItCopies: true);
-      case PixelClipboardVerb.copy:
-        _copyPixels();
-      case PixelClipboardVerb.pasteAbove:
-        _pastePixels(BrushBlendMode.color);
-      case PixelClipboardVerb.pasteBelow:
-        _pastePixels(BrushBlendMode.behind);
-    }
+    return switch (verb) {
+      PixelClipboardVerb.cut => (
+        ahead: null,
+        step: () => _copyPixels(takeWhatItCopies: true),
+      ),
+      PixelClipboardVerb.copy => (ahead: null, step: _copyPixels),
+      PixelClipboardVerb.pasteAbove => _pastePixels(BrushBlendMode.color),
+      PixelClipboardVerb.pasteBelow => _pastePixels(BrushBlendMode.behind),
+    };
   }
 
   /// 픽셀 복사: the standing cel onto the pixel board — through the marquee
@@ -929,15 +927,15 @@ class PixelVerbs {
   /// ★The landing is the piece door ([pieceLandings]) — the one the cut
   /// tool's stamp lands through too (F-293): one cel or a whole range, the
   /// same code answers (절대명령 2) — one undo.
-  void _pastePixels(BrushBlendMode blend) {
+  PressedStep _pastePixels(BrushBlendMode blend) {
     final piece = _pixelBoard.piece;
     if (piece == null) {
-      return;
+      return (ahead: null, step: () {});
     }
     // ONE dab for every row: the board goes back where it was read from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece);
-    _land(
+    return _land(
       PieceStamp(
         onTheRow: (_) => dab,
         blend: blend,
@@ -956,9 +954,15 @@ class PixelVerbs {
   /// holds CEL coordinates, the picture is the canvas's, so a posed row
   /// takes it through its placement ([stampInArtwork]) — the crossing a
   /// transform's landing makes.
-  void landCanvasPicture(CutPiece picture, {required String description}) {
+  ///
+  /// The press, as [pixelVerbStep]'s: the step that lays it, and each cel's
+  /// landing to work out ahead of it.
+  PressedStep canvasPictureStep(
+    CutPiece picture, {
+    required String description,
+  }) {
     final dab = buildCutPasteDab(picture);
-    _land(
+    return _land(
       PieceStamp(
         onTheRow: (placement) => stampInArtwork(dab, placement),
         blend: BrushBlendMode.color,
@@ -968,23 +972,34 @@ class PixelVerbs {
   }
 
   /// [stamp] through the piece door onto the ground a press reads
-  /// ([pieceGround]), as one undo.
-  void _land(PieceStamp stamp) {
+  /// ([pieceGround]), as one undo — the press: its landings named as it is
+  /// pressed, the step that lands them, and each cel's landing worked out
+  /// ahead of it (`BrushLiftMoveHistoryCommand.workAhead`, 🗣️F-615).
+  PressedStep _land(PieceStamp stamp) {
     final coordinator = _pixelEditing.coordinator;
-    if (coordinator == null) {
-      return;
+    final landing = coordinator == null
+        ? null
+        : oneStepOf(stamp.description, [
+            for (final cel in pieceLandings(
+              coordinator: coordinator,
+              ground: pieceGround(),
+              stamp: stamp,
+              // Without the hub the canvas keeps the old composite until you
+              // leave the frame (see [pixelVerbStep]).
+              cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+            ).values)
+              cel.landing,
+          ]);
+    if (landing == null) {
+      return (ahead: null, step: () {});
     }
-    final landed = pieceLandings(
-      coordinator: coordinator,
-      ground: pieceGround(),
-      stamp: stamp,
-      // Without the hub the canvas keeps the old composite until you leave
-      // the frame (see [pixelVerbStep]).
-      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+    return (
+      ahead: switch (landing) {
+        final WorksAheadCommand works => works.workAhead(undo: false),
+        _ => null,
+      },
+      step: () => _project.historyManager.execute(landing),
     );
-    _project.historyManager.executeAsOneStep(stamp.description, [
-      for (final cel in landed.values) cel.landing,
-    ]);
   }
 
   /// WHERE a held picture lands, read at the press — 픽셀 붙여넣기's ground

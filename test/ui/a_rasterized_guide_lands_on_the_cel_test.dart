@@ -199,7 +199,7 @@ void main() {
     );
 
     // A square 20 across, 40 right of and below the canvas's middle.
-    session.pixelVerbs.landCanvasPicture(
+    session.pixelVerbs.canvasPictureStep(
       CutPiece(
         image: BrushStampImage(
           id: 'square',
@@ -213,7 +213,7 @@ void main() {
         originTop: middle.y + 40,
       ),
       description: 'Rasterize guide',
-    );
+    ).step();
     await tester.pump();
 
     final ink = inkOf(session);

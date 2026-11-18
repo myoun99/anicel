@@ -246,7 +246,10 @@ class EditorSessionManager extends ChangeNotifier
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
-      ..scope = RepositoryStepScope(repository)
+      ..scope = RepositoryStepScope(
+        repository,
+        cels: renderCaches.brushFrameStore,
+      )
       ..places.placeNow = () => standingPlace;
     // 🚨With the history, not at its first step: from the first change it
     // lets go of the pictures only deep entries hold. Built lazily, it

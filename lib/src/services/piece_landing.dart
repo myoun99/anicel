@@ -139,7 +139,6 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
         landing: BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
           frameKey: answer.key,
-          preLiftSurface: coordinator.currentSurfaceOf(answer.key),
           landingDabs: [answer.dab],
           landingSelection: answer.within,
           blendMode: stamp.blend,

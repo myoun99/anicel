@@ -3282,14 +3282,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        (
-          ahead: null,
-          step: () {
-            if (mounted) {
-              _landStamp((_) => dab);
-            }
-          },
-        ),
+        _landStamp((_) => dab),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
         ),
@@ -3322,10 +3315,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// is the trail's first stamp, and a window put ahead of it would land the
   /// trail before the press. Only 원래 위치에 붙여넣기 stands behind one
   /// ([pasteCutPieceAtOrigin]).
-  void _landStamp(BrushDab? Function(LayerPlacement? placement) onTheRow) {
+  ///
+  /// The press: its landings named as it is pressed, the step that lands
+  /// them, and each cel's landing worked out ahead of it for the door that
+  /// stands it behind the window (`BrushLiftMoveHistoryCommand.workAhead`,
+  /// 🗣️F-615) — a press on the canvas takes its step at once.
+  PressedStep _landStamp(
+    BrushDab? Function(LayerPlacement? placement) onTheRow,
+  ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
-      return;
+      return (ahead: null, step: () {});
     }
     // The stamp's own, as its opacity is ([pasteCutPieceAtOrigin]) and as
     // its ghost shows it. ↩️It read the tool in hand — the same number only
@@ -3344,7 +3344,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (landed.isEmpty) {
       // No cel named, or nothing of the piece inside the selection: nothing
       // lands, nothing undoes.
-      return;
+      return (ahead: null, step: () {});
     }
     // What landed, cut as it landed — the pixels 확정 lays down again
     // ([LastStrokeSlot]): the cel you stand on's share when it took one.
@@ -3354,24 +3354,42 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       coordinator.activeFrameKey,
     );
     final record = landed[standing] ?? landed.values.first;
-    widget.lastStroke?.hold(
-      BrushStrokeCommitData(
-        sourceDabs: [record.dab],
-        blendMode: blend,
-        selection: record.within,
-      ),
+    final landings = [for (final cel in landed.values) cel.landing];
+    final history = widget.historyManager;
+    final step = history == null ? null : oneStepOf('Stamp', landings);
+    return (
+      ahead: switch (step) {
+        final WorksAheadCommand works => works.workAhead(undo: false),
+        _ => null,
+      },
+      step: () {
+        if (!mounted) {
+          return;
+        }
+        widget.lastStroke?.hold(
+          BrushStrokeCommitData(
+            sourceDabs: [record.dab],
+            blendMode: blend,
+            selection: record.within,
+          ),
+        );
+        _takeTheStamp(step, landings);
+      },
     );
+  }
+
+  /// The stamp's [step] taken, as one undo — or, in a headless host with no
+  /// history to take it (focused tests), its [landings] landed raw.
+  void _takeTheStamp(Command? step, List<Command> landings) {
+    final history = widget.historyManager;
     setState(() {
-      final landings = [for (final cel in landed.values) cel.landing];
-      final historyManager = widget.historyManager;
-      if (historyManager == null) {
-        // Headless hosts (focused tests): land raw.
+      if (history == null || step == null) {
         for (final landing in landings) {
           landing.execute();
         }
         return;
       }
-      historyManager.executeAsOneStep('Stamp', landings);
+      history.execute(step);
     });
     // ⛔The ghost is not asked again here: the rebuild above asks, as an
     // undo's does ([_askTheGhostAgain]) — one road for every write under

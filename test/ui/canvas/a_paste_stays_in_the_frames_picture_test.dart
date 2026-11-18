@@ -299,10 +299,10 @@ void main() {
     ) async {
       final s = await upWithACopyPastThePage(tester);
 
-      s.pixelVerbs.landCanvasPicture(
+      s.pixelVerbs.canvasPictureStep(
         pieceAt(-210, 10),
         description: 'a picture',
-      );
+      ).step();
       await settle(tester);
 
       await expectThroughSolo(tester, s, pastTheX, pastTheY);

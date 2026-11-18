@@ -218,16 +218,14 @@ class CelPixelOverwriteCommand
     // the second reading equals the first — but only because it IS a
     // reading, and a stale recipe would quietly outlive a canvas resize.
     _applied.clear();
-    coordinator.frameStore.asOneEdit(() {
-      for (final (:target, :surface, :restore) in _forwardPasses()) {
-        _applied.add((target: target, restore: restore));
-        coordinator.restoreSurfaceSnapshot(
-          target.key,
-          surface,
-          cacheInvalidationSink: cacheInvalidationSink,
-        );
-      }
-    });
+    for (final (:target, :surface, :restore) in _forwardPasses()) {
+      _applied.add((target: target, restore: restore));
+      coordinator.restoreSurfaceSnapshot(
+        target.key,
+        surface,
+        cacheInvalidationSink: cacheInvalidationSink,
+      );
+    }
     _ahead = null;
   }
 
@@ -407,20 +405,18 @@ class CelPixelOverwriteCommand
 
   @override
   void undo() {
-    coordinator.frameStore.asOneEdit(() {
-      for (final entry in _applied.reversed) {
-        final target = entry.target;
-        final current = coordinator.currentSurfaceOf(target.key);
-        final result =
-            _taken(target, current, undo: true) ??
-            _undoPass(target, current, entry.restore);
-        coordinator.restoreSurfaceSnapshot(
-          target.key,
-          result.surface,
-          cacheInvalidationSink: cacheInvalidationSink,
-        );
-      }
-    });
+    for (final entry in _applied.reversed) {
+      final target = entry.target;
+      final current = coordinator.currentSurfaceOf(target.key);
+      final result =
+          _taken(target, current, undo: true) ??
+          _undoPass(target, current, entry.restore);
+      coordinator.restoreSurfaceSnapshot(
+        target.key,
+        result.surface,
+        cacheInvalidationSink: cacheInvalidationSink,
+      );
+    }
     _ahead = null;
   }
 }

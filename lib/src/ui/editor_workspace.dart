@@ -17,12 +17,11 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/cut_id.dart';
-import '../models/cut_piece.dart' show CutPiece;
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../models/project_font_file.dart';
-import '../services/command.dart' show Command;
+import '../services/command.dart' show Command, PressedStep;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;

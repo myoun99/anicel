@@ -614,7 +614,7 @@ class _StampTrail {
         onCanvas,
         opacity: _state._brush.cutStampOpacity,
       ),
-    );
+    ).step();
   }
 
   /// The drag's stamps along [points], on the canvas, each a piece's own

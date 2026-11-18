@@ -8,6 +8,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -562,6 +563,41 @@ void main() {
         expect(await press(), isNotNull);
         expectOneBar(told, [1 / 3, 2 / 3, 1]);
       }
+    },
+  );
+
+  testWidgets(
+    '🗣️F-615: the window over 픽셀 위 붙여넣기 across blocks tells how many of '
+    'its cels are done too — 「말한것들은 다른 진행창뜨는거에 다 통일적용」',
+    (tester) async {
+      final session = await pump(tester);
+      await standOnAnInkedCel(tester, session);
+      session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: session.activeLayerId!,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        session.pixelVerbs.pixelClipboardVerbCels(
+          PixelClipboardVerb.pasteAbove,
+        ),
+        hasLength(3),
+        reason: '⛔premise: three blocks',
+      );
+
+      final told = watchTheBar(tester);
+      final window = await windowBehind(tester, () async {
+        await pressTheHead(tester);
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>('shared-paste-pixels-above-button'),
+          ),
+        );
+      });
+      expect(window, isNotNull);
+      expectOneBar(told, [1 / 3, 2 / 3, 1]);
     },
   );
 

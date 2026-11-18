@@ -538,8 +538,9 @@ class BrushFrameStore {
   /// edit: what each cel it writes would announce, its pixels
   /// ([celPixelRevision]) and its crossing ([celContentRevision]), is
   /// announced once when it is done, naming every revision it left and
-  /// every cel it crossed. The store's own runs of cels — a canvas resize
-  /// ([adoptCutCanvasSize]), a pasteboard's wall — bump once already.
+  /// every cel it crossed. Every history step, its undo and its redo land in
+  /// one (`RepositoryStepScope` ⑤). The store's own runs of cels — a canvas
+  /// resize ([adoptCutCanvasSize]), a pasteboard's wall — bump once already.
   ///
   /// 🔬F-615 (S5_BA cut 352, a colour delete landing 85 cels): a pixel
   /// announcement each, every one walking every picture the frames keep
