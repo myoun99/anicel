@@ -663,6 +663,15 @@ void main() {
       reason: 'the tag the canvas draws follows the scrub',
     );
 
+    // The header shows the pose's keys beside the tag's
+    // (se_name_tag_lanes_test), so where the rows' window still builds it —
+    // a notch past the view (timelineRowWindowMargin) — it is laid again.
+    final headerBuilt = find
+        .named(
+          'timeline-lane-group-toggle-${se.id.value}-$seNameTagGroupLaneId',
+        )
+        .evaluate()
+        .isNotEmpty;
     final rebuilt = <String>[];
     debugOnRebuildDirtyWidget = (element, _) {
       final widget = element.widget;
@@ -676,10 +685,9 @@ void main() {
     debugOnRebuildDirtyWidget = null;
     expect(
       rebuilt.toSet(),
-      {'position'},
+      {'position', if (headerBuilt) seNameTagGroupLaneId},
       reason: 'the tag\'s own lanes beside the pose\'s show what they '
-          'showed — a tag never typed included (the header, rolled out of '
-          'the view, is pinned in se_name_tag_lanes_test)',
+          'showed — a tag never typed included',
     );
 
     await gesture.up();
