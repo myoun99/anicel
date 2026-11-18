@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
-import 'dart:ui' as ui show PointerChange, PointerData;
 import 'package:flutter/gestures.dart'
     show
         PointerDeviceKind,
@@ -33,8 +32,6 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/native/qa_pen_points.dart';
-import 'package:anicel/src/services/input/pen_path.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/stamp_carry.dart' show applyHomography;
@@ -67,6 +64,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/the_points_the_os_saw.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/wait_window.dart' show stepBehind, windowBehind;
@@ -7319,7 +7317,6 @@ void main() {
     'H56: a lasso traces every point the OS merged into a move, as the '
     'same points moved one by one',
     (tester) async {
-      addTearDown(() => QaPenPoints.debugTake = null);
       // Each move a list of the points the OS saw of its message — the
       // newest its own — paired as the door pairs a datum.
       Future<CanvasSelectionRegion?> lasso(List<List<Offset>> moves) async {
@@ -7328,59 +7325,11 @@ void main() {
           shapeKind: CanvasShapeKind.lasso,
         );
         final origin = tester.getTopLeft(find.byKey(layerKey));
-        tester.binding.handlePointerEvent(
-          PointerDownEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            buttons: kPrimaryButton,
-            position: origin + const Offset(10, 10),
-          ),
-        );
-        await tester.pump();
-        var before = origin + const Offset(10, 10);
-        for (final points in moves) {
-          final at = origin + points.last;
-          final move = PointerMoveEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            buttons: kPrimaryButton,
-            position: at,
-            delta: at - before,
-          );
-          before = at;
-          QaPenPoints.debugTake = (_, _, _) => [
-            for (final point in points)
-              (
-                x: (origin + point).dx,
-                y: (origin + point).dy,
-                at: Duration.zero,
-                pressure: null,
-                tilt: null,
-                orientation: null,
-                driven: null,
-              ),
-          ];
-          PenPath.arrived(
-            move,
-            ui.PointerData(
-              change: ui.PointerChange.move,
-              physicalX: at.dx,
-              physicalY: at.dy,
-            ),
-            1,
-          );
-          QaPenPoints.debugTake = null;
-          tester.binding.handlePointerEvent(move);
-          await tester.pump();
-        }
-        tester.binding.handlePointerEvent(
-          PointerUpEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            position: before,
-          ),
-        );
-        await tester.pump();
+        await dragThroughMergedMoves(tester, origin + const Offset(10, 10), [
+          for (final points in moves) [
+            for (final point in points) origin + point,
+          ],
+        ]);
         return env.commands.region;
       }
 

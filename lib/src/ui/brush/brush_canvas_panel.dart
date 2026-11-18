@@ -16,6 +16,7 @@ import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_path.dart';
 import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
@@ -2754,13 +2755,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!AppInput.toolAcceptsPointer(event.kind)) {
       return;
     }
-    final point = _viewportState.canvasPointOf(event);
+    // 🗣️F-612 (유저 2026-11-18 「다른 도구같은곳에서도 검사후 통일적용」):
+    // the stamp's trail goes along every point the OS saw ([PenPath]), as
+    // a stroke's line does — it went from the newest point of each move
+    // to the next, straight across what the hand did while the UI was
+    // busy. The dropper reads where the press is now.
     if (canvasToolStamps(_brush.tool)) {
-      _tap.dragStampTo(point);
+      for (final point in PenPath.eventsOf(event)) {
+        _tap.dragStampTo(_viewportState.canvasPointOf(point));
+      }
       return;
     }
     if (_brush.tool == CanvasTool.eyedropper) {
-      _tap.toolTapHandler()?.call(point);
+      _tap.toolTapHandler()?.call(_viewportState.canvasPointOf(event));
     }
   }
 

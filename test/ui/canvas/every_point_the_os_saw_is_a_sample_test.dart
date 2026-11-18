@@ -1,5 +1,3 @@
-import 'dart:ui' as ui show PointerChange, PointerData;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +19,7 @@ import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 
+import '../../helpers/the_points_the_os_saw.dart';
 import '../brush_canvas_test_helpers.dart';
 
 /// 🗣️H56 (유저 2026-11-14): 「선 빠르게그으면 곡선이아니라 각져져서
@@ -406,38 +405,21 @@ Future<List<BrushDab>> _line(
     final made = event.made(tester);
     final points = event.points;
     if (points != null) {
-      QaPenPoints.debugTake = (_, _, _) => [
+      pairWithThePointsTheOsSaw(made, [
         for (final point in points)
-          (
-            x: canvasGlobalOffset(tester, point.at).dx,
-            y: canvasGlobalOffset(tester, point.at).dy,
-            at: point.time,
+          seenAt(
+            canvasGlobalOffset(tester, point.at),
+            time: point.time,
             pressure: !driven
                 ? point.force
                 : made.kind == PointerDeviceKind.mouse
                 ? null
                 : _osAside,
-            tilt: null,
-            orientation: null,
             driven: driven
                 ? (pressure: point.force, lean: null, twist: null)
                 : null,
           ),
-      ];
-      PenPath.arrived(
-        made,
-        ui.PointerData(
-          change: switch (made) {
-            PointerDownEvent() => ui.PointerChange.down,
-            PointerUpEvent() => ui.PointerChange.up,
-            _ => ui.PointerChange.move,
-          },
-          physicalX: made.position.dx,
-          physicalY: made.position.dy,
-        ),
-        1,
-      );
-      QaPenPoints.debugTake = null;
+      ]);
     }
     tester.binding.handlePointerEvent(made);
     await tester.pump();

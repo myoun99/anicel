@@ -327,7 +327,10 @@ class _BrushEditPress {
     // 그게 바뀌고」). ⛔Before the drawing-pointer gate: a fill press never
     // becomes the drawing pointer.
     if (_state._fill.holds(event.pointer)) {
-      _state._fill.reach(_state._canvasPositionFromLocal(event.localPosition));
+      _state._fill.reach([
+        for (final point in PenPath.eventsOf(event))
+          _state._canvasPositionFromLocal(point.localPosition),
+      ]);
       return;
     }
     if (event.pointer != _state._activeDrawingPointer) {

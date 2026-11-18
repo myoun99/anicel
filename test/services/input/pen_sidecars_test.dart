@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui show PointerChange, PointerData;
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
@@ -20,6 +19,8 @@ import 'package:anicel/src/services/input/pen_sidecars.dart';
 import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
+
+import '../../helpers/the_points_the_os_saw.dart';
 
 /// PEN-4: the macOS channel sidecar + the cross-platform facade.
 void main() {
@@ -401,27 +402,7 @@ const _hover = PointerHoverEvent();
 /// reader paired with the driver's packet that said [reading]
 /// ([PenPath.eventsOf]).
 PointerEvent _madeAt(Offset at, DriverReading reading) {
-  QaPenPoints.debugTake = (_, _, _) => [
-    (
-      x: at.dx,
-      y: at.dy,
-      at: Duration.zero,
-      pressure: null,
-      tilt: null,
-      orientation: null,
-      driven: reading,
-    ),
-  ];
-  addTearDown(() => QaPenPoints.debugTake = null);
   final move = PointerMoveEvent(position: at);
-  PenPath.arrived(
-    move,
-    ui.PointerData(
-      change: ui.PointerChange.move,
-      physicalX: at.dx,
-      physicalY: at.dy,
-    ),
-    1,
-  );
+  pairWithThePointsTheOsSaw(move, [seenAt(at, driven: reading)]);
   return PenPath.eventsOf(move).single;
 }

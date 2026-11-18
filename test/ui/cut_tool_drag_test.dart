@@ -39,6 +39,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/wait_window.dart' show windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/the_points_the_os_saw.dart';
 
 /// The cut tool driven through real pointer input.
 ///
@@ -612,6 +613,46 @@ void main() {
     // The far end of the drag is painted, which the press alone could not
     // have done.
     expect(surfaceRgbaInPlace(surface, 190, 150) ?? 0, isNot(0));
+  });
+
+  // 🗣️F-612 (유저 2026-11-18 「다른 도구같은곳에서도 검사후 통일적용」).
+  testWidgets('🎯F-612 a stamp drag lays its trail along every point a move '
+      'the OS merged went through, as the same points moved one by one', (
+    tester,
+  ) async {
+    // The pixels round the trail, pressed at (20, 150) and dragged through
+    // [moves] — each a move the OS merged those points into.
+    Future<List<int>> trail(List<List<Offset>> moves) async {
+      final env = await pumpPanel(tester, tool: CanvasTool.cut);
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      await env.setTool(CanvasTool.cutStamp);
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      await dragThroughMergedMoves(tester, origin + const Offset(20, 150), [
+        for (final points in moves) [
+          for (final point in points) origin + point,
+        ],
+      ]);
+      final surface = env.coordinator.currentSurfaceOf(
+        env.coordinator.activeFrameKey,
+      );
+      return [
+        for (var y = 100; y < 280; y += 4)
+          for (var x = 0; x < 280; x += 4)
+            surfaceRgbaInPlace(surface, x, y) ?? 0,
+      ];
+    }
+
+    const bend = [Offset(80, 150), Offset(140, 230), Offset(200, 150)];
+    final merged = await trail([bend]);
+    final apart = await trail([
+      for (final point in bend) [point],
+    ]);
+    final newestAlone = await trail([
+      [bend.last],
+    ]);
+
+    expect(newestAlone, isNot(apart), reason: 'LIVENESS: the bend shows');
+    expect(merged, apart);
   });
 
   testWidgets('a stamp drag stops when the pointer lifts', (tester) async {

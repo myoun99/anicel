@@ -55,27 +55,36 @@ class _BrushEditFill implements GradientRangeHold {
       return;
     }
     _state._fillPress = (pointer: pointer, from: at, range: null);
-    reach(at);
+    reach([at]);
   }
 
   /// Whether the fill's gradient is on (`FloodFillOptions.gradient`).
   bool get _gradientOn =>
       _state.widget.fillGradient?.call().options.enabled ?? false;
 
-  /// The held fill's press is at [at]: its range is the flood from there —
-  /// flooded again only past what the range reached, so a press resting in
-  /// one region floods it once (TVPaint's 「이동할때마다 그게 바뀌고」). A
-  /// continuous fill's range takes the flood in beside what it holds
-  /// ([FillRange.joining]) instead. A press dragging a held range's
-  /// gradient takes the gradient's end there.
+  /// The held fill's press went [way] — every point the OS saw of a move,
+  /// the newest last ([PenPath]): its range is the flood from where it is
+  /// now — flooded again only past what the range reached, so a press
+  /// resting in one region floods it once (TVPaint's 「이동할때마다 그게
+  /// 바뀌고」). A continuous fill's range takes in the flood of every point
+  /// of the way beside what it holds ([FillRange.joining]) instead. A press
+  /// dragging a held range's gradient takes the gradient's end where it is
+  /// now.
+  ///
+  /// 🗣️F-612 (유저 2026-11-18): 「연속으로 채울대상 고를때 렉걸리면 …
+  /// 중간을 건너뛰어버리는 문제 … 일반 스트로크의 점이 ui 렉 상관없이 점
+  /// 받는것처럼」 — a continuous fill took the newest point of a move alone,
+  /// and the regions a press went through while the UI was busy were not
+  /// its.
   ///
   /// The mark's checker goes with the press at every move, inside one
   /// region as across them ([FillRangeMark.shift]).
-  void reach(CanvasPoint at) {
+  void reach(List<CanvasPoint> way) {
     final held = _state._fillPress;
     if (held == null) {
       return;
     }
+    final at = way.last;
     final gradient = _state._heldForGradient;
     final drag = gradient?.drag;
     if (gradient != null && drag != null) {
@@ -84,27 +93,33 @@ class _BrushEditFill implements GradientRangeHold {
     }
     final shift = Offset(at.x - held.from.x, at.y - held.from.y);
     final fillRangeAt = _state.widget.fillRangeAt;
-    if (fillRangeAt == null || (held.range?.covers(at) ?? false)) {
+    if (fillRangeAt == null) {
       _push(shift);
       return;
     }
-    // The seed and the axis come from the same pair the STROKE path uses —
-    // this view's own position and its own guides. The seed is in the
-    // space the pointer is in and the axis is the canvas's: the fill reads
-    // one through the other ([fillRangeAt]'s `space`), as a stroke's
-    // copies do.
-    // ↩️The view's guides used to be carried into its own space, so both
-    // were 「already in the space the pointer is in」.
-    final found = _state._press.fillSpendsNothingAt(at)
-        ? null
-        : fillRangeAt(at, _state.widget.guides.actingSymmetry);
-    final kept = held.range;
     final continuous = _state.widget.fillsContinuously?.call() ?? false;
-    final range = !continuous || kept == null
-        ? found
-        : found == null
-        ? kept
-        : kept.joining(found);
+    final kept = held.range;
+    var range = kept;
+    for (final point in continuous ? way : [at]) {
+      if (range?.covers(point) ?? false) {
+        continue;
+      }
+      // The seed and the axis come from the same pair the STROKE path
+      // uses — this view's own position and its own guides. The seed is in
+      // the space the pointer is in and the axis is the canvas's: the fill
+      // reads one through the other ([fillRangeAt]'s `space`), as a
+      // stroke's copies do.
+      // ↩️The view's guides used to be carried into its own space, so both
+      // were 「already in the space the pointer is in」.
+      final found = _state._press.fillSpendsNothingAt(point)
+          ? null
+          : fillRangeAt(point, _state.widget.guides.actingSymmetry);
+      range = !continuous || range == null
+          ? found
+          : found == null
+          ? range
+          : range.joining(found);
+    }
     _state._fillPress = (pointer: held.pointer, from: held.from, range: range);
     // What the range lays is its region: one that did not change (an open
     // region joined, or none found) leaves the mark's outline as it stands.
