@@ -936,9 +936,14 @@ bool _speakingOrganizerAbove(Layer layer, List<Layer> layers) {
 }
 
 /// The stack-order direction of an organizer FOLDER against its base, or
-/// null when [layer] is not one.
-AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
-  final baseId = attachOrganizerBaseOf(layer, layers);
+/// null when [layer] is not one. [folders] as [attachOrganizerBaseOf] takes
+/// it.
+AttachedPlacement? _organizerFolderPlacement(
+  Layer layer,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) {
+  final baseId = attachOrganizerBaseOf(layer, layers, folders: folders);
   if (baseId == null) {
     return null;
   }
@@ -953,9 +958,13 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
 /// its own [Layer.attachedPlacement], as its seat counts (`_seatsOf`).
 ///
 /// [layers] MUST be the model stack, bottom → top ([attachArrowPlacement]
-/// says why).
-AttachedPlacement? attachGroupSideOf(Layer layer, List<Layer> layers) =>
-    _organizerFolderPlacement(layer, layers) ??
+/// says why). [folders] as [attachOrganizerBaseOf] takes it.
+AttachedPlacement? attachGroupSideOf(
+  Layer layer,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) =>
+    _organizerFolderPlacement(layer, layers, folders: folders) ??
     (layer.attachedToLayerId == null ? null : layer.attachedPlacement);
 
 /// Every attach group of [stack] — a cut's layers, bottom → top — by its
@@ -966,11 +975,12 @@ AttachedPlacement? attachGroupSideOf(Layer layer, List<Layer> layers) =>
 Map<LayerId, Map<AttachedPlacement, List<Layer>>> attachGroupRowsBySide(
   List<Layer> stack,
 ) {
+  final folders = LayerFolderIndex(stack);
   final groups = <LayerId, Map<AttachedPlacement, List<Layer>>>{};
   for (final layer in stack) {
-    if (attachGroupBaseOf(layer, stack) case final baseId?
+    if (attachGroupBaseOf(layer, stack, folders: folders) case final baseId?
         when baseId != layer.id) {
-      if (attachGroupSideOf(layer, stack) case final side?) {
+      if (attachGroupSideOf(layer, stack, folders: folders) case final side?) {
         ((groups[baseId] ??= {})[side] ??= []).add(layer);
       }
     }
@@ -988,12 +998,15 @@ List<Layer> attachGroupRowsOn(
 
 /// The sides [baseId]'s attach group has rows on ([attachGroupRowsOn]) —
 /// the halves its fold button shows (I-175; a half with none is an empty
-/// place). [stack] is its cut's, bottom → top.
-Set<AttachedPlacement> attachGroupSidesOf(LayerId baseId, List<Layer> stack) =>
-    {
-      for (final side in AttachedPlacement.values)
-        if (attachGroupRowsOn(baseId, stack, side).isNotEmpty) side,
-    };
+/// place). [stack] is its cut's, bottom → top — walked once for both
+/// sides, not once a side (F-620: a rail asks it twice of every row).
+Set<AttachedPlacement> attachGroupSidesOf(LayerId baseId, List<Layer> stack) {
+  final group = attachGroupRowsBySide(stack)[baseId];
+  return {
+    for (final side in AttachedPlacement.values)
+      if (group?[side]?.isNotEmpty ?? false) side,
+  };
+}
 
 /// The sides of [baseId]'s attach group a press reaches: [side], or with
 /// none every side the group has rows on (🗣️I-175-Q5 (가) 「양쪽 다 —

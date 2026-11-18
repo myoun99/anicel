@@ -411,13 +411,25 @@ String? folderStructureProblem(List<Layer> layers) {
 ///
 /// ⇒ Walk the subtree and read the LEAVES. A nested folder is not an answer
 /// to 「whose attach is this」; the rows inside it are.
-LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
+///
+/// [folders], when given, is [layers]' index, which a walk asking of every
+/// row builds once: read off the list, each subtree is a scan of the stack
+/// with a scan for each folder above each row. 🔬F-620 (2026-11-19, the
+/// Surface): a rail asks every row's fold of whole walks, and these scans
+/// were most of them.
+LayerId? attachOrganizerBaseOf(
+  Layer folder,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) {
   if (!folder.kind.groupsLayers) {
     return null;
   }
   LayerId? baseId;
   var sawLeaf = false;
-  for (final layer in layers.subtreeMembersOf(folder.id)) {
+  for (final layer
+      in folders?.subtreeMembersOf(folder.id) ??
+          layers.subtreeMembersOf(folder.id)) {
     // The folders on the way down are structure, not members with an
     // opinion — the leaves under them carry the answer.
     if (layer.kind.groupsLayers) {
@@ -445,8 +457,15 @@ LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
 /// standing on the organizer folder left you on a row that was gone
 /// (유저 2026-09-11: 「어태치폴더에 서있는 채로 기준레이어의 접기버튼 누르면
 /// 폴더에 서있는채임」).
-LayerId? attachGroupBaseOf(Layer layer, List<Layer> layers) =>
-    layer.attachedToLayerId ?? attachOrganizerBaseOf(layer, layers);
+///
+/// [folders] as [attachOrganizerBaseOf] takes it.
+LayerId? attachGroupBaseOf(
+  Layer layer,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) =>
+    layer.attachedToLayerId ??
+    attachOrganizerBaseOf(layer, layers, folders: folders);
 
 /// How many attach FOLDERS hold [layer] — how deep it sits inside its group's
 /// organizers: 0 for an organizer at the group's top and for an attach row
