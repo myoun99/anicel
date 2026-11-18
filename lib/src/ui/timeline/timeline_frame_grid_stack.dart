@@ -137,46 +137,48 @@ class TimelineFrameGridStack extends StatelessWidget {
         // (grid-on-the-engine ④).
         TimelineGridScreenHost(child: rowsBody),
         _playheadSlot(),
-        // 🚨F-244: what follows a drag here is asked on EVERY step of every
-        // drag, so it lays out and paints on a layer of its own — rebuilt
-        // bare in the grid's layout scope, a step laid that scope out again
-        // and repainted everything around it.
-        //
-        // 🔬And it keeps itself while what it is drawn from stands: the
-        // grids are built again for every announcement, and the layer was
-        // built, laid out and painted again for an eye toggled (card
-        // an-eye-toggle-holds-the-ui-thread, 11-18). A trim's hooks keep the
-        // cut they trim and the session; what they draw at is here.
-        TickOverlay.kept(
-          facts: (
-            axis: axis,
-            frameCellExtent: frameCellExtent,
-            playbackFrameCount: playbackFrameCount,
-            drawnFrameCount: noriShiro?.call().drawnFrameCount,
-            noriShiro: noriShiro,
-            trimmed: cutEndDrag?.cutId,
-            dragPreview: dragPreview,
-          ),
-          keptChildren: () => [
-            // The out-of-cut wash and the cut-end line are the TOP layers (the
-            // user's layer order 2026-08-02): where the film stops is stated
-            // over everything, cursor and selection included. The wash being
-            // its own layer at all is what lets a cut-length drag repaint one
-            // rect instead of re-baking every row's tiles.
-            _wash(),
-            // Over the wash, under nothing: one continuous mark with the
-            // ruler's.
-            _noriShiro(),
-            _cutEndLine(),
-            ?_grip(),
-          ],
-        ),
+        _whereTheFilmStops(),
       ],
     );
     // F-495-Q1: the grip lies over every row, and a block's warning under
     // it still hears the hover ([HoverGoesUnder]).
     return HoverUnderScope(child: stack);
   }
+
+  /// The out-of-cut wash and the cut-end line are the TOP layers (the
+  /// user's layer order 2026-08-02): where the film stops is stated over
+  /// everything, cursor and selection included. The wash being its own
+  /// layer at all is what lets a cut-length drag repaint one rect instead of
+  /// re-baking every row's tiles.
+  ///
+  /// 🚨F-244: what follows a drag here is asked on EVERY step of every drag,
+  /// so it lays out and paints on a layer of its own — rebuilt bare in the
+  /// grid's layout scope, a step laid that scope out again and repainted
+  /// everything around it.
+  ///
+  /// 🔬And it keeps itself while what it is drawn from stands: the grids are
+  /// built again for every announcement, and the layer was built, laid out
+  /// and painted again for an eye toggled (card
+  /// an-eye-toggle-holds-the-ui-thread, 11-18). A trim's hooks keep the cut
+  /// they trim and the session; what they draw at is here.
+  Widget _whereTheFilmStops() => TickOverlay.kept(
+    facts: (
+      axis: axis,
+      frameCellExtent: frameCellExtent,
+      playbackFrameCount: playbackFrameCount,
+      drawnFrameCount: noriShiro?.call().drawnFrameCount,
+      noriShiro: noriShiro,
+      trimmed: cutEndDrag?.cutId,
+      dragPreview: dragPreview,
+    ),
+    keptChildren: () => [
+      _wash(),
+      // Over the wash, under nothing: one continuous mark with the ruler's.
+      _noriShiro(),
+      _cutEndLine(),
+      ?_grip(),
+    ],
+  );
 
   /// The playhead rides its OWN layer: a cursor move repaints just that
   /// layer instead of re-rasterizing the whole grid. The layer brings it —
