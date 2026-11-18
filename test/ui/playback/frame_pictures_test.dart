@@ -648,10 +648,12 @@ void main() {
   // band filled there only once the walk moved on — it heard the walk's
   // progress, and a canvas lays the frame it stands on without the walk.
   testWidgets('🚨a bar of the frames ready hears where a frame stands move: '
-      'a picture a canvas laid, one let go of, a making given up on, and '
-      'that word let be with the engine', (tester) async {
+      'a picture a canvas laid, and let go of; a cel of it found '
+      'unreadable; a making given up on, and that word let be with the '
+      'engine; a cel drawn on', (tester) async {
     await tester.runAsync(() async {
-      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      final cels = storeOf(['a', 'b']);
+      final images = LayerFrameImageCache(frameStore: cels);
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
       addTearDown(pictures.dispose);
@@ -679,6 +681,11 @@ void main() {
       expect(told, isPositive, reason: 'let go of');
 
       told = 0;
+      images.unreadable.note(keyOf('a'));
+      expect(pictures.standingOf(at(0)).cannotRead, isTrue);
+      expect(told, isPositive, reason: 'a cel of it found unreadable');
+
+      told = 0;
       pictures.noteFailure(at(2));
       expect(told, 0, reason: 'a view may note it as it paints');
       await through();
@@ -689,6 +696,19 @@ void main() {
       await through();
       expect(pictures.standingOf(at(2)).state, PictureState.toCome);
       expect(told, isPositive, reason: 'no picture went: the word did');
+
+      told = 0;
+      inkCelIn(
+        cels,
+        keyOf('b'),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: tileSize + 1.0, y: 1),
+        size: 2,
+        tipShape: BrushTipShape.square,
+        tileSize: tileSize,
+      );
+      await through();
+      expect(told, isPositive, reason: 'a cel drawn on');
     });
   });
 
