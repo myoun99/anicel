@@ -532,6 +532,11 @@ void main() {
     await tester.pump();
 
     expect(walked, [1], reason: 'the pen draws on the frame it came on');
+    expect(
+      s.moves.waitsFor.value,
+      isNull,
+      reason: 'and no step walks on from under it, nor waits to',
+    );
   });
 
   testWidgets('a step in line is let go of with the moves', (tester) async {

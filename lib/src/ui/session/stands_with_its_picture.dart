@@ -91,7 +91,9 @@ class StandsWithItsPicture {
 
   /// A press came on the canvas: the steps in line go with it — the pen
   /// draws on the frame it came on, or the one a move waits for, and the
-  /// playhead does not walk on from under it once it is up.
+  /// playhead does not walk on from under it once it is up. A press held
+  /// for that frame comes again as it is handed on to the canvas, before
+  /// any step is taken there: what was asked under it goes too.
   void aPressCame() => _steps.clear();
 
   /// The steps asked while a move waits or steps are in line, in the order
@@ -120,15 +122,9 @@ class StandsWithItsPicture {
   /// of it — is not lined up. One that comes while a move waits goes; the
   /// next after the move lands takes the step after it.
   ///
-  /// No step goes under a press held for the frame a move waits for
-  /// ([holdsAPress]) — the playhead never moves under a pen (R15-⑤).
-  ///
   /// ↩️A step was counted from the frame stood on: two pressed within one
   /// wait asked for the same frame, and went one.
   void step(VoidCallback walk, {required bool repeated}) {
-    if (_pressHeld) {
-      return;
-    }
     if (_waiting == null && _steps.isEmpty) {
       walk();
       return;
