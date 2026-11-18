@@ -155,6 +155,53 @@ void main() {
       reason: 'everything the panel gave up went across',
     );
   });
+
+  // I-179 (유저 2026-11-19): 「컷블록이든 뭐든」 — a panel's front edge is a
+  // block's front edge, and pulled back past it, it sweeps on.
+  test('a panel pulled back past its cut\'s end takes the panel and sweeps '
+      'into the cut behind — the panel in front following the edge', () {
+    final (s, first, second) = twoCutsWithConteInFront();
+    addTearDown(s.dispose);
+    final [head, tail] = panelLengthsOf(s, first);
+    final secondDuration = durationOf(s, second);
+    final secondEnd = layoutStart(s, second) + secondDuration;
+    final rowBefore = storyboardLayerForCut(s.cutById(first)!)!;
+    final tailCel = rowBefore.timeline.values.last.frameId;
+
+    s.edgeDrag.beginCutEdgeDrag(
+      cutId: first,
+      edge: TimelineBlockEdge.start,
+      panelIndex: 1,
+    );
+    s.edgeDrag.updateCutEdgeDrag(tail + 3);
+    s.edgeDrag.endCutEdgeDrag();
+
+    expect(panelLengthsOf(s, first), [head + tail + 3]);
+    expect(durationOf(s, first), head + tail + 3);
+    expect(durationOf(s, second), secondDuration - 3);
+    expect(layoutStart(s, second) + durationOf(s, second), secondEnd);
+    expect(
+      storyboardLayerForCut(s.cutById(first)!)!.frames.map((f) => f.id),
+      isNot(contains(tailCel)),
+      reason: 'the swept panel took its cel with it (F-136)',
+    );
+
+    s.historyManager.undo();
+    s.edgeDrag.beginCutEdgeDrag(
+      cutId: first,
+      edge: TimelineBlockEdge.start,
+      panelIndex: 1,
+    );
+    s.edgeDrag.updateCutEdgeDrag(tail + secondDuration);
+    s.edgeDrag.endCutEdgeDrag();
+
+    expect(
+      s.repository.requireProject().tracks.first.cuts.map((cut) => cut.id),
+      [first],
+      reason: 'the cut it passed whole is gone',
+    );
+    expect(panelLengthsOf(s, first), [head + tail + secondDuration]);
+  });
 }
 
 /// [project] with [layer] added to [cutId] — the one bit of assembly the

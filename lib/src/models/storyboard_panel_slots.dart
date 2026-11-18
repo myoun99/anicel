@@ -60,13 +60,26 @@ List<StoryboardPanelSlot> panelSlotsOfCuts(List<StoryboardCutInput> cuts) {
   return slots;
 }
 
+/// What a cut-axis drag leaves: the cuts' new [durations] and leading
+/// [gaps], and the cuts it [removed].
+typedef CutLayoutPlan = ({
+  Map<CutId, int> durations,
+  Map<CutId, int> gaps,
+  Set<CutId> removed,
+});
+
 /// What a panel layout means for the cuts: each cut's duration is the sum
 /// of its panels, and its leading gap is the gap its first panel kept.
 ///
+/// A cut every panel of which went to no length is GONE (I-179, 유저
+/// 2026-11-19: 「컷블록은 앞엣지 조절해서 컷 삭제 되는게 의도」): it is
+/// [CutLayoutPlan.removed], and the gap in front of it joins the next cut
+/// that stays, so nothing behind moves.
+///
 /// Sparse on purpose, like every other plan on this axis: only what
 /// actually changed, so a caller can tell "nothing moved" from "moved by
-/// zero".
-({Map<CutId, int> durations, Map<CutId, int> gaps}) cutsFromPanelLayout({
+/// zero". [before] is the cuts in the panels' order.
+CutLayoutPlan cutsFromPanelLayout({
   required List<StoryboardPanelSlot> panels,
   required List<int> leadingGaps,
   required List<int> lengths,
@@ -81,15 +94,28 @@ List<StoryboardPanelSlot> panelSlotsOfCuts(List<StoryboardCutInput> cuts) {
       gaps[cutId] = leadingGaps[i];
     }
   }
+  final removed = <CutId>{};
+  int? carried;
   for (final cut in before) {
+    if (durations[cut.id] == 0) {
+      removed.add(cut.id);
+      carried = (carried ?? 0) + gaps.remove(cut.id)!;
+      durations.remove(cut.id);
+      continue;
+    }
     if (durations[cut.id] == cut.duration) {
       durations.remove(cut.id);
     }
-    if (gaps[cut.id] == cut.leadingGapFrames) {
+    // The cut right behind the ones that left stands on a new boundary,
+    // so its gap is said even where the number is the one it had.
+    if (carried != null) {
+      gaps[cut.id] = gaps[cut.id]! + carried;
+      carried = null;
+    } else if (gaps[cut.id] == cut.leadingGapFrames) {
       gaps.remove(cut.id);
     }
   }
-  return (durations: durations, gaps: gaps);
+  return (durations: durations, gaps: gaps, removed: removed);
 }
 
 /// [timeline] with its division keys moved to where the panel layout put
@@ -102,7 +128,8 @@ List<StoryboardPanelSlot> panelSlotsOfCuts(List<StoryboardCutInput> cuts) {
 /// are ([TimelineExposure.atLengthKeepingDotsToItsEnd]). The panels are the
 /// row's REAL blocks: the ghosts that hold its first and last panel through
 /// the のりしろ are the run-edge pass's, derived again once this is written.
-/// Null when nothing moved.
+/// A panel laid out at no length leaves the row (I-179). Null when nothing
+/// moved.
 SplayTreeMap<int, TimelineExposure>? conteTimelineFromPanels({
   required SplayTreeMap<int, TimelineExposure>? timeline,
   required List<int> panelLengths,
@@ -121,6 +148,10 @@ SplayTreeMap<int, TimelineExposure>? conteTimelineFromPanels({
   var cursor = storyboardConteStart(timeline);
   var moved = false;
   for (var i = 0; i < entries.length; i += 1) {
+    if (panelLengths[i] == 0) {
+      // A lead edge swept it away (I-179); the lengths tell it apart.
+      continue;
+    }
     if (entries[i].key != cursor) {
       moved = true;
     }

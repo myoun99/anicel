@@ -321,6 +321,7 @@ class CutCommandCoordinator {
   void deleteCut({required CutId cutId}) => _cuts.deleteCut(cutId: cutId);
   void deleteCuts({required List<CutId> cutIds}) =>
       _cuts.deleteCuts(cutIds: cutIds);
+  List<Command> deletionOf(List<CutId> cutIds) => _cuts.deletionOf(cutIds);
   DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,

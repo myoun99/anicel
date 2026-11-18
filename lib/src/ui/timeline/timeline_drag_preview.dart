@@ -19,6 +19,8 @@ import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
+import '../../services/editing/cut_deletion_helpers.dart'
+    show trailingFramesHoldingTheEnd;
 import '../../services/project_repository.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
@@ -755,24 +757,28 @@ Layer? timelineDragPreviewGlobalLayerFor(
   return null;
 }
 
-/// [cuts] resequenced to [order], ignoring ids the track no longer holds
-/// and keeping any cut the order forgot at the end (the preview must never
-/// make a cut disappear).
+/// [cuts] resequenced to [order], ignoring ids the track no longer holds.
+/// A cut the order leaves out is one the release deletes — a lead edge
+/// pulled back past it whole (I-179) — and the hand shows it gone.
+///
+/// ↩️A forgotten cut used to be kept at the end, "the preview must never
+/// make a cut disappear" (#728, when only a reorder carried an order and no
+/// drag deleted a cut). I-179 made one that does, and a preview that kept
+/// it would show something the release does not.
 List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
   if (order == null || order.isEmpty) {
     return cuts;
   }
   final byId = {for (final cut in cuts) cut.id: cut};
-  final resequenced = <Cut>[
-    for (final id in order)
-      if (byId.remove(id) case final Cut cut) cut,
-  ];
   return [
-    ...resequenced,
-    for (final cut in cuts)
-      if (byId.containsKey(cut.id)) cut,
+    for (final id in order)
+      if (byId[id] case final Cut cut) cut,
   ];
 }
+
+/// How many cuts [tracks] hold between them.
+int _cutCount(List<Track> tracks) =>
+    tracks.fold(0, (count, track) => count + track.cuts.length);
 
 /// A CUT EDGE drag's preview substituted into [project]: the trimmed
 /// durations and leading gaps, the cuts in the order the release would
@@ -784,11 +790,19 @@ List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
 /// preview an afterthought, and it carried the body past the round's sixty
 /// lines when the placement preview joined the switch.
 Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
-  final resized = project.copyWith(
-    tracks: [
-      for (final track in project.tracks) _trackWithCutTrimPreview(track, trim),
-    ],
-  );
+  final tracks = [
+    for (final track in project.tracks) _trackWithCutTrimPreview(track, trim),
+  ];
+  final laid = project.copyWith(tracks: tracks);
+  // ⑱: cuts that go leave the movie's end line where it was.
+  final resized = _cutCount(tracks) < _cutCount(project.tracks)
+      ? laid.copyWith(
+          trailingFrames: trailingFramesHoldingTheEnd(
+            before: project,
+            after: laid,
+          ),
+        )
+      : laid;
   return trim.previewLayers.isEmpty
       ? resized
       : _projectWithLayersSubstituted(resized, trim.previewLayers);

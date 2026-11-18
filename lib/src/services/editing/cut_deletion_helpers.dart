@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
+import '../command.dart';
 import '../project_lookup.dart';
 import 'cut_list_helpers.dart';
 
@@ -49,6 +50,27 @@ CutDeletionHole cutDeletionHoleFor(
     absorbedByCutId: index + 1 < cuts.length ? cuts[index + 1].id : null,
   );
 }
+
+/// ⑱'s second half: the trailing gap that keeps the movie's END LINE where
+/// [before] had it once cuts have left [after] — [after]'s own, topped up
+/// by however much its content end fell short of [before]'s. Stated as
+/// one rule rather than as "the last cut of a track": with a neighbour to
+/// absorb the hole the content end never moved, so this adds nothing.
+int trailingFramesHoldingTheEnd({
+  required Project before,
+  required Project after,
+}) {
+  final shrink = projectContentEndFrame(before) - projectContentEndFrame(after);
+  return shrink > 0 ? after.trailingFrames + shrink : after.trailingFrames;
+}
+
+/// Cuts one step deletes BESIDE other edits — a lead edge pulled back past
+/// whole cuts (I-179): their [deletions], run before the rest of the step,
+/// and the [trailingFrames] that hold the end line once the whole step has
+/// landed ([trailingFramesHoldingTheEnd]). Every deletion holds the line
+/// by itself, but against the layout it found: the cuts that close over
+/// the hole come after it in the same step.
+typedef CutsLeaving = ({List<Command> deletions, int trailingFrames});
 
 /// The last frame the project's CUTS reach — the movie's content end,
 /// before [Project.trailingFrames].

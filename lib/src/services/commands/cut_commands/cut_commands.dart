@@ -526,19 +526,24 @@ class _CutCommands {
 
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
   /// allowed (R28 #14).
-  void deleteCuts({required List<CutId> cutIds}) {
-    _coordinator.historyManager.executeAsOneStep('Delete cuts', [
-      for (final cutId in cutIds)
-        DeleteCutCommand(
-          repository: _coordinator.repository,
-          editingSession: _coordinator.editingSession,
-          cutId: cutId,
-          brushFrameStore: _coordinator.brushFrameStore,
-          sheetInkStores: _coordinator.sheetInkStores,
-        ),
-      ?_partingLinksOf(cutIds.toSet()),
-    ]);
-  }
+  void deleteCuts({required List<CutId> cutIds}) => _coordinator
+      .historyManager
+      .executeAsOneStep('Delete cuts', deletionOf(cutIds));
+
+  /// What deleting [cutIds] runs — [deleteCuts]' step, and a lead edge's
+  /// when it is pulled back past whole cuts (I-179), which deletes them
+  /// inside its own.
+  List<Command> deletionOf(List<CutId> cutIds) => [
+    for (final cutId in cutIds)
+      DeleteCutCommand(
+        repository: _coordinator.repository,
+        editingSession: _coordinator.editingSession,
+        cutId: cutId,
+        brushFrameStore: _coordinator.brushFrameStore,
+        sheetInkStores: _coordinator.sheetInkStores,
+      ),
+    ?_partingLinksOf(cutIds.toSet()),
+  ];
 
   /// A 동기컷 deleted leaves its sync, so a 겸용 it had where it stood parts
   /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]).

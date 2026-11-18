@@ -76,7 +76,6 @@ class DeleteCutCommand implements Command {
 
     // ⑱: what the cut leaves behind. Measured BEFORE anything moves.
     final hole = cutDeletionHoleFor(project, deletingCutId: cutId);
-    final contentEndBefore = projectContentEndFrame(project);
     final absorbedByCutId = hole.absorbedByCutId;
 
     _previousActiveCutId = previousActiveCutId;
@@ -110,18 +109,14 @@ class DeleteCutCommand implements Command {
         leadingGapFrames: _absorbedGapBefore! + hole.frames,
       );
     }
-    // …and the movie's END LINE does not move either. Stated as "top the
-    // trailing gap up by however much the content shrank" rather than as a
-    // second branch of the case above: with a neighbour to absorb the hole
-    // the content end never moved, so this adds nothing — one rule covers
-    // the last cut of a track, the last track, and neither.
-    final contentEndAfter = projectContentEndFrame(repository.requireProject());
-    final shrink = contentEndBefore - contentEndAfter;
-    if (shrink > 0) {
-      repository.updateProject(
-        (current) =>
-            current.copyWith(trailingFrames: current.trailingFrames + shrink),
-      );
+    // …and the movie's END LINE does not move either — one rule for the
+    // last cut of a track, the last track, and neither.
+    final held = trailingFramesHoldingTheEnd(
+      before: project,
+      after: repository.requireProject(),
+    );
+    if (held != repository.requireProject().trailingFrames) {
+      repository.updateTrailingFrames(held);
     }
 
     if (!isDeletingActiveCut) {

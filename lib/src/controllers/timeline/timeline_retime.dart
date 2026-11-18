@@ -82,12 +82,18 @@ class _TimelineRetime {
   /// are gone (R4): the V lanes' keys are TRACK data on the global axis,
   /// and a cut resize moves none of them. The transition row's spans ride
   /// their front cut inside the duration command itself.
+  ///
+  /// The cuts [leaving] — a lead edge pulled back past them whole (I-179)
+  /// — go FIRST, so the lengths and gaps written next are the ones the
+  /// cuts that stay keep, and the movie's end line is held LAST, once
+  /// they all have.
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
+    CutsLeaving? leaving,
     required String description,
   }) {
     final durationsChanged =
@@ -96,6 +102,7 @@ class _TimelineRetime {
         ) ||
         afterGaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
     final commands = <Command>[
+      ...?leaving?.deletions,
       for (final edit in edits)
         if (edit.before != edit.after)
           _controller._layerEditCommand(before: edit.before, after: edit.after),
@@ -106,6 +113,11 @@ class _TimelineRetime {
           after: afterDurations,
           beforeGaps: beforeGaps,
           afterGaps: afterGaps,
+        ),
+      if (leaving != null)
+        UpdateProjectTrailingFramesCommand(
+          repository: _controller._repository,
+          trailingFrames: leaving.trailingFrames,
         ),
     ];
     _controller._executeCommands(commands, description: description);

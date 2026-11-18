@@ -4,6 +4,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart' show mapEquals;
 
+import '../../../models/cel_bank_lanes.dart' show layerLeavingWhatItOrphaned;
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
 import '../../../models/block_run_lead_edge.dart';
@@ -14,18 +15,23 @@ import '../../../models/storyboard_timeline_layout.dart';
 import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../../models/timeline_repeat.dart' show ghostFreeTimeline;
+import '../../../models/track_id.dart';
 import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
+import '../../../services/project_lookup.dart' show celBankLanesOf;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'edge_drag_roles.dart';
 import 'editor_drag_session.dart';
 
-/// A cut TRIM's previewed answer: the durations, the gaps, and the conte-row
-/// rewrite that rides them.
+/// A cut TRIM's previewed answer: the durations, the gaps, the conte-row
+/// rewrite that rides them, and the cuts a lead edge pulled back past whole
+/// [leaving] with the trailing gap that holds the end line after them
+/// (I-179) — null when none do.
 typedef CutTrimResult = ({
   Map<CutId, int> durations,
   Map<CutId, int> gaps,
   List<({Layer before, Layer after})> rowEdits,
+  ({Set<CutId> cuts, int trailingFrames})? leaving,
 });
 
 /// The plain duration/gap drag on a cut's edge, as its own object.
@@ -60,7 +66,9 @@ sealed class CutTrimDrag implements EditorDragSession {
   ///   FRONT keeps its head and trades frames across the boundary: the
   ///   previous panel of this cut, or the previous cut's last panel.
   ///   Pulled outward, the edge spends the gap in front first and then that
-  ///   block's frames, down to one.
+  ///   block's frames, down to one; pulled back past its panel, it sweeps
+  ///   on and DELETES what it passes whole, the cut itself among them
+  ///   (I-179: 「컷블록은 앞엣지 조절해서 컷 삭제 되는게 의도」).
   ///   ↩️The cut GLUED in front used to translate wholesale with the
   ///   difference left at the head of the film, and a cut with a conte row
   ///   used its own law where nobody grew and the cut's length gave way.
@@ -171,18 +179,16 @@ sealed class CutTrimDrag implements EditorDragSession {
   /// the session's `dragPreview` mid-drag must not void the commit.
   CutTrimResult? _after;
 
-  /// The durations and gaps this edge resolves [cumulativeDelta] to. The
-  /// whole difference between the two arms — see each override.
-  ({Map<CutId, int> durations, Map<CutId, int> gaps}) _plan(
-    int cumulativeDelta,
-  );
+  /// The durations, gaps and removed cuts this edge resolves
+  /// [cumulativeDelta] to. The whole difference between the two arms — see
+  /// each override.
+  CutLayoutPlan _plan(int cumulativeDelta);
 
   /// The conte-row rewrite this edge owes for [planned], mid-drag. Empty on
   /// the trailing edge: nothing on the row moves until the release, which
   /// re-tiles it to the cut's new length.
-  List<({Layer before, Layer after})> _rowEditsForPlan(
-    ({Map<CutId, int> durations, Map<CutId, int> gaps}) planned,
-  ) => const [];
+  List<({Layer before, Layer after})> _rowEditsForPlan(CutLayoutPlan planned) =>
+      const [];
 
   /// Applies the drag's cumulative frame delta as a live preview on
   /// the session's `dragPreview` (the repository is NOT touched).
@@ -196,30 +202,59 @@ sealed class CutTrimDrag implements EditorDragSession {
     // to the real answer on pointer-up.
     final rowEdits = _rowEditsForPlan(planned);
     final changed =
+        planned.removed.isNotEmpty ||
         planned.durations[_cutId] != _beforeDurations[_cutId] ||
         planned.gaps.entries.any(
           (entry) => _beforeGaps[entry.key] != entry.value,
         );
-    final after = changed
-        ? (
-            durations: planned.durations,
-            gaps: planned.gaps,
-            rowEdits: rowEdits,
-          )
-        : null;
-    _after = after;
-    _roles.dragPreview.value = after == null
-        ? null
-        : cutTrimPreviewAsReleased(
-            _roles.project.repository,
-            CutTrimDragPreview(
-              previewDurations: after.durations,
-              previewGaps: after.gaps,
-              previewLayers: {
-                for (final edit in after.rowEdits) edit.after.id: edit.after,
-              },
+    if (!changed) {
+      _after = null;
+      _roles.dragPreview.value = null;
+      return;
+    }
+    final repository = _roles.project.repository;
+    final preview = cutTrimPreviewAsReleased(
+      repository,
+      CutTrimDragPreview(
+        previewDurations: planned.durations,
+        previewGaps: planned.gaps,
+        previewOrder: _orderWithout(planned.removed),
+        previewLayers: {for (final edit in rowEdits) edit.after.id: edit.after},
+      ),
+    );
+    _after = (
+      durations: planned.durations,
+      gaps: planned.gaps,
+      rowEdits: rowEdits,
+      // The end line the hand sees is the one the release holds.
+      leaving: planned.removed.isEmpty
+          ? null
+          : (
+              cuts: planned.removed,
+              trailingFrames: projectWithTimelineDragPreview(
+                repository.requireProject(),
+                preview,
+              ).trailingFrames,
             ),
-          );
+    );
+    _roles.dragPreview.value = preview;
+  }
+
+  /// The dragged cut's track as the release leaves it once [removed] are
+  /// gone — the preview's order; empty when no cut goes.
+  Map<TrackId, List<CutId>> _orderWithout(Set<CutId> removed) {
+    final track = removed.isEmpty
+        ? null
+        : _roles.project.trackOwningCut(_cutId);
+    if (track == null) {
+      return const {};
+    }
+    return {
+      track.id: [
+        for (final cut in track.cuts)
+          if (!removed.contains(cut.id)) cut.id,
+      ],
+    };
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
@@ -255,7 +290,8 @@ sealed class CutTrimDrag implements EditorDragSession {
             beforeDurations: scopedBeforeDurations,
             afterDurations: after.durations,
           );
-    if (rowEdits.isNotEmpty) {
+    final leaving = after.leaving;
+    if (rowEdits.isNotEmpty || leaving != null) {
       _roles.controllers.timelineController
           .commitLayerTimelineDragsWithCutDurations(
             edits: rowEdits,
@@ -263,6 +299,14 @@ sealed class CutTrimDrag implements EditorDragSession {
             afterDurations: after.durations,
             beforeGaps: scopedBeforeGaps,
             afterGaps: after.gaps,
+            // The cuts go the way a delete takes them, in the same step.
+            leaving: leaving == null
+                ? null
+                : (
+                    deletions: _roles.project.cutCommandCoordinator
+                        .deletionOf(leaving.cuts.toList()),
+                    trailingFrames: leaving.trailingFrames,
+                  ),
             description: 'Trim cut duration',
           );
       _roles.changes.refreshAfterCutCommand();
@@ -334,7 +378,20 @@ sealed class CutTrimDrag implements EditorDragSession {
       if (next == null || mapEquals(next, ghostFreeTimeline(row))) {
         continue;
       }
-      edits.add((before: row, after: row.copyWith(timeline: next)));
+      // A panel a lead edge swept away takes its cel with it, as a frame
+      // block's does (F-136, I-179).
+      edits.add((
+        before: row,
+        after: layerLeavingWhatItOrphaned(
+          row,
+          row.copyWith(timeline: next),
+          bank: celBankLanesOf(
+            _roles.project.repository.requireProject(),
+            cutId: cutId,
+            layerId: row.id,
+          ),
+        ),
+      ));
     }
     return edits;
   }
@@ -343,7 +400,8 @@ sealed class CutTrimDrag implements EditorDragSession {
 /// The LEAD (start) edge: the END stays put and the LENGTH changes, so
 /// nothing behind moves; a GLUED predecessor rides the boundary in either
 /// direction and a separated one lets its gap absorb the move; growth is
-/// walled by frame 0 and shrink by the grabbed panel's floor.
+/// walled by frame 0, and a pull back past the grabbed panel sweeps on —
+/// the panels and the cuts it passes whole are gone (I-179).
 ///
 /// Two behaviours used to live here — this one's ancestor opened the dragged
 /// cut's own leading gap, and a cut WITH a conte row went somewhere else
@@ -383,9 +441,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   List<StoryboardPanelSlot> _plannedPanels = const [];
 
   @override
-  ({Map<CutId, int> durations, Map<CutId, int> gaps}) _plan(
-    int cumulativeDelta,
-  ) {
+  CutLayoutPlan _plan(int cumulativeDelta) {
     // ★THE TRACK AS PANELS (I-21 ②, 유저 2026-09-12). A cut with a conte
     // row is several blocks; a cut without one is a single block that
     // happens to be the whole cut. Flattened that way, 「앞 컷의 마지막
@@ -415,13 +471,19 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     if (targetIndex == -1) {
       _plannedPanelLengths = null;
       _plannedPanels = const [];
-      return (durations: const {}, gaps: const {});
+      return (durations: const {}, gaps: const {}, removed: const {});
     }
-    final layout = planBlockRunLeadEdge(
+    BlockRunLeadEdgeLayout planned(int delta) => planBlockRunLeadEdge(
       slots: [for (final panel in panels) panel.slot],
       targetIndex: targetIndex,
-      frameDelta: _cameraBounded(cumulativeDelta),
+      frameDelta: delta,
     );
+    final delta = _cameraBounded(cumulativeDelta);
+    var layout = planned(delta);
+    final short = delta > 0 ? _cameraShortfall(panels, layout.lengths) : 0;
+    if (short > 0) {
+      layout = planned(delta - short);
+    }
     _plannedPanels = panels;
     _plannedPanelLengths = layout.lengths;
     return cutsFromPanelLayout(
@@ -432,18 +494,16 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     );
   }
 
-  /// [cumulativeDelta] as far as the cameras let it go (I-73-camera-row-Q4,
-  /// [minimumCutDurationForCamera]): shrinking the cut from its front
-  /// pushes its keys in until they have no frames left, and drawing it out
-  /// does the same to the glued cut in front, which gives the frames once
-  /// the gap between them is spent. Only on the cut's FIRST panel: an inner
-  /// panel trades frames inside its own cut, whose length stays.
+  /// [cumulativeDelta] as far as the cameras let it go when it GROWS the
+  /// cut (I-73-camera-row-Q4, [minimumCutDurationForCamera]): drawing it
+  /// out pushes the keys of the glued cut in front in until they have no
+  /// frames left, which gives the frames once the gap between them is
+  /// spent. Only on the cut's FIRST panel: an inner panel trades frames
+  /// inside its own cut, whose length stays. A pull back is
+  /// [_cameraShortfall]'s.
   int _cameraBounded(int cumulativeDelta) {
-    if (_panelIndex != 0) {
+    if (_panelIndex != 0 || cumulativeDelta > 0) {
       return cumulativeDelta;
-    }
-    if (cumulativeDelta > 0) {
-      return math.min(cumulativeDelta, _cameraRoomOf(_cutId));
     }
     final index = _order.indexOf(_cutId);
     if (index <= 0) {
@@ -451,6 +511,27 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     }
     final gap = _beforeGaps[_cutId] ?? 0;
     return math.max(cumulativeDelta, -(gap + _cameraRoomOf(_order[index - 1])));
+  }
+
+  /// How many frames too short [lengths] leave a cut the edge stands in for
+  /// its camera's keys: shrinking it from its front pushes them in until
+  /// they have no frames left, and the edge HOLDS there until it has passed
+  /// the cut whole — then the cut is gone, keys and all (I-179), as a frame
+  /// block keeps its one frame and then goes. Only a cut the drag shortened
+  /// and kept is asked: one behind it never moved, one in front only grew.
+  int _cameraShortfall(List<StoryboardPanelSlot> panels, List<int> lengths) {
+    final kept = <CutId, int>{};
+    for (var i = 0; i < panels.length; i += 1) {
+      kept[panels[i].cutId] = (kept[panels[i].cutId] ?? 0) + lengths[i];
+    }
+    var short = 0;
+    for (final MapEntry(key: id, value: length) in kept.entries) {
+      final duration = _roles.project.cutById(id)?.duration ?? length;
+      if (length > 0 && length < duration) {
+        short = math.max(short, duration - _cameraRoomOf(id) - length);
+      }
+    }
+    return short;
   }
 
   /// How far [id] may shrink before its camera's keys run out of frames.
@@ -495,9 +576,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   /// Empty when the plan found nothing, when a cut has no row, or when a
   /// row and its panels disagree about how many blocks there are.
   @override
-  List<({Layer before, Layer after})> _rowEditsForPlan(
-    ({Map<CutId, int> durations, Map<CutId, int> gaps}) planned,
-  ) {
+  List<({Layer before, Layer after})> _rowEditsForPlan(CutLayoutPlan planned) {
     final lengths = _plannedPanelLengths;
     if (lengths == null) {
       return const [];
@@ -506,8 +585,9 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     for (var i = 0; i < _plannedPanels.length; i += 1) {
       (byCut[_plannedPanels[i].cutId] ??= <int>[]).add(lengths[i]);
     }
+    // A cut that leaves takes its row with it; there is nothing to re-key.
     return _conteRowEdits(
-      byCut.keys,
+      byCut.keys.where((cutId) => !planned.removed.contains(cutId)),
       (cutId, row) => conteTimelineFromPanels(
         timeline: row.timeline,
         panelLengths: byCut[cutId]!,
@@ -535,9 +615,7 @@ final class CutTrailTrimDrag extends CutTrimDrag {
   final CutId? _nextCutId;
 
   @override
-  ({Map<CutId, int> durations, Map<CutId, int> gaps}) _plan(
-    int cumulativeDelta,
-  ) {
+  CutLayoutPlan _plan(int cumulativeDelta) {
     // The trailing edge sits on the LAST panel, so its floor is the row's
     // full extent ([minimumCutDurationFor]) — and a frame to each camera
     // key; cuts with neither keep the plain one-frame floor.
@@ -563,6 +641,6 @@ final class CutTrailTrimDrag extends CutTrimDrag {
         growth: newDuration - beforeDuration,
       );
     }
-    return (durations: {_cutId: newDuration}, gaps: gaps);
+    return (durations: {_cutId: newDuration}, gaps: gaps, removed: const {});
   }
 }
