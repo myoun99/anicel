@@ -953,10 +953,12 @@ fn a_move_whose_packet_is_not_heard_yet_wakes_the_reader() {
     assert_eq!(handed_soon(), 1);
     // The packet that put the cursor at the move, queued as it moved.
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(1004, 200) }]));
-    let pressures = pressures_at(1005, &[(60, 49, 1004)]);
+    // A message of two moves, the one before it heard: the other wakes it.
+    let pressures = pressures_at(1005, &[(40, 49, 1000), (60, 49, 1004)]);
     let count = handed_soon();
     crate::qat_close();
-    assert!(pressures[0].is_nan(), "not heard at the move");
+    assert_eq!(pressures[0], 100.0 * (1.0 / 1000.0), "heard at the move before");
+    assert!(pressures[1].is_nan(), "not heard at the move");
     assert_eq!(count, 1, "heard with the reader asleep for the test's length");
 }
 
