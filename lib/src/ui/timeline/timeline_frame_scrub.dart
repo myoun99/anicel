@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../input/value_control_pointers.dart' show valueControlOwnsPointer;
+import '../widgets/axis_gesture_detector.dart';
 import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -208,36 +209,25 @@ class TimelineFrameScrubArea extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final across = scrub.axis == Axis.horizontal;
-    void start(DragStartDetails details) =>
-        scrub.pressAt(details.globalPosition);
-    void move(DragUpdateDetails details) =>
-        scrub.dragTo(details.globalPosition);
-    void end(DragEndDetails _) => scrub.resetTracking();
-    return Listener(
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (event) {
+      if (!rulerPressScrubs(event)) {
+        return;
+      }
+      scrub.resetTracking();
+      scrub.pressAt(event.position);
+    },
+    onPointerUp: (_) => scrub.endScrub(),
+    onPointerCancel: (_) => scrub.endScrub(),
+    child: AxisGestureDetector(
+      axis: scrub.axis,
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        if (!rulerPressScrubs(event)) {
-          return;
-        }
-        scrub.resetTracking();
-        scrub.pressAt(event.position);
-      },
-      onPointerUp: (_) => scrub.endScrub(),
-      onPointerCancel: (_) => scrub.endScrub(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onHorizontalDragStart: across ? start : null,
-        onHorizontalDragUpdate: across ? move : null,
-        onHorizontalDragEnd: across ? end : null,
-        onHorizontalDragCancel: across ? scrub.resetTracking : null,
-        onVerticalDragStart: across ? null : start,
-        onVerticalDragUpdate: across ? null : move,
-        onVerticalDragEnd: across ? null : end,
-        onVerticalDragCancel: across ? null : scrub.resetTracking,
-        child: child,
-      ),
-    );
-  }
+      onDragStart: (details) => scrub.pressAt(details.globalPosition),
+      onDragUpdate: (details) => scrub.dragTo(details.globalPosition),
+      onDragEnd: (_) => scrub.resetTracking(),
+      onDragCancel: scrub.resetTracking,
+      child: child,
+    ),
+  );
 }
