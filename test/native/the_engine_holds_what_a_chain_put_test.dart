@@ -420,6 +420,26 @@ void main() {
     expect(next, first);
   });
 
+  // The engine tells a kept picture's tile by the number of a chain laid on
+  // it, long after the hold was let go of (F-610, 2026-11-19 — held.rs).
+  test('🚨a number is given once: none again after a hold is let go of, '
+      'nor after the engine\'s is freed', () {
+    final holds = holdsIn(1 << 30);
+    final first = holds.idOf('a');
+    holds.settleOnce(null);
+
+    holds.clear();
+    final other = holds.idOf('b');
+    final again = holds.idOf('a');
+    holds.settleOnce(null);
+    expect({first, other, again}, hasLength(3), reason: 'let go of');
+
+    holds.free();
+    final after = holds.idOf('a');
+    holds.settleOnce(null);
+    expect({first, other, again, after}, hasLength(4), reason: 'freed');
+  });
+
   // A screen's compose is handed to the engine unwaited
   // (`GpuScreen.compose`): what its chains kept is there once it is done
   // (the-ui-thread-never-enters-the-driver B1-a, 2026-11-15).

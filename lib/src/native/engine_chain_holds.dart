@@ -90,6 +90,13 @@ final class EngineChainHolds {
   /// The number what [key] shows is held under: the one it has, or one of
   /// its own from now on. Nothing is let go of until the run is done
   /// ([settleOnce]): its plan names the number.
+  ///
+  /// 🚨A NUMBER IS GIVEN ONCE, TO ONE PICTURE (F-610, 2026-11-19): the
+  /// engine tells a kept picture's tile by the number of a chain laid on
+  /// it, and holds that tile for another picture told the same long after
+  /// the hold was let go of (held.rs, `Plan::made_of`). ⛔One given again —
+  /// counted from nothing after [clear] or [free], or a let-go one handed
+  /// out — would show one picture's pixels in another.
   int idOf(Object key) {
     _naming.add(key);
     return _asked

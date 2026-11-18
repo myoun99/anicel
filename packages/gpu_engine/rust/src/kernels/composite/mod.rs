@@ -101,7 +101,7 @@ use crate::kernels::shared::{
 };
 use crate::platform::stores;
 
-use held::Made;
+use held::{HeldChains, Made};
 use passes::{Fulls, Passes};
 
 /// A tile's side in pixels (1a ①).
@@ -263,19 +263,8 @@ impl TileSet {
         &self,
         pixels: Option<[i64; 4]>,
     ) -> impl Iterator<Item = ((i32, i32), TileAt)> + '_ {
-        let side = i64::from(TILE);
-        // In tiles, ends excluded.
-        let first = (i64::from(self.x0), i64::from(self.y0));
-        let end = (first.0 + i64::from(self.columns), first.1 + i64::from(self.rows));
-        let [left, top, right, bottom] = match pixels {
-            None => [first.0, first.1, end.0, end.1],
-            Some([l, t, r, b]) => [
-                l.div_euclid(side).max(first.0),
-                t.div_euclid(side).max(first.1),
-                (r.saturating_sub(1).div_euclid(side) + 1).min(end.0),
-                (b.saturating_sub(1).div_euclid(side) + 1).min(end.1),
-            ],
-        };
+        let grid = TileRect { x0: self.x0, y0: self.y0, columns: self.columns, rows: self.rows };
+        let [left, top, right, bottom] = tiles_under(grid, pixels);
         (top..bottom)
             .flat_map(move |row| (left..right).map(move |column| (column as i32, row as i32)))
             .filter_map(|(column, row)| Some(((column, row), self.at(column, row)?)))
@@ -294,6 +283,27 @@ impl TileSet {
         let side = i64::from(TILE);
         let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
         self.placed_under(map.reads(x0, y0, x0 + side, y0 + side))
+    }
+}
+
+/// The tiles of the grid `grid` under the pixels `[left, top, right,
+/// bottom)`, or all of them for `None` — [left, top, right, bottom) in
+/// tiles, ends excluded, none where an end is not past its start: the tiles
+/// a row of the grid is laid from ([`TileSet::read_for`]), and whether
+/// what a chain put over the grid is laid on a tile at all
+/// ([`Telling::put`]).
+fn tiles_under(grid: TileRect, pixels: Option<[i64; 4]>) -> [i64; 4] {
+    let side = i64::from(TILE);
+    let first = (i64::from(grid.x0), i64::from(grid.y0));
+    let end = (first.0 + i64::from(grid.columns), first.1 + i64::from(grid.rows));
+    match pixels {
+        None => [first.0, first.1, end.0, end.1],
+        Some([l, t, r, b]) => [
+            l.div_euclid(side).max(first.0),
+            t.div_euclid(side).max(first.1),
+            (r.saturating_sub(1).div_euclid(side) + 1).min(end.0),
+            (b.saturating_sub(1).div_euclid(side) + 1).min(end.1),
+        ],
     }
 }
 
@@ -501,9 +511,10 @@ pub(crate) struct Plan<'a> {
 /// told by — the pool its rows' tiles are stored in, the part of the
 /// picture's extent on the tile, and the steps laid on it in their order,
 /// each row's with the stamp of every stored tile it reads there
-/// ([`Stamps`]). Two tiles made of the same are the same bytes, so the
-/// pictures' pool keeps one of them (`pool::Pictures`; F-610, 유저
-/// 2026-11-18 「같은 타일은 한 벌만」).
+/// ([`Stamps`]), each held chain's with the number what it put is kept
+/// under ([`Telling::put`]). Two tiles made of the same are the same
+/// bytes, so the pictures' pool keeps one of them (`pool::Pictures`;
+/// F-610, 유저 2026-11-18 「같은 타일은 한 벌만」).
 ///
 /// ⛔The words themselves, never a hash of them alone: two tellings taken
 /// for one by chance would show one picture's pixels in another.
@@ -518,6 +529,7 @@ const TOLD_OPEN: u32 = 3;
 const TOLD_OPEN_OPAQUE: u32 = 4;
 const TOLD_CLOSE: u32 = 5;
 const TOLD_CLOSE_ATOP: u32 = 6;
+const TOLD_PUT: u32 = 9;
 /// The word a telling ends on ([`Telling::told`]): a tile a row is laid on
 /// is told with its own place after it — a row's pose reads by where the
 /// tile lies —, and a tile of solids and buffers alone with none: the same
@@ -551,8 +563,9 @@ impl Telling<'_> {
     }
 
     /// `step` of `plan` told, as much of it as lies on the tile — none
-    /// where it reads past what a telling names: an effect chain, the
-    /// plan's mask, a buffer closed as a row, a range mark.
+    /// where it reads past what a telling names: an effect chain no hold
+    /// names ([`Self::put`]), the plan's mask, a buffer closed as a row
+    /// over its own tiles, a range mark.
     fn step(&mut self, plan: &Plan, step: &Step) -> Option<()> {
         match *step {
             Step::Row { set, keys, chain: None, map, matrix, opacity, mode, masked: false } => {
@@ -583,8 +596,54 @@ impl Telling<'_> {
                 self.words.extend([TOLD_CLOSE, opacity, mode]);
                 self.matrix(plan, matrix)?;
             }
-            _ => return None,
+            _ => self.put(plan, step)?,
         }
+        Some(())
+    }
+
+    /// `step` of `plan` that names an effect chain, told as the walk lays
+    /// it once the chain has put ([`unchained`]): a row of what the chain
+    /// put — as much of it as lies on the tile, none where its pose reads
+    /// none of the chain's tiles there —, at the mix a buffer's close lays
+    /// it against the tiles the chain ran on. What the chain put is told by
+    /// what holds it: the hold, the number it is kept under there, and the
+    /// rectangle it runs over. None where the step names no chain, its
+    /// chain no hold — it runs each time, on what nothing names —, or the
+    /// row is laid under the plan's mask.
+    ///
+    /// THE APP'S NUMBER IS THE PICTURE (held.rs, 관제 2026-11-08 22:14: 「a
+    /// number is one picture of a folder or a row — its signature, compared
+    /// whole」): the walk lays what the hold keeps under it and runs nothing
+    /// — a buffer's own steps not walked ([`Plan::made_of`]) —, or runs
+    /// the chain once to the same picture where the hold let it go. So the
+    /// number names the chain's pixels as a stamp names a stored tile's,
+    /// and neither the chain's ops nor what they read is told beside it.
+    /// ⛔Not what the hold keeps now — a buffer's name, say: a tile is held
+    /// for a picture told the same after the hold let the put go, and one
+    /// told by what was kept would be made again each time it was.
+    ///
+    /// 🔬Why it is told at all (2026-11-19, S5_BA cut 352 as its file shows
+    /// it): one folder under an effect, the same picture in every frame —
+    /// and of the 14,742 tiles its 58 pictures made, 14,025 were told by
+    /// nothing for that close alone, 83% of all of them the bytes of
+    /// another (921 MB held, 155 MB of them apart).
+    fn put(&mut self, plan: &Plan, step: &Step) -> Option<()> {
+        let (rect, held, number) = named_hold(plan, step)?;
+        let Step::Row { keys, map, matrix, opacity, mode, masked: false, .. } = unchained(*step, 0) else {
+            return None;
+        };
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        let [left, top, right, bottom] = tiles_under(rect, map.reads(x, y, x + side, y + side));
+        if left >= right || top >= bottom {
+            return Some(());
+        }
+        self.posed = true;
+        self.words.extend([TOLD_PUT, opacity, mode, mix_of(step)]);
+        self.words.extend(map.words());
+        self.matrix(plan, matrix)?;
+        self.keys(plan, keys)?;
+        let (id, TileRect { x0, y0, columns, rows }) = (held.id(), rect);
+        self.words.extend([id as u32, (id >> 32) as u32, number, x0 as u32, y0 as u32, columns, rows]);
         Some(())
     }
 
@@ -677,14 +736,32 @@ impl Plan<'_> {
     /// none where the plan cannot tell: its tiles' stamps not handed with
     /// it ([`Plan::stamps`]), or a step that reads past what a telling
     /// names ([`Telling::step`]). Such a tile is made, whatever is kept.
+    ///
+    /// A buffer closed through a chain a hold names is told by its close
+    /// alone, none of the steps from its open on: the walk lays what the
+    /// hold keeps and walks none of them ([`Composite::chained`]) — a row
+    /// in it that no telling names is no word of the tile's.
     pub(crate) fn made_of(&self, tile: (i32, i32), extent: [i32; 4]) -> Option<MadeOf> {
         let stamps = self.stamps?;
         let pool = stamps.pool();
         let mut telling = Telling { stamps, tile, words: vec![pool as u32, (pool >> 32) as u32], posed: false };
         let inside = telling.on_tile(extent);
         telling.words.extend(inside);
-        for step in self.steps {
-            telling.step(self, step)?;
+        // The closes are asked for only where a chain of the plan is held:
+        // a pen's step tells a tile or two a hundred times a second.
+        let held = self.chains.iter().any(|chain| chain.held.is_some());
+        let closes = if held { closes_of(self.steps) } else { Vec::new() };
+        let mut index = 0;
+        while let Some(step) = self.steps.get(index) {
+            let close = closes.get(index).copied().flatten();
+            let held = close.filter(|&close| matches!(step, Step::Open) && named_hold(self, &self.steps[close]).is_some());
+            index = match held {
+                Some(close) => close,
+                None => {
+                    telling.step(self, step)?;
+                    index + 1
+                }
+            };
         }
         Some(telling.told())
     }
@@ -1708,19 +1785,36 @@ fn runs_first(step: &Step) -> bool {
     chain_of(step).is_some() || matches!(step, Step::CloseRow { .. })
 }
 
+/// What names what the chain `step` names puts: the rectangle it runs
+/// over, its hold, and the number it is kept under there — none where the
+/// step names no chain of the plan, or its chain no hold.
+fn named_hold<'a>(plan: &Plan<'a>, step: &Step) -> Option<(TileRect, &'a HeldChains, u32)> {
+    let chained = plan.chains.get(chain_of(step)?)?;
+    let (held, number) = chained.held?;
+    Some((chained.rect, held, number))
+}
+
 /// What the hold of the chain `step` names keeps of it, over the chain's
 /// rectangle and — where `step` is laid crossfaded with them — with the
 /// tiles it ran on; none where it names no chain or none held.
 fn held_over(plan: &Plan, step: &Step) -> Option<Made> {
-    let chained = &plan.chains[chain_of(step)?];
-    let (held, id) = chained.held?;
-    held.over(id, chained.rect, mixed(step))
+    let (rect, held, number) = named_hold(plan, step)?;
+    held.over(number, rect, mixed(step))
+}
+
+/// The mix `step` lays what its chain put at, against the tiles the chain
+/// ran on: a chained buffer's close's — whole for any other step.
+fn mix_of(step: &Step) -> u32 {
+    match *step {
+        Step::Close { chain: Some(BufferChain { mix, .. }), .. } => mix,
+        _ => WHOLE,
+    }
 }
 
 /// Whether `step` closes a chained buffer at a mix under whole: laid as a
 /// crossfade of its tiles with what its chain put ([`Composite::chained`]).
 fn mixed(step: &Step) -> bool {
-    matches!(*step, Step::Close { chain: Some(BufferChain { mix, .. }), .. } if mix < WHOLE)
+    mix_of(step) < WHOLE
 }
 
 /// For each step that opens a buffer, the step that closes it, if one does.

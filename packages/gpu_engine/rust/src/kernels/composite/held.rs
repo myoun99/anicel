@@ -17,6 +17,13 @@
 //! hold, and keeps its buffer, no copy; ③the app lets a hold go first where
 //! the screen's pictures want the room; ④the bytes are counted where a hold
 //! keeps and lets go ([`held_bytes`]).
+//!
+//! 🚨A NUMBER IS ONE PICTURE FOR GOOD, NOT ONLY WHILE ITS PUT IS KEPT
+//! (F-610, 2026-11-19): a kept picture's tile is told by the number of a
+//! chain laid on it ([`Plan::made_of`](super::Plan::made_of)), and held
+//! for another picture told the same long after the hold let the put go.
+//! A number given to another picture later would show one's pixels in the
+//! other — the app gives none twice (`EngineChainHolds.idOf`).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,14 +61,38 @@ impl Made {
     }
 }
 
+/// The holds made so far: each takes the next count for its own name
+/// ([`HeldChains::id`]).
+static HOLDS: AtomicU64 = AtomicU64::new(0);
+
 /// Chains' puts under the numbers the app gives them, shared by the plans
-/// that name it.
-#[derive(Clone, Default)]
+/// that name it — a clone is the same hold.
+#[derive(Clone)]
 pub(crate) struct HeldChains {
+    id: u64,
     held: Arc<Mutex<HashMap<u32, Held>>>,
 }
 
+impl Default for HeldChains {
+    fn default() -> Self {
+        Self { id: HOLDS.fetch_add(1, Ordering::Relaxed) + 1, held: Arc::default() }
+    }
+}
+
 impl HeldChains {
+    /// What names it apart from every other hold of this process, given to
+    /// none again: each numbers its pictures from nothing, so a picture is
+    /// a hold's and its number together ([`Plan::made_of`](super::Plan::made_of)).
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// A hold named `id`, for a test of what tells two holds apart.
+    #[cfg(test)]
+    pub(crate) fn named(id: u64) -> Self {
+        Self { id, held: Arc::default() }
+    }
+
     /// What `id` keeps, where it was made over `rect` — and holds the tiles
     /// its chain ran on where it is laid `mixed`.
     pub(crate) fn over(&self, id: u32, rect: TileRect, mixed: bool) -> Option<Made> {

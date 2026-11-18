@@ -1,17 +1,21 @@
 //! One tile for the same input (F-610) on a real GPU: pictures made of the
 //! same hold one tile and show what each made whole shows, a tile is told
-//! apart by every word that changes its pixels and by none that does not,
-//! a slot handed out again is another tile, and a tile is weighed once —
-//! never against a CPU copy of a formula (`kernels/mod.rs` has why).
+//! apart by every word that changes its pixels and by none that does not —
+//! what a held chain put by the number it is kept under —, a slot handed
+//! out again is another tile, and a tile is weighed once — never against a
+//! CPU copy of a formula (`kernels/mod.rs` has why).
 
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL};
+use crate::kernels::chain::{Chained, Op};
+use crate::kernels::composite::held::HeldChains;
 use crate::kernels::composite::kept::Kept;
 use crate::kernels::composite::kept::tests::kept_bytes;
-use crate::kernels::composite::tests::{Rig, rig, texel};
+use crate::kernels::composite::tests::{Rig, contrast, rig, texel};
 use crate::kernels::composite::{
     BufferChain, KeyChain, MadeOf, Over, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
 };
-use crate::kernels::effects::MATRIX_WORDS;
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::effects::{MATRIX_WORDS, matrix_words};
 use crate::kernels::pool::{Pictures, Pool, Stamps};
 use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes};
 use crate::testing::stored;
@@ -55,6 +59,7 @@ struct Frame {
     sets: [TileSet; 2],
     keys: Vec<KeyChain>,
     matrices: Vec<[u32; MATRIX_WORDS]>,
+    chains: Vec<Chained<'static>>,
     steps: Vec<Step>,
 }
 
@@ -65,7 +70,7 @@ impl Frame {
             TileSet::from_words(2, 0, 1, 1, &[own.word()]),
         ];
         let steps = vec![Step::Solid { colour: PAPER, rect: PAGE }, row(0), row(1)];
-        Self { sets, keys: Vec::new(), matrices: Vec::new(), steps }
+        Self { sets, keys: Vec::new(), matrices: Vec::new(), chains: Vec::new(), steps }
     }
 
     /// It, changed by `change`.
@@ -80,7 +85,7 @@ impl Frame {
             sets: &self.sets,
             keys: &self.keys,
             matrices: &self.matrices,
-            chains: &[],
+            chains: &self.chains,
             steps: &self.steps,
             mask: None,
             stamps,
@@ -394,13 +399,13 @@ fn a_telling_is_the_same_whatever_lies_off_the_tile() {
 
 // A tile is told by nothing where its plan cannot name all it is made of:
 // no stamps handed with it, a step that reads past the stored tiles — an
-// effect chain, the mask, a buffer closed as a row, a range mark —, a row
-// posed by a homography, a set or a matrix the plan does not hold, a tile
-// its pool never handed out.
+// effect chain no hold names, the mask, a buffer closed as a row over its
+// own tiles, a range mark —, a row posed by a homography, a set, a matrix
+// or a chain the plan does not hold, a tile its pool never handed out.
 #[test]
 fn a_tile_whose_plan_cannot_name_its_pixels_is_told_by_nothing() {
     let (pool, at) = stored(&[tile(1), tile(2), tile(3)]);
-    let frame = || Frame::of([at[0], at[1]], at[2]);
+    let frame = || Frame::of([at[0], at[1]], at[2]).with(|frame| frame.chains.push(chain(OVER_PAGE, None)));
     assert!(frame().plan(&pool, None).made_of((0, 0), PAGE).is_none(), "no stamps");
     let leaned = ResampleMap::new([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0005, 0.0, 1.0], 1.0, ResampleMode::Blend, TILE, TILE);
     let leaned = leaned.expect("a pose that lands");
@@ -408,16 +413,20 @@ fn a_tile_whose_plan_cannot_name_its_pixels_is_told_by_nothing() {
     let close = |chain| Step::Close { opacity: WHOLE, mode: NORMAL, matrix: None, chain };
     let unposed = ResampleMap::moved(0, 0);
     let untold = [
-        ("a row through an effect chain", row_as(|step| if let Step::Row { chain, .. } = step { *chain = Some(0) })),
+        ("a row through a chain no hold names", row_as(|step| if let Step::Row { chain, .. } = step { *chain = Some(0) })),
+        ("a row through a chain the plan holds none of", row_as(|step| if let Step::Row { chain, .. } = step { *chain = Some(9) })),
         ("a row under the mask", row_as(|step| if let Step::Row { masked, .. } = step { *masked = true })),
         ("a row of a set the plan holds none of", row_as(|step| if let Step::Row { set, .. } = step { *set = 9 })),
         ("a row through a matrix the plan holds none of", row_as(|step| if let Step::Row { matrix, .. } = step { *matrix = Some(0) })),
         ("a row keyed by a chain the plan holds none of", row_as(|step| if let Step::Row { keys, .. } = step { *keys = Some(0) })),
-        ("a buffer closed through an effect chain", frame().with(|frame| {
+        ("a buffer closed through a chain no hold names", frame().with(|frame| {
             frame.steps.push(close(Some(BufferChain { chain: 0, mix: WHOLE })));
         })),
-        ("a buffer closed as a row", frame().with(|frame| {
+        ("a buffer closed as a row through a chain no hold names", frame().with(|frame| {
             frame.steps.push(Step::CloseRow { over: Over::Chain(0), map: unposed, matrix: None, opacity: WHOLE, mode: NORMAL });
+        })),
+        ("a buffer closed as a row over its own tiles", frame().with(|frame| {
+            frame.steps.push(Step::CloseRow { over: Over::Tiles(OVER_ROW), map: unposed, matrix: None, opacity: WHOLE, mode: NORMAL });
         })),
         ("a range mark", frame().with(|frame| frame.steps.push(Step::Mark { map: unposed, shift: [0, 0] }))),
     ];
@@ -465,4 +474,264 @@ fn a_picture_holds_the_paper_once_for_every_tile_it_is() {
     assert_eq!(pictures.unowned_bytes(), 0, "let go of once, held seven times: its maker's");
     drop(kept);
     assert_eq!((held(&pictures), pictures.unowned_bytes()), (0, 0));
+}
+
+/// The page's tiles: where a test's chain runs, unless it says otherwise.
+const OVER_PAGE: TileRect = TileRect { x0: 0, y0: 0, columns: 4, rows: 2 };
+/// The tiles of the row no frame changes ([`Frame`]): (0, 0) and (1, 0).
+const OVER_ROW: TileRect = TileRect { x0: 0, y0: 0, columns: 2, rows: 1 };
+
+/// A hold of a test's own, kept for the process's life: a frame's chains
+/// borrow it.
+fn hold() -> &'static HeldChains {
+    Box::leak(Box::default())
+}
+
+/// A chain over `rect` — a contrast — held as `held` names, if it names.
+fn chain(rect: TileRect, held: Option<(&'static HeldChains, u32)>) -> Chained<'static> {
+    let contrast = matrix_words(&contrast()).expect("a matrix in range");
+    Chained { ops: vec![Op::Matrix(contrast)], rect, held }
+}
+
+/// A buffer's close through chain 0 at `mix`, whole in normal.
+fn closing(mix: u32) -> Step {
+    Step::Close { opacity: WHOLE, mode: NORMAL, matrix: None, chain: Some(BufferChain { chain: 0, mix }) }
+}
+
+impl Frame {
+    /// It, its two rows in a buffer closed by `close` through `chain` — the
+    /// plan's chain 0: the paper, the open, the rows, the close.
+    fn buffered(self, chain: Chained<'static>, close: Step) -> Self {
+        self.with(|frame| {
+            frame.chains.push(chain);
+            frame.steps.insert(1, Step::Open);
+            frame.steps.push(close);
+        })
+    }
+}
+
+// A buffer closed through a chain a hold names is told by what names what
+// the chain put — the hold, the number it is kept under, the rectangle it
+// runs over — and by every word its close lays that with; by nothing where
+// no hold names it.
+#[test]
+fn a_buffer_closed_through_a_held_chain_is_told_by_the_number_it_is_kept_under() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3), tile(4)]);
+    let (ours, theirs) = (hold(), hold());
+    let far: &'static HeldChains = Box::leak(Box::new(HeldChains::named(ours.id() + (1 << 32))));
+    let framed = |chain, close| Frame::of([at[0], at[1]], at[2]).buffered(chain, close);
+    let held_as = |held, rect| told(&framed(chain(rect, Some(held)), closing(WHOLE)), &pool, (0, 0), PAGE);
+    let close = |opacity, mode, mix| Step::Close { opacity, mode, matrix: None, chain: Some(BufferChain { chain: 0, mix }) };
+    let closed_as = |close| told(&framed(chain(OVER_PAGE, Some((ours, 7))), close), &pool, (0, 0), PAGE);
+    let base = held_as((ours, 7), OVER_PAGE).expect("told");
+    assert_eq!(held_as((ours, 7), OVER_PAGE), Some(base.clone()), "premise: the same, told again");
+    assert_eq!(closed_as(close(WHOLE, NORMAL, WHOLE)), Some(base.clone()), "premise: the same close");
+    let unheld = framed(chain(OVER_PAGE, None), closing(WHOLE));
+    assert!(told(&unheld, &pool, (0, 0), PAGE).is_none(), "a chain no hold names runs each time");
+    let changed = [
+        ("its number", held_as((ours, 8), OVER_PAGE)),
+        ("its hold", held_as((theirs, 7), OVER_PAGE)),
+        ("its hold, a word's count on", held_as((far, 7), OVER_PAGE)),
+        ("where its rectangle starts across", held_as((ours, 7), TileRect { x0: -1, ..OVER_PAGE })),
+        ("where its rectangle starts down", held_as((ours, 7), TileRect { y0: -1, ..OVER_PAGE })),
+        ("how far across its rectangle runs", held_as((ours, 7), TileRect { columns: 5, ..OVER_PAGE })),
+        ("how far down its rectangle runs", held_as((ours, 7), TileRect { rows: 3, ..OVER_PAGE })),
+        ("its mix", closed_as(close(WHOLE, NORMAL, WHOLE / 2))),
+        ("its close's opacity", closed_as(close(WHOLE / 2, NORMAL, WHOLE))),
+        ("its close's mode", closed_as(close(WHOLE, MULTIPLY, WHOLE))),
+    ];
+    for (what, other) in &changed {
+        assert!(other.is_some() && *other != Some(base.clone()), "{what}");
+    }
+    let through = |words| {
+        let close = Step::Close { opacity: WHOLE, mode: NORMAL, matrix: Some(0), chain: Some(BufferChain { chain: 0, mix: WHOLE }) };
+        let frame = framed(chain(OVER_PAGE, Some((ours, 7))), close).with(|frame| frame.matrices.push(words));
+        told(&frame, &pool, (0, 0), PAGE)
+    };
+    let (one, other) = (through([7; MATRIX_WORDS]), through([8; MATRIX_WORDS]));
+    assert!(one.is_some() && one != Some(base.clone()), "a matrix it closes through");
+    assert_ne!(one, other, "the matrix's words");
+    let beside = told(&framed(chain(OVER_PAGE, Some((ours, 7))), closing(WHOLE)), &pool, (1, 0), PAGE);
+    assert!(beside.is_some() && beside != Some(base), "where the tile lies: what the chain put there");
+}
+
+// A held buffer is told from its close alone, whatever its steps are — a
+// row of other tiles, a row or a mark no telling names, a buffer in it: the
+// walk lays what the hold keeps and walks none of them. The steps under its
+// open and over its close are told as ever, and so are a plain buffer's
+// that a held one lies in.
+#[test]
+fn a_held_buffer_is_told_whatever_its_steps_are() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3), tile(4)]);
+    let ours = hold();
+    let framed = |tiles: [TileAt; 2]| Frame::of(tiles, at[2]).buffered(chain(OVER_PAGE, Some((ours, 7))), closing(WHOLE));
+    let frame = || framed([at[0], at[1]]);
+    let on = |frame: &Frame, tile| told(frame, &pool, tile, PAGE);
+    let base = on(&frame(), (0, 0)).expect("told");
+    let unposed = ResampleMap::moved(0, 0);
+    let plain = Step::Close { opacity: WHOLE, mode: NORMAL, matrix: None, chain: None };
+    let same = [
+        ("a row of other tiles", framed([at[3], at[1]])),
+        ("a row under the mask", frame().with(|frame| {
+            if let Step::Row { masked, .. } = &mut frame.steps[2] {
+                *masked = true;
+            }
+        })),
+        ("a range mark", frame().with(|frame| frame.steps.insert(2, Step::Mark { map: unposed, shift: [0, 0] }))),
+        ("a buffer", frame().with(|frame| {
+            frame.steps.insert(2, Step::Open);
+            frame.steps.insert(4, plain);
+        })),
+    ];
+    for (what, frame) in &same {
+        assert_eq!(on(frame, (0, 0)), Some(base.clone()), "{what} in it");
+    }
+    let under = frame().with(|frame| frame.steps[0] = Step::Solid { colour: 0xff00_00ff, rect: PAGE });
+    assert!(on(&under, (0, 0)).is_some() && on(&under, (0, 0)) != Some(base.clone()), "the paper under it");
+    let over = frame().with(|frame| frame.steps.push(Step::Solid { colour: 0x8000_0000, rect: [0, 0, 9, 9] }));
+    assert!(on(&over, (0, 0)).is_some() && on(&over, (0, 0)) != Some(base), "a solid over it");
+    let marked = frame().with(|frame| frame.steps.push(Step::Mark { map: unposed, shift: [0, 0] }));
+    assert!(on(&marked, (0, 0)).is_none(), "a range mark over it: told by nothing");
+    // The paper; a plain buffer of the held one — the unchanged row's — and
+    // the frame's own row.
+    let nested = |inner: [TileAt; 2], own: TileAt| {
+        Frame::of(inner, own).with(|frame| {
+            frame.chains.push(chain(OVER_PAGE, Some((ours, 7))));
+            let (paper, unchanged, own) = (frame.steps[0], frame.steps[1], frame.steps[2]);
+            frame.steps = vec![paper, Step::Open, Step::Open, unchanged, closing(WHOLE), own, plain];
+        })
+    };
+    let first = nested([at[0], at[1]], at[2]);
+    assert!(on(&first, (0, 0)).is_some() && on(&first, (2, 0)).is_some(), "told");
+    assert_eq!(on(&nested([at[3], at[1]], at[2]), (0, 0)), on(&first, (0, 0)), "the held buffer's row, in a plain one");
+    assert_ne!(on(&nested([at[0], at[1]], at[3]), (2, 0)), on(&first, (2, 0)), "the plain buffer's own row");
+}
+
+// What a chain put is told on the tiles its row is laid on and on no other:
+// off the chain's rectangle a tile is told as if the buffer were not in the
+// plan — the paper alone, one tile wherever it lies —, and a row through
+// the chain a tile aside is told where its pose reads a tile of what the
+// chain put.
+#[test]
+fn what_a_chain_put_is_told_where_it_is_laid_and_nowhere_else() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3)]);
+    let ours = hold();
+    let frame = Frame::of([at[0], at[1]], at[2]).buffered(chain(OVER_ROW, Some((ours, 7))), closing(WHOLE));
+    let bare = Frame::of([at[0], at[1]], at[2]).with(|frame| frame.steps.truncate(1));
+    let on = |frame: &Frame, tile| told(frame, &pool, tile, PAGE);
+    for tile in [(2, 0), (0, 1), (3, 1)] {
+        assert!(on(&frame, tile).is_some(), "told, at {tile:?}");
+        assert_eq!(on(&frame, tile), on(&bare, tile), "off the rectangle, at {tile:?}: the paper alone");
+    }
+    for tile in [(0, 0), (1, 0)] {
+        assert!(on(&frame, tile).is_some() && on(&frame, tile) != on(&bare, tile), "on it, at {tile:?}");
+    }
+    assert_ne!(on(&frame, (0, 0)), on(&frame, (1, 0)), "each tile of it its own");
+    let aside = Frame::of([at[0], at[1]], at[2]).with(|frame| {
+        frame.chains.push(chain(OVER_ROW, Some((ours, 7))));
+        frame.steps.truncate(2);
+        if let Step::Row { chain, map, .. } = &mut frame.steps[1] {
+            (*chain, *map) = (Some(0), ResampleMap::moved(TILE as i32, 0));
+        }
+    });
+    assert_eq!(on(&aside, (0, 0)), on(&bare, (0, 0)), "moved a tile across, it leaves the first");
+    assert!(on(&aside, (2, 0)).is_some() && on(&aside, (2, 0)) != on(&bare, (2, 0)), "and lies on the third");
+}
+
+// A row through a held chain, and a buffer closed as a row through one, are
+// told by the number and by all the walk lays what the chain put with — its
+// pose among it —, not by the row's own tiles: the walk reads none of them.
+// Under the mask it is told by nothing, as any row is.
+#[test]
+fn a_row_through_a_held_chain_is_told_by_the_number_and_how_it_is_laid() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3), tile(4)]);
+    let ours = hold();
+    let chained = |tiles: [TileAt; 2], change: fn(&mut Frame)| {
+        Frame::of(tiles, at[2]).with(|frame| {
+            frame.chains.push(chain(OVER_PAGE, Some((ours, 7))));
+            if let Step::Row { chain, .. } = &mut frame.steps[1] {
+                *chain = Some(0);
+            }
+            change(frame);
+        })
+    };
+    let row_as = |change: fn(&mut Frame)| chained([at[0], at[1]], change);
+    let on = |frame: &Frame| told(frame, &pool, (0, 0), PAGE);
+    let base = on(&row_as(|_| {})).expect("told");
+    assert_eq!(on(&chained([at[3], at[1]], |_| {})), Some(base.clone()), "whatever tiles the row stores");
+    let changed = [
+        ("its number", row_as(|frame| frame.chains[0].held = frame.chains[0].held.map(|(hold, _)| (hold, 8)))),
+        ("its opacity", row_as(|frame| if let Step::Row { opacity, .. } = &mut frame.steps[1] { *opacity = WHOLE / 2 })),
+        ("its mode", row_as(|frame| if let Step::Row { mode, .. } = &mut frame.steps[1] { *mode = MULTIPLY })),
+        ("its pose", row_as(|frame| if let Step::Row { map, .. } = &mut frame.steps[1] { *map = ResampleMap::moved(1, 0) })),
+        ("a matrix it runs through", row_as(|frame| {
+            frame.matrices.push([7; MATRIX_WORDS]);
+            if let Step::Row { matrix, .. } = &mut frame.steps[1] {
+                *matrix = Some(0);
+            }
+        })),
+        ("a key chain what it put is keyed by", row_as(|frame| {
+            frame.keys.push(KeyChain { runs: vec![vec![1, 2]] });
+            if let Step::Row { keys, .. } = &mut frame.steps[1] {
+                *keys = Some(0);
+            }
+        })),
+    ];
+    for (what, frame) in &changed {
+        assert!(on(frame).is_some() && on(frame) != Some(base.clone()), "{what}");
+    }
+    let masked = row_as(|frame| if let Step::Row { masked, .. } = &mut frame.steps[1] { *masked = true });
+    assert!(on(&masked).is_none(), "under the mask");
+    let closed_as_a_row = |tiles: [TileAt; 2], map| {
+        let close = Step::CloseRow { over: Over::Chain(0), map, matrix: None, opacity: WHOLE, mode: NORMAL };
+        Frame::of(tiles, at[2]).buffered(chain(OVER_PAGE, Some((ours, 7))), close)
+    };
+    let unposed = ResampleMap::moved(0, 0);
+    let as_a_row = on(&closed_as_a_row([at[0], at[1]], unposed));
+    assert!(as_a_row.is_some(), "a buffer closed as a row through it: told");
+    assert_eq!(on(&closed_as_a_row([at[3], at[1]], unposed)), as_a_row, "whatever its steps are");
+    assert_ne!(on(&closed_as_a_row([at[0], at[1]], ResampleMap::moved(1, 0))), as_a_row, "its pose");
+}
+
+// Two frames of a cut whose unchanged row lies in a folder under an effect
+// — a buffer closed through a chain held under one number, one picture in
+// both — each with a row of its own over it: the folder's tiles are the
+// first's in the second, which makes its own alone; the tiles off the
+// folder are the paper's one slot; and each shows what it shows with the
+// chain run for it, told by nothing. Under another number the folder is
+// another picture's, and its tiles are made.
+#[test]
+fn pictures_of_one_held_chain_hold_one_tile() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3), tile(4)]);
+    let ours = hold();
+    // The paper; the folder — its open, the unchanged row, its close —; the
+    // frame's own row.
+    let framed = |own: TileAt, held| {
+        Frame::of([at[0], at[1]], own).with(|frame| {
+            frame.chains.push(chain(OVER_ROW, held));
+            frame.steps.insert(1, Step::Open);
+            frame.steps.insert(3, closing(WHOLE));
+        })
+    };
+    let (one, other) = (framed(at[2], Some((ours, 3))), framed(at[3], Some((ours, 3))));
+    let pictures = Pictures::sized(SLOTS).expect("a pool");
+    let (first, second) = (one.kept(&pool, &pictures, true), other.kept(&pool, &pictures, true));
+    let (a, b) = (slots(&first), slots(&second));
+    assert_eq!(a[..2], b[..2], "the folder's tiles");
+    assert_ne!(a[2], b[2], "each frame's own row");
+    for tile in PAPER_ALONE {
+        assert_eq!((a[tile], b[tile]), (a[3], a[3]), "off the folder, tile {tile}: the paper's one slot");
+    }
+    assert_eq!(held(&pictures), 5, "the paper, the folder's two, and a tile of each frame's own");
+    assert_eq!((first.bytes(), second.bytes()), (4 * TILE_BYTES, TILE_BYTES), "the second made its own alone");
+    assert!(kept_bytes(&first) == framed(at[2], None).whole(&pool), "the first, against its chain run for it");
+    assert!(kept_bytes(&second) == framed(at[3], None).whole(&pool), "the second, against its chain run for it");
+    let unchained = Frame::of([at[0], at[1]], at[2]).whole(&pool);
+    assert!(kept_bytes(&first) != unchained, "premise: the chain changes the folder's pixels");
+    let third = framed(at[2], Some((ours, 4))).kept(&pool, &pictures, true);
+    let c = slots(&third);
+    assert!(c[0] != a[0] && c[1] != a[1], "under another number, another picture's tiles");
+    assert_eq!((c[2], third.bytes()), (a[2], 2 * TILE_BYTES), "its own row the first's; the folder's two made");
+    ours.let_go(3);
+    ours.let_go(4);
 }
