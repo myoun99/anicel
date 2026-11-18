@@ -445,6 +445,41 @@ void main() {
     expect(session.currentFrameIndex, 1);
   });
 
+  testWidgets('keys pressed while a move waits take their turns in the order '
+      'pressed: a step, then Ctrl+Z — asked from the frame the step went '
+      'to, it walks back to the edit and takes nothing (Q6 = turn)', (
+    tester,
+  ) async {
+    final session = await twoDrawnFrames(tester);
+    final history = session.historyManager;
+    final edits = history.undoCount;
+    final stood = framesStoodOn(session);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    expect(
+      session.standsWithItsPicture.waitsFor.value,
+      1,
+      reason: '⛔premise: the press waits for frame 1',
+    );
+    await theMoveLands(tester, session);
+    expect(
+      await settleAsync(
+        tester,
+        () => stood.length >= 3 || history.undoCount != edits,
+      ),
+      isTrue,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(stood, [1, 2, 1], reason: 'the step, then the undo\'s walk back');
+    expect(history.undoCount, edits, reason: 'a walk takes nothing back');
+  });
+
   testWidgets('…and a tool key pressed meanwhile takes up its tool once the '
       'move lands (Q6 = turn)', (tester) async {
     final session = await twoDrawnFrames(tester);
