@@ -599,7 +599,7 @@ void main() {
         spec: const CelsExportSpec(
           kinds: {ExportCelKind.video},
           videoFormat: gif,
-          sizeMode: ExportSizeMode.canvas,
+          videoSizeMode: ExportSizeMode.canvas,
         ),
         into: temp,
       );
