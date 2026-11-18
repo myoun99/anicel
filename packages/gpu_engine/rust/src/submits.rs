@@ -201,6 +201,35 @@ mod tests {
     }
 
     #[test]
+    fn a_submit_says_the_dispatches_encoded_for_it_and_their_workgroups() {
+        use crate::kernels::shared::{Encoded, encode, pipeline, whole};
+        let turn = crate::testing::a_device_of_its_own();
+        let engine = turn.engine();
+        let put = pipeline(
+            &engine,
+            &[
+                "@group(0) @binding(0) var<storage, read_write> out: array<u32>;",
+                "@compute @workgroup_size(1)",
+                "fn put(@builtin(global_invocation_id) at: vec3<u32>) { out[0] = at.x; }",
+            ],
+            "put",
+        );
+        let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("submits' dispatches"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let dispatch = |groups| Encoded { pipeline: &put, bound: whole(&[(0, &out)]), groups };
+        let line = line!() + 1;
+        encode(&engine, &[dispatch((2, 3, 1)), dispatch((4, 1, 1))]);
+        crate::testing::done_here(&engine).expect("the GPU done");
+        let told = engine.queue.submits.told();
+        let made = format!("{}:{line} dispatches=2 groups=10 last-done", file!());
+        assert!(told.lines().any(|told| told.ends_with(&made)), "{told}");
+    }
+
+    #[test]
     fn the_engine_notes_each_submit_where_it_was_made_and_hears_it_finished() {
         let turn = crate::testing::a_device_of_its_own();
         let engine = turn.engine();
