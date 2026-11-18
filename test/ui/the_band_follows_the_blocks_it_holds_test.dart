@@ -49,6 +49,22 @@ void main() {
   /// Drawn on ones at frames 0–3 — one run of four blocks.
   (EditorSessionManager, LayerId) onOnes() => drawnAt([0, 1, 2, 3]);
 
+  /// The default project's cut (24 frames) with a conte row divided at
+  /// frame 5 — {0: 5, 5: 19} — whose end is the cut's.
+  (EditorSessionManager, LayerId) conteDividedAtFive() {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
+    session.selectFrameIndex(5);
+    session.createDrawingAtCurrentFrame();
+    final conteId = storyboardLayerForCut(session.requireActiveCut)!.id;
+    expect(rowOf(session, conteId), {0: 5, 5: 19}, reason: 'fixture');
+    expect(session.requireActiveCut.duration, 24, reason: 'fixture');
+    return (session, conteId);
+  }
+
   void sweep(EditorSessionManager session, LayerId rowId, int from, int to) =>
       session.updateFrameRangeSelectionDrag(
         layerId: rowId,
@@ -199,7 +215,28 @@ void main() {
       expect(band(session), (0, 4));
     });
 
-    test('⛔an edge outside the band is its block\'s alone — the band stays',
+    test('🚨the conte row\'s edge moves its cut, and the band follows past '
+        'the cut\'s refresh', () {
+      final (session, conteId) = conteDividedAtFive();
+      sweep(session, conteId, 0, 4);
+
+      session.edgeDrag.beginExposureEdgeDrag(
+        layerId: conteId,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      );
+      session.edgeDrag.updateExposureEdgeDrag(3);
+      session.edgeDrag.endExposureEdgeDrag();
+
+      expect(rowOf(session, conteId), {0: 8, 8: 19});
+      expect(session.requireActiveCut.duration, 27, reason: 'the cut moved');
+      expect(band(session), (0, 8));
+    });
+
+    // F-619-Q1 asks whether a band should follow its blocks when an edit
+    // OUTSIDE it shoves them; until it is answered the band is held only
+    // by the edits acting on it.
+    test('an edge outside the band holds no band — it stands where it stood',
         () {
       final (session, rowId) = onOnes();
       sweep(session, rowId, 2, 3);
@@ -233,15 +270,7 @@ void main() {
 
     test('🚨a band over the conte row follows the comma that moves its cut — '
         'the cut\'s refresh let it go', () {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
-      session.layerStack.addLayerOfKind(LayerKind.storyboard);
-      session.selectFrameIndex(5);
-      session.createDrawingAtCurrentFrame();
-      final conteId = storyboardLayerForCut(session.requireActiveCut)!.id;
-      expect(rowOf(session, conteId), {0: 5, 5: 19}, reason: 'fixture');
+      final (session, conteId) = conteDividedAtFive();
       sweep(session, conteId, 0, 4);
 
       session.exposureVerbs.setCommaOn(
@@ -287,6 +316,23 @@ void main() {
       session.runFramesAdd.cancelRunFramesAddDrag();
 
       expect(band(session), (0, 4));
+    });
+
+    // F-619-Q1, as the edge's twin above.
+    test('a "+" on a run outside the band holds no band', () {
+      final (session, rowId) = drawnAt([0, 3, 4]);
+      sweep(session, rowId, 3, 4);
+
+      session.runFramesAdd.beginRunFramesAddDrag(
+        layerId: rowId,
+        blockStartIndex: 0,
+        atEnd: true,
+      );
+      session.runFramesAdd.updateRunFramesAddDrag(3);
+      session.runFramesAdd.endRunFramesAddDrag();
+
+      expect(rowOf(session, rowId).keys.last, 5, reason: 'its blocks moved');
+      expect(band(session), (3, 5));
     });
   });
 

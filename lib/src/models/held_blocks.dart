@@ -6,6 +6,8 @@ import 'dart:math' as math;
 
 import 'layer.dart';
 import 'layer_id.dart';
+import 'timeline_coverage.dart' show TimelineDrawingBlock, drawingBlocks;
+import 'timeline_repeat.dart' show ghostFreeTimeline;
 
 /// A half-open span of frames, [start] to [endExclusive].
 typedef FrameSpan = ({int start, int endExclusive});
@@ -23,13 +25,10 @@ typedef FrameSpan = ({int start, int endExclusive});
 /// moves.
 typedef HeldRun = ({int before, int after});
 
-/// [layer]'s real drawing blocks — no ghosts, which a run's hold or repeat
-/// derives — in frame order.
-List<FrameSpan> _realBlocksOf(Layer layer) => [
-  for (final entry in layer.timeline.entries)
-    if (entry.value.isDrawing && !entry.value.ghost)
-      (start: entry.key, endExclusive: entry.key + entry.value.length!),
-];
+/// [layer]'s real blocks — not the ghosts a run's hold or repeat derives —
+/// in frame order.
+List<TimelineDrawingBlock> _realBlocksOf(Layer layer) =>
+    drawingBlocks(ghostFreeTimeline(layer));
 
 /// Where the blocks starting at [starts] stand among [layer]'s blocks, or
 /// null when [starts] names none of them.
@@ -37,15 +36,12 @@ HeldRun? heldRunOn(Layer layer, List<int> starts) {
   if (starts.isEmpty) {
     return null;
   }
-  final blocks = _realBlocksOf(layer);
-  final firstStart = starts.reduce(math.min);
-  final lastStart = starts.reduce(math.max);
-  final first = blocks.indexWhere((block) => block.start == firstStart);
-  final last = blocks.indexWhere((block) => block.start == lastStart);
-  if (first < 0 || last < first) {
-    return null;
-  }
-  return (before: first, after: blocks.length - 1 - last);
+  final keys = [for (final block in _realBlocksOf(layer)) block.startIndex];
+  final first = keys.indexOf(starts.reduce(math.min));
+  final last = keys.indexOf(starts.reduce(math.max));
+  return first < 0 || last < first
+      ? null
+      : (before: first, after: keys.length - 1 - last);
 }
 
 /// The span from the first to the last of the blocks [held] names on
@@ -57,8 +53,8 @@ FrameSpan? heldSpanOn(Layer layer, HeldRun held) {
     return null;
   }
   return (
-    start: blocks[held.before].start,
-    endExclusive: blocks[last].endExclusive,
+    start: blocks[held.before].startIndex,
+    endExclusive: blocks[last].endIndexExclusive,
   );
 }
 

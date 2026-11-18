@@ -91,8 +91,9 @@ class RunFramesAddDrag implements EditorDragSession {
   _commitLayerDrags;
 
   /// The live band when the runs are its, held so it follows them over the
-  /// frames they gain — each step, on release, and back as it was found
-  /// when the drag is let go of (F-619).
+  /// frames each step gives them, and back as it was found when the drag is
+  /// let go of (F-619). The release writes what the last step showed and
+  /// lets no band go, so the band stands where that step left it.
   final HeldBand? _band;
 
   /// Reserves the drag's new frame ids, deterministically: the same row,
@@ -155,10 +156,10 @@ class RunFramesAddDrag implements EditorDragSession {
   void commit() {
     final edits = _edits;
     _preview.value = null;
-    if (edits.isNotEmpty) {
-      _commitLayerDrags(edits);
+    if (edits.isEmpty) {
+      return;
     }
-    _band?.follow();
+    _commitLayerDrags(edits);
   }
 
   @override
