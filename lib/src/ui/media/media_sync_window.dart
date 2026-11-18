@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../models/media_asset.dart';
 import '../../services/media/media_preset_sync.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
-import '../widgets/boolean_dot.dart';
+import '../widgets/ellipsis_text.dart';
+import '../widgets/settings_rows.dart';
 import 'media_pool_words.dart';
 
 /// What the sync window answers: the fields to set, at the places to set
@@ -44,12 +44,15 @@ class MediaSyncWindow extends StatefulWidget {
   /// them.
   final MediaPoolWords words;
 
-  /// A line of either list (시안 ③'s row).
-  static const double lineHeight = 28;
+  /// The column a field's name stands in.
+  static const double fieldNameWidth = 64;
 
-  /// The places list's height: five lines, and it scrolls past them — its
-  /// room the same however many places there are.
-  static const double placesHeight = 5 * lineHeight;
+  /// The column a place stands in — the uses window's line.
+  static const double placeNameWidth = 160;
+
+  /// The places list's height: five settings rows, and it scrolls past
+  /// them — its room the same however many places there are.
+  static const double placesHeight = 5 * 40;
 
   @override
   State<MediaSyncWindow> createState() => _MediaSyncWindowState();
@@ -111,7 +114,6 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
               height: MediaSyncWindow.placesHeight,
               child: ListView.builder(
                 key: const ValueKey<String>('media-sync-places'),
-                itemExtent: MediaSyncWindow.lineHeight,
                 itemCount: widget.places.length,
                 itemBuilder: (context, index) => _placeLine(index),
               ),
@@ -140,71 +142,44 @@ class _MediaSyncWindowState extends State<MediaSyncWindow> {
     );
   }
 
-  /// A field: its ring, its name, and what the preset places there.
-  Widget _fieldLine(SoundSyncField field) => SizedBox(
-    height: MediaSyncWindow.lineHeight,
-    child: Row(
-      children: [
-        BooleanDotButton(
-          keyValue: 'media-sync-field-${field.name}',
-          value: _fields.contains(field),
-          tooltip: _labelOf(field),
-          onChanged: (on) => setState(
-            () => on ? _fields.add(field) : _fields.remove(field),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(width: 56, child: Text(_labelOf(field))),
-        Expanded(
-          child: Text(
-            _presetWordOf(field),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textDim),
-          ),
-        ),
-      ],
-    ),
+  /// A field: its name, what the preset places there, and its ring — the
+  /// app's labelled boolean (`SettingsSwitchRow`: 유저 2026-09-24 「설정 줄
+  /// 하나로」, 10-23 F-439-Q1 「링만 컨트롤, 라벨은 글자」), led by what the
+  /// row is as the export window's layers are.
+  Widget _fieldLine(SoundSyncField field) => SettingsSwitchRow(
+    tileKey: ValueKey<String>('media-sync-field-${field.name}'),
+    leading: _nameColumn(_labelOf(field), MediaSyncWindow.fieldNameWidth),
+    label: _presetWordOf(field),
+    value: _fields.contains(field),
+    onChanged: (on) =>
+        setState(() => on ? _fields.add(field) : _fields.remove(field)),
   );
 
-  /// A place: its ring — dead where it parts at nothing — where it is, and
-  /// how it parts.
+  /// A place: where it is, how it parts — or 「같음」, its ring dead — and
+  /// its ring, the same row as a field's.
   Widget _placeLine(int index) {
     final parts = _partsOf(index);
     final canPick = parts.isNotEmpty;
-    return Row(
-      children: [
-        BooleanDotButton(
-          keyValue: 'media-sync-place-$index',
-          value: canPick && _picked.contains(index),
-          tooltip: widget.placeLines[index],
-          onChanged: canPick
-              ? (on) => setState(
-                  () => on ? _picked.add(index) : _picked.remove(index),
-                )
-              : null,
-        ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            widget.placeLines[index],
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            canPick ? _partsWord(index, parts) : AppText.strings.mediaSyncSame,
-            key: ValueKey<String>('media-sync-parts-$index'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textDim),
-          ),
-        ),
-      ],
+    return SettingsSwitchRow(
+      tileKey: ValueKey<String>('media-sync-place-$index'),
+      leading: _nameColumn(
+        widget.placeLines[index],
+        MediaSyncWindow.placeNameWidth,
+      ),
+      label: canPick ? _partsWord(index, parts) : AppText.strings.mediaSyncSame,
+      value: canPick && _picked.contains(index),
+      onChanged: canPick
+          ? (on) => setState(
+              () => on ? _picked.add(index) : _picked.remove(index),
+            )
+          : null,
     );
   }
+
+  /// What a row is, in a column of its own width — cut, and saying the
+  /// rest of itself, where it is longer.
+  static Widget _nameColumn(String name, double width) =>
+      SizedBox(width: width, child: EllipsisText(name, maxLines: 1));
 
   /// `시작 1 → 3 · 길이 0:00+4 → 0:00+6` — each field [index]'s place parts
   /// at, what it holds and what the preset places.

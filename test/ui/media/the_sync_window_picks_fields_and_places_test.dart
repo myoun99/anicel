@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/cel_places.dart';
 import 'package:anicel/src/ui/media/media_pool_words.dart';
 import 'package:anicel/src/ui/media/media_sync_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 final _clap = MediaAsset(path: 'C:/snd/clap.wav', name: 'clap');
 const _words = MediaPoolWords(framesPerSecond: 24);
@@ -65,6 +66,7 @@ void main() {
     MediaSyncAnswer? answer;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Builder(
           builder: (context) => Center(
             child: TextButton(
@@ -96,9 +98,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  String partsOf(WidgetTester tester, int index) => tester
-      .widget<Text>(find.byKey(ValueKey<String>('media-sync-parts-$index')))
-      .data!;
+  /// The words of [index]'s place row — how it parts, or 「같음」.
+  String partsOf(WidgetTester tester, int index) =>
+      (tester
+                  .widget<ListTile>(
+                    find.byKey(ValueKey<String>('media-sync-place-$index')),
+                  )
+                  .title!
+              as Text)
+          .data!;
 
   testWidgets('it opens on the start and the length, says each field\'s '
       'preset value as the pool says it, and lists every place with how '
@@ -122,12 +130,21 @@ void main() {
     expect(partsOf(tester, 2), strings.mediaSyncSame);
     expect(find.text(strings.mediaSyncApply(2)), findsOneWidget);
     expect(find.text(strings.mediaSyncApplyAllOf(2)), findsOneWidget);
+    final aLine = tester.getSize(
+      find.byKey(const ValueKey<String>('media-sync-field-start')),
+    );
+    expect(
+      aLine.height * 5,
+      MediaSyncWindow.placesHeight,
+      reason: 'the places list holds five rows of a line and scrolls past '
+          'them',
+    );
   });
 
   testWidgets('a field turned on counts in the list: the name tag lit, the '
       'place that parted at nothing parts', (tester) async {
     await open(tester);
-    await press(tester, 'media-sync-field-nameTag');
+    await press(tester, 'media-sync-field-nameTag-ring');
     expect(
       partsOf(tester, 2),
       '${AppText.strings.seNameLabel} Cat → Door',
@@ -141,13 +158,13 @@ void main() {
   testWidgets('「적용」 answers the fields on and the places picked among '
       'those that part; 「모두 적용」 every one that parts', (tester) async {
     var answer = await open(tester);
-    await press(tester, 'media-sync-place-0');
+    await press(tester, 'media-sync-place-0-ring');
     await press(tester, 'media-sync-apply');
     expect(answer()?.fields, SoundSyncField.asked);
     expect(answer()?.places, [_places[1]]);
 
     answer = await open(tester);
-    await press(tester, 'media-sync-place-0');
+    await press(tester, 'media-sync-place-0-ring');
     await press(tester, 'media-sync-apply-all');
     expect(answer()?.places, [_places[0], _places[1]]);
   });

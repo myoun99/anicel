@@ -428,7 +428,7 @@ class MediaPool {
     final timeline = _timelineThrough(use.trackId, _lensOf(use));
     Layer row() =>
         requireLayerAnywhere(_project.repository.requireProject(), use.layerId);
-    _syncSoundBlockWords(timeline, row(), use.frameId, preset, fields);
+    _syncSoundBlockWords(timeline, use, preset, fields);
     if (preset.start case final start?
         when fields.contains(SoundSyncField.start)) {
       final clips = row().audioClips;
@@ -466,17 +466,19 @@ class MediaPool {
     }
   }
 
-  /// The block's name tag and words as [preset] names them, where [fields]
-  /// ask for either — the SE window's own commit, the rest of its fields
-  /// kept.
+  /// [use]'s block's name tag and words as [preset] names them, where
+  /// [fields] ask for either — the SE window's own commit, the rest of its
+  /// fields kept.
   void _syncSoundBlockWords(
     TimelineController timeline,
-    Layer row,
-    FrameId frameId,
+    FrameMediaUse use,
     SoundPreset preset,
     Set<SoundSyncField> fields,
   ) {
-    final frame = row.frames.firstWhere((frame) => frame.id == frameId);
+    final frame = requireLayerAnywhere(
+      _project.repository.requireProject(),
+      use.layerId,
+    ).frames.firstWhere((frame) => frame.id == use.frameId);
     final words = fields.contains(SoundSyncField.words)
         ? preset.words
         : frame.name;
@@ -487,8 +489,8 @@ class MediaPool {
       return;
     }
     timeline.renameFrameForLayer(
-      layerId: row.id,
-      frameId: frameId,
+      layerId: use.layerId,
+      frameId: use.frameId,
       name: words,
       allowDuplicateName: true,
       seEntry: (
