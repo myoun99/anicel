@@ -134,21 +134,23 @@ class _StoryboardRowsWindow {
   }
 }
 
-/// [piece] in the wrapper [wrap] puts on it, kept by [keep] as its row
-/// [key] while the piece's facts and [inputs] — what [wrap] builds the
-/// wrapper from beside the piece — hold: the rail's rows and the strips'
-/// alike, as a piece keeps its own insides ([KeptPiece]).
-Widget _keptPiece(
-  WindowMoveKeep keep,
-  Object key,
-  KeptPiece piece,
-  Object? inputs,
-  Widget Function(KeptPiece piece) wrap,
-) => keep.row(
-  key,
-  () => (inputs, piece.runtimeType, piece.facts),
-  (_) => wrap(piece),
-);
+/// The rows of the conte panel a keep holds that are a [KeptPiece] in a
+/// wrapper — the rail's rows and the strips' alike.
+extension _KeptPieceRows on WindowMoveKeep {
+  /// [piece] in the wrapper [wrap] puts on it, kept as its row [key] while
+  /// the piece's facts and [inputs] — what [wrap] builds the wrapper from
+  /// beside the piece — hold, as a piece keeps its own insides.
+  Widget keptPiece(
+    Object key,
+    KeptPiece piece,
+    Object? inputs,
+    Widget Function(KeptPiece piece) wrap,
+  ) => row(
+    key,
+    () => (inputs, piece.runtimeType, piece.facts),
+    (_) => wrap(piece),
+  );
+}
 
 /// The rail's rows as the window cuts them: [edges] over every track's
 /// [slots], a head row joined with the lanes twirled under it, and where
@@ -225,13 +227,13 @@ final class _WindowedRows {
       _keep.ofThePass(key, build);
 
   /// [piece] — a strip's row [key] — in the wrapper [wrap] puts on it,
-  /// kept across passes while it and [inputs] hold ([_keptPiece]).
+  /// kept across passes while it and [inputs] hold.
   Widget piece(
     Object key,
     KeptPiece piece, {
     Object? inputs,
     Widget Function(KeptPiece piece)? wrap,
-  }) => _keptPiece(_keep, key, piece, inputs, wrap ?? (piece) => piece);
+  }) => _keep.keptPiece(key, piece, inputs, wrap ?? (piece) => piece);
 
   bool _builds(int first, int last) => switch (_window) {
     null => true,

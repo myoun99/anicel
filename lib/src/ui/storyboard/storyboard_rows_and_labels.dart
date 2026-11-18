@@ -259,8 +259,7 @@ class _StoryboardRowsAndLabels {
   ) {
     // The row is a still region of its own, inside the wrapper [wrap] puts
     // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
-    final row = _keptPiece(
-      _kept,
+    final row = _kept.keptPiece(
       key,
       label.piece,
       inputs,
@@ -514,18 +513,17 @@ class _StoryboardRowsAndLabels {
   /// 2026-08-09: "S행은 V랑 관련없이 독립적으로 움직일 수 있어야 해"). The
   /// gate guarded a session that committed to the SELECTED track; the
   /// commit resolves the row's own track now.
+  ///
+  /// A rail with no hooks is display-only: the label in no wrapper, kept as
+  /// every row of the rail is. ↩️It stood alone, new at every pass (card
+  /// the-conte-rail-row-holders-are-new-each-pass).
   Widget seLabelRow(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    if (layer == null) {
-      return _seLabel(track, slot);
-    }
+    if (layer == null) return _seLabel(track, slot);
     final label = _seLabelOf(track, slot, layer);
     final trackId = track.id;
     final hooks = _state.widget.rowDragHooks;
     if (hooks == null) {
-      // A rail with no hooks is display-only: the label in no wrapper, kept
-      // as every row of the rail is. ↩️It stood alone, new at every pass
-      // (card the-conte-rail-row-holders-are-new-each-pass).
       return _keptRow(('se', trackId, slot), label, null, (label) => label);
     }
     final shown = _seShownNow(track);
@@ -1172,8 +1170,7 @@ class _StoryboardRowsAndLabels {
     KeptPiece Function(Layer layer) row,
   ) {
     final dragPreview = _state.widget.dragPreview;
-    return _keptPiece(
-      _state._rowsWindow.globalStripKeep,
+    return _state._rowsWindow.globalStripKeep.keptPiece(
       key,
       row(committed),
       (ByIdentity(dragPreview), ByIdentity(committed)),
