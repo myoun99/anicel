@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart' show PressedStep, WorkAhead;
 import '../../services/wait_window.dart' show StepBehind, reachesManyBlocks;
 import '../text/app_strings.dart';
 import 'app_progress_dialog.dart';
@@ -28,7 +28,7 @@ import 'app_progress_dialog.dart';
 /// at once works out nothing ahead: it works it out as it is taken.
 Future<void> takeBehindTheWaitWindow(
   BuildContext context,
-  ({WorkAhead? ahead, VoidCallback step}) press, {
+  PressedStep press, {
   required AppWaitWindow window,
   required Iterable<Object> blocks,
 }) {

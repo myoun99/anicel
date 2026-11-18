@@ -11,7 +11,7 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../../models/sound_preset.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart' show PressedStep;
 import '../cut_command_group.dart';
 import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
@@ -497,7 +497,7 @@ class TimelineBarMenus {
   void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
-    ({WorkAhead? ahead, VoidCallback step}) press, {
+    PressedStep press, {
     required Iterable<Object> blocks,
   }) {
     unawaited(

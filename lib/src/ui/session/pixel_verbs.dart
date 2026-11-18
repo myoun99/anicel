@@ -26,7 +26,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart' show PressedStep, WorkAhead;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart'
@@ -415,7 +415,7 @@ class PixelVerbs {
   /// door that stands it behind the app's wait window
   /// ([CelPixelOverwriteCommand.workAhead], 🗣️F-615). A press the row
   /// could not run is a step that does nothing.
-  ({WorkAhead? ahead, VoidCallback step}) pixelVerbStep(CelPixelVerb verb) {
+  PressedStep pixelVerbStep(CelPixelVerb verb) {
     final keys = canRunPixelVerb ? pixelVerbCellKeys() : const <Never>[];
     final command = keys.isEmpty ? null : _commandFor(verb, keys);
     if (command == null) {
@@ -655,7 +655,7 @@ class PixelVerbs {
   /// the whole of what the canvas SHOWS ([cutShown]), and the cut has its
   /// picture to work out [ahead] of the step that takes it; the cel's own
   /// pixels need none.
-  ({WorkAhead? ahead, VoidCallback step}) cutWhole({
+  PressedStep cutWhole({
     required CanvasReadSource source,
     required bool takeWhatItCuts,
   }) {
@@ -870,7 +870,7 @@ class PixelVerbs {
   /// The 색 편집 list's clipboard row [verb], pressed — the step it takes,
   /// with nothing worked out ahead of it, as [pixelVerbStep]'s rows hand
   /// theirs to the door that stands them behind the wait window.
-  ({WorkAhead? ahead, VoidCallback step}) pixelClipboardVerbStep(
+  PressedStep pixelClipboardVerbStep(
     PixelClipboardVerb verb,
   ) => (ahead: null, step: () => _runPixelClipboardVerb(verb));
 

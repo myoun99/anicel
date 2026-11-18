@@ -75,6 +75,11 @@ abstract interface class ParkableCommand {
 typedef WorkAhead =
     Future<void> Function(void Function(double done) report);
 
+/// A press, as the door that stands it behind the wait window takes it: the
+/// `step` it takes and the work it has `ahead` of it — none when the step
+/// works out what it lands as it is taken.
+typedef PressedStep = ({WorkAhead? ahead, void Function() step});
+
 /// Commands whose step has work it can do AHEAD of it, off the UI thread.
 ///
 /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
