@@ -431,7 +431,7 @@ void main() {
             'there is no failure',
       );
       pictures.partsToMake(at(3));
-      pictures.bytesToMake(at(3));
+      await pictures.bytesToMake(at(3));
       await pictures.readIn(at(3));
       expect(
         reads.read,

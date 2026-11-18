@@ -1195,6 +1195,14 @@ impl Pictures {
         })
     }
 
+    /// Whether a tile made of each of `made_of` is kept — none where it is
+    /// told by nothing: what [`Self::held_as`] would hold, and holds none
+    /// of. ⚠️Of the books as they are, no pool made for the asking.
+    pub(crate) fn keeps(&self, made_of: &[Option<MadeOf>]) -> Vec<bool> {
+        let kept = self.kept();
+        made_of.iter().map(|of| of.as_ref().is_some_and(|of| kept.told.made.contains_key(of))).collect()
+    }
+
     /// The tiles at `made` — each in a fresh slot, and run onto — told
     /// from here on by what each is made of: the tile the next picture
     /// made of the same holds ([`Self::held_as`]). A telling that has its

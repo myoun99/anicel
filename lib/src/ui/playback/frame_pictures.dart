@@ -666,17 +666,21 @@ class FramePictures implements PlaybackPictures {
   final ValueNotifier<int> _gaveUp = ValueNotifier<int>(0);
   late final _gaveUpTold = OnceAMicrotask(() => _gaveUp.value += 1);
 
-  /// What the picture will weigh: the tiles the engine keeps of it laid
-  /// afresh ([EngineStackScreen.bytesToMake]), where every cel it draws is
-  /// in hand ([readIn]) — and else of the page's ([EngineStackScreen.
+  /// What the picture will weigh: the tiles the engine makes of it laid
+  /// afresh ([EngineStackScreen.bytesToMake]) — none for a tile its
+  /// pictures keep one of the same input for —, where every cel it draws
+  /// is in hand ([readIn]) — and else of the page's ([EngineStackScreen.
   /// bytesOver]). ⛔Reads nothing: a walk weighs the frames it asks for
   /// ahead before it reads them.
   ///
   /// ⚠️Where the engine cannot plan it yet — its tools still opening, its
   /// chains' kernels still to compile ([FrameKernelsToCome]) — every tile
-  /// its world meets: more than it will weigh, never less.
+  /// its world meets: more than it will weigh, never less. ⏳And a tile an
+  /// effect chain's picture is laid on is weighed as made, whoever keeps
+  /// one: weighed ahead, a frame's chains are held under no number
+  /// ([EngineChainHolds]) — holding one is running it.
   @override
-  int bytesToMake(DemandedPicture picture) {
+  Future<int> bytesToMake(DemandedPicture picture) async {
     final nodes = stackOf(picture);
     final canvasSize = pageOf(picture).canvasSize;
     final inHand = stackedCelsOf(
@@ -689,7 +693,7 @@ class FramePictures implements PlaybackPictures {
     final tools = appEngineFrameToolsOpen;
     if (tools != null) {
       try {
-        return EngineStackScreen.bytesToMake(
+        return await EngineStackScreen.bytesToMake(
           frame,
           tools.composite,
           tools.letters,

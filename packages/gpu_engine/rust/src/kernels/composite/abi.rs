@@ -16,7 +16,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::device::{Engine, Sent, let_go, let_go_unwaited, on_thread_of};
@@ -53,6 +53,19 @@ pub(crate) struct Planned {
     maps: Vec<PlannedMap>,
     steps: Vec<Step>,
     mask: Option<MaskPlane>,
+    weighed: Weighed,
+}
+
+/// The tiles a picture of a plan was weighed as ([`gpu_engine_plan_weigh`]):
+/// written on the engine's thread, read on its caller's once that body has
+/// told it ([`gpu_engine_plan_weighed`]) — -1 before any, and where it
+/// could not be weighed.
+struct Weighed(AtomicI64);
+
+impl Default for Weighed {
+    fn default() -> Self {
+        Self(AtomicI64::new(-1))
+    }
 }
 
 /// A mask the app keeps on the GPU: a plane of bytes (mask.wgsl's layout)
@@ -635,22 +648,71 @@ pub unsafe extern "C" fn gpu_engine_plan_keys(plan: *mut Planned) -> u32 {
     plan.keys.len() as u32 - 1
 }
 
-/// The tiles a screen keeps of `plan` laid afresh over the pixels `extent`
-/// — [left, top, right, bottom) —: each it lays anything on
-/// ([`Kept::tiles_made`]), what the picture will weigh. -1 where `extent`
-/// lies past the grid, see the last error.
+/// Weighs the picture a screen makes of `plan` laid afresh over the pixels
+/// `extent` — [left, top, right, bottom) —: of the tiles it lays anything
+/// on, each the engine's pictures keep none for yet
+/// ([`Kept::tiles_made`]). On the engine's thread, its caller waiting for
+/// none of it ([`Engine::posted`]); `told` is called there with `number`
+/// once it is weighed — false where `extent` lies past the grid — and
+/// what it weighs is read from then on ([`gpu_engine_plan_weighed`]). The
+/// pool's pages and its stamps are taken as it is called, as the compose
+/// that makes the picture takes them ([`gpu_engine_screen_compose`]);
+/// `plan` is read as it runs.
+///
+/// ⛔Not a failure of its caller's next done, as a body's is: that done
+/// is a screen's, asked for the frame it puts up, and the weigh has its
+/// own word.
+///
+/// 🚨ON THE ENGINE'S THREAD, IN ITS TURN (F-610, 2026-11-19) — not on its
+/// caller's, where a plan was weighed till then, by the tiles it lays on
+/// alone: the pictures' books are held while a page of their pool is made
+/// (`Pictures::fresh`), and the UI's thread asking them stood behind
+/// that; and behind the composes handed over before it, a picture is
+/// weighed against those as kept — a cut's second against its first, which
+/// is still on its way when the second is asked for.
 ///
 /// # Safety
-/// `plan` is live and `extent` holds four words.
+/// Every pointer is live, the pool made on `engine`; `extent` holds four
+/// words. Nothing adds to `plan` from here on, and it is let go of on the
+/// engine's thread ([`let_go`]), behind this in turn. `told` is one any
+/// thread may call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_plan_tiles_made(
+pub unsafe extern "C" fn gpu_engine_plan_weigh(
     plan: *const Planned,
+    engine: *const Engine,
+    pool: *const Pool,
     extent: *const i32,
-) -> i64 {
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
     // SAFETY: see the function's contract.
-    let (plan, extent) = unsafe { (&*plan, *extent.cast::<[i32; 4]>()) };
-    plan.laid_on((&[], None), |plan| Kept::tiles_made(plan, extent))
-        .map_or(-1, |tiles| i64::try_from(tiles).unwrap_or(i64::MAX))
+    let (extent, pages, stamps) =
+        unsafe { (*extent.cast::<[i32; 4]>(), (*pool).pages().to_vec(), (*pool).stamps()) };
+    let handed = Sent((plan, engine));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (plan, engine) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (plan, engine) = unsafe { (&*plan, &*engine) };
+        let tiles = plan.laid_on((&pages, Some(&stamps)), |laid| Kept::tiles_made(laid, extent, &engine.pictures));
+        let weighed = tiles.map_or(-1, |tiles| i64::try_from(tiles).unwrap_or(i64::MAX));
+        plan.weighed.0.store(weighed, Ordering::Relaxed);
+        told(number, tiles.is_some());
+        Some(())
+    });
+}
+
+/// The tiles `plan`'s picture was weighed as, by the last weigh of it that
+/// has told ([`gpu_engine_plan_weigh`]) — -1 before any, and where that
+/// one could not weigh it.
+///
+/// # Safety
+/// `plan` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_weighed(plan: *const Planned) -> i64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*plan }.weighed.0.load(Ordering::Relaxed)
 }
 
 /// Adds to key chain `keys` a run of `count` colour keys, as the app's

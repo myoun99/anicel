@@ -1085,10 +1085,27 @@ external int planMapLaid(
 @Native<Uint32 Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_steps')
 external int planSteps(Pointer<Planned> plan);
 
-@Native<Int64 Function(Pointer<Planned>, Pointer<Int32>)>(
-  symbol: 'gpu_engine_plan_tiles_made',
-)
-external int planTilesMade(Pointer<Planned> plan, Pointer<Int32> extent);
+@Native<
+  Void Function(
+    Pointer<Planned>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Int32>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_plan_weigh')
+external void planWeigh(
+  Pointer<Planned> plan,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Int32> extent,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<Int64 Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_weighed')
+external int planWeighed(Pointer<Planned> plan);
 
 @Native<Int32 Function(Pointer<Planned>, Uint32, Uint32, Double, Bool)>(
   symbol: 'gpu_engine_plan_map_drawn',

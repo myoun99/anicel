@@ -2301,12 +2301,67 @@ class GpuPlan implements _OfAnEngine {
   /// from begin ([mapDrawn]).
   int get steps => rust.planSteps(_plan);
 
-  /// The tiles a screen keeps of the plan laid afresh over the pixels
-  /// [extent] — [left, top, right, bottom) —: each it lays anything on,
-  /// what the picture will weigh in tiles ([GpuScreen.compose]).
-  int tilesMade((int, int, int, int) extent) => using(
-    (arena) => _checked(rust.planTilesMade(_plan, _rect(arena, extent))),
-  );
+  /// The tiles a screen makes of the plan laid afresh on [pool]'s tiles
+  /// over the pixels [extent] — [left, top, right, bottom) —: of those it
+  /// lays anything on, each the engine's pictures keep none for yet —
+  /// what the picture will weigh in tiles ([GpuScreen.compose],
+  /// [GpuScreen.bytes]). One tile for the same input: a frame's paper is
+  /// one, and what a kept picture of its cut was made of is none.
+  ///
+  /// 🚨WEIGHED ON THE ENGINE'S THREAD, IN ITS TURN (F-610, 2026-11-19):
+  /// this isolate waits for none of it — the pictures' books are that
+  /// thread's to wait for —, and behind the composes handed over before
+  /// it, it is weighed against their pictures as kept: a cut's second
+  /// against its first, on its way still as this is asked. ↩️Counted on
+  /// this isolate till then, every tile the plan lays on: several times
+  /// what a picture weighs once a tile is kept once (rust/src/kernels/
+  /// composite/kept.rs, `Kept::tiles_made`).
+  ///
+  /// The plan is read as it is weighed, and its answer off it: [free]d
+  /// meanwhile, it is let go of once that has come.
+  Future<int> tilesMade(GpuPool pool, (int, int, int, int) extent) {
+    final weighed = Completer<int>();
+    using(
+      (arena) => rust.planWeigh(
+        _plan,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _rect(arena, extent),
+        _weighs.told,
+        _weighs.kept((weighed: weighed, plan: this)),
+      ),
+    );
+    _weighing += 1;
+    return weighed.future;
+  }
+
+  /// The weighs on their way ([tilesMade]), and how the engine's thread
+  /// tells this isolate one has been weighed.
+  static final _weighs = _Told<({Completer<int> weighed, GpuPlan plan})>((
+    _,
+    asked,
+    weighed,
+  ) {
+    final plan = asked.plan;
+    final tiles = rust.planWeighed(plan._plan);
+    plan._weighing -= 1;
+    if (plan._freed && plan._weighing == 0) {
+      rust.planFree(plan._plan);
+    }
+    if (weighed) {
+      asked.weighed.complete(tiles);
+    } else {
+      asked.weighed.completeError(
+        GpuRefused('a plan is weighed over pixels past the grid'),
+      );
+    }
+  });
+
+  /// How many weighs of it are on their way ([tilesMade]).
+  int _weighing = 0;
+
+  /// Whether it was [free]d while one was.
+  bool _freed = false;
 
   /// Takes the plan's steps from step [first] on as the steps a blur map is
   /// drawn from — drawn alone over the blur's rectangle, as they show by
@@ -2469,7 +2524,15 @@ class GpuPlan implements _OfAnEngine {
     return _checked(added) == 1;
   }
 
-  void free() => rust.planFree(_plan);
+  /// Lets go of the plan — once its weighs on their way have told, where
+  /// any is ([tilesMade]): each reads its answer off the plan.
+  void free() {
+    if (_weighing == 0) {
+      rust.planFree(_plan);
+    } else {
+      _freed = true;
+    }
+  }
 }
 
 /// The picture an effect chain had come to at a plug-in's step, and the

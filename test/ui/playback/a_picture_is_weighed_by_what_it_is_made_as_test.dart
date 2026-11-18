@@ -134,7 +134,7 @@ void main() {
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
 
-      expect(pictures.bytesToMake(picture), canvasBytes);
+      expect(await pictures.bytesToMake(picture), canvasBytes);
       expect(
         store.hotBakedSurfaceOrNull(key),
         isNull,
@@ -142,7 +142,7 @@ void main() {
       );
 
       await pictures.readIn(picture);
-      final weight = pictures.bytesToMake(picture);
+      final weight = await pictures.bytesToMake(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
 
       expect(weight, pictures.weighNew(picture, {}));
@@ -167,7 +167,7 @@ void main() {
 
       await pictures.readIn(picture);
 
-      expect(pictures.bytesToMake(picture), canvasBytes);
+      expect(await pictures.bytesToMake(picture), canvasBytes);
     });
   });
 

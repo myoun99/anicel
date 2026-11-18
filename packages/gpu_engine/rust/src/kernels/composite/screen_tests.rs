@@ -839,7 +839,11 @@ fn a_canvas_keeps_no_tile_nothing_lays_on_and_shows_nothing_there() {
     let kept = kept_in(&pictures, &plan);
     assert_eq!(there(kept.as_tiles().set), there(&set));
     assert_eq!(kept.bytes(), 8 * TILE_BYTES, "8 of 15 tiles");
-    assert_eq!(Kept::tiles_made(&plan, PAGE), Some(8), "weighed before it is made as it is kept");
+    assert_eq!(
+        Kept::tiles_made(&plan, PAGE, &Pictures::sized(15).expect("a pool")),
+        Some(8),
+        "weighed before it is made as it is kept"
+    );
     assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
 
     let (full_pages, full_set, _) = composite_of(noise(17), CANVAS);
@@ -907,6 +911,10 @@ fn a_solid_lays_the_tiles_it_meets_and_a_buffer_lays_nothing_of_its_own() {
     let kept = kept_in(&Pictures::sized(15).expect("a pool"), &plan);
     let held: Vec<(i32, i32)> = kept.as_tiles().set.placed_under(None).map(|(tile, _)| tile).collect();
     assert_eq!(held, [(0, 0), (1, 0), (4, 2)]);
-    assert_eq!(Kept::tiles_made(&plan, PAGE), Some(held.len()), "weighed as it is kept");
+    assert_eq!(
+        Kept::tiles_made(&plan, PAGE, &Pictures::sized(15).expect("a pool")),
+        Some(held.len()),
+        "weighed as it is kept"
+    );
     assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
 }

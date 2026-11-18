@@ -41,7 +41,7 @@ final class _HeldPictures implements PlaybackPictures {
   void noteFailure(DemandedPicture picture) {}
 
   @override
-  int bytesToMake(DemandedPicture picture) => 0;
+  Future<int> bytesToMake(DemandedPicture picture) async => 0;
 
   @override
   Future<void> readIn(DemandedPicture picture) async {}

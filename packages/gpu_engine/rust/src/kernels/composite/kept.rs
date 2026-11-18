@@ -110,15 +110,32 @@ impl Kept {
         Self::made_in(engine, composite, plan, extent, Some(over), &engine.pictures, budget)
     }
 
-    /// The tiles [`Self::made`] keeps of `plan` over the pixels `extent`:
-    /// each it lays anything on ([`Plan::lays_on`]) — what a picture weighs
-    /// before it is made (the playback's room is asked for it). ⚠️The most
-    /// it comes to weigh: a tile the pool keeps one of the same input for
-    /// is held and weighs nothing more ([`Kept::bytes`]), and which those
-    /// are is told where it is made, by the stamps taken then.
-    pub(crate) fn tiles_made(plan: &Plan, extent: [i32; 4]) -> Option<usize> {
+    /// The tiles [`Self::made`] makes of `plan` over the pixels `extent`,
+    /// kept in `pictures` as it stands: of those it lays anything on
+    /// ([`Plan::lays_on`]), the ones run for ([`run_for`]) — what the
+    /// picture weighs ([`Kept::bytes`]), before it is made (the playback's
+    /// room is asked for it).
+    ///
+    /// 🚨BY THE MAKING'S OWN COUNT (F-610, 2026-11-19): it counted every
+    /// tile the plan lays on till then — 「the most it comes to weigh」 —,
+    /// and one tile for the same input (유저 2026-11-18 「같은 타일은 한 벌만」)
+    /// left that several times the weight: a frame's paper is one tile and
+    /// the rows no frame of its cut changes are the picture's before it.
+    /// The room asked for more than a picture needs lets go of more
+    /// (card playback-picture-weight-estimates).
+    ///
+    /// ⚠️As the pool stands: a picture on its way to it is told by nothing
+    /// yet, and the tiles this one will hold of it are counted as made.
+    pub(crate) fn tiles_made(plan: &Plan, extent: [i32; 4], pictures: &Pictures) -> Option<usize> {
         let set = unplaced_over(extent)?;
-        Some(set.grid().into_iter().filter(|&tile| plan.lays_on(tile)).count())
+        let made_of: Vec<Option<MadeOf>> = set
+            .grid()
+            .into_iter()
+            .filter(|&tile| plan.lays_on(tile))
+            .map(|tile| plan.made_of(tile, extent))
+            .collect();
+        let kept = pictures.keeps(&made_of);
+        Some(run_for(&made_of, |tile| kept[tile]).into_iter().filter(|&(tile, first)| tile == first).count())
     }
 
     /// `made_over` over `over` — `made` where none —, kept in `pictures`:
@@ -191,15 +208,7 @@ impl Kept {
             tiles.iter().map(|&tile| plan.made_of(tile, self.extent)).collect();
         let kept = self.pictures.held_as(engine, &made_of)?;
         self.place(tiles.iter().zip(&kept).filter_map(|(&tile, &at)| Some((tile, at?))));
-        // Each tile left, by the first here of its telling: itself where it
-        // is that one, or is told by nothing.
-        let mut firsts: HashMap<&MadeOf, usize> = HashMap::new();
-        let mut first_of =
-            |tile: usize| made_of[tile].as_ref().map_or(tile, |of| *firsts.entry(of).or_insert(tile));
-        let left: Vec<(usize, usize)> = (0..tiles.len())
-            .filter(|&tile| kept[tile].is_none())
-            .map(|tile| (tile, first_of(tile)))
-            .collect();
+        let left = run_for(&made_of, |tile| kept[tile].is_some());
         let (fresh, same): (Vec<_>, Vec<_>) = left.into_iter().partition(|&(tile, first)| tile == first);
         // A run puts no more than a page of the pool takes.
         for some in fresh.chunks(self.pictures.slots(engine)?) {
@@ -323,6 +332,17 @@ impl Drop for Kept {
     fn drop(&mut self) {
         self.pictures.release(self.places(), self.own.keys().copied());
     }
+}
+
+/// Of the tiles told by `made_of`, each the pool keeps none for yet —
+/// `kept` says which it does — by the first of them of its telling:
+/// itself where it is that one, or is told by nothing. Those are the tiles
+/// a picture is run for, and its own ([`Kept::make`]); the others hold the
+/// first of their telling.
+fn run_for(made_of: &[Option<MadeOf>], kept: impl Fn(usize) -> bool) -> Vec<(usize, usize)> {
+    let mut firsts: HashMap<&MadeOf, usize> = HashMap::new();
+    let mut first_of = |tile: usize| made_of[tile].as_ref().map_or(tile, |of| *firsts.entry(of).or_insert(tile));
+    (0..made_of.len()).filter(|&tile| !kept(tile)).map(|tile| (tile, first_of(tile))).collect()
 }
 
 /// The plan laying `steps` over `tiles`, the one tile set.

@@ -997,7 +997,71 @@ fn screens_composed_of_the_same_hold_one_tile_weighed_once() {
     }
 }
 
+// A plan is weighed call by call as the tiles a screen composed of it then
+// comes to weigh (F-610), on the engine's thread in its turn: nothing is
+// weighed as the call returns; with nothing kept, every tile of it; behind
+// a compose of the same handed over before it — still on its way as the
+// weigh is called —, none, that picture kept by the time it is weighed;
+// and the screen let go, every tile again. On an engine of its own: the
+// tests' one keeps every test's pictures.
+#[test]
+fn a_plan_is_weighed_on_the_engines_thread_behind_what_was_composed_before_it() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let mut pool = Pool::new(&engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let at = pool.store(&engine, cel, &[&tile(21, true), &tile(22, false)]).expect("store");
+    // What is handed over from here waits behind this, in its order, till
+    // what it returns is sent to.
+    let held = |engine: &Engine| {
+        let (open, shut) = std::sync::mpsc::channel::<()>();
+        engine.posted(move || shut.recv().ok());
+        open
+    };
+    // SAFETY: the engine is live through every call, and what is made on
+    // it is let go of once.
+    unsafe {
+        let (plan, extent) = side_by_side(&engine, &at);
+        let told = || std::mem::take(&mut *WEIGHS_TOLD.lock().unwrap_or_else(PoisonError::into_inner));
+        assert_eq!(gpu_engine_plan_weighed(plan), -1, "before any weigh");
+        let open = held(&engine);
+        gpu_engine_plan_weigh(plan, &engine, &pool, extent.as_ptr(), told_a_weigh, 7);
+        assert_eq!((gpu_engine_plan_weighed(plan), told()), (-1, vec![]), "nothing is weighed on its caller's thread");
+        open.send(()).expect("the engine's thread waits");
+        done_here(&engine).expect("weighed");
+        assert_eq!((gpu_engine_plan_weighed(plan), told()), (2, vec![(7, true)]), "nothing kept: its two tiles");
+        let screen = gpu_engine_screen_new(&engine, extent.as_ptr(), 1.0);
+        let open = held(&engine);
+        gpu_engine_screen_compose(screen, &composite, &engine, &pool, plan, extent.as_ptr());
+        gpu_engine_plan_weigh(plan, &engine, &pool, extent.as_ptr(), told_a_weigh, 8);
+        assert_eq!(gpu_engine_screen_bytes(screen), 0, "premise: the compose is on its way still");
+        open.send(()).expect("the engine's thread waits");
+        done_here(&engine).expect("composed and weighed");
+        assert_eq!(gpu_engine_screen_bytes(screen), 2 * TILE_BYTES, "premise: the picture is kept");
+        assert_eq!(
+            (gpu_engine_plan_weighed(plan), told()),
+            (0, vec![(8, true)]),
+            "behind the compose: its picture's tiles are held"
+        );
+        gpu_engine_screen_free(screen);
+        gpu_engine_plan_weigh(plan, &engine, &pool, extent.as_ptr(), told_a_weigh, 9);
+        done_here(&engine).expect("let go and weighed");
+        assert_eq!((gpu_engine_plan_weighed(plan), told()), (2, vec![(9, true)]), "its picture let go: made again");
+        gpu_engine_plan_free(plan);
+        done_here(&engine).expect("let go");
+    }
+}
+
 extern "C" fn told_nothing(_: u64, _: bool) {}
+
+/// The weighs told, each by its number and whether it weighed: what the
+/// engine's thread calls ([`gpu_engine_plan_weigh`]).
+static WEIGHS_TOLD: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
+
+extern "C" fn told_a_weigh(number: u64, weighed: bool) {
+    WEIGHS_TOLD.lock().unwrap_or_else(PoisonError::into_inner).push((number, weighed));
+}
 
 // A compose is told by the pool's stamps as they stood when it was called
 // (🚨 on `gpu_engine_screen_compose`): a slot it names, let go and stored

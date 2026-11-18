@@ -93,12 +93,28 @@ impl Frame {
     }
 
     /// Its picture over the page kept in `pictures`: told by the pool's
-    /// stamps as they stand where `told`, by nothing else.
+    /// stamps as they stand where `told`, by nothing else. 🚨Every picture
+    /// kept here was weighed ahead as what it came to weigh
+    /// ([`Kept::tiles_made`]) — the room is asked for that.
     fn kept(&self, pool: &Pool, pictures: &Pictures, told: bool) -> Kept {
         let Rig { engine, composite } = rig();
         let stamps = pool.stamps();
         let plan = self.plan(pool, told.then_some(&stamps));
-        Kept::made_in(engine, composite, &plan, PAGE, None, pictures, composite.widest()).expect("kept")
+        let ahead = Kept::tiles_made(&plan, PAGE, pictures).expect("weighed");
+        let kept = Kept::made_in(engine, composite, &plan, PAGE, None, pictures, composite.widest()).expect("kept");
+        assert_eq!(kept.bytes(), ahead as u64 * TILE_BYTES, "weighed ahead as what it comes to weigh");
+        kept
+    }
+
+    /// The tiles its picture over the page will weigh, kept in `pictures`
+    /// as it stands ([`Kept::tiles_made`]) — and nothing held for the
+    /// asking.
+    fn ahead(&self, pool: &Pool, pictures: &Pictures, told: bool) -> usize {
+        let stamps = pool.stamps();
+        let holds = pictures.idle_bytes();
+        let tiles = Kept::tiles_made(&self.plan(pool, told.then_some(&stamps)), PAGE, pictures).expect("weighed");
+        assert_eq!(pictures.idle_bytes(), holds, "weighing holds nothing and makes no page");
+        tiles
     }
 
     /// Its picture's pixels made whole, told by nothing: what a picture of
@@ -145,6 +161,31 @@ fn pictures_made_of_the_same_hold_one_tile() {
     assert_eq!(pictures.unowned_bytes(), 0, "each tile's maker holds it");
     assert!(kept_bytes(&first) == one.whole(&pool), "the first, against it made whole");
     assert!(kept_bytes(&second) == other.whole(&pool), "the second, against it made whole");
+}
+
+// Weighed before it is made, a picture is the tiles its making runs for —
+// what it comes to weigh, not every tile it lays on: the first of a cut the
+// paper once, the row no frame changes and its own; the next its own
+// alone; one kept already, nothing; told by nothing, every tile of the
+// page. And by what the pool keeps then: its maker let go, a tile another
+// picture holds is not made, and one nobody holds is.
+#[test]
+fn a_picture_is_weighed_ahead_as_the_tiles_its_making_runs_for() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3), tile(4)]);
+    let (one, other) = (Frame::of([at[0], at[1]], at[2]), Frame::of([at[0], at[1]], at[3]));
+    let pictures = Pictures::sized(SLOTS).expect("a pool");
+    assert_eq!(one.ahead(&pool, &pictures, true), 4, "the paper once, the row of two, its own");
+    assert_eq!(one.ahead(&pool, &pictures, false), 8, "told by nothing: every tile it lays on");
+    let first = one.kept(&pool, &pictures, true);
+    assert_eq!(first.bytes(), 4 * TILE_BYTES, "premise: as it was weighed");
+    assert_eq!(other.ahead(&pool, &pictures, true), 1, "its own alone");
+    assert_eq!(one.ahead(&pool, &pictures, true), 0, "kept already");
+    assert_eq!(other.ahead(&pool, &pictures, false), 8, "told by nothing, whatever is kept");
+    let second = other.kept(&pool, &pictures, true);
+    drop(first);
+    assert_eq!(one.ahead(&pool, &pictures, true), 1, "its own again: the rest the second holds");
+    drop(second);
+    assert_eq!(one.ahead(&pool, &pictures, true), 4, "nobody holds a tile of it");
 }
 
 // A slot let go and handed out again holds another tile under the same

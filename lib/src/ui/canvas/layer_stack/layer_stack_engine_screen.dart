@@ -192,26 +192,32 @@ final class EngineStackScreen {
         gpuTileBytes;
   }
 
-  /// What [frame] will keep laid afresh ([compose]) on [composite]: a tile
-  /// for each its rows lay anything on, of the world it holds — the
-  /// engine's own count of the plan it lays ([GpuPlan.tilesMade]), where
-  /// [bytesOver] is every tile the world meets.
+  /// What [frame] will weigh laid afresh ([compose]) on [composite]: a
+  /// tile for each the engine makes of it — of those its rows lay anything
+  /// on in the world it holds, each the engine's pictures keep none for
+  /// yet — by the engine's own count of the plan it lays
+  /// ([GpuPlan.tilesMade]), weighed on its thread; [bytesOver] is every
+  /// tile the world meets.
   ///
-  /// Throws [FrameKernelsToCome], nothing weighed, where [compose] would.
-  static int bytesToMake(
+  /// Fails by [FrameKernelsToCome], nothing weighed, where [compose] would
+  /// throw it.
+  static Future<int> bytesToMake(
     StackedFrame frame,
     GpuComposite composite,
     EngineLetters letters,
-  ) => _planned(
-    frame,
-    composite,
-    letters,
-    // Weighed ahead, a frame is its cels as they are stored: no hand is
-    // on it, so no row of it holds a range.
-    maskOf: (_) => throw StateError('a frame weighed ahead holds no range'),
-    holds: null,
-    run: (_, plan, world) => plan.tilesMade(_edgesOf(world)) * gpuTileBytes,
-  );
+  ) async {
+    final tiles = await _planned(
+      frame,
+      composite,
+      letters,
+      // Weighed ahead, a frame is its cels as they are stored: no hand is
+      // on it, so no row of it holds a range.
+      maskOf: (_) => throw StateError('a frame weighed ahead holds no range'),
+      holds: null,
+      run: (pool, plan, world) => plan.tilesMade(pool, _edgesOf(world)),
+    );
+    return tiles * gpuTileBytes;
+  }
 
   /// The bytes the kept frame holds on the GPU ([GpuScreen.bytes]) — none
   /// before a frame is laid.
