@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
+import '../helpers/semantics_as_the_app_runs.dart';
+
 /// What ONE step of a cut-length drag costs, on each surface that shows it.
 ///
 /// The two panels subscribe to the SAME preview channel at opposite
@@ -172,5 +174,5 @@ void main() {
     );
     expect(storyboard, greaterThan(0));
     expect(timeline, greaterThan(0));
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 }

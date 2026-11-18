@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/semantics_as_the_app_runs.dart';
 
 /// F-226 measurement (not a pin): the real app takes big zigzag strokes
 /// across the whole canvas, and the census is read after each — whether
@@ -79,5 +80,7 @@ void main() {
       await tester.pump();
       report('after ${stroke + 1}');
     }
-  }, timeout: const Timeout(Duration(minutes: 20)));
+  },
+      semanticsEnabled: semanticsAsTheAppRuns,
+      timeout: const Timeout(Duration(minutes: 20)));
 }

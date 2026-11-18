@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/semantics_as_the_app_runs.dart';
 
 /// Full-pipeline accumulation microbenchmark (not a correctness test): the
 /// REAL app (HomePage — session, history, caches, prerender scheduler,
@@ -85,6 +86,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     },
+    semanticsEnabled: semanticsAsTheAppRuns,
     timeout: const Timeout(Duration(minutes: 15)),
   );
 }
