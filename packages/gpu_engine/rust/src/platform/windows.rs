@@ -831,13 +831,23 @@ fn main() { out[0] = 7u; }
     /// over, as a real one does — long past a waiter's look (`TURN_LOOK`).
     /// The sums start from the buffer and are written where the buffer
     /// held a 1 — it holds a 0 — so DXC can drop none of them.
+    ///
+    /// 🧪Seeded anew each time it is asked for, so that the driver has
+    /// never made its pipeline either: NVIDIA keeps what it made of the
+    /// same kernel from run to run, and made it again in a millisecond —
+    /// a pipeline's turn let go at once passed so (11-18), the second
+    /// engine looking after the first had kept it.
     fn seven_slowly() -> String {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos() as u32)
+            ^ std::process::id();
         let sums = "    x = x * 1664525u + 1013904223u;\n".repeat(SLOW_SUMS);
         format!(
             "@group(0) @binding(0) var<storage, read_write> out: array<u32>;
 @compute @workgroup_size(1)
 fn main() {{
-    var x = out[0];
+    var x = out[0] ^ {seed}u;
 {sums}    out[0] = select(7u, x, out[0] == 1u);
 }}"
         )
@@ -849,8 +859,9 @@ fn main() {{
     const SLOW_SUMS: usize = 400;
 
     // Two engines that ask for a new kernel at once — two processes' suites
-    // as a run starts — compile it once: the turn is held through the
-    // compile, whichever comes second waiting for it or reading it after.
+    // as a run starts — compile it once, and make its pipeline once: each
+    // turn is held through what it makes, whichever comes second waiting
+    // for it or reading it after.
     // 🧪On a kernel DXC takes long over: on a quick one, a turn let go as
     // the compile starts passed too — the second engine's look came after
     // the first had kept it.
