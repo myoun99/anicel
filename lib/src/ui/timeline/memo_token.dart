@@ -80,6 +80,30 @@ final class ByMap<K, V> {
   int get hashCode => value.length;
 }
 
+/// A memo-token field for a page that never prints the EYE — the
+/// timesheet: [value] compares as it reads with every row's eye open, as
+/// [opened] makes it (`cutWithEyesOpen` and kin), so a row shown or hidden
+/// is the same input and anything else is not. The same object is the same
+/// input without opening anything.
+///
+/// [opened] hands back what compares by value: a list says so with
+/// [ByList].
+final class EyesOpen<T extends Object> {
+  EyesOpen(this.value, Object Function(T value) opened) : _opened = opened;
+
+  final T value;
+  final Object Function(T value) _opened;
+  late final Object _asRead = _opened(value);
+
+  @override
+  bool operator ==(Object other) =>
+      other is EyesOpen<T> &&
+      (identical(other.value, value) || other._asRead == _asRead);
+
+  @override
+  int get hashCode => _asRead.hashCode;
+}
+
 /// What a memo holds for one key: the widget as built, the facts it was
 /// built from, and the words it was built in.
 typedef Kept<F> = ({F facts, AppLanguageSettings language, Widget built});

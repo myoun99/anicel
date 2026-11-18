@@ -6,7 +6,9 @@ import '../models/app_frame_grid_settings.dart';
 import '../models/app_language.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/eyes_open.dart';
 import '../models/inbetween_mark.dart';
+import '../models/layer.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
@@ -22,7 +24,7 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'sliced_value_listenable_builder.dart' show SlicedListenable;
-import 'timeline/memo_token.dart' show ByIdentity, ByList;
+import 'timeline/memo_token.dart' show ByIdentity, ByList, EyesOpen;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -108,16 +110,17 @@ class TimesheetTabHost extends StatefulWidget {
 
 /// What a sheet prints of the session ([_TimesheetTabHostState._printedBy]),
 /// each model object by IDENTITY — they are immutable, so a new one is the
-/// only way any of them changes.
+/// only way any of them changes — and the rows beside their EYES, which the
+/// sheet does not print ([EyesOpen]).
 typedef _Printed = ({
-  ByIdentity<Cut> cut,
+  EyesOpen<Cut> cut,
   int cutStartFrame,
   ByIdentity<Object> info,
   String projectName,
   AppLanguage notation,
   ByIdentity<Object> instructionSet,
-  ByIdentity<Object> trackSe,
-  ByIdentity<Object> transition,
+  EyesOpen<List<Layer>> trackSe,
+  EyesOpen<Layer> transition,
   ByList<String> linkedCuts,
   int fps,
   InbetweenMark unnamedMark,
@@ -160,8 +163,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     if (at == null) {
       return null;
     }
+    // 🔬The rows are compared with their eyes open: the sheet prints a row
+    // the same shown or hidden — its columns are the rows on the sheet
+    // (`onTimesheet`), its のりしろ the transition row's spans as drawn, not
+    // as played — and an eye toggled, keyed on the cut's identity, built
+    // its document again and repainted every page (card
+    // an-eye-toggle-holds-the-ui-thread, 11-18). The conte prints the eye
+    // and still hears it (`ConteTabHost.printedBy`).
     return (
-      cut: ByIdentity(at.cut),
+      cut: EyesOpen(at.cut, cutWithEyesOpen),
       cutStartFrame: at.startFrame,
       info: ByIdentity(session.timesheetInfo),
       projectName: session.repository.requireProject().name,
@@ -170,18 +180,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       instructionSet: ByIdentity(session.camera.cameraInstructionSet),
       // Track-owned SE rows join the memo key: their edits change the track
       // list identity, not the cut's.
-      trackSe: ByIdentity(session.activeTrack.seLayers),
+      trackSe: EyesOpen(
+        session.activeTrack.seLayers,
+        (rows) => ByList(rowsWithEyesOpen(rows)),
+      ),
       // Same story for the transition row: track-owned, so an edit there
       // changes the track's identity rather than the cut's. It is keyed as
       // it PRINTS (F-229): an O.L writes the cuts it joins and the word of
       // the sheet's language, so a rename next door or a language switch
       // reprints.
-      transition: ByIdentity(
+      transition: EyesOpen(
         session.transitions.names.rowNamed(
           session.activeTrack,
           session.activeTrack.transitionLayer,
           olWord: sheetOlWord(session),
         ),
+        rowWithEyeOpen,
       ),
       // The 겸용 cuts' names the header writes (F-558), keyed as they
       // print: 🔬a rename on another track hands the printed cut back as

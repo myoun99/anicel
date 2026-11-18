@@ -131,6 +131,13 @@ class ConteTabHost extends StatefulWidget {
   /// they are shot through — and the active cut's canvas, which the next
   /// cut a stroke makes is planned from ([_ConteTabHostState._brushPageOf]).
   /// The models are immutable, so a new one is the only way either moves.
+  ///
+  /// ⛔THE EYE IS PRINTED HERE, so the project is not compared with its
+  /// eyes open as the timesheet's rows are (`EyesOpen`): a cell's picture
+  /// is the cut as it shows, and the page asks the picture store for it
+  /// again as it prints — the store keys a picture by its rows' eyes
+  /// (`StoryboardCutThumbnailStore`), card an-eye-toggle-holds-the-ui-thread
+  /// (11-18).
   static Object printedBy(EditorSessionManager session) => (
     project: ByIdentity(session.repository.requireProject()),
     activeCanvas: session.activeCutOrNull?.canvasSize,

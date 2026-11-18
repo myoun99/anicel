@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sliced_value_listenable_builder.dart';
 
 /// 🗣️I-127-Q1 (유저 2026-10-25): 「봉투 용지 패널에도 넣고, 셀 출력은 그대로
 /// 부른다」 — a box that prints a stage's worker is typed into as the
@@ -73,10 +74,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          // Built again when the project moves, as the workspace builds it
+          // Built again when what it prints moves, as the workspace builds it
           // (`CutEnvelopeTabHost.printedBy`).
-          body: ListenableBuilder(
+          body: SlicedListenableBuilder<Object?>(
             listenable: session,
+            slice: () => CutEnvelopeTabHost.printedBy(session),
             builder: (context, _) => CutEnvelopeTabHost(
               session: session,
               inkController: ink,

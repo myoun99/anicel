@@ -26,6 +26,18 @@ class CutEnvelopeCelCount {
   /// 仕上げ: the drawings of the cel's 仕上げ-labelled rows — トレス・
   /// ペイント on the paper form.
   final int shiage;
+
+  /// Equal rows print the same (`CutEnvelopeSource`'s `==`).
+  @override
+  bool operator ==(Object other) =>
+      other is CutEnvelopeCelCount &&
+      other.name == name &&
+      other.genga == genga &&
+      other.douga == douga &&
+      other.shiage == shiage;
+
+  @override
+  int get hashCode => Object.hash(name, genga, douga, shiage);
 }
 
 /// The envelope's 担当 rows for [cut], top to bottom: one per cel name, in
