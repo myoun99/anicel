@@ -37,15 +37,22 @@ void main() {
       for (var at = 0; at < side * side; at += 1) ...[at, 2 * at, 3 * at, 255],
     ]);
     // The longest this isolate went without a turn of its own while the
-    // resample was on its way.
+    // resample was on its way — the gap its answer ends in too: a wait
+    // here that ends in the answer runs on to the await below, and no tick
+    // comes after it.
     var longest = Duration.zero;
     var since = Stopwatch()..start();
-    final turns = Timer.periodic(const Duration(milliseconds: 10), (_) {
+    void aTurn() {
       if (since.elapsed > longest) {
         longest = since.elapsed;
       }
       since = Stopwatch()..start();
-    });
+    }
+
+    final turns = Timer.periodic(
+      const Duration(milliseconds: 10),
+      (_) => aTurn(),
+    );
     addTearDown(turns.cancel);
     appGpuEngine.debugStandStill(const Duration(seconds: 2));
     final asked = Stopwatch()..start();
@@ -61,6 +68,7 @@ void main() {
         mode: ResampleMode.blend,
       ),
     );
+    aTurn();
     turns.cancel();
 
     expect(
