@@ -41,7 +41,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../helpers/a_move_lands.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
-import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/wait_window.dart'
+    show expectOneBar, watchTheBar, windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
@@ -316,6 +317,25 @@ void main() {
     session.historyManager.redo();
     await tester.pump();
     expectSamePicture(landed, celOf(session, 'c2'), 'redo, c2');
+  });
+
+  testWidgets('🗣️F-615: 원래 위치에 붙여넣기 across blocks works its cels out '
+      'behind the window, telling how many are done — 「대상 프레임 수에 '
+      '맞춰서 몇퍼센트인지 표시」', (tester) async {
+    final session = await pump(tester);
+    await holdStamp(tester, squareOf(red));
+    selectAcross(session, 0, 3);
+    await tester.pump();
+
+    final told = watchTheBar(tester);
+    await pasteInPlace(tester);
+
+    expectOneBar(told, [1 / 3, 2 / 3, 1]);
+    expect(
+      bitmapSurfaceContentBounds(celOf(session, 'c2')),
+      isNotNull,
+      reason: 'and it landed',
+    );
   });
 
   testWidgets('with no range drawn the press lands on the cel you stand on, '

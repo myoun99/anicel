@@ -32,7 +32,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/rail_group_button.dart';
-import '../helpers/wait_window.dart' show settleBehindTheWaitWindow;
+import '../helpers/wait_window.dart'
+    show expectOneBar, settleBehindTheWaitWindow, watchTheBar;
 import '../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️vanishing-point-types-Q5 (유저 2026-10-16): 래스터라이즈 draws 「지금
@@ -97,6 +98,7 @@ void main() {
           .first,
     );
     await tester.pump();
+    final told = watchTheBar(tester);
     await tester.tap(button);
     // The bake reads the picture back off the engine: real time — behind
     // the wait window, which goes once it has landed (F-551).
@@ -106,6 +108,9 @@ void main() {
           inkOf(session) != null &&
           find.byType(AppProgressDialog).evaluate().isEmpty,
     );
+    // 🗣️F-615: 「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」 — its one cel,
+    // worked out behind the window, told as the whole of it.
+    expectOneBar(told, [1]);
 
     final ink = inkOf(session)!;
     expect(ink.left, greaterThanOrEqualTo(0));
