@@ -285,6 +285,30 @@ fn a_telling_differs_by_every_word_a_tile_s_pixels_come_of() {
     let (one, other) = (told(&keyed(vec![vec![1, 2]]), &pool, (0, 0), PAGE), told(&keyed(vec![vec![1], vec![2]]), &pool, (0, 0), PAGE));
     assert!(one.is_some() && one != Some(base.clone()), "a key chain it is keyed by");
     assert_ne!(one, other, "the chain's runs, each its own words");
+    // A buffer's steps, each by its own words: the rows it holds blend by
+    // how it was opened and how it closes.
+    let buffered = |open: Step, close: Step, matrix: Option<[u32; MATRIX_WORDS]>| {
+        let frame = frame().with(|frame| {
+            frame.matrices.extend(matrix);
+            frame.steps.insert(1, open);
+            frame.steps.push(close);
+        });
+        told(&frame, &pool, (0, 0), PAGE)
+    };
+    let close = |opacity, mode, matrix| Step::Close { opacity, mode, matrix, chain: None };
+    let plain = buffered(Step::Open, close(WHOLE, NORMAL, None), None);
+    let others = [
+        ("opened on the one under it made whole", buffered(Step::OpenOpaque, close(WHOLE, NORMAL, None), None)),
+        ("closed atop", buffered(Step::Open, Step::CloseAtop, None)),
+        ("its close's opacity", buffered(Step::Open, close(WHOLE / 2, NORMAL, None), None)),
+        ("its close's mode", buffered(Step::Open, close(WHOLE, MULTIPLY, None), None)),
+        ("a matrix it closes through", buffered(Step::Open, close(WHOLE, NORMAL, Some(0)), Some(matrix))),
+    ];
+    for (what, other) in &others {
+        assert!(other.is_some() && *other != plain, "a buffer {what}");
+    }
+    let through_another = buffered(Step::Open, close(WHOLE, NORMAL, Some(0)), Some([8; MATRIX_WORDS]));
+    assert!(through_another.is_some() && through_another != others[4].1, "the words of the matrix a buffer closes through");
     assert_ne!(told(&frame(), &pool, (0, 0), [0, 0, 512, 100]), Some(base.clone()), "the extent's part on it");
     assert_ne!(told(&frame(), &pool, (1, 0), PAGE), Some(base.clone()), "premise: another tile of the row");
     // A quarter pixel aside, the row's two tiles are both read for each
