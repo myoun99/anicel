@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart'
     show GpuDeviceWent, GpuReadFailed;
@@ -16,6 +17,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/native/engine_refusals.dart';
+import 'package:anicel/src/native/lost_screen.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/gpu_started_again_message.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -168,6 +170,38 @@ void main() {
     await itsToolsOpen();
     await tester.pumpAndSettle();
     expect(says, findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+    await tester.pumpAndSettle();
+
+    // 🗣️a-lost-gpu-leaves-the-window-unpainted-Q1: once the SCREEN's device
+    // went, the window Windows draws for that loss is the one that speaks.
+    // The same reset takes the canvas engine's, and its notices would come
+    // up as Windows' windows over that question — one saying 「go on
+    // working」 of a screen that draws no more.
+    final askedWithWindows = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(LostScreen.channel, (call) async {
+          askedWithWindows.add(call);
+          return 1;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(LostScreen.channel, null);
+      LostScreen.debugForget();
+    });
+    LostScreen.debugGo();
+    await tester.pump();
+    expect(askedWithWindows, hasLength(1), reason: '⛔premise: Q1 asked');
+    now = now.add(EngineRefusals.openAnotherApart);
+    theDeviceGoes(Completer<void>()..complete());
+    await tester.pump();
+    await itsToolsOpen();
+    await tester.pumpAndSettle();
+    await tester.runAsync(pumpEventQueue);
+    await tester.pump();
+    expect(says, findsNothing);
+    expect(askedWithWindows, hasLength(1), reason: 'nor by Windows');
+    LostScreen.debugForget();
     await tester.pumpWidget(const SizedBox());
 
     // The shell gone, it hears no more: said to one that went, the saying

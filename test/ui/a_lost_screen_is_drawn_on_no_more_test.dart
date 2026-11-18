@@ -1,7 +1,8 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/lost_screen.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/lost_screen_frames.dart';
 
 /// Counts the frames that are DRAWN: `drawFrame` as it stands UNDER the
@@ -58,5 +59,34 @@ void main() {
     expect(binding.drawnFrames, before + 1);
     expect(called, 1, reason: 'the frame is begun as ever');
     expect(find.text('1'), findsOneWidget, reason: 'nothing built anew');
+  });
+
+  // The save of 「저장하고 다시 시작」 waits on this door: a window that has
+  // to be built before its work starts would never let it start here.
+  testWidgets('on a screen drawn on no more, a wait\'s work starts — bare, '
+      'behind no window', (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (built) {
+            context = built;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    LostScreen.debugGo();
+    var ran = false;
+    final done = runWithAppProgress<void>(
+      context: context,
+      title: 'Save',
+      runningLabel: 'Saving',
+      task: (_) async => ran = true,
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(ran, isTrue);
+    await done;
   });
 }
