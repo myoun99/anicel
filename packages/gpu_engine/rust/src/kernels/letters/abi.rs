@@ -11,11 +11,11 @@ mod tests;
 
 use std::sync::Arc;
 
-use crate::device::{Engine, Sent, hands_bytes, let_go_bytes, taken_bytes};
+use crate::device::{Engine, hands_bytes, let_go_bytes, taken_bytes};
 use crate::fail;
 use crate::kernels::composite::Composite;
 use crate::kernels::dab::abi::reported;
-use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::pool::{Cel, Pool, Writing};
 use crate::kernels::write::Change;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
@@ -496,17 +496,14 @@ pub unsafe extern "C" fn gpu_engine_letters_cover(
 
 /// Gives each tile of `letters`' covers ([`gpu_engine_letters_cover`])
 /// that `asks` names — its column and row on the grid, `count` of them —
-/// a fresh slot of `cel` ([`Pool::places`]), writes each one's place to
-/// `places` and its change, inked, to `changes`, and hands the laying of
-/// their picture by `composite` ([`lettered`]) and its putting there to
-/// the engine's thread, waiting for none of it ([`Engine::posted`]): the
-/// engine's alone, as a landing puts what it made. Returns as
-/// [`gpu_engine_stroke_land`] does — how many it gave a slot, the first of
-/// them: all, or fewer where the pool is full at the next; -1 on failure,
-/// see the last error. Once the picture is put, `told` is called — from
-/// the engine's thread — with `number` and whether it was; one that was
-/// not is told by the caller's next done too. None given a slot, nothing
-/// is handed over and `told` is not called.
+/// a fresh slot of `cel`, writes each one's place to `places` and its
+/// change, inked, to `changes`, and hands the laying of their picture by
+/// `composite` ([`lettered`]) and its putting there to the engine's
+/// thread, waiting for none of it ([`Pool::lands_unwaited`], which says
+/// how `told` is called with `number`): the engine's alone, as a landing
+/// puts what it made. Returns as [`gpu_engine_stroke_land`] does — how
+/// many it gave a slot, the first of them: all, or fewer where the pool is
+/// full at the next; -1 on failure, see the last error.
 ///
 /// 🚨A PICTURE NOT PUT IS TOLD, NOT SAID UNWRITTEN (the-ui-thread-never-
 /// enters-the-driver, 2026-11-18): a store's places that were not written
@@ -550,28 +547,17 @@ pub unsafe extern "C" fn gpu_engine_letters_land(
     let Some(tiles) = tiles.collect::<Option<Vec<usize>>>() else {
         return -1;
     };
-    let given = pool.places(engine, Cel(cel), count);
-    let landed = given.iter().map(|&at| (Change::Inked, Some(at))).collect();
-    if !given.is_empty() {
-        let handed = Sent((engine.clone(), composite, pool.writing(given), covered, tiles));
-        engine.posted(move || {
-            let (engine, composite, writing, covered, tiles) = handed.taken();
-            // SAFETY: live till let go of, behind this (the function's
-            // contract).
-            let composite = unsafe { &*composite };
-            // ⚠️As a store's copy tells a device gone (its staging is not
-            // mapped, `Writing::write`): the two doors that write unwaited
-            // say alike what they did not write. wgpu lays and copies on a
-            // device gone and says nothing of it.
-            let put = match engine.gone() {
-                true => fail("the device is gone: the letters are laid nowhere"),
-                false => lettered(&engine, composite, &covered)
-                    .and_then(|picture| writing.put_from(&engine, &picture, tiles)),
-            };
-            told(number, put.is_some());
-            put
-        });
-    }
+    let put = move |engine: &Engine, writing: &Writing| {
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let composite = unsafe { &*composite };
+        lettered(engine, composite, &covered)
+            .and_then(|picture| writing.put_from(engine, &picture, tiles))
+    };
+    // SAFETY: what `put` holds is let go of on the engine's thread, behind
+    // it; `told` is one any thread may call (the function's contract).
+    let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
     // SAFETY: see the function's contract.
     unsafe { reported(Some(landed), places, changes) }
 }

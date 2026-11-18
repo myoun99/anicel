@@ -62,6 +62,10 @@ pub(crate) struct Stroke {
     met: Vec<StrokeTile>,
     mixes: Mixes,
     mixing: Mixing,
+    /// Why a pile handed over unwaited failed, the first since the stroke
+    /// was cleared: what reads the stroke next fails by it
+    /// ([`Stroke::unrefused`]).
+    refused: Option<String>,
 }
 
 impl Stroke {
@@ -78,6 +82,7 @@ impl Stroke {
             met: Vec::new(),
             mixes: Mixes::new(engine),
             mixing: Mixing::default(),
+            refused: None,
         })
     }
 
@@ -104,12 +109,35 @@ impl Stroke {
     /// stroke's chain, to run with the next pile: the ground tiles they
     /// read, the ones the caller finds the cel's for ([`Stroke::pile_mixed`]).
     pub(crate) fn hand_steps(&mut self, steps: &[Step], first: u32) -> Option<&[(i32, i32)]> {
+        self.unrefused()?;
         self.mixing.hand(steps, first)
+    }
+
+    /// `why` a pile handed over unwaited failed, kept where it is the first
+    /// since the stroke was cleared.
+    ///
+    /// 🚨THE STROKE'S, NOT THE ENGINE'S: a body that fails is noted for its
+    /// caller's next done (`Engine::posted`) — the screen's present, which a
+    /// pile's failure is no word on. So a pile's is kept here, and what reads
+    /// the stroke after it fails by it: what a pile that waited threw, a
+    /// step later (card a-stroke-step-waits-for-the-engines-turn).
+    pub(crate) fn refuse(&mut self, why: String) {
+        self.refused.get_or_insert(why);
+    }
+
+    /// Fails by why a pile handed over unwaited failed, where one did since
+    /// the stroke was cleared.
+    fn unrefused(&self) -> Option<()> {
+        match &self.refused {
+            Some(why) => fail(format!("a pile handed over unwaited failed: {why}")),
+            None => Some(()),
+        }
     }
 
     /// The colour each of the stroke's first `count` mixing steps laid,
     /// ARGB — read back, the caller waits.
     pub(crate) fn mixed(&self, engine: &Engine, count: usize) -> Option<Vec<u32>> {
+        self.unrefused()?;
         self.mixing.read(engine, count)
     }
 
@@ -275,6 +303,7 @@ impl Stroke {
         laid: &Laid,
         compared: bool,
     ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        self.unrefused()?;
         if asked.is_empty() {
             return Some(Vec::new());
         }
@@ -282,6 +311,24 @@ impl Stroke {
         let over = Over { pages: &self.view, set };
         let compared = compared.then_some(&self.write);
         landing::land(engine, (composite, pool, cel), over, asked, laid, compared)
+    }
+
+    /// What the stroke makes of the tiles `asked` over the cel, tile after
+    /// tile in their order, as [`Stroke::land`] lays them before it puts
+    /// them — `pages` the pool's as they stood when the places were booked:
+    /// a landing on its way, put on the engine's thread with no wait
+    /// (`gpu_engine_stroke_land_unwaited`).
+    pub(crate) fn made(
+        &self,
+        engine: &Engine,
+        (composite, pages): (&Composite, &[wgpu::Buffer]),
+        asked: &[Asked],
+        laid: &Laid,
+    ) -> Option<wgpu::Buffer> {
+        self.unrefused()?;
+        let set = self.view_of(asked, pages.len() as u16)?;
+        let over = Over { pages: &self.view, set };
+        landing::made(engine, composite, pages, over, asked, laid).map(|made| made.out)
     }
 
     /// Clears what the stroke wrote and lets its tiles go; the pages stay
@@ -295,6 +342,7 @@ impl Stroke {
         self.mixing.clear(&mut encoder);
         engine.queue.submit([encoder.finish()]);
         self.tiles.clear();
+        self.refused = None;
     }
 }
 

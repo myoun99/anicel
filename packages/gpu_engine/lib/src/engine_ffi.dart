@@ -2322,7 +2322,7 @@ external int strokeBytes(Pointer<Stroke> stroke);
 external void strokeClear(Pointer<Stroke> stroke, Pointer<Engine> engine);
 
 @Native<
-  Bool Function(
+  Void Function(
     Pointer<Stroke>,
     Pointer<Engine>,
     Pointer<DabSpec>,
@@ -2338,7 +2338,7 @@ external void strokeClear(Pointer<Stroke> stroke, Pointer<Engine> engine);
     Size,
   )
 >(symbol: 'gpu_engine_stroke_pile')
-external bool strokePile(
+external void strokePile(
   Pointer<Stroke> stroke,
   Pointer<Engine> engine,
   Pointer<DabSpec> dabs,
@@ -2416,6 +2416,43 @@ external int strokeLand(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stroke_land_unwaited')
+external int strokeLandUnwaited(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
 );
 
 @Native<

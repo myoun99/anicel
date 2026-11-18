@@ -41,7 +41,7 @@ pub(crate) struct Over<'a> {
 /// What `over` makes of the tiles `asked`, tile after tile in their order:
 /// each the cel's with the row laid on it as `laid` says. Submits the work,
 /// the caller waits.
-fn made(
+pub(crate) fn made(
     engine: &Engine,
     composite: &Composite,
     pool: &[wgpu::Buffer],

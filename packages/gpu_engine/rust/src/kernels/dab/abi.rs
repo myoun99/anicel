@@ -9,6 +9,11 @@ mod tests;
 #[path = "tiles_land_tests.rs"]
 mod tiles_land_tests;
 
+#[cfg(test)]
+#[path = "on_its_way_tests.rs"]
+mod on_its_way_tests;
+
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
@@ -17,12 +22,12 @@ use super::mix::{Ground, Step};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
-use crate::fail;
+use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
+use crate::{fail, take_last_error};
 use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, TileAt, TileSet};
 use crate::kernels::mesh::MeshGrid;
-use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::pool::{Cel, Pool, Writing};
 use crate::kernels::shared::{Counted, ResampleMap};
 use crate::kernels::warp::{Boxed, Window};
 use crate::kernels::write::Change;
@@ -42,6 +47,7 @@ const PAPER: u32 = 16;
 /// square. The tables are alive for the call, and a table two dabs share
 /// comes at one address.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct DabSpec {
     centre: [f64; 2],
     opacity: f64,
@@ -263,8 +269,12 @@ pub unsafe extern "C" fn gpu_engine_stroke_free(stroke: *mut Stroke) {
 
 /// The bytes of `stroke`'s pages.
 ///
+/// ⚠️Read where it is called: of a stroke at rest alone — cleared, which
+/// waits for every pile handed over before (`gpu_engine_stroke_clear`), so
+/// none writes its pages meanwhile (`gpu_engine_stroke_pile`).
+///
 /// # Safety
-/// `stroke` is live.
+/// `stroke` is live, and no pile of it is on its way.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stroke_bytes(stroke: *const Stroke) -> u64 {
     // SAFETY: see the function's contract.
@@ -325,14 +335,25 @@ pub unsafe extern "C" fn gpu_engine_stroke_hand_steps(
 /// is not -1. The steps handed run first where `under` is not null —
 /// `ground` words, the cel's tile under each ground tile they read as a
 /// tile set names one, on `pool`'s pages copied by `composite` — and
-/// colour each dab whose `mix` names one: `Stroke::pile_mixed`. False on
-/// failure; see the last error.
+/// colour each dab whose `mix` names one: `Stroke::pile_mixed`. Handed to
+/// the engine's thread, its caller waiting for none of it
+/// ([`Engine::posted`]) — the dabs, their tables and textures, the paper
+/// and the ground copied here first ([`Piled`]). A pile that fails is told
+/// by what reads the stroke next (`Stroke::refuse`).
+///
+/// 🚨WHY UNWAITED (card a-stroke-step-waits-for-the-engines-turn,
+/// 2026-11-18): a pile is a stroke's step, and the UI's thread waited for
+/// each — 🔬41 piles of a stroke on S5_BA cut 352, 31–99 ms all told, 57 of
+/// the 99 in line behind the band's fill on the engine's thread (the
+/// lent-wait probe, k1305): what grows as the engine is busy is the wait
+/// for the turn, not the pile.
 ///
 /// # Safety
-/// `stroke` and `engine` are live, the stroke made on it; `dabs` holds
-/// `count`, each as `DabSpec` says; `paper` is live or null; where
-/// `under` is not null it holds `ground`, and `composite` and `pool` are
-/// live, on `engine`.
+/// `stroke` and `engine` are live, the stroke made on it and let go of
+/// after this (`gpu_engine_stroke_free`); `dabs` holds `count`, each as
+/// `DabSpec` says; `paper` is live or null; where `under` is not null it
+/// holds `ground`, and `composite` and `pool` are live, on `engine`, and
+/// let go of after this.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_stroke_pile(
@@ -349,37 +370,92 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
     pool: *const Pool,
     under: *const u32,
     ground: usize,
-) -> bool {
+) {
     // SAFETY: see the function's contract.
-    let (stroke, engine, specs) =
-        unsafe { (&mut *stroke, &*engine, std::slice::from_raw_parts(dabs, count)) };
-    engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
-        let second = (second_mode != -1).then_some((second_mode as u32, second_density));
-        let colours: Vec<(usize, u32)> = specs
-            .iter()
-            .enumerate()
-            .filter(|(_, spec)| spec.mix != NO_STEP)
-            .map(|(index, spec)| (index, spec.mix))
-            .collect();
-        // SAFETY: see the function's contract.
-        let under: Option<Vec<Option<TileAt>>> = (!under.is_null()).then(|| {
-            let words = unsafe { std::slice::from_raw_parts(under, ground) };
-            words.iter().map(|&word| TileAt::of_word(word)).collect()
-        });
-        // SAFETY: see the function's contract.
-        let tools = under.as_ref().map(|under| unsafe { (&*composite, (*pool).pages(), under) });
-        let mixed = tools.map(|(executor, pages, under)| {
+    let (engine, specs) = unsafe { (&*engine, std::slice::from_raw_parts(dabs, count)) };
+    // SAFETY: see the function's contract.
+    let piled = unsafe { piled(specs) };
+    // SAFETY: see the function's contract.
+    let paper = (!paper.is_null()).then(|| unsafe { &*paper }.clone());
+    let second = (second_mode != -1).then_some((second_mode as u32, second_density));
+    let colours: Vec<(usize, u32)> = specs
+        .iter()
+        .enumerate()
+        .filter(|(_, spec)| spec.mix != NO_STEP)
+        .map(|(index, spec)| (index, spec.mix))
+        .collect();
+    // The cel's tiles under the ground, and the pool's pages as they stand
+    // here — the pool is its caller's, who goes on (`Pool::lands_unwaited`).
+    // SAFETY: see the function's contract.
+    let ground: Option<(Vec<Option<TileAt>>, Vec<wgpu::Buffer>)> = (!under.is_null()).then(|| {
+        let words = unsafe { std::slice::from_raw_parts(under, ground) };
+        let under = words.iter().map(|&word| TileAt::of_word(word)).collect();
+        (under, unsafe { (*pool).pages() }.to_vec())
+    });
+    let handed = Sent((engine.clone(), stroke, piled, paper, ground, composite));
+    engine.posted(move || {
+        let (engine, stroke, piled, paper, ground, composite) = handed.taken();
+        // SAFETY: let go of on this thread, after this (the contract); and
+        // nothing reads it elsewhere while a pile is on its way
+        // (`gpu_engine_stroke_bytes`, `gpu_engine_stroke_met`).
+        let stroke = unsafe { &mut *stroke };
+        let paper = paper.as_ref().map(|texture| Paper { texture, scale: paper_scale, height: paper_height });
+        let mixed = ground.as_ref().map(|(under, pages)| {
+            // SAFETY: let go of on this thread, after this (the contract).
+            let executor = unsafe { &*composite };
             (Ground { executor, pages, under }, colours.as_slice())
         });
-        // SAFETY: a spec is as `DabSpec` says.
-        unsafe {
-            with_dabs(specs, |dabs| {
-                stroke.pile_mixed(engine, dabs, paper.as_ref(), second, mixed).is_some()
-            })
+        // SAFETY: the specs point at what `piled` holds.
+        let piled = unsafe {
+            with_dabs(&piled.specs, |dabs| stroke.pile_mixed(&engine, dabs, paper.as_ref(), second, mixed))
+        };
+        if piled.is_none() {
+            stroke.refuse(take_last_error());
         }
-    })
+        Some(())
+    });
+}
+
+/// What a pile is handed, its own: the dabs as specs, each table and
+/// texture they name copied once — a table two dabs share comes at one
+/// address, and is copied once — and the specs pointing at the copies. A
+/// pile handed over unwaited runs after the app has let its arena go, and
+/// may after it has freed a texture ([`Texture`]'s copy is a count).
+struct Piled {
+    specs: Vec<DabSpec>,
+    _tables: Vec<Box<[f64]>>,
+    _textures: Vec<Box<Texture>>,
+}
+
+/// `specs` as [`Piled`] holds them.
+///
+/// # Safety
+/// A spec's tables, texture and evening are as `DabSpec` says.
+unsafe fn piled(specs: &[DabSpec]) -> Piled {
+    let mut tables: HashMap<*const f64, Box<[f64]>> = HashMap::new();
+    let mut own = |at: *const f64, entries: usize| -> *const f64 {
+        // SAFETY: a table is as `DabSpec` says (the function's contract).
+        let copied = || unsafe { std::slice::from_raw_parts(at, entries) }.into();
+        tables.entry(at).or_insert_with(copied).as_ptr()
+    };
+    let mut specs = specs.to_vec();
+    for spec in &mut specs {
+        if !spec.coverage.is_null() {
+            spec.coverage = own(spec.coverage, spec.entries);
+            spec.pile = own(spec.pile, spec.entries);
+        }
+        if !spec.evening.is_null() {
+            spec.evening = own(spec.evening, EVENING_ENTRIES);
+        }
+    }
+    let mut textures: HashMap<*const Texture, Box<Texture>> = HashMap::new();
+    for spec in specs.iter_mut().filter(|spec| !spec.texture.is_null()) {
+        let at = spec.texture;
+        // SAFETY: a texture is live (the function's contract).
+        let copied = || Box::new(unsafe { &*at }.clone());
+        spec.texture = std::ptr::from_ref(&**textures.entry(at).or_insert_with(copied));
+    }
+    Piled { specs, _tables: tables.into_values().collect(), _textures: textures.into_values().collect() }
 }
 
 /// Writes the colour each of `stroke`'s first `count` mixing steps laid,
@@ -500,10 +576,13 @@ pub unsafe extern "C" fn gpu_engine_stroke_reach_blur(
 }
 
 /// Writes the column and the row of each tile the last
-/// `gpu_engine_stroke_reach_blur` said it gave a slot.
+/// `gpu_engine_stroke_reach_blur` said it gave a slot — read where it is
+/// called, right after that reach, which waited for every pile handed over
+/// before it (`gpu_engine_stroke_pile`).
 ///
 /// # Safety
-/// `stroke` is live, and `coordinates` holds two for each.
+/// `stroke` is live, no pile of it is on its way, and `coordinates` holds
+/// two for each.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stroke_met(stroke: *const Stroke, coordinates: *mut i32) {
     // SAFETY: see the function's contract.
@@ -645,6 +724,60 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         // SAFETY: see the function's contract.
         unsafe { reported(landed, places, changes) }
     })
+}
+
+/// [`gpu_engine_stroke_land`] unasked whether a result is the tile under
+/// it — a stroke on its way, its frame waiting for nothing — with no wait
+/// for its caller: the places are booked here, and the stroke's picture
+/// over them made and put on the engine's thread ([`Pool::lands_unwaited`],
+/// which says how `told` is called with `number`). Writes each one's
+/// `places` and `changes` — inked, every one — and returns how many it gave
+/// a slot, the first of them.
+///
+/// 🚨WHY UNWAITED (card a-stroke-step-waits-for-the-engines-turn,
+/// 2026-11-18): each step of a stroke lands what it shows — 🔬42 landings
+/// of a stroke on S5_BA cut 352, 20–34 ms all told (k1305); and once its
+/// pile is handed over, a landing that waits waits for that pile too.
+///
+/// # Safety
+/// As [`gpu_engine_stroke_land`]'s, `stroke`, `composite` and `mask` let go
+/// of after this; `told` is one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
+    stroke: *const Stroke,
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *mut Pool,
+    cel: u32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    places: *mut u32,
+    changes: *mut u8,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (engine, pool, asked) = unsafe { (&*engine, &mut *pool, asked_of(asks, under, count)) };
+    let put = move |engine: &Engine, writing: &Writing| {
+        // SAFETY: each is let go of on this thread, after this (the
+        // function's contract).
+        let (stroke, composite, mask) = unsafe { (&*stroke, &*composite, mask.as_ref()) };
+        let mask = mask.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let out = stroke.made(engine, (composite, writing.pages()), &asked, &laid)?;
+        writing.put_from(engine, &out, 0..asked.len())
+    };
+    // SAFETY: what `put` holds is let go of on the engine's thread, after
+    // it; `told` is one any thread may call (the function's contract).
+    let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    // SAFETY: see the function's contract.
+    unsafe { reported(Some(landed), places, changes) }
 }
 
 /// Lays the pool's tile set of `columns` × `rows` canvas tiles whose

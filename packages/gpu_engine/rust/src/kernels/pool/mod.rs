@@ -276,9 +276,9 @@ impl Spare {
     }
 }
 
-/// A store's write, held apart from its pool for the engine's thread: the
-/// pages as they stood, the places its books gave, and where to say it
-/// failed.
+/// A landing's write, held apart from its pool for the engine's thread
+/// ([`Pool::lands_unwaited`]): the pages as they stood, the places its
+/// books gave, and where to say it failed.
 pub(crate) struct Writing {
     pages: Vec<wgpu::Buffer>,
     places: Vec<TileAt>,
@@ -286,6 +286,12 @@ pub(crate) struct Writing {
 }
 
 impl Writing {
+    /// The pool's pages as they stood when its places were booked: what a
+    /// put reads the cel's tiles on, by the places they were given then.
+    pub(crate) fn pages(&self) -> &[wgpu::Buffer] {
+        &self.pages
+    }
+
     /// Copies `tiles` — straight RGBA8, a tile's bytes each, one a place —
     /// into the places, by the write path in one submit.
     fn write(&self, engine: &Engine, tiles: &[&[u8]]) -> Option<()> {
@@ -312,12 +318,22 @@ impl Writing {
     /// Copies the tiles of `out` — straight RGBA8, tile after tile — that
     /// `tiles` names, the i-th into the i-th place, by the write path in
     /// one submit.
+    ///
+    /// A device gone is put nothing, and says so: wgpu lays and copies on
+    /// one with no error, so a put would be told it went where nothing did
+    /// (🔬2026-11-18, a plate of letters on an engine lost for memory).
+    /// ⚠️As a store's copy tells one (its staging is not mapped,
+    /// [`Writing::write`]): every put handed over unwaited
+    /// ([`Pool::lands_unwaited`]) says alike what it did not put.
     pub(crate) fn put_from(
         &self,
         engine: &Engine,
         out: &wgpu::Buffer,
         tiles: impl IntoIterator<Item = usize>,
     ) -> Option<()> {
+        if engine.gone() {
+            return fail("the device is gone: nothing is put");
+        }
         let writes: Vec<(usize, TileAt)> = tiles.into_iter().zip(self.places.iter().copied()).collect();
         Write::put(engine, &self.pages, out, &writes)
     }
@@ -508,11 +524,55 @@ impl Pool {
         places
     }
 
-    /// The write of tiles into `places`, held apart from the pool: what a
-    /// store hands the engine's thread — and a plate of letters
-    /// (`gpu_engine_letters_land`).
-    pub(crate) fn writing(&self, places: Vec<TileAt>) -> Writing {
+    /// The write of tiles into `places`, held apart from the pool for the
+    /// engine's thread ([`Pool::lands_unwaited`]).
+    fn writing(&self, places: Vec<TileAt>) -> Writing {
         Writing { pages: self.buffers.clone(), places, unwritten: self.unwritten.clone() }
+    }
+
+    /// `count` fresh places of `cel` booked here ([`Pool::places`]) — all,
+    /// or the first few where the pool is full at the next — and `put`
+    /// handed to the engine's thread to put their tiles there, its caller
+    /// waiting for none of it ([`Engine::posted`]): `told` is called from
+    /// that thread once it has run, with `number` and whether it put them;
+    /// one that did not is told by the caller's next done too. None booked,
+    /// nothing is handed over and `told` is not called. The places, in
+    /// their order.
+    ///
+    /// 🚨ONE ROAD (rule of three, 2026-11-18): the pool's store
+    /// (`gpu_engine_pool_store`, B1-b of the-ui-thread-never-enters-the-driver),
+    /// the letters' plate (`gpu_engine_letters_land`) and a stroke on its way
+    /// (`gpu_engine_stroke_land_unwaited`) each booked its places here and
+    /// handed the engine's thread its put — the third came, and they are
+    /// one. The books stay the caller's, so its slots are told at once.
+    ///
+    /// ⛔Told by a call of its own, not the caller's done: a done is told of
+    /// the first body handed over that failed since the last, whoever asks
+    /// it (`Engine::done_then`), and a landing asking one would take what
+    /// the screen's present is to be told of its compose.
+    ///
+    /// # Safety
+    /// What `put` holds is alive, and in no other thread's hands, till it
+    /// has run; `told` is one any thread may call.
+    pub(crate) unsafe fn lands_unwaited(
+        &mut self,
+        engine: &Engine,
+        (cel, count): (Cel, usize),
+        (told, number): (extern "C" fn(u64, bool), u64),
+        put: impl FnOnce(&Engine, &Writing) -> Option<()> + 'static,
+    ) -> Vec<TileAt> {
+        let places = self.places(engine, cel, count);
+        if places.is_empty() {
+            return places;
+        }
+        let handed = Sent((engine.clone(), self.writing(places.clone()), put));
+        engine.posted(move || {
+            let (engine, writing, put) = handed.taken();
+            let put = put(&engine, &writing);
+            told(number, put.is_some());
+            put
+        });
+        places
     }
 
     /// `tiles` — straight RGBA8, a tile's bytes each — each in a fresh slot
@@ -1165,21 +1225,14 @@ pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
 }
 
 /// Gives the `count` tiles at `tiles` — straight RGBA8, a tile's bytes at
-/// each — fresh slots of the cel `cel` ([`Pool::places`]), writes each
-/// one's place to `pages` and `slots`, and hands their copy there to the
-/// engine's thread, waiting for none of it ([`Engine::posted`]). Returns
-/// how many it gave a slot, the first of them: all, or fewer where the pool
-/// is full at the next. Once the copy has read the bytes, `told` is called
-/// — from the engine's thread — with `number` and whether it was written;
-/// one that was not is told by the caller's next done too, and its places
-/// by [`gpu_engine_pool_unwritten`]. None stored, nothing is handed over
-/// and `told` is not called. Each slot it gives has the next page made
-/// ahead where one is near ([`Pool::fresh`]).
-///
-/// ⛔Told by a call of its own, not the caller's done: a done is told of
-/// the first body handed over that failed since the last, whoever asks it
-/// (`Engine::done_then`), and a store asking one would take what the
-/// screen's present is to be told of its compose.
+/// each — fresh slots of the cel `cel`, writes each one's place to `pages`
+/// and `slots`, and hands their copy there to the engine's thread, waiting
+/// for none of it ([`Pool::lands_unwaited`], which says how `told` is
+/// called with `number`). Returns how many it gave a slot, the first of
+/// them: all, or fewer where the pool is full at the next. The places of a
+/// copy not written are told by [`gpu_engine_pool_unwritten`] too. Each
+/// slot it gives has the next page made ahead where one is near
+/// ([`Pool::fresh`]).
 ///
 /// 🚨WHY UNWAITED (B1-b of the-ui-thread-never-enters-the-driver,
 /// 2026-11-15): after the screen's compose and show were handed over, the
@@ -1210,7 +1263,20 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
 ) -> usize {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    let places = pool.places(engine, Cel(cel), count);
+    // SAFETY: `tiles` holds `count` pointers.
+    let bytes: Vec<*const u8> = (0..count).map(|at| unsafe { *tiles.add(at) }).collect();
+    let put = move |engine: &Engine, writing: &Writing| {
+        let tiles: Vec<&[u8]> = bytes
+            .iter()
+            // SAFETY: a tile's bytes at each pointer, alive till `told` is
+            // called (the function's contract).
+            .map(|&at| unsafe { std::slice::from_raw_parts(at, TILE_BYTES as usize) })
+            .collect();
+        writing.write_or_say(engine, &tiles)
+    };
+    // SAFETY: each pointer's bytes are alive till `told` is called (the
+    // function's contract); `told` is one any thread may call.
+    let places = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
     for (at, place) in places.iter().enumerate() {
         // SAFETY: `pages` and `slots` hold `count` each, and no more are given.
         unsafe {
@@ -1218,26 +1284,7 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
             *slots.add(at) = place.slot;
         }
     }
-    let stored = places.len();
-    if stored == 0 {
-        return 0;
-    }
-    // SAFETY: `tiles` holds `count` pointers, and `stored` is no more.
-    let bytes: Vec<*const u8> = (0..stored).map(|at| unsafe { *tiles.add(at) }).collect();
-    let handed = Sent((engine.clone(), pool.writing(places), bytes));
-    engine.posted(move || {
-        let (engine, writing, bytes) = handed.taken();
-        let tiles: Vec<&[u8]> = bytes
-            .iter()
-            // SAFETY: a tile's bytes at each pointer, alive till `told` is
-            // called (the function's contract).
-            .map(|&at| unsafe { std::slice::from_raw_parts(at, TILE_BYTES as usize) })
-            .collect();
-        let written = writing.write_or_say(&engine, &tiles);
-        told(number, written.is_some());
-        written
-    });
-    stored
+    places.len()
 }
 
 /// Writes to `pages` and `slots` the places stores handed over unwaited

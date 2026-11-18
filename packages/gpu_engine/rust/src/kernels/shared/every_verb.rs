@@ -202,8 +202,9 @@ fn handed_the_engine(verb: &Verb) -> bool {
 /// or not (`Engine::posted`).
 fn on_the_engines_thread(body: &str) -> bool {
     // `run_lent` is the thread's own hand, where the engine is let go on it
-    // (`gpu_engine_close`).
-    [".on_thread(", ".run_lent(", ".posted("].iter().any(|door| body.contains(door))
+    // (`gpu_engine_close`); `lands_unwaited` hands its put over by
+    // `Engine::posted`, its books the caller's (`Pool::lands_unwaited`).
+    [".on_thread(", ".run_lent(", ".posted(", ".lands_unwaited("].iter().any(|door| body.contains(door))
 }
 
 /// Whether `body` names the engine for nothing but to hand out by it the

@@ -738,21 +738,20 @@ class GpuPool implements _OfAnEngine {
       // [bytesOf] read keeps nothing alive, and a tile collected meanwhile
       // hands its block to the next tile made (BitmapTile.readPixels).
       // ⛔No assert: it goes from a release build, and so would the hold.
-      final number = _stores.kept((pool: this, held: tiles));
-      final stored = rust.poolStore(
-        _pool,
-        _engine._engine,
-        cel,
-        at,
-        count,
-        pages,
-        slots,
-        _stores.told,
-        number,
+      final stored = _stores.handing(
+        (pool: this, held: tiles),
+        (number) => rust.poolStore(
+          _pool,
+          _engine._engine,
+          cel,
+          at,
+          count,
+          pages,
+          slots,
+          _stores.told,
+          number,
+        ),
       );
-      if (stored == 0) {
-        _stores.forget(number);
-      }
       return [
         for (var tile = 0; tile < stored; tile++)
           (page: pages[tile], slot: slots[tile]),
@@ -1242,8 +1241,11 @@ class GpuStroke {
 
   /// Piles [dabs], in their order, over [paper] — at [paperScale] px a
   /// texel, 高さ where [paperHeight] — with a second tip shown by
-  /// [secondMode] at [secondDensity] where the stroke has one. Submits the
-  /// work.
+  /// [secondMode] at [secondDensity] where the stroke has one. Hands the
+  /// work to the engine's thread, waiting for none of it
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_pile`, has why): a
+  /// pile that fails is told by what reads the stroke next — [land],
+  /// [landOnItsWay], [mixed].
   ///
   /// A mixing brush's [mixing] runs first — its steps over the cel, in
   /// their order, the stroke's reservoir carried from the pile before —
@@ -1261,7 +1263,7 @@ class GpuStroke {
     final ground = mixing == null ? null : _groundOf(arena, mixing);
     final composite = mixing?.composite;
     final pool = mixing?.pool;
-    if (!rust.strokePile(
+    rust.strokePile(
       _stroke,
       _engine._engine,
       _specsOf(arena, dabs),
@@ -1275,9 +1277,7 @@ class GpuStroke {
       pool == null ? nullptr : _engine._its(pool)._pool,
       ground?.under ?? nullptr,
       ground?.count ?? 0,
-    )) {
-      throw GpuRefused(_lastError());
-    }
+    );
   });
 
   /// [mixing]'s steps handed to the stroke, and the cel's tile under each
@@ -1450,6 +1450,45 @@ class GpuStroke {
       compared,
       places,
       changes,
+    ),
+  );
+
+  /// [land] uncompared — each result [GpuChange.inked], in a fresh slot —
+  /// with no wait for the engine's turn: the slots are given here, and the
+  /// stroke laid in them on the engine's thread, behind its pile
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_land_unwaited`, has
+  /// why): a stroke on its way, whose frame waits for nothing. [unput] is
+  /// called where its picture was not put.
+  List<GpuLanded> landOnItsWay(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+    required void Function() unput,
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.strokeLandUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        cel,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        places,
+        changes,
+        _putsOnTheirWay.told,
+        number,
+      ),
     ),
   );
 
@@ -4213,40 +4252,38 @@ class GpuLetters {
     required void Function() unput,
   }) {
     final engine = composite._engine;
-    final number = _puts.kept(unput);
-    final landed = _landed(
+    return _landed(
       asks,
-      (_, coordinates, _, places, changes) => rust.lettersLand(
-        _letters,
-        engine._engine,
-        engine._its(composite)._composite,
-        engine._its(pool)._pool,
-        cel,
-        coordinates,
-        asks.length,
-        places,
-        changes,
-        _puts.told,
-        number,
+      (_, coordinates, _, places, changes) => _putsOnTheirWay.handing(
+        unput,
+        (number) => rust.lettersLand(
+          _letters,
+          engine._engine,
+          engine._its(composite)._composite,
+          engine._its(pool)._pool,
+          cel,
+          coordinates,
+          asks.length,
+          places,
+          changes,
+          _putsOnTheirWay.told,
+          number,
+        ),
       ),
     );
-    if (landed.isEmpty) {
-      _puts.forget(number);
-    }
-    return landed;
   }
-
-  /// What is called where the picture of a land on its way ([land]) was
-  /// not put, and how the engine's thread tells this isolate whether it
-  /// was.
-  static final _puts = _Told<void Function()>((_, unput, put) {
-    if (!put) {
-      unput();
-    }
-  });
 
   void free() => rust.lettersFree(_letters);
 }
+
+/// What is called where the picture of a land on its way was not put —
+/// the letters' ([GpuLetters.land]), a stroke's ([GpuStroke.landOnItsWay])
+/// —, and how the engine's thread tells this isolate whether it was.
+final _putsOnTheirWay = _Told<void Function()>((_, unput, put) {
+  if (!put) {
+    unput();
+  }
+});
 
 /// What a thread of the engine's tells this isolate by a number — a
 /// wait ended, a copy written, a picture put — and whether it went well:
@@ -4290,11 +4327,27 @@ final class _Told<T> {
     return number;
   }
 
-  /// [number] let go of: nothing was handed over under it, so nothing
-  /// will tell it.
-  void forget(int number) {
-    _waiting.remove(number);
-    _listener.keepIsolateAlive = _waiting.isNotEmpty;
+  /// What [handOver] answers — how many it handed over under the number
+  /// it is given, [waiting] [kept] under that number till it is told —, the
+  /// number forgotten where none went: a call that handed none over, or
+  /// failed (below none, or thrown), is told of by nothing
+  /// (`Pool::lands_unwaited`).
+  ///
+  /// 🚨ONE ROAD (rule of three, 2026-11-18): a pool's store, the letters'
+  /// land and a stroke's on its way each kept, handed over and forgot alike
+  /// — the third came. ↩️Till then one that threw kept its number, and the
+  /// isolate, for good.
+  int handing(T waiting, int Function(int number) handOver) {
+    final number = kept(waiting);
+    var handed = 0;
+    try {
+      return handed = handOver(number);
+    } finally {
+      if (handed <= 0) {
+        _waiting.remove(number);
+        _listener.keepIsolateAlive = _waiting.isNotEmpty;
+      }
+    }
   }
 
   void _told(int number, bool ok) {

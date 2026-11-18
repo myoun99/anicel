@@ -291,7 +291,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// How many times a dab has touched each tile: the revision a tile shown
   /// at a coordinate carries, which pen-up matches to hand the screen's
   /// picture to the committed tile. (Conservative: a dab that writes no
-  /// pixel still bumps.)
+  /// pixel still bumps, and a picture of the tile not put ([_unput]).)
   ///
   /// ↩️Till 2026-11-14 it also told a resident Dart result (`_results`,
   /// under `residentResultByteBudget` — the memory allowance's
@@ -446,30 +446,61 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         for (final coord in coords)
           (column: coord.x, row: coord.y, under: base.tileAt(coord)),
       ],
-      by: (pool, cel, asked) => _blurBase == null
-          ? stroke.land(
-              appGpuComposite,
-              pool,
-              cel,
-              asked,
-              // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-              opacity: (strokeOpacity * 65535).round(),
-              mode: mode,
-              mask: mask,
-              compared: compared,
-            )
-          : stroke.landBlur(
+      by: (pool, cel, asked) => switch ((_blurBase, compared)) {
+        // A stroke on its way waits for no turn of the engine's: its frame
+        // waits for nothing (`GpuStroke.landOnItsWay`). The finished one
+        // compares, which waits for the GPU.
+        (null, false) => stroke.landOnItsWay(
+          appGpuComposite,
+          pool,
+          cel,
+          asked,
+          // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
+          opacity: (strokeOpacity * 65535).round(),
+          mode: mode,
+          mask: mask,
+          unput: () => _unput(asked),
+        ),
+        (null, true) => stroke.land(
+          appGpuComposite,
+          pool,
+          cel,
+          asked,
+          opacity: (strokeOpacity * 65535).round(),
+          mode: mode,
+          mask: mask,
+          compared: true,
+        ),
+        _ => stroke.landBlur(
               EngineStrokes.blurs,
               appGpuComposite,
               pool,
               cel,
               asked,
-              opacity: (strokeOpacity * 65535).round(),
-              mask: mask,
-              compared: compared,
-            ),
+          opacity: (strokeOpacity * 65535).round(),
+          mask: mask,
+          compared: compared,
+        ),
+      },
       compared: compared,
     );
+  }
+
+  /// What a landing on its way did not put ([GpuStroke.landOnItsWay]):
+  /// each tile [asked] forgotten as shown — at a revision past the one its
+  /// picture carries, which pen-up then hands to no committed tile — and
+  /// landed again where a dab next moves it, as the letters' plate not put
+  /// is made again (`EngineLetters._plateOf`). Why it was not is the
+  /// engine's to tell, by the next done (`Pool::lands_unwaited`).
+  void _unput(List<GpuTileAsk> asked) {
+    for (final (:column, :row, under: _) in asked) {
+      final key = _tileKey(column, row);
+      // A stroke cleared since holds no revision to move past.
+      final revision = _tileRevisions[key];
+      if (revision != null) {
+        _tileRevisions[key] = revision + 1;
+      }
+    }
   }
 
   /// The selection's mask over every pixel it can select, made on the
