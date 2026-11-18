@@ -103,6 +103,28 @@ final class SoundPlace {
       placed != null && held.any((value) => value != placed);
 }
 
+/// Whether a place of [entry]'s sound in [project] parts from its preset at
+/// the fields the sync window starts with ([SoundSyncField.asked]) — what
+/// turns the pool's in-use mark into its sync (시안 ③: 「프리셋과 다른 곳이
+/// 있는 행의 「쓰는 곳」 버튼이 같은 자리에서 동기화 모양」).
+///
+/// ⚠️A SOUND file's only, for now: a movie's preset counts its span in its
+/// pictures and places rows as well as frames — its sync is the picture's,
+/// which waits on card 「파일마다 배치 기본값」-Q7.
+bool soundPartsFromItsPreset(
+  Project project,
+  MediaAsset entry, {
+  required int? soundFrames,
+}) {
+  if (entry.kind != MediaAssetKind.audio) {
+    return false;
+  }
+  final preset = soundPresetOf(entry, soundFrames: soundFrames);
+  return soundPlacesOf(project, entry.path).any(
+    (place) => place.partsFrom(preset, SoundSyncField.asked).isNotEmpty,
+  );
+}
+
 /// Every place [project] plays the file at [path]'s sound from, in the
 /// order [mediaAssetUsesOf] lists them — the uses the pool's in-use mark
 /// opens, so the sync window's places are the uses window's.

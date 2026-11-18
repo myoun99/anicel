@@ -932,6 +932,18 @@ class _WorkspaceTabs {
                   pictures: _state._views._poolPictures,
                 ),
               ),
+              partsOf: (asset) => soundPartsFromItsPreset(
+                _state.widget.session.repository.requireProject(),
+                asset,
+                soundFrames: _state.widget.session.audioConformStore
+                    .heldPeaksFor(asset.path)
+                    ?.durationFrames(
+                      _state.widget.session.projectSettings.projectFrameRate,
+                    ),
+              ),
+              onSync: (asset) => unawaited(
+                syncMediaPlaces(context, _state.widget.session, asset),
+              ),
               view: _state._mediaPoolView.value,
               onViewChanged: (view) => _state._mediaPoolView.value = view,
               factsOf: _state.widget.session.mediaPool.mediaFactsOf,

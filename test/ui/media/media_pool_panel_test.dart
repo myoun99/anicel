@@ -41,6 +41,8 @@ Future<void> _pump(
   Map<String, int> storedBytes = const {},
   Map<String, int> conformBytes = const {},
   Map<String, DateTime> modifiedTimes = const {},
+  bool Function(MediaAsset asset)? partsOf,
+  void Function(MediaAsset asset)? onSync,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -67,6 +69,8 @@ Future<void> _pump(
             storedBytes: storedBytes,
             conformBytes: conformBytes,
             modifiedTimes: modifiedTimes,
+            partsOf: partsOf ?? (_) => false,
+            onSync: onSync,
             // RELINK-2: the panel no longer probes the disk — the session
             // caches the answer and hands down the MISSING set. The suite
             // still declares which paths exist, so the inversion happens
@@ -500,6 +504,49 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('C1 · walk'), findsOneWidget);
+  });
+
+  testWidgets('🗣️시안 ③: where a place parts from the file\'s preset the '
+      'SAME mark wears the sync, lit, and opens the sync; where none does '
+      'it stays the way to where the file is used', (tester) async {
+    const clap = 'C:/snd/clap.wav';
+    final callbacks = _Callbacks()
+      ..uses = {
+        foot: ['C1 · walk'],
+        clap: ['C2 · hit'],
+      };
+    final synced = <String>[];
+    await _pump(
+      tester,
+      callbacks,
+      assets: [
+        MediaAsset(path: foot, name: 'foot.wav'),
+        MediaAsset(path: clap, name: 'clap.wav'),
+      ],
+      partsOf: (asset) => asset.path == foot,
+      onSync: (asset) => synced.add(asset.path),
+    );
+    AppIconButton mark(String path) => tester.widget<AppIconButton>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AppIconButton &&
+            widget.keyValue == 'media-asset-in-use-$path',
+      ),
+    );
+    expect((mark(foot).icon as Icon).icon, Icons.sync);
+    expect(mark(foot).isSelected, isTrue);
+    expect((mark(clap).icon as Icon).icon, Icons.link);
+    expect(mark(clap).isSelected, isFalse);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-in-use-$foot')),
+    );
+    await tester.pumpAndSettle();
+    expect(synced, [foot]);
+    expect(
+      find.byKey(const ValueKey<String>('media-asset-uses-notice')),
+      findsNothing,
+    );
   });
 
   // The other half of importing by reference: the row where a user who

@@ -31,6 +31,8 @@ import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
+import '../services/media/media_preset_sync.dart'
+    show soundPartsFromItsPreset;
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -98,6 +100,7 @@ import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_pool_view.dart';
 import 'media/media_preset_flow.dart';
+import 'media/media_sync_flow.dart';
 import 'media/media_pool_pictures.dart';
 import 'media/media_relink_flow.dart';
 import 'media/open_viewer_document.dart' show openViewerDocument;

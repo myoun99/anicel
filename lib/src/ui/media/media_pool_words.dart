@@ -199,7 +199,7 @@ final class MediaPoolWords {
     if (length == null || _isAStill(asset)) {
       return none;
     }
-    return _framesWord(asset, length);
+    return framesWord(asset, length);
   }
 
   /// `1920×1080 · 23.976 fps` — the picture's size, and a movie's rate.
@@ -273,14 +273,16 @@ final class MediaPoolWords {
   /// How long what the preset places runs ([MediaPreset.spanOf]).
   String spanWord(MediaAsset asset) {
     final span = _spanOf(asset);
-    return span == null ? none : _framesWord(asset, span.count);
+    return span == null ? none : framesWord(asset, span.count);
   }
 
-  /// The preset's first or last frame — counted from 1, as a transport
-  /// counts — or page.
+  /// A frame of a span — counted from 1, as a transport counts.
+  String frameWord(int frame) => '${frame + 1}';
+
+  /// The preset's first or last frame ([frameWord]) — or page.
   String _endWord(MediaAsset asset, int Function(KeptSpan span) end) {
     final span = _spanOf(asset);
-    return span == null ? none : '${end(span) + 1}';
+    return span == null ? none : frameWord(end(span));
   }
 
   /// What [asset]'s preset keeps of it — null for a still, which is held
@@ -304,7 +306,7 @@ final class MediaPoolWords {
 
   /// [count] of [asset]'s frames as a length — pages for a PDF, a running
   /// time for the rest.
-  String _framesWord(MediaAsset asset, int count) =>
+  String framesWord(MediaAsset asset, int count) =>
       asset.kind == MediaAssetKind.pdf
       ? AppText.strings.mediaPages(count)
       : runningTimeLabel(count, framesPerSecond);

@@ -234,4 +234,46 @@ void main() {
     expect(row.timeline[12]?.length, 3);
     expect([for (final clip in row.audioClips) clip.offsetFrames], [0, 2]);
   });
+
+  test('the pool\'s mark turns into the sync where a place of the SOUND '
+      'parts at its start or its length — not before the sound\'s length is '
+      'known, not once every place is synced, not for a movie (Q7)', () {
+    final project = _project();
+    final clap = project.mediaAssets.single;
+    expect(soundPartsFromItsPreset(project, clap, soundFrames: 20), isTrue);
+    expect(
+      soundPartsFromItsPreset(project, clap, soundFrames: null),
+      isFalse,
+      reason: 'a start and a length the preset cannot count part from '
+          'nothing',
+    );
+    expect(
+      soundPartsFromItsPreset(
+        project,
+        clap.copyWith(kind: MediaAssetKind.video),
+        soundFrames: 20,
+      ),
+      isFalse,
+      reason: 'a movie\'s sync is the picture\'s — card 「파일마다 배치 '
+          '기본값」-Q7',
+    );
+    final session = EditorSessionManager(initialProject: _project());
+    addTearDown(session.dispose);
+    session.mediaPool.syncSoundPlaces(
+      _clap,
+      preset: preset,
+      fields: SoundSyncField.asked,
+      places: soundPlacesOf(session.repository.requireProject(), _clap),
+    );
+    expect(
+      soundPartsFromItsPreset(
+        session.repository.requireProject(),
+        clap,
+        soundFrames: 20,
+      ),
+      isFalse,
+      reason: 'the name tag and the words still part, but the mark counts '
+          'only what the window starts with on',
+    );
+  });
 }

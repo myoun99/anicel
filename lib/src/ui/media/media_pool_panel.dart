@@ -78,6 +78,8 @@ class MediaPoolPanel extends StatelessWidget {
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
     this.onEditPreset,
+    this.partsOf = _partsFromNothing,
+    this.onSync,
     this.mediaFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
@@ -148,6 +150,14 @@ class MediaPoolPanel extends StatelessWidget {
   /// Opens the file's 배치 프리셋 window. Null leaves it off the menu.
   final void Function(MediaAsset asset)? onEditPreset;
 
+  /// Whether a place of the file parts from its preset — the in-use mark
+  /// then wears the sync in its own place, and opens [onSync] (시안 ③,
+  /// `soundPartsFromItsPreset`).
+  final bool Function(MediaAsset asset) partsOf;
+
+  /// Opens the file's sync window.
+  final void Function(MediaAsset asset)? onSync;
+
   /// Injectable file dialog for a relink; defaults to the platform picker
   /// over every kind the pool registers.
   final Future<String?> Function()? mediaFilePicker;
@@ -208,6 +218,7 @@ class MediaPoolPanel extends StatelessWidget {
 
   static MediaPoolFacts? _nothingRead(String path) => null;
   static AudioPeaks? _nothingHeard(String path) => null;
+  static bool _partsFromNothing(MediaAsset asset) => false;
 
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
@@ -613,15 +624,36 @@ class MediaPoolPanel extends StatelessWidget {
         // it stays in its place, dimmed with nothing to open (「없다가
         // 생기는 UI 금지」), so the name does not move when the last use
         // goes — and its tooltip names what it opens, which is true of both.
-        AppIconButton(
-          keyValue: 'media-asset-in-use-${asset.path}',
-          tooltip: AppText.strings.mediaUsesHeading,
-          icon: const Icon(Icons.link),
-          size: AppIconButtonSize.micro,
-          onPressed: uses.isEmpty ? null : () => _showUses(context, asset),
-        ),
+        // 🗣️시안 ③ (card 「파일마다 배치 기본값」-Q6 「시안대로」): where a
+        // place parts from the file's preset, the SAME button wears the
+        // sync in the accent and opens the sync window instead.
+        _inUseMark(context, asset, used: uses.isNotEmpty),
         _menuOf(context, asset),
       ],
+    );
+  }
+
+  /// The line's in-use mark: where the file is used — or, where a place
+  /// parts from its preset ([partsOf]), the sync.
+  Widget _inUseMark(
+    BuildContext context,
+    MediaAsset asset, {
+    required bool used,
+  }) {
+    final parts = used && onSync != null && partsOf(asset);
+    return AppIconButton(
+      keyValue: 'media-asset-in-use-${asset.path}',
+      tooltip: parts
+          ? AppText.strings.mediaSync
+          : AppText.strings.mediaUsesHeading,
+      icon: Icon(parts ? Icons.sync : Icons.link),
+      isSelected: parts,
+      size: AppIconButtonSize.micro,
+      onPressed: switch ((used, parts)) {
+        (false, _) => null,
+        (true, true) => () => onSync!(asset),
+        (true, false) => () => _showUses(context, asset),
+      },
     );
   }
 

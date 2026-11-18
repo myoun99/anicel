@@ -1285,6 +1285,22 @@ enum AppStrings {
   String get mediaPresetSpan => _s('mediaPresetSpan');
   String mediaPresetTitle(String name) =>
       _s('mediaPresetTitleTemplate').replaceAll('{name}', name);
+  String get mediaSync => _s('mediaSync');
+  String mediaSyncTitle(String name) =>
+      _s('mediaSyncTitleTemplate').replaceAll('{name}', name);
+  String get mediaSyncFields => _s('mediaSyncFields');
+  String mediaSyncPlaces({required int total, required int parting}) =>
+      _s('mediaSyncPlacesTemplate')
+          .replaceAll('{total}', '$total')
+          .replaceAll('{parting}', '$parting');
+  String get mediaSyncSame => _s('mediaSyncSame');
+  String mediaSyncApply(int count) => count == 0
+      ? commonApply
+      : _s('mediaSyncApplyTemplate').replaceAll('{n}', '$count');
+  String get mediaSyncApplyAll => _s('mediaSyncApplyAll');
+  String mediaSyncApplyAllOf(int count) => count == 0
+      ? mediaSyncApplyAll
+      : _s('mediaSyncApplyAllTemplate').replaceAll('{n}', '$count');
 
   /// Shown on opening a project written by a build that kept its media in
   /// a sibling folder. `{name}` is that folder.
@@ -3052,6 +3068,14 @@ enum AppStrings {
     'mediaPresetMenu': 'Placement preset',
     'mediaPresetSpan': 'Start · End',
     'mediaPresetTitleTemplate': 'Placement preset — {name}',
+    'mediaSync': 'Sync to preset',
+    'mediaSyncTitleTemplate': 'Sync — {name}',
+    'mediaSyncFields': 'Fields to match — preset value',
+    'mediaSyncPlacesTemplate': 'Places to match — {parting} of {total} in use differ',
+    'mediaSyncSame': 'Same',
+    'mediaSyncApplyTemplate': 'Apply ({n})',
+    'mediaSyncApplyAll': 'Apply to all',
+    'mediaSyncApplyAllTemplate': 'Apply to all ({n})',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stereo',
     'mediaChannelsTemplate': '{n} ch',
@@ -4819,6 +4843,14 @@ enum AppStrings {
     'mediaPresetMenu': '配置プリセット',
     'mediaPresetSpan': '開始 · 終了',
     'mediaPresetTitleTemplate': '配置プリセット — {name}',
+    'mediaSync': 'プリセットに同期',
+    'mediaSyncTitleTemplate': '同期 — {name}',
+    'mediaSyncFields': '合わせる項目 — プリセットの値',
+    'mediaSyncPlacesTemplate': '合わせる場所 — 使用中 {total} のうち違う {parting}',
+    'mediaSyncSame': '同じ',
+    'mediaSyncApplyTemplate': '適用（{n}）',
+    'mediaSyncApplyAll': 'すべて適用',
+    'mediaSyncApplyAllTemplate': 'すべて適用（{n}）',
     'mediaMono': 'モノラル',
     'mediaStereo': 'ステレオ',
     'mediaChannelsTemplate': '{n}ch',
@@ -6789,6 +6821,14 @@ enum AppStrings {
     'mediaPresetMenu': '배치 프리셋',
     'mediaPresetSpan': '시작 · 끝',
     'mediaPresetTitleTemplate': '배치 프리셋 — {name}',
+    'mediaSync': '프리셋에 동기화',
+    'mediaSyncTitleTemplate': '동기화 — {name}',
+    'mediaSyncFields': '맞출 칸 — 프리셋 값',
+    'mediaSyncPlacesTemplate': '맞출 곳 — 쓰는 곳 {total} 중 다른 곳 {parting}',
+    'mediaSyncSame': '같음',
+    'mediaSyncApplyTemplate': '적용 ({n}곳)',
+    'mediaSyncApplyAll': '모두 적용',
+    'mediaSyncApplyAllTemplate': '모두 적용 ({n}곳)',
     'mediaMono': '모노',
     'mediaStereo': '스테레오',
     'mediaChannelsTemplate': '{n}채널',
@@ -8800,6 +8840,14 @@ enum AppStrings {
     'mediaPresetMenu': 'Préréglage de placement',
     'mediaPresetSpan': 'Début · Fin',
     'mediaPresetTitleTemplate': 'Préréglage de placement — {name}',
+    'mediaSync': 'Synchroniser au préréglage',
+    'mediaSyncTitleTemplate': 'Synchroniser — {name}',
+    'mediaSyncFields': 'Champs à aligner — valeur du préréglage',
+    'mediaSyncPlacesTemplate': 'Emplacements à aligner — {parting} sur {total} diffèrent',
+    'mediaSyncSame': 'Identique',
+    'mediaSyncApplyTemplate': 'Appliquer ({n})',
+    'mediaSyncApplyAll': 'Appliquer à tous',
+    'mediaSyncApplyAllTemplate': 'Appliquer à tous ({n})',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stéréo',
     'mediaChannelsTemplate': '{n} canaux',
@@ -10836,6 +10884,14 @@ enum AppStrings {
     'mediaPresetMenu': '放置预设',
     'mediaPresetSpan': '开始 · 结束',
     'mediaPresetTitleTemplate': '放置预设 — {name}',
+    'mediaSync': '同步到预设',
+    'mediaSyncTitleTemplate': '同步 — {name}',
+    'mediaSyncFields': '要对齐的项 — 预设值',
+    'mediaSyncPlacesTemplate': '要对齐的位置 — 使用中 {total} 处中不同 {parting} 处',
+    'mediaSyncSame': '相同',
+    'mediaSyncApplyTemplate': '应用（{n}）',
+    'mediaSyncApplyAll': '全部应用',
+    'mediaSyncApplyAllTemplate': '全部应用（{n}）',
     'mediaMono': '单声道',
     'mediaStereo': '立体声',
     'mediaChannelsTemplate': '{n}声道',
