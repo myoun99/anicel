@@ -592,6 +592,12 @@ fn a_held_buffer_is_told_whatever_its_steps_are() {
     assert!(on(&over, (0, 0)).is_some() && on(&over, (0, 0)) != Some(base), "a solid over it");
     let marked = frame().with(|frame| frame.steps.push(Step::Mark { map: unposed, shift: [0, 0] }));
     assert!(on(&marked, (0, 0)).is_none(), "a range mark over it: told by nothing");
+    // Opened on the one under it made whole, a buffer is no hold's picture
+    // alone — the walk walks its steps, and a run refuses its chain: told
+    // with them.
+    let opaque = |tiles: [TileAt; 2]| framed(tiles).with(|frame| frame.steps[1] = Step::OpenOpaque);
+    let (one, other) = (on(&opaque([at[0], at[1]]), (0, 0)), on(&opaque([at[3], at[1]]), (0, 0)));
+    assert!(one.is_some() && one != other, "the rows of a buffer opened on the one under it");
     // The paper; a plain buffer of the held one — the unchanged row's — and
     // the frame's own row.
     let nested = |inner: [TileAt; 2], own: TileAt| {
