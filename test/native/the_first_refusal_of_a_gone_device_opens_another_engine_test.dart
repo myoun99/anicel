@@ -267,21 +267,32 @@ void main() {
     unawaited(
       EngineRefusals.standOnAnEngineNotGone().then((_) => stood = true),
     );
-    await null;
-    expect(asked, 1, reason: 'after the turn, as a refusal opens one');
-    expect(isTheAppsEngine(gone), isFalse, reason: '⛔premise: let go');
-    await heard(GpuReadFailed('a read on the way'));
+    // Asked again in the same turn — the next project's save — while the
+    // gone engine is still the app's: the one opening.
     var alsoStood = false;
     unawaited(
       EngineRefusals.standOnAnEngineNotGone().then((_) => alsoStood = true),
     );
+    expect(asked, 0, reason: 'not in the turn it is asked in');
+    await null;
+    expect(asked, 1, reason: 'after the turn, as a refusal opens one');
+    expect(isTheAppsEngine(gone), isFalse, reason: '⛔premise: let go');
+    await heard(GpuReadFailed('a read on the way'));
+    var thenStood = false;
+    unawaited(
+      EngineRefusals.standOnAnEngineNotGone().then((_) => thenStood = true),
+    );
     await pumpEventQueue();
     expect(asked, 1, reason: 'the one opening');
-    expect((stood, alsoStood), (false, false), reason: 'not before it stands');
+    expect(
+      (stood, alsoStood, thenStood),
+      (false, false, false),
+      reason: 'not before it stands',
+    );
 
     mayStand.complete();
     await untilTheNextIsOpen();
-    expect((stood, alsoStood), (true, true));
+    expect((stood, alsoStood, thenStood), (true, true, true));
     expect((asked, startedAgain, tellings), (1, 1, 0));
     expect(appGpuEngineIsGone, isFalse);
   });
