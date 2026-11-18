@@ -172,12 +172,13 @@ final class _WindowedRows {
           laid.add(SizedBox(height: gap));
           gap = 0;
         }
+        // Built from the pass alone: a unit's rows are built again in
+        // every pass — a rail head in a new [RailEyes], a strip in no memo
+        // — so no facts of theirs would hold (card
+        // an-eye-toggle-holds-the-ui-thread, 11-19: 🔬every holder new at
+        // every eye toggle).
         laid.add(
-          _keep.row(
-            first,
-            () => (head: head, rows: ByList(unit())),
-            (facts) => _holdable(facts.head, first, facts.rows.value),
-          ),
+          _keep.ofThePass(first, () => _holdable(head, first, unit())),
         );
       } else {
         gap += _table.edges.startOf(last + 1) - _table.edges.startOf(first);
