@@ -75,7 +75,7 @@ import 'timeline/timeline_cut_end_handle.dart'
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart'
-    show RailEye, RailEyeShown, RailEyes, railEyesOf;
+    show RailEye, RailEyeShown, RailEyes, railEyesOf, railSidesShownOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'timeline/frame_ruler_view.dart';
@@ -281,7 +281,7 @@ import 'timeline/timeline_cell_exposure_state.dart'
 import 'timeline/timeline_frame_window.dart'
     show timelineFrameWindowReachFor, visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
-    show ByIdentity, ByList, BySet, KeptPiece;
+    show ByIdentity, ByList, ByMap, BySet, KeptPiece;
 import 'repaint_props.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';

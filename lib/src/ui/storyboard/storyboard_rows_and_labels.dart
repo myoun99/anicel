@@ -273,7 +273,11 @@ class _StoryboardRowsAndLabels {
       (_) => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
-      final wears? => _wearing(wears, row),
+      final wears? => _kept.row(
+        (wearing: key),
+        () => _wearingOf(wears, row),
+        _wearing,
+      ),
       null => row,
     };
   }
@@ -296,7 +300,7 @@ class _StoryboardRowsAndLabels {
   /// [label] standing alone, as the folded overlay shows it — wearing, as
   /// a head, the layer its row has in hand ([_wearing]).
   Widget _labelAlone(_RailLabel label) => switch (label.wears) {
-    final wears? => _wearing(wears, label.piece),
+    final wears? => _wearing(_wearingOf(wears, label.piece)),
     null => label.piece,
   };
 
@@ -315,10 +319,19 @@ class _StoryboardRowsAndLabels {
           ? _seatedOf(carrierId, lanes[index])
           : null case final seated?) ...[
         if (seated.extent > 0) rows[index],
-        if (seated.room > 0) SizedBox(height: seated.room),
+        if (seated.room > 0) _laneRoom(carrierId, lanes[index], seated.room),
       ] else
         rows[index],
   ];
+
+  /// An open graph's room after [carrierId]'s [lane], [room] tall — kept
+  /// while it is as tall ([_kept]), so a head's unit is handed back whole.
+  Widget _laneRoom(LayerId carrierId, PropertyLaneRow lane, double room) =>
+      _kept.row(
+        (roomAfter: LaneRowAddress(carrierId, lane.laneId)),
+        () => room,
+        (room) => SizedBox(height: room),
+      );
 
   /// [carrierId]'s [lane] as the table lays it.
   _SeatedLane? _seatedOf(LayerId carrierId, PropertyLaneRow lane) =>
@@ -982,19 +995,45 @@ class _StoryboardRowsAndLabels {
         railColumns: layerRailColumnWidthsIn(_state.context),
       );
 
-  /// [row] — a head's, alone or in the wrapper its rail row puts on it —
-  /// wearing [wears]' layer: the one its row has in hand NOW, which a kept
-  /// head may have been built for another of ([BerthRow]). Its eye shows
-  /// that layer's, as the folders of [wears]' stack gate it ([RailEyes]) —
-  /// the timeline rail's own answer for the layer (F-185) — and the sides
-  /// of its attach group that show anything, which the halves of its fold
-  /// say in colour (I-175).
-  Widget _wearing(({Layer layer, List<Layer> stack}) wears, Widget row) =>
-      RailEyes.forLayers(
-        [wears.layer],
-        stack: wears.stack,
-        child: BerthRow(layer: wears.layer, child: row),
-      );
+  /// The row — a head's, alone or in the wrapper its rail row puts on it —
+  /// wearing its layer: the one its row has in hand NOW, which a kept head
+  /// may have been built for another of ([BerthRow]). Its eye shows that
+  /// layer's, as the folders of its stack gate it ([RailEyes]) — the
+  /// timeline rail's own answer for the layer (F-185) — and the sides of
+  /// its attach group that show anything, which the halves of its fold say
+  /// in colour (I-175).
+  Widget _wearing(_Wearing wearing) => RailEyes(
+    eyes: wearing.eyes.value,
+    sidesShown: {
+      for (final MapEntry(:key, :value) in wearing.sides.value.entries)
+        key: value.value,
+    },
+    child: BerthRow(layer: wearing.layer.value, child: wearing.row.value),
+  );
+
+  /// What [row] wearing [wears]' layer is built from ([_wearing]): the
+  /// layer, the eye and the sides [wears]' stack gives it — as VALUES, so a
+  /// head kept across passes hands its wrapper back while what it shows
+  /// holds — and [row] itself.
+  ///
+  /// ↩️The wrapper was built at every pass, a new [RailEyes] around every
+  /// head, so the head's unit could not be handed back whole (card
+  /// the-conte-rail-row-holders-are-new-each-pass, 11-19).
+  _Wearing _wearingOf(({Layer layer, List<Layer> stack}) wears, Widget row) {
+    final layers = [wears.layer];
+    return (
+      layer: ByIdentity(wears.layer),
+      eyes: ByMap(railEyesOf(layers, stack: wears.stack)),
+      sides: ByMap({
+        for (final MapEntry(:key, :value) in railSidesShownOf(
+          layers,
+          stack: wears.stack,
+        ).entries)
+          key: BySet(value),
+      }),
+      row: ByIdentity(row),
+    );
+  }
 
   /// [head]'s row as the timeline's rail builds it, at this rail's width
   /// and the conte rows' height — standing for [seat] of [track]: lit when
@@ -1255,6 +1294,16 @@ class _StoryboardRowsAndLabels {
     );
   }
 }
+
+/// What a head's row wears its layer from
+/// ([_StoryboardRowsAndLabels._wearingOf]), each field comparing as the
+/// keep needs.
+typedef _Wearing = ({
+  ByIdentity<Layer> layer,
+  ByMap<LayerId, RailEye> eyes,
+  ByMap<LayerId, BySet<AttachedPlacement>> sides,
+  ByIdentity<Widget> row,
+});
 
 /// A rail row's label as [_StoryboardRowsAndLabels._keptRow] keeps it: the
 /// [piece] it shows, and — a head's — the layer its row has in hand and the

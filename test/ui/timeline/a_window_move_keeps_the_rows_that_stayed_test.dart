@@ -328,6 +328,10 @@ void main() {
             ),
         ],
         host: find.byType(StoryboardPanel),
+        // A head's unit is handed back across a build while its rows are:
+        // the wrapper its head wears its layer in is kept by the eye it
+        // shows (card the-conte-rail-row-holders-are-new-each-pass).
+        keptThroughABuild: true,
       );
     });
 
