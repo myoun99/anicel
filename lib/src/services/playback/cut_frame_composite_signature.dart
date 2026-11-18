@@ -543,7 +543,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required BrushFrameRevisionResolver revisionOf,
 }) => CutFrameCompositeSignature.of(
   mapCompositeLeaves(
-    resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+    filmTreeOf(cut, frameIndex),
     (row) => switch (row) {
       // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
       // resolve through it), so the signature self-invalidates on a

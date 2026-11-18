@@ -41,6 +41,10 @@ typedef FrameDrawingNow = ({
 /// which revision.
 typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
 
+/// How a frame's key reads a cel where it is not read now: the cel as it
+/// was, or null for as it is now ([FramePictures.keyOfStack]).
+typedef _CelReading = CelAsOf? Function(BrushFrameKey cel);
+
 /// A frame's key as [FramePictures._standing] read it: of [cut] as it was,
 /// on [page], with each cel its tree stacks as it stood then and each
 /// plug-in's run it signs ([pluginRunsOf]).
@@ -326,13 +330,13 @@ class FramePictures implements PlaybackPictures {
       !_drawnNothing.has(cel);
 
   /// [nodes] as the picture draws them: the rows of cels it is [_drawn] of
-  /// — [asOf]'s cel as it was then.
+  /// — each [readAs] answers for as it answers.
   List<CompositeNode<CanvasStackRow>> _drawnOf(
     List<CompositeNode<CanvasStackRow>> nodes, {
-    CelAsOf? asOf,
+    _CelReading? readAs,
   }) => stackOfDrawnCels(
     nodes,
-    drawn: (cel) => cel == asOf?.cel ? asOf!.drawn : _drawn(cel),
+    drawn: (cel) => readAs?.call(cel)?.drawn ?? _drawn(cel),
   );
 
   /// The key of the picture a screen shows where it stacks [nodes] for
@@ -353,11 +357,26 @@ class FramePictures implements PlaybackPictures {
     DemandedPicture picture, {
     CelAsOf? asOf,
     FramePage? page,
+  }) => _keyOfStackRead(
+    nodes,
+    picture,
+    page: page,
+    readAs: asOf == null ? null : (cel) => cel == asOf.cel ? asOf : null,
+  );
+
+  /// [keyOfStack] with each cel [readAs] answers for read as it answers —
+  /// as it was then, or as it was read already — and every other as it is
+  /// now.
+  FramePictureKey _keyOfStackRead(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    FramePage? page,
+    _CelReading? readAs,
   }) => framePictureKeyOf(
-    _drawnOf(nodes, asOf: asOf),
+    _drawnOf(nodes, readAs: readAs),
     cutId: picture.cut.id,
     page: page ?? pageOf(picture),
-    revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
+    revisionOf: (cel) => readAs?.call(cel)?.revision ?? _revisionOf(cel),
   );
 
   /// The key of the frame [nodes] stack for [picture] AS IT STANDS — signed
@@ -483,19 +502,34 @@ class FramePictures implements PlaybackPictures {
     );
   }
 
-  /// [picture]'s key as its tree stacks now ([_standing]).
+  /// [picture]'s key as its tree stacks now ([_standing]): each cel it
+  /// stacks read once, for the key and for what is kept of it.
+  ///
+  /// 🔬Read twice, each cel's drawn-ness and revision were asked of the
+  /// store again for every frame a ruler's bar keys after an edit — the
+  /// two askings 168 and 55 of the bar's 966 sampled ms (card
+  /// an-eye-toggle-holds-the-ui-thread, 11-18, S5_BA cut 352 · 68 rows, 40
+  /// eye toggles).
   _Stood _stoodNow(DemandedPicture picture) {
     final celsRead = _celsNow();
     final nodes = stackOf(picture);
     final page = pageOf(picture);
+    final cels = [for (final cel in stackedCelsOf(nodes)) celNow(cel)];
+    // By the cel's own object: the key reads the same rows' cels.
+    final read = Map<BrushFrameKey, CelAsOf>.identity();
+    for (final at in cels) {
+      read[at.cel] = at;
+    }
     return (
       cut: picture.cut,
       page: page,
-      key: keyOfStack(nodes, picture, page: page),
-      cels: [
-        for (final cel in stackedCelsOf(nodes))
-          (cel: cel, revision: _revisionOf(cel), drawn: _drawn(cel)),
-      ],
+      key: _keyOfStackRead(
+        nodes,
+        picture,
+        page: page,
+        readAs: (cel) => read[cel],
+      ),
+      cels: cels,
       runs: pluginRunsOf(nodes),
       celsRead: celsRead,
     );

@@ -1542,6 +1542,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   /// that composites the film.
   List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
 }) {
+  _compositeTreesLaid += 1;
   // folder id (null = top level) → the nodes gathered under it so far.
   final childrenOf = <LayerId?, List<CompositeNode<CutFrameCompositeRow>>>{};
   void addTo(LayerId? folderId, CompositeNode<CutFrameCompositeRow> node) =>
@@ -1688,6 +1689,44 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
     liveLayerId: liveLayerId,
   );
 }
+
+/// [cut]'s tree at [frameIndex] as the film composites it — no row live,
+/// no ghosts ([resolveCutFrameCompositeTree]) — laid once per frame of the
+/// last cut it was asked of, for every route that asks it there.
+///
+/// 🔬A ruler's bar laid each frame's twice after every edit: once where
+/// the cut's spans are found ([computeCutFrameCompositeSignature]) and
+/// again where a span's picture is keyed (`EditingCanvas.stackAt`) — the
+/// two layings 461 of the bar's 966 sampled ms (card
+/// an-eye-toggle-holds-the-ui-thread, 11-18, S5_BA cut 352 · 68 rows, 40
+/// eye toggles).
+///
+/// Kept by the cut's instance: a cut is frozen, so an edit is a new cut and
+/// the instance is the whole invalidation story, as the structure tables'
+/// is (`compositeStructureSpansIn`). ⛔One cut, not one per cut held
+/// weakly as those are: a tree for every frame of every cut the history
+/// holds would be held as long as it holds them.
+List<CompositeNode<CutFrameCompositeRow>> filmTreeOf(
+  Cut cut,
+  int frameIndex,
+) {
+  if (!identical(_filmTrees.cut, cut)) {
+    _filmTrees = (cut: cut, trees: {});
+  }
+  return _filmTrees.trees[frameIndex] ??= List.unmodifiable(
+    resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+  );
+}
+
+({Cut? cut, Map<int, List<CompositeNode<CutFrameCompositeRow>>> trees})
+_filmTrees = (cut: null, trees: {});
+
+/// How many trees have been laid ([resolveCutFrameCompositeTree]) — the
+/// work [filmTreeOf] keeps, read by the tests that pin it.
+@visibleForTesting
+int get debugCompositeTreesLaid => _compositeTreesLaid;
+
+int _compositeTreesLaid = 0;
 
 /// [row] — [layer]'s, at a frame, or a ghost of it — as its nodes in a
 /// tree, bottom → top: its picture, and the letters of a cel number its

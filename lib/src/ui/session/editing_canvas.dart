@@ -388,15 +388,20 @@ class EditingCanvas {
     final drawing = drawingLayerId == null
         ? null
         : shown.layers.byId(drawingLayerId);
+    final live = drawing != null && layerAcceptsBrushInput(drawing)
+        ? drawingLayerId
+        : null;
     final nodes = walk.mapTree(
-      resolveCutFrameCompositeTree(
-        cut: shown,
-        frameIndex: frameIndex,
-        liveLayerId: drawing != null && layerAcceptsBrushInput(drawing)
-            ? drawingLayerId
-            : null,
-        ghostsOf: ghosts == null ? null : (row) => ghosts[row.id] ?? const [],
-      ),
+      live == null && ghosts == null
+          ? filmTreeOf(shown, frameIndex)
+          : resolveCutFrameCompositeTree(
+              cut: shown,
+              frameIndex: frameIndex,
+              liveLayerId: live,
+              ghostsOf: ghosts == null
+                  ? null
+                  : (row) => ghosts[row.id] ?? const [],
+            ),
     );
     return (
       nodes: nodes,
