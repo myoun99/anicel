@@ -189,6 +189,23 @@ void main() {
     expect(movieEnd(s), 25);
   });
 
+  test('a trim no cut leaves by shows the end line where the release '
+      'leaves it — ⑱ holds the line only for cuts that go', () {
+    final s = open([cutOf(a, 10), cutOf(b, 8, gap: 2)], trailing: 5);
+    Project previewed() => projectWithTimelineDragPreview(
+      s.repository.requireProject(),
+      s.dragPreview.value,
+    );
+
+    s.edgeDrag.beginCutEdgeDrag(cutId: b, edge: TimelineBlockEdge.end);
+    s.edgeDrag.updateCutEdgeDrag(-3);
+    expect(movieEndFrames(previewed()), 22);
+
+    s.edgeDrag.endCutEdgeDrag();
+    expect(durationOf(s, b), 5, reason: 'LIVENESS: the trim landed');
+    expect(movieEnd(s), 22);
+  });
+
   test('a cut\'s camera keys hold the edge at their floor until it has '
       'passed the cut whole — then the cut goes, keys and all', () {
     // b's keys 0, 4 and 7 ask a frame each: b may shrink to 3. c, behind

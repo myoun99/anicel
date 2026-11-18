@@ -111,13 +111,12 @@ class DeleteCutCommand implements Command {
     }
     // …and the movie's END LINE does not move either — one rule for the
     // last cut of a track, the last track, and neither.
-    final held = trailingFramesHoldingTheEnd(
-      before: project,
-      after: repository.requireProject(),
+    repository.updateTrailingFrames(
+      trailingFramesHoldingTheEnd(
+        before: project,
+        after: repository.requireProject(),
+      ),
     );
-    if (held != repository.requireProject().trailingFrames) {
-      repository.updateTrailingFrames(held);
-    }
 
     if (!isDeletingActiveCut) {
       _hasExecuted = true;
