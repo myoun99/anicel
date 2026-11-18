@@ -94,9 +94,25 @@ abstract final class PenSidecars {
   /// 2026-11-17): the freshest packet is the pen NOW. After a stall every
   /// point of a merged move took the pressure the pen had when the move was
   /// handled, not when it was drawn.
-  static ({double pressure, bool touching})? readingOf(PointerEvent event) {
+  ///
+  /// [ownPoint] says which of the two answered: what the input inspector
+  /// counts of a stroke (H61 — a line whose pressure jumps a level and back
+  /// for a stretch).
+  static ({double pressure, bool touching, bool ownPoint})? readingOf(
+    PointerEvent event,
+  ) {
     final driven = PenPath.drivenPressureOf(event);
-    return driven != null ? _reading(driven, tip: false) : freshReading();
+    final reading = driven != null
+        ? _reading(driven, tip: false)
+        : freshReading();
+    if (reading == null) {
+      return null;
+    }
+    return (
+      pressure: reading.pressure,
+      touching: reading.touching,
+      ownPoint: driven != null,
+    );
   }
 
   static ({double pressure, bool touching}) _reading(

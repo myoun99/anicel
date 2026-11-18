@@ -106,7 +106,12 @@ class _BrushEditPressure {
   /// stroke, and after the patience painted the stand-ins as before. An
   /// estimate is UIKit's best value and is READ; the stand-in is the press's
   /// force repeated, whatever UIKit calls it.
-  ({double pressure, bool read}) pressureOf(PointerEvent event) {
+  ///
+  /// [from] says which of these answered, and [pointer] is the pointer's own
+  /// reading beside it where it measures one — what the input inspector's
+  /// `press` line counts of a stroke ([reportReadings]).
+  ({double pressure, bool read, _PressureFrom from, double? pointer})
+  pressureOf(PointerEvent event) {
     final recorded = QaPenLedger.forceAt(event.timeStamp);
     if (QaPenLedger.start()) {
       _ledgerAnswers[event.timeStamp] = recorded?.state;
@@ -118,6 +123,10 @@ class _BrushEditPressure {
     if (repeat) {
       _heldRepeats[event.timeStamp] = recorded?.state;
     }
+    final range = event.pressureMax - event.pressureMin;
+    final measures =
+        PenSidecars.isPenKind(event.kind) && range.isFinite && range > 0.0;
+    final pointer = measures ? _normalized(event, range) : null;
     if (recorded != null) {
       return switch (recorded.state) {
         PenLedgerState.measured => (
@@ -125,12 +134,21 @@ class _BrushEditPressure {
             _platformPressure(recorded.value),
           ),
           read: !repeat,
+          from: _PressureFrom.ledger,
+          pointer: pointer,
         ),
         PenLedgerState.estimated || PenLedgerState.estimatedFinal => (
           pressure: AppInput.applyPressureCurve(_uikitForce(event.pressure)),
           read: !repeat,
+          from: _PressureFrom.ledger,
+          pointer: pointer,
         ),
-        PenLedgerState.noPressure => (pressure: 1.0, read: true),
+        PenLedgerState.noPressure => (
+          pressure: 1.0,
+          read: true,
+          from: _PressureFrom.ledger,
+          pointer: pointer,
+        ),
       };
     }
     // The response curve (PEN-3) shapes REAL pressure from either source
@@ -143,17 +161,23 @@ class _BrushEditPressure {
       return (
         pressure: AppInput.applyPressureCurve(sidecar.pressure),
         read: true,
+        from: sidecar.ownPoint ? _PressureFrom.ownPacket : _PressureFrom.newest,
+        pointer: pointer,
       );
     }
-    final range = event.pressureMax - event.pressureMin;
-    final measures =
-        PenSidecars.isPenKind(event.kind) && range.isFinite && range > 0.0;
-    if (!measures) {
-      return (pressure: 1.0, read: sidecar == null);
+    if (pointer == null) {
+      return (
+        pressure: 1.0,
+        read: sidecar == null,
+        from: _PressureFrom.full,
+        pointer: null,
+      );
     }
     return (
-      pressure: AppInput.applyPressureCurve(_normalized(event, range)),
+      pressure: AppInput.applyPressureCurve(pointer),
       read: !repeat,
+      from: _PressureFrom.pointer,
+      pointer: pointer,
     );
   }
 
@@ -243,6 +267,19 @@ class _BrushEditPressure {
 
   static const _noLean = (samples: 0, leaned: 0, low: 1.0, high: 0.0);
 
+  /// Where each of this contact's samples took its pressure, in order —
+  /// and, for each the driver answered beside a pointer that measured its
+  /// own, how far apart the two put it.
+  ///
+  /// 🔬H61 (유저 2026-11-18, the Wintab service with Windows Ink on: 「정기적으로
+  /// 일정구간에서 스트로크가 2개 겹쳐지는거같은데」): the PNG it came with
+  /// shows no second line — 25 stretches, 5–36 px, where the line runs
+  /// some 15% wider and a third darker and comes back, flat. A pressure
+  /// that jumps a level and back. A sample takes its pressure from one of
+  /// four places ([pressureOf]); this says which, sample by sample.
+  final List<_PressureFrom> _pressureFroms = [];
+  final List<double> _driverOverPointer = [];
+
   /// Puts the contact that just ended on the input inspector — the `ledger`
   /// line where the platform keeps one, and the `lean` line — the one
   /// place a device shows whether the platform's word reached the brush —
@@ -263,6 +300,7 @@ class _BrushEditPressure {
       );
       _leanTally = _noLean;
     }
+    _notePressureFroms();
     if (_ledgerAnswers.isEmpty) {
       return;
     }
@@ -290,6 +328,36 @@ class _BrushEditPressure {
     );
     _noteOpening();
     _ledgerAnswers.clear();
+  }
+
+  /// The `press` line: how many of the contact's samples each place answered,
+  /// how often the answer moved from one place to another along it (`sw`),
+  /// and — where the driver answered beside a pointer that measured its own
+  /// — the driver's pressure over the pointer's alone, its median and range.
+  void _notePressureFroms() {
+    final froms = _pressureFroms;
+    if (froms.isEmpty) {
+      return;
+    }
+    var switches = 0;
+    for (var at = 1; at < froms.length; at += 1) {
+      if (froms[at] != froms[at - 1]) {
+        switches += 1;
+      }
+    }
+    final counts = [
+      for (final from in _PressureFrom.values)
+        '${from.tag}=${froms.where((each) => each == from).length}',
+    ];
+    final ratios = [..._driverOverPointer]..sort();
+    final apart = ratios.isEmpty
+        ? ''
+        : ' drv/os ×${ratios[ratios.length ~/ 2].toStringAsFixed(2)}'
+              ' (${ratios.first.toStringAsFixed(2)}'
+              '–${ratios.last.toStringAsFixed(2)})';
+    InputInspector.note('press ${counts.join(' ')} sw=$switches$apart');
+    froms.clear();
+    _driverOverPointer.clear();
   }
 
   /// 🔬HOW A CONTACT OPENED, sample by sample: the force each brought, what
@@ -394,6 +462,16 @@ class _BrushEditPressure {
     if (pressure.read || opening) {
       _state._readings = _state._readings.withPressure(pressure.pressure);
     }
+    _pressureFroms.add(pressure.from);
+    final pointer = pressure.pointer;
+    if (pointer != null &&
+        (pressure.from == _PressureFrom.ownPacket ||
+            pressure.from == _PressureFrom.newest)) {
+      final alone = AppInput.applyPressureCurve(pointer);
+      if (alone > 0) {
+        _driverOverPointer.add(pressure.pressure / alone);
+      }
+    }
     // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
     // lean in a direction nothing reported — and `BrushDab` refuses that pair
     // outright. The same shape as `_travelled` below, and for the same reason.
@@ -462,4 +540,27 @@ class _BrushEditPressure {
     _state._readings = _state._readings.withPressure(1.0).withSpeed(0.0);
     _travelled = null;
   }
+}
+
+/// Where a sample took its pressure ([_BrushEditPressure.pressureOf]), by
+/// the short name the input inspector's `press` line counts it under.
+enum _PressureFrom {
+  /// The platform's own record of the sample (iOS, macOS).
+  ledger('ldg'),
+
+  /// The tablet driver's packet paired with the sample's own point.
+  ownPacket('own'),
+
+  /// The tablet driver's newest packet, the point paired with none.
+  newest('new'),
+
+  /// The pointer's own reading.
+  pointer('os'),
+
+  /// Full pressure, for a pointer that measures none.
+  full('one');
+
+  const _PressureFrom(this.tag);
+
+  final String tag;
 }
