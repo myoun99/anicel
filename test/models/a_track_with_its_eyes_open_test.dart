@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/eyes_open.dart';
@@ -12,7 +13,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 // The canvas area compares a track as `trackWithEyesOpen` makes it (card
 // an-eye-toggle-holds-the-ui-thread, step 3b): every row the picture
-// hears for itself has its eye opened, and nothing else is touched.
+// hears for itself has its eye opened — the conte's heads, which its rows
+// wear, with them — and nothing else is touched.
 
 const _id = TrackId('t');
 
@@ -29,6 +31,7 @@ Track _track({
   bool seRowShown = true,
   bool transitionShown = true,
   bool conteShown = true,
+  bool entryShown = true,
 }) => Track(
   id: _id,
   name: 'V1',
@@ -47,7 +50,20 @@ Track _track({
   transitionLayer: createTrackTransitionLayer(
     _id,
   ).copyWith(isVisible: transitionShown),
-  conte: TrackConte(base: ConteHead(name: 'conte', isVisible: conteShown)),
+  conte: TrackConte(
+    base: ConteHead(name: 'conte', isVisible: conteShown),
+    above: [
+      ConteEntry(
+        key: const ConteKey('b'),
+        head: ConteHead(
+          name: 'b',
+          opacity: .5,
+          isVisible: entryShown,
+          onTimesheet: false,
+        ),
+      ),
+    ],
+  ),
 );
 
 void main() {
@@ -80,10 +96,26 @@ void main() {
     expect(open.seLayers, same(track.seLayers));
   });
 
-  test('the conte\'s head keeps its eye', () {
-    final track = _track(cutRowShown: false, conteShown: false);
+  test('the conte\'s base head\'s eye is opened, only the conte new', () {
+    final track = _track(conteShown: false);
     final open = trackWithEyesOpen(track);
-    expect(open.conte, same(track.conte));
-    expect(open.conte.base!.isVisible, isFalse);
+    expect(open.conte.base!.isVisible, isTrue);
+    expect(open.conte.above.single, same(track.conte.above.single));
+    expect(open.cuts, same(track.cuts));
+    expect(open.seLayers, same(track.seLayers));
+    expect(open.transitionLayer, same(track.transitionLayer));
+  });
+
+  test('a conte entry\'s head\'s eye is opened, and nothing else of it', () {
+    final track = _track(entryShown: false);
+    final open = trackWithEyesOpen(track);
+    final head = open.conte.above.single.head;
+    expect(head.isVisible, isTrue);
+    expect(
+      head,
+      ConteHead(name: 'b', opacity: .5, onTimesheet: false),
+      reason: 'its other fields are the head\'s own',
+    );
+    expect(open.conte.base, same(track.conte.base));
   });
 }

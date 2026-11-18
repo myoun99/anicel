@@ -7,6 +7,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -24,6 +26,8 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_laying.dart'
+    show trackWithItsConteLaid;
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
@@ -105,6 +109,48 @@ Project _project() => Project(
     ),
   ],
 );
+
+/// [_project] with a conte in its first cut and `x` riding over it, the
+/// track's conte laid as a write lays it — the conte's heads worn.
+Project _projectWithAConte() {
+  final project = _project();
+  final track = project.tracks.single;
+  final first = track.cuts.first;
+  final withConte = track.copyWith(
+    cuts: [
+      first.copyWith(
+        layers: [
+          ...first.layers,
+          Layer(
+            id: const LayerId('conte'),
+            name: 'Conte',
+            kind: LayerKind.storyboard,
+            frames: [
+              Frame(id: const FrameId('panel'), duration: 6, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('panel'), length: 6),
+            },
+          ),
+          Layer(
+            id: const LayerId('x'),
+            name: 'X',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: const LayerId('conte'),
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: AttachedMode.free,
+            frames: const [],
+            timeline: const {},
+          ),
+        ],
+      ),
+      ...track.cuts.skip(1),
+    ],
+  );
+  return project.copyWith(
+    tracks: [trackWithItsConteLaid(withConte, settledCut: (_) => null)],
+  );
+}
 
 /// Stands on whichever of the first cut's two rows is not stood on.
 void _standOnTheOtherLayer(EditorSessionManager session) =>
@@ -195,6 +241,24 @@ void main() {
         EditorCanvasArea.tracksDrawnBy(session),
         isNot(drawn),
         reason: 'the parts that draw the rows hear it',
+      );
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
+    testWidgets('on a row riding the conte, which its head wears, is the '
+        'picture\'s alone', (tester) async {
+      final session = sessionOf(_projectWithAConte());
+      session.selectLayer(const LayerId('a'));
+      Track track() => session.repository.requireProject().tracks.single;
+      final heads = track().conte;
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('x'));
+
+      expect(
+        track().conte,
+        isNot(heads),
+        reason: 'the row\'s head wears its eye',
       );
       expect(EditorCanvasArea.shownBy(session), before);
     });
