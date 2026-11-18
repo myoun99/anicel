@@ -22,7 +22,7 @@ import '../playback/canvas_playback_controller.dart';
 import '../text/app_strings.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
-import '../../native/qa_audio_denoiser.dart' show denoiseVoiceTake;
+import '../../native/qa_audio_filter.dart' show denoiseVoiceTake;
 import '../../native/qa_audio_device.dart'
     show
         QaAudioDevice,

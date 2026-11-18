@@ -84,6 +84,34 @@ Float32List filterAudio({
   return baked.isEmpty ? baked : Float32List.sublistView(baked, late);
 }
 
+/// [samples] — a finished voice take, interleaved by [channels], at
+/// [sampleRate] — with its noise taken out: a sound row's noise removal at
+/// its whole amount ([AudioDenoiser]), on time as a span is. Null where the
+/// engine declines — a rate RNNoise is not built around, nothing to clean
+/// — and the take is kept as it was.
+///
+/// 🚨ONE ROAD (board voice-take-denoise-lands-late): ↩️the take had a door
+/// of its own, which handed each frame back a frame late and read nothing
+/// past the take — a take was placed 10 ms after it was said.
+Float32List? denoiseVoiceTake({
+  required Float32List samples,
+  required int channels,
+  required int sampleRate,
+}) {
+  if (samples.isEmpty || channels <= 0) {
+    return null;
+  }
+  final cleaned = filterAudio(
+    samples: samples,
+    channels: channels,
+    rate: sampleRate,
+    stages: const [
+      [(start: 0, filter: AudioDenoiser(amount: 1))],
+    ],
+  );
+  return cleaned.length == samples.length ? cleaned : null;
+}
+
 /// A span baked a stretch at a time — one too long to hold, read and
 /// written in pieces: each stretch goes on from the filters' memory where
 /// the one before left it, so the stretches together are the samples

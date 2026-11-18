@@ -1,12 +1,12 @@
-//! The noise removal against the take's RNNoise it hears frames through:
-//! at no amount the sound as it was, at the whole amount the take's
-//! samples, between them the two mixed — every one late by
+//! The noise removal against the RNNoise it hears frames through: at no
+//! amount the sound as it was, at the whole amount RNNoise's frames,
+//! between them the two mixed — every one late by
 //! [`DENOISER_LATENCY`] —, a setting taking over at its own sample, and a
 //! span baked a stretch at a time as it is baked at once.
 
 use super::{CHANNEL_MEMORY, DENOISER_LATENCY, Denoiser, denoise, denoise_on, denoiser_memory};
 use crate::filter::Setting;
-use audio_denoise::FRAME;
+use audio_denoise::{FRAME, Suppressor};
 
 const LATE: usize = DENOISER_LATENCY;
 
@@ -50,19 +50,28 @@ fn at_no_amount_it_hands_back_the_sound_as_it_was_late_by_two_frames() {
     assert_eq!(denoise(&sound, 2, &[]), late(&sound, 2), "before any setting, none");
 }
 
-// The take's road writes a frame's cleaning one frame late; this one
-// comes out a frame later still — the sound as it was waits with it. (What
-// comes out before the span's first sample does is no setting's, and the
-// bake drops it.)
+// A frame of the sound comes back from RNNoise a frame late, and is heard
+// whole a frame after it went in: at the whole amount it is RNNoise's
+// frames two frames on — the sound as it was waits with them. (What comes
+// out before the span's first sample does is no setting's, and the bake
+// drops it.)
 #[test]
-fn at_the_whole_amount_it_is_the_takes_cleaning_a_frame_later() {
+fn at_the_whole_amount_it_is_rnnoises_frames_two_frames_on() {
     for channels in [1, 2] {
         let sound = sound(12_000, channels);
-        let mut take = sound.clone();
-        assert!(audio_denoise::denoise(&mut take, channels, audio_denoise::RATE));
+        let mut frames = vec![0.0; sound.len()];
+        for channel in 0..channels {
+            let mut suppressor = Suppressor::at_rest();
+            for (k, frame) in sound.chunks_exact(FRAME * channels).enumerate() {
+                let heard = std::array::from_fn(|i| frame[i * channels + channel]);
+                for (i, value) in suppressor.frame(&heard).into_iter().enumerate() {
+                    frames[(k * FRAME + i) * channels + channel] = value;
+                }
+            }
+        }
         let out = denoise(&sound, channels, &amount(1.0));
         let (from, on) = (LATE * channels, FRAME * channels);
-        assert_eq!(out[from..], take[from - on..sound.len() - on], "{channels} channels");
+        assert_eq!(out[from..], frames[from - on..sound.len() - on], "{channels} channels");
         assert_ne!(out[from..], late(&sound, channels)[from..], "it cleaned");
     }
 }

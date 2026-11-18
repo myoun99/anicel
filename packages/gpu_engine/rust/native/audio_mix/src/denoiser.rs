@@ -1,8 +1,9 @@
 //! A sound row's noise removal (board audio-fx-second-effect-and-presets,
 //! Q1 = 1, 유저 2026-11-18: 「ノイズ除去 는 다음 라운드에 효과로 지어 セリフ 에
-//! 더한다」): the take's RNNoise (native/audio_denoise — one frame's road for
-//! both, [`Suppressor`]) over a span, the cleaned sound mixed into the sound
-//! as it was by the setting's amount.
+//! 더한다」): RNNoise (native/audio_denoise, [`Suppressor`]) over a span, the
+//! cleaned sound mixed into the sound as it was by the setting's amount —
+//! and a voice take's, at its whole amount (board
+//! voice-take-denoise-lands-late).
 //!
 //! 🚨LATE BY TWO FRAMES, THE SOUND AS IT WAS WITH IT. A frame comes out of
 //! RNNoise as the one before it, once the next is heard — so what comes out
@@ -10,10 +11,10 @@
 //! cleaned and the sound as it was alike. The bake reads that much past the
 //! span and drops as much at its front (`FilterStretches`, the app's
 //! qa_audio_filter.dart), so a span is late by nothing, and an amount of 0
-//! hands back every sample as it was. ↩️The take's road (`denoise`) leaves
-//! its frames late by one.
+//! hands back every sample as it was. ↩️A voice take went a road of its own
+//! that read nothing past it, and was placed a frame late.
 //!
-//! Each channel through a model of its own, as the take's. ⛔At
+//! Each channel through a model of its own. ⛔At
 //! [`audio_denoise::RATE`] alone — RNNoise's bands are built around it — and
 //! the door refuses another rate ([`crate::Filter::hears`]; board
 //! audio-fx-second-effect-and-presets-Q2 asks whether to convert).

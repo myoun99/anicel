@@ -897,7 +897,6 @@ version = "0.0.1"
 dependencies = [
  "ash",
  "audio",
- "audio_denoise",
  "audio_device",
  "audio_mix",
  "compress",

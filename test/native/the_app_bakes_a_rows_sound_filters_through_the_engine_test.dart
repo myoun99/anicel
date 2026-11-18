@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_audio_denoiser.dart';
 import 'package:anicel/src/native/qa_audio_filter.dart';
 import 'package:anicel/src/services/audio/sound_filters.dart';
 
@@ -269,33 +268,12 @@ void main() {
   });
 
   // 🗣️audio-fx-second-effect-and-presets-Q1 (유저 2026-11-18): ノイズ除去
-  // as a row's effect — the take's RNNoise through the filters' door.
+  // as a row's effect — RNNoise through the filters' door, as a voice
+  // take's is (board voice-take-denoise-lands-late).
   group('a noise removal', () {
     List<SoundFilterSetting> at(double amount) => [
       (start: 0, filter: AudioDenoiser(amount: amount)),
     ];
-
-    test('🎯at its whole amount is the take\'s cleaning one frame on — the '
-        'span late by nothing, read on past its end in silence', () {
-      final sound = _madeUpSound();
-      final baked = filterAudio(
-        samples: sound,
-        channels: 2,
-        rate: 48000,
-        stages: [at(1)],
-      );
-      // The take's road writes a frame's cleaning a frame late.
-      final take = denoiseVoiceTake(
-        samples: Float32List(sound.length + 2 * 960)..setAll(0, sound),
-        channels: 2,
-        sampleRate: 48000,
-      )!;
-      expect(
-        baked,
-        Float32List.sublistView(take, 2 * 480, 2 * 480 + sound.length),
-      );
-      expect(baked, isNot(sound), reason: 'LIVENESS: it cleaned');
-    });
 
     test('at no amount hands every sample back as it was — alone, and '
         'before an equalizer', () {

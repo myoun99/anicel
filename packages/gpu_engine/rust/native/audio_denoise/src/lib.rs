@@ -12,9 +12,11 @@
 //! built-in one), the voice probability (the app throws it away), and
 //! the training build.
 //!
-//! The contract with Dart (`lib/src/native/qa_audio_denoiser.dart`, which
-//! asks the engine's library) is the C's, unchanged: a finished take
-//! denoised in place, once, at stop — never on the capture thread.
+//! The app hears it through a sound row's one filter door (native/audio_mix
+//! denoiser.rs): a voice take's noise removal is a row's at its whole
+//! amount, read back on time (board voice-take-denoise-lands-late). 🪦The
+//! C's door, a take denoised in place, gave each frame back a frame late,
+//! and the take was placed that late.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -38,14 +40,14 @@ pub const RATE: i32 = 48_000;
 /// [`RATE`].
 pub const FRAME: usize = FRAME_SIZE;
 
-/// One channel's RNNoise from frame to frame: the take's (`denoise`) and
-/// a sound row's noise removal (native/audio_mix denoiser.rs — board
-/// audio-fx-second-effect-and-presets, Q1), which bakes a span a stretch
-/// at a time and so keeps it between stretches as doubles
-/// ([`Suppressor::keep`]).
+/// One channel's RNNoise from frame to frame, for a sound row's noise
+/// removal (native/audio_mix denoiser.rs — board
+/// audio-fx-second-effect-and-presets, Q1) and so a voice take's: a span
+/// is baked a stretch at a time, so it is kept between stretches as
+/// doubles ([`Suppressor::keep`]).
 ///
-/// 🚨ONE FRAME'S ROAD FOR BOTH: the scaling in and out is here, so the
-/// row's effect and the take hear a frame alike.
+/// It gives each frame back a frame late — the half of its window the
+/// overlap waits for (`a_voice_comes_back_a_frame_late`).
 pub struct Suppressor(DenoiseState);
 
 impl Suppressor {
@@ -76,72 +78,4 @@ impl Suppressor {
         let out = self.0.process_frame(&input.map(|value| value * 32768.0));
         out.map(|value| value * (1.0 / 32768.0))
     }
-}
-
-/// Denoises `samples` — interleaved float32 frames of `channels`, in
-/// ±1.0 — in place, each channel through a model of its own; false, with
-/// nothing touched, when the take is not one this can do (another rate,
-/// no channels, no room for the models).
-///
-/// RNNoise hears 480-sample frames in 16-bit range: each channel is scaled
-/// in and out, and its last frame padded with silence, of which only the
-/// part the take has is written back.
-pub fn denoise(samples: &mut [f32], channels: usize, sample_rate: i32) -> bool {
-    if sample_rate != RATE || channels == 0 || samples.is_empty() {
-        return false;
-    }
-    let frames = samples.len() / channels;
-    // Every channel's model before the first sample is touched: a failure
-    // to make one leaves the take as it was (the C's contract).
-    let mut states: Vec<Suppressor> = Vec::new();
-    if states.try_reserve_exact(channels).is_err() {
-        return false;
-    }
-    states.extend((0..channels).map(|_| Suppressor::at_rest()));
-    for (channel, state) in states.iter_mut().enumerate() {
-        for start in (0..frames).step_by(FRAME) {
-            let valid = (frames - start).min(FRAME);
-            let mut input = [0.0f32; FRAME];
-            for (i, value) in input.iter_mut().enumerate().take(valid) {
-                *value = samples[(start + i) * channels + channel];
-            }
-            let out = state.frame(&input);
-            for (i, &value) in out.iter().enumerate().take(valid) {
-                samples[(start + i) * channels + channel] = value;
-            }
-        }
-    }
-    true
-}
-
-/// Suppresses noise in place on an interleaved float32 buffer: `frames`
-/// counts per-channel samples. 1 when the buffer was processed, 0 when it
-/// is not one this can do — 0 always means untouched, so the caller can
-/// fall back to the raw take.
-///
-/// # Safety
-/// `samples` is null or points at `frames` x `channels` writable floats.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qa_audio_denoise_f32(
-    samples: *mut f32,
-    frames: i64,
-    channels: i32,
-    sample_rate: i32,
-) -> i32 {
-    // What the take is and is not is `denoise`'s to say; this door only
-    // turns the pointer into a slice — never a null one, nor a negative
-    // or overflowing length, nor an empty one: a slice of nothing still
-    // wants an aligned pointer, and the C reads none for no frames.
-    let (Ok(frames), Ok(channels)) = (usize::try_from(frames), usize::try_from(channels)) else {
-        return 0;
-    };
-    let Some(len) = frames.checked_mul(channels) else {
-        return 0;
-    };
-    if samples.is_null() || len == 0 {
-        return 0;
-    }
-    // SAFETY: the caller's contract.
-    let samples = unsafe { std::slice::from_raw_parts_mut(samples, len) };
-    i32::from(denoise(samples, channels, sample_rate))
 }
