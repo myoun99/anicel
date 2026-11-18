@@ -90,8 +90,8 @@ pub extern "C" fn qat_open(within_ms: i32) -> i32 {
     i32::from(wintab::open(within_ms.max(0) as u32))
 }
 
-/// Hands `out` the newest packets heard and not handed yet — the reader's
-/// own thread drains the driver's queue, and this asks it nothing — as
+/// Hands `out` the newest packets heard and not handed yet — the receiver
+/// drains the driver's queue, and this asks it nothing — as
 /// records of 8 floats — pressure 0..1, bearing, altitude, time in ms,
 /// buttons, oriented, twist, twisted (see `wintab::Scales::record`) — at
 /// most `cap` of them. The record count; 0 with nothing new, or no context
