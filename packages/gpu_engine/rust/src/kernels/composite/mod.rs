@@ -622,11 +622,13 @@ impl Telling<'_> {
     /// for a picture told the same after the hold let the put go, and one
     /// told by what was kept would be made again each time it was.
     ///
-    /// 🔬Why it is told at all (2026-11-19, S5_BA cut 352 as its file shows
-    /// it): one folder under an effect, the same picture in every frame —
-    /// and of the 14,742 tiles its 58 pictures made, 14,025 were told by
-    /// nothing for that close alone, 83% of all of them the bytes of
-    /// another (921 MB held, 155 MB of them apart).
+    /// 🔬Why it is told at all (2026-11-19, S5_BA as its file shows it,
+    /// the playhead on cut 352: the band's 58 pictures, 40 of them the next
+    /// cut's, where one folder under an effect is the same picture in every
+    /// frame): of the 14,742 tiles they made, 14,025 were told by nothing
+    /// for that close alone, 83% of all of them the bytes of another
+    /// (921 MB held, 155 MB of them apart). Told, the same 58 pictures made
+    /// 3,010 tiles, 188 MB.
     fn put(&mut self, plan: &Plan, step: &Step) -> Option<()> {
         let (rect, held, number) = named_hold(plan, step)?;
         let Step::Row { keys, map, matrix, opacity, mode, masked: false, .. } = unchained(*step, 0) else {
