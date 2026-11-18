@@ -120,15 +120,24 @@ void main() {
         layer.name,
   };
 
+  /// The rows built wholly below the grid, by name — past the view, not a
+  /// row the view's edge cuts.
+  Set<String> builtBelow(WidgetTester tester) {
+    final bottom = tester.getRect(find.byType(LayerTimelineGrid)).bottom;
+    return {
+      for (final name in built())
+        if (tester.getTopLeft(find.text(name)).dy >= bottom) name,
+    };
+  }
+
   // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q1 = B):
   // spare rows past the view, always — [timelineRowWindowMargin].
   testWidgets('the rows a notch brings in stand built before it, either '
       'way, and the frame the grid opens in builds them too', (tester) async {
     await tester.pumpWidget(grid());
 
-    final opened = built();
     expect(
-      opened.difference(inView()),
+      builtBelow(tester),
       isNotEmpty,
       reason: 'the opening frame built rows past the view',
     );
