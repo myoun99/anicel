@@ -40,7 +40,12 @@ Future<void> syncMediaPlaces(
         for (final place in places)
           mediaAssetUseLine(place.use, framePlace: session.framePlaceLabel),
       ],
-      words: MediaPoolWords(framesPerSecond: rate.countingBase),
+      words: MediaPoolWords(
+        clock: (
+          rate: rate,
+          speed: session.repository.requireProject().audioSpeed,
+        ),
+      ),
     ),
   );
   if (answer == null) {

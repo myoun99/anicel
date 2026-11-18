@@ -1,5 +1,6 @@
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show MovieClock, ProjectClock;
 import '../audio/audio_conform_runner.dart' show openAudioSource;
 import '../pdf/pdf_render_service.dart';
 import 'held_viewer_document.dart';
@@ -10,9 +11,16 @@ import 'video_decode_worker.dart' show videoDecodeBackend;
 import 'viewer_document.dart' show pagePixelSize;
 
 /// What a list of files says of each without opening it for good: the size
-/// it lands at 1:1, and how many pictures it holds — a picture file's frames
-/// (a still is one), a movie's frames, a PDF's pages.
-typedef MediaFacts = ({CanvasSize size, int pictures});
+/// it lands at 1:1, how many pictures it holds — a picture file's frames
+/// (a still is one), a movie's frames, a PDF's pages — and a movie's own
+/// rate as its decoder names it ([MovieClock.movieRate]; null for every
+/// other file), which its frames are counted in the project's by
+/// ([placedPicturesOf]).
+typedef MediaFacts = ({
+  CanvasSize size,
+  int pictures,
+  ({int numerator, int denominator})? rate,
+});
 
 /// [path]'s [MediaFacts] — the size a picture's own pixels, a movie's
 /// frame, a PDF's first page as the renderer draws it 1:1 ([pagePixelSize])
@@ -33,7 +41,12 @@ Future<MediaFacts?> readMediaFacts(
   try {
     switch (kind) {
       case MediaAssetKind.image:
-        return await readOnHeldBytes(hold, path, ImageViewerDocument.factsOf);
+        final picture = await readOnHeldBytes(
+          hold,
+          path,
+          ImageViewerDocument.factsOf,
+        );
+        return (size: picture.size, pictures: picture.pictures, rate: null);
       case MediaAssetKind.video:
         final info = await readHeldMovieInfo(videoDecodeBackend, hold, path);
         return info == null
@@ -41,6 +54,10 @@ Future<MediaFacts?> readMediaFacts(
             : (
                 size: CanvasSize(width: info.width, height: info.height),
                 pictures: info.frameCount,
+                rate: (
+                  numerator: info.fpsNumerator,
+                  denominator: info.fpsDenominator,
+                ),
               );
       case MediaAssetKind.pdf:
         final document = await openHeldViewerDocument(
@@ -55,6 +72,7 @@ Future<MediaFacts?> readMediaFacts(
           return (
             size: pagePixelSize(document, 0),
             pictures: document.pageCount,
+            rate: null,
           );
         } finally {
           await document.dispose();
@@ -65,6 +83,35 @@ Future<MediaFacts?> readMediaFacts(
   } on Object {
     return null;
   }
+}
+
+/// How much of [asset] a placement places when it places the file whole,
+/// counted as the placement counts it — the length its preset's span is
+/// kept from ([MediaPreset.spanOf]), the ONE count the pool's lengths, the
+/// drag's silhouette and the sync window say a file's span in: a movie's
+/// PROJECT frames on the sound's clock ([MovieClock.projectFramesCovering]
+/// — the count the door that places a movie keeps it by), a GIF's frames,
+/// a PDF's pages, a still's one ([MediaAsset.pictures]).
+///
+/// Null for a sound, and for a movie whose rate is not read yet ([facts]):
+/// ⛔never the movie's own frame count, which is another clock's — a 30
+/// fps take holds 300 frames where a 24 fps project places 240 of them.
+int? placedPicturesOf(
+  MediaAsset asset,
+  MediaFacts? facts,
+  ProjectClock clock,
+) {
+  if (asset.kind != MediaAssetKind.video) {
+    return asset.pictures;
+  }
+  if (facts case (:final pictures, rate: final rate?, size: _)) {
+    return MovieClock(
+      projectRate: clock.rate,
+      audioSpeed: clock.speed,
+      movieRate: rate,
+    ).projectFramesCovering(pictures);
+  }
+  return null;
 }
 
 /// What a list says of a file's SOUND without decoding it: the rate it was

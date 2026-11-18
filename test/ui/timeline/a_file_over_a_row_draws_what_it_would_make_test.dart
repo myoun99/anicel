@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -13,8 +16,14 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart'
+    show debugVideoDecodeBackend;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+
+import '../../helpers/fake_video_backend.dart';
+import '../../helpers/stand_in_movie.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨A FILE HELD OVER A ROW DRAWS WHAT LETTING GO WOULD MAKE — 「끄는 동안
 /// 보이는 것은 놓았을 때 생길 것이다」 (미디어 배치 라운드 2d 2부).
@@ -124,6 +133,54 @@ void main() {
         reason: '${preset.toJson()}',
       );
     }
+  });
+
+  test('🐛a movie at another rate draws the cells a placement keeps of it — '
+      'its PROJECT frames, once the pool has read its rate; one cell '
+      'before', () async {
+    final dir = Directory.systemTemp.createTempSync('anicel-sil-movie');
+    addTearDown(() => deleteTempQuietly(dir));
+    final path = File('${dir.path}${Platform.pathSeparator}take.mp4')
+      ..writeAsBytesSync(standInMovieBytes);
+    // The pool's own spelling, as a file dragged from it is named.
+    final take = normalizedMediaPath(path.path);
+    // Fifteen frames of 30 fps are twelve of the project's 24.
+    debugVideoDecodeBackend = FakeVideoBackend(
+      width: 64,
+      height: 36,
+      frameCount: 15,
+      fpsNumerator: 30,
+      fpsDenominator: 1,
+    );
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final s = session(
+      pool: [
+        MediaAsset(
+          path: take,
+          name: 'take',
+          kind: MediaAssetKind.video,
+          frameCount: 15,
+        ),
+      ],
+    );
+    final read = Completer<void>();
+    s.mediaPool.mediaFactsRead.addListener(() {
+      if (!read.isCompleted) {
+        read.complete();
+      }
+    });
+    s.showMediaPlacement(rowId, 3, take);
+    expect(
+      shown(s)?.silhouette,
+      (layerId: rowId, startIndex: 3, endIndexExclusive: 4),
+      reason: 'its rate not read yet: one cell, as a file with no count',
+    );
+    await read.future;
+    s.showMediaPlacement(rowId, 3, take);
+    expect(
+      shown(s)?.silhouette,
+      (layerId: rowId, startIndex: 3, endIndexExclusive: 3 + 12),
+    );
   });
 
   test('the block in the way is PUSHED while it hovers — the landing\'s own '

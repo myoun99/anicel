@@ -146,6 +146,25 @@ void main() {
     expect([for (final at in backend.openedAt) at.path], [movie]);
   });
 
+  testWidgets('a movie says its frames and its own rate as its decoder names '
+      'them — the fraction its frames are counted in the project\'s by', (
+    tester,
+  ) async {
+    debugVideoDecodeBackend = FakeVideoBackend(
+      width: 1920,
+      height: 1080,
+      frameCount: 90,
+      fpsNumerator: 30000,
+      fpsDenominator: 1001,
+    );
+    final movie = write('cut.mp4', standInMovieBytes);
+    final facts = await tester.runAsync(
+      () => readMediaFacts(MediaAssetKind.video, movie, theFileItself),
+    );
+    expect(facts?.pictures, 90);
+    expect(facts?.rate, (numerator: 30000, denominator: 1001));
+  });
+
   testWidgets('a PDF says its first page as the renderer draws it 1:1, and '
       'the document is closed after', (tester) async {
     final pdf = FakePdfDocument(

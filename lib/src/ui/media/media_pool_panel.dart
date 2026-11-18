@@ -7,6 +7,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../models/se_take_placement.dart' show placedSoundBlockOf;
@@ -90,7 +91,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onViewChanged,
     this.factsOf = _nothingRead,
     this.soundOf = _nothingHeard,
-    this.frameRate = ProjectFrameRate.fps24,
+    this.clock = (rate: ProjectFrameRate.fps24, speed: noPull),
     this.pictures,
   });
 
@@ -209,8 +210,10 @@ class MediaPoolPanel extends StatelessWidget {
   /// how long it lasts in the list, its picture in the icon view.
   final AudioPeaks? Function(String path) soundOf;
 
-  /// The project's rate, which a length is told in.
-  final ProjectFrameRate frameRate;
+  /// The project's clock — its rate, which a length is told in, and the
+  /// speed its sounds play at, which a movie's frames are counted on
+  /// (`placedPicturesOf`).
+  final ProjectClock clock;
 
   /// Where the icon view's pictures come from. Null draws each box by its
   /// file's kind alone.
@@ -566,7 +569,7 @@ class MediaPoolPanel extends StatelessWidget {
             ),
             tileOf: _lineOf,
             soundOf: soundOf,
-            frameRate: frameRate,
+            frameRate: clock.rate,
           )
         : MediaPoolList(
             assets: assets,
@@ -581,12 +584,12 @@ class MediaPoolPanel extends StatelessWidget {
 
   /// What the lines say column by column, from what the session holds.
   MediaPoolWords get _words => MediaPoolWords(
-    framesPerSecond: frameRate.countingBase,
+    clock: clock,
     storedBytes: storedBytes,
     conformBytes: conformBytes,
     modifiedTimes: modifiedTimes,
     factsOf: factsOf,
-    soundFramesOf: (path) => soundOf(path)?.durationFrames(frameRate),
+    soundFramesOf: (path) => soundOf(path)?.durationFrames(clock.rate),
   );
 
   /// The pinned part of [asset]'s line: what it is, its name — or what its

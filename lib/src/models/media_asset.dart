@@ -459,10 +459,12 @@ class MediaAsset {
   /// one, a GIF's or a movie's frames, a PDF's pages; null for a sound, and
   /// for a movie whose count was never read.
   ///
-  /// 🚨ONE COUNT for every surface that asks how much of a file a placement
-  /// places — the drag's silhouette and the pool's lengths
-  /// (asset-placement-presets Q4). The silhouette counted [frameCount]
-  /// alone, so a pooled PDF drew one cell over a row its pages filled.
+  /// 🚨What a placement places of a picture file is counted from this for
+  /// every file but a movie, whose own frames are another clock's — the ONE
+  /// count the drag's silhouette, the pool's lengths and the sync window
+  /// say is `placedPicturesOf`'s (asset-placement-presets Q4). The
+  /// silhouette counted [frameCount] alone, so a pooled PDF drew one cell
+  /// over a row its pages filled.
   int? get pictures => switch (kind) {
     MediaAssetKind.image => frameCount ?? 1,
     MediaAssetKind.video => frameCount,

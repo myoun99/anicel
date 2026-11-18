@@ -2576,7 +2576,12 @@ class EditorSessionManager extends ChangeNotifier
     // conform has not answered for simply has no silhouette yet (the
     // length the landing uses is the one this returns).
     peaksFor: audioConformStore.peaksFor,
-    frameRate: () => projectSettings.projectFrameRate,
+    clock: () => (
+      rate: projectSettings.projectFrameRate,
+      speed: repository.requireProject().audioSpeed,
+    ),
+    // The pool's own read of the file — the one its lengths are said from.
+    factsOf: (path) => mediaPool.mediaFactsOf(path)?.picture,
     // 🚨An SE row is the TRACK's, so [layerById] — which walks the open
     // cut — never finds one. These are the doors `landSound` itself uses.
     seRowFor: trackSeGlobalLayerById,

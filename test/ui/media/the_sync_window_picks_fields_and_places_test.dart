@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
 import 'package:anicel/src/services/media/media_preset_sync.dart';
@@ -15,7 +16,9 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
 final _clap = MediaAsset(path: 'C:/snd/clap.wav', name: 'clap');
-const _words = MediaPoolWords(framesPerSecond: 24);
+const _words = MediaPoolWords(
+  clock: (rate: ProjectFrameRate.fps24, speed: noPull),
+);
 
 /// Frames 2 to 7 of the clap, named 「Door」, its words 「bang」.
 const SoundPreset _preset = (

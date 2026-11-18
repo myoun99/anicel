@@ -950,8 +950,12 @@ class _WorkspaceTabs {
               // A sound's waveform where its conform is held — never asking
               // for one (`heldPeaksFor`).
               soundOf: _state.widget.session.audioConformStore.heldPeaksFor,
-              frameRate:
-                  _state.widget.session.projectSettings.projectFrameRate,
+              clock: (
+                rate: _state.widget.session.projectSettings.projectFrameRate,
+                speed: _state.widget.session.repository
+                    .requireProject()
+                    .audioSpeed,
+              ),
               pictures: _state._views._poolPictures,
             ),
           ),

@@ -11,15 +11,17 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
 import '../../../models/media_asset.dart';
+import '../../../models/movie_clock.dart' show ProjectClock;
 import '../../../models/timeline_coverage.dart'
     show TimelineDrawingBlock, drawingBlocks;
 import '../../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../../models/track_se_window.dart';
-import '../../../models/project_frame_rate.dart';
 import '../../../services/audio/audio_peaks_extractor.dart';
 import '../../../services/import/media_import_planner.dart' show placesAStill;
+import '../../../services/media/media_facts.dart'
+    show MediaFacts, placedPicturesOf;
 import '../../timeline/timeline_drag_preview.dart';
 
 /// A FILE FROM THE POOL, HELD OVER THE TIMELINE — 「끄는 동안 보이는 것은
@@ -51,7 +53,8 @@ class MediaPlacementDrag {
     required int Function() drawnFrameCount,
     required MediaAsset? Function(String path) assetFor,
     required AudioPeaks? Function(String path) peaksFor,
-    required ProjectFrameRate Function() frameRate,
+    required ProjectClock Function() clock,
+    required MediaFacts? Function(String path) factsOf,
     required Layer? Function(LayerId layerId) seRowFor,
     required TrackSeWindow Function() seWindow,
   }) : _preview = preview,
@@ -60,7 +63,8 @@ class MediaPlacementDrag {
        _drawnFrameCount = drawnFrameCount,
        _assetFor = assetFor,
        _peaksFor = peaksFor,
-       _frameRate = frameRate,
+       _clock = clock,
+       _factsOf = factsOf,
        _seRowFor = seRowFor,
        _seWindow = seWindow;
 
@@ -76,7 +80,11 @@ class MediaPlacementDrag {
   /// 항목」은 이미 답이 있는 질문이고, 두 번째 구현은 사본이다.
   final MediaAsset? Function(String path) _assetFor;
   final AudioPeaks? Function(String path) _peaksFor;
-  final ProjectFrameRate Function() _frameRate;
+  final ProjectClock Function() _clock;
+
+  /// What the pool has read of a picture file — a movie's rate, which its
+  /// frames are counted in the project's by ([placedPicturesOf]).
+  final MediaFacts? Function(String path) _factsOf;
 
   /// The SE row by id, in its TRACK-global form, and the converter between
   /// the cut's frames and the track's — the two doors `landSound` uses.
@@ -267,14 +275,16 @@ class MediaPlacementDrag {
     }
   }
 
-  /// How many cells [path] would become: the file's pictures — the pool's
-  /// own count of them ([MediaAsset.pictures]), a PDF's pages as well — as
-  /// many as its preset places ([MediaPreset.spanOf]), the span the import
-  /// window starts its row from. So the row drawn here is the row that
-  /// appears. A file with no count is one cell.
+  /// How many cells [path] would become: as many of what a placement of
+  /// the whole file places ([placedPicturesOf] — a movie in project frames,
+  /// a PDF's pages) as its preset places ([MediaPreset.spanOf]), the span
+  /// the import window starts its row from. So the row drawn here is the
+  /// row that appears. A file with no count yet is one cell.
   int? _cellsFor(String path) {
     final asset = _assetFor(path);
-    final frames = asset?.pictures;
+    final frames = asset == null
+        ? null
+        : placedPicturesOf(asset, _factsOf(path), _clock());
     return asset == null || frames == null || frames < 1
         ? 1
         : asset.preset.spanOf(frames).count;
@@ -283,7 +293,7 @@ class MediaPlacementDrag {
   /// How many frames the sound at [path] would place, its conform [peaks]
   /// in hand — as many of them as its preset places ([MediaPreset.spanOf]).
   int _soundFramesFor(String path, AudioPeaks peaks) {
-    final frames = peaks.durationFrames(_frameRate());
+    final frames = peaks.durationFrames(_clock().rate);
     final preset = _assetFor(path)?.preset ?? const MediaPreset();
     return frames < 1 ? 0 : preset.spanOf(frames).count;
   }

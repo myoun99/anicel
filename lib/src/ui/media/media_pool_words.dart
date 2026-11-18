@@ -4,6 +4,7 @@ import '../../models/import/cut_folder_edits.dart';
 import '../../models/kept_span.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
 import '../../services/media/media_facts.dart';
 import '../import/import_file_settings.dart' show importFitLabel;
@@ -25,7 +26,7 @@ import 'media_pool_list.dart';
 /// 종류 · 맞춤 · 시작 · 끝 · 길이.
 final class MediaPoolWords {
   const MediaPoolWords({
-    required this.framesPerSecond,
+    required this.clock,
     this.storedBytes = const {},
     this.conformBytes = const {},
     this.modifiedTimes = const {},
@@ -33,8 +34,12 @@ final class MediaPoolWords {
     this.soundFramesOf = _nothingHeard,
   });
 
+  /// The project's clock — what a length is told in, and what a movie's
+  /// frames are counted in the project's by ([placedPicturesOf]).
+  final ProjectClock clock;
+
   /// The project's counting base — what a length is told in.
-  final int framesPerSecond;
+  int get framesPerSecond => clock.rate.countingBase;
 
   /// What each carried file ACTUALLY occupies (유저 2026-08-30: 「아무튼
   /// 실제크기」) — see [sizeWord].
@@ -295,10 +300,10 @@ final class MediaPoolWords {
   }
 
   /// [asset]'s whole length in what a placement counts — a sound's project
-  /// frames, a file's pictures ([MediaAsset.pictures]).
+  /// frames, a picture file's ([placedPicturesOf]).
   int? _lengthOf(MediaAsset asset) => asset.kind == MediaAssetKind.audio
       ? soundFramesOf(asset.path)
-      : asset.pictures;
+      : placedPicturesOf(asset, factsOf(asset.path)?.picture, clock);
 
   /// One picture in a picture file: a still, which has no length.
   bool _isAStill(MediaAsset asset) =>
