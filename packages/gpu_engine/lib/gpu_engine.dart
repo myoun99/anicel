@@ -1556,35 +1556,7 @@ final class GpuStampPicture implements Finalizable, _OfAnEngine {
   /// ([GpuStampLanding.carried]'s). Waits for the GPU.
   Uint8List pixels() => _stampPixels(_engine._engine, _picture, _count);
 
-  /// It as any isolate asks it ([GpuStampPictureReader]) — for as long as
-  /// it is alive: what reads it on a worker holds it till the read is
-  /// done.
-  GpuStampPictureReader get reader => GpuStampPictureReader._(
-    _engine._engine.address,
-    _picture.address,
-    _count,
-  );
-
   int get _count => width * height * 4;
-}
-
-/// A [GpuStampPicture] as any isolate asks it: plain numbers, the engine's
-/// address, the picture's and its size, so it crosses to a worker — where
-/// the wait for the GPU is that worker's, not the asker's ([debugWaitsHere]),
-/// as a [GpuChainReader]'s is.
-final class GpuStampPictureReader {
-  const GpuStampPictureReader._(this._engine, this._picture, this._count);
-
-  final int _engine;
-  final int _picture;
-  final int _count;
-
-  /// [GpuStampPicture.pixels], asked here. ⚠️Waits for the GPU.
-  Uint8List pixels() => _stampPixels(
-    Pointer.fromAddress(_engine),
-    Pointer.fromAddress(_picture),
-    _count,
-  );
 }
 
 /// The [bytes] of [picture] on [engine], once the GPU has made them.
@@ -1599,6 +1571,79 @@ Uint8List _stampPixels(
   }
   return Uint8List.fromList(into.asTypedList(bytes));
 });
+
+/// A [GpuStampLanding] as any isolate asks it: plain numbers, its engine's
+/// address and its kernels', so a picture's whole carriage crosses to a
+/// worker — handed up, carried and read there, every wait for the engine's
+/// turn and for the GPU that worker's, not the asker's.
+///
+/// 🗣️tip-coverage-is-a-second-r1-Q1 (유저 2026-11-12: 「미리 만들어 둔다 —
+/// 엔진이 열리면 기다리지 않고 받아 둔다」). ↩️Only the read crossed: the
+/// asker handed the picture up and carried it itself, each a turn of the
+/// engine's thread it waited for — 🔬behind the band's fill, 77 ms of
+/// hands-up and 15 of carriage over the tips' thumbnails a launch makes,
+/// as the first stroke went (S5_BA cut 352, main PC, 2026-11-18, board
+/// a-tip-thumbnail-waits-for-the-engines-turn).
+final class GpuStampCarrier {
+  const GpuStampCarrier._(this._engine, this._landing);
+
+  final int _engine;
+  final int _landing;
+
+  /// [rgba] — [width] × [height], straight — carried as
+  /// [GpuStampLanding.carried] carries a picture of it over a whole output
+  /// [columns] × [rows], read. ⚠️Waits for the engine and the GPU.
+  Uint8List carriedPixels(
+    Uint8List rgba,
+    int width,
+    int height, {
+    required List<double> inverse,
+    required double radiusFloor,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final engine = Pointer<rust.Engine>.fromAddress(_engine);
+    final source = using(
+      (arena) =>
+          rust.stampPictureNew(engine, _bytes(arena, rgba), width, height),
+    );
+    if (source == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    try {
+      final carried = using(
+        (arena) => rust.stampPictureCarried(
+          Pointer.fromAddress(_landing),
+          engine,
+          source,
+          _doubles(arena, inverse),
+          radiusFloor,
+          sampling.id,
+          columns,
+          rows,
+          0,
+          0,
+          columns,
+          rows,
+        ),
+      );
+      if (carried == nullptr) {
+        throw GpuRefused(_lastError());
+      }
+      try {
+        return _stampPixels(engine, carried, columns * rows * 4);
+      } finally {
+        rust.stampPictureFree(carried);
+      }
+    } finally {
+      rust.stampPictureFree(source);
+    }
+  }
+}
 
 /// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
 class GpuStampLanding {
@@ -1625,6 +1670,12 @@ class GpuStampLanding {
 
   /// The engine it lands and carries on.
   GpuEngine get engine => _engine;
+
+  /// It as any isolate asks it ([GpuStampCarrier]) — for as long as it and
+  /// its engine are alive: what carries on a worker holds it till that is
+  /// done.
+  GpuStampCarrier get carrier =>
+      GpuStampCarrier._(_engine._engine.address, _landing.address);
 
   /// [picture] carried through [inverse] — a point of the output to
   /// [picture]'s, the nine of the app's `ResampleTransform` row after row,
