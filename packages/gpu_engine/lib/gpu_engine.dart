@@ -343,6 +343,20 @@ class GpuEngine {
   /// unsaid while it is there.
   GpuDeviceWent get wentBy => GpuDeviceWent.of(rust.engineWentBy(_engine));
 
+  /// What this engine submitted that the GPU has not said it finished, the
+  /// oldest first, after the newest it has — a line each: `submit #<n> at
+  /// <µs> <file>:<line> dispatches=<n> groups=<n> unfinished|last-done`,
+  /// its µs on the clock [DateTime.now]'s `microsecondsSinceEpoch` reads.
+  /// Asks nothing of the engine's thread or the device: what the app
+  /// writes down as a device goes (H63).
+  String get unfinishedSubmits => using((arena) {
+    const capacity = 16384;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.engineUnfinished(_engine, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
+
   /// Test seam: the error the device raised that no job has been refused
   /// by yet, or null — taken, so no job is refused by it after. An error
   /// on a way that never waits is told to no one, and a test asks as it

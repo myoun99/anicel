@@ -3,13 +3,14 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe, Location};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use crate::kernels::shared::{Counted, built_here, put_built_here};
+use crate::submits::Submits;
 use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
 /// How long a wait for the GPU is waited out before it is answered that the
@@ -385,14 +386,20 @@ fn compiling_threads() -> usize {
 pub(crate) struct Queue {
     queue: wgpu::Queue,
     thread: EngineThread,
+    /// Every submit through here, and whether the GPU said it finished it
+    /// ([`Submits`]).
+    pub(crate) submits: Arc<Submits>,
 }
 
 impl Queue {
     /// Submits `buffers` and returns once the driver has them, so what the
     /// caller writes next goes after them, as on one thread. A thread that
-    /// is gone is the next wait's error.
+    /// is gone is the next wait's error. Noted, where its caller made it,
+    /// until the GPU says it finished it ([`Submits`]).
+    #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
+        let (submits, number) = (self.submits.clone(), self.submits.note(Location::caller()));
         #[cfg(test)]
         let by = self.thread.number;
         let _ = self.thread.run(move || {
@@ -402,6 +409,7 @@ impl Queue {
             #[cfg(test)]
             let _turn = crate::testing::submitting(by);
             queue.submit(buffers);
+            queue.on_submitted_work_done(move || submits.done(number));
         });
     }
 
@@ -524,6 +532,7 @@ impl Engine {
                     queue: Queue {
                         queue,
                         thread: thread.clone(),
+                        submits: Arc::default(),
                     },
                     thread,
                     polls,
@@ -2277,6 +2286,24 @@ pub unsafe extern "C" fn gpu_engine_noted(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
+}
+
+/// Copies what `engine` submitted that the GPU has not said it finished,
+/// and the newest it has ([`Submits::told`]), into `buffer` (UTF-8) and
+/// returns its full length. Asks nothing of the engine's thread or the
+/// device: what the app writes down as a device goes (H63).
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_unfinished(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    copy_out(&engine.queue.submits.told(), buffer, capacity)
 }
 
 /// [`Engine::done_then`] across the boundary: a thread of the engine's

@@ -264,6 +264,15 @@ external int engineNoted(
   int capacity,
 );
 
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_unfinished',
+)
+external int engineUnfinished(
+  Pointer<Engine> engine,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
 @Native<
   Void Function(
     Pointer<Engine>,

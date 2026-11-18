@@ -282,9 +282,12 @@ pub(crate) fn encode_on(
         compute.set_bind_group(0, bind_group, &[]);
         compute.dispatch_workgroups(across, down, deep);
     }
+    crate::submits::encoded(dispatches.iter().map(|dispatch| dispatch.groups));
 }
 
-/// Encodes `dispatches` in order and submits them; the caller waits.
+/// Encodes `dispatches` in order and submits them; the caller waits —
+/// noted where the caller asked ([`crate::submits`]).
+#[track_caller]
 pub(crate) fn encode(engine: &Engine, dispatches: &[Encoded]) {
     let mut encoder = engine
         .device()

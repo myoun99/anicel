@@ -7,6 +7,7 @@
 //! - `platform` — the texture Flutter shows, one file per platform.
 //! - `kernels/<area>` — an area's shaders, its C ABI and its GPU tests.
 //! - `fingerprint` — the CRC-32 pinned bytes are compared by.
+//! - `submits` — what the GPU was handed and has not said it finished.
 //! - `testing` — what the GPU tests share.
 
 // The checkout this crate is built from, different in each: a build that
@@ -18,6 +19,7 @@ mod device;
 mod fingerprint;
 mod kernels;
 mod platform;
+mod submits;
 #[cfg(test)]
 mod testing;
 
