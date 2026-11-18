@@ -65,10 +65,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Somewhere other than where fit and 1:1 land.
-  Future<void> zoomAway(WidgetTester tester) async {
-    await pressKeyOf(tester, EditorActionIds.canvasZoomIn);
-    await pressKeyOf(tester, EditorActionIds.canvasZoomIn);
+  /// One place other than where fit and 1:1 land, reached the same way
+  /// each time: fit frames from the window alone, and the steps after it
+  /// are the same steps. Out, not in: the steps up from this fit pass
+  /// through 100%, where 1:1 has nothing to do.
+  ///
+  /// ⚠️The button and the key both start from IT. 1:1 changes the zoom
+  /// alone, about the middle of the view (F-381), so a 1:1 from two views
+  /// a zoom apart meets the other only to the float: the floor under the
+  /// tool settings' rail moved that middle, and they landed 2e-13 apart.
+  Future<CanvasViewport> standAway(WidgetTester tester) async {
+    await tapOnPill(tester, 'canvas-viewport-fit');
+    await pressKeyOf(tester, EditorActionIds.canvasZoomOut);
+    await pressKeyOf(tester, EditorActionIds.canvasZoomOut);
+    return viewOf(tester);
   }
 
   testWidgets('↕ and the straighten, by key, do what their buttons do', (
@@ -108,11 +118,12 @@ void main() {
       ('canvas-viewport-fit', EditorActionIds.canvasFit),
       ('canvas-viewport-reset', EditorActionIds.canvasResetView),
     ]) {
+      final away = await standAway(tester);
       await tapOnPill(tester, button);
       final landed = viewOf(tester);
-      await zoomAway(tester);
-      expect(viewOf(tester), isNot(landed), reason: 'fixture: moved away');
+      expect(landed, isNot(away), reason: '$button presses');
 
+      expect(await standAway(tester), away, reason: 'fixture: one place');
       await pressKeyOf(tester, action);
       expect(viewOf(tester), landed, reason: action);
     }
