@@ -612,8 +612,12 @@ void main() {
     testWidgets('audio accordion reports the toggle in its summary',
         (tester) async {
       await pumpDialog(tester, exportSession());
+      final audio = find.text('Audio');
+      // It stands open (F-618 ②): folded, its head says what it does.
+      await tester.ensureVisible(audio);
+      await tester.tap(audio);
+      await tester.pump();
       expect(find.textContaining('SE muxed'), findsOneWidget);
-      await tester.ensureVisible(find.textContaining('Audio'));
       await tester.tap(find.textContaining('Audio'));
       await tester.pump();
       await tester.ensureVisible(
@@ -623,8 +627,8 @@ void main() {
         find.byKey(const ValueKey<String>('export-audio-toggle')),
       );
       await tester.pump();
-      await tester.ensureVisible(find.text('Audio'));
-      await tester.tap(find.text('Audio'));
+      await tester.ensureVisible(audio);
+      await tester.tap(audio);
       await tester.pump();
       expect(find.textContaining('Audio — Off'), findsOneWidget);
     });
@@ -777,6 +781,10 @@ void main() {
           processStarter: (executable, arguments) async => fake,
         ),
       );
+      // It stands open (F-618 ②): folded, its head says what it does.
+      await tester.ensureVisible(find.text(AppText.strings.exAudio));
+      await tester.tap(find.text(AppText.strings.exAudio));
+      await tester.pump();
       expect(find.textContaining('SE 먹싱 · AAC'), findsOneWidget);
 
       await tester.runAsync(state.export);

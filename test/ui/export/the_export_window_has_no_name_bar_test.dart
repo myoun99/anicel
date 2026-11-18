@@ -282,9 +282,6 @@ void main() {
       expect(tester.exportFirstFileName, 'AMMI_OP.mp4');
 
       await pickExportStill(tester, ExportStillFormat.png);
-      await tester.ensureVisible(find.textContaining('Naming'));
-      await tester.tap(find.textContaining('Naming'));
-      await tester.pump();
       final base = tester.widget<TextField>(keyed('export-naming-base-field'));
       expect(base.controller!.text, isEmpty);
       expect(ghostOf(tester, 'export-naming-base-field'), 'AMMI_OP');

@@ -113,9 +113,6 @@ void main() {
     );
     await tester.pump();
 
-    await tester.ensureVisible(find.textContaining('Naming'));
-    await tester.tap(find.textContaining('Naming'));
-    await tester.pump();
     await tester.ensureVisible(
       find.byKey(const ValueKey<String>('export-naming-base-field')),
     );
