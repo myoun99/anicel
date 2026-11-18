@@ -141,8 +141,23 @@ class TimelineFrameGridStack extends StatelessWidget {
         // drag, so it lays out and paints on a layer of its own — rebuilt
         // bare in the grid's layout scope, a step laid that scope out again
         // and repainted everything around it.
-        TickOverlay(
-          children: [
+        //
+        // 🔬And it keeps itself while what it is drawn from stands: the
+        // grids are built again for every announcement, and the layer was
+        // built, laid out and painted again for an eye toggled (card
+        // an-eye-toggle-holds-the-ui-thread, 11-18). A trim's hooks keep the
+        // cut they trim and the session; what they draw at is here.
+        TickOverlay.kept(
+          facts: (
+            axis: axis,
+            frameCellExtent: frameCellExtent,
+            playbackFrameCount: playbackFrameCount,
+            drawnFrameCount: noriShiro?.call().drawnFrameCount,
+            noriShiro: noriShiro,
+            trimmed: cutEndDrag?.cutId,
+            dragPreview: dragPreview,
+          ),
+          keptChildren: () => [
             // The out-of-cut wash and the cut-end line are the TOP layers (the
             // user's layer order 2026-08-02): where the film stops is stated
             // over everything, cursor and selection included. The wash being

@@ -111,10 +111,11 @@ void main() {
       // length stands between them.
       expect((playheadPositioned.child as SizedBox).child!.key, playheadKey);
       final overlay = stack.children[3] as TickOverlay;
-      expect(overlay.children, hasLength(3));
-      expect(overlay.children[0], isA<TimelineOutsideCutWash>());
-      expect(overlay.children[1], isA<TimelineBodyNoriShiroBoundary>());
-      expect(overlay.children[2], isA<TimelineBodyCutEndBoundary>());
+      final marks = overlay.keptChildren!();
+      expect(marks, hasLength(3));
+      expect(marks[0], isA<TimelineOutsideCutWash>());
+      expect(marks[1], isA<TimelineBodyNoriShiroBoundary>());
+      expect(marks[2], isA<TimelineBodyCutEndBoundary>());
     });
 
     // A stand rebuilds the sheet for two rows' grounds, so it is laid out
@@ -130,7 +131,7 @@ void main() {
       final stack = tester.widget<Stack>(find.byType(Stack).first);
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
       final layer = slot.child! as TickLayer;
-      expect(layer.child.key, gridSheetKey);
+      expect(layer.child!.key, gridSheetKey);
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {

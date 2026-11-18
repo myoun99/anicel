@@ -21,6 +21,7 @@ import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'lane_row_slice.dart';
+import 'memo_token.dart' show Kept, keptWhileSame;
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
@@ -205,6 +206,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// measured it — what a bucket crossing windows the ruler by.
   double _rulerViewExtent = 0;
 
+  /// The ruler as built, and from what ([keptWhileSame]): the grid is
+  /// built again for every announcement but a stand, and the ruler's
+  /// LayoutBuilder, handed a new builder each time, built it again — 🔬19
+  /// widgets and its two tick layers for an eye toggled (card
+  /// an-eye-toggle-holds-the-ui-thread, 11-18, ㉢).
+  final Map<Symbol, Kept<Object?>> _keptRuler = {};
+
+  /// The bar's answer, handed to the ruler's moving strip through this and
+  /// not through the ruler's build: a new function is the news that the
+  /// answer may have moved ([ReadyRunsOfTheDocument]) — an eye toggled
+  /// moves it — and only the strip prints it.
+  late final ValueNotifier<ReadyRunsIn?> _readyRunsIn = ValueNotifier(
+    widget.hooks.readyRunsIn,
+  );
+
   void _rewindowRuler() => _rulerFrameGeometry.value = TimelineFrameGeometry(
     frameCellExtent: _metrics.frameCellWidth,
     frameStartIndex: 0,
@@ -388,6 +404,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   @override
   void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _readyRunsIn.value = widget.hooks.readyRunsIn;
     if (oldWidget.hooks.revealSelectionTick !=
         widget.hooks.revealSelectionTick) {
       oldWidget.hooks.revealSelectionTick?.removeListener(
@@ -429,6 +446,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     _frameWindowBucket.dispose();
     _frameWindowBucket.removeListener(_rewindowRuler);
     _rulerFrameGeometry.dispose();
+    _readyRunsIn.dispose();
     _windowedFrameGeometry.dispose();
     _rowWalk.dispose();
     _rowWindowBucket.dispose();
@@ -763,6 +781,309 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
+    );
+  }
+
+  /// The header's ruler, kept while what it reads stands ([_rulerFacts]).
+  Widget _ruler(double headerHeight) => keptWhileSame(
+    _keptRuler,
+    #ruler,
+    _rulerFacts(headerHeight),
+    () => TimelineFrameAreaEdge(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewportWidth =
+              constraints
+                  .hasBoundedWidth
+              ? constraints.maxWidth
+              : 0.0;
+          // R9 #3: the clamp answers ONE
+          // question — does the controller
+          // need correcting after a viewport
+          // resize. What the ruler renders
+          // and hit-tests at is the scroll
+          // position itself.
+          _horizontalSync.synchronize(
+            _scroll.effectiveHorizontalScrollOffset(
+              requestedOffset:
+                  _frameAxisOffset
+                      .value,
+              viewportWidth:
+                  viewportWidth,
+            ),
+          );
+          // The rows' own end, through
+          // the axis' one law (F-220).
+          // ↩️Count × cell: 0.4px short
+          // of the rows at the 19.2 a
+          // cut opens at (F-403).
+          final totalFrameContentWidth =
+              timelineFrameEdge(
+                _renderedFrameCount,
+                _metrics.frameCellWidth,
+              );
+          _rulerViewExtent = viewportWidth;
+          _rewindowRuler();
+
+          // PRO-TIMELINE scrolling (UI-R15):
+          // the strip builds ONCE at full width
+          // — its painter windows itself off
+          // the live offset (repaint-only),
+          // sub-cell pixels move the TRANSLATE
+          // alone, and the bucket re-windowing
+          // is gone. Ticks/warming still
+          // rebuild just this one host.
+          // The ruler is SPLIT (the storyboard's
+          // shape, now shared): a static strip
+          // that lays out a glyph per labeled
+          // frame, and a thin overlay carrying
+          // everything that moves. Keeping the
+          // cursor tint in the strip meant every
+          // SEEK re-recorded the whole O(frames)
+          // glyph pass; and the cached bar reads
+          // DERIVED state (composites
+          // self-validate, nothing raises an
+          // "invalidated" event), so it must be
+          // cheap to repaint rather than gated.
+          final rulerContent = SizedBox(
+            width:
+                totalFrameContentWidth,
+            height: headerHeight,
+            child: Stack(
+              children: [
+                RepaintBoundary(
+                  child: TimelineFrameRuler(
+                    frameStartIndex:
+                        0,
+                    frameEndIndexExclusive:
+                        _renderedFrameCount,
+                    playhead: widget
+                        .hooks
+                        .frameCursor,
+                    playbackFrameCount:
+                        widget
+                            .hooks
+                            .playbackFrameCount,
+                    noriShiro: widget
+                        .hooks
+                        .noriShiro,
+                    leadingFrameSpacerWidth:
+                        0,
+                    trailingFrameSpacerWidth:
+                        0,
+                    metrics:
+                        _metrics,
+                    onSelectFrame:
+                        _rulerScrub.selectClampedFrame,
+                    framesPerSecond:
+                        _countingFps,
+                    rulerView: widget
+                        .hooks
+                        .rulerView,
+                    pages: widget
+                        .hooks
+                        .sheetPages,
+                    windowBucket:
+                        _frameWindowBucket,
+                    viewportMainExtent:
+                        viewportWidth,
+                    geometry:
+                        _rulerFrameGeometry,
+                    dragPreview: widget
+                        .hooks
+                        .dragPreview,
+                    markers: widget
+                        .hooks
+                        .rulerMarkers,
+                    previewCutId:
+                        widget
+                            .hooks
+                            .cutEndDrag
+                            ?.cutId,
+                  ),
+                ),
+                Positioned.fill(
+                  child:
+                      _rulerCursorOverlay(
+                        viewportWidth,
+                      ),
+                ),
+              ],
+            ),
+          );
+
+          return Listener(
+            key: const ValueKey<String>(
+              'timeline-frame-ruler-scrub-area',
+            ),
+            behavior:
+                HitTestBehavior
+                    .translucent,
+            onPointerDown: (event) {
+              // R26 #34: a press that
+              // pans is the pan's —
+              // and a marker's is the
+              // marker's (I-169).
+              if (!rulerPressScrubs(
+                event,
+              )) {
+                return;
+              }
+              _rulerScrub.resetTracking();
+              _rulerScrub.pressAt(
+                event.position,
+              );
+            },
+            onPointerUp: (_) =>
+                _rulerScrub.endScrub(),
+            onPointerCancel: (_) =>
+                _rulerScrub.endScrub(),
+            child: GestureDetector(
+              behavior:
+                  HitTestBehavior
+                      .translucent,
+              onHorizontalDragStart:
+                  (details) {
+                    _rulerScrub.pressAt(
+                      details
+                          .globalPosition,
+                    );
+                  },
+              onHorizontalDragUpdate:
+                  (details) {
+                    _rulerScrub.dragTo(
+                      details
+                          .globalPosition,
+                    );
+                  },
+              onHorizontalDragEnd:
+                  (_) =>
+                      _rulerScrub.resetTracking(),
+              onHorizontalDragCancel:
+                  _rulerScrub.resetTracking,
+              child: SizedBox(
+                key:
+                    _rulerScrubViewportKey,
+                width:
+                    viewportWidth,
+                height:
+                    headerHeight,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment:
+                        Alignment
+                            .topLeft,
+                    minWidth:
+                        totalFrameContentWidth,
+                    maxWidth:
+                        totalFrameContentWidth,
+                    minHeight:
+                        headerHeight,
+                    maxHeight:
+                        headerHeight,
+                    // Per-pixel scrolls move the
+                    // TRANSLATE only; the content
+                    // is the stable child below.
+                    //
+                    // R9 #3: the RAW scroll
+                    // position, overscroll
+                    // included. Clamping here
+                    // pinned the ruler at the
+                    // end while the body kept
+                    // sliding — this file's
+                    // own contract, broken by
+                    // the clamp meant for a
+                    // different job (deciding
+                    // whether the CONTROLLER
+                    // needs correcting after
+                    // a viewport resize).
+                    //
+                    // 🚨★★★F-32's OTHER HALF,
+                    // and it is the SAME
+                    // asymmetry with the
+                    // halves swapped: here the
+                    // CELLS land on the device
+                    // grid and the RULER kept
+                    // the raw fraction.
+                    //
+                    // 🧪Measured at ratio 1.5,
+                    // offset 1.5: ruler 453.5
+                    // vs cells 453.667. ⛔I had
+                    // read this file and
+                    // written 「both halves
+                    // carry the raw offset, so
+                    // they agree」 — reading
+                    // was wrong and the
+                    // measurement is what
+                    // caught it.
+                    //
+                    // ↩️F-95: the offset came
+                    // from a NOTIFIER a resize
+                    // past the end never
+                    // reached. The follower
+                    // reads the position when
+                    // it paints, with the
+                    // cells' correction on it.
+                    child: ScrollFollower(
+                      controller:
+                          _horizontalScrollController,
+                      axisDirection:
+                          AxisDirection.right,
+                      child: rulerContent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+
+  /// The ruler's moving strip — the playhead's tint and the green bar —
+  /// hearing the bar's answer itself ([_readyRunsIn]).
+  Widget _rulerCursorOverlay(double viewportWidth) =>
+      ValueListenableBuilder<ReadyRunsIn?>(
+        valueListenable: _readyRunsIn,
+        builder: (context, readyRunsIn, _) => TimelineRulerCursorOverlay(
+          keyValue: 'timeline-ruler-cursor-overlay',
+          playhead: widget.hooks.frameCursor,
+          repaintSignal: widget.hooks.frameReadySignal,
+          windowBucket: _frameWindowBucket,
+          viewportMainExtent: viewportWidth,
+          geometry: _rulerFrameGeometry,
+          renderedFrames: _renderedFrameCount,
+          cellWidth: _metrics.frameCellWidth,
+          readyRunsIn: readyRunsIn,
+        ),
+      );
+
+  /// What the ruler reads of the grid and its hooks that can change
+  /// ([_keptRuler]) — but its view's width, which its LayoutBuilder hears
+  /// itself, and the bar's answer, which its strip does ([_readyRunsIn]).
+  /// The scrub, the scroll and the window handles are this grid's own.
+  ///
+  /// ⚠️A field missing here keeps the ruler across a change of it.
+  Object _rulerFacts(double headerHeight) {
+    final hooks = widget.hooks;
+    final markers = hooks.rulerMarkers;
+    return (
+      headerHeight: headerHeight,
+      frames: _renderedFrameCount,
+      metrics: _metrics,
+      framesPerSecond: _countingFps,
+      playhead: hooks.frameCursor,
+      readySignal: hooks.frameReadySignal,
+      playbackFrameCount: hooks.playbackFrameCount,
+      noriShiro: (hooks.noriShiro, hooks.noriShiro?.call()),
+      rulerView: hooks.rulerView,
+      pages: hooks.sheetPages,
+      dragPreview: hooks.dragPreview,
+      // The marker verbs keep the session and the holder they were made
+      // for; what they mark is here.
+      markers: (markers?.holder, markers?.markers, markers?.dragPreview),
+      trimmed: hooks.cutEndDrag?.cutId,
     );
   }
 
@@ -1145,276 +1466,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                         // 바뀌면 룰러랑 통일임」. Same widget
                                         // as the body's, so this cannot fall
                                         // behind the rows again.
-                                        ruler: TimelineFrameAreaEdge(
-                                          child: LayoutBuilder(
-                                            builder: (context, constraints) {
-                                              final viewportWidth =
-                                                  constraints
-                                                      .hasBoundedWidth
-                                                  ? constraints.maxWidth
-                                                  : 0.0;
-                                              // R9 #3: the clamp answers ONE
-                                              // question — does the controller
-                                              // need correcting after a viewport
-                                              // resize. What the ruler renders
-                                              // and hit-tests at is the scroll
-                                              // position itself.
-                                              _horizontalSync.synchronize(
-                                                _scroll.effectiveHorizontalScrollOffset(
-                                                  requestedOffset:
-                                                      _frameAxisOffset
-                                                          .value,
-                                                  viewportWidth:
-                                                      viewportWidth,
-                                                ),
-                                              );
-                                              // The rows' own end, through
-                                              // the axis' one law (F-220).
-                                              // ↩️Count × cell: 0.4px short
-                                              // of the rows at the 19.2 a
-                                              // cut opens at (F-403).
-                                              final totalFrameContentWidth =
-                                                  timelineFrameEdge(
-                                                    _renderedFrameCount,
-                                                    _metrics.frameCellWidth,
-                                                  );
-                                              _rulerViewExtent = viewportWidth;
-                                              _rewindowRuler();
-
-                                              // PRO-TIMELINE scrolling (UI-R15):
-                                              // the strip builds ONCE at full width
-                                              // — its painter windows itself off
-                                              // the live offset (repaint-only),
-                                              // sub-cell pixels move the TRANSLATE
-                                              // alone, and the bucket re-windowing
-                                              // is gone. Ticks/warming still
-                                              // rebuild just this one host.
-                                              // The ruler is SPLIT (the storyboard's
-                                              // shape, now shared): a static strip
-                                              // that lays out a glyph per labeled
-                                              // frame, and a thin overlay carrying
-                                              // everything that moves. Keeping the
-                                              // cursor tint in the strip meant every
-                                              // SEEK re-recorded the whole O(frames)
-                                              // glyph pass; and the cached bar reads
-                                              // DERIVED state (composites
-                                              // self-validate, nothing raises an
-                                              // "invalidated" event), so it must be
-                                              // cheap to repaint rather than gated.
-                                              final rulerContent = SizedBox(
-                                                width:
-                                                    totalFrameContentWidth,
-                                                height: headerHeight,
-                                                child: Stack(
-                                                  children: [
-                                                    RepaintBoundary(
-                                                      child: TimelineFrameRuler(
-                                                        frameStartIndex:
-                                                            0,
-                                                        frameEndIndexExclusive:
-                                                            _renderedFrameCount,
-                                                        playhead: widget
-                                                            .hooks
-                                                            .frameCursor,
-                                                        playbackFrameCount:
-                                                            widget
-                                                                .hooks
-                                                                .playbackFrameCount,
-                                                        noriShiro: widget
-                                                            .hooks
-                                                            .noriShiro,
-                                                        leadingFrameSpacerWidth:
-                                                            0,
-                                                        trailingFrameSpacerWidth:
-                                                            0,
-                                                        metrics:
-                                                            _metrics,
-                                                        onSelectFrame:
-                                                            _rulerScrub.selectClampedFrame,
-                                                        framesPerSecond:
-                                                            _countingFps,
-                                                        rulerView: widget
-                                                            .hooks
-                                                            .rulerView,
-                                                        pages: widget
-                                                            .hooks
-                                                            .sheetPages,
-                                                        windowBucket:
-                                                            _frameWindowBucket,
-                                                        viewportMainExtent:
-                                                            viewportWidth,
-                                                        geometry:
-                                                            _rulerFrameGeometry,
-                                                        dragPreview: widget
-                                                            .hooks
-                                                            .dragPreview,
-                                                        markers: widget
-                                                            .hooks
-                                                            .rulerMarkers,
-                                                        previewCutId:
-                                                            widget
-                                                                .hooks
-                                                                .cutEndDrag
-                                                                ?.cutId,
-                                                      ),
-                                                    ),
-                                                    Positioned.fill(
-                                                      child: TimelineRulerCursorOverlay(
-                                                        keyValue:
-                                                            'timeline-ruler-cursor-overlay',
-                                                        playhead: widget
-                                                            .hooks
-                                                            .frameCursor,
-                                                        repaintSignal:
-                                                            widget
-                                                                .hooks
-                                                                .frameReadySignal,
-                                                        windowBucket:
-                                                            _frameWindowBucket,
-                                                        viewportMainExtent:
-                                                            viewportWidth,
-                                                        geometry:
-                                                            _rulerFrameGeometry,
-                                                        renderedFrames:
-                                                            _renderedFrameCount,
-                                                        cellWidth: _metrics
-                                                            .frameCellWidth,
-                                                        readyRunsIn: widget
-                                                            .hooks
-                                                            .readyRunsIn,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-
-                                              return Listener(
-                                                key: const ValueKey<String>(
-                                                  'timeline-frame-ruler-scrub-area',
-                                                ),
-                                                behavior:
-                                                    HitTestBehavior
-                                                        .translucent,
-                                                onPointerDown: (event) {
-                                                  // R26 #34: a press that
-                                                  // pans is the pan's —
-                                                  // and a marker's is the
-                                                  // marker's (I-169).
-                                                  if (!rulerPressScrubs(
-                                                    event,
-                                                  )) {
-                                                    return;
-                                                  }
-                                                  _rulerScrub.resetTracking();
-                                                  _rulerScrub.pressAt(
-                                                    event.position,
-                                                  );
-                                                },
-                                                onPointerUp: (_) =>
-                                                    _rulerScrub.endScrub(),
-                                                onPointerCancel: (_) =>
-                                                    _rulerScrub.endScrub(),
-                                                child: GestureDetector(
-                                                  behavior:
-                                                      HitTestBehavior
-                                                          .translucent,
-                                                  onHorizontalDragStart:
-                                                      (details) {
-                                                        _rulerScrub.pressAt(
-                                                          details
-                                                              .globalPosition,
-                                                        );
-                                                      },
-                                                  onHorizontalDragUpdate:
-                                                      (details) {
-                                                        _rulerScrub.dragTo(
-                                                          details
-                                                              .globalPosition,
-                                                        );
-                                                      },
-                                                  onHorizontalDragEnd:
-                                                      (_) =>
-                                                          _rulerScrub.resetTracking(),
-                                                  onHorizontalDragCancel:
-                                                      _rulerScrub.resetTracking,
-                                                  child: SizedBox(
-                                                    key:
-                                                        _rulerScrubViewportKey,
-                                                    width:
-                                                        viewportWidth,
-                                                    height:
-                                                        headerHeight,
-                                                    child: ClipRect(
-                                                      child: OverflowBox(
-                                                        alignment:
-                                                            Alignment
-                                                                .topLeft,
-                                                        minWidth:
-                                                            totalFrameContentWidth,
-                                                        maxWidth:
-                                                            totalFrameContentWidth,
-                                                        minHeight:
-                                                            headerHeight,
-                                                        maxHeight:
-                                                            headerHeight,
-                                                        // Per-pixel scrolls move the
-                                                        // TRANSLATE only; the content
-                                                        // is the stable child below.
-                                                        //
-                                                        // R9 #3: the RAW scroll
-                                                        // position, overscroll
-                                                        // included. Clamping here
-                                                        // pinned the ruler at the
-                                                        // end while the body kept
-                                                        // sliding — this file's
-                                                        // own contract, broken by
-                                                        // the clamp meant for a
-                                                        // different job (deciding
-                                                        // whether the CONTROLLER
-                                                        // needs correcting after
-                                                        // a viewport resize).
-                                                        //
-                                                        // 🚨★★★F-32's OTHER HALF,
-                                                        // and it is the SAME
-                                                        // asymmetry with the
-                                                        // halves swapped: here the
-                                                        // CELLS land on the device
-                                                        // grid and the RULER kept
-                                                        // the raw fraction.
-                                                        //
-                                                        // 🧪Measured at ratio 1.5,
-                                                        // offset 1.5: ruler 453.5
-                                                        // vs cells 453.667. ⛔I had
-                                                        // read this file and
-                                                        // written 「both halves
-                                                        // carry the raw offset, so
-                                                        // they agree」 — reading
-                                                        // was wrong and the
-                                                        // measurement is what
-                                                        // caught it.
-                                                        //
-                                                        // ↩️F-95: the offset came
-                                                        // from a NOTIFIER a resize
-                                                        // past the end never
-                                                        // reached. The follower
-                                                        // reads the position when
-                                                        // it paints, with the
-                                                        // cells' correction on it.
-                                                        child: ScrollFollower(
-                                                          controller:
-                                                              _horizontalScrollController,
-                                                          axisDirection:
-                                                              AxisDirection.right,
-                                                          child: rulerContent,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
+                                        ruler: _ruler(headerHeight),
                                       ),
                                     ),
                                     Expanded(
