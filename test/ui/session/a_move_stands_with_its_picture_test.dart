@@ -203,10 +203,12 @@ void main() {
     await make(tester, s.pictures, 0);
     s.moves.shownBy(tester);
     final landed = <int>[];
+    var withItsPicture = false;
 
     s.moves.moveTo(1, () => landed.add(1));
     s.moves.moveTo(2, () {
       landed.add(2);
+      withItsPicture = s.pictures.has(frameAt(2));
       s.frame.value = 2;
     });
 
@@ -216,6 +218,12 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
     expect(landed, [2], reason: 'a frame passed over is never stood on');
+    expect(
+      withItsPicture,
+      isTrue,
+      reason: 'and the one it goes to lands with its picture, not with the '
+          'making of the one it passed over',
+    );
   });
 
   testWidgets('a move asked again for the frame it waits for lands as it '
@@ -289,8 +297,10 @@ void main() {
     final s = aSession();
     await make(tester, s.pictures, 0);
     final points = <String>[];
-    void took(PointerEvent event) =>
-        points.add('${kindOf(event)}@${event.localPosition.dx}');
+    // Each point with the frame the session stood on as the canvas took it.
+    void took(PointerEvent event) => points.add(
+      '${kindOf(event)}@${event.localPosition.dx}/f${s.frame.value}',
+    );
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
@@ -322,18 +332,29 @@ void main() {
     await tester.pump();
 
     expect(points, isEmpty, reason: 'held while the move waits');
+    var passedUnder = false;
+    s.moves.moveTo(2, () => passedUnder = true);
+    expect(
+      s.moves.waitsFor.value,
+      1,
+      reason: 'no other move goes under the press held for frame 1',
+    );
     expect(await settleAsync(tester, () => s.frame.value == 1), isTrue);
     await tester.pump();
+    expect(passedUnder, isFalse);
     expect(points, [
-      'down@10.0',
-      'move@20.0',
-    ], reason: 'every point held, in order, once the move lands');
+      'down@10.0/f1',
+      'move@20.0/f1',
+    ], reason: 'every point held, in order, on the frame the move landed on');
 
     await pen.moveTo(corner + const Offset(30, 10));
     await pen.up();
     expect(points.skip(2), [
-      'move@30.0',
-      'up@30.0',
+      'move@30.0/f1',
+      'up@30.0/f1',
     ], reason: 'and the points after it come the usual way');
+
+    s.moves.moveTo(0, () => s.frame.value = 0);
+    expect(s.frame.value, 0, reason: 'the press handed on holds no move');
   });
 }
