@@ -483,6 +483,13 @@ impl super::Device {
         self.compile_cache.found(Made::Dxil)
     }
 
+    /// ANICEL — not wgpu's: how many looks of this device's compiles found
+    /// the turn of a kernel in [`Self::keep_shaders_in`]'s folder held by
+    /// another, and waited for it.
+    pub fn dxil_waited(&self) -> u64 {
+        self.compile_cache.waited(Made::Dxil)
+    }
+
     /// ANICEL — not wgpu's: how many pipelines of this device the folder
     /// [`Self::keep_shaders_in`] names has answered, the driver making none
     /// of them again.

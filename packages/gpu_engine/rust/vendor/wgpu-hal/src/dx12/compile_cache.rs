@@ -113,6 +113,9 @@ pub(super) struct CompileCache {
     /// How many compiles of each [`Made`] the folder has answered
     /// ([`Self::used`]).
     found: [AtomicU64; 2],
+    /// How many looks of a compile of each [`Made`] found another's turn
+    /// held and waited ([`Self::turn`]).
+    waited: [AtomicU64; 2],
 }
 
 impl CompileCache {
@@ -163,24 +166,34 @@ impl CompileCache {
     /// A turn is a file beside the kept one, made where none is and gone
     /// with its holder ([`GOES_WITH_ITS_HOLDER`]). Where the folder cannot
     /// make one, this compiles with no turn, as it did before.
+    ///
+    /// 🚨**LOOKED AT AGAIN ONCE THE TURN IS HAD OR PASSED** (board
+    /// a-kernel-wait-test-goes-red-under-load, 11-18): a holder keeps what it
+    /// made before it lets go, so what it made is there for whoever comes
+    /// after it. ↩️Looked at only before the turn was asked for, a holder
+    /// that kept and let go between the look and the asking had what it
+    /// made compiled again — and so had one whose turn was going as it was
+    /// asked for. Under load the two steps stand apart: the pin of a kernel
+    /// waited for found it compiled twice, in two lanes' gates that day.
     pub(super) fn turn(&self, made: Made, asked: &[u8]) -> Turn {
         let Some(turn) = self.path(made, asked).map(|path| path.with_extension("turn")) else {
             return Turn::Compile(None);
         };
-        loop {
-            if let Some(kept) = self.read(made, asked) {
-                return Turn::Kept(kept);
-            }
+        if let Some(kept) = self.read(made, asked) {
+            return Turn::Kept(kept);
+        }
+        let held = loop {
             let taken = fs::File::options()
                 .write(true)
                 .create_new(true)
                 .custom_flags(GOES_WITH_ITS_HOLDER)
                 .open(&turn);
             match taken {
-                Ok(held) => return Turn::Compile(Some(held)),
+                Ok(held) => break Some(held),
                 Err(error)
                     if error.kind() == ErrorKind::AlreadyExists && held_for(&turn, TURN_STANDS) =>
                 {
+                    self.waited[made as usize].fetch_add(1, Ordering::Relaxed);
                     std::thread::sleep(TURN_LOOK);
                 }
                 // A turn its holder never let go of, a turn going this very
@@ -188,8 +201,13 @@ impl CompileCache {
                 // turn, as before — a compile twice over at worst. One left
                 // where it stands is past by the first compile, whose kernel
                 // is read from then on.
-                Err(_) => return Turn::Compile(None),
+                Err(_) => break None,
             }
+        };
+        // Kept by the turn's last holder: handed, and the turn let go here.
+        match self.read(made, asked) {
+            Some(kept) => Turn::Kept(kept),
+            None => Turn::Compile(held),
         }
     }
 
@@ -233,6 +251,12 @@ impl CompileCache {
     /// opened.
     pub(super) fn found(&self, made: Made) -> u64 {
         self.found[made as usize].load(Ordering::Relaxed)
+    }
+
+    /// How many looks of a compile of `made` have found another's turn
+    /// held, since the device opened.
+    pub(super) fn waited(&self, made: Made) -> u64 {
+        self.waited[made as usize].load(Ordering::Relaxed)
     }
 }
 

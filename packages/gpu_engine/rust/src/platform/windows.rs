@@ -528,6 +528,11 @@ fn main() { out[0] = 7u; }
         unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_found()
     }
 
+    fn waited(engine: &crate::device::Engine) -> u64 {
+        // SAFETY: only reads a count.
+        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_waited()
+    }
+
     fn pipelines_found(engine: &crate::device::Engine) -> u64 {
         // SAFETY: only reads a count.
         unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").pipelines_found()
@@ -788,19 +793,22 @@ fn main() { out[0] = 7u; }
     }
 
     /// What an engine keeping its shaders in `folder` makes of
-    /// `WRITES_SEVEN` on a thread of its own, the main thread waiting
-    /// `meanwhile` and running `then` before it hears: (the compiles the
-    /// folder answered, what the kernel wrote).
-    fn seven_beside(
-        turn: &DeviceTurn,
-        folder: &std::path::Path,
-        meanwhile: std::time::Duration,
-        then: impl FnOnce(),
-    ) -> (u64, u32) {
+    /// `WRITES_SEVEN` on a thread of its own, the main thread running
+    /// `then` once that compile waits on another's turn, before it hears:
+    /// (the compiles the folder answered, what the kernel wrote).
+    ///
+    /// 🧪IN TURN, NOT IN TIME (board a-kernel-wait-test-goes-red-under-load,
+    /// 11-18): ↩️the main thread slept 500 ms and ran `then`, and on a
+    /// machine under load the compile might not have looked by then — a
+    /// pin of a wait that need not have waited.
+    fn seven_beside(turn: &DeviceTurn, folder: &std::path::Path, then: impl FnOnce()) -> (u64, u32) {
         let engine = keeping(turn, folder);
         std::thread::scope(|scope| {
             let compiling = scope.spawn(|| pipeline(&engine, &[WRITES_SEVEN], "main"));
-            std::thread::sleep(meanwhile);
+            while waited(&engine) == 0 {
+                assert!(!compiling.is_finished(), "the compile ended without waiting on the turn");
+                std::thread::yield_now();
+            }
             then();
             let compiled = compiling.join().expect("the compile");
             (found(&engine), first_word(&engine, &compiled))
@@ -816,7 +824,7 @@ fn main() { out[0] = 7u; }
         let (kept_as, bytes) = seven_as_kept(&turn, "waited_made");
         let folder = kept_in("waited");
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, std::time::Duration::from_millis(500), || {
+        let (found, word) = seven_beside(&turn, &folder, || {
             let beside = folder.join("beside.tmp");
             std::fs::write(&beside, &bytes).expect("kept by the other");
             std::fs::rename(&beside, folder.join(&kept_as)).expect("under its name");
@@ -900,7 +908,7 @@ fn main() {{
         let (kept_as, _) = seven_as_kept(&turn, "let_go_made");
         let folder = kept_in("let_go");
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, std::time::Duration::from_millis(300), || {
+        let (found, word) = seven_beside(&turn, &folder, || {
             std::fs::remove_file(&held).expect("let go");
         });
         assert_eq!((found, word), (0, 7), "compiled here");
