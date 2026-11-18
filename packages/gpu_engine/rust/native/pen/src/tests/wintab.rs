@@ -11,9 +11,10 @@ use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Input::Pointer::POINTER_INFO;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, PT_PEN, PT_TOUCH,
-    RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_CAPTURECHANGED, WM_LBUTTONDOWN, WNDCLASSW,
-    WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageTime, MSG, PM_REMOVE, PT_PEN, PT_TOUCH,
+    PeekMessageW, PostMessageW, RegisterClassW, SW_SHOWNOACTIVATE, ShowWindow, WM_CAPTURECHANGED,
+    WM_LBUTTONDOWN, WM_NULL, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
+    WS_POPUP,
 };
 use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
@@ -1046,6 +1047,37 @@ fn a_mouse_press_in_the_view_keeps_its_history_till_the_capture_goes() {
     crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
     assert!(pressed, "kept from the press");
     assert!(!crate::mouse_kept::keeping(), "let go with the capture");
+}
+
+#[test]
+fn a_mouse_message_takes_its_moves_from_what_was_kept_while_a_button_is_down() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    // The thread's message clock at now: a message taken off its queue.
+    // SAFETY: the window shown, and a local.
+    unsafe {
+        let _ = PostMessageW(Some(window.0), WM_NULL, WPARAM(0), LPARAM(0));
+        let mut message = MSG::default();
+        let _ = PeekMessageW(&mut message, Some(window.0), 0, 0, PM_REMOVE);
+    }
+    // SAFETY: the time of the last message this thread took.
+    let time = unsafe { GetMessageTime() } as u32;
+    // A place no mouse is: the OS keeps no history of it, and what is kept
+    // since a press there is two moves to it.
+    let far: i16 = -20_000;
+    let mut there = POINT { x: far.into(), y: far.into() };
+    // SAFETY: the window shown, and a local.
+    let _ = unsafe { ClientToScreen(window.0, &mut there) };
+    let mut kept = crate::mouse_kept::Kept::from((there.x - 20, there.y, time));
+    kept.hear(&[(there.x, there.y, time), (there.x - 10, there.y, time)], 2);
+    crate::mouse_kept::keep_from(kept);
+    let word = (far as u16) as isize;
+    crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    let at = (f64::from(far), f64::from(far));
+    let points = crate::points::book().take(crate::points::Kind::Mouse, at).expect("the message's");
+    let places: Vec<f64> = points.iter().map(|point| point.x).collect();
+    assert_eq!(places, [f64::from(far) - 10.0, f64::from(far)], "the move kept before it, then its own");
 }
 
 #[test]

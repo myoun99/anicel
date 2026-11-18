@@ -139,6 +139,13 @@ pub(crate) fn keeping() -> bool {
     kept().is_some()
 }
 
+/// Keeps `kept` as though read since a press, the keeping thread left
+/// asleep.
+#[cfg(test)]
+pub(crate) fn keep_from(kept: Kept) {
+    *self::kept() = Some(kept);
+}
+
 /// Ends keeping: what was kept let go of.
 pub(crate) fn release() {
     *kept() = None;
