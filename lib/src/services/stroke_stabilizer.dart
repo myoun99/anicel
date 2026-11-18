@@ -107,7 +107,8 @@ class StrokeStabilizer {
   final StrokeCorners? _corners;
   final List<PenPoint> _ahead = [];
 
-  /// The pen time the brush stands at.
+  /// The pen time the brush stands at — as a frame took it on, until a
+  /// sample says the pen did not rest ([_goOnFromTheSamples]).
   Duration _brushAt;
 
   /// The way the pen goes, in canvas px/s ([_wayToldOver]).
@@ -136,6 +137,7 @@ class StrokeStabilizer {
     PenReadings readings, {
     required Duration at,
   }) {
+    _goOnFromTheSamples(at);
     _noteTheWay(pen, at);
     _pen = (position: pen, readings: readings);
     _goThrough(_corners?.add(_pen) ?? const []);
@@ -185,6 +187,26 @@ class StrokeStabilizer {
           point.position.distanceTo(_pen.position)) {
         _ahead.add(point);
       }
+    }
+  }
+
+  /// 🚨A FRAME CANNOT TELL A PEN AT REST FROM POINTS STILL ON THEIR WAY
+  /// (H56: every point the OS saw goes into the line, each at its own time,
+  /// whatever the frames are doing). A frame takes the line on as if the
+  /// pen rested since its latest sample, but the points it went through may
+  /// be behind a busy thread yet. A sample from before the time the frames
+  /// took the line to says the pen never rested there: the line goes on
+  /// from where the frames left it, by the sample's own time since the one
+  /// before — or it stood still for every point of the wait and then cut
+  /// straight across them.
+  ///
+  /// 🔬Surface Pro 11, a 1 kHz circle (2026-11-19, the D hunt 관제 set): a
+  /// frame 8 ms ahead of a batch of 11 points left 8 of them out of the
+  /// line, and with the UI's thread stopped 200 ms the whole stop came out
+  /// as one straight chord (3 circles in 40 on master).
+  void _goOnFromTheSamples(Duration at) {
+    if (at < _brushAt) {
+      _brushAt = _sampleAt;
     }
   }
 
