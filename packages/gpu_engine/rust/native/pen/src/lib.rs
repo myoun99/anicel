@@ -39,6 +39,11 @@ mod points_win;
 mod report;
 #[cfg(windows)]
 mod raw;
+// 🚨The one thread that receives the pen and the mouse off the UI's
+// (pen-receive-threads-are-one): raw.rs, wintab.rs and mouse_kept.rs hand
+// their work to it.
+#[cfg(windows)]
+mod receiver;
 #[cfg(test)]
 mod tests;
 #[cfg(windows)]
@@ -146,8 +151,9 @@ pub extern "C" fn qpr_abi_version() -> i32 {
     3
 }
 
-/// Starts the HID observer thread. 1 when raw pen reports will flow;
-/// idempotent. 0 without hid.dll, or with no digitizer registered.
+/// Listens to the pen's HID reports, on the receiver's thread. 1 when raw
+/// pen reports will flow; idempotent. 0 without hid.dll, or with no
+/// digitizer registered.
 #[cfg(windows)]
 #[unsafe(no_mangle)]
 pub extern "C" fn qpr_start() -> i32 {

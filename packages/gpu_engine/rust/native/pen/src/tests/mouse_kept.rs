@@ -59,6 +59,21 @@ fn a_move_kept_is_timed_evenly_since_the_read_before_the_newest_at_the_read() {
     assert_eq!(times, [2_000, 3_000, 4_000, 5_000, 7_000, 8_000], "none heard at 6 000: made after it");
 }
 
+// 🚨A read is sent as it is made — the receiver's and a message's own — and
+// one made first may be sent second (pen-receive-threads-are-one): heard
+// after the newer, its newest is not the newest kept, and its 64 would all
+// be taken for new.
+#[test]
+fn a_read_made_before_the_one_heard_last_keeps_nothing_and_loses_nothing() {
+    let mut kept = Kept::from(moved(0), 1_000);
+    assert_eq!(kept.hear(&history_at(70), 71, 9_000), Some(Lost::Full), "the newer, heard first");
+    let before = kept_moves(&kept);
+    assert_eq!(kept.hear(&history_at(66), 67, 8_000), None, "made before it");
+    assert_eq!((kept_moves(&kept), kept.newest, kept.read_at), (before, moved(70), 9_000));
+    assert_eq!(kept.hear(&history_at(72), 73, 10_000), None, "and the next goes on from the newer");
+    assert_eq!(kept_moves(&kept).last(), Some(&moved(72)));
+}
+
 #[test]
 fn a_read_refused_keeps_nothing_loses_nothing_and_says_nothing_of_when() {
     let mut kept = Kept::from(moved(0), 1_000);

@@ -7,10 +7,10 @@
 //! - wintab32.dll is loaded DYNAMICALLY; a machine without a driver is a
 //!   normal, silent state (`qat_available` 0) — never a link error.
 //! - The packet queue is drained without CXO_MESSAGES (no message pump
-//!   dependency) into the packets heard ([`Heard`]) by the reader's own
-//!   thread ([`DRAIN_EVERY`], and sooner where a move's packet is not heard
-//!   yet: [`readings_at`]), and by a message that presses
-//!   (points_win.rs). Dart's poll reads what was heard, and so do the
+//!   dependency) into the packets heard ([`Heard`]) by the receiver's
+//!   thread ([`crate::receiver`] — [`DRAIN_EVERY`], and sooner where a
+//!   move's packet is not heard yet: [`readings_at`]), and by a message
+//!   that presses (points_win.rs). Dart's poll reads what was heard, and so do the
 //!   points' readers (points_win.rs), which give each point the pen or a
 //!   mouse made what the packet that put it there says of the pen — its
 //!   pressure, lean and twist ([`Heard::at`]) — at its message, else as the
@@ -21,12 +21,13 @@
 
 use std::collections::VecDeque;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::points::{Driven, Point};
 use crate::points_win::{Move, a_pixel_apart};
+use crate::receiver::{self, Work};
 
 use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
@@ -60,11 +61,11 @@ const TPS_QUEUE_ERR: u32 = 0x0002;
 /// ↩️It was 128: at a pen's 200 Hz, 0.64 s — and a UI thread held longer
 /// than that (a plugin's frames held it over a second, 11-17) lost every
 /// packet between. 1024 is five seconds of them. 🔬The main PC's Wacom
-/// driver refuses 1024 and took 128 (11-18) — its queue is the reader's
-/// own thread's to drain, never held up by the UI's ([`DRAIN_EVERY`]).
+/// driver refuses 1024 and took 128 (11-18) — its queue is the receiver's
+/// to drain, never held up by the UI's ([`DRAIN_EVERY`]).
 pub(crate) const QUEUE: usize = 1024;
 
-/// How long the reader's own thread waits between drains of the queue.
+/// How long the receiver waits between drains of the queue.
 ///
 /// 🚨THE APP'S THREAD NEVER WAITS ON THE DRIVER (F-600 · H61, 2026-11-18): a
 /// call into Wacom's wintab32 goes to its service and back — 🔬main PC, a
@@ -402,15 +403,16 @@ impl Opened {
 }
 
 /// The open context's queue, and room for the whole of it: what drains it
-/// — the reader's own thread, a press ([`drain`]) — takes it in turn, and
+/// — the receiver's thread, a press ([`drain`]) — takes it in turn, and
 /// hears what it took before the next takes any, so the packets heard keep
 /// the driver's order.
 struct Drain {
     driver: Driver,
     context: *mut c_void,
     room: Vec<Packet>,
-    /// The reader's own thread, gone once the drain is taken away.
-    thread: Option<JoinHandle<()>>,
+    /// What the receiver's thread took while the UI's held what was heard
+    /// ([`drain_on_its_own`]), heard first at the next drain.
+    held: Vec<Packet>,
 }
 
 // SAFETY: a context handle and the driver's entry points, only ever used
@@ -418,43 +420,69 @@ struct Drain {
 // that did not open it as it answers the one that did (11-18).
 unsafe impl Send for Drain {}
 
+/// 🚨EVERY CALL INTO THE DRIVER ON A CONTEXT IS MADE UNDER THIS LOCK, and
+/// [`close`] takes the drain away under it: once the drain is gone, no
+/// call is left on its context — what the drain thread's join kept before
+/// it was the receiver's (pen-receive-threads-are-one).
 static DRAIN: Mutex<Option<Drain>> = Mutex::new(None);
 
 fn drain_lock() -> MutexGuard<'static, Option<Drain>> {
     DRAIN.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// The reader's own thread, to wake — under a lock of its own, which no
-/// call into the driver is ever made under: what wakes it waits on no
-/// drain.
-static READER: Mutex<Option<std::thread::Thread>> = Mutex::new(None);
+/// How often the receiver drains the open context, in microseconds: what
+/// it was opened with ([`open_drained_every`]), for a move that wakes it
+/// ([`hear_now`]) to keep it.
+static EVERY: AtomicU64 = AtomicU64::new(0);
 
-fn reader() -> MutexGuard<'static, Option<std::thread::Thread>> {
-    READER.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// Takes every packet the driver has queued into what was heard; false with
-/// no context open. Under the drain's lock first, the tablet's after it.
-fn drain_once() -> bool {
-    let mut drain = drain_lock();
-    let Some(drain) = drain.as_mut() else {
-        return false;
-    };
+/// Takes every packet the driver has queued into `drain`'s room: how many.
+fn take_queued(drain: &mut Drain) -> usize {
     // SAFETY: the open context and room for QUEUE packets.
     let got = unsafe { (drain.driver.packets_get)(drain.context, QUEUE as i32, drain.room.as_mut_ptr()) };
     // ⛔A DRIVER IS NOT TRUSTED PAST WHAT IT WAS ASKED FOR: the C read on
     // past its 64 for a count it was handed (native-memory-safety).
-    let got = (got.max(0) as usize).min(QUEUE);
-    if got > 0
-        && let Some(opened) = tablet().opened.as_mut()
-    {
+    (got.max(0) as usize).min(QUEUE)
+}
+
+/// What `drain` held back, then the `got` it just took, heard by `tablet`'s
+/// open context.
+fn hand_over(drain: &mut Drain, got: usize, tablet: &mut Tablet) {
+    if let Some(opened) = tablet.opened.as_mut() {
+        opened.heard.hear(&drain.held);
         opened.heard.hear(&drain.room[..got]);
+    }
+    drain.held.clear();
+}
+
+/// The receiver's turn ([`crate::receiver::Work::Drain`]): every packet
+/// the driver has queued taken into what was heard. Whether a context is
+/// still open.
+///
+/// 🚨IT NEVER WAITS ON THE UI'S THREAD: what was heard is the UI's to read
+/// (`poll` · `readings_at` · `pair`), and where the UI holds it the packets
+/// taken are held back for the next drain; where the UI drains itself (a
+/// press), this turn is the UI's.
+pub(crate) fn drain_on_its_own() -> bool {
+    // The UI's press is draining it: the queue is heard all the same.
+    let Some(mut drain) = receiver::if_free(&DRAIN) else {
+        return true;
+    };
+    let Some(drain) = drain.as_mut() else {
+        return false;
+    };
+    let got = take_queued(drain);
+    match receiver::if_free(&TABLET) {
+        Some(mut tablet) => hand_over(drain, got, &mut tablet),
+        None => {
+            let Drain { room, held, .. } = drain;
+            held.extend_from_slice(&room[..got]);
+        }
     }
     true
 }
 
 /// Drains the queue now: a message that presses, whose point and buttons
-/// are read before the reader's own thread drains again.
+/// are read before the receiver drains again.
 ///
 /// 🚨THE PEN'S CONTACT IS HEARD AT ITS PRESS (H43, 2026-09-26): read off a
 /// drain a whole wait behind, the packet the app took was, as often as
@@ -462,7 +490,12 @@ fn drain_once() -> bool {
 /// stamped with that, and a press whose buttons were read off it did not
 /// draw at all; the contact packet was already in the driver's queue.
 pub(crate) fn drain() {
-    drain_once();
+    let mut drain = drain_lock();
+    let Some(drain) = drain.as_mut() else {
+        return;
+    };
+    let got = take_queued(drain);
+    hand_over(drain, got, &mut tablet());
 }
 
 struct Tablet {
@@ -521,7 +554,7 @@ pub(crate) fn open(within: u32) -> bool {
     open_drained_every(within, DRAIN_EVERY)
 }
 
-/// [`open`], its reader's own thread draining the queue `every` so long
+/// [`open`], the receiver draining the queue `every` so long
 /// when nothing wakes it sooner ([`readings_at`]).
 pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     let mut tablet = tablet();
@@ -582,16 +615,9 @@ pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     tablet.opened = Some(Opened { context: opened, scales, within, output, heard: Heard::default() });
     drop(tablet);
     let room = vec![Packet::default(); QUEUE];
-    *drain_lock() = Some(Drain { driver, context: opened, room, thread: None });
-    let thread = std::thread::Builder::new().name("wintab drain".to_owned()).spawn(move || {
-        while drain_once() {
-            std::thread::park_timeout(every);
-        }
-    });
-    if let (Ok(thread), Some(drain)) = (thread, drain_lock().as_mut()) {
-        *reader() = Some(thread.thread().clone());
-        drain.thread = Some(thread);
-    }
+    *drain_lock() = Some(Drain { driver, context: opened, room, held: Vec::new() });
+    EVERY.store(u64::try_from(every.as_micros()).unwrap_or(u64::MAX), Ordering::Relaxed);
+    receiver::now(Work::Drain, every);
     true
 }
 
@@ -618,13 +644,13 @@ pub(crate) fn poll(out: &mut [f32]) -> usize {
 /// window the context opened with ([`Heard::at`]); None where no packet
 /// did, and all None while no context is open. Asks the driver nothing;
 /// notes how far the newest packet heard is behind the message being
-/// handled, at `message` — and wakes the reader's own thread where a move's
+/// handled, at `message` — and has the receiver drain where a move's
 /// packet is not heard yet while the pen is at hand, for [`pair`] to find
 /// it there.
 ///
 /// ⛔Not where the pen was last heard further back than the context's own
 /// window: a mouse's moves, with no packet ever to be heard of them — a
-/// mouse of 1,000 Hz would have the reader ask the driver as often.
+/// mouse of 1,000 Hz would have the receiver ask the driver as often.
 pub(crate) fn readings_at(message: u32, moves: &[Move]) -> Vec<Option<Driven>> {
     let mut tablet = tablet();
     let Some(opened) = tablet.opened.as_mut() else {
@@ -644,8 +670,8 @@ pub(crate) fn readings_at(message: u32, moves: &[Move]) -> Vec<Option<Driven>> {
 /// since its message, says of the pen, where it had nothing then
 /// ([`readings_at`]). Asks the driver nothing.
 ///
-/// 🚨A MOVE IS PAIRED AS THE APP READS IT TOO (H61, 2026-11-18): the reader's
-/// own thread drains every [`DRAIN_EVERY`], and the packet that put the
+/// 🚨A MOVE IS PAIRED AS THE APP READS IT TOO (H61, 2026-11-18): the receiver
+/// drains every [`DRAIN_EVERY`], and the packet that put the
 /// cursor at a move is made as the move is — so its message was handled,
 /// as often as not, before the packet was heard, and the app took the
 /// driver's newest packet in its place. 🔬main PC, a pen as a mouse, two
@@ -653,7 +679,7 @@ pub(crate) fn readings_at(message: u32, moves: &[Move]) -> Vec<Option<Driven>> {
 /// the very next message; the newest stood off by 0.12% of the stroke's
 /// most pressure at the median, 2.4% at the 99th. The app reads a point
 /// after its message (1.7 ms at the median over the fastest), and the
-/// message woke the reader for it ([`hear_now`]) — no thread of the app's
+/// message woke the receiver for it ([`hear_now`]) — no thread of the app's
 /// waits on the driver for it.
 pub(crate) fn pair(points: &mut [Point]) {
     let tablet = tablet();
@@ -667,12 +693,16 @@ pub(crate) fn pair(points: &mut [Point]) {
     }
 }
 
-/// Wakes the reader's own thread to drain the queue now, waiting on
-/// nothing.
+/// What was heard, held as the UI's thread holds it reading a message's
+/// points — for a test to stand on it.
+#[cfg(test)]
+pub(crate) fn hold() -> impl Sized {
+    tablet()
+}
+
+/// Has the receiver drain the queue now, waiting on nothing.
 fn hear_now() {
-    if let Some(thread) = reader().as_ref() {
-        thread.unpark();
-    }
+    receiver::now(Work::Drain, Duration::from_micros(EVERY.load(Ordering::Relaxed)));
 }
 
 /// How many packets said the queue overflowed before them since the
@@ -684,17 +714,12 @@ pub(crate) fn heard() -> Option<(u32, Option<i32>)> {
     Some((heard.overflowed, heard.gap))
 }
 
-/// Closes the context: what was heard let go of, the drain taken away and
-/// its thread gone — no call into the driver left on its context — before
-/// the driver is told.
+/// Closes the context: what was heard let go of and the drain taken away —
+/// under its lock, so a drain the receiver is in has ended and none is
+/// left on the context — before the driver is told.
 pub(crate) fn close() {
     let opened = tablet().opened.take();
-    let drain = drain_lock().take();
-    *reader() = None;
-    if let Some(thread) = drain.and_then(|drain| drain.thread) {
-        thread.thread().unpark();
-        let _ = thread.join();
-    }
+    drop(drain_lock().take());
     let driver = tablet().driver;
     if let (Some(driver), Some(opened)) = (driver, opened) {
         // SAFETY: the context this opened, closed once.

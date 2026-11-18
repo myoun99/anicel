@@ -18,6 +18,8 @@ mod points;
 mod points_win;
 #[cfg(windows)]
 mod raw;
+#[cfg(windows)]
+mod receiver;
 mod report;
 #[cfg(windows)]
 mod wintab;

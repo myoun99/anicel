@@ -186,7 +186,7 @@ struct Reading {
 /// What `reader` answers and asks the driver as `script` plays: its name
 /// into rooms of none to a hundred characters, opened twice, the queue
 /// drained as a press drains it ([`wintab::drain`]) — so what was queued is
-/// heard whenever the reader's own thread drains —, polled for records
+/// heard whenever the receiver drains —, polled for records
 /// `polls` at a time, closed twice.
 fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Reading {
     driver.play(script);
@@ -250,7 +250,7 @@ fn told(reading: &Reading) -> Vec<String> {
         format!("the system's but {}", changed.join(" "))
     };
     told.push(format!("context {context}"));
-    // How many times it was asked is the reader's own thread's to say: what
+    // How many times it was asked is the receiver's to say: what
     // each drain asked for, told once.
     let mut asked = seen.asked[..seen.asks.clamp(0, 8) as usize].to_vec();
     asked.dedup();
@@ -910,7 +910,7 @@ fn the_reader_s_own_thread_hears_the_queue_unasked() {
     assert_eq!(count, 2, "heard with no poll, no move and no press draining it");
 }
 
-/// Longer than any test runs: the reader's own thread, past its first
+/// Longer than any test runs: the receiver, past its first
 /// drain, drains again only where it is woken.
 const ASLEEP: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -950,7 +950,7 @@ fn a_move_whose_packet_is_not_heard_yet_wakes_the_reader() {
     // The pen at hand: a packet a moment before the move.
     driver.play(&a_hundred_high(&[queued(1000, 100)]));
     assert!(wintab::open_drained_every(150, ASLEEP));
-    // The reader's own first drain hears it, and it sleeps from then.
+    // The receiver's first drain hears it, and it sleeps from then.
     assert_eq!(handed_soon(), 1);
     // The packet that put the cursor at the move, queued as it moved.
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(1004, 200) }]));
@@ -970,14 +970,14 @@ fn a_move_with_no_pen_at_hand_wakes_no_reader() {
     // The pen last heard two seconds before: a mouse's move is a mouse's.
     driver.play(&a_hundred_high(&[queued(1000, 100)]));
     assert!(wintab::open_drained_every(150, ASLEEP));
-    // The reader's own first drain hears it, and it sleeps from then.
+    // The receiver's first drain hears it, and it sleeps from then.
     assert_eq!(handed_soon(), 1);
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(3004, 200) }]));
     let pressures = pressures_at(3005, &[(70, 49, 3004)]);
     let count = handed_within(std::time::Duration::from_millis(200));
     crate::qat_close();
     assert!(pressures[0].is_nan());
-    assert_eq!(count, 0, "no drain but the reader's own, asleep");
+    assert_eq!(count, 0, "no drain but the receiver's, asleep");
 }
 
 #[test]
@@ -1074,6 +1074,103 @@ fn a_held_button_s_history_is_read_well_inside_an_8_khz_mouse_s_64_moves() {
     crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
     let eight_khz = std::time::Duration::from_millis(8);
     assert!(span < eight_khz * u32::try_from(best).unwrap(), "{best} reads in {span:?}");
+}
+
+// 🚨THE RECEIVER NEVER STANDS ON THE UI'S THREAD (pen-receive-threads-are-one,
+// 관제 03:0x): 🔬the UI's thread stood holding what the mouse's reader shared
+// with it, and the reader stood 218 ms with it — 1 of 20 stalls. Held here
+// as a UI that stands holds it, on purpose and not by a thread suspended.
+#[test]
+fn a_ui_that_stands_holding_what_is_kept_never_stands_the_mouse_s_reads() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    let reads = || crate::mouse_kept::READS.load(std::sync::atomic::Ordering::Relaxed);
+    let span = std::time::Duration::from_millis(100);
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let held = crate::mouse_kept::hold();
+    let from = reads();
+    std::thread::sleep(span);
+    let read = reads() - from;
+    drop(held);
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    let eight_khz = std::time::Duration::from_millis(8);
+    assert!(span < eight_khz * u32::try_from(read).unwrap(), "{read} reads in {span:?} with the UI standing");
+}
+
+#[test]
+fn a_ui_that_stands_holding_what_was_heard_never_stands_the_drain() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100)]));
+    assert_eq!(crate::qat_open(150), 1);
+    assert_eq!(handed_soon(), 1, "the first drain heard");
+    driver.play(&installed(&[queued(1004, 200), queued(1008, 300)]));
+    let held = wintab::hold();
+    let before = driver.seen().asks;
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let asks = driver.seen().asks - before;
+    drop(held);
+    let count = handed_soon();
+    crate::qat_close();
+    assert!(asks >= 5, "{asks} drains in 100 ms with the UI standing");
+    assert_eq!(count, 2, "what was taken while it stood, heard once it was let go");
+}
+
+// 🚨NO CALL INTO THE DRIVER ON A CONTEXT ONCE IT IS CLOSED: the drain is
+// taken away under its lock, so a drain the receiver is in ends first and
+// none comes after — what the drain thread's join kept before
+// (pen-receive-threads-are-one).
+#[test]
+fn a_context_closed_is_asked_nothing_more() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100)]));
+    assert_eq!(crate::qat_open(150), 1);
+    assert_eq!(handed_soon(), 1, "LIVENESS — drained while open");
+    crate::qat_close();
+    let closed = driver.seen().asks;
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(driver.seen().asks, closed, "asked after the close");
+}
+
+// 🚨THE READS END WITH THE BUTTON: a work that no longer lasts leaves the
+// receiver's schedule, and its timer with it (pen-receive-threads-are-one).
+#[test]
+fn the_mouse_s_reads_end_with_the_button() {
+    let (_driver, _turn) = driver();
+    let window = AppWindow::show();
+    let reads = || crate::mouse_kept::READS.load(std::sync::atomic::Ordering::Relaxed);
+    let wait = || std::thread::sleep(std::time::Duration::from_millis(30));
+    let before = reads();
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    wait();
+    let pressed = reads();
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    // A read already under way ends.
+    wait();
+    let let_go = reads();
+    wait();
+    assert!(pressed > before, "LIVENESS — read while the button was down");
+    assert_eq!(reads(), let_go, "read with no button down");
+}
+
+// 🚨A stop of Raw Input lets go of the pen's reports, not of the receiver:
+// the Wintab drain and the mouse's history are its work too.
+#[test]
+fn a_raw_input_stop_leaves_the_receiver_receiving() {
+    let (_driver, _turn) = driver();
+    let _raw = super::raw::one_at_a_time();
+    let window = AppWindow::show();
+    let reads = || crate::mouse_kept::READS.load(std::sync::atomic::Ordering::Relaxed);
+    let started = crate::qpr_start();
+    crate::qpr_stop();
+    crate::points_win::hear(window.0, WM_LBUTTONDOWN, WPARAM(0), LPARAM(0));
+    let from = reads();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let read = reads() - from;
+    crate::points_win::hear(window.0, WM_CAPTURECHANGED, WPARAM(0), LPARAM(0));
+    assert_eq!(started, 1, "LIVENESS — Raw Input listened to, and stopped");
+    assert!(read > 0, "read after the stop");
 }
 
 #[test]

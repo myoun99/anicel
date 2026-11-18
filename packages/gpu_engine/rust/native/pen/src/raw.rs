@@ -31,9 +31,10 @@
 //! with the pen drew upright (F-176-Q8). So it listens to both.
 //!
 //! PURE OBSERVATION, by construction:
-//! - A message-only window on its OWN thread receives WM_INPUT. Flutter's
-//!   window and message loop are never touched, so nothing here can change
-//!   how input is delivered to the app.
+//! - A message-only window on the receiver's thread receives WM_INPUT
+//!   ([`crate::receiver`], the one thread that receives off the UI's).
+//!   Flutter's window and message loop are never touched, so nothing here
+//!   can change how input is delivered to the app.
 //! - RIDEV_INPUTSINK, and NEVER RIDEV_NOLEGACY: the legacy WM_MOUSE*
 //!   messages are what the whole app actually runs on, and asking the
 //!   system to stop sending them would brick it exactly the way the
@@ -44,30 +45,20 @@
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::mem::offset_of;
-use std::os::windows::io::AsRawHandle;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
-use std::sync::mpsc::{self, Sender};
 use std::sync::{Mutex, PoisonError};
-use std::thread::JoinHandle;
-use std::time::Duration;
 
-use windows::Win32::Foundation::{
-    ERROR_CLASS_ALREADY_EXISTS, GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM,
-};
-use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
-use windows::Win32::System::Threading::{GetThreadId, WaitForSingleObject};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, WPARAM};
+use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::UI::Input::{
     GetRawInputData, GetRawInputDeviceInfoW, HRAWINPUT, RAWHID, RAWINPUT, RAWINPUTDEVICE,
-    RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE, RIDI_PREPARSEDDATA, RIM_TYPEHID,
-    RegisterRawInputDevices,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, HWND_MESSAGE,
-    MSG, PostThreadMessageW, RegisterClassW, TranslateMessage, WM_INPUT, WM_QUIT, WNDCLASSW,
+    RAWINPUTDEVICE_FLAGS, RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE,
+    RIDI_PREPARSEDDATA, RIM_TYPEHID, RegisterRawInputDevices,
 };
 use windows::core::{PCSTR, s, w};
 
 use crate::hid_axis::Axis;
+use crate::receiver;
 use crate::report::{self, PAGE_DIGITIZER, USAGE_TWIST, USAGE_X_TILT, USAGE_Y_TILT};
 
 const STATUS_SUCCESS: i32 = 0x0011_0000;
@@ -277,61 +268,43 @@ pub(crate) static FLAGS: AtomicI32 = AtomicI32::new(0);
 static SEQUENCE: AtomicI32 = AtomicI32::new(0);
 pub(crate) static POSE: AtomicI64 = AtomicI64::new(0);
 
-struct Observer {
-    hid: Option<Hid>,
-    thread: Option<JoinHandle<()>>,
-}
-
-static OBSERVER: Mutex<Observer> = Mutex::new(Observer { hid: None, thread: None });
+/// hid.dll's parser, loaded at the first start: None till then, or where
+/// it is not there.
+static HID: Mutex<Option<Hid>> = Mutex::new(None);
 
 thread_local! {
-    /// What the observer thread reads reports with, and the device it last
-    /// read — on that thread alone, so nothing else ever sees it.
+    /// What the receiver's thread reads reports with, and the device it
+    /// last read — on that thread alone, so nothing else ever sees it.
     static READING: RefCell<Option<(Hid, Option<Device>)>> = const { RefCell::new(None) };
 }
 
-/// Starts the observer thread. True when raw pen reports will flow.
-/// Idempotent; a machine without hid.dll or without a digitizer simply
-/// answers false and stays silent.
+/// Listens to the pen's HID reports — on the receiver's thread, whose
+/// window they come to ([`crate::receiver`]). True when raw pen reports
+/// will flow. Idempotent; a machine without hid.dll or without a digitizer
+/// simply answers false and stays silent.
 pub(crate) fn start() -> bool {
+    let mut hid = HID.lock().unwrap_or_else(PoisonError::into_inner);
     if STARTED.load(Ordering::SeqCst) {
         return true;
     }
-    let mut observer = OBSERVER.lock().unwrap_or_else(PoisonError::into_inner);
-    if observer.hid.is_none() {
-        observer.hid = Hid::load();
+    if hid.is_none() {
+        *hid = Hid::load();
     }
-    let Some(hid) = observer.hid else {
+    let Some(hid) = hid.as_ref() else {
         return false;
     };
-    if observer.thread.is_some() {
-        return false; // A previous thread is still winding down.
-    }
-    let (ready, registered) = mpsc::channel();
-    let Ok(thread) = std::thread::Builder::new()
-        .name("pen raw input".into())
-        .spawn(move || observe(hid, ready))
-    else {
-        return false;
-    };
-    observer.thread = Some(thread);
-    // The registration either succeeded or failed by the time the thread
-    // signals; 2s is a generous ceiling for window creation.
-    let _ = registered.recv_timeout(Duration::from_secs(2));
-    STARTED.load(Ordering::SeqCst)
+    let at = LPARAM(std::ptr::from_ref(hid) as isize);
+    receiver::ask(receiver::WM_LISTEN, WPARAM(0), at) == 1
 }
 
+/// Stops listening, the latest report forgotten. The receiver's thread
+/// goes on: it is the Wintab drain's and the mouse history's too.
 pub(crate) fn stop() {
-    let mut observer = OBSERVER.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(thread) = observer.thread.take() else {
+    let _hid = HID.lock().unwrap_or_else(PoisonError::into_inner);
+    if !STARTED.load(Ordering::SeqCst) {
         return;
-    };
-    let handle = HANDLE(thread.as_raw_handle());
-    // SAFETY: the thread's own handle, open while `thread` is.
-    unsafe {
-        let _ = PostThreadMessageW(GetThreadId(handle), WM_QUIT, WPARAM(0), LPARAM(0));
-        WaitForSingleObject(handle, 2000);
     }
+    receiver::ask(receiver::WM_LISTEN, WPARAM(0), LPARAM(0));
     FLAGS.store(0, Ordering::SeqCst);
     POSE.store(0, Ordering::SeqCst);
 }
@@ -348,89 +321,50 @@ pub(crate) fn poll(out: &mut [f32]) -> bool {
     true
 }
 
-/// The observer thread: a message-only window that both collections a pen
-/// reports through are delivered to, until WM_QUIT.
-fn observe(hid: Hid, ready: Sender<()>) {
-    READING.with(|reading| *reading.borrow_mut() = Some((hid, None)));
-    // SAFETY: this module, a class of it, and a message-only window of that
-    // class on this thread, destroyed on it.
-    unsafe {
-        let Ok(module) = GetModuleHandleW(None) else {
-            return;
-        };
-        let class = w!("AnicelPenRawSink");
-        let kind = WNDCLASSW {
-            lpfnWndProc: Some(answer),
-            hInstance: module.into(),
-            lpszClassName: class,
-            ..Default::default()
-        };
-        // A duplicate class registration across restarts is fine; only a
-        // real failure matters.
-        if RegisterClassW(&kind) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {
-            return;
+/// On the receiver's thread: both collections a pen reports through
+/// delivered to its `window`, read with the `Hid` that `hid` points at —
+/// or, where it points at none, delivered no more. Whether they are.
+pub(crate) fn listen(window: HWND, hid: LPARAM) -> bool {
+    // SAFETY: a Hid its asker holds while it waits for the answer
+    // ([`start`]), or none.
+    let hid = unsafe { (hid.0 as *const Hid).as_ref() }.copied();
+    let listened = match hid {
+        Some(hid) => {
+            READING.with(|reading| *reading.borrow_mut() = Some((hid, None)));
+            // INPUTSINK = deliver even when this (invisible) window is not in
+            // the foreground. NOLEGACY is deliberately absent — see the
+            // module's head.
+            register(&collections(window, RIDEV_INPUTSINK))
         }
-        let Ok(window) = CreateWindowExW(
-            Default::default(),
-            class,
-            None,
-            Default::default(),
-            0,
-            0,
-            0,
-            0,
-            Some(HWND_MESSAGE),
-            None,
-            Some(module.into()),
-            None,
-        ) else {
-            return;
-        };
-        // INPUTSINK = deliver even when this (invisible) window is not in the
-        // foreground. NOLEGACY is deliberately absent — see the module's head.
-        let devices = [report::USAGE_PEN, report::USAGE_DIGITIZER].map(|usage| RAWINPUTDEVICE {
-            usUsagePage: PAGE_DIGITIZER,
-            usUsage: usage,
-            dwFlags: RIDEV_INPUTSINK,
-            hwndTarget: window,
-        });
-        let size = size_of::<RAWINPUTDEVICE>() as u32;
-        if RegisterRawInputDevices(&devices, size).is_err() {
-            let _ = DestroyWindow(window);
-            return;
+        None => {
+            // Unregistered before anything else: the target goes on living.
+            register(&collections(HWND::default(), RIDEV_REMOVE));
+            READING.with(|reading| *reading.borrow_mut() = None);
+            false
         }
-        STARTED.store(true, Ordering::SeqCst);
-        let _ = ready.send(());
-
-        let mut message = MSG::default();
-        while GetMessageW(&mut message, None, 0, 0).0 > 0 {
-            let _ = TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-
-        // Unregister before the target window dies.
-        let removed = devices.map(|device| RAWINPUTDEVICE {
-            dwFlags: RIDEV_REMOVE,
-            hwndTarget: HWND::default(),
-            ..device
-        });
-        let _ = RegisterRawInputDevices(&removed, size);
-        let _ = DestroyWindow(window);
-    }
-    STARTED.store(false, Ordering::SeqCst);
+    };
+    STARTED.store(listened, Ordering::SeqCst);
+    listened
 }
 
-unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
-    if message == WM_INPUT {
-        take(HRAWINPUT(l.0 as *mut c_void));
-    }
-    // The system still needs its cleanup pass for WM_INPUT.
-    // SAFETY: what the system handed this window.
-    unsafe { DefWindowProcW(window, message, w, l) }
+/// Both collections a pen reports through, to `window` as `flags` say.
+fn collections(window: HWND, flags: RAWINPUTDEVICE_FLAGS) -> [RAWINPUTDEVICE; 2] {
+    [report::USAGE_PEN, report::USAGE_DIGITIZER].map(|usage| RAWINPUTDEVICE {
+        usUsagePage: PAGE_DIGITIZER,
+        usUsage: usage,
+        dwFlags: flags,
+        hwndTarget: window,
+    })
+}
+
+/// Registers `devices` with the system: whether it took them.
+fn register(devices: &[RAWINPUTDEVICE]) -> bool {
+    // SAFETY: the devices, and their size.
+    unsafe { RegisterRawInputDevices(devices, size_of::<RAWINPUTDEVICE>() as u32) }.is_ok()
 }
 
 /// Reads the reports of one WM_INPUT into the latest.
-fn take(input: HRAWINPUT) {
+pub(crate) fn take(input: HRAWINPUT) {
     let header = size_of::<RAWINPUTHEADER>() as u32;
     let mut size = 0u32;
     // SAFETY: a size query, writing nothing.

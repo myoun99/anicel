@@ -7,12 +7,13 @@
 //! (H59, the input inspector's `lost=full`).
 //!
 //! The history is the system's, not a thread's or a window's: 🔬Surface Pro
-//! 11, a process with no window at all read the cursor's 64 (11-18). So a
-//! thread of its own reads it every [`KEEP_EVERY`] while a mouse button is
-//! down in the view, and keeps every move past the one it kept last
-//! ([`Kept::hear`]); the UI's thread takes a message's moves from what was
-//! kept ([`Kept::take_through`]), and reads the OS's 64 as it did where
-//! the message's own move was not kept.
+//! 11, a process with no window at all read the cursor's 64 (11-18). So the
+//! receiver ([`crate::receiver`]) reads it every [`KEEP_EVERY`] while a
+//! mouse button is down in the view, and sends each read ([`SENT`]); the
+//! UI's thread keeps every move they hold past the one it kept last, in
+//! the order they were made ([`Kept::hear`]), takes a message's moves from
+//! what was kept ([`Kept::take_through`]), and reads the OS's 64 as it did
+//! where the message's own move was not kept.
 //!
 //! ⛔NO HOOK (H59-Q1, 유저 2026-11-15 「훅을 쓰지 않는다」 — an antivirus may
 //! take a global mouse hook for a spy's): nothing is caught or registered;
@@ -21,8 +22,9 @@
 //! went (H59 법 A).
 
 use std::collections::VecDeque;
-use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::thread::Thread;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use windows::Win32::Foundation::{POINT, WPARAM};
@@ -34,14 +36,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::points::{Lost, book};
 use crate::points_win::{Move, mouse_history, mouse_lost, newer_than, now_micros, told_alike};
+use crate::receiver::{self, Work};
 
 /// How often the history is read while a button is down: well inside the
-/// 64 moves Windows keeps — 64 ms of a 1 kHz mouse, 8 ms of an 8 kHz one.
-///
-/// 🔬SLEPT, NOT PARKED (2026-11-19): `park_timeout` waits out the system's
-/// clock tick — Surface Pro 11, 4 ms asked of it took 15.69 ms at the
-/// median, past an 8 kHz mouse's 64 moves — where std's `sleep` waits on a
-/// high-resolution timer: 4.51 ms.
+/// 64 moves Windows keeps — 64 ms of a 1 kHz mouse, 8 ms of an 8 kHz one —,
+/// on the receiver's own high-resolution timer ([`crate::receiver`]).
 pub(crate) const KEEP_EVERY: Duration = Duration::from_millis(4);
 
 /// What was kept since a button went down: the moves past the press no
@@ -84,8 +83,15 @@ impl Kept {
     /// a stroke, spread evenly, and not past its read). A move read now and
     /// not before was made since the read before and by now: they are put
     /// there in order, the newest at now.
+    ///
+    /// ⛔A READ MADE BEFORE THE ONE HEARD LAST ADDS NOTHING
+    /// (pen-receive-threads-are-one, 2026-11-19): the receiver's read and a
+    /// message's own are sent as each is made ([`SENT`]), and one made
+    /// first may be sent second; heard after the newer, the older's newest
+    /// is not the newest kept, and every move of its 64 would be taken for
+    /// new — kept twice, and counted lost.
     pub(crate) fn hear(&mut self, history: &[Move], found: i32, read_at: i64) -> Option<Lost> {
-        if found < 0 {
+        if found < 0 || read_at < self.read_at {
             return None;
         }
         let newer = newer_than(history, Some(self.newest));
@@ -157,20 +163,52 @@ fn kept() -> MutexGuard<'static, Option<Kept>> {
     KEPT.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// The keeping thread, to wake: none till the first press.
-static KEEPER: Mutex<Option<Thread>> = Mutex::new(None);
+/// Whether a button is down: what the receiver reads by, never waiting on
+/// what is kept ([`keep_on_its_own`]).
+static KEEPING: AtomicBool = AtomicBool::new(false);
 
-/// Starts keeping from a press at `at`, the thread made at the first.
+/// A read of the history where the cursor was: the newest first, how many
+/// the read found, and when it was made.
+pub(crate) struct Read {
+    history: Vec<Move>,
+    found: i32,
+    at: i64,
+}
+
+/// The reads made since the last were heard, in the order made — sent by
+/// whoever made them, heard by whoever holds what is kept ([`hear_sent`]).
+///
+/// 🚨THE RECEIVER ONLY SENDS (pen-receive-threads-are-one, 2026-11-19):
+/// it heard into what was kept itself, under the lock the UI's thread
+/// takes a message's moves with — 🔬and stood 218 ms with a UI that stood
+/// holding it (1 of 20 stalls). A send waits on nobody; the UI's thread,
+/// which takes the moves, hears the reads before it does.
+static SENT: LazyLock<(Sender<Read>, Mutex<Receiver<Read>>)> = LazyLock::new(|| {
+    let (send, heard) = mpsc::channel();
+    (send, Mutex::new(heard))
+});
+
+/// Hears into `kept` every read sent and not heard yet, in the order made —
+/// their loss counted in the book —; with none kept, lets them go.
+fn hear_sent(kept: &mut Option<Kept>) {
+    let heard = SENT.1.lock().unwrap_or_else(PoisonError::into_inner);
+    for read in heard.try_iter() {
+        let lost = kept.as_mut().and_then(|kept| kept.hear(&read.history, read.found, read.at));
+        if let Some(why) = lost {
+            book().lose(why);
+        }
+    }
+}
+
+/// Starts keeping from a press at `at`: what was read before it let go of,
+/// and the receiver reading from now on ([`Work::Keep`]).
 pub(crate) fn press(at: Move) {
-    *kept() = Some(Kept::from(at, now_micros()));
-    let mut keeper = KEEPER.lock().unwrap_or_else(PoisonError::into_inner);
-    if keeper.is_none() {
-        let made = std::thread::Builder::new().name("mouse history".to_owned()).spawn(keep);
-        *keeper = made.ok().map(|thread| thread.thread().clone());
-    }
-    if let Some(thread) = keeper.as_ref() {
-        thread.unpark();
-    }
+    let mut kept = kept();
+    hear_sent(&mut None);
+    *kept = Some(Kept::from(at, now_micros()));
+    KEEPING.store(true, Ordering::SeqCst);
+    drop(kept);
+    receiver::now(Work::Keep, KEEP_EVERY);
 }
 
 /// Whether a button is down and its moves are kept.
@@ -180,64 +218,72 @@ pub(crate) fn keeping() -> bool {
 }
 
 /// When the history was last read since the press — the press, till the
-/// first read; None while no button is down.
+/// first read is heard; None while no button is down.
 #[cfg(test)]
 pub(crate) fn read_at() -> Option<i64> {
     kept().as_ref().map(|kept| kept.read_at)
 }
 
-/// Keeps `kept` as though read since a press, the keeping thread left
-/// asleep.
+/// Keeps `kept` as though read since a press, the receiver not reading.
 #[cfg(test)]
 pub(crate) fn keep_from(kept: Kept) {
     *self::kept() = Some(kept);
 }
 
-/// The keeping thread's reads so far, for a test to time its turns by.
+/// What is kept, held as the UI's thread holds it taking a message's moves
+/// — for a test to stand on it.
+#[cfg(test)]
+pub(crate) fn hold() -> MutexGuard<'static, Option<Kept>> {
+    kept()
+}
+
+/// The receiver's reads so far, for a test to time its turns by.
 #[cfg(test)]
 pub(crate) static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// Ends keeping: what was kept let go of.
+/// Ends keeping: what was kept, and read since, let go of.
 pub(crate) fn release() {
-    *kept() = None;
+    let mut kept = kept();
+    KEEPING.store(false, Ordering::SeqCst);
+    *kept = None;
+    hear_sent(&mut kept);
 }
 
-/// The keeping thread: a read every [`KEEP_EVERY`] while a button is down —
-/// slept, not parked, for the wait asked — asleep while none is.
-fn keep() {
-    loop {
-        if kept().is_some() {
-            read();
-            #[cfg(test)]
-            READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            std::thread::sleep(KEEP_EVERY);
-        } else {
-            std::thread::park();
-        }
+/// The receiver's turn ([`Work::Keep`]): the history read and sent while a
+/// button is down — waiting on nothing. Whether one still is.
+pub(crate) fn keep_on_its_own() -> bool {
+    if !KEEPING.load(Ordering::SeqCst) {
+        return false;
     }
+    if let Some(read) = read() {
+        let _ = SENT.0.send(read);
+    }
+    #[cfg(test)]
+    READS.fetch_add(1, Ordering::Relaxed);
+    true
 }
 
-/// Reads the history where the cursor is now into what is kept — its loss
-/// counted in the book — while a button is down.
-fn read() {
+/// The history where the cursor is now, read; None where the cursor's
+/// place is not.
+fn read() -> Option<Read> {
     let mut cursor = POINT::default();
     // SAFETY: a local to write.
-    if unsafe { GetCursorPos(&mut cursor) }.is_err() {
-        return;
-    }
+    unsafe { GetCursorPos(&mut cursor) }.ok()?;
     // Of no millisecond: the newest move at the cursor's place.
     let (history, found) = mouse_history((cursor.x, cursor.y, 0));
-    let lost = kept().as_mut().and_then(|kept| kept.hear(&history, found, now_micros()));
-    if let Some(why) = lost {
-        book().lose(why);
-    }
+    Some(Read { history, found, at: now_micros() })
 }
 
-/// The history a mouse message at `own` hands on ([`history_for`]): read
-/// once more first while a button is down, for the moves up to `own`.
+/// The history a mouse message at `own` hands on ([`history_for`]): while
+/// a button is down, read once more first for the moves up to `own`, and
+/// every read sent heard before it.
 pub(crate) fn history_of(own: Move) -> Told {
-    if kept().is_some() {
-        read();
+    let mut kept = kept();
+    if kept.is_some()
+        && let Some(read) = read()
+    {
+        let _ = SENT.0.send(read);
     }
-    history_for(own, kept().as_mut(), mouse_history)
+    hear_sent(&mut kept);
+    history_for(own, kept.as_mut(), mouse_history)
 }
