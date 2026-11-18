@@ -79,3 +79,26 @@ std::wstring Utf16FromUtf8(const std::string& utf8_string) {
                         utf16_string.data(), length);
   return utf16_string;
 }
+
+// The longest path Windows names a file by (\\?\ paths), in UTF-16 units.
+constexpr size_t kLongestPath = 32768;
+
+// ⛔ONE way to read it: the splash and the restart each read their own with
+// GetModuleFileNameW till the handover asked of another process's
+// (2026-11-18). The same call for both sides, so two paths of one file are
+// spelled alike where they are compared.
+std::wstring ExecutableOf(HANDLE process) {
+  std::wstring path(MAX_PATH, L'\0');
+  for (;;) {
+    DWORD length = static_cast<DWORD>(path.size());
+    if (::QueryFullProcessImageNameW(process, 0, path.data(), &length)) {
+      path.resize(length);
+      return path;
+    }
+    if (::GetLastError() != ERROR_INSUFFICIENT_BUFFER ||
+        path.size() >= kLongestPath) {
+      return std::wstring();
+    }
+    path.resize(path.size() * 2);
+  }
+}

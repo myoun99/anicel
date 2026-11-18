@@ -54,8 +54,10 @@ int AskWithWindows(HWND owner, const std::wstring& title,
 // restart of Q1's 「저장하고 다시 시작」.
 //
 // ⚠️|window| first stops taking handed files (kRunningWindowProp): the next
-// Anicel, started for files, hands them to the window that carries it
-// (main.cpp, HandToTheRunningWindow) — this one, still standing.
+// Anicel, started for files, hands them to a window of its own executable
+// that carries it (main.cpp, HandToTheRunningWindow) — this one, still
+// standing, as the next is this executable. Another window of it takes them
+// as a tab, as any start of it for files does.
 // Returns false, and ends nothing, where the next would not start.
 bool StartAgainFor(HWND window, const std::vector<std::wstring>& files);
 

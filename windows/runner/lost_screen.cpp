@@ -5,6 +5,7 @@
 #include <wrl/client.h>
 
 #include "flutter_window.h"
+#include "utils.h"
 
 namespace {
 
@@ -114,9 +115,8 @@ int AskWithWindows(HWND owner, const std::wstring& title,
 }
 
 bool StartAgainFor(HWND window, const std::vector<std::wstring>& files) {
-  wchar_t self[MAX_PATH];
-  const DWORD length = ::GetModuleFileNameW(nullptr, self, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) {
+  const std::wstring self = ExecutableOf(::GetCurrentProcess());
+  if (self.empty()) {
     return false;
   }
   std::wstring command = Quoted(self);
@@ -126,8 +126,8 @@ bool StartAgainFor(HWND window, const std::vector<std::wstring>& files) {
   ::RemovePropW(window, kRunningWindowProp);
   STARTUPINFOW startup = {sizeof(startup)};
   PROCESS_INFORMATION started = {};
-  if (!::CreateProcessW(self, command.data(), nullptr, nullptr, FALSE, 0,
-                        nullptr, nullptr, &startup, &started)) {
+  if (!::CreateProcessW(self.c_str(), command.data(), nullptr, nullptr, FALSE,
+                        0, nullptr, nullptr, &startup, &started)) {
     ::SetPropW(window, kRunningWindowProp, reinterpret_cast<HANDLE>(1));
     return false;
   }

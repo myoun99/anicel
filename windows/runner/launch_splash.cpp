@@ -68,9 +68,7 @@ std::vector<std::string> SplitOn(const std::string& text, char separator) {
 
 // The folder the engine reads its assets from, beside the executable.
 std::wstring AssetsFolder() {
-  wchar_t path[MAX_PATH];
-  const DWORD length = ::GetModuleFileName(nullptr, path, MAX_PATH);
-  std::wstring folder(path, length);
+  std::wstring folder = ExecutableOf(::GetCurrentProcess());
   folder.resize(folder.find_last_of(L'\\') + 1);
   return folder + L"data\\flutter_assets\\";
 }
