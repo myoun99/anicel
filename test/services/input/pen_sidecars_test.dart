@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui show PointerChange, PointerData;
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart'
     show
         Offset,
@@ -13,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_pen_points.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/pen_path.dart';
+import 'package:anicel/src/services/input/pen_pose.dart';
 import 'package:anicel/src/services/input/pen_sidecars.dart';
 import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
@@ -285,6 +288,17 @@ void main() {
       reason: 'a point no packet was paired with leans as the pen does now',
     );
     expect(PenSidecars.twistOf(_hover), 90);
+    // As a stroke reads it ([penPoseOf]) on a desktop, whose pointer
+    // carries no lean.
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      expect(penPoseOf(drawn), (
+        lean: (azimuthDegrees: 180.0, altitude: 0.25),
+        twist: 300.0,
+      ));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
 
     report = const QaPenRawState(
       flags: 0x01,

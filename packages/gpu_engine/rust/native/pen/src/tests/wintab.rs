@@ -978,7 +978,7 @@ fn a_move_with_no_pen_at_hand_wakes_no_reader() {
 }
 
 #[test]
-fn a_move_s_packet_heard_after_its_message_is_its_pressure_as_the_app_reads_it() {
+fn a_move_s_packet_heard_after_its_message_is_its_reading_as_the_app_reads_it() {
     let (driver, _turn) = driver();
     let window = AppWindow::show();
     // SAFETY: the time of the last message this thread took.
@@ -991,6 +991,8 @@ fn a_move_s_packet_heard_after_its_message_is_its_pressure_as_the_app_reads_it()
     let script = |packets: &[Packet]| Script {
         has_pressure: true,
         pressure: axis(0, 1000),
+        has_orientation: true,
+        orientation: [axis(0, 3599), axis(-900, 900), axis(0, 359)],
         context: running_down(),
         ..installed(packets)
     };
@@ -1001,7 +1003,8 @@ fn a_move_s_packet_heard_after_its_message_is_its_pressure_as_the_app_reads_it()
     let word = (far as u16) as isize;
     crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));
     // The packet that put the cursor there, heard after the message.
-    driver.play(&script(&[Packet { x: there.x, y: there.y, ..queued(time.wrapping_sub(1), 250) }]));
+    let leaning = Packet { azimuth: 900, altitude: 450, twist: 90, ..queued(time.wrapping_sub(1), 250) };
+    driver.play(&script(&[Packet { x: there.x, y: there.y, ..leaning }]));
     wintab::drain();
     let count = crate::qa_pen_points_take(crate::points::Kind::Mouse as i32, f64::from(far), f64::from(far));
     let mut words = [0.0; crate::points::POINT_WORDS];
@@ -1009,7 +1012,8 @@ fn a_move_s_packet_heard_after_its_message_is_its_pressure_as_the_app_reads_it()
     let read = unsafe { crate::qa_pen_points_taken(words.as_mut_ptr(), 1) };
     crate::qat_close();
     assert_eq!((count, read), (1, 1));
-    assert_eq!(words[6], 250.0 * (1.0 / 1000.0), "the driver's pressure, as the point is read");
+    let read_of_pen = [250.0 * (1.0 / 1000.0), 90.0, 0.5, 90.0];
+    assert_eq!(words[6..], read_of_pen, "what the driver's packet says of the pen, as the point is read");
 }
 
 #[test]
