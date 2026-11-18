@@ -1,9 +1,6 @@
-import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, sizedAlong;
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_scrub.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,9 +18,6 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const cellExtent = 24.0;
   const stripExtent = 400.0;
-
-  TimelineCellExposureState stateFor(layer, int frameIndex) =>
-      TimelineCellExposureState.uncovered;
 
   /// A strip that scrolls along [axis], its viewport carrying [key].
   Widget strip(Axis axis, GlobalKey key, ScrollController controller) {
@@ -88,18 +82,8 @@ void main() {
             axis: axis,
             viewportKey: keys[axis]!,
             controller: controllers[axis]!,
-            hooks: () => TimelineGridHooks(
-              activeLayer: ValueNotifier(const LayerId('layer-1')),
-              frameCursor: ValueNotifier<int>(0),
-              playbackFrameCount: 1000,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: picked[axis]!.add,
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-            ),
+            sinks: () =>
+                (selected: picked[axis]!.add, scrubbed: null, ended: null),
             frameCellExtent: () => cellExtent,
             renderedFrameCount: () => 1000,
             scrolledFrameOffset: () => 0,

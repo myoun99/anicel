@@ -138,6 +138,40 @@ void main() {
     expect(_playheadFrame(tester), expected);
   });
 
+  // The grids' law (R10 R6, `TimelineFrameScrub.pressAt`): landing near an
+  // end of the strip is no push toward it — only a drag pans. ↩️The conte's
+  // ruler pressed and dragged by a body of its own, and panned on a press
+  // in its edge band (board the-conte-ruler-scrubs-through-the-one-area).
+  testWidgets('a press in the edge band takes the frame under it and pans '
+      'nothing', (tester) async {
+    await _openStoryboard(tester);
+
+    final perFrame = _pixelsPerFrame(tester);
+    final y = tester.getRect(_ruler).center.dy;
+    final left = tester.getRect(_ruler).left;
+    final viewportRight =
+        tester.getRect(find.byType(StoryboardPanel)).right - 6;
+
+    final gesture = await tester.startGesture(
+      Offset(viewportRight, y),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+      tester.getRect(_ruler).left,
+      left,
+      reason: 'a press is no push toward the edge',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(_ruler).left, left);
+    expect(
+      _playheadFrame(tester),
+      ((viewportRight - left) / perFrame).floor(),
+    );
+  });
+
   testWidgets('a plain press with no panning still lands under the pointer', (
     tester,
   ) async {

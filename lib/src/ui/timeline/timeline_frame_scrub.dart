@@ -11,7 +11,17 @@ import '../widgets/axis_gesture_detector.dart';
 import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_coordinate_policy.dart';
-import 'timeline_grid_hooks.dart';
+
+/// Where a scrub's frames go ([TimelineFrameScrub]): each move's to
+/// [scrubbed] — the cursor alone — and the one commit to [ended] as the
+/// pointer lets go; where a host has no [scrubbed], each move's to
+/// [selected]. A grid hands its hooks' (`TimelineGridHooks.scrubSinks`), in
+/// its cut's frames; the conte's ruler its panel's, in the track's.
+typedef FrameScrubSinks = ({
+  ValueChanged<int>? selected,
+  ValueChanged<int>? scrubbed,
+  VoidCallback? ended,
+});
 
 /// Whether a press on a ruler strip is the strip's to scrub by — ONE answer
 /// for the ruler across, the X-sheet's rail down and the conte panel's
@@ -36,16 +46,23 @@ bool rulerPressScrubs(PointerDownEvent event) =>
 /// VALUE here, the way Flutter's own `Axis` serves Flex and ListView, so
 /// there is one body and no side can lag the other.
 ///
-/// Everything a scrub needs from its grid arrives as a getter, because the
-/// metrics, the hooks and the rendered extent all change under it between
-/// gestures; the controller and the viewport key are fixed for the grid's
+/// 🚨AND FOR THE CONTE'S RULER, the third (board
+/// the-conte-ruler-scrubs-through-the-one-area, 11-18): it called the same
+/// policy functions and assembled the press, the drag and the release of
+/// its own — and so it panned on a press near its edge, which the grids
+/// stopped doing (R10 R6, [pressAt]), and counted its frames from an
+/// offset other than the one its ruler is painted at.
+///
+/// Everything a scrub needs from its host arrives as a getter, because the
+/// metrics, the sinks and the rendered extent all change under it between
+/// gestures; the controller and the viewport key are fixed for the host's
 /// life and arrive as themselves.
 class TimelineFrameScrub {
   TimelineFrameScrub({
     required this.axis,
     required this.viewportKey,
     required this.controller,
-    required this.hooks,
+    required this.sinks,
     required this.frameCellExtent,
     required this.renderedFrameCount,
     required this.scrolledFrameOffset,
@@ -63,7 +80,7 @@ class TimelineFrameScrub {
   /// The frame axis's scroll controller, the one an edge pan moves.
   final ScrollController controller;
 
-  final TimelineGridHooks Function() hooks;
+  final FrameScrubSinks Function() sinks;
   final double Function() frameCellExtent;
 
   /// The BUILT extent the clamp answers against (UI-R12 #16).
@@ -104,8 +121,8 @@ class TimelineFrameScrub {
     if (frame == null) {
       return;
     }
-    final grid = hooks();
-    (grid.onScrubFrame ?? grid.onSelectFrame)(frame);
+    final host = sinks();
+    (host.scrubbed ?? host.selected)?.call(frame);
   }
 
   /// The scrub gesture's release (raw pointer up/cancel — fires for taps
@@ -113,7 +130,7 @@ class TimelineFrameScrub {
   /// so a strip's trailing onTap stays deduplicated.
   void endScrub() {
     letGo();
-    hooks().onScrubEnd?.call();
+    sinks().ended?.call();
   }
 
   void resetTracking() => _scrubbedFrame.reset();

@@ -507,7 +507,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     axis: Axis.horizontal,
     viewportKey: _rulerScrubViewportKey,
     controller: _horizontalScrollController,
-    hooks: () => widget.hooks,
+    sinks: () => widget.hooks.scrubSinks,
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,

@@ -11,7 +11,7 @@ part of '../storyboard_panel.dart';
 /// every row shown, 671 of the panel's 2,375 elements stood in rows nobody
 /// could see.
 ///
-/// 🚨A collaborator of `_StoryboardPanelState`, as [_StoryboardScroll] is.
+/// 🚨A collaborator of `_StoryboardPanelState`.
 /// It reaches the State through `_state`.
 class _StoryboardRowsWindow {
   _StoryboardRowsWindow(this._state);

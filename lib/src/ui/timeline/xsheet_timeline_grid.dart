@@ -297,7 +297,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     axis: Axis.vertical,
     viewportKey: _railScrubViewportKey,
     controller: _frameScrollController,
-    hooks: () => widget.hooks,
+    sinks: () => widget.hooks.scrubSinks,
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _frameScroll.renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,

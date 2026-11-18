@@ -33,6 +33,7 @@ import 'property_lane_model.dart';
 import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_row_filter.dart';
 import 'frame_ruler_view.dart';
+import 'timeline_frame_scrub.dart' show FrameScrubSinks;
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
@@ -270,6 +271,10 @@ class TimelineGridHooks {
   final ValueChanged<int>? onScrubFrame;
 
   final VoidCallback? onScrubEnd;
+
+  /// Where a scrub of this grid's frames goes (`TimelineFrameScrub`).
+  FrameScrubSinks get scrubSinks =>
+      (selected: onSelectFrame, scrubbed: onScrubFrame, ended: onScrubEnd);
 
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
