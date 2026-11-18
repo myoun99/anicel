@@ -613,6 +613,22 @@ bool rowTakesNewCels(Layer layer) =>
     layer.mediaReference == null &&
     (!layer.kind.holdsSingleCel || pictureRowStandsEmpty(layer));
 
+/// Whether [row] takes the blocks of a copy made off a row that
+/// [playsSound] — a sound's on a sound's row, a picture's on a picture's,
+/// never across: the law the effects keep (`EffectKind.isTakenByARow`),
+/// and the one a dragged block already keeps by section (UI-R23 #10).
+///
+/// 🗣️F-609 (유저 2026-11-17): 「s행에 일반 레이어에서 프레임 복사한거
+/// 붙여넣기 가능해서 그림 붙여넣어져버리는데 일반레이어에서 복사된건
+/// 결과적으로 안붙여넣어지도록. 다른거랑 똑같이 붙여넣어지는 대상에서
+/// 판단되서 알아서 무시하는느낌. 규칙맞춰서」 — the row the paste lands on
+/// asks, the press goes dark where no row takes it, and a band's other rows
+/// take theirs. ↩️Every row that took new cels took any copy: a drawing's
+/// blocks landed on an SE row with their pictures, and an SE row's on a
+/// drawing row with their sounds.
+bool rowTakesCopiesOf(Layer row, {required bool playsSound}) =>
+    row.kind.playsSound == playsSound;
+
 /// Whether a block landing on [layer] — pasted or dragged there — lands as
 /// its PICTURE, hung in the block [layer] shows (`picturesHungInBlocks`),
 /// rather than as a block: a row of drawn cels nothing makes a cel on

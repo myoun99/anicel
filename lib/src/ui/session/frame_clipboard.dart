@@ -28,7 +28,8 @@ import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
-import 'frame_verbs.dart' show blocksLandAsPicturesOn, rowTakesNewCels;
+import 'frame_verbs.dart'
+    show blocksLandAsPicturesOn, rowTakesCopiesOf, rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'lane_homes.dart' show KeyCopy, LanesAlone;
 import 'lane_verbs.dart';
@@ -503,6 +504,7 @@ class FrameClipboard implements BringsMedia {
     return _CopiedRow(
       layerId: row.id,
       linkable: row.kind.isDrawingCel,
+      playsSound: row.kind.playsSound,
       clip: clip,
       keys: keys,
       cels: cels,
@@ -1020,6 +1022,15 @@ class FrameClipboard implements BringsMedia {
       if (board.length > 1 && i >= board.length) {
         break;
       }
+      // The board's rows meet the seats in the band's order ([_seatsOf]) —
+      // the pictures live on rows.
+      final mine = board[board.length <= 1 ? 0 : i];
+      // A row that does not take what was copied keeps its seat and takes
+      // nothing — a sound's blocks on a picture's row, or a picture's on a
+      // sound's (F-609, [rowTakesCopiesOf]).
+      if (!rowTakesCopiesOf(target, playsSound: mine.playsSound)) {
+        continue;
+      }
       // A picture row the selection leaves holding its picture has no room
       // for a block — it keeps its SEAT, [i], and a link lands nothing
       // there. Asked of the anchor too: its gate asked the same
@@ -1043,9 +1054,6 @@ class FrameClipboard implements BringsMedia {
       final at = lift == null
           ? (index: place._index, liftCount: 0)
           : (index: lift.index, liftCount: lift.count);
-      // The board's rows meet the seats in the band's order ([_seatsOf]) —
-      // the pictures live on rows.
-      final mine = board[board.length <= 1 ? 0 : i];
       final clip = board.length <= 1 ? copied.clip : mine.clip;
       landings.add((
         target: target,
@@ -1883,6 +1891,7 @@ class _CopiedRow {
   const _CopiedRow({
     required this.layerId,
     required this.linkable,
+    required this.playsSound,
     required this.clip,
     this.keys,
     this.cels = const [],
@@ -1902,6 +1911,11 @@ class _CopiedRow {
   /// and their names (the dialogue) repeat. A synced attach row's copy is
   /// one of drawings (I-71), though the row itself takes no paste.
   final bool linkable;
+
+  /// Whether the row this was copied off plays SOUND — what a row the paste
+  /// lands on asks of it ([rowTakesCopiesOf], F-609). Taken at the copy for
+  /// [linkable]'s reason: the paste may stand where that row is not.
+  final bool playsSound;
   final TimelineClipRow clip;
 
   /// The keys the band held on the row's lanes, by their frame from its
