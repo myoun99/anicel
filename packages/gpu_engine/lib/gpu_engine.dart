@@ -2336,26 +2336,30 @@ class GpuPlan implements _OfAnEngine {
   }
 
   /// The weighs on their way ([tilesMade]), and how the engine's thread
-  /// tells this isolate one has been weighed.
-  static final _weighs = _Told<({Completer<int> weighed, GpuPlan plan})>((
-    _,
-    asked,
-    weighed,
-  ) {
-    final plan = asked.plan;
-    final tiles = rust.planWeighed(plan._plan);
-    plan._weighing -= 1;
-    if (plan._freed && plan._weighing == 0) {
-      rust.planFree(plan._plan);
+  /// tells this isolate one has been weighed: its plan reads the answer
+  /// off itself ([_weighed]).
+  static final _weighs = _Told<({Completer<int> weighed, GpuPlan plan})>(
+    (_, asked, told) => asked.plan._weighed(asked.weighed, told: told),
+  );
+
+  /// A weigh of this plan has run ([tilesMade]): [weighed] answered with
+  /// the tiles it counted where it was [told] so, with a refusal where it
+  /// was not — and the plan let go of where it was [free]d meanwhile and
+  /// this was the last on its way.
+  void _weighed(Completer<int> weighed, {required bool told}) {
+    final tiles = rust.planWeighed(_plan);
+    _weighing -= 1;
+    if (_freed && _weighing == 0) {
+      rust.planFree(_plan);
     }
-    if (weighed) {
-      asked.weighed.complete(tiles);
+    if (told) {
+      weighed.complete(tiles);
     } else {
-      asked.weighed.completeError(
+      weighed.completeError(
         GpuRefused('a plan is weighed over pixels past the grid'),
       );
     }
-  });
+  }
 
   /// How many weighs of it are on their way ([tilesMade]).
   int _weighing = 0;
