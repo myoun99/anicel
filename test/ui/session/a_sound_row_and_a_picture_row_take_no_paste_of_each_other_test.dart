@@ -264,4 +264,27 @@ void main() {
     expect(redOf(s, other, blocks(s, other)[6]), 10);
     expect(blocks(s, voice).keys, [6]);
   });
+
+  // The drag's half of the same answer: a block moves among rows of its own
+  // section (UI-R23 #10). An SE block let go on a picture's row is pinned
+  // where the hand drags it (se_row_move_gesture_test).
+  test('a picture\'s block dragged onto an SE row lands nothing there, and '
+      'stays where it was', () {
+    final s = rig();
+    final plainBefore = blocks(s, plain);
+    final soundBefore = now(s, sound);
+    s.selectLayer(plain);
+    s.updateFrameRangeSelectionDrag(
+      layerId: plain,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue, reason: '⛔전제');
+
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6, targetLayerId: sound);
+    s.rangeMove.endFrameRangeMoveDrag();
+
+    expect(identical(now(s, sound), soundBefore), isTrue);
+    expect(blocks(s, plain), plainBefore);
+  });
 }

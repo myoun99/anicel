@@ -1051,27 +1051,16 @@ class FrameClipboard implements BringsMedia {
       // track's frames, and the cut-local index landed it on an earlier
       // cut's. Each row places the band's start on ITS OWN axis ([_band]):
       // two rows swept together need not key the same frames.
-      final at = lift == null
-          ? (index: place._index, liftCount: 0)
-          : (index: lift.index, liftCount: lift.count);
-      final clip = board.length <= 1 ? copied.clip : mine.clip;
-      landings.add((
-        target: target,
-        at: at,
-        hangsPictures: hangs,
-        source: board.length <= 1 ? copied.layerId : mine.layerId,
-        linkable: mine.linkable,
-        keys: mine.keys,
-        // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
-        // holds ONE picture takes the clip's first, as one comma. The write
-        // lays that as the row's held block; a second cel minted beside it
-        // would sit in the bank with nothing showing it.
-        clip: target.kind.holdsSingleCel ? _firstPictureOf(clip) : clip,
-        cels: board.length <= 1 ? copied.cels : mine.cels,
-        sounds: board.length <= 1 ? copied.sounds : mine.sounds,
-        pictures: mine.pictures,
-        handwriting: mine.handwriting,
-      ));
+      landings.add(
+        mine._landingOn(
+          target,
+          copied,
+          at: lift == null
+              ? (index: place._index, liftCount: 0)
+              : (index: lift.index, liftCount: lift.count),
+          hangs: hangs,
+        ),
+      );
     }
     return landings;
   }
@@ -1943,6 +1932,38 @@ class _CopiedRow {
   /// copied, by each block's id — BY VALUE for [pictures]' reason. A block
   /// never written on is simply absent.
   final Map<String, BitmapSurface> handwriting;
+
+  /// What [target] takes of this row of [copied]'s board, landing [at] —
+  /// the copy's own run where the board holds this row alone, which is how
+  /// a one-row clip goes to every target (결정 14 ③ⓐ).
+  _PasteLanding _landingOn(
+    Layer target,
+    _CopiedFrameReference copied, {
+    required ({int index, int liftCount}) at,
+    required bool hangs,
+  }) {
+    final alone = copied.rows.length <= 1;
+    final run = alone ? copied.clip : clip;
+    return (
+      target: target,
+      at: at,
+      hangsPictures: hangs,
+      source: alone ? copied.layerId : layerId,
+      linkable: linkable,
+      keys: keys,
+      // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
+      // holds ONE picture takes the clip's first, as one comma. The write
+      // lays that as the row's held block; a second cel minted beside it
+      // would sit in the bank with nothing showing it.
+      clip: target.kind.holdsSingleCel
+          ? FrameClipboard._firstPictureOf(run)
+          : run,
+      cels: alone ? copied.cels : cels,
+      sounds: alone ? copied.sounds : sounds,
+      pictures: pictures,
+      handwriting: handwriting,
+    );
+  }
 }
 
 /// What the app holds from the last FRAME copy — ONE board for every open
