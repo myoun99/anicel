@@ -107,13 +107,59 @@ void main() {
     );
   });
 
+  /// The rows built now, by name — in view or not.
+  Set<String> built() => {
+    for (final layer in layers)
+      if (find.text(layer.name).evaluate().isNotEmpty) layer.name,
+  };
+
+  /// The rows a pointer reaches now, by name — in view.
+  Set<String> inView() => {
+    for (final layer in layers)
+      if (find.text(layer.name).hitTestable().evaluate().isNotEmpty)
+        layer.name,
+  };
+
+  // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q1 = B):
+  // spare rows past the view, always — [timelineRowWindowMargin].
+  testWidgets('the rows a notch brings in stand built before it, either '
+      'way, and the frame the grid opens in builds them too', (tester) async {
+    await tester.pumpWidget(grid());
+
+    final opened = built();
+    expect(
+      opened.difference(inView()),
+      isNotEmpty,
+      reason: 'the opening frame built rows past the view',
+    );
+
+    await tester.pumpAndSettle();
+    // A notch at 100%, as Windows' wheel turns it — down, then back up.
+    for (final notch in [100.0, -100.0]) {
+      final before = built();
+      final seen = inView();
+      await wheelBy(tester, notch);
+      final came = inView().difference(seen);
+      expect(
+        came,
+        isNotEmpty,
+        reason: 'the notch brought rows in — else this proves nothing',
+      );
+      expect(
+        came.difference(before),
+        isEmpty,
+        reason: 'every row the notch $notch brought in was built before',
+      );
+    }
+  });
+
   testWidgets('sub-row movement re-windows nothing at all', (tester) async {
     await tester.pumpWidget(grid());
     await tester.pumpAndSettle();
 
     final before = scrollArea(tester);
-    // A third of a row: the ≥2-row overscan absorbs it, so not even the
-    // token should move.
+    // A third of a row: the window's notch past the view absorbs it, so not
+    // even the token should move.
     await wheelBy(tester, timelineLayerRowHeight / 3);
 
     expect(identical(scrollArea(tester), before), isTrue);

@@ -1041,8 +1041,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                   drawnEdges.total,
                                   _metrics.layerRowHeight,
                                 );
-                                // Layer-axis window: only the rows in view (plus
-                                // overscan) are built; spacers preserve the scroll
+                                // Layer-axis window: only the rows in view (and
+                                // a wheel notch more on each side,
+                                // [timelineRowWindowMargin]) are built; spacers
+                                // preserve the scroll
                                 // geometry of the rest. The cursor and preview
                                 // overlays keep the FULL row list — their offsets are
                                 // absolute. Without a real viewport measurement

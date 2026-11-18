@@ -8,6 +8,27 @@ import 'timeline_visible_range.dart';
 /// with the row after it, as a graph's lanes do.
 typedef TimelineRowSlot = ({double extent, double room, bool joinsNext});
 
+/// How far past each side of the viewport the rows' window builds rows
+/// ([TimelineRowEdges.window]) — one wheel notch, so the rows a notch
+/// brings in stand built, and drawn, before they come.
+///
+/// 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q1 = B,
+/// 「화면 밖 여유 행 — 늘」): 「타임라인패널을 열때 속도를 줄여서 여는걸
+/// 쾌적하게 하기보다 타임라인패널 내에서의 조작이 쾌적한게 훨씬중요」 — so
+/// the frame a tab opens in builds them too, the timeline's and the conte's
+/// rows alike (one window). 🔬What it answers (brush/rendering, 11-18, S5_BA
+/// cut 352): a wheel's 12 notches drew 41 pictures, nearly two for each row
+/// a notch brought in — each built and drawn live in the frame it came, and
+/// a row that left and came back built and drawn again.
+/// ↩️⛔No rows were built past the viewport from 2026-10-28
+/// (frame-panels-build-in-one-frame: two rows a side were 412 of the
+/// timeline tab's 2,787 elements as it opened) — reversed by that answer.
+///
+/// 🔬A notch is 100 physical pixels with Windows' default three lines a
+/// notch (Flutter's Windows embedder: lines × 100 / 3): 100 logical at 100%
+/// and fewer at any larger scale, so this is a notch or more there.
+const double timelineRowWindowMargin = 100;
+
 /// Where every drawn row sits along the rail — the ONE answer the rail, the
 /// cells, the sheet, the cursor and every gesture that turns a pointer into
 /// a row read.
@@ -213,28 +234,29 @@ class TimelineRowEdges {
     return first <= last ? (first: first, last: last) : null;
   }
 
-  /// The rows a viewport of [viewportExtent] at [scrollOffset] shows, grown
-  /// to whole units — for rows of one extent, exactly the uniform division
-  /// ([calculateVisibleIndexRange]) with no rows past the viewport.
-  ///
-  /// 🪶No rows are built past the viewport (card frame-panels-build-in-one-
-  /// frame, 2026-10-28): two more on each side were made again every time a
-  /// tab opened — 412 of the timeline tab's 2,787 elements — for nobody to
-  /// see. A row that scrolls in is built in the frame it arrives, as the
-  /// rows past those two always were; a row a drag holds is kept apart
-  /// (A5). ↩️The two came with the first range calculator (4524ab0c1,
-  /// 2026-06-15) as its default and were carried here with it (d52e0df72);
-  /// no decision is recorded for them.
+  /// The rows a viewport of [viewportExtent] at [scrollOffset] shows and
+  /// [timelineRowWindowMargin] more on each side, grown to whole units — for
+  /// rows of one extent, exactly the uniform division
+  /// ([calculateVisibleIndexRange]) of that stretch. A row a drag holds is
+  /// kept apart (A5).
   TimelineVisibleRange window({
     required double scrollOffset,
     required double viewportExtent,
   }) {
+    final from = math.max(0.0, scrollOffset);
+    return over(
+      from - timelineRowWindowMargin,
+      from + math.max(0.0, viewportExtent) + timelineRowWindowMargin,
+    );
+  }
+
+  /// The rows the stretch from [from] to [to] meets, grown to whole units:
+  /// a unit the stretch cuts is built whole.
+  TimelineVisibleRange over(double from, double to) {
     if (count == 0) {
       return const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 0);
     }
-    final from = math.max(0.0, scrollOffset);
-    final to = from + math.max(0.0, viewportExtent);
-    var start = _lastStartingAtOrBefore(from).clamp(0, count);
+    var start = _lastStartingAtOrBefore(math.max(0.0, from)).clamp(0, count);
     var end = _startingBefore(to).clamp(start, count);
     if (start < count) {
       start = _unitFirst[start];
