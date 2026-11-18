@@ -676,7 +676,7 @@ impl Pool {
     /// One more hold of the tile at `at`. Nothing where none holds it: a
     /// free slot is handed out by [`Pool::fresh`], not held. A picture
     /// laid over a film holds the film's tiles it shows as they are
-    /// (halvings.rs, `Kept::made_over`).
+    /// (kept.rs, `Kept::made_over`).
     // ⏳An undo record's or a stroke result's hold: the flip lane's
     // (connection-round-checklist B ⓓ) — while the CPU's tiles are the
     // canonical ones, the app's map holds each slot once.
@@ -996,9 +996,9 @@ impl Pool {
     }
 }
 
-/// The pool the engine keeps its pictures in — a screen's canvas, its
-/// halvings, a frame's picture kept for playback (`composite::halvings`,
-/// `Kept`): each a cel of it, its tiles in slots held as a cel's are and
+/// The pool the engine keeps its pictures in — a screen's canvas, a
+/// frame's picture kept for playback (`composite::kept`, `Kept`): each
+/// a cel of it, its tiles in slots held as a cel's are and
 /// free once it is dropped, on pages that stay made till they are given
 /// back ([`Pictures::give_back`]) — the cels' law, by the cels' code.
 ///
@@ -1062,7 +1062,7 @@ struct Told {
     /// Each such tile's telling: what is forgotten with the tile.
     of: HashMap<TileAt, MadeOf>,
     /// The tiles their maker let go while another picture holds them:
-    /// weighed by no picture (halvings.rs, `Kept::bytes` — a picture weighs
+    /// weighed by no picture (kept.rs, `Kept::bytes` — a picture weighs
     /// the tiles it made), and kept all the same.
     unowned: HashSet<TileAt>,
 }

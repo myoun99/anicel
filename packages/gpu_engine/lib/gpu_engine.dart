@@ -313,9 +313,9 @@ class GpuEngine {
   });
 
   /// The bytes the engine keeps for pictures that are no picture's. Every
-  /// [GpuScreen]'s canvas and halvings lie in slots of one pool of the
-  /// engine's, as a cel's tiles do in a [GpuPool]'s, and a page of it
-  /// stays made for the next picture: its slots nobody holds are these —
+  /// [GpuScreen]'s canvas lies in slots of one pool of the engine's, as a
+  /// cel's tiles do in a [GpuPool]'s, and a page of it stays made for the
+  /// next picture: its slots nobody holds are these —
   /// and the composite's work buffer, kept from one run to the next. Till
   /// they are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
@@ -2935,8 +2935,10 @@ class GpuScreen implements _OfAnEngine {
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
   /// was, and submits the work as [compose] does. The camera is [inverse]
   /// — a screen pixel to the canvas's, the affine `[a, b, c, d, e, f]` —
-  /// at display [scale], device pixels a canvas pixel, sampled by
-  /// [sampling].
+  /// sampled by [sampling]: the one composite at every scale (F-610-Q4,
+  /// 유저 2026-11-19 — the engine's `Screen::show` has what a far
+  /// reduction costs). ↩️It took the display's scale too till then, for
+  /// the halving stage it read under 1/16.
   ///
   /// 🚨WHY IT DID NOT SHOW IS THE NEXT [GpuEngine.done]'S of this isolate
   /// — the one its frame is put up by (`ScreenTexture.present`), asked in
@@ -2945,7 +2947,6 @@ class GpuScreen implements _OfAnEngine {
   void show(
     GpuTarget target, {
     required List<double> inverse,
-    required double scale,
     required GpuSampling sampling,
     required (int, int, int, int) rect,
   }) {
@@ -2958,7 +2959,6 @@ class GpuScreen implements _OfAnEngine {
         _engine._its(_composite)._composite,
         _engine._engine,
         _doubles(arena, inverse),
-        scale,
         sampling.id,
         _engine._its(target)._texture,
         _edges(arena, rect),
@@ -2966,10 +2966,10 @@ class GpuScreen implements _OfAnEngine {
     );
   }
 
-  /// The bytes the screen keeps on the GPU — its canvas's and the halvings
-  /// it shows under 1/16 through: what a budget and the memory census weigh
-  /// it by. As of the last of its verbs the engine has run: one handed over
-  /// is counted by the time its done is told ([compose]).
+  /// The bytes the screen keeps on the GPU — its canvas's: what a budget
+  /// and the memory census weigh it by. As of the last of its verbs the
+  /// engine has run: one handed over is counted by the time its done is
+  /// told ([compose]).
   ///
   /// The tiles it MADE, of those it holds (F-610, 유저 2026-11-18 「같은
   /// 타일은 한 벌만」): a tile another screen made of the same input — a
@@ -2978,8 +2978,8 @@ class GpuScreen implements _OfAnEngine {
   /// ([GpuEngine.unownedPictureBytes]).
   int get bytes => rust.screenBytes(_screen);
 
-  /// The bytes of every screen's canvas and halvings the engine keeps: each
-  /// screen's [bytes], counted off as its [free] returns.
+  /// The bytes of every screen's canvas the engine keeps: each screen's
+  /// [bytes], counted off as its [free] returns.
   static int get liveBytes => rust.keptBytes();
 
   /// Frees the screen; before its executor is. Waits for none of the verbs

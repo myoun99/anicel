@@ -64,17 +64,16 @@
 //! output's extent, a page a later run can lay as a row — or on a surface
 //! Flutter shows, premultiplied, inside a rectangle of it
 //! ([`Composite::show`]). The screen is the second with one row: the
-//! canvas's composite tiles posed by the camera — under 1/16 a halving
-//! stage of them ([`halvings`]). The canvas is composited
-//! on its own grid first, so a magnified screen shows the canvas's pixels
-//! — the result's — and a pan or a zoom runs the screen alone
-//! (gpu-canonical-store ④⑤).
+//! canvas's composite tiles posed by the camera, at every scale
+//! ([`screen`]). The canvas is composited on its own grid first, so a
+//! magnified screen shows the canvas's pixels — the result's — and a pan
+//! or a zoom runs the screen alone (gpu-canonical-store ④⑤).
 
 pub(crate) mod abi;
 #[cfg(test)]
 mod chained_tests;
-pub(crate) mod halvings;
 pub(crate) mod held;
+pub(crate) mod kept;
 #[cfg(test)]
 mod made_of_tests;
 mod passes;
@@ -198,7 +197,7 @@ impl TileSet {
 
     /// The grid of the tiles a box `size` across and down from `at` meets,
     /// none of them placed yet: a kept picture's, whose tiles the pool it
-    /// is kept in places ([`TileSet::place`]; halvings.rs).
+    /// is kept in places ([`TileSet::place`]; kept.rs).
     pub(crate) fn unplaced(at: (i32, i32), size: (u32, u32)) -> Option<Self> {
         let side = i64::from(TILE);
         let (left, top) = (i64::from(at.0), i64::from(at.1));
@@ -920,12 +919,13 @@ impl Composite {
     /// [`Composite::run`], each output tile's pixels put at its place in
     /// `onto` — one a tile, in the order asked — and no buffer of the run's
     /// own made for them: how a picture is kept in the pictures' pool
-    /// (halvings.rs, `Kept`). Submits the work; returns how many passes it
+    /// (kept.rs, `Kept`). Submits the work; returns how many passes it
     /// took.
     ///
     /// ⚠️A place is a FRESH slot: one no pass of this run reads, so the
-    /// pages `onto` names may be pages `plan` lays rows from — a halving
-    /// stage reads the stage above it off the pool it is kept in.
+    /// pages `onto` names may be pages `plan` lays rows from. ↩️A halving
+    /// stage read the stage above it off the pool it was kept in so, till
+    /// 2026-11-19; no plan lays rows from the pictures' pool now.
     pub(crate) fn run_onto(
         &self,
         engine: &Engine,

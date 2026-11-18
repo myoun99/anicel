@@ -33,9 +33,9 @@ use crate::kernels::pool::{Pool, Stamps};
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
-use super::halvings::{Camera, Kept};
 use super::held::{HeldChains, held_bytes};
-use super::screen::Screen;
+use super::kept::Kept;
+use super::screen::{Camera, Screen};
 use super::{
     BufferChain, Composite, Composited, KeyChain, Nesting, Over, Plan, Step, TILE_BYTES,
     TileSet,
@@ -1323,8 +1323,8 @@ pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
     unsafe { let_go_unwaited(screen) };
 }
 
-/// The bytes `screen` keeps — its canvas's tiles and its halvings': what
-/// the budgets and the memory census weigh it by, as its last body handed
+/// The bytes `screen` keeps — its canvas's tiles: what the budgets and
+/// the memory census weigh it by, as its last body handed
 /// over left them ([`ScreenAndBytes`]).
 ///
 /// # Safety
@@ -1395,11 +1395,11 @@ impl ScreenAndBytes {
     }
 }
 
-/// The bytes every screen keeps — its canvas's and its halvings'
-/// ([`Screen::bytes`]) —, each as its last body told them, till its free:
+/// The bytes every screen keeps — its canvas's ([`Screen::bytes`]) —,
+/// each as its last body told them, till its free:
 /// what [`gpu_engine_kept_bytes`] reads, for the leak pins.
 ///
-/// ↩️Counted where a picture's tiles were made and dropped (halvings.rs's
+/// ↩️Counted where a picture's tiles were made and dropped (kept.rs's
 /// `Kept`) till 2026-11-16, when a screen's free came to wait for none of
 /// the bodies ahead of it ([`gpu_engine_screen_free`]): counted off where
 /// it is dropped, it would read late; counted off ahead, by what its last
@@ -1409,8 +1409,8 @@ impl ScreenAndBytes {
 /// it whole.
 static KEPT_BYTES: AtomicU64 = AtomicU64::new(0);
 
-/// The bytes of every picture the engine keeps — every screen's canvas and
-/// halvings ([`KEPT_BYTES`]).
+/// The bytes of every picture the engine keeps — every screen's canvas
+/// ([`KEPT_BYTES`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
     KEPT_BYTES.load(Ordering::Relaxed)
@@ -1552,10 +1552,12 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
 /// `target` — [left, top, right, bottom) — leaving the rest of it as it
 /// was, and submits the work, as [`gpu_engine_screen_compose`] does. The
 /// camera is `inverse` — a screen pixel to the canvas's, the affine
-/// `[a, b, c, d, e, f]` — at display `scale`, device pixels a canvas
-/// pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest). `target` is
-/// a surface's texture or a window's next image, as
+/// `[a, b, c, d, e, f]` — sampled by `sampling` (0 blend, 1 pick, 3
+/// nearest). `target` is a surface's texture or a window's next image, as
 /// `gpu_engine_composite_show`'s is.
+///
+/// ↩️It took the display's scale too till 2026-11-19: which halving stage
+/// the screen read under 1/16 ([`Screen::show`]).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `inverse` holds six doubles
@@ -1568,7 +1570,6 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
     composite: *const Composite,
     engine: *const Engine,
     inverse: *const f64,
-    scale: f64,
     sampling_id: u32,
     target: *const wgpu::Texture,
     rect: *const u32,
@@ -1582,7 +1583,7 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
         // SAFETY: live till let go of, behind this (the function's
         // contract).
         let (screen, composite, engine, target) = unsafe { (&*screen, &*composite, &*engine, &*target) };
-        let camera = Camera { inverse, scale, mode: sampling(sampling_id)? };
+        let camera = Camera { inverse, mode: sampling(sampling_id)? };
         let shown = screen.with(|screen| screen.show(engine, composite, camera, target, rect, composite.widest()));
         shown.map(drop)
     });

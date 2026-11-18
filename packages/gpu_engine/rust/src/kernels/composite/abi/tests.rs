@@ -600,7 +600,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     let screen = unsafe { gpu_engine_screen_new(first_engine(), extent.as_ptr(), 1.0) };
     assert!(!screen.is_null(), "{}", last_error());
     let mut in_rust = Screen::new(extent, 1.0).expect("screen");
-    let in_rust_camera = Camera { inverse: camera, scale: 2.0, mode: ResampleMode::Nearest };
+    let in_rust_camera = Camera { inverse: camera, mode: ResampleMode::Nearest };
     let shown = surface(size, wgpu::TextureFormat::Rgba8Unorm);
     let mut screens = Vec::new();
     for (laid, over) in [(plan, extent), (again, changed)] {
@@ -608,7 +608,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
         // holds what its call reads.
         unsafe {
             gpu_engine_screen_compose(screen, composite, engine, &pool, laid, over.as_ptr());
-            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, &shown, rect.as_ptr());
+            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), NEAREST, &shown, rect.as_ptr());
         }
         done_here(engine).expect("composed and shown");
         // SAFETY: `laid` is live.
@@ -623,7 +623,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     }
     assert!(screens[0] != screens[1], "the plan composed again shows a canvas of its own");
     // SAFETY: as above.
-    unsafe { gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 1.0, 2, &shown, rect.as_ptr()) };
+    unsafe { gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2, &shown, rect.as_ptr()) };
     let refused = "a body handed over unwaited failed: no sampling has id 2";
     assert_eq!(done_here(engine), Err(refused.to_string()));
     // SAFETY: none is used again.
@@ -934,7 +934,7 @@ impl Shown<'_> {
         // SAFETY: every pointer is live; each array holds what its call reads.
         unsafe {
             let camera = Self::CAMERA.as_ptr();
-            gpu_engine_screen_show(screen, self.composite, self.engine, camera, 1.0, NEAREST, &texture, rect.as_ptr());
+            gpu_engine_screen_show(screen, self.composite, self.engine, camera, NEAREST, &texture, rect.as_ptr());
         }
         done_here(self.engine).expect("shown");
         self.engine.read_texture(&texture).expect("read the surface back")
@@ -945,7 +945,7 @@ impl Shown<'_> {
         let mut screen = Screen::new(self.extent, 1.0).expect("screen");
         plan.laid(pool, |laid| screen.compose(self.engine, self.composite, laid, self.extent, widest)).expect("compose");
         let texture = self.surface();
-        let camera = Camera { inverse: Self::CAMERA, scale: 1.0, mode: ResampleMode::Nearest };
+        let camera = Camera { inverse: Self::CAMERA, mode: ResampleMode::Nearest };
         screen.show(self.engine, self.composite, camera, &texture, self.rect(), widest).expect("show");
         self.engine.read_texture(&texture).expect("read the surface back")
     }

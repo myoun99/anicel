@@ -1,25 +1,76 @@
 //! The editing screen on a real GPU: the kept canvas against the canvas
 //! composited anew — made whole on pages of any size, made again where it
-//! changed — and the screen against the halvings showing that composite;
-//! never against a CPU copy of a formula (`kernels/mod.rs` has why).
+//! changed — and the screen against R1's own harness over that composite
+//! and against the composite shown through the camera unkept; never
+//! against a CPU copy of a formula (`kernels/mod.rs` has why).
 
-use super::{Screen, meets};
-use crate::device::gpu_engine_waits_here;
+use super::{Camera, Screen, affine, meets, row};
+use crate::device::{Engine, gpu_engine_waits_here};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
-use crate::kernels::composite::halvings::tests::{
-    CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
-};
-use crate::kernels::composite::halvings::{Camera, Film, Halvings, Kept, Tiles, affine, plan, row};
-use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
+use crate::kernels::composite::kept::tests::kept_bytes;
+use crate::kernels::composite::kept::{Film, Kept, Tiles, plan};
+use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on, texel};
 use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
 use crate::kernels::pool::Pictures;
-use crate::kernels::shared::tests::{premultiplied, window};
+use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::testing::{a_device_of_its_own, last_error, read_buffer};
+use crate::testing::{a_device_of_its_own, assert_pinned, last_error, read_buffer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
+
+/// The canvas: odd both ways, its last column and row of tiles part full.
+const CANVAS: (u32, u32) = (517, 301);
+/// The canvas's pixels, [left, top, right, bottom): its page.
+const PAGE: [i32; 4] = [0, 0, CANVAS.0 as i32, CANVAS.1 as i32];
+const SCREEN: (u32, u32) = (64, 48);
+/// The screen's floor, 1 (`resampleRadiusFloor`), and a wider one: the
+/// camera samples on the floor the screen was made with.
+const FLOORS: [f64; 2] = [1.0, 4.0];
+
+/// A composite of `pixel` over a canvas of `size`, nothing past it, as a
+/// composite ending at the canvas leaves it: its page, its tile set and its
+/// pixels as R1's harness takes a source.
+fn composite_of(pixel: impl Fn(i32, i32) -> u32, size: (u32, u32)) -> (Vec<wgpu::Buffer>, TileSet, Picture) {
+    composite_on(rig().engine, pixel, size)
+}
+
+/// [`composite_of`] on `engine`.
+fn composite_on(
+    engine: &Engine,
+    pixel: impl Fn(i32, i32) -> u32,
+    (width, height): (u32, u32),
+) -> (Vec<wgpu::Buffer>, TileSet, Picture) {
+    let inside = |x: i32, y: i32| {
+        let within = x < width as i32 && y < height as i32;
+        if within { pixel(x, y) } else { 0 }
+    };
+    let tiles = (width.div_ceil(TILE), height.div_ceil(TILE));
+    let mut pool = Pool::default();
+    let set = pool.drawn(&inside, (0, 0), tiles, |_, _| Some(0));
+    let picture = picture_of(&inside, (tiles.0 * TILE, tiles.1 * TILE));
+    (pool.upload(engine), set, picture)
+}
+
+fn noise(seed: u32) -> impl Fn(i32, i32) -> u32 {
+    move |x, y| texel(seed, x, y)
+}
+
+/// The camera at `scale`, turned by (cos, sin), the canvas's origin at
+/// `pan` on the screen, in Blend.
+fn camera(scale: f64, (cos, sin): (f64, f64), (x, y): (f64, f64)) -> Camera {
+    let (a, b, d, e) = (cos / scale, sin / scale, -sin / scale, cos / scale);
+    Camera {
+        inverse: [a, b, -(a * x + b * y), d, e, -(d * x + e * y)],
+        mode: ResampleMode::Blend,
+    }
+}
+
+/// The scale `camera` shows at: what a failure names it by.
+fn scale_of(camera: Camera) -> f64 {
+    1.0 / camera.inverse[0].hypot(camera.inverse[1])
+}
 
 /// The one step laying a tile set whole and unposed: the canvas a composite
 /// of it is.
@@ -200,15 +251,13 @@ fn a_kept_canvas_is_made_again_on_the_tiles_a_change_meets() {
         }
         let (pages, set, _) = composite_of(&pixel, CANVAS);
         let stale = |tile| changes.iter().any(|&change| meets(tile, change));
-        let made = kept.made_again(engine, composite, &laid(&pages, &set), stale, budget).expect("made again");
-        assert!(made.is_some(), "{changes:?}");
+        kept.made_again(engine, composite, &laid(&pages, &set), stale, budget).expect("made again");
         assert!(kept_bytes(&kept) == composited_whole(&pixel), "{changes:?}");
     }
     let before = kept_bytes(&kept);
     let unmarked = move |x, y| if inside([400, 10, 420, 30], x, y) { 0 } else { pixel(x, y) };
     let (pages, set, _) = composite_of(&unmarked, CANVAS);
-    let made = kept.made_again(engine, composite, &laid(&pages, &set), |tile| tile == (0, 2), budget);
-    assert_eq!(made.expect("made again"), Some([0, 256, 128, 384]));
+    kept.made_again(engine, composite, &laid(&pages, &set), |tile| tile == (0, 2), budget).expect("made again");
     assert!(kept_bytes(&kept) == before, "the tile made again holds no change");
     assert!(composited_whole(&unmarked) != before, "the change not marked is one the canvas shows");
 }
@@ -423,7 +472,7 @@ fn a_screen_is_composed_over_a_film_before_anything_else_is() {
 }
 
 /// `screen` shown through `camera`, the surface read back.
-fn shown_by(screen: &mut Screen, camera: Camera) -> Vec<u8> {
+fn shown_by(screen: &Screen, camera: Camera) -> Vec<u8> {
     let Rig { engine, composite } = rig();
     let texture = surface(SCREEN, wgpu::TextureFormat::Rgba8Unorm);
     let whole = [0, 0, SCREEN.0, SCREEN.1];
@@ -431,22 +480,83 @@ fn shown_by(screen: &mut Screen, camera: Camera) -> Vec<u8> {
     engine.read_texture(&texture).expect("read the surface back")
 }
 
-/// `canvas` shown through `camera` by halvings of its own.
-fn halvings_show(canvas: Tiles, camera: Camera) -> Vec<u8> {
+/// `canvas` shown through `camera` as it is, kept by no screen: the one
+/// row a screen lays, over the composite's own tiles on a floor of 1.
+fn shown_unkept(canvas: Tiles, camera: Camera) -> Vec<u8> {
     let Rig { engine, composite } = rig();
     let texture = surface(SCREEN, wgpu::TextureFormat::Rgba8Unorm);
     let whole = [0, 0, SCREEN.0, SCREEN.1];
-    let mut halvings = Halvings::new(PAGE, 1.0).expect("halvings");
-    halvings.show(engine, composite, canvas, camera, &texture, whole, composite.widest()).expect("show");
+    let map = ResampleMap::new(affine(camera.inverse), 1.0, camera.mode, 1, 1).expect("lands");
+    let steps = [row(map)];
+    composite.show(engine, &plan(canvas, &steps), &texture, whole, composite.widest()).expect("show");
     engine.read_texture(&texture).expect("read the surface back")
 }
 
-// The screen composes the canvas and shows it as halvings show that
-// composite — magnified and turned, shrunk, and past 1/16 on a stage — and
-// a change composed on it is shown at every scale, the stage it reads made
-// again: the screen is the canvas's composite through the camera.
+/// The screen through `camera` by R1's harness on `floor` over the canvas,
+/// premultiplied as the app's one premultiply leaves it.
+fn screen_by_r1(canvas: &Picture, floor: f64, camera: Camera) -> Vec<u8> {
+    let map = ResampleMap::new(affine(camera.inverse), floor, camera.mode, 1, 1).expect("lands");
+    let straight = window(&map, canvas, SCREEN, (0, 0));
+    premultiplied(&straight).into_iter().flat_map(u32::to_le_bytes).collect()
+}
+
+/// Cameras each side of 1/16: at a half and at 1/16, and under it — where
+/// a pixel's tent is cut at Blend's ceiling — at 1/20, at 1/40 turned
+/// 3-4-5 and at 1/100.
+fn cameras() -> [Camera; 5] {
+    [
+        camera(0.5, (1.0, 0.0), (-40.25, -20.5)),
+        camera(0.0625, (1.0, 0.0), (10.5, 3.25)),
+        camera(0.05, (1.0, 0.0), (12.25, 9.0)),
+        camera(0.025, (0.8, 0.6), (30.0, 4.5)),
+        camera(0.01, (1.0, 0.0), (20.75, 18.0)),
+    ]
+}
+
+// The screen is R1 over its canvas through the camera at every scale, on
+// the floor it was made with — under 1/16 too, where it read a halving
+// stage of the canvas till 2026-11-19 (`Screen::show`): the one composite,
+// a tent cut where R1 cuts it.
 #[test]
-fn the_screen_shows_its_canvas_as_the_halvings_show_the_composite() {
+fn the_screen_shows_r1_over_its_canvas_at_every_scale() {
+    let Rig { engine, composite } = rig();
+    let (pages, set, picture) = composite_of(noise(71), CANVAS);
+    for floor in FLOORS {
+        let mut screen = Screen::new(PAGE, floor).expect("screen");
+        screen.compose(engine, composite, &laid(&pages, &set), PAGE, composite.widest()).expect("compose");
+        for camera in cameras() {
+            let scale = scale_of(camera);
+            assert!(shown_by(&screen, camera) == screen_by_r1(&picture, floor, camera), "{floor} at {scale}");
+        }
+    }
+}
+
+#[test]
+fn every_device_shows_the_pinned_far_screens() {
+    let Rig { engine, composite } = rig();
+    let (pages, set, _) = composite_of(noise(71), CANVAS);
+    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    screen.compose(engine, composite, &laid(&pages, &set), PAGE, composite.widest()).expect("compose");
+    let screens: Vec<u8> = cameras().into_iter().flat_map(|camera| shown_by(&screen, camera)).collect();
+    assert_pinned("composite/screen-far", &screens);
+}
+
+// A screen over no pixel is refused, saying so: an extent with no width or
+// no height, or turned inside out.
+#[test]
+fn a_screen_over_no_pixel_is_refused() {
+    for extent in [[5, 0, 5, 9], [0, 9, 4, 9], [6, 0, 5, 9], [0, 9, 4, 8]] {
+        assert!(Screen::new(extent, 1.0).is_none(), "{extent:?}");
+        assert_eq!(crate::last_error(), format!("a screen over {extent:?} holds no pixel"));
+    }
+}
+
+// The screen composes the canvas and shows it as that composite is shown
+// through the camera unkept — magnified and turned, shrunk, and past 1/16
+// — and a change composed on it is shown at every scale: the screen is
+// the canvas's composite through the camera.
+#[test]
+fn the_screen_shows_its_canvas_as_the_composite_shown_through_the_camera() {
     let Rig { engine, composite } = rig();
     let budget = composite.widest();
     let cameras = [
@@ -458,14 +568,14 @@ fn the_screen_shows_its_canvas_as_the_halvings_show_the_composite() {
     let (pages, set, _) = composite_of(noise(17), CANVAS);
     screen.compose(engine, composite, &laid(&pages, &set), [0, 0, 1, 1], budget).expect("compose");
     for &camera in &cameras {
-        assert!(shown_by(&mut screen, camera) == halvings_show(Tiles { pages: &pages, set: &set }, camera));
+        assert!(shown_by(&screen, camera) == shown_unkept(Tiles { pages: &pages, set: &set }, camera));
     }
     let change = [60, 30, 300, 200];
     let red = move |x, y| if inside(change, x, y) { 0xff00_00ff } else { noise(17)(x, y) };
     let (pages, set, _) = composite_of(red, CANVAS);
     screen.compose(engine, composite, &laid(&pages, &set), change, budget).expect("compose");
     for &camera in &cameras {
-        assert!(shown_by(&mut screen, camera) == halvings_show(Tiles { pages: &pages, set: &set }, camera));
+        assert!(shown_by(&screen, camera) == shown_unkept(Tiles { pages: &pages, set: &set }, camera));
     }
 }
 
@@ -494,10 +604,11 @@ fn canvas_bytes(screen: &Screen) -> Vec<u8> {
 }
 
 // A screen keeps nothing before its canvas is composed, then its canvas's
-// tiles, every one a tile's bytes — the 5 × 3 tiles the canvas covers —,
-// and the halvings it shows through under 1/16 besides, once it has.
+// tiles, every one a tile's bytes — the 5 × 3 tiles the canvas covers —
+// and nothing more however far it is shown reduced (↩️the halvings it
+// showed through under 1/16 besides, till 2026-11-19).
 #[test]
-fn a_screen_keeps_the_bytes_of_its_canvas_and_its_halvings() {
+fn a_screen_keeps_the_bytes_of_its_canvas_however_far_it_is_shown() {
     let Rig { engine, composite } = rig();
     let mut screen = Screen::new(PAGE, 1.0).expect("screen");
     assert_eq!(screen.bytes(), 0);
@@ -505,18 +616,17 @@ fn a_screen_keeps_the_bytes_of_its_canvas_and_its_halvings() {
     screen.compose(engine, composite, &laid(&pages, &set), PAGE, composite.widest()).expect("compose");
     let canvas = 5 * 3 * TILE_BYTES;
     assert_eq!(screen.bytes(), canvas);
-    shown_by(&mut screen, camera(0.5, (1.0, 0.0), (0.0, 0.0)));
-    assert_eq!(screen.bytes(), canvas, "at 1/16 and over the canvas alone is read");
-    shown_by(&mut screen, camera(0.03125, (1.0, 0.0), (0.0, 0.0)));
-    assert_eq!(screen.bytes(), canvas + screen.halvings.bytes());
-    assert!(screen.halvings.bytes() > 0, "under 1/16 its halvings are made");
+    for scale in [0.5, 0.03125, 0.0125] {
+        shown_by(&screen, camera(scale, (1.0, 0.0), (0.0, 0.0)));
+        assert_eq!(screen.bytes(), canvas, "at {scale} the canvas alone is read");
+    }
 }
 
 // A screen shows its canvas once one is composed, and says so before.
 #[test]
 fn a_screen_is_shown_once_its_canvas_is_composed() {
     let Rig { engine, composite } = rig();
-    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    let screen = Screen::new(PAGE, 1.0).expect("screen");
     let texture = surface(SCREEN, wgpu::TextureFormat::Rgba8Unorm);
     let shown = screen.show(engine, composite, camera(1.0, (1.0, 0.0), (0.0, 0.0)), &texture, [0, 0, 1, 1], composite.widest());
     assert!(shown.is_none());
@@ -615,15 +725,16 @@ fn drawn_over(pixel: impl Fn(i32, i32) -> u32, extent: [i32; 4]) -> (Vec<wgpu::B
 // A screen over pixels before the page — left of it and over it, where a
 // stroke on the pasteboard takes a frame's world — shows what one at the
 // origin over the same picture shows through the camera moved with it:
-// moved off the tile grid at 1/16 and over, and under it by whole tiles,
-// so each stage it reads lies on the origin's stage's pixels.
+// moved off the tile grid and by whole tiles, at 1/16 and over and under
+// it.
 #[test]
 fn a_screen_before_the_page_shows_as_one_at_the_origin() {
     let Rig { engine, composite } = rig();
     let budget = composite.widest();
     let near = [camera(0.5, (1.0, 0.0), (-40.25, -20.5)), camera(2.0, (1.0, 0.0), (-300.5, -100.25))];
     let far = [camera(0.03125, (1.0, 0.0), (20.5, 18.0)), camera(0.0078125, (1.0, 0.0), (2.0, 1.5))];
-    for ((x, y), cameras) in [((200, 150), &near[..]), ((256, 128), &far[..])] {
+    let cameras = [near, far].concat();
+    for (x, y) in [(200, 150), (256, 128)] {
         let before = [-x, -y, PAGE[2] - x, PAGE[3] - y];
         let mut screen = Screen::new(before, 1.0).expect("screen");
         let (pages, set) = drawn_over(move |at_x, at_y| noise(29)(at_x + x, at_y + y), before);
@@ -631,14 +742,14 @@ fn a_screen_before_the_page_shows_as_one_at_the_origin() {
         let mut origin = Screen::new(PAGE, 1.0).expect("screen");
         let (pages, set, _) = composite_of(noise(29), CANVAS);
         origin.compose(engine, composite, &laid(&pages, &set), PAGE, budget).expect("compose");
-        for &camera in cameras {
+        for &camera in &cameras {
             let mut moved = camera;
             moved.inverse[2] += f64::from(x);
             moved.inverse[5] += f64::from(y);
-            let scale = camera.scale;
-            let shown = shown_by(&mut screen, camera);
+            let scale = scale_of(camera);
+            let shown = shown_by(&screen, camera);
             assert!(shown.iter().any(|&byte| byte != 0), "({x}, {y}) at {scale} shows nothing");
-            assert!(shown == shown_by(&mut origin, moved), "({x}, {y}) at {scale}");
+            assert!(shown == shown_by(&origin, moved), "({x}, {y}) at {scale}");
         }
     }
 }
@@ -673,8 +784,8 @@ fn the_screen_is_r1_through_the_camera_over_r1_laying_a_turned_row() {
     for camera in cameras {
         let map = ResampleMap::new(affine(camera.inverse), 1.0, camera.mode, 1, 1).expect("lands");
         let by_r1: Vec<u8> = premultiplied(&window(&map, &canvas, SCREEN, (0, 0))).into_iter().flat_map(u32::to_le_bytes).collect();
-        let scale = camera.scale;
-        assert!(shown_by(&mut screen, camera) == by_r1, "at {scale}");
+        let scale = scale_of(camera);
+        assert!(shown_by(&screen, camera) == by_r1, "at {scale}");
     }
 }
 
@@ -715,7 +826,7 @@ fn there(set: &TileSet) -> Vec<bool> {
 // A canvas keeps no tile nothing lays on — its row's tiles alone, a
 // checker of them — and is the canvas composited all the same: nothing
 // where it keeps none. Shown, magnified and under 1/16 alike, it is the
-// row shown by halvings of its own — onto a surface that showed another
+// row shown through the camera unkept — onto a surface that showed another
 // canvas the frame before, so nothing of that stays where it keeps no
 // tile.
 #[test]
@@ -742,15 +853,14 @@ fn a_canvas_keeps_no_tile_nothing_lays_on_and_shows_nothing_there() {
         full.show(engine, composite, camera, &texture, whole, budget).expect("the frame before");
         screen.show(engine, composite, camera, &texture, whole, budget).expect("show");
         let shown = engine.read_texture(&texture).expect("read the surface back");
-        assert!(shown == halvings_show(Tiles { pages: &pages, set: &set }, camera), "{}", camera.scale);
+        assert!(shown == shown_unkept(Tiles { pages: &pages, set: &set }, camera), "{}", scale_of(camera));
     }
 }
 
 // Made again, a canvas takes a tile a change first lays on and lets go of
 // one a change leaves nothing on — its slot free for the one taken — and
-// is then the changed canvas composited anew; both tiles' pixels are where
-// it changed. A tile marked that nothing lays on, before or after, stays
-// none and changed nothing.
+// is then the changed canvas composited anew. A tile marked that nothing
+// lays on, before or after, stays none.
 #[test]
 fn a_canvas_made_again_takes_a_tile_first_laid_on_and_lets_go_of_one_left_bare() {
     let Rig { engine, composite } = rig();
@@ -765,8 +875,7 @@ fn a_canvas_made_again_takes_a_tile_first_laid_on_and_lets_go_of_one_left_bare()
     let (pages, set) = inked_where(noise(41), after);
     let plan = laid(&pages, &set);
     let stale = |tile| [(0, 0), (1, 0), (3, 0)].contains(&tile);
-    let made = kept.made_again(engine, composite, &plan, stale, budget).expect("made again");
-    assert_eq!(made, Some([0, 0, 256, 128]), "both tiles changed, the bare one did not");
+    kept.made_again(engine, composite, &plan, stale, budget).expect("made again");
     assert_eq!(there(kept.as_tiles().set), there(&set));
     assert!(kept_over_the_page(&kept) == run_over_the_page(&plan));
     assert_eq!(kept.bytes(), 8 * TILE_BYTES);

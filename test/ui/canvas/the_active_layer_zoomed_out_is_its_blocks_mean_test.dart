@@ -275,7 +275,7 @@ void main() {
     // a multiple of four: one ink column of the two. Reduced it reads
     // between ink and nothing; nearest reads the column itself (0).
     // ↩️127 to the byte, while it was reduced through a box; the display's
-    // reduction reads a little past one (`stage_at`). 🗣️유저 11-08:
+    // reduction reads a little past one (`Screen::show`). 🗣️유저 11-08:
     // 「지금화면이랑 맞출필요는없어 … 바뀌고 나서만 동일하면되」.
     var mean = 0;
     final nearest = <String>[];

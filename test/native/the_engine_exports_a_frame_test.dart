@@ -63,7 +63,6 @@ void main() {
     screen.show(
       surface,
       inverse: const [1, 0, 0, 0, 1, 0],
-      scale: 1,
       sampling: GpuSampling.nearest,
       rect: whole,
     );

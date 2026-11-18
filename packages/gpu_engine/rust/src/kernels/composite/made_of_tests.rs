@@ -5,8 +5,8 @@
 //! never against a CPU copy of a formula (`kernels/mod.rs` has why).
 
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL};
-use crate::kernels::composite::halvings::Kept;
-use crate::kernels::composite::halvings::tests::kept_bytes;
+use crate::kernels::composite::kept::Kept;
+use crate::kernels::composite::kept::tests::kept_bytes;
 use crate::kernels::composite::tests::{Rig, rig, texel};
 use crate::kernels::composite::{
     BufferChain, KeyChain, MadeOf, Over, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
@@ -195,8 +195,7 @@ fn a_tile_made_again_of_what_it_was_made_of_keeps_its_slot() {
     let mut kept = frame.kept(&pool, &pictures, true);
     let had = slots(&kept);
     let plan = frame.plan(&pool, Some(&stamps));
-    let changed = kept.made_again(engine, composite, &plan, |_| true, composite.widest()).expect("made again");
-    assert_eq!(changed, Some([0, 0, 512, 256]), "every tile named may have changed");
+    kept.made_again(engine, composite, &plan, |_| true, composite.widest()).expect("made again");
     assert_eq!(slots(&kept), had, "nothing under it changed: every tile holds the slot it had");
     assert_eq!((held(&pictures), kept.bytes()), (4, 4 * TILE_BYTES));
     let plan = next.plan(&pool, Some(&stamps));

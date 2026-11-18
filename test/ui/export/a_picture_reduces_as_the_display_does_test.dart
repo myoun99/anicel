@@ -142,8 +142,8 @@ void main() {
     );
     expect(row, hasLength(32), reason: 'fixture: a quarter of the camera');
     // ⚠️Short of the last column, which the display's reduction reads past
-    // the canvas for (`stage_at`: a stage and a resample of it, wider than
-    // the four columns). ↩️Every column, while a picture reduced through
+    // the canvas for (`Screen::show`: Blend's tent, wider than the four
+    // columns). ↩️Every column, while a picture reduced through
     // Flutter's. 🗣️유저 11-08: 「지금화면이랑 맞출필요는없어 … 바뀌고
     // 나서만 동일하면되」.
     expect(

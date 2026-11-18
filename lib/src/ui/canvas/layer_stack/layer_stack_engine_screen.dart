@@ -172,14 +172,13 @@ final class EngineStackScreen {
         d,
         camera[13] - c * cornerX - d * cornerY,
       ],
-      scale: scale,
       sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),
       rect: (0, 0, columns, rows),
     );
   }
 
   /// What a frame over the world [extent] will keep: a tile for each it
-  /// meets, before any halving a screen reads ([GpuScreen.bytes]).
+  /// meets ([GpuScreen.bytes]).
   static int bytesOver(Rect extent) {
     if (extent.isEmpty) {
       return gpuTileBytes;
