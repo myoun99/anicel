@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart'
+    show timelineRowWindowMargin;
 import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -328,7 +330,8 @@ void main() {
       await tester.pumpAndSettle();
       final view = tester.getRect(find.byKey(const ValueKey(viewport)));
       final top = tester.widget(label(_rows));
-      // Two thirds down: a move of half the view leaves it in view.
+      // Two thirds down: a move of half the view, and the notch the window
+      // builds past it, leaves it built — and the top row not.
       var slot = _rows;
       while (tester.getRect(label(slot)).top <
           view.top + view.height * 2 / 3) {
@@ -336,7 +339,7 @@ void main() {
       }
       final stayed = tester.widget(label(slot));
 
-      position.jumpTo(view.height / 2);
+      position.jumpTo(view.height / 2 + timelineRowWindowMargin);
       await tester.pumpAndSettle();
       expect(label(_rows), findsNothing, reason: '⛔전제: the top row left');
       tester.element(find.byType(StoryboardPanel)).markNeedsBuild();
