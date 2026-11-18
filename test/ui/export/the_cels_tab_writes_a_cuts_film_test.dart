@@ -59,7 +59,8 @@ void main() {
   Frame frame(String id, String name) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
-  Cut cut(String id, String name) => Cut(
+  /// [aShown] false: A hidden on the canvas.
+  Cut cut(String id, String name, {bool aShown = true}) => Cut(
     id: CutId(id),
     name: name,
     duration: 2,
@@ -70,14 +71,17 @@ void main() {
         name: 'A',
         frames: [frame('$id-a1', '1'), frame('$id-a2', '2')],
         mark: const LayerMark(process: LayerProcess.key),
+        isVisible: aShown,
       ),
       createCameraLayer(cutId: CutId(id)),
     ],
   );
 
-  /// Cuts 301 and 302, each a KEY row A with two cels — on [paper].
+  /// Cuts 301 and 302, each a KEY row A with two cels — on [paper], A
+  /// hidden on the canvas where [aShown] is false.
   EditorSessionManager film({
     ProjectBackground paper = ProjectBackground.defaultBackground,
+    bool aShown = true,
   }) => inkEveryCel(
     EditorSessionManager(
       initialProject: Project(
@@ -90,7 +94,10 @@ void main() {
           Track(
             id: const TrackId('track'),
             name: 'Track',
-            cuts: [cut('c1', '301'), cut('c2', '302')],
+            cuts: [
+              cut('c1', '301', aShown: aShown),
+              cut('c2', '302', aShown: aShown),
+            ],
           ),
         ],
       ),
@@ -526,5 +533,73 @@ void main() {
     expect(name, endsWith('.gif'));
     final movie = img.decodeGif(File('${temp.path}/$name').readAsBytesSync())!;
     expect((movie.width, movie.height), (32, 18), reason: 'the camera\'s');
+  });
+
+  group('🗣️F-618 ① (유저 2026-11-19): the film is drawn of the rows the '
+      'label picks — 「캔버스 보이는대로가아니라 … 출력 셀 리스트에서 다른 셀 '
+      'off했던 신경안쓰고 색라벨 고른 초기상태처럼」', () {
+    Map<LayerId, bool> filmChecks(EditorSessionManager session) =>
+        session.repository
+            .requireProject()
+            .exportOverrides
+            .deltaFor(const CutId('c1'))
+            ?.filmLayers ??
+        const {};
+
+    testWidgets('standing on the film, 출력할 레이어 offers its rows, each on '
+        'as the label picks it — A hidden on the canvas and its cels '
+        'turned off — and its checks are the film\'s own', (tester) async {
+      final session = film(aShown: false);
+      addTearDown(session.dispose);
+      await pumpCels(
+        tester,
+        session,
+        spec: const CelsExportSpec(
+          kinds: {ExportCelKind.cel, ExportCelKind.video},
+        ),
+      );
+      await tester.pressInCelsBoard(tester.celsBoardSwitch('c1-a'));
+      expect(listed(tester), ['_CUT301.mp4'], reason: 'A\'s cels are off');
+
+      await press(tester, 'export-cels-stand-document-video');
+      expect(tester.celsStackLines, [('c1-a', true)]);
+
+      await tester.pressCelsStackSwitch('c1-a');
+      expect(tester.celsStackLines, [('c1-a', false)]);
+      expect(filmChecks(session), {const LayerId('c1-a'): false});
+      expect(listed(tester), ['_CUT301.mp4'], reason: 'the cels are not moved');
+
+      await tester.pressCelsStackSwitch('c1-a');
+      expect(tester.celsStackLines, [('c1-a', true)]);
+      expect(filmChecks(session), isEmpty, reason: 'back on the rule');
+    });
+
+    testWidgets('🚨the film draws A, which the canvas hides', (tester) async {
+      final temp = scratch();
+      final session = film(aShown: false);
+      addTearDown(session.dispose);
+      draw(session);
+      final state = await pumpCels(
+        tester,
+        session,
+        spec: const CelsExportSpec(
+          kinds: {ExportCelKind.video},
+          videoFormat: gif,
+        ),
+        into: temp,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final movie = img.decodeGif(
+        File('${temp.path}/_CUT301.gif').readAsBytesSync(),
+      )!;
+      final dot = movie.frames.first.getPixel(0, 0);
+      expect(
+        (dot.r, dot.g, dot.b),
+        (0, 0, 0),
+        reason: 'A\'s black dot, on the paper',
+      );
+    });
   });
 }

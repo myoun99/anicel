@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data' show Int16List;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
@@ -34,6 +35,7 @@ import '../frame_shots.dart' show pictureOfShot;
 import '../panel_pictures.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
@@ -311,6 +313,11 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The frame a cut's film on the Cels list stands on ([_filmShown]).
   int _filmPosition = 0;
+
+  /// The last cut a film was drawn of ([_filmCutOf]), kept while the cut
+  /// and the rows it holds are the same: a running preview is asked of ONE
+  /// cut, and the renderer keeps what it made by the cut it was made of.
+  ({Cut of, Set<LayerId> holds, Cut film})? _filmCut;
   late int _imageFrame;
   /// The cut the Cels list shows — the picker's pick; null shows the cut
   /// the window opened on ([_celCutShown]).
@@ -696,8 +703,15 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The attach column of [row] — the row the list stands on
   /// ([ExportCelsStack]): what its files can hold, each line switched as the
-  /// rules and the hand say ([_celsSelectionOf]).
+  /// rules and the hand say ([_celsSelectionOf]) — the film's, its own
+  /// ([_filmStack]).
   Widget _celStack(Cut cut, ExportCelsBoardRow? row) {
+    if (row case ExportCelsDocumentRow(
+      kind: ExportCelKind.video,
+      :final sheets,
+    ) when sheets.isNotEmpty) {
+      return _filmStack(sheets.first.of, row);
+    }
     final selection = _celsSelectionOf(cut);
     return ExportCelsStack(
       row: row,
@@ -712,6 +726,40 @@ class ExportDialogState extends State<ExportDialog> {
       onSwitched: _isExporting
           ? null
           : (layer, on) => _toggleCelRows(cut, [layer], on),
+    );
+  }
+
+  /// The film's 출력할 레이어 ([ExportCelsListing.stackOf]): each row it
+  /// offers, on while the film holds it ([exportFilmLayersOf]) — the film's
+  /// own checks, which no answer of the cels' moves (F-618 ①).
+  Widget _filmStack(Cut cut, ExportCelsBoardRow row) {
+    final holds = _filmLayersOf(cut, _celsSpec);
+    return ExportCelsStack(
+      row: row,
+      lines: [
+        for (final layer in ExportCelsListing(
+          cut,
+          _celsSpec,
+        ).stackOf(row, _celsSelectionOf(cut, withDelta: false)))
+          (layer: layer, on: holds.contains(layer.id)),
+      ],
+      onSwitched: _isExporting
+          ? null
+          : (layer, on) => _toggleFilmLayer(cut, layer, on),
+    );
+  }
+
+  /// [layer] put into [cut]'s film, or taken out — kept as the hand's
+  /// answer only where it is not the rules', as a row of the cels is
+  /// ([_toggleCelRows]).
+  void _toggleFilmLayer(Cut cut, Layer layer, bool include) {
+    final rule = exportFilmLayersOf(cut: cut, spec: _celsSpec);
+    _editCelDelta(
+      cut.id,
+      (delta) => delta.withFilmLayer(
+        layer.id,
+        include == rule.contains(layer.id) ? null : include,
+      ),
     );
   }
 
@@ -1782,11 +1830,16 @@ class ExportDialogState extends State<ExportDialog> {
     // A film runs: its frames, as the run writes them ([_cutFilmFile]).
     final film = _filmShown();
     if (film != null) {
-      final plan = _cutFilmPlan(film.of);
+      final plan = _cutFilmPlan(film.of, _celsSpec);
+      // The rows it holds are part of what a film is: another set of them
+      // is another film to draw (F-618 ①).
+      final holds = [
+        for (final id in _filmLayersOf(film.of, _celsSpec)) id.value,
+      ]..sort();
       return plan.isEmpty
           ? null
           : _runningPreview(
-              (_tab, film.idValue),
+              (_tab, film.idValue, holds.join('\u0000')),
               plan,
               _cutFilmRun(_celsSpec),
             );
@@ -3091,13 +3144,55 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// The frames of [cut]'s film, first to last — the plan the Sequence tab
-  /// writes a cut by ([ExportRange.activeCut]), of this cut.
-  List<ExportFrameTask> _cutFilmPlan(Cut cut) => buildExportFramePlan(
-    project: _session.repository.requireProject(),
-    activeCutId: cut.id,
-    range: ExportRange.activeCut,
-  );
+  /// The frames of [cut]'s film under [spec], first to last — the plan the
+  /// Sequence tab writes a cut by ([ExportRange.activeCut]), of this cut —
+  /// each drawn of the rows the film holds ([_filmCutOf]).
+  List<ExportFrameTask> _cutFilmPlan(Cut cut, CelsExportSpec spec) {
+    final film = _filmCutOf(cut, spec);
+    return [
+      for (final task in buildExportFramePlan(
+        project: _session.repository.requireProject(),
+        activeCutId: cut.id,
+        range: ExportRange.activeCut,
+      ))
+        ExportFrameTask(cut: film, frameIndex: task.frameIndex),
+    ];
+  }
+
+  /// The rows [cut]'s film holds under [spec] ([exportFilmLayersOf]).
+  Set<LayerId> _filmLayersOf(Cut cut, CelsExportSpec spec) =>
+      exportFilmLayersOf(
+        cut: cut,
+        spec: spec,
+        delta: _overrides.deltaFor(cut.id),
+      );
+
+  /// [cut] as its film draws it: the rows it holds shown and the other rows
+  /// it offers hidden, whatever the canvas shows — and a folder shown, so
+  /// that what it holds is drawn. The choice as DATA, as the layer FX's is
+  /// ([ExportFrameRenderer]): the plan renders exactly the cut it is given.
+  Cut _filmCutOf(Cut cut, CelsExportSpec spec) {
+    final holds = _filmLayersOf(cut, spec);
+    final kept = _filmCut;
+    if (kept != null &&
+        identical(kept.of, cut) &&
+        setEquals(kept.holds, holds)) {
+      return kept.film;
+    }
+    final film = cut.copyWith(
+      layers: [
+        for (final layer in cut.layers)
+          if (exportFilmOffers(layer))
+            layer.copyWith(isVisible: holds.contains(layer.id))
+          else if (layer.kind.groupsLayers)
+            layer.copyWith(isVisible: true)
+          else
+            layer,
+      ],
+    );
+    _filmCut = (of: cut, holds: holds, film: film);
+    return film;
+  }
 
   /// A cut's film on the list of [spec], as its preview shows it and its
   /// file is written: at the tab's size, through its layer FX, in the
@@ -3113,7 +3208,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// [sheet]'s film, a file after the run's pictures: its cut's frames as
   /// the Sequence tab writes a cut ([_writeFilm]), as [_cutFilmRun] says.
   _AfterFile _cutFilmFile(ExportDocumentSheet sheet) {
-    final plan = _cutFilmPlan(sheet.of);
+    final plan = _cutFilmPlan(sheet.of, _specs.cels);
     return _AfterFile(
       steps: math.max(1, plan.length),
       write: (step) async {

@@ -99,7 +99,7 @@ class ExportCelsListing {
   /// What [row]'s files can hold, top to bottom as the timeline draws the
   /// stack: its base — always, as what the stack is — and the attach rows
   /// riding it that the tab's filters admit ([rules]: the rules without
-  /// the hand). A document holds no rows.
+  /// the hand). Another document than the film holds no rows.
   ///
   /// 🗣️(유저 2026-10-09): 「색라벨이나 테이크, 어태치행에도 그거만
   /// 보이게하도록 하는게 맞을거같은데」 — 「너말대로 필터전부」: an attach
@@ -111,6 +111,11 @@ class ExportCelsListing {
             if (layer.id == base ||
                 (layer.attachedToLayerId == base && rules.includes(layer)))
               layer,
+        ],
+        // 🗣️F-618 ①: the film is drawn of rows too — every one it offers.
+        ExportCelsDocumentRow(kind: ExportCelKind.video) => [
+          for (final layer in horizontalLayerDisplayOrder(cut.layers))
+            if (exportFilmOffers(layer)) layer,
         ],
         ExportCelsDocumentRow() => const [],
       };
