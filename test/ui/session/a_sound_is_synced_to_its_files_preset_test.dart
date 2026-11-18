@@ -40,8 +40,9 @@ Frame _frame(String id, {String? seName, String? name}) => Frame(
   name: name,
 );
 
-/// Two places of the clap on one SE row: 「a」 shown by two blocks (a
-/// footstep reused), its sound from the file's start; 「b」 already from
+/// Two places of the clap on one SE row: 「a」 shown by two blocks a frame
+/// apart (a footstep reused), so the first one grown pushes the second;
+/// its sound from the file's start; 「b」 already from
 /// where the preset starts it, its block short — and the block after it
 /// close enough to be pushed when it grows.
 Project _project() => Project(
@@ -75,9 +76,9 @@ Project _project() => Project(
             ],
             timeline: {
               0: const TimelineExposure.drawing(FrameId('a'), length: 4),
-              8: const TimelineExposure.drawing(FrameId('b'), length: 3),
-              12: const TimelineExposure.drawing(FrameId('other'), length: 2),
-              20: const TimelineExposure.drawing(FrameId('a'), length: 4),
+              5: const TimelineExposure.drawing(FrameId('a'), length: 4),
+              12: const TimelineExposure.drawing(FrameId('b'), length: 3),
+              16: const TimelineExposure.drawing(FrameId('other'), length: 2),
             },
             audioClips: [
               AudioClip(filePath: _clap, frameId: const FrameId('a')),
@@ -179,9 +180,9 @@ void main() {
       },
       {
         0: (const FrameId('a'), 6),
-        8: (const FrameId('b'), 6),
-        14: (const FrameId('other'), 2),
-        20: (const FrameId('a'), 6),
+        6: (const FrameId('a'), 6),
+        12: (const FrameId('b'), 6),
+        18: (const FrameId('other'), 2),
       },
     );
     expect(
@@ -206,15 +207,19 @@ void main() {
     expect(row(), before);
   });
 
-  test('syncing the name tag and the words of one place writes that block '
-      'alone, its other fields kept', () {
+  test('syncing one place writes that block alone — its name tag, its '
+      'words, where its sound starts — the other place and its sound kept', () {
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);
     final places = soundPlacesOf(session.repository.requireProject(), _clap);
     session.mediaPool.syncSoundPlaces(
       _clap,
       preset: preset,
-      fields: const {SoundSyncField.nameTag, SoundSyncField.words},
+      fields: const {
+        SoundSyncField.start,
+        SoundSyncField.nameTag,
+        SoundSyncField.words,
+      },
       places: [places.last],
     );
     final row = requireLayerAnywhere(
@@ -226,7 +231,7 @@ void main() {
       ('Door', 'bang'),
       ('SE', 'step'),
     ]);
-    expect(row.timeline[8]?.length, 3);
+    expect(row.timeline[12]?.length, 3);
     expect([for (final clip in row.audioClips) clip.offsetFrames], [0, 2]);
   });
 }
