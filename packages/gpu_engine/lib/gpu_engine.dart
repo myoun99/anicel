@@ -386,39 +386,30 @@ class GpuEngine {
   /// a screen's frame is put up as the GPU finishes it, the thread that
   /// builds the app's frames waiting for none of it ([debugWaitsHere]).
   ///
-  /// ⚠️[GpuReadout.mapping]'s twin — a number a wait, one listener for
-  /// every wait — kept apart while there are two (the rule of three): that
-  /// one maps its bytes in the same turn of the engine's thread for waits.
   Future<void> done() {
     final ended = Completer<void>();
-    final wait = _asked++;
-    _ending[wait] = (ended: ended, engine: this);
-    _ended.keepIsolateAlive = true;
-    rust.doneThen(_engine, _ended.nativeFunction, wait);
+    rust.doneThen(
+      _engine,
+      _waits.told,
+      _waits.kept((ended: ended, engine: this)),
+    );
     return ended.future;
   }
 
-  /// The waits on their way ([done]), each under the number it was asked
-  /// by.
-  static final Map<int, ({Completer<void> ended, GpuEngine engine})>
-  _ending = {};
-  static int _asked = 0;
-
-  /// How a thread of the engine's tells this isolate that a wait has ended, by
-  /// its number and whether the GPU finished: one for every [done] of the
-  /// isolate, kept alive while a wait is on its way and no longer.
-  static final NativeCallable<Void Function(Uint64, Bool)> _ended =
-      NativeCallable<Void Function(Uint64, Bool)>.listener(_end);
-
-  static void _end(int wait, bool finished) {
-    final (:ended, :engine) = _ending.remove(wait)!;
-    _ended.keepIsolateAlive = _ending.isNotEmpty;
+  /// The waits on their way ([done]), and how a thread of the engine's
+  /// tells this isolate one has ended: by its number, and whether the GPU
+  /// finished.
+  static final _waits = _Told<({Completer<void> ended, GpuEngine engine})>((
+    wait,
+    asked,
+    finished,
+  ) {
     if (finished) {
-      ended.complete();
+      asked.ended.complete();
     } else {
-      ended.completeError(GpuRefused(engine._whyNotDone(wait)));
+      asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
     }
-  }
+  });
 
   /// Why the wait [wait] did not end with the GPU done — taken. 🚨Of an
   /// engine closed meanwhile nothing is read: its thread tells the waits
@@ -743,7 +734,11 @@ class GpuPool implements _OfAnEngine {
       }
       final pages = arena<Uint16>(_held(count));
       final slots = arena<Uint16>(_held(count));
-      final number = _numbered++;
+      // 🚨A REAL HOLD, in what is kept till its copy is told of: a pointer
+      // [bytesOf] read keeps nothing alive, and a tile collected meanwhile
+      // hands its block to the next tile made (BitmapTile.readPixels).
+      // ⛔No assert: it goes from a release build, and so would the hold.
+      final number = _stores.kept((pool: this, held: tiles));
       final stored = rust.poolStore(
         _pool,
         _engine._engine,
@@ -752,17 +747,11 @@ class GpuPool implements _OfAnEngine {
         count,
         pages,
         slots,
-        _read.nativeFunction,
+        _stores.told,
         number,
       );
-      if (stored > 0) {
-        // 🚨A REAL HOLD, in a map no tile is let out of before its copy is
-        // told of ([_readThen]): a pointer [bytesOf] read keeps nothing
-        // alive, and a tile collected meanwhile hands its block to the next
-        // tile made (BitmapTile.readPixels). ⛔No assert: it goes from a
-        // release build, and so would the hold.
-        _reading[number] = (pool: this, held: tiles.sublist(0, stored));
-        _read.keepIsolateAlive = true;
+      if (stored == 0) {
+        _stores.forget(number);
       }
       return [
         for (var tile = 0; tile < stored; tile++)
@@ -775,20 +764,15 @@ class GpuPool implements _OfAnEngine {
   /// ([store]): theirs to let go, whose tiles are not there.
   void Function(List<GpuTile> unwritten)? onUnwritten;
 
-  /// What the stores on their way hold ([store]), each under the number it
-  /// was handed over by, till its copy has read them.
-  static final Map<int, ({GpuPool pool, List<Object> held})> _reading = {};
-  static int _numbered = 0;
-
-  /// How the engine's thread tells this isolate a store's copy has read
-  /// its tiles, by its number and whether it wrote them: one for every
-  /// store of the isolate, kept alive while one is on its way.
-  static final NativeCallable<Void Function(Uint64, Bool)> _read =
-      NativeCallable<Void Function(Uint64, Bool)>.listener(_readThen);
-
-  static void _readThen(int number, bool written) {
-    final (:pool, held: _) = _reading.remove(number)!;
-    _read.keepIsolateAlive = _reading.isNotEmpty;
+  /// What the stores on their way hold ([store]) till their copy has read
+  /// them, and how the engine's thread tells this isolate one has: by its
+  /// number, and whether it wrote them.
+  static final _stores = _Told<({GpuPool pool, List<Object> held})>((
+    _,
+    stored,
+    written,
+  ) {
+    final pool = stored.pool;
     if (written || pool._freed) {
       return;
     }
@@ -796,7 +780,7 @@ class GpuPool implements _OfAnEngine {
     if (unwritten.isNotEmpty) {
       pool.onUnwritten?.call(unwritten);
     }
-  }
+  });
 
   /// The places stores handed over held and did not write, taken.
   List<GpuTile> _unwritten() => using((arena) {
@@ -3346,41 +3330,21 @@ class GpuReadout implements _OfAnEngine {
   Future<void> mapping() {
     debugBeforeMapping?.call();
     final ended = Completer<void>();
-    final wait = _asked++;
-    _ending[wait] = ended;
-    _ended.keepIsolateAlive = true;
     rust.readoutMapThen(
       _engine._engine,
       _readout,
-      _ended.nativeFunction,
-      wait,
+      _maps.told,
+      _maps.kept(ended),
     );
     return ended.future;
   }
 
-  /// The waits on their way ([mapping]), each under the number it was
-  /// asked by.
-  static final Map<int, Completer<void>> _ending = {};
-  static int _asked = 0;
-
-  /// How a thread of the engine's tells this isolate that a wait has ended, by
-  /// its number: one for every readout of the isolate, for as long as it
-  /// lives. ⛔Not one a wait: nothing is made for a wait, so no wait leaves
-  /// anything to close (↩️one each, closed as its wait ended — a close
-  /// gone showed in no test, 2026-11-12).
-  ///
-  /// 🚨It keeps its isolate for as long as a wait is on its way, and no
-  /// longer: an isolate with nothing else to do stays for the bytes it
-  /// asked for — let go, it ended under the wait with its readout never
-  /// freed — and ends once they have come.
-  static final NativeCallable<Void Function(Uint64)> _ended =
-      NativeCallable<Void Function(Uint64)>.listener(_end);
-
-  static void _end(int wait) {
-    final ended = _ending.remove(wait)!;
-    _ended.keepIsolateAlive = _ending.isNotEmpty;
-    ended.complete();
-  }
+  /// The waits on their way ([mapping]), and how a thread of the engine's
+  /// tells this isolate one has ended — mapped or not alike: [rows] says
+  /// which.
+  static final _maps = _Told<Completer<void>>(
+    (_, ended, _) => ended.complete(),
+  );
 
   /// Test seam: called before a thread of the engine's is handed the wait
   /// ([mapping]) — how a test has the device go between a copy's submit
@@ -4249,7 +4213,7 @@ class GpuLetters {
     required void Function() unput,
   }) {
     final engine = composite._engine;
-    final number = _numbered++;
+    final number = _puts.kept(unput);
     final landed = _landed(
       asks,
       (_, coordinates, _, places, changes) => rust.lettersLand(
@@ -4262,37 +4226,82 @@ class GpuLetters {
         asks.length,
         places,
         changes,
-        _put.nativeFunction,
+        _puts.told,
         number,
       ),
     );
-    if (landed.isNotEmpty) {
-      _laying[number] = unput;
-      _put.keepIsolateAlive = true;
+    if (landed.isEmpty) {
+      _puts.forget(number);
     }
     return landed;
   }
 
   /// What is called where the picture of a land on its way ([land]) was
-  /// not put, under the number it was handed over by, till it is told of.
-  static final Map<int, void Function()> _laying = {};
-  static int _numbered = 0;
-
-  /// How the engine's thread tells this isolate a land's picture was put,
-  /// by its number and whether it was: one for every land of the isolate,
-  /// kept alive while one is on its way.
-  static final NativeCallable<Void Function(Uint64, Bool)> _put =
-      NativeCallable<Void Function(Uint64, Bool)>.listener(_putThen);
-
-  static void _putThen(int number, bool put) {
-    final unput = _laying.remove(number)!;
-    _put.keepIsolateAlive = _laying.isNotEmpty;
+  /// not put, and how the engine's thread tells this isolate whether it
+  /// was.
+  static final _puts = _Told<void Function()>((_, unput, put) {
     if (!put) {
       unput();
     }
-  }
+  });
 
   void free() => rust.lettersFree(_letters);
+}
+
+/// What a thread of the engine's tells this isolate by a number — a
+/// wait ended, a copy written, a picture put — and whether it went well:
+/// each [kept] till it is told, and one listener for every number of the
+/// kind, [told].
+///
+/// 🚨It keeps its isolate for as long as one is on its way, and no longer:
+/// an isolate with nothing else to do stays for what it asked — let go, it
+/// ended under a wait with its readout never freed — and ends once all
+/// have come. ⛔Not one listener a number: nothing is made for a number, so
+/// none leaves anything to close (↩️one each, closed as its wait ended —
+/// a close gone showed in no test, 2026-11-12).
+///
+/// ↩️Till 2026-11-18 each kind held its map and listener itself — the
+/// engine's waits, a pool's stores, a readout's maps and the letters'
+/// lands, four of one, the fourth added that morning (rule of three).
+final class _Told<T> {
+  _Told(this._then);
+
+  /// What is done with what was [kept] under a number once it is told:
+  /// the number, what was kept, and whether it went well.
+  final void Function(int number, T kept, bool ok) _then;
+  final Map<int, T> _waiting = {};
+  int _numbered = 0;
+
+  /// The function a thread of the engine's tells by.
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> get told =>
+      _listener.nativeFunction;
+
+  late final _listener = NativeCallable<Void Function(Uint64, Bool)>.listener(
+    _told,
+  );
+
+  /// [waiting] kept till its number is told: the number. Kept before it
+  /// is handed over — the engine's thread may tell it before the call that
+  /// handed it returns, and its word comes after this isolate's turn.
+  int kept(T waiting) {
+    final number = _numbered++;
+    _waiting[number] = waiting;
+    _listener.keepIsolateAlive = true;
+    return number;
+  }
+
+  /// [number] let go of: nothing was handed over under it, so nothing
+  /// will tell it.
+  void forget(int number) {
+    _waiting.remove(number);
+    _listener.keepIsolateAlive = _waiting.isNotEmpty;
+  }
+
+  void _told(int number, bool ok) {
+    final waiting = _waiting.remove(number) as T;
+    _listener.keepIsolateAlive = _waiting.isNotEmpty;
+    _then(number, waiting, ok);
+  }
 }
 
 /// [clusters] as a run is handed them, in [arena]'s: their letters as

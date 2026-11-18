@@ -1560,14 +1560,14 @@ external bool readoutMap(Pointer<Engine> engine, Pointer<Readout> readout);
   Void Function(
     Pointer<Engine>,
     Pointer<Readout>,
-    Pointer<NativeFunction<Void Function(Uint64)>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
 >(symbol: 'gpu_engine_readout_map_then')
 external void readoutMapThen(
   Pointer<Engine> engine,
   Pointer<Readout> readout,
-  Pointer<NativeFunction<Void Function(Uint64)>> then,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> then,
   int wait,
 );
 

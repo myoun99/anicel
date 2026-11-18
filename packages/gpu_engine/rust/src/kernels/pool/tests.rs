@@ -804,7 +804,7 @@ fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() 
     };
     use crate::testing::last_error;
     static TOLD: ToldOn = ToldOn::new();
-    extern "C" fn told(wait: u64) {
+    extern "C" fn told(wait: u64, _: bool) {
         TOLD.tell(wait);
     }
     let engine = rig().engine;
@@ -865,7 +865,7 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
     };
     use crate::testing::{a_device_of_its_own, last_error};
     static TOLD: ToldOn = ToldOn::new();
-    extern "C" fn told(wait: u64) {
+    extern "C" fn told(wait: u64, _: bool) {
         TOLD.tell(wait);
     }
     let _turn = a_device_of_its_own();
