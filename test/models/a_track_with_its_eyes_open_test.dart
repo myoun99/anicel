@@ -31,7 +31,8 @@ Track _track({
   bool seRowShown = true,
   bool transitionShown = true,
   bool conteShown = true,
-  bool entryShown = true,
+  bool belowShown = true,
+  bool aboveShown = true,
 }) => Track(
   id: _id,
   name: 'V1',
@@ -52,17 +53,18 @@ Track _track({
   ).copyWith(isVisible: transitionShown),
   conte: TrackConte(
     base: ConteHead(name: 'conte', isVisible: conteShown),
-    above: [
-      ConteEntry(
-        key: const ConteKey('b'),
-        head: ConteHead(
-          name: 'b',
-          opacity: .5,
-          isVisible: entryShown,
-          onTimesheet: false,
-        ),
-      ),
-    ],
+    below: [_entry('under', shown: belowShown)],
+    above: [_entry('over', shown: aboveShown)],
+  ),
+);
+
+ConteEntry _entry(String name, {required bool shown}) => ConteEntry(
+  key: ConteKey(name),
+  head: ConteHead(
+    name: name,
+    opacity: .5,
+    isVisible: shown,
+    onTimesheet: false,
   ),
 );
 
@@ -100,22 +102,36 @@ void main() {
     final track = _track(conteShown: false);
     final open = trackWithEyesOpen(track);
     expect(open.conte.base!.isVisible, isTrue);
-    expect(open.conte.above.single, same(track.conte.above.single));
+    expect(open.conte.below, same(track.conte.below));
+    expect(open.conte.above, same(track.conte.above));
     expect(open.cuts, same(track.cuts));
     expect(open.seLayers, same(track.seLayers));
     expect(open.transitionLayer, same(track.transitionLayer));
   });
 
-  test('a conte entry\'s head\'s eye is opened, and nothing else of it', () {
-    final track = _track(entryShown: false);
+  test('an entry under the conte has its head\'s eye opened, and nothing '
+      'else of it', () {
+    final track = _track(belowShown: false);
     final open = trackWithEyesOpen(track);
-    final head = open.conte.above.single.head;
-    expect(head.isVisible, isTrue);
     expect(
-      head,
-      ConteHead(name: 'b', opacity: .5, onTimesheet: false),
-      reason: 'its other fields are the head\'s own',
+      open.conte.below.single.head,
+      ConteHead(name: 'under', opacity: .5, onTimesheet: false),
+      reason: 'its eye open, its other fields the head\'s own',
     );
+    expect(open.conte.above, same(track.conte.above));
+    expect(open.conte.base, same(track.conte.base));
+  });
+
+  test('an entry over the conte has its head\'s eye opened, and nothing '
+      'else of it', () {
+    final track = _track(aboveShown: false);
+    final open = trackWithEyesOpen(track);
+    expect(
+      open.conte.above.single.head,
+      ConteHead(name: 'over', opacity: .5, onTimesheet: false),
+      reason: 'its eye open, its other fields the head\'s own',
+    );
+    expect(open.conte.below, same(track.conte.below));
     expect(open.conte.base, same(track.conte.base));
   });
 }
