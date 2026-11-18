@@ -402,6 +402,31 @@ void main() {
     expect((off.planned, off.skipped, off.written), (true, true, false));
   });
 
+  test('🗣️I-178: a conte row\'s unnamed drawings are filed from 1, from the '
+      'front of the row, past every number its drawings wear', () {
+    final drawings = [
+      frame('u1', unnamed: true),
+      frame('n2', name: '2'),
+      frame('u2', unnamed: true),
+      frame('u3', unnamed: true),
+    ];
+    final built = plan([
+      Layer(
+        id: const LayerId('sb'),
+        name: 'SB',
+        kind: LayerKind.storyboard,
+        frames: drawings,
+        timeline: exposed(drawings),
+      ),
+    ], spec: const CelsExportSpec(kinds: {ExportCelKind.conte}));
+    expect(
+      [for (final task in built.cels) (task.baseFrame.id.value, task.celName)],
+      [('u1', '1'), ('n2', '2'), ('u2', '3'), ('u3', '4')],
+    );
+    // The number is the file's alone: the drawing keeps no name.
+    expect(drawings.first.celNumber, isNull);
+  });
+
   test('the cel number IS the frame name; an unnamed frame is the '
       'in-between mark and has no file', () {
     // 유저 2026-09-09: 「프레임 이름을 그대로 셀 번호로 출력시키고, 이름 없으면

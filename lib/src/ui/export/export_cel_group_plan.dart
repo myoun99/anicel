@@ -8,6 +8,7 @@ import '../../models/cut_id.dart';
 import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
+import '../../models/first_appearance_names.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -111,8 +112,9 @@ class ExportCelGroupTask {
   /// The printed cel number — [Frame.celNumber] of [baseFrame]. An axis
   /// frame without one is the in-between mark and never becomes a task —
   /// but on a row whose unnamed cel is the layer's own picture it is one,
-  /// and this is empty ([_fileCelName]). A direction row's drawing is not
-  /// numbered: this is what its block SAYS ([directionCelName]).
+  /// and this is empty ([_fileCelName]); on a conte row it is the number
+  /// the export hands it ([_celNamesOf], I-178). A direction row's drawing
+  /// is not numbered: this is what its block SAYS ([directionCelName]).
   final String celName;
 
   /// Relative to the export directory; may contain `/` subfolders. Empty
@@ -582,12 +584,13 @@ Layer _bundleAxis(List<Layer> pictures, Layer base) {
 /// 지시인데, 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
 /// A drawing two blocks show is one cel, called by the first.
 ///
-/// Every other row's are its NUMBERED frames ([_fileCelName]), by number
+/// Every other row's are its NAMED frames ([_celNamesOf]), by name
 /// ([_inCelOrder]).
 Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
   if (axis.kind != LayerKind.instruction) {
-    for (final frame in _inCelOrder(axis.frames)) {
-      if (_fileCelName(axis, frame) case final celName?) {
+    final nameOf = _celNamesOf(axis);
+    for (final frame in _inCelOrder(axis.frames, nameOf)) {
+      if (nameOf(frame) case final celName?) {
         yield (
           row: axis,
           frame: frame,
@@ -886,6 +889,34 @@ bool _unnamedIsFiledAlready(Layer axis, String celName, Set<String> filed) =>
     celName.isEmpty &&
     !filed.add(axis.name);
 
+/// What each drawing of [axis] is called on its file, null where it writes
+/// none ([_fileCelName]).
+///
+/// 🗣️I-178 (유저 2026-11-19): 「콘티레이어의 블록이름없으면 현재
+/// 출력못하는데, 이름없으면 자동으로 이름 지정해서 출력할수있게. 이름없으면
+/// 앞부터 1부터 시작. 중간에 2라고 있으면 2 건너뛰고」 — a CONTE row's
+/// unnamed drawing is filed under a number: from 1, from the front of the
+/// row, skipping every name the row's drawings wear — the numbering law of
+/// 자동 이름 지정 ([namesByFirstAppearance]). The drawing keeps no name: the
+/// number is the file's. ↩️It wrote no file, as an animation row's
+/// unnamed drawing, the in-between mark, does not.
+String? Function(Frame) _celNamesOf(Layer axis) {
+  if (axis.kind != LayerKind.storyboard) {
+    return (frame) => _fileCelName(axis, frame);
+  }
+  final numbered = namesByFirstAppearance(
+    [
+      for (final block in drawingBlocks(axis.timeline))
+        if (axis.frameById(block.frameId) case final frame?
+            when frame.celNumber == null)
+          frame.id,
+    ],
+    from: 1,
+    taken: {for (final frame in axis.frames) ?frame.celNumber},
+  );
+  return (frame) => frame.celNumber ?? numbered[frame.id];
+}
+
 /// What [frame] of [axis] is called on its file, or null when it writes no
 /// file at all.
 ///
@@ -911,7 +942,8 @@ String? _fileCelName(Layer axis, Frame frame) =>
         ? ''
         : null);
 
-/// [frames] in the order their cels are listed and written: by cel number,
+/// [frames] in the order their cels are listed and written: by the name
+/// [nameOf] files each under (a conte row's unnamed ones too, I-178),
 /// the way a file browser orders names — digits by value, letters without
 /// case.
 ///
@@ -923,12 +955,15 @@ String? _fileCelName(Layer axis, Frame frame) =>
 ///
 /// ⚠️Stable where two names are equal: the namer hands out `A1` and `A1_2`
 /// in the order it meets them, and the bank's order still decides that.
-List<Frame> _inCelOrder(List<Frame> frames) {
+List<Frame> _inCelOrder(
+  List<Frame> frames,
+  String? Function(Frame) nameOf,
+) {
   final indexed = [for (var i = 0; i < frames.length; i += 1) (frames[i], i)]
     ..sort((a, b) {
       final byName = compareAsciiLowerCaseNatural(
-        a.$1.celNumber ?? '',
-        b.$1.celNumber ?? '',
+        nameOf(a.$1) ?? '',
+        nameOf(b.$1) ?? '',
       );
       return byName != 0 ? byName : a.$2.compareTo(b.$2);
     });
