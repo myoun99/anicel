@@ -60,22 +60,46 @@ void main() {
   );
   final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
-  BitmapTile red() => BitmapTile(
+  /// A tile of one red, [shade] of it: no two shades the same bytes.
+  BitmapTile red([int shade = 255]) => BitmapTile(
     size: tileSide,
     pixels: Uint8List.fromList([
-      for (var i = 0; i < tileSide * tileSide; i += 1) ...[255, 0, 0, 255],
+      for (var i = 0; i < tileSide * tileSide; i += 1) ...[shade, 0, 0, 255],
     ]),
   );
 
+  /// A cel inked whole at each of [tiles], each in a shade of its own.
   BitmapSurface inkedAt(List<TileCoord> tiles) => BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSide,
-    tiles: {for (final at in tiles) at: red()},
+    tiles: {
+      for (final (shade, at) in tiles.indexed) at: red(255 - 30 * shade),
+    },
   );
 
   BitmapSurface inACorner() => inkedAt([TileCoord(x: 0, y: 0)]);
-  BitmapSurface onThePasteboard() =>
-      inkedAt([TileCoord(x: -1, y: -1), TileCoord(x: 2, y: 2)]);
+
+  /// Ink on every tile of the canvas and on two past it.
+  ///
+  /// 🚨NO TWO TILES OF THE PICTURE ALIKE, AND NONE THE PAPER'S ALONE
+  /// (2026-11-19, 관제's order once master went red): pictures made of the
+  /// same keep one tile and a picture weighs the tiles it made (🗣️유저
+  /// 2026-11-18, F-610-Q2 「같은 타일은 한 벌만」 — 710618af0). ↩️Two red
+  /// tiles past a bare canvas, till then: the canvas's four tiles, the
+  /// paper's alone, came to be one tile, so the picture weighed three where
+  /// its plan weighs it ahead as six — under the canvas's four, the premise
+  /// these tests stand on. The product weighs right; the picture drawn
+  /// here was the one thing of its kind a share makes lighter.
+  /// ⏳Ahead, a plan weighs every tile it lays on, shared or not
+  /// (`Kept::tiles_made`, "the most it comes to weigh"): where a picture
+  /// shares, the room is asked for more than it comes to weigh — the next
+  /// change of card F-610, with the pin that counts it.
+  BitmapSurface onThePasteboard() => inkedAt([
+    TileCoord(x: -1, y: -1),
+    for (var y = 0; y < 2; y += 1)
+      for (var x = 0; x < 2; x += 1) TileCoord(x: x, y: y),
+    TileCoord(x: 2, y: 2),
+  ]);
 
   CanvasLayerImageRequest asItLies() =>
       CanvasLayerImageRequest(frameKey: key, opacity: 1);
