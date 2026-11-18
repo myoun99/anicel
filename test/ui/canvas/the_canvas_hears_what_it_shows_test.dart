@@ -199,6 +199,19 @@ void main() {
       expect(EditorCanvasArea.shownBy(session), before);
     });
 
+    // The camera would frame over 'a', the first drawn row; it is not
+    // stood on, so what it would frame is nothing the canvas shows.
+    testWidgets('on the row the camera would frame, the camera not stood '
+        'on, is the picture\'s alone', (tester) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('b'));
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
     testWidgets('on the row stood on is the area\'s: the pen refuses it', (
       tester,
     ) async {
