@@ -723,18 +723,28 @@ class _InteractiveCanvasBuild {
   /// ⚠️The run's builder is there standing still too, answering nothing: a
   /// builder that came and went with the run would remount what it holds at
   /// the run's start and its end — the stack view's images with it.
+  ///
+  /// 🔬And for an eye toggled among the rows it draws, which the area does
+  /// not hear ([EditorCanvasArea.tracksDrawnBy]; card
+  /// an-eye-toggle-holds-the-ui-thread, 11-18, step 3b).
   Widget _followingDragAndRun(
     EditorSessionManager session,
     WidgetBuilder build,
   ) => TickLayer(
-    child: SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
-      valueListenable: session.dragPreview,
-      slice: (preview) => _EditorCanvasAreaState._rowsShownBy(session, preview),
-      builder: (context, _) => SlicedValueListenableBuilder<int, int?>(
-        valueListenable: session.editingFrameCursor,
-        slice: (frame) => _canvasPlays ? frame : null,
-        builder: (context, _) => build(context),
-      ),
+    child: SlicedListenableBuilder<Object>(
+      listenable: session,
+      slice: () => EditorCanvasArea.tracksDrawnBy(session),
+      builder: (context, _) =>
+          SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
+            valueListenable: session.dragPreview,
+            slice: (preview) =>
+                _EditorCanvasAreaState._rowsShownBy(session, preview),
+            builder: (context, _) => SlicedValueListenableBuilder<int, int?>(
+              valueListenable: session.editingFrameCursor,
+              slice: (frame) => _canvasPlays ? frame : null,
+              builder: (context, _) => build(context),
+            ),
+          ),
     ),
   );
 

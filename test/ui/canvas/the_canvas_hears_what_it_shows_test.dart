@@ -6,8 +6,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -15,6 +17,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -23,11 +26,17 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
+    show CanvasLayerImageRequest;
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart'
+    show theFramesPicture;
 
 /// The project's fields nothing on the canvas reads — each with where it
 /// IS read. Every other field is heard ([EditorCanvasArea.shownBy]).
@@ -168,6 +177,82 @@ void main() {
     expect(EditorCanvasArea.shownBy(session), isNot(before));
   });
 
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3b): the picture
+  // prints the eyes and hears them itself; the area prints two — the stood
+  // row's, which refuses the pen, and the row the camera is framed over.
+  group('an eye toggled', () {
+    testWidgets('on a row not stood on is the picture\'s alone', (
+      tester,
+    ) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('a'));
+      final before = EditorCanvasArea.shownBy(session);
+      final drawn = EditorCanvasArea.tracksDrawnBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('b'));
+
+      expect(
+        EditorCanvasArea.tracksDrawnBy(session),
+        isNot(drawn),
+        reason: 'the parts that draw the rows hear it',
+      );
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
+    testWidgets('on the row stood on is the area\'s: the pen refuses it', (
+      tester,
+    ) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('a'));
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), isNot(before));
+    });
+
+    testWidgets('on the row the camera is framed over is the area\'s', (
+      tester,
+    ) async {
+      final project = _project();
+      final track = project.tracks.single;
+      final first = track.cuts.first;
+      final session = sessionOf(
+        project.copyWith(
+          tracks: [
+            track.copyWith(
+              cuts: [
+                first.copyWith(
+                  layers: [
+                    ...first.layers,
+                    Layer(
+                      id: const LayerId('cam'),
+                      name: 'Camera',
+                      kind: LayerKind.camera,
+                      frames: const [],
+                    ),
+                  ],
+                ),
+                ...track.cuts.skip(1),
+              ],
+            ),
+          ],
+        ),
+      );
+      session.selectLayer(const LayerId('cam'));
+      expect(
+        session.camera.isCameraLayerActive,
+        isTrue,
+        reason: '⛔premise: the camera stood on',
+      );
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), isNot(before));
+    });
+  });
+
   final notShown = <String, void Function(EditorSessionManager session)>{
     'a guide picked': (session) =>
         session.cutVerbs.selectedGuideId = const GuideId('g1'),
@@ -279,6 +364,56 @@ void main() {
       identical(host(), before),
       isFalse,
       reason: 'the layer stood on is drawn on',
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('in the app, an eye toggled on a row not stood on leaves the '
+      'canvas standing and its picture drops the row; on the row stood on, '
+      'the canvas is built again', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _project())),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.selectLayer(const LayerId('a'));
+    await tester.pumpAndSettle();
+    MainCanvasBrushHost host() =>
+        tester.widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost));
+    bool pictureDraws(String row) => [
+      for (final node in preorderNodes(
+        tester.widget<FramePictureView>(theFramesPicture()).nodes,
+      ))
+        if (node case CompositeLeaf(:final payload)) payload,
+    ].any(
+      (shown) =>
+          shown is CanvasLayerImageRequest &&
+          shown.frameKey.layerId == LayerId(row),
+    );
+    final before = host();
+    expect(pictureDraws('b'), isTrue, reason: '⛔premise: b is drawn');
+
+    session.layerSwitches.toggleLayerVisibility(const LayerId('b'));
+    await tester.pump();
+    expect(
+      identical(host(), before),
+      isTrue,
+      reason: 'an eye is the picture\'s to print',
+    );
+    expect(pictureDraws('b'), isFalse, reason: 'and the picture prints it');
+
+    session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+    await tester.pump();
+    expect(
+      identical(host(), before),
+      isFalse,
+      reason: 'the row stood on hidden refuses the pen',
     );
 
     await tester.pump(const Duration(seconds: 1));

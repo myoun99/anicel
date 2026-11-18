@@ -18,6 +18,7 @@ import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
+import '../models/eyes_open.dart' show trackWithEyesOpen;
 import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
@@ -97,7 +98,7 @@ import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/memo_token.dart' show ByIdentity, ByList;
+import 'timeline/memo_token.dart' show ByIdentity, ByList, EyesOpen;
 import 'timeline/timeline_drag_preview.dart'
     show
         BlockMoveDragPreview,
@@ -348,15 +349,33 @@ class EditorCanvasArea extends StatefulWidget {
   /// is bound to, the playback mode and the sound's conforms are drawn
   /// nowhere on the canvas; the guide picked and a recording's streamer
   /// are, by the guides and the streamer, which hear them themselves.
+  ///
+  /// 🔬An eye toggled made its track anew, and the area — the panel, its
+  /// viewport and their layers, some 80 widgets — was built again for it
+  /// (card an-eye-toggle-holds-the-ui-thread, 11-18, step 3b). The eyes
+  /// are the picture's to print: the parts that draw the rows hear the
+  /// tracks themselves ([tracksDrawnBy]), and the area hears them with
+  /// every eye open ([trackWithEyesOpen]) — but for the two eyes it prints
+  /// itself: the stood row's, which refuses the pen
+  /// (`EditingCanvas.activeRowStrokeRefusal`, its folders' eyes with it),
+  /// and the row the camera layer is framed over
+  /// (`Camera.cameraBackdropSelection`).
   static Object shownBy(EditorSessionManager session) {
     final project = session.repository.requireProject();
     final cels = session.renderCaches.brushFrameStore;
+    final camera = session.camera;
     // ⚠️A project's lists are made anew by every write (`Project` holds them
     // unmodifiable), so they compare by what they hold: the tracks each by
     // identity — a write keeps the ones it did not touch — and the media's
     // and the fonts' entries, small values, by `==`.
     return (
-      tracks: ByList([for (final track in project.tracks) ByIdentity(track)]),
+      tracks: ByList([
+        for (final track in project.tracks) EyesOpen(track, trackWithEyesOpen),
+      ]),
+      refusal: session.editingCanvas.activeRowStrokeRefusal,
+      framedOver: camera.isCameraLayerActive
+          ? camera.cameraBackdropSelection?.layerId
+          : null,
       frameRate: project.frameRate,
       cameraSize: project.cameraSize,
       trailingFrames: project.trailingFrames,
@@ -380,6 +399,14 @@ class EditorCanvasArea extends StatefulWidget {
       celPixels: cels.celPixelRevision.value,
     );
   }
+
+  /// The tracks as the parts that draw their rows hear them — each by
+  /// identity, an eye toggled among them included, which the area does not
+  /// hear ([shownBy]).
+  static Object tracksDrawnBy(EditorSessionManager session) => ByList([
+    for (final track in session.repository.requireProject().tracks)
+      ByIdentity(track),
+  ]);
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
