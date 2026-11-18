@@ -3031,7 +3031,6 @@ class _StoryboardRuler extends StatelessWidget {
             leadingFrameSpacerWidth: 0,
             trailingFrameSpacerWidth: 0,
             metrics: metrics,
-            onSelectFrame: (_) {},
             framesPerSecond: framesPerSecond,
             rulerView: rulerView,
             pages: rulerPages,

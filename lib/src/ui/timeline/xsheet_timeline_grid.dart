@@ -916,7 +916,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                           leadingFrameSpacerHeight: 0,
                           trailingFrameSpacerHeight: 0,
                           metrics: _metrics,
-                          onSelectFrame: _railScrub.selectClampedFrame,
                           framesPerSecond: _countingFps,
                           rulerView: widget.hooks.rulerView,
                           pages: widget.hooks.sheetPages,
@@ -1328,7 +1327,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.leadingFrameSpacerHeight,
     required this.trailingFrameSpacerHeight,
     required this.metrics,
-    required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
     this.pages,
@@ -1345,7 +1343,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final double leadingFrameSpacerHeight;
   final double trailingFrameSpacerHeight;
   final TimelineGridMetrics metrics;
-  final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
   final FrameRulerView rulerView;
 

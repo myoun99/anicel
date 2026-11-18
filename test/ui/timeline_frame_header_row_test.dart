@@ -13,7 +13,6 @@ void main() {
     required int frameStartIndex,
     required int frameEndIndexExclusive,
     required int playbackFrameCount,
-    required ValueChanged<int> onSelectFrame,
     double leadingFrameSpacerWidth = 96,
     double trailingFrameSpacerWidth = 144,
   }) async {
@@ -27,7 +26,6 @@ void main() {
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
             trailingFrameSpacerWidth: trailingFrameSpacerWidth,
             metrics: TimelineGridMetrics.defaults,
-            onSelectFrame: onSelectFrame,
           ),
         ),
       ),
@@ -42,7 +40,6 @@ void main() {
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
       playbackFrameCount: 6,
-      onSelectFrame: (_) {},
     );
 
     expect(timelineRulerPaintFinder(), findsOneWidget);
@@ -60,7 +57,6 @@ void main() {
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
       playbackFrameCount: 6,
-      onSelectFrame: (_) {},
     );
 
     expect(timelineHeaderInWindow(tester, 3), isTrue);
@@ -75,31 +71,11 @@ void main() {
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
       playbackFrameCount: 6,
-      onSelectFrame: (_) {},
     );
 
     expect(timelineHeaderModel(tester, 3).label, '4');
     expect(timelineHeaderModel(tester, 4).label, '5');
     expect(timelineHeaderModel(tester, 5).label, '6');
-  });
-
-  testWidgets('header cells are PASSIVE (UI-R10 #25): no per-cell tap '
-      'handler — selection rides the grid ruler scrub listener', (
-    tester,
-  ) async {
-    int? selectedFrameIndex;
-
-    await pumpHeaderRow(
-      tester,
-      frameStartIndex: 3,
-      frameEndIndexExclusive: 6,
-      playbackFrameCount: 6,
-      onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
-    );
-
-    await tester.tapAt(timelineHeaderGlobalRect(tester, 4).center);
-
-    expect(selectedFrameIndex, isNull);
   });
 
   testWidgets('outside-playback frame headers still paint, marked outside', (
@@ -110,7 +86,6 @@ void main() {
       frameStartIndex: 3,
       frameEndIndexExclusive: 7,
       playbackFrameCount: 5,
-      onSelectFrame: (_) {},
     );
 
     expect(timelineHeaderInWindow(tester, 5), isTrue);

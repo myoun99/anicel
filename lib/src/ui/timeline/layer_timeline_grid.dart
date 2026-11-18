@@ -867,7 +867,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               metrics: _metrics,
-              onSelectFrame: _rulerScrub.selectClampedFrame,
               framesPerSecond: _countingFps,
               rulerView: hooks.rulerView,
               pages: hooks.sheetPages,

@@ -42,7 +42,6 @@ void main() {
               metrics: TimelineGridMetrics.defaults.copyWith(
                 frameCellWidth: cell,
               ),
-              onSelectFrame: (_) {},
             ),
           ),
         ),

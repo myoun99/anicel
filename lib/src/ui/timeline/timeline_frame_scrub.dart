@@ -109,7 +109,7 @@ class TimelineFrameScrub {
     visibleFrameCount: renderedFrameCount(),
   );
 
-  void selectClampedFrame(int frameIndex) {
+  void _selectClampedFrame(int frameIndex) {
     // The endless runway IS the selectable tail now (UI-R10 #23 retired
     // the fixed safety frames): clamp against the BUILT extent.
     final frame = _scrubbedFrame.next(
@@ -182,7 +182,7 @@ class TimelineFrameScrub {
     if (frameIndex == null) {
       return;
     }
-    selectClampedFrame(frameIndex);
+    _selectClampedFrame(frameIndex);
   }
 
   /// Edge auto-pan (UI-R10 #24, the pro-standard ruler drag): a scrub

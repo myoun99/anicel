@@ -21,8 +21,8 @@ import 'timeline_grid_metrics.dart';
 /// so zoom steps and window shifts rebuild nothing here. Tests probe
 /// [TimelineRulerScale.modelAt] / `cellRectFor` through
 /// the 'timeline-frame-ruler-paint' key; selection stays on the
-/// viewport-level scrub listeners (G8 — the strip is passive, and
-/// [onSelectFrame] is accepted only for call-site stability).
+/// viewport-level scrub listeners (G8 — the strip is passive and takes no
+/// frame of its own).
 class TimelineFrameHeaderRow extends StatelessWidget {
   const TimelineFrameHeaderRow({
     super.key,
@@ -32,7 +32,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     required this.leadingFrameSpacerWidth,
     required this.trailingFrameSpacerWidth,
     required this.metrics,
-    required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
     this.pages,
@@ -59,10 +58,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
-
-  /// Unused since G8 (the viewport-level scrub listener owns selection);
-  /// kept so the hosts' call sites stay stable.
-  final ValueChanged<int> onSelectFrame;
 
   /// The project fps — the seconds line ticks on its boundaries.
   final int framesPerSecond;

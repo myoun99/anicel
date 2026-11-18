@@ -23,7 +23,6 @@ class TimelineFrameRuler extends StatelessWidget {
     required this.leadingFrameSpacerWidth,
     required this.trailingFrameSpacerWidth,
     required this.metrics,
-    required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
     this.pages,
@@ -45,7 +44,6 @@ class TimelineFrameRuler extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
-  final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
   final FrameRulerView rulerView;
 
@@ -106,7 +104,6 @@ class TimelineFrameRuler extends StatelessWidget {
           leadingFrameSpacerWidth: leadingFrameSpacerWidth,
           trailingFrameSpacerWidth: trailingFrameSpacerWidth,
           metrics: metrics,
-          onSelectFrame: onSelectFrame,
           framesPerSecond: framesPerSecond,
           rulerView: rulerView,
           pages: pages,
