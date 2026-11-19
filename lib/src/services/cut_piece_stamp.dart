@@ -149,7 +149,7 @@ List<CanvasPoint> cutStampCentersAlong({
   final steps = ((distance + _onTheHand) / apart).floor();
   return [
     for (var step = 1; step <= steps; step += 1)
-      CanvasPoint.lerp(from, to, math.min(1.0, step * apart / distance)),
+      CanvasPoint.lerp(from, to, step * apart / distance),
   ];
 }
 
