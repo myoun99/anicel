@@ -536,10 +536,10 @@ class _CanvasPanelTap {
 /// 한 되돌리기(획처럼)」 — and recorded as a stroke is (관제 2026-11-19, the
 /// brush's law: one landing per cel, every stamp of the drag in it). While
 /// the hand moves, the cel you stand on shows what each move laid, written
-/// raw and recorded nowhere ([_show]); the lift puts back the picture the
-/// press found there ([_StampDrag.pressed]) and lands the whole trail
-/// through the piece door, so the step's undo is that picture. The other
-/// cels of a range take the trail at the lift.
+/// raw and recorded nowhere ([_show]); the lift lands the whole trail
+/// through the piece door as one step — that cel as it shows, its undo the
+/// picture the press found there ([_StampDrag.pressed]), and the other cels
+/// of a range taking the trail then.
 ///
 /// ↩️Each stamp was a step of its own — twelve stamps, twelve undos — from
 /// the trail's first cut (1900500eb) through the piece door (7bd94c5c1);
@@ -647,20 +647,17 @@ class _StampTrail {
     if (drag == null || coordinator == null || drag.stamp.laid.isEmpty) {
       return;
     }
-    // The picture the press found, back on the cel you stand on: the step
-    // lands every stamp over it, and its undo is that picture. ⚠️Anything
-    // else written on that cel since the press goes back with it — the
+    // The cel you stand on lands as it shows, its undo the picture the
+    // press found there; the others take every stamp now. ⚠️Anything else
+    // written on that cel since the press undoes with the trail — the
     // window's held keys wait a drag out ([CanvasDragInFlight]).
-    final now = coordinator.currentSurfaceOf(drag.standing);
-    if (!identical(now, drag.pressed)) {
-      coordinator.restoreSurfaceSnapshot(
-        drag.standing,
-        drag.pressed,
-        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-      );
-    }
     _state
-        ._landStamp(drag.stamp, ground: drag.ground, rebuild: rebuild)
+        ._landStamp(
+          drag.stamp,
+          ground: drag.ground,
+          shown: (cel: drag.standing, before: drag.pressed),
+          rebuild: rebuild,
+        )
         .step();
   }
 
@@ -726,13 +723,15 @@ class _StampTrail {
     }
     final shown = pieceLandings(
       coordinator: coordinator,
-      ground: drag.ground,
+      ground: drag.ground.on(
+        drag.standing,
+        coordinator.frameStore.canonicalKeyOf,
+      ),
       stamp: PieceStamp.along(
         laid: laid,
         blend: drag.stamp.blend,
         description: drag.stamp.description,
       ),
-      only: drag.standing,
       cacheInvalidationSink: _state.widget.cacheInvalidationSink,
     )[drag.standing];
     if (shown != null) {
@@ -772,8 +771,8 @@ class _StampDrag {
   /// The cel you stand on, as the door keys it.
   final BrushFrameKey standing;
 
-  /// The picture [standing] held at the press — what the lift puts back
-  /// before it lands the trail ([_StampTrail._land]).
+  /// The picture [standing] held at the press — what an undo of the trail
+  /// puts back there ([_StampTrail._land]).
   final BitmapSurface pressed;
 
   /// Where the last stamp was laid, on the standing row's own artwork.

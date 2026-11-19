@@ -84,7 +84,12 @@ void main() {
     final pasteInPlace = sourceBodyOf(panel, 'void pasteCutPieceAtOrigin()');
     expect(pasteInPlace.contains('_landStamp('), isTrue);
     expect(pasteInPlace.contains('_commitSourceStroke('), isFalse);
-    final landStamp = sourceBodyOf(panel, 'PressedStep _landStamp(');
+    // To the parameter list's close: named parameters open a brace of
+    // their own before the body's.
+    final landStamp = sourceBodyOf(
+      panel,
+      RegExp(r'PressedStep _landStamp\([^)]*\)'),
+    );
     expect(landStamp.contains('pieceLandings('), isTrue);
     expect(landStamp.contains('_commitSourceStroke('), isFalse);
 

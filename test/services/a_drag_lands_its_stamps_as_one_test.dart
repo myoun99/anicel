@@ -9,7 +9,6 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/commands/brush_lift_move_history_command.dart';
 import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/piece_landing.dart';
 
@@ -110,7 +109,7 @@ void main() {
     expect(landed.keys, cels.take(2), reason: 'one landing per cel');
     for (final cel in landed.values) {
       expect(cel.dabs, hasLength(3), reason: 'every stamp of the drag');
-      final landing = cel.landing as BrushLiftMoveHistoryCommand;
+      final landing = cel.landing;
       landing.execute();
       expect(landing.derivesHere, 1, reason: 'one derive, not one a stamp');
     }

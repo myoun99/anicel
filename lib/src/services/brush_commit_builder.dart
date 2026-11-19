@@ -6,9 +6,12 @@ import '../models/brush_blend_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/brush_commit_result.dart';
+import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
+import '../models/cache_invalidation_plan.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
+import '../models/tile_coord.dart';
 import 'bitmap_surface_brush_commit.dart';
 import 'brush_stroke_landing.dart';
 import 'brush_commit_cache_invalidation.dart';
@@ -97,6 +100,34 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
       brushDabs ||
       blendMode.blendsTheWholeStroke ||
       strokeOpacityCoverage(sequence.opacity) < 255;
+  // 🚨★★★A RUN OF STAMPS IN SUCH A BLEND LANDS EACH BY ITSELF
+  // (a-stamp-drag-undoes-a-stamp-at-a-time, 2026-11-19): a stamp drag lands
+  // its whole trail as one landing, and a blend that piles a run into one
+  // layer would land the trail as one picture. Each is laid here over what
+  // the one before it left, as each landed when it was a step of its own.
+  // 🧪Piled, three overlapping half-alpha stamps laid 뒤에 그리기 parted from
+  // the same three laid one at a time where they overlap.
+  if (!brushDabs &&
+      blendMode.blendsTheWholeStroke &&
+      sequence.dabs.length > 1) {
+    return _eachStampByItself(
+      surface,
+      sequence,
+      (on, stamp) => brushCommitResultForBrushDabSequenceOnBitmapSurface(
+        surface: on,
+        sequence: BrushDabSequence([stamp], sequence.opacity),
+        layerId: layerId,
+        frameId: frameId,
+        blendMode: blendMode,
+        selection: selection,
+      ),
+      (dirtyTiles) => cacheInvalidationPlanForDirtyTiles(
+        layerId: layerId,
+        frameId: frameId,
+        dirtyTiles: dirtyTiles,
+      ),
+    );
+  }
   if (needsWholeStroke) {
     // BB-1: a brush blend needs the WHOLE stroke as one buffer (the mode
     // must never apply dab-by-dab). Without a live raster (a stroke
@@ -179,6 +210,36 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     afterSurface: materialization.surface,
     dirtyTiles: materialization.dirtyTiles,
     cacheInvalidationPlan: cacheInvalidationPlan,
+  );
+}
+
+/// [sequence]'s stamps laid one after another by [lay], each over what the
+/// one before it left — one commit for the run, its tiles planned by
+/// [planFor].
+BrushCommitResult _eachStampByItself(
+  BitmapSurface surface,
+  BrushDabSequence sequence,
+  BrushCommitResult Function(BitmapSurface on, BrushDab stamp) lay,
+  CacheInvalidationPlan Function(DirtyTileSet dirtyTiles) planFor,
+) {
+  var landed = surface;
+  final touched = <TileCoord>{};
+  for (final stamp in sequence.dabs) {
+    final one = lay(landed, stamp);
+    if (one.hasChanges) {
+      landed = one.afterSurface;
+      touched.addAll(one.dirtyTiles.coords);
+    }
+  }
+  if (touched.isEmpty) {
+    return BrushCommitResult.noOp(surface: surface);
+  }
+  final dirtyTiles = DirtyTileSet(touched);
+  return BrushCommitResult.changed(
+    beforeSurface: surface,
+    afterSurface: landed,
+    dirtyTiles: dirtyTiles,
+    cacheInvalidationPlan: planFor(dirtyTiles),
   );
 }
 

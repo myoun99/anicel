@@ -242,15 +242,9 @@ class BrushLiftMoveHistoryCommand
 
   /// [_landingDabs] on [frameKey]'s picture as it is now, written nowhere —
   /// null when they change nothing.
-  ///
-  /// Each BY ITSELF ([BrushFrameEditingCoordinator.deriveSurfaceWithEach]):
-  /// a landing is a program — cut the hole, then lay the piece — or a stamp
-  /// drag's trail, and either means what it says only stamp by stamp, in
-  /// whatever blend it lands (a-stamp-drag-undoes-a-stamp-at-a-time,
-  /// 2026-11-19: one landing for a whole drag, as each stamp had landed).
   BitmapSurface? _derive() {
     derivesHere += 1;
-    return coordinator.deriveSurfaceWithEach(
+    return coordinator.deriveSurfaceWith(
       _landingDabs!,
       blendMode: blendMode,
       key: frameKey,
@@ -266,6 +260,19 @@ class BrushLiftMoveHistoryCommand
   /// worked out over: the step takes it only over that very picture, and
   /// derives again over one drawn on since.
   ({BitmapSurface from, BitmapSurface? made})? _ahead;
+
+  /// This landing already SHOWN on [frameKey], over [before]: the cel's
+  /// picture now is what it lands as, so the step records [before] and that
+  /// picture as its pair and works nothing out — a stamp drag's trail,
+  /// written on the cel you stand on as it was laid (`_StampTrail`).
+  ///
+  /// ⛔Not put back and laid again: the cel would show three pictures for
+  /// one lift, and whatever reads the cel would lay its answer once each.
+  void shownOver(BitmapSurface before) {
+    final now = coordinator.currentSurfaceOf(frameKey);
+    _preLiftSurface = before;
+    _ahead = (from: now, made: identical(now, before) ? null : now);
+  }
 
   /// The first landing, worked out ahead of the step behind the wait window:
   /// the cel thawed on a worker, the derive — the engine's, so the UI

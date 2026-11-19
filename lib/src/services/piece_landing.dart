@@ -8,7 +8,6 @@ import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart' show SelectionMaskOptions;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_region.dart' show regionInArtworkSpace;
-import 'command.dart';
 import 'commands/brush_lift_move_history_command.dart';
 import 'layer_pose_matrix.dart' show LayerPlacement;
 import 'selection_clip.dart';
@@ -41,6 +40,24 @@ class PieceGround {
   /// The selection's softness — 확장 · 페더 · AA (유저 2026-09-09 「선택의 aa
   /// 따르게」).
   final SelectionMaskOptions options;
+
+  /// This ground on the one physical cel [cel] alone: the ladder's keys
+  /// that name it, in the ladder's order, as [canonicalKeyOf] reads a key —
+  /// the reading the door keys a cel by ([pieceDabs]). What the cut tool's
+  /// ghost shows of the cel on screen, and what a stamp drag shows there as
+  /// it is laid.
+  PieceGround on(
+    BrushFrameKey cel,
+    BrushFrameKey Function(BrushFrameKey key) canonicalKeyOf,
+  ) => PieceGround(
+    cels: [
+      for (final key in cels)
+        if (canonicalKeyOf(key) == cel) key,
+    ],
+    placementOf: placementOf,
+    selection: selection,
+    options: options,
+  );
 }
 
 /// The picture as a row standing at [placement] takes it, in that row's own
@@ -85,7 +102,7 @@ class PieceStamp {
 typedef PieceLanding = ({
   List<BrushDab> dabs,
   SelectionClip? within,
-  Command landing,
+  BrushLiftMoveHistoryCommand landing,
 });
 
 /// One cel's answer from the door, before anything lands: the key that
@@ -132,19 +149,16 @@ typedef PieceDab = ({
 ///
 /// Keyed by the physical cel, in the ladder's order. Empty when nothing
 /// lands — no cel named, or the selection leaves nothing of the piece.
-/// [only] lands on the one physical cel it names ([pieceDabs]).
 Map<BrushFrameKey, PieceLanding> pieceLandings({
   required BrushFrameEditingCoordinator coordinator,
   required PieceGround ground,
   required PieceStamp stamp,
-  BrushFrameKey? only,
   CacheInvalidationSink? cacheInvalidationSink,
 }) {
   final answers = pieceDabs(
     coordinator: coordinator,
     ground: ground,
     stamp: stamp,
-    only: only,
   );
   return {
     for (final MapEntry(key: cel, value: answer) in answers.entries)
@@ -171,15 +185,12 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
 /// ([pieceLandings]) and the one loop that keeps it: what a landing lands,
 /// and what the cut tool's stamp shows of the cel on screen before a click
 /// (brush-fidelity-Q9: the ghost is what lands, so it asks here rather
-/// than answering for the cel itself).
-///
-/// [only] asks for the one physical cel it names; the rest of the ladder
-/// is passed over without reading the selection.
+/// than answering for the cel itself). The ghost asks for the cel on
+/// screen alone ([PieceGround.on]).
 Map<BrushFrameKey, PieceDab> pieceDabs({
   required BrushFrameEditingCoordinator coordinator,
   required PieceGround ground,
   required PieceStamp stamp,
-  BrushFrameKey? only,
 }) {
   final store = coordinator.frameStore;
   final through = _SelectionOnTheRows(
@@ -190,9 +201,6 @@ Map<BrushFrameKey, PieceDab> pieceDabs({
   final answered = <BrushFrameKey, PieceDab>{};
   for (final key in ground.cels) {
     final cel = store.canonicalKeyOf(key);
-    if (only != null && cel != only) {
-      continue;
-    }
     // 🚨ONE LANDING PER PHYSICAL CEL, AND THE MAP IS WHAT SAYS SO — the
     // form a transform's landings keep (`landingsPerCel`); 유저's word for
     // this door is 「변형도구처럼」.

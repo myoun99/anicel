@@ -2985,9 +2985,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         asked = true;
         answered = pieceDabs(
           coordinator: coordinator,
-          ground: ground,
+          ground: ground.on(standing, coordinator.frameStore.canonicalKeyOf),
           stamp: stamp,
-          only: standing,
         )[standing];
       }
       return answered;
@@ -3339,11 +3338,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// stands it behind the window (`BrushLiftMoveHistoryCommand.workAhead`,
   /// 🗣️F-615) — a press on the canvas takes its step at once.
   ///
-  /// [rebuild] false takes the step without rebuilding the panel: a drag
-  /// that lands as the canvas goes away ([_StampTrail.leave]).
+  /// [shown] names the cel a drag's trail was already written on, and the
+  /// picture it was written over: that cel lands as it shows
+  /// (`BrushLiftMoveHistoryCommand.shownOver`). [rebuild] false takes the
+  /// step without rebuilding the panel: a drag that lands as the canvas
+  /// goes away ([_StampTrail.leave]).
   PressedStep _landStamp(
     PieceStamp stamp, {
     PieceGround? ground,
+    ({BrushFrameKey cel, BitmapSurface before})? shown,
     bool rebuild = true,
   }) {
     final coordinator = widget.coordinator;
@@ -3356,6 +3359,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       stamp: stamp,
       cacheInvalidationSink: widget.cacheInvalidationSink,
     );
+    if (shown != null) {
+      landed[shown.cel]?.landing.shownOver(shown.before);
+    }
     if (landed.isEmpty) {
       // No cel named, or nothing of the piece inside the selection: nothing
       // lands, nothing undoes.
