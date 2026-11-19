@@ -2410,6 +2410,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       gradientRangeHold: _rangeHold,
       onActiveStrokeChanged: (stroke) {
         if (_stroke != stroke) {
+          if (_stroke == StrokeInFlight.none) {
+            widget.coordinator?.aStrokeGoesUp();
+          }
           widget.onStrokeInputActiveChanged?.call(stroke);
           // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
           // this — the gesture layer asks for it when an event arrives —

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 
@@ -100,6 +101,12 @@ class BrushFrameEditingCoordinator {
   final bool _laysCelsOnItsCanvas;
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
+
+  /// A stroke goes up over the active cel: what its landing will need
+  /// of the store is on its way before the pen lifts
+  /// ([BrushFrameStore.bringBytesAhead]).
+  void aStrokeGoesUp() =>
+      unawaited(frameStore.bringBytesAhead(_activeFrameKey));
   BrushEditSessionState get activeSessionState => _sessionFor(_activeFrameKey);
 
   /// The cel's CURRENT pixels — the pre-image capture point for

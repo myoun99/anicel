@@ -107,6 +107,14 @@ class BrushFrameStore {
   /// needs none.
   final Map<BrushFrameKey, List<_TakenTile>> _takenKeptInTheFile = {};
 
+  /// How many tiles are written down there — a probe: each once,
+  /// however often its cel cools and is used again.
+  @visibleForTesting
+  int get tilesWrittenDown => _takenKeptInTheFile.values.fold(
+    0,
+    (sum, each) => sum + each.length,
+  );
+
   /// Link resolution (L1): every SINGLE-CEL public operation resolves its
   /// key through this first, so linked layers address ONE physical cel —
   /// "the picture exists once; the members are windows onto it". Editing
@@ -1180,11 +1188,18 @@ class BrushFrameStore {
     if (shell == null) {
       return null;
     }
-    (_takenKeptInTheFile[key] ??= [])
-      ..removeWhere((taken) => taken.tile.target == null)
+    // Each once: a shell cooled is the looks' again with its tiles
+    // still written down ([_coolLoop]), and the next use takes the
+    // same tiles.
+    final taken = _takenKeptInTheFile[key] ??= [];
+    final written = Set<BitmapTile>.identity()
+      ..addAll(taken.map((each) => each.tile.target).nonNulls);
+    taken
+      ..removeWhere((each) => !_waits(each))
       ..addAll([
         for (final MapEntry(key: at, value: tile) in shell.tiles.entries)
-          if (!tile.hasItsBytesHere) (tile: WeakReference(tile), at: at),
+          if (!tile.hasItsBytesHere && written.add(tile))
+            (tile: WeakReference(tile), at: at),
       ]);
     _storeHot(key, shell);
     storeRebuiltDisplayCache(key: key, previewSurface: shell);
@@ -1211,26 +1226,87 @@ class BrushFrameStore {
   /// each is read where the engine holds it, and one neither holds stays
   /// as it is.
   AnicelCelFileRef? _letTheFileRefGo(BrushFrameKey key) {
-    final written = _takenKeptInTheFile.remove(key) ?? const <_TakenTile>[];
-    final living = [
-      for (final taken in written)
-        if (taken.tile.target case final tile? when !tile.hasItsBytesHere)
-          (tile: tile, at: taken.at),
-    ];
-    if (living.isNotEmpty) {
-      final kept = _asKeptOrNull(key);
-      for (final (:tile, :at) in living) {
-        try {
-          (kept?.tiles[at] ?? tile).readPixels(
-            (_, pixels) => tile.keepBytesHere(pixels),
-          );
-        } on Object {
-          // Neither the file nor the engine holds it.
-        }
-      }
-    }
+    _hand(
+      _takenKeptInTheFile.remove(key) ?? const <_TakenTile>[],
+      () => _asKeptOrNull(key),
+    );
     return _fileCels.remove(key);
   }
+
+  /// Whether [taken] lives and holds no bytes here yet.
+  static bool _waits(_TakenTile taken) =>
+      taken.tile.target?.hasItsBytesHere == false;
+
+  /// Each of [written] that waits ([_waits]) is handed its bytes, into
+  /// the tile itself: from what [kept] reads — its cel as the file
+  /// keeps it, asked for once and only where one waits —, else from
+  /// where the engine holds it. One neither holds stays as it is.
+  static void _hand(
+    List<_TakenTile> written,
+    BitmapSurface? Function() kept,
+  ) {
+    late final read = kept();
+    for (final taken in written.where(_waits)) {
+      final tile = taken.tile.target!;
+      try {
+        (read?.tiles[taken.at] ?? tile).readPixels(
+          (_, pixels) => tile.keepBytesHere(pixels),
+        );
+      } on Object {
+        // Neither the file nor the engine holds it.
+      }
+    }
+  }
+
+  /// 🚨THE BYTES A CEL TAKEN AS ITS SHELL WILL NEED
+  /// ([_usedAsItsShell]), BROUGHT HERE AHEAD OF THE EDIT AND OFF THE
+  /// UI THREAD: read and laid on workers as a thaw made ahead is
+  /// ([thawAhead]), and handed to the tiles that wait — the cel is
+  /// then hot with its bytes here, as one thawed is. Asked for as a
+  /// hand goes down on the cel
+  /// (`BrushFrameEditingCoordinator.aStrokeGoesUp`), so the stroke's
+  /// landing finds no tile waiting, where [_letTheFileRefGo] reads the
+  /// file on this thread — the thaw the card
+  /// `cel-thaw-holds-the-ui-thread` took off it (13–32 ms a cel, 저장
+  /// 2026-11-14). An edit no press comes before — a fill, a cut, a
+  /// move — and a stroke shorter than the read still read there.
+  ///
+  /// As [thawAhead]: asked again while it runs it answers the same
+  /// future; it never throws, and where the file would not read the
+  /// tiles wait on. 🚨THE TILES ARE THOSE WRITTEN DOWN AS ITS TURN
+  /// CAME, and their bytes are read under the ref that kept them then
+  /// ([_keptBlobOffThisThread]) — theirs whatever the cel becomes
+  /// meanwhile, so nothing is asked of its name once they are read.
+  Future<void> bringBytesAhead(BrushFrameKey key) {
+    key = _canonicalize(key);
+    if (!(_takenKeptInTheFile[key]?.any(_waits) ?? false)) {
+      return Future<void>.value();
+    }
+    return _bringing.join(
+      key,
+      () => celThawTurns.run(() async {
+        final ref = _fileCels[key];
+        final written = [...?_takenKeptInTheFile[key]];
+        if (ref == null) {
+          return;
+        }
+        try {
+          final blob = await _keptBlobOffThisThread(key, ref);
+          if (blob == null) {
+            return;
+          }
+          final read = await _layThawed(blob);
+          _hand(written, () => read);
+          // The cel weighs its bytes from here ([HotCelWeights]).
+          _scheduleCooling();
+        } on Object {
+          // The tiles wait on: the door reads them.
+        }
+      }),
+    );
+  }
+
+  final InFlight<BrushFrameKey, void> _bringing = InFlight();
 
   /// [from]'s file ref is [to]'s from here on, with the tiles taken kept
   /// in it ([_takenKeptInTheFile]): a cel renamed is kept where it was.
@@ -2190,7 +2266,11 @@ class BrushFrameStore {
         final cooled = _bakedSurfaces.remove(key);
         _hotWeights.letGo(key);
         _displayCaches.remove(key);
-        if (cooled != null && _takenKeptInTheFile.containsKey(key)) {
+        // ⛔Not one its bytes came to since ([bringBytesAhead]): a
+        // shell is kept outside every budget because it holds none.
+        if (cooled != null &&
+            _takenKeptInTheFile.containsKey(key) &&
+            cooled.keptTileBytes == 0) {
           _shells[key] = (ref: _fileCels[key]!, shell: cooled);
         }
         continue;

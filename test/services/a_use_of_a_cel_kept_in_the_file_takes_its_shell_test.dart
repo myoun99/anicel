@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -222,7 +223,182 @@ void main() {
     });
   });
 
+  group('🚨a hand going down brings the bytes ahead, off this thread', () {
+    const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
+
+    /// How many pictures [edit] put behind the store's wall on this
+    /// thread: the one it stores, and any it thawed here to do so —
+    /// counted behind a wall that is not the whole pasteboard
+    /// ([BrushFrameStore.celsWalledHere]), which [behindAWall] sets.
+    int walledHereBy(void Function() edit) {
+      final was = store.celsWalledHere;
+      edit();
+      return store.celsWalledHere - was;
+    }
+
+    void behindAWall() => refs = keepInAFile(
+      store,
+      {key('f'): ink(4)},
+      pasteboardReach: PasteboardReach.quarter,
+    );
+
+    test('into the tiles that wait: the cel hot as it was, the file\'s '
+        'still, and weighing its bytes', () async {
+      final tile = await aTileTaken('f');
+      final weighed = store.hotBakedBytes;
+
+      await store.bringBytesAhead(key('f'));
+
+      expect(tile.hasItsBytesHere, isTrue);
+      expect(tile.pixels, pixelsOf(4));
+      expect(
+        store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin],
+        same(tile),
+      );
+      expect(store.isCelFileBacked(key('f')), isTrue);
+      expect(engine.reads, 0, reason: 'read from the file, on a worker');
+      expect(store.hotBakedBytes, weighed + tileBytes);
+    });
+
+    test('🚨the edit that follows thaws nothing on this thread, and '
+        'reads no slot', () async {
+      behindAWall();
+      final tile = await aTileTaken('f');
+      await store.bringBytesAhead(key('f'));
+
+      final walled = walledHereBy(
+        () => store.storeBakedSurface(key('f'), ink(9)),
+      );
+
+      expect(store.isCelFileBacked(key('f')), isFalse, reason: '⛔premise');
+      expect(walled, 1, reason: 'the picture it stores, and no thaw');
+      expect(engine.reads, 0);
+      expect(tile.pixels, pixelsOf(4));
+    });
+
+    test('an edit no press came before thaws its cel here: the probe '
+        'sees it', () async {
+      behindAWall();
+      await aTileTaken('f');
+
+      expect(
+        walledHereBy(() => store.storeBakedSurface(key('f'), ink(9))),
+        2,
+        reason: 'the picture it stores, and the cel thawed for its tile',
+      );
+    });
+
+    test('asked again while it runs, it is the same bringing', () async {
+      await aTileTaken('f');
+
+      final first = store.bringBytesAhead(key('f'));
+      final again = store.bringBytesAhead(key('f'));
+
+      expect(again, same(first));
+      await first;
+    });
+
+    test('nothing is asked where no tile waits: a cel never taken, and '
+        'one whose bytes came', () async {
+      await aShellOf('g');
+      await store.bringBytesAhead(key('g'));
+      expect(store.hotBakedSurfaceOrNull(key('g')), isNull);
+
+      final tile = await aTileTaken('f');
+      await store.bringBytesAhead(key('f'));
+      File(refs[key('f')]!.filePath).deleteSync();
+      await store.bringBytesAhead(key('f'));
+      expect(tile.pixels, pixelsOf(4));
+    });
+
+    test('an edit landing while they are read keeps what it brought '
+        'itself', () async {
+      final tile = await aTileTaken('f');
+
+      final brought = store.bringBytesAhead(key('f'));
+      store.storeBakedSurface(key('f'), ink(9));
+      await brought;
+
+      expect(tile.pixels, pixelsOf(4));
+      expect(
+        store.bakedSurfaceOrNull(key('f'))!.tiles[origin]!.pixels,
+        pixelsOf(9),
+      );
+    });
+
+    test('where the file will not read, the tiles wait on — and are '
+        'read where the engine holds them as the edit lands', () async {
+      final tile = await aTileTaken('f');
+      File(refs[key('f')]!.filePath).deleteSync();
+
+      await store.bringBytesAhead(key('f'));
+      expect(tile.hasItsBytesHere, isFalse);
+      store.storeBakedSurface(key('f'), ink(9));
+
+      expect(tile.pixels, pixelsOf(4));
+      expect(engine.readsOfASlot, 1);
+    });
+
+    test('a cel its bytes came to, cooled, is no shell of the looks\': '
+        'a shell holds none', () async {
+      await aTileTaken('f');
+      await store.bringBytesAhead(key('f'));
+      store.storeBakedSurface(key('h'), ink(7));
+
+      store.hotCelByteBudget = 0;
+      store.storeBakedSurface(key('h'), ink(8));
+      await store.drainCooling();
+
+      expect(store.hotBakedSurfaceOrNull(key('f')), isNull, reason: 'cooled');
+      expect(store.shells, isEmpty);
+    });
+
+    test('and its tile is struck off as the cel is taken again: only '
+        'what waits is written down', () async {
+      final tile = await aTileTaken('f');
+      await store.bringBytesAhead(key('f'));
+      store.storeBakedSurface(key('h'), ink(7));
+      store.hotCelByteBudget = 0;
+      store.storeBakedSurface(key('h'), ink(8));
+      await store.drainCooling();
+      store.hotCelByteBudget = 1 << 30;
+
+      final again = await aTileTaken('f');
+
+      expect(again, isNot(same(tile)), reason: '⛔premise: a new shell');
+      expect(tile.hasItsBytesHere, isTrue, reason: '⛔premise: and held');
+      expect(store.tilesWrittenDown, 1);
+    });
+  });
+
   group('🚨the bytes come here before the file ref goes', () {
+    test('🚨to each tile once, however often its cel cooled and was '
+        'used again', () async {
+      final tile = await aTileTaken('f');
+      store.storeBakedSurface(key('h'), ink(7));
+      store.hotCelByteBudget = 0;
+      store.storeBakedSurface(key('h'), ink(8));
+      await store.drainCooling();
+      expect(
+        store.hotBakedSurfaceOrNull(key('f')),
+        isNull,
+        reason: '⛔premise: cooled',
+      );
+      store.hotCelByteBudget = 1 << 30;
+      store.bakedSurfaceOrNull(key('f'));
+      expect(
+        store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin],
+        same(tile),
+        reason: '⛔premise: the same shell, used again',
+      );
+      expect(store.tilesWrittenDown, 1);
+
+      store.storeBakedSurface(key('f'), ink(9));
+
+      expect(tile.hasItsBytesHere, isTrue);
+      expect(tile.pixels, pixelsOf(4));
+    });
+
     test('as the cel is drawn on — read from the file once, not from the '
         'engine, into the very tile', () async {
       final tile = await aTileTaken('f');
