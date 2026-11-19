@@ -275,6 +275,27 @@ void main() {
       await tester.pump();
       expect(nodes['a']!.hasFocus, isTrue, reason: 'premise: the shown can');
     });
+
+    testWidgets('a stack given room follows the child shown as it changes '
+        'its size', (tester) async {
+      final width = ValueNotifier<double>(10);
+      addTearDown(width.dispose);
+      Widget changing(String key) => ValueListenableBuilder<double>(
+        valueListenable: width,
+        builder: (context, value, _) => SizedBox(width: value, height: 20),
+      );
+      const room = BoxConstraints(maxWidth: 100, maxHeight: 100);
+      await tester.pumpWidget(stack('a', changing, box: room));
+
+      final box = tester.renderObject<RenderBox>(
+        find.byType(KeyedKeepAliveStack<String, int>),
+      );
+      for (final value in [20.0, 30.0]) {
+        width.value = value;
+        await tester.pump();
+        expect(box.size, Size(value, 20));
+      }
+    });
   });
 }
 
