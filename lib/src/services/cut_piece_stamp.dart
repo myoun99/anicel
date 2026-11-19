@@ -6,7 +6,6 @@ import '../models/canvas_point.dart';
 import '../models/cut_piece.dart';
 import 'canvas_selection.dart';
 import 'resample/resample_kernel.dart';
-import 'segment_spacing_walk.dart';
 
 /// One stamp of [piece], centred on [center], at [opacity].
 ///
@@ -126,6 +125,16 @@ BrushDab buildCutPasteDab(CutPiece piece, {double opacity = 1.0}) {
 /// from accumulating where they stack. ↩️That law was all there was: the
 /// user had taken the spacing knob out of the held piece (2026-08-12:
 /// 「스페이싱 같은 거 없애고」).
+///
+/// 🚨A HAND THAT ENDS ON A STEP LAYS THAT STEP (card
+/// a-stamp-drag-drops-its-last-stamp-on-an-exact-step, 검증 2026-11-20):
+/// each place is its own multiple of the spacing, counted once, and a step
+/// the hand reaches to within [_onTheHand] is laid. ↩️The walk added the
+/// spacing to itself, and the sum ran past an end the hand had reached: 35%
+/// of a 4 px piece dragged 14 px laid 9 stamps, not 10 — one exact end in
+/// six across spacings of 1–200% and pieces of 1–300 px (measured
+/// 2026-11-20). ↩️That walk was a stepper shared with the brush's offline
+/// dab walk (49de67216) until that walk went (c7fff282b).
 List<CanvasPoint> cutStampCentersAlong({
   required CutPiece piece,
   required CanvasPoint from,
@@ -137,15 +146,14 @@ List<CanvasPoint> cutStampCentersAlong({
     spacing * math.max(piece.stampWidth, piece.stampHeight),
   );
   final distance = from.distanceTo(to);
-  if (distance < apart) {
-    return const [];
-  }
-  final centres = <CanvasPoint>[];
-  placeAlongSegment(
-    length: distance,
-    spacing: apart,
-    firstAt: apart,
-    place: (t) => centres.add(CanvasPoint.lerp(from, to, t)),
-  );
-  return centres;
+  final steps = ((distance + _onTheHand) / apart).floor();
+  return [
+    for (var step = 1; step <= steps; step += 1)
+      CanvasPoint.lerp(from, to, math.min(1.0, step * apart / distance)),
+  ];
 }
+
+/// How far short of a step the hand may stop and still stand on it, in
+/// pixels: a double's rounding of a share of a piece, and of a point
+/// brought from the canvas onto a row — far under anything a hand means.
+const double _onTheHand = 1e-6;
