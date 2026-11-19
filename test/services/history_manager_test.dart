@@ -269,6 +269,22 @@ void _foldTests() {
       expect(earlier.last.undoCount, 0);
     });
 
+    test('a run longer than the stack is deep takes back what is left of '
+        'it, and then nothing', () {
+      final history = HistoryManager(maxEntries: 4);
+      final mark = history.gestures.mark;
+      for (var i = 0; i < 6; i += 1) {
+        history.execute(_FakeCommand());
+      }
+
+      for (var i = 0; i < 4; i += 1) {
+        expect(history.gestures.retractSince(mark), isTrue);
+      }
+
+      expect(history.gestures.keepsSince(mark), isFalse);
+      expect(history.gestures.retractSince(mark), isFalse);
+    });
+
     test('what the byte budget sheds off the deep end moves the run\'s '
         'start too', () async {
       final history = HistoryManager();
