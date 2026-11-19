@@ -119,9 +119,12 @@ void main() {
       expect(turns(['a']), isTrue);
       expect(turns(['a', 'a']), isTrue, reason: 'one cel, shown twice');
       expect(turns(['a', 'b']), isFalse);
-      // F-613-Q1 asks whether an EMPTY row may become an empty image row
-      // (F-98); until it is answered the law reads as written: exactly one.
-      expect(turns(const []), isFalse);
+      expect(
+        turns(const []),
+        isTrue,
+        reason: '🗣️F-613-Q1 「허용 — 빈 이미지 행이 된다」 — an image row of '
+            'none (F-98)',
+      );
     });
 
     test('a conte holding several cels turns into an image by the same '

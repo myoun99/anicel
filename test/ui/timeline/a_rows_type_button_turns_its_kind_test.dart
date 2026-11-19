@@ -181,6 +181,24 @@ void main() {
     expect(kindOf(session, 'a'), LayerKind.animation);
   });
 
+  testWidgets('🗣️F-613-Q1 「허용 — 빈 이미지 행이 된다」: a row of no cels '
+      'turns into an image row of none, and back in one undo', (
+    tester,
+  ) async {
+    final session = await open(tester, [row('empty')]);
+
+    await openList(tester, 'empty');
+    expect(item(tester, 'empty', LayerKind.image).enabled, isTrue);
+    await tester.tap(itemFinder('empty', LayerKind.image));
+    await tester.pumpAndSettle();
+
+    expect(kindOf(session, 'empty'), LayerKind.image);
+    expect(layerOf(session, 'empty').timeline, isEmpty, reason: 'F-98');
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(kindOf(session, 'empty'), LayerKind.animation);
+  });
+
   testWidgets('a kind the row cannot take is shown and shut — the cut\'s '
       'second conte, an image of two cels', (tester) async {
     final session = await open(tester, [
