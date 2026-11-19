@@ -273,6 +273,13 @@ void main() {
       expect(decide('wide', line, machine: 18), 12);
       expect(decide('a', line, machine: 18), 6);
       expect(decide('b', line, machine: 18), isNull);
+      // A run beside it takes its third, not half, however much stands
+      // free while the check's own batch holds few.
+      final small = [
+        runningAt('wide', 3, work: 40000, first: true),
+        waiting('a', waited: 600),
+      ];
+      expect(decide('a', small, machine: 18), 6);
       // As it runs: what its batch holds is held; the next run takes six.
       final running = [
         runningAt('wide', 12, work: 40000, first: true),
