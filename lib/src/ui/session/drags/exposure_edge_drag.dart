@@ -74,11 +74,12 @@ TimelineFrameRangeSelection? _bandTheGripActsOn({
   return live;
 }
 
-/// The live selection held for the drag when the grip acts on it, so it
-/// follows its blocks through the drag (F-619). However many blocks it
-/// holds — one is the single-block drag's, more the bulk's — it is held:
-/// the count picks which retime answers, never whether the band follows.
-HeldBand? _holdTheBandTheGripActsOn({
+/// The live selection held for the drag, so it follows its blocks through
+/// the drag (F-619) — whether the grip acts on it or pushes its blocks from
+/// beside it (F-619-Q1). However many blocks it holds — one is the
+/// single-block drag's, more the bulk's — it is held: the count picks which
+/// retime answers, never whether the band follows.
+HeldBand? _holdTheBand({
   required ExposureBeginRoles beginRoles,
   required ExposureGrip grip,
   required bool isDrawingBlock,
@@ -88,7 +89,7 @@ HeldBand? _holdTheBandTheGripActsOn({
     grip: grip,
     isDrawingBlock: isDrawingBlock,
   );
-  return band == null ? null : beginRoles.rangeSelections.holdBand();
+  return beginRoles.rangeSelections.holdBand(actsOnIt: band != null);
 }
 
 /// Captures the bulk-retime set when the dragged edge sits inside the live
@@ -340,7 +341,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       blockStart: grip.blockStartIndex,
       bulk: bulk,
       cutSync: _captureCutSync(roles: roles, bulk: bulk, anchor: layer),
-      band: _holdTheBandTheGripActsOn(
+      band: _holdTheBand(
         beginRoles: beginRoles,
         grip: grip,
         isDrawingBlock: isDrawingBlock,
@@ -398,9 +399,11 @@ class ExposureEdgeDrag implements EditorDragSession {
       cutSync: grip.startIsGlobal
           ? null
           : _captureCutSync(roles: roles, bulk: bulk, anchor: null),
+      // A GLOBAL-keyed grip acts on no band, and its block may still be one
+      // the band holds, or push them.
       band: grip.startIsGlobal
-          ? null
-          : _holdTheBandTheGripActsOn(
+          ? beginRoles.rangeSelections.holdBand(actsOnIt: false)
+          : _holdTheBand(
               beginRoles: beginRoles,
               grip: grip,
               isDrawingBlock: true,
@@ -421,6 +424,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     required TrackSeDisplay trackSe,
     required Cut cut,
     required int blockStartIndex,
+    required HeldBand? band,
   }) {
     final row = storyboardLayerForCut(cut);
     return row == null
@@ -435,6 +439,7 @@ class ExposureEdgeDrag implements EditorDragSession {
               edge: TimelineBlockEdge.end,
               startIsGlobal: false,
             ),
+            band: band,
           );
   }
 
@@ -452,11 +457,16 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// alone, as its grip on the timeline re-times it. Null when the cut
   /// holds no such row, the row owns no timing (a SYNCED attach row: its
   /// base's grips move both, W5) or holds no such drawing block of its own.
+  ///
+  /// The strip acts on no band: its grips re-time their own block. [band]
+  /// is the one held beside them, followed where the drag moves the
+  /// blocks it holds (F-619-Q1).
   static ExposureEdgeDrag? beginOnRowOf({
     required EdgeDragRoles roles,
     required TrackSeDisplay trackSe,
     required Cut cut,
     required ExposureGrip grip,
+    required HeldBand? band,
   }) {
     final row = cut.layers
         .where((layer) => layer.id == grip.layerId)
@@ -483,7 +493,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       cutSync: ridesCutLength(row)
           ? cutSyncSnapshotFor(project: roles.project, cut: cut, row: row)
           : null,
-      band: null,
+      band: band,
     );
   }
 
@@ -496,6 +506,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     required EdgeDragRoles roles,
     required TrackSeDisplay trackSe,
     required Cut cut,
+    required HeldBand? band,
   }) {
     final row = storyboardLayerForCut(cut);
     if (row == null) {
@@ -515,6 +526,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       trackSe: trackSe,
       cut: cut,
       blockStartIndex: lastKey,
+      band: band,
     );
   }
 

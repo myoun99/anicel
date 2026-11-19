@@ -232,7 +232,7 @@ class ExposureVerbs {
     //
     // Held BEFORE the retime: a conte row's comma moves its cut, and the
     // cut's refresh lets the band go (F-619).
-    final band = _rangeSelections.holdBand();
+    final band = _rangeSelections.holdBand(actsOnIt: true);
     retimeKeepingTheCutOnItsRow({
       for (final entry in targets.entries)
         entry.key: {for (final start in entry.value) start: comma},

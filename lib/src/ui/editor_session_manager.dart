@@ -1597,7 +1597,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings, followTheBand: rangeSelections.followTheBandThrough);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -2922,9 +2922,14 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
 
-    activeCutControllers.timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: mintFrameId(layer.id),
+    // At a block's head the new drawing pushes the block and the ones glued
+    // after it, a band's blocks among them (F-619-Q1).
+    final timeline = activeCutControllers.timelineController;
+    rangeSelections.followTheBandThrough(
+      () => timeline.createDrawingFrameForLayer(
+        layerId: layer.id,
+        frameId: mintFrameId(layer.id),
+      ),
     );
     notifyListeners();
   }
@@ -4059,6 +4064,7 @@ class EditorSessionManager extends ChangeNotifier
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
     sheetPhotos: sheetPhotoEdits,
+    followTheBand: rangeSelections.followTheBandThrough,
   );
 
   // ── the fonts registered with the project: their own object ─────────

@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/attached_layer_resolve.dart' show isSyncedAttachedLayer;
-import '../../models/held_blocks.dart' show HeldBand, HeldRun, heldRunOn;
+import '../../models/held_blocks.dart'
+    show HeldBand, HeldRun, heldRunOn, heldSpanOn, keptSpanOn;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
@@ -927,9 +928,11 @@ class RangeSelections {
     return byLayer.isEmpty ? null : byLayer;
   }
 
-  /// THE live band, held for an edit acting on it so the band follows the
-  /// blocks it holds wherever the edit puts them ([HeldBand]) — null when
-  /// there is no band.
+  /// THE live band, held for an edit that can move the blocks it holds so
+  /// the band follows them wherever the edit puts them ([HeldBand]) — null
+  /// when there is no band. Whether the edit [actsOnIt] is how they are
+  /// found again ([HeldRun]): counted from the row's ends when it does, by
+  /// the drawings they show when it is an edit beside them.
   ///
   /// Its blocks are every row's own, in COMMIT keys — the ones a delete
   /// takes ([selectionBlocksToDeleteByLayer]): a row whose timing an edit
@@ -946,21 +949,30 @@ class RangeSelections {
   /// same day: three sounds on ones, pressed 2 then 1, left the third on
   /// twos); and the cut's band came back naming its layers alone, so a lane
   /// it had swept was let go by the press.
-  HeldBand? holdBand() {
+  HeldBand? holdBand({required bool actsOnIt}) {
     final rows = <LayerId, HeldRun>{
       for (final MapEntry(key: id, value: starts)
           in (selectionBlocksToDeleteByLayer() ?? const {}).entries)
         if (_project.commitLayerById(id) case final layer?)
           id: ?heldRunOn(layer, starts),
     };
+    final find = actsOnIt ? heldSpanOn : keptSpanOn;
     if (_selection.frameRangeSelection.value case final inCut?) {
+      final cut = _project.activeCutId;
       return HeldBand(
         band: (start: inCut.startIndex, endExclusive: inCut.endIndexExclusive),
         rows: rows,
+        find: find,
         behind: _project.rowAxisOffset,
         committed: _project.commitLayerById,
-        write: (span) =>
-            _selection.frameRangeSelection.value = inCut.spanning(span),
+        write: (span) {
+          // A cut's band stands in its cut: an edit that took the cut away
+          // — a lead edge pulled back past it (I-179) — leaves it nowhere,
+          // and another cut's rows are not its rows.
+          if (_project.activeCutId == cut) {
+            _selection.frameRangeSelection.value = inCut.spanning(span);
+          }
+        },
       );
     }
     if (_selection.trackFrameRangeSelection.value case final onTrack?) {
@@ -970,6 +982,7 @@ class RangeSelections {
           endExclusive: onTrack.endFrameExclusive,
         ),
         rows: rows,
+        find: find,
         // The track's rows key the track's own axis: nothing lies behind it.
         behind: (_) => 0,
         committed: _project.commitLayerById,
@@ -978,6 +991,15 @@ class RangeSelections {
       );
     }
     return null;
+  }
+
+  /// [edit], one that can push the band's blocks without acting on them,
+  /// with the band following them ([holdBand]) — after everything the edit
+  /// does, a cut's refresh that lets the band go among it.
+  void followTheBandThrough(void Function() edit) {
+    final band = holdBand(actsOnIt: false);
+    edit();
+    band?.follow();
   }
 
   /// THE band a shove left standing, grown over the blocks it holds now —

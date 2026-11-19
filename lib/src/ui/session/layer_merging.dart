@@ -308,7 +308,7 @@ class LayerMerging {
   /// merge was one of the edits a band did not follow (F-619): it is held
   /// before the write and laid over its blocks after the refresh.
   bool landBlocks(BlockMergePlan plan) {
-    final band = _rangeSelections.holdBand();
+    final band = _rangeSelections.holdBand(actsOnIt: true);
     if (!_lands(plan.cut, plan.layers, 'Merge blocks')) {
       return false;
     }

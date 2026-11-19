@@ -17,6 +17,7 @@ import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../../models/track_id.dart';
 import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
+import '../../../models/held_blocks.dart' show HeldBand;
 import '../../../services/editing/cut_deletion_helpers.dart' show CutsLeaving;
 import '../../../services/project_lookup.dart' show celBankLanesOf;
 import '../../storyboard_layer_policy.dart';
@@ -51,10 +52,12 @@ sealed class CutTrimDrag implements EditorDragSession {
     required CutId cutId,
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> beforeGaps,
+    required HeldBand? band,
   }) : _roles = roles,
        _cutId = cutId,
        _beforeDurations = beforeDurations,
-       _beforeGaps = beforeGaps;
+       _beforeGaps = beforeGaps,
+       _band = band;
 
   /// Starts a duration/gap drag on [cutId]'s [edge]; null when the cut is
   /// not on any track's layout — no object, no drag.
@@ -81,6 +84,7 @@ sealed class CutTrimDrag implements EditorDragSession {
     required EdgeDragRoles roles,
     required CutId cutId,
     required TimelineBlockEdge edge,
+    required HeldBand? band,
     int panelIndex = 0,
   }) {
     final layout = buildStoryboardTimelineLayout(
@@ -102,11 +106,13 @@ sealed class CutTrimDrag implements EditorDragSession {
         layout: layout,
         entry: entry,
         panelIndex: panelIndex,
+        band: band,
       ),
       TimelineBlockEdge.end => _beginTrail(
         roles: roles,
         layout: layout,
         entry: entry,
+        band: band,
       ),
     };
   }
@@ -124,6 +130,7 @@ sealed class CutTrimDrag implements EditorDragSession {
     required List<StoryboardTimelineLayoutEntry> layout,
     required StoryboardTimelineLayoutEntry entry,
     required int panelIndex,
+    required HeldBand? band,
   }) {
     final trackEntries = [
       for (final candidate in layout)
@@ -142,6 +149,7 @@ sealed class CutTrimDrag implements EditorDragSession {
       },
       order: [for (final candidate in trackEntries) candidate.cutId],
       panelIndex: panelIndex,
+      band: band,
     );
   }
 
@@ -149,6 +157,7 @@ sealed class CutTrimDrag implements EditorDragSession {
     required EdgeDragRoles roles,
     required List<StoryboardTimelineLayoutEntry> layout,
     required StoryboardTimelineLayoutEntry entry,
+    required HeldBand? band,
   }) {
     StoryboardTimelineLayoutEntry? next;
     for (final candidate in layout) {
@@ -167,6 +176,7 @@ sealed class CutTrimDrag implements EditorDragSession {
         if (next != null) next.cutId: next.cut.leadingGapFrames,
       },
       nextCutId: next?.cutId,
+      band: band,
     );
   }
 
@@ -174,6 +184,11 @@ sealed class CutTrimDrag implements EditorDragSession {
   final CutId _cutId;
   final Map<CutId, int> _beforeDurations;
   final Map<CutId, int> _beforeGaps;
+
+  /// The live band, held so it follows the conte panels it holds where the
+  /// trim re-tiles them, each step and past the release's refresh, and
+  /// back as it was found when the drag is let go of (F-619-Q1).
+  final HeldBand? _band;
 
   /// What the release would commit; null while the drag has not left its
   /// frame. Fields, never the preview channel: a consumer clearing
@@ -210,6 +225,7 @@ sealed class CutTrimDrag implements EditorDragSession {
     if (!changed) {
       _after = null;
       _roles.dragPreview.value = null;
+      _band?.restore();
       return;
     }
     final repository = _roles.project.repository;
@@ -238,6 +254,7 @@ sealed class CutTrimDrag implements EditorDragSession {
             ),
     );
     _roles.dragPreview.value = preview;
+    _band?.follow({for (final edit in rowEdits) edit.after.id: edit.after});
   }
 
   /// The dragged cut's track as the release leaves it once [removed] are
@@ -258,9 +275,16 @@ sealed class CutTrimDrag implements EditorDragSession {
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
-  /// the command's execute applies the final durations AND gaps.
+  /// the command's execute applies the final durations AND gaps — and the
+  /// band over the panels as they landed, after the refresh that lets it
+  /// go.
   @override
   void commit() {
+    _land();
+    _band?.follow();
+  }
+
+  void _land() {
     final after = _after;
     _roles.dragPreview.value = null;
     if (after == null) {
@@ -335,6 +359,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   @override
   void cancel() {
     _roles.dragPreview.value = null;
+    _band?.restore();
   }
 
   /// The storyboard-row rewrites a duration change owes, one per resized cut
@@ -419,6 +444,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     required super.cutId,
     required super.beforeDurations,
     required super.beforeGaps,
+    required super.band,
     required List<CutId> order,
     required int panelIndex,
   }) : _order = order,
@@ -613,6 +639,7 @@ final class CutTrailTrimDrag extends CutTrimDrag {
     required super.cutId,
     required super.beforeDurations,
     required super.beforeGaps,
+    required super.band,
     required CutId? nextCutId,
   }) : _nextCutId = nextCutId,
        super._();

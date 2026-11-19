@@ -61,13 +61,15 @@ class MediaPool {
     required AudioConformStore conforms,
     required MediaFingerprintLedger fingerprints,
     required SheetPhotoEdits sheetPhotos,
+    required void Function(void Function() edit) followTheBand,
   }) : _project = project,
        _changes = changes,
        _file = file,
        _staging = staging,
        _conforms = conforms,
        _fingerprints = fingerprints,
-       _sheetPhotos = sheetPhotos;
+       _sheetPhotos = sheetPhotos,
+       _followTheBand = followTheBand;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -79,6 +81,10 @@ class MediaPool {
   /// The photos the sheets keep of the pool's files (I-97): uses the project
   /// does not hold, and the pool's edits of them.
   final SheetPhotoEdits _sheetPhotos;
+
+  /// Runs an edit that can push the blocks a band holds with the band
+  /// following them (`RangeSelections.followTheBandThrough`, F-619-Q1).
+  final void Function(void Function() edit) _followTheBand;
 
   /// The project's media pool, in pool order (the browser panel's list).
   List<MediaAsset> get mediaAssets =>
@@ -411,19 +417,22 @@ class MediaPool {
       return;
     }
     final file = normalizedMediaPath(path);
-    _project.historyManager.runAsOneStep('Sync to placement preset', () {
-      for (final place in chosen) {
-        switch (place.use) {
-          case final FrameMediaUse use:
-            _syncSoundPlace(file, use, place.placed, fields);
-          case final RowMediaUse use:
-            _syncPictureRow(use, place, fields);
-          default:
-          // No other use is a place a sync sets (`syncPlacesOf`).
+    // A block a sync lengthens pushes the ones glued after it.
+    _followTheBand(() {
+      _project.historyManager.runAsOneStep('Sync to placement preset', () {
+        for (final place in chosen) {
+          switch (place.use) {
+            case final FrameMediaUse use:
+              _syncSoundPlace(file, use, place.placed, fields);
+            case final RowMediaUse use:
+              _syncPictureRow(use, place, fields);
+            default:
+            // No other use is a place a sync sets (`syncPlacesOf`).
+          }
         }
-      }
+      });
+      _changes.refreshAfterCutCommand();
     });
-    _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
 

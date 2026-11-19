@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import '../../models/cut_id.dart';
+import '../../models/held_blocks.dart' show HeldBand;
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../storyboard_layer_policy.dart';
@@ -254,6 +255,7 @@ class EdgeDragVerbs {
             trackSe: _beginRoles.trackSe,
             cut: cut,
             blockStartIndex: blockStartIndex,
+            band: _bandBeside(),
           ),
         );
   }
@@ -283,9 +285,16 @@ class EdgeDragVerbs {
               edge: edge,
               startIsGlobal: false,
             ),
+            band: _bandBeside(),
           ),
         );
   }
+
+  /// The live band, held beside a grip on the strip or on a cut's edge:
+  /// those act on no band, and their drag may still move the blocks one
+  /// holds (F-619-Q1).
+  HeldBand? _bandBeside() =>
+      _beginRoles.rangeSelections.holdBand(actsOnIt: false);
 
   /// Takes a strip grip's comma drag and joins it to the cut-edge
   /// continuations ([updateCutEdgeDrag] and friends): the strip's grips
@@ -347,6 +356,7 @@ class EdgeDragVerbs {
             roles: _roles,
             trackSe: _beginRoles.trackSe,
             cut: cut,
+            band: _bandBeside(),
           ),
         )) {
       return true;
@@ -355,6 +365,7 @@ class EdgeDragVerbs {
       roles: _roles,
       cutId: cutId,
       edge: edge,
+      band: _bandBeside(),
       panelIndex: panelIndex,
     );
     if (trim == null) {

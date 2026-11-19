@@ -37,7 +37,7 @@ class RunFramesAddDrag implements EditorDragSession {
 
   /// Starts the drag at the edge of [runs] — each row's runs named by their
   /// first block's start; null when no row of them stands — no object, no
-  /// drag. [band] is the live band when the runs are its (F-619).
+  /// drag. [band] is the live band, held (F-619).
   static RunFramesAddDrag? begin({
     required Map<LayerId, List<int>> runs,
     required bool atEnd,
@@ -90,10 +90,11 @@ class RunFramesAddDrag implements EditorDragSession {
   final void Function(List<({Layer before, Layer after})> edits)
   _commitLayerDrags;
 
-  /// The live band when the runs are its, held so it follows them over the
-  /// frames each step gives them, and back as it was found when the drag is
-  /// let go of (F-619). The release writes what the last step showed and
-  /// lets no band go, so the band stands where that step left it.
+  /// The live band, held so it follows its blocks over the frames each step
+  /// gives its runs — or where a run in front of them pushes them
+  /// (F-619-Q1) — and back as it was found when the drag is let go of
+  /// (F-619). The release writes what the last step showed and lets no band
+  /// go, so the band stands where that step left it.
   final HeldBand? _band;
 
   /// Reserves the drag's new frame ids, deterministically: the same row,

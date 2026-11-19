@@ -56,9 +56,11 @@ class RunFramesAddDragVerbs {
         _changes.warmActiveCut();
         _changes.notifyChanged();
       },
-      band: _rangeSelections.runPressActsOnBand(layerId, blockStartIndex)
-          ? _rangeSelections.holdBand()
-          : null,
+      // Held whether the press adds to the band's runs or to one in front
+      // of them, which pushes its blocks (F-619-Q1).
+      band: _rangeSelections.holdBand(
+        actsOnIt: _rangeSelections.runPressActsOnBand(layerId, blockStartIndex),
+      ),
     );
     if (drag == null) {
       // A refused grip leaves an in-flight drag exactly as it was.
