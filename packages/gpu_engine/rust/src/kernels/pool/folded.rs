@@ -38,6 +38,9 @@
 //! slot, and on a page of folded tiles made for it: a project of one page
 //! would hold a page more for folding. And the tiles a hand is at are the
 //! last stored: each rest would fold what the next stroke lets go.
+//! ↩️But where a page made ahead stands beside it at a rest (2026-11-20):
+//! that page is the room then, and the one that was folds
+//! ([`Pool::rooms_on_the_page_ahead`]).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -404,6 +407,51 @@ impl Pool {
         });
         // The last of the widest from the end is the first of them.
         rooms.rev().max_by_key(|&(_, room)| room).map(|(page, _)| page)
+    }
+
+    /// Takes the page made ahead ([`Pool::make_a_page_ahead`]) as a page
+    /// of nobody's, every slot of it free — the pool's room from here
+    /// ([`Pool::room_page`]), so the tiles of the page that was are a
+    /// fold's and its buffer given back once they lie folded —, where the
+    /// pool has a room, is still half a page from needing the page, and
+    /// may make one ([`Pool::place_of_a_page_more`]): what a rest that
+    /// finds no tile to fold asks (`gpu_engine_pool_fold`). Whether it
+    /// took one. Waits for nothing: the page is made.
+    ///
+    /// 🔬WHY (브러시/렌더링 2026-11-20, F-610 — the main PC, S5_BA cut 352
+    /// as its band filled, no window, six runs): wherever the fill ended
+    /// with less than half a page free the page made ahead stood through
+    /// the rest, 128 MiB no tile lies on, beside a room more than half
+    /// full that no fold is handed — `pool 320 MiB + ahead 128 MiB` at
+    /// the end of three runs, `pool 352 + ahead 0` in the three whose
+    /// fill ended over the half.
+    ///
+    /// ⛔Not let go at the rest: half a page from needing it, the next
+    /// store asks for it again, and waits where it is not made by the
+    /// tile that needs it ([`Pool::make_a_page_ahead`] has what that wait
+    /// was). Taken, the next tiles have a page whole and none is asked.
+    /// ⛔Not at a fold that has tiles next: a band being filled would turn
+    /// every page out half full, a page made and let go for each half.
+    /// ⛔Nor where half a page is free again (tiles let go since it was
+    /// asked for), nor where no page has a slot free — no room, whose
+    /// place it would take, and every tile a fold's already: when a page
+    /// is asked ahead, and how long one made stands, is as it was
+    /// (캔버스 베이스, 11-15) — this says only what a rest makes of one
+    /// beside a room the pool is that near to filling.
+    /// 🔢브러시/렌더링's, said on F-610; no rule of the user's.
+    pub(super) fn rooms_on_the_page_ahead(&mut self, engine: &Engine) -> bool {
+        if self.room_page().is_none() || !self.half_a_page_from_its_next() {
+            return false;
+        }
+        let Ok(given_back) = self.place_of_a_page_more(engine) else {
+            return false;
+        };
+        let Some(buffer) = self.ahead.taken_as(self.bounds().asked()) else {
+            return false;
+        };
+        let book = self.tiles_page(None);
+        self.page_put(given_back, buffer, book);
+        true
     }
 
     /// Gives back the buffer of every page no tile lies on, waiting for

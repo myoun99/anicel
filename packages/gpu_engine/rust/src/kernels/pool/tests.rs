@@ -1113,7 +1113,7 @@ unsafe fn stored_and_done(pool: *mut Pool, engine: *const Engine, cel: u32, byte
 ///
 /// # Safety
 /// `pool` is live.
-unsafe fn ahead(pool: *const Pool) -> &'static str {
+pub(super) unsafe fn ahead(pool: *const Pool) -> &'static str {
     // SAFETY: see the function's contract.
     let held = unsafe { &*pool }.ahead.held();
     match &*held {

@@ -994,3 +994,124 @@ fn a_settle_s_tiles_whole_are_copied_though_its_put_fails() {
     assert_eq!(put, None, "a write to no folded place");
     assert!(laid_on(pool.pages(), &[at(1, 1)]) == tiles[1], "the tile whole lies where it was moved");
 }
+
+/// What a rest asks of the pool, as its verb asks it
+/// (`gpu_engine_pool_fold`): how many tiles it handed a fold, told by
+/// `number`.
+fn asked_at_rest(pool: &mut Pool, number: u64) -> usize {
+    // SAFETY: the pool and the rig's engine are live, the kernels never
+    // let go, and `told` is any thread's to call.
+    unsafe { super::gpu_engine_pool_fold(pool, rig().engine, kernels(), usize::MAX, told, number) }
+}
+
+/// A pool of pages of four tiles and `most_bytes` at most, three tiles
+/// stored on its one page — a slot free, less than half a page — and the
+/// next page made ahead: the pool, where its tiles are, and a page's
+/// bytes.
+fn a_page_ahead_of_three_tiles(most_bytes: u64) -> (Pool, Vec<TileAt>, u64) {
+    use super::tests::ahead;
+    let mut pool = Pool::sized(4, MOST_NAMED, most_bytes).expect("pool");
+    let tiles = [tile(1, 1), tile(2, 2), tile(3, 1)];
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    rig().engine.on_pages_thread(|| ());
+    // SAFETY: the pool is live.
+    assert_eq!(unsafe { ahead(&pool) }, "made", "premise");
+    (pool, places, 4 * TILE_BYTES)
+}
+
+// A rest that finds no tile to fold takes the page made ahead as the
+// pool's room, where the pool is half a page from needing it: the tiles
+// of the room that was are next, and its buffer is given back once they
+// lie folded. Not while tiles are next.
+#[test]
+fn a_rest_with_none_to_fold_takes_the_page_made_ahead_as_the_pool_s_room() {
+    use super::tests::ahead;
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let page = 4 * TILE_BYTES;
+    let tiles: Vec<Vec<u8>> = (1..=7).map(|seed| tile(seed, 1 + seed % 2)).collect();
+    // The first page full and the second with a slot of its four free:
+    // the room, and less than half a page — the next is made ahead.
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    engine.on_pages_thread(|| ());
+    // SAFETY: the pool is live, here and wherever it is asked below.
+    let stands = |pool: &Pool| (unsafe { ahead(pool) }, pool.bytes());
+    assert_eq!(stands(&pool), ("made", 2 * page), "premise");
+    // The first page's tiles are next: the page made ahead stands.
+    let number = numbered();
+    assert_eq!(asked_at_rest(&mut pool, number), 4);
+    assert_eq!(stands(&pool), ("made", 2 * page), "tiles next, it is not taken");
+    assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
+    assert_eq!(pool.settles_unwaited(engine), 4);
+    assert_eq!((pool.pages()[0].size(), pool.bytes()), (NO_PAGE_BYTES, 2 * page), "the first away, folded");
+    // None is next, the second page the room: the page made ahead is the
+    // room in its place — a page of the pool's, counted once —, and the
+    // second's three tiles are next.
+    assert!(pool.to_fold(usize::MAX).is_empty(), "premise");
+    let number = numbered();
+    assert_eq!(asked_at_rest(&mut pool, number), 3);
+    assert_eq!(stands(&pool), ("unasked", 3 * page));
+    assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
+    assert_eq!(pool.settles_unwaited(engine), 3);
+    assert_eq!((pool.pages()[1].size(), pool.bytes()), (NO_PAGE_BYTES, 2 * page), "the room that was, away");
+    assert!(read(&pool, &places) == Some(tiles.concat()), "every tile reads as it was");
+    // The next tile is the new room's first, no page made for it, and a
+    // rest finds nothing more.
+    let cel = pool.cel();
+    assert_eq!(pool.fresh(engine, cel), Ok(at(3, 0)));
+    assert_eq!(asked_at_rest(&mut pool, numbered()), 0);
+    assert_eq!(stands(&pool), ("unasked", 2 * page));
+}
+
+// Where half a page is free again — a tile let go since the page was
+// asked for — a rest leaves the page made ahead standing: how long one
+// made stands is its asking's to say, as it was.
+#[test]
+fn a_rest_takes_no_page_made_ahead_with_half_a_page_free() {
+    use super::tests::ahead;
+    let (mut pool, places, page) = a_page_ahead_of_three_tiles(u64::MAX);
+    pool.release(places[2]).expect("release");
+    assert_eq!(asked_at_rest(&mut pool, numbered()), 0);
+    // SAFETY: the pool is live.
+    assert_eq!((unsafe { ahead(&pool) }, pool.pages().len(), pool.bytes()), ("made", 1, page));
+}
+
+// Nor where the pool has no room — every page full, every tile a fold's
+// already: the page made ahead stands for the next store, as it did.
+#[test]
+fn a_rest_takes_no_page_made_ahead_where_the_pool_has_no_room() {
+    use super::tests::ahead;
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let tiles = [tile(1, 1), tile(2, 2), tile(3, 1), tile(4, 2)];
+    stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    engine.on_pages_thread(|| ());
+    assert_eq!(folded_whole(&mut pool, usize::MAX), 4);
+    assert_eq!(asked_at_rest(&mut pool, numbered()), 0);
+    // SAFETY: the pool is live.
+    assert_eq!((unsafe { ahead(&pool) }, pool.bytes()), ("made", 4 * TILE_BYTES), "the page of folded tiles alone");
+}
+
+// A rest takes no page made ahead past the bytes the pool may make: it
+// goes there, as at a store.
+#[test]
+fn a_rest_lets_the_page_made_ahead_go_past_the_pool_s_bytes() {
+    use super::tests::ahead;
+    let (mut pool, _, page) = a_page_ahead_of_three_tiles(u64::MAX);
+    pool.set_most_bytes(page);
+    assert_eq!(asked_at_rest(&mut pool, numbered()), 0);
+    // SAFETY: the pool is live.
+    assert_eq!((unsafe { ahead(&pool) }, pool.pages().len(), pool.bytes()), ("unasked", 1, page));
+}
+
+// Nor one made against another budget than the pool keeps to now: it
+// stands, the next store's to let go.
+#[test]
+fn a_rest_takes_no_page_made_ahead_against_another_budget() {
+    use super::tests::ahead;
+    let (mut pool, _, page) = a_page_ahead_of_three_tiles(u64::MAX);
+    pool.set_budget_instead(Some(0));
+    assert_eq!(asked_at_rest(&mut pool, numbered()), 0);
+    // SAFETY: the pool is live.
+    assert_eq!((unsafe { ahead(&pool) }, pool.pages().len(), pool.bytes()), ("made", 1, page));
+}

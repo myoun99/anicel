@@ -1013,7 +1013,6 @@ impl Pool {
         if let Some(page) = self.pages.iter().position(with_room) {
             return Ok(page);
         }
-        let (given_back, grows) = (self.next_page()?, self.page_bytes());
         // 🚨Its own bytes are asked here, on the caller's thread: only the
         // OS's count is the device's. 🔬The Surface, FNK_02 cut 59 as the
         // onion's ghosts were laid (2026-11-15, card
@@ -1022,10 +1021,7 @@ impl Pool {
         // handed over unwaited — at each of the 567 stores a pass its
         // ledger made room for, 692 ms of the UI's thread a pass against
         // 41, one up to 27.7 ms.
-        if !self.within_its_bytes(grows) {
-            self.let_the_page_ahead_go(engine);
-            return Err(Full);
-        }
+        let (given_back, grows) = (self.place_of_a_page_more(engine)?, self.page_bytes());
         // A page made ahead is taken here, no thread of the engine's asked
         // ([`Pool::make_a_page_ahead`]) — where it was asked against the
         // budget kept to now: one asked against another is a page the
@@ -1078,13 +1074,19 @@ impl Pool {
                 })
                 .ok_or(Full)?,
         };
+        let book = self.tiles_page(Some(cel));
+        Ok(self.page_put(given_back, buffer, book))
+    }
+
+    /// The book of a page of tiles just made, every slot of it free:
+    /// `cel`'s, or nobody's where none.
+    fn tiles_page(&self, cel: Option<Cel>) -> Page {
         // The first slot first: the one handed out last is first in line.
         let free = (0..self.slots).rev().map(|slot| slot as u16).collect();
         let (holds, stamps) = (vec![0; self.slots], Arc::new(vec![0; self.slots]));
         let lying = Arc::new(vec![NO_TILE; self.slots]);
         let asked_to_fold = vec![0; self.slots];
-        let book = Page::Tiles(Slots { holds, free, cel: Some(cel), stamps, lying, asked_to_fold, away: false });
-        Ok(self.page_put(given_back, buffer, book))
+        Page::Tiles(Slots { holds, free, cel, stamps, lying, asked_to_fold, away: false })
     }
 
     /// Puts a page made — its buffer and its book — in the place of the
@@ -1135,6 +1137,28 @@ impl Pool {
         }
     }
 
+    /// [`Pool::next_page`] where the pool may make a page of tiles more
+    /// within its bytes ([`Pool::within_its_bytes`]) — its own numbers,
+    /// whatever thread asks. Full where it may not, and a page made ahead
+    /// goes there ([`Pool::let_the_page_ahead_go`]): one it can take no
+    /// more.
+    fn place_of_a_page_more(&self, engine: &Engine) -> Result<Option<usize>, Full> {
+        let place = self.next_page().ok().filter(|_| self.within_its_bytes(self.page_bytes()));
+        if place.is_none() {
+            self.let_the_page_ahead_go(engine);
+        }
+        place.ok_or(Full)
+    }
+
+    /// Whether less than half a page is free on the pages of tiles made —
+    /// none of it on a page away ([`Slots::room`]): how near its next page
+    /// the pool asks for it ahead ([`Pool::make_a_page_ahead`], which has
+    /// whose number the half is).
+    fn half_a_page_from_its_next(&self) -> bool {
+        let free: usize = self.pages.iter().flatten().filter_map(Page::slots).map(Slots::room).sum();
+        2 * free < self.slots
+    }
+
     /// Has the pages' thread ([`Engine::pages_posted`]) make the pool's next
     /// page ahead of the tile that will need it, waiting for none of it:
     /// where less than half a page is free on the pages made, none is made
@@ -1172,17 +1196,11 @@ impl Pool {
     /// on a thread of its own it is asked where a slot is taken
     /// ([`Pool::fresh`]).
     fn make_a_page_ahead(&mut self, engine: &Engine) {
-        let grows = self.next_page().ok().map(|_| self.page_bytes()).filter(|&grows| self.within_its_bytes(grows));
-        let Some(grows) = grows else {
-            self.let_the_page_ahead_go(engine);
-            return;
-        };
-        let free: usize = self.pages.iter().flatten().filter_map(Page::slots).map(Slots::room).sum();
-        if 2 * free >= self.slots {
+        if self.place_of_a_page_more(engine).is_err() || !self.half_a_page_from_its_next() {
             return;
         }
         let page = ("pool page", self.page_bytes());
-        self.ahead.asked_of(engine, page, (self.bounds(), grows), || ());
+        self.ahead.asked_of(engine, page, (self.bounds(), page.1), || ());
     }
 
     /// Lets the page made ahead go, on the pages' thread — where pages are
@@ -1779,7 +1797,10 @@ pub unsafe extern "C" fn gpu_engine_pool_unwritten(
 /// `told` is called with `number`, and why the kernels are handed in):
 /// `gpu_engine_pool_settle` is its caller's once it is told.
 /// Returns how many it handed over; none, and `told` is not called — no
-/// tile of the pool's is left to fold as it stands.
+/// tile of the pool's is left to fold as it stands. Where none is next
+/// and a page made ahead stands beside a room half a page from needing
+/// it, that page is the room from here and the tiles of the one that was
+/// are next ([`Pool::rooms_on_the_page_ahead`]).
 ///
 /// # Safety
 /// `pool` and `engine` are live, the pool made on `engine` and its
@@ -1797,7 +1818,10 @@ pub unsafe extern "C" fn gpu_engine_pool_fold(
 ) -> usize {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    let tiles = pool.to_fold(most);
+    let mut tiles = pool.to_fold(most);
+    if tiles.is_empty() && pool.rooms_on_the_page_ahead(engine) {
+        tiles = pool.to_fold(most);
+    }
     // With none to fold, what the last settle could not give back: a page
     // whose last tile lying on it was let go since.
     if tiles.is_empty() {
