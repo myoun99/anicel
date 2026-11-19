@@ -263,16 +263,19 @@ void main() {
   test('a fold of the ledger\'s tiles builds none, nor the read of a tile '
       'that lies folded', () async {
     expect(appGpuFoldKernels.compiled, isNotNull, reason: '⛔premise');
-    final ledger = EngineTileLedger.instance;
+    // A ledger of its own on the app's engine, of pages its one tile
+    // fills: a page with a slot free is its pool's room, none of whose
+    // tiles is a fold's (rust/src/kernels/pool/folded.rs).
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      foldKernels: () => appGpuFoldKernels.compiled,
+      debugTilesAPage: 1,
+    );
     final tile = landedOn(ledger, [null], 9).single;
-    final (bytes, before) = (ledger.pool.bytes, debugKernelsCompiledHere);
+    final before = debugKernelsCompiledHere;
+    expect(await ledger.foldABatch(), isTrue, reason: '⛔premise: folded');
     while (await ledger.foldABatch()) {}
     await appGpuEngine.done();
-    expect(
-      ledger.pool.bytes,
-      greaterThan(bytes),
-      reason: '⛔premise: a page of folded tiles is the pool\'s',
-    );
     expect(tile.pixels.toSet(), {9});
     expect(debugKernelsCompiledHere - before, 0);
   });

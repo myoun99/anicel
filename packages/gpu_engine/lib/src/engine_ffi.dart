@@ -404,10 +404,14 @@ external int crc32Update(int running, Pointer<Uint8> bytes, int length);
 @Native<Uint32 Function()>(symbol: 'gpu_engine_tile_side')
 external int tileSide();
 
-@Native<Pointer<Pool> Function(Pointer<Engine>, Uint64)>(
+@Native<Pointer<Pool> Function(Pointer<Engine>, Uint64, Uint64)>(
   symbol: 'gpu_engine_pool_new',
 )
-external Pointer<Pool> poolNew(Pointer<Engine> engine, int mostBytes);
+external Pointer<Pool> poolNew(
+  Pointer<Engine> engine,
+  int mostPageBytes,
+  int mostBytes,
+);
 
 @Native<Void Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_free')
 external void poolFree(Pointer<Pool> pool);

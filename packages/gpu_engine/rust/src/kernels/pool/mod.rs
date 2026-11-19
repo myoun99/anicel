@@ -152,6 +152,12 @@ impl Page {
         }
     }
 
+    /// Whether its buffer is its own: a page away has given it back
+    /// ([`Slots::away`]).
+    fn is_made(&self) -> bool {
+        !matches!(self, Self::Tiles(Slots { away: true, .. }))
+    }
+
     /// Each tile's stamp: by its slot, or by the granule it lies from.
     fn stamps(&self) -> Stamped {
         match self {
@@ -186,6 +192,21 @@ struct Slots {
     /// tile, told by its stamp. ⛔No mark cleared where a slot is handed
     /// out: a site that forgot would leave its tiles as they are for good.
     asked_to_fold: Vec<u64>,
+    /// Whether the page is away: its buffer given back while its slots
+    /// name tiles still, each lying on another page
+    /// (`folded.rs`, `Pool::gives_back_where_no_tile_lies`). Its slots
+    /// are bytes no more — none of them is handed out ([`Slots::room`])
+    /// —, and the page is given back whole once the last of its tiles is
+    /// let go ([`Pool::release`]).
+    away: bool,
+}
+
+impl Slots {
+    /// The slots a tile may be handed: the free ones, and none of a page
+    /// away.
+    fn room(&self) -> usize {
+        if self.away { 0 } else { self.free.len() }
+    }
 }
 
 /// What names the bytes of each tile a pool holds, as they were when it
@@ -246,8 +267,9 @@ pub(crate) struct Pool {
     /// are told apart from another pool's by ([`Stamps::pool`]).
     id: u64,
     buffers: Vec<wgpu::Buffer>,
-    /// Each page's slots; none where the page was given back and a tile's
-    /// stand-in is its buffer, as a `TileAt` names a page by its place.
+    /// Each page's slots; none where the page was given back and the
+    /// engine's stand-in is its buffer ([`Engine::no_page`]), as a
+    /// `TileAt` names a page by its place.
     pages: Vec<Option<Page>>,
     slots: usize,
     most_pages: usize,
@@ -373,10 +395,22 @@ impl Spare {
         self.taken_where(|_| true)
     }
 
-    /// [`Spare::taken`] where the page was asked against `asked`; none
-    /// taken where it was asked against other bounds.
+    /// [`Spare::taken`] where the page was asked against the budget
+    /// `asked` says is kept to in place of the OS's; none taken where it
+    /// was asked against another.
+    ///
+    /// ⛔Not against the pool's bytes as they stood, which a refusal
+    /// alone keeps ([`Ahead::Refused`]: asked again once they move). A
+    /// page made within them is made, and the pool's pages come and go
+    /// while it waits to be taken: a page of folded tiles is taken at a
+    /// settle, and a page of tiles no tile lies on is given back there
+    /// (`folded.rs`). ↩️Till those (F-610, 2026-11-19) the two were one
+    /// question, a pool's bytes moving only as the page made ahead was
+    /// taken — and with them on, a page asked for as a stroke passed half
+    /// its page was let go where the stroke needed it, the page made
+    /// anew with the stroke waiting.
     fn taken_as(&self, asked: Asked) -> Option<wgpu::Buffer> {
-        self.taken_where(|made| *made == asked)
+        self.taken_where(|made| made.budget_instead == asked.budget_instead)
     }
 
     fn taken_where(&self, take: impl Fn(&Asked) -> bool) -> Option<wgpu::Buffer> {
@@ -537,16 +571,17 @@ impl Writing {
 }
 
 impl Pool {
-    /// A pool of pages as large as a binding of this device holds, 128 MiB
-    /// at most, that makes no more pages than `most_bytes` hold — 1a ③'s
-    /// budget, its store's to give.
+    /// [`Pool::paged`] of pages as large as it makes them: the app's.
+    #[cfg(test)]
     pub(crate) fn new(engine: &Engine, most_bytes: u64) -> Option<Self> {
-        Self::paged(engine, MOST_PAGE_BYTES, most_bytes)
+        Self::paged(engine, u64::MAX, most_bytes)
     }
 
-    /// [`Pool::new`] of pages of `most_page_bytes` at most.
+    /// A pool of pages as large as a binding of this device holds, 128 MiB
+    /// and `most_page_bytes` at most, that makes no more pages than
+    /// `most_bytes` hold — 1a ③'s budget, its store's to give.
     fn paged(engine: &Engine, most_page_bytes: u64, most_bytes: u64) -> Option<Self> {
-        let slots = (room(engine).min(most_page_bytes) / TILE_BYTES) as usize;
+        let slots = (room(engine).min(MOST_PAGE_BYTES).min(most_page_bytes) / TILE_BYTES) as usize;
         // ⚠️No test reaches the pages' bound: 65,536 pages to make. It
         // stands so a page past what a TileAt names is refused, not named
         // as another.
@@ -601,9 +636,13 @@ impl Pool {
     }
 
     /// The bytes of the pages made — a page counts whole, its free slots
-    /// too, as it stays made, and a page given back its stand-in.
+    /// too, as it stays made, and one given back or away nothing: what
+    /// stands in its place is the engine's ([`Engine::no_page`]).
     pub(crate) fn bytes(&self) -> u64 {
-        self.buffers.iter().map(wgpu::Buffer::size).sum()
+        let made = |(book, buffer): (&Option<Page>, &wgpu::Buffer)| {
+            book.as_ref().is_some_and(Page::is_made).then(|| buffer.size())
+        };
+        self.pages.iter().zip(&self.buffers).filter_map(made).sum()
     }
 
     /// The bytes of the page made ahead of the store that needs it
@@ -623,11 +662,12 @@ impl Pool {
         made(&self.ahead) + made(&self.folded_ahead)
     }
 
-    /// The bytes of the slots nobody holds on the pages made — a page given
-    /// back's stand-in among them: made, and no tile's — and of the
-    /// granules no folded tile lies in.
+    /// The bytes of the slots nobody holds on the pages made, and of the
+    /// granules no tile lies in. A page away is no bytes, and its slots
+    /// none: the tiles they name are counted where they lie.
     pub(crate) fn idle_bytes(&self) -> u64 {
         let held = |page: &Page| match page {
+            Page::Tiles(slots) if slots.away => 0,
             Page::Tiles(slots) => (slots.holds.len() - slots.free.len()) as u64 * TILE_BYTES,
             Page::Folded(arena) => arena.held_bytes(),
         };
@@ -653,9 +693,11 @@ impl Pool {
 
     /// Gives back the pages nobody's — every slot free —, the last first,
     /// till the pages hold `most_bytes` or none is nobody's: those past the
-    /// last held cut off, one before it kept a tile's stand-in in its
-    /// place, made again there when a cel next needs a page. No plan binds
-    /// one: none of its slots is held, so no tile set names it.
+    /// last held cut off, one before it kept the engine's stand-in in its
+    /// place ([`Pool::buffer_let_go`]), made again there when a cel next
+    /// needs a page. No plan binds one: none of its slots is held, so no
+    /// tile set names it. Waits for nothing, and makes nothing: its
+    /// caller's thread keeps the books, and the buffers go on the pages'.
     pub(crate) fn give_back(&mut self, engine: &Engine, most_bytes: u64) {
         // The page made ahead first: no tile's, and the last one made.
         if self.bytes() + self.page_bytes() > most_bytes {
@@ -670,7 +712,7 @@ impl Pool {
                 break;
             }
             self.pages.pop();
-            self.buffers.pop();
+            let_go_on_the_pages_thread(engine, self.buffers.pop());
         }
         for page in (0..self.pages.len()).rev() {
             if self.bytes() <= most_bytes {
@@ -679,14 +721,18 @@ impl Pool {
             if !nobody_s(&self.pages[page]) {
                 continue;
             }
-            // ⚠️No test reaches a driver's refusal ([`made`] says why): the
-            // page stays made where its stand-in is refused.
-            let Some(stand_in) = made(engine, "a page given back", TILE_BYTES) else {
-                return;
-            };
-            self.buffers[page] = stand_in;
+            self.buffer_let_go(engine, page);
             self.pages[page] = None;
         }
+    }
+
+    /// Lets the buffer of page `page` go, on the pages' thread — a buffer
+    /// let go is the driver's —, the engine's stand-in in its place
+    /// ([`Engine::no_page`]). What the page is from here is its book's to
+    /// say: given back, or away ([`Slots::away`]).
+    fn buffer_let_go(&mut self, engine: &Engine, page: usize) {
+        let buffer = std::mem::replace(&mut self.buffers[page], engine.no_page());
+        let_go_on_the_pages_thread(engine, Some(buffer));
     }
 
     /// The tiles a page holds.
@@ -715,7 +761,7 @@ impl Pool {
     pub(crate) fn fresh(&mut self, engine: &Engine, cel: Cel) -> Result<TileAt, Full> {
         let own = |page: &Option<Page>| {
             let slots = page.as_ref().and_then(Page::slots);
-            slots.is_some_and(|slots| slots.cel == Some(cel) && !slots.free.is_empty())
+            slots.is_some_and(|slots| slots.cel == Some(cel) && slots.room() > 0)
         };
         let page = match self.pages.iter().position(own) {
             Some(page) => page,
@@ -836,8 +882,9 @@ impl Pool {
     }
 
     /// One hold fewer of the tile at `at`: its slot free once none holds
-    /// it — and the place it lay folded in, where it did —, and its page
-    /// nobody's once every slot of it is. Nothing where none holds it.
+    /// it — and the place it lay in on another page, where it did —, and
+    /// its page nobody's once every slot of it is: given back there and
+    /// then, where it was away. Nothing where none holds it.
     pub(crate) fn release(&mut self, at: TileAt) -> Option<()> {
         let (book, slot) = (self.held(at)?, usize::from(at.slot));
         book.holds[slot] -= 1;
@@ -845,14 +892,21 @@ impl Pool {
             return Some(());
         }
         book.free.push(at.slot);
-        if book.free.len() == book.holds.len() {
+        let nobody_s = book.free.len() == book.holds.len();
+        if nobody_s {
             book.cel = None;
         }
-        // Its folded place goes with it: the slot names no tile, and the
-        // one it is handed out to next lies in it as it is.
+        // A page away names no tile more: it is a page given back, whose
+        // place the next page made takes.
+        let given_back = nobody_s && book.away;
+        // Its place on another page goes with it: the slot names no tile,
+        // and the one it is handed out to next lies in it as it is.
         if let Some(lies) = TileAt::of_word(book.lying[slot]) {
             self.lies_at(at, NO_TILE);
             self.folded_let_go(lies);
+        }
+        if given_back {
+            self.pages[usize::from(at.page)] = None;
         }
         Some(())
     }
@@ -954,12 +1008,12 @@ impl Pool {
             return Ok(page);
         }
         let with_room = |page: &Option<Page>| {
-            page.as_ref().and_then(Page::slots).is_some_and(|slots| !slots.free.is_empty())
+            page.as_ref().and_then(Page::slots).is_some_and(|slots| slots.room() > 0)
         };
         if let Some(page) = self.pages.iter().position(with_room) {
             return Ok(page);
         }
-        let (given_back, grows) = self.next_page()?;
+        let (given_back, grows) = (self.next_page()?, self.page_bytes());
         // 🚨Its own bytes are asked here, on the caller's thread: only the
         // OS's count is the device's. 🔬The Surface, FNK_02 cut 59 as the
         // onion's ghosts were laid (2026-11-15, card
@@ -1029,7 +1083,7 @@ impl Pool {
         let (holds, stamps) = (vec![0; self.slots], Arc::new(vec![0; self.slots]));
         let lying = Arc::new(vec![NO_TILE; self.slots]);
         let asked_to_fold = vec![0; self.slots];
-        let book = Page::Tiles(Slots { holds, free, cel: Some(cel), stamps, lying, asked_to_fold });
+        let book = Page::Tiles(Slots { holds, free, cel: Some(cel), stamps, lying, asked_to_fold, away: false });
         Ok(self.page_put(given_back, buffer, book))
     }
 
@@ -1068,21 +1122,17 @@ impl Pool {
         Bounds { bytes: self.bytes(), most_bytes: self.most_bytes, budget_instead: self.budget_instead }
     }
 
-    /// Where the next page is made — in the place of the first one given
-    /// back, else after the last — and the bytes it grows the pool by; full
-    /// where a `TileAt` names no page more.
-    fn next_page(&self) -> Result<(Option<usize>, u64), Full> {
-        self.next_page_of(self.page_bytes())
-    }
-
-    /// [`Pool::next_page`] for a page of `bytes`: a page of folded tiles
-    /// is made where a page of tiles is.
-    fn next_page_of(&self, bytes: u64) -> Result<(Option<usize>, u64), Full> {
+    /// Where the next page is made, of tiles or of folded tiles — in the
+    /// place of the first one given back, else after the last —; full
+    /// where a `TileAt` names no page more. It grows the pool by its own
+    /// bytes: what stands in a place given back is none of the pool's
+    /// ([`Pool::bytes`]).
+    fn next_page(&self) -> Result<Option<usize>, Full> {
         let given_back = self.pages.iter().position(Option::is_none);
-        if given_back.is_none() && self.pages.len() >= self.most_pages {
-            return Err(Full);
+        match given_back.is_none() && self.pages.len() >= self.most_pages {
+            true => Err(Full),
+            false => Ok(given_back),
         }
-        Ok((given_back, bytes - given_back.map_or(0, |page| self.buffers[page].size())))
     }
 
     /// Has the pages' thread ([`Engine::pages_posted`]) make the pool's next
@@ -1122,13 +1172,12 @@ impl Pool {
     /// on a thread of its own it is asked where a slot is taken
     /// ([`Pool::fresh`]).
     fn make_a_page_ahead(&mut self, engine: &Engine) {
-        let grows = self.next_page().ok().map(|(_, grows)| grows).filter(|&grows| self.within_its_bytes(grows));
+        let grows = self.next_page().ok().map(|_| self.page_bytes()).filter(|&grows| self.within_its_bytes(grows));
         let Some(grows) = grows else {
             self.let_the_page_ahead_go(engine);
             return;
         };
-        let free: usize =
-            self.pages.iter().flatten().filter_map(Page::slots).map(|slots| slots.free.len()).sum();
+        let free: usize = self.pages.iter().flatten().filter_map(Page::slots).map(Slots::room).sum();
         if 2 * free >= self.slots {
             return;
         }
@@ -1504,9 +1553,9 @@ pub(crate) fn gather(
 }
 
 /// Whether `page` is made and nobody's: a page of tiles, every slot of
-/// it free. ⏳A page of folded tiles no tile lies on stays made: its
-/// giving back is the lane's that gives a folded tile's slot back
-/// (`folded.rs`).
+/// it free — one away is given back as its last slot is
+/// ([`Pool::release`]), and is never this. A page of folded tiles no
+/// tile lies on is given back where a fold is settled (`folded.rs`).
 fn nobody_s(page: &Option<Page>) -> bool {
     matches!(page, Some(Page::Tiles(Slots { cel: None, .. })))
 }
@@ -1559,7 +1608,16 @@ fn made_by_wgpu(engine: &Engine, desc: &wgpu::BufferDescriptor) -> Option<wgpu::
 }
 
 /// A pool that makes no page past `most_bytes` (1a ③ — its store gives
-/// the budget). Null on failure; see the last error.
+/// the budget), each of `most_page_bytes` at most — which the app asks
+/// past any page, leaving each as large as the pool makes one
+/// ([`Pool::paged`]). Null on failure — a page that holds no tile is one;
+/// see the last error.
+///
+/// 🔢브러시/렌더링's (2026-11-19, F-610), not the user's: the bound on a
+/// page is here for the tests past the crate. A page with a slot free is
+/// the pool's room, none of whose tiles is a fold's (`folded.rs`), so a
+/// test of the folds fills a page — and one of 128 MiB is 2,048 tiles
+/// stored, in each test that folds one.
 ///
 /// 🚨★A POOL IS ITS CALLER'S ALONE: its books — which slot holds what, and
 /// its pages — are read and written by its verbs with no lock: on the
@@ -1578,11 +1636,15 @@ fn made_by_wgpu(engine: &Engine, desc: &wgpu::BufferDescriptor) -> Option<wgpu::
 /// # Safety
 /// `engine` is live; the pool is freed before it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_pool_new(engine: *const Engine, most_bytes: u64) -> *mut Pool {
+pub unsafe extern "C" fn gpu_engine_pool_new(
+    engine: *const Engine,
+    most_page_bytes: u64,
+    most_bytes: u64,
+) -> *mut Pool {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| engine.hands(pool))
+        Pool::paged(engine, most_page_bytes, most_bytes).map_or(std::ptr::null_mut(), |pool| engine.hands(pool))
     })
 }
 
@@ -1732,6 +1794,11 @@ pub unsafe extern "C" fn gpu_engine_pool_fold(
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
     let tiles = pool.to_fold(most);
+    // With none to fold, what the last settle could not give back: a page
+    // whose last tile lying on it was let go since.
+    if tiles.is_empty() {
+        pool.gives_back_where_no_tile_lies(engine);
+    }
     // SAFETY: `fold` is alive till `told` is called, and `told` is one any
     // thread may call (the function's contract).
     unsafe { pool.folds_unwaited(engine, fold, &tiles, (told, number)) }
@@ -1868,9 +1935,7 @@ pub unsafe extern "C" fn gpu_engine_pool_budget_instead(pool: *mut Pool, bytes: 
 pub unsafe extern "C" fn gpu_engine_pool_give_back(pool: *mut Pool, engine: *const Engine, most_bytes: u64) {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    engine.on_thread(|| {
-        pool.give_back(engine, most_bytes);
-    })
+    pool.give_back(engine, most_bytes);
 }
 
 /// The bytes of the pages a pool has made ([`Pool::bytes`]).

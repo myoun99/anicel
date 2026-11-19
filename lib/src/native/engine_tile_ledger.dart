@@ -110,13 +110,20 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// page's worth where null. Its tiles are folded by what [foldKernels]
   /// answers — the fold's kernels on [engine] once they are compiled,
   /// null till then — and by nothing where it is null ([foldABatch]).
+  /// A page of its pool holds [debugTilesAPage] tiles where a test says
+  /// so ([GpuPool.new]).
   EngineTileLedger(
     GpuEngine engine, {
     int? byteBudget,
     int? roomBatch,
     GpuFold? Function()? foldKernels,
+    int? debugTilesAPage,
   }) : _engine = engine,
-       pool = GpuPool(engine, byteBudget ?? _unbounded),
+       pool = GpuPool(
+         engine,
+         byteBudget ?? _unbounded,
+         debugTilesAPage: debugTilesAPage,
+       ),
        _byteBudget = byteBudget,
        _roomBatch = roomBatch ?? EngineTileLedger.roomBatch,
        _foldKernels = foldKernels {

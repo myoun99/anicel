@@ -375,7 +375,7 @@ fn a_plate_tells_its_slots_while_the_engines_thread_stands_still() {
         assert!(!engine.is_null(), "{}", last_error());
         let composite = gpu_engine_composite_new(engine);
         assert!(!composite.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         // ⛔premise: a page with room — a page is made on the engine's
         // thread, which stands still below.
@@ -422,7 +422,7 @@ fn a_plate_the_device_refuses_is_told_not_put() {
         assert!(!engine.is_null(), "{}", last_error());
         let composite = gpu_engine_composite_new(engine);
         assert!(!composite.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         assert_eq!(land(letters, (engine, composite), (pool, cel), rect, 501).0, 6, "{}", last_error());
         assert_eq!(done_here(&*engine), Ok(()));

@@ -22,6 +22,10 @@ use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_erro
 // from the Surface's slowest waits, as the reading watch's three seconds were.
 const WAIT_LIMIT: Duration = Duration::from_secs(30);
 
+/// The bytes of what stands in for a page given back ([`Engine::no_page`]):
+/// a word, the least a buffer is.
+pub(crate) const NO_PAGE_BYTES: u64 = 4;
+
 /// One wgpu device and its queue.
 #[derive(Clone)]
 pub struct Engine {
@@ -81,6 +85,9 @@ pub struct Engine {
     /// clone of its own: the engine let go meanwhile, the device goes here
     /// once that making ends — as a poll's goes on `polls`.
     pages: EngineThread,
+    /// What stands in the place of a page a pool gave back
+    /// ([`Engine::no_page`]).
+    no_page: wgpu::Buffer,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
     /// When what is compiled apart may take the compiler ([`Apart`]).
@@ -520,6 +527,12 @@ impl Engine {
                 let tells = EngineThread::start()?;
                 let compiling = EngineThread::start_many(compiling_threads())?;
                 let pages = EngineThread::start()?;
+                let no_page = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("no page"),
+                    size: NO_PAGE_BYTES,
+                    usage: wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
+                });
                 let refusals = Refusals::default();
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
@@ -539,6 +552,7 @@ impl Engine {
                     tells,
                     compiling,
                     pages,
+                    no_page,
                     kernels: Kernels::default(),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
@@ -650,6 +664,22 @@ impl Engine {
     /// runs on ([`Self::on_thread`]).
     pub(crate) fn is_its_thread(&self) -> bool {
         self.thread.is_here()
+    }
+
+    /// What stands in the place of a page a pool gave back
+    /// (`kernels/pool`): one buffer of [`NO_PAGE_BYTES`], made with the
+    /// engine, in the place of each — a `TileAt` names a page by its place
+    /// among the pool's. So a page is given back on whatever thread keeps
+    /// the pool's books, and no buffer is made for it. ↩️A tile's bytes
+    /// made for each page given back, on the engine's thread, till the
+    /// pages no tile lies on were given back where a fold is settled —
+    /// the UI's thread (F-610, 2026-11-19).
+    ///
+    /// Too small for a tile, as it is or folded: a place said on it is
+    /// refused (`TileAt::stored_on`), where a tile's bytes read whatever
+    /// the first slot's were.
+    pub(crate) fn no_page(&self) -> wgpu::Buffer {
+        self.no_page.clone()
     }
 
     /// `work`, run on the thread a pool's pages are made on ([`Engine`]'s

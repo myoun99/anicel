@@ -28,7 +28,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 12] = [
+const ON_THEIR_CALLERS: [(&str, &str); 13] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
@@ -62,6 +62,13 @@ const ON_THEIR_CALLERS: [(&str, &str); 12] = [
         "the engine's own ledger of its submits, under a lock of its own (`Submits`): no device \
          is asked, and it is read after the device went, when the engine's thread may answer \
          nothing",
+    ),
+    (
+        "gpu_engine_pool_give_back",
+        "the pool's books, kept where its verbs are called, and each page given back handed to \
+         the pages' thread, which it waits for none of (`Pool::give_back`): no buffer is made — \
+         what stands in a page's place is the engine's, made with it (`Engine::no_page`) — and \
+         none is let go here. A memory warning asks it on the UI's thread",
     ),
 ];
 

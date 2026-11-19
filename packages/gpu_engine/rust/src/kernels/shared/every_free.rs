@@ -233,7 +233,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             let rig = composite_rig();
             // SAFETY: the engine is live.
             let (pool, plan) =
-                unsafe { (gpu_engine_pool_new(rig.engine, 1 << 20), gpu_engine_plan_new(rig.engine)) };
+                unsafe { (gpu_engine_pool_new(rig.engine, u64::MAX, 1 << 20), gpu_engine_plan_new(rig.engine)) };
             // SAFETY: all are live, made on the engine; the extent holds four words.
             let made = unsafe {
                 gpu_engine_flood_picture_new(
@@ -301,7 +301,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
         }),
         ("gpu_engine_pool_free", |name| {
             // SAFETY: the engine is live.
-            let made = unsafe { gpu_engine_pool_new(first_engine(), 1 << 20) };
+            let made = unsafe { gpu_engine_pool_new(first_engine(), u64::MAX, 1 << 20) };
             gives_back(name, made, gpu_engine_pool_free)
         }),
         ("gpu_engine_grid_free", |name| {

@@ -9,7 +9,7 @@ use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use super::{Ahead, Full, MOST_NAMED, Pictures, Pool};
-use crate::device::Engine;
+use crate::device::{Engine, NO_PAGE_BYTES};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
 use crate::kernels::composite::{
@@ -233,7 +233,7 @@ fn a_test_s_pool_makes_a_page_whatever_budget_the_os_gives() {
     // SAFETY: the engine is the tests' own, alive for the run; the pool is
     // freed once asked.
     unsafe {
-        let handed = gpu_engine_pool_new(engine, u64::MAX);
+        let handed = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         assert!((*handed).fits(nothing, (*handed).page_bytes()), "over the C ABI");
         gpu_engine_pool_free(handed);
     }
@@ -309,8 +309,8 @@ fn the_pages_nobody_holds_are_given_back_the_last_first() {
     }
     pool.give_back(engine, 0);
     assert_eq!(pool.pages().len(), 2, "the two past the last held cut off");
-    assert_eq!(pool.pages()[0].size(), TILE_BYTES, "the one before it a stand-in");
-    assert_eq!(pool.bytes(), page + TILE_BYTES);
+    assert_eq!(pool.pages()[0].size(), NO_PAGE_BYTES, "the one before it the engine's stand-in");
+    assert_eq!(pool.bytes(), page, "which is none of the pool's bytes");
     assert!(read_back(&pool, &places[1]) == le_bytes(&words), "a page past it read as before");
     assert!(pool.release(at(0, 0)).is_none(), "a slot of a page given back");
     assert!(pool.hold(at(0, 0)).is_none());
@@ -341,12 +341,14 @@ fn pages_are_given_back_till_they_hold_the_bytes_asked() {
     assert_eq!(pool.pages().len(), 3, "the last cut off, enough");
     assert_eq!(pool.pages()[1].size(), page, "the one between kept");
     pool.give_back(engine, 3 * page - 1);
-    assert_eq!(pool.pages()[1].size(), TILE_BYTES);
-    assert_eq!(pool.bytes(), 2 * page + TILE_BYTES);
+    assert_eq!(pool.pages()[1].size(), NO_PAGE_BYTES);
+    assert_eq!(pool.bytes(), 2 * page);
     for &at in &places[2] {
         pool.release(at).expect("release");
     }
     pool.give_back(engine, 2 * page);
+    assert_eq!(pool.pages().len(), 3, "within the bytes asked");
+    pool.give_back(engine, 2 * page - 1);
     assert_eq!(pool.pages().len(), 1, "the stand-in left last gone with the page past it");
     assert_eq!(pool.bytes(), page);
     pool.give_back(engine, 0);
@@ -354,8 +356,7 @@ fn pages_are_given_back_till_they_hold_the_bytes_asked() {
 }
 
 // A page given back is made again within the bytes the pool held with it
-// made — its stand-in counted out — and past the pages a pool may make: its
-// place is named already.
+// made and past the pages a pool may make: its place is named already.
 #[test]
 fn a_page_given_back_is_made_again_within_the_pool_s_bounds() {
     let engine = rig().engine;
@@ -366,7 +367,7 @@ fn a_page_given_back_is_made_again_within_the_pool_s_bounds() {
         pool.release(at).expect("release");
     }
     pool.give_back(engine, 0);
-    assert_eq!(pool.bytes(), page + TILE_BYTES);
+    assert_eq!(pool.bytes(), page);
     let next = pool.cel();
     assert_eq!(pool.fresh(engine, next), Ok(at(0, 0)));
     assert_eq!(pool.bytes(), 2 * page);
@@ -537,7 +538,7 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
     // SAFETY: the engine is the tests' own, alive for the run; the tiles,
     // pages and slots hold two each.
     unsafe {
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         assert!(!pool.is_null());
         let (a, b) = (gpu_engine_pool_cel(pool), gpu_engine_pool_cel(pool));
         assert_ne!(a, b);
@@ -564,7 +565,7 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
         assert_eq!(none, 0);
         gpu_engine_pool_free(pool);
         gpu_engine_pool_free(std::ptr::null_mut());
-        let full = gpu_engine_pool_new(engine, 0);
+        let full = gpu_engine_pool_new(engine, u64::MAX, 0);
         let cel = gpu_engine_pool_cel(full);
         let stored =
             gpu_engine_pool_store(full, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
@@ -588,7 +589,7 @@ fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
     // SAFETY: the engine is the tests' own, alive for the run; the tiles,
     // pages and slots hold one each.
     unsafe {
-        let pool = gpu_engine_pool_new(engine, 0);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, 0);
         let cel = gpu_engine_pool_cel(pool);
         let none =
             gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
@@ -603,8 +604,15 @@ fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
         gpu_engine_pool_give_back(pool, engine, 0);
         assert_eq!(gpu_engine_pool_bytes(pool), (*pool).slots() as u64 * TILE_BYTES, "a page held stays");
         assert!(gpu_engine_pool_release(pool, pages[0], slots[0]));
+        // Given back with the engine's thread held: the books are its
+        // caller's, and the page goes on the pages' thread.
+        let (go, held) = std::sync::mpsc::channel::<()>();
+        (*engine).posted(move || held.recv_timeout(Duration::from_secs(60)).ok());
+        let began = Instant::now();
         gpu_engine_pool_give_back(pool, engine, 0);
+        assert!(began.elapsed() < Duration::from_secs(30), "the give-back waited for the engine's thread");
         assert_eq!(gpu_engine_pool_bytes(pool), 0);
+        go.send(()).expect("the engine's thread waits");
         gpu_engine_pool_free(pool);
     }
 }
@@ -624,7 +632,7 @@ fn the_c_abi_keeps_a_pool_to_a_budget_in_the_os_s_place() {
     // SAFETY: the engine is the tests' own, alive for the run; the tiles,
     // pages and slots hold one each.
     unsafe {
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         gpu_engine_pool_budget_instead(pool, 0);
         let none =
@@ -683,7 +691,7 @@ fn a_read_of_a_tile_none_holds_or_into_other_bytes_is_refused() {
         pool.release(at).expect("release");
     }
     pool.give_back(engine, 0);
-    assert_eq!(pool.pages()[0].size(), TILE_BYTES, "its first page given back");
+    assert_eq!(pool.pages()[0].size(), NO_PAGE_BYTES, "its first page given back");
     let one = &mut into[..TILE_BYTES as usize];
     assert_eq!(pool.read(engine, &[places[0][0]], one), None, "a page given back");
     assert_eq!(pool.read(engine, &[held], one), Some(()), "a page held reads");
@@ -705,7 +713,7 @@ fn the_c_abi_reads_back_the_tiles_its_words_name() {
     // SAFETY: the engine is the tests' own, alive for the run; the tiles,
     // pages, slots and words hold two each, and `into` two tiles' bytes.
     unsafe {
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let stored = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(stored, 2);
@@ -818,7 +826,7 @@ fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() 
     // pages, slots and words hold two each, and `into` two tiles' bytes;
     // the readout is left alone till its wait is told to have ended.
     unsafe {
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let (to_pages, to_slots) = (pages.as_mut_ptr(), slots.as_mut_ptr());
         let stored =
@@ -880,7 +888,7 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let stored =
             gpu_engine_pool_store(pool, engine, cel, &bytes.as_ptr(), 1, &mut page, &mut slot, told_nothing, 0);
@@ -977,7 +985,7 @@ fn a_store_tells_its_slot_while_the_engines_thread_stands_still() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         // ⛔premise: a page with room — a page is made on the engine's
         // thread, which stands still below.
@@ -1016,7 +1024,7 @@ fn a_pool_full_by_its_bytes_says_so_while_the_engines_thread_stands_still() {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
         // Given no bytes, it makes no page: full before its first tile.
-        let pool = gpu_engine_pool_new(engine, 0);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, 0);
         let cel = gpu_engine_pool_cel(pool);
         gpu_engine_stand_still(engine, 2_000);
         let asked = Instant::now();
@@ -1051,7 +1059,7 @@ fn a_store_whose_copy_the_device_refuses_says_its_place_unwritten() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 201), 1);
         assert_eq!(done_here(&*engine), Ok(()));
@@ -1131,7 +1139,7 @@ fn a_store_takes_the_page_made_ahead_while_the_engines_thread_stands_still() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let slots = (*pool).slots();
         let half = slots / 2;
@@ -1171,7 +1179,7 @@ fn a_page_ahead_is_made_while_the_engines_thread_stands_still() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let half = (*pool).slots() / 2;
         assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
@@ -1344,7 +1352,7 @@ fn a_page_a_store_waits_for_is_made_while_the_engines_thread_stands_still() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         assert!((*pool).pages().is_empty(), "premise: no page made, none ahead");
         gpu_engine_stand_still(engine, 2_000);
@@ -1388,7 +1396,7 @@ fn a_page_ahead_is_made_within_the_bytes_a_pool_may_make_and_goes_past_them() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let slots = (*pool).slots();
         let page = slots as u64 * TILE_BYTES;
@@ -1431,7 +1439,7 @@ fn a_page_made_ahead_against_another_budget_is_not_taken() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let slots = (*pool).slots();
         let past_half = slots / 2 + 1;
@@ -1463,7 +1471,7 @@ fn a_page_refused_ahead_is_not_asked_again_till_the_budget_moves() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let half = (*pool).slots() / 2;
         assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
@@ -1509,7 +1517,7 @@ fn a_give_back_lets_the_page_made_ahead_go_past_the_bytes_asked_for() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let slots = (*pool).slots();
         let page = slots as u64 * TILE_BYTES;
@@ -1545,7 +1553,7 @@ fn a_page_made_ahead_is_counted_apart_from_the_pages_taken() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let slots = (*pool).slots();
         let page = slots as u64 * TILE_BYTES;
@@ -1572,13 +1580,15 @@ fn a_page_made_ahead_is_counted_apart_from_the_pages_taken() {
 // were —, their page made on the pages' thread before the fold is told
 // and taken by a settle that waits for no thread; a fold whose tile the
 // page made holds asks for none; and with no tile left nothing is handed
-// over, and what reads the tiles by their names reads what was stored.
+// over, and what reads the tiles by their names reads what was stored —
+// their page of tiles away by then, no tile lying on it. A pool of three
+// tiles a page, which the three fill: a page with a slot free is the
+// pool's room, and none of its tiles is a fold's.
 #[test]
 fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page() {
-    use super::folded::MOST_FOLDED_PAGE_BYTES;
     use super::folded_tests::{numbered, tile as coloured, told, told_within};
     use super::{
-        gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read,
+        gpu_engine_pool_bytes, gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_read,
         gpu_engine_pool_settle,
     };
     use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_waits_here};
@@ -1597,7 +1607,7 @@ fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page()
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let (pool, page) = ((*engine).hands(Pool::sized(3, MOST_NAMED, u64::MAX).expect("pool")), 3 * TILE_BYTES);
         let cel = gpu_engine_pool_cel(pool);
         let fold = gpu_engine_fold_new(engine);
         assert!(!fold.is_null(), "{}", last_error());
@@ -1608,6 +1618,10 @@ fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page()
         let (go, wait) = held();
         (*engine).posted(wait);
         assert_eq!(stored_now(pool, engine, cel, &bytes, 3), 3);
+        // The page of tiles the store asked for ahead, its own full, is
+        // made by here.
+        (*engine).on_pages_thread(|| ());
+        let ahead = (*pool).ahead_bytes();
         let first = numbered();
         assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, first), 2);
         // The pages' thread held: the fold, once run, is not told till the
@@ -1616,10 +1630,10 @@ fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page()
         (*engine).pages_posted(move || wait().unwrap_or_default());
         go.send(()).expect("the engine's thread waits");
         assert_eq!(told_within(first, Duration::from_millis(500)), None, "told before its page was made");
-        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, 0));
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, ahead));
         open.send(()).expect("the pages' thread waits");
         assert_eq!(told_within(first, long), Some(true));
-        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, MOST_FOLDED_PAGE_BYTES));
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, ahead + page));
         // A settle goes through with the pages' thread held: it takes the
         // page made, and waits for none.
         let (open, wait) = held();
@@ -1627,14 +1641,18 @@ fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page()
         let began = Instant::now();
         assert_eq!(gpu_engine_pool_settle(pool, engine), 2);
         assert!(began.elapsed() < Duration::from_secs(30), "the settle waited for the pages' thread");
-        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, 0));
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, ahead));
+        assert_eq!(gpu_engine_pool_bytes(pool), 2 * page, "the third tile lies on its page still");
         // The third tile's run is on the page made: no page is asked for,
         // and its fold is told with the pages' thread held still.
         let second = numbered();
         assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, second), 1);
         assert_eq!(told_within(second, long), Some(true));
+        // Its page of tiles gives its buffer back with the pages' thread
+        // held still: the settle waits for no page let go.
         assert_eq!(gpu_engine_pool_settle(pool, engine), 1);
-        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, 0));
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, ahead));
+        assert_eq!(gpu_engine_pool_bytes(pool), page, "no tile lies on the page of tiles");
         open.send(()).expect("the pages' thread waits");
         assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, numbered()), 0);
         assert_eq!(gpu_engine_pool_settle(pool, engine), 0);
@@ -1663,9 +1681,7 @@ fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page()
 #[test]
 fn a_fold_the_device_refuses_leaves_its_tiles_a_fold_s_to_take_again() {
     use super::folded_tests::{numbered, tile as coloured, told, told_within};
-    use super::{
-        gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_settle,
-    };
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_settle};
     use crate::device::{gpu_engine_close, gpu_engine_lose, gpu_engine_open_first};
     use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
     use crate::testing::{a_device_of_its_own, done_here, last_error};
@@ -1677,7 +1693,8 @@ fn a_fold_the_device_refuses_leaves_its_tiles_a_fold_s_to_take_again() {
     unsafe {
         let engine = gpu_engine_open_first();
         assert!(!engine.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        // A page the two fill: one with a slot free is the pool's room.
+        let pool = (*engine).hands(Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool"));
         let cel = gpu_engine_pool_cel(pool);
         let fold = gpu_engine_fold_new(engine);
         assert!(!fold.is_null(), "{}", last_error());
@@ -1697,4 +1714,95 @@ fn a_fold_the_device_refuses_leaves_its_tiles_a_fold_s_to_take_again() {
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
     }
+}
+
+// The slots free on a page away are no room: the page made ahead is asked
+// for by the slots free on the pages made alone.
+#[test]
+fn the_page_made_ahead_counts_no_slot_of_a_page_away() {
+    use super::folded_tests::{settled, tile as coloured};
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let (cel, a) = (pool.cel(), coloured(1, 2));
+    let places = pool.store(engine, cel, &[&a[..]; 4]).expect("store");
+    // The page its tiles fill, away with them settled, and three of its
+    // slots let go: free, and no tile's to take.
+    assert_eq!(settled(&mut pool, &places), 4);
+    for &at in &places[1..] {
+        pool.release(at).expect("release");
+    }
+    // The page made ahead of the first store is taken by the next, three
+    // slots of it free: none is asked for.
+    engine.on_pages_thread(|| ());
+    let next = pool.cel();
+    assert_eq!(pool.fresh(engine, next), Ok(at(2, 0)));
+    engine.on_pages_thread(|| ());
+    // SAFETY: the pool is live.
+    assert_eq!(unsafe { ahead(&pool) }, "unasked");
+    // One slot free of the four made: a page is asked for ahead, whatever
+    // is free on the page away.
+    assert_eq!(pool.fresh(engine, next), Ok(at(2, 1)));
+    assert_eq!(pool.fresh(engine, next), Ok(at(2, 2)));
+    engine.on_pages_thread(|| ());
+    // SAFETY: the pool is live.
+    assert_eq!(unsafe { ahead(&pool) }, "made");
+}
+
+// A page made ahead is taken whatever the pool's pages did since it was
+// asked for — a page of folded tiles taken by a settle, here — and its
+// taker waits for no thread: the budget kept to is what it was asked
+// against, and the pool's bytes as they stood are a refusal's alone.
+#[test]
+fn a_page_made_ahead_is_taken_though_the_pool_s_bytes_moved_since() {
+    use super::folded_tests::{numbered, tile as coloured, told, told_within};
+    use crate::kernels::fold::Fold;
+    let turn = crate::testing::a_device_of_its_own();
+    let engine = turn.engine();
+    let fold = engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
+    let mut pool = Pool::sized(3, MOST_NAMED, u64::MAX).expect("pool");
+    let (cel, a) = (pool.cel(), coloured(1, 2));
+    // Two tiles of a page of three: the next page is asked for ahead.
+    let places = pool.store(&engine, cel, &[&a[..]; 2]).expect("store");
+    engine.on_pages_thread(|| ());
+    // SAFETY: the pool is live.
+    assert_eq!(unsafe { ahead(&pool) }, "made", "premise");
+    let asked_at = pool.bytes();
+    let number = numbered();
+    // SAFETY: the kernels are let go after the fold is told, and `told`
+    // is any thread's to call.
+    assert_eq!(unsafe { pool.folds_unwaited(&engine, &fold, &places, (told, number)) }, 2);
+    assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
+    assert_eq!(pool.settles_unwaited(&engine), 2);
+    assert_ne!(pool.bytes(), asked_at, "premise: a page of folded tiles taken since");
+    // The pages' thread held: the tile past the page's last slot takes
+    // the page made ahead, and waits for none.
+    let (open, shut) = std::sync::mpsc::channel::<()>();
+    engine.pages_posted(move || shut.recv_timeout(Duration::from_secs(60)).unwrap_or_default());
+    assert_eq!(pool.fresh(&engine, cel), Ok(at(0, 2)));
+    let began = Instant::now();
+    assert_eq!(pool.fresh(&engine, cel), Ok(at(2, 0)));
+    assert!(began.elapsed() < Duration::from_secs(30), "its taker waited for the pages' thread");
+    open.send(()).expect("the pages' thread waits");
+}
+
+// A pool is made of pages as large as it is asked for, the app's where
+// that is past what the pool makes one — and of none that holds no tile.
+#[test]
+fn a_pool_is_made_of_pages_no_larger_than_asked() {
+    use super::{gpu_engine_pool_free, gpu_engine_pool_new};
+    use crate::testing::last_error;
+    let engine = rig().engine;
+    let app_s =Pool::new(engine, u64::MAX).expect("pool").slots();
+    assert!(app_s > 3, "premise: a device whose binding holds more than three tiles");
+    // SAFETY: the engine is the tests' own, alive for the run; each pool
+    // is freed once asked.
+    unsafe {
+        for (asked, slots) in [(u64::MAX, app_s), (3 * TILE_BYTES, 3), (4 * TILE_BYTES - 1, 3), (TILE_BYTES, 1)] {
+            let pool = gpu_engine_pool_new(engine, asked, u64::MAX);
+            assert_eq!((*pool).slots(), slots, "asked for {asked}");
+            gpu_engine_pool_free(pool);
+        }
+        assert!(gpu_engine_pool_new(engine, TILE_BYTES - 1, u64::MAX).is_null());
+    }
+    assert!(last_error().contains("a page of 0 tiles"), "{}", last_error());
 }

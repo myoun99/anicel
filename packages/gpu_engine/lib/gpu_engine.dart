@@ -718,9 +718,17 @@ final class GpuReadFailed extends GpuRefused {
 /// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
 /// lands in a fresh slot of its cel and stays there until let go.
 class GpuPool implements _OfAnEngine {
-  /// A pool on [engine] that makes no page past [mostBytes].
-  factory GpuPool(GpuEngine engine, int mostBytes) {
-    final pool = rust.poolNew(engine._engine, mostBytes);
+  /// A pool on [engine] that makes no page past [mostBytes] — of pages of
+  /// [debugTilesAPage] tiles where a test says so, which fills one with
+  /// a few; as large as the engine makes them else
+  /// (rust/src/kernels/pool/mod.rs, `gpu_engine_pool_new`, has why a
+  /// test asks).
+  factory GpuPool(GpuEngine engine, int mostBytes, {int? debugTilesAPage}) {
+    final pool = rust.poolNew(
+      engine._engine,
+      debugTilesAPage == null ? _anyPage : debugTilesAPage * gpuTileBytes,
+      mostBytes,
+    );
     if (pool == nullptr) {
       throw GpuRefused(_lastError());
     }
@@ -728,6 +736,10 @@ class GpuPool implements _OfAnEngine {
   }
 
   GpuPool._(this._engine, this._pool);
+
+  /// Past any page: what leaves a pool's pages as large as the engine
+  /// makes them.
+  static const int _anyPage = 0x7fffffffffffffff;
 
   @override
   final GpuEngine _engine;

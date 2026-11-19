@@ -28,9 +28,16 @@
 //! of either: the page the places need is made on the pages' thread
 //! before the fold is told ([`Room`]).
 //!
-//! ⏳The slot of a tile settled — folded, or whole — still holds its bytes
-//! as they were: the page of tiles no tile lies in is to give its buffer
-//! back, in a lane of its own — the memory comes back there.
+//! THE MEMORY COMES BACK WHERE A PAGE OF TILES HAS NO TILE LYING ON IT:
+//! its buffer is given back, the slots its tiles are named by still
+//! ([`Pool::gives_back_where_no_tile_lies`]). ⛔But for one page, the
+//! pool's room ([`Pool::room`]) — its tiles are handed to no fold, and it
+//! stays made: 🔢브러시/렌더링's (2026-11-19, said on F-610), no rule of
+//! the user's. The next tiles go to its free slots, so it stays made
+//! whatever its tiles lie as, and one folded there is held twice — in its
+//! slot, and on a page of folded tiles made for it: a project of one page
+//! would hold a page more for folding. And the tiles a hand is at are the
+//! last stored: each rest would fold what the next stroke lets go.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -77,6 +84,11 @@ impl Arena {
         self.held.insert(first, takes.granules());
         Arc::make_mut(&mut self.stamps)[first as usize] = stamp;
         Some(first)
+    }
+
+    /// Whether no tile lies on it.
+    fn is_empty(&self) -> bool {
+        self.held.is_empty()
     }
 
     /// Lets the run of the tile lying from `first` go, one with the free
@@ -360,8 +372,55 @@ impl Pool {
         Taken { pages: self.buffers.clone(), lying: self.lying(), stamps: self.stamps() }
     }
 
+    /// The pool's room: of the pages of tiles made, the one with the most
+    /// slots free — the first such —, none where none has one free. Its
+    /// tiles are handed to no fold, and it stays made (the module's head
+    /// has why).
+    fn room_page(&self) -> Option<usize> {
+        let rooms = self.pages.iter().enumerate().filter_map(|(page, book)| {
+            let room = book.as_ref()?.slots()?.room();
+            (room > 0).then_some((page, room))
+        });
+        // The last of the widest from the end is the first of them.
+        rooms.rev().max_by_key(|&(_, room)| room).map(|(page, _)| page)
+    }
+
+    /// Gives back the buffer of every page no tile lies on, waiting for
+    /// nothing ([`Pool::buffer_let_go`]): a page of tiles whose every tile
+    /// lies on another page — away from here, its slots their names still
+    /// ([`Slots::away`]) —, the pool's room apart ([`Pool::room`]); and a
+    /// page of folded tiles no tile lies on — given back, its place the
+    /// next page's.
+    ///
+    /// What was handed over before reads the tiles there by a hold of its
+    /// own on the buffer (a settle's copies, a plan laid on the pool as it
+    /// was taken): the bytes go once the last of those is through.
+    pub(super) fn gives_back_where_no_tile_lies(&mut self, engine: &Engine) {
+        let room = self.room_page();
+        for page in 0..self.pages.len() {
+            let given_back = match &mut self.pages[page] {
+                Some(Page::Tiles(slots)) => {
+                    let lies = (0..slots.holds.len()).any(|slot| slots.as_it_is(slot).is_some());
+                    let names = slots.free.len() < slots.holds.len();
+                    if slots.away || lies || !names || room == Some(page) {
+                        continue;
+                    }
+                    slots.away = true;
+                    false
+                }
+                Some(Page::Folded(arena)) if arena.is_empty() => true,
+                Some(Page::Folded(_)) | None => continue,
+            };
+            self.buffer_let_go(engine, page);
+            if given_back {
+                self.pages[page] = None;
+            }
+        }
+    }
+
     /// The tiles a fold is next handed — held, lying as they are, and
-    /// handed to none as they are ([`Slots::to_fold`]) —, a page's before
+    /// handed to none as they are ([`Slots::to_fold`]), on a page that is
+    /// not the pool's room ([`Pool::room`]) —, a page's before
     /// the next page's and `most` at most: no more than a page of folded
     /// tiles holds at the most each may take — a tile whole
     /// ([`Takes::Whole`]) —, so the one page a fold has made holds them
@@ -379,7 +438,8 @@ impl Pool {
             return Vec::new();
         }
         let most = most.min((self.folded_page_bytes() / TILE_BYTES) as usize);
-        let pages = self.pages.iter().enumerate();
+        let room = self.room_page();
+        let pages = self.pages.iter().enumerate().filter(|&(page, _)| Some(page) != room);
         let slots = pages.filter_map(|(page, book)| Some((page as u16, book.as_ref()?.slots()?)));
         let tiles = slots.flat_map(|(page, slots)| {
             let to_fold = move |slot: usize| slots.to_fold(slot).map(|_| TileAt { page, slot: slot as u16 });
@@ -560,6 +620,7 @@ impl Pool {
             });
         }
         self.left_for_room = left.then_some(self.folded_let_gos);
+        self.gives_back_where_no_tile_lies(engine);
         settled
     }
 
@@ -637,8 +698,8 @@ impl Pool {
     /// what asking another thread that cost).
     fn folded_page_to_come(&self) -> Option<(u64, (Bounds, u64))> {
         let bytes = self.folded_page_bytes();
-        let (_, grows) = self.next_page_of(bytes).ok()?;
-        self.within_its_bytes(grows).then(|| (bytes, (self.bounds(), grows)))
+        self.next_page().ok()?;
+        self.within_its_bytes(bytes).then(|| (bytes, (self.bounds(), bytes)))
     }
 
     /// Whether a fold handed over as the pool stands could have a page
@@ -656,8 +717,8 @@ impl Pool {
     /// others goes, on the pages' thread.
     fn folded_page_taken(&mut self, engine: &Engine) {
         let bytes = self.folded_page_bytes();
-        let now = self.next_page_of(bytes).ok().filter(|&(_, grows)| self.within_its_bytes(grows));
-        let made = now.and_then(|(given_back, _)| Some((given_back, self.folded_ahead.taken_as(self.bounds().asked())?)));
+        let now = self.next_page().ok().filter(|_| self.within_its_bytes(bytes));
+        let made = now.and_then(|given_back| Some((given_back, self.folded_ahead.taken_as(self.bounds().asked())?)));
         if let Some((given_back, page)) = made {
             let book = Page::Folded(Arena::of((bytes / GRANULE_BYTES) as u32));
             self.page_put(given_back, page, book);

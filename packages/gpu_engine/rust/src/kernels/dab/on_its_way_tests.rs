@@ -113,7 +113,7 @@ fn open() -> Own {
     unsafe {
         let composite = gpu_engine_composite_new(engine);
         assert!(!composite.is_null(), "{}", last_error());
-        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let stroke = gpu_engine_stroke_new(engine);
         assert!(!stroke.is_null(), "{}", last_error());
@@ -698,7 +698,7 @@ fn a_mixing_step_and_a_rub_read_a_tile_that_lies_folded_as_it_was() {
     use crate::kernels::composite::TileAt;
     use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
     use crate::kernels::pool::folded_tests::{numbered, scrubbed, told as fold_told, told_within};
-    use crate::kernels::pool::{gpu_engine_pool_fold, gpu_engine_pool_settle};
+    use crate::kernels::pool::gpu_engine_pool_settle;
     const BLUE: [u8; 4] = [0, 0, 255, 255];
     let step = [loaded([64.0, 64.0], 10.0, BLUE)];
     // SAFETY: the engine is this test's own, live till its close; the
@@ -729,12 +729,13 @@ fn a_mixing_step_and_a_rub_read_a_tile_that_lies_folded_as_it_was() {
 
         let fold = gpu_engine_fold_new(own.engine);
         assert!(!fold.is_null(), "{}", last_error());
+        // Named to the fold: their page has slots free — the pool's room,
+        // whose tiles the pool hands none itself.
+        let names = [under, ink].map(|word| TileAt::of_word(word).expect("a tile's name"));
         let number = numbered();
-        let handed = gpu_engine_pool_fold(own.pool, own.engine, fold, usize::MAX, fold_told, number);
-        assert!(handed >= 2, "the two stored, and what the rub landed");
+        assert_eq!((*own.pool).folds_unwaited(&*own.engine, fold, &names, (fold_told, number)), 2);
         assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
         gpu_engine_pool_settle(own.pool, own.engine);
-        let names = [under, ink].map(|word| TileAt::of_word(word).expect("a tile's name"));
         assert!(names.iter().all(|&at| (*own.pool).lies(at).folded().is_some()), "⛔premise: both lie folded");
         scrubbed(&*own.engine, &*own.pool, &names);
 

@@ -31,7 +31,10 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 ///   name pays for the unfold.
 void main() {
   test('folds at rest: what this isolate is held for', () async {
-    final count = int.parse(Platform.environment['FOLDS'] ?? '512');
+    // A page with a slot free is the pool's room, none of whose tiles is
+    // a fold's (rust/src/kernels/pool/folded.rs): FOLDS fills its pages,
+    // of 2,048 tiles where a binding of the device holds 128 MiB.
+    final count = int.parse(Platform.environment['FOLDS'] ?? '2048');
     final engine = GpuEngine.onFirstAdapter();
     addTearDown(engine.close);
     final kernels = GpuFold(engine);
@@ -60,6 +63,11 @@ void main() {
       ledger.held((hold) => hold.slotsOf(EngineTileLedger.landedCel, some));
     }
     await engine.done();
+    expect(
+      ledger.pool.bytes,
+      count * gpuTileBytes,
+      reason: '⛔premise: FOLDS fills the pool\'s pages, each full',
+    );
 
     String ms(int micros) => (micros / 1000).toStringAsFixed(2);
     String of(List<int> micros) {
@@ -130,7 +138,7 @@ void main() {
     );
     print('FOLDREST batches turns=${turnsOf(turns)}');
     print('FOLDREST batches idle=${turnsOf(idle)}');
-    expect(ledger.pool.bytes, greaterThan(before), reason: 'none folded');
+    expect(ledger.pool.bytes, lessThan(before), reason: 'none folded');
 
     final folded = readBack();
     print(

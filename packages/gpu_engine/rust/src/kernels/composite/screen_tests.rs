@@ -192,7 +192,7 @@ fn a_page_no_picture_is_on_is_given_back_and_no_picture_keeps_it_made() {
     assert!(second.as_tiles().pages.iter().all(|page| *page == made[1]), "and none it is not on");
     drop(first);
     pictures.give_back(engine, 0);
-    assert_eq!(idle_of(&pictures), TILE_BYTES, "the page given back's stand-in");
+    assert_eq!(idle_of(&pictures), 0, "what stands in the place given back is none of the pool's");
     assert!(kept_bytes(&second) == want);
     let third = kept_in(&pictures, &plan);
     assert_eq!(pictures.pages().len(), 2, "made again in the place given back");
