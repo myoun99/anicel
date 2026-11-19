@@ -14,6 +14,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/on_a_worker.dart';
+import '../../core/path_names.dart' show folderOfPath;
 import '../../core/progress_share.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
@@ -21,6 +22,7 @@ import '../../models/app_frame_grid_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/import/tvpp_convert.dart';
 import '../../models/import/tvpp_parse.dart';
 import '../../models/project.dart';
@@ -35,6 +37,9 @@ import '../../services/import/tvp_import_planner.dart';
 import '../../services/import/tile_cutter.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/media/files_under.dart';
+import '../../services/media/media_moves.dart' show projectWithMediaMoved;
+import '../../services/media/media_relink_matcher.dart';
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel;
 import '../../services/persistence/folder_grant.dart'
@@ -648,16 +653,56 @@ Future<TvppProjectRead?> readTvppProject({
   if (plans.isEmpty) {
     return null;
   }
+  final sounds = {
+    for (final clip in parsed.clips)
+      for (final track in clip.audioTracks) track.filePath,
+  };
+  final found = source.staged
+      ? const <String, String>{}
+      : await _soundsBesideTheFile(sounds, tvppPath);
   return TvppProjectRead._(
-    project: _projectOf(tvppPath, parsed, plans),
+    project: projectWithMediaMoved(_projectOf(tvppPath, parsed, plans), found),
     plans: plans,
     source: source,
     warnings: warnings,
     audioPaths: {
-      for (final clip in parsed.clips)
-        for (final track in clip.audioTracks) track.filePath,
+      for (final path in sounds) found[normalizedMediaPath(path)] ?? path,
     },
   );
+}
+
+/// The sounds of [recorded] that are not where the file says, found under
+/// the folder of the .tvpp at [tvppPath] by the relink's own rule
+/// ([planMediaRelink]: by name, split by tail, taken only where that
+/// forces one) — each one's path as recorded, in the pool's spelling, to
+/// where it is.
+///
+/// 🗣️F-621 ① (유저 2026-11-19: 「사운드파일 해당 위치에 있었는데 인식안됨」 ·
+/// 「tvp임포트에서 상대경로로 파일 찾는게 가능하려나? … 쉽게 가능하면하고」):
+/// a .tvpp records a sound's absolute path and no other, and Google Drive
+/// names its root 「My Drive」 on one machine and 「マイドライブ」 on another
+/// — the user's sounds stood beside the file, under a root this machine
+/// does not have. A .anicel looks beside itself by the relative path it
+/// records (`AnicelFileService`); a .tvpp records none, so the folder
+/// is walked for it. 🔬The user's folder on the Surface: 360 files, 0.4 s.
+///
+/// A staged copy's folder is not the file's ([FolderPicker]), so it is not
+/// walked.
+Future<Map<String, String>> _soundsBesideTheFile(
+  Set<String> recorded,
+  String tvppPath,
+) async {
+  final missing = [
+    for (final path in recorded)
+      if (!await File(path).exists()) path,
+  ];
+  if (missing.isEmpty) {
+    return const {};
+  }
+  return planMediaRelink(
+    missingPaths: missing,
+    candidatePaths: await filesUnder(folderOfPath(tvppPath)),
+  ).matched;
 }
 
 /// What the read of [parsed] has to say: the parser's warnings, and — when

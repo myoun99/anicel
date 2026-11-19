@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/media_identity.dart';
 import '../../services/import/media_identity_reader.dart';
+import '../../services/media/files_under.dart';
 import '../../services/media/media_relink_matcher.dart';
 import '../../services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
@@ -187,32 +188,6 @@ int _crc32OfFile(String path) {
   } finally {
     handle.closeSync();
   }
-}
-
-/// Every file under [root], recursively.
-///
-/// Recursive because a production folder splits by cut — the drawing being
-/// hunted is almost never at the top. ASYNC rather than `listSync` because
-/// a shot folder holds thousands of files and this runs on the UI isolate.
-///
-/// A folder that vanishes mid-walk yields what was found so far: a partial
-/// candidate list makes for a smaller match, which the preview reports
-/// honestly, and that beats failing the whole pass.
-@visibleForTesting
-Future<List<String>> filesUnder(String root) async {
-  final paths = <String>[];
-  try {
-    await for (final entity in Directory(
-      root,
-    ).list(recursive: true, followLinks: false)) {
-      if (entity is File) {
-        paths.add(entity.path);
-      }
-    }
-  } on Object {
-    // Permission, a race with the user, a vanished mount.
-  }
-  return paths;
 }
 
 Future<bool?> _confirm(
