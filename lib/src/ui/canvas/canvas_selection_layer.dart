@@ -793,6 +793,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// told either way.
   void _letGoOfSession() => _endSession(_SessionEnd.letGo);
 
+  /// A press that begins a NEW outline — a marquee's drag, a polygon's
+  /// first point — meets no session: a box open takes every press before
+  /// it ([_pressOnImplicitBox] hands the press the box), and a session
+  /// lives in its box ([_session]). So it lands nothing, and nothing is
+  /// left for it to land.
+  ///
+  /// F-615-Q1 asked what this press does with a range open (🗣️유저
+  /// 2026-11-19: 「누름은 착지만」): it never meets one — measured 11-19,
+  /// 3,073 selection tests with a probe here, none reached it holding a
+  /// session.
+  /// R16-① (never revert, always confirm) is kept where a session does
+  /// end: a switch of tool lands it behind 확정's door first (F-615-Q2), and
+  /// a committed region confirms it ([applyCommittedRegion]). ↩️Both
+  /// presses confirmed the session here, a no-op since the box took them.
+  void _noSessionUnderANewOutline() {
+    assert(_session == null, 'a box open takes every press');
+  }
+
   /// CONFIRM (R16-①): lands the floating stamp and adopts the whole
   /// session as ONE history entry. Safe to call from any event context;
   /// never called inside a build phase (the tool-switch and dispose
@@ -2629,8 +2647,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // region already selected STAYS on screen through the drag (R26
       // #16: with add/subtract/intersect the user must see what the new
       // polygon is about to fold into — the PS/CSP read), and the RELEASE
-      // records the combination as one undoable step. A pending move
-      // session confirms first (R16-①: never revert, always confirm).
+      // records the combination as one undoable step.
       //
       // The shape tool on a frame with no cel asks for one first
       // ([CanvasSelectionLayer.onPressNeedsCel]). A press refused traces
@@ -2639,7 +2656,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           !(widget.onPressNeedsCel?.call(canvasPoint) ?? true)) {
         return;
       }
-      _confirmMoveSession();
+      _noSessionUnderANewOutline();
       final folds = _toolFolds;
       final byTouch = event.kind == PointerDeviceKind.touch;
       // [_shiftHeld], of the drag this press starts — there is none yet.
@@ -3248,9 +3265,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (points.isEmpty) {
-      // Starting a fresh outline, like the first press of a marquee drag:
-      // a pending move confirms rather than reverts (R16-①).
-      _confirmMoveSession();
+      // Starting a fresh outline, like the first press of a marquee drag.
+      _noSessionUnderANewOutline();
     }
     // The first vertex is where the outline begins, so the chord is read
     // at it (I-110-Q1) — a tap's press and its lift are one moment.

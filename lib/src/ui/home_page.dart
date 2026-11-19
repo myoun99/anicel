@@ -2050,7 +2050,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// screen when there is anything to ask (A PROJECT SPEAKS WHEN IT IS ON
   /// SCREEN — see [_sayAbout]). One with nothing to lose is not brought
   /// forward just to be let go.
+  ///
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): the project on
+  /// screen going away takes its box away too, so what the box holds lands
+  /// FIRST — behind 확정's window where it lands on many cels — and the
+  /// question asks about the project with it: a save keeps it. ↩️The
+  /// question came first, and the tab's close landed the range on the UI
+  /// thread as the shell followed the next tab (`confirmPendingMove`), into
+  /// a project already saved and on its way out (F-615-Q1's round).
   Future<bool> _settleWithItOnScreen(EditorSessionManager session) async {
+    if (identical(session, _session)) {
+      final landed = Completer<void>();
+      _canvasSelectionCommands.landPendingMoveThen(landed.complete);
+      await landed.future;
+      if (!mounted) {
+        return false;
+      }
+    }
     if (!session.projectFile.wouldLoseWork()) {
       return true;
     }

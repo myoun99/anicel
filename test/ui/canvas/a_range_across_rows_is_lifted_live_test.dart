@@ -333,6 +333,37 @@ void main() {
     );
   });
 
+  /// 🗣️F-615-Q1 asked what a press starting a new outline does to a range
+  /// moved in the box — and with the box open there is no such press: the
+  /// box takes every press on the canvas, inside it or out. A new outline
+  /// is drawn once something has taken the box away, and what takes it
+  /// lands the range first (F-615-Q2).
+  testWidgets('🗣️F-615-Q1: with the box open over a range, a press on the '
+      'canvas is the box\'s — it lands nothing', (tester) async {
+    final session = await pump(tester);
+    final commands = await openTheBox(tester);
+    commands.editTransformValues((now) => now.copyWith(tx: 20));
+    await tester.pumpAndSettle();
+
+    final window = await windowBehind(tester, () async {
+      final press = await tester.startGesture(
+        tester.getTopLeft(find.byType(CanvasSelectionLayer).first) +
+            const Offset(8, 8),
+        kind: PointerDeviceKind.mouse,
+      );
+      await press.moveBy(const Offset(0, 40));
+      await press.up();
+    });
+    expect(window, isNull);
+    await tester.pumpAndSettle();
+    expect(commands.transformActive, isTrue);
+    expect(
+      (inked(session, b, '1', 75, 75), inked(session, b, '1', 125, 75)),
+      (true, false),
+      reason: 'B\'s other cel stands as it was: nothing landed',
+    );
+  });
+
   /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): what takes the
   /// box away — another tool, a run, another tab — lands the range first,
   /// behind 확정's window, and comes once the window is down.
@@ -416,16 +447,20 @@ void main() {
 
     /// The window takes the pointers that were down under it (the
     /// navigator cancels them), so a held button's hold ends with it: the
-    /// press landed the range and held nothing — as a press on the canvas
-    /// over a range lands and no more (F-615-Q1, 「누름은 착지만」).
+    /// press landed the range and held nothing — and picked nothing
+    /// (🗣️F-615-Q1, 「누름은 착지만」): the right button is the eyedropper's
+    /// out of the box.
     testWidgets('a held button\'s tool: the window first — and the window '
-        'takes the pointer, so the tool in hand stays', (tester) async {
+        'takes the pointer, so the tool in hand stays and picks nothing', (
+      tester,
+    ) async {
       final session = await pump(tester);
       await moveTheBox(tester);
       final tools = tester
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
           .brushTool!;
       final before = tools.value.tool;
+      final colour = tools.value.color;
 
       final inHand = <CanvasTool>[];
       watchTheBar(tester, onShare: (_) => inHand.add(tools.value.tool));
@@ -447,6 +482,11 @@ void main() {
       await right.up();
       await tester.pumpAndSettle();
       expect(tools.value.tool, before);
+      expect(
+        tools.value.color,
+        colour,
+        reason: 'the press landed the range and no more: no pick',
+      );
       expectEveryCelMoved(session);
     });
 
@@ -546,6 +586,39 @@ void main() {
       await projects.activate(session);
       await tester.pumpAndSettle();
       expectEveryCelMoved(session);
+    });
+
+    testWidgets('its tab\'s close: the window first, and the question once '
+        'it is down — about the project with the range landed', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final projects = tester
+          .widget<EditorTopStrip>(find.byType(EditorTopStrip).first)
+          .projects;
+      projects.open(createDefaultProject());
+      await tester.pumpAndSettle();
+      await projects.activate(session);
+      await tester.pumpAndSettle();
+      await moveTheBox(tester);
+      final close = find.byKey(const ValueKey<String>('project-tab-close-0'));
+      expect(close, findsOneWidget, reason: '⛔premise: its tab is first');
+
+      final window = await windowBehind(tester, () => tester.tap(close));
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('system-exit-dialog')),
+        findsOneWidget,
+        reason: 'the landed range is work the close asks about',
+      );
+      expectEveryCelMoved(session);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('system-exit-cancel')),
+      );
+      await tester.pumpAndSettle();
+      expect(projects.sessions, contains(session));
     });
   });
 }

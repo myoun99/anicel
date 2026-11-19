@@ -263,9 +263,22 @@ class _CanvasPanelMappedButtons {
     _state.widget.onTemporaryToolRelease?.call(keep: keep);
   }
 
-  void _pickAt(PointerEvent event) => _state._tap.eyedropperPick()?.call(
-    _state._viewportState.canvasPointOf(event),
-  );
+  /// The eyedropper's pick at [event] — made with the eyedropper in hand.
+  ///
+  /// 🗣️F-615-Q1 (유저 2026-11-19, 「누름은 착지만」): a hold is a press
+  /// that brings a tool (F-615-Q2), so over a range moved in the box and
+  /// not confirmed it lands the range behind 확정's window and its tool
+  /// comes once the window is down — the window takes the pointer, and the
+  /// press picks nothing. ↩️It picked at once, into the tool in hand while
+  /// the window stood.
+  void _pickAt(PointerEvent event) {
+    if (_state._brush.tool != CanvasTool.eyedropper) {
+      return;
+    }
+    _state._tap.eyedropperPick()?.call(
+      _state._viewportState.canvasPointOf(event),
+    );
+  }
 }
 
 /// A pick a mapped button holds, and what the tool does when it lets go.
