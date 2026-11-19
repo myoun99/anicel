@@ -180,6 +180,28 @@ void main() {
     expect(decoded[0], isA<TvppNeedsThePictureBefore>());
   });
 
+  test('a picture read after the one before that will not read lands why — '
+      'not that it needs the picture before', () async {
+    // The second's last tile cut short: read on its own it stops at the
+    // tile it points at; made on its own it reads on, to the cut.
+    final second = records[1];
+    final (:file, :slots) = fileOf([
+      [records[0], Uint8List.sublistView(second, 0, second.length - 8)],
+    ]);
+    final decoded = <int, Object>{};
+    await TvppImportDoor.decodeEach(
+      [for (final slot in slots) (plan, cut, bake, slot)],
+      atOnce: 2,
+      windowOf: (slot) => windowOf(file, slot),
+      landed: (index, lay, cel) async => decoded[index] = cel,
+      stopped: () => false,
+    );
+
+    expect(decoded[0], isA<AnicelLaidCel>());
+    expect(decoded[1], isA<TvppRasterDecodeException>());
+    expect(decoded[1], isNot(isA<TvppNeedsThePictureBefore>()));
+  });
+
   test('🚨once a cel read in order hears the stop, no record more is '
       'read', () async {
     final (:file, :slots) = fileOf([
