@@ -594,7 +594,13 @@ void main() {
       );
       await tester.pump();
 
+      final asked = debugRowsReached;
       expect(pixelVerbsOf(session).transformCellKeys(), hasLength(6));
+      expect(
+        debugRowsReached - asked,
+        2,
+        reason: 'each row inside the folder asked once, not once a frame',
+      );
       expect(pixelVerbsOf(session).pixelVerbCellKeys(), isEmpty);
     });
 

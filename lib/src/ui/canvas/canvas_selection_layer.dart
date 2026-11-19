@@ -1592,8 +1592,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// blank passed it, and the lift then came back empty and rolled the
   /// session back with nothing on screen to explain why.
   ///
-  /// The provider memoizes on the surface instance, so asking every build
-  /// costs a comparison — which is what "갱신되도록. 렉없이" requires.
+  /// It is asked every build, which is what "갱신되도록. 렉없이" requires:
+  /// the provider memoizes each cel's ink on its surface instance, and the
+  /// cels it reads them from — every row a range names, since F-329 — are
+  /// walked a row at a time (`PixelVerbs.transformCelsUnderfoot`).
+  /// ↩️「costs a comparison」 was true of the one cel you stood on.
   bool _canEditTransform() {
     if (widget.onLiftRequested == null) {
       return false;

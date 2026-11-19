@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
-import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, VoidCallback, visibleForTesting;
 
 import '../../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../../models/bitmap_surface.dart';
@@ -75,6 +76,15 @@ typedef _ShownCut = ({
   CanvasSelectionRegion region,
   CutPiece? piece,
 });
+
+/// A row a pixel verb may reach ([PixelVerbs._reachableRow]): its id, and
+/// the row as its cut shows it — what its frames are found through.
+typedef _ReachedRow = ({LayerId id, Layer shown});
+
+/// How many times a row was asked whether a pixel verb reaches it — a
+/// test's count of what a range walk asks ONCE a row.
+@visibleForTesting
+int debugRowsReached = 0;
 
 /// The PIXEL VERBS — what the 색 편집 list does to the pixels of the cels
 /// (색 변환, 픽셀 비우기, 픽셀 잘라내기 · 복사, 위 · 아래 붙여넣기) and 전체
@@ -273,8 +283,35 @@ class PixelVerbs {
     return [
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
-          for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ..._rowCels(seen, layer, i, intoFolders: intoFolders),
+          ..._rowCelsAcross(
+            seen,
+            layer,
+            range.startIndex,
+            range.endIndexExclusive,
+            intoFolders: intoFolders,
+          ),
+    ];
+  }
+
+  /// [_rowCels] at every frame from [start] to [end], frame by frame —
+  /// the rows [layer] reaches asked ONCE, not once a frame.
+  ///
+  /// 🔬2026-11-20 (opening-a-transform-box…): a range of 62 rows × 36
+  /// frames asked each row whether it is reached 2,232 times — a search
+  /// of the stack, its folders' eyes and a synced row's display copy at
+  /// every frame — and a box at rest asks for its cels several times a
+  /// build.
+  List<BrushFrameKey> _rowCelsAcross(
+    Cut cut,
+    Layer layer,
+    int start,
+    int end, {
+    required bool intoFolders,
+  }) {
+    final reached = _rowsReached(cut, layer, intoFolders: intoFolders);
+    return [
+      for (var i = start; i < end; i++)
+        for (final row in reached) ?_celAt(cut, row, i),
     ];
   }
 
@@ -316,23 +353,52 @@ class PixelVerbs {
     Layer layer,
     int? frameIndex, {
     required bool intoFolders,
-  }) {
-    if (intoFolders && layer.kind.groupsLayers) {
-      return [
-        for (final member in cut.layers.subtreeMembersOf(layer.id))
-          ?_celOf(cut, member, frameIndex),
-      ];
-    }
-    return [?_celOf(cut, layer, frameIndex)];
-  }
+  }) => [
+    for (final row in _rowsReached(cut, layer, intoFolders: intoFolders))
+      ?_celAt(cut, row, frameIndex),
+  ];
+
+  /// The rows [layer] reaches in [cut] — itself, or a FOLDER reached
+  /// [intoFolders], each row inside it — that a pixel verb may reach.
+  List<_ReachedRow> _rowsReached(
+    Cut cut,
+    Layer layer, {
+    required bool intoFolders,
+  }) => [
+    for (final member
+        in intoFolders && layer.kind.groupsLayers
+            ? cut.layers.subtreeMembersOf(layer.id)
+            : [layer])
+      ?_reachableRow(cut, member),
+  ];
 
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb
   /// may reach it.
+  BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) =>
+      switch (_reachableRow(cut, layer)) {
+        null => null,
+        final row => _celAt(cut, row, frameIndex),
+      };
+
+  /// [row]'s cel at [frameIndex] (the playhead when null).
+  BrushFrameKey? _celAt(Cut cut, _ReachedRow row, int? frameIndex) {
+    final frame = _controllers.timelineController.resolveFrameForLayer(
+      layer: row.shown,
+      frameIndex: frameIndex,
+    );
+    return frame == null
+        ? null
+        : _project.brushFrameKeyForCut(cut, row.id, frame.id);
+  }
+
+  /// [layer], if a pixel verb may reach it in [cut], as [cut] shows it —
+  /// the half of [_celOf] that is the row's, whatever the frame.
   ///
   /// [cut]'s eyes say what is switched on: an edit's ([_asAnEditSees]),
   /// or the solo's for what the canvas shows. [layer] is asked by its id
   /// there — a row handed in from the session wears the solo's.
-  BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) {
+  _ReachedRow? _reachableRow(Cut cut, Layer layer) {
+    debugRowsReached += 1;
     // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
     // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
     // 그런느낌인거지**」 — the reason is general, so it is stated as the
@@ -356,14 +422,7 @@ class PixelVerbs {
     // as stored — the canvas's own, to say what it shows, and a folder's
     // members — named no cel of a synced row: the box lifted none while it
     // was open, and a folder's left out at the confirm too.
-    final frame = _controllers.timelineController.resolveFrameForLayer(
-      layer: attachedRowAsShown(layer, cut.layers),
-      frameIndex: frameIndex,
-    );
-    if (frame == null) {
-      return null;
-    }
-    return _project.brushFrameKeyForCut(cut, layer.id, frame.id);
+    return (id: layer.id, shown: attachedRowAsShown(layer, cut.layers));
   }
 
   /// Whether a pixel verb has anything to do — the buttons' gate, and the
