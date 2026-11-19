@@ -656,8 +656,6 @@ class EditorSessionManager extends ChangeNotifier
       ByIdentity(onionSkin.layerIds.value),
       onionSkin.settings.value,
     ),
-    // Read when asked, as [stackOf] is.
-    stackShown: () => editingCanvas.stack.nodes,
     // Every drag shown in flight moves a frame but the camera's, which no
     // frame is made of (🗣️F-620-Q4 「카메라는 초록 그대로」) — and a row's
     // opacity slider, which rides its own channel.

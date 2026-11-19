@@ -1,10 +1,8 @@
 import 'package:flutter/foundation.dart';
-import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
-import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
 import '../playback/playback_cache_budget.dart';
 import '../playback/frame_pictures.dart';
 import '../playback/playback_pictures.dart' show PictureState;
@@ -35,10 +33,6 @@ abstract interface class PlaybackRun {
   /// Whether a hand is on ([PlaybackPrerenderScheduler.handOn]) — what the
   /// bars that count the frames ready wait behind (F-620-Q3).
   ValueListenable<bool> get handOn;
-
-  /// The open cut's frame at the playhead as the canvas shows it — every
-  /// drag in flight in it, written or not: what a hand moves.
-  List<CompositeNode<CanvasStackRow>> stackShown();
 
   /// Whether what a hand shows in flight, not written, moves what frames
   /// are made of — anywhere in the cut, the frame stood on or not.
@@ -313,12 +307,19 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// ([FramePictures.treeStamp]) — null while no hand is on.
   Object? _treeUnderTheHand;
 
-  /// The key of the frame the warmer stood on as the hand came down — the
-  /// open cut's first where it stood on none — as the canvas showed it
-  /// ([_keyStoodOn]): what says whether the frames moved under the hand,
-  /// the tree having moved. A value is dragged at the frame stood on, and
-  /// a frame the camera places nothing on keeps its key.
-  FramePictureKey? _keyUnderTheHand;
+  /// The frame the warmer stood on as the hand came down — the open cut's
+  /// first where it stood on none — and its key then, as the bar asks for
+  /// it ([_asTheBarAsks]): what says whether the frames moved under the
+  /// hand, the tree having moved. A value is dragged at the frame stood on,
+  /// and a frame the camera places nothing on keeps its key.
+  ///
+  /// ★Signed off the stored cut ([FramePictures.keyOf]): what is shown in
+  /// flight and not written answers for itself ([PlaybackRun.framesInFlight]).
+  /// ↩️It was signed as the canvas showed it (a `stackShown` seam — 🔬검증/
+  /// 서피스 21:36, F-620: the cel number's box, shown and not written, left
+  /// the bar full, 673/673). That answer tells those drags now, and a mutant
+  /// signing it off the stored cut passed every door.
+  ({int frameIndex, FramePictureKey key})? _frameUnderTheHand;
 
   /// Whether a bar was answered not ready under the hand, to be counted
   /// once it lets go ([_countDue]).
@@ -342,40 +343,33 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   void _handMoved() {
     if (_run.handOn.value) {
       _treeUnderTheHand = _run.pictures.treeStamp?.call();
-      _keyUnderTheHand = _keyStoodOn();
+      _frameUnderTheHand = _frameStoodOn();
       return;
     }
     _treeUnderTheHand = null;
-    _keyUnderTheHand = null;
+    _frameUnderTheHand = null;
     if (_countOwed) {
       _countOwed = false;
       _countDue.value += 1;
     }
   }
 
-  /// [_keyUnderTheHand] as it stands now — null without an open cut.
-  ///
-  /// 🚨SIGNED AS THE CANVAS SHOWS IT ([PlaybackRun.stackShown]), not as the
-  /// cut stores it: a value dragged — the cel number's box, a lane's colour
-  /// wheel — is shown, not written, till the hand lets go. ↩️Signed off the
-  /// stored cut ([FramePictures.keyOf]), it never moved under such a drag
-  /// and the bar stood full through it (🔬검증/서피스 21:36, F-620: 673/673
-  /// at its lowest on d8b74fb46, 0 on 8818dd306) — the pins moved the
-  /// frames by the paper's colour, which the stored cut reads.
-  FramePictureKey? _keyStoodOn() {
+  /// [_frameUnderTheHand] as it stands now — null without an open cut.
+  ({int frameIndex, FramePictureKey key})? _frameStoodOn() {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return null;
     }
-    return _run.pictures.keyOfStack(
-      _run.stackShown(),
-      _asTheBarAsks(cut, frameStoodOn(_run.demand, cut.id)),
+    final frameIndex = frameStoodOn(_run.demand, cut.id);
+    return (
+      frameIndex: frameIndex,
+      key: _run.pictures.keyOf(_asTheBarAsks(cut, frameIndex)),
     );
   }
 
   /// Whether a hand is on and the frames have moved since it came down:
   /// what it shows in flight ([PlaybackRun.framesInFlight]), or the tree
-  /// and the key of the frame stood on ([_keyUnderTheHand]).
+  /// and the key of the frame stood on ([_frameUnderTheHand]).
   ///
   /// 🔬관제 11-19 22:4x (「어느 값이든 그림이 바뀌면 비고」 — every door, every
   /// family): ↩️the frame stood on alone was asked, as if every value were
@@ -394,8 +388,12 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
     if (_run.pictures.treeStamp?.call() == under) {
       return false;
     }
-    final stood = _keyUnderTheHand;
-    return stood != null && _keyStoodOn() != stood;
+    final stood = _frameUnderTheHand;
+    final cut = _project.activeCutOrNull;
+    return stood != null &&
+        cut != null &&
+        _run.pictures.keyOf(_asTheBarAsks(cut, stood.frameIndex)) !=
+            stood.key;
   }
 
   /// The frame of [cutId] the warmer stands on — what [demand] shows first
