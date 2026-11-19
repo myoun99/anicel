@@ -237,7 +237,15 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// 됨」으로」): a value dragged changes the tree at every step, and every
   /// step counted the bar anew — 🔬~7 ms of the UI thread a value (Surface,
   /// S5_BA cut 352). Under a hand whose tree still stands — a scrub, a
-  /// stroke — the bar counts as ever ([_handMovedTheTree]).
+  /// stroke — the bar counts as ever ([_handMovedTheFrames]).
+  ///
+  /// 🗣️AND ONLY WHERE THE FRAMES MOVED (F-620-Q4 = 1, 유저 2026-11-19
+  /// 「카메라는 초록 그대로」): a hand that moves the tree and none of the
+  /// frames' pictures — the open cut's camera, which a frame is not made
+  /// of — counts as ever, and its bar stays as the frames stand. ↩️It asked
+  /// the tree alone: a camera dragged stood the cut not ready wherever the
+  /// bar happened to be asked under it, and green wherever nothing asked —
+  /// two answers to one drag (검증/서피스 19:30, F-620).
   List<ReadyRun> playbackReadyRunsForCut(
     Cut cut,
     int start,
@@ -245,7 +253,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
     required bool paintPaper,
   }) {
     _hearTheHand();
-    if (_handMovedTheTree() && cut.id == _project.activeCutOrNull?.id) {
+    if (cut.id == _project.activeCutOrNull?.id && _handMovedTheFrames()) {
       _countOwed = true;
       return const [];
     }
@@ -294,6 +302,13 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// ([FramePictures.treeStamp]) — null while no hand is on.
   Object? _treeUnderTheHand;
 
+  /// The frame the warmer stood on as the hand came down — the open cut's
+  /// first where it stood on none — and its key then, as the bar asks for
+  /// it ([_asTheBarAsks]): what says whether the frames moved under the
+  /// hand, the tree having moved. A value is dragged at the frame stood on,
+  /// and a frame the camera places nothing on keeps its key.
+  ({int frameIndex, FramePictureKey key})? _frameUnderTheHand;
+
   /// Whether a bar was answered not ready under the hand, to be counted
   /// once it lets go ([_countDue]).
   bool _countOwed = false;
@@ -316,18 +331,56 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   void _handMoved() {
     if (_run.handOn.value) {
       _treeUnderTheHand = _run.pictures.treeStamp?.call();
+      _frameUnderTheHand = _frameStoodOn();
       return;
     }
     _treeUnderTheHand = null;
+    _frameUnderTheHand = null;
     if (_countOwed) {
       _countOwed = false;
       _countDue.value += 1;
     }
   }
 
-  /// Whether a hand is on and the tree has moved since it came down.
-  bool _handMovedTheTree() {
-    final under = _treeUnderTheHand;
-    return under != null && _run.pictures.treeStamp?.call() != under;
+  /// [_frameUnderTheHand] as it stands now — null without an open cut.
+  ({int frameIndex, FramePictureKey key})? _frameStoodOn() {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
+    final frameIndex =
+        _run.demand?.picturesAt(0)
+            ?.where((shown) => shown.cut.id == cut.id)
+            .firstOrNull
+            ?.frameIndex ??
+        0;
+    return (
+      frameIndex: frameIndex,
+      key: _run.pictures.keyOf(_asTheBarAsks(cut, frameIndex)),
+    );
   }
+
+  /// Whether a hand is on and the frames have moved since it came down:
+  /// the tree, and the key of the frame stood on ([_frameUnderTheHand]).
+  bool _handMovedTheFrames() {
+    final under = _treeUnderTheHand;
+    if (under == null || _run.pictures.treeStamp?.call() == under) {
+      return false;
+    }
+    final stood = _frameUnderTheHand;
+    final cut = _project.activeCutOrNull;
+    return stood != null &&
+        cut != null &&
+        _run.pictures.keyOf(_asTheBarAsks(cut, stood.frameIndex)) !=
+            stood.key;
+  }
+
+  /// [cut]'s frame [frameIndex] as the timeline's bar asks for it: on its
+  /// paper, no ghosts ([playbackReadyRuns]).
+  static DemandedPicture _asTheBarAsks(Cut cut, int frameIndex) => (
+    cut: cut,
+    frameIndex: frameIndex,
+    paintPaper: true,
+    ghosts: FrameGhosts.none,
+  );
 }
