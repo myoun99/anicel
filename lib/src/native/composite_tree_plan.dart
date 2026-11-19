@@ -44,10 +44,10 @@ import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork, placedRectBounds;
 import '../services/shaded_passes.dart'
     show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
+import '../services/tile_origin.dart'
+    show surfaceContentWorldRect, tileCoordsWorldRect;
 import '../ui/canvas/landing_preview.dart';
 import '../ui/canvas/subtree_buffer_bounds.dart' show subtreeBufferBounds;
-import '../ui/canvas/tile_origin.dart'
-    show surfaceContentWorldRect, tileCoordsWorldRect;
 import 'engine_letters.dart';
 import 'engine_row_pose.dart';
 import 'engine_tile_ledger.dart';

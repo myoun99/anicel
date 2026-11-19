@@ -35,6 +35,7 @@ import '../persistence/brush_drawing_binary_codec.dart'
 import '../photoshop/psd_image.dart';
 import '../photoshop/psd_reader.dart';
 import '../straight_rgba_image.dart';
+import '../tile_origin.dart' show surfaceContentWorldRect;
 import 'cel_picture.dart';
 import 'tile_cutter.dart';
 
@@ -477,24 +478,69 @@ Future<AnicelLaidCel> _cutEngineImage(ui.Image image, PictureCut cut) async {
 /// [region] of [cel] — where its file lies — laid by [placement], the
 /// region's own pixels → the canvas, as [layCelPicture] lays a picture: the
 /// picture the cel's tiles already are, laid from them where they lie on
-/// the engine, never composed into one image or read back first.
+/// the engine, never composed into one image or read back first. Laid on a
+/// cel of [canvas] — the cel's own, unless a resize gives it another.
 Future<BitmapSurface> layCelRegion({
   required BitmapSurface cel,
   required DirtyRegion region,
   required LayerPlacement placement,
   bool whole = false,
+  CanvasSize? canvas,
 }) async {
+  final laidOn = canvas ?? cel.canvasSize;
   final layout = _layoutOf(
     CanvasSize(width: region.width, height: region.height),
-    cel.canvasSize,
+    laidOn,
     placement,
     cel.tileSize,
     whole,
   );
   if (layout == null) {
-    return BitmapSurface(canvasSize: cel.canvasSize, tileSize: cel.tileSize);
+    return BitmapSurface(canvasSize: laidOn, tileSize: cel.tileSize);
   }
   return _laidOnEngine(_RegionSource(cel, region), placement, layout);
+}
+
+/// [cel]'s picture where [move] — a canvas pixel of the cel to one of the
+/// cel it is laid on — carries it, on a cel of [canvas] (the cel's own
+/// unless given): laid from the cel's own tiles as every picture a door
+/// bakes is laid ([layCelRegion]), whole (F-374-Q8).
+///
+/// 🚨Laid from where its FILE lies, not from the cel: the clear canvas
+/// round a small picture is no part of it, and a move that grows the
+/// picture grows that too — an 8×8 still fitted ×206 to its canvas asked
+/// ONE raster 590080×538240 for its 8×8 of ink, and the raster failed. No
+/// brush reaches a reference row, so where its file lies is all it holds.
+/// A cel that does not know where its file lies (an older build's, cut at
+/// the wall) is moved as the picture it is, cut at the wall.
+///
+/// ↩️The reference doors' own (`ProjectImportDoors._celMoved`), moved in
+/// here for a canvas resize that fits its picture (I-180) — one lay of a
+/// cel anew, two callers.
+Future<BitmapSurface> celLaidAnew(
+  BitmapSurface cel,
+  LayerPlacement move, {
+  CanvasSize? canvas,
+}) {
+  final laid = cel.laidBounds;
+  final region =
+      laid ?? DirtyRegion.wholePixelsOf(surfaceContentWorldRect(cel));
+  return layCelRegion(
+    cel: cel,
+    region: region,
+    placement: move.compose(
+      GuideTransform(
+        1,
+        0,
+        0,
+        1,
+        region.left.toDouble(),
+        region.top.toDouble(),
+      ),
+    ),
+    whole: laid != null,
+    canvas: canvas,
+  );
 }
 
 /// Where a lay of a [picture]-sized picture by [placement] puts it on a

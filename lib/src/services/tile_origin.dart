@@ -1,11 +1,11 @@
 import 'dart:ui' show Offset, Rect;
 
-import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
-import '../../models/pasteboard_bounds.dart';
-import '../../models/placed_tile.dart';
-import '../../models/tile_coord.dart';
-import '../../services/cel_text_laying.dart';
+import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
+import '../models/pasteboard_bounds.dart';
+import '../models/placed_tile.dart';
+import '../models/tile_coord.dart';
+import 'cel_text_laying.dart';
 
 /// Where [placed]'s top-left corner sits in canvas space: the ONE place the
 /// tile-coordinate-times-size product is turned into an [Offset] for a
