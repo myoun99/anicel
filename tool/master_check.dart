@@ -49,6 +49,8 @@ const kCheckLane = 'master-check';
 /// 지금 법대로」 (「빌드는 애초에 대기열 끝에 안 서고 제일 앞으로 끼워넣게」):
 /// the build waits on this check, and that morning it waited four hours
 /// behind the lanes' runs (`waitingInTurn` in `test_queue.dart`).
+/// ↩️Its share is no longer anyone's: two thirds beside another run (유저
+/// 2026-11-20, the-wide-check-takes-five-hours-Q1 — `wideCheckShare`).
 const kWideCheckStandsFirst = '--first-in-line';
 
 /// A landing on master: the commit it left master at, and the lane's name.

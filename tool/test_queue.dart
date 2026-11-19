@@ -199,18 +199,39 @@ bool _isSmall(Standing standing) => _workOf(standing) <= kSmallWork;
 
 /// The suites [standing] would take now of the [machine]'s: all of its
 /// share — the machine alone among the long runs in [line], half beside
-/// another — and never more than the files it names or what it [asked].
+/// another, and beside the build's wide check ([Standing.first]) two thirds
+/// for the check and the third left for each other run ([wideCheckShare])
+/// — and never more than the files it names or what it [asked].
 int _wants(
   Standing standing,
   List<Standing> line, {
   required int machine,
   int? asked,
 }) {
-  final share = line.any((o) => o.name != standing.name && !_isSmall(o))
-      ? machine ~/ 2
-      : machine;
+  final beside = line.where((o) => o.name != standing.name && !_isSmall(o));
+  final wide = wideCheckShare(machine);
+  final share = beside.isEmpty
+      ? machine
+      : standing.first
+      ? wide
+      : beside.any((o) => o.first)
+      ? machine - wide
+      : machine ~/ 2;
   return [share, ?asked, ?standing.files].reduce(math.min);
 }
+
+/// The suites the build's wide check ([Standing.first]) takes of the
+/// [machine]'s while another run stands in the line — the rest is the
+/// other runs'.
+///
+/// 🗣️TWO THIRDS (유저 2026-11-20, the-wide-check-takes-five-hours-Q1 「c
+/// 3분의 2」 — 넓은 검사 12칸 · 다른 실행 6칸 on the main PC's eighteen,
+/// over 「a 혼자 쓴다」 and 「b 지금처럼 반씩」; it turns Q18's 「칸 몫은
+/// 지금 법대로」): the line stands full eighteen to twenty-three hours a day,
+/// so at half the wide check ran at nine suites — on 11-18 twenty-five of
+/// its thirty-seven batches, a hundred files in 2:43 where eighteen took
+/// 1:15 — and the daily bundle waits on it.
+int wideCheckShare(int machine) => machine * 2 ~/ 3;
 
 /// How long [standing] should run at [suites], in seconds — never under one.
 double _wallOf(Standing standing, int suites) =>
@@ -249,8 +270,8 @@ double _forwardness(
 /// that day's wide check waited four hours behind the lanes' runs, sixteen
 /// ahead of it at 07:28 and no test run — at 734 machine-minutes it came
 /// forward slower than every run that asked after it. It takes no running
-/// batch's suites, only those the next ones free, and its share is anyone's
-/// ([_wants]).
+/// batch's suites, only those the next ones free. ↩️Its share was anyone's
+/// until 11-20; beside another run it is now two thirds ([wideCheckShare]).
 List<Standing> waitingInTurn(
   List<Standing> line,
   DateTime now, {

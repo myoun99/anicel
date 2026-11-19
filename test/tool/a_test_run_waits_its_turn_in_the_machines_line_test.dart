@@ -65,14 +65,20 @@ void main() {
     takesWhatIsLeft: !old,
     first: first,
   );
-  Standing runningAt(String who, int suites, {int? files, int? work}) => (
+  Standing runningAt(
+    String who,
+    int suites, {
+    int? files,
+    int? work,
+    bool first = false,
+  }) => (
     name: askedAs(who, 0),
     suites: suites,
     files: files,
     work: work,
     since: null,
     takesWhatIsLeft: true,
-    first: false,
+    first: first,
   );
   int? decide(
     String mine,
@@ -234,8 +240,8 @@ void main() {
       expect(turnOrder(line), ['wide', 'short', 'lane']);
     });
 
-    test("🗣️…takes no running batch's suites — what stands free, at the "
-        'share every run has — and the rest goes on down the line', () {
+    test("🗣️…takes no running batch's suites — what stands free — at two "
+        'thirds beside another run, and the rest goes on down the line', () {
       final busy = [
         runningAt('r', 6, work: 3000),
         runningAt('q', 3),
@@ -244,17 +250,49 @@ void main() {
       ];
       expect(decide('wide', busy), 1);
       expect(decide('s', busy), isNull);
-      // Half beside another long run, not the machine; the rest is the
-      // next run's.
+      // 유저 11-20, the-wide-check-takes-five-hours-Q1 「c 3분의 2」:
+      // ↩️half beside another long run until then — 5 here, and 3 for 'a'.
       final freed = [
         runningAt('r', 2, work: 3000),
         waiting('wide', work: 44000, first: true),
         waiting('a', waited: 600),
       ];
-      expect(decide('wide', freed), 5);
-      expect(decide('a', freed), 3);
+      expect(decide('wide', freed), 6);
+      expect(decide('a', freed), 2);
       // Alone, the whole machine.
       expect(decide('wide', [waiting('wide', work: 44000, first: true)]), 10);
+    });
+
+    test("🗣️on the main PC's eighteen: twelve for the wide check, six for "
+        'each run beside it — and half each again once it is gone', () {
+      final line = [
+        waiting('wide', work: 44000, first: true),
+        waiting('a', waited: 600),
+        waiting('b', waited: 300),
+      ];
+      expect(decide('wide', line, machine: 18), 12);
+      expect(decide('a', line, machine: 18), 6);
+      expect(decide('b', line, machine: 18), isNull);
+      // As it runs: what its batch holds is held; the next run takes six.
+      final running = [
+        runningAt('wide', 12, work: 40000, first: true),
+        runningAt('a', 6),
+        waiting('b', waited: 300),
+      ];
+      expect(decide('b', running, machine: 18), isNull);
+      // Down to a short run's work, it holds no one to a third: the rest
+      // goes down the line.
+      final ending = [
+        waiting('wide', files: 3, work: 90, first: true),
+        waiting('a', waited: 600),
+      ];
+      expect(decide('wide', ending, machine: 18), 3);
+      expect(decide('a', ending, machine: 18), 15);
+      final gone = [waiting('a', waited: 600), waiting('b', waited: 300)];
+      expect(decide('a', gone, machine: 18), 9);
+      expect(decide('b', gone, machine: 18), 9);
+      expect(wideCheckShare(18), 12);
+      expect(wideCheckShare(8), 5);
     });
 
     test('beside the first in line a run starts when both fit now — and '
