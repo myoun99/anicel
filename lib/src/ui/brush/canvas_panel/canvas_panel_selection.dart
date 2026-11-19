@@ -354,7 +354,7 @@ class _CanvasPanelSelection {
     if (region == _ahead.region && listEquals(keys, _ahead.over)) {
       return;
     }
-    letGoOfTheCutsAhead();
+    _ahead.letGo();
     if (region == null) {
       return;
     }
@@ -390,7 +390,8 @@ class _CanvasPanelSelection {
       );
       // Let go of while the worker thawed: a run gone takes no turn, so the
       // one it gave way to keeps its own to withdraw. Past the turn nothing
-      // is checked — letting go withdraws it, the panel's dispose included.
+      // is checked — letting go withdraws it, the layer going included (it
+      // tells no box at rest as it is disposed).
       if (run != _ahead.run) {
         return;
       }
@@ -414,9 +415,6 @@ class _CanvasPanelSelection {
       _ahead.declareTo(coordinator);
     }
   }
-
-  /// Lets go of what the box at rest has cut, and of the run cutting it.
-  void letGoOfTheCutsAhead() => _ahead.letGo();
 
   final _CutsAhead _ahead = _CutsAhead();
 

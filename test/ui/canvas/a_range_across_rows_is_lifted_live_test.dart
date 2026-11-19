@@ -20,9 +20,12 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show SelectionMaskOptions;
 import 'package:anicel/src/services/playback/playback_scope.dart';
 import 'package:anicel/src/services/selection_lift.dart'
     show debugSelectionLiftsBuilt;
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_press.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
@@ -403,6 +406,69 @@ void main() {
 
       expect(commands.transformActive, isTrue);
       expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
+    });
+
+    testWidgets('a mask set since the cels were cut cuts them again at the '
+        'press', (tester) async {
+      await pump(tester);
+      final commands = await restTheBox(tester);
+      tester
+          .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel).first)
+          .selectionMaskOptions!
+          .value = const SelectionMaskOptions(
+        growPx: 2,
+      );
+      await tester.pump();
+
+      final cut = debugSelectionLiftsBuilt;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugSelectionLiftsBuilt, cut + 2, reason: 'both, grown');
+    });
+
+    testWidgets('a box told on a still screen still cuts — the run asks for '
+        'the frame it waits on', (tester) async {
+      final session = await pump(tester);
+      await restTheBox(tester);
+      final cut = debugSelectionLiftsBuilt;
+      // The range let go of: the box frames A's cel alone, told in the one
+      // frame that change asks for — and no frame after it but its own.
+      session.frameRangeSelection.value = null;
+      await tester.pump();
+      for (var turn = 0; turn < 4; turn += 1) {
+        await tester.pump(Duration.zero);
+      }
+
+      expect(debugSelectionLiftsBuilt, cut + 1, reason: 'A, cut again');
+    });
+
+    testWidgets('a memory warning takes back what the box at rest cut', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final coordinator = session.pixelEditing.coordinator!;
+      final commands = await restTheBox(tester);
+      final key = session.brushFrameKeyForCut(
+        session.requireActiveCut,
+        b,
+        FrameId('${b.value}-0'),
+      );
+      final standing = coordinator.currentSurfaceOf(key);
+
+      coordinator.frameStore.respondToMemoryPressure();
+      expect(
+        coordinator.currentSurfaceOf(key),
+        same(standing),
+        reason: '⛔premise: the warning left the picture as it stood',
+      );
+      final cut = debugSelectionLiftsBuilt;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugSelectionLiftsBuilt, cut + 2, reason: 'cut again, both');
     });
 
     testWidgets('a build that changed nothing under the box cuts nothing '

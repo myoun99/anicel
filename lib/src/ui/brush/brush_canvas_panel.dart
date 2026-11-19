@@ -1705,7 +1705,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void dispose() {
     _saveKeeper?.down(_landWorkInFlight);
-    _selectionSeat.letGoOfTheCutsAhead();
     ShownCels.instance.hide(this);
     // From the REMEMBERED object, for the reason spelled out below about
     // the viewport: the widget's may already point somewhere else.
