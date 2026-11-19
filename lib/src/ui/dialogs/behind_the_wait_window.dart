@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 
 import '../../services/command.dart' show PressedStep, WorkAhead;
@@ -26,6 +27,11 @@ import 'app_progress_dialog.dart';
 /// screen its turn between two (🗣️F-615, 유저 2026-11-19: 「ui안멈추게
 /// 뒤에서 돌게?하고 대상 프레임 수에 맞춰서 몇퍼센트인지 표시」). A step taken
 /// at once works out nothing ahead: it works it out as it is taken.
+///
+/// A step taken at once is DONE when this returns ([SynchronousFuture]):
+/// what a press does after its step (`.then`) follows it at once, as it did
+/// before the step had a window to stand behind (F-615 — every path that
+/// lands a session comes through here and finishes what it was for).
 Future<void> takeBehindTheWaitWindow(
   BuildContext context,
   PressedStep press, {
@@ -34,7 +40,7 @@ Future<void> takeBehindTheWaitWindow(
 }) {
   if (!reachesManyBlocks(blocks)) {
     press.step();
-    return Future<void>.value();
+    return SynchronousFuture<void>(null);
   }
   return _standBehind(context, press.step, window: window, ahead: press.ahead);
 }

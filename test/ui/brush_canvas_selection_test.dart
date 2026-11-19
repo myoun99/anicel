@@ -1932,16 +1932,21 @@ void main() {
   /// the step lands what was worked out.
   group('🗣️F-615: a confirm over a range works the range out ahead', () {
     /// Frames two and three drawn at (45,45) beside the fixture's frame one,
-    /// a box opened over frame one with nothing selected and moved by
-    /// (10,5), and [history] the panel lands in.
+    /// a box opened over frame one — over [selecting], or with nothing
+    /// selected — and moved by (10,5), and [history] the panel lands in.
     Future<
       ({
         BrushFrameEditingCoordinator coordinator,
         List<BrushFrameKey> keys,
         CanvasSelectionCommands commands,
+        Future<void> Function(CanvasTool tool) setTool,
       })
     >
-    moved(WidgetTester tester, HistoryManager history) async {
+    moved(
+      WidgetTester tester,
+      HistoryManager history, {
+      CanvasSelectionRegion? selecting,
+    }) async {
       final keys = BrushCanvasFixture.createFrameKeys();
       final env = await pumpSelectionPanel(
         tester,
@@ -1955,6 +1960,10 @@ void main() {
       }
       env.coordinator.selectFrame(keys.first);
       await env.setTool(CanvasTool.move);
+      if (selecting != null) {
+        env.commands.setRegion(selecting);
+        await tester.pump();
+      }
       env.commands.beginTransform();
       await tester.pump();
       env.commands.editTransformValues(
@@ -1971,8 +1980,91 @@ void main() {
         coordinator: env.coordinator,
         keys: keys,
         commands: env.commands,
+        setTool: env.setTool,
       );
     }
+
+    /// 🗣️F-615 (관제 2026-11-19, 절대명령 1): every other path that lands
+    /// the session takes 확정's door, and does what it is for once the
+    /// window is down — so what it writes stands behind no window (F-566).
+    final selection = CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+    );
+
+    testWidgets('a deselect lands the range behind the window first, and '
+        'deselects as an entry no window stood over', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history, selecting: selection);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async => env.commands.deselect()),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      expect(env.commands.region, isNull, reason: 'it deselected');
+      expect(
+        history.stepBehind(undo: true),
+        isNull,
+        reason: 'the deselect is undone at once — no window stood over it',
+      );
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+    });
+
+    testWidgets('an inverse lands the range behind the window first, and '
+        'inverts what the landing left', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history, selecting: selection);
+      final pasteboard = env.coordinator.sessionStore.canvasSize.pasteboardAt(
+        PasteboardReach.whole,
+      );
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(
+          tester,
+          () async => env.commands.invertSelection(
+            pasteboard: pasteboard,
+            reach: InvertReach.pasteboard,
+          ),
+        ),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      final inverse = env.commands.region!;
+      expect(
+        inverse.containsPoint(CanvasPoint(x: 25, y: 22)),
+        isTrue,
+        reason: 'the inverse of the outline the box moved away from there',
+      );
+      expect(inverse.containsPoint(CanvasPoint(x: 60, y: 60)), isFalse);
+      expect(
+        history.stepBehind(undo: true),
+        isNull,
+        reason: 'the inverse is undone at once — no window stood over it',
+      );
+    });
+
+    testWidgets('a switch to another selecting tool lands the range behind '
+        'the window', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async {
+          await env.setTool(CanvasTool.select);
+        }),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+    });
 
     testWidgets('it tells the range\'s share a cel at a time, and its step '
         'makes none of what was made ahead', (tester) async {

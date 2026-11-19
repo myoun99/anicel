@@ -39,7 +39,7 @@ void main() {
 
   for (final (path, head, :named) in [
     ('lib/src/ui/canvas/canvas_selection_layer.dart',
-        'void _confirmBehindTheWaitWindow()', named: false),
+        'void _landBehindTheWaitWindow(', named: true),
     ('lib/src/ui/workspace/workspace_tabs.dart',
         'ValueChanged<DrawingGuide>? _guideRasterizer(', named: false),
     ('lib/src/ui/editor_workspace.dart', 'Future<void> _swapReference(',
@@ -70,7 +70,7 @@ void main() {
       read('lib/src/ui/canvas/canvas_selection_layer.dart'),
       'VoidCallback? _applyAction()',
     );
-    expect(applies, contains('return _confirmBehindTheWaitWindow;'));
+    expect(applies, contains('return _landBehindTheWaitWindow;'));
     expect(applies, isNot(contains('return _confirmSession;')));
   });
 

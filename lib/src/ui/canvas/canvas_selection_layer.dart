@@ -1289,6 +1289,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // movePending false, a ghost float painter still mounted, and Escape
       // the only way out.
       confirmPendingMove: _confirmSession,
+      landPendingMoveThen: (then) => _landBehindTheWaitWindow(then: then),
       transformValues: _transformValuesNow,
       editTransformValues: _editTransformValues,
       editWarpPoint: _editWarpPoint,
@@ -1385,7 +1386,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     if (_sessionHasChanges) {
-      return _confirmBehindTheWaitWindow;
+      return _landBehindTheWaitWindow;
     }
     // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
     // 다름」). One shared slot could only answer for whichever mode
@@ -1408,23 +1409,45 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// behind the window, told as a share of the range
   /// ([CanvasSelectionLayer.confirmAhead]) — the box as it stands when 확정
   /// is pressed is what the range lands with.
-  void _confirmBehindTheWaitWindow() {
-    final ahead = switch (_session) {
-      final session? => widget.confirmAhead?.call(
-        session.token,
-        floatWarp.carry,
-      ),
-      null => null,
+  ///
+  /// 🚨★★★**EVERY OTHER PATH THAT LANDS THE SESSION TAKES THIS SAME DOOR**
+  /// (F-615, 관제 2026-11-19: 「같은 착지를 문 하나가 창으로 받고 다른 넷은
+  /// 안 받으면 같은 일에 두 길이다」) — a deselect, an inverse, an undo or a
+  /// redo, a switch between selecting tools — and does what it was for
+  /// ([then]) once the window is down.
+  ///
+  /// ⛔[then] runs AFTER the window, never inside it: an entry it writes
+  /// there is stamped with 확정's window (`StepWindows`), and its undo would
+  /// stand behind one over a single cel (F-566).
+  ///
+  /// A session that holds no change lands on nothing ([_sessionHasChanges],
+  /// the question 확정 itself asks), so it works nothing out ahead and the
+  /// door takes it at once.
+  void _landBehindTheWaitWindow({VoidCallback? then}) {
+    final landing = switch (_session) {
+      final session? when _sessionHasChanges => session,
+      _ => null,
     };
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        (ahead: ahead, step: _confirmSession),
+        (
+          ahead: switch (landing) {
+            final session? => widget.confirmAhead?.call(
+              session.token,
+              floatWarp.carry,
+            ),
+            null => null,
+          },
+          step: _confirmSession,
+        ),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.confirm),
         ),
-        blocks: widget.confirmLandsOn?.call() ?? const [],
-      ),
+        blocks: landing == null
+            ? const []
+            : widget.confirmLandsOn?.call() ?? const [],
+      ).then((_) => then?.call()),
     );
   }
 
@@ -1444,6 +1467,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!mounted) {
       return;
     }
+    // In the same step as the landing, whichever door it came through
+    // ([_landOpenSession] says why).
+    _takeBackFloats();
     _confirmMoveSession();
     if (_transform != null) {
       // Untouched, a degenerate quad, or a box a walk carried onto a cel
@@ -1576,12 +1602,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// [SessionInterruption.land]: whatever the box shows becomes the cel.
   ///
-  /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK HERE**, for every
-  /// landing and not just the dispose one. [_publishFloats] runs from BUILD,
-  /// so an ending that does not rebuild — a dispose, or a land that closes
-  /// the session in the same frame — leaves the composite holding a
-  /// picture nobody owns, drawn over the one that just landed (유저
-  /// 2026-09-22: 「캔버스 사라지고 이상해지는데」).
+  /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK WITH THE LANDING**,
+  /// for every landing and not just the dispose one. [_publishFloats] runs
+  /// from BUILD, so an ending that does not rebuild — a dispose, or a land
+  /// that closes the session in the same frame — leaves the composite
+  /// holding a picture nobody owns, drawn over the one that just landed
+  /// (유저 2026-09-22: 「캔버스 사라지고 이상해지는데」).
+  ///
+  /// 🗣️F-615: a landing that stands behind the wait window keeps its float
+  /// up while the range is worked out — it is the picture the range is
+  /// about to become — and takes it back in the step ([_confirmSession]).
   void _landOpenSession() {
     // R27 #18: the box is folded in FIRST, so whatever it showed is what
     // lands rather than the stamp's pre-transform place — through the fold
@@ -1595,8 +1625,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // through its transform a second time (measured 2026-10-06).
     // ↩️It folded here itself, ahead of the landing, while the fold closed
     // the box; the fold is the landing's own first step now.
-    _takeBackFloats();
     if (_disposing) {
+      _takeBackFloats();
       // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
       // of a commit that paints — re-running the ants — has nothing to
       // paint on, and `setState` on a defunct element is an assertion, not
@@ -1614,7 +1644,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _publishTransformValues();
       return;
     }
-    _confirmSession();
+    _landBehindTheWaitWindow();
   }
 
   /// Remembers where the box stands, just before an operation moves it
@@ -2310,7 +2340,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // frame, row and cut moves and a `deferDragNotify` for a reset run from
     // a build. Those moves CARRY the session (2026-09-17) and never came
     // here any more; what is left of the reset is the lines below.
-    _confirmSession();
+    //
+    // 🗣️F-615: through 확정's own door, and the deselect once it is down.
+    _landBehindTheWaitWindow(then: _deselectLanded);
+  }
+
+  /// [_deselect], once the session it found has landed.
+  void _deselectLanded() {
+    if (!mounted) {
+      return;
+    }
     // The outline as the landing left it — what the deselect's own entry
     // has to put back.
     final before = _region;
