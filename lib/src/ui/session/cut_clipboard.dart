@@ -2,6 +2,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/cut_insertion.dart' show CutLanding;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/persistence/media_staging_store.dart';
@@ -95,6 +96,10 @@ class CutClipboard implements BringsMedia {
   /// (`reachesManyBlocks`).
   Iterable<Object> get drawingsInHand =>
       drawingsOf([for (final cut in _cutsInHand) ...cut.layers]);
+
+  /// The pictures a copy — or a 잘라내기 — reads of the cuts in hand
+  /// ([CutCopies.shownBy]), thawed ahead of it ([CutCopies.shownAhead]).
+  WorkAhead get takeAhead => _copies.shownAhead(_cutsInHand);
 
   /// The drawings a paste of the cuts on the board puts down, linked or not.
   Iterable<Object> get drawingsHeld => drawingsOf([

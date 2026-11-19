@@ -1,3 +1,4 @@
+import '../../core/progress_share.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -14,6 +15,7 @@ import '../../models/timeline_splice.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show resizeBitmapSurfaceCanvas;
 import '../../services/brush_frame_store.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/editing/cut_duplicate_helpers.dart'
     show duplicateFrameContent;
 import 'session_roles.dart';
@@ -495,6 +497,37 @@ Map<FrameId, BitmapSurface> picturesShownBy({
 }) => {
   for (final cel in cels) cel.id: ?store.bakedSurfaceOrNull(keyOf(cel.id)),
 };
+
+/// A drawing a copy reads the picture of ([picturesShownBy]): the cut it is
+/// read in, its row there, and its cel.
+typedef DrawingShown = ({Cut cut, LayerId row, FrameId cel});
+
+/// The pictures [drawings] show, each under the key [keyOf] names, thawed
+/// AHEAD on a worker ([BrushFrameStore.thawAhead]) and each telling its
+/// share as it lands (🗣️F-615) — so the copy that reads them
+/// ([picturesShownBy]) finds them thawed, and stands behind the wait window
+/// where it froze on the UI thread.
+///
+/// 🔬S5_BA: a copy of a range of 346 drawings read them on the UI thread in
+/// 1.3 s, and a 잘라내기 in 1.7 s; the second press found them thawed
+/// (12 ms).
+WorkAhead picturesShownAhead({
+  required BrushFrameStore store,
+  required Iterable<DrawingShown> drawings,
+  required BrushFrameKey Function(Cut cut, LayerId row, FrameId cel) keyOf,
+}) {
+  final shown = drawings.toList();
+  return (report) async {
+    final thawed = [
+      for (final (:cut, :row, :cel) in shown)
+        store.thawAhead(keyOf(cut, row, cel), canvasSize: cut.canvasSize),
+    ];
+    for (final (index, thaw) in thawed.indexed) {
+      await thaw;
+      report(doneShare(index + 1, thawed.length));
+    }
+  };
+}
 
 /// 🚨AND THE HANDWRITING COMES WITH THEM: a copied block starts with the
 /// handwriting its source had on the conte, under the id it was given

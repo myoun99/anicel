@@ -19,6 +19,7 @@ import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_splice.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show resizeBitmapSurfaceCanvas;
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/cel_picture_replace_command.dart';
 import '../../services/editing/cut_duplicate_helpers.dart'
     show MirrorCopies, mirrorCopiesFor;
@@ -288,7 +289,7 @@ class FrameClipboard implements BringsMedia {
   /// standing, the one the cursor's cell shows; under a band, every one its
   /// run holds on each row it seats ([_seatsOf]) — the wait window's
   /// measure (`reachesManyBlocks`).
-  Iterable<Object> drawingsTakenAt(ClipboardPlace? place) sync* {
+  Iterable<(LayerId, FrameId)> drawingsTakenAt(ClipboardPlace? place) sync* {
     if (place == null || place._bandMissesTheRow) {
       return;
     }
@@ -311,6 +312,21 @@ class FrameClipboard implements BringsMedia {
         }
       }
     }
+  }
+
+  /// The pictures a copy — or a cut — at [place] reads
+  /// ([_picturesCarriedBy]), thawed ahead of it ([picturesShownAhead]).
+  WorkAhead takeAheadAt(ClipboardPlace? place) {
+    final cut = _project.activeCutOrNull;
+    return picturesShownAhead(
+      store: _renderCaches.brushFrameStore,
+      drawings: [
+        if (cut != null)
+          for (final (row, cel) in drawingsTakenAt(place))
+            (cut: cut, row: row, cel: cel),
+      ],
+      keyOf: _project.brushFrameKeyForCut,
+    );
   }
 
   /// The drawings a paste at [place] lays down — linked or not — each on

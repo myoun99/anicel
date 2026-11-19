@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -10,9 +15,11 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 
+import '../helpers/cels_parked_cold.dart';
 import '../helpers/home_page_probes.dart';
 import '../helpers/room_for_the_pills.dart';
-import '../helpers/wait_window.dart' show windowBehindTheTap;
+import '../helpers/wait_window.dart'
+    show expectOneBar, watchTheBar, windowBehindTheTap;
 import 'timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 
 /// 🗣️F-551 (유저 2026-11-04): 「연산 필요한거? 무거운거? 들은 왠만하면 다
@@ -30,6 +37,7 @@ import 'timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 /// (`every_heavy_door_stands_behind_the_wait_window_test`).
 void main() {
   const copy = ValueKey<String>('shared-copy-button');
+  const cutOut = ValueKey<String>('shared-cut-button');
   const pasteIndependent = ValueKey<String>('shared-paste-independent-button');
   const pasteLinked = ValueKey<String>('shared-paste-linked-button');
   const duplicate = ValueKey<String>('shared-duplicate-button');
@@ -147,6 +155,46 @@ void main() {
       reason: 'the row stood on holds its drawings',
     );
     expect(history.undoCount, before + 2, reason: 'the duplicate was taken');
+  });
+
+  testWidgets('🗣️F-615 — two drawings kept cold under a band: the copy and '
+      'the 잘라내기 thaw them behind their window first, a share each — '
+      '「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」', (tester) async {
+    final session = await pump(tester);
+    await bandTwoDrawings(tester, session);
+    final row = session.activeLayerId!;
+    final cut = session.requireActiveCut;
+    final keys = [
+      for (final cel in cut.layers.firstWhere((one) => one.id == row).frames)
+        session.brushFrameKeyForCut(cut, row, cel.id),
+    ];
+    final store = session.renderCaches.brushFrameStore;
+    void parkThemCold() => parkCold(store, {
+      for (final key in keys)
+        key: BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: defaultCelTileSize,
+          tiles: {
+            TileCoord(x: 0, y: 0): BitmapTile(
+              size: defaultCelTileSize,
+              pixels: Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+                ..fillRange(0, 4, 0xFF),
+            ),
+          },
+        ),
+    });
+
+    for (final press in [copy, cutOut]) {
+      parkThemCold();
+      expect(
+        [for (final key in keys) store.isCelCold(key)],
+        [true, true],
+        reason: '⛔전제: $press',
+      );
+      final told = watchTheBar(tester);
+      expect(await windowBehindTheTap(tester, press), isNotNull);
+      expectOneBar(told, [0.5, 1.0]);
+    }
   });
 
   // 링크 붙여넣기 puts up its own window (its question comes between two of

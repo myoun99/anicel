@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_id.dart';
 import 'command.dart';
 
 /// The app's one wait window as a step stands behind it — opaque here: the
@@ -38,7 +40,7 @@ bool reachesManyBlocks(Iterable<Object> blocks) {
 
 /// The drawings [rows] hold, each a block to a verb that takes rows whole —
 /// a row, or a cut's rows — for [reachesManyBlocks].
-Iterable<Object> drawingsOf(Iterable<Layer> rows) sync* {
+Iterable<(LayerId, FrameId)> drawingsOf(Iterable<Layer> rows) sync* {
   for (final row in rows) {
     for (final cel in row.frames) {
       yield (row.id, cel.id);
