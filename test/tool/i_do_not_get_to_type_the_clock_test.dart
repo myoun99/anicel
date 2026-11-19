@@ -95,8 +95,11 @@ void main() {
       'a note': ([head], {'id': 'W', 'note': '#1259 로 고쳤다'}, true),
       'a judgement': ([head], {'id': 'W', 'think': '#1259 때문인 듯'}, true),
       'what is left': ([head], {'id': 'W', 'rest': '#1259 의 남은 것'}, true),
-      'a letter':
-          ([head], {'id': 'W', 'to': '관제', 'note': '#1259 를 보세요'}, true),
+      'a letter': (
+        [head],
+        {'id': 'W', 'to': '관제', 'from': '보드', 'note': '#1259 를 보세요'},
+        true,
+      ),
       'a claimed PR': (
         [head],
         {'id': 'W', 'pr': 1259, 'note': '#1259 로 고쳤다'},
@@ -142,7 +145,11 @@ void main() {
           proseSince: '2026-11-19T00:00:00',
           now: DateTime.parse('2026-11-19T12:00:00'),
         );
-        expect(refusal != null, refused, reason: 'board_say: $refusal');
+        expect(
+          refusal,
+          refused ? contains('번호(「#1259」)') : isNull,
+          reason: 'refused for this, and for nothing else',
+        );
         expect(
           gate.contains('PR을 본문에만 적은 카드'),
           refused,

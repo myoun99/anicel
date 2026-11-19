@@ -672,8 +672,11 @@ Iterable<String> _workThatShipped(
         shipped.add(c.id);
       }
       if (!_saysSomething(c)) bare.add(c.id);
-    } else if (_recent(c, since) &&
-        _lastCitation(c).compareTo(proseSince) >= 0) {
+    }
+    // ⚠️Its own `if`, not the shipped branch's `else`: whether a card that
+    // claims a PR is asked at all is [prsQuotedInProse]'s to say, and an
+    // `else` here was a second answer to it that the mutants found.
+    if (_recent(c, since) && _lastCitation(c).compareTo(proseSince) >= 0) {
       // 🚨★★★THE STORY, NOT THE HEAD — the last piece of `board-one-stream`
       // (「note·said·title 은 아직 마지막값이 이기는 필드다 — 항목으로 접는
       // 것이 이 개편의 마지막 조각이다」).
