@@ -236,6 +236,7 @@ class _CanvasPanelShellBars {
     backdropNone: _state._stageBackdropNone,
     onBackdropColorChanged: _state.widget.onBackdropColorChanged,
     onBackdropNone: _state.widget.onBackdropNone,
+    onStagePlanesSettled: _state.widget.onStagePlanesSettled,
     // Read when a picker opens, so the memoized bar does not have to be
     // rebuilt every time the brush colour moves.
     currentColorOf: () => _state._brush.color,

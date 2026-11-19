@@ -94,6 +94,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.backdropNone,
     this.onBackdropColorChanged,
     this.onBackdropNone,
+    this.onStagePlanesSettled,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -277,6 +278,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<int>? onBackdropColorChanged;
   final bool? backdropNone;
   final VoidCallback? onBackdropNone;
+
+  /// A colour window of the three planes closed: the colours its wheel
+  /// passed came through the changed callbacks, shown, and the one it
+  /// rests on is written now, once (F-620-Q1).
+  final VoidCallback? onStagePlanesSettled;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -611,6 +617,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       backdropNone: widget.backdropNone,
       onBackdropColorChanged: widget.onBackdropColorChanged,
       onBackdropNone: widget.onBackdropNone,
+      onStagePlanesSettled: widget.onStagePlanesSettled,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

@@ -519,6 +519,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     appSettings: appSettings,
+    dragPreview: dragPreview,
   );
 
   // ── every pixel this session is holding: its own object ─────────────

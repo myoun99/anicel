@@ -15,6 +15,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/ruler_marker.dart';
+import '../../models/stage_planes.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
@@ -576,6 +577,39 @@ class RulerMarkerDragPreview extends TimelineDragPreview {
   int get hashCode => Object.hash(holder, markers);
 }
 
+/// The canvas's STAGE PLANES as a colour window shows them before it closes
+/// (F-620-Q1, 유저 2026-11-19 「컬러휠 드래그할때」): a pick in the paper's,
+/// the backdrop's or the pasteboard's window is ONE operation, as a lane's
+/// colour window is — every colour its wheel passes is shown here, and the
+/// one it rests on is written once it closes, one undo
+/// (`ProjectSettings.writeShownPlanes`). Whatever shows a plane reads it
+/// ([stagePlanesUnder]); what a file, an export or a picture saved as
+/// writes reads the project. ↩️Every colour the wheel passed was written as
+/// it came: a step of history each, and every picture of the cut made again
+/// for each (🔬S5_BA cut 352, Surface Pro 11: 60 colours, 60 steps).
+class StagePlanesPreview extends TimelineDragPreview {
+  const StagePlanesPreview({required this.planes});
+
+  final StagePlanes planes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is StagePlanesPreview && other.planes == planes;
+
+  @override
+  int get hashCode => planes.hashCode;
+}
+
+/// The planes a screen shows: the colour window's in flight where [preview]
+/// is one, and [held] — the project's — otherwise.
+StagePlanes stagePlanesUnder(
+  TimelineDragPreview? preview,
+  StagePlanes held,
+) => switch (preview) {
+  StagePlanesPreview(:final planes) => planes,
+  _ => held,
+};
+
 /// The markers [holder]'s ruler shows: the drag in flight's where [preview]
 /// is one of that ruler's, and [held] — the project's — otherwise.
 RulerMarkers rulerMarkersUnder(
@@ -890,6 +924,16 @@ Project projectWithTimelineDragPreview(
       return _projectWithLayersSubstituted(project, previewLayers);
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
+    case StagePlanesPreview(:final planes):
+      // The planes a colour window shows reach the project views as they
+      // reach the canvas ([stagePlanesUnder]).
+      return project.copyWith(
+        background: planes.paper,
+        backdropArgb: planes.backdrop.argb,
+        backdropNone: planes.backdrop.none,
+        pasteboardArgb: planes.pasteboard.argb,
+        pasteboardNone: planes.pasteboard.none,
+      );
     case RulerMarkerDragPreview():
       // No project view shows a marker: its ruler's own layer reads the
       // drag ([rulerMarkersUnder]), and the views are handed the project as

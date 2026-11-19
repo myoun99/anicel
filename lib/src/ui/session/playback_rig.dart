@@ -130,7 +130,9 @@ class PlaybackRig implements PlaybackRun {
       canvasSize: picture.cut.canvasSize,
       pasteboardReach: _project.repository.requireProject().pasteboardReach,
       paintPaper: picture.paintPaper,
-      paperBackground: _settings.projectBackground,
+      // As shown: a colour window's paper rides the channel the tree stamp
+      // holds (F-620-Q1).
+      paperBackground: _settings.shownPlanes.paper,
     ),
     line: playbackCache,
   );

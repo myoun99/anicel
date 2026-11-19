@@ -2689,16 +2689,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // rebuild on it is this one wrapper: `updateShouldNotify` keeps the
       // panels still until a colour actually moves, and the identical child
       // instance means the tree below is never rebuilt at all.
+      //
+      // As SHOWN: a colour window's planes ride the preview channel, which
+      // notifies no session (F-620-Q1), so this hears that too.
       child: ListenableBuilder(
-        listenable: widget.session,
+        listenable: Listenable.merge([
+          widget.session,
+          widget.session.dragPreview,
+        ]),
         builder: (context, child) {
           final project = widget.session.repository.currentProject;
+          final planes = project == null
+              ? null
+              : widget.session.projectSettings.shownPlanes;
           return CanvasStageColors(
-            backdropArgb: project?.backdropArgb ?? defaultProjectBackdropArgb,
+            backdropArgb: planes?.backdrop.argb ?? defaultProjectBackdropArgb,
             pasteboardArgb:
-                project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
-            backdropNone: project?.backdropNone ?? false,
-            pasteboardNone: project?.pasteboardNone ?? false,
+                planes?.pasteboard.argb ?? defaultProjectPasteboardArgb,
+            backdropNone: planes?.backdrop.none ?? false,
+            pasteboardNone: planes?.pasteboard.none ?? false,
             pasteboardSize: project?.pasteboardSize ?? PasteboardSize.three,
             pasteboardInUse: project?.pasteboardInUse ?? true,
             child: child!,

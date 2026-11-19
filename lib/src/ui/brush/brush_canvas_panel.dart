@@ -324,6 +324,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.backdropNone,
     this.onBackdropColorChanged,
     this.onBackdropNone,
+    this.onStagePlanesSettled,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -915,6 +916,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// The backdrop's absence (F-114) and its 「없음」. null = from the scope.
   final bool? backdropNone;
   final VoidCallback? onBackdropNone;
+
+  /// A colour window of the three planes closed: the colours its wheel
+  /// passed came through the changed callbacks, shown, and the one it
+  /// rests on is written now, once (F-620-Q1).
+  final VoidCallback? onStagePlanesSettled;
 
   /// An eyedropper pick — the tool's tap and drag, and a held mapped
   /// button's live pick alike. ONE pick (I-15): the Alt-only pick that stood
@@ -4564,6 +4570,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.currentColorOf,
     required this.onBackdropColorChanged,
     required this.onBackdropNone,
+    required this.onStagePlanesSettled,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.liveViewport,
@@ -4638,6 +4645,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final ValueChanged<bool>? onPasteboardInUseChanged;
   final bool backdropNone;
   final VoidCallback? onBackdropNone;
+
+  /// A colour window of the three planes closed: the colours its wheel
+  /// passed came through the changed callbacks, shown, and the one it
+  /// rests on is written now, once (F-620-Q1).
+  final VoidCallback? onStagePlanesSettled;
 
   /// The tool's own colour, handed to every picker this bar opens for
   /// its 현재 색 반영 button (see [ColorSwatchButton.currentColorOf]).

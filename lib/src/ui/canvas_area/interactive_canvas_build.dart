@@ -255,6 +255,7 @@ class _InteractiveCanvasBuild {
     // for the gates below, which a field never could.
     final canPoseActiveLayer = _canPoseActiveLayer && activeLayer != null;
     final tool = _state.widget.brushToolState.value.tool;
+    final planes = session.projectSettings;
     // D12 × R6q2 (유저 확정 08-18): playback fit is the CAMERA
     // VIEW's — toggle ON frames the camera's output frame at the
     // origin (the painter's frameRect) for as long as it plays;
@@ -491,7 +492,7 @@ class _InteractiveCanvasBuild {
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: point,
-        paperColor: session.projectSettings.projectBackground.paintedArgb,
+        paperColor: planes.shownPlanes.paper.paintedArgb,
         source:
             _state.widget.eyedropperSource?.value ??
             CanvasReadSource.display,
@@ -510,20 +511,23 @@ class _InteractiveCanvasBuild {
       // wired, and writing is not the same question as reading.
       // ↩️F-272 put those panels back on black — on purpose, in one
       // place (`BrushCanvasPanel.canvasBase`).
-      paperColor: session.projectSettings.projectBackground.argb,
+      paperColor: planes.shownPlanes.paper.argb,
       // F-114: a pick is a plane that is there; 「없음」 takes it away and
       // keeps its colour for the next pick.
-      paperNone: session.projectSettings.projectBackground.none,
+      paperNone: planes.shownPlanes.paper.none,
+      // A pick in a plane's window is ONE operation (F-620-Q1): each colour
+      // is shown, and the window closing writes the one it rests on.
       onPaperColorChanged: (argb) =>
-          session.projectSettings.setProjectBackground(ProjectBackground.color(argb)),
-      onPaperNone: () => session.projectSettings.setProjectBackground(
-        ProjectBackground.color(
-          session.projectSettings.projectBackground.argb,
-          none: true,
-        ),
+          planes.showPaper(ProjectBackground.color(argb)),
+      onPaperNone: () => planes.showPaper(
+        ProjectBackground.color(planes.shownPlanes.paper.argb, none: true),
       ),
-      onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
-      onPasteboardNone: session.projectSettings.setPasteboardNone,
+      onPasteboardColorChanged: (argb) =>
+          planes.showPasteboard((argb: argb, none: false)),
+      onPasteboardNone: () => planes.showPasteboard((
+        argb: planes.shownPlanes.pasteboard.argb,
+        none: true,
+      )),
       // Behind the canvas size's wait window: each cuts every picture past
       // the wall it moves (F-432).
       onPasteboardSizeChanged: (size) => unawaited(
@@ -548,8 +552,13 @@ class _InteractiveCanvasBuild {
           ),
         ),
       ),
-      onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
-      onBackdropNone: session.projectSettings.setProjectBackdropNone,
+      onBackdropColorChanged: (argb) =>
+          planes.showBackdrop((argb: argb, none: false)),
+      onBackdropNone: () => planes.showBackdrop((
+        argb: planes.shownPlanes.backdrop.argb,
+        none: true,
+      )),
+      onStagePlanesSettled: planes.writeShownPlanes,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
         _state.widget.brushToolState.value.copyWith(color: color),
       ),
@@ -766,13 +775,15 @@ class _InteractiveCanvasBuild {
     final look = _look(session);
     final shot = _shotAt(session, look, viewport);
     final project = session.repository.requireProject();
+    // As shown: a colour window's planes ride the channel this hears.
+    final planes = session.projectSettings.shownPlanes;
     return CameraShot(
       view: viewport,
       shot: shot,
       canvasSize: _canvasSize,
-      background: session.projectSettings.projectBackground,
-      pasteboardColor: stageColorOnScreen(project.pasteboardArgb),
-      pasteboardNone: project.pasteboardNone,
+      background: planes.paper,
+      pasteboardColor: stageColorOnScreen(planes.pasteboard.argb),
+      pasteboardNone: planes.pasteboard.none,
       pasteboardReach: project.pasteboardReach,
       // The view the frame is drawn through: the camera's, while a run
       // plays here through it ([CanvasLook.frameViewThrough]).

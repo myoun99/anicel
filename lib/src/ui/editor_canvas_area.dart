@@ -102,6 +102,7 @@ import 'timeline/memo_token.dart' show ByIdentity, ByList, EyesOpen;
 import 'timeline/timeline_drag_preview.dart'
     show
         BlockMoveDragPreview,
+        StagePlanesPreview,
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
@@ -621,8 +622,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// What the canvas AREA takes from a drag: the row being drawn on as the
   /// panel is handed it — its display opacity, its colour keys and the pose
-  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) — and, in
-  /// camera mode, the camera's pose the Fit button frames.
+  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) —, in camera
+  /// mode the camera's pose the Fit button frames, and the stage planes a
+  /// colour window shows (F-620-Q1), which the panel and its swatches wear.
   ///
   /// 🚨canvas-wakes-for-what-it-shows: a block carried under the playhead
   /// changes the PICTURE, which the underlay follows by itself — not these.
@@ -650,6 +652,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         isCameraLayerActive: isCameraLayerActive,
       ).pose,
       isCameraLayerActive ? session.camera.cameraPoseAtCurrentFrame : null,
+      session.projectSettings.shownPlanes,
     );
   }
 
@@ -681,6 +684,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       ],
       if (preview case BlockMoveDragPreview(:final picturesMoved))
         picturesMoved,
+      // The stage planes a colour window shows (F-620-Q1).
+      if (preview case StagePlanesPreview(:final planes)) planes,
       session.camera.activeCutCameraTrack,
       if (session.transitions.activeCutPlaceShown case final place?) ...[
         place.start,
@@ -839,6 +844,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     _TrackStackMount mount,
   ) {
     final project = session.repository.requireProject();
+    final planes = session.projectSettings.shownPlanes;
     // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
     // view rebuilds itself as the frame it follows crosses into another cut
     // (a run's clock; a scrub's parking did too until I-57 ②), and bare under
@@ -862,11 +868,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraPoseOf: session.camera.cameraPoseForCut,
         run: mount.run,
         viewport: viewport,
-        background: session.projectSettings.projectBackground,
-        backdropArgb: project.backdropArgb,
-        backdropNone: project.backdropNone,
-        pasteboardArgb: project.pasteboardArgb,
-        pasteboardNone: project.pasteboardNone,
+        background: planes.paper,
+        backdropArgb: planes.backdrop.argb,
+        backdropNone: planes.backdrop.none,
+        pasteboardArgb: planes.pasteboard.argb,
+        pasteboardNone: planes.pasteboard.none,
         pasteboardReach: project.pasteboardReach,
       ),
     );
@@ -2006,7 +2012,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final standing = session.editingGlobalFrame;
     final partners = _olPartnersAt(session, standing);
     final frame = session.camera.cameraFrameSize;
-    final project = session.repository.requireProject();
+    final backdrop = session.projectSettings.shownPlanes.backdrop;
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -2053,8 +2059,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
                 backdrop: backdropOnScreen((
-                  color: stageColorOnScreen(project.backdropArgb),
-                  none: project.backdropNone,
+                  color: stageColorOnScreen(backdrop.argb),
+                  none: backdrop.none,
                 ), stageGround),
                 share: backdropShareUnder(cutFadeOpacity, [
                   for (final partner in partners) partner.opacity,

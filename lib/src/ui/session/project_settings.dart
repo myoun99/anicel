@@ -1,13 +1,18 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/cut_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/stage_planes.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart' show transitionHandlesByCut;
 import '../../services/command.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show StagePlanesPreview, TimelineDragPreview, stagePlanesUnder;
 import 'editor_app_settings.dart';
 import 'session_roles.dart';
 import '../../core/identity_memo.dart';
@@ -27,13 +32,87 @@ class ProjectSettings {
     required ProjectAccess project,
     required ChangeSink changes,
     required EditorAppSettings appSettings,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _changes = changes,
-       _appSettings = appSettings;
+       _appSettings = appSettings,
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final EditorAppSettings _appSettings;
+
+  /// The session's preview channel, where a colour window's planes ride
+  /// while it is open ([StagePlanesPreview]).
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
+
+  /// The three stage planes as the screen shows them: a colour window's in
+  /// flight ([StagePlanesPreview]), else as the project holds them. ⛔Not
+  /// what is written — a file, an export and a picture saved read the
+  /// project.
+  StagePlanes get shownPlanes => stagePlanesUnder(
+    _dragPreview.value,
+    stagePlanesOf(_project.repository.requireProject()),
+  );
+
+  /// [paper] shown, not written — a colour its window's wheel passes.
+  void showPaper(ProjectBackground paper) {
+    final shown = shownPlanes;
+    _show((
+      paper: paper,
+      backdrop: shown.backdrop,
+      pasteboard: shown.pasteboard,
+    ));
+  }
+
+  /// [backdrop] shown, not written.
+  void showBackdrop(StagePlaneSetting backdrop) {
+    final shown = shownPlanes;
+    _show((
+      paper: shown.paper,
+      backdrop: backdrop,
+      pasteboard: shown.pasteboard,
+    ));
+  }
+
+  /// [pasteboard] shown, not written.
+  void showPasteboard(StagePlaneSetting pasteboard) {
+    final shown = shownPlanes;
+    _show((
+      paper: shown.paper,
+      backdrop: shown.backdrop,
+      pasteboard: pasteboard,
+    ));
+  }
+
+  void _show(StagePlanes planes) =>
+      _dragPreview.value = StagePlanesPreview(planes: planes);
+
+  /// The planes a colour window showed, written once it closes — the plane
+  /// it was opened for, one undo — and let go of. Nothing shown, nothing
+  /// written.
+  void writeShownPlanes() {
+    final preview = _dragPreview.value;
+    if (preview is! StagePlanesPreview) {
+      return;
+    }
+    final shown = preview.planes;
+    final held = stagePlanesOf(_project.repository.requireProject());
+    if (shown.paper != held.paper) {
+      setProjectBackground(shown.paper);
+    }
+    if (shown.backdrop != held.backdrop) {
+      shown.backdrop.none
+          ? setProjectBackdropNone()
+          : setProjectBackdrop(shown.backdrop.argb);
+    }
+    if (shown.pasteboard != held.pasteboard) {
+      shown.pasteboard.none
+          ? setPasteboardNone()
+          : setPasteboardColor(shown.pasteboard.argb);
+    }
+    _dragPreview.value = null;
+  }
 
   /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
   /// (R3b promotion) — and remembers the choice as the app-level default
