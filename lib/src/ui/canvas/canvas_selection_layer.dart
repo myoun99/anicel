@@ -118,6 +118,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onDragActiveChanged,
     this.onModifierTouchDragActiveChanged,
     this.onLiftRequested,
+    this.onBoxAtRest,
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.confirmLandsOn,
@@ -315,6 +316,12 @@ class CanvasSelectionLayer extends StatefulWidget {
     CanvasSelectionRegion region,
   )?
   onLiftRequested;
+
+  /// What the box at rest frames — the region a press on it would lift
+  /// ([_restingBox]) — told at every build, null with none: the host cuts
+  /// its cels ahead of that press (🗣️opening-a-transform-box-holds-the-ui-
+  /// over-half-a-second-Q1, 「상자가 뜰 때 미리 들기」).
+  final ValueChanged<CanvasSelectionRegion?>? onBoxAtRest;
 
   /// CONFIRM of a move session (R16-①): the host lands [stampDabs] — one
   /// per float, in the order the lift gave them — and adopts the whole
@@ -753,6 +760,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// cannot be mistimed. ⛔So the wait lives HERE, at the one door, rather
   /// than in each caller — a caller that had to remember is a caller that
   /// will forget, which is the shape F-164 already was.
+  /// Tells the host what the box at rest frames now
+  /// ([CanvasSelectionLayer.onBoxAtRest]) — the host keeps what it was
+  /// told last, so a build that changed nothing costs it a comparison.
+  void _tellTheBoxAtRest(CanvasSelectionRegion? region) {
+    final tell = widget.onBoxAtRest;
+    if (tell != null) {
+      _tellHost(() => tell(region));
+    }
+  }
+
   void _tellHost(VoidCallback say) {
     if (_disposing ||
         SchedulerBinding.instance.schedulerPhase ==
@@ -1272,6 +1289,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // with it ([_endSession]) — their pictures and an ask still waiting on
     // the frame alike.
     _interrupted(SessionInterruption.land);
+    // No box rests over a layer that is gone.
+    _tellTheBoxAtRest(null);
     _cursor.dispose();
     _ants.dispose();
     super.dispose();
@@ -3706,8 +3725,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // chrome even before any session opens (the box at rest —
     // [_restingBox]; grabbing a handle opens the session at that moment).
     // R26 #13: no selection = the box frames the WHOLE picture.
+    final atRest = _restingBox();
+    _tellTheBoxAtRest(atRest?.region);
     final chrome = _onScreen(
-      _box ?? (_drag == null ? _restingBox()?.box : null),
+      _box ?? (_drag == null ? atRest?.box : null),
     ).transformChrome();
     // While a hold is up, whichever float is drawn is drawn ONLY over the
     // tiles the base cannot paint yet — screen space, because it wraps

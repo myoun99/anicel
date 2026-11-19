@@ -334,6 +334,11 @@ SelectionPixels? liftSelectionPixels({
   );
 }
 
+/// How many lift pairs [buildSelectionLiftDabs] has built — what a test
+/// counts the cels a press cut by.
+@visibleForTesting
+int debugSelectionLiftsBuilt = 0;
+
 /// The lift pair for [region] over [surface]: the erase that takes what
 /// [liftSelectionPixels] took ([selectionEraseDab]), and the stamp carrying
 /// it. Null when the selection takes nothing.
@@ -343,6 +348,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   required String liftId,
   SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
+  debugSelectionLiftsBuilt += 1;
   final lifted = liftSelectionPixels(
     region: region,
     surface: surface,

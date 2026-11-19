@@ -215,36 +215,17 @@ class _CanvasPanelSelection {
     final cels = <_LiftedCel>[];
     final floats = <LiftedFloat>[];
     for (final under in _state._celsUnderfoot()) {
-      // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
-      // (a-marquee-on-a-posed-row): the marquee is taken back to the
-      // artwork it shows ([regionInArtworkSpace]), and the lifted stamp
-      // comes out on the canvas, where the box that moves it lives
-      // ([stampOnCanvas]). A row that shows nothing has nothing under it.
-      final inArtwork = regionInArtworkSpace(
-        region: region,
-        placement: under.placement,
+      final cut = _cutAtThePress(
+        coordinator,
+        under,
+        region,
+        '$liftId-${cels.length}',
       );
-      if (inArtwork == null) {
-        continue;
-      }
-      final lift = buildSelectionLiftDabs(
-        region: inArtwork,
-        surface: coordinator.currentSurfaceOf(under.key),
-        liftId: '$liftId-${cels.length}',
-        options:
-            _state.widget.selectionMaskOptions?.value ??
-            SelectionMaskOptions.none,
-      );
-      // ⛔THE SAME DABS THE CONFIRM WILL LAND, through the same materialize:
-      // the hole the user sees and the erase the commit writes cannot drift
-      // apart at the mask's edge, because they are one computation.
-      final holed = lift == null
-          ? null
-          : coordinator.deriveSurfaceWith([lift.eraseDab], key: under.key);
-      if (lift == null || holed == null) {
+      if (cut == null) {
         // 「불가능하면 그냥 무시」 — nothing of this cel under the outline.
         continue;
       }
+      final (:lift, :holed) = cut;
       // The cel this canvas edits floats in the live row's slot; a cel it
       // does not edit, in a slot of its own the composite draws in its row.
       final ownSlot = under.live ? null : SelectionFloatOverlay(null);
@@ -267,6 +248,8 @@ class _CanvasPanelSelection {
             : _CelUnderFloat(_state._lift, under.key),
       ));
     }
+    // Spent: what the box at rest was cut for is lifted, or found nothing.
+    letGoOfTheCutsAhead();
     if (cels.isEmpty) {
       return null;
     }
@@ -281,6 +264,160 @@ class _CanvasPanelSelection {
     _state._rebuild(() {});
     return (liftToken: token, floats: floats);
   }
+
+  /// The mask a lift cuts with now.
+  SelectionMaskOptions get _maskOptions =>
+      _state.widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none;
+
+  /// [under]'s pixels on [surface] cut through [region] — the lift's dabs
+  /// and the picture with its hole — or null with nothing of it under the
+  /// outline. ⛔ONE CUT for the press and for the box at rest
+  /// ([boxAtRest]): what is cut ahead is what the press would cut.
+  _Cut? _cut(
+    BrushFrameEditingCoordinator coordinator,
+    _Underfoot under,
+    CanvasSelectionRegion region,
+    BitmapSurface surface,
+    SelectionMaskOptions options,
+    String liftId,
+  ) {
+    // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
+    // (a-marquee-on-a-posed-row): the marquee is taken back to the
+    // artwork it shows ([regionInArtworkSpace]), and the lifted stamp
+    // comes out on the canvas, where the box that moves it lives
+    // ([stampOnCanvas]). A row that shows nothing has nothing under it.
+    final inArtwork = regionInArtworkSpace(
+      region: region,
+      placement: under.placement,
+    );
+    if (inArtwork == null) {
+      return null;
+    }
+    final lift = buildSelectionLiftDabs(
+      region: inArtwork,
+      surface: surface,
+      liftId: liftId,
+      options: options,
+    );
+    // ⛔THE SAME DABS THE CONFIRM WILL LAND, through the same materialize:
+    // the hole the user sees and the erase the commit writes cannot drift
+    // apart at the mask's edge, because they are one computation.
+    final holed = lift == null
+        ? null
+        : coordinator.deriveSurfaceWith([lift.eraseDab], key: under.key);
+    return lift == null || holed == null ? null : (lift: lift, holed: holed);
+  }
+
+  /// [under] cut through [region] as the press lifts it: what the box at
+  /// rest cut ahead, where it was cut through that region, where the row
+  /// stands, with that mask, from the picture the cel holds now — else cut
+  /// here (F-615's rule: work done ahead lands only on the picture it was
+  /// done from).
+  _Cut? _cutAtThePress(
+    BrushFrameEditingCoordinator coordinator,
+    _Underfoot under,
+    CanvasSelectionRegion region,
+    String liftId,
+  ) {
+    final options = _maskOptions;
+    final surface = coordinator.currentSurfaceOf(under.key);
+    final ahead = _ahead.cuts[under.key];
+    if (ahead != null &&
+        ahead.region == region &&
+        ahead.placement == under.placement &&
+        identical(ahead.options, options) &&
+        identical(ahead.from, surface)) {
+      return ahead.cut;
+    }
+    return _cut(coordinator, under, region, surface, options, liftId);
+  }
+
+  /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1 (유저
+  /// 2026-11-19, 「상자가 뜰 때 미리 들기」): the cels a box at rest frames
+  /// through [region] are cut AHEAD, one at a time — each thawed on a
+  /// worker and cut in a turn of its own — from the moment the box is up,
+  /// so the press that opens it lifts what is cut already
+  /// ([_cutAtThePress]) and cuts only a cel that changed since. Null: no
+  /// box at rest.
+  ///
+  /// ↩️The press cut them all at once on the UI thread: 359–422 ms over six
+  /// cels of S5_BA cut 352 (메인 PC · 테스트 VM, 11-19) — the transform box
+  /// standing still under the hand that grabbed it.
+  ///
+  /// Told at every build of the layer; the cuts begin again only when the
+  /// region or the cels under it changed — and a frame after, so a box
+  /// told again at the next frame (the playhead dragged with the box up)
+  /// leaves this run before it has cut anything.
+  void boxAtRest(CanvasSelectionRegion? region) {
+    final over = region == null
+        ? const <_Underfoot>[]
+        : _state._celsUnderfoot();
+    final keys = [for (final under in over) under.key];
+    if (region == _ahead.region && listEquals(keys, _ahead.over)) {
+      return;
+    }
+    letGoOfTheCutsAhead();
+    if (region == null) {
+      return;
+    }
+    _ahead
+      ..region = region
+      ..over = keys;
+    unawaited(_cutAheadOf(_ahead.run, region, over));
+  }
+
+  Future<void> _cutAheadOf(
+    int run,
+    CanvasSelectionRegion region,
+    List<_Underfoot> over,
+  ) async {
+    final coordinator = _state.widget.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    // The frame after the one that told it — asked for, since a box at rest
+    // on a still screen asks for none, and the run would wait for the next
+    // thing to move.
+    WidgetsBinding.instance.scheduleFrame();
+    await WidgetsBinding.instance.endOfFrame;
+    final liftId = 'ahead-${DateTime.now().microsecondsSinceEpoch}';
+    final canvasSize = coordinator.sessionStore.canvasSize;
+    for (final (index, under) in over.indexed) {
+      if (run != _ahead.run) {
+        return;
+      }
+      await coordinator.frameStore.thawAhead(
+        under.key,
+        canvasSize: canvasSize,
+      );
+      await _ahead.aTurn();
+      if (run != _ahead.run || !_state.mounted) {
+        return;
+      }
+      final options = _maskOptions;
+      final surface = coordinator.currentSurfaceOf(under.key);
+      _ahead.cuts[under.key] = (
+        region: region,
+        placement: under.placement,
+        options: options,
+        from: surface,
+        cut: _cut(
+          coordinator,
+          under,
+          region,
+          surface,
+          options,
+          '$liftId-$index',
+        ),
+      );
+      _ahead.declareTo(coordinator);
+    }
+  }
+
+  /// Lets go of what the box at rest has cut, and of the run cutting it.
+  void letGoOfTheCutsAhead() => _ahead.letGo();
+
+  final _CutsAhead _ahead = _CutsAhead();
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
   /// with a live selection is CLIPPED to it before it reaches the commit —
@@ -304,5 +441,94 @@ class _CanvasPanelSelection {
       return null;
     }
     return clipStrokeCommitToSelection(data, clip: clip, surface: surface);
+  }
+}
+
+/// A cel under the hand as a lift reads it
+/// ([_BrushCanvasPanelState._celsUnderfoot]).
+typedef _Underfoot = ({
+  BrushFrameKey key,
+  LayerPlacement? placement,
+  bool live,
+});
+
+/// A cel's pixels cut through an outline: the lift's dabs, and the picture
+/// with its hole ([_CanvasPanelSelection._cut]).
+typedef _Cut = ({SelectionLiftDabs lift, BitmapSurface holed});
+
+/// A cel cut ahead of the press ([_CanvasPanelSelection.boxAtRest]):
+/// through [region], where its row stood ([placement]), with [options], on
+/// [from] — the only picture it may be lifted from. [cut] null: nothing of
+/// it under the outline.
+typedef _CutAhead = ({
+  CanvasSelectionRegion region,
+  LayerPlacement? placement,
+  SelectionMaskOptions options,
+  BitmapSurface from,
+  _Cut? cut,
+});
+
+/// What a box at rest has cut ahead of the press that opens it
+/// ([_CanvasPanelSelection.boxAtRest]) — an object of its own so that what
+/// the store is handed to weigh and reclaim it holds the cuts and the
+/// coordinator, nothing of the panel (the closure-scope law
+/// [_CanvasPanelLift.openSession] keeps).
+final class _CutsAhead {
+  /// The run cutting now: one that finds it moved on stops.
+  int run = 0;
+
+  /// The region the cuts are for, and the cels it stood over.
+  CanvasSelectionRegion? region;
+  List<BrushFrameKey> over = const [];
+
+  final Map<BrushFrameKey, _CutAhead> cuts = {};
+
+  /// Takes the cuts off the store's books; null while they are on none.
+  VoidCallback? _undeclare;
+
+  /// Puts the cuts on [coordinator]'s store as a view it may reclaim —
+  /// their holes are bytes the cels do not share, held as an open
+  /// session's are.
+  void declareTo(BrushFrameEditingCoordinator coordinator) {
+    if (_undeclare != null) {
+      return;
+    }
+    final store = coordinator.frameStore;
+    final cuts = this.cuts;
+    store.holdReclaimableView(
+      this,
+      bytes: () => cuts.entries.fold(
+        0,
+        (bytes, entry) =>
+            bytes +
+            (entry.value.cut?.holed.bytesNotSharedWith(
+                  coordinator.currentSurfaceOf(entry.key),
+                ) ??
+                0),
+      ),
+      reclaim: cuts.clear,
+    );
+    _undeclare = () => store.releaseReclaimableView(this);
+  }
+
+  /// The screen's turn between two cuts — withdrawn when the run is let go
+  /// of ([letGo]), so a box gone leaves no turn behind; null with none.
+  VoidCallback? _withdrawTurn;
+
+  Future<void> aTurn() {
+    final (:turn, :withdraw) = aScreensTurnToWithdraw();
+    _withdrawTurn = withdraw;
+    return turn;
+  }
+
+  void letGo() {
+    run += 1;
+    region = null;
+    over = const [];
+    cuts.clear();
+    _withdrawTurn?.call();
+    _withdrawTurn = null;
+    _undeclare?.call();
+    _undeclare = null;
   }
 }

@@ -21,6 +21,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/playback/playback_scope.dart';
+import 'package:anicel/src/services/selection_lift.dart'
+    show debugSelectionLiftsBuilt;
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_press.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
@@ -331,6 +333,95 @@ void main() {
       (true, false),
       reason: 'A grew from the middle of both rows, not from its own',
     );
+  });
+
+  /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1 (유저
+  /// 2026-11-19, 「상자가 뜰 때 미리 들기」): the box at rest cuts the cels it
+  /// frames ahead of the press that opens it, and that press cuts only a
+  /// cel that changed since.
+  group('🗣️a box at rest cuts its cels ahead', () {
+    /// Ctrl+T — the box at rest — and the frames its cuts take.
+    Future<CanvasSelectionCommands> restTheBox(WidgetTester tester) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      // A cut a turn: the turns run on, with no frame asked for.
+      for (var turn = 0; turn < 4; turn += 1) {
+        await tester.pump(Duration.zero);
+      }
+      return tester
+          .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer).first)
+          .selectionCommands!;
+    }
+
+    testWidgets('🎯the press that opens the box cuts nothing the box at rest '
+        'cut — and lifts both cels', (tester) async {
+      await pump(tester);
+      final before = debugSelectionLiftsBuilt;
+      final commands = await restTheBox(tester);
+      expect(
+        debugSelectionLiftsBuilt - before,
+        2,
+        reason: '⛔premise: the box at rest cut its two cels',
+      );
+
+      final cut = debugSelectionLiftsBuilt;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugSelectionLiftsBuilt, cut, reason: 'nothing cut again');
+      final stack = tester.widget<FramePictureView>(
+        find.byType(FramePictureView).first,
+      );
+      expect(
+        {for (final key in stack.live!.liftedRows.keys) key.frameId.value},
+        {'${b.value}-0'},
+        reason: 'B lifted in its own row, A floats in the live row',
+      );
+    });
+
+    testWidgets('a cel whose picture changed since it was cut is cut again at '
+        'the press — and it alone', (tester) async {
+      final session = await pump(tester);
+      final commands = await restTheBox(tester);
+      // B's block again, where it was: the same outline, a picture the cut
+      // was not made from.
+      session.renderCaches.brushFrameStore.storeBakedSurface(
+        session.brushFrameKeyForCut(
+          session.requireActiveCut,
+          b,
+          FrameId('${b.value}-0'),
+        ),
+        blockOn(session, left: 70, top: 70, right: 110, bottom: 90),
+      );
+
+      final cut = debugSelectionLiftsBuilt;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
+    });
+
+    testWidgets('the cuts go with the box at rest — another tool lets them '
+        'go', (tester) async {
+      final session = await pump(tester);
+      final store = session.pixelEditing.coordinator!.frameStore;
+      final views = store.reclaimableViewCount;
+      await restTheBox(tester);
+      expect(
+        store.reclaimableViewCount,
+        views + 1,
+        reason: 'the cuts, held as a view the store may reclaim',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.pumpAndSettle();
+
+      expect(store.reclaimableViewCount, views);
+    });
   });
 
   /// 🗣️F-615-Q1 asked what a press starting a new outline does to a range
