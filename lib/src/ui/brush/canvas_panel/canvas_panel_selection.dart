@@ -345,9 +345,10 @@ class _CanvasPanelSelection {
     _Cut cut,
     _Underfoot under,
   ) {
-    final ahead = _ahead.floats[under.key];
-    if (ahead != null && identical(ahead.of, cut)) {
-      return (stampDab: ahead.stampDab, surface: ahead.surface);
+    final ahead = _ahead.cuts[under.key];
+    final laid = ahead?.float;
+    if (laid != null && identical(ahead?.cut, cut)) {
+      return laid;
     }
     return (
       stampDab: stampOnCanvas(cut.lift.stampDab, under.placement),
@@ -431,7 +432,7 @@ class _CanvasPanelSelection {
         options,
         '$liftId-$index',
       );
-      _ahead.cuts[under.key] = (
+      final ahead = _ahead.cuts[under.key] = _CutAhead(
         region: region,
         placement: under.placement,
         options: options,
@@ -441,7 +442,7 @@ class _CanvasPanelSelection {
       _ahead.declareTo(coordinator);
       if (cut != null) {
         await _ahead.aTurn();
-        _ahead.floats[under.key] = _floatAheadOf(cut, under);
+        ahead.float = _floatAheadOf(cut, under);
       }
     }
   }
@@ -455,7 +456,6 @@ class _CanvasPanelSelection {
   _FloatAhead _floatAheadOf(_Cut cut, _Underfoot under) {
     final stampDab = stampOnCanvas(cut.lift.stampDab, under.placement);
     return (
-      of: cut,
       stampDab: stampDab,
       surface: floatSurfaceOf(stampDab, _state._stagePasteboard),
     );
@@ -504,18 +504,33 @@ typedef _Cut = ({SelectionLiftDabs lift, BitmapSurface holed});
 /// through [region], where its row stood ([placement]), with [options], on
 /// [from] — the only picture it may be lifted from. [cut] null: nothing of
 /// it under the outline.
-typedef _CutAhead = ({
-  CanvasSelectionRegion region,
-  LayerPlacement? placement,
-  SelectionMaskOptions options,
-  BitmapSurface from,
-  _Cut? cut,
-});
+final class _CutAhead {
+  _CutAhead({
+    required this.region,
+    required this.placement,
+    required this.options,
+    required this.from,
+    required this.cut,
+  });
 
-/// A float laid ahead of the press ([_CanvasPanelSelection._floatAheadOf]):
-/// [of] the cut it was laid of — the only press it may be handed to is one
-/// that lifts that cut.
-typedef _FloatAhead = ({_Cut of, BrushDab stampDab, BitmapSurface surface});
+  final CanvasSelectionRegion region;
+  final LayerPlacement? placement;
+  final SelectionMaskOptions options;
+  final BitmapSurface from;
+  final _Cut? cut;
+
+  /// [cut]'s float, laid a turn after it
+  /// ([_CanvasPanelSelection._floatAheadOf]) — null till then.
+  ///
+  /// ★In the cel's own entry, not a book beside the cuts: what lets a cut
+  /// go — a memory warning, the box let go — lets its float go with it,
+  /// and a float laid of a cut already let go lands nowhere.
+  _FloatAhead? float;
+}
+
+/// A cut's float laid ahead of the press: its stamp on the canvas, and the
+/// surface the box draws it from ([floatSurfaceOf]).
+typedef _FloatAhead = ({BrushDab stampDab, BitmapSurface surface});
 
 /// What a box at rest has cut ahead of the press that opens it
 /// ([_CanvasPanelSelection.boxAtRest]) — an object of its own so that what
@@ -532,9 +547,6 @@ final class _CutsAhead {
 
   final Map<BrushFrameKey, _CutAhead> cuts = {};
 
-  /// The floats laid of [cuts], a cel's once its cut is taken.
-  final Map<BrushFrameKey, _FloatAhead> floats = {};
-
   /// Takes the cuts off the store's books; null while they are on none.
   VoidCallback? _undeclare;
 
@@ -547,27 +559,19 @@ final class _CutsAhead {
     }
     final store = coordinator.frameStore;
     final cuts = this.cuts;
-    final floats = this.floats;
     store.holdReclaimableView(
       this,
-      bytes: () =>
-          cuts.entries.fold(
-            0,
-            (bytes, entry) =>
-                bytes +
-                (entry.value.cut?.holed.bytesNotSharedWith(
-                      coordinator.currentSurfaceOf(entry.key),
-                    ) ??
-                    0),
-          ) +
-          floats.values.fold(
-            0,
-            (bytes, float) => bytes + float.surface.keptTileBytes,
-          ),
-      reclaim: () {
-        cuts.clear();
-        floats.clear();
-      },
+      bytes: () => cuts.entries.fold(
+        0,
+        (bytes, entry) =>
+            bytes +
+            (entry.value.cut?.holed.bytesNotSharedWith(
+                  coordinator.currentSurfaceOf(entry.key),
+                ) ??
+                0) +
+            (entry.value.float?.surface.keptTileBytes ?? 0),
+      ),
+      reclaim: cuts.clear,
     );
     _undeclare = () => store.releaseReclaimableView(this);
   }
@@ -587,7 +591,6 @@ final class _CutsAhead {
     region = null;
     over = const [];
     cuts.clear();
-    floats.clear();
     _withdrawTurn?.call();
     _withdrawTurn = null;
     _undeclare?.call();
