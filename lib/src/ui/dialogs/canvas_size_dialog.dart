@@ -172,30 +172,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onAdjustOnCanvas: widget.onAdjustOnCanvas,
           ),
           const SizedBox(height: 12),
-          AppWindowField(
-            label: strings.imFit,
-            child: FitFlyoutButton(
-              keyPrefix: 'canvas-size-fit',
-              fit: _fit,
-              expand: true,
-              onPicked: (fit) => setState(() => _fit = fit),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // ⛔No caption beside the grid: the rule against explaining a
-          // control under it (no-explanatory-ui-copy). ↩️It said what an
-          // anchor is, that cropped strokes come back, and the size range —
-          // which the fields already enforce by refusing what is outside it.
-          //
-          // 🗣️I-180-Q5 a (「늘 가운데(임포트와 같음)」): a fit stands the
-          // picture in the middle whatever the anchor says, so the grid keeps
-          // its place and goes dark under one — born alone reads it.
-          _AnchorGrid(
-            selected: _anchor,
-            onSelected: _fit == MediaFitMode.born
-                ? (anchor) => setState(() => _anchor = anchor)
-                : null,
-          ),
+          ..._placeFields(),
         ],
       ),
       actions: [
@@ -215,6 +192,35 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
       ],
     );
   }
+
+  /// How the picture goes onto the new canvas: fitted to it, or kept to an
+  /// anchor as it was born.
+  List<Widget> _placeFields() => [
+    AppWindowField(
+      label: AppText.strings.imFit,
+      child: FitFlyoutButton(
+        keyPrefix: 'canvas-size-fit',
+        fit: _fit,
+        expand: true,
+        onPicked: (fit) => setState(() => _fit = fit),
+      ),
+    ),
+    const SizedBox(height: 12),
+    // ⛔No caption beside the grid: the rule against explaining a control
+    // under it (no-explanatory-ui-copy). ↩️It said what an anchor is, that
+    // cropped strokes come back, and the size range — which the fields
+    // already enforce by refusing what is outside it.
+    //
+    // 🗣️I-180-Q5 a (「늘 가운데(임포트와 같음)」): a fit stands the picture
+    // in the middle whatever the anchor says, so the grid keeps its place
+    // and goes dark under one — born alone reads it.
+    _AnchorGrid(
+      selected: _anchor,
+      onSelected: _fit == MediaFitMode.born
+          ? (anchor) => setState(() => _anchor = anchor)
+          : null,
+    ),
+  ];
 }
 
 /// The Photoshop-style 3×3 anchor picker.
@@ -273,9 +279,9 @@ class _AnchorGrid extends StatelessWidget {
                       key: ValueKey<String>(
                         'canvas-size-anchor-${anchor.name}',
                       ),
-                      onTap: pick == null
-                          ? null
-                          : silentPress(() => pick(anchor)),
+                      onTap: silentPress(
+                        pick == null ? null : () => pick(anchor),
+                      ),
                       child: SizedBox(
                         width: 26,
                         height: 26,

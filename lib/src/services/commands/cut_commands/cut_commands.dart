@@ -209,79 +209,27 @@ class _CutCommands {
     }
   }
 
-  /// [cutId]'s canvas at [canvasSize], the picture kept to [anchor] — one
-  /// way of saying [placeCutCanvas]'s offset.
-  void resizeCutCanvas({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    MediaFitMode fit = MediaFitMode.born,
-  }) {
-    _requirePositive(canvasSize);
-    placeCutCanvas(
-      cutId: cutId,
-      canvasSize: canvasSize,
-      contentOffset: _anchored(cutId, canvasSize, anchor),
-      fit: fit,
-    );
-  }
-
-  /// What [resizeCutCanvas] will make of the pictures kept in files, worked
-  /// out ahead ([placeCutCanvasAhead]).
-  Future<void> resizeCutCanvasAhead({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    MediaFitMode fit = MediaFitMode.born,
-    void Function(double done)? report,
-  }) => placeCutCanvasAhead(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    contentOffset: _anchored(cutId, canvasSize, anchor),
-    fit: fit,
-    report: report,
-  );
-
-  ({double dx, double dy}) _anchored(
-    CutId cutId,
-    CanvasSize canvasSize,
-    CanvasResizeAnchor anchor,
-  ) => anchor.contentOffset(
-    from: _coordinator._requireCut(cutId).canvasSize,
-    to: canvasSize,
-  );
-
-  /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
-  /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
-  /// changes anything.
+  /// [cutId]'s canvas at [canvasSize], its picture where [place] puts it
+  /// ([ResizeCutCanvasCommand.place]) — no step when that changes nothing.
   ///
   /// ⚠️The offset is part of the question: a canvas whose edges were
-  /// dragged can keep its size and still move the picture.
+  /// dragged can keep its size and still move the picture. A fit to the
+  /// canvas the cut is on changes nothing, as a resize to it by an anchor
+  /// does not.
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
-    MediaFitMode fit = MediaFitMode.born,
+    required CanvasPicturePlace place,
   }) {
     _requirePositive(canvasSize);
-    final offset = _offsetUnder(fit, contentOffset);
+    final step = _resize(cutId, canvasSize, place);
     _coordinator._executeIfChanged(
       subject: _coordinator._requireCut(cutId),
-      value: _placing(canvasSize, offset),
+      value: _placing(step),
       read: _placed,
-      command: (_) => _resize(cutId, canvasSize, offset, fit),
+      command: (_) => step,
     );
   }
-
-  /// [contentOffset] as a [fit] reads it: a fit stands the picture in the
-  /// middle of the new canvas whatever the anchor or the edges dragged say
-  /// (🗣️I-180-Q5 a 「늘 가운데」 · Q6 a 「끈 만큼의 옮기기는 원본 크기일
-  /// 때만」), so it moves by none — and a fit to the canvas it is on changes
-  /// nothing, as a resize to it by an anchor does not.
-  static ({double dx, double dy}) _offsetUnder(
-    MediaFitMode fit,
-    ({double dx, double dy}) contentOffset,
-  ) => fit == MediaFitMode.born ? contentOffset : (dx: 0.0, dy: 0.0);
 
   /// What [placeCutCanvas] will make of the cut's pictures, worked out ahead
   /// — the very work its redo has ahead of it
@@ -291,46 +239,41 @@ class _CutCommands {
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
-    MediaFitMode fit = MediaFitMode.born,
+    required CanvasPicturePlace place,
     void Function(double done)? report,
   }) async {
-    final offset = _offsetUnder(fit, contentOffset);
-    final placing = _placing(canvasSize, offset);
-    if (_placed(_coordinator._requireCut(cutId)) == placing) {
+    final step = _resize(cutId, canvasSize, place);
+    if (_placed(_coordinator._requireCut(cutId)) == _placing(step)) {
       return;
     }
-    final ahead = _resize(cutId, canvasSize, offset, fit).workAhead(
-      undo: false,
-    );
-    await ahead?.call(report ?? (_) {});
+    await step.workAhead(undo: false)?.call(report ?? (_) {});
   }
 
   /// The step [placeCutCanvas] takes — and asks what it works out ahead.
   ResizeCutCanvasCommand _resize(
     CutId cutId,
     CanvasSize canvasSize,
-    ({double dx, double dy}) contentOffset,
-    MediaFitMode fit,
+    CanvasPicturePlace place,
   ) => ResizeCutCanvasCommand(
     repository: _coordinator.repository,
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
-    fit: fit,
+    place: place,
     brushFrameStore: _coordinator.brushFrameStore,
   );
 
-  /// What [placeCutCanvas] asks of a cut, in whole pixels — and [_placed],
-  /// what a cut already answers: the step is taken where the two differ.
-  static _CanvasPlace _placing(
-    CanvasSize canvasSize,
-    ({double dx, double dy}) contentOffset,
-  ) => (
-    size: canvasSize,
-    dx: contentOffset.dx.roundToDouble(),
-    dy: contentOffset.dy.roundToDouble(),
-  );
+  /// What [placeCutCanvas]'s [step] asks of a cut, in whole pixels — and
+  /// [_placed], what a cut already answers: the step is taken where the two
+  /// differ.
+  _CanvasPlace _placing(ResizeCutCanvasCommand step) {
+    final project = _coordinator.repository.requireProject();
+    final offset = step.contentOffsetOn(project);
+    return (
+      size: step.canvasSize,
+      dx: offset.dx.roundToDouble(),
+      dy: offset.dy.roundToDouble(),
+    );
+  }
 
   static _CanvasPlace _placed(Cut cut) =>
       (size: cut.canvasSize, dx: 0.0, dy: 0.0);

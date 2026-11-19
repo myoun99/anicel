@@ -1169,7 +1169,20 @@ void main() {
   /// landing it is is every caller's to say by name — one that said
   /// nothing would be answered as the hand's, and what it lays would
   /// stand unfolded for as long as it comes.
-  const wideSignatures = 457;
+  ///
+  /// ⚠️457 → 456 on 2026-11-20, following them down (card I-180 — a canvas
+  /// resize that fits its picture): the content walk's two translators
+  /// (`translateLayerForResize`, `translateCutContentModel` — carried by a
+  /// scale too now, `carryLayerForResize` and `carryCutContentModel`) and
+  /// `ProjectRepository.resizeCutCanvasContent` each take one
+  /// `ResizeWalk` now, and the walk's maker (`resizeWalk`, six — a scale,
+  /// a move and the centre's own move on each axis) came in; `layCelRegion`
+  /// (five) took the canvas a resize lays a cel on. 🔬`clean_code_diff`
+  /// against master (`18c50ed55`, at 457) names those two added and three
+  /// gone. ⛔The fit did not ride beside the offset down the resize's
+  /// verbs: one `CanvasPicturePlace` says where the picture goes, so a fit
+  /// cannot carry an offset.
+  const wideSignatures = 456;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

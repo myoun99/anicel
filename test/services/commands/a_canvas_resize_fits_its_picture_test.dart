@@ -4,8 +4,10 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cel_photo.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -131,7 +133,7 @@ void main() {
         repository: repo,
         cutId: cutId,
         canvasSize: to,
-        fit: fit,
+        place: PictureFittedBy(fit),
         brushFrameStore: store,
       ),
     );
@@ -161,6 +163,46 @@ void main() {
       store.bakedSurfaceOrNull(cel(drawnRow))!.canvasSize,
       const CanvasSize(width: 1024, height: 512),
     );
+  });
+
+  test('a photo on a fitted cel goes by the same map — its centre and its '
+      'size', () async {
+    final repo = repository();
+    final store = BrushFrameStore()
+      ..storeBakedSurface(
+        cel(drawnRow),
+        inked().withPhotos([
+          CelPhoto(
+            id: 1,
+            reference: MediaReference(
+              assetPath: 'p.png',
+              pose: TransformPose(
+                center: CanvasPoint(x: 50, y: 40),
+                scaleX: 0.5,
+                scaleY: 0.5,
+              ),
+              pictureSize: const CanvasSize(width: 20, height: 10),
+            ),
+          ),
+        ]),
+      );
+    await resize(
+      ResizeCutCanvasCommand(
+        repository: repo,
+        cutId: cutId,
+        canvasSize: const CanvasSize(width: 1024, height: 512),
+        place: const PictureFittedBy(MediaFitMode.stretch),
+        brushFrameStore: store,
+      ),
+    );
+    final pose = store
+        .bakedSurfaceOrNull(cel(drawnRow))!
+        .photos
+        .single
+        .reference
+        .pose;
+    expect(pose.center, CanvasPoint(x: 100, y: 80));
+    expect((pose.scaleX, pose.scaleY), (1.0, 1.0));
   });
 
   test('비율 무시 늘림 scales each axis by its own factor', () async {
@@ -254,7 +296,7 @@ void main() {
         repository: repo,
         cutId: cutId,
         canvasSize: const CanvasSize(width: 1024, height: 512),
-        contentOffset: (dx: 256, dy: 128),
+        place: const PictureMovedBy((dx: 256, dy: 128)),
         brushFrameStore: store,
       ),
     );
@@ -274,17 +316,17 @@ void main() {
       historyManager: history,
       brushFrameStore: BrushFrameStore(),
     );
+    const dragged = PictureMovedBy((dx: 50, dy: 0));
     coordinator.placeCutCanvas(
       cutId: cut.id,
       canvasSize: cut.canvasSize,
-      contentOffset: (dx: 50, dy: 0),
-      fit: MediaFitMode.stretch,
+      place: CanvasPicturePlace.under(MediaFitMode.stretch, dragged),
     );
     expect(history.undoCount, 0);
     coordinator.placeCutCanvas(
       cutId: cut.id,
       canvasSize: cut.canvasSize,
-      contentOffset: (dx: 50, dy: 0),
+      place: CanvasPicturePlace.under(MediaFitMode.born, dragged),
     );
     expect(history.undoCount, 1, reason: 'born moves it where it is dragged');
   });

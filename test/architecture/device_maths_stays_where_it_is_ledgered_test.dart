@@ -84,6 +84,7 @@ const _notYetAlike =
 const _callsTheDevices = <String, (int, String)>{
   'lib/src/models/brush_tip_mask.dart': (2, _notYetAlike),
   'lib/src/models/camera_work_marks.dart': (5, _notYetAlike),
+  'lib/src/models/cut_content_translation.dart': (1, _notYetAlike),
   'lib/src/models/drawing_guide.dart': (3, _notYetAlike),
   'lib/src/services/brush_dab_dirty_region.dart': (2, _notYetAlike),
   'lib/src/services/brush_dab_share.dart': (1, _notYetAlike),

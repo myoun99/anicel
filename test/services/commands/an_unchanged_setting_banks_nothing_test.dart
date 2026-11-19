@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -78,10 +80,11 @@ void main() {
       (c) => c.updateCutNote(cutId: cutOf(c), page: 0, note: 'a note'),
     );
     banksOnce(
-      'resizeCutCanvas',
-      (c) => c.resizeCutCanvas(
+      'placeCutCanvas kept to an anchor',
+      (c) => c.placeCutCanvas(
         cutId: cutOf(c),
         canvasSize: const CanvasSize(width: 640, height: 480),
+        place: const PictureKeptTo(CanvasResizeAnchor.center),
       ),
     );
     banksOnce(
@@ -89,7 +92,7 @@ void main() {
       (c) => c.placeCutCanvas(
         cutId: cutOf(c),
         canvasSize: const CanvasSize(width: 640, height: 480),
-        contentOffset: (dx: 0, dy: 0),
+        place: PictureMovedBy.none,
       ),
     );
     // I-79: the offset is part of the question — a canvas whose edges
@@ -101,13 +104,13 @@ void main() {
       f.coordinator.placeCutCanvas(
         cutId: cutOf(f.coordinator),
         canvasSize: size,
-        contentOffset: (dx: 0, dy: 0),
+        place: PictureMovedBy.none,
       );
       expect(f.history.undoCount, 0, reason: 'nothing moved');
       f.coordinator.placeCutCanvas(
         cutId: cutOf(f.coordinator),
         canvasSize: size,
-        contentOffset: (dx: 12, dy: 0),
+        place: const PictureMovedBy((dx: 12, dy: 0)),
       );
       expect(
         f.history.undoCount,

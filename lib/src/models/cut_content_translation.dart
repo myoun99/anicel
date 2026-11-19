@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/alike_maths.dart';
 import 'camera_pose.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
@@ -122,8 +123,8 @@ KeyPath _scaledPath(KeyPath path, ResizeWalk walk) => switch (path) {
 /// scale.
 double _reachAlong(double degrees, ResizeWalk walk) {
   final radians = degrees * math.pi / 180;
-  final across = walk.sx * math.cos(radians);
-  final down = walk.sy * math.sin(radians);
+  final across = walk.sx * alikeCos(radians);
+  final down = walk.sy * alikeSin(radians);
   return math.sqrt(across * across + down * down);
 }
 
@@ -135,9 +136,11 @@ double _scaledDegrees(double degrees, ResizeWalk walk) {
     return degrees;
   }
   final radians = degrees * math.pi / 180;
-  return math.atan2(walk.sy * math.sin(radians), walk.sx * math.cos(radians)) *
-      180 /
-      math.pi;
+  final turned = math.atan2(
+    walk.sy * alikeSin(radians),
+    walk.sx * alikeCos(radians),
+  );
+  return turned * 180 / math.pi;
 }
 
 PropertyTrack<CanvasPoint> _carriedPointTrack(

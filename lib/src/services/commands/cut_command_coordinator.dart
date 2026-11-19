@@ -9,6 +9,7 @@ import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
+import '../../models/canvas_picture_place.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_camera_room.dart';
@@ -212,52 +213,24 @@ class CutCommandCoordinator {
       .cut;
   static String nextCutNameAfter(Project project, String? referenceName) =>
       _CutCommands.nextCutNameAfter(project, referenceName);
-  void resizeCutCanvas({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    MediaFitMode fit = MediaFitMode.born,
-  }) => _cuts.resizeCutCanvas(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    anchor: anchor,
-    fit: fit,
-  );
-  Future<void> resizeCutCanvasAhead({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    MediaFitMode fit = MediaFitMode.born,
-    void Function(double done)? report,
-  }) => _cuts.resizeCutCanvasAhead(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    anchor: anchor,
-    fit: fit,
-    report: report,
-  );
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
-    MediaFitMode fit = MediaFitMode.born,
+    required CanvasPicturePlace place,
   }) => _cuts.placeCutCanvas(
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
-    fit: fit,
+    place: place,
   );
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
-    MediaFitMode fit = MediaFitMode.born,
+    required CanvasPicturePlace place,
     void Function(double done)? report,
   }) => _cuts.placeCutCanvasAhead(
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
-    fit: fit,
+    place: place,
     report: report,
   );
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);

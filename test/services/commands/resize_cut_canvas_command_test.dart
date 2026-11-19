@@ -5,6 +5,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -122,10 +123,7 @@ void main() {
         repository: repository,
         cutId: const CutId('cut-target'),
         canvasSize: shrunkenSize,
-        contentOffset: anchor.contentOffset(
-          from: const CanvasSize(width: 1920, height: 1080),
-          to: shrunkenSize,
-        ),
+        place: PictureKeptTo(anchor),
         brushFrameStore: store,
       );
     }
@@ -163,7 +161,7 @@ void main() {
         repository: _repository(),
         cutId: const CutId('cut-target'),
         canvasSize: const CanvasSize(width: 1920, height: 1080),
-        contentOffset: (dx: 100, dy: -50),
+        place: const PictureMovedBy((dx: 100, dy: -50)),
         brushFrameStore: store,
       ).execute();
 

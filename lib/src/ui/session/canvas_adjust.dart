@@ -61,7 +61,7 @@ final class CanvasEdgesDraft extends AdjustDraft {
       CanvasSize(width: edges.width.round(), height: edges.height.round());
 
   /// Where the picture moves on the canvas the edges make
-  /// (`ResizeCutCanvasCommand.contentOffset`): an edge pulled out to the
+  /// (`PictureMovedBy`, born): an edge pulled out to the
   /// left by 50 moves it 50 to the right.
   ({double dx, double dy}) get contentOffset =>
       (dx: -edges.left, dy: -edges.top);

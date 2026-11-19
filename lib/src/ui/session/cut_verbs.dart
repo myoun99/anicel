@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/sheet_memo_side.dart';
+import '../../models/canvas_picture_place.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_camera_room.dart';
@@ -134,13 +135,9 @@ class CutVerbs {
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
     MediaFitMode fit = MediaFitMode.born,
-  }) => _onAddressedCanvases(
-    (cutId) => _project.cutCommandCoordinator.resizeCutCanvas(
-      cutId: cutId,
-      canvasSize: canvasSize,
-      anchor: anchor,
-      fit: fit,
-    ),
+  }) => _placeAddressedCanvases(
+    canvasSize,
+    CanvasPicturePlace.under(fit, PictureKeptTo(anchor)),
   );
 
   /// What [resizeActiveCutCanvas] will make of the pictures kept in files,
@@ -151,15 +148,10 @@ class CutVerbs {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
     MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
-  }) => _aheadOfAddressedCanvases(
+  }) => _placeAddressedCanvasesAhead(
+    canvasSize,
+    CanvasPicturePlace.under(fit, PictureKeptTo(anchor)),
     report,
-    (cutId, report) => _project.cutCommandCoordinator.resizeCutCanvasAhead(
-      cutId: cutId,
-      canvasSize: canvasSize,
-      anchor: anchor,
-      fit: fit,
-      report: report,
-    ),
   );
 
   /// The addressed cuts' canvases at [canvasSize], each picture moved by
@@ -170,13 +162,9 @@ class CutVerbs {
     CanvasSize canvasSize, {
     required ({double dx, double dy}) contentOffset,
     MediaFitMode fit = MediaFitMode.born,
-  }) => _onAddressedCanvases(
-    (cutId) => _project.cutCommandCoordinator.placeCutCanvas(
-      cutId: cutId,
-      canvasSize: canvasSize,
-      contentOffset: contentOffset,
-      fit: fit,
-    ),
+  }) => _placeAddressedCanvases(
+    canvasSize,
+    CanvasPicturePlace.under(fit, PictureMovedBy(contentOffset)),
   );
 
   /// What [placeActiveCutCanvas] will make of the pictures kept in files,
@@ -187,13 +175,33 @@ class CutVerbs {
     required ({double dx, double dy}) contentOffset,
     MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
-  }) => _aheadOfAddressedCanvases(
+  }) => _placeAddressedCanvasesAhead(
+    canvasSize,
+    CanvasPicturePlace.under(fit, PictureMovedBy(contentOffset)),
+    report,
+  );
+
+  void _placeAddressedCanvases(
+    CanvasSize canvasSize,
+    CanvasPicturePlace place,
+  ) => _onAddressedCanvases(
+    (cutId) => _project.cutCommandCoordinator.placeCutCanvas(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      place: place,
+    ),
+  );
+
+  Future<void> _placeAddressedCanvasesAhead(
+    CanvasSize canvasSize,
+    CanvasPicturePlace place,
+    void Function(double done)? report,
+  ) => _aheadOfAddressedCanvases(
     report,
     (cutId, report) => _project.cutCommandCoordinator.placeCutCanvasAhead(
       cutId: cutId,
       canvasSize: canvasSize,
-      contentOffset: contentOffset,
-      fit: fit,
+      place: place,
       report: report,
     ),
   );
