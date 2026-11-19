@@ -94,7 +94,7 @@ void main() {
     expect(rgba, equals(expectedRgba(premul)));
   }
 
-  group('tvppSlotRows', () {
+  group('a picture read on its own', () {
     test('DBOD whole-canvas record (v12 zlib wrapper)', () {
       final px = testPixels();
       expectDecodes(fileWith(dbodRecord(px, w, h)), px, compressed: true);
@@ -273,7 +273,7 @@ void main() {
     test('a hold slot hands on no row', () {
       final file = fileWith(holdRecord(), raw: true);
       final handed = <int>[];
-      tvppSlotRows(
+      TvppPicturesInOrder().read(
         recordBytes: file,
         slot: slotFor(file, compressed: false),
         size: const CanvasSize(width: w, height: h),
@@ -321,7 +321,7 @@ void main() {
       ]) {
         final file = fileWith(record);
         final handed = <int>[];
-        tvppSlotRows(
+        TvppPicturesInOrder().read(
           recordBytes: file,
           slot: slotFor(file, compressed: true),
           size: const CanvasSize(width: w, height: h),
@@ -464,7 +464,7 @@ void main() {
       /// Each row handed on, its y first.
       List<List<int>> rowsOf(Uint8List bytes, TvppSlot slot) {
         final rows = <List<int>>[];
-        tvppSlotRows(
+        TvppPicturesInOrder().read(
           recordBytes: bytes,
           slot: slot,
           size: const CanvasSize(width: w, height: h),
@@ -489,6 +489,179 @@ void main() {
         whole,
         reason: 'the slot window is the same input by a different name',
       );
+    });
+  });
+
+  group('a tile of the picture before (card F-621 ②)', () {
+    // The 130 × 70 grid: tiles 0 1 2 over 3 4 5, the right column 2 wide
+    // and the bottom row 6 tall. The rows' first tiles stay empty — the
+    // builder writes an empty tile as a copy of its row's first.
+    int shade(int x, int y, int k) => premulBgra(
+      (x * 3 + k * 40) & 0xff,
+      (y * 5 + k * 70) & 0xff,
+      60 + k * 40,
+      255,
+    );
+
+    /// [px] with tile [t] showing picture [k] in its own corner, as far as
+    /// the tile reaches and no further than [rows] down.
+    void fill(List<int> px, int t, int k, {int rows = 64}) {
+      final x0 = (t % 3) * 64;
+      final y0 = (t ~/ 3) * 64;
+      final tw = t % 3 == 2 ? 2 : 64;
+      final th = t ~/ 3 == 1 ? 6 : 64;
+      for (var y = 0; y < th && y < rows; y++) {
+        for (var x = 0; x < tw; x++) {
+          px[(y0 + y) * w + x0 + x] = shade(x, y, k);
+        }
+      }
+    }
+
+    List<int> picture(Map<int, int> tiles) {
+      final px = List<int>.filled(w * h, 0);
+      tiles.forEach((t, k) => fill(px, t, k));
+      return px;
+    }
+
+    // The first stands alone. The second keeps tile 1, shows it again on
+    // the narrow tile 2, draws tile 4 anew and shows the first's tile 4 on
+    // tile 5 — all but tile 4 the picture before's. The third shows the
+    // second's tiles 1 (the first's, shown again) and 4 (its own).
+    final first = picture({1: 0, 2: 1, 4: 2});
+    final second = picture({1: 0, 2: 0, 4: 3, 5: 2});
+    final third = picture({1: 0, 2: 4, 4: 3});
+    final records = [
+      srawRecord(first, w, h),
+      srawRecord(second, w, h, fromTheLast: {1: 1, 2: 1, 5: 4}),
+      srawRecord(third, w, h, fromTheLast: {1: 1, 4: 4}),
+    ];
+
+    ({Uint8List file, List<TvppSlot> slots}) layerOf(List<Uint8List> laid) {
+      final b = TvppBuilder()
+        ..clipProperties('t')
+        ..clipHeader(width: w, height: h)
+        ..layerHead('L', end: laid.length - 1, count: laid.length);
+      for (final record in laid) {
+        b.zchkSlot(record);
+      }
+      b.clipConfig();
+      final file = b.bytes;
+      return (
+        file: file,
+        slots: parseTvppStructure(file).clips.single.layers.single.slots,
+      );
+    }
+
+    Uint8List read(
+      TvppPicturesInOrder pictures,
+      Uint8List file,
+      TvppSlot slot,
+    ) {
+      final rgba = Uint8List(w * h * 4);
+      pictures.read(
+        recordBytes: file,
+        slot: slot,
+        size: const CanvasSize(width: w, height: h),
+        row: (y, row) => rgba.setRange(y * w * 4, (y + 1) * w * 4, row),
+      );
+      return rgba;
+    }
+
+    test('read after the picture before, a tile shows its tile — as much of '
+        'it as the two cover', () {
+      final (:file, :slots) = layerOf(records);
+      final pictures = TvppPicturesInOrder();
+      expect(read(pictures, file, slots[0]), expectedRgba(first));
+      expect(read(pictures, file, slots[1]), expectedRgba(second));
+      expect(read(pictures, file, slots[2]), expectedRgba(third));
+    });
+
+    test('🚨read on its own, it says that it needs the picture before', () {
+      final (:file, :slots) = layerOf(records);
+      expect(
+        () => tvppSlotRgba(
+          recordBytes: file,
+          slot: slots[1],
+          width: w,
+          height: h,
+        ),
+        throwsA(isA<TvppNeedsThePictureBefore>()),
+      );
+    });
+
+    test('🚨a reader that goes on from what another read reads the same — '
+        'through a tile the picture before showed of the one before it', () {
+      final (:file, :slots) = layerOf(records);
+      final reading = TvppPicturesInOrder();
+      read(reading, file, slots[0]);
+      final second0 = TvppPicturesInOrder(before: reading.last);
+      expect(read(second0, file, slots[1]), expectedRgba(second));
+      final third0 = TvppPicturesInOrder(before: second0.last);
+      expect(read(third0, file, slots[2]), expectedRgba(third));
+    });
+
+    test('a tile shows a shorter one of the picture before no further down '
+        'than it reaches', () {
+      // Tile 1 (64 tall) shows the first's tile 4 (6 tall).
+      final shorter = List<int>.filled(w * h, 0);
+      fill(shorter, 1, 2, rows: 6);
+      final (:file, :slots) = layerOf([
+        records[0],
+        srawRecord(shorter, w, h, fromTheLast: {1: 4}),
+      ]);
+      final pictures = TvppPicturesInOrder();
+      read(pictures, file, slots[0]);
+      expect(read(pictures, file, slots[1]), expectedRgba(shorter));
+    });
+
+    test('🚨a whole-canvas picture is a picture before too — its tiles '
+        'are the canvas cut on the grid', () {
+      // 🔬Both layers of the user's file that read in order open on one.
+      // The second here shows the first's tiles 1, 2 and 4 — tile 2 on the
+      // narrow column as itself, tile 4 on the short row as itself.
+      final (:file, :slots) = layerOf([
+        dbodRecord(first, w, h),
+        srawRecord(
+          picture({1: 0, 2: 1, 4: 2}),
+          w,
+          h,
+          fromTheLast: {1: 1, 2: 2, 4: 4},
+        ),
+      ]);
+      final reading = TvppPicturesInOrder();
+      expect(read(reading, file, slots[0]), expectedRgba(first));
+      final after = TvppPicturesInOrder(before: reading.last);
+      expect(read(after, file, slots[1]), expectedRgba(first));
+    });
+
+    test('a blank picture before shows nothing on a tile that points at it',
+        () {
+      final (:file, :slots) = layerOf([
+        blankInstanceRecord(),
+        srawRecord(picture({4: 3}), w, h, fromTheLast: {1: 1}),
+      ]);
+      final pictures = TvppPicturesInOrder();
+      read(pictures, file, slots[0]);
+      expect(read(pictures, file, slots[1]), expectedRgba(picture({4: 3})));
+    });
+
+    test('a slot names the picture before it in its stream — a hold none of '
+        'its own', () {
+      final b = TvppBuilder()
+        ..clipProperties('t')
+        ..clipHeader(width: w, height: h)
+        ..layerHead('L', end: 3, count: 4)
+        ..zchkSlot(records[0])
+        ..zchkSlot(holdRecord())
+        ..zchkSlot(records[1])
+        ..zchkSlot(records[2])
+        ..clipConfig();
+      final slots =
+          parseTvppStructure(b.bytes).clips.single.layers.single.slots;
+      expect(slots[0].before, isNull);
+      expect(slots[1].before, same(slots[0]), reason: 'a hold holds it');
+      expect(slots[2].before, same(slots[0]), reason: 'past the hold');
+      expect(slots[3].before, same(slots[2]));
     });
   });
 }

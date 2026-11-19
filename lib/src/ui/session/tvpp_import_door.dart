@@ -85,6 +85,15 @@ class TvppImportDoor {
   /// lands — a stop is honoured after the cel in hand — and once it says
   /// so no more is read, and what a worker still hands back is given back
   /// unlaid.
+  ///
+  /// 🚨A PICTURE THAT SHOWS THE ONE BEFORE READS AFTER IT (card F-621 ②):
+  /// a tile may be the picture before's ([TvppPicturesInOrder]). Every cel
+  /// is tried on its own first, so a layer whose pictures stand alone —
+  /// every layer measured before 2026-11-19 — fans out as it did; a cel
+  /// that cannot is read again once they all were, its stream's pictures
+  /// one after another from the last one that stood alone, streams side by
+  /// side ([_Decoding.inOrder]). A worker is sent the record and what the
+  /// picture before is made of, never that picture's pixels.
   @visibleForTesting
   static Future<void> decodeEach(
     List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> work, {
@@ -94,34 +103,28 @@ class TvppImportDoor {
     landed,
     required bool Function() stopped,
   }) async {
-    final turns = Turns(atOnce);
-    var halted = false;
+    final decoding = _Decoding(
+      Turns(atOnce),
+      windowOf: windowOf,
+      landed: landed,
+      stopped: stopped,
+    );
     await Future.wait([
       for (var i = 0; i < work.length; i += 1)
-        turns.run(() async {
+        decoding.turns.run(() async {
           final (_, cut, _, slot) = work[i];
           final lay = celLayOf(
             picture: cut.canvasSize,
             canvas: cut.canvasSize,
             placement: const LayerPlacement.identity(),
           );
-          if (lay == null || halted) {
-            return;
+          if (lay != null) {
+            await decoding.alone(i, slot, lay);
           }
-          final decoded = await _decodeOnWorker(
-            await windowOf(slot),
-            slot: slot,
-            lay: lay,
-          );
-          if (halted) {
-            if (decoded is AnicelLaidCel) {
-              freeLaidCel(decoded);
-            }
-            return;
-          }
-          await landed(i, lay, decoded);
-          halted = stopped();
         }),
+    ]);
+    await Future.wait([
+      for (final run in decoding.runsInOrder()) decoding.inOrder(run),
     ]);
   }
 
@@ -144,38 +147,108 @@ class TvppImportDoor {
     required TvppSlot slot,
     required CelLay lay,
   }) {
-    // The record's offsets count from the record, so a window rebased to
-    // zero is the same input by a different name.
-    final windowSlot = TvppSlot(
-      kind: slot.kind,
-      chunkOffset: 0,
-      chunkLength: slot.chunkLength,
-      compressed: slot.compressed,
-      v10WholeCanvas: slot.v10WholeCanvas,
-    );
+    final windowSlot = _inTheWindow(slot);
     final size = lay.picture;
-    final width = size.width;
     final layout = lay.layout;
     final cut = tileCutOf(lay.cut);
-    return onAWorker<Object>(() {
-      try {
-        return laidCelOf(
-          layout,
-          TileCutter.cutting(
-            cut,
-            width,
-            (row) => tvppSlotRows(
-              recordBytes: window,
-              slot: windowSlot,
-              size: size,
-              row: row,
-            ),
-          ),
-        );
-      } on TvppRasterDecodeException catch (error) {
-        return error;
-      }
+    return onAWorker<Object>(
+      () => _cutInto(
+        layout,
+        cut,
+        size.width,
+        (row) => TvppPicturesInOrder().read(
+          recordBytes: window,
+          slot: windowSlot,
+          size: size,
+          row: row,
+        ),
+      ),
+    );
+  }
+
+  /// One record decoded over [before] — what the picture before it is made
+  /// of — as [_decodeOnWorker] decodes one alone, and what it is made of in
+  /// turn, for the picture after it. Its own function for the same reason.
+  static Future<(Object, TvppTileSources?)> _decodeOverOnWorker(
+    Uint8List window, {
+    required TvppSlot slot,
+    required CelLay lay,
+    required TvppTileSources? before,
+  }) {
+    final windowSlot = _inTheWindow(slot);
+    final size = lay.picture;
+    final layout = lay.layout;
+    final cut = tileCutOf(lay.cut);
+    return onAWorker(() {
+      final pictures = TvppPicturesInOrder(before: before);
+      final decoded = _cutInto(
+        layout,
+        cut,
+        size.width,
+        (row) => pictures.read(
+          recordBytes: window,
+          slot: windowSlot,
+          size: size,
+          row: row,
+        ),
+      );
+      return (
+        decoded,
+        decoded is TvppRasterDecodeException ? null : pictures.last,
+      );
     });
+  }
+
+  /// What the record in [window] is made of, read alone, its pixels
+  /// dropped — null where it will not read. Its own function for the same
+  /// reason as [_decodeOnWorker].
+  static Future<TvppTileSources?> _sourcesOnWorker(
+    Uint8List window, {
+    required TvppSlot slot,
+    required CanvasSize size,
+  }) {
+    final windowSlot = _inTheWindow(slot);
+    return onAWorker(() {
+      final pictures = TvppPicturesInOrder();
+      try {
+        pictures.read(
+          recordBytes: window,
+          slot: windowSlot,
+          size: size,
+          row: (_, _) {},
+        );
+      } on TvppRasterDecodeException {
+        return null;
+      }
+      return pictures.last;
+    });
+  }
+
+  /// [slot] as its window holds it: the record's offsets count from the
+  /// record, so a window rebased to zero is the same input by a different
+  /// name. ⛔No [TvppSlot.before] — that is every picture before it, and a
+  /// worker is sent its own.
+  static TvppSlot _inTheWindow(TvppSlot slot) => TvppSlot(
+    kind: slot.kind,
+    chunkOffset: 0,
+    chunkLength: slot.chunkLength,
+    compressed: slot.compressed,
+    v10WholeCanvas: slot.v10WholeCanvas,
+  );
+
+  /// The rows [feed] hands on cut into [layout]'s tiles — or the exception
+  /// that says why the record would not decode.
+  static Object _cutInto(
+    CelLayout layout,
+    TileCut cut,
+    int width,
+    void Function(RowSink row) feed,
+  ) {
+    try {
+      return laidCelOf(layout, TileCutter.cutting(cut, width, feed));
+    } on TvppRasterDecodeException catch (error) {
+      return error;
+    }
   }
 
   /// Lands one decoded cel — or answers why it could not be landed.
@@ -375,6 +448,120 @@ class TvppImportDoor {
         );
       }
     }
+  }
+}
+
+/// One bake's decode under way ([TvppImportDoor.decodeEach]): the turns
+/// its workers take, where its records come from and its cels land — and
+/// the cels that read after the picture before, kept for their turn.
+class _Decoding {
+  _Decoding(
+    this.turns, {
+    required this.windowOf,
+    required this.landed,
+    required this.stopped,
+  });
+
+  final Turns turns;
+  final Future<Uint8List> Function(TvppSlot slot) windowOf;
+  final Future<void> Function(int index, CelLay lay, Object decoded) landed;
+  final bool Function() stopped;
+
+  /// A stop was asked for: no more is read, and what a worker still hands
+  /// back is given back unlaid.
+  var _halted = false;
+
+  /// The cels whose pictures show the picture before's tiles, by slot.
+  final _afterTheOneBefore = <TvppSlot, ({int index, CelLay lay})>{};
+
+  /// Cel [index] — [slot]'s picture — read on its own and landed, or kept
+  /// to read after the picture before ([inOrder]).
+  Future<void> alone(int index, TvppSlot slot, CelLay lay) async {
+    if (_halted) {
+      return;
+    }
+    final decoded = await TvppImportDoor._decodeOnWorker(
+      await windowOf(slot),
+      slot: slot,
+      lay: lay,
+    );
+    if (decoded is TvppNeedsThePictureBefore) {
+      _afterTheOneBefore[slot] = (index: index, lay: lay);
+      return;
+    }
+    await _land(index, lay, decoded);
+  }
+
+  /// The kept cels as the runs their streams hold them in, first to last:
+  /// a run starts after a picture that stood alone — or at none, a
+  /// stream's first — and goes on while each is the next one's
+  /// [TvppSlot.before].
+  List<List<TvppSlot>> runsInOrder() {
+    final kept = _afterTheOneBefore.keys.toSet();
+    final next = <TvppSlot, TvppSlot>{
+      for (final slot in kept)
+        if (slot.before case final before? when kept.contains(before))
+          before: slot,
+    };
+    return [
+      for (final slot in kept)
+        if (!kept.contains(slot.before))
+          [for (TvppSlot? at = slot; at != null; at = next[at]) at],
+    ];
+  }
+
+  /// [run]'s pictures read one after another, each over the one before,
+  /// each landed as its worker answers. The picture before the first stood
+  /// alone, so it is read alone again — for what it is made of, its pixels
+  /// dropped. Where there is none, or it will not read, the run's cels
+  /// land the error that says so.
+  ///
+  /// ⚖️ONE AFTER ANOTHER, PIXELS AND ALL — measured, not assumed (F-621 ②,
+  /// 2026-11-19, the user's file on the Surface): what each picture is
+  /// made of was worked out in order with no pixel read, and the pixels
+  /// read beside each other over it. Its 515 such pictures took no less
+  /// (64–68 s against 60 s): a walk ran 26 ms on its worker, but waited for
+  /// its record and to land on the isolate that hands them out — 110 s
+  /// summed over the 515 — with the CPU at 20–40 %. ⛔Not tried again
+  /// before that isolate is what is fixed.
+  Future<void> inOrder(List<TvppSlot> run) async {
+    final first = run.first.before;
+    var before = first == null
+        ? null
+        : await turns.run(
+            () async => TvppImportDoor._sourcesOnWorker(
+              await windowOf(first),
+              slot: first,
+              size: _afterTheOneBefore[run.first]!.lay.picture,
+            ),
+          );
+    for (final slot in run) {
+      if (_halted) {
+        return;
+      }
+      final (:index, :lay) = _afterTheOneBefore[slot]!;
+      final (decoded, after) = await turns.run(
+        () async => TvppImportDoor._decodeOverOnWorker(
+          await windowOf(slot),
+          slot: slot,
+          lay: lay,
+          before: before,
+        ),
+      );
+      await _land(index, lay, decoded);
+      before = after;
+    }
+  }
+
+  Future<void> _land(int index, CelLay lay, Object decoded) async {
+    if (_halted) {
+      if (decoded is AnicelLaidCel) {
+        freeLaidCel(decoded);
+      }
+      return;
+    }
+    await landed(index, lay, decoded);
+    _halted = stopped();
   }
 }
 

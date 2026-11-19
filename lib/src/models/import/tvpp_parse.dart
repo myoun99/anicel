@@ -69,9 +69,16 @@ class TvppSlot {
     required this.chunkLength,
     required this.compressed,
     this.v10WholeCanvas = false,
+    this.before,
   });
 
   final TvppSlotKind kind;
+
+  /// The picture before this slot in its stream — the last image slot
+  /// before it, null for the stream's first. A tile of this slot's picture
+  /// may show that one's (card F-621 ②), so it reads after it
+  /// (`TvppPicturesInOrder`).
+  final TvppSlot? before;
 
   /// Offset of the image chunk's PAYLOAD (past FourCC + length) in the
   /// file, and that payload's length. For v12 this is the ZCHK payload
@@ -604,6 +611,18 @@ TvppClip _parseClip(
     (inSecondStream ? secondStream : slots).add(slot);
   }
 
+  /// The stream's last image slot so far — the picture before the next
+  /// slot ([TvppSlot.before]).
+  TvppSlot? imageBefore() {
+    final stream = inSecondStream ? secondStream : slots;
+    for (var i = stream.length - 1; i >= 0; i -= 1) {
+      if (stream[i].kind == TvppSlotKind.image) {
+        return stream[i];
+      }
+    }
+    return null;
+  }
+
   var p = start;
   var closed = false;
   while (p + 8 <= end && !closed) {
@@ -705,6 +724,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: true,
+            before: imageBefore(),
           ),
         );
       case 'SRAW':
@@ -717,6 +737,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: false,
+            before: imageBefore(),
           ),
         );
       case 'DBOD':
@@ -727,6 +748,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: false,
+            before: imageBefore(),
             v10WholeCanvas: true,
           ),
         );
