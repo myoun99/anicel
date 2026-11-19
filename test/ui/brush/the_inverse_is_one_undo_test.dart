@@ -113,21 +113,21 @@ void main() {
     commands.setRegion(selected);
     final landed = selected.translated(dx: 5, dy: 0);
     var pending = true;
-    // Stands in for a mounted selection layer holding a box: its confirm
-    // is an entry of its own, and it carries the outline to where the box
-    // put it.
+    // Stands in for a mounted selection layer holding a box: a press lands
+    // it through 확정's door (F-615) as an entry of its own, carrying the
+    // outline to where the box put it, and goes on once it has.
     final owner = Object();
     commands.bind(
       owner,
       hasSelection: () => commands.region != null,
       deselect: () {},
       movePending: () => pending,
-      confirmPendingMove: () {
-        if (!pending) {
-          return;
+      landPendingMoveThen: (then) {
+        if (pending) {
+          pending = false;
+          commands.regionHistoryRecorder!(commands.region, landed);
         }
-        pending = false;
-        commands.regionHistoryRecorder!(commands.region, landed);
+        then();
       },
     );
     addTearDown(() => commands.unbind(owner));

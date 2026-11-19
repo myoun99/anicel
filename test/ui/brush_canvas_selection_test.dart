@@ -53,6 +53,7 @@ import 'package:anicel/src/ui/canvas/float_warp.dart'
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart'
     show InputInspectorHost;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
@@ -2064,6 +2065,56 @@ void main() {
       expect(history.derivesAtTheStep, [0, 1, 1]);
       env.coordinator.selectFrame(env.keys[2]);
       expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+    });
+
+    testWidgets('over one cel the door lands at once, and the deselect '
+        'follows in the same call', (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      env.commands.setRegion(selection);
+      await tester.pump();
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(tx: 10, ty: 5),
+      );
+      await tester.pump();
+
+      env.commands.deselect();
+
+      expect(
+        env.commands.region,
+        isNull,
+        reason: 'no window to wait for, so nothing waited',
+      );
+      await tester.pump();
+      expect(find.byType(AppProgressDialog), findsNothing);
+    });
+
+    testWidgets('a session that holds no change lands on nothing — a '
+        'deselect over the range stands behind no window', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.setRegion(selection);
+      await tester.pump();
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(env.commands.movePending, isTrue, reason: '⛔premise: lifted');
+
+      expect(
+        await windowBehind(tester, () async => env.commands.deselect()),
+        isNull,
+      );
+      expect(env.commands.region, isNull);
     });
 
     testWidgets('it tells the range\'s share a cel at a time, and its step '
