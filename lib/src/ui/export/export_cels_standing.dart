@@ -60,13 +60,24 @@ class ExportCelsListing {
   /// The cut's FILE rows, top to bottom as the timeline draws the stack: a
   /// row a stack ([exportCelsHeadsAStack]), its files the drawings the plan
   /// files on its bundle's axis ([sheets]) — none while the stack holds no
-  /// picture, and the row is there all the same, switched off.
+  /// picture, and the row is there all the same, switched off, while its
+  /// base passes the colour label ([exportCelsLabelAdmits]).
   ///
   /// 🗣️(유저 2026-10-09): 「블록 없어도 그냥 행 보이게하는게 좋을거같단
   /// 생각들었어 … 그냥 말없이 출력행에서 안보이면 별로라. 보이더라도
   /// 다른거처럼 이름 흐리게 이런거 동일하게」. ↩️The consult first left a row
   /// with no file to write out of the list (「안보이게 해도 된다고생각」), and
   /// took it back within the hour.
+  ///
+  /// 🗣️F-614 (유저 2026-11-19): 「색라벨 필터에 해당하는것만 최종 출력
+  /// 리스트에 등장하도록」 — 「색라벨 lo했을때 라벨없음행이 마지막
+  /// 출력리스트에서만 사라지면됨」, and 「출력레이어 리스트는 지금처럼
+  /// 다른필터행있어도됨」: a row of another label — or of none — with no file
+  /// is not in this list; the attach column ([stackOf]) and the hand's
+  /// switches (F-614-Q1 「지금대로」) are as they were, and a row with a file
+  /// is here whatever its base wears (F-614-Q2 「지금대로」: the file keeps
+  /// its base's name). ↩️Every row that heads a stack was here, off and
+  /// dimmed — no label under LO, LO under 러프원화.
   List<ExportCelsLayerRow> layerRows(Iterable<ExportCelSheet> sheets) {
     final layers = cut.layers;
     // A stack's files stand on its bundle's axis: its base, or the free
@@ -86,7 +97,11 @@ class ExportCelsListing {
               state: exportRowState(stack.files),
               sheets: stack.files,
             )
-          else
+          else if (exportCelsLabelAdmits(
+            layer,
+            exportCelKindOf(layer, layers)!,
+            spec,
+          ))
             ExportCelsLayerRow(
               layer: layer,
               base: layer.id,

@@ -57,21 +57,24 @@ void main() {
     attachedMode: mode,
   );
 
-  /// Top of the timeline first: folder F holding C (one cel) and B (three),
-  /// then A (four) with a FREE attach row A_r of its own two — and a LO
-  /// row L the 원화 label leaves off.
+  /// Top of the timeline first: a LO row K that holds no drawing, folder F
+  /// holding C (one cel) and B (three), then A (four) with a FREE attach row
+  /// A_r of its own two, a LO row L the 원화 label leaves off — and E, a 원화
+  /// row that holds no drawing.
   Cut film() => Cut(
     id: cutId,
     name: '301',
     duration: 8,
     canvasSize: const CanvasSize(width: 8, height: 8),
     layers: [
+      row('e', 'E', const []),
       row('l', 'L', ['1', '2'], mark: layout),
       row('a', 'A', ['1', '2', '3', '4']),
       row('ar', 'A_r', ['1', '2'], attachedTo: 'a'),
       row('b', 'B', ['1', '2', '3'], folder: 'f'),
       row('c', 'C', ['1'], folder: 'f'),
       createFolderLayer(id: const LayerId('f'), name: 'F'),
+      row('k', 'K', const [], mark: layout),
       createCameraLayer(cutId: cutId),
     ],
   );
@@ -136,16 +139,57 @@ void main() {
     test('are the cut\'s STACKS as the timeline draws them, each with the '
         'files its bundle writes — no folder row, no attach row', () {
       final rows = board(film()).rows;
-      expect(ids(rows), ['c', 'b', 'a', 'l']);
+      expect(ids(rows), ['c', 'b', 'a', 'e']);
       expect(names(of(rows, 'a').sheets), ['1', '2', '3', '4']);
     });
 
     test('🚨a stack that holds no picture is a row all the same — off, with '
         'no file, and stood on like any', () {
       final rows = board(film()).rows;
-      final lo = of(rows, 'l');
-      expect(lo.sheets, isEmpty, reason: 'LO, under the 원화 label');
-      expect(lo.state, BooleanMix.off);
+      final empty = of(rows, 'e');
+      expect(empty.sheets, isEmpty, reason: 'E holds no drawing');
+      expect(empty.state, BooleanMix.off);
+    });
+
+    // 🗣️F-614 (유저 2026-11-19): 「색라벨 필터에 해당하는것만 최종 출력
+    // 리스트에 등장하도록」 · 「색라벨 lo했을때 라벨없음행이 마지막
+    // 출력리스트에서만 사라지면됨」 · 「출력레이어 리스트는 지금처럼
+    // 다른필터행있어도됨」 — the hand's switches as they were (Q1), a file
+    // under its base's row (Q2).
+    test('🚨a row of another label — or of none — with no file is not a row '
+        'of the list; one with a file is, whatever it wears', () {
+      const none = LayerMark.none;
+      final cut = Cut(
+        id: cutId,
+        name: '301',
+        duration: 8,
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        layers: [
+          row('l', 'L', ['1', '2'], mark: layout),
+          row('a', 'A', ['1', '2']),
+          row('n', 'N', ['1', '2'], mark: none),
+          row('m', 'M', ['1'], mark: none),
+          row('mr', 'M_r', ['1'], mark: layout, attachedTo: 'm'),
+          createCameraLayer(cutId: cutId),
+        ],
+      );
+      const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
+      final underLo = board(cut, spec: lo).rows;
+      expect(ids(underLo), unorderedEquals(['l', 'm']));
+      expect(names(of(underLo, 'm').sheets), ['1'], reason: 'M_r is LO');
+
+      expect(ids(board(cut).rows), ['a'], reason: 'under 원화');
+
+      final handed = board(
+        cut,
+        spec: lo,
+        delta: ExportCelsCutDelta().withLayerOverride(
+          const LayerId('n'),
+          true,
+        ),
+      ).rows;
+      expect(ids(handed), unorderedEquals(['l', 'm', 'n']));
+      expect(names(of(handed, 'n').sheets), ['1', '2']);
     });
 
     test('a free attach row that is its stack\'s only picture lends the row '
@@ -160,7 +204,7 @@ void main() {
       final a = of(rows, 'a');
       expect(a.name, 'A_r');
       expect(names(a.sheets), ['1', '2']);
-      expect(ids(rows), ['c', 'b', 'a', 'l'], reason: 'one row a stack');
+      expect(ids(rows), ['c', 'b', 'a', 'e'], reason: 'one row a stack');
     });
 
     test('🚨a row\'s switch says its files: on, mixed while some are off — '
@@ -206,9 +250,18 @@ void main() {
       expect(stack(cut, of(rows, 'a'), spec: noAttach), ['a']);
 
       // The base answers no filter here: 「LO」 leaves A out, and it is
-      // still the stack's line.
+      // still the stack's line — of the row the hand put A in, the one A
+      // has under LO (F-614: a row of another label with no file is none).
       const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
-      expect(stack(cut, of(board(cut, spec: lo).rows, 'a'), spec: lo), ['a']);
+      final handed = board(
+        cut,
+        spec: lo,
+        delta: ExportCelsCutDelta().withLayerOverride(
+          const LayerId('a'),
+          true,
+        ),
+      ).rows;
+      expect(stack(cut, of(handed, 'a'), spec: lo), ['a']);
     });
   });
 
@@ -274,8 +327,8 @@ void main() {
         'a row above it with none — and the first row where none does', () {
       const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
       final rows = board(film(), spec: lo).rows;
-      expect(ids(rows).first, 'c', reason: '⛔전제: C is first');
-      expect(of(rows, 'c').sheets, isEmpty, reason: '⛔전제: none under LO');
+      expect(ids(rows).first, 'k', reason: '⛔전제: K is first');
+      expect(of(rows, 'k').sheets, isEmpty, reason: '⛔전제: K holds none');
       expect(const ExportCelsStanding().rowIn(rows)?.idValue, 'l');
 
       const nothing = CelsExportSpec(
@@ -296,10 +349,10 @@ void main() {
       final third = const ExportCelsStanding()
           .standingOn('a', rows)
           .stepped(2, rows);
-      final onLo = third.standingOn('l', rows);
-      expect((onLo.row, onLo.shown, onLo.place), ('l', null, 2));
-      expect(onLo.rowIn(rows)?.idValue, 'l');
-      expect(onLo.standingOn('a', rows).shown, 'a-3');
+      final onE = third.standingOn('e', rows);
+      expect((onE.row, onE.shown, onE.place), ('e', null, 2));
+      expect(onE.rowIn(rows)?.idValue, 'e');
+      expect(onE.standingOn('a', rows).shown, 'a-3');
     });
 
     test('a row the list does not show is not stood on', () {
@@ -313,7 +366,7 @@ void main() {
     test('a row step stands on the row above or below at the place '
         'remembered, and stops at the list\'s ends', () {
       final rows = board(film()).rows;
-      expect(ids(rows), ['c', 'b', 'a', 'l'], reason: '⛔전제');
+      expect(ids(rows), ['c', 'b', 'a', 'e'], reason: '⛔전제');
       final third = const ExportCelsStanding()
           .standingOn('a', rows)
           .stepped(2, rows);
@@ -321,7 +374,7 @@ void main() {
       final up = third.rowStepped(-1, rows);
       expect((up.row, up.shown, up.place), ('b', 'b-3', 2));
       final down = third.rowStepped(1, rows);
-      expect((down.row, down.shown, down.place), ('l', null, 2));
+      expect((down.row, down.shown, down.place), ('e', null, 2));
       expect(down.rowStepped(-1, rows).shown, 'a-3');
       expect(third.rowStepped(-9, rows).row, 'c');
 
@@ -345,7 +398,7 @@ void main() {
       expect(landing(onA), '2:0');
       expect(landing(onA.stepped(1, rows)), '2:1');
       expect(landing(onA.rowStepped(-1, rows)), '1:0');
-      expect(landing(onA.rowStepped(1, rows)), isNull, reason: 'L shows none');
+      expect(landing(onA.rowStepped(1, rows)), isNull, reason: 'E shows none');
     });
 
     test('the steps stop at the row\'s ends', () {

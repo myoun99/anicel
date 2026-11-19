@@ -57,7 +57,6 @@ import '../../helpers/app_icon_button_probe.dart';
 void main() {
   const cutId = CutId('cut');
   const key = LayerMark(process: LayerProcess.key);
-  const layout = LayerMark(process: LayerProcess.layout);
 
   Frame frame(String id, String name) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
@@ -80,7 +79,7 @@ void main() {
   );
 
   /// Folder F holding B (three cels) · A (two) with a free attach row A_r ·
-  /// a LO row L the 원화 label leaves off · N, whose second drawing no
+  /// a 원화 row L that holds no drawing · N, whose second drawing no
   /// block places · a direction row.
   Cut film() => Cut(
     id: cutId,
@@ -97,7 +96,7 @@ void main() {
           0: TimelineExposure.drawing(FrameId('n-1'), length: 2),
         },
       ),
-      row('l', 'L', ['1'], mark: layout),
+      row('l', 'L', const []),
       row('a', 'A', ['1', '2']),
       row('ar', 'A_r', ['1'], attachedTo: 'a'),
       row('b', 'B', ['1', '2', '3'], folder: 'f'),

@@ -255,11 +255,22 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
   if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
     return false;
   }
-  if (kind.wearsTheLabel && !markWearsLabel(layer.mark, spec.label)) {
+  if (!exportCelsLabelAdmits(layer, kind, spec)) {
     return false;
   }
   return spec.take == null || layer.mark.take == spec.take;
 }
+
+/// The colour label filter of [layer], a row of [kind]: a row of a kind
+/// that wears the label ([ExportCelKind.wearsTheLabel]) passes when its OWN
+/// mark wears [CelsExportSpec.label]; the others pass as their kind is on.
+/// The rules ask it ([_exportsByRule]), and the Cels list asks it of a row
+/// with no file ([ExportCelsListing.layerRows]).
+bool exportCelsLabelAdmits(
+  Layer layer,
+  ExportCelKind kind,
+  CelsExportSpec spec,
+) => !kind.wearsTheLabel || markWearsLabel(layer.mark, spec.label);
 
 /// The 시트 filter: off, everything passes; on, a row passes when it — or,
 /// for an attach row, its base — is on the timesheet.
