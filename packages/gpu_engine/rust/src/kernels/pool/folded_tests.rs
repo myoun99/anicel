@@ -413,6 +413,38 @@ fn a_fold_asks_for_the_page_a_tile_whole_needs() {
     assert!(read(&pool, &all) == Some(tiles.concat()));
 }
 
+// A run wide enough for a tile, from no slot's beginning, is no run for a
+// tile whole — to the fold that asks for its page, as to the settle that
+// gives it its place: the two count on one giving, and a fold that
+// counted on the run would ask for no page, its tile left at every rest.
+#[test]
+fn a_tile_whole_is_given_a_page_past_a_run_that_begins_no_slot() {
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    // A page of 128 granules: four tiles of sixteen colours and one of
+    // two, 105 of them, and the three in the middle let go — 25..100
+    // free, the first slot's 64 begun by a tile and the second's ended by
+    // one.
+    let folded = [tile(1, 16), tile(2, 16), tile(3, 16), tile(4, 16), tile(5, 2)];
+    let places = stored(&mut pool, &folded.iter().collect::<Vec<_>>());
+    assert_eq!(settled(&mut pool, &places), 5);
+    assert_eq!(pool.lies(places[4]), folded_at(3, 4 * SIXTEEN));
+    for &at in &places[1..4] {
+        pool.release(at).expect("release");
+    }
+    let bytes = pool.bytes();
+    let whole = tile(6, 64);
+    let named = stored(&mut pool, &[&whole]);
+    assert_eq!(settled(&mut pool, &named), 1);
+    assert_eq!((pool.lies(named[0]), pool.bytes()), (at(4, 0), bytes + 2 * TILE_BYTES));
+    let held = [places[0], places[4], named[0]];
+    assert!(read(&pool, &held) == Some([&folded[0][..], &folded[4][..], &whole[..]].concat()));
+    // A folded tile takes that run still.
+    let small = tile(7, 16);
+    let more = stored(&mut pool, &[&small]);
+    assert_eq!(settled(&mut pool, &more), 1);
+    assert_eq!(pool.lies(more[0]), folded_at(3, SIXTEEN));
+}
+
 // Between a fold and its settling the books are their caller's: a tile let
 // go meanwhile, and one let go and its slot handed out again — told by its
 // stamp —, are given no place, and the tile now in the slot is read as
