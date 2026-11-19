@@ -134,6 +134,18 @@ void main() {
       expect(weights.weighedAgainCount, 0);
     });
 
+    test('cleared, they weigh nothing as bytes come to what they '
+        'weighed', () {
+      final landed = madeOnEngine();
+      final weights = HotCelWeights()
+        ..weigh(cel('1'), drawingOf({a: landed}))
+        ..clear();
+
+      bytesComeTo(landed);
+
+      expect(weights.bytes, 0);
+    });
+
     test('a cel weighed anew weighs its new picture alone as bytes come to '
         'the one it had', () {
       final landed = madeOnEngine();
