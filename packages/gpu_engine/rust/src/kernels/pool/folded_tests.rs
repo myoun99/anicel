@@ -1,15 +1,17 @@
 //! The pool's folded tiles on a real GPU: a tile folded keeps its name and
 //! reads as it was — off the pool, and by a pass laid on where it lies —,
 //! its place goes with its last hold, one let go or handed out again
-//! before it is settled stays as it is, and the pages of folded tiles are
-//! made and filled as the books say — a page's runs first, the books
-//! alone —, and the tiles next to fold are the pool's to say.
+//! before it is settled stays as it is, one that folds to more than a
+//! folded tile takes lies whole beside the folded, and the pages of
+//! folded tiles are made and filled as the books say — a page's runs
+//! first, the books alone —, and the tiles next to fold are the pool's to
+//! say.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::folded::Arena;
+use super::folded::{Arena, Takes};
 use super::{MOST_NAMED, Pool};
 use crate::kernels::composite::tests::{Rig, rig};
 use crate::device::Engine;
@@ -181,10 +183,11 @@ pub(crate) fn scrubbed(engine: &Engine, pool: &Pool, places: &[TileAt]) {
 // runs on either side of it, in its place among them.
 #[test]
 fn a_run_is_taken_from_the_first_that_holds_it_and_let_go_is_one_with_those_beside_it() {
+    let run = Takes::Folded;
     let mut arena = Arena::of(20);
-    let taken: Vec<Option<u16>> = [5, 1, 5, 4, 5].iter().map(|&run| arena.taken(run, 7)).collect();
+    let taken: Vec<Option<u32>> = [5, 1, 5, 4, 5].iter().map(|&granules| arena.taken(run(granules), 7)).collect();
     assert_eq!(taken, [Some(0), Some(5), Some(6), Some(11), Some(15)]);
-    assert_eq!(arena.taken(1, 7), None);
+    assert_eq!(arena.taken(run(1), 7), None);
     assert_eq!(arena.held_bytes(), 20 * GRANULE_BYTES);
     // A tile's stamp is where it begins, and nowhere once it is let go;
     // nothing is let go where no tile begins.
@@ -194,36 +197,77 @@ fn a_run_is_taken_from_the_first_that_holds_it_and_let_go_is_one_with_those_besi
     arena.let_go(5);
     assert_eq!((arena.stamps[5], arena.held_bytes()), (0, 19 * GRANULE_BYTES));
     // A run just as large is taken whole, and is no run then.
-    assert_eq!(arena.taken(1, 8), Some(5));
-    assert_eq!(arena.taken(1, 8), None);
+    assert_eq!(arena.taken(run(1), 8), Some(5));
+    assert_eq!(arena.taken(run(1), 8), None);
     // One with the run before it: 11..15 and 15..20 let go, in that
     // order, behind the run 0..5 let go between them.
     arena.let_go(11);
     arena.let_go(0);
     arena.let_go(15);
-    assert_eq!(arena.taken(9, 8), Some(11));
+    assert_eq!(arena.taken(run(9), 8), Some(11));
     // One with the run after it: 11..20 again free, 6..11 let go before
     // it — and the first of two runs that hold a tile is the one taken,
     // from its beginning, what is left of it the next.
     arena.let_go(11);
     arena.let_go(6);
-    assert_eq!(arena.taken(2, 8), Some(0));
-    assert_eq!(arena.taken(3, 8), Some(2));
-    assert_eq!(arena.taken(14, 8), Some(6));
+    assert_eq!(arena.taken(run(2), 8), Some(0));
+    assert_eq!(arena.taken(run(3), 8), Some(2));
+    assert_eq!(arena.taken(run(14), 8), Some(6));
     // One with both: the tile at 5 let go last, between the two.
     arena.let_go(6);
     arena.let_go(2);
     arena.let_go(0);
     arena.let_go(5);
     assert_eq!(arena.held_bytes(), 0);
-    assert_eq!(arena.taken(20, 8), Some(0));
+    assert_eq!(arena.taken(run(20), 8), Some(0));
+}
+
+// A tile whole takes a tile's granules from where a slot of the page would
+// begin: the first run that holds them from there, however wide it is
+// before —, what is left of the run before it and after it free for the
+// tiles to come. Let go, its run is one with those beside it, as any.
+#[test]
+fn a_tile_whole_takes_its_run_from_where_a_slot_begins() {
+    let run = Takes::Folded;
+    let mut arena = Arena::of(128);
+    let taken: Vec<Option<u32>> =
+        [10, 32, 22, 32, 32].iter().map(|&granules| arena.taken(run(granules), 7)).collect();
+    assert_eq!(taken, [Some(0), Some(10), Some(42), Some(64), Some(96)]);
+    // 86 granules free, 10..96, and no slot's 64 among them.
+    arena.let_go(10);
+    arena.let_go(42);
+    arena.let_go(64);
+    assert_eq!(arena.taken(Takes::Whole, 8), None);
+    // With 96..128 free too, the second slot's — and the run before it
+    // free still, for a tile no wider.
+    arena.let_go(96);
+    assert_eq!(arena.taken(Takes::Whole, 8), Some(64));
+    assert_eq!((arena.stamps[64], arena.held_bytes()), (8, (10 + 64) * GRANULE_BYTES));
+    assert_eq!(arena.taken(run(55), 9), None);
+    assert_eq!(arena.taken(run(54), 9), Some(10));
+    assert_eq!(arena.taken(run(1), 9), None);
+    arena.let_go(64);
+    arena.let_go(10);
+    assert_eq!((arena.stamps[64], arena.held_bytes()), (0, 10 * GRANULE_BYTES));
+    assert_eq!(arena.taken(run(118), 9), Some(10));
+    // What is left after it is the next run: a second tile whole behind
+    // the first, and no third.
+    let mut arena = Arena::of(192);
+    assert_eq!(arena.taken(run(1), 7), Some(0));
+    assert_eq!(arena.taken(Takes::Whole, 7), Some(64));
+    assert_eq!(arena.taken(Takes::Whole, 7), Some(128));
+    assert_eq!(arena.taken(Takes::Whole, 7), None);
+    assert_eq!(arena.taken(run(63), 7), Some(1));
+    assert_eq!(arena.held_bytes(), 192 * GRANULE_BYTES);
 }
 
 // A tile folded keeps the name it was stored under: its slot's book says
 // where it lies, a read of the pool by that name hands its bytes as they
 // were — unfolded, beside one that stayed as it is —, a pass laid on where
 // each lies copies what it copied of the slots, and its stamp is the one
-// its name has. One that folds to more than a folded tile takes stays.
+// its name has. One that folds to more than a folded tile takes lies
+// whole on that page, where its second slot would begin — a tile as it is
+// to whatever reads it, and no name.
 #[test]
 fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     let engine = rig().engine;
@@ -236,9 +280,11 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     // Folded, and no place given: every tile lies in its slot still.
     assert!(places.iter().all(|&at| pool.lies(at) == at));
     assert_eq!(pool.pages().len(), 1);
-    assert_eq!(pool.settles_unwaited(engine), 3);
+    assert_eq!(pool.settles_unwaited(engine), 4);
     let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
-    assert_eq!(lies, [folded_at(1, 0), folded_at(1, ONE), folded_at(1, ONE + TWO), at(0, 3)]);
+    assert_eq!(lies, [folded_at(1, 0), folded_at(1, ONE), folded_at(1, ONE + TWO), at(1, 1)]);
+    assert!(pool.hold(lies[3]).is_none());
+    assert!(read(&pool, &lies[3..]).is_none());
     // The page of folded tiles is a page of the pool's, as large as one of
     // tiles here.
     assert_eq!(pool.pages().len(), 2);
@@ -262,15 +308,14 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     assert_eq!(taken.of(at(7, 5)), at(7, 5));
     assert_eq!(pool.lies(at(7, 5)), at(7, 5));
     // Settled once: nothing is left to settle, and nothing to fold — a
-    // folded tile is not folded again, nor the one that stayed, handed
-    // to a fold as it is.
+    // tile that lies folded, or whole, is handed to no fold again.
     assert_eq!(pool.settles_unwaited(engine), 0);
     assert_eq!(fold(&mut pool, &places), (0, None));
     assert!(pool.to_fold(usize::MAX).is_empty());
-    // Whatever names a folded tile reads it where it lies: its slot's
+    // Whatever names a tile settled reads it where it lies: its slot's
     // bytes written over — the lane to come gives them back —, a read by
     // its name hands the tile still.
-    scrubbed(rig().engine, &pool, &places[..3]);
+    scrubbed(rig().engine, &pool, &places);
     assert!(read(&pool, &places) == Some(tiles.concat()));
 }
 
@@ -311,6 +356,61 @@ fn a_tile_let_go_gives_its_folded_place_back() {
     assert_eq!(pool.lies(fifth[0]), folded_at(1, 0));
     assert_eq!(pool.lies(fifth[1]), folded_at(1, ONE + TWO + SIXTEEN));
     assert!(read(&pool, &[third[0], fifth[0], fifth[1]]) == Some([&c[..], &e[..], &e[..]].concat()));
+}
+
+// A tile whole's place goes with its last hold as a folded one's does: no
+// stamp says a tile lies there, and its run is the next tile's that takes
+// one — the page made holds it, and no page more is made.
+#[test]
+fn a_tile_whole_let_go_gives_its_place_back() {
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let (a, b, c) = (tile(1, 1), tile(2, 64), tile(3, 64));
+    let places = stored(&mut pool, &[&a, &b]);
+    assert_eq!(settled(&mut pool, &places), 2);
+    assert_eq!(pool.lies(places[1]), at(1, 1));
+    // Two pages of two tiles' bytes: the slots held, and of the folded
+    // page the tile whole and a granule.
+    assert_eq!(pool.bytes(), 4 * TILE_BYTES);
+    assert_eq!(pool.idle_bytes(), TILE_BYTES - u64::from(ONE) * GRANULE_BYTES);
+    assert!(pool.stamps().of(at(1, 1)).is_some());
+    pool.release(places[1]).expect("release");
+    assert_eq!(pool.lies(places[1]), places[1]);
+    assert!(pool.stamps().of(at(1, 1)).is_none());
+    assert_eq!(pool.idle_bytes(), 3 * TILE_BYTES - u64::from(ONE) * GRANULE_BYTES);
+    let again = stored(&mut pool, &[&c]);
+    assert_eq!(again, [places[1]]);
+    assert_eq!(settled(&mut pool, &again), 1);
+    assert_eq!(pool.lies(again[0]), at(1, 1));
+    assert_eq!(pool.bytes(), 4 * TILE_BYTES, "no page where its run is free again");
+    assert!(read(&pool, &[places[0], again[0]]) == Some([&a[..], &c[..]].concat()));
+}
+
+// The page a tile whole needs is asked for by the fold that found it to
+// fold to more than a folded tile takes: where no run holds a tile from
+// a slot's beginning, and none where one does.
+#[test]
+fn a_fold_asks_for_the_page_a_tile_whole_needs() {
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let tiles = [tile(1, 64), tile(2, 1), tile(3, 64), tile(4, 64)];
+    // Alone, on the page its fold asked for: the first slot's place.
+    let first = stored(&mut pool, &[&tiles[0]]);
+    assert_eq!(settled(&mut pool, &first), 1);
+    assert_eq!((pool.lies(first[0]), pool.bytes()), (at(1, 0), 4 * TILE_BYTES));
+    // A folded tile behind it, from the second slot's first granule: 63
+    // granules are left, and the next tile whole is given a page.
+    let second = stored(&mut pool, &[&tiles[1]]);
+    assert_eq!(settled(&mut pool, &second), 1);
+    assert_eq!(pool.lies(second[0]), folded_at(1, 64));
+    let third = stored(&mut pool, &[&tiles[2]]);
+    assert_eq!(third, [at(2, 0)]);
+    assert_eq!(settled(&mut pool, &third), 1);
+    assert_eq!((pool.lies(third[0]), pool.bytes()), (at(3, 0), 8 * TILE_BYTES));
+    // The one after finds that page's second slot, and asks for none.
+    let fourth = stored(&mut pool, &[&tiles[3]]);
+    assert_eq!(settled(&mut pool, &fourth), 1);
+    assert_eq!((pool.lies(fourth[0]), pool.bytes()), (at(3, 1), 8 * TILE_BYTES));
+    let all = [first[0], second[0], third[0], fourth[0]];
+    assert!(read(&pool, &all) == Some(tiles.concat()));
 }
 
 // Between a fold and its settling the books are their caller's: a tile let
@@ -372,9 +472,10 @@ fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_b
     let mut pool = Pool::sized(1, MOST_NAMED, u64::MAX).expect("pool");
     let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
     assert_eq!(places, [at(0, 0), at(1, 0), at(2, 0)]);
-    // Two a fold, what a page holds at the most each may take: the
-    // third's fold asks for the second page.
-    assert_eq!(pool.to_fold(usize::MAX), places[..2]);
+    // One a fold, what a page holds at the most each may take — a tile
+    // whole: the second's finds the run left, and the third's asks for
+    // the second page.
+    assert_eq!(pool.to_fold(usize::MAX), places[..1]);
     assert_eq!(folded_whole(&mut pool, usize::MAX), 3);
     let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
     assert_eq!(lies, [folded_at(3, 0), folded_at(3, SIXTEEN), folded_at(4, 0)]);
@@ -548,36 +649,37 @@ fn what_is_taken_of_where_the_tiles_lie_is_told_by_the_last_move() {
 // The tiles next to fold are the pool's held ones that lie as they are and
 // that no fold was handed as they are — a page's before the next page's, no
 // more than asked, and no more than a page of folded tiles holds at the
-// most each may take: one a fold has in hand, one folded and one that
-// stayed for what it folds to are none of them; a slot handed out again
-// is, and one let go is not.
+// most each may take — a tile whole: one a fold has in hand and one
+// settled, folded or whole, are none of them; a slot handed out again is,
+// and one let go is not.
 #[test]
 fn the_tiles_next_to_fold_are_the_held_ones_no_fold_was_handed() {
     let engine = rig().engine;
-    // A page of two tiles: one of folded tiles holds four at the most
-    // each may take.
+    // A page of two tiles: one of folded tiles holds two at the most
+    // each may take. A fold named four takes them all the same — what
+    // they fold to is one page's here.
     let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
     let tiles = [tile(1, 1), tile(2, 64), tile(3, 2), tile(4, 1), tile(5, 2), tile(6, 1)];
     let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
     assert_eq!(places, [at(0, 0), at(0, 1), at(1, 0), at(1, 1), at(2, 0), at(2, 1)]);
     assert!(pool.to_fold(0).is_empty());
     assert_eq!(pool.to_fold(1), places[..1]);
-    assert_eq!(pool.to_fold(usize::MAX), places[..4]);
+    assert_eq!(pool.to_fold(usize::MAX), places[..2]);
     // In a fold's hand, they are next no more, told or not.
     let number = numbered();
     assert_eq!(handed(&mut pool, &places[..4], number), 4);
     assert_eq!(pool.to_fold(usize::MAX), places[4..]);
     assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
     assert_eq!(pool.to_fold(usize::MAX), places[4..]);
-    // Folded, nor the one that stayed as it is.
-    assert_eq!(pool.settles_unwaited(engine), 3);
-    assert_eq!(pool.lies(places[1]), places[1]);
+    // Settled, nor: the folded, and the one whole.
+    assert_eq!(pool.settles_unwaited(engine), 4);
+    assert_eq!(pool.lies(places[1]), at(3, 1));
     assert_eq!(pool.to_fold(usize::MAX), places[4..]);
     // Its slot handed out again holds another tile, which is — the first
     // page's before the third's.
     pool.release(places[1]).expect("release");
     assert_eq!(stored(&mut pool, &[&tiles[0]]), [places[1]]);
-    assert_eq!(pool.to_fold(usize::MAX), [places[1], places[4], places[5]]);
+    assert_eq!(pool.to_fold(usize::MAX), [places[1], places[4]]);
     pool.release(places[4]).expect("release");
     assert_eq!(pool.to_fold(usize::MAX), [places[1], places[5]]);
     assert_eq!(folded_whole(&mut pool, usize::MAX), 2);

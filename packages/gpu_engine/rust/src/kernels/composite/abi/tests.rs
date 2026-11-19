@@ -1145,7 +1145,8 @@ fn composed_and_shown(pool: &Pool, plan: *const Planned, extent: [i32; 4]) -> Ve
 
 // A plan names its tiles by their slots and is laid on where each lies as
 // the pool's books stand, taken anew once a tile has moved: one folded
-// after the plan was first laid is read folded, its slot's bytes written
+// after the plan was first laid is read folded, and one moved whole
+// where it lies, their slots' bytes written
 // over — run over the C ABI, and composed unwaited on the pool as it was
 // taken, where it shows what a pool whose tiles lie as they are does —; a
 // slot let go and handed out again is the tile now in it; and a set added
@@ -1158,9 +1159,13 @@ fn a_plan_is_laid_on_where_each_of_its_tiles_lies() {
     let words: Vec<u32> = at.iter().map(|&at| at.word()).collect();
     let (plan, extent) = (a_row_of_three(&words), [0, 0, 3 * TILE as i32, TILE as i32]);
     let as_stored = ran(&pool, plan, extent).expect("run");
-    // The third, a pixel a colour, folds to more than a folded tile takes.
-    assert_eq!(settled(&mut pool, &at), 2);
-    scrubbed(rig().engine, &pool, &at[..2]);
+    // The third, a pixel a colour, folds to more than a folded tile takes:
+    // it lies whole on the page of the two folded.
+    assert_eq!(settled(&mut pool, &at), 3);
+    let (folded, whole) = (pool.lies(at[0]), pool.lies(at[2]));
+    assert!(folded.folded().is_some() && whole.as_it_is().is_some());
+    assert_eq!(whole.page, folded.page);
+    scrubbed(rig().engine, &pool, &at);
     assert!(ran(&pool, plan, extent).as_ref() == Some(&as_stored), "run over the C ABI");
     // Laid once for the books as they stand: a frame lays its plan at each
     // run, show and compose.

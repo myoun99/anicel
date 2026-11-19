@@ -34,7 +34,8 @@ use crate::kernels::shared::{
 };
 
 /// The most a folded tile takes (fold.wgsl's FOLD_MOST), in bytes: half a
-/// tile's as it is. One that folds to more stays as it is.
+/// tile's as it is. One that folds to more is kept as it is — whole,
+/// beside the folded, where the pool lays it (`pool/folded.rs`).
 pub(crate) const MOST_FOLDED_BYTES: u64 = TILE_BYTES / 2;
 
 /// The storage buffers a pass binds besides its pages: what it is given,
@@ -65,12 +66,14 @@ impl Folded {
         (bytes <= MOST_FOLDED_BYTES).then(|| bytes.div_ceil(GRANULE_BYTES) as u16)
     }
 
-    /// Copies each folded tile that `writes` names — by its place among
-    /// the folded — to the folded place it says, on the pool's `pool`
-    /// pages. Submits the work; the caller waits.
+    /// Encodes the copy of each folded tile that `writes` names — by its
+    /// place among the folded — to the folded place it says, on the
+    /// pool's `pool` pages: its caller's to submit, with what else it
+    /// copies of the tiles (`pool/folded.rs`). Nothing is encoded where
+    /// it fails.
     pub(crate) fn put(
         &self,
-        engine: &Engine,
+        encoder: &mut wgpu::CommandEncoder,
         pool: &[wgpu::Buffer],
         writes: &[(usize, TileAt)],
     ) -> Option<()> {
@@ -80,7 +83,7 @@ impl Folded {
                 return fail(format!("tile {index} of {} folded", self.sizes.len()));
             }
             let Some(granules) = self.granules(index) else {
-                return fail(format!("tile {index} folds to {} words: it stays as it is", self.sizes[index]));
+                return fail(format!("tile {index} folds to {} words: more than a folded tile takes", self.sizes[index]));
             };
             let Some(to) = at.folded() else {
                 return fail(format!("{at:?} is no folded place"));
@@ -96,13 +99,9 @@ impl Folded {
             }
             copies.push((index as u64 * MOST_FOLDED_BYTES, page, to, u64::from(self.sizes[index]) * 4));
         }
-        let mut encoder = engine
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for (from, page, to, bytes) in copies {
             encoder.copy_buffer_to_buffer(&self.words, from, page, to, bytes);
         }
-        engine.queue.submit([encoder.finish()]);
         Some(())
     }
 }

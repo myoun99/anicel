@@ -129,7 +129,8 @@ pub(crate) struct Cel(pub(crate) u32);
 pub(crate) struct Full;
 
 /// What a page holds: tiles as they are, a slot each, or tiles folded,
-/// each in as many granules as hold it (`folded.rs`).
+/// each in as many granules as hold it — and whole, those that fold to
+/// more than a folded tile takes (`folded.rs`).
 enum Page {
     Tiles(Slots),
     Folded(Arena),
@@ -152,10 +153,10 @@ impl Page {
     }
 
     /// Each tile's stamp: by its slot, or by the granule it lies from.
-    fn stamps(&self) -> &Arc<Vec<u64>> {
+    fn stamps(&self) -> Stamped {
         match self {
-            Self::Tiles(slots) => &slots.stamps,
-            Self::Folded(arena) => &arena.stamps,
+            Self::Tiles(slots) => Stamped::BySlot(slots.stamps.clone()),
+            Self::Folded(arena) => Stamped::ByGranule(arena.stamps.clone()),
         }
     }
 }
@@ -182,9 +183,8 @@ struct Slots {
     /// fold ([`Pool::folds_unwaited`]) — 0 for one handed to none, left
     /// for want of a place, or left by a fold that failed: a tile is
     /// folded once, and what its slot is handed out to next is another
-    /// tile, told by its stamp. ⛔No
-    /// mark cleared where a slot is handed out: a site that forgot would
-    /// leave its tiles as they are for good.
+    /// tile, told by its stamp. ⛔No mark cleared where a slot is handed
+    /// out: a site that forgot would leave its tiles as they are for good.
     asked_to_fold: Vec<u64>,
 }
 
@@ -206,7 +206,16 @@ pub(crate) struct Stamps {
     /// The pool they are of ([`Pool::id`]): a stamp is a slot's alone
     /// among its own pool's.
     pool: u64,
-    pages: Vec<Option<Arc<Vec<u64>>>>,
+    pages: Vec<Option<Stamped>>,
+}
+
+/// A page's stamps as they were taken ([`Page::stamps`]): a slot's each on
+/// a page of tiles, and on a page of folded tiles the stamp of the tile
+/// lying from each granule.
+#[derive(Clone)]
+enum Stamped {
+    BySlot(Arc<Vec<u64>>),
+    ByGranule(Arc<Vec<u64>>),
 }
 
 impl Stamps {
@@ -215,12 +224,16 @@ impl Stamps {
         self.pool
     }
 
-    /// The stamp of the tile at `at` — its slot's, or, where it lies
-    /// folded, its granule's, which is the stamp of the slot that names
+    /// The stamp of the tile at `at` — its slot's, or, where it lies on
+    /// a page of folded tiles, that of the granule it lies from
+    /// ([`folded::lies_from`]), which is the stamp of the slot that names
     /// it —; none where the pool had handed no such slot out.
     pub(crate) fn of(&self, at: TileAt) -> Option<u64> {
-        let page = self.pages.get(usize::from(at.page))?.as_ref()?;
-        page.get(usize::from(at.slot & !FOLDED)).copied().filter(|&stamp| stamp != 0)
+        let stamp = match self.pages.get(usize::from(at.page))?.as_ref()? {
+            Stamped::BySlot(stamps) => stamps.get(usize::from(at.slot)),
+            Stamped::ByGranule(stamps) => stamps.get(folded::lies_from(at) as usize),
+        };
+        stamp.copied().filter(|&stamp| stamp != 0)
     }
 }
 
@@ -576,7 +589,7 @@ impl Pool {
     /// What names the bytes of each tile it holds now ([`Stamps`]): taken
     /// with the pages, where a plan is laid on them.
     pub(crate) fn stamps(&self) -> Stamps {
-        let of = |page: &Option<Page>| page.as_ref().map(|page| page.stamps().clone());
+        let of = |page: &Option<Page>| page.as_ref().map(Page::stamps);
         Stamps { pool: self.id, pages: self.pages.iter().map(of).collect() }
     }
 

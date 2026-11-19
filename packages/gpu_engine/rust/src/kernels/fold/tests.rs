@@ -162,6 +162,17 @@ fn stored(tiles: &[Vec<u32>]) -> Stored {
     }
 }
 
+/// Encodes `folded`'s put of `writes` and submits it, as the pool's settle
+/// does with what else it copies.
+fn put_now(folded: &Folded, engine: &Engine, pages: &[wgpu::Buffer], writes: &[(usize, TileAt)]) -> Option<()> {
+    let mut encoder = engine
+        .device()
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let put = folded.put(&mut encoder, pages, writes);
+    engine.queue.submit([encoder.finish()]);
+    put
+}
+
 /// Puts each of `folded`'s tiles that folds on page `page`, one after
 /// another from its first granule, and says where each is — none for a
 /// tile that stays as it is.
@@ -177,7 +188,7 @@ pub(super) fn placed(pages: &[wgpu::Buffer], folded: &Folded, page: u16) -> Vec<
         .collect();
     let writes: Vec<(usize, TileAt)> =
         places.iter().enumerate().filter_map(|(index, at)| Some((index, (*at)?))).collect();
-    folded.put(rig().engine, pages, &writes).expect("put the folded tiles");
+    put_now(folded, rig().engine, pages, &writes).expect("put the folded tiles");
     places
 }
 
@@ -350,10 +361,10 @@ fn a_tile_past_half_stays_as_it_is_and_writes_nothing_past_its_words() {
         let its = &words[after * MOST_FOLDED_BYTES as usize..][..MOST_FOLDED_BYTES as usize];
         assert!(its.iter().all(|&byte| byte == 0), "the tile after tile {}", after - 1);
     }
-    // And it is given no place.
+    // And it is put to no folded place.
     let at = TileAt { page: 1, slot: FOLDED };
-    assert!(folded.put(engine, &stored.pages, &[(0, at)]).is_none());
-    assert!(folded.put(engine, &stored.pages, &[(1, at)]).is_some());
+    assert!(put_now(&folded, engine, &stored.pages, &[(0, at)]).is_none());
+    assert!(put_now(&folded, engine, &stored.pages, &[(1, at)]).is_some());
 }
 
 // A pass cut smaller — fewer pages bound, fewer tiles taken — folds the
@@ -435,7 +446,7 @@ fn what_is_no_tile_s_place_is_refused() {
     let (stored, folded, places) = folded(&tiles);
     assert!(fold.folded(engine, &stored.pages, &[]).is_none());
     assert!(fold.folded(engine, &stored.pages, &[TileAt { page: 2, slot: 0 }]).is_none());
-    let put = |index, at| folded.put(engine, &stored.pages, &[(index, at)]);
+    let put = |index, at| put_now(&folded, engine, &stored.pages, &[(index, at)]);
     assert!(put(4, places[4]).is_some());
     assert!(put(tiles.len(), places[4]).is_none(), "no such tile folded");
     assert!(put(4, stored.as_they_are[4]).is_none(), "a place as it is");
@@ -445,7 +456,7 @@ fn what_is_no_tile_s_place_is_refused() {
     assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 29) }).is_some());
     assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 28) }).is_none(), "past its page");
     let unwritable = [stored.pages[0].clone(), plane(engine, "no page", stored.pages[1].size())];
-    assert!(folded.put(engine, &unwritable, &[(4, places[4])]).is_none(), "no copy's destination");
+    assert!(put_now(&folded, engine, &unwritable, &[(4, places[4])]).is_none(), "no copy's destination");
     // The write path puts a tile as it is, and to no folded place.
     let source = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
     let as_it_is = words_buffer(engine, "tiles put", &tiles[4], source);
