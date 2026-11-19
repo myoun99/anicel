@@ -684,10 +684,8 @@ Iterable<String> _workThatShipped(
       // when the PR line was last and went silent when one more note
       // followed it. That is not a gate, that is a coin toss on ordering.
       //
-      // ⚠️`!l.byUser` keeps the meaning it always had: the complaint is 「내가
-      // 본문에 적었다」, and the user quoting a number in their own feedback
-      // is not that. `l.pr == null` says the same thing the branch already
-      // says — an entry that CLAIMS its PR properly is the correct shape.
+      // ⚠️Which entries count is [prsQuotedInProse]'s to say — `board_say`
+      // asks it too, before the line is written.
       //
       // 🚨★★★ONLY ENTRIES WRITTEN SINCE [proseSince] — see [kProseSince].
       prose.add(c.id);

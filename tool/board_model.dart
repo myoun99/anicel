@@ -472,8 +472,8 @@ final kPrInProse = RegExp(r'#\d{4}\b');
 /// card claims none — what the gate's 「PR을 본문에만 적은 카드」 is about.
 ///
 /// ⚠️`!byUser`: the user quoting a number in their own feedback is theirs to
-/// write. `pr == null`: an entry that claims its PR is the correct shape, and
-/// a card that claims one is not asked at all.
+/// write. A card that claims a PR is not asked at all — which also covers
+/// the entry that claims it.
 /// 🚨ONE answer for both readers — `board_say` refuses such a line before it
 /// is written and `board_check` names the ones already there, or the tool
 /// lets through a line the gate then holds every turn on. 🧪2026-11-19
@@ -482,8 +482,8 @@ final kPrInProse = RegExp(r'#\d{4}\b');
 /// had no way out but an ack — over fifty such acks stood in `.gate-ack`.
 Iterable<BoardLog> prsQuotedInProse(BoardCard card) => card.prs.isNotEmpty
     ? const []
-    : card.log.where((entry) =>
-        !entry.byUser && entry.pr == null && kPrInProse.hasMatch(entry.text));
+    : card.log
+        .where((entry) => !entry.byUser && kPrInProse.hasMatch(entry.text));
 
 /// The card [json] makes by itself, folded exactly as the board folds a line
 /// — so a writer can ask of one line what the gate will ask of its card.
