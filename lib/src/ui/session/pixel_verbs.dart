@@ -285,16 +285,16 @@ class PixelVerbs {
         if (byId[layerId] case final layer?)
           ..._rowCelsAcross(
             seen,
-            layer,
+            _rowsReached(seen, layer, intoFolders: intoFolders),
             range.startIndex,
             range.endIndexExclusive,
-            intoFolders: intoFolders,
           ),
     ];
   }
 
-  /// [_rowCels] at every frame from [start] to [end], frame by frame —
-  /// the rows [layer] reaches asked ONCE, not once a frame.
+  /// The cels of the rows [reached] at every frame from [start] to [end],
+  /// frame by frame — [_rowCels] with the rows asked ONCE, not once a
+  /// frame.
   ///
   /// 🔬2026-11-20 (opening-a-transform-box…): a range of 62 rows × 36
   /// frames asked each row whether it is reached 2,232 times — a search
@@ -303,17 +303,13 @@ class PixelVerbs {
   /// build.
   List<BrushFrameKey> _rowCelsAcross(
     Cut cut,
-    Layer layer,
+    List<_ReachedRow> reached,
     int start,
-    int end, {
-    required bool intoFolders,
-  }) {
-    final reached = _rowsReached(cut, layer, intoFolders: intoFolders);
-    return [
-      for (var i = start; i < end; i++)
-        for (final row in reached) ?_celAt(cut, row, i),
-    ];
-  }
+    int end,
+  ) => [
+    for (var i = start; i < end; i++)
+      for (final row in reached) ?_celAt(cut, row, i),
+  ];
 
   /// The row you are standing on: the ACTIVE layer.
   ///
