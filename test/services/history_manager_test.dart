@@ -553,6 +553,43 @@ void _runTests() {
       expect([first.undoCount, second.undoCount], [0, 1]);
       expect(run.canTakeBack, isFalse, reason: 'the first is not this one');
     });
+
+    test('⛔a step is not adopted while another line holds steps — that '
+        'line\'s go up as they were written', () {
+      final history = HistoryManager();
+      final run = HistoryRun(history.gestures, 'Hold')..begin();
+      final asked = _FakeCommand();
+      history.execute(asked);
+      final sweep = history.gestures.open('Sweep');
+      final swept = _FakeCommand();
+      history.execute(swept);
+
+      run.adopt();
+      sweep.close();
+
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (2, 0),
+        reason: 'the step asked, and the sweep — each its own entry',
+      );
+      history.undo();
+      expect([asked.undoCount, swept.undoCount], [0, 1]);
+      run.end();
+    });
+
+    test('a line\'s first step is an edit: what undo left to redo goes', () {
+      final history = HistoryManager();
+      history
+        ..execute(_FakeCommand())
+        ..undo();
+      expect(history.canRedo, isTrue, reason: '⛔premise');
+      final run = HistoryRun(history.gestures, 'Hold')..begin();
+
+      run.write(() => history.execute(_FakeCommand()));
+
+      expect(history.canRedo, isFalse);
+      run.end();
+    });
   });
 }
 

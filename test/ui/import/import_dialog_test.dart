@@ -247,6 +247,7 @@ void main() {
     final a = await tester.runAsync(() => writePng('a.png'));
     final b = await tester.runAsync(() => writePng('b.png'));
     final layersBefore = s.requireActiveCut.layers.length;
+    final depth = s.historyManager.undoCount;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -267,6 +268,11 @@ void main() {
       s.requireActiveCut.layers.length,
       layersBefore + 2,
       reason: 'CONTROL: a layer each',
+    );
+    expect(
+      (s.historyManager.undoCount, s.historyManager.gestures.heldSteps),
+      (depth + 1, 0),
+      reason: 'the press\'s line is up once the press is over',
     );
 
     s.undo();
