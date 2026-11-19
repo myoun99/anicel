@@ -31,7 +31,7 @@
 //! THE MEMORY COMES BACK WHERE A PAGE OF TILES HAS NO TILE LYING ON IT:
 //! its buffer is given back, the slots its tiles are named by still
 //! ([`Pool::gives_back_where_no_tile_lies`]). ⛔But for one page, the
-//! pool's room ([`Pool::room`]) — its tiles are handed to no fold, and it
+//! pool's room ([`Pool::room_page`]) — its tiles are handed to no fold, and it
 //! stays made: 🔢브러시/렌더링's (2026-11-19, said on F-610), no rule of
 //! the user's. The next tiles go to its free slots, so it stays made
 //! whatever its tiles lie as, and one folded there is held twice — in its
@@ -388,7 +388,7 @@ impl Pool {
     /// Gives back the buffer of every page no tile lies on, waiting for
     /// nothing ([`Pool::buffer_let_go`]): a page of tiles whose every tile
     /// lies on another page — away from here, its slots their names still
-    /// ([`Slots::away`]) —, the pool's room apart ([`Pool::room`]); and a
+    /// ([`Slots::away`]) —, the pool's room apart ([`Pool::room_page`]); and a
     /// page of folded tiles no tile lies on — given back, its place the
     /// next page's.
     ///
@@ -420,7 +420,7 @@ impl Pool {
 
     /// The tiles a fold is next handed — held, lying as they are, and
     /// handed to none as they are ([`Slots::to_fold`]), on a page that is
-    /// not the pool's room ([`Pool::room`]) —, a page's before
+    /// not the pool's room ([`Pool::room_page`]) —, a page's before
     /// the next page's and `most` at most: no more than a page of folded
     /// tiles holds at the most each may take — a tile whole
     /// ([`Takes::Whole`]) —, so the one page a fold has made holds them

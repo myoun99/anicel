@@ -946,3 +946,28 @@ fn a_fold_that_finds_none_gives_back_the_pages_no_tile_lies_on() {
     assert_eq!(settled(&mut pool, &more), 1);
     assert_eq!(pool.lies(more[0]), folded_at(0, 0));
 }
+
+// A page that names no tile is nobody's, not one away: a rest leaves it
+// made — the pages nobody holds go back where the pool is asked for them
+// (`Pool::give_back`) —, and its slots are the next tiles'.
+#[test]
+fn a_rest_gives_back_no_page_that_names_no_tile() {
+    use super::gpu_engine_pool_fold;
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let tiles = [tile(1, 1), tile(2, 2), tile(3, 1), tile(4, 2)];
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    for &at in &places {
+        pool.release(at).expect("release");
+    }
+    // Two pages nobody holds: the first is the room, and the second
+    // names no tile — none lies on it, and none elsewhere is its.
+    // SAFETY: the pool and the engine are live, the kernels never let go;
+    // a fold that hands nothing over calls `told` never.
+    let rested = unsafe { gpu_engine_pool_fold(&mut pool, engine, kernels(), usize::MAX, told, numbered()) };
+    assert_eq!(rested, 0);
+    assert_eq!((pool.pages()[1].size(), pool.bytes()), (2 * TILE_BYTES, 4 * TILE_BYTES));
+    let cel = pool.cel();
+    let pages: Vec<u16> = (0..4).map(|_| pool.fresh(engine, cel).expect("a slot").page).collect();
+    assert_eq!(pages, [0, 0, 1, 1]);
+}
