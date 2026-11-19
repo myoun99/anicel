@@ -71,43 +71,49 @@ HeldRun? heldRunOn(Layer layer, List<int> starts) {
 /// The span of what [layer] holds between the blocks around those [held]
 /// names that it still has — the nearest before them and the nearest after
 /// — for an edit acting on them; null when nothing stands between.
-FrameSpan? heldSpanOn(Layer layer, HeldRun held) {
-  final blocks = _realBlocksOf(layer);
-  final at = _keptAt(held.drawings, [
-    for (final block in blocks) block.frameId,
-  ]);
-  final before = [for (var i = 0; i < held.before; i += 1) ?at[i]];
-  final after = [
-    for (var i = at.length - held.after; i < at.length; i += 1) ?at[i],
-  ];
-  final first = before.isEmpty ? 0 : before.last + 1;
-  final last = after.isEmpty ? blocks.length - 1 : after.first - 1;
-  if (last < first) {
-    return null;
-  }
-  return (
-    start: blocks[first].startIndex,
-    endExclusive: blocks[last].endIndexExclusive,
-  );
-}
+FrameSpan? heldSpanOn(Layer layer, HeldRun held) =>
+    _spanOn(layer, held, (at, count) {
+      final before = [for (var i = 0; i < held.before; i += 1) ?at[i]];
+      final after = [
+        for (var i = at.length - held.after; i < at.length; i += 1) ?at[i],
+      ];
+      final first = before.isEmpty ? 0 : before.last + 1;
+      final last = after.isEmpty ? count - 1 : after.first - 1;
+      return last < first ? null : (first, last);
+    });
 
 /// The span from the first to the last of the blocks [held] names that
 /// [layer] still has, found by the drawings they show — an edit beside
 /// them — or null when the row has none of them any more.
-FrameSpan? keptSpanOn(Layer layer, HeldRun held) {
+FrameSpan? keptSpanOn(Layer layer, HeldRun held) =>
+    _spanOn(layer, held, (at, _) {
+      final kept = [
+        for (var i = held.before; i < at.length - held.after; i += 1) ?at[i],
+      ];
+      return kept.isEmpty ? null : (kept.first, kept.last);
+    });
+
+/// The span over [layer]'s blocks from the first to the last that [pick]
+/// names — by their indices on the row — out of where each of [held]'s
+/// blocks stands on it now ([_keptAt]) and how many blocks it has; null
+/// when [pick] names none.
+FrameSpan? _spanOn(
+  Layer layer,
+  HeldRun held,
+  (int, int)? Function(List<int?> at, int count) pick,
+) {
   final blocks = _realBlocksOf(layer);
-  final at = _keptAt(held.drawings, [
-    for (final block in blocks) block.frameId,
-  ]);
-  final kept = [
-    for (var i = held.before; i < at.length - held.after; i += 1) ?at[i],
-  ];
-  if (kept.isEmpty) {
+  final picked = pick(
+    _keptAt(held.drawings, [for (final block in blocks) block.frameId]),
+    blocks.length,
+  );
+  if (picked == null) {
     return null;
   }
+  final (first, last) = picked;
   return (
-    start: blocks[kept.first].startIndex,
-    endExclusive: blocks[kept.last].endIndexExclusive,
+    start: blocks[first].startIndex,
+    endExclusive: blocks[last].endIndexExclusive,
   );
 }
 
@@ -229,8 +235,9 @@ final class HeldBand {
        _find = find,
        _behind = behind,
        _committed = committed,
-       _write = write,
-       _was = _spanOf(rows, find, behind, committed, const {});
+       _write = write {
+    _was = _spanOf(const {});
+  }
 
   final FrameSpan _band;
   final Map<LayerId, HeldRun> _rows;
@@ -248,8 +255,9 @@ final class HeldBand {
   /// Writes the band, on the axis it was held on.
   final void Function(FrameSpan span) _write;
 
-  /// The held blocks' span as the edit found them.
-  final FrameSpan? _was;
+  /// The held blocks' span as the edit found them — read as the band is
+  /// held, before the edit writes a thing: ⛔never on first asking.
+  late final FrameSpan? _was;
 
   /// The band put back as the edit found it — a drag let go of.
   void restore() => _write(_band);
@@ -260,7 +268,7 @@ final class HeldBand {
   /// left, the band stays as it was found.
   void follow([Map<LayerId, Layer> edited = const {}]) {
     final was = _was;
-    final now = _spanOf(_rows, _find, _behind, _committed, edited);
+    final now = _spanOf(edited);
     _write(
       was == null || now == null
           ? _band
@@ -268,23 +276,17 @@ final class HeldBand {
     );
   }
 
-  /// The span from the first held block to the last, across [rows], on
-  /// the band's axis.
-  static FrameSpan? _spanOf(
-    Map<LayerId, HeldRun> rows,
-    FrameSpan? Function(Layer layer, HeldRun held) find,
-    int Function(LayerId id) behind,
-    Layer? Function(LayerId id) committed,
-    Map<LayerId, Layer> edited,
-  ) {
+  /// The span from the first held block to the last, across [_rows], on
+  /// the band's axis — [edited] standing in for the rows it holds.
+  FrameSpan? _spanOf(Map<LayerId, Layer> edited) {
     FrameSpan? span;
-    for (final MapEntry(key: id, value: held) in rows.entries) {
-      final layer = edited[id] ?? committed(id);
-      final row = layer == null ? null : find(layer, held);
+    for (final MapEntry(key: id, value: held) in _rows.entries) {
+      final layer = edited[id] ?? _committed(id);
+      final row = layer == null ? null : _find(layer, held);
       if (row == null) {
         continue;
       }
-      final offset = behind(id);
+      final offset = _behind(id);
       final start = row.start - offset;
       final end = row.endExclusive - offset;
       span = span == null

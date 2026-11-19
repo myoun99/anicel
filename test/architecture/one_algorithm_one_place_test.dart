@@ -927,8 +927,23 @@ import '../../tool/refactor/clone_scan.dart';
 /// the outline's hand-spelled lower bound, walked in Rust now
 /// (`kernels/mask/contours.rs`, `partition_point`): the 🔜 above has one
 /// spelling fewer to wait on.
+/// 80 → 79 (2026-11-19, F-619-Q1 — the band follows its blocks whatever
+/// edit moves them). 🔬`clones.dart` on the lane over master (`8e9b6d843`,
+/// at 80): one gone, none added —
+///
+///       lib/src/ui/session/edge_drag.dart
+///         EdgeDragVerbs.beginStoryboardCommaDrag
+///       lib/src/ui/session/edge_drag.dart
+///         EdgeDragVerbs.beginStripRowEdgeDrag
+///
+/// a candidate and not a clone — two grips on the strip, an inner panel's
+/// comma and a riding row's edge, handing the same roles on: they hand
+/// the comma begin's roles whole now (`ExposureBeginRoles`), which hold
+/// the band beside the grip. The two finders of the band's blocks that
+/// came in at 81 (`heldSpanOn`, `keptSpanOn`) share one walk
+/// (`_spanOn`) and differ only in which blocks they pick.
 void main() {
-  const ceiling = 80;
+  const ceiling = 79;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

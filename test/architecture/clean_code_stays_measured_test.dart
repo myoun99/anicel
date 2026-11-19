@@ -1123,7 +1123,19 @@ void main() {
   /// viewport, the device's ratio and the texture's corner travel together
   /// as one placing on the texture. 🔬`clean_code_diff` against master
   /// (`96c3a5d3a`) names `FramePictureViewState._show` gone and none added.
-  const wideSignatures = 452;
+  ///
+  /// ⚠️452 → 454 on 2026-11-19, two named as the rule above asks (F-619-Q1
+  /// — 유저 「따라간다 — 어떤 조작이든 선택한 블록이 움직이면」):
+  /// `CutTrimDrag.begin` and `CutTrimDrag._beginLead` (five) took the band
+  /// held beside the trim, which follows the conte panels it holds where
+  /// the trim re-tiles them, each step and past the release. 🔬
+  /// `clean_code_diff` against master (`8e9b6d843`) names those two added
+  /// and nothing gone. ⛔Not bundled to fit: `EdgeDragRoles` keeps what a
+  /// drag in flight is handed for every drag (its own ⛔ keeps the begin's
+  /// out), and the band is this drag's alone. The storyboard grips' three
+  /// begins that took it too went back under by taking the comma begin's
+  /// roles (`ExposureBeginRoles`), which hold the band themselves.
+  const wideSignatures = 454;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

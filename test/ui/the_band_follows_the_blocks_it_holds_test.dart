@@ -516,6 +516,66 @@ void main() {
       expect(band(session), (8, 27));
     });
 
+    test('the cut\'s end grip on a cut with a conte row is its last comma: '
+        'the band over the last panel follows its end, past the cut\'s '
+        'refresh', () {
+      final (session, conteId) = conteDividedAtFive();
+      sweep(session, conteId, 5, 23);
+
+      expect(
+        session.edgeDrag.beginCutEdgeDrag(
+          cutId: session.activeCutId!,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+      session.edgeDrag.updateCutEdgeDrag(3);
+      expect(band(session), (5, 27), reason: 'live');
+      session.edgeDrag.endCutEdgeDrag();
+
+      expect(rowOf(session, conteId), {0: 5, 5: 22});
+      expect(band(session), (5, 27));
+    });
+
+    group('a cut\'s lead trim re-tiles its conte row', () {
+      /// The cut [conteDividedAtFive] makes, its lead edge pulled back
+      /// [delta], the band over the panel after the first.
+      EditorSessionManager trimmed(int delta) {
+        final (session, conteId) = conteDividedAtFive();
+        sweep(session, conteId, 5, 23);
+        expect(
+          session.edgeDrag.beginCutEdgeDrag(
+            cutId: session.activeCutId!,
+            edge: TimelineBlockEdge.start,
+          ),
+          isTrue,
+        );
+        session.edgeDrag.updateCutEdgeDrag(delta);
+        return session;
+      }
+
+      test('the band follows the panel, live and past the release', () {
+        final session = trimmed(2);
+        expect(band(session), (3, 22), reason: 'live');
+        session.edgeDrag.endCutEdgeDrag();
+
+        final conteId = storyboardLayerForCut(session.requireActiveCut)!.id;
+        expect(rowOf(session, conteId), {0: 3, 3: 19});
+        expect(band(session), (3, 22));
+      });
+
+      test('a step back to no change, or a drag let go of, shows the band '
+          'where it was swept', () {
+        final session = trimmed(2);
+        session.edgeDrag.updateCutEdgeDrag(0);
+        expect(band(session), (5, 24));
+
+        session.edgeDrag.updateCutEdgeDrag(2);
+        session.edgeDrag.cancelCutEdgeDrag();
+        expect(band(session), (5, 24));
+      });
+    });
+
     test('a cut\'s trailing trim moves none of its blocks: the band stands '
         'where it stood, past the cut\'s refresh', () {
       final (session, rowId) = onOnes();
@@ -618,6 +678,24 @@ void main() {
         placeSound(0);
 
         expect(soundStarts(), [for (var i = 0; i < 4; i += 1) cut2 + i]);
+        expect(trackBand(), (cut2 + 2, cut2 + 4));
+      });
+
+      test('the storyboard\'s grip on the sound in front — keyed on the '
+          'track — pushes them', () {
+        soundsBanded();
+
+        session.edgeDrag.beginExposureEdgeDrag(
+          layerId: s1,
+          blockStartIndex: cut2,
+          edge: TimelineBlockEdge.end,
+          blockStartIsGlobal: true,
+        );
+        session.edgeDrag.updateExposureEdgeDrag(1);
+        expect(trackBand(), (cut2 + 2, cut2 + 4), reason: 'live');
+        session.edgeDrag.endExposureEdgeDrag();
+
+        expect(soundStarts(), [cut2, cut2 + 2, cut2 + 3]);
         expect(trackBand(), (cut2 + 2, cut2 + 4));
       });
 

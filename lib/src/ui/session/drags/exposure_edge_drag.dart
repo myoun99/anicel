@@ -421,17 +421,16 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// ([beginOnRowOf], whose conte case this is).
   static ExposureEdgeDrag? beginStoryboardComma({
     required EdgeDragRoles roles,
-    required TrackSeDisplay trackSe,
+    required ExposureBeginRoles beginRoles,
     required Cut cut,
     required int blockStartIndex,
-    required HeldBand? band,
   }) {
     final row = storyboardLayerForCut(cut);
     return row == null
         ? null
         : beginOnRowOf(
             roles: roles,
-            trackSe: trackSe,
+            beginRoles: beginRoles,
             cut: cut,
             grip: (
               layerId: row.id,
@@ -439,7 +438,6 @@ class ExposureEdgeDrag implements EditorDragSession {
               edge: TimelineBlockEdge.end,
               startIsGlobal: false,
             ),
-            band: band,
           );
   }
 
@@ -458,15 +456,14 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// holds no such row, the row owns no timing (a SYNCED attach row: its
   /// base's grips move both, W5) or holds no such drawing block of its own.
   ///
-  /// The strip acts on no band: its grips re-time their own block. [band]
-  /// is the one held beside them, followed where the drag moves the
-  /// blocks it holds (F-619-Q1).
+  /// The strip acts on no band: its grips re-time their own block. The band
+  /// is held beside them, followed where the drag moves the blocks it holds
+  /// (F-619-Q1).
   static ExposureEdgeDrag? beginOnRowOf({
     required EdgeDragRoles roles,
-    required TrackSeDisplay trackSe,
+    required ExposureBeginRoles beginRoles,
     required Cut cut,
     required ExposureGrip grip,
-    required HeldBand? band,
   }) {
     final row = cut.layers
         .where((layer) => layer.id == grip.layerId)
@@ -485,7 +482,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     }
     return ExposureEdgeDrag._(
       roles: roles,
-      trackSe: trackSe,
+      trackSe: beginRoles.trackSe,
       before: row,
       edge: grip.edge,
       blockStart: grip.blockStartIndex,
@@ -493,7 +490,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       cutSync: ridesCutLength(row)
           ? cutSyncSnapshotFor(project: roles.project, cut: cut, row: row)
           : null,
-      band: band,
+      band: beginRoles.rangeSelections.holdBand(actsOnIt: false),
     );
   }
 
@@ -504,9 +501,8 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// the X-sheet are one verb.
   static ExposureEdgeDrag? beginStoryboardLastComma({
     required EdgeDragRoles roles,
-    required TrackSeDisplay trackSe,
+    required ExposureBeginRoles beginRoles,
     required Cut cut,
-    required HeldBand? band,
   }) {
     final row = storyboardLayerForCut(cut);
     if (row == null) {
@@ -523,10 +519,9 @@ class ExposureEdgeDrag implements EditorDragSession {
     }
     return beginStoryboardComma(
       roles: roles,
-      trackSe: trackSe,
+      beginRoles: beginRoles,
       cut: cut,
       blockStartIndex: lastKey,
-      band: band,
     );
   }
 
