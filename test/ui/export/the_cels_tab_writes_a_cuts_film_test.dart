@@ -78,12 +78,14 @@ void main() {
   );
 
   /// Cuts 301 and 302, each a KEY row A with two cels — on [paper], A
-  /// hidden on the canvas where [aShown] is false.
+  /// hidden on the canvas where [aShown] is false, a dab of ink in every
+  /// cel where [inked].
   EditorSessionManager film({
     ProjectBackground paper = ProjectBackground.defaultBackground,
     bool aShown = true,
-  }) => inkEveryCel(
-    EditorSessionManager(
+    bool inked = true,
+  }) {
+    final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -101,8 +103,9 @@ void main() {
           ),
         ],
       ),
-    ),
-  );
+    );
+    return inked ? inkEveryCel(session) : session;
+  }
 
   /// A black dot on each of A's cels, so the run has pictures to write.
   void draw(EditorSessionManager session) {
@@ -601,33 +604,97 @@ void main() {
       expect(filmChecks(session), isEmpty, reason: 'back on the rule');
     });
 
-    testWidgets('🚨the film draws A, which the canvas hides', (tester) async {
-      final temp = scratch();
-      final session = film(aShown: false);
-      addTearDown(session.dispose);
-      draw(session);
-      final state = await pumpCels(
-        tester,
-        session,
-        spec: const CelsExportSpec(
-          kinds: {ExportCelKind.video},
-          videoFormat: gif,
-          videoSizeMode: ExportSizeMode.canvas,
-        ),
-        into: temp,
-      );
-      await tester.runAsync(state.export);
-      await tester.pump();
+    /// [session], A's cels on cut 301 laid red all over — a colour neither
+    /// the paper nor the stage's apron is.
+    EditorSessionManager redA(EditorSessionManager session) {
+      final shot = session.cutById(const CutId('c1'))!;
+      const tile = defaultCelTileSize;
+      final pixels = Uint8List(tile * tile * 4);
+      for (var y = 0; y < size.height; y += 1) {
+        for (var x = 0; x < size.width; x += 1) {
+          pixels.setAll((y * tile + x) * 4, const [255, 0, 0, 255]);
+        }
+      }
+      for (final cel in ['c1-a1', 'c1-a2']) {
+        session.renderCaches.brushFrameStore.storeBakedSurface(
+          session.brushFrameKeyForCut(
+            shot,
+            const LayerId('c1-a'),
+            FrameId(cel),
+          ),
+          BitmapSurface(
+            canvasSize: size,
+            tileSize: tile,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels),
+            },
+          ),
+        );
+      }
+      return session;
+    }
 
+    /// How many pixels of cut 301's film, its first frame, are A's red.
+    int redIn(Directory temp) {
       final movie = img.decodeGif(
         File('${temp.path}/_CUT301.gif').readAsBytesSync(),
       )!;
-      final first = movie.frames.first;
-      expect(
-        first.getPixel(0, 0).r,
-        lessThan(first.getPixel(7, 7).r),
-        reason: 'A\'s dot, darker than the paper',
-      );
-    });
+      return movie.frames.first
+          .where((pixel) => pixel.r > 200 && pixel.g < 60 && pixel.b < 60)
+          .length;
+    }
+
+    // ↩️A camera-size film — its size's default — and a transition's frame
+    // drew the project's cut, the canvas's eyes and all; only a canvas-size
+    // frame of one cut drew the film's (F-618 ①, the Surface's release,
+    // 2026-11-19: A off in 출력할 레이어 and drawn).
+    for (final sizeMode in ExportSizeMode.values) {
+      testWidgets('🚨the film draws A, which the canvas hides — at its '
+          '${sizeMode.name} size', (tester) async {
+        final temp = scratch();
+        final session = film(aShown: false, inked: false);
+        addTearDown(session.dispose);
+        inkEveryCel(redA(session));
+        final state = await pumpCels(
+          tester,
+          session,
+          spec: CelsExportSpec(
+            kinds: const {ExportCelKind.video},
+            videoFormat: gif,
+            videoSizeMode: sizeMode,
+          ),
+          into: temp,
+        );
+        await tester.runAsync(state.export);
+        await tester.pump();
+
+        expect(redIn(temp), greaterThan(0));
+      });
+
+      testWidgets('🚨the film leaves A out, its check turned off, which the '
+          'canvas shows — at its ${sizeMode.name} size', (tester) async {
+        final temp = scratch();
+        final session = film(inked: false);
+        addTearDown(session.dispose);
+        inkEveryCel(redA(session));
+        final state = await pumpCels(
+          tester,
+          session,
+          spec: CelsExportSpec(
+            kinds: const {ExportCelKind.cel, ExportCelKind.video},
+            videoFormat: gif,
+            videoSizeMode: sizeMode,
+          ),
+          into: temp,
+        );
+        await press(tester, 'export-cels-stand-document-video');
+        await tester.pressCelsStackSwitch('c1-a');
+        expect(tester.celsStackLines, [('c1-a', false)], reason: '⛔premise');
+        await tester.runAsync(state.export);
+        await tester.pump();
+
+        expect(redIn(temp), 0);
+      });
+    }
   });
 }

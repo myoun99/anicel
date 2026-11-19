@@ -571,6 +571,39 @@ class ExportFrameRenderer {
   StoryboardTimelineLayoutEntry? _entryOf(ExportFrameTask task) =>
       _layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
 
+  /// [_layout] as [task] draws it: its cut the one it was handed, where the
+  /// layout holds the project's — a stack or a transition lays every cut
+  /// it reads off the layout, and a film of the Cels tab is its cut with
+  /// the rows it holds shown and the rest hidden (`_filmCutOf`).
+  ///
+  /// 🗣️F-618 ① (유저 2026-11-19): 「캔버스 보이는대로가아니라」 — the film
+  /// is drawn of the rows its label picks. ↩️A camera-size film (its size's
+  /// default) and a transition's frame drew the project's cut, the canvas's
+  /// eyes and all, and only a canvas-size frame of one cut drew the film's
+  /// (F-618 ①, the Surface's release, 2026-11-19).
+  List<StoryboardTimelineLayoutEntry> _layoutOf(ExportFrameTask task) {
+    final own = _entryOf(task);
+    if (own == null || identical(own.cut, task.cut)) {
+      return _layout;
+    }
+    return [
+      for (final entry in _layout)
+        if (identical(entry, own))
+          StoryboardTimelineLayoutEntry(
+            trackId: entry.trackId,
+            cutId: entry.cutId,
+            trackIndex: entry.trackIndex,
+            cutIndex: entry.cutIndex,
+            startFrame: entry.startFrame,
+            endFrame: entry.endFrame,
+            duration: entry.duration,
+            cut: task.cut,
+          )
+        else
+          entry,
+    ];
+  }
+
   /// One composited frame. [ExportSizeMode.canvas] renders the identity
   /// camera over the cut's own canvas size (centered, zoom 1, no rotation),
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
@@ -1587,7 +1620,7 @@ class ExportFrameRenderer {
     // This cut's own TRACK axis: a transition is a track's, so the partner can
     // only come from here.
     final entries = [
-      for (final entry in _layout)
+      for (final entry in _layoutOf(task))
         if (entry.trackId == own.trackId) entry,
     ];
     final globalFrame = own.startFrame + task.frameIndex;
@@ -1673,7 +1706,7 @@ class ExportFrameRenderer {
   /// render and for the run that counts what it shows ([videoRun]).
   List<TrackStackContribution> _stackPositionsOf(ExportFrameTask task) =>
       resolveTrackStackContributions(
-        layout: _layout,
+        layout: _layoutOf(task),
         spansOf: session.transitions.transitionSpansOfTrack,
         globalFrameIndex: (_entryOf(task)?.startFrame ?? 0) + task.frameIndex,
       );
