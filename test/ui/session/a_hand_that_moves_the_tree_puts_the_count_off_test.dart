@@ -180,6 +180,50 @@ void main() {
     expect(budget.playbackReadyRuns(0, 24), before);
   });
 
+  test('🚨a value dragged on a drawn row is shown, not written — and moves '
+      'the frames all the same: its cut stands not ready, counted once the '
+      'hand lets go (검증/서피스 21:36: the box of a cel number, a lane\'s '
+      'colour wheel)', () {
+    final s = session();
+    final budget = s.playbackRig.playbackCache;
+    inkCel(
+      s,
+      s.brushFrameKeyForCut(
+        s.requireActiveCut,
+        const LayerId('open-layer'),
+        const FrameId('open-frame'),
+      ),
+      canvasSize: canvasSize,
+      at: CanvasPoint(x: 1, y: 1),
+      size: 2,
+    );
+    var heard = 0;
+    budget.readinessMoved.addListener(() => heard += 1);
+
+    s.playbackRig.prerenderScheduler.beginInputHold();
+    s.laneVerbs.previewLaneValueAt(
+      const LayerId('open-layer'),
+      'position',
+      0,
+      '3, 3',
+      frameIsGlobal: false,
+      scaleLinked: true,
+    );
+    expect(s.dragPreview.value, isNotNull, reason: 'the premise: in flight');
+
+    expect(budget.playbackReadyRuns(0, 24), isEmpty);
+
+    s.laneVerbs.endLaneEditPreview();
+    s.playbackRig.prerenderScheduler.endInputHold();
+
+    expect(
+      heard,
+      1,
+      reason: 'put off under the hand — not counted as ever — and counted '
+          'once it lets go',
+    );
+  });
+
   test('🚨a camera dragged moves no frame: its bar is the frames as they '
       'stand whenever it is asked, and the hand lets go owing nothing', () {
     final s = session();

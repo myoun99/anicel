@@ -656,6 +656,8 @@ class EditorSessionManager extends ChangeNotifier
       ByIdentity(onionSkin.layerIds.value),
       onionSkin.settings.value,
     ),
+    // Read when asked, as [stackOf] is.
+    stackShown: () => editingCanvas.stack.nodes,
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,

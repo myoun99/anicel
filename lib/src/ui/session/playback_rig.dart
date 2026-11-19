@@ -69,8 +69,10 @@ class PlaybackRig implements PlaybackRun {
     )
     stackOf,
     required Object Function() treeStamp,
+    required List<CompositeNode<CanvasStackRow>> Function() stackShown,
   }) : _stackOf = stackOf,
        _treeStamp = treeStamp,
+       _stackShown = stackShown,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -113,6 +115,11 @@ class PlaybackRig implements PlaybackRun {
   /// What the trees [_stackOf] stacks read past their cut, page and
   /// cels ([FramePictures.treeStamp]).
   final Object Function() _treeStamp;
+
+  final List<CompositeNode<CanvasStackRow>> Function() _stackShown;
+
+  @override
+  List<CompositeNode<CanvasStackRow>> stackShown() => _stackShown();
 
   // ── what the screen shows a frame from ──────────────────────────────
 
