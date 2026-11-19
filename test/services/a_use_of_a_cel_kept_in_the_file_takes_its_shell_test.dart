@@ -309,6 +309,11 @@ void main() {
       File(refs[key('f')]!.filePath).deleteSync();
       await store.bringBytesAhead(key('f'));
       expect(tile.pixels, pixelsOf(4));
+      expect(
+        store.bringBytesAhead(key('f')),
+        isNot(same(store.bringBytesAhead(key('f')))),
+        reason: 'no bringing runs, to be joined by the next asking',
+      );
     });
 
     test('an edit landing while they are read keeps what it brought '

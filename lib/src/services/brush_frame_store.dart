@@ -1180,11 +1180,11 @@ class BrushFrameStore {
   /// ([_takenKeptInTheFile]): the bytes come before the file's stop
   /// being this cel's ([_letTheFileRefGo]).
   BitmapSurface? _usedAsItsShell(BrushFrameKey key) {
-    final ref = _fileCels[key];
-    if (ref == null || _coldCels.containsKey(key)) {
+    final kept = _kept(key);
+    if (kept == null || kept.parked) {
       return null;
     }
-    final shell = _shellAt(key, ref.canvasSize);
+    final shell = _shellAt(key, kept.ref.canvasSize);
     if (shell == null) {
       return null;
     }
@@ -1233,11 +1233,16 @@ class BrushFrameStore {
     return _fileCels.remove(key);
   }
 
-  /// Whether [taken] lives and holds no bytes here yet.
-  static bool _waits(_TakenTile taken) =>
-      taken.tile.target?.hasItsBytesHere == false;
+  /// [taken]'s tile where it lives and holds no bytes here yet —
+  /// held by who asked, so it lives till it is handed them.
+  static BitmapTile? _waiting(_TakenTile taken) {
+    final tile = taken.tile.target;
+    return tile == null || tile.hasItsBytesHere ? null : tile;
+  }
 
-  /// Each of [written] that waits ([_waits]) is handed its bytes, into
+  static bool _waits(_TakenTile taken) => _waiting(taken) != null;
+
+  /// Each of [written] that waits ([_waiting]) is handed its bytes, into
   /// the tile itself: from what [kept] reads — its cel as the file
   /// keeps it, asked for once and only where one waits —, else from
   /// where the engine holds it. One neither holds stays as it is.
@@ -1246,8 +1251,11 @@ class BrushFrameStore {
     BitmapSurface? Function() kept,
   ) {
     late final read = kept();
-    for (final taken in written.where(_waits)) {
-      final tile = taken.tile.target!;
+    for (final taken in written) {
+      final tile = _waiting(taken);
+      if (tile == null) {
+        continue;
+      }
       try {
         (read?.tiles[taken.at] ?? tile).readPixels(
           (_, pixels) => tile.keepBytesHere(pixels),
