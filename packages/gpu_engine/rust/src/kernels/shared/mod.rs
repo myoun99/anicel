@@ -38,6 +38,8 @@ mod one_kept_or_made;
 #[cfg(test)]
 mod one_maths;
 #[cfg(test)]
+mod one_name_to_a_place;
+#[cfg(test)]
 mod one_ndk_table;
 #[cfg(test)]
 mod one_pass;

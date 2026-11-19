@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use super::folded::Arena;
 use super::{MOST_NAMED, Pool};
 use crate::kernels::composite::tests::{Rig, rig};
-use crate::kernels::composite::{FOLDED, GRANULE_BYTES, TILE, TILE_BYTES, TileAt, TileSet};
+use crate::kernels::composite::{FOLDED, GRANULE_BYTES, NO_TILE, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::testing::read_buffer;
 
 fn at(page: u16, slot: u16) -> TileAt {
@@ -28,7 +28,7 @@ fn folded_at(page: u16, first: u16) -> TileAt {
 /// own: one folds to its table alone, two to 5 granules, sixteen to 25,
 /// and sixty-four — every pixel its own — to more than a folded tile
 /// takes.
-fn tile(seed: u32, colours: u32) -> Vec<u8> {
+pub(crate) fn tile(seed: u32, colours: u32) -> Vec<u8> {
     let word = |texel: u32| {
         let (x, y) = (texel % TILE, texel / TILE);
         let (block, pixel) = ((y / 8) * 16 + x / 8, (y % 8) * 8 + x % 8);
@@ -73,7 +73,7 @@ fn fold(pool: &mut Pool, places: &[TileAt]) -> (usize, Option<bool>) {
 }
 
 /// Folds the tiles named at `places` and settles them: how many settled.
-fn settled(pool: &mut Pool, places: &[TileAt]) -> usize {
+pub(crate) fn settled(pool: &mut Pool, places: &[TileAt]) -> usize {
     assert_eq!(fold(pool, places).1, Some(true));
     pool.settle(rig().engine)
 }
@@ -114,7 +114,7 @@ fn laid(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
 
 /// Writes over the slots of the tiles named at `places`: what a slot holds
 /// once its tile lies folded is nobody's to read.
-fn scrubbed(pool: &Pool, places: &[TileAt]) {
+pub(crate) fn scrubbed(pool: &Pool, places: &[TileAt]) {
     let engine = rig().engine;
     let scrub = vec![0xa5; TILE_BYTES as usize];
     let written = engine.on_thread(|| {
@@ -446,4 +446,42 @@ fn the_idle_bytes_are_the_free_slots_and_the_granules_no_tile_lies_in() {
     // The place let go is no tile's: no stamp says one lies there.
     assert!(pool.stamps().of(folded_at(1, ONE)).is_none());
     assert!(pool.stamps().of(folded_at(1, 0)).is_some());
+}
+
+// What is taken of where the tiles lie says a number of its own after
+// every move of a tile — one folded and settled, one let go where it lay
+// folded — and the same where none moved: a tile stored, held, let go as it
+// is, or folded and not yet settled. No two pools say one number. And a
+// word is read by it to where its tile lies — none names none —, the pool
+// taken whole being its pages, that taking and its stamps.
+#[test]
+fn what_is_taken_of_where_the_tiles_lie_is_told_by_the_last_move() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let other = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let made = pool.lying().as_of();
+    assert_ne!(made, other.lying().as_of());
+    let (a, b) = (tile(1, 1), tile(2, 2));
+    let places = stored(&mut pool, &[&a, &b, &a]);
+    pool.hold(places[2]).expect("hold");
+    pool.release(places[2]).expect("release");
+    pool.release(places[2]).expect("release");
+    assert_eq!(fold(&mut pool, &places[..2]), (2, Some(true)));
+    assert_eq!(pool.lying().as_of(), made);
+    assert_eq!(pool.settle(engine), 2);
+    let folded = pool.lying().as_of();
+    assert_ne!(folded, made);
+    assert_eq!(pool.settle(engine), 0);
+    assert_eq!(pool.lying().as_of(), folded);
+    pool.release(places[0]).expect("release");
+    let let_go = pool.lying().as_of();
+    assert_ne!(let_go, folded);
+    let taken = pool.taken();
+    assert_eq!(taken.lying.as_of(), let_go);
+    assert_eq!(taken.lying.of_word(places[1].word()), Some(folded_at(1, ONE)));
+    assert_eq!(taken.lying.of_word(places[0].word()), Some(places[0]));
+    assert_eq!(taken.lying.of_word(NO_TILE), None);
+    assert_eq!(taken.pages.len(), 2);
+    assert!(taken.stamps.of(places[1]).is_some());
+    assert_eq!(taken.stamps.of(folded_at(1, ONE)), pool.stamps().of(places[1]));
 }

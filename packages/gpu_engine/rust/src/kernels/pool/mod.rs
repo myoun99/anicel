@@ -54,7 +54,7 @@
 
 mod folded;
 #[cfg(test)]
-mod folded_tests;
+pub(crate) mod folded_tests;
 #[cfg(test)]
 mod tests;
 
@@ -71,6 +71,7 @@ use crate::kernels::shared::room;
 use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
 
+pub(crate) use folded::{Lying, Taken};
 use folded::{Arena, Foldings};
 
 /// The most a page holds where a binding holds more (1a ④).
@@ -250,6 +251,11 @@ pub(crate) struct Pool {
     /// The unfold, compiled where a read first meets a tile that lies
     /// folded ([`Pool::gathered`]).
     fold: OnceLock<Option<Fold>>,
+    /// The last move of a tile of its own ([`Pool::lies_at`]) — its
+    /// making, till one moves —, by its number among every pool's
+    /// (`folded::moved`): what a taking of where its tiles lie is told
+    /// by ([`Lying::as_of`]).
+    lying_as_of: u64,
 }
 
 /// The places stores handed over unwaited could not write, said where the
@@ -491,6 +497,7 @@ impl Pool {
             ahead: Spare::default(),
             foldings: Foldings::default(),
             fold: OnceLock::new(),
+            lying_as_of: folded::moved(),
         })
     }
 
@@ -761,7 +768,7 @@ impl Pool {
         // Its folded place goes with it: the slot names no tile, and the
         // one it is handed out to next lies in it as it is.
         if let Some(lies) = TileAt::of_word(book.lying[slot]) {
-            Arc::make_mut(&mut book.lying)[slot] = NO_TILE;
+            self.lies_at(at, NO_TILE);
             self.folded_let_go(lies);
         }
         Some(())

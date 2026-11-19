@@ -17,7 +17,7 @@
 mod tests;
 
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::device::{Engine, Sent, let_go, let_go_unwaited, on_thread_of};
 use crate::fail;
@@ -29,7 +29,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::kernels::pool::{Pool, Stamps};
+use crate::kernels::pool::{Lying, Pool, Stamps, Taken};
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
@@ -37,7 +37,7 @@ use super::held::{HeldChains, held_bytes};
 use super::kept::Kept;
 use super::screen::{Camera, Screen};
 use super::{
-    BufferChain, Composite, Composited, KeyChain, Nesting, Over, Plan, Step, TILE_BYTES,
+    BufferChain, Composite, Composited, KeyChain, Named, Nesting, Over, Plan, Step, TILE_BYTES,
     TileSet,
 };
 
@@ -46,7 +46,12 @@ use super::{
 /// the pool lets those slots go (캔버스 베이스 패널, 11-07 22:30).
 #[derive(Default)]
 pub(crate) struct Planned {
-    sets: Vec<TileSet>,
+    sets: Vec<Named>,
+    /// Its sets as last laid — each tile where it lay by the pool's books
+    /// of the number kept with them ([`Lying::as_of`]) —, till the books
+    /// say another or a set is added: a plan is laid at each run, show
+    /// and compose of a frame, and a tile moves once it is at rest.
+    sets_laid: Mutex<Option<(u64, Arc<Vec<TileSet>>)>>,
     keys: Vec<KeyChain>,
     matrices: Vec<[u32; MATRIX_WORDS]>,
     chains: Vec<PlannedChain>,
@@ -121,23 +126,29 @@ impl Planned {
     /// the run, the show and the screen's two composes each spelled it,
     /// and the fill's picture came as a fifth (11-12).
     pub(crate) fn laid<T>(&self, pool: &Pool, run: impl FnOnce(&Plan) -> T) -> T {
-        self.laid_on((pool.pages(), None), run)
+        self.laid_on((pool.pages(), &pool.lying(), None), run)
     }
 
-    /// [`Self::laid`] on `pages`, a pool's as they were taken — and its
-    /// stamps taken with them, where a picture kept of it is to be told by
-    /// what it is made of ([`Plan::stamps`]): what a body handed over
-    /// unwaited lays it on, the pool's books its caller's to keep meanwhile
+    /// [`Self::laid`] on a pool as it was taken ([`Pool::taken`]) — its
+    /// stamps with it, by which a picture kept of the plan is told by what
+    /// it is made of ([`Plan::stamps`]): what a body handed over unwaited
+    /// lays it on, the pool's books its caller's to keep meanwhile
     /// ([`gpu_engine_screen_compose`]).
+    fn laid_as_taken<T>(&self, pool: &Taken, run: impl FnOnce(&Plan) -> T) -> T {
+        self.laid_on((&pool.pages, &pool.lying, Some(&pool.stamps)), run)
+    }
+
+    /// It laid on `pages`, each tile its sets name where it lies by
+    /// `lying` ([`Named::lying`]).
     fn laid_on<T>(
         &self,
-        (pages, stamps): (&[wgpu::Buffer], Option<&Stamps>),
+        (pages, lying, stamps): (&[wgpu::Buffer], &Lying, Option<&Stamps>),
         run: impl FnOnce(&Plan) -> T,
     ) -> T {
-        let (chains, mask) = (self.chained(), self.masked());
+        let (chains, mask, sets) = (self.chained(), self.masked(), self.sets_lying(lying));
         let plan = Plan {
             pages,
-            sets: &self.sets,
+            sets: &sets,
             keys: &self.keys,
             matrices: &self.matrices,
             chains: &chains,
@@ -146,6 +157,21 @@ impl Planned {
             stamps,
         };
         run(&plan)
+    }
+
+    /// Its tile sets, each tile where it lies by `lying` — those last laid,
+    /// where the books say the number they were laid by.
+    fn sets_lying(&self, lying: &Lying) -> Arc<Vec<TileSet>> {
+        let mut laid = self.sets_laid.lock().unwrap_or_else(PoisonError::into_inner);
+        match &*laid {
+            Some((as_of, sets)) if *as_of == lying.as_of() => sets.clone(),
+            _ => {
+                let sets: Vec<TileSet> = self.sets.iter().map(|set| set.lying(lying)).collect();
+                let sets = Arc::new(sets);
+                *laid = Some((lying.as_of(), sets.clone()));
+                sets
+            }
+        }
     }
 
     /// The mask its masked steps are laid under, if it names one.
@@ -307,7 +333,9 @@ pub unsafe extern "C" fn gpu_engine_plan_set(
     // SAFETY: see the function's contract.
     let (plan, words) =
         unsafe { (&mut *plan, std::slice::from_raw_parts(tiles, columns as usize * rows as usize)) };
-    plan.sets.push(TileSet::from_words(x0, y0, columns, rows, words));
+    plan.sets.push(Named::from_words(x0, y0, columns, rows, words));
+    // What was laid of its sets was laid of one fewer.
+    *plan.sets_laid.get_mut().unwrap_or_else(PoisonError::into_inner) = None;
     plan.sets.len() as u32 - 1
 }
 
@@ -686,8 +714,7 @@ pub unsafe extern "C" fn gpu_engine_plan_weigh(
     number: u64,
 ) {
     // SAFETY: see the function's contract.
-    let (extent, pages, stamps) =
-        unsafe { (*extent.cast::<[i32; 4]>(), (*pool).pages().to_vec(), (*pool).stamps()) };
+    let (extent, pool) = unsafe { (*extent.cast::<[i32; 4]>(), (*pool).taken()) };
     let handed = Sent((plan, engine));
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
@@ -695,7 +722,7 @@ pub unsafe extern "C" fn gpu_engine_plan_weigh(
         // SAFETY: live till let go of, behind this (the function's
         // contract).
         let (plan, engine) = unsafe { (&*plan, &*engine) };
-        let tiles = plan.laid_on((&pages, Some(&stamps)), |laid| Kept::tiles_made(laid, extent, &engine.pictures));
+        let tiles = plan.laid_as_taken(&pool, |laid| Kept::tiles_made(laid, extent, &engine.pictures));
         let weighed = tiles.map_or(-1, |tiles| i64::try_from(tiles).unwrap_or(i64::MAX));
         plan.weighed.0.store(weighed, Ordering::Relaxed);
         told(number, tiles.is_some());
@@ -1559,8 +1586,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
     changed: *const i32,
 ) {
     // SAFETY: see the function's contract.
-    let (changed, pages, stamps) =
-        unsafe { (*changed.cast::<[i32; 4]>(), (*pool).pages().to_vec(), (*pool).stamps()) };
+    let (changed, pool) = unsafe { (*changed.cast::<[i32; 4]>(), (*pool).taken()) };
     let handed = Sent((screen, composite, engine, plan));
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
@@ -1568,7 +1594,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
         // SAFETY: live till let go of, behind this (the function's
         // contract).
         let (screen, composite, engine, plan) = unsafe { (&*screen, &*composite, &*engine, &*plan) };
-        plan.laid_on((&pages, Some(&stamps)), |plan| {
+        plan.laid_as_taken(&pool, |plan| {
             screen.with(|screen| screen.compose(engine, composite, plan, changed, composite.widest()))
         })
     });
@@ -1593,8 +1619,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
     fresh: *const i32,
 ) {
     // SAFETY: see the function's contract.
-    let (fresh, pages, stamps) =
-        unsafe { (*fresh.cast::<[i32; 4]>(), (*pool).pages().to_vec(), (*pool).stamps()) };
+    let (fresh, pool) = unsafe { (*fresh.cast::<[i32; 4]>(), (*pool).taken()) };
     let handed = Sent((screen, film, composite, engine, plan));
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
@@ -1604,7 +1629,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
         let (screen, film, composite, engine, plan) =
             unsafe { (&*screen, &*film, &*composite, &*engine, &*plan) };
         let film = film.kept();
-        plan.laid_on((&pages, Some(&stamps)), |plan| {
+        plan.laid_as_taken(&pool, |plan| {
             screen.with(|screen| screen.compose_over(engine, composite, plan, &film, fresh, composite.widest()))
         })
     });

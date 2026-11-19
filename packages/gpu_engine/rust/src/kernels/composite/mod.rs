@@ -93,7 +93,7 @@ use crate::kernels::chain::{Chain, Chained, Stored, laid_as, tiles_of, with_draw
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
-use crate::kernels::pool::Stamps;
+use crate::kernels::pool::{Lying, Stamps};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, kept_or_made, le_bytes, page_table, pipeline_with, room,
@@ -154,7 +154,7 @@ pub(crate) struct TileAt {
 impl TileAt {
     /// The one word this tile is named by — `page << 16 | slot` — wherever
     /// a tile set travels as words: from the app over the C ABI
-    /// ([`TileSet::from_words`]) and to a pass in its plan (composite.wgsl).
+    /// ([`Named::from_words`]) and to a pass in its plan (composite.wgsl).
     pub(crate) fn word(self) -> u32 {
         u32::from(self.page) << 16 | u32::from(self.slot)
     }
@@ -211,16 +211,33 @@ pub(crate) struct TileSet {
     pub(crate) tiles: Vec<Option<TileAt>>,
 }
 
-impl TileSet {
+/// A tile set as the app names it over the C ABI — a plan's tile sets, the
+/// cel a verb walks and the row a landing lays alike —: each tile by the
+/// slot it was handed out at, whatever it lies as (`pool/folded.rs`).
+///
+/// 🚨NOTHING IS LAID ON A NAME (F-610, 2026-11-19): the one way from here
+/// to a set a pass binds is through where each tile lies
+/// ([`Named::lying`]). ↩️Till then the app's words were read to a
+/// [`TileSet`] at once, a tile's name and its place being one.
+pub(crate) struct Named(TileSet);
+
+impl Named {
     /// The set of `columns` × `rows` tiles whose top-left is column `x0`,
     /// row `y0`, named by `words` row by row — each a tile's
-    /// [`TileAt::word`], or [`NO_TILE`] — as the app hands one over the C
-    /// ABI: the plan's tile sets and the ink scan's cel alike.
+    /// [`TileAt::word`], or [`NO_TILE`].
     pub(crate) fn from_words(x0: i32, y0: i32, columns: u32, rows: u32, words: &[u32]) -> Self {
         let tiles = words.iter().copied().map(TileAt::of_word).collect();
-        Self { x0, y0, columns, rows, tiles }
+        Self(TileSet { x0, y0, columns, rows, tiles })
     }
 
+    /// The set a pass is laid on: each tile where it lies by `lying`.
+    pub(crate) fn lying(&self, lying: &Lying) -> TileSet {
+        let tiles = self.0.tiles.iter().map(|tile| tile.map(|at| lying.of(at))).collect();
+        TileSet { tiles, ..self.0 }
+    }
+}
+
+impl TileSet {
     /// The tiles a box `size` across and down from `at` meets, row after
     /// row, `per_page` to a page from page `first_page` on: a stamp's
     /// (dab/stamp.rs).

@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 use super::*;
 use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::pool::folded_tests::{scrubbed, settled};
 use crate::kernels::shared::le_bytes;
 use crate::testing::{first_engine, last_error, stored};
 
@@ -83,6 +84,17 @@ const FIVE_INKS: [i32; 30] = [
 #[test]
 fn each_walked_tile_puts_where_it_is_and_its_box() {
     let (pool, words) = five();
+    assert_eq!(scanned(&pool, (-2, -1), (3, 2), &words, 30), (5, FIVE_INKS.to_vec()));
+}
+
+// A cel is walked where its tiles lie: folded since they were stored,
+// their slots' bytes written over, each puts the box it put.
+#[test]
+fn a_cel_whose_tiles_lie_folded_is_walked_where_they_lie() {
+    let (mut pool, words) = five();
+    let names: Vec<TileAt> = words.iter().copied().filter_map(TileAt::of_word).collect();
+    assert_eq!(settled(&mut pool, &names), 5);
+    scrubbed(&pool, &names);
     assert_eq!(scanned(&pool, (-2, -1), (3, 2), &words, 30), (5, FIVE_INKS.to_vec()));
 }
 

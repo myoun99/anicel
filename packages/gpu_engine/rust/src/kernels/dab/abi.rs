@@ -25,7 +25,7 @@ use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::{fail, take_last_error};
 use crate::kernels::composite::abi::{MaskPlane, sampling};
-use crate::kernels::composite::{Composite, NO_TILE, TileAt, TileSet};
+use crate::kernels::composite::{Composite, NO_TILE, Named, TileAt};
 use crate::kernels::mesh::MeshGrid;
 use crate::kernels::pool::{Cel, Pool, Writing};
 use crate::kernels::shared::{Counted, ResampleMap};
@@ -353,8 +353,9 @@ unsafe fn written(tiles: &[(i32, i32)], coordinates: *mut i32) {
 
 /// The cel's tile under each of the `count` coordinates the app told of —
 /// `coordinates` their column and row, `under` the cel's tile at each as a
-/// tile set names one — by coordinate: what a mixing step or a rub reads
-/// the cel by, on the engine's thread, after its caller has gone on.
+/// tile set names one — by coordinate, each where it lies on `pool` as it
+/// stands here (`Lying::of_word`): what a mixing step or a rub reads the
+/// cel by, on the engine's thread, after its caller has gone on.
 ///
 /// # Safety
 /// `coordinates` holds 2 × `count`, and `under` `count`.
@@ -362,7 +363,9 @@ unsafe fn told_of(
     coordinates: *const i32,
     under: *const u32,
     count: usize,
+    pool: &Pool,
 ) -> HashMap<(i32, i32), Option<TileAt>> {
+    let lying = pool.lying();
     // SAFETY: see the function's contract.
     let (coordinates, under) = unsafe {
         (std::slice::from_raw_parts(coordinates, 2 * count), std::slice::from_raw_parts(under, count))
@@ -370,7 +373,7 @@ unsafe fn told_of(
     coordinates
         .chunks_exact(2)
         .zip(under)
-        .map(|(at, &word)| ((at[0], at[1]), TileAt::of_word(word)))
+        .map(|(at, &word)| ((at[0], at[1]), lying.of_word(word)))
         .collect()
 }
 
@@ -448,7 +451,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
     let mixing = (!under.is_null()).then(|| unsafe {
         let steps: Vec<Step> =
             std::slice::from_raw_parts(steps, step_count).iter().map(StepSpec::step).collect();
-        (steps, told_of(coordinates, under, ground), (*pool).pages().to_vec())
+        (steps, told_of(coordinates, under, ground, &*pool), (*pool).pages().to_vec())
     });
     let handed = Sent((engine.clone(), stroke, piled, paper, mixing, composite));
     engine.posted(move || {
@@ -691,7 +694,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_rub(
     // SAFETY: see the function's contract.
     let paper = (!paper.is_null()).then(|| unsafe { &*paper }.clone());
     // SAFETY: see the function's contract.
-    let told = unsafe { told_of(coordinates, under, ground) };
+    let told = unsafe { told_of(coordinates, under, ground, &*pool) };
     // The pool's pages as they stand here: the pool is its caller's, who
     // goes on (`Pool::lands_unwaited`).
     // SAFETY: see the function's contract.
@@ -749,7 +752,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
         unsafe { (&*stroke, &*engine, &*blurs, &*composite, &mut *pool) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let asked = unsafe { asked_of(asks, under, count) };
+        let asked = unsafe { asked_of(asks, under, count, &*pool) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let cover = Cover { opacity, mask: mask.as_ref() };
@@ -797,7 +800,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur_unwaited(
     number: u64,
 ) -> isize {
     // SAFETY: see the function's contract.
-    let (engine, pool, asked) = unsafe { (&*engine, &mut *pool, asked_of(asks, under, count)) };
+    let asked = unsafe { asked_of(asks, under, count, &*pool) };
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &mut *pool) };
     let put = move |engine: &Engine, writing: &Writing| {
         // SAFETY: each is let go of on this thread, after this (the
         // function's contract).
@@ -848,7 +853,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         unsafe { (&*stroke, &*engine, &*composite, &mut *pool) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let asked = unsafe { asked_of(asks, under, count) };
+        let asked = unsafe { asked_of(asks, under, count, &*pool) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
@@ -894,7 +899,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     number: u64,
 ) -> isize {
     // SAFETY: see the function's contract.
-    let (engine, pool, asked) = unsafe { (&*engine, &mut *pool, asked_of(asks, under, count)) };
+    let asked = unsafe { asked_of(asks, under, count, &*pool) };
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &mut *pool) };
     let put = move |engine: &Engine, writing: &Writing| {
         // SAFETY: each is let go of on this thread, after this (the
         // function's contract).
@@ -959,13 +966,14 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
     };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let asked = unsafe { asked_of(asks, under, count) };
+        let asked = unsafe { asked_of(asks, under, count, &*pool) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
         // The set names the pool's own slots: the plan's pages are the
         // pool's, and none come after them.
-        let over = Over { pages: &[], set: TileSet::from_words(x0, y0, columns, rows, words) };
+        let set = Named::from_words(x0, y0, columns, rows, words).lying(&pool.lying());
+        let over = Over { pages: &[], set };
         let landed = if asked.is_empty() {
             Some(Vec::new())
         } else {
@@ -978,18 +986,20 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
 
 
 /// The tiles a landing is asked: `asks` their column and row, `under` the
-/// cel's tile at each as a tile set names one.
+/// cel's tile at each as a tile set names one — read to where it lies on
+/// `pool` (`Lying::of_word`).
 ///
 /// # Safety
 /// `asks` holds `2 × count` and `under` `count`.
-unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize) -> Vec<Asked> {
+unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize, pool: &Pool) -> Vec<Asked> {
+    let lying = pool.lying();
     // SAFETY: see the function's contract.
     let (asks, under) = unsafe {
         (std::slice::from_raw_parts(asks, 2 * count), std::slice::from_raw_parts(under, count))
     };
     asks.chunks_exact(2)
         .zip(under)
-        .map(|(tile, &word)| Asked { column: tile[0], row: tile[1], under: TileAt::of_word(word) })
+        .map(|(tile, &word)| Asked { column: tile[0], row: tile[1], under: lying.of_word(word) })
         .collect()
 }
 
@@ -1278,7 +1288,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let asked = unsafe { asked_of(asks, under, count) };
+        let asked = unsafe { asked_of(asks, under, count, &*pool) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
@@ -1403,7 +1413,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
     engine.on_thread(|| {
         let coverage = coverage.mask();
         // SAFETY: see the function's contract.
-        let asked = unsafe { asked_of(asks, under, count) };
+        let asked = unsafe { asked_of(asks, under, count, &*pool) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let laid = Laid { opacity, mode, mask: mask.as_ref() };

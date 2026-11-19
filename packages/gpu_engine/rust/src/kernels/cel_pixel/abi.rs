@@ -5,7 +5,7 @@
 //!
 //! The ink scan's (connection round 2, 잉크 상자 ㉢): the app hands
 //! the tiles of a cel that owe a box — on the pool, named as a plan's tile
-//! set is ([`TileSet::from_words`]) — and takes each walked tile's box,
+//! set is ([`Named::from_words`]) — and takes each walked tile's box,
 //! as it takes C's `qa_alpha_bounds_tiles` answer today.
 //!
 //! The scan is no step of a plan: it reads the pool's pages and nothing
@@ -18,7 +18,7 @@ mod tests;
 use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
-use crate::kernels::composite::TileSet;
+use crate::kernels::composite::{Named, TileSet};
 use crate::kernels::dab::abi::reported;
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
@@ -169,8 +169,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
             return -1;
         }
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
             return -1;
         };
@@ -213,8 +212,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
     let (kernels, engine, pool, spec) = unsafe { (&*kernels, &*engine, &*pool, &*spec) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         // SAFETY: see the function's contract.
@@ -369,8 +367,7 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
     let (ink, engine, pool) = unsafe { (&*ink, &*engine, &*pool) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         let walked = cel.tiles.iter().flatten().count();
         if walked * TILE_INK_WORDS > capacity {
             fail::<()>(format!(
@@ -394,4 +391,17 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
         }
         inks.len() as isize
     })
+}
+
+/// The cel as the app names it — `tiles` row by row, `columns` × `rows`
+/// from column `x0`, row `y0` —, each tile where it lies on `pool`
+/// ([`Named::lying`]). ⛔ONE: the lift, the verb and the ink scan each
+/// spelled its reading.
+///
+/// # Safety
+/// `tiles` holds `columns × rows` words.
+unsafe fn cel_of(pool: &Pool, (x0, y0, columns, rows): (i32, i32, u32, u32), tiles: *const u32) -> TileSet {
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+    Named::from_words(x0, y0, columns, rows, words).lying(&pool.lying())
 }

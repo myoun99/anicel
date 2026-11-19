@@ -66,8 +66,8 @@ struct Frame {
 impl Frame {
     fn of(held: [TileAt; 2], own: TileAt) -> Self {
         let sets = [
-            TileSet::from_words(0, 0, 2, 1, &[held[0].word(), held[1].word()]),
-            TileSet::from_words(2, 0, 1, 1, &[own.word()]),
+            TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(held[0]), Some(held[1])] },
+            TileSet { x0: 2, y0: 0, columns: 1, rows: 1, tiles: vec![Some(own)] },
         ];
         let steps = vec![Step::Solid { colour: PAPER, rect: PAGE }, row(0), row(1)];
         Self { sets, keys: Vec::new(), matrices: Vec::new(), chains: Vec::new(), steps }
@@ -341,7 +341,7 @@ fn a_telling_differs_by_every_word_a_tile_s_pixels_come_of() {
     // is where its pixels land, and a telling's own word.
     let lying_at = |column: i32| {
         let frame = moved(TILE as i32 / 2).with(|frame| {
-            frame.sets[0] = TileSet::from_words(column, 0, 1, 1, &[at[0].word()]);
+            frame.sets[0] = TileSet { x0: column, y0: 0, columns: 1, rows: 1, tiles: vec![Some(at[0])] };
         });
         told(&frame, &pool, (0, 0), PAGE).expect("told")
     };

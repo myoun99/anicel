@@ -34,9 +34,10 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::{Full, Page, Pool, Slots, made};
+use super::{Full, Page, Pool, Slots, Stamps, made};
 use crate::device::{Engine, Sent};
 use crate::kernels::composite::{FOLDED, GRANULE_BYTES, NO_TILE, TILE_BYTES, TileAt};
 use crate::kernels::fold::{Fold, Folded};
@@ -116,12 +117,31 @@ impl Arena {
 /// ([`Pool::lying`]) — with the pages, where what names tiles by their
 /// slots is laid on them: a tile folded since lies where it lay then, its
 /// slot's bytes untouched.
+///
+/// 🚨WHAT NAMES A TILE OVER THE C ABI IS READ TO A PLACE BY THIS, and
+/// nothing is laid on a name (`composite::Named`, [`Lying::of_word`]): a
+/// pass laid on a name reads the slot, whose bytes are the tile's no more
+/// once the page of a folded tile is given back. None is made but by a
+/// pool ([`Pool::lying`]) — a test's of no pool apart, where every name
+/// is its own place.
 #[derive(Clone)]
+#[cfg_attr(test, derive(Default))]
 pub(crate) struct Lying {
     /// Each page of tiles' slots — where the tile named by each lies
     /// folded, as a tile's word, or [`NO_TILE`] for one as it is; none for
     /// a page that is no page of tiles.
     pages: Vec<Option<Arc<Vec<u32>>>>,
+    /// The pool's last move of a tile as this was taken ([`moved`]).
+    as_of: u64,
+}
+
+/// The number of the next move of a tile, across every pool: no two
+/// takings of books that differ say one number.
+static MOVES: AtomicU64 = AtomicU64::new(1);
+
+/// A move's number, each its own.
+pub(super) fn moved() -> u64 {
+    MOVES.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Lying {
@@ -133,6 +153,29 @@ impl Lying {
         let lies = page.and_then(|page| page.get(usize::from(at.slot))).copied();
         lies.and_then(TileAt::of_word).unwrap_or(at)
     }
+
+    /// Where the tile `word` names lies ([`TileAt::word`]); none for
+    /// [`NO_TILE`]. A tile the app names by itself, beside no set.
+    pub(crate) fn of_word(&self, word: u32) -> Option<TileAt> {
+        TileAt::of_word(word).map(|at| self.of(at))
+    }
+
+    /// What tells this taking from one a tile has moved since: two that
+    /// say one number say one place of every name, and what was laid by
+    /// the one stands by the other (a plan's sets, `composite/abi.rs`).
+    pub(crate) fn as_of(&self) -> u64 {
+        self.as_of
+    }
+}
+
+/// A pool as a body handed over unwaited lays a plan on it: its pages,
+/// where each tile lies on them, and what names their bytes — taken
+/// together on the caller's thread, whose books go on. ⛔ONE taking: the
+/// weigh and the screen's two composes each spelled what they took.
+pub(crate) struct Taken {
+    pub(crate) pages: Vec<wgpu::Buffer>,
+    pub(crate) lying: Lying,
+    pub(crate) stamps: Stamps,
 }
 
 /// The tiles a fold handed over unwaited folded, each by its name and its
@@ -167,7 +210,13 @@ impl Pool {
         let of = |page: &Option<Page>| {
             page.as_ref().and_then(Page::slots).map(|slots| slots.lying.clone())
         };
-        Lying { pages: self.pages.iter().map(of).collect() }
+        Lying { pages: self.pages.iter().map(of).collect(), as_of: self.lying_as_of }
+    }
+
+    /// The pool as it stands, for a body handed over unwaited to lay a
+    /// plan on ([`Taken`]).
+    pub(crate) fn taken(&self) -> Taken {
+        Taken { pages: self.buffers.clone(), lying: self.lying(), stamps: self.stamps() }
     }
 
     /// Hands the engine's thread a fold of the tiles named at `places` —
@@ -254,8 +303,7 @@ impl Pool {
                 let Some(to) = to else {
                     continue;
                 };
-                let slots = self.slots_at_mut(at).expect("a tile as it is lies on a page of tiles");
-                Arc::make_mut(&mut slots.lying)[usize::from(at.slot)] = to.word();
+                self.lies_at(at, to.word());
                 writes.push((index, to));
             }
             if writes.is_empty() {
@@ -288,6 +336,18 @@ impl Pool {
 
     fn slots_at_mut(&mut self, at: TileAt) -> Option<&mut Slots> {
         self.pages.get_mut(usize::from(at.page))?.as_mut()?.slots_mut()
+    }
+
+    /// Says in its slot's book where the tile named `at` lies — `lies` its
+    /// folded place's word, or [`NO_TILE`] for its slot. 🚨THE ONE PLACE
+    /// a slot's `lying` is written (`shared/one_name_to_a_place.rs` reads
+    /// the source for another): what was taken of the books before says
+    /// another number from here on ([`Lying::as_of`]), and what was laid
+    /// by it is laid anew.
+    pub(super) fn lies_at(&mut self, at: TileAt, lies: u32) {
+        let slots = self.slots_at_mut(at).expect("a tile is named by a slot of a page of tiles");
+        Arc::make_mut(&mut slots.lying)[usize::from(at.slot)] = lies;
+        self.lying_as_of = moved();
     }
 
     /// A place of `granules` granules for a folded tile of `stamp`, on the
