@@ -15,13 +15,17 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show SelectionMaskOptions;
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/playback/playback_scope.dart';
 import 'package:anicel/src/services/selection_lift.dart'
     show debugSelectionLiftsBuilt;
@@ -403,6 +407,56 @@ void main() {
       final cut = debugSelectionLiftsBuilt;
       commands.beginTransform();
       await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
+    });
+
+    testWidgets('a row posed since its cel was cut is cut again at the press '
+        '— its picture the same, where it stands not', (tester) async {
+      final session = await pump(tester);
+      final size = session.requireActiveCut.canvasSize;
+      final commands = await restTheBox(tester);
+      // The marquee's ants run for ever: a few frames, and the turns.
+      Future<void> frames() async {
+        for (var i = 0; i < 3; i += 1) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        for (var turn = 0; turn < 4; turn += 1) {
+          await tester.pump(Duration.zero);
+        }
+      }
+
+      // The whole canvas selected: the box stands on the marquee, so a pose
+      // moves no edge of it and the box at rest is not told again.
+      commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: 0,
+            top: 0,
+            right: size.width.toDouble(),
+            bottom: size.height.toDouble(),
+          ),
+        ),
+      );
+      await frames();
+      final before = debugSelectionLiftsBuilt;
+
+      session.laneVerbs.updateLayerTransformTrack(
+        b,
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>.empty().withKey(0, 90),
+        ),
+      );
+      await frames();
+      final cut = debugSelectionLiftsBuilt;
+      expect(
+        cut,
+        before,
+        reason: '⛔premise: the pose did not tell the box at rest again',
+      );
+      commands.beginTransform();
+      await frames();
 
       expect(commands.transformActive, isTrue);
       expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
