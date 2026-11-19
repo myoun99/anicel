@@ -1544,8 +1544,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
 }) => _layTree(
   cut: cut,
   frameIndex: frameIndex,
-  liveLayerId: liveLayerId,
-  ghostsOf: ghostsOf,
+  onScreen: (live: liveLayerId, ghostsOf: ghostsOf),
   ownNodesOf: (layer) => _ownNodesAt(cut, layer, (
     frameIndex: frameIndex,
     foldBufferedFolders: false,
@@ -1553,14 +1552,21 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   )),
 );
 
+/// What a picture of the screen lays besides the film
+/// ([resolveCutFrameCompositeTree]): the row drawn on, and each row's
+/// ghosts — neither, for the film.
+typedef _OnScreen = ({
+  LayerId? live,
+  List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
+});
+
 /// [resolveCutFrameCompositeTree], each row's own nodes as [ownNodesOf]
 /// hands them ([_ownNodesAt]) — the film's kept across an edit where the
 /// row reads all it read ([filmTreeOf]).
 List<CompositeNode<CutFrameCompositeRow>> _layTree({
   required Cut cut,
   required int frameIndex,
-  required LayerId? liveLayerId,
-  required List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
+  required _OnScreen onScreen,
   required List<CompositeNode<CutFrameCompositeRow>> Function(Layer layer)
   ownNodesOf,
 }) {
@@ -1650,7 +1656,8 @@ List<CompositeNode<CutFrameCompositeRow>> _layTree({
     // stands alone (under a clip it is the base of), or onto the base it
     // clips to, cut as it is. ↩️As I-92 had `stackNodesWithGhosts` place
     // them.
-    final ghosts = ghostsOf?.call(layer) ?? const <CutFrameCompositeGhost>[];
+    final ghosts =
+        onScreen.ghostsOf?.call(layer) ?? const <CutFrameCompositeGhost>[];
     final baseAround = ghosts.isEmpty ? null : _clipBaseAround(cut, layer);
     for (final ghost in ghosts) {
       // Each as its row is laid ([_rowNodes]): a cel number split out of
@@ -1697,7 +1704,7 @@ List<CompositeNode<CutFrameCompositeRow>> _layTree({
     ),
     cut: cut,
     frameIndex: frameIndex,
-    liveLayerId: liveLayerId,
+    liveLayerId: onScreen.live,
   );
 }
 
@@ -1741,8 +1748,7 @@ List<CompositeNode<CutFrameCompositeRow>> filmTreeOf(
     _layTree(
       cut: cut,
       frameIndex: frameIndex,
-      liveLayerId: null,
-      ghostsOf: null,
+      onScreen: (live: null, ghostsOf: null),
       ownNodesOf: (layer) => rows.ownNodesOf(layer, frameIndex),
     ),
   );
@@ -1888,7 +1894,9 @@ bool _laidAlike(
         CompositeLeaf(payload: final CutFrameCompositeEntry now),
       ) =>
         identical(was.layer, now.layer) &&
-            identical(was.frame, now.frame) &&
+            // By its value: a movie's cel is the held cel copied anew at
+            // each asking ([resolveExposedFrameAt]).
+            was.frame == now.frame &&
             was.opacity == now.opacity &&
             was.blendMode == now.blendMode &&
             was.placement == now.placement &&
