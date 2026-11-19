@@ -6,6 +6,7 @@ import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_content_translation.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -413,6 +414,105 @@ void main() {
       reason: 'a scale is two numbers and no place on the canvas',
     );
     expect(moved.track.scale.keys.length, 1);
+  });
+
+  // Card a-canvas-resize-leaves-effect-points-behind: an effect's points and
+  // where a cel number stands are the row's paper's, as its cels' pixels
+  // are — read where the picture reads them, before and after.
+  group('an effect keeps its place on the picture through a resize', () {
+    const grown = CanvasSize(width: 2320, height: 1080);
+    // The picture stays put (dx 0) as the paper grows right; its middle
+    // walks 200 right.
+    const leftEdge = (dx: 0.0, dy: 0.0, centreDx: 200.0, centreDy: 0.0);
+
+    Layer rowWith(List<LayerEffect> effects) => Layer(
+      id: const LayerId('fx-row'),
+      name: 'F',
+      frames: const [],
+      timeline: const {},
+      effects: effects,
+    );
+
+    Layer resized(Layer row, ({double dx, double dy, double centreDx,
+        double centreDy}) walk) => translateLayerForResize(
+      row,
+      from: _canvas,
+      dx: walk.dx,
+      dy: walk.dy,
+      centreDx: walk.centreDx,
+      centreDy: walk.centreDy,
+    );
+
+    CanvasPoint centreOf(Layer row, CanvasSize paper) => effectPointOnPaper(
+      effectPointAt(row.effects.single.points['center']!, 0),
+      paper,
+    );
+
+    TransformTrack keyedAt(CanvasPoint point) => TransformTrack.empty()
+        .copyWith(position: PropertyTrack(keys: {0: PropertyKey(point)}));
+
+    final radialBlur = LayerEffect.defaults(
+      id: const EffectId('radial'),
+      kind: EffectKind.radialBlur,
+    );
+
+    test('a keyed point moves by the content offset', () {
+      final row = rowWith([
+        radialBlur.copyWith(
+          points: {'center': keyedAt(CanvasPoint(x: 100, y: 200))},
+        ),
+      ]);
+      final moved = resized(row, (dx: 5, dy: 6, centreDx: 99, centreDy: 99));
+      expect(centreOf(moved, _canvas), CanvasPoint(x: 105, y: 206));
+    });
+
+    test('an unkeyed point stays where the picture is, not the paper '
+        'middle', () {
+      final row = rowWith([radialBlur]);
+      final before = centreOf(row, _canvas);
+      final moved = resized(row, leftEdge);
+      expect(centreOf(moved, grown), before);
+    });
+
+    test('a cel number stands where it stood, at its size', () {
+      final number = LayerEffect.defaults(
+        id: const EffectId('number'),
+        kind: EffectKind.celNumber,
+      ).copyWith(
+        stand: keyedAt(CanvasPoint(x: 300, y: 400)).copyWith(
+          scale: PropertyTrack(keys: {0: PropertyKey(uniformScale(1.5))}),
+        ),
+      );
+      final unkeyed = LayerEffect.defaults(
+        id: const EffectId('number-at-rest'),
+        kind: EffectKind.celNumber,
+      );
+      final moved = resized(rowWith([number, unkeyed]), (
+        dx: 5,
+        dy: 6,
+        centreDx: 205,
+        centreDy: 6,
+      ));
+      final stood = effectStandPose(
+        effectStandAt(moved.effects[0].stand, 0),
+        grown,
+      );
+      expect(stood.center, CanvasPoint(x: 305, y: 406));
+      expect(stood.scale, uniformScale(1.5));
+      expect(
+        effectStandPose(effectStandAt(moved.effects[1].stand, 0), grown)
+            .center,
+        CanvasPoint(x: 965, y: 546),
+        reason: 'at rest it stood on the old paper\'s middle, (960, 540)',
+      );
+    });
+
+    test('an effect with no place on the paper leaves the row as it was', () {
+      final row = rowWith([
+        LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
+      ]);
+      expect(identical(resized(row, leftEdge), row), isTrue);
+    });
   });
 
   test('a zero offset is identity for the whole cut model', () {

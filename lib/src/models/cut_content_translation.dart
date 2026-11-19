@@ -5,14 +5,16 @@ import 'cut.dart';
 import 'cut_camera.dart';
 import 'drawing_guide.dart';
 import 'layer.dart';
+import 'layer_effect.dart';
 import 'property_track.dart';
 import 'transform_track.dart';
 
 /// D5 (R7): translates a cut's CANVAS-COORDINATE model data for a canvas
 /// resize — the model half of "the picture moves, so everything pinned
 /// to it moves too". The raster half is the store's one-pass blit; this
-/// file owns camera keyframes, guides, layer transform poses and text
-/// cel anchors. Zoom/scale/rotation stay untouched: a resize is a
+/// file owns camera keyframes, guides, layer transform poses, where a
+/// reference row lays its file and its effects' points and stands. Zoom/
+/// scale/rotation stay untouched: a resize is a
 /// crop/extend, never a scale (R19) — whether the camera should also
 /// re-fit its zoom is a user decision, not this file's.
 ///
@@ -171,6 +173,51 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
   );
 }
 
+/// An effect's canvas-coordinate keys moved by [walk] with the picture it
+/// filters: its points ([LayerEffect.points] — a radial blur's centre) and
+/// where a kind that draws its own picture stands it ([LayerEffect.stand]
+/// — a cel number's letters). Both are the row's paper's, read before its
+/// pose as its cels' pixels are, so the content offset moves them. Unkeyed,
+/// they read the paper's middle ([effectPointOnPaper], [effectStandPose]),
+/// a row at rest's on [from] — and are keyed where they stood first, as a
+/// position lane is ([_translatedPositionLane]). A kind that draws no
+/// picture of its own stands none ([LayerEffect]'s constructor).
+///
+/// ↩️The resize moved none of these: a radial blur's centre and a cel
+/// number's letters stayed on the old canvas's coordinates as the picture
+/// moved off them (card a-canvas-resize-leaves-effect-points-behind).
+LayerEffect _translatedEffect(
+  LayerEffect effect, {
+  required CanvasSize from,
+  required ResizeWalk walk,
+}) {
+  final centre = layerIdentityPose(from).center;
+  TransformTrack moved(TransformTrack keys) {
+    final position = _translatedPositionLane(
+      keys.position,
+      centre: centre,
+      walk: walk,
+    );
+    return identical(position, keys.position)
+        ? keys
+        : keys.copyWith(position: position);
+  }
+
+  final points = {
+    for (final entry in effect.points.entries) entry.key: moved(entry.value),
+  };
+  final stand = effect.kind.drawsItsOwnPicture
+      ? moved(effect.stand)
+      : effect.stand;
+  if (identical(stand, effect.stand) &&
+      points.entries.every(
+        (entry) => identical(entry.value, effect.points[entry.key]),
+      )) {
+    return effect;
+  }
+  return effect.copyWith(points: points, stand: stand);
+}
+
 /// A layer's canvas-coordinate model data moves with its picture:
 ///
 ///  * EXPLICIT anchor keys and their position keys move by the content
@@ -185,6 +232,8 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
 ///    like a camera's centre: the picture keeps its place among the
 ///    drawings, and a file swapped in or laid again afterwards stands there
 ///    too (유저 2026-10-10 「캔버스 크기 변경 … 가」 — 기준점대로).
+///  * Its effects' points and stands move with its cels' pixels
+///    ([_translatedEffect]).
 ///
 /// 🪦A bullet before the reference's moved a TEXT cel's canvas-coordinate
 /// anchor with its picture. The TEXT row went with F-154 and its payload
@@ -203,12 +252,25 @@ Layer translateLayerForResize(
   final positionDx = hasExplicitAnchor ? dx : centreDx;
   final positionDy = hasExplicitAnchor ? dy : centreDy;
   final reference = layer.mediaReference;
+  final effects = [
+    for (final effect in layer.effects)
+      _translatedEffect(
+        effect,
+        from: from,
+        walk: (dx: dx, dy: dy, centreDx: centreDx, centreDy: centreDy),
+      ),
+  ];
+  final effectsMoved = !effects.indexed.every(
+    (each) => identical(each.$2, layer.effects[each.$1]),
+  );
   if (track.position.isEmpty &&
       track.anchorPoint.isEmpty &&
-      reference == null) {
+      reference == null &&
+      !effectsMoved) {
     return layer;
   }
   return layer.copyWith(
+    effects: effectsMoved ? effects : null,
     transformTrack: track.copyWith(
       position: _translatedPositionLane(
         track.position,
