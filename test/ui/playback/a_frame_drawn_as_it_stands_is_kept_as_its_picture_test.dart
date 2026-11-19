@@ -292,4 +292,28 @@ void main() {
     );
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('the store keeps no screen under a key it has a picture of, or '
+      'lays one of: one picture a key', (tester) async {
+    final (:run, :store, live: _) = standing(anOverlay());
+    await theCelsRead(tester, run);
+    final (:composite, :letters) = store.toolsOpen!;
+    final key = run.pictures.keyOfStack(treeOf(), frame);
+    final drawn = run.pictures.drawingNow(treeOf(), frame).frame;
+    final screen = EngineStackScreen(composite, letters);
+
+    final onItsWay = store.lay(key, drawn);
+    expect(store.keepLaid(key, screen), isNull, reason: 'one on its way');
+    await tester.runAsync(() => onItsWay);
+    expect(store.holds(key), isTrue, reason: '⛔premise: laid');
+    expect(store.keepLaid(key, screen), isNull, reason: 'one there');
+
+    final another = run.pictures.keyOfStack(treeOf(opacity: 0.5), frame);
+    expect(
+      store.keepLaid(another, screen),
+      isNotNull,
+      reason: '⛔CONTROL: a key with none is kept',
+    );
+    expect(store.holds(another), isTrue);
+  });
 }
