@@ -218,18 +218,19 @@ GpuStampPicture? _gatherOnEngine({
   });
 }
 
-/// What [clip] takes off [surface] as a stamp named [id] — null where it
-/// takes nothing. On the engine it stays there
-/// ([EngineStampPictures.lifted]): its bytes are read only by what asks
-/// for them, and the next engine takes it off the same [surface] again — a
-/// value, as it stood when it was taken.
+/// What [clip] takes off [surface] over its box as a stamp named [id] —
+/// null where it takes nothing. [clip] selects a pixel at least: its box
+/// is asked of it first ([liftSelectionPixels]). On the engine it stays
+/// there ([EngineStampPictures.lifted]): its bytes are read only by what
+/// asks for them, and the next engine takes it off the same [surface]
+/// again — a value, as it stood when it was taken.
 BrushStampImage? _liftedStamp({
   required BitmapSurface surface,
   required SelectionClip clip,
-  required ({int left, int top, int width, int height}) box,
   required bool takeWholePixels,
   required String id,
 }) {
+  final box = clip.box!;
   if (_gathersOnTheEngine(surface)) {
     GpuStampPicture? lift() => _gatherOnEngine(
       surface: surface,
@@ -319,7 +320,6 @@ SelectionPixels? liftSelectionPixels({
   final stamp = _liftedStamp(
     surface: surface,
     clip: clip,
-    box: box,
     takeWholePixels: takeWholePixels,
     id: stampId,
   );
