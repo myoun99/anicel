@@ -182,6 +182,36 @@ part 'canvas_panel/canvas_panel_control_holds.dart';
 /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 typedef _ShownThrough = String;
 
+/// What a painter of the row being drawn on was made for: the surface
+/// it reads, the cel it is scoped to, and what that is shown through.
+typedef _PainterToken = ({
+  BitmapSurface surface,
+  BrushFrameKey key,
+  _ShownThrough fx,
+});
+
+/// Whether [now] is what a painter made for [was] draws: the very
+/// surface — the object —, its cel and what it is shown through.
+///
+/// 🚨THE SURFACE BY IDENTITY, NEVER BY ITS PIXELS. ↩️Till 2026-11-20 the
+/// two were compared as records, and a record asks each field `==`: a
+/// surface answers that with its tiles' pixels, so the build after
+/// every stroke read the tile the engine had just landed back from it
+/// — on this thread, a wait for the GPU, and the tile's bytes here
+/// ahead of the rest that copies them — to learn that a commit had
+/// swapped the surface. 🔬Main PC, S5 cut 352, a hand's round with
+/// every read of a tile here counted by its asker (브러시/렌더링,
+/// card cel-originals-are-held-twice-in-ram-and-on-the-gpu ②): one or
+/// two tiles read back at every stroke after the first, and no other
+/// asker in the round read one back. Whoever hands a surface here
+/// hands the same object till what it shows changes — the cel's
+/// session, the lift's hole, the text's, the preview's.
+bool _drawsTheSame(_PainterToken now, _PainterToken? was) =>
+    was != null &&
+    identical(now.surface, was.surface) &&
+    now.key == was.key &&
+    now.fx == was.fx;
+
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
 /// [rect] (canvas space) — the media viewer's framing of a document it
@@ -1354,8 +1384,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The token is what the painter DRAWS — the surface it reads and the cel
   /// it is scoped to. A commit swaps the surface and the memo falls.
   BitmapSurfacePainter? _memoActiveSurfacePainter;
-  ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})?
-  _activeSurfacePainterToken;
+  _PainterToken? _activeSurfacePainterToken;
 
   // ── the tool cursor: its own object, in its own file ────────────────
   //
@@ -1432,7 +1461,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return null;
     }
     if (_memoActiveSurfacePainter != null &&
-        token == _activeSurfacePainterToken) {
+        _drawsTheSame(token, _activeSurfacePainterToken)) {
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
