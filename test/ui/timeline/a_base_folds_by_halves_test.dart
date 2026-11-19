@@ -261,6 +261,26 @@ void main() {
       expect(tester.glyphInkOf(_half('above', 'b')), lit, reason: 'back on');
     });
 
+    testWidgets('🚨the sheet\'s halves say in colour what the rail\'s do', (
+      tester,
+    ) async {
+      final session = await _pump(
+        tester,
+        orientation: TimelineOrientation.vertical,
+      );
+      final above = find.named('xsheet-attach-twirl-above-b');
+      final lit = tester.glyphInkOf(above);
+
+      await _eye(tester, session, 'b+1');
+
+      expect(tester.glyphInkOf(above), isNot(lit));
+      expect(
+        tester.glyphInkOf(find.named('xsheet-attach-twirl-below-b')),
+        lit,
+        reason: 'its side',
+      );
+    });
+
     testWidgets('🚨Q1: folded, a half still says in colour whether a row on '
         'its side shows', (tester) async {
       final session = await _pump(tester);
