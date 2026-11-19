@@ -383,7 +383,8 @@ fn a_fold_cut_into_smaller_passes_folds_the_same() {
 
 // A read of the pool hands a tile as it is, whatever it is stored as: the
 // unfold writes a folded tile's every word as it was, and one as it is as
-// it is — the two side by side, in the order asked.
+// it is — the two side by side, in the order asked —, and a pass cut
+// smaller unfolds the same.
 #[test]
 fn a_tile_unfolded_is_its_words_as_they_were() {
     let engine = rig().engine;
@@ -399,6 +400,13 @@ fn a_tile_unfolded_is_its_words_as_they_were() {
     let words: Vec<u32> =
         [4, 3, 2, 5, 1, 0].iter().flat_map(|&tile: &usize| tiles[tile].iter().copied()).collect();
     assert!(read_buffer(engine, &out) == le_bytes(&words));
+    for cut in [(1, 1), (1, 3), (2, 2)] {
+        let mut unfolding = encoder();
+        let out = fold.unfolded_by(engine, &mut unfolding, &stored.pages, &asked, cut).expect("unfold");
+        engine.queue.submit([unfolding.finish()]);
+        assert!(read_buffer(engine, &out) == le_bytes(&words), "{cut:?}");
+    }
+    assert!(fold.unfolded_by(engine, &mut encoder(), &stored.pages, &asked, (0, 1)).is_none());
     assert!(fold.unfolded(engine, &mut encoder(), &stored.pages, &[]).is_none());
     let past = TileAt { page: 2, slot: 0 };
     assert!(fold.unfolded(engine, &mut encoder(), &stored.pages, &[past]).is_none());

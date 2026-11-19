@@ -210,15 +210,28 @@ impl Fold {
         pool: &[wgpu::Buffer],
         places: &[TileAt],
     ) -> Option<wgpu::Buffer> {
+        let most = tiles_a_pass(engine, TILE_BYTES, 0)?;
+        self.unfolded_by(engine, encoder, pool, places, (self.pages.per_pass(), most))
+    }
+
+    /// `unfolded`, its passes cut as [`Fold::folded_by`]'s are.
+    fn unfolded_by(
+        &self,
+        engine: &Engine,
+        encoder: &mut wgpu::CommandEncoder,
+        pool: &[wgpu::Buffer],
+        places: &[TileAt],
+        (per_pass, most): (usize, usize),
+    ) -> Option<wgpu::Buffer> {
+        cut_by(&self.pages, (per_pass, most))?;
         if places.is_empty() {
             return fail("no tile to unfold");
         }
         for at in places {
             at.stored_on(pool)?;
         }
-        let most = tiles_a_pass(engine, TILE_BYTES, 0)?;
         let out = plane(engine, "tiles unfolded", places.len() as u64 * TILE_BYTES);
-        let cut = runs(places.iter().map(|at| Some(at.page)), None, self.pages.per_pass(), most);
+        let cut = runs(places.iter().map(|at| Some(at.page)), None, per_pass, most);
         let given = cut
             .iter()
             .map(|(run, pages)| {
