@@ -218,6 +218,15 @@ void main() {
     );
   });
 
+  test('a move whose last key stands on the next panel\'s first frame: the '
+      'panel before writes up to its own last frame, and the next holds the '
+      'key — the frame a move ends on is its own (I-93)', () {
+    expect(linesOf({0: at(0), 12: at(40)}, lengths: const [12, 12]), [
+      ['1f-12f PAN (0+12)'],
+      ['13f-13f PAN (0+1)', 'FIX (0+11)'],
+    ]);
+  });
+
   test('a part keeps the names of the keys it holds, and a frame names the '
       'end it does not', () {
     expect(
