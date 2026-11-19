@@ -106,6 +106,48 @@ void main() {
     expect(ground.on(cels[1], canonical).cels, [cels[1], cels[1]]);
   });
 
+  test('the cel a drag showed lands as it shows, billed for the tiles the '
+      'trail took from the picture the press found — none where it was '
+      'blank', () {
+    int billOf(BrushFrameEditingCoordinator coordinator) {
+      final cel = coordinator.activeFrameKey;
+      final pressed = coordinator.currentSurfaceOf(cel);
+      PieceLanding laidOn() => pieceLandings(
+        coordinator: coordinator,
+        ground: standingOn(coordinator),
+        stamp: PieceStamp.along(
+          laid: laid,
+          blend: BrushBlendMode.color,
+          description: 'Stamp',
+        ),
+      )[cel]!;
+      // The drag shows the trail raw, as it is laid ...
+      laidOn().landing.execute();
+      final shown = coordinator.currentSurfaceOf(cel);
+      // ... and the lift lands that picture.
+      final landing = laidOn().landing..shownOver(pressed);
+      expect(
+        landing.workAhead(undo: false),
+        isNull,
+        reason: 'shown, it has nothing to work out behind the window',
+      );
+      landing.execute();
+      expect(landing.derivesHere, 0, reason: 'nothing laid again');
+      expect(coordinator.currentSurfaceOf(cel), same(shown));
+      landing.undo();
+      expect(coordinator.currentSurfaceOf(cel), same(pressed));
+      landing.execute();
+      return landing.estimatedRetainedBytes(undone: false);
+    }
+
+    expect(billOf(inked()), greaterThan(0), reason: 'the ink it covered');
+    expect(
+      billOf(BrushCanvasFixture.createCoordinator(frameKeys: cels)),
+      0,
+      reason: 'a blank cel owes nothing to put back',
+    );
+  });
+
   test('🚨a cel takes the drag as ONE landing — one derive, every stamp in '
       'it', () {
     final coordinator = inked();

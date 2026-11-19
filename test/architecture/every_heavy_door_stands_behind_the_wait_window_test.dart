@@ -46,6 +46,9 @@ void main() {
         named: false),
     ('lib/src/ui/brush/brush_canvas_panel.dart',
         'void pasteCutPieceAtOrigin()', named: false),
+    // A stamp drag's lift: a range's other cels take the whole trail.
+    ('lib/src/ui/brush/canvas_panel/canvas_panel_tap.dart',
+        'void _land({required bool goingAway})', named: false),
     ('lib/src/ui/range_move_asking_first.dart',
         'Future<void> releaseRangeMoveAskingFirst(', named: false),
     ('lib/src/ui/dialogs/link_window.dart', 'Widget build(', named: false),

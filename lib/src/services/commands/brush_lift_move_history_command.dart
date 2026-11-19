@@ -278,10 +278,12 @@ class BrushLiftMoveHistoryCommand
   /// the cel thawed on a worker, the derive — the engine's, so the UI
   /// isolate's — and its ink, then the screen's turn. Landed, it has
   /// nothing to work out: an undo or a redo, which come only after the
-  /// landing, puts back a picture it holds.
+  /// landing, puts back a picture it holds. Nor has a landing already
+  /// worked out — one already shown ([shownOver]): worked out again over
+  /// the picture that shows it, the trail would land twice.
   @override
   WorkAhead? workAhead({required bool undo}) {
-    if (_landed) {
+    if (_landed || _ahead != null) {
       return null;
     }
     return (report) async {

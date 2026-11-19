@@ -33,6 +33,8 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show AppProgressDialog;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
@@ -671,13 +673,15 @@ void main() {
     /// (null: the cel you stand on), with [first] taken before the press:
     /// the panel's history, the ink on the trail's line at x on a cel (the
     /// one you stand on unless named), how many steps the drag took before
-    /// its end, and the ink the cel you stand on showed at 190 then.
+    /// its end, the ink the cel you stand on showed at 190 then, and the
+    /// wait window the end stood behind, if one.
     Future<
       ({
         HistoryManager history,
         int Function(int x, [BrushFrameKey? cel]) inkAt,
         int midway,
         int shownMidway,
+        AppProgressDialog? window,
       })
     >
     stampDrag(
@@ -724,13 +728,14 @@ void main() {
           0;
       final midway = env.history.undoCount - before;
       final shownMidway = inkAt(190);
-      await end(gesture);
+      final window = await windowBehind(tester, () => end(gesture));
       await tester.pump();
       return (
         history: env.history,
         inkAt: inkAt,
         midway: midway,
         shownMidway: shownMidway,
+        window: window,
       );
     }
 
@@ -739,6 +744,7 @@ void main() {
       final drag = await stampDrag(tester, end: (gesture) => gesture.up());
       expect(drag.shownMidway, isNot(0), reason: 'the hand sees the trail');
       expect(drag.midway, 0, reason: 'nothing recorded till the lift');
+      expect(drag.window, isNull, reason: 'one cel lands at once (F-566)');
       final undos = drag.history.undoCount;
       expect(drag.inkAt(20), isNot(0), reason: 'the press');
       expect(drag.inkAt(190), isNot(0), reason: 'the trail');
@@ -810,6 +816,9 @@ void main() {
         range: cels.take(2).toList(),
         end: (gesture) => gesture.up(),
       );
+      // 🗣️F-551 · F-566 · F-615: the other cel takes the trail behind the
+      // app's wait window, not with the screen held.
+      expect(drag.window, isNotNull, reason: 'two cels: behind the window');
       for (final cel in cels.take(2)) {
         expect(drag.inkAt(20, cel), isNot(0), reason: '$cel: the press');
         expect(drag.inkAt(190, cel), isNot(0), reason: '$cel: the trail');

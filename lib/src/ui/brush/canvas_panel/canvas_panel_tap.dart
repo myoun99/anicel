@@ -626,21 +626,28 @@ class _StampTrail {
     if (drag != null) {
       _along(drag.lock.finish());
     }
-    _land(rebuild: true);
+    _land(goingAway: false);
   }
 
   /// The drag is over with nothing more laid — a cancel. What it laid
   /// lands all the same, one step.
-  void drop() => _land(rebuild: true);
+  void drop() => _land(goingAway: false);
 
-  /// The canvas going away under a drag: what it laid lands, one step,
-  /// without a rebuild of the panel on its way out.
-  void leave() => _land(rebuild: false);
+  /// The canvas going away under a drag: what it laid lands, one step, at
+  /// once — no window stands over a panel on its way out, and it is not
+  /// rebuilt.
+  void leave() => _land(goingAway: true);
 
   /// The trail, landed as ONE step through the piece door
   /// ([_BrushCanvasPanelState._landStamp]) on the ground its press read —
   /// one landing per cel, every stamp in it — and the drag over.
-  void _land({required bool rebuild}) {
+  ///
+  /// 🚨ON MORE THAN ONE CEL, BEHIND THE APP'S WAIT WINDOW (F-551 · F-566 ·
+  /// F-615 — [takeBehindTheWaitWindow]): the other cels of a range take the
+  /// whole trail here, a cel at a time, the window's percent theirs. 🔬Taken
+  /// at once, the lift held the UI for 16.6 s at a 1% spacing over eight
+  /// cels of S5_BA, 3.4 s at 5% (Surface, 2026-11-19).
+  void _land({required bool goingAway}) {
     final drag = _drag;
     _drag = null;
     final coordinator = _state.widget.coordinator;
@@ -651,14 +658,26 @@ class _StampTrail {
     // press found there; the others take every stamp now. ⚠️Anything else
     // written on that cel since the press undoes with the trail — the
     // window's held keys wait a drag out ([CanvasDragInFlight]).
-    _state
-        ._landStamp(
-          drag.stamp,
-          ground: drag.ground,
-          shown: (cel: drag.standing, before: drag.pressed),
-          rebuild: rebuild,
-        )
-        .step();
+    final pressed = _state._landStamp(
+      drag.stamp,
+      ground: drag.ground,
+      shown: (cel: drag.standing, before: drag.pressed),
+      rebuild: !goingAway,
+    );
+    if (goingAway) {
+      pressed.step();
+      return;
+    }
+    unawaited(
+      takeBehindTheWaitWindow(
+        _state.context,
+        pressed,
+        window: AppWaitWindow.working(
+          editorActionLabel(EditorActionIds.toolCutStamp),
+        ),
+        blocks: drag.ground.cels,
+      ),
+    );
   }
 
   /// The drag's stamps along [points], on the canvas, each the stamp's
