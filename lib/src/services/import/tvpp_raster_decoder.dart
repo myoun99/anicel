@@ -520,6 +520,10 @@ class _PackedWords {
   final int stride;
   final _bytes = <int>[];
 
+  /// A word's four bytes as a record stores them, big-endian.
+  final _four = ByteData(4);
+  late final _fourBytes = _four.buffer.asUint8List();
+
   /// Every tile packed so far, back to back.
   Uint8List get bytes => Uint8List.fromList(_bytes);
 
@@ -583,11 +587,10 @@ class _PackedWords {
     }
   }
 
-  void _word(int word) => _bytes
-    ..add((word >> 24) & 0xff)
-    ..add((word >> 16) & 0xff)
-    ..add((word >> 8) & 0xff)
-    ..add(word & 0xff);
+  void _word(int word) {
+    _four.setUint32(0, word);
+    _bytes.addAll(_fourBytes);
+  }
 }
 
 /// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
