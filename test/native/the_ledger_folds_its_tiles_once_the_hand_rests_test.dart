@@ -18,9 +18,11 @@ import '../helpers/tiles_on_the_engine.dart';
 /// it, so each reads as it was. Where a launch said so
 /// (`EngineTileLedger.foldsAtRest`) they are folded a rest after they
 /// come, landed or stored: the hand's landings put the folds off, and a
-/// store puts none off (🔢브러시/렌더링 2026-11-20, F-610 — a band being
-/// made stores at every frame, and its pool stood unfolded till it was
-/// full).
+/// store puts none off, nor a landing that is no hand's — a plate, a
+/// cel's texts laid, a plug-in's step, an import's raster (🔢브러시/렌더링
+/// 2026-11-20, F-610 — a band being made stores at every frame and lands
+/// its plates and texts between them, and its pool stood unfolded till it
+/// was full).
 ///
 /// That its tiles were folded is read off the fold's own word and its
 /// pool's bytes, which fall as the pages no tile lies on are given back:
@@ -221,6 +223,10 @@ void main() {
 
     void aLanding() => kept.addAll(landedOn(answered, [null], 7));
 
+    /// A landing that is no hand's: a picture made as a frame is.
+    void aPictureLanded() =>
+        kept.addAll(landedOn(answered, [null], 7, ofTheHand: false));
+
     /// The batch asked for last is told [folded], and what waits for it
     /// goes on.
     Future<void> told(WidgetTester tester, {required bool folded}) async {
@@ -269,8 +275,45 @@ void main() {
       await theRestsPass(tester);
     });
 
-    testWidgets('the folds under way go on through a store, and stop '
-        'behind their batch as the hand lands', (tester) async {
+    testWidgets('🚨a landing that is no hand\'s puts no fold off: the '
+        'folds are asked for a rest after the first, whatever landed '
+        'since', (tester) async {
+      for (var landing = 0; landing < 4; landing++) {
+        aPictureLanded();
+        await tester.pump(beat);
+      }
+      expect(answered.asked, isEmpty, reason: 'a rest is five beats');
+
+      aPictureLanded();
+      await tester.pump(beat);
+
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    testWidgets('a picture landed whole is no hand\'s: a plate\'s, a '
+        'plug-in step\'s', (tester) async {
+      for (var landing = 0; landing < 5; landing++) {
+        kept.addAll(
+          answered
+              .landWhole((
+                x0: landing,
+                y0: 0,
+                columns: 1,
+                rows: 1,
+              ), by: tilesOf(7))
+              .values,
+        );
+        await tester.pump(beat);
+      }
+
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    testWidgets('the folds under way go on through a store and a '
+        'landing that is no hand\'s, and stop behind their batch as the '
+        'hand lands', (tester) async {
       aStore();
       await tester.pump(EngineTileLedger.rest);
       expect(answered.asked, hasLength(1), reason: '⛔premise: under way');
@@ -279,12 +322,16 @@ void main() {
       await told(tester, folded: true);
       expect(answered.asked, hasLength(2), reason: 'a store stops none');
 
+      aPictureLanded();
+      await told(tester, folded: true);
+      expect(answered.asked, hasLength(3), reason: 'nor a picture\'s');
+
       aLanding();
       await told(tester, folded: true);
-      expect(answered.asked, hasLength(2), reason: 'the hand came');
+      expect(answered.asked, hasLength(3), reason: 'the hand came');
 
       await tester.pump(EngineTileLedger.rest);
-      expect(answered.asked, hasLength(3), reason: 'a rest after it');
+      expect(answered.asked, hasLength(4), reason: 'a rest after it');
       await theRestsPass(tester);
     });
 
@@ -305,6 +352,51 @@ void main() {
       expect(answered.asked, hasLength(2));
       await theRestsPass(tester);
     });
+  });
+
+  // WHO is a hand, read off the callers: the app's ledger is the one a
+  // caller lands on, and its folds are no test's to answer.
+  test('🚨every landing says whose it is: a stroke\'s, a stamp\'s and a '
+      'verb\'s a hand\'s — a cel\'s texts laid, an import\'s raster and '
+      'what is landed whole, no hand\'s', () {
+    /// What the first landing after [from] in [path] says.
+    String said(String path, String from) {
+      final source = File(path).readAsStringSync();
+      final at = source.indexOf(from);
+      expect(at, isNonNegative, reason: '$path has no $from');
+      final word = RegExp(r'ofTheHand: (\w+)').firstMatch(
+        source.substring(at),
+      );
+      return word?.group(1) ?? 'nothing';
+    }
+
+    const strokes = 'lib/src/services/brush_live_stroke_rasterizer.dart';
+    const stamps = 'lib/src/services/bitmap_surface_brush_commit.dart';
+    expect(said(strokes, 'final stroke = _engineStroke!;'), 'true');
+    expect(said(strokes, 'void _viewsFromEngine() {'), 'true');
+    expect(said(stamps, 'List<PlacedTile> _stampOnEngine('), 'true');
+    expect(
+      said('lib/src/services/cel_pixel_overwrite.dart', 'ledger.land('),
+      'true',
+    );
+    expect(
+      said(stamps, 'Map<TileCoord, BitmapTile?> stampLaidOver('),
+      'false',
+    );
+    expect(
+      said(
+        'lib/src/services/import/clip_vector_raster.dart',
+        'ledger.land(',
+      ),
+      'false',
+    );
+    expect(
+      said(
+        'lib/src/native/engine_tile_ledger.dart',
+        'Map<TileCoord, BitmapTile> landWhole(',
+      ),
+      'false',
+    );
   });
 
   test('a rest that came before the fold\'s kernels folds once the '

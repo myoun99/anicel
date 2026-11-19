@@ -47,38 +47,46 @@ BitmapSurface surfaceOnEngine(BitmapSurface surface) =>
 
 /// A tile of [value] at every byte landed by [ledger] on each of [unders]
 /// — a row of a cel's, null where there is no tile to land on — stored as
-/// a kernel stores what it lands, with no kernel to compile; [again], where
-/// the landing says how it is made once more (`LandsAgain`).
+/// a kernel stores what it lands, with no kernel to compile ([tilesOf]);
+/// [again], where the landing says how it is made once more
+/// (`LandsAgain`). A hand's, unless [ofTheHand] says it is a picture's
+/// made as a frame is (`EngineTileLedger.land`).
 List<BitmapTile> landedOn(
   EngineTileLedger ledger,
   List<BitmapTile?> unders,
   int value, {
   LandsAgain? again,
+  bool ofTheHand = true,
 }) => [
   for (final landed in ledger.land(
     [
       for (final (column, under) in unders.indexed)
         (column: column, row: 0, under: under),
     ],
-    by: (pool, cel, asked) {
-      // A tile, not bytes of this call's: the store's copy reads them once
-      // it returns, holding what keeps them (GpuPool.store).
-      final tile = BitmapTile.written(
-        size: gpuTileSide,
-        write: (pixels) => pixels.fillRange(0, gpuTileBytes, value),
-      );
-      return [
-        for (final at in pool.store(cel, [
-          for (final _ in asked) tile,
-        ], (tile) => tile.readPixels((pointer, _) => pointer)))
-          (change: GpuChange.inked, tile: at),
-      ];
-    },
+    by: tilesOf(value),
+    ofTheHand: ofTheHand,
     compared: true,
     again: again,
   ))
     landed.tile!,
 ];
+
+/// What lands a tile of [value] at every byte for each tile asked, as a
+/// kernel stores what it lands, with no kernel to compile.
+LandedBy tilesOf(int value) => (pool, cel, asked) {
+  // A tile, not bytes of this call's: the store's copy reads them once it
+  // returns, holding what keeps them (GpuPool.store).
+  final tile = BitmapTile.written(
+    size: gpuTileSide,
+    write: (pixels) => pixels.fillRange(0, gpuTileBytes, value),
+  );
+  return [
+    for (final at in pool.store(cel, [
+      for (final _ in asked) tile,
+    ], (tile) => tile.readPixels((pointer, _) => pointer)))
+      (change: GpuChange.inked, tile: at),
+  ];
+};
 
 /// A tile of bytes of its own — nothing but its first pixel, barely there:
 /// not of one colour, every tile of which shares that colour's slot on the

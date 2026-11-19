@@ -180,6 +180,7 @@ List<PlacedTile> _stampOnEngine(
         (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
     ],
     by: lays(clip, within?.maskOnEngine()),
+    ofTheHand: true,
     compared: true,
   );
   return [
@@ -282,6 +283,8 @@ Map<TileCoord, BitmapTile?> stampLaidOver(
       mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
       mask: null,
     ),
+    // A cel's texts laid: a picture made as its frame is, no hand's.
+    ofTheHand: false,
     compared: true,
   );
   return {

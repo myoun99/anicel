@@ -71,6 +71,7 @@ void main() {
     void landAndDrop() {
       final tile = ledger.land(
         [(column: 0, row: 0, under: null)],
+        ofTheHand: true,
         by: (pool, cel, asked) => stroke.land(
           appGpuComposite,
           pool,

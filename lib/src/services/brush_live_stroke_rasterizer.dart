@@ -447,6 +447,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
     return EngineTileLedger.instance.land(
       asks,
+      ofTheHand: true,
       // A stroke on its way waits for no turn of the engine's: its frame
       // waits for nothing (`GpuStroke.landOnItsWay`, a blur's
       // `GpuStroke.landBlurOnItsWay`). The finished one compares, which
@@ -797,6 +798,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       ],
       by: (pool, cel, asked) =>
           stroke.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
+      ofTheHand: true,
     );
     for (var at = 0; at < coords.length; at += 1) {
       final tile = landed[at].tile!;

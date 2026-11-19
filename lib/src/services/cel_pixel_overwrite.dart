@@ -890,6 +890,7 @@ typedef _Walked = ({TileCoord coord, BitmapTile tile});
       asks,
       by: (pool, cel, asked) =>
           passed.land(pool, cel, asks.length - asked.length, asked),
+      ofTheHand: true,
     );
     final rebuilt = <TileCoord, BitmapTile>{
       for (final (at, (change: _, :tile)) in landed.indexed)

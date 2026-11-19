@@ -539,12 +539,39 @@ final GpuEngine _engine;
   /// can say how ([LandsAgain]): what each tile landed reads as should this
   /// engine's device go before the tile's bytes are here ([_makesAgain]).
   ///
+  /// [ofTheHand] says whether a hand at work landed it — a stroke's step,
+  /// a stamp, a verb: the folds wait a rest from it, and those under way
+  /// stop behind their batch ([_foldOnceTheHandRests]). A picture made as
+  /// a frame is — the letters' plate, a cel's texts laid, a plug-in's
+  /// step, an import's raster — asks for them as a store does, and puts
+  /// none off ([_foldBeforeLong]).
+  ///
+  /// 🚨ONLY A HAND PUTS THE FOLDS OFF (🔢브러시/렌더링's, 2026-11-20, said
+  /// on F-610: no rule of the user's — theirs is F-610-Q5, 「할수있는거
+  /// 다하면서」). ↩️Till that day every landing did, and a band being made
+  /// lands at its frames too. 🔬The main PC, S5_BA cut 352 with every eye
+  /// on, opened from its file — the app whole, no window, a line a
+  /// quarter second: 36 landings in the 8 s its band filled, 18 plates of
+  /// cel numbers, 13 cels' texts laid and 5 name tags' plates, none a
+  /// hand's, began the rest again each time and stopped the folds under
+  /// way all three times they had begun. Three runs each way in a quiet
+  /// window: the pool stood at 928 to 960 MiB at its most and fell to
+  /// 352 once all rested; 736 to 864 at its most now, and 320 to 352
+  /// at rest — the page made ahead its room there
+  /// (rust/src/kernels/pool/folded.rs). 🔬The Surface,
+  /// FNK_02 opened (검증 11-20): the pool's most the same to the decimal
+  /// with and without 「a store puts no fold off」, 1,442.6 MB.
+  /// ⚠️The copies at rest are put off by every landing still
+  /// ([_copyHereOnceTheHandRests]): each makes tiles to copy, and nothing
+  /// measured says what a picture's landing costs them.
+  ///
   /// ↩️It took the cel whose pages it landed on till 2026-11-19: every
   /// caller named [landedCel], since what lands has pages of its own, and
   /// [landWhole] never asked.
   List<LandedTile> land(
     List<TileAsk> asks, {
     required LandedBy by,
+    required bool ofTheHand,
     bool compared = false,
     LandsAgain? again,
   }) => held((hold) {
@@ -571,7 +598,11 @@ final GpuEngine _engine;
       }
     }
     _copyHereOnceTheHandRests();
-    _foldOnceTheHandRests();
+    if (ofTheHand) {
+      _foldOnceTheHandRests();
+    } else {
+      _foldBeforeLong();
+    }
     return [
       for (final (at, (:change, :tile)) in landed.indexed)
         (
@@ -595,7 +626,8 @@ final GpuEngine _engine;
   /// landed by [by] on the pages of what lands ([landedCel]), each a tile
   /// where it lies: a picture the engine made whole over its rectangle,
   /// landed as it lies on the device — the letters' plate
-  /// (`EngineLetters`), what a plug-in's step made (`GpuFxPlugin`).
+  /// (`EngineLetters`), what a plug-in's step made (`GpuFxPlugin`). No
+  /// hand's, either: each is made as a frame is ([land]).
   ///
   /// ⚠️One at the second, not the third (캔버스 베이스 2026-11-15): the
   /// plug-in's landing spelled the plate's steps token for token, and all
@@ -615,7 +647,7 @@ final GpuEngine _engine;
         for (var across = 0; across < columns; across++)
           (column: x0 + across, row: y0 + down, under: null),
     ];
-    final landed = land(asks, by: by);
+    final landed = land(asks, by: by, ofTheHand: false);
     return {
       for (final (at, (:column, :row, under: _)) in asks.indexed)
         TileCoord(x: column, y: row): landed[at].tile!,
@@ -1229,9 +1261,10 @@ final GpuEngine _engine;
   ///
   /// THE MEMORY COMES BACK AS A PAGE EMPTIES: a page of tiles whose every
   /// tile lies folded is given back by the pool, its slots their names
-  /// still; and the page with the most slots free is folded never — the
-  /// pool's room, where the next tile goes
-  /// (rust/src/kernels/pool/folded.rs has both, and why). 🔬The main PC
+  /// still; and the page with the most slots free is not folded — the
+  /// pool's room, where the next tile goes —, till a page made ahead
+  /// stands beside it at a rest and is the room in its place
+  /// (rust/src/kernels/pool/folded.rs has the three, and why). 🔬The main PC
   /// (2026-11-19, F-610): the user's line art, its cels' 14,509 tiles,
   /// took 1,024 MiB of pool as they were and 256 MiB folded, in 224
   /// batches and 0.5–1.0 s; S5 cut 352 with every eye on, 896 MiB and
@@ -1254,7 +1287,7 @@ final GpuEngine _engine;
   static const int foldBatch = 64;
 
   /// Whether the pool's tiles are folded a rest ([rest]) after they
-  /// come, and after the hand's last landing ([_foldBeforeLong]): a
+  /// come, and after the hand's last landing ([_foldOnceTheHandRests]): a
   /// launch's word, before its first frame (`main`). False where no
   /// launch said so — the pins and the measurements of the fold say it
   /// themselves.
@@ -1269,7 +1302,8 @@ final GpuEngine _engine;
 
   /// The hand is at work: the folds wait a rest from this landing, and
   /// those under way stop behind their batch — a stroke's dab stands
-  /// behind no more than the one.
+  /// behind no more than the one. A landing that is no hand's comes
+  /// nowhere near ([land]).
   void _foldOnceTheHandRests() {
     if (!foldsAtRest) {
       return;
@@ -1280,7 +1314,8 @@ final GpuEngine _engine;
   }
 
   /// Asks for the folds a rest from now where none are asked for, and
-  /// puts none off — those under way neither: what a store does.
+  /// puts none off — those under way neither: what a store does, and a
+  /// landing that is no hand's ([land]).
   ///
   /// 🚨A STORE PUTS NO FOLD OFF (🔢브러시/렌더링's, 2026-11-20, said on
   /// F-610: no rule of the user's — theirs is F-610-Q5, 「할수있는거
