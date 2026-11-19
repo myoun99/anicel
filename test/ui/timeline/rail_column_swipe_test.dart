@@ -23,7 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
-    show ControlPressClaim, DragVerbClaim;
+    show ControlPressClaim, DragVerbClaim, PressFire, PressFireScope;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show RailSwipeColumn, RailSwipeColumnPointer;
 import 'package:anicel/src/ui/timeline/rail_column_swipe.dart';
@@ -517,12 +517,16 @@ void main() {
                 axis: Axis.vertical,
                 columns: const <RailToggleColumn<int>>[],
                 rowsIn: (from, to) => const <RailSwipeRow<int>>[],
-                child: SizedBox(
-                  width: 80,
-                  height: _rowHeight,
-                  child: ControlPressClaim(
-                    onPressed: () => history.execute(_Step()),
-                    child: const ColoredBox(color: Colors.transparent),
+                // A rail row's button: it fires on the down.
+                child: PressFireScope(
+                  fireOn: PressFire.down,
+                  child: SizedBox(
+                    width: 80,
+                    height: _rowHeight,
+                    child: ControlPressClaim(
+                      onPressed: () => history.execute(_Step()),
+                      child: const ColoredBox(color: Colors.transparent),
+                    ),
                   ),
                 ),
               ),
