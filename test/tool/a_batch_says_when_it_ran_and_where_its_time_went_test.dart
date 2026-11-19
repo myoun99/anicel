@@ -156,6 +156,27 @@ void main() {
       expect(spent.others, [('cargo.exe', const Duration(seconds: 3))]);
     });
 
+    test("a tester stays the batch's own once the process between it and "
+        'the root has ended', () {
+      final looks = <List<ProcessRow>>[
+        [
+          row(10, 1, 'flutter.bat'),
+          row(11, 10, 'dart.exe', cpu: 2),
+          row(13, 11, 'flutter_tester.exe', cpu: 4),
+        ],
+        // 11 ended; 13 is an orphan, its parent's number unknown.
+        [row(10, 1, 'flutter.bat'), row(13, 11, 'flutter_tester.exe', cpu: 9)],
+      ];
+      var i = 0;
+      final spent = CpuWatch(
+        10,
+        read: () => looks[i++ < 1 ? 0 : 1],
+        every: const Duration(days: 1),
+      ).stop();
+      expect(spent.ours, const Duration(seconds: 5));
+      expect(spent.others, isEmpty);
+    });
+
     test('it is said against the whole machine for the batch\'s wall', () {
       expect(
         cpuSaid(
@@ -182,11 +203,22 @@ void main() {
       );
     });
 
-    test('the table is read with what each process spent', () {
-      final table = readProcessTable();
-      final me = table.where((row) => row.pid == pid);
-      expect(me, hasLength(1));
-      if (Platform.isWindows) expect(me.single.cpu, greaterThan(0));
+    test('the table is read with what each process spent, its own work '
+        'and the system\'s for it alike', () {
+      int mine() => readProcessTable().singleWhere((r) => r.pid == pid).cpu;
+      final before = mine();
+      if (!Platform.isWindows) return; // `ps` gives no CPU here: 0.
+      // A second and a half of arithmetic and nothing else: user time, which
+      // the kernel's share of a table read could never make up.
+      final busy = Stopwatch()..start();
+      var x = 1;
+      while (busy.elapsedMilliseconds < 1500) {
+        x = (x * 31 + 7) & 0xffff;
+      }
+      final spent = Duration(microseconds: (mine() - before) ~/ 10);
+      expect(x, isNot(-1));
+      expect(spent, greaterThan(const Duration(milliseconds: 300)));
+      expect(spent, lessThan(const Duration(minutes: 1)));
     });
   });
 
