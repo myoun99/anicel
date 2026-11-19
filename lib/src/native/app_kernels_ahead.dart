@@ -9,6 +9,7 @@ import 'engine_floods.dart';
 import 'engine_frame_tools.dart';
 import 'engine_selection_masks.dart';
 import 'engine_strokes.dart';
+import 'engine_tile_ledger.dart';
 
 /// Every set of kernels the app compiles ahead of its first use, off this
 /// isolate: what a hand needs all at once, the engine compiling on as many
@@ -98,6 +99,10 @@ Future<void> compileAppKernelsAhead() async {
   await EngineStrokes.warmBlurStrips();
   await appGpuExportKernels.warm();
   await appGpuFoldKernels.warm();
+  // A rest that came before these folded nothing, and none comes again
+  // while a project is only looked at
+  // (`EngineTileLedger.theFoldKernelsCame`).
+  EngineTileLedger.opened?.theFoldKernelsCame();
 }
 
 /// Whether the app still gets ready what a hand needs of its engine: from

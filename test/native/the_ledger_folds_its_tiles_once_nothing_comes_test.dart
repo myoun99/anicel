@@ -173,6 +173,44 @@ void main() {
     expect(await pollUntil(() => counting.batches == 3), isTrue);
   });
 
+  test('a rest that came before the fold\'s kernels folds once the '
+      'ledger is told they are in', () async {
+    EngineTileLedger.foldsAtRest = true;
+    kernels = null;
+    final counting = _Counting(
+      engine,
+      foldKernels: () => kernels,
+      debugTilesAPage: aPage,
+    );
+    aPageLanded(10, by: counting);
+    aPageLanded(10, by: counting);
+    final bytes = counting.pool.bytes;
+    expect(
+      await pollUntil(() => counting.batches == 1),
+      isTrue,
+      reason: 'the rest asked, and found no kernels',
+    );
+    await Future<void>.delayed(EngineTileLedger.rest * 2);
+    expect(counting.batches, 1, reason: 'and nothing asks again');
+
+    kernels = compiled;
+    counting.theFoldKernelsCame();
+    expect(await pollUntil(() => counting.pool.bytes < bytes), isTrue);
+  });
+
+  test('the launch\'s list tells the app\'s ledger once the fold\'s '
+      'kernels are in', () {
+    final list = File(
+      'lib/src/native/app_kernels_ahead.dart',
+    ).readAsStringSync();
+    final compiled = list.indexOf('await appGpuFoldKernels.warm();');
+    final told = list.indexOf(
+      'EngineTileLedger.opened?.theFoldKernelsCame();',
+    );
+    expect(compiled, isNonNegative);
+    expect(told, greaterThan(compiled));
+  });
+
   test('a launch says so before its first frame', () {
     final launch = File('lib/main.dart').readAsStringSync();
     final said = launch.indexOf('EngineTileLedger.foldsAtRest = true;');

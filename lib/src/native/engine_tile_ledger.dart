@@ -1251,6 +1251,14 @@ final GpuEngine _engine;
     _foldRest = Timer(rest, () => unawaited(_foldAtRest()));
   }
 
+  /// What the launch's list says once the fold's kernels are compiled
+  /// (`compileAppKernelsAhead`, which compiles them last): a rest that
+  /// came before them folded nothing ([foldABatch]), and where nothing
+  /// is stored or landed after it — a project opened as the app
+  /// launched, and only looked at — none would come to ask again. The
+  /// rest is taken from here.
+  void theFoldKernelsCame() => _foldOnceNothingComes();
+
   /// The batches of a rest, one behind another ([foldABatch]), till none
   /// is left or a store puts them off ([_foldRest] armed again).
   Future<void> _foldAtRest() async {
