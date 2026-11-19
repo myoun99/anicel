@@ -210,24 +210,83 @@ void _foldTests() {
       expect(history.undoCount, 2, reason: 'nothing folded');
     });
 
-    test('a run the deep end cut into is left as it was — a fold would take '
-        'half of the gesture', () {
+    // a-gesture-at-the-history-cap-does-not-fold: a stack at its cap does
+    // not grow, and a gesture there stayed a step per write. ↩️Pinned the
+    // other way (038c8e0a6): 「a run the deep end cut into is left as it
+    // was」 — the deep end had taken the step BEFORE the run, not the run.
+    test('a whole run at the depth cap folds — the deep end took the step '
+        'before it, not the gesture', () {
       final history = HistoryManager(maxEntries: 4);
       history.execute(_FakeCommand());
-      history.execute(_FakeCommand());
+      final before = _FakeCommand();
+      history.execute(before);
       final mark = history.gestures.mark;
       final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
       run.forEach(history.execute);
       expect(history.undoCount, 4, reason: 'the premise: the stack trimmed');
 
       history.gestures.foldSince(mark, 'Sweep');
-      history.undo();
 
+      expect(history.undoCount, 2, reason: 'the step before, and the run');
+      history.undo();
+      expect([for (final command in run) command.undoCount], [1, 1, 1]);
+      expect(before.undoCount, 0);
+    });
+
+    test('a run longer than the stack is deep folds what is left of it', () {
+      final history = HistoryManager(maxEntries: 4);
+      history.execute(_FakeCommand());
+      final mark = history.gestures.mark;
+      final run = [for (var i = 0; i < 6; i += 1) _FakeCommand()];
+      run.forEach(history.execute);
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 1);
+      history.undo();
       expect(
         [for (final command in run) command.undoCount],
-        [0, 0, 1],
-        reason: 'one undo is still one entry — not the last two of three',
+        [0, 0, 1, 1, 1, 1],
+        reason: 'the first two fell off the deep end — nothing undoes them',
       );
+    });
+
+    test('at the depth cap, a gesture takes back its own newest — and stops '
+        'at the step before it', () {
+      final history = HistoryManager(maxEntries: 4);
+      final earlier = [for (var i = 0; i < 4; i += 1) _FakeCommand()];
+      earlier.forEach(history.execute);
+      final mark = history.gestures.mark;
+      final run = [_FakeCommand(), _FakeCommand()];
+      run.forEach(history.execute);
+
+      expect(history.gestures.retractSince(mark), isTrue);
+      expect(history.gestures.retractSince(mark), isTrue);
+
+      expect(history.gestures.keepsSince(mark), isFalse);
+      expect(history.gestures.retractSince(mark), isFalse);
+      expect([for (final command in run) command.undoCount], [1, 1]);
+      expect(earlier.last.undoCount, 0);
+    });
+
+    test('what the byte budget sheds off the deep end moves the run\'s '
+        'start too', () async {
+      final history = HistoryManager();
+      history.execute(_HeavyCommand(bytes: 40 * 1024 * 1024));
+      final before = _HeavyCommand(bytes: 40 * 1024 * 1024);
+      history.execute(before);
+      final mark = history.gestures.mark;
+      final run = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
+      run.forEach(history.execute);
+      history.respondToMemoryPressure();
+      await history.drainSpilling();
+      expect(history.undoCount, 4, reason: 'the premise: one entry shed');
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 2, reason: 'the step before, and the run');
+      history.undo();
+      expect([for (final command in run) command.undoCount], [1, 1, 1]);
     });
   });
 }
@@ -292,6 +351,27 @@ void _runTests() {
       history.undo();
       expect([for (final step in after) step.undoCount], [1, 1]);
       expect(elsewhere.undoCount, 0);
+    });
+
+    test('a hold on a stack at its depth cap takes back and folds as it does '
+        'anywhere', () {
+      final history = HistoryManager(maxEntries: 4);
+      for (var i = 0; i < 4; i += 1) {
+        history.execute(_FakeCommand());
+      }
+      final run = HistoryRun(history.gestures)..begin();
+      final steps = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
+      for (final step in steps) {
+        run.write(() => history.execute(step));
+      }
+
+      expect(run.canTakeBack, isTrue);
+      run.takeBack();
+      run.end('Hold');
+
+      expect(history.undoCount, 2, reason: 'what is left before, the hold');
+      history.undo();
+      expect([for (final step in steps) step.undoCount], [1, 1, 1]);
     });
 
     test('a hold that wrote nothing takes nothing back and folds nothing', () {

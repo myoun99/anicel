@@ -40,9 +40,9 @@ int deviceScaledUndoByteBudget({required int? physicalMemoryBytes}) =>
     );
 
 /// Where a [HistoryManager] stood when a gesture began: how many entries it
-/// had pushed and taken back ([HistoryGestures.retractSince]), and how deep
-/// its undo stack was.
-typedef HistoryMark = ({int pushed, int retracted, int depth});
+/// had pushed and taken back ([HistoryGestures.retractSince]), how many had
+/// fallen off its deep end, and how deep its undo stack was.
+typedef HistoryMark = ({int pushed, int retracted, int fallen, int depth});
 
 /// The undo/redo stacks. A [ChangeNotifier] so stack-state consumers (the
 /// app bar's undo/redo buttons) can subscribe directly: brush strokes
@@ -270,6 +270,7 @@ class HistoryManager extends ChangeNotifier {
       final fallen = _undoStack.length - maxEntries;
       dropPayloadsOf(_undoStack.getRange(0, fallen));
       _undoStack.removeRange(0, fallen);
+      gestures._fallen += fallen;
     }
     // ⚠️REDO GOES FIRST, and the order is not cosmetic any more: a new
     // edit throws the redo stack away, so trimming before the clear
@@ -440,7 +441,9 @@ class HistoryManager extends ChangeNotifier {
     if (total > _budget.bytes) {
       // ⛔The newest entry always survives: pressure must not cost you the
       // undo you are about to press.
+      final deep = _undoStack.length;
       _shed(_undoStack, total - _budget.bytes, keep: 1, undone: false);
+      gestures._fallen += deep - _undoStack.length;
     }
     // 🚨HERE, not at each caller: this is the only place an entry leaves
     // the stacks without the user asking, and a spill pass that ends in a
@@ -676,11 +679,16 @@ class HistoryGestures {
   int _pushed = 0;
   int _retracted = 0;
 
+  /// Every entry the undo stack's deep end has let fall, ever — the depth
+  /// cap's and the byte budget's alike: what moves a gesture's first entry
+  /// down the stack under it ([_startOf]).
+  int _fallen = 0;
+
   /// Runs [body] as ONE entry — a gesture that writes many rows in ONE
   /// event (the legend's twirl-all), so it needs no [mark]: the synchronous
   /// run [HistoryManager.runAsOneStep] groups before anything is pushed.
-  /// ⛔Not [foldSince] after it: a stack at its depth cap trims under the
-  /// writes, and the fold leaves them a step per row.
+  /// ⛔Not [foldSince] after it: grouped before it is pushed, the run costs
+  /// a stack at its depth cap one old entry, not one a row.
   void runAsOneStep(String description, void Function() body) =>
       _history.runAsOneStep(description, body);
 
@@ -688,8 +696,19 @@ class HistoryGestures {
   HistoryMark get mark => (
     pushed: _pushed,
     retracted: _retracted,
+    fallen: _fallen,
     depth: _history._undoStack.length,
   );
+
+  /// Where the gesture marked [since] begins in the stack now: the depth it
+  /// was marked at, less what fell off the deep end since. Below zero once
+  /// the deep end has taken the gesture's own first entries.
+  ///
+  /// ↩️The depth alone was read as the start (038c8e0a6, 09-25): a stack at
+  /// its cap does not grow, so a gesture there never folded — 24 stamps in
+  /// one drag stayed 24 undos (서피스 실측, card a-gesture-at-the-history-
+  /// cap-does-not-fold), and a swipe drawing back took nothing back.
+  int _startOf(HistoryMark since) => since.depth - (_fallen - since.fallen);
 
   /// Takes back the newest entry pushed since [since] and FORGETS it —
   /// undone, and not handed to redo: a gesture withdrawing its own latest
@@ -716,7 +735,7 @@ class HistoryGestures {
   /// take back — asked by an undo door before it opens, which must not
   /// take anything to find out.
   bool keepsSince(HistoryMark since) =>
-      _history._undoStack.length > since.depth;
+      _history.canUndo && _history._undoStack.length > _startOf(since);
 
   /// Folds every entry pushed since [since] into ONE — for a gesture that
   /// writes across many events, which [HistoryManager.runAsOneStep]'s
@@ -725,20 +744,27 @@ class HistoryGestures {
   /// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」).
   ///
   /// ⛔Only a run still whole: the entries pushed since [since] and not
-  /// taken back, exactly them, on top of the stack. An undo, a redo or the
-  /// deep end in between leaves something else there, and folding that
-  /// would take back what the gesture did not do — so the entries are left
-  /// as they are.
+  /// taken back, exactly them, on top of the stack. An undo or a redo in
+  /// between leaves something else there, and folding that would take back
+  /// what the gesture did not do — so the entries are left as they are.
+  ///
+  /// A gesture longer than the stack is deep has lost its first entries to
+  /// the deep end; what is left of it is still its own, and folds.
   void foldSince(HistoryMark since, String description) {
     final stack = _history._undoStack;
+    final start = _startOf(since);
     final kept = (_pushed - since.pushed) - (_retracted - since.retracted);
-    // Fewer than two is one step already, or none — [oneStepOf]'s first
-    // two answers, with nothing to re-file.
-    if (kept < 2 || stack.length != since.depth + kept) {
+    if (stack.length != start + kept) {
       return;
     }
-    final run = stack.sublist(since.depth);
-    stack.removeRange(since.depth, stack.length);
+    final from = start < 0 ? 0 : start;
+    // Fewer than two is one step already, or none — [oneStepOf]'s first
+    // two answers, with nothing to re-file.
+    if (stack.length - from < 2) {
+      return;
+    }
+    final run = stack.sublist(from);
+    stack.removeRange(from, stack.length);
     // Already executed, as a group's are: this re-files them, it runs
     // nothing a second time.
     final folded = oneStepOf(description, run)!;
