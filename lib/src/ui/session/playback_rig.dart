@@ -12,7 +12,7 @@
 // and if the rig reached back out for `selectCut` neither could be built.
 
 
-import 'package:flutter/foundation.dart' show Listenable;
+import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut_id.dart';
@@ -137,6 +137,9 @@ class PlaybackRig implements PlaybackRun {
 
   @override
   FramePictures get pictures => framePictures;
+
+  @override
+  ValueListenable<bool> get handOn => prerenderScheduler.handOn;
 
   /// Whether the canvas shows the run — a cut played alone, through the
   /// camera or not — and not the track stack, which shows the whole film.

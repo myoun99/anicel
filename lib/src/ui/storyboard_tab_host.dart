@@ -233,10 +233,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     revision: _session.layerStack.celTintRevision,
   );
 
-  /// Whatever can move a frame's readiness ([FramePictures.standingMoved]):
-  /// the ruler's green bar repaints off it, as the timeline's does.
+  /// Whatever can move a frame's readiness, and a hand letting go of a count
+  /// put off under it (`PlaybackCacheBudget.readinessMoved`): the ruler's
+  /// green bar repaints off it, as the timeline's does.
   late final Listenable _frameReadySignal =
-      _session.playbackRig.framePictures.standingMoved;
+      _session.playbackRig.playbackCache.readinessMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     (start, end) => storyboardReadyRuns(_session, start, end),

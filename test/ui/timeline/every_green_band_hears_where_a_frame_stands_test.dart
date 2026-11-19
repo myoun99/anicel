@@ -15,8 +15,9 @@ import '../../helpers/home_page_probes.dart';
 /// filled there only once the walk moved on. The band reads where each
 /// frame stands, and heard the walk's progress — a picture the walk laid,
 /// and no other. What moves where a frame stands is told in one place
-/// (`FramePictures.standingMoved`, frame_pictures_test.dart): each panel's
-/// band hears that.
+/// (`FramePictures.standingMoved`, frame_pictures_test.dart), and with it a
+/// hand letting go of a count put off under it (F-620-Q3,
+/// `PlaybackCacheBudget.readinessMoved`): each panel's band hears that.
 void main() {
   testWidgets('the timeline\'s band and the conte\'s hear where a frame '
       'stands', (tester) async {
@@ -32,7 +33,7 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final standing = session.playbackRig.framePictures.standingMoved;
+    final standing = session.playbackRig.playbackCache.readinessMoved;
     Listenable? bandOf(Type panel) => tester
         .widget<TimelineRulerCursorOverlay>(
           find.descendant(

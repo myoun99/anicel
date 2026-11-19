@@ -106,9 +106,10 @@ class ReadyRunsOfTheDocument {
 ///   raises an "invalidated" event when a cel is edited. There is no token
 ///   a gated painter could compare. The only honest answer is to keep the
 ///   read cheap and re-read it on every signal that can change it, which is
-///   what [repaintSignal] carries (a picture laid or let go of, a cel edited:
-///   `FramePictures.standingMoved`) alongside the playhead — and to REPAINT
-///   only when what it read differs from what it drew
+///   what [repaintSignal] carries (a picture laid or let go of, a cel edited,
+///   a hand letting go of a count put off under it:
+///   `PlaybackCacheBudget.readinessMoved`) alongside the playhead — and to
+///   REPAINT only when what it read differs from what it drew
 ///   ([TimelineRulerCursorOverlay]'s gate, F-166).
 ///
 /// Shared by the storyboard ruler and the timeline ruler (it was the

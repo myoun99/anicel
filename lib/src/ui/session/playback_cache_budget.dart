@@ -28,6 +28,10 @@ abstract interface class PlaybackRun {
   /// The pictures every screen shows a frame from — the budget keeps them by
   /// [demand].
   FramePictures get pictures;
+
+  /// Whether a hand is on ([PlaybackPrerenderScheduler.handOn]) — what the
+  /// bars that count the frames ready wait behind (F-620-Q3).
+  ValueListenable<bool> get handOn;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -226,12 +230,25 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   ///
   /// [paintPaper]: whether the screen its run plays on paints the cut's
   /// paper ([DemandedPicture.paintPaper]) — which of its pictures it shows.
+  ///
+  /// 🗣️AND WHILE A HAND MOVES WHAT THE FRAMES ARE MADE OF, THE CUT IT IS IN
+  /// STANDS NOT READY, COUNTED ONCE IT LETS GO (F-620-Q3 = 2, 유저
+  /// 2026-11-19 「끄는 동안은 세지 않는다 — 띠는 그 컷 전체를 「준비 안
+  /// 됨」으로」): a value dragged changes the tree at every step, and every
+  /// step counted the bar anew — 🔬~7 ms of the UI thread a value (Surface,
+  /// S5_BA cut 352). Under a hand whose tree still stands — a scrub, a
+  /// stroke — the bar counts as ever ([_handMovedTheTree]).
   List<ReadyRun> playbackReadyRunsForCut(
     Cut cut,
     int start,
     int end, {
     required bool paintPaper,
   }) {
+    _hearTheHand();
+    if (_handMovedTheTree() && cut.id == _project.activeCutOrNull?.id) {
+      _countOwed = true;
+      return const [];
+    }
     final pictures = _run.pictures;
     final runs = <ReadyRun>[];
     for (final span in compositeStructureSpansIn(
@@ -260,4 +277,57 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
     return runs;
   }
 
+  /// What a bar that counts the frames ready hears: whatever moves where a
+  /// frame stands ([FramePictures.standingMoved]), and a hand letting go of
+  /// a count put off under it ([playbackReadyRunsForCut]).
+  Listenable get readinessMoved {
+    _hearTheHand();
+    return _readinessMoved;
+  }
+
+  late final Listenable _readinessMoved = Listenable.merge([
+    _run.pictures.standingMoved,
+    _countDue,
+  ]);
+
+  /// The tree the frames were made of as the hand came down
+  /// ([FramePictures.treeStamp]) — null while no hand is on.
+  Object? _treeUnderTheHand;
+
+  /// Whether a bar was answered not ready under the hand, to be counted
+  /// once it lets go ([_countDue]).
+  bool _countOwed = false;
+
+  final ValueNotifier<int> _countDue = ValueNotifier<int>(0);
+
+  bool _hearing = false;
+
+  /// The hand, heard from the first asking on: the run's scheduler is made
+  /// after this budget ([PlaybackRun.handOn]), so the constructor cannot.
+  void _hearTheHand() {
+    if (_hearing) {
+      return;
+    }
+    _hearing = true;
+    _run.handOn.addListener(_handMoved);
+    _handMoved();
+  }
+
+  void _handMoved() {
+    if (_run.handOn.value) {
+      _treeUnderTheHand = _run.pictures.treeStamp?.call();
+      return;
+    }
+    _treeUnderTheHand = null;
+    if (_countOwed) {
+      _countOwed = false;
+      _countDue.value += 1;
+    }
+  }
+
+  /// Whether a hand is on and the tree has moved since it came down.
+  bool _handMovedTheTree() {
+    final under = _treeUnderTheHand;
+    return under != null && _run.pictures.treeStamp?.call() != under;
+  }
 }

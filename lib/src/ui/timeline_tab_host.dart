@@ -187,7 +187,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   late final Listenable _frameReadySignal =
-      _session.playbackRig.framePictures.standingMoved;
+      _session.playbackRig.playbackCache.readinessMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     _session.playbackRig.playbackCache.playbackReadyRuns,

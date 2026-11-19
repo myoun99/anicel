@@ -243,19 +243,35 @@ class PlaybackPrerenderScheduler {
   /// its end: a frame is one composite, one submission (H59 B2, 11-17).
   int _inputHolds = 0;
 
+  /// Whether any hold is open ([beginInputHold]) — what a bar that counts
+  /// the frames ready waits behind while the hand moves what they are made
+  /// of ([PlaybackCacheBudget.playbackReadyRunsForCut], F-620-Q3).
+  ValueListenable<bool> get handOn => _handOn;
+  final ValueNotifier<bool> _handOn = ValueNotifier<bool>(false);
+
   void beginInputHold() {
     _inputHolds += 1;
+    _tellTheHand();
   }
 
   void endInputHold() {
     if (_inputHolds > 0) {
       _inputHolds -= 1;
     }
+    _tellTheHand();
     // The release opens a fresh quiet window: warming resumes idleDelay
     // after the pen lifts, not the instant it lifts.
     notifyEditActivity();
     if (_inputHolds == 0) {
       _holdsClosed();
+    }
+  }
+
+  /// [handOn] as the holds stand — told nobody once disposed: a press a
+  /// project closed under lets go of its warmer after (`WarmerHand`).
+  void _tellTheHand() {
+    if (!_disposed) {
+      _handOn.value = _inputHolds > 0;
     }
   }
 
@@ -378,6 +394,7 @@ class PlaybackPrerenderScheduler {
     _progress.dispose();
     _landings.dispose();
     _changes.dispose();
+    _handOn.dispose();
   }
 
   /// How many steps a walk passes over before it lets interactive work in:
