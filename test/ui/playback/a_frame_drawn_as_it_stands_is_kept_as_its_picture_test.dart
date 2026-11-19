@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🔬F-620 (S5_BA cut 352, 2026-11-19): a value dragged on the canvas — a
@@ -337,16 +338,14 @@ void main() {
     // ... when the engine's tools go, and the screen with them.
     canvas.store.letGoWithItsTools();
     // Its composition comes with no frame painted since: nothing stood anew.
-    await tester.runAsync(() async {
-      for (var beat = 0; beat < 500; beat += 1) {
-        if (canvas.store.laid.contains(key) || canvas.store.holds(key)) {
-          return;
-        }
+    final came = await tester.runAsync(
+      () => pollUntil(() {
         turnThePumpedClock(tester);
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    });
+        return canvas.store.laid.contains(key) || canvas.store.holds(key);
+      }),
+    );
 
+    expect(came, isTrue, reason: 'LIVENESS: its composition came');
     expect(
       canvas.store.laid,
       contains(key),

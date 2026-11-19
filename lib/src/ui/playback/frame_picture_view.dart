@@ -810,6 +810,20 @@ class _FramePictureViewState extends State<FramePictureView>
   /// ([FramePictures.frameAsItStands] leaves one out till it is read), its
   /// nodes held where a canvas's picture holds them, and nothing it waits
   /// for ([_standsMeanwhile]).
+  ///
+  /// 🗣️관제 11-19 22:4x (유저: 「셀번호fx는 사실상 fx의 문제 … 다른 fx 포함해서
+  /// 법 통일」): this is every value's law, not a cel number's — any lane's,
+  /// any box's — and these are made by the store as ever, each for why it
+  /// is not the frame as it stands:
+  /// ⛔a frame that waits for its plugins ([_waits]) stands no frame at all
+  ///   while its picture comes (🗣️F-215, 「직전 완성 그림에 머문다」): the
+  ///   store's is its one composition a value — nothing twice to spare;
+  /// ⛔a frame whose live rows show what no cel stores — a step on its way,
+  ///   a float, a lifted row ([_showsUnstored]) — stands a picture its
+  ///   key's is not.
+  /// ★Ghosts in place are no exception: the store lays them over the film
+  /// only to spare the tiles they do not reach (`FramePictures._drawAndLay`
+  /// `over`) — the same nodes, the same picture.
   bool get _standsAsItsPicture =>
       widget.live != null &&
       _standsMeanwhile &&
