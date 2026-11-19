@@ -107,4 +107,38 @@ void main() {
     expect(shownNone(), isTrue);
     expect(session.historyManager.undoCount, steps + 1);
   });
+
+  testWidgets('the PASTEBOARD follows the wheel on every panel while it '
+      'turns, and the window closing writes the colour it rests on — one '
+      'undo', (tester) async {
+    await pumpTextToolApp(tester);
+    final session = sessionOf(tester);
+    int written() => session.repository.requireProject().pasteboardArgb;
+    int shown() => CanvasStageColors.maybeOf(
+      tester.element(find.byType(BrushCanvasPanel).first),
+    )!.pasteboardArgb;
+    final before = written();
+    final steps = session.historyManager.undoCount;
+    expect(shown(), before, reason: 'the premise');
+
+    await openTheSwatch(tester, 'canvas-pasteboard-color-button');
+    final hand = await grabTheWheel(tester);
+    final passed = <int>{};
+    for (var step = 0; step < 4; step += 1) {
+      await hand.moveBy(const Offset(12, 8));
+      await tester.pump();
+      passed.add(shown());
+    }
+    await hand.up();
+    await tester.pump();
+
+    expect(passed.length, greaterThan(1), reason: 'the panels follow it');
+    expect(written(), before, reason: 'nothing is written while it is open');
+
+    final rested = shown();
+    await closeTheWindow(tester);
+
+    expect(written(), rested, reason: 'the close writes it');
+    expect(session.historyManager.undoCount, steps + 1);
+  });
 }
