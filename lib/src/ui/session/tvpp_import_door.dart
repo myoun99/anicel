@@ -94,13 +94,13 @@ class TvppImportDoor {
   /// unlaid.
   ///
   /// 🚨A PICTURE THAT SHOWS THE ONE BEFORE READS AFTER IT (card F-621 ②):
-  /// a tile may be the picture before's ([TvppPicturesInOrder]). Every cel
-  /// is tried on its own first, so a layer whose pictures stand alone —
-  /// every layer measured before 2026-11-19 — fans out as it did; a cel
-  /// that cannot is read again once they all were, its stream's pictures
-  /// one after another from the last one that stood alone, streams side by
-  /// side ([_Decoding.inOrder]). A worker is sent the record and what the
-  /// picture before is made of, never that picture's pixels.
+  /// a tile may be the picture before's ([TvppMakeup]). Every cel is tried
+  /// on its own first, so a layer whose pictures stand alone — every layer
+  /// measured before 2026-11-19 — fans out as it did; a cel that cannot is
+  /// read again once they all were, its stream's pictures over one another
+  /// from the last one that stood alone, streams side by side
+  /// ([_Decoding.inOrder]). A worker is sent a record, or what a picture is
+  /// made of, never a picture's pixels.
   @visibleForTesting
   static Future<void> decodeEach(
     List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> work, {
@@ -149,14 +149,10 @@ class TvppImportDoor {
   /// worker read: the send refused, JIT and AOT alike. The arguments are
   /// the only way in, and `a_cel_worker_is_sent_only_its_own_record_test`
   /// fails the moment anything else rides along.
-  ///
-  /// Read over [before] — what the picture before it is made of — where it
-  /// shows that picture's tiles ([_Decoding.inOrder]); alone where null.
   static Future<Object> _decodeOnWorker(
     Uint8List window, {
     required TvppSlot slot,
     required CelLay lay,
-    TvppTileSources? before,
   }) {
     final windowSlot = _inTheWindow(slot);
     final size = lay.picture;
@@ -167,7 +163,7 @@ class TvppImportDoor {
         layout,
         cut,
         size.width,
-        (row) => TvppPicturesInOrder(before: before).read(
+        (row) => readTvppPicture(
           recordBytes: window,
           slot: windowSlot,
           size: size,
@@ -177,20 +173,40 @@ class TvppImportDoor {
     );
   }
 
+  /// The picture [sources] make, cut on a worker into the tiles [lay] lays
+  /// it on as [_decodeOnWorker] cuts a record's — no record read again
+  /// ([TvppTileSources.read]). Its own function for the same reason.
+  static Future<Object> _drawOnWorker(
+    TvppTileSources sources, {
+    required CelLay lay,
+  }) {
+    final size = lay.picture;
+    final layout = lay.layout;
+    final cut = tileCutOf(lay.cut);
+    return onAWorker<Object>(
+      () => _cutInto(
+        layout,
+        cut,
+        size.width,
+        (row) => sources.read(size: size, row: row),
+      ),
+    );
+  }
+
   /// What the record in [window] is made of on its own, no pixel of it made
-  /// ([TvppMakeup.of]): null where it will not read. Its own function for
-  /// the same reason as [_decodeOnWorker].
-  static Future<TvppMakeup?> _makeupOnWorker(
+  /// ([TvppMakeup.of]) — or why it will not read. Its own function for the
+  /// same reason as [_decodeOnWorker].
+  static Future<Object> _makeupOnWorker(
     Uint8List window, {
     required TvppSlot slot,
     required CanvasSize size,
   }) {
     final windowSlot = _inTheWindow(slot);
-    return onAWorker(() {
+    return onAWorker<Object>(() {
       try {
         return TvppMakeup.of(recordBytes: window, slot: windowSlot, size: size);
-      } on TvppRasterDecodeException {
-        return null;
+      } on TvppRasterDecodeException catch (error) {
+        return error;
       }
     });
   }
@@ -478,82 +494,80 @@ class _Decoding {
   }
 
   /// [run]'s pictures, each over the one before: what each is made of on
-  /// its own worked out beside the others ([_makeAhead]), and over the one
-  /// before one after another here ([_over]); each picture's pixels read
-  /// over the one before's beside the others, landed as its worker answers.
-  /// The picture before the first stood alone, or there is none. Where
-  /// there is none, or a picture will not read, the run's cels after it
-  /// land the error that says so.
+  /// its own — and the picture's before the run, which stood alone — worked
+  /// out beside the others ([_makeAhead]), laid over the one before one
+  /// after another here ([_over]), and each picture drawn from that beside
+  /// the others, landed as its worker answers. Where there is no picture
+  /// before, or a picture will not read, the run's cels from there on land
+  /// the error that says so.
   ///
-  /// ⚡ONLY THE PICTURE BEFORE IS LAID IN ORDER ([TvppMakeup.over]; bake
-  /// card tvpp-bake-waits-on-the-isolate-that-hands-out-records).
-  /// ↩️2026-11-19 a step of the run read the picture before pixels and
-  /// all, 63 ms; then it walked it over the one before on a worker of its
-  /// own, no pixel made — and took no less: 63–69 ms a step, 46–50 of them
-  /// on the worker beside seven decoding, 12 waiting for the window
-  /// (2026-11-20, the user's file on the Surface, in a measurement window).
+  /// ⚡ONLY THE PICTURE BEFORE IS LAID IN ORDER ([TvppMakeup]; bake card
+  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records). ↩️2026-11-19 a
+  /// step of the run read the picture over the one before, pixels and all,
+  /// on a worker — 63–69 ms a step, in order (2026-11-20, the user's file
+  /// on the Surface, in a measurement window). ↩️Its first cut in two read
+  /// the record again to draw the picture over the one before: the bake no
+  /// shorter, its turns all busy, a draw 145–193 ms.
   ///
   /// 🚨NO FURTHER AHEAD THAN THERE ARE TURNS: a picture's makeup waiting to
-  /// be laid, and a picture waiting for its worker with what the one before
-  /// is made of, each hold a record's worth — no more of either than there
-  /// are turns (card F-608 ③).
+  /// be laid, and a picture waiting for its worker with what it is made of,
+  /// each hold a record's worth — no more of either than there are turns
+  /// (card F-608 ③).
   Future<void> inOrder(List<TvppSlot> run) async {
-    final made = <Future<TvppMakeup?>?>[];
-    final pictures = <Future<void>>[];
+    final first = run.first.before;
+    final pictures = [?first, ...run];
+    final size = _afterTheOneBefore[run.first]!.lay.picture;
+    final made = <Future<Object?>>[];
+    final drawn = <Future<void>>[];
     TvppTileSources? before;
-    for (final (i, slot) in run.indexed) {
-      _makeAhead(run, made, upTo: i + turns.atOnce);
-      final makeup = made[i];
-      if (makeup != null && !_halted) {
-        before = _over(await makeup, before);
-      }
+    for (final (i, picture) in pictures.indexed) {
+      _makeAhead(pictures, made, size, upTo: i + turns.atOnce);
+      final shown = _over(await made[i], before);
       if (_halted) {
         break;
       }
-      final (:index, :lay) = _afterTheOneBefore[slot]!;
-      final over = before;
-      pictures.add(
+      before = shown is TvppTileSources ? shown : null;
+      final kept = _afterTheOneBefore[picture];
+      if (kept == null) {
+        // The picture before the run: it stood alone and has landed.
+        continue;
+      }
+      final (:index, :lay) = kept;
+      drawn.add(
         turns.run(() async {
           if (_halted) {
             return;
           }
-          final decoded = await TvppImportDoor._decodeOnWorker(
-            await windowOf(slot),
-            slot: slot,
-            lay: lay,
-            before: over,
-          );
+          final decoded = shown is TvppTileSources
+              ? await TvppImportDoor._drawOnWorker(shown, lay: lay)
+              : shown ?? const TvppNeedsThePictureBefore();
           await _land(index, lay, decoded);
         }),
       );
-      if (pictures.length > turns.atOnce) {
-        await pictures[pictures.length - 1 - turns.atOnce];
+      if (drawn.length > turns.atOnce) {
+        await drawn[drawn.length - 1 - turns.atOnce];
       }
     }
-    await Future.wait([...pictures, ...made.nonNulls]);
+    await Future.wait([...drawn, ...made]);
   }
 
-  /// [made] grown to the makeups of the pictures before [run]'s first
-  /// [upTo] + 1, each worked out in its turn — none where a picture has
-  /// none before it.
+  /// [made] grown to the makeups of [pictures]' first [upTo] + 1, each
+  /// worked out in its turn.
   void _makeAhead(
-    List<TvppSlot> run,
-    List<Future<TvppMakeup?>?> made, {
+    List<TvppSlot> pictures,
+    List<Future<Object?>> made,
+    CanvasSize size, {
     required int upTo,
   }) {
-    while (made.length <= upTo && made.length < run.length) {
-      final slot = run[made.length];
-      final picture = slot.before;
-      final size = _afterTheOneBefore[slot]!.lay.picture;
-      made.add(
-        picture == null ? null : turns.run(() => _makeup(picture, size)),
-      );
+    while (made.length <= upTo && made.length < pictures.length) {
+      final picture = pictures[made.length];
+      made.add(turns.run(() => _makeup(picture, size)));
     }
   }
 
-  /// What [slot]'s picture is made of on its own — null where it will not
-  /// read, or once a stop was asked for, when no more is read.
-  Future<TvppMakeup?> _makeup(TvppSlot slot, CanvasSize size) async {
+  /// What [slot]'s picture is made of on its own, or why it will not read
+  /// — null once a stop was asked for, when no more is read.
+  Future<Object?> _makeup(TvppSlot slot, CanvasSize size) async {
     if (_halted) {
       return null;
     }
@@ -564,16 +578,17 @@ class _Decoding {
     );
   }
 
-  /// What [makeup]'s picture is made of over [before] — null where it will
-  /// not read, nor show a picture before there is not.
-  static TvppTileSources? _over(
-    TvppMakeup? makeup,
-    TvppTileSources? before,
-  ) {
+  /// What [made]'s picture is made of over [before] — null for a hold over
+  /// none — or why it will not read, nor show a picture before there is
+  /// not.
+  static Object? _over(Object? made, TvppTileSources? before) {
+    if (made is! TvppMakeup) {
+      return made;
+    }
     try {
-      return makeup?.over(before);
-    } on TvppNeedsThePictureBefore {
-      return null;
+      return made.over(before);
+    } on TvppNeedsThePictureBefore catch (error) {
+      return error;
     }
   }
 

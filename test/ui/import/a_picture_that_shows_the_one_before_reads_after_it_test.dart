@@ -202,8 +202,8 @@ void main() {
     expect(
       read,
       4 + 3,
-      reason: 'each tried alone, then what the first and the second are '
-          'made of, and the second read — none more once it landed',
+      reason: 'each tried alone, then what the first, the second and the '
+          'third are made of — none more once the second landed',
     );
   });
 
@@ -297,15 +297,19 @@ void main() {
     await pumpEventQueue();
     expect(
       [for (final slot in slots) reads[slot]],
-      [2, 3, 3, 2, 2, 1, 1],
-      reason: 'each tried alone; the first two made, the second read; the '
-          "third's makeup held, its picture read over the second; the "
-          'fourth and the fifth made ahead — two turns past the third — '
-          'and no more',
+      [2, 2, 2, 2, 2, 1, 1],
+      reason: 'each tried alone; the first two made; the third held as it '
+          'is made; the fourth and the fifth made ahead — two turns past '
+          'the third — and no more',
     );
 
     held.complete();
     await landing;
-    expect([for (final slot in slots) reads[slot]], [2, 3, 3, 3, 3, 3, 2]);
+    expect(
+      [for (final slot in slots) reads[slot]],
+      [2, 2, 2, 2, 2, 2, 2],
+      reason: 'each tried alone and made once — a picture is drawn from '
+          'what it is made of, its record not read again',
+    );
   });
 }

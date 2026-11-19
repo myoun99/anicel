@@ -77,7 +77,7 @@ class TvppSlot {
   /// The picture before this slot in its stream — the last image slot
   /// before it, null for the stream's first. A tile of this slot's picture
   /// may show that one's (card F-621 ②), so it reads after it
-  /// (`TvppPicturesInOrder`).
+  /// (`TvppMakeup`).
   final TvppSlot? before;
 
   /// Offset of the image chunk's PAYLOAD (past FourCC + length) in the

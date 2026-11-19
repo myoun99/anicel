@@ -274,7 +274,7 @@ void main() {
     test('a hold slot hands on no row', () {
       final file = fileWith(holdRecord(), raw: true);
       final handed = <int>[];
-      TvppPicturesInOrder().read(
+      readTvppPicture(
         recordBytes: file,
         slot: slotFor(file, compressed: false),
         size: const CanvasSize(width: w, height: h),
@@ -322,7 +322,7 @@ void main() {
       ]) {
         final file = fileWith(record);
         final handed = <int>[];
-        TvppPicturesInOrder().read(
+        readTvppPicture(
           recordBytes: file,
           slot: slotFor(file, compressed: true),
           size: const CanvasSize(width: w, height: h),
@@ -465,7 +465,7 @@ void main() {
       /// Each row handed on, its y first.
       List<List<int>> rowsOf(Uint8List bytes, TvppSlot slot) {
         final rows = <List<int>>[];
-        TvppPicturesInOrder().read(
+        readTvppPicture(
           recordBytes: bytes,
           slot: slot,
           size: const CanvasSize(width: w, height: h),
@@ -553,13 +553,10 @@ void main() {
       );
     }
 
-    Uint8List read(
-      TvppPicturesInOrder pictures,
-      Uint8List file,
-      TvppSlot slot,
-    ) {
+    /// [slot]'s picture read on its own ([readTvppPicture]).
+    Uint8List alone(Uint8List file, TvppSlot slot) {
       final rgba = Uint8List(w * h * 4);
-      pictures.read(
+      readTvppPicture(
         recordBytes: file,
         slot: slot,
         size: const CanvasSize(width: w, height: h),
@@ -568,13 +565,43 @@ void main() {
       return rgba;
     }
 
+    /// The picture [sources] make ([TvppTileSources.read]).
+    Uint8List drawn(TvppTileSources? sources) {
+      final rgba = Uint8List(w * h * 4);
+      sources!.read(
+        size: const CanvasSize(width: w, height: h),
+        row: (y, row) => rgba.setRange(y * w * 4, (y + 1) * w * 4, row),
+      );
+      return rgba;
+    }
+
+    TvppMakeup makeupOf(Uint8List file, TvppSlot slot) => TvppMakeup.of(
+      recordBytes: file,
+      slot: slot,
+      size: const CanvasSize(width: w, height: h),
+    );
+
+    /// [slots]' pictures as the bake reads a stream's: each made on its
+    /// own, laid over the one before, and drawn from what it is then made
+    /// of.
+    List<Uint8List> inOrder(Uint8List file, List<TvppSlot> slots) {
+      final pictures = <Uint8List>[];
+      TvppTileSources? before;
+      for (final slot in slots) {
+        before = makeupOf(file, slot).over(before);
+        pictures.add(drawn(before));
+      }
+      return pictures;
+    }
+
     test('read after the picture before, a tile shows its tile — as much of '
         'it as the two cover', () {
       final (:file, :slots) = layerOf(records);
-      final pictures = TvppPicturesInOrder();
-      expect(read(pictures, file, slots[0]), expectedRgba(first));
-      expect(read(pictures, file, slots[1]), expectedRgba(second));
-      expect(read(pictures, file, slots[2]), expectedRgba(third));
+      expect(inOrder(file, slots), [
+        expectedRgba(first),
+        expectedRgba(second),
+        expectedRgba(third),
+      ]);
     });
 
     test('🚨read on its own, it says that it needs the picture before', () {
@@ -589,23 +616,6 @@ void main() {
         throwsA(isA<TvppNeedsThePictureBefore>()),
       );
     });
-
-    test('🚨a reader that goes on from what another read reads the same — '
-        'through a tile the picture before showed of the one before it', () {
-      final (:file, :slots) = layerOf(records);
-      final reading = TvppPicturesInOrder();
-      read(reading, file, slots[0]);
-      final second0 = TvppPicturesInOrder(before: reading.last);
-      expect(read(second0, file, slots[1]), expectedRgba(second));
-      final third0 = TvppPicturesInOrder(before: second0.last);
-      expect(read(third0, file, slots[2]), expectedRgba(third));
-    });
-
-    TvppMakeup makeupOf(Uint8List file, TvppSlot slot) => TvppMakeup.of(
-      recordBytes: file,
-      slot: slot,
-      size: const CanvasSize(width: w, height: h),
-    );
 
     /// 🔬Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
     /// (2026-11-20): made on the workers and laid here, 498 cels of the
@@ -624,7 +634,7 @@ void main() {
         ),
       );
       expect(
-        read(TvppPicturesInOrder(before: made.over(first)), file, slots[2]),
+        drawn(makeupOf(file, slots[2]).over(made.over(first))),
         expectedRgba(third),
       );
     });
@@ -633,15 +643,15 @@ void main() {
     /// (2026-11-20): what a picture is made of is worked out on its own,
     /// beside the others, and only laid over the picture before in order.
     test('🚨made on its own and laid over the picture before, a picture is '
-        'the same picture before as read — through a tile it showed of the '
-        'one before it, and from a whole canvas', () {
+        'the picture before the next one shows — through a tile it showed '
+        'of the one before it, and from a whole canvas', () {
       final (:file, :slots) = layerOf(records);
       final second = makeupOf(
         file,
         slots[1],
       ).over(makeupOf(file, slots[0]).over(null));
       expect(
-        read(TvppPicturesInOrder(before: second), file, slots[2]),
+        drawn(makeupOf(file, slots[2]).over(second)),
         expectedRgba(third),
       );
 
@@ -656,11 +666,7 @@ void main() {
       ]);
       final fromTheCanvas = makeupOf(whole.file, whole.slots[0]).over(null);
       expect(
-        read(
-          TvppPicturesInOrder(before: fromTheCanvas),
-          whole.file,
-          whole.slots[1],
-        ),
+        drawn(makeupOf(whole.file, whole.slots[1]).over(fromTheCanvas)),
         expectedRgba(first),
       );
     });
@@ -684,19 +690,9 @@ void main() {
         srawRecord(second, w, h, fromTheLast: {1: 4}, copies: {2: 1}),
         srawRecord(third, w, h, fromTheLast: {1: 2}),
       ]);
-      final reading = TvppPicturesInOrder();
-      read(reading, file, slots[0]);
-      expect(read(reading, file, slots[1]), expectedRgba(second));
-      expect(read(reading, file, slots[2]), expectedRgba(third));
-
-      final made = makeupOf(
-        file,
-        slots[1],
-      ).over(makeupOf(file, slots[0]).over(null));
-      expect(
-        read(TvppPicturesInOrder(before: made), file, slots[2]),
-        expectedRgba(third),
-      );
+      final read = inOrder(file, slots);
+      expect(read[1], expectedRgba(second));
+      expect(read[2], expectedRgba(third));
     });
 
     test('🚨a tall tile of the picture before shown on a short one is no '
@@ -712,19 +708,9 @@ void main() {
         srawRecord(second, w, h, fromTheLast: {4: 1}),
         srawRecord(third, w, h, fromTheLast: {1: 4}),
       ]);
-      final reading = TvppPicturesInOrder();
-      read(reading, file, slots[0]);
-      expect(read(reading, file, slots[1]), expectedRgba(second));
-      expect(read(reading, file, slots[2]), expectedRgba(third));
-
-      final made = makeupOf(
-        file,
-        slots[1],
-      ).over(makeupOf(file, slots[0]).over(null));
-      expect(
-        read(TvppPicturesInOrder(before: made), file, slots[2]),
-        expectedRgba(third),
-      );
+      final read = inOrder(file, slots);
+      expect(read[1], expectedRgba(second));
+      expect(read[2], expectedRgba(third));
     });
 
     test('a hold is made of the picture before — and of none, where there '
@@ -750,9 +736,9 @@ void main() {
         'refuses: a tile not the size it says, a whole canvas that ends '
         'before its rows do', () {
       final (:file, :slots) = layerOf(records);
-      final alone = makeupOf(file, slots[1]);
+      final made = makeupOf(file, slots[1]);
       expect(
-        () => alone.over(null),
+        () => made.over(null),
         throwsA(isA<TvppNeedsThePictureBefore>()),
       );
       final whole = dbodRecord(first, w, h);
@@ -760,7 +746,7 @@ void main() {
         Uint8List.sublistView(whole, 0, whole.length - 8),
       ]);
       expect(
-        () => read(TvppPicturesInOrder(), short.file, short.slots.single),
+        () => alone(short.file, short.slots.single),
         throwsA(isA<TvppRasterDecodeException>()),
         reason: 'the read refuses it',
       );
@@ -794,9 +780,7 @@ void main() {
         records[0],
         srawRecord(shorter, w, h, fromTheLast: {1: 4}),
       ]);
-      final pictures = TvppPicturesInOrder();
-      read(pictures, file, slots[0]);
-      expect(read(pictures, file, slots[1]), expectedRgba(shorter));
+      expect(inOrder(file, slots)[1], expectedRgba(shorter));
 
       final under = List<int>.filled(w * h, 0);
       fill(under, 1, 0);
@@ -805,9 +789,7 @@ void main() {
         records[0],
         srawRecord(under, w, h, fromTheLast: {1: 1, 2: 4}),
       ]);
-      final reading = TvppPicturesInOrder();
-      read(reading, again.file, again.slots[0]);
-      expect(read(reading, again.file, again.slots[1]), expectedRgba(under));
+      expect(inOrder(again.file, again.slots)[1], expectedRgba(under));
     });
 
     test('🚨a whole-canvas picture is a picture before too — its tiles '
@@ -824,10 +806,7 @@ void main() {
           fromTheLast: {1: 1, 2: 2, 4: 4},
         ),
       ]);
-      final reading = TvppPicturesInOrder();
-      expect(read(reading, file, slots[0]), expectedRgba(first));
-      final after = TvppPicturesInOrder(before: reading.last);
-      expect(read(after, file, slots[1]), expectedRgba(first));
+      expect(inOrder(file, slots), [expectedRgba(first), expectedRgba(first)]);
     });
 
     test('a blank picture before shows nothing on a tile that points at it',
@@ -836,9 +815,7 @@ void main() {
         blankInstanceRecord(),
         srawRecord(picture({4: 3}), w, h, fromTheLast: {1: 1}),
       ]);
-      final pictures = TvppPicturesInOrder();
-      read(pictures, file, slots[0]);
-      expect(read(pictures, file, slots[1]), expectedRgba(picture({4: 3})));
+      expect(inOrder(file, slots)[1], expectedRgba(picture({4: 3})));
     });
 
     test('a slot names the picture before it in its stream — a hold none of '

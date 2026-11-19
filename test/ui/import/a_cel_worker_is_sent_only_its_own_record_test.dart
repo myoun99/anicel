@@ -213,16 +213,16 @@ void main() {
       stopped: () => false,
     );
 
+    const size = CanvasSize(width: w, height: h);
+    TvppMakeup makeupOf(TvppSlot slot) =>
+        TvppMakeup.of(recordBytes: file, slot: slot, size: size);
     final expected = Uint8List(w * h * 4);
-    final pictures = TvppPicturesInOrder();
-    for (final slot in parsed) {
-      pictures.read(
-        recordBytes: file,
-        slot: slot,
-        size: const CanvasSize(width: w, height: h),
-        row: (y, row) => expected.setRange(y * w * 4, (y + 1) * w * 4, row),
-      );
-    }
+    makeupOf(parsed[1])
+        .over(makeupOf(parsed[0]).over(null))!
+        .read(
+          size: size,
+          row: (y, row) => expected.setRange(y * w * 4, (y + 1) * w * 4, row),
+        );
     expect(decoded[1], isA<AnicelLaidCel>(), reason: 'the second decodes');
     final cel = laidCelSurface(decoded[1]! as AnicelLaidCel);
     var differ = 0;

@@ -25,13 +25,13 @@ import 'tile_cutter.dart' show RowSink, TileCutter;
 ///    encodings exist, selected by X:
 ///      X > 0: tile 0 is X bytes of bare rows; after that each tile is a
 ///        12-byte copy marker — `(0, 0, srcTile)` of this picture,
-///        `(0, 1, srcTile)` of the picture before ([TvppPicturesInOrder])
-///        — or `u32 size` + rows.
+///        `(0, 1, srcTile)` of the picture before ([TvppMakeup]) — or
+///        `u32 size` + rows.
 ///      X == 0: every tile is a 12-byte record `(a, anchor, c)`; `c == 0`
 ///        is empty, `c > 0` starts a chain — the c bytes belong to the
 ///        NEXT tile, then `u32 size` continues tile-by-tile until a zero.
 ///  * v11 and later wrap records in a zlib chain (64KB blocks); v10 stores them
-///    raw. [TvppPicturesInOrder] reads both, by [TvppSlot.compressed].
+///    raw. [readTvppPicture] reads both, by [TvppSlot.compressed].
 class TvppRasterDecodeException implements Exception {
   const TvppRasterDecodeException(this.message);
 
@@ -42,16 +42,67 @@ class TvppRasterDecodeException implements Exception {
 }
 
 /// A tile shows the picture before's (`(0, 1, s)`), and the picture was
-/// read by a reader that read no picture before it: it reads only after the
-/// one before it ([TvppPicturesInOrder]).
+/// read on its own: it is made, and laid over the one before, in order
+/// ([TvppMakeup]).
 class TvppNeedsThePictureBefore extends TvppRasterDecodeException {
   const TvppNeedsThePictureBefore()
     : super('A tile shows the picture before, which was not read.');
 }
 
-/// A layer's pictures read in the order its file holds them, each over the
-/// one before: a tile of a picture may be `(0, 1, s)` — 「the picture
-/// before's tile s」 — and only a reader that read that picture can show it.
+/// [slot]'s picture read on its own, as rows of straight RGBA handed to
+/// [row] from the top — the rows a [TileCutter] cuts, as every picture a
+/// file holds is cut. A row with no ink is not handed on, which a cut reads
+/// as clear; a hold slot hands on none. A row's bytes are the next one's
+/// once [row] returns.
+///
+/// A picture with a tile that shows the picture before's throws
+/// [TvppNeedsThePictureBefore]: it is made on its own and laid over the
+/// one before ([TvppMakeup]), and drawn from what it is then made of
+/// ([TvppTileSources.read]).
+///
+/// [recordBytes] need hold no more than the slot's own record: a window of
+/// it, sent to a worker, is the same input by a different name.
+///
+/// 🚨NEVER THE WHOLE CANVAS AT ONCE (card F-608 ③). ↩️Till 2026-11-16 a
+/// cel was decoded whole — its words, then its straight bytes: two
+/// canvases, 136 MB each at the user's 7751 × 4396 — and sliced into
+/// tiles by a cut of its own beside the [TileCutter]. Eight workers held
+/// over 2 GB at once, and the open showed no percent till all eight were
+/// done. A tiled record is read a band of its 64-pixel tiles at a time
+/// now, a whole-canvas one a row at a time.
+void readTvppPicture({
+  required Uint8List recordBytes,
+  required TvppSlot slot,
+  required CanvasSize size,
+  required RowSink row,
+}) {
+  if (slot.kind == TvppSlotKind.hold) {
+    return;
+  }
+  _recordRows(
+    _recordOf(recordBytes, slot),
+    size,
+    null,
+    _straightInto(row, size.width),
+  );
+}
+
+/// [row] handed each row of words as straight RGBA, [width] pixels of it —
+/// but a row with no ink, which a cut reads as clear ([_straightRow]).
+_WordRows _straightInto(RowSink row, int width) {
+  final rgba = Uint8List(width * 4);
+  return (y, words, from) {
+    if (_straightRow(words, from, rgba)) {
+      row(y, rgba);
+    }
+  };
+}
+
+/// What a picture is made of on its own ([TvppMakeup.of]) — the tiles it
+/// shows of the picture before only pointed at — and then over the picture
+/// before ([over]): a layer's pictures in the order its file holds them,
+/// each over the one before, for a tile of a picture may be `(0, 1, s)` —
+/// 「the picture before's tile s」.
 ///
 /// 🗣️F-621 ② (유저 2026-11-19, the user's file): two layers wrote each
 /// picture as the tiles it changed and pointed the rest at the picture
@@ -62,81 +113,23 @@ class TvppNeedsThePictureBefore extends TvppRasterDecodeException {
 /// records of that file). ↩️The decoder knew `(0, 0, s)` alone from its
 /// first version (96d111583) and read the third shape's words as a size.
 ///
-/// 🚨WHAT A PICTURE IS MADE OF, NEVER ITS PIXELS ([TvppTileSources]): the
-/// bytes its tiles are read from, at most a record's worth, where its
-/// pixels would be a canvas (F-608 ③).
-class TvppPicturesInOrder {
-  /// A reader that goes on from a picture another one read — [before], what
-  /// that picture is made of ([last]) — or that starts a layer.
-  TvppPicturesInOrder({TvppTileSources? before}) : _last = (() => before);
-
-  TvppTileSources? Function() _last;
-
-  /// What the picture read last is made of — the picture before the next
-  /// one, for a reader that goes on from it — worked out as it is asked.
-  /// Null where nothing was read.
-  TvppTileSources? get last => _last();
-
-  /// [slot]'s picture, over the one read before it, as rows of straight
-  /// RGBA handed to [row] from the top — the rows a [TileCutter] cuts, as
-  /// every picture a file holds is cut. A row with no ink is not handed on,
-  /// which a cut reads as clear; a hold slot hands on none, and the picture
-  /// before stays the one before. A row's bytes are the next one's once
-  /// [row] returns.
-  ///
-  /// Read by a reader that read no picture before it, a picture with a tile
-  /// that shows the picture before's throws [TvppNeedsThePictureBefore].
-  ///
-  /// [recordBytes] need hold no more than the slot's own record: a window of
-  /// it, sent to a worker, is the same input by a different name.
-  ///
-  /// 🚨NEVER THE WHOLE CANVAS AT ONCE (card F-608 ③). ↩️Till 2026-11-16 a
-  /// cel was decoded whole — its words, then its straight bytes: two
-  /// canvases, 136 MB each at the user's 7751 × 4396 — and sliced into
-  /// tiles by a cut of its own beside the [TileCutter]. Eight workers held
-  /// over 2 GB at once, and the open showed no percent till all eight were
-  /// done. A tiled record is read a band of its 64-pixel tiles at a time
-  /// now, a whole-canvas one a row at a time.
-  void read({
-    required Uint8List recordBytes,
-    required TvppSlot slot,
-    required CanvasSize size,
-    required RowSink row,
-  }) {
-    if (slot.kind == TvppSlotKind.hold) {
-      return;
-    }
-    final rgba = Uint8List(size.width * 4);
-    _last = _recordRows(_recordOf(recordBytes, slot), size, last, (
-      y,
-      words,
-      from,
-    ) {
-      if (_straightRow(words, from, rgba)) {
-        row(y, rgba);
-      }
-    });
-  }
-}
-
-/// What a picture is made of on its own ([TvppMakeup.of]) — the tiles it
-/// shows of the picture before only pointed at — and then over the picture
-/// before ([over]): the step a layer's pictures take in order, cut in two.
-///
 /// ⚡ONLY [over] IS IN ORDER (bake card
 /// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-20, the
-/// user's file on the Surface, in a measurement window): walked over the
-/// picture before, a step of the longest run was 63–69 ms — the record
-/// inflated and counted on a worker, 46–50 of them beside seven workers
-/// decoding, 12 waiting for the window — and its 243 pictures were 15–17 s
-/// of the bake's 28–31 s. Nothing of [of] asks the picture before, so the
-/// pictures after go through it beside it; [over] goes over the tile table
-/// and copies out what the picture shows.
+/// user's file on the Surface, in measurement windows). ↩️Till then a
+/// reader read each picture over the one it read before, its pixels and
+/// all: a step of the longest run was 63–69 ms — the record inflated on a
+/// worker, 46–50 of them beside seven workers decoding, 12 waiting for the
+/// window — and its 243 pictures were 15–17 s of the bake's 28–31 s.
+/// Nothing of [of] asks the picture before, so the pictures after go
+/// through it beside it; [over] goes over the tile table and copies out
+/// what the picture shows, and the picture is drawn from that, beside the
+/// others ([TvppTileSources.read]): the bake 25.3 / 30.6 s against 34.5 /
+/// 41.0, and with three workers 34.3 / 35.5 against 37.7 / 35.7.
 final class TvppMakeup {
   TvppMakeup._(this._alone);
 
-  /// [slot]'s picture gone over as [TvppPicturesInOrder.read] goes over it
-  /// — refused where it would be refused, but for the picture before it
+  /// [slot]'s picture gone over as [readTvppPicture] goes over it —
+  /// refused where it would be refused, but for the picture before it
   /// needs — with no row of it made and no picture before asked for. A
   /// run's PackBits are counted, not written ([_PackBits.take] with no
   /// words).
@@ -163,10 +156,10 @@ final class TvppMakeup {
   final TvppTileSources? _alone;
 
   /// What the picture is made of over [before], what the picture before
-  /// it is made of — [before] itself for a hold — as
-  /// [TvppPicturesInOrder.last] would answer it after reading the picture
-  /// over [before]. Where a tile points at the picture before and there is
-  /// none, it throws [TvppNeedsThePictureBefore].
+  /// it is made of — [before] itself for a hold: every tile that points at
+  /// the picture before shows that picture's tile, as much of it as both
+  /// cover. Where a tile points at the picture before and there is none, it
+  /// throws [TvppNeedsThePictureBefore].
   TvppTileSources? over(TvppTileSources? before) {
     final alone = _alone;
     if (alone == null) {
@@ -195,10 +188,15 @@ final class TvppMakeup {
 /// What a picture is made of, tile by tile: the PackBits rows each of the
 /// 64-pixel tiles of its grid is read from — its own, another tile's of
 /// it, or a tile's of the picture before — and how much of them the tile
-/// shows. The picture before for the one after it ([TvppPicturesInOrder]).
+/// shows. The picture before for the one after it ([TvppMakeup.over]), and
+/// what the picture is drawn from ([read]).
 ///
 /// Every root's rows once, copied out of the records they lie in: a
 /// picture's sources hold no record, and none of the pictures before it.
+///
+/// 🚨WHAT A PICTURE IS MADE OF, NEVER ITS PIXELS: the bytes its tiles are
+/// read from, at most a record's worth, where its pixels would be a canvas
+/// (F-608 ③).
 class TvppTileSources {
   TvppTileSources._(this._roots, this._kept);
 
@@ -212,6 +210,30 @@ class TvppTileSources {
 
   /// How much of its root tile [tile] shows.
   _Kept _keptAt(int tile) => _kept[tile];
+
+  /// The picture this is made of, [size] large, as rows of straight RGBA
+  /// handed to [row] from the top — the rows [readTvppPicture] hands on
+  /// for a picture it reads: each tile its root's rows, as much of them as
+  /// it shows, and a row with no ink not handed on. A row's bytes are the
+  /// next one's once [row] returns.
+  ///
+  /// 🔬Drawn so, every picture of the user's file is the picture read
+  /// through the record over the one before — 1,629, 1,436 of them over
+  /// one, no row different (bake card
+  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-20).
+  void read({required CanvasSize size, required RowSink row}) {
+    final grid = _TileGrid(
+      Uint8List(0),
+      width: size.width,
+      height: size.height,
+      rowsOut: _straightInto(row, size.width),
+      before: null,
+    );
+    for (var t = 0; t < grid.total; t += 1) {
+      grid._show(t, _rootAt(t), _keptAt(t));
+    }
+    grid.handOn();
+  }
 
   /// Tile [tile] shown on a tile that keeps no more of it than [room]:
   /// its root, and as much of it as both cover.
@@ -294,7 +316,7 @@ TvppTileSources _compacted(List<_Root?> roots, List<_Kept> kept) {
 }
 
 /// What a picture read is made of ([TvppTileSources]) — worked out only
-/// where the picture after it asks ([TvppPicturesInOrder.last]).
+/// where it is asked for ([TvppMakeup.of]).
 typedef _MadeOf = TvppTileSources Function();
 
 /// Where a tile's rows are read from: [bytes] from [start], [length] of
@@ -819,7 +841,8 @@ class _TileGrid {
   final int rows;
   final _PackBits pb;
 
-  /// What the picture before is made of — null where it was not read.
+  /// What the picture before is made of — pointed at, not yet known, for a
+  /// picture made on its own ([_PointedAt]); none for one read on its own.
   final TvppTileSources? before;
 
   /// The grid's row of tiles under way: its [tile] rows of pixels, [width]
