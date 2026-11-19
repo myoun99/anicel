@@ -937,6 +937,9 @@ Future<int> _runTests(
   // CI shard takes none ([lineFor], [outsideTheLine]).
   final known = timesOnThisMachine();
   var launched = 0;
+  final times = RunTimes();
+  final started = DateTime.now();
+  var asked = started;
   Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands
     // [record] each batch's number, report and result.
@@ -948,10 +951,14 @@ Future<int> _runTests(
       known: known,
       inTheLine: inTheLine,
       read: (path) => File(path).readAsStringSync(),
-      take: (left) =>
-          turn.take(files: filesNamed(left), work: workOf(left, known)),
+      take: (left) {
+        asked = DateTime.now();
+        return turn.take(files: filesNamed(left), work: workOf(left, known));
+      },
       run: (batch, suites, {required kind}) async {
         final i = launched++;
+        final began = DateTime.now();
+        final inLine = began.difference(asked);
         _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
             'suite(s)${switch (kind) {
               BatchKind.crowd => '',
@@ -959,10 +966,11 @@ Future<int> _runTests(
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
               BatchKind.impeller => ' — on Impeller',
               BatchKind.realtime => ' — a real-time pin, alone',
-            }}');
+            }} — at ${clockAt(began)}, ${spanOf(inLine)} in line');
         final report = File('${reports.path}/batch$i.json');
+        _BatchResult? ran;
         try {
-          final result = await _flutterTest(
+          final result = ran = await _flutterTest(
             batch,
             concurrency: suites,
             report: report.path,
@@ -982,6 +990,14 @@ Future<int> _runTests(
           }
         } finally {
           turn.putDown();
+          final wall = DateTime.now().difference(began);
+          final own = ran?.ownClock;
+          times.add(inLine: inLine, wall: wall, own: own);
+          _report('batch ${i + 1} ran ${spanOf(wall)} — '
+              '${own == null ? 'no clock of its tests heard' : 'its tests\' '
+                    'own clock ${spanOf(own)}'}'
+              '${ran == null ? '' : ' · '
+                    '${cpuSaid(ran.spent, wall, Platform.numberOfProcessors)}'}');
         }
       },
     );
@@ -1055,6 +1071,7 @@ Future<int> _runTests(
       asked: concurrency,
     );
   }
+  _report(times.summary(DateTime.now().difference(started)));
   try {
     reports.deleteSync(recursive: true);
   } on FileSystemException {
@@ -1285,15 +1302,104 @@ void _reportSkips(int skipped) {
   _report('  is a pin that is not running.');
 }
 
+/// ⏱️EACH BATCH SAYS WHEN IT RAN AND WHERE ITS TIME WENT (관제 2026-11-20,
+/// the-wide-check-takes-five-hours: 「추측 말고 로그의 시각으로」). The
+/// wide check's log carried each batch's own clock and nothing more, so its
+/// five hours could be parted only against the line's record, which names
+/// no run. Each batch now says when it started and how long it stood in
+/// the line for its suites; as it ends, its wall time beside its tests' own
+/// clock ([ownClockIn]) — the gap between the two is the process starting
+/// and compiling before its clock runs; and the run ends with the sums.
+class RunTimes {
+  var _batches = 0;
+  var _inLine = Duration.zero;
+  var _wall = Duration.zero;
+  var _own = Duration.zero;
+
+  void add({
+    required Duration inLine,
+    required Duration wall,
+    required Duration? own,
+  }) {
+    _batches++;
+    _inLine += inLine;
+    _wall += wall;
+    _own += own ?? Duration.zero;
+  }
+
+  /// The line the run ends with, for a run of [total] from first to last.
+  String summary(Duration total) =>
+      'time: ${spanOf(total)} — $_batches batch(es) ran ${spanOf(_wall)} '
+      '(their tests\' own clocks ${spanOf(_own)}, outside them '
+      '${spanOf(_wall - _own)}), ${spanOf(_inLine)} in line between them';
+}
+
+/// [at] as the hour, minute and second of the day.
+String clockAt(DateTime at) => [
+  at.hour,
+  at.minute,
+  at.second,
+].map((n) => n.toString().padLeft(2, '0')).join(':');
+
+/// [span] as `m:ss`, or `h:mm:ss` from an hour.
+String spanOf(Duration span) {
+  final seconds = span.inSeconds;
+  final s = (seconds % 60).toString().padLeft(2, '0');
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes:$s';
+  return '${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}:$s';
+}
+
+/// The latest time the test runner's own clock shows in [text] — the
+/// `mm:ss` its every line begins with, before the counter `+N ~N -N:`
+/// ([flutterTestArguments]) — or null when no line in it shows one. A
+/// chunk may end inside a line; the piece left reads as an earlier time,
+/// never a later one, and the batch keeps the latest.
+Duration? ownClockIn(String text) {
+  Duration? latest;
+  for (final match in _ownClock.allMatches(text)) {
+    final at = Duration(
+      minutes: int.parse(match.group(1)!),
+      seconds: int.parse(match.group(2)!),
+    );
+    if (latest == null || at > latest) latest = at;
+  }
+  return latest;
+}
+
+final _ownClock = RegExp(r'^(\d+):(\d\d) [+~-]\d', multiLine: true);
+
+/// What a batch of [wall] spent of the CPU, beside what the rest of the
+/// machine of [processors] spent then ([CpuWatch]) — the five that spent
+/// most by name.
+String cpuSaid(CpuSpent spent, Duration wall, int processors) {
+  final others = spent.others.fold(Duration.zero, (sum, o) => sum + o.$2);
+  final named = [
+    for (final (name, used) in spent.others.take(5)) '$name ${spanOf(used)}',
+  ];
+  return 'CPU of the machine\'s ${spanOf(wall * processors)}: its own '
+      '${spanOf(spent.ours)}, beside it ${spanOf(others)}'
+      '${named.isEmpty ? '' : ' (${named.join(' · ')})'}';
+}
+
 class _BatchResult {
   const _BatchResult(
     this.exitCode,
     this.ranTests,
     this.skipped, {
     required this.noContext,
+    required this.ownClock,
+    required this.spent,
   });
   final int exitCode;
   final bool ranTests;
+
+  /// The latest the runner's own clock showed ([ownClockIn]).
+  final Duration? ownClock;
+
+  /// The CPU the batch and the rest of the machine spent as it ran
+  /// ([CpuWatch]).
+  final CpuSpent spent;
 
   /// How many tests the run SKIPPED. See [lastSkipCount].
   final int skipped;
@@ -1499,6 +1605,7 @@ Future<_BatchResult> _flutterTestIn(
   );
   var ranTests = false;
   var skipped = 0;
+  Duration? ownClock;
   final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
   var silent = false;
@@ -1508,6 +1615,7 @@ Future<_BatchResult> _flutterTestIn(
     cutTree(process.pid);
   });
   final memory = MemoryWatch(process.pid);
+  final cpu = CpuWatch(process.pid);
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -1519,6 +1627,10 @@ Future<_BatchResult> _flutterTestIn(
       context.heard(text);
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
+      final clock = ownClockIn(text);
+      if (clock != null && (ownClock == null || clock > ownClock!)) {
+        ownClock = clock;
+      }
       silence.heard(text, DateTime.now());
       return chunk;
     }).forEach(stdout.add),
@@ -1527,6 +1639,7 @@ Future<_BatchResult> _flutterTestIn(
   final code = await process.exitCode;
   look.cancel();
   memory.stop();
+  final spent = cpu.stop();
   await Future.wait(pumped);
   final cut = silent
       ? 'no test finished for ${kSilentBatch.inMinutes} min'
@@ -1546,5 +1659,7 @@ Future<_BatchResult> _flutterTestIn(
     ranTests,
     skipped,
     noContext: context.said,
+    ownClock: ownClock,
+    spent: spent,
   );
 }
