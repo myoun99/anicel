@@ -341,7 +341,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
-    this.viewCommands,
     this.selectionCommands,
     this.textCommands,
     this.textToolOptions,
@@ -987,10 +986,6 @@ class BrushCanvasPanel extends StatefulWidget {
   /// which is what focused tests want.
   final ValueNotifier<TransformToolOptions>? transformOptions;
 
-  /// The app-level rotate/flip shortcut channel (P8); the panel binds its
-  /// viewport-center handlers while mounted.
-  final CanvasViewCommands? viewCommands;
-
   /// The app-level selection channel (P9: Ctrl+D, arrow nudges), bound by
   /// the selection layer while a selection tool is active.
   final CanvasSelectionCommands? selectionCommands;
@@ -1314,6 +1309,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// behind the gear (유저 확정 2026-08-13: 「바닥 둘만」).
   bool get _onFloor => _floor != null;
 
+  /// What the view keys drive, as the floor hands it ([CanvasFloorInsets
+  /// .viewCommands]) — this panel's presses bound while it lies there
+  /// (F-623), none anywhere else.
+  CanvasViewCommands? _viewCommands;
+
   /// The edges of this panel's box that other panels are lying on — of the
   /// split [canvasVisibleRect] describes, what is not part of the window the
   /// artist looks through.
@@ -1543,7 +1543,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void initState() {
     super.initState();
     _saveKeeper?.up(_landWorkInFlight);
-    _viewportState.bindViewCommands();
     _hearTheHand();
     _stampPreview.addListener(_showStampGhost);
     // The softness is read where it is used, so nothing rebuilds this panel
@@ -1640,6 +1639,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _floor = CanvasFloorInsets.maybeOf(context);
+    final viewCommands = _floor?.viewCommands;
+    if (!identical(viewCommands, _viewCommands)) {
+      _viewCommands?.unbind(this);
+      _viewCommands = viewCommands?..bind(this, _viewportState.viewPresses);
+    }
     _lane = _onFloor
         ? AppScrollbarLane.thick
         : AppScrollbarLaneScope.of(context);
@@ -1766,7 +1770,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _penPose.dispose();
     _stampPreview.dispose();
     _controlHolds.dispose();
-    widget.viewCommands?.unbind(this);
+    _viewCommands?.unbind(this);
     super.dispose();
   }
 
@@ -1985,10 +1989,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         oldWidget.backdropNone != widget.backdropNone ||
         oldWidget.pasteboardNone != widget.pasteboardNone) {
       _shellBars.readStageColors();
-    }
-    if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
-      oldWidget.viewCommands?.unbind(this);
-      _viewportState.bindViewCommands();
     }
     // A host can hand over a DIFFERENT view to own — a document tab
     // swapping slots. Follow the new object, and stop hearing the old one.
@@ -4623,10 +4623,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// floor's does, wherever the panel stands.
   final bool oneToOneOnPill;
 
-  /// Whether the view KEYS drive this canvas — its panel holds the
-  /// [BrushCanvasPanel.viewCommands] the key funnel calls (I-40). Only then
-  /// do its view buttons name their keys: on any other canvas the same key
-  /// moves the editor's canvas, not this one ([_viewKeys]).
+  /// Whether the view KEYS drive this canvas — its panel lies on the floor
+  /// and holds the [CanvasViewCommands] the key funnel calls (I-40 ·
+  /// F-623). Only then do its view buttons name their keys: on any other
+  /// canvas the same key moves what lies on the floor, not this one
+  /// ([_viewKeys]).
   final bool drivenByViewKeys;
 
   /// R26 #41: host controls at the head of the pill.

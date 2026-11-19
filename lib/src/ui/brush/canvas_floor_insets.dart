@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/pasteboard_bounds.dart';
+import 'canvas_view_commands.dart';
 
 /// One rail column's vertical extent, in the floor's own coordinates.
 typedef CanvasFloorBand = ({double top, double bottom});
@@ -63,6 +64,7 @@ class CanvasFloorInsets extends InheritedWidget {
     this.bottomOverlaySpan = 0,
     this.leftPill,
     this.leftPillBeside,
+    this.viewCommands,
     required super.child,
   });
 
@@ -145,6 +147,18 @@ class CanvasFloorInsets extends InheritedWidget {
   /// its own then (`BrushCanvasPanel`).
   final ValueNotifier<bool>? leftPillBeside;
 
+  /// What the view keys drive — handed to whichever panel lies on this
+  /// floor, which binds its presses (`CanvasViewCommands`): the canvas, the
+  /// main viewer, a sheet laid there from the top strip; the same panel
+  /// docked in a rail is not under this widget and takes none.
+  ///
+  /// 🗣️F-623 (유저 2026-11-19): 「바닥에 깔린 패널에 단축키 적용되도록 …
+  /// 바닥에 깔린 타임시트패널이나 콘티패널같은데서 적용되도록」 — said once
+  /// here, as [leftPill] is, so a panel laid on the floor needs no wiring.
+  /// ↩️The editor's canvas was handed it down its constructors, wherever it
+  /// stood, and nothing else on the floor had it.
+  final CanvasViewCommands? viewCommands;
+
   /// The cover for the floor [context] sits on, or null when it is not the
   /// floor at all.
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
@@ -157,7 +171,8 @@ class CanvasFloorInsets extends InheritedWidget {
       oldWidget.rightRailBand != rightRailBand ||
       oldWidget.bottomOverlaySpan != bottomOverlaySpan ||
       oldWidget.leftPill != leftPill ||
-      oldWidget.leftPillBeside != leftPillBeside;
+      oldWidget.leftPillBeside != leftPillBeside ||
+      !identical(oldWidget.viewCommands, viewCommands);
 }
 
 /// The stage's outer two surfaces, published ONCE by the shell for the

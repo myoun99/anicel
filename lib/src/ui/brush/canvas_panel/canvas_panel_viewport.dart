@@ -208,16 +208,24 @@ class _CanvasPanelViewport {
 
   Size? _editorViewportSize;
 
-  void bindViewCommands() {
-    _state.widget.viewCommands?.bind(
-      _state,
-      rotateStep: _rotateStep,
-      toggleFlipHorizontal: _toggleFlipHorizontal,
-      toggleFlipVertical: _toggleFlipVertical,
-      resetRotation: _resetRotation,
-      zoomStep: _zoomStep,
-      fit: _fitToView,
-      resetView: _resetView,
+  /// What this panel's bar offers of the view verbs, as the view keys press
+  /// them ([CanvasViewCommands]) and the bar's buttons are made of
+  /// (`_bottomBar`): the turns where this host turns the view at all
+  /// ([BrushCanvasPanel.allowViewRotation] — a sheet and the viewer never
+  /// do), the zoom verbs where there is a view to operate
+  /// ([BrushCanvasPanel.hasContentToView], F-77). 🗣️F-623: the keys reach a
+  /// sheet or the viewer laid on the floor, and press what its bar has.
+  CanvasViewPresses viewPresses() {
+    final view = _state.widget.hasContentToView;
+    final turns = _state.widget.allowViewRotation;
+    return (
+      zoomStep: view ? _zoomStep : null,
+      fit: view ? _fitToView : null,
+      resetView: view ? _resetView : null,
+      rotateStep: turns ? _rotateStep : null,
+      resetRotation: turns ? _resetRotation : null,
+      flipHorizontal: turns ? _toggleFlipHorizontal : null,
+      flipVertical: turns ? _toggleFlipVertical : null,
     );
   }
 

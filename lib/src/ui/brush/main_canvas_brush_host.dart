@@ -39,7 +39,6 @@ import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
 import 'transform_tool_options.dart';
-import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
@@ -110,7 +109,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
-    this.viewCommands,
     this.selectionCommands,
     this.textCommands,
     this.textToolOptions,
@@ -324,9 +322,6 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the transform tool's settings (mode,
   /// scale anchor, resampler, mesh grid).
   final ValueNotifier<TransformToolOptions>? transformOptions;
-
-  /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
-  final CanvasViewCommands? viewCommands;
 
   /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
   final CanvasSelectionCommands? selectionCommands;
@@ -633,7 +628,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       shapeFillRangeFor: widget.shapeFillRangeFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,
-      viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       textCommands: widget.textCommands,
       textToolOptions: widget.textToolOptions,

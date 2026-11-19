@@ -412,7 +412,6 @@ class _InteractiveCanvasBuild {
       brushToolState: _state.widget.brushToolState,
       fitFocusRect: _fitFocusRect,
       unframedFit: playbackFraming,
-      viewCommands: _state.widget.canvasViewCommands,
       selectionCommands: _state.widget.canvasSelectionCommands,
       textCommands: _state.widget.canvasTextCommands,
       textToolOptions: _state.widget.textToolOptions,

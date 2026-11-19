@@ -324,8 +324,9 @@ class EditorWorkspace extends StatefulWidget {
   final ValueNotifier<ColorPaletteState>? colorPalette;
   final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
-  /// The shell-owned rotate/flip shortcut channel (P8, R/Shift+R/H),
-  /// forwarded to the canvas panel.
+  /// The shell-owned view shortcut channel (P8, R/Shift+R/H, the zoom
+  /// steps, fit, 1:1), handed to whichever panel lies on the floor
+  /// (`CanvasFloorInsets.viewCommands`, F-623).
   final CanvasViewCommands? canvasViewCommands;
 
   /// D13: the canvas panel's subtree key — forwarded to the canvas area,
@@ -3320,6 +3321,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 ),
           // F-607 ②: where the pill stood, kept for whoever lies here next.
           leftPillBeside: _floorPillBeside,
+          // F-623: the view keys drive whatever lies here.
+          viewCommands: widget.canvasViewCommands,
           child: floor!,
         ),
         child: floor,

@@ -311,7 +311,6 @@ class _WorkspaceTabs {
     brushToolState: _state._brushTool,
     onBrushToolStateChanged: (state) => _state._brushTool.value = state,
     bringTool: _state._brushTool.bringTool,
-    canvasViewCommands: _state.widget.canvasViewCommands,
     navigationRegionKey: _state.widget.canvasNavigationRegionKey,
     canvasSelectionCommands: _state.widget.canvasSelectionCommands,
     canvasTextCommands: _state.widget.canvasTextCommands,

@@ -5,6 +5,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -155,22 +156,30 @@ void main() {
       CanvasViewCommands? viewCommands,
     }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final panel = BrushCanvasPanel(
+        coordinator: BrushCanvasFixture.createCoordinator(
+          frameKeys: frameKeys,
+          canvasSize: const CanvasSize(width: 300, height: 300),
+        ),
+        availableFrameKeys: frameKeys,
+        cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: SizedBox(
               width: 900,
               height: 600,
-              child: BrushCanvasPanel(
-                coordinator: BrushCanvasFixture.createCoordinator(
-                  frameKeys: frameKeys,
-                  canvasSize: const CanvasSize(width: 300, height: 300),
+              child: switch (viewCommands) {
+                null => panel,
+                // The view keys drive the panel lying on the floor (F-623).
+                final commands => CanvasFloorInsets(
+                  insets: EdgeInsets.zero,
+                  viewCommands: commands,
+                  child: panel,
                 ),
-                availableFrameKeys: frameKeys,
-                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                canvasSize: const CanvasSize(width: 300, height: 300),
-                viewCommands: viewCommands,
-              ),
+              },
             ),
           ),
         ),
@@ -195,8 +204,8 @@ void main() {
       ]);
     });
 
-    testWidgets('⛔any other canvas: the key would move the editor\'s canvas, '
-        'so its fit says none', (tester) async {
+    testWidgets('⛔a canvas off the floor: the key moves what lies there, so '
+        'its fit says none', (tester) async {
       await pumpPanel(tester);
       expect(keysOn(tester, 'canvas-viewport-fit'), isEmpty);
     });

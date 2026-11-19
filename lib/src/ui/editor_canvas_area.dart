@@ -51,7 +51,6 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
-import 'brush/canvas_view_commands.dart';
 import 'canvas/paper_background.dart' show paintAbsentPlane;
 import 'canvas/presses_wait_for_the_frame.dart';
 import 'canvas/stage_planes_painter.dart'
@@ -233,7 +232,6 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
     this.bringTool,
-    this.canvasViewCommands,
     this.navigationRegionKey,
     this.canvasSelectionCommands,
     this.canvasTextCommands,
@@ -272,10 +270,6 @@ class EditorCanvasArea extends StatefulWidget {
   /// Where a held button or the pen's tail brings its tool — as a press
   /// brings one (`TemporaryTool.bring`); null where there is none.
   final void Function(CanvasTool tool)? bringTool;
-
-  /// The app-level rotate/flip shortcut channel (P8), forwarded to the
-  /// canvas panel which binds the actual viewport handlers.
-  final CanvasViewCommands? canvasViewCommands;
 
   /// D13: attached to the canvas panel's container so the playback
   /// actuation gate can measure the navigation region (pan/zoom keep

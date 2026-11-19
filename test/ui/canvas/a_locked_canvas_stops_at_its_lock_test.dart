@@ -8,6 +8,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/viewport_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
@@ -166,6 +167,19 @@ void main() {
       CanvasViewCommands? commands,
     }) {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final panel = BrushCanvasPanel(
+        // ⚠️One State across the pumps of a test: the lock changes above a
+        // panel that stays.
+        key: const ValueKey<String>('panel'),
+        coordinator: BrushCanvasFixture.createCoordinator(
+          frameKeys: frameKeys,
+          canvasSize: canvasSize,
+        ),
+        availableFrameKeys: frameKeys,
+        cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+        canvasSize: canvasSize,
+        viewportController: controller,
+      );
       return MaterialApp(
         home: Scaffold(
           body: SizedBox(
@@ -174,20 +188,15 @@ void main() {
             // What the drawing canvas's host does for the view under it.
             child: CanvasZoomCeiling(
               percent: lock,
-              child: BrushCanvasPanel(
-                // ⚠️One State across the pumps of a test: the lock changes
-                // above a panel that stays.
-                key: const ValueKey<String>('panel'),
-                coordinator: BrushCanvasFixture.createCoordinator(
-                  frameKeys: frameKeys,
-                  canvasSize: canvasSize,
+              child: switch (commands) {
+                null => panel,
+                // The view keys drive the panel lying on the floor (F-623).
+                final commands => CanvasFloorInsets(
+                  insets: EdgeInsets.zero,
+                  viewCommands: commands,
+                  child: panel,
                 ),
-                availableFrameKeys: frameKeys,
-                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                canvasSize: canvasSize,
-                viewportController: controller,
-                viewCommands: commands,
-              ),
+              },
             ),
           ),
         ),

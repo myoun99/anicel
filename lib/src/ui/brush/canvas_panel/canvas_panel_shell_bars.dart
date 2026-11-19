@@ -133,7 +133,7 @@ class _CanvasPanelShellBars {
       floor: _state._onFloor,
       oneToOne: _state.widget.oneToOneOnPill,
       // Whether its view buttons name their keys ([drivenByViewKeys]).
-      viewKeys: _state.widget.viewCommands != null,
+      viewKeys: _state._viewCommands != null,
       // The swatches the SETTINGS LIST carries (they were in the pill until
       // 2026-08-13). They were missing from this token once, and the pill
       // went on painting yesterday's paper colour until an unrelated pan or
@@ -214,7 +214,7 @@ class _CanvasPanelShellBars {
   Widget _bottomBar() => _CanvasViewportBottomBar(
     onFloor: _state._onFloor,
     oneToOneOnPill: _state.widget.oneToOneOnPill,
-    drivenByViewKeys: _state.widget.viewCommands != null,
+    drivenByViewKeys: _state._viewCommands != null,
     leading: _state.widget.bottomBarLeading,
     hostSettings: _state.widget.bottomBarSettings,
     viewport: _state._viewportState._viewport,
@@ -248,21 +248,18 @@ class _CanvasPanelShellBars {
     onFit: _state._viewportState._fitToView,
     onReset: _state._viewportState._resetView,
     viewEnabled: _state.widget.hasContentToView,
-    onRotateCcw: _state.widget.allowViewRotation ? _rotateCcwFromBar : null,
-    onRotateCw: _state.widget.allowViewRotation ? _rotateCwFromBar : null,
-    onRotateReset: _state.widget.allowViewRotation
-        ? _state._viewportState._resetRotation
-        : null,
+    // The turns the keys press are these buttons (F-623 — `viewPresses`).
+    onRotateCcw: _presses.rotateStep == null ? null : _rotateCcwFromBar,
+    onRotateCw: _presses.rotateStep == null ? null : _rotateCwFromBar,
+    onRotateReset: _presses.resetRotation,
     onRotateByDrag: _state.widget.allowViewRotation
         ? _state._viewportState._rotateByDrag
         : null,
-    onFlipHorizontal: _state.widget.allowViewRotation
-        ? _state._viewportState._toggleFlipHorizontal
-        : null,
-    onFlipVertical: _state.widget.allowViewRotation
-        ? _state._viewportState._toggleFlipVertical
-        : null,
+    onFlipHorizontal: _presses.flipHorizontal,
+    onFlipVertical: _presses.flipVertical,
   );
+
+  CanvasViewPresses get _presses => _state._viewportState.viewPresses();
 
   Widget memoizedRightStripBar() {
     _ensureShellBars();

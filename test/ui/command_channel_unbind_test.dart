@@ -75,16 +75,17 @@ void main() {
     final oldWorkspace = Object();
     final newWorkspace = Object();
 
-    view.bind(
-      oldWorkspace,
-      rotateStep: ({required clockwise}) => calls.add('old'),
-      toggleFlipHorizontal: () => calls.add('old'),
+    CanvasViewPresses turning(String who) => (
+      zoomStep: null,
+      fit: null,
+      resetView: null,
+      rotateStep: ({required clockwise}) => calls.add(who),
+      resetRotation: null,
+      flipHorizontal: () => calls.add(who),
+      flipVertical: null,
     );
-    view.bind(
-      newWorkspace,
-      rotateStep: ({required clockwise}) => calls.add('new'),
-      toggleFlipHorizontal: () => calls.add('new'),
-    );
+    view.bind(oldWorkspace, () => turning('old'));
+    view.bind(newWorkspace, () => turning('new'));
     view.unbind(oldWorkspace);
 
     view.rotateStep(clockwise: true);
