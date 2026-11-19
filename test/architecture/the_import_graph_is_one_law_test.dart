@@ -301,5 +301,36 @@ void main() {
         Directory.current = previous;
       }
     });
+
+    // 🚨A part is its library: a lane that changed only a part chose none
+    // of the tests beside its library, and master went red (2026-11-19).
+    test('what imports a library is as near to its parts as to it', () {
+      Directory('${dir.path}/lib').createSync();
+      Directory('${dir.path}/test').createSync();
+      File('${dir.path}/lib/a.dart').writeAsStringSync("part 'a_part.dart';");
+      File('${dir.path}/lib/a_part.dart').writeAsStringSync(
+        "part of 'a.dart';",
+      );
+      File('${dir.path}/test/a_test.dart').writeAsStringSync(
+        "import 'package:anicel/a.dart';",
+      );
+
+      final previous = Directory.current;
+      Directory.current = dir;
+      try {
+        final graph = buildImportGraph(roots: ['lib', 'test']);
+        expect(
+          closureOf('test/a_test.dart', graph, within: 1),
+          {'lib/a.dart', 'lib/a_part.dart'},
+        );
+        expect(
+          graph['lib/a_part.dart'],
+          isEmpty,
+          reason: '`part of` names the library, it holds no file',
+        );
+      } finally {
+        Directory.current = previous;
+      }
+    });
   });
 }

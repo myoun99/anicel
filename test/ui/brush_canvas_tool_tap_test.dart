@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/gestures.dart'
-    show kMiddleMouseButton, kPrimaryButton, kSecondaryMouseButton;
+    show kMiddleMouseButton, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1723,44 +1723,16 @@ void main() {
     expect(drawn(), isTrue, reason: 'let go, and the drag is the brush again');
   });
 
-  testWidgets('🗣️I-15: a held RIGHT button picks through the ONE eyedropper '
-      'pick — live along the drag, and no stroke', (tester) async {
-    final frameKeys = BrushCanvasFixture.createFrameKeys();
-    final coordinator = BrushCanvasFixture.createCoordinator(
-      frameKeys: frameKeys,
-    );
-    final picks = <int>[];
-    await tester.pumpWidget(
-      app(
-        BrushCanvasPanel(
-          coordinator: coordinator,
-          availableFrameKeys: frameKeys,
-          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          sampleColorAt: (point) => 0xFF000000 | point.x.round(),
-          onEyedropperPick: picks.add,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final right = await tester.startGesture(
-      canvasGlobalOffset(tester, const Offset(10, 10)),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryMouseButton,
-    );
-    await tester.pump();
-    await right.moveTo(canvasGlobalOffset(tester, const Offset(40, 10)));
-    await tester.pump();
-    await right.up();
-    await tester.pumpAndSettle();
-
-    expect(picks.length, greaterThanOrEqualTo(2), reason: 'press AND drag');
-    expect(picks.last, isNot(picks.first), reason: 'it followed the pointer');
-    expect(
-      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
-      isFalse,
-    );
-  });
+  // ↩️「🗣️I-15: a held RIGHT button picks through the ONE eyedropper pick —
+  // live along the drag, and no stroke」 stood here, on a panel no shell
+  // wired: nothing took the tool for the hold, and the press picked into
+  // the brush in hand. A pick is the eyedropper's, made with it in hand
+  // (I-15 「툴 바껴서 해당툴을 사용한다」 · F-615-Q1 「누름은 착지만」), so it
+  // went red on master (11-19) while the app picked all along the drag (검증/
+  // 서피스 23:37). The same press, drag and no stroke are pinned where a real
+  // press goes — a panel wired as the shell wires it, through the real
+  // TemporaryTool, under every tool and ground:
+  // `a_mapped_button_answers_under_every_tool_test`.
 
   testWidgets('the eyedropper cursor is the TOOL alone — a painting tool '
       'with the pick wired never arms it (I-15: Alt switches the tool)', (
