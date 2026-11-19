@@ -404,4 +404,39 @@ void main() {
     expect(kept.pixels, first.pixels, reason: 'its slot holds its bytes');
     expect(churned, hasLength(8));
   });
+
+  // What kept a shell's bytes besides is about to go: the store hands
+  // each tile its bytes (`BrushFrameStore._letTheFileRefGo`).
+  test('🚨a tile of a shell handed its bytes keeps its slot — and, that '
+      'slot gone, is stored again from them: nothing is read again', () {
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 2,
+    );
+    final first = aTileMarked(1);
+    final second = aTileMarked(2);
+    ledger.held((hold) => hold.slotsOf(a, [first, second]));
+    final shell = ledger.shellOf(
+      aCelOf({left: first, right: second}),
+      readAgain: neverReadAgain,
+    )!;
+    final kept = shell.tiles[left]!;
+    final slot = ledger.slotOf(kept);
+    final reads = ledger.debugTileReads;
+
+    first.readPixels((_, pixels) => kept.keepBytesHere(pixels));
+
+    expect(ledger.slotOf(kept), slot, reason: 'its slot stays its');
+    expect(kept.hasItsBytesHere, isTrue);
+    expect(kept.isOnlyOnEngine, isFalse);
+    expect(kept.pixels, first.pixels);
+    expect(ledger.debugTileReads, reads, reason: 'read here, not back');
+
+    theTwoOldestSlotsGo(ledger);
+    expect(ledger.slotOf(kept), isNull, reason: '⛔premise');
+    ledger.held((hold) => hold.slotsOf(a, [kept]));
+
+    expect(ledger.slotOf(kept), isNotNull);
+  });
 }

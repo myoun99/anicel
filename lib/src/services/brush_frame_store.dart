@@ -86,9 +86,11 @@ class BrushFrameStore {
 
   /// The shell of each cel a look let go of ([keepShellOf]), under the kept
   /// bytes it was read from: what the next look at those bytes is handed
-  /// ([lookAhead]). Hot wins — a cel made hot lets its shell go
-  /// ([_storeHot]) —, and a shell whose bytes are kept no more, or some of
-  /// whose slots the engine let go, is let go where it is asked for.
+  /// ([lookAhead]) — and what a use of a cel kept in the file takes as
+  /// that cel, hot ([_usedAsItsShell]). Any other cel made hot lets its
+  /// shell go ([_storeHot]), and a shell whose bytes are kept no more, or
+  /// some of whose slots the engine let go, is let go where it is asked
+  /// for.
   final Map<BrushFrameKey, ({AnicelCelFileRef ref, BitmapSurface shell})>
   _shells = {};
 
@@ -96,6 +98,14 @@ class BrushFrameStore {
   /// engine holds of cels that are not hot.
   Iterable<BitmapSurface> get shells =>
       _shells.values.map((kept) => kept.shell);
+
+  /// The tiles a use took kept in the file and not here
+  /// ([_usedAsItsShell]), by their cel, each where it lies. Whoever
+  /// holds one — the cel, a step back over it, what was copied of it —
+  /// holds no bytes of it, so they come here before the file's stop
+  /// being that cel's ([_letTheFileRefGo]). Weak: a tile nobody holds
+  /// needs none.
+  final Map<BrushFrameKey, List<_TakenTile>> _takenKeptInTheFile = {};
 
   /// Link resolution (L1): every SINGLE-CEL public operation resolves its
   /// key through this first, so linked layers address ONE physical cel —
@@ -1121,6 +1131,12 @@ class BrushFrameStore {
       }
       return hot;
     }
+    if (read == CelRead.use) {
+      final shell = _usedAsItsShell(key);
+      if (shell != null) {
+        return shell;
+      }
+    }
     final blob = _keptBlobOrNull(key);
     if (blob == null) {
       return null;
@@ -1130,6 +1146,129 @@ class BrushFrameStore {
       _keepThawed(key, surface);
     }
     return surface;
+  }
+
+  /// 🚨A USE OF A CEL KEPT IN THE SAVED FILE TAKES THE SHELL A LOOK LEFT
+  /// OF IT ([keepShellOf]) — hot from here on as that shell, nothing
+  /// thawed and nothing put on the engine again; null where it has none
+  /// whole, or is parked (a park is let go as its cel is made hot, and a
+  /// shell holds no bytes to let it go for).
+  ///
+  /// 🗣️Card cel-originals-are-held-twice-in-ram-and-on-the-gpu ②: 유저
+  /// 2026-11-19 on Q1 「브러시가 맡고, 저장과 맞닿는 곳은 저장이 같이
+  /// 정한다」 and on Q3 「놓는다」 — a cel the file holds keeps no bytes
+  /// here; 저장's draft the same day names the steps, this one 「hot 셸
+  /// 본체」. ↩️Till 2026-11-20 hot won: a cel made hot let its shell go
+  /// and was thawed from the file. 🔬Main PC, S5 cut 352, every eye on,
+  /// a row of drawings stepped through frame by frame (브러시/렌더링,
+  /// that day): standing on a frame thawed the cel of every row shown
+  /// there (`FramePictures.readInStack`) — 18 to 38 MiB of bytes here
+  /// a frame — and let 290 to 600 slots of their shells go, and the
+  /// first stroke there put as many tiles on the engine again, in that
+  /// stroke's first frame. Taken as shells, an arrival moves no slot
+  /// and no byte, and the first stroke lands its own 4 tiles.
+  ///
+  /// What it takes holds no bytes, so its tiles are written down
+  /// ([_takenKeptInTheFile]): the bytes come before the file's stop
+  /// being this cel's ([_letTheFileRefGo]).
+  BitmapSurface? _usedAsItsShell(BrushFrameKey key) {
+    final ref = _fileCels[key];
+    if (ref == null || _coldCels.containsKey(key)) {
+      return null;
+    }
+    final shell = _shellAt(key, ref.canvasSize);
+    if (shell == null) {
+      return null;
+    }
+    (_takenKeptInTheFile[key] ??= [])
+      ..removeWhere((taken) => taken.tile.target == null)
+      ..addAll([
+        for (final MapEntry(key: at, value: tile) in shell.tiles.entries)
+          if (!tile.hasItsBytesHere) (tile: WeakReference(tile), at: at),
+      ]);
+    _storeHot(key, shell);
+    storeRebuiltDisplayCache(key: key, previewSurface: shell);
+    return _bakedSurfaces[key];
+  }
+
+  /// 🚨A CEL'S FILE REF GOES THROUGH HERE, AND THE BYTES IT NAMED COME
+  /// HERE FIRST — to every living tile a use took kept in them
+  /// ([_usedAsItsShell]): the cel's own, those a step back holds,
+  /// those copied. Answers the ref, as a map's removal does.
+  ///
+  /// 🗣️저장's draft on the card (2026-11-19, ②(3)): 「깨끗한 셀이
+  /// 편집되면 파일 참조가 죽고 … 손 안 댄 셸 타일과 undo 가 쥔 옛 타일이
+  /// 다시 읽을 곳을 잃는다: 셀을 처음 더럽히기 직전에 그 셀의 바이트를
+  /// 다시 든다(= 편집하는 셀만 지금처럼 두 벌)」. The next save writes
+  /// over the stretch a ref no cel keeps named ([_keptBlobOffThisThread]
+  /// has that law), so nothing reads it once this returns.
+  ///
+  /// 🔢브러시/렌더링's: INTO THE TILES THEMSELVES — whoever holds one
+  /// holds its bytes from here on, wherever it was handed, and the slot
+  /// it has on the engine stays its. The cel is read once for all of
+  /// them, here; where the file will not read — gone under the app
+  /// (유저 on Q3: 「그런 치우는일은 어쩔수없는거임. 감안해야할것」) —
+  /// each is read where the engine holds it, and one neither holds stays
+  /// as it is.
+  AnicelCelFileRef? _letTheFileRefGo(BrushFrameKey key) {
+    final written = _takenKeptInTheFile.remove(key) ?? const <_TakenTile>[];
+    final living = [
+      for (final taken in written)
+        if (taken.tile.target case final tile? when !tile.hasItsBytesHere)
+          (tile: tile, at: taken.at),
+    ];
+    if (living.isNotEmpty) {
+      final kept = _asKeptOrNull(key);
+      for (final (:tile, :at) in living) {
+        try {
+          (kept?.tiles[at] ?? tile).readPixels(
+            (_, pixels) => tile.keepBytesHere(pixels),
+          );
+        } on Object {
+          // Neither the file nor the engine holds it.
+        }
+      }
+    }
+    return _fileCels.remove(key);
+  }
+
+  /// [from]'s file ref is [to]'s from here on, with the tiles taken kept
+  /// in it ([_takenKeptInTheFile]): a cel renamed is kept where it was.
+  /// What [to] was kept as goes first ([_letTheFileRefGo]).
+  bool _fileRefMoves(BrushFrameKey from, BrushFrameKey to) {
+    final ref = _fileCels.remove(from);
+    if (ref == null) {
+      return false;
+    }
+    _letTheFileRefGo(to);
+    _fileCels[to] = ref;
+    final taken = _takenKeptInTheFile.remove(from);
+    if (taken != null) {
+      _takenKeptInTheFile[to] = taken;
+    }
+    return true;
+  }
+
+  /// [key]'s pixels read where they are kept, for that read alone — the
+  /// hot ones where no kept bytes are the cel's (an edited cel's are
+  /// here). ⛔Never a hot cel the file still holds: that may be the
+  /// very shell whose tile asks ([_readAgain]).
+  BitmapSurface? _asKept(BrushFrameKey key) {
+    final hot = _bakedSurfaces[key];
+    if (hot != null && !_fileCels.containsKey(key)) {
+      return hot;
+    }
+    final blob = _keptBlobOrNull(key);
+    return blob == null ? null : _behind(blob.toSurface());
+  }
+
+  /// [_asKept], and null where the kept bytes would not read.
+  BitmapSurface? _asKeptOrNull(BrushFrameKey key) {
+    try {
+      return _asKept(key);
+    } on Object {
+      return null;
+    }
   }
 
   /// Where a cel that is not hot is kept — its parked blob in the room,
@@ -1209,7 +1348,7 @@ class BrushFrameStore {
     required CanvasSize canvasSize,
   }) {
     key = _canonicalize(key);
-    if (!_thawsAt(key, canvasSize)) {
+    if (!_thawsAt(key, canvasSize) || _usedAsItsShell(key) != null) {
       return Future<void>.value();
     }
     return _thawing.join(
@@ -1307,9 +1446,7 @@ class BrushFrameStore {
     CanvasSize canvasSize,
     int revision,
   ) {
-    final surface = sourceRevisionOf(key) == revision
-        ? bakedSurfaceOrNull(key, read: CelRead.look)
-        : null;
+    final surface = sourceRevisionOf(key) == revision ? _asKept(key) : null;
     if (surface == null || surface.canvasSize != canvasSize) {
       throw StateError('a shell of a cel that has moved on was read');
     }
@@ -1553,7 +1690,7 @@ class BrushFrameStore {
   void _removeBaked(BrushFrameKey key) {
     _bakedSurfaces.remove(key);
     _dropCold(key);
-    _fileCels.remove(key);
+    _letTheFileRefGo(key);
     _hotWeights.letGo(key);
     _markDirty(key);
     _noteCelContent(key);
@@ -1579,7 +1716,7 @@ class BrushFrameStore {
       return;
     }
     _dropCold(key);
-    _fileCels.remove(key);
+    _letTheFileRefGo(key);
     _storeHot(key, surface);
     _markDirty(key);
     _noteCelContent(key);
@@ -1698,6 +1835,7 @@ class BrushFrameStore {
     clearDisplayCaches();
     _bakedSurfaces.clear();
     _shells.clear();
+    _takenKeptInTheFile.clear();
     _coldCels.clear();
     _fileCels.clear();
     _hotWeights.clear();
@@ -1881,7 +2019,7 @@ class BrushFrameStore {
   /// person was told.
   void forgetCelsLostWithTheirFile(Iterable<BrushFrameKey> keys) {
     for (final key in keys) {
-      if (_fileCels.remove(key) != null) {
+      if (_letTheFileRefGo(key) != null) {
         _noteCelContent(key);
       }
     }
@@ -2045,10 +2183,16 @@ class BrushFrameStore {
       final key = _bakedSurfaces.keys.first;
       if (_fileCels.containsKey(key)) {
         // Clean file-backed cel (edits kill the ref): the saved .anicel
-        // already holds its exact bytes — cooling is a free drop.
-        _bakedSurfaces.remove(key);
+        // already holds its exact bytes — cooling is a free drop. One a
+        // use took as its shell ([_usedAsItsShell]) is the looks' shell
+        // again: what the engine holds of it stays for the next of
+        // either.
+        final cooled = _bakedSurfaces.remove(key);
         _hotWeights.letGo(key);
         _displayCaches.remove(key);
+        if (cooled != null && _takenKeptInTheFile.containsKey(key)) {
+          _shells[key] = (ref: _fileCels[key]!, shell: cooled);
+        }
         continue;
       }
       final surface = _bakedSurfaces[key]!;
@@ -2242,8 +2386,8 @@ class BrushFrameStore {
   ) {
     _hotWeights.letGo(key);
     _bakedSurfaces.remove(key);
+    _letTheFileRefGo(key);
     if (kept.parked) {
-      _fileCels.remove(key);
       // Kept BEFORE what the key kept is let go: it can be the very file.
       _keepCold(key, kept.ref);
     } else {
@@ -2311,11 +2455,8 @@ class BrushFrameStore {
       if (cold != null) {
         _coldCels[to] = cold;
       }
-      final fileRef = _fileCels.remove(from);
-      if (fileRef != null) {
-        _fileCels[to] = fileRef;
-      }
-      if (baked != null || cold != null || fileRef != null) {
+      final inTheFile = _fileRefMoves(from, to);
+      if (baked != null || cold != null || inTheFile) {
         // The saved file still labels these bytes with the OLD key, so
         // both cels are save-relevant: [from]'s entry must vanish and
         // [to] must be rewritten under its own key (the saver re-keys
@@ -2421,8 +2562,11 @@ class BrushFrameStore {
     var edited = false;
     for (final key in celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
-      _storeHot(key, remake(key, bakedSurfaceOrNull(key)!));
-      _fileCels.remove(key);
+      final from = bakedSurfaceOrNull(key)!;
+      // Before the remake reads it: a shell's bytes come at once, not a
+      // tile at a time from the engine.
+      _letTheFileRefGo(key);
+      _storeHot(key, remake(key, from));
       _markDirty(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
       // global signal fires as often as the user draws and its
@@ -2730,8 +2874,8 @@ class BrushFrameStore {
       if (surface.canvasSize == canvasSize) {
         continue;
       }
+      _letTheFileRefGo(key);
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
-      _fileCels.remove(key);
       _markDirty(key);
       // A crop can take every line with it.
       _recordCelContent(key);
@@ -2919,8 +3063,8 @@ class BrushFrameStore {
       _removeBaked(key);
     }
     for (final entry in snapshot.entries) {
+      _letTheFileRefGo(entry.key);
       _storeHot(entry.key, entry.value);
-      _fileCels.remove(entry.key);
       _markDirty(entry.key);
       // The display caches follow the restored truth.
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
@@ -3114,6 +3258,10 @@ typedef _CutAhead = ({
 /// A hot cel made anew on a worker, with the picture it was made [from]:
 /// [made] null where the work left it as it is.
 typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
+
+/// A tile a use took kept in the file
+/// ([BrushFrameStore._usedAsItsShell]), and where it lies in its cel.
+typedef _TakenTile = ({WeakReference<BitmapTile> tile, TileCoord at});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});

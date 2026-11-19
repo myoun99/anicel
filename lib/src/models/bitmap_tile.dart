@@ -433,11 +433,13 @@ class BitmapTile implements Finalizable {
   bool get isOnlyOnEngine =>
       _onEngine != null && _onEngine is! TilePixelsKeptBesides && _here == null;
 
-  /// Holds [bytes] — the pixels of a tile the engine alone holds
-  /// ([isOnlyOnEngine]), read back by whoever holds its slot — as a read of
-  /// its own would ([_readBack]).
+  /// Holds [bytes] — the pixels of a tile the engine made, none of them
+  /// here yet: one the engine alone holds ([isOnlyOnEngine]), read back
+  /// by whoever holds its slot as a read of its own would ([_readBack]);
+  /// or one kept besides ([TilePixelsKeptBesides]), as what kept them is
+  /// about to go (`BrushFrameStore._letTheFileRefGo`).
   void keepBytesHere(Uint8List bytes) {
-    assert(isOnlyOnEngine, 'its pixels are here already');
+    assert(mayWeighMore, 'its pixels are here already');
     _validatePixelLength(bytes.length, size);
     final block = TileBlocks.alloc(bytes.length);
     block.asTypedList(bytes.length).setAll(0, bytes);
