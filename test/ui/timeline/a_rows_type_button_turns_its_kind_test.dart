@@ -77,11 +77,14 @@ void main() {
     orientation: orientation,
   );
 
-  /// [id]'s kind, in whichever cut holds it.
-  LayerKind kindOf(EditorSessionManager session, String id) => [
+  /// The layer [id], in whichever cut holds it.
+  Layer layerOf(EditorSessionManager session, String id) => [
     for (final track in session.repository.requireProject().tracks)
       for (final cut in track.cuts) ...cut.layers,
-  ].firstWhere((layer) => layer.id == LayerId(id)).kind;
+  ].firstWhere((layer) => layer.id == LayerId(id));
+
+  LayerKind kindOf(EditorSessionManager session, String id) =>
+      layerOf(session, id).kind;
 
   Future<void> openList(WidgetTester tester, String id) async {
     final button = find.named('timeline-layer-type-button-$id');
@@ -281,6 +284,69 @@ void main() {
     for (final kind in LayerKind.values) {
       expect(itemFinder('f', kind), findsNothing, reason: '$kind');
     }
+  });
+
+  testWidgets('the conte rail\'s row counts the selection for its kind list '
+      'as its eye counts it', (tester) async {
+    final session = await pumpStoryboardHost(
+      tester,
+      Project(
+        id: const ProjectId('p'),
+        name: 'p',
+        createdAt: DateTime.utc(2026, 11, 19),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [
+              Cut(
+                id: const CutId('c'),
+                name: 'c',
+                duration: 8,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  row('a', cels: ['a1']),
+                  row('conte', kind: LayerKind.storyboard, cels: ['k1']),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 12,
+    );
+    // The timeline's rows, the conte among them: whether a press on the
+    // conte rail's row is a press inside them is the rail's own law — the
+    // list keeps the one its eye keeps.
+    void selectBoth() => session.rowSelection.value = const [
+      LayerRowAddress(LayerId('conte')),
+      LayerRowAddress(LayerId('a')),
+    ];
+    selectBoth();
+    await tester.pump();
+    final eye = find.named('storyboard-layer-visibility-conte');
+    await tester.ensureVisible(eye);
+    await tester.pumpAndSettle();
+    await tester.tap(eye);
+    await tester.pumpAndSettle();
+    expect(layerOf(session, 'conte').isVisible, isFalse, reason: '⛔premise');
+    final eyeReachedTheOther = !layerOf(session, 'a').isVisible;
+
+    selectBoth();
+    await tester.pump();
+    await tester.tap(find.named('storyboard-layer-type-button-conte'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-layer-kind-image-conte')),
+    );
+    await tester.pumpAndSettle();
+    expect(kindOf(session, 'conte'), LayerKind.image);
+    expect(
+      kindOf(session, 'a') == LayerKind.image,
+      eyeReachedTheOther,
+      reason: 'the list reached the other row as the eye did',
+    );
   });
 
   // cut-1 holds the track's conte and cut-2 none: stood in cut-2, the
