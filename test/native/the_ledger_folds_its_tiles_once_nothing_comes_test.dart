@@ -31,6 +31,15 @@ void main() {
   /// fold's (rust/src/kernels/pool/folded.rs).
   const aPage = 3;
 
+  /// Every tile a test landed or stored, held till it ends.
+  ///
+  /// 🚨A TILE COLLECTED LETS ITS SLOT GO (the ledger's finalizer), and a
+  /// page with a slot free is its pool's room, none of whose tiles a fold
+  /// takes: a test that let go of the tiles it landed waited for a pool
+  /// that never fell — once, in a batch beside seven suites (2026-11-19,
+  /// the rest that came before the kernels).
+  final kept = <BitmapTile>[];
+
   late GpuEngine engine;
   late EngineTileLedger ledger;
   late GpuFold compiled;
@@ -48,6 +57,7 @@ void main() {
   // ⚠️The ledger's pool is not freed with its test: a tile collected after
   // it lets its slot go there (the ledger's finalizer), in a later test.
   tearDown(() {
+    kept.clear();
     EngineTileLedger.foldsAtRest = false;
     compiled.free();
     engine.close();
@@ -55,8 +65,15 @@ void main() {
 
   /// A page of tiles of [value] landed by [by] — the test's ledger where
   /// none is given —, full: its tiles are the next fold's.
-  List<BitmapTile> aPageLanded(int value, {EngineTileLedger? by}) =>
-      landedOn(by ?? ledger, List<BitmapTile?>.filled(aPage, null), value);
+  List<BitmapTile> aPageLanded(int value, {EngineTileLedger? by}) {
+    final landed = landedOn(
+      by ?? ledger,
+      List<BitmapTile?>.filled(aPage, null),
+      value,
+    );
+    kept.addAll(landed);
+    return landed;
+  }
 
   test('a batch folds the tiles next to fold, the isolate that asks waiting '
       'for no GPU, and each reads as it was — then none is left, and the '
@@ -153,6 +170,7 @@ void main() {
       debugTilesAPage: aPage,
     );
     final stored = [for (var at = 0; at < 2 * aPage; at++) aTileOfItsOwn()];
+    kept.addAll(stored);
     other.held((hold) => hold.slotsOf(EngineTileLedger.landedCel, stored));
     final before = other.pool.bytes;
     expect(before, bytes, reason: '⛔premise: two pages of them, as above');
@@ -169,7 +187,9 @@ void main() {
       debugTilesAPage: tiles,
     );
     EngineTileLedger.foldsAtRest = true;
-    landedOn(counting, List<BitmapTile?>.filled(tiles, null), 9);
+    kept.addAll(
+      landedOn(counting, List<BitmapTile?>.filled(tiles, null), 9),
+    );
     expect(await pollUntil(() => counting.batches == 3), isTrue);
   });
 
