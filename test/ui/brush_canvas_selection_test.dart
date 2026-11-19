@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -2039,6 +2040,55 @@ void main() {
         inkAt(env.coordinator, 30, 30),
         0,
         reason: '⛔left behind is a landing worked out over the old picture',
+      );
+    });
+
+    // A cel that lands nothing has no making to wait on, so nothing else
+    // gives the screen its turn after it.
+    testWidgets('🚨the screen has its turn between two cels it works out — '
+        'cels that land nothing too', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        // Frames two and three were never drawn on.
+        transformTargetKeys: () => keys,
+      );
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+
+      final events = <String>[];
+      watchTheBar(
+        tester,
+        onShare: (share) {
+          if (share <= 0) {
+            return;
+          }
+          events.add('cel');
+          Timer.run(() => events.add('turn'));
+        },
+      );
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      final cels = [
+        for (final (index, event) in events.indexed)
+          if (event == 'cel') index,
+      ];
+      expect(cels, hasLength(2), reason: '⛔premise: two cels told');
+      expect(
+        events.sublist(cels[0], cels[1]),
+        contains('turn'),
+        reason: '$events',
       );
     });
 
