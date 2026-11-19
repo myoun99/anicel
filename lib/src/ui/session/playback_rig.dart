@@ -70,9 +70,11 @@ class PlaybackRig implements PlaybackRun {
     stackOf,
     required Object Function() treeStamp,
     required List<CompositeNode<CanvasStackRow>> Function() stackShown,
+    required bool Function() framesInFlight,
   }) : _stackOf = stackOf,
        _treeStamp = treeStamp,
        _stackShown = stackShown,
+       _framesInFlight = framesInFlight,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -120,6 +122,11 @@ class PlaybackRig implements PlaybackRun {
 
   @override
   List<CompositeNode<CanvasStackRow>> stackShown() => _stackShown();
+
+  final bool Function() _framesInFlight;
+
+  @override
+  bool framesInFlight() => _framesInFlight();
 
   // ── what the screen shows a frame from ──────────────────────────────
 

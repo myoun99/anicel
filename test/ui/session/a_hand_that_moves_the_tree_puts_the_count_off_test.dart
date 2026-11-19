@@ -5,19 +5,26 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/key_side.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts, StandingDemand;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectLaneId;
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformTrackWithScaleDragged;
 
 import '../../helpers/draw_on_current_frame.dart' show inkCel;
 
@@ -34,21 +41,24 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  Cut cutOf(String id) => Cut(
+  /// [id]'s cut: a drawn row, [dressed] as a test asks, and a camera.
+  Cut cutOf(String id, {Layer Function(Layer row)? dressed}) => Cut(
     id: CutId(id),
     name: id,
     duration: 24,
     canvasSize: canvasSize,
     layers: [
-      Layer(
-        id: LayerId('$id-layer'),
-        name: 'A',
-        frames: [
-          Frame(id: FrameId('$id-frame'), duration: 1, strokes: const []),
-        ],
-        timeline: {
-          0: TimelineExposure.drawing(FrameId('$id-frame'), length: 24),
-        },
+      (dressed ?? (row) => row)(
+        Layer(
+          id: LayerId('$id-layer'),
+          name: 'A',
+          frames: [
+            Frame(id: FrameId('$id-frame'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: TimelineExposure.drawing(FrameId('$id-frame'), length: 24),
+          },
+        ),
       ),
       Layer(
         id: LayerId('$id-cam'),
@@ -59,20 +69,22 @@ void main() {
     ],
   );
 
-  EditorSessionManager session() => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('project'),
-      name: 'P',
-      createdAt: DateTime.utc(2026),
-      tracks: [
-        Track(
-          id: const TrackId('track'),
-          name: 'T',
-          cuts: [cutOf('open'), cutOf('other')],
+  /// The open cut — its drawn row [dressed] — and another.
+  EditorSessionManager session({Layer Function(Layer row)? dressed}) =>
+      EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'P',
+          createdAt: DateTime.utc(2026),
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'T',
+              cuts: [cutOf('open', dressed: dressed), cutOf('other')],
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 
   Cut other(EditorSessionManager s) => s.repository
       .requireProject()
@@ -80,6 +92,17 @@ void main() {
       .single
       .cuts
       .firstWhere((cut) => cut.id == const CutId('other'));
+
+  /// The open cut's drawn row.
+  const drawnRow = LayerId('open-layer');
+
+  /// The one effect a row is dressed with ([dressedWith]).
+  const anEffect = EffectId('open-fx');
+
+  /// [row] with [kind]'s effect at its defaults ([anEffect]).
+  Layer dressedWith(Layer row, EffectKind kind) => row.copyWith(
+    effects: [LayerEffect.defaults(id: anEffect, kind: kind)],
+  );
 
   /// The open cut's camera moved [by] at frame 0, in flight — shown, not
   /// written (`LaneEditPreview.camera`).
@@ -180,62 +203,165 @@ void main() {
     expect(budget.playbackReadyRuns(0, 24), before);
   });
 
-  testWidgets('🚨a value dragged on a drawn row is shown, not written — and '
-      'moves the frames all the same: its cut stands not ready, counted once '
-      'the hand lets go (검증/서피스 21:36: the box of a cel number, a lane\'s '
-      'colour wheel)', (tester) async {
-    await tester.runAsync(() async {
-      final s = session();
-      addTearDown(s.dispose);
-      final open = s.activeCutOrNull!;
-      final budget = s.playbackRig.playbackCache;
-      // A row with nothing drawn lies in no frame's picture, so it is inked.
-      inkCel(
-        s,
-        s.brushFrameKeyForCut(
-          open,
-          const LayerId('open-layer'),
-          const FrameId('open-frame'),
-        ),
-        canvasSize: canvasSize,
-        at: CanvasPoint(x: 1, y: 1),
-        size: 2,
-      );
-      await s.playbackRig.framePictures.make((
-        cut: open,
-        frameIndex: 0,
-        paintPaper: true,
-        ghosts: FrameGhosts.none,
-      ), shouldAbort: () => false);
-      final before = budget.playbackReadyRuns(0, 24);
-      expect(before, isNotEmpty, reason: 'the premise: the drawn hold made');
-      var heard = 0;
-      budget.readinessMoved.addListener(() => heard += 1);
+  /// What a lane's door shows in flight — the preview channel's.
+  Object? onTheLanes(EditorSessionManager s) => s.dragPreview.value;
 
-      s.playbackRig.prerenderScheduler.beginInputHold();
-      s.laneVerbs.previewLaneValueAt(
-        const LayerId('open-layer'),
+  /// Every door a value is shown through, not written — each family's, on
+  /// the canvas and on the timeline — what it shows on, and how its hand
+  /// lets go. 🗣️관제 11-19 22:4x: 「어느 값이든 그림이 바뀌면 비고」 — the
+  /// band reads the frame the canvas shows, whatever moved it.
+  final doors = <({
+    String door,
+    int watched,
+    Layer Function(Layer row)? dressed,
+    void Function(EditorSessionManager s) hand,
+    Object? Function(EditorSessionManager s) shown,
+    void Function(EditorSessionManager s) letGo,
+  })>[
+    (
+      door: 'a lane\'s value — the row\'s position',
+      watched: 0,
+      dressed: null,
+      hand: (s) => s.laneVerbs.previewLaneValueAt(
+        drawnRow,
         'position',
         0,
         '3, 3',
         frameIsGlobal: false,
         scaleLinked: true,
-      );
-      expect(s.dragPreview.value, isNotNull, reason: 'the premise: in flight');
+      ),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
+    (
+      door: 'the canvas\'s box — the row\'s transform',
+      watched: 0,
+      dressed: null,
+      hand: (s) => s.laneVerbs.previewLayerTransformAtPlayhead(
+        drawnRow,
+        (track, f) => transformTrackWithScaleDragged(
+          track,
+          frameIndex: f,
+          scale: CanvasPoint(x: 2, y: 2),
+        ),
+      ),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
+    (
+      door: 'a graph\'s handle — a key\'s sides, between two keys',
+      watched: 4,
+      dressed: (row) => row.copyWith(
+        transformTrack: TransformTrack(
+          keyframes: {
+            0: TransformPose(center: CanvasPoint(x: 4, y: 4)),
+            8: TransformPose(
+              center: CanvasPoint(x: 4, y: 4),
+              rotationDegrees: 40,
+            ),
+          },
+        ),
+      ),
+      hand: (s) => s.laneVerbs.previewLaneKeySidesAt(
+        const LaneRowAddress(drawnRow, 'rotation'),
+        0,
+        const KeySidesEdit(
+          outgoing: KeySideEdit(side: EaseSide(influence: 0.5, speed: 2)),
+        ),
+        frameIsGlobal: false,
+      ),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
+    (
+      door: 'an effect\'s lane value',
+      watched: 0,
+      dressed: (row) => dressedWith(row, EffectKind.brightnessContrast),
+      hand: (s) => s.laneVerbs.previewLaneValueAt(
+        drawnRow,
+        effectLaneId(anEffect, 'brightness'),
+        0,
+        '40',
+        frameIsGlobal: false,
+        scaleLinked: false,
+      ),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
+    (
+      door: 'an effect\'s box on the canvas — a cel number\'s',
+      watched: 0,
+      dressed: (row) => dressedWith(row, EffectKind.celNumber),
+      hand: (s) => s.laneVerbs.previewEffectKeysAtPlayhead(
+        drawnRow,
+        effectLaneId(anEffect, 'scale'),
+        (track, f) => transformTrackWithScaleDragged(
+          track,
+          frameIndex: f,
+          scale: CanvasPoint(x: 2, y: 2),
+        ),
+      ),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
+    (
+      door: 'a row\'s opacity slider',
+      watched: 0,
+      dressed: null,
+      hand: (s) => s.opacityVerbs.previewLayerOpacity(drawnRow, 0.5),
+      shown: (s) => s.opacityVerbs.dragPreview.value,
+      letGo: (s) => s.opacityVerbs.commitLayerOpacity(drawnRow, 1),
+    ),
+  ];
 
-      expect(budget.playbackReadyRuns(0, 24), isEmpty);
+  for (final (:door, :watched, :dressed, :hand, :shown, :letGo) in doors) {
+    testWidgets('🚨a value shown, not written, moves the frames all the same '
+        '— $door: its cut stands not ready, counted once the hand lets go '
+        '(검증/서피스 21:36: the box of a cel number, a lane\'s colour wheel)', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final s = session(dressed: dressed);
+        addTearDown(s.dispose);
+        final open = s.activeCutOrNull!;
+        final budget = s.playbackRig.playbackCache;
+        // A row with nothing drawn lies in no frame's picture: inked.
+        inkCel(
+          s,
+          s.brushFrameKeyForCut(open, drawnRow, const FrameId('open-frame')),
+          canvasSize: canvasSize,
+          at: CanvasPoint(x: 1, y: 1),
+          size: 2,
+        );
+        await s.playbackRig.framePictures.make((
+          cut: open,
+          frameIndex: watched,
+          paintPaper: true,
+          ghosts: FrameGhosts.none,
+        ), shouldAbort: () => false);
+        final before = budget.playbackReadyRuns(watched, watched + 1);
+        expect(before, isNotEmpty, reason: '⛔premise: the frame made');
+        var heard = 0;
+        budget.readinessMoved.addListener(() => heard += 1);
 
-      s.laneVerbs.endLaneEditPreview();
-      s.playbackRig.prerenderScheduler.endInputHold();
+        s.playbackRig.prerenderScheduler.beginInputHold();
+        hand(s);
+        expect(shown(s), isNotNull, reason: '⛔premise: shown');
 
-      expect(heard, 1, reason: 'counted once, as the hand lets go');
-      expect(
-        budget.playbackReadyRuns(0, 24),
-        before,
-        reason: 'nothing written: the hold made is the hold shown again',
-      );
+        expect(budget.playbackReadyRuns(watched, watched + 1), isEmpty);
+
+        letGo(s);
+        s.playbackRig.prerenderScheduler.endInputHold();
+
+        expect(heard, 1, reason: 'counted once, as the hand lets go');
+        expect(
+          budget.playbackReadyRuns(watched, watched + 1),
+          before,
+          reason: 'nothing written: the frame made is the frame shown again',
+        );
+      });
     });
-  });
+  }
 
   test('🚨a camera dragged moves no frame: its bar is the frames as they '
       'stand whenever it is asked, and the hand lets go owing nothing', () {

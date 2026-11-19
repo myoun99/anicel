@@ -39,6 +39,10 @@ abstract interface class PlaybackRun {
   /// The open cut's frame at the playhead as the canvas shows it — every
   /// drag in flight in it, written or not: what a hand moves.
   List<CompositeNode<CanvasStackRow>> stackShown();
+
+  /// Whether what a hand shows in flight, not written, moves what frames
+  /// are made of — anywhere in the cut, the frame stood on or not.
+  bool framesInFlight();
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -370,10 +374,24 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   }
 
   /// Whether a hand is on and the frames have moved since it came down:
-  /// the tree, and the key of the frame stood on ([_keyUnderTheHand]).
+  /// what it shows in flight ([PlaybackRun.framesInFlight]), or the tree
+  /// and the key of the frame stood on ([_keyUnderTheHand]).
+  ///
+  /// 🔬관제 11-19 22:4x (「어느 값이든 그림이 바뀌면 비고」 — every door, every
+  /// family): ↩️the frame stood on alone was asked, as if every value were
+  /// dragged there — a key's handle, the frames between two keys moved and
+  /// the key's own frame not, left the bar full, and a row's opacity slider
+  /// moved no stamp at all. What is shown in flight says so of itself; the
+  /// key of the frame stood on answers for what is written under the hand.
   bool _handMovedTheFrames() {
     final under = _treeUnderTheHand;
-    if (under == null || _run.pictures.treeStamp?.call() == under) {
+    if (under == null) {
+      return false;
+    }
+    if (_run.framesInFlight()) {
+      return true;
+    }
+    if (_run.pictures.treeStamp?.call() == under) {
       return false;
     }
     final stood = _keyUnderTheHand;
