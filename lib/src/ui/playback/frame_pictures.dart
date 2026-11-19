@@ -411,12 +411,21 @@ class FramePictures implements PlaybackPictures {
   FramePictureKey keyAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture,
-  ) => framePictureKeyOf(
-    nodes,
-    cutId: picture.cut.id,
-    page: pageOf(picture),
-    revisionOf: _revisionOf,
-  );
+  ) {
+    _standsSigned += 1;
+    return framePictureKeyOf(
+      nodes,
+      cutId: picture.cut.id,
+      page: pageOf(picture),
+      revisionOf: _revisionOf,
+    );
+  }
+
+  /// How many trees were signed as they stand ([keyAsItStands]) — a test's
+  /// word that a frame handed anew is signed once.
+  @visibleForTesting
+  int get standsSigned => _standsSigned;
+  int _standsSigned = 0;
 
   /// The key [picture]'s picture is kept under.
   FramePictureKey keyOf(DemandedPicture picture) => _standing(picture).key;

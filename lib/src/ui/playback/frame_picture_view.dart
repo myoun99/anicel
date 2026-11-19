@@ -522,24 +522,26 @@ class _FramePictureViewState extends State<FramePictureView>
     // timeline builds it at every step with every row as it was — and the
     // frame stood again at each repainted the whole canvas. ↩️Told by the
     // list's identity, which no build kept.
+    final asItStands = _pictures.keyAsItStands(widget.nodes, widget.picture);
     final handedAnew =
-        _stoodBy != _pictures.keyAsItStands(widget.nodes, widget.picture) ||
+        _stoodBy != asItStands ||
         !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
     if (handedAnew) {
-      _standAnew(oldWidget.drawnLive);
+      _standAnew(oldWidget.drawnLive, asItStands);
     } else {
       _look();
     }
   }
 
-  /// The frame stands as it was handed last, [drawnLive] as they were last
-  /// drawn.
-  void _standAnew(Set<BrushFrameKey> drawnLive) {
+  /// The frame stands as it was handed last — [asItStands] its key — and
+  /// [drawnLive] as they were last drawn.
+  void _standAnew(Set<BrushFrameKey> drawnLive, FramePictureKey asItStands) {
     final shown = _onScreen;
     _standLive(
       onScreen: (cel) => shown.contains(cel) || drawnLive.contains(cel),
+      asItStands: asItStands,
     );
     // 🚨THE FRAME FIRST, THEN WHAT ITS LIVE ROWS MOVED: rows handed with
     // another frame are that frame's. Measured against the picture of the
@@ -578,8 +580,17 @@ class _FramePictureViewState extends State<FramePictureView>
   /// are on screen already and read on this thread first
   /// ([FramePictureView.alreadyShown], [FramePictureView.drawnLive],
   /// [_onScreen]).
-  void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
-    _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
+  ///
+  /// 🚨[asItStands] IS THE KEY THE HANDING WAS TOLD BY ([didUpdateWidget]),
+  /// not signed again: ↩️each value of a box that draws on the frame (a cel
+  /// number's) signed the 68 rows twice (🔬Surface Pro 11, S5_BA cut 352,
+  /// F-620, 2026-11-19).
+  void _standLive({
+    bool Function(BrushFrameKey cel)? onScreen,
+    FramePictureKey? asItStands,
+  }) {
+    _stoodBy =
+        asItStands ?? _pictures.keyAsItStands(widget.nodes, widget.picture);
     _waits = waitsForItsPlugins(widget.nodes);
     _liveChanges?.removeListener(_liveMoved);
     _liveChanges = null;
