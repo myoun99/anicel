@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -62,9 +63,13 @@ void main() {
   /// A point where [viewer] is on top. ⚠️Not the main viewer's middle:
   /// the floor's lower half lies under the floating timeline, and a drop
   /// there is the timeline's (measured 2026-10-18 — the middle is the
-  /// floating region's resize edge).
-  Offset onScreenIn(WidgetTester tester, String viewer) =>
-      tester.getRect(panelOf(viewer)).topCenter.translate(0, 100);
+  /// floating region's resize edge). ⚠️Nor 100 down a viewer the rail shows
+  /// a part of: that part is all the viewer is laid in, and the sub viewer's
+  /// is 100 tall in this window.
+  Offset onScreenIn(WidgetTester tester, String viewer) {
+    final panel = tester.getRect(panelOf(viewer));
+    return panel.topCenter.translate(0, math.min(100, panel.height / 2));
+  }
 
   /// The file [viewer] has open.
   String? openIn(WidgetTester tester, String viewer) => tester

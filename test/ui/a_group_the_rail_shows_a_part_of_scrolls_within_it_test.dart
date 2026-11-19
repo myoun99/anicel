@@ -2,7 +2,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/brush/tool_settings_section.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
@@ -21,10 +23,9 @@ import '../helpers/rail_group_button.dart';
 /// the fill tool, and the tool library over the tool settings on the left
 /// rail — 320 + 8 + 320 against a window of about 417.
 void main() {
-  Finder railScroll() =>
-      find.byKey(const ValueKey<String>('rail-scroll-left'));
+  final leftRail = railScroll(right: false);
   ScrollPosition rail(WidgetTester tester) =>
-      tester.widget<SingleChildScrollView>(railScroll()).controller!.position;
+      railPosition(tester, right: false);
   Finder groupBody(String railId) =>
       find.byKey(ValueKey<String>('rail-group-body-$railId'));
   Finder settings() =>
@@ -54,7 +55,7 @@ void main() {
     expect(rail(tester).pixels, 0);
     expect(
       tester.getRect(groupBody(toolSettingsGroupId)).bottom,
-      greaterThan(tester.getRect(railScroll()).bottom + 100),
+      greaterThan(tester.getRect(leftRail).bottom + 100),
       reason: 'premise: the window shows only a part of the settings',
     );
   }
@@ -76,7 +77,7 @@ void main() {
   ) async {
     await pumpTheCardsFixture(tester);
     final gap = await wholeGap(tester, settings(), toolSettingsGroupId);
-    final window = tester.getRect(railScroll());
+    final window = tester.getRect(leftRail);
 
     expect(
       tester.getRect(settings()).bottom,
@@ -111,7 +112,7 @@ void main() {
   ) async {
     await pumpTheCardsFixture(tester);
     final gap = await wholeGap(tester, settings(), toolSettingsGroupId);
-    final window = tester.getRect(railScroll());
+    final window = tester.getRect(leftRail);
 
     // 100.1 lands the window on a device pixel the position is not on.
     for (final pixels in [37.0, 100.1, 180.0]) {
@@ -145,7 +146,7 @@ void main() {
     final under = whole.top - group.top - EditorPanelTabs.stripHeight;
 
     await jumpRail(tester, rail(tester).maxScrollExtent);
-    final window = tester.getRect(railScroll());
+    final window = tester.getRect(leftRail);
     final moved = rail(tester).pixels;
     expect(
       whole.top - moved,
@@ -191,11 +192,8 @@ void main() {
     const colours = EditorWorkspace.rightGroupId;
     await tester.tap(railGroupButton(colours));
     await tester.pumpAndSettle();
-    final railRight = find.byKey(const ValueKey<String>('rail-scroll-right'));
-    final position = tester
-        .widget<SingleChildScrollView>(railRight)
-        .controller!
-        .position;
+    final railRight = railScroll(right: true);
+    final position = railPosition(tester, right: true);
     position.jumpTo(position.maxScrollExtent);
     await tester.pump();
 
@@ -214,5 +212,34 @@ void main() {
       greaterThan(EditorPanelTabs.stripHeight + group.bottom - window.top),
       reason: 'the colour wheel cannot be laid out in the part shown',
     );
+  });
+
+  testWidgets('a group shown a sliver of cuts what does not scroll in it, '
+      'top down — the preview pinned over the brush\'s settings, and the '
+      'rows of the cut', (tester) async {
+    await pumpTheCardsFixture(tester);
+    final hand = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool!;
+    final cases = {
+      CanvasTool.brush: ToolSettingsPreview.slotKey,
+      CanvasTool.cutWhole: ToolSettingsSection.keyFor('cut-grab'),
+    };
+    for (final MapEntry(key: tool, value: top) in cases.entries) {
+      hand.value = hand.value.copyWith(tool: tool);
+      await tester.pumpAndSettle();
+      final panel = tester.getRect(find.byType(ToolSettingsPanel));
+      expect(
+        panel.height,
+        lessThan(ToolSettingsPreview.extent),
+        reason: 'premise: $tool is shown a sliver of',
+      );
+      expect(
+        panel.bottom,
+        lessThanOrEqualTo(tester.getRect(leftRail).bottom),
+        reason: '$tool: laid to the part shown',
+      );
+      expect(tester.getRect(find.byKey(top)).top, panel.top, reason: '$tool');
+    }
   });
 }

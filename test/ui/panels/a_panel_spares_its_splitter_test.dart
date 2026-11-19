@@ -157,6 +157,15 @@ void main() {
       await pumpHome(tester);
 
       final settings = await openRailGroup(tester, toolSettingsGroupId);
+      // All of it in the window: a group the window cuts is laid to the part
+      // it shows, and stands off the window's end
+      // (a_group_the_rail_shows_a_part_of_scrolls_within_it_test).
+      await scrollRailToItsEnd(tester, right: false);
+      expect(
+        tester.getRect(settings).bottom,
+        lessThanOrEqualTo(tester.getRect(railScroll(right: false)).bottom),
+        reason: 'premise: all of it shows',
+      );
       final group = tester.getRect(settings);
       expect(
         contentOf(tester, settings),

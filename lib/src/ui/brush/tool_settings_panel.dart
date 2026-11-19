@@ -296,9 +296,18 @@ class ToolSettingsPanel extends StatelessWidget {
     // ⛔The preview is PINNED and the settings scroll under it — 「위치는
     // 도구 설정의 맨 위」. Putting it inside the section would have let it
     // scroll away, which is what the stamp's own copy did.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [preview, Expanded(child: settings)],
+    //
+    // A box shorter than the preview — a group the rail shows a sliver of,
+    // or one dragged to its floor — cuts it from below, as a short box cuts
+    // the rows of a section that does not scroll.
+    return ClipRect(
+      child: CustomSingleChildLayout(
+        delegate: const _NoShorterThan(ToolSettingsPreview.extent),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [preview, Expanded(child: settings)],
+        ),
+      ),
     );
   }
 
@@ -2174,3 +2183,20 @@ List<double> _gradientWidthsIn(BuildContext context) => [
     for (final shape in FillGradientShape.values) _gradientShapeLabel(shape),
   ]),
 ];
+
+/// Lays its child no shorter than [extent], top down: a shorter box cuts it.
+class _NoShorterThan extends SingleChildLayoutDelegate {
+  const _NoShorterThan(this.extent);
+
+  final double extent;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    final height = math.max(constraints.maxHeight, extent);
+    return constraints.copyWith(minHeight: height, maxHeight: height);
+  }
+
+  @override
+  bool shouldRelayout(_NoShorterThan oldDelegate) =>
+      oldDelegate.extent != extent;
+}

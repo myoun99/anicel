@@ -253,6 +253,8 @@ void main() {
       await pressToolSettingsButton(tester);
       await pumpFrames(tester, 30);
     }
+    // The button is far down the settings.
+    await scrollRailToItsEnd(tester, right: false);
     await tester.ensureVisible(button);
     await tester.pump();
     // Behind the wait window (F-551), which goes before anything is read.
