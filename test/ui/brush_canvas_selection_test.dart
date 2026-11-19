@@ -2043,6 +2043,37 @@ void main() {
       );
     });
 
+    testWidgets('the bar closes full when the range ends on a cel already '
+        'landing', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        // The standing cel named again last: it tells no share of its own.
+        transformTargetKeys: () => [keys[0], keys[1], keys[0]],
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+
+      final told = watchTheBar(tester);
+      await windowBehind(tester, () async => env.commands.applyTransform());
+      expectOneBar(told, [2 / 3, 1]);
+    });
+
     // A cel that lands nothing has no making to wait on, so nothing else
     // gives the screen its turn after it.
     testWidgets('🚨the screen has its turn between two cels it works out — '

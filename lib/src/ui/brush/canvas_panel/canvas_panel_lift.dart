@@ -648,6 +648,11 @@ class _ConfirmRange {
         await work.landing?.workAhead(undo: false)?.call((_) {});
         report(doneShare(row.index + 1, row.of));
       }
+      // The range's last keys may name only cels already landing — a
+      // linked row's, or one its row shows as nothing — and those tell no
+      // share of their own. 🔬S5_BA: the bar stood at 167 of 204 as the
+      // window went.
+      report(1);
     };
   }
 }
