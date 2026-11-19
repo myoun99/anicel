@@ -2431,8 +2431,13 @@ class BrushFrameStore {
     CelMove move, {
     void Function(double done)? report,
   }) async {
-    final answers = _movedAhead.putIfAbsent(move, () => {});
     final keys = [for (final cutId in cutIds) ...celKeysOfCut(cutId)];
+    // One answer a cel, the last worked out: what an earlier round made of
+    // it, by whatever move, is no step's to take now.
+    for (final held in _movedAhead.values) {
+      keys.forEach(held.remove);
+    }
+    final answers = _movedAhead.putIfAbsent(move, () => {});
     var done = 0;
     await Future.wait([
       for (final key in keys)
