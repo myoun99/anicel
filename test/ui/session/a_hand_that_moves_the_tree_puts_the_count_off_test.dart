@@ -398,6 +398,30 @@ void main() {
     expect(budget.playbackReadyRuns(0, 24), before);
   });
 
+  test('🚨the camera\'s opacity slider dims the camera view and moves no '
+      'frame: its bar is the frames as they stand (F-363)', () {
+    final s = session();
+    final budget = s.playbackRig.playbackCache;
+    final before = budget.playbackReadyRuns(0, 24);
+    expect(before, isNotEmpty, reason: 'the premise: frames of nothing');
+    var heard = 0;
+    budget.readinessMoved.addListener(() => heard += 1);
+
+    s.playbackRig.prerenderScheduler.beginInputHold();
+    s.opacityVerbs.previewLayerOpacity(const LayerId('open-cam'), 0.5);
+    expect(
+      s.opacityVerbs.dragPreview.value,
+      isNotNull,
+      reason: 'the premise: in flight',
+    );
+    expect(budget.playbackReadyRuns(0, 24), before);
+
+    s.opacityVerbs.commitLayerOpacity(const LayerId('open-cam'), 1);
+    s.playbackRig.prerenderScheduler.endInputHold();
+
+    expect(heard, 0, reason: 'nothing was put off');
+  });
+
   test('the frame a hand notes is the one the warmer stands on — the '
       'playhead\'s — or its cut\'s first where it stands on none of it', () {
     StandingDemand around(int frame) => StandingDemand(
