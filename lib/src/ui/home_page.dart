@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
-import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter/services.dart' show HardwareKeyboard, SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/app_progress_dialog.dart' show runWithAppProgress;
@@ -71,6 +71,7 @@ import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
+import 'input/warmer_hand.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -545,6 +546,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Whether a contact is down, and every way it learns that one is over.
   final ContactCensus _contacts = ContactCensus();
 
+  /// What the hand does, told to the warmer of the project on screen.
+  late final WarmerHand _warmerHand = WarmerHand(
+    () => _onScreen?.playbackRig.prerenderScheduler,
+  );
+
   /// The system's one cursor, the pointer's that moved last (F-562).
   final OnePointerShowsTheCursor _cursorOwner = OnePointerShowsTheCursor();
 
@@ -626,6 +632,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // instead ([SessionScratch.ensureThisRunsFolder]).
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
+    HardwareKeyboard.instance.addHandler(_warmerHand.heardKey);
     EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.addListener(_sayTheDeviceStartedAgain);
     LostScreen.went.addListener(_keepTheWorkOfALostScreen);
@@ -952,7 +959,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ⛔Do not quietly put it back. If it should return it returns as the
   /// user's call, not as a fix for a bug report that is really this.
 
-  /// Any pointer activity — the clock only wants to know about the PEN.
+  /// Any pointer activity — the clock only wants to know about the PEN;
+  /// the warmer of the project on screen, about every hand ([WarmerHand]).
   ///
   /// Watched through the global pointer route rather than a [Listener]
   /// wrapped around the app: a global route OBSERVES events without
@@ -961,6 +969,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _noteUserActivity(PointerEvent event) {
     _contacts.note(event);
     _autosaveClock.noteActivity(strokeInFlight: _contacts.anyDown);
+    _warmerHand.heard(event, down: _contacts.anyDown);
     // What the undo door will be told is down, where a screenshot can read
     // it (F-232). ⛔Built only while the inspector is shown: this runs on
     // every pointer event, a stroke's moves included.
@@ -1205,6 +1214,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    HardwareKeyboard.instance.removeHandler(_warmerHand.heardKey);
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
     LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
