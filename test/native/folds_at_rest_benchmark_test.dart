@@ -12,6 +12,8 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 
+import '../helpers/poll_until.dart';
+
 /// What the folds at rest cost the isolate that asks for them
 /// (`EngineTileLedger.foldABatch`), timed: FOLDS tiles (512) of a drawn
 /// line each — a few colours a block, as a cel's are — folded a batch
@@ -189,13 +191,13 @@ void main() {
     // second.
     var stood = ledger.pool.bytes;
     var since = Stopwatch()..start();
-    while (since.elapsed < const Duration(seconds: 1)) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+    await pollUntil(() {
       if (ledger.pool.bytes != stood) {
         stood = ledger.pool.bytes;
         since = Stopwatch()..start();
       }
-    }
+      return since.elapsed >= const Duration(seconds: 1);
+    }, beat: const Duration(milliseconds: 50));
     print(
       'FOLDREST coming tiles=$count a-beat=$aBeat page=$_tilesAPage '
       'in=${coming.elapsedMilliseconds}ms '
