@@ -116,4 +116,14 @@ void main() {
     expect(heard, 1, reason: 'counted once, as the hand lets go');
     expect(budget.playbackReadyRuns(0, 24), before);
   });
+
+  test('a press a project closed under lets go of its warmer after, and '
+      'nothing is told', () {
+    final s = session();
+    final warmer = s.playbackRig.prerenderScheduler;
+    warmer.beginInputHold();
+    s.dispose();
+
+    expect(warmer.endInputHold, returnsNormally);
+  });
 }
