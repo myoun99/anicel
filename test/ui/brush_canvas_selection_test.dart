@@ -3502,6 +3502,69 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), 0, reason: '옮겨진 자리는 비었다');
   });
 
+  /// 🗣️undoing-every-box-step-leaves-the-session-moved (관제 2026-11-19, from
+  /// F-615): a box dragged and then stepped back to where it opened holds
+  /// no change — its ants read as before the drag, and a 확정 or a deselect
+  /// over a range lands nothing, so neither stands behind the wait window.
+  for (final press in ['확정', 'deselect']) {
+    testWidgets('a box stepped back to where it opened holds no change — '
+        '$press stands behind no window', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(36.5, 36.5),
+        byCanvas: const Offset(10, 0),
+      );
+      expect(
+        antsOnScreen(tester)?.sessionHasChanges,
+        isTrue,
+        reason: '⛔premise: a dragged box is red (H28)',
+      );
+
+      expect(env.commands.undoTransformStep(), isTrue);
+      await tester.pump();
+      expect(
+        env.commands.transformValues!.tx,
+        0,
+        reason: '⛔premise: the drag is stepped back',
+      );
+
+      // Read together, so a red run shows all three at once.
+      final redAfter = antsOnScreen(tester)?.sessionHasChanges;
+      final entries = env.history.undoCount;
+      final waited = await windowBehind(
+        tester,
+        () async => press == '확정'
+            ? env.commands.applyTransform()
+            : env.commands.deselect(),
+      );
+      expect(
+        (
+          red: redAfter,
+          waited: waited != null,
+          landed: env.history.undoCount - entries,
+        ),
+        (red: false, waited: false, landed: 0),
+        reason:
+            'nothing the box holds is a change any more: its ants read so, '
+            'and nothing lands, so nothing waits',
+      );
+    });
+  }
+
   /// 🚨★★★**⑤변형 중에는 조작 하나가 한 걸음이다.**
   ///
   /// 🗣️유저 2026-09-20: 「클튜 보니 좋은점이 있는데, **변형도구 사용시

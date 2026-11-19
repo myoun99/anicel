@@ -404,8 +404,8 @@ enum _SessionEnd {
 
 /// One open move session, as ONE value.
 ///
-/// ⛔Its floats' stamps and [moved] are mutable because a drag changes them
-/// while the session stays the same session; [token] is what the session
+/// ⛔Its floats' stamps are mutable because a fold changes them while the
+/// session stays the same session; [token] is what the session
 /// IS and cannot change without it being a different one.
 class _MoveSession {
   _MoveSession({required this.token, required this.floats});
@@ -426,9 +426,6 @@ class _MoveSession {
   /// the range's other cels are to be put through — and one flag answering
   /// two is how a third writer breaks one of them.
   bool get holdsAChange => floats.any((float) => float.holdsAChange);
-
-  /// True once the session actually MOVED.
-  bool moved = false;
 
   /// What the confirm landed with, as a mapping of the canvas — for the
   /// cels the confirm reaches that this session never floated.
@@ -697,10 +694,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// What floats now — nothing outside a session.
   List<_Float> get _floats => _session?.floats ?? const [];
-
-  /// True once the session actually MOVED — the ants turn red until the
-  /// confirm (green = confirmed / untouched).
-  bool get _moveSessionDirty => _session?.moved ?? false;
 
   bool get _movePending => _session != null;
 
@@ -1505,18 +1498,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Whether the session is holding changes that have not landed — the ONE
   /// question the ants, the transform box and the confirm button all draw
-  /// (see `AppColors.selectionSession`).
+  /// (see `AppColors.selectionSession`) — read off the box, which is where
+  /// every change a session holds lives, and which the box's own steps put
+  /// back.
   ///
-  /// Two terms because a session has two ways to hold a change.
-  /// [_moveSessionDirty] is set by a drag that carried the box, and by
-  /// nothing else — ↩️it was also set where a box was closed onto the
-  /// session, and the session ends before any box closes now
-  /// ([_endLanded]). While a box is OPEN that flag is false however far
-  /// the user has dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
-  /// 그니까 변경사항이 있으면 … 빨간색」. [_boxIsTransformed] is the answer
-  /// for exactly that window and already existed; ⛔a second dirty flag
-  /// would have been a second place to forget to clear.
-  bool get _sessionHasChanges => _moveSessionDirty || _boxIsTransformed;
+  /// ↩️A second term stood beside it: a session's `moved`, set by a drag
+  /// that carried the box and by nothing else. Once the move became the
+  /// affine's tx/ty it said nothing the box did not — until the box's steps
+  /// took the drag back, when it went on saying 「moved」: the ants stayed
+  /// red, and 확정 or a deselect stood a landing of nothing behind the wait
+  /// window over a range (undoing-every-box-step-leaves-the-session-moved,
+  /// measured 2026-11-19). ↩️Before that it was also set where a box was
+  /// closed onto the session, and the session ends before any box closes
+  /// now ([_endLanded]). While a box is OPEN the flag was false however far
+  /// the user had dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
+  /// 그니까 변경사항이 있으면 … 빨간색」 — and [_boxIsTransformed] answered
+  /// for exactly that window. ⛔A dirty flag held beside the box is a second
+  /// place to forget to clear, and this one was forgotten.
+  bool get _sessionHasChanges => _boxIsTransformed;
 
   /// Records what a commit just applied, for the next 재현.
   void _recordTransformRecall(TransformBox box) {
@@ -2948,9 +2947,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               tx: drag.txAtStart + moved.x,
               ty: drag.tyAtStart + moved.y,
             );
-          }
-          if (moved.x != 0 || moved.y != 0) {
-            _session?.moved = true;
           }
         });
         _publishTransformValues();
