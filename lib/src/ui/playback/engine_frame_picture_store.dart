@@ -110,7 +110,13 @@ class EngineFramePicture extends ChangeNotifier {
     StackedFrame frame, {
     ui.Rect? changed,
     EngineChainHolds? holds,
-  }) => _screen.compose(frame, changed: changed, holds: holds);
+    Object? standing,
+  }) => _screen.compose(
+    frame,
+    changed: changed,
+    holds: holds,
+    standing: standing,
+  );
 
   void _written() => notifyListeners();
 
@@ -120,7 +126,14 @@ class EngineFramePicture extends ChangeNotifier {
     StackedFrame frame, {
     required ui.Rect fresh,
     EngineChainHolds? holds,
-  }) => _screen.composeOver(film._screen, frame, fresh: fresh, holds: holds);
+    Object? standing,
+  }) => _screen.composeOver(
+    film._screen,
+    frame,
+    fresh: fresh,
+    holds: holds,
+    standing: standing,
+  );
 
   void _letGo() {
     _gone = true;
@@ -278,7 +291,10 @@ class EngineFramePictureStore<K extends Object> {
   /// its turn comes: composited where it is fresh alone, in world pixels,
   /// and the film's elsewhere as it is ([EngineStackScreen.composeOver]).
   ///
-  /// [holds] says where its chains' puts are held, if anywhere.
+  /// [holds] says where its chains' puts are held, if anywhere — for the
+  /// canvas [standing] stands for, where one stands on the frame to draw
+  /// ([EngineStackScreen.compose]); one asked for meanwhile is laid for the
+  /// first who asked.
   Future<EngineFramePicture?> lay(
     K key,
     StackedFrame frame, {
@@ -286,6 +302,7 @@ class EngineFramePictureStore<K extends Object> {
     bool Function() gone = _stays,
     ({K film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) {
     final there = peek(key);
     if (there != null) {
@@ -302,7 +319,7 @@ class EngineFramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, over, holds)..askers.add(gone);
+    final lay = _Lay<K>(key, frame, over, holds, standing)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -746,9 +763,14 @@ class EngineFramePictureStore<K extends Object> {
         lay.frame,
         fresh: over.fresh,
         holds: lay.holds,
+        standing: lay.standing,
       );
     }
-    return picture._composed(lay.frame, holds: lay.holds);
+    return picture._composed(
+      lay.frame,
+      holds: lay.holds,
+      standing: lay.standing,
+    );
   }
 }
 
@@ -781,12 +803,13 @@ final class _LayAnswer {
 }
 
 final class _Lay<K> {
-  _Lay(this.key, this.frame, this.over, this.holds);
+  _Lay(this.key, this.frame, this.over, this.holds, this.standing);
 
   final K key;
   final StackedFrame frame;
   final ({K film, ui.Rect fresh})? over;
   final EngineChainHolds? holds;
+  final Object? standing;
 
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];

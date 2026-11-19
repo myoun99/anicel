@@ -901,6 +901,8 @@ class _InteractiveCanvasBuild {
               liftedRows: floats.liftedRows,
             )
           : null,
+      // The canvas a move makes its frames for, one to what is held.
+      standsAs: session.standsWithItsPicture,
       laysWhatItMisses: standing,
       wholeFrames: !standing,
       // The cel you were drawing is a ghost in this picture on the frame you

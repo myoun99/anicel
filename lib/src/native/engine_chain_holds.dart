@@ -21,6 +21,22 @@ import '../core/lru.dart';
 /// are the engine's, counted where it keeps and lets go
 /// ([GpuHeldChains.liveBytes]), each weighed here once its run is done
 /// ([settleOnce]).
+///
+/// 🚨★A CANVAS HOLDS WHAT IT WAS LAID WHOLE WITH LAST, NOTHING ELSE
+/// (🗣️유저 2026-10-27, Q3 = c: 「편집 중인 프레임의 위 폴더만 들고 다른
+/// 프레임으로 가면 놓는다」): a canvas that stands on a frame to draw, laid
+/// whole there ([settleOnce] `standing`), lets go of every hold it named
+/// before and not now — the frame it stood on before, what this one showed
+/// before it changed — and of every hold no canvas stands on. ⛔Not one
+/// another canvas's last laying named: the conte's pictures stand on frames
+/// of their own beside the canvas, on these same holds (브러시/렌더링
+/// 2026-11-20). 🔬Held as least recently used to the room alone, a blur
+/// value dragged 60 steps on S5_BA cut 352 held 3.6 GB of values passed
+/// over, the room the frames' pictures had fell to 14 MB, and the band
+/// stood at one frame (card a-blur-value-drag-grows-memory-by-gigabytes,
+/// Surface, 2026-11-20). ↩️The law was laid in 841f2e275 (`holdOnly`) and
+/// went with the Flutter path in 70bba515d; 관제 2026-11-20 had it put
+/// back here.
 // ⏳Two of these where the frames' pictures move onto the engine (flip lane
 // ⓑ), each in the room the playback line gives what it stands for: the
 // canvas's in the nodes' (`HeldNodesLine.bytesForNodes` — 🗣️유저 2026-10-27
@@ -85,6 +101,10 @@ final class EngineChainHolds {
   /// What waits for them to be weighed ([onceWeighed]).
   final Set<void Function()> _onceWeighed = {};
 
+  /// The keys named since each laying whole whose holds are still to be
+  /// let go of ([_laidWhole]).
+  final List<Set<Object>> _namedSince = [];
+
   int _next = 0;
 
   /// The number what [key] shows is held under: the one it has, or one of
@@ -99,6 +119,9 @@ final class EngineChainHolds {
   /// out — would show one picture's pixels in another.
   int idOf(Object key) {
     _naming.add(key);
+    for (final named in _namedSince) {
+      named.add(key);
+    }
     return _asked
         .putIfAbsent(key, () => _holds.take(key) ?? _Hold(_next++))
         .id;
@@ -112,18 +135,32 @@ final class EngineChainHolds {
   /// meanwhile ([clear]) is not. One of a hold freed since ([free]) kept
   /// nothing.
   ///
+  /// Where the plan laid whole the frame the canvas [standing] stands on to
+  /// draw, that canvas stands on what the plan named and on nothing else:
+  /// once every run named so far is weighed ([onceWeighed]), a hold no
+  /// canvas stands on is let go of — one whose run was still to
+  /// come once that run is done (브러시/렌더링 2026-11-20 ①), and none named
+  /// meanwhile, a step's or the next laying's. ⛔A step names no canvas:
+  /// patched in where it changed, it would let go of the folders it did not
+  /// reach and the frame draw them again (8954628b5, 2026-11-04). ⛔Nor
+  /// does a frame made ahead: its holds are kept for the next one
+  /// (de930c597, F-529-Q1).
+  ///
   /// 🚨WEIGHED ONCE THE GPU HAS RUN IT (the-ui-thread-never-enters-the-
   /// driver B1-a, 2026-11-15): a screen's compose is handed to the engine
   /// with no one waiting for it ([GpuScreen.compose]), and what its chains
   /// kept is there once its done is told. ↩️Weighed as its plan was freed,
   /// each would weigh nothing then and be kept past the room. ⏳브러시/
   /// 렌더링, the user asleep; theirs to overturn.
-  void settleOnce(Future<void>? done) {
+  void settleOnce(Future<void>? done, {Object? standing}) {
     final named = [
       for (final key in _naming) (key: key, hold: _asked[key]!..runs += 1),
     ];
-    _naming.clear();
     _runsToCome += 1;
+    if (standing != null) {
+      _laidWhole(standing, {..._naming});
+    }
+    _naming.clear();
     if (done == null) {
       _weigh(named);
       return;
@@ -156,6 +193,47 @@ final class EngineChainHolds {
       for (final then in waiting) {
         then();
       }
+    }
+  }
+
+  /// [canvas] laid whole naming [own]: once every run named so far is
+  /// weighed, it stands on those, on none else it stood on, and a hold no
+  /// canvas stands on is let go of — but one named meanwhile ([idOf]).
+  void _laidWhole(Object canvas, Set<Object> own) {
+    final meanwhile = <Object>{};
+    _namedSince.add(meanwhile);
+    onceWeighed(() {
+      _namedSince.remove(meanwhile);
+      for (final key in [..._holds.keys]) {
+        final hold = _holds.peek(key)!;
+        if (own.contains(key)) {
+          hold.standers.add(canvas);
+        } else if (!meanwhile.contains(key)) {
+          hold.standers.remove(canvas);
+          _letGoUnstood(key, hold);
+        }
+      }
+    });
+  }
+
+  /// [canvas] stands on none of these any more — gone with its screen: a
+  /// weighed hold no other canvas stands on is let go of.
+  void standDown(Object canvas) {
+    for (final hold in _asked.values) {
+      hold.standers.remove(canvas);
+    }
+    for (final key in [..._holds.keys]) {
+      final hold = _holds.peek(key)!;
+      if (hold.standers.remove(canvas)) {
+        _letGoUnstood(key, hold);
+      }
+    }
+  }
+
+  void _letGoUnstood(Object key, _Hold hold) {
+    if (hold.standers.isEmpty) {
+      _holds.take(key);
+      _held?.letGo(hold.id);
     }
   }
 
@@ -197,11 +275,13 @@ final class EngineChainHolds {
 }
 
 /// A number the engine holds a chain's put under, what it weighed when
-/// last settled, and the runs naming it still to be done.
+/// last settled, the runs naming it still to be done, and the canvases
+/// whose last laying whole named it ([EngineChainHolds.settleOnce]).
 final class _Hold {
   _Hold(this.id);
 
   final int id;
   int bytes = 0;
   int runs = 0;
+  final Set<Object> standers = {};
 }

@@ -105,6 +105,7 @@ class FramePictureView extends StatefulWidget {
     required this.nodes,
     required this.viewport,
     this.live,
+    this.standsAs,
     this.laysWhatItMisses = false,
     this.wholeFrames = true,
     this.alreadyShown = false,
@@ -129,6 +130,13 @@ class FramePictureView extends StatefulWidget {
   /// a float or a lift moves with no new frame. Null for a screen that
   /// draws nothing live: a run, the track stack.
   final LiveRows? live;
+
+  /// The canvas this view is, drawing [live], to what is held of the
+  /// chains of the frame it stands on ([EngineChainHolds.settleOnce]):
+  /// the session's, whose moves make its frames for it as well
+  /// (`StandsWithItsPicture`); where none, the view itself — the conte's
+  /// pictures, each on a frame of its own.
+  final Object? standsAs;
 
   /// Whether a frame not there yet is made by this view — at once, at the
   /// front of the store's line ([FramePictures.makeShown]) — rather than
@@ -572,9 +580,16 @@ class _FramePictureViewState extends State<FramePictureView>
     _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
     _standingOn?.free();
+    if (widget.standsAs == null) {
+      _pictures.standDown(this);
+    }
     _repaint.dispose();
     super.dispose();
   }
+
+  /// The canvas this view is to what is held of its frame's chains
+  /// ([FramePictureView.standsAs]), where it draws live.
+  Object? get _canvas => widget.live == null ? null : widget.standsAs ?? this;
 
   void _landed() => setState(_look);
 
@@ -883,7 +898,7 @@ class _FramePictureViewState extends State<FramePictureView>
             widget.nodes,
             widget.picture,
             shouldAbort: () => !mounted || _making != key,
-            keepsNodes: widget.live != null,
+            canvas: _canvas,
           )
           .then<void>(
             (_) {},
@@ -1343,9 +1358,13 @@ class _FramePictureViewState extends State<FramePictureView>
     final (:composite, :letters) = _store.toolsOpen!;
     final screen = _standingOn ??= EngineStackScreen(composite, letters);
     if (!identical(_composedOn, frame) || _standingMoved) {
+      // Laid whole for the canvas this view is: what it stood on before is
+      // let go of (🔬a blur value dragged on S5_BA cut 352 held 3.6 GB of
+      // values passed over, 2026-11-20).
       final composed = screen.compose(
         frame,
         holds: widget.live == null ? null : _pictures.heldNodes,
+        standing: _canvas,
       );
       _composedOn = frame;
       _standingMoved = false;

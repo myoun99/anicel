@@ -267,6 +267,10 @@ class FramePictures implements PlaybackPictures {
     aheadNodes.clear();
   }
 
+  /// [canvas] stands on no frame any more — a view that drew live, gone
+  /// ([EngineChainHolds.standDown]).
+  void standDown(Object canvas) => heldNodes.standDown(canvas);
+
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
   /// 않고 새 장치를 열어 사본으로 되살린다」 — what the frames stand on went
   /// with the engine that made it: the chains held, every frame's picture
@@ -884,17 +888,17 @@ class FramePictures implements PlaybackPictures {
     shouldAbort: shouldAbort,
     due: due,
     shownNow: false,
-    keepsNodes: false,
     looks: _aheadLooks,
   ).whenComplete(_aheadLooks.nextFrame);
 
   /// Makes the frame a screen stands on — stacked as that screen stacks it
   /// ([nodes]: a drag in flight, the row a pen is on) — at once, at the
   /// front of the store's line: the frame on screen before any made ahead
-  /// of it ([make] has the rest). Where it [keepsNodes] — a canvas that
-  /// stands on it to draw — the pictures its nodes are drawn into are what
-  /// is held ([heldNodes]), and a frame of its page alone is laid too
-  /// ([drawsOnlyItsPage]): the pen's steps patch into it.
+  /// of it ([make] has the rest). For the [canvas] that stands on it to
+  /// draw, if one does, the pictures its nodes are drawn into are what is
+  /// held ([heldNodes]) — what that canvas stood on before let go of
+  /// ([EngineChainHolds.settleOnce]) — and a frame of its page alone is
+  /// laid too ([drawsOnlyItsPage]): the pen's steps patch into it.
   ///
   /// ⛔Not every screen's: a screen that draws nothing live patches no step
   /// in, and a frame it laid let go of the nodes of the frame a pen is on
@@ -903,14 +907,14 @@ class FramePictures implements PlaybackPictures {
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
-    required bool keepsNodes,
+    Object? canvas,
   }) => _make(
     () => nodes,
     picture,
     shouldAbort: shouldAbort,
     due: () => true,
     shownNow: true,
-    keepsNodes: keepsNodes,
+    canvas: canvas,
   );
 
   /// 🚨THE PICTURE A PANEL IS CUT FROM (F-533-Q8, 유저 2026-11-05: 「프레임
@@ -953,7 +957,6 @@ class FramePictures implements PlaybackPictures {
             shouldAbort: shouldAbort,
             due: notDue,
             shownNow: false,
-            keepsNodes: false,
             page: page,
             looks: looks,
           )) {
@@ -1005,7 +1008,7 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     required bool Function() due,
     required bool shownNow,
-    required bool keepsNodes,
+    Object? canvas,
     FramePage? page,
     CelLooks? looks,
   }) async {
@@ -1031,7 +1034,7 @@ class FramePictures implements PlaybackPictures {
         shouldAbort: shouldAbort,
         due: due,
         shownNow: shownNow,
-        keepsNodes: keepsNodes,
+        canvas: canvas,
         page: page,
         looks: looks,
         ahead: ahead,
@@ -1049,10 +1052,10 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     required bool Function() due,
     required bool shownNow,
-    required bool keepsNodes,
     required FramePage? page,
     required CelLooks? looks,
     required LooksAhead? ahead,
+    Object? canvas,
   }) async {
     if (shouldAbort()) {
       return false;
@@ -1073,14 +1076,15 @@ class FramePictures implements PlaybackPictures {
     final ghosts = film != null && store.holds(film)
         ? made.frame.whereTheGhostsShow
         : null;
-    if ((keepsNodes || !drawsOnlyItsPage(key)) &&
+    if ((canvas != null || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
           made.frame,
           shouldAbort,
           due,
           over: ghosts == null ? null : (film: film!, fresh: ghosts),
-          holds: shownNow && keepsNodes ? heldNodes : aheadNodes,
+          holds: canvas == null ? aheadNodes : heldNodes,
+          standing: canvas,
           shownNow: shownNow,
         )) {
       return false;
@@ -1094,8 +1098,9 @@ class FramePictures implements PlaybackPictures {
   }
 
   /// Lays [key]'s picture of [frame] in its turn ([make]), over the film
-  /// [over] says, its chains held in [holds]; false where the turn did not
-  /// come, or [shouldAbort] left the store's line before its lay was made.
+  /// [over] says, its chains held in [holds] for the canvas [standing]
+  /// stands for, if any; false where the turn did not come, or
+  /// [shouldAbort] left the store's line before its lay was made.
   Future<bool> _lay(
     FramePictureKey key,
     StackedFrame frame,
@@ -1103,6 +1108,7 @@ class FramePictures implements PlaybackPictures {
     bool Function() due, {
     required ({FramePictureKey film, ui.Rect fresh})? over,
     required EngineChainHolds holds,
+    required Object? standing,
     required bool shownNow,
   }) async {
     final turn = await quietTurns.inAQuiet(
@@ -1128,6 +1134,7 @@ class FramePictures implements PlaybackPictures {
         gone: shouldAbort,
         over: over,
         holds: holds,
+        standing: standing,
       );
     } on Object {
       unawaited(turn.gaveUp());

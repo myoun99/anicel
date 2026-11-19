@@ -144,8 +144,9 @@ final class _CanvasFrames {
         // makes it itself (`FramePictureView`, a screen that draws live):
         // the pen's steps patch into them (🔬S5_BA cut 352, Surface Pro 11:
         // with the cels in hand p50 83–154 ms to the picture, 186 ms not
-        // kept, 249 ms where the canvas made it itself, 11-18).
-        keepsNodes: true,
+        // kept, 249 ms where the canvas made it itself, 11-18) — this the
+        // canvas it moves stands as (`FramePictureView.standsAs`).
+        canvas: this,
       )
       .then<void>(
         (_) {},

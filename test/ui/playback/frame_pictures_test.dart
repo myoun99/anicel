@@ -666,7 +666,6 @@ void main() {
           [row('a')],
           at(0),
           shouldAbort: () => false,
-          keepsNodes: false,
         ),
         isTrue,
       );

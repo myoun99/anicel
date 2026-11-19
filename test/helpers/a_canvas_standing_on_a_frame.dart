@@ -252,6 +252,7 @@ class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
     bool Function() gone = _stays,
     ({FramePictureKey film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) {
     laid.add(key);
     return super.lay(
@@ -261,6 +262,7 @@ class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
       gone: gone,
       over: over,
       holds: holds,
+      standing: standing,
     );
   }
 
@@ -306,6 +308,7 @@ class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
     bool Function() gone = _stays,
     ({FramePictureKey film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) => Completer<EngineFramePicture?>().future;
 
   /// Nor the frame a canvas stood: a picture kept is one come.
@@ -332,6 +335,7 @@ class StoreWhoseLaysThrow extends EngineFramePictureStore<FramePictureKey> {
     bool Function() gone = _stays,
     ({FramePictureKey film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) {
     laid.add(key);
     return Future.error(why);

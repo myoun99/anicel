@@ -1732,6 +1732,7 @@ class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
     bool Function() gone = _stays,
     ({FramePictureKey film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) async {
     await _turns.putIfAbsent(_asked++, Completer<void>.new).future;
     rastered += 1;
@@ -1742,6 +1743,7 @@ class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
       gone: gone,
       over: over,
       holds: holds,
+      standing: standing,
     );
   }
 

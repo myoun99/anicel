@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
@@ -43,7 +44,9 @@ import '../helpers/engine_screen_pins.dart';
 /// mix, and a row reading a blur map, whose picture is the map's too. One
 /// that shows another picture, or a row drawn live, runs it, as does one
 /// on another paper; a row a posed lens reads as its map lays what its
-/// chain put where it shows by itself. What is held fits the room
+/// chain put where it shows by itself. A canvas holds what it was laid
+/// whole with last, beside what another canvas stands on; laid for none, a
+/// step lets go of nothing. What is held fits the room
 /// it is given, the hold used longest ago let go first, and the engine
 /// counts what it keeps; a store's screens hold in the store's. Each is
 /// weighed once the runs naming it are done.
@@ -207,6 +210,18 @@ void main() {
     return holds;
   }
 
+  /// A store of pictures laid on the engine, let go of at the test's end.
+  EngineFramePictureStore<String> aStore() {
+    final store = EngineFramePictureStore<String>(
+      tools: () async => (
+        composite: engine.composite,
+        letters: engine.letters,
+      ),
+    );
+    addTearDown(store.dispose);
+    return store;
+  }
+
   /// What [shown] shows at rest on a page of [size], one texel a canvas
   /// pixel.
   int shownBy(void Function(GpuSurface target) shown, CanvasSize size) {
@@ -218,15 +233,17 @@ void main() {
 
   /// What a screen holding its chains' puts in [holds] shows of [frame], on
   /// a page of [size] — once the GPU has laid it, and what it kept is
-  /// weighed ([EngineChainHolds.settleOnce]).
+  /// weighed ([EngineChainHolds.settleOnce]); laid whole for the canvas
+  /// [standing] stands for, if any.
   Future<int> laidWith(
     EngineChainHolds holds,
     StackedFrame frame, {
     CanvasSize size = canvas,
+    Object? standing,
   }) async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
-    await screen.compose(frame, holds: holds);
+    await screen.compose(frame, holds: holds, standing: standing);
     return shownBy(
       (target) => screen.show(
         target,
@@ -395,14 +412,8 @@ void main() {
   });
 
   test('a store\'s screens hold their chains\' puts in the store\'s', () async {
-    final store = EngineFramePictureStore<String>(
-      tools: () async => (
-        composite: engine.composite,
-        letters: engine.letters,
-      ),
-    );
     final holds = holdsIn(1 << 30);
-    addTearDown(store.dispose);
+    final store = aStore();
     int shownOf(EngineFramePicture picture) => shownBy(
       (target) => picture.show(
         target,
@@ -418,6 +429,129 @@ void main() {
 
     expect(first, laid(frameOf(5)));
     expect(next, first);
+  });
+
+  // 🗣️유저 2026-10-27, Q3 = c: 「편집 중인 프레임의 위 폴더만 들고 다른
+  // 프레임으로 가면 놓는다」 — a blur value dragged held every value passed
+  // over (card a-blur-value-drag-grows-memory-by-gigabytes, 2026-11-20).
+  group('🚨a canvas holds what it was laid whole with last', () {
+    const theCanvas = 'the canvas';
+    const conte = 'a conte picture';
+    const somewhere = Rect.fromLTWH(0, 0, 16, 16);
+
+    test('laid whole as another picture, it lets go of the one before, on '
+        'the engine too', () async {
+      final weighed = holdsIn(1 << 30);
+      await laidWith(weighed, frameOf(5));
+      final before = GpuHeldChains.liveBytes;
+      final holds = holdsIn(1 << 30);
+      await laidWith(holds, frameOf(5), standing: theCanvas);
+      await laidWith(holds, frameOf(7, revision: 2), standing: theCanvas);
+
+      expect(holds.heldBytes, weighed.heldBytes);
+      expect(GpuHeldChains.liveBytes - before, holds.heldBytes);
+      expect(
+        await laidWith(holds, frameOf(9), standing: theCanvas),
+        laid(frameOf(9)),
+        reason: 'let go',
+      );
+    });
+
+    test('laid by a store over its film, as a whole', () async {
+      final holds = holdsIn(1 << 30);
+      final store = aStore();
+      await store.lay('a', frameOf(5), holds: holds, standing: theCanvas);
+      await pumpEventQueue();
+      final once = holds.heldBytes;
+      expect(once, greaterThan(0), reason: '⛔premise: held');
+
+      await store.lay(
+        'b',
+        frameOf(7, revision: 2),
+        over: (film: 'a', fresh: somewhere),
+        holds: holds,
+        standing: theCanvas,
+      );
+      await pumpEventQueue();
+      expect(holds.heldBytes, once);
+    });
+
+    test('laid for no canvas — a step patched in, a fill — it lets go of '
+        'none', () async {
+      final weighed = holdsIn(1 << 30);
+      await laidWith(weighed, frameOf(5));
+      final holds = holdsIn(1 << 30);
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      await screen.compose(frameOf(5), holds: holds);
+      await screen.compose(
+        frameOf(7, revision: 2),
+        changed: somewhere,
+        holds: holds,
+      );
+
+      expect(holds.heldBytes, 2 * weighed.heldBytes);
+    });
+
+    test('🚨two canvases on frames of their own, each laid whole again, let '
+        'go of nothing the other stands on', () async {
+      final holds = holdsIn(1 << 30);
+      final first = await laidWith(holds, frameOf(5), standing: theCanvas);
+      final other = await laidWith(
+        holds,
+        frameOf(7, revision: 2),
+        standing: conte,
+      );
+
+      expect(
+        await laidWith(holds, frameOf(9), standing: theCanvas),
+        first,
+        reason: 'the canvas\'s, run none of again',
+      );
+      expect(
+        await laidWith(holds, frameOf(11, revision: 2), standing: conte),
+        other,
+        reason: 'the conte\'s, run none of again',
+      );
+    });
+
+    test('a canvas gone lets go of what it alone stood on', () async {
+      final before = GpuHeldChains.liveBytes;
+      final holds = holdsIn(1 << 30);
+      await laidWith(holds, frameOf(5), standing: theCanvas);
+      final once = holds.heldBytes;
+      await laidWith(holds, frameOf(7, revision: 2), standing: conte);
+      expect(holds.heldBytes, 2 * once, reason: '⛔premise: both held');
+
+      holds.standDown(conte);
+      expect(holds.heldBytes, once, reason: 'the canvas\'s stays');
+      holds.standDown(theCanvas);
+      expect(holds.heldBytes, 0);
+      expect(GpuHeldChains.liveBytes - before, 0, reason: 'the engine\'s');
+    });
+
+    test('one whose run is still to come is let go of once it is done; '
+        'what is named after, and what another canvas stands on, '
+        'stay', () async {
+      final holds = holdsIn(1 << 30);
+      final others = holds.idOf('others');
+      holds.settleOnce(null, standing: conte);
+      final before = holds.idOf('before');
+      final run = Completer<void>();
+      holds.settleOnce(run.future);
+      final now = holds.idOf('now');
+      holds.settleOnce(null, standing: theCanvas);
+      final next = holds.idOf('next');
+      holds.settleOnce(null, standing: theCanvas);
+
+      run.complete();
+      await pumpEventQueue();
+      expect(holds.idOf('next'), next, reason: 'the last laid whole');
+      expect(holds.idOf('now'), isNot(now), reason: 'the one before it');
+      expect(holds.idOf('before'), isNot(before), reason: 'once done');
+      expect(holds.idOf('others'), others, reason: 'the conte\'s');
+      holds.settleOnce(null);
+    });
   });
 
   // The engine tells a kept picture's tile by the number of a chain laid on
