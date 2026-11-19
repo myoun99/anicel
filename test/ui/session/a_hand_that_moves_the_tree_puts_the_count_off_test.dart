@@ -15,7 +15,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
-    show StandingDemand;
+    show FrameGhosts, StandingDemand;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 
@@ -180,48 +180,61 @@ void main() {
     expect(budget.playbackReadyRuns(0, 24), before);
   });
 
-  test('🚨a value dragged on a drawn row is shown, not written — and moves '
-      'the frames all the same: its cut stands not ready, counted once the '
-      'hand lets go (검증/서피스 21:36: the box of a cel number, a lane\'s '
-      'colour wheel)', () {
-    final s = session();
-    final budget = s.playbackRig.playbackCache;
-    inkCel(
-      s,
-      s.brushFrameKeyForCut(
-        s.requireActiveCut,
+  testWidgets('🚨a value dragged on a drawn row is shown, not written — and '
+      'moves the frames all the same: its cut stands not ready, counted once '
+      'the hand lets go (검증/서피스 21:36: the box of a cel number, a lane\'s '
+      'colour wheel)', (tester) async {
+    await tester.runAsync(() async {
+      final s = session();
+      addTearDown(s.dispose);
+      final open = s.activeCutOrNull!;
+      final budget = s.playbackRig.playbackCache;
+      // A row with nothing drawn lies in no frame's picture, so it is inked.
+      inkCel(
+        s,
+        s.brushFrameKeyForCut(
+          open,
+          const LayerId('open-layer'),
+          const FrameId('open-frame'),
+        ),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 1, y: 1),
+        size: 2,
+      );
+      await s.playbackRig.framePictures.make((
+        cut: open,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      ), shouldAbort: () => false);
+      final before = budget.playbackReadyRuns(0, 24);
+      expect(before, isNotEmpty, reason: 'the premise: the drawn hold made');
+      var heard = 0;
+      budget.readinessMoved.addListener(() => heard += 1);
+
+      s.playbackRig.prerenderScheduler.beginInputHold();
+      s.laneVerbs.previewLaneValueAt(
         const LayerId('open-layer'),
-        const FrameId('open-frame'),
-      ),
-      canvasSize: canvasSize,
-      at: CanvasPoint(x: 1, y: 1),
-      size: 2,
-    );
-    var heard = 0;
-    budget.readinessMoved.addListener(() => heard += 1);
+        'position',
+        0,
+        '3, 3',
+        frameIsGlobal: false,
+        scaleLinked: true,
+      );
+      expect(s.dragPreview.value, isNotNull, reason: 'the premise: in flight');
 
-    s.playbackRig.prerenderScheduler.beginInputHold();
-    s.laneVerbs.previewLaneValueAt(
-      const LayerId('open-layer'),
-      'position',
-      0,
-      '3, 3',
-      frameIsGlobal: false,
-      scaleLinked: true,
-    );
-    expect(s.dragPreview.value, isNotNull, reason: 'the premise: in flight');
+      expect(budget.playbackReadyRuns(0, 24), isEmpty);
 
-    expect(budget.playbackReadyRuns(0, 24), isEmpty);
+      s.laneVerbs.endLaneEditPreview();
+      s.playbackRig.prerenderScheduler.endInputHold();
 
-    s.laneVerbs.endLaneEditPreview();
-    s.playbackRig.prerenderScheduler.endInputHold();
-
-    expect(
-      heard,
-      1,
-      reason: 'put off under the hand — not counted as ever — and counted '
-          'once it lets go',
-    );
+      expect(heard, 1, reason: 'counted once, as the hand lets go');
+      expect(
+        budget.playbackReadyRuns(0, 24),
+        before,
+        reason: 'nothing written: the hold made is the hold shown again',
+      );
+    });
   });
 
   test('🚨a camera dragged moves no frame: its bar is the frames as they '
