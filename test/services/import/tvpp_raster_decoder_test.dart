@@ -602,7 +602,9 @@ void main() {
 
     test('a tile shows a shorter one of the picture before no further down '
         'than it reaches', () {
-      // Tile 1 (64 tall) shows the first's tile 4 (6 tall).
+      // Tile 1 (64 tall) shows the first's tile 4 (6 tall) — and so does
+      // tile 2, after tile 1 read the first's tile 1, 64 tall, again: what
+      // was read again for the taller one is not shown below the shorter.
       final shorter = List<int>.filled(w * h, 0);
       fill(shorter, 1, 2, rows: 6);
       final (:file, :slots) = layerOf([
@@ -612,6 +614,17 @@ void main() {
       final pictures = TvppPicturesInOrder();
       read(pictures, file, slots[0]);
       expect(read(pictures, file, slots[1]), expectedRgba(shorter));
+
+      final under = List<int>.filled(w * h, 0);
+      fill(under, 1, 0);
+      fill(under, 2, 2, rows: 6);
+      final again = layerOf([
+        records[0],
+        srawRecord(under, w, h, fromTheLast: {1: 1, 2: 4}),
+      ]);
+      final reading = TvppPicturesInOrder();
+      read(reading, again.file, again.slots[0]);
+      expect(read(reading, again.file, again.slots[1]), expectedRgba(under));
     });
 
     test('🚨a whole-canvas picture is a picture before too — its tiles '
@@ -662,6 +675,25 @@ void main() {
       expect(slots[1].before, same(slots[0]), reason: 'a hold holds it');
       expect(slots[2].before, same(slots[0]), reason: 'past the hold');
       expect(slots[3].before, same(slots[2]));
+    });
+
+    test("a CTG layer's second stream starts with no picture before — its "
+        "first does not show the first stream's last", () {
+      final b = TvppBuilder()
+        ..clipProperties('t')
+        ..clipHeader(width: w, height: h)
+        ..layerHead('C', headerChunk: 'LRSH', end: 1, count: 2)
+        ..zchkSlot(records[0])
+        ..zchkHold()
+        ..chunk('LRSR', const [])
+        ..zchkSlot(records[0])
+        ..zchkSlot(records[1])
+        ..clipConfig();
+      final layer = parseTvppStructure(b.bytes).clips.single.layers.single;
+      final second = layer.ctgSecondStream;
+      expect(second, hasLength(2), reason: 'LIVENESS: the second stream');
+      expect(second[0].before, isNull);
+      expect(second[1].before, same(second[0]));
     });
   });
 }

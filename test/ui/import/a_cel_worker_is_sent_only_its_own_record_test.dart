@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -33,9 +34,23 @@ import '../../services/import/tvpp_slot_rgba.dart';
 /// the plan, the cut, the bake. Nothing reads those ports. A message that
 /// reaches any of them fails to send, and that failure is the measurement —
 /// counting bytes would only be a shadow of the graph this reads directly.
+///
+/// 🚨ON A WORKER OF ITS OWN, NOT HERE: the corpus runs every worker's job
+/// on this isolate (`debugWorkersRunHere`, f64ae13df, 2026-10-15), where
+/// nothing is sent and so nothing refuses. ↩️This file was not told, and
+/// from that day it passed whatever a worker carried — a cel read after
+/// the picture before sent every picture before it, ports and all, and
+/// stayed green (mutant, F-621 ②, 2026-11-19).
 void main() {
   const width = 64;
   const height = 48;
+
+  late bool corpus;
+  setUp(() {
+    corpus = debugWorkersRunHere;
+    debugWorkersRunHere = false;
+  });
+  tearDown(() => debugWorkersRunHere = corpus);
 
   test('each worker decodes its own record from a message that reaches '
       'nothing else of the work', () async {
