@@ -1471,12 +1471,24 @@ fn a_page_refused_ahead_is_not_asked_again_till_the_budget_moves() {
         assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
         assert_eq!(ahead(pool), "refused", "kept to nothing");
         gpu_engine_stand_still(engine, 2_000);
+        // 🚨Where the page stands is read by the order of the pages'
+        // thread, never by the clock: held, a page asked for is being
+        // made for as long as this looks — one asked for where none is to
+        // be, too —, and it is made once a turn of that thread is
+        // through. ↩️Till 2026-11-19 read "making" right after the store
+        // and "made" after a done — the engine's thread's, which makes no
+        // page: a crowded debug run read "making" there (card
+        // a-page-ahead-test-reads-making-under-load).
+        let (open, shut) = std::sync::mpsc::channel::<()>();
+        (*engine).pages_posted(move || shut.recv().unwrap_or_default());
         assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
         assert_eq!(ahead(pool), "refused", "not asked again as it stands");
         gpu_engine_pool_budget_instead(pool, i64::MAX);
         assert_eq!(stored_now(pool, engine, cel, &bytes, 1), 1);
         assert_eq!(ahead(pool), "making", "asked again once the budget moved");
+        open.send(()).expect("the pages' thread waits");
         assert_eq!(done_here(&*engine), Ok(()));
+        (*engine).on_pages_thread(|| ());
         assert_eq!(ahead(pool), "made");
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
