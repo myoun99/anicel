@@ -1403,7 +1403,11 @@ class Standing {
   ///
   /// ⚠️Only the cut, the row and the frame move (유저: 「화면 확대·스크롤·
   /// 선택범위·도구는 그대로」).
-  void standOn(StandingPlace place) {
+  ///
+  /// [landed] once the user stands there — the walk waits for the frame's
+  /// picture, and a move that comes first takes its place: one that never
+  /// lands calls nothing.
+  void standOn(StandingPlace place, {VoidCallback? landed}) {
     if (_project.cutById(place.cut) == null) {
       return;
     }
@@ -1424,6 +1428,7 @@ class Standing {
         _selection.selectFrameIndex(place.frame);
         keepStandingShown(reveal: true);
         _rangeSelections.revealSelection();
+        landed?.call();
       },
     );
   }

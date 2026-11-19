@@ -134,7 +134,16 @@ class HistoryManager extends ChangeNotifier {
   ///
   /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
   /// it is still the user's to take.
+  ///
+  /// One way back at a time: it takes the place of one the last walk left
+  /// (card F-624 ②). The user walked off that one's place on their own
+  /// before this walk, so it leads where they no longer were. ↩️Each walk
+  /// to the same edit stacked one more, and the redos after the edit's
+  /// walked the user to each place in turn.
   void leaveWalkBack(WalkBack step) {
+    if (_redoStack.lastOrNull is WalkBack) {
+      _redoStack.removeLast();
+    }
     _redoStack.add(step);
     _revision += 1;
     notifyListeners();

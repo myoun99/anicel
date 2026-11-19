@@ -2468,21 +2468,30 @@ class EditorSessionManager extends ChangeNotifier
   /// 그곳으로 이동만, 다음 언두가 편집을 되돌린다 … 리두는 대칭」. Standing
   /// elsewhere than the edit was made, the undo only WALKS there
   /// ([Standing.standOn]) and leaves the way back for redo.
+  ///
+  /// 🚨THE WAY BACK IS LEFT WHERE THE WALK LANDS, never at the press (card
+  /// F-624 ②, 검증 11-20 「Ctrl+Z 를 7번 눌러도 안 돌아오고 다시하기 버튼만
+  /// 켜짐」): the walk waits for its frame's picture, and a move that comes
+  /// first — the ruler pressed — takes its place. ↩️Left at the press, each
+  /// walk that never landed left a way back from where the user never went,
+  /// the redo lit with nothing moved.
   void undo() {
     _settleAndAdopt();
     final here = standingPlace;
     final gap = editingSession.gapGlobalFrame;
     if (_walkTo(undo: true) case final there?) {
-      historyManager.leaveWalkBack(
-        WalkBack(() {
-          if (here != null) {
-            standing.standOn(here);
-          } else if (gap != null) {
-            parkGlobalFrame(gap);
-          }
-        }),
+      standing.standOn(
+        there,
+        landed: () => historyManager.leaveWalkBack(
+          WalkBack(() {
+            if (here != null) {
+              standing.standOn(here);
+            } else if (gap != null) {
+              parkGlobalFrame(gap);
+            }
+          }),
+        ),
       );
-      standing.standOn(there);
       return;
     }
     historyPictures.step(
