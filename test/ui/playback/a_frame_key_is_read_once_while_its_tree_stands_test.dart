@@ -70,7 +70,10 @@ void main() {
 
   late BrushFrameStore cels;
   late LayerFrameImageCache images;
+  /// Each tree the pictures' [FramePictures.stackOf] answered, in turn.
+  final trees = <List<CompositeNode<CanvasStackRow>>>[];
   setUp(() {
+    trees.clear();
     // The suite stacks every tree handed back anew to check it
     // (flutter_test_config.dart): these count the stackings themselves.
     final checked = debugCheckFrameStanding;
@@ -101,7 +104,7 @@ void main() {
       layerImages: images,
       stackOf: (picture) {
         stacked[0] += 1;
-        return [
+        final tree = <CompositeNode<CanvasStackRow>>[
           for (final row in rows)
             CompositeLeaf(
               CanvasLayerImageRequest(
@@ -119,6 +122,8 @@ void main() {
               ),
             ),
         ];
+        trees.add(tree);
+        return tree;
       },
       pageOf: (picture) => (
         canvasSize: picture.cut.canvasSize,
@@ -387,6 +392,68 @@ void main() {
       expect(made, isTrue, reason: '⛔premise');
       expect(pictures.keyOf(at(cut, 0)).signature.nodes, hasLength(1));
       expect(pictures.has(at(cut, 0)), isTrue);
+    });
+  });
+
+  group('a key asked of a tree is the one kept only for the tree it was read '
+      'from, on its own page, each cel as it is now', () {
+    test('⛔CONTROL — the tree it was read from, as it stands, is handed '
+        'the key kept', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+      final signed = pictures.keysSigned;
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0));
+
+      expect(identical(asked, kept), isTrue);
+      expect(pictures.keysSigned, signed);
+    });
+
+    test('another tree — a stack a screen holds — is signed as stacked', () {
+      ink(cels, 'b', CanvasPoint(x: 5, y: 5));
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+
+      final screens = pictures.keyOfStack([
+        ...trees.last,
+        CompositeLeaf(
+          CanvasLayerImageRequest(frameKey: keyOf('b'), opacity: 1),
+        ),
+      ], at(cut, 0));
+
+      expect(screens.signature.nodes, hasLength(2));
+      expect(screens, isNot(kept));
+    });
+
+    test('another page is signed on it', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+      final page = (
+        canvasSize: cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: true,
+        paperBackground: const ProjectBackground.color(0xFF102030),
+      );
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0), page: page);
+
+      expect(asked, isNot(kept));
+    });
+
+    test('a cel asked as it was is signed as it was', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final then = pictures.celNow(keyOf('a'));
+      final before = pictures.keyOf(at(cut, 0));
+      ink(cels, 'a', CanvasPoint(x: 3, y: 3));
+      expect(pictures.keyOf(at(cut, 0)), isNot(before), reason: '⛔premise');
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0), asOf: then);
+
+      expect(asked, before);
     });
   });
 
