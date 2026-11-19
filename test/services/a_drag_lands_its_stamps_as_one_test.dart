@@ -15,6 +15,7 @@ import 'package:anicel/src/services/piece_landing.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「한 끌기 =
 /// 한 되돌리기(획처럼)」 — recorded as a stroke is (관제 2026-11-19): a drag's
@@ -137,6 +138,10 @@ void main() {
       landing.undo();
       expect(coordinator.currentSurfaceOf(cel), same(pressed));
       landing.execute();
+      // The bill is of bytes here: the tiles the press found are the
+      // engine's alone till their copies come, and weigh nothing
+      // (`BitmapTile.ownBytes`).
+      theCopiesComeOf([pressed]);
       return landing.estimatedRetainedBytes(undone: false);
     }
 
