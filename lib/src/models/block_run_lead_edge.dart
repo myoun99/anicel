@@ -159,6 +159,63 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   );
 }
 
+/// The lead edge of a band's blocks pulled back [pull] frames: THINNED
+/// OUT. Counted in blocks from the first of [selected], whatever their
+/// lengths, one in every [pull] + 1 stays and the [pull] after it go —
+/// each run of them swept by the rule a single lead edge follows
+/// ([_sweepBack]) to the end of its last, so the block kept in front
+/// follows the edge where it touched them and the gap in front grows where
+/// it did not, as one block's would. Nothing outside [selected] moves.
+///
+/// [selected] are slot indices, ascending and side by side — the blocks a
+/// band holds on one row.
+///
+/// 🗣️I-179-Q1 (유저 2026-11-19): 「솎아내기 — 당긴 칸 수만큼 건너뛰며
+/// 남긴다」, of 「12345678 이렇게 1장씩있고 8장선택하고 1의 앞엣지 뒤로
+/// 1칸밀면 1-3-5-7- … 총 2칸밀면 1--4--7-」.
+///
+/// ⚠️Mine: a gap among the band's blocks is the single sweep's — the block
+/// in front of one does not cross it — rather than the kept block running
+/// on to the next one kept; the user's example has none.
+BlockRunLeadEdgeLayout planBlockRunThinning({
+  required List<BlockMoveSlot> slots,
+  required List<int> selected,
+  required int pull,
+}) {
+  assert(
+    [
+      for (var i = 1; i < selected.length; i += 1)
+        selected[i] - selected[i - 1],
+    ].every((step) => step == 1),
+    'a band holds its row\'s blocks side by side',
+  );
+  final starts = slotStartsOf(slots);
+  final newStarts = List<int>.of(starts);
+  final lengths = [for (final slot in slots) slot.length];
+  for (var kept = 0; pull > 0 && kept < selected.length; kept += pull + 1) {
+    final last = selected[math.min(kept + pull, selected.length - 1)];
+    if (last == selected[kept]) {
+      break;
+    }
+    final target = selected[kept + 1];
+    _sweepBack(
+      slots,
+      (
+        targetIndex: target,
+        pull: starts[last] + slots[last].length - starts[target],
+        minLength: defaultLeadEdgeLimits.minLength,
+        starts: starts,
+      ),
+      newStarts: newStarts,
+      lengths: lengths,
+    );
+  }
+  return BlockRunLeadEdgeLayout(
+    leadingGaps: leadingGapsOf(starts: newStarts, lengths: lengths),
+    lengths: lengths,
+  );
+}
+
 /// What a pull back of a lead edge reads: the dragged block, how far the
 /// hand pulled, the floor a block the edge stands in keeps and where every
 /// block sat before the drag.

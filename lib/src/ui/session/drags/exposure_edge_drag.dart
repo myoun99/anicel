@@ -686,6 +686,13 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// pointer is; on the OTHER rows of the selection it is the last selected
   /// block, because that is the one whose front edge faces the same
   /// direction the hand is pulling.
+  ///
+  /// PULLED BACK, the band's blocks are thinned out on every row it spans
+  /// ([TimelineController.thinnedLayerForBlocks]), whichever block's edge
+  /// the hand holds. 🗣️I-179-Q1 (유저 2026-11-19): 「솎아내기 — 당긴 칸
+  /// 수만큼 건너뛰며 남긴다」. ↩️The held block swept on past its own end
+  /// (I-179's single law) — on the other rows the last selected one, out
+  /// past the band.
   Layer? _bulkLeadEdgeLayer(
     Layer before,
     BulkRetimeRow row,
@@ -694,6 +701,13 @@ class ExposureEdgeDrag implements EditorDragSession {
     final starts = [...row.starts]..sort();
     if (starts.isEmpty) {
       return null;
+    }
+    if (cumulativeDelta > 0) {
+      return _roles.controllers.timelineController.thinnedLayerForBlocks(
+        layer: before,
+        blockStarts: starts,
+        pull: cumulativeDelta,
+      );
     }
     final anchor = before.id == _before.id ? _blockStart : starts.last;
     final targetStart = starts.contains(anchor) ? anchor : starts.last;

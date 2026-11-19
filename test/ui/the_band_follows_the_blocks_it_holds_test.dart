@@ -220,9 +220,9 @@ void main() {
       expect(band(session), (0, 4));
     });
 
-    test('🚨the LEAD edge of the band\'s last block pulled back past it '
-        'sweeps it and the block behind away, and the band ends where its '
-        'first block — which followed the edge — now ends', () {
+    test('🚨the LEAD edge of the band\'s last block pulled back thins the '
+        'band out — its first block runs on over the one that went — and '
+        'the band ends where that first block now ends', () {
       final (session, rowId) = onOnes();
       sweep(session, rowId, 1, 2);
 
@@ -232,11 +232,11 @@ void main() {
         edge: TimelineBlockEdge.start,
       );
       session.edgeDrag.updateExposureEdgeDrag(2);
-      expect(band(session), (1, 4), reason: 'live');
+      expect(band(session), (1, 3), reason: 'live');
       session.edgeDrag.endExposureEdgeDrag();
 
-      expect(rowOf(session, rowId), {0: 1, 1: 3}, reason: 'I-179');
-      expect(band(session), (1, 4));
+      expect(rowOf(session, rowId), {0: 1, 1: 2, 3: 1}, reason: 'I-179-Q1');
+      expect(band(session), (1, 3));
     });
 
     test('a step back to no change shows the band where it stood', () {

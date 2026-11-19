@@ -388,6 +388,18 @@ class TimelineController {
     delta: delta,
     reach: reach,
   );
+
+  /// A band's lead edge pulled back at layer level: its blocks on [layer]
+  /// thinned out (I-179-Q1).
+  Layer? thinnedLayerForBlocks({
+    required Layer layer,
+    required Iterable<int> blockStarts,
+    required int pull,
+  }) => _edge.thinnedLayerForBlocks(
+    layer: layer,
+    blockStarts: blockStarts,
+    pull: pull,
+  );
   void retimeBlocksForLayer({
     required LayerId layerId,
     required Map<int, int> newLengthByStart,

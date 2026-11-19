@@ -313,4 +313,124 @@ void main() {
     expect(layout.leadingGaps, [1, 0, 3]);
     expect(layout.lengths, [4, 4, 4]);
   });
+
+  group('a band\'s lead edge pulled back thins it out (I-179-Q1, 유저 '
+      '2026-11-19: 「솎아내기 — 당긴 칸 수만큼 건너뛰며 남긴다」)', () {
+    /// The row as the user wrote it: each block by its number on the frame
+    /// it starts, `-` on the frames it holds after that, `.` where none.
+    String written(BlockRunLeadEdgeLayout layout) {
+      final row = StringBuffer();
+      final starts = startsOf(layout);
+      for (var i = 0; i < starts.length; i += 1) {
+        if (layout.lengths[i] > 0) {
+          row
+            ..write('.' * (starts[i] - row.length))
+            ..write('${i + 1}${'-' * (layout.lengths[i] - 1)}');
+        }
+      }
+      return row.toString();
+    }
+
+    String thinned(
+      List<(int, int)> pairs, {
+      required List<int> selected,
+      required int pull,
+    }) => written(
+      planBlockRunThinning(
+        slots: slots(pairs),
+        selected: selected,
+        pull: pull,
+      ),
+    );
+
+    const onOnes = [(0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+    final eight = [...onOnes, (0, 1)];
+    final all = [for (var i = 0; i < 8; i += 1) i];
+
+    test('🗣️the user\'s eight on ones: one frame keeps every second, two '
+        'every third — 「1-3-5-7-」 · 「1--4--7-」', () {
+      expect(thinned(eight, selected: all, pull: 0), '12345678');
+      expect(thinned(eight, selected: all, pull: 1), '1-3-5-7-');
+      expect(thinned(eight, selected: all, pull: 2), '1--4--7-');
+      expect(thinned(eight, selected: all, pull: 3), '1---5---');
+    });
+
+    test('pulled as far as the band holds blocks, the first is all that '
+        'stays, the band\'s length whole — and no further', () {
+      expect(thinned(eight, selected: all, pull: 7), '1-------');
+      expect(thinned(eight, selected: all, pull: 99), '1-------');
+    });
+
+    test('counted in blocks, whatever their lengths', () {
+      expect(
+        thinned(
+          [(0, 2), (0, 2), (0, 2), (0, 2)],
+          selected: [0, 1, 2, 3],
+          pull: 1,
+        ),
+        '1---3---',
+      );
+      expect(
+        thinned(
+          [(0, 1), (0, 3), (0, 2), (0, 1)],
+          selected: [0, 1, 2, 3],
+          pull: 1,
+        ),
+        '1---3--',
+      );
+    });
+
+    test('nothing outside the band moves', () {
+      final six = onOnes.take(6).toList();
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 1), '12-4-6');
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 3), '12---6');
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 9), '12---6');
+    });
+
+    test('the last run short of a whole one is thinned as far as it goes',
+        () {
+      expect(
+        thinned(onOnes.take(5).toList(), selected: [0, 1, 2, 3, 4], pull: 2),
+        '1--4-',
+      );
+    });
+
+    test('a band holding one block on a row keeps it', () {
+      expect(thinned(eight, selected: [3], pull: 2), '12345678');
+    });
+
+    test('a gap is the single lead edge\'s: the block in front of it holds '
+        'and the gap grows; one the edge passes through, the glued block '
+        'in front follows over', () {
+      const band = [0, 1, 2, 3];
+      expect(
+        thinned([(0, 1), (1, 1), (0, 1), (0, 1)], selected: band, pull: 1),
+        '1..3-',
+      );
+      expect(
+        thinned([(0, 1), (0, 1), (1, 1), (0, 1)], selected: band, pull: 2),
+        '1---4',
+      );
+    });
+
+    test('each run is swept as the lead edge of its second block pulled to '
+        'the run\'s end would sweep it — the same rule, not a second one', () {
+      final row = slots([(0, 2), (0, 1), (1, 3), (0, 1), (2, 2)]);
+      final single = planBlockRunLeadEdge(
+        slots: row,
+        targetIndex: 1,
+        // From block 2's start (2) to block 4's end (8).
+        frameDelta: 6,
+      );
+      final band = planBlockRunThinning(
+        slots: row,
+        selected: [0, 1, 2, 3],
+        pull: 3,
+      );
+      expect(written(band), written(single));
+      expect(band.lengths, single.lengths);
+      expect(band.leadingGaps, single.leadingGaps);
+      expect(written(band), '1-------..5-');
+    });
+  });
 }

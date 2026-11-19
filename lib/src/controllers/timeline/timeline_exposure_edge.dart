@@ -283,18 +283,55 @@ class _TimelineExposureEdge {
   /// Bigger than any timeline a hand can drag — the planner clamps it.
   static const int _unreachable = 1 << 30;
 
+  /// [layer] after the lead edge of a band's blocks on it — those starting
+  /// at [blockStarts] — is pulled back [pull] frames: thinned out
+  /// ([planBlockRunThinning], I-179-Q1), laid out and handed back as
+  /// [leadEdgeLayerForBlock]'s is.
+  Layer? thinnedLayerForBlocks({
+    required Layer layer,
+    required Iterable<int> blockStarts,
+    required int pull,
+  }) {
+    final layout = _BlockLayout.of(ghostFreeTimeline(layer));
+    final held = blockStarts.toSet();
+    _lay(
+      layout,
+      planBlockRunThinning(
+        slots: _slotsOf(layout),
+        selected: [
+          for (final (index, block) in layout.blocks.indexed)
+            if (held.contains(block.startIndex)) index,
+        ],
+        pull: pull,
+      ),
+    );
+    return _laidOut(layer, layer, layout.toTimeline());
+  }
+
   /// Lays [layout] out after a LEAD-edge drag, through the shared rule.
-  ///
-  /// The model speaks in slots (leading gap + length); this axis speaks in
-  /// absolute starts. Converting both ways is the whole adapter — and it
-  /// is what keeps "드래그하는 블록 로직은 컷블록이랑 전부 통일" true in
-  /// code rather than in two places that merely agree today.
   void _applyLeadEdge(
     _BlockLayout layout, {
     required int targetIndex,
     required int delta,
     int reach = 1,
   }) {
+    _lay(
+      layout,
+      planBlockRunLeadEdge(
+        slots: _slotsOf(layout),
+        targetIndex: targetIndex,
+        frameDelta: delta,
+        limits: (minLength: 1, reach: reach),
+      ),
+    );
+  }
+
+  /// [layout]'s blocks as the model's slots: the model speaks in leading
+  /// gaps and lengths; this axis speaks in absolute starts. Converting both
+  /// ways ([_lay]) is the whole adapter — and it is what keeps "드래그하는
+  /// 블록 로직은 컷블록이랑 전부 통일" true in code rather than in two
+  /// places that merely agree today.
+  static List<BlockMoveSlot> _slotsOf(_BlockLayout layout) {
     var previousEnd = 0;
     final slots = <BlockMoveSlot>[];
     for (final block in layout.blocks) {
@@ -304,14 +341,11 @@ class _TimelineExposureEdge {
       ));
       previousEnd = block.endIndexExclusive;
     }
+    return slots;
+  }
 
-    final planned = planBlockRunLeadEdge(
-      slots: slots,
-      targetIndex: targetIndex,
-      frameDelta: delta,
-      limits: (minLength: 1, reach: reach),
-    );
-
+  /// [layout] laid where [planned] puts each of its blocks.
+  static void _lay(_BlockLayout layout, BlockRunLeadEdgeLayout planned) {
     var cursor = 0;
     for (var i = 0; i < layout.blocks.length; i += 1) {
       cursor += planned.leadingGaps[i];

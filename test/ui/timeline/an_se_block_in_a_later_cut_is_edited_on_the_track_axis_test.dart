@@ -170,4 +170,36 @@ void main() {
     expect(global(s)[10]?.length, 3, reason: 'the SE block retimed with it');
     expect(global(s)[2]?.length, 2, reason: 'the block in cut 1 is not it');
   });
+
+  test('a band\'s lead edge pulled back thins the row out on the track '
+      '(I-179-Q1)', () {
+    final s = sessionInTheSecondCut();
+    s.selectLayer(cel);
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+    s.updateFrameRangeSelectionDrag(
+      layerId: cel,
+      anchorIndex: 2,
+      headIndex: 5,
+      headLayerId: seRow,
+    );
+
+    expect(
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: cel,
+        blockStartIndex: 2,
+        edge: TimelineBlockEdge.start,
+      ),
+      isTrue,
+    );
+    s.edgeDrag.updateExposureEdgeDrag(1);
+    s.edgeDrag.endExposureEdgeDrag();
+
+    expect(global(s).keys, [2, 10], reason: '`late` went with the band');
+    expect(
+      global(s)[10]?.length,
+      2,
+      reason: 'a gap lay between them: `mid` holds, as one lead edge has it',
+    );
+  });
 }
