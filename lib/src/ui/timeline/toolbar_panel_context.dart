@@ -236,8 +236,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editCut,
           cutRun,
-          blocks: () => drawingsTaken(lifted: true),
-          ahead: () => takeAhead(lifted: true),
+          reaches: () => (
+            blocks: drawingsTaken(lifted: true),
+            ahead: takeAhead(lifted: true),
+          ),
         )
       : null;
 
@@ -245,8 +247,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editCopy,
           copyFrame,
-          blocks: () => drawingsTaken(lifted: false),
-          ahead: () => takeAhead(lifted: false),
+          reaches: () => (
+            blocks: drawingsTaken(lifted: false),
+            ahead: takeAhead(lifted: false),
+          ),
         )
       : null;
 
@@ -254,7 +258,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editPasteIndependent,
           pasteIndependentFrame,
-          blocks: () => drawingsPasted,
+          reaches: () => (blocks: drawingsPasted, ahead: null),
           holding: () => independentPasteAhead,
         )
       : null;
@@ -266,7 +270,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editUnlink,
           unlink,
-          blocks: () => drawingsUnlinked,
+          reaches: () => (blocks: drawingsUnlinked, ahead: null),
         )
       : null;
 
@@ -274,20 +278,22 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editDuplicate,
           duplicate,
-          blocks: () => drawingsDuplicated,
+          reaches: () => (blocks: drawingsDuplicated, ahead: null),
         )
       : null;
 
-  /// [press] behind [actionId]'s window ([_windowOf]) where it lands on more
-  /// than one of [blocks], what it works out [ahead] of it worked out there
+  /// [press] behind [actionId]'s window ([_windowOf]) where it [reaches]
+  /// more than one block, what it works out ahead of them worked out there
   /// first — or, [holding] something ahead of it, behind it whatever it
   /// lands on — each asked as it is pressed; at once where the panel has no
   /// [waitIn].
+  ///
+  /// The blocks a press lands on and the work it does ahead of them are one
+  /// reach: the work is over those very blocks, asked of the same board.
   void Function() _behindTheWaitWindow(
     String actionId,
     void Function() press, {
-    required Iterable<Object> Function() blocks,
-    WorkAhead? Function()? ahead,
+    required ({Iterable<Object> blocks, WorkAhead? ahead}) Function() reaches,
     WorkAhead? Function()? holding,
   }) => () {
     final context = waitIn;
@@ -297,20 +303,25 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
     }
     final named = _windowOf(actionId);
     final held = holding?.call();
+    if (held != null) {
+      unawaited(
+        workAheadBehindTheWaitWindow(
+          context,
+          press,
+          window: named,
+          ahead: held,
+        ),
+      );
+      return;
+    }
+    final (:blocks, :ahead) = reaches();
     unawaited(
-      held == null
-          ? takeBehindTheWaitWindow(
-              context,
-              (ahead: ahead?.call(), step: press),
-              window: named,
-              blocks: blocks(),
-            )
-          : workAheadBehindTheWaitWindow(
-              context,
-              press,
-              window: named,
-              ahead: held,
-            ),
+      takeBehindTheWaitWindow(
+        context,
+        (ahead: ahead, step: press),
+        window: named,
+        blocks: blocks,
+      ),
     );
   };
 
