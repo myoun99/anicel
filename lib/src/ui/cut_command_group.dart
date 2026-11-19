@@ -81,8 +81,9 @@ Future<void> _resizeActiveCutCanvas(
   EditorSessionManager session,
 ) => askAboutThenCommit<Cut, CanvasResizeRequest>(
   context,
-  // Gap state: no cut canvas to resize.
-  session.activeCutOrNull,
+  // The cuts the pick is about, opened on the first as 컷 설정 is
+  // ([CutVerbs.addressedCut]) — none in the gap state.
+  session.cutVerbs.addressedCut,
   dialog: (cut) => CanvasSizeDialog(
     initialSize: cut.canvasSize,
     onAdjustOnCanvas: () => session.canvasAdjust.begin(

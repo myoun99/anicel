@@ -1705,7 +1705,7 @@ class BrushFrameStore {
     _dirtySinceSave.clear();
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
-    _movedAhead = null;
+    _movedAhead.clear();
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
@@ -2390,11 +2390,11 @@ class BrushFrameStore {
     BitmapSurface surface,
     CelMove move,
   ) {
-    final ahead = _movedAhead?.move == move ? _movedAhead : null;
-    final answer = ahead?.answers.remove(key);
-    if (ahead == null) {
-      _movedAhead = null;
+    final answers = _movedAhead[move];
+    if (answers == null) {
+      _movedAhead.clear();
     }
+    final answer = answers?.remove(key);
     if (answer != null && identical(answer.from, surface)) {
       return answer.moved;
     }
@@ -2431,8 +2431,7 @@ class BrushFrameStore {
     CelMove move, {
     void Function(double done)? report,
   }) async {
-    final answers = <BrushFrameKey, _MovedCel>{};
-    _movedAhead = (move: move, answers: answers);
+    final answers = _movedAhead.putIfAbsent(move, () => {});
     final keys = [for (final cutId in cutIds) ...celKeysOfCut(cutId)];
     var done = 0;
     await Future.wait([
@@ -2518,15 +2517,27 @@ class BrushFrameStore {
     }
   });
 
-  /// What [moveCutCelsAhead] last worked out — until the next one replaces
-  /// it, a move it was not worked out for asks ([_moved]), or the store is
-  /// laid in anew.
-  _MovedAhead? _movedAhead;
+  /// What [moveCutCelsAhead] worked out, by the move it was worked out for
+  /// — each answer until its step takes it, a move none was worked out for
+  /// asks ([_moved]), or the store is laid in anew.
+  ///
+  /// 🗣️F-624 (유저 2026-11-19): ONE step resizes every cut a range covers,
+  /// each by the move its own size asks — so it is worked out a move at a
+  /// time, and each is held till the step comes. ↩️One move was held, the
+  /// next replacing it: of a range, the step took only the last cut's.
+  final Map<CelMove, Map<BrushFrameKey, _MovedCel>> _movedAhead = {};
 
   /// [key] as [moveCutCelsAhead] worked out its move, while it is held.
   @visibleForTesting
-  BitmapSurface? movedAheadOf(BrushFrameKey key) =>
-      _movedAhead?.answers[_canonicalize(key)]?.moved;
+  BitmapSurface? movedAheadOf(BrushFrameKey key) {
+    final canonical = _canonicalize(key);
+    for (final answers in _movedAhead.values) {
+      if (answers[canonical] case final answer?) {
+        return answer.moved;
+      }
+    }
+    return null;
+  }
 
   /// The pool files each cel's photos name, by cel — every cel that has
   /// any (I-97): what the media pool asks of a sheet's ink (사용 중 · 제거 ·
@@ -2976,10 +2987,3 @@ typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});
-
-/// What a resize's [move] makes of a cut's kept cels, worked out ahead of
-/// it ([BrushFrameStore.moveCutCelsAhead]), by cel.
-typedef _MovedAhead = ({
-  CelMove move,
-  Map<BrushFrameKey, _MovedCel> answers,
-});

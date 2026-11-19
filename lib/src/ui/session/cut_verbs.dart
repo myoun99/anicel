@@ -122,10 +122,17 @@ class CutVerbs {
           duration: plan.duration,
         );
 
+  /// The canvases of the cuts the cut button's picks are about
+  /// ([addressedCutIds]) at [canvasSize], each picture placed as [anchor]
+  /// says from its own cut's size — as ONE undo step.
+  ///
+  /// 🗣️F-624 (유저 2026-11-19): 「여러 컷블록 같이 선택하고 캔버스 크기 변경시
+  /// 일괄변경가능하게」 — the cut stood in is a pick of one (CLAUDE.md
+  /// 절대명령 2). ↩️It resized the active cut alone.
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
-  }) => _activeCut.onActiveCut(
+  }) => _onAddressedCanvases(
     (cutId) => _project.cutCommandCoordinator.resizeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
@@ -140,8 +147,9 @@ class CutVerbs {
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
     void Function(double done)? report,
-  }) => _activeCut.aheadOfActiveCut(
-    (cutId) => _project.cutCommandCoordinator.resizeCutCanvasAhead(
+  }) => _aheadOfAddressedCanvases(
+    report,
+    (cutId, report) => _project.cutCommandCoordinator.resizeCutCanvasAhead(
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
@@ -149,12 +157,13 @@ class CutVerbs {
     ),
   );
 
-  /// The active cut's canvas at [canvasSize], the picture moved by
-  /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79).
+  /// The addressed cuts' canvases at [canvasSize], each picture moved by
+  /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79) —
+  /// as ONE undo step ([resizeActiveCutCanvas]).
   void placeActiveCutCanvas(
     CanvasSize canvasSize, {
     required ({double dx, double dy}) contentOffset,
-  }) => _activeCut.onActiveCut(
+  }) => _onAddressedCanvases(
     (cutId) => _project.cutCommandCoordinator.placeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
@@ -169,14 +178,52 @@ class CutVerbs {
     CanvasSize canvasSize, {
     required ({double dx, double dy}) contentOffset,
     void Function(double done)? report,
-  }) => _activeCut.aheadOfActiveCut(
-    (cutId) => _project.cutCommandCoordinator.placeCutCanvasAhead(
+  }) => _aheadOfAddressedCanvases(
+    report,
+    (cutId, report) => _project.cutCommandCoordinator.placeCutCanvasAhead(
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: contentOffset,
       report: report,
     ),
   );
+
+  /// [place] on each addressed cut's canvas as ONE undo step, and the
+  /// rebuild a cut's new shape asks for.
+  void _onAddressedCanvases(void Function(CutId cutId) place) {
+    final cutIds = addressedCutIds;
+    if (cutIds.isEmpty) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Canvas size', () {
+      for (final cutId in cutIds) {
+        place(cutId);
+      }
+    });
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
+  /// What [_onAddressedCanvases] will make of the pictures kept in files,
+  /// worked out [ahead] a cut at a time — [report] hearing how much of all
+  /// of them is done.
+  ///
+  /// ⚠️The step's redo shares its report out the same way, a child at a
+  /// time (`CompositeCommand.workAhead`): two of them, kept apart till a
+  /// third (CLAUDE.md 절대명령 1, the rule of three).
+  Future<void> _aheadOfAddressedCanvases(
+    void Function(double done)? report,
+    Future<void> Function(CutId cutId, void Function(double done) report)
+    ahead,
+  ) async {
+    final cutIds = addressedCutIds;
+    for (final (index, cutId) in cutIds.indexed) {
+      await ahead(
+        cutId,
+        (done) => report?.call((index + done) / cutIds.length),
+      );
+    }
+  }
 
   /// ⑰'s law, applied to 복제: the selected cuts, else the cut you stand
   /// on — copied as ONE block right after the last of them, in the order
@@ -363,9 +410,14 @@ class CutVerbs {
   /// 컷 설정 opens on, what that window shows, as the cut button shows the
   /// first addressed cut's 색 라벨 — or null with no cut to address, so the
   /// window stands down (the gap state).
-  CutMetadata? get addressedCutMetadata {
+  CutMetadata? get addressedCutMetadata => addressedCut?.metadata;
+
+  /// The first addressed cut — what the canvas size window opens on, as 컷
+  /// 설정 opens on its metadata ([addressedCutMetadata]) — or null with no
+  /// cut to address (the gap state).
+  Cut? get addressedCut {
     final cutIds = addressedCutIds;
-    return cutIds.isEmpty ? null : _project.cutById(cutIds.first)?.metadata;
+    return cutIds.isEmpty ? null : _project.cutById(cutIds.first);
   }
 
   /// Names each stage of [names] on every addressed cut — and on each one's
