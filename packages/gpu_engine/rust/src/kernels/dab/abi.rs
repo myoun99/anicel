@@ -1183,7 +1183,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_meshed(
 
 /// A picture of `pixels`, `size` across and down and of `engine`, counted
 /// — or null where none was made.
-fn kept(engine: &Engine, pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut StampPicture {
+pub(crate) fn kept(engine: &Engine, pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut StampPicture {
     let Some(pixels) = pixels else {
         return std::ptr::null_mut();
     };

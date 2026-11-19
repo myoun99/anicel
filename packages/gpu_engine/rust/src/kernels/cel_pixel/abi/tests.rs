@@ -297,39 +297,46 @@ fn whole_mask(size: (u32, u32)) -> *mut MaskPlane {
     mask
 }
 
-/// What the lift of `mask` off the one tile `words` names returned, into
-/// `capacity` bytes.
-fn lifted(pool: &Pool, words: &[u32], mask: *mut MaskPlane, capacity: usize) -> (i32, Vec<u8>) {
-    let mut out = vec![7; capacity];
-    // SAFETY: every pointer is live, `words` holds the set's tile and `out`
-    // the capacity.
-    let returned = unsafe {
-        gpu_engine_cel_pixels_lift(verbs(), rig().engine, pool, 0, 0, 1, 1, words.as_ptr(), mask, true, out.as_mut_ptr(), capacity)
-    };
-    (returned, out)
-}
-
 #[test]
-fn a_lift_puts_its_box_where_it_took_anything_and_nothing_where_it_took_nothing() {
+fn a_lift_keeps_its_box_as_a_picture_where_it_took_anything_and_none_where_it_took_nothing() {
     let (pool, at) = stored(&[flat(0xff30_2010), flat(0)]);
     let mask = whole_mask((1, 2));
-    let (returned, out) = lifted(&pool, &[at[0].word()], mask, 8);
-    assert_eq!((returned, &out[..]), (1, &[0x10, 0x20, 0x30, 0xff, 0x10, 0x20, 0x30, 0xff][..]));
-    let (returned, out) = lifted(&pool, &[at[1].word()], mask, 8);
-    assert_eq!((returned, out), (0, vec![7; 8]));
-    // SAFETY: `mask` is not used after.
-    unsafe { crate::kernels::composite::abi::gpu_engine_mask_free(mask) };
-}
-
-#[test]
-fn a_lift_given_other_room_than_its_box_is_refused_with_why() {
-    let (pool, at) = stored(&[flat(0xff30_2010)]);
-    let mask = whole_mask((1, 2));
-    let (returned, out) = lifted(&pool, &[at[0].word()], mask, 12);
-    assert_eq!((returned, out), (-1, vec![7; 12]));
-    assert!(last_error().contains("room for 12 bytes; the box holds 8"), "{}", last_error());
-    // SAFETY: `mask` is not used after.
-    unsafe { crate::kernels::composite::abi::gpu_engine_mask_free(mask) };
+    let pictured = |word: u32| {
+        let mut picture = std::ptr::dangling_mut();
+        let words = [word];
+        // SAFETY: every pointer is live and `words` holds the set's tile.
+        let returned = unsafe {
+            gpu_engine_cel_pixels_lift_picture(
+                verbs(),
+                rig().engine,
+                &pool,
+                0,
+                0,
+                1,
+                1,
+                words.as_ptr(),
+                mask,
+                true,
+                &mut picture,
+            )
+        };
+        (returned, picture)
+    };
+    let (returned, picture) = pictured(at[0].word());
+    assert_eq!(returned, 1, "{}", last_error());
+    let mut read = vec![7u8; 8];
+    // SAFETY: the picture is live and `read` holds its 1 × 2 × 4 bytes.
+    let readable =
+        unsafe { crate::kernels::dab::abi::gpu_engine_stamp_picture_read(rig().engine, picture, read.as_mut_ptr()) };
+    assert!(readable, "{}", last_error());
+    assert_eq!(read, [0x10, 0x20, 0x30, 0xff, 0x10, 0x20, 0x30, 0xff]);
+    let (returned, none) = pictured(at[1].word());
+    assert_eq!((returned, none), (0, std::ptr::dangling_mut()), "nothing taken, `out` as it was");
+    // SAFETY: neither is used after.
+    unsafe {
+        crate::kernels::dab::abi::gpu_engine_stamp_picture_free(picture);
+        crate::kernels::composite::abi::gpu_engine_mask_free(mask);
+    };
 }
 
 #[test]

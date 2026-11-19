@@ -1,7 +1,7 @@
 //! The cel pixel kernels' C ABI. The verbs' (flip lane ⓒ): the app states
 //! one over tiles named as a plan's tile set is, reads what it took the
 //! pixels from, and has its tiles put in fresh slots. The lift's: what a
-//! selection takes off the same tiles, read back into the app's bytes.
+//! selection takes off the same tiles, kept on the GPU as a stamp's picture.
 //!
 //! The ink scan's (connection round 2, 잉크 상자 ㉢): the app hands
 //! the tiles of a cel that owe a box — on the pool, named as a plan's tile
@@ -19,7 +19,7 @@ use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::{Named, TileSet};
-use crate::kernels::dab::abi::reported;
+use crate::kernels::dab::abi::{StampPicture, kept, reported};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
@@ -130,23 +130,26 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_free(kernels: *mut CelKernels) {
     unsafe { let_go(kernels) };
 }
 
-/// Puts what `mask` takes off the cel of `columns` × `rows` tiles whose
-/// top-left is column `x0`, row `y0` — named as
-/// `gpu_engine_cel_pixels_run`'s are — into `out`: its box's pixels, straight
-/// RGBA8 row after row, a pixel it covers at all whole where `whole`.
-/// `Lift::run`. Waits for the GPU.
+/// What `mask` takes off the cel of `columns` × `rows` tiles whose top-left
+/// is column `x0`, row `y0` — named as `gpu_engine_cel_pixels_run`'s are —
+/// kept where the kernel wrote it: a stamp's picture of its box at `out`,
+/// straight RGBA8, a pixel it covers at all whole where `whole`, its bytes
+/// never read back. `Lift::run`. Waits for the GPU to say whether it took
+/// any: 1 where it did, 0 where it took nothing (`out` as it was), -1 on
+/// failure — see the last error.
 ///
-/// 1 where it took anything and `out` holds it, 0 where it took nothing and
-/// `out` is as it was; -1 where `out`'s `capacity` is not the box's bytes
-/// or the lift fails — see the last error.
+/// ↩️The box was read back into the app's bytes, and handed up again as
+/// the float's picture, at every lift — 🔬with the UI thread's GC the big
+/// buffers fed, a share of the 359–422 ms of the transform box's first
+/// press (S5_BA cut 352 · six cels, Surface, board
+/// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`).
 ///
 /// # Safety
 /// Every pointer is live, the pool, the mask and the kernels made on
-/// `engine`; `tiles` holds `columns × rows` words and `out` `capacity`
-/// bytes.
+/// `engine`; `tiles` holds `columns × rows` words.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
+pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture(
     kernels: *const CelKernels,
     engine: *const Engine,
     pool: *const Pool,
@@ -157,17 +160,11 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
     tiles: *const u32,
     mask: *const MaskPlane,
     whole: bool,
-    out: *mut u8,
-    capacity: usize,
+    out: *mut *mut StampPicture,
 ) -> i32 {
     // SAFETY: see the function's contract.
     let (kernels, engine, pool, mask) = unsafe { (&*kernels, &*engine, &*pool, (*mask).mask()) };
     engine.on_thread(|| {
-        let bytes = u64::from(mask.size.width) * u64::from(mask.size.height) * 4;
-        if bytes != capacity as u64 {
-            fail::<()>(format!("room for {capacity} bytes; the box holds {bytes}"));
-            return -1;
-        }
         // SAFETY: see the function's contract.
         let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
@@ -176,10 +173,13 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
         if !lifted.anything {
             return 0;
         }
-        let readback = engine.staged(&lifted.rgba, bytes);
-        // SAFETY: `out` holds the box's bytes.
-        let into = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
-        engine.mapped_into(&readback, into).map_or(-1, |()| 1)
+        let picture = kept(engine, Some(lifted.rgba), (mask.size.width, mask.size.height));
+        if picture.is_null() {
+            return -1;
+        }
+        // SAFETY: see the function's contract.
+        unsafe { *out = picture };
+        1
     })
 }
 

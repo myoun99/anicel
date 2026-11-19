@@ -1747,11 +1747,10 @@ external Pointer<CelPassed> celPixelsRun(
     Pointer<Uint32>,
     Pointer<MaskPlane>,
     Bool,
-    Pointer<Uint8>,
-    Size,
+    Pointer<Pointer<StampPicture>>,
   )
->(symbol: 'gpu_engine_cel_pixels_lift')
-external int celPixelsLift(
+>(symbol: 'gpu_engine_cel_pixels_lift_picture')
+external int celPixelsLiftPicture(
   Pointer<CelPixels> pixels,
   Pointer<Engine> engine,
   Pointer<Pool> pool,
@@ -1762,8 +1761,7 @@ external int celPixelsLift(
   Pointer<Uint32> tiles,
   Pointer<MaskPlane> mask,
   bool whole,
-  Pointer<Uint8> out,
-  int capacity,
+  Pointer<Pointer<StampPicture>> out,
 );
 
 @Native<Void Function(Pointer<CelPassed>)>(

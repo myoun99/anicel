@@ -3927,12 +3927,12 @@ final class GpuCelPixels {
     return GpuCelPassed._(_engine, passed);
   });
 
-  /// What [mask] takes off the cel [run] would walk, put in [into] — its
-  /// box's pixels, straight RGBA8 row after row, as long as the box's bytes
-  /// — a pixel it covers at all whole where [whole], else its alpha scaled
-  /// by the coverage: whether it took any, [into] as it was where not.
-  /// Waits for the GPU.
-  bool lift(
+  /// What [mask] takes off the cel [run] would walk — a pixel it covers at
+  /// all whole where [whole], else its alpha scaled by the coverage —, kept
+  /// on the GPU as the picture of its box, [width] × [height], straight
+  /// RGBA8: its bytes never read back. Null where it took nothing. Waits for
+  /// the GPU to say whether it took any.
+  GpuStampPicture? liftPicture(
     GpuPool pool,
     int x0,
     int y0,
@@ -3941,10 +3941,11 @@ final class GpuCelPixels {
     List<GpuTile?> tiles, {
     required GpuMask mask,
     required bool whole,
-    required Uint8List into,
+    required int width,
+    required int height,
   }) => using((arena) {
-    final out = arena<Uint8>(_held(into.length));
-    final lifted = rust.celPixelsLift(
+    final out = arena<Pointer<rust.StampPicture>>();
+    final lifted = rust.celPixelsLiftPicture(
       _pixels,
       _engine._engine,
       _engine._its(pool)._pool,
@@ -3956,16 +3957,14 @@ final class GpuCelPixels {
       _engine._its(mask)._mask,
       whole,
       out,
-      into.length,
     );
     if (lifted < 0) {
       throw GpuRefused(_lastError());
     }
     if (lifted == 0) {
-      return false;
+      return null;
     }
-    into.setAll(0, out.asTypedList(into.length));
-    return true;
+    return GpuStampPicture._kept(_engine, out.value, width, height);
   }, malloc);
 
   void free() => rust.celPixelsFree(_pixels);

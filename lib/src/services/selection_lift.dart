@@ -2,7 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:gpu_engine/gpu_engine.dart' show GpuColour, gpuTileSide;
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuColour, GpuStampPicture, gpuTileSide;
 
 import '../core/rgba_premultiply.dart' show copyRgb;
 import '../models/bitmap_surface.dart';
@@ -13,6 +14,7 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 import '../models/tiles_covering.dart';
+import '../native/app_gpu_engine.dart' show appGpuEngine;
 import '../native/engine_cel_pixels.dart';
 import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
@@ -38,12 +40,15 @@ class SelectionLiftDabs {
 /// ([SelectionClip.box]) — into a straight-alpha RGBA buffer the box's size,
 /// each pixel it covers at all whole where [takeWholePixels], else its
 /// alpha scaled by the coverage. `liftedAnything` is false when the
-/// selection found nothing. On the engine's grid the kernel gathers under
-/// the mask the clip made there ([SelectionClip.maskOnEngine]); the walk
-/// below is the reference those are held to, and the grid off the engine.
+/// selection found nothing. The lift off the engine's grid, and the
+/// reference the kernel's is held to: on the engine's a lift keeps what it
+/// takes there ([_liftedStamp]).
 ///
 /// ↩️Till 2026-11-14 it was handed the mask's bytes, which the CPU made of
-/// the selection at every lift and the engine was handed up again.
+/// the selection at every lift and the engine was handed up again. Till
+/// 2026-11-19 it gathered on the engine's grid too, reading the kernel's
+/// box back into these bytes (board
+/// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`).
 ///
 /// TILE-MAJOR, and the walk order is the whole cost of a lift. Going by
 /// destination rows meant asking which tile every single pixel belonged
@@ -77,14 +82,6 @@ class SelectionLiftDabs {
     throw StateError('a selection that selects no pixel takes none');
   }
   final (:left, :top, :width, :height) = box;
-  if (surface.tileSize == gpuTileSide && !debugSelectionLiftInDart) {
-    return _gatherOnEngine(
-      surface: surface,
-      clip: clip,
-      box: box,
-      takeWholePixels: takeWholePixels,
-    );
-  }
   final mask = clip.maskFor(
     left: left,
     top: top,
@@ -172,18 +169,23 @@ class SelectionLiftDabs {
 @visibleForTesting
 bool debugSelectionLiftInDart = false;
 
+/// Whether [surface]'s pixels are gathered on the engine: on the engine's
+/// grid, unless a test holds the engine's to the walk in Dart.
+bool _gathersOnTheEngine(BitmapSurface surface) =>
+    surface.tileSize == gpuTileSide && !debugSelectionLiftInDart;
+
 /// The gather on the engine (flip lane ⓒ): the law in the kernel
 /// (rust/src/kernels/cel_pixel/lift.wgsl), under the mask [clip] made there
 /// over [box] — asked for only where a tile lies under it —, over the tiles
-/// where the pool has them, one read back of the box.
-({Uint8List rgba, bool liftedAnything}) _gatherOnEngine({
+/// where the pool has them, kept there as the box's picture: null where it
+/// took nothing.
+GpuStampPicture? _gatherOnEngine({
   required BitmapSurface surface,
   required SelectionClip clip,
   required ({int left, int top, int width, int height}) box,
   required bool takeWholePixels,
 }) {
   final (:left, :top, :width, :height) = box;
-  final rgba = Uint8List(width * height * 4);
   final covered = tilesCovering(
     surface,
     DirtyRegion(
@@ -194,14 +196,14 @@ bool debugSelectionLiftInDart = false;
     ),
   ).toList();
   if (covered.isEmpty) {
-    return (rgba: rgba, liftedAnything: false);
+    return null;
   }
   final ledger = EngineTileLedger.instance;
   return ledger.held((hold) {
     final grid = hold.gridOf(BrushFrameKey.noCel, {
       for (final one in covered) one.coord: one.tile,
     });
-    final liftedAnything = EngineCelPixels.pass.lift(
+    return EngineCelPixels.pass.liftPicture(
       ledger.pool,
       grid.x0,
       grid.y0,
@@ -210,19 +212,73 @@ bool debugSelectionLiftInDart = false;
       grid.tiles,
       mask: clip.maskOnEngine(),
       whole: takeWholePixels,
-      into: rgba,
+      width: width,
+      height: height,
     );
-    return (rgba: rgba, liftedAnything: liftedAnything);
   });
 }
 
+/// What [clip] takes off [surface] as a stamp named [id] — null where it
+/// takes nothing. On the engine it stays there
+/// ([EngineStampPictures.lifted]): its bytes are read only by what asks
+/// for them, and the next engine takes it off the same [surface] again — a
+/// value, as it stood when it was taken.
+BrushStampImage? _liftedStamp({
+  required BitmapSurface surface,
+  required SelectionClip clip,
+  required ({int left, int top, int width, int height}) box,
+  required bool takeWholePixels,
+  required String id,
+}) {
+  if (_gathersOnTheEngine(surface)) {
+    GpuStampPicture? lift() => _gatherOnEngine(
+      surface: surface,
+      clip: clip,
+      box: box,
+      takeWholePixels: takeWholePixels,
+    );
+    final picture = lift();
+    if (picture == null) {
+      return null;
+    }
+    final (left: _, top: _, :width, :height) = box;
+    return EngineStampPictures.lifted(
+      picture,
+      id: id,
+      // What the cel holds there, clear, should the next engine find none.
+      lift: () =>
+          lift() ??
+          GpuStampPicture(
+            appGpuEngine,
+            Uint8List(width * height * 4),
+            width,
+            height,
+          ),
+    );
+  }
+  final gathered = gatherMaskedSurfacePixels(
+    surface: surface,
+    clip: clip,
+    takeWholePixels: takeWholePixels,
+  );
+  if (!gathered.liftedAnything) {
+    return null;
+  }
+  return BrushStampImage(
+    id: id,
+    width: box.width,
+    height: box.height,
+    rgba: gathered.rgba,
+  );
+}
+
 /// What a selection takes off a cel: the selection it read
-/// ([SelectionClip.of]) and its box, the straight-alpha pixels under it, and
-/// whether a partly-covered pixel travelled whole.
+/// ([SelectionClip.of]) and its box, the straight-alpha pixels under it as
+/// a stamp, and whether a partly-covered pixel travelled whole.
 typedef SelectionPixels = ({
   SelectionClip clip,
   ({int left, int top, int width, int height}) box,
-  Uint8List rgba,
+  BrushStampImage stamp,
   bool takeWholePixels,
 });
 
@@ -237,6 +293,7 @@ SelectionPixels? liftSelectionPixels({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
   required SelectionMaskOptions options,
+  required String stampId,
 }) {
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
@@ -259,18 +316,20 @@ SelectionPixels? liftSelectionPixels({
   final takeWholePixels = options.featherPx <= 0;
 
   // Lift the surface pixels under the mask (straight alpha, byte copies).
-  final gathered = gatherMaskedSurfacePixels(
+  final stamp = _liftedStamp(
     surface: surface,
     clip: clip,
+    box: box,
     takeWholePixels: takeWholePixels,
+    id: stampId,
   );
-  if (!gathered.liftedAnything) {
+  if (stamp == null) {
     return null;
   }
   return (
     clip: clip,
     box: box,
-    rgba: gathered.rgba,
+    stamp: stamp,
     takeWholePixels: takeWholePixels,
   );
 }
@@ -288,11 +347,12 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     region: region,
     surface: surface,
     options: options,
+    stampId: 'lift-stamp-$liftId',
   );
   if (lifted == null) {
     return null;
   }
-  final (clip: _, :box, :rgba, takeWholePixels: _) = lifted;
+  final (clip: _, :box, :stamp, takeWholePixels: _) = lifted;
   final (:left, :top, :width, :height) = box;
   final stampDab = BrushDab(
     center: CanvasPoint(x: left + width / 2, y: top + height / 2),
@@ -304,12 +364,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     tipShape: BrushTipShape.square,
     pressure: 1,
     sequence: 1,
-    stamp: BrushStampImage(
-      id: 'lift-stamp-$liftId',
-      width: width,
-      height: height,
-      rgba: rgba,
-    ),
+    stamp: stamp,
   );
   return SelectionLiftDabs(
     eraseDab: selectionEraseDab(lifted, id: 'lift-erase-$liftId'),
@@ -332,7 +387,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
 /// 마스크로 가면 가장자리 화소가 겹치거나 사라진다」, so the two moved
 /// together).
 BrushDab selectionEraseDab(SelectionPixels lifted, {required String id}) {
-  final (:clip, :box, rgba: _, :takeWholePixels) = lifted;
+  final (:clip, :box, stamp: _, :takeWholePixels) = lifted;
   final (:left, :top, :width, :height) = box;
   return BrushDab(
     center: CanvasPoint(x: left + width / 2, y: top + height / 2),

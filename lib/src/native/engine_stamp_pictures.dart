@@ -132,6 +132,23 @@ abstract final class EngineStampPictures {
     );
   }
 
+  /// What a selection took off a cel on the engine
+  /// ([GpuCelPixels.liftPicture]) — [picture] — as a stamp named [id],
+  /// landed and read as [carried]'s, which [lift] takes again on the next
+  /// engine: of the cel as it stood when it was taken, a value nothing
+  /// writes after.
+  ///
+  /// ↩️The lift read its box back into bytes here and the float handed the
+  /// same bytes up again as its picture — 🔬with the UI thread's GC the big
+  /// buffers fed, a share of the 359–422 ms of the transform box's first
+  /// press (S5_BA cut 352 · six cels, Surface, 11-19, board
+  /// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`).
+  static BrushStampImage lifted(
+    GpuStampPicture picture, {
+    required String id,
+    required GpuStampPicture Function() lift,
+  }) => _keptAs(picture, make: lift, id: id);
+
   /// What [make] makes on the engine, as a stamp named [id] whose bytes are
   /// read from there the first time they are asked for — and which [make]
   /// makes again on the next engine ([_makes]): its numbers are its own
@@ -139,8 +156,14 @@ abstract final class EngineStampPictures {
   static BrushStampImage _made(
     GpuStampPicture Function() make, {
     required String id,
+  }) => _keptAs(make(), make: make, id: id);
+
+  /// [picture], which [make] made, as [_made] says.
+  static BrushStampImage _keptAs(
+    GpuStampPicture picture, {
+    required GpuStampPicture Function() make,
+    required String id,
   }) {
-    final picture = make();
     return _withoutBytes(
       id: id,
       width: picture.width,
