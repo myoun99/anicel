@@ -248,8 +248,6 @@ class _CanvasPanelSelection {
             : _CelUnderFloat(_state._lift, under.key),
       ));
     }
-    // Spent: what the box at rest was cut for is lifted, or found nothing.
-    letGoOfTheCutsAhead();
     if (cels.isEmpty) {
       return null;
     }

@@ -405,6 +405,21 @@ void main() {
       expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
     });
 
+    testWidgets('a build that changed nothing under the box cuts nothing '
+        'again', (tester) async {
+      await pump(tester);
+      await restTheBox(tester);
+      final cut = debugSelectionLiftsBuilt;
+
+      tester.element(find.byType(CanvasSelectionLayer).first).markNeedsBuild();
+      await tester.pumpAndSettle();
+      for (var turn = 0; turn < 4; turn += 1) {
+        await tester.pump(Duration.zero);
+      }
+
+      expect(debugSelectionLiftsBuilt, cut);
+    });
+
     testWidgets('the cuts go with the box at rest — another tool lets them '
         'go', (tester) async {
       final session = await pump(tester);
