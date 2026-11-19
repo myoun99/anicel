@@ -7,8 +7,11 @@ import '../helpers/frame_census.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -255,6 +258,51 @@ void main() {
     expect(
       painter.marks().whereType<SheetWords>().map((mark) => mark.text),
       contains('c39 × c40 $word (0+4)'),
+    );
+  });
+
+  testWidgets('🗣️a move that runs a cut of one panel prints (全尺) in the '
+      'NOTATION language\'s word, as the sheet does (F-622)', (tester) async {
+    final project = _project();
+    final track = project.tracks.single;
+    final session = await _pumpConte(
+      tester,
+      project: project.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              track.cuts.first,
+              track.cuts.last.copyWith(
+                camera: CutCamera(
+                  keyframes: {
+                    for (final (frame, x) in const [(0, 0.0), (11, 40.0)])
+                      frame: CameraPose(
+                        center: CanvasPoint(x: x, y: 0),
+                        zoom: 1,
+                        rotationDegrees: 0,
+                      ),
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    session.languageSettings.value = session.languageSettings.value.copyWith(
+      notationLanguage: AppLanguage.ko,
+      programLanguage: AppLanguage.en,
+    );
+    tester.element(find.byType(ConteTabHost)).markNeedsBuild();
+    await tester.pump();
+
+    final painter =
+        tester.widget<CustomPaint>(conteBodyForm()).painter!
+            as ContePagePainter;
+    final word = AppStrings.of(AppLanguage.ko).cnWholeCut;
+    expect(
+      painter.marks().whereType<SheetWords>().map((mark) => mark.text),
+      contains('1f-12f PAN ($word)'),
     );
   });
 

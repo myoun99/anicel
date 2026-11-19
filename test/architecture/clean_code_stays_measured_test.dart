@@ -1135,7 +1135,17 @@ void main() {
   /// out), and the band is this drag's alone. The storyboard grips' three
   /// begins that took it too went back under by taking the comma begin's
   /// roles (`ExposureBeginRoles`), which hold the band themselves.
-  const wideSignatures = 454;
+  ///
+  /// ⚠️454 → 455 on 2026-11-19, named as the rule above asks (F-622 — 유저
+  /// 「콘티용지패널만 예외로 카메라 오버레이 중앙의 십자사각형 없도록」):
+  /// `cameraWorkMarks` (five — the trails, the keys, the sizes, the stratum
+  /// and whether the surface crosses its keys) is the ONE drawing every
+  /// surface writes a camera's work with, and the conte's paper is the one
+  /// that writes no cross. 🔬`clean_code_diff` against master (`3b7c14714`)
+  /// names that one added and nothing gone. ⛔Not bundled to fit: the
+  /// sizes are how large a surface writes the marks, and a cross it does
+  /// not write is not a size — an arm of none would answer two questions.
+  const wideSignatures = 455;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

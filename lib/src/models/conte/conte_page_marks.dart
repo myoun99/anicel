@@ -507,12 +507,16 @@ int contePictureRenderWidth(
 ///
 /// The trail each corner of the frame draws, the canvas's own (「궤도는
 /// 중앙이아니라 각 꼭짓점 4개 전부야」); every key framed — the first in IN's
-/// green, the last in OUT's red — crossed at its frame's centre and
-/// labelled at its top-left corner, turned with the frame (「기운 틀의
-/// 모서리. 각도 그대로따라감」), as the canvas and the export write a key
-/// (유저 2026-10-12: 「카메라 출력궤도랑 완전통일해서 … 중간키들도
-/// 표시하고」 · 「아까처럼 중앙에 두자 … 즉 법 통일」). Labels may overlap
+/// green, the last in OUT's red — and labelled at its top-left corner,
+/// turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」), as the
+/// canvas and the export write a key (유저 2026-10-12: 「카메라
+/// 출력궤도랑 완전통일해서 … 중간키들도 표시하고」). Labels may overlap
 /// (「글자 겹치는거 어쩔수없는거니까」).
+///
+/// 🗣️F-622 (유저 2026-11-19): 「콘티용지패널만 예외로 카메라 오버레이
+/// 중앙의 십자사각형 없도록. 혹시나 궤도가 온다면 궤도도 중앙에
+/// 없도록」. ↩️Each key was crossed at its frame's centre, as the canvas
+/// and the export cross it (「아까처럼 중앙에 두자 … 즉 법 통일」).
 ///
 /// 🗣️I-82 (유저 2026-10-31): 「지금 콘티용지패널 카메라 사각형 보여주는거,
 /// 처음이랑 끝만 사각형 보여주는데, 카메라레이어가 캔버스에서 키마다
@@ -548,6 +552,7 @@ Iterable<SheetMark> conteCameraMarksOf(
     ],
     sizes: _cameraSizes,
     layer: SheetPaintLayer.picture,
+    crossed: false,
   );
 }
 

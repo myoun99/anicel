@@ -1271,7 +1271,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final source = buildConteSheetSource(
       project,
-      olWord: sheetOlWord(_session),
+      words: paperWords(_session),
     );
     final pages = layoutConteBook(
       source,

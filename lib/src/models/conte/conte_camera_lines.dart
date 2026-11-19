@@ -6,8 +6,9 @@ import '../camera_work_marks.dart' show cameraKeyLabel;
 import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 
 /// A stretch of a conte cell's frames as its ACTION column names it: the
-/// [move] the camera makes there — or null where it stands still, FIX —
-/// and how many of the cell's frames it lasts.
+/// [move] the camera makes there, as much of it as the cell holds — or
+/// null where it stands still, FIX — and how many of the cell's frames it
+/// lasts.
 typedef ConteCameraStretch = ({CameraMove? move, int frames});
 
 /// WHAT THE CAMERA DOES WHILE A CONTE CELL IS ON (I-93): the cut's frames
@@ -43,6 +44,14 @@ typedef ConteCameraStretch = ({CameraMove? move, int frames});
 ///
 /// ⚠️Mine: a cell writes its own frames only — a move two cells share is a
 /// stretch in each, as long as each holds it.
+///
+/// 🗣️F-622 (유저 2026-11-19): 「패널이 2개이상이면 … 1f-144f T.B가 두
+/// 패널에 찍히는게아니라 첫번째패널은 1f-73f T.B (해당 길이) 두번째는
+/// 74f-144f (해당길이) 이게 최소한임」 (and 「지시명 빠진건 그냥 줄임이야」)
+/// — each stretch's move is the part of it its cell holds: from the move's
+/// first key, or the cell's first frame where the move began before it,
+/// to its last key, or the cell's last frame where it goes on past it.
+/// ↩️Each cell named the move's own two keys (mine, I-93).
 List<ConteCameraStretch> conteCameraStretches(
   List<CameraMove> moves, {
   required int from,
@@ -63,8 +72,14 @@ List<ConteCameraStretch> conteCameraStretches(
     if (start >= end) {
       continue;
     }
+    final held = (
+      from: start,
+      to: move.to < to ? move.to : to - 1,
+      term: move.term,
+      turning: move.turning,
+    );
     add(null, at, start);
-    add(move, start, end);
+    add(held, start, end);
     at = end;
   }
   add(null, at, to);
@@ -85,8 +100,9 @@ List<ConteCameraStretch> conteCameraStretches(
 /// 컷ol처럼 이런거 대상도 적도록. 픽스는 예외. 1f-5f T.U 이런식.
 /// 이름있으면 A-B T.U가 되겟고」.
 ///
-/// ⚠️Mine: a move two cells share names its own two keys in each, though
-/// each writes only the frames it holds.
+/// ↩️Mine (I-93): a move two cells share named its own two keys in each,
+/// though each wrote only the frames it holds. 🗣️F-622 took it back: each
+/// names the part of it that it holds ([conteCameraStretches]).
 String conteCameraLine(
   ConteCameraStretch stretch, {
   required CameraInstructionDef? Function(String id) defById,
@@ -133,6 +149,17 @@ String sheetCameraLine(
   final line = cameraMoveLine(move, defById: defById, keyNames: keyNames);
   return wholeCut == null ? line : '$line ($wholeCut)';
 }
+
+/// Whether [move] runs the whole of a cut drawn for [drawnFrames] frames —
+/// its first frame to its last, the のりしろ among them: the move a paper
+/// writes (全尺) after ([sheetCameraLine]).
+///
+/// 🗣️F-622 (유저 2026-11-19): 「컷 양 끝에 걸쳐 키가 하나씩 있으면
+/// 타임시트용지패널이랑 똑같이 대상-대상 T.B (全尺) … (全尺) 라는건 … 컷
+/// 전체에 걸쳐있을때 … 패널마다가 아니라 컷 전체를 기준으로」 — the conte
+/// asks the sheet's question of it, with the sheet's count.
+bool cameraMoveRunsTheCut(CameraMove move, {required int drawnFrames}) =>
+    move.from == 0 && move.to == drawnFrames - 1;
 
 /// What a conte line writes between the two cuts an O.L joins: a cross,
 /// as the conte draws an O.L across the line between two cut panels.

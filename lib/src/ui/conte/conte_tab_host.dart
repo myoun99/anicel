@@ -39,7 +39,7 @@ import '../timeline/memo_token.dart' show ByIdentity;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
-import '../timesheet/cut_sheet_document.dart' show sheetOlWord;
+import '../timesheet/cut_sheet_document.dart' show paperWords;
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_bar.dart' show viewerPage;
 import 'conte_book_page.dart';
@@ -305,23 +305,23 @@ class _ConteTabHostState extends State<ConteTabHost> {
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
-    final olWord = sheetOlWord(_session);
+    final words = paperWords(_session);
     return _sheet.resolve(
       identity: project,
-      key: (aspect, olWord),
-      build: () => _laidOut(project, aspect, olWord: olWord),
+      key: (aspect, words),
+      build: () => _laidOut(project, aspect, words: words),
     );
   }
 
   /// [project] as the conte prints it, cells shaped by the camera's
-  /// [aspect] and an O.L printed as [olWord]: the source it reads, and the
-  /// book it lays.
+  /// [aspect] and its fixed lines written in [words]: the source it reads,
+  /// and the book it lays.
   static (ConteSheetSource, List<ContePageLayout>) _laidOut(
     Project project,
     double aspect, {
-    required String olWord,
+    required PaperWords words,
   }) {
-    final source = buildConteSheetSource(project, olWord: olWord);
+    final source = buildConteSheetSource(project, words: words);
     return (
       source,
       layoutConteBook(
@@ -461,17 +461,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ) {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
-    final olWord = sheetOlWord(_session);
+    final words = paperWords(_session);
     final next = _nextSheet.resolve(
       identity: project,
-      key: (aspect, _session.activeCutOrNull?.canvasSize, olWord),
+      key: (aspect, _session.activeCutOrNull?.canvasSize, words),
       build: () {
         final next = _session.autoFrame.nextConteCut();
         if (next == null) {
           return null;
         }
         final withNext = _withCutAtTheEnd(project, next.trackId, next.cut);
-        final pages = _laidOut(withNext, aspect, olWord: olWord).$2;
+        final pages = _laidOut(withNext, aspect, words: words).$2;
         return (project: withNext, pages: pages);
       },
     );
