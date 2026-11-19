@@ -35,8 +35,31 @@ const _side = 1024;
 /// The surface read back off the screen, shown one texel per pixel.
 const _shotSide = 256;
 
-const _frames = 240;
+/// Frames an arm is measured over, in [_rounds] turns of [_blockFrames]
+/// ([_ProbeAppState._measureArms] has why turns).
+const _frames = _rounds * _blockFrames;
+const _rounds = 12;
+const _blockFrames = 20;
 const _seed = 1;
+
+/// One way a frame reaches the screen: [fill] fills frame i and returns
+/// its submit-to-done time, [show] hands it to Flutter through texture
+/// [textureId].
+typedef _Arm = ({
+  String name,
+  int textureId,
+  Duration Function(int i) fill,
+  void Function(int i) show,
+});
+
+/// What an arm's blocks left: per frame its fill, its period and when it
+/// was handed over; per block when it began and ended.
+class _Taken {
+  final fills = <int>[];
+  final periods = <int>[];
+  final shownAt = <int>[];
+  final blocks = <({int from, int to})>[];
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -133,15 +156,6 @@ class _ProbeAppState extends State<_ProbeApp> {
       return;
     }
 
-    final single = SharedTexture.register(front);
-    await _roundTrip(
-      report,
-      '$label single',
-      single.id,
-      fill: (i) => front.fill(_seed + i),
-      show: (_) => single.show(0),
-    );
-    await _unregister([single]);
     // Two surfaces alternate: through one texture's two slots, so Flutter
     // reopens a handle every frame — or as two textures the widget
     // switches between, each opened once, since Flutter reopens only when
@@ -149,28 +163,34 @@ class _ProbeAppState extends State<_ProbeApp> {
     // gpu-engine-feasibility ⑤).
     final back = engine.surface(_side, _side, bgra: bgra);
     GpuSurface slot(int i) => i.isOdd ? back : front;
+    final single = SharedTexture.register(front);
     final slots = SharedTexture.register(front, back: back);
-    await _roundTrip(
-      report,
-      '$label double',
-      slots.id,
-      fill: (i) => slot(i).fill(_seed + i),
-      show: (i) => slots.show(i & 1),
-    );
-    await _unregister([slots]);
     final apart = [SharedTexture.register(front), SharedTexture.register(back)];
-    await _roundTrip(
-      report,
-      '$label two textures',
-      apart.first.id,
-      fill: (i) => slot(i).fill(_seed + i),
-      show: (i) {
-        final texture = apart[i & 1];
-        setState(() => _textureId = texture.id);
-        texture.show(0);
-      },
-    );
-    await _unregister(apart);
+    await _measureArms(report, [
+      (
+        name: '$label single',
+        textureId: single.id,
+        fill: (i) => front.fill(_seed + i),
+        show: (_) => single.show(0),
+      ),
+      (
+        name: '$label double',
+        textureId: slots.id,
+        fill: (i) => slot(i).fill(_seed + i),
+        show: (i) => slots.show(i & 1),
+      ),
+      (
+        name: '$label two textures',
+        textureId: apart.first.id,
+        fill: (i) => slot(i).fill(_seed + i),
+        show: (i) {
+          final texture = apart[i & 1];
+          setState(() => _textureId = texture.id);
+          texture.show(0);
+        },
+      ),
+    ]);
+    await _unregister([single, slots, ...apart]);
     report.writeln('video memory with two surfaces: ${_videoMemory(engine)}');
     back.free();
     front.free();
@@ -200,13 +220,14 @@ class _ProbeAppState extends State<_ProbeApp> {
       return;
     }
     final window = await engine.window(_side, _side);
-    await _roundTrip(
-      report,
-      'window',
-      window.textureId,
-      fill: (i) => window.fill(_seed + i),
-      show: (_) => window.present(),
-    );
+    await _measureArms(report, [
+      (
+        name: 'window',
+        textureId: window.textureId,
+        fill: (i) => window.fill(_seed + i),
+        show: (_) => window.present(),
+      ),
+    ]);
     report.writeln('process RSS with one $_side² window: '
         '${_mib(ProcessInfo.currentRss)}');
     await window.free();
@@ -319,50 +340,86 @@ class _ProbeAppState extends State<_ProbeApp> {
     await SchedulerBinding.instance.endOfFrame;
   }
 
-  /// Fill → show → the frame that shows it, [_frames] times, with texture
-  /// [textureId] on screen: [fill] fills frame i and returns its
-  /// submit-to-done time, [show] hands it to Flutter. One frame more is
-  /// shown first, untimed, so the texture is on screen before the clock
-  /// starts.
-  Future<void> _roundTrip(
-    StringBuffer report,
-    String label,
-    int textureId, {
-    required Duration Function(int i) fill,
-    required void Function(int i) show,
-  }) async {
-    fill(-1);
-    show(-1);
-    await _show(textureId, 512);
+  /// Fill → show → the frame that shows it, [_frames] times for each arm,
+  /// its texture on screen: an arm's `fill` fills frame i and returns its
+  /// submit-to-done time, its `show` hands it to Flutter. Before each
+  /// block one frame more is shown, untimed, so the texture is on screen
+  /// before the clock starts.
+  ///
+  /// 🚨THE ARMS TAKE TURNS, [_blockFrames] frames at a time, [_rounds]
+  /// rounds — never one arm's frames and then the next's (card
+  /// two-registered-textures-triple-the-fill-latency, 보드/인프라
+  /// 2026-11-19). The GPU this app wakes runs at its top clock and then
+  /// lets it fall under so light a load: RTX 4080, P0 2535 MHz for the
+  /// first 3-4 s, then P3/P5 at 640-1140 MHz (nvidia-smi every 250 ms).
+  /// Arms measured one after another read that fall, not themselves: the
+  /// fill of 「two textures」, always last, came out at three times
+  /// 「single」's, always first (0.45 → 1.6 ms on 2026-11-06), and the
+  /// same arms in turns came out within 7-12 % of each other, as did the
+  /// engine alone with no frame (0.11 ms either way).
+  Future<void> _measureArms(StringBuffer report, List<_Arm> arms) async {
     final timings = <FrameTiming>[];
     void collect(List<FrameTiming> batch) => timings.addAll(batch);
     SchedulerBinding.instance.addTimingsCallback(collect);
-    final fills = <int>[];
-    final periods = <int>[];
-    final shownAt = <int>[];
-    for (var i = 0; i < _frames; i++) {
-      final start = Timeline.now;
-      fills.add(fill(i).inMicroseconds);
-      shownAt.add(Timeline.now);
-      show(i);
-      await SchedulerBinding.instance.endOfFrame;
-      periods.add(Timeline.now - start);
+    final taken = [for (final _ in arms) _Taken()];
+    for (var round = 0; round < _rounds; round++) {
+      for (final (at, arm) in arms.indexed) {
+        await _block(arm, taken[at]);
+      }
     }
     // Timings arrive in batches; give the last one time to land.
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     SchedulerBinding.instance.removeTimingsCallback(collect);
     await _show(null, 0);
+    for (final (at, arm) in arms.indexed) {
+      _reportArm(report, arm.name, taken[at], timings);
+    }
+  }
 
-    final raster = [for (final t in timings) t.rasterDuration.inMicroseconds];
+  /// [_blockFrames] frames of [arm], kept in [taken].
+  Future<void> _block(_Arm arm, _Taken taken) async {
+    arm.fill(-1);
+    arm.show(-1);
+    await _show(arm.textureId, 512);
+    final from = Timeline.now;
+    for (var i = 0; i < _blockFrames; i++) {
+      final start = Timeline.now;
+      taken.fills.add(arm.fill(i).inMicroseconds);
+      taken.shownAt.add(Timeline.now);
+      arm.show(i);
+      await SchedulerBinding.instance.endOfFrame;
+      taken.periods.add(Timeline.now - start);
+    }
+    taken.blocks.add((from: from, to: Timeline.now));
+  }
+
+  void _reportArm(
+    StringBuffer report,
+    String name,
+    _Taken taken,
+    List<FrameTiming> timings,
+  ) {
+    int rasterStart(FrameTiming t) =>
+        t.timestampInMicroseconds(ui.FramePhase.rasterStart);
+    // An arm's frames are those whose raster starts inside one of its
+    // blocks; the frames that put a block's texture up are no arm's.
+    final mine = [
+      for (final t in timings)
+        if (taken.blocks.any(
+          (b) => rasterStart(t) >= b.from && rasterStart(t) < b.to,
+        ))
+          t,
+    ];
+    final raster = [for (final t in mine) t.rasterDuration.inMicroseconds];
     // The frame that shows a fill is the first whose raster STARTS after
     // it, because Flutter reads the texture while rastering; a raster
     // already running when the fill landed shows the one before.
     // Timeline.now and FrameTiming both read the monotonic clock; the
     // latency is trusted only if every match lands within a second.
     final latencies = <int>[];
-    for (final shown in shownAt) {
+    for (final shown in taken.shownAt) {
       for (final t in timings) {
-        if (t.timestampInMicroseconds(ui.FramePhase.rasterStart) >= shown) {
+        if (rasterStart(t) >= shown) {
           latencies.add(
             t.timestampInMicroseconds(ui.FramePhase.rasterFinish) - shown,
           );
@@ -370,17 +427,18 @@ class _ProbeAppState extends State<_ProbeApp> {
         }
       }
     }
-    final trusted = latencies.length == shownAt.length &&
+    final trusted = latencies.length == taken.shownAt.length &&
         latencies.every((us) => us < 1000000);
     report
-      ..writeln('[$label] $_frames frames, ${timings.length} timings')
-      ..writeln('  fill submit→done   ${_stats(fills)}')
-      ..writeln('  fill→frame end     ${_stats(periods)}')
+      ..writeln('[$name] $_frames frames in $_rounds turns of $_blockFrames, '
+          '${mine.length} timings')
+      ..writeln('  fill submit→done   ${_stats(taken.fills)}')
+      ..writeln('  fill→frame end     ${_stats(taken.periods)}')
       ..writeln('  raster             ${_stats(raster)}')
       ..writeln(trusted
           ? '  shown→raster done  ${_stats(latencies)}'
           : '  shown→raster done  clocks did not line up '
-              '(${latencies.length}/${shownAt.length} matched)');
+              '(${latencies.length}/${taken.shownAt.length} matched)');
   }
 
   @override
