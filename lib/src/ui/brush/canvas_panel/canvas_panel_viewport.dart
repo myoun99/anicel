@@ -491,16 +491,7 @@ class _CanvasPanelViewport {
     _rotateAroundCenter(deltaDegrees);
   }
 
-  /// Continues a stamp drag up to [point].
-  ///
-  /// Stamps go down one whole piece apart, so they touch without
-  /// overlapping — which is why there is no spacing knob to get wrong, and
-  /// why a soft edge cannot accumulate where two stamps stack.
-  ///
-  /// The remainder of the travel is deliberately NOT carried: the next
-  /// move continues from the last stamp that actually landed, so a slow
-  /// drag and a fast one lay the same number of stamps over the same
-  /// distance.
+  /// The point on the canvas under [event].
   CanvasPoint canvasPointOf(PointerEvent event) =>
       _viewport.viewportOffsetToCanvas(event.localPosition);
 }

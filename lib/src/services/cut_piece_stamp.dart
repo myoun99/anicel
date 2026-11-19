@@ -115,29 +115,36 @@ BrushDab buildCutPasteDab(CutPiece piece, {double opacity = 1.0}) {
   );
 }
 
-/// The centres a drag lays stamps on, from [from] to [to].
+/// The centres a drag lays stamps on, from [from] to [to]: [spacing] apart
+/// — a share of the piece's own size, as a brush's spacing is a share of
+/// its tip's — and never under a pixel.
 ///
-/// Spacing is one whole piece — stamps touch and do not overlap. The user
-/// took the spacing knob OUT of the held piece on purpose ("스페이싱 같은 거
-/// 없애고"), so this is a law rather than a default, and non-overlap is the
-/// choice that keeps a soft edge from accumulating where stamps stack.
+/// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격 지금
+/// 고정이니까 스탬프 도구설정에 간격설정도 두도록」 — the stamp tool's own
+/// setting (`BrushToolState.cutStampSpacing`). Its default, a whole piece,
+/// is the old law: stamps touch and do not overlap, which keeps a soft edge
+/// from accumulating where they stack. ↩️That law was all there was: the
+/// user had taken the spacing knob out of the held piece (2026-08-12:
+/// 「스페이싱 같은 거 없애고」).
 List<CanvasPoint> cutStampCentersAlong({
   required CutPiece piece,
   required CanvasPoint from,
   required CanvasPoint to,
+  required double spacing,
 }) {
-  final spacing = math
-      .max(piece.stampWidth, piece.stampHeight)
-      .toDouble();
+  final apart = math.max(
+    1.0,
+    spacing * math.max(piece.stampWidth, piece.stampHeight),
+  );
   final distance = from.distanceTo(to);
-  if (distance < spacing) {
+  if (distance < apart) {
     return const [];
   }
   final centres = <CanvasPoint>[];
   placeAlongSegment(
     length: distance,
-    spacing: spacing,
-    firstAt: spacing,
+    spacing: apart,
+    firstAt: apart,
     place: (t) => centres.add(CanvasPoint.lerp(from, to, t)),
   );
   return centres;

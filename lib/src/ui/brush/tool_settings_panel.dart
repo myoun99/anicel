@@ -26,6 +26,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'spacing_bar.dart';
 import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
@@ -367,6 +368,9 @@ class ToolSettingsPanel extends StatelessWidget {
     ),
     CanvasTool.cutStamp => _CutStampSettings(
       slot: cutPieceSlot,
+      spacing: state.cutStampSpacing,
+      onSpacingChanged: (value) =>
+          onChanged(state.copyWith(cutStampSpacing: value)),
       onPasteAtOrigin: onCutPasteAtOrigin,
       onRegisterAsTip: onRegisterCutPieceAsTip,
     ),
@@ -739,20 +743,31 @@ class _ClosePolygonButton extends StatelessWidget {
 
 /// The STAMP tile's knobs.
 ///
-/// Deliberately short: spacing, jitter and the rest of the brush
-/// parameters are NOT here (유저 확정 — "스페이싱 같은 거 없애고 … 그건 그냥
-/// 팁으로 등록해서 뭐 할 때만 띄우는 게 낫겠다"). The law that falls out is
-/// **a held piece stays simple, brush parameters belong to a registered
-/// tip** — the same split Photoshop draws between a clipboard piece and a
-/// Define Brush Preset.
+/// Deliberately short: jitter and the rest of the brush parameters are NOT
+/// here (유저 확정 — "스페이싱 같은 거 없애고 … 그건 그냥 팁으로 등록해서 뭐
+/// 할 때만 띄우는 게 낫겠다"). The law that falls out is **a held piece
+/// stays simple, brush parameters belong to a registered tip** — the same
+/// split Photoshop draws between a clipboard piece and a Define Brush
+/// Preset.
+///
+/// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격 지금
+/// 고정이니까 스탬프 도구설정에 간격설정도 두도록」 — the spacing of a drag's
+/// stamps is here, on the brush's own bar ([spacingBar]). ↩️It was left out
+/// with the rest (2026-08-12), and the trail laid them a whole piece apart.
 class _CutStampSettings extends StatelessWidget {
   const _CutStampSettings({
     required this.slot,
+    required this.spacing,
+    required this.onSpacingChanged,
     required this.onPasteAtOrigin,
     required this.onRegisterAsTip,
   });
 
   final CutPieceSlot? slot;
+
+  /// How far apart a drag lays the stamps ([BrushToolState.cutStampSpacing]).
+  final double spacing;
+  final ValueChanged<double> onSpacingChanged;
 
   /// Drop the held piece back where it was cut from. ONE button (TS8): the
   /// pair that used to say Above/Below was spelling a COMPOSITE ORDER, and
@@ -847,6 +862,16 @@ class _CutStampSettings extends StatelessWidget {
                 isSelected: piece.flipVertical,
                 onPressed: () =>
                     holder.updatePose(flipVertical: !piece.flipVertical),
+              ),
+            ),
+            // The drag's, under the piece's own pose: a share of the piece's
+            // size, as a brush's spacing is of its tip's.
+            ToolSettingRow.bar(
+              label: AppText.strings.brSpacing,
+              bar: spacingBar(
+                keyValue: 'cut-stamp-spacing-slider',
+                value: spacing,
+                onChanged: onSpacingChanged,
               ),
             ),
             // ↩️The paste stood under the name of the piece, and the reset

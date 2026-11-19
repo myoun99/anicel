@@ -151,16 +151,36 @@ void main() {
         piece: _piece(),
         from: CanvasPoint(x: 0, y: 0),
         to: CanvasPoint(x: 2, y: 0),
+        spacing: 1,
       );
       expect(centers, isEmpty);
     });
 
-    test('stamps sit one whole piece apart, so they never overlap', () {
+    // 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격
+    // 지금 고정이니까 스탬프 도구설정에 간격설정도 두도록」.
+    test('the spacing is a share of the piece — half a piece lays them twice '
+        'as close, two pieces half as many — and never under a pixel', () {
+      List<double> xs(double spacing) => [
+        for (final center in cutStampCentersAlong(
+          piece: _piece(),
+          from: CanvasPoint(x: 0, y: 0),
+          to: CanvasPoint(x: 16, y: 0),
+          spacing: spacing,
+        ))
+          center.x,
+      ];
+      expect(xs(0.5), [2, 4, 6, 8, 10, 12, 14, 16]);
+      expect(xs(2), [8, 16]);
+      expect(xs(0.01), hasLength(16), reason: 'one a pixel, not 0.04 px');
+    });
+
+    test('at a whole piece, stamps sit one piece apart and never overlap', () {
       // 4px piece, 20px drag → 5 stamps at 4,8,12,16,20.
       final centers = cutStampCentersAlong(
         piece: _piece(),
         from: CanvasPoint(x: 0, y: 0),
         to: CanvasPoint(x: 20, y: 0),
+        spacing: 1,
       );
       expect(centers.length, 5);
       expect(centers.first.x, closeTo(4, 0.001));
@@ -176,6 +196,7 @@ void main() {
         piece: _piece(scalePercent: 200),
         from: CanvasPoint(x: 0, y: 0),
         to: CanvasPoint(x: 24, y: 0),
+        spacing: 1,
       );
       expect(centers.first.x, closeTo(8, 0.001));
     });
@@ -185,6 +206,7 @@ void main() {
         piece: _piece(),
         from: CanvasPoint(x: 0, y: 0),
         to: CanvasPoint(x: 30, y: 40),
+        spacing: 1,
       );
       // Length 50, spacing 4 → 12 stamps.
       expect(centers.length, 12);

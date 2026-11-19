@@ -74,6 +74,7 @@ void main() {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
         double? stampOpacity,
+        double? stampSpacing,
         bool rowTakesStrokes,
         bool celUnderThePlayhead,
         bool cutDeletesSource,
@@ -114,6 +115,7 @@ void main() {
       CanvasShapeKind? shape,
       BrushBlendMode? stampBlend,
       double? stampOpacity,
+      double? stampSpacing,
       // False = standing on a row that takes no strokes (a property lane).
       bool rowTakesStrokes = true,
       // False = standing on a frame with no cel.
@@ -142,6 +144,7 @@ void main() {
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
+                cutStampSpacing: stampSpacing,
                 cutDeletesSource: cutDeletesSource,
                 cutSource: cutSource,
               )),
@@ -653,6 +656,95 @@ void main() {
 
     expect(newestAlone, isNot(apart), reason: 'LIVENESS: the bend shows');
     expect(merged, apart);
+  });
+
+  // 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「한 끌기 =
+  // 한 되돌리기(획처럼)」 · 「스탬프 도구설정에 간격설정도 두도록」.
+  group('a stamp drag', () {
+    /// A stamp drag pressed at (20, 150) and moved to (200, 150), [end]ing
+    /// it — the lift, or a cancel: the panel's history and the ink on the
+    /// trail's line at x, and how many steps it held before the end.
+    Future<
+      ({HistoryManager history, int Function(int x) inkAt, int midway})
+    >
+    stampDrag(
+      WidgetTester tester, {
+      double? spacing,
+      required Future<void> Function(TestGesture gesture) end,
+    }) async {
+      final env = await pumpPanel(tester, tool: CanvasTool.cut);
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      await env.setTool(CanvasTool.cutStamp, stampSpacing: spacing);
+      final before = env.history.undoCount;
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      final gesture = await tester.startGesture(
+        origin + const Offset(20, 150),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (var x = 40; x <= 200; x += 20) {
+        await gesture.moveTo(origin + Offset(x.toDouble(), 150));
+        await tester.pump();
+      }
+      final midway = env.history.undoCount - before;
+      await end(gesture);
+      await tester.pump();
+      int inkAt(int x) =>
+          surfaceRgbaInPlace(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            x,
+            150,
+          ) ??
+          0;
+      return (history: env.history, inkAt: inkAt, midway: midway);
+    }
+
+    testWidgets('🚨is ONE undo — the press and the whole trail, as a stroke '
+        'is — and one redo lays it all again', (tester) async {
+      final drag = await stampDrag(tester, end: (gesture) => gesture.up());
+      expect(drag.midway, greaterThan(1), reason: '⛔전제: each lands as laid');
+      final undos = drag.history.undoCount;
+      expect(drag.inkAt(20), isNot(0), reason: 'the press');
+      expect(drag.inkAt(190), isNot(0), reason: 'the trail');
+
+      drag.history.undo();
+      await tester.pump();
+      expect(drag.inkAt(20), 0, reason: 'the press, undone');
+      expect(drag.inkAt(190), 0, reason: 'the trail, undone with it');
+      expect(drag.history.undoCount, undos - 1);
+
+      drag.history.redo();
+      await tester.pump();
+      expect(drag.inkAt(20), isNot(0));
+      expect(drag.inkAt(190), isNot(0));
+    });
+
+    testWidgets('a drag the OS cancels is one undo all the same', (
+      tester,
+    ) async {
+      final drag = await stampDrag(tester, end: (gesture) => gesture.cancel());
+      expect(drag.midway, greaterThan(1), reason: '⛔전제: each lands as laid');
+      drag.history.undo();
+      await tester.pump();
+      expect(drag.inkAt(20), 0);
+      expect(drag.inkAt(190), 0);
+    });
+
+    testWidgets('lays its stamps the stamp tool\'s spacing apart — a whole '
+        'piece by default, so they touch', (tester) async {
+      // The piece is 80 wide: at a whole piece the stamps sit at 20, 100,
+      // 180; at two, at 20 and 180 — and 100 is between them.
+      final touching = await stampDrag(tester, end: (gesture) => gesture.up());
+      expect(touching.inkAt(100), isNot(0));
+      final apart = await stampDrag(
+        tester,
+        spacing: 2,
+        end: (gesture) => gesture.up(),
+      );
+      expect(apart.inkAt(100), 0);
+      expect(apart.inkAt(190), isNot(0), reason: 'LIVENESS: the second stamp');
+    });
   });
 
   testWidgets('a stamp drag stops when the pointer lifts', (tester) async {

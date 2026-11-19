@@ -227,12 +227,27 @@ void main() {
     }
   });
 
-  testWidgets('there is no spacing knob — that belongs to a registered tip', (
-    tester,
-  ) async {
+  // 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격 지금
+  // 고정이니까 스탬프 도구설정에 간격설정도 두도록」. ↩️It pinned that there
+  // was no spacing knob (2026-08-12: 「스페이싱 같은 거 없애고」).
+  testWidgets('the drag\'s spacing is set here, on the brush\'s bar, into the '
+      'stamp tool\'s own setting — and no jitter', (tester) async {
     final slot = CutPieceSlot()..hold(_piece());
-    await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
-    expect(find.textContaining('Spacing'), findsNothing);
+    BrushToolState? written;
+    await pump(
+      tester,
+      tool: CanvasTool.cutStamp,
+      slot: slot,
+      onChanged: (state) => written = state,
+    );
+    final bar = tester.widget<FieldSlider>(
+      find.byKey(const ValueKey<String>('cut-stamp-spacing-slider')),
+    );
+    expect(bar.value, 1, reason: 'a whole piece, by default');
+    expect(bar.unit, '%');
+    bar.onChanged!(2);
+    expect(written?.cutStampSpacing, 2);
+    expect(written?.spacing, BrushToolState.defaults.spacing);
     expect(find.textContaining('Jitter'), findsNothing);
   });
 

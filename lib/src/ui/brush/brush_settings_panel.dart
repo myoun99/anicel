@@ -9,7 +9,7 @@ import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings_group.dart';
 import '../../models/brush_settings_row.dart';
-import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
+import '../../models/brush_shape.dart' show BrushMaskSlot;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/brush_texture_mode.dart';
@@ -30,6 +30,7 @@ import '../widgets/setting_source_button.dart';
 import '../widgets/tip_direction_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
+import 'spacing_bar.dart';
 import 'tool_setting_rows.dart'
     show
         ToolSettingChoiceRow,
@@ -652,16 +653,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         ),
       ),
     ),
-    BrushSettingsRow.spacing => _PanelSlider(
+    BrushSettingsRow.spacing => ToolSettingRow.bar(
       label: AppText.strings.brSpacing,
-      unit: '%',
-      displayScale: 100,
-      value: BrushToolState.clampSpacing(state.spacing),
-      min: BrushShape.minSpacing,
-      max: BrushShape.maxSpacing,
-      scale: FieldSliderScale.exponential,
-      keyValue: 'brush-tool-spacing-slider',
-      onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+      bar: spacingBar(
+        keyValue: 'brush-tool-spacing-slider',
+        value: state.spacing,
+        onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+      ),
       trailing: _pressureButton(BrushPressureTarget.spacing),
     ),
     // ---- 色の混ぜ方 ----
@@ -816,16 +814,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         ),
       ),
     ),
-    BrushSettingsRow.dualSpacing => _PanelSlider(
+    BrushSettingsRow.dualSpacing => ToolSettingRow.bar(
       label: AppText.strings.brSpacing,
-      unit: '%',
-      displayScale: 100,
-      value: BrushToolState.clampSpacing(state.dualSpacing),
-      min: BrushShape.minSpacing,
-      max: BrushShape.maxSpacing,
-      scale: FieldSliderScale.exponential,
-      keyValue: 'brush-tool-dual-spacing-slider',
-      onChanged: (value) => onChanged(state.copyWith(dualSpacing: value)),
+      bar: spacingBar(
+        keyValue: 'brush-tool-dual-spacing-slider',
+        value: state.dualSpacing,
+        onChanged: (value) => onChanged(state.copyWith(dualSpacing: value)),
+      ),
     ),
     BrushSettingsRow.dualScatter => _PanelSlider(
       label: AppText.strings.brScatter,

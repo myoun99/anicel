@@ -521,8 +521,9 @@ class _CanvasPanelTap {
 }
 
 /// THE STAMP'S TRAIL — a press of the stamp lands the held piece, and the
-/// drag it begins lays a row of them along the hand, each a piece's own
-/// size on from the last.
+/// drag it begins lays a row of them along the hand, each the stamp's
+/// spacing on from the last ([BrushToolState.cutStampSpacing]) — and the
+/// whole drag is ONE undo, as a stroke is.
 ///
 /// 🗣️I-121 (유저 2026-10-21): 「잘라내기 도구의 스탬프도 쉬프트 누른동안 법
 /// 통일해서 스냅. 떼면 스냅 끝남.」 — the stroke's lock ([StrokeLock]), as
@@ -530,6 +531,14 @@ class _CanvasPanelTap {
 /// 법 통일」): Shift's eight ways and the line a hold kept while it is held,
 /// the snapping perspectives' rays where it is not. On the CANVAS, where a
 /// press is read; the row's own artwork is where the spacing is measured.
+///
+/// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「한 끌기 =
+/// 한 되돌리기(획처럼)」 — each stamp lands as it is laid, so the cel shows
+/// it, and what the press and the drag landed is folded into one step when
+/// the hand lifts ([HistoryGestures.foldSince], the rail swipe's fold).
+/// ↩️Each stamp was a step of its own — twelve stamps, twelve undos — from
+/// the trail's first cut (1900500eb) through the piece door (7bd94c5c1);
+/// nobody had asked for it.
 ///
 /// Carved out of [_CanvasPanelTap] (11-17) when the drag's one door to the
 /// window ([CanvasDragInFlight]) took that class past six hundred lines.
@@ -540,19 +549,20 @@ class _StampTrail {
 
   _BrushCanvasPanelState get _state => _tap._state;
 
-  /// The drag: the path's lock, and where its last stamp landed, on the
-  /// standing row's own artwork. Null between drags.
-  ({StrokeLock lock, CanvasPoint lastCenter})? get _drag => _held;
+  /// The drag: the path's lock, where its last stamp landed on the standing
+  /// row's own artwork, and where the history stood before its press
+  /// stamped. Null between drags.
+  _StampDrag? get _drag => _held;
 
   /// ⛔The one door [_drag] is written by: a stamp's drag in flight is
   /// waited out by the window's held keys and the mapped buttons
   /// ([CanvasDragInFlight]), and they hear of it here.
-  set _drag(({StrokeLock lock, CanvasPoint lastCenter})? drag) {
+  set _drag(_StampDrag? drag) {
     _held = drag;
     CanvasDragInFlight.report(this, active: drag != null);
   }
 
-  ({StrokeLock lock, CanvasPoint lastCenter})? _held;
+  _StampDrag? _held;
 
   /// A press of the stamp at [point]: [piece] lands there, and the drag it
   /// may begin is armed. Pressed under the hold that kept a line, it lands
@@ -567,6 +577,7 @@ class _StampTrail {
     if (piece == null || onTheRow == null) {
       return;
     }
+    final since = _state.widget.historyManager?.gestures.mark;
     _stampAt(piece, pressed);
     // A press is also the start of a possible drag, and the drag
     // measures its spacing from the stamp that just landed.
@@ -578,6 +589,7 @@ class _StampTrail {
         line: line,
       ),
       lastCenter: onTheRow,
+      since: since,
     );
   }
 
@@ -591,18 +603,34 @@ class _StampTrail {
   }
 
   /// The hand has lifted: what the drag's lock still holds is stamped
-  /// ([StrokeLock.finish]), and the drag is over.
+  /// ([StrokeLock.finish]), the drag's stamps become one step, and the drag
+  /// is over.
   void end() {
-    final lock = _drag?.lock;
-    if (lock != null) {
-      _along(lock.finish());
+    final drag = _drag;
+    if (drag != null) {
+      _along(drag.lock.finish());
+      _foldTheTrail(drag.since);
     }
     _drag = null;
   }
 
   /// The drag is over with nothing more stamped: a cancel, or the canvas
-  /// going away under it.
-  void drop() => _drag = null;
+  /// going away under it. What it stamped is one step all the same.
+  void drop() {
+    final since = _drag?.since;
+    _drag = null;
+    _foldTheTrail(since);
+  }
+
+  /// The press's stamp and the drag's after it, one step
+  /// ([HistoryGestures.foldSince] — which leaves them as they are where
+  /// anything else was written meanwhile).
+  void _foldTheTrail(HistoryMark? since) {
+    final history = _state.widget.historyManager;
+    if (history != null && since != null) {
+      history.gestures.foldSince(since, 'Stamp');
+    }
+  }
 
   /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
   /// which every row the stamp lands on takes on its own artwork, where
@@ -617,14 +645,19 @@ class _StampTrail {
     ).step();
   }
 
-  /// The drag's stamps along [points], on the canvas, each a piece's own
-  /// size on from the last.
+  /// The drag's stamps along [points], on the canvas, each the stamp's
+  /// spacing on from the last.
+  ///
+  /// The remainder of the travel is deliberately NOT carried: the next
+  /// move continues from the last stamp that actually landed, so a slow
+  /// drag and a fast one lay the same number of stamps over the same
+  /// distance.
   void _along(List<CanvasPoint> points) {
     final piece = _state.widget.cutPieceSlot?.piece;
     for (final point in points) {
       final drag = _drag;
       // The trail is laid on the row's own artwork, as the press was, so the
-      // spacing is the piece's own size in its own pixels.
+      // spacing is a share of the piece's own size in its own pixels.
       final to = _state._selectionSeat.pointOnTheRow(point);
       if (piece == null || drag == null || to == null) {
         return;
@@ -633,14 +666,26 @@ class _StampTrail {
         piece: piece,
         from: drag.lastCenter,
         to: to,
+        spacing: _state._brush.cutStampSpacing,
       );
       for (final center in centers) {
         // Back on the canvas, where the other rows of a range read it from.
         _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
       }
       if (centers.isNotEmpty) {
-        _drag = (lock: drag.lock, lastCenter: centers.last);
+        _drag = (
+          lock: drag.lock,
+          lastCenter: centers.last,
+          since: drag.since,
+        );
       }
     }
   }
 }
+
+/// A stamp's drag in flight ([_StampTrail._drag]).
+typedef _StampDrag = ({
+  StrokeLock lock,
+  CanvasPoint lastCenter,
+  HistoryMark? since,
+});
