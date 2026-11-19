@@ -46,6 +46,16 @@ void main() {
   BitmapSurface neverReadAgain() =>
       fail('a shell whose slots stand reads nothing again');
 
+  /// Fills the page [ledger] stores on and stores one tile more: the two
+  /// slots stored longest ago go — of a ledger of one page that lets go
+  /// two at a time (`byteBudget: 0, roomBatch: 2`) and has stored two.
+  void theTwoOldestSlotsGo(EngineTileLedger ledger) {
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = [for (var n = 2; n < slots; n++) aTileOfItsOwn()];
+    ledger.held((hold) => hold.slotsOf(a, rest));
+    ledger.held((hold) => hold.slotsOf(b, [aTileOfItsOwn()]));
+  }
+
   test('🚨a tile with a slot gives it to its shell — the same slot, the '
       'tile none, and no slot more', () {
     final ledger = EngineTileLedger(appGpuEngine);
@@ -202,10 +212,7 @@ void main() {
       aCelOf({left: first, right: second}),
       readAgain: () => aCelOf({right: second}),
     )!;
-    final slots = ledger.pool.bytes ~/ gpuTileBytes;
-    final rest = [for (var n = 2; n < slots; n++) aTileOfItsOwn()];
-    ledger.held((hold) => hold.slotsOf(a, rest));
-    ledger.held((hold) => hold.slotsOf(b, [aTileOfItsOwn()]));
+    theTwoOldestSlotsGo(ledger);
     expect(ledger.slotOf(shell.tiles[left]!), isNull, reason: '⛔premise');
     final parked = TileBlocks.alloc(gpuTileBytes);
     parked.asTypedList(gpuTileBytes).fillRange(0, gpuTileBytes, 0xFF);
@@ -318,6 +325,34 @@ void main() {
     expect(kept.ownBytes, 0);
   });
 
+  test('a read of many gives a shell\'s tile whose slot went its cel\'s '
+      'kept bytes, and stores nothing for it', () {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 2,
+    );
+    final first = aTileMarked(1);
+    final second = aTileMarked(2);
+    ledger.held((hold) => hold.slotsOf(a, [first, second]));
+    final cel = aCelOf({left: first, right: second});
+    final kept = ledger.shellOf(cel, readAgain: () => cel)!.tiles[left]!;
+    theTwoOldestSlotsGo(ledger);
+    expect(ledger.slotOf(kept), isNull, reason: '⛔premise');
+    final asked = <int>[];
+    EngineTileLedger.debugBeforeRead = (tiles) => asked.add(tiles.length);
+    final into = malloc<Uint8>(gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+
+    ledger.read(a, [kept], into);
+
+    expect(into.asTypedList(gpuTileBytes), first.pixels);
+    expect(asked, isEmpty, reason: 'it has no slot to be read from');
+    expect(ledger.slotOf(kept), isNull, reason: 'a read stores nothing');
+    expect(kept.hasItsBytesHere, isFalse);
+  });
+
   // A store's copy is the engine's thread's, later, of bytes the store
   // holds a tile for (a_store_handed_over_holds_its_tiles_till_their_copy_
   // reads_them_test.dart) — and a shell's tile holds none: what a read of
@@ -341,11 +376,7 @@ void main() {
       readAgain: () =>
           keepsItsBytes ? cel : fail('its slot stands: nothing read again'),
     )!;
-    // The rest of its page, so the next cel finds the pool full.
-    final slots = ledger.pool.bytes ~/ gpuTileBytes;
-    final rest = [for (var n = 2; n < slots; n++) aTileOfItsOwn()];
-    ledger.held((hold) => hold.slotsOf(a, rest));
-    ledger.held((hold) => hold.slotsOf(b, [aTileOfItsOwn()]));
+    theTwoOldestSlotsGo(ledger);
     final kept = shell.tiles[left]!;
     expect(ledger.slotOf(kept), isNull, reason: '⛔premise');
     await appGpuEngine.done();
