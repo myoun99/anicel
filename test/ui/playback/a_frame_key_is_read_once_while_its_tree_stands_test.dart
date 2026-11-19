@@ -83,13 +83,15 @@ void main() {
     addTearDown(images.dispose);
   });
 
-  /// Pictures whose frames stack cel a — under a plugin's step run as
-  /// [run] answers, where it answers one — counting each stacking in
-  /// [stacked], under the stamp [stamp] answers; [paper] is the page's.
+  /// Pictures whose frames stack cel a — or each of [rows] — under a
+  /// plugin's step run as [run] answers, where it answers one — counting
+  /// each stacking in [stacked], under the stamp [stamp] answers; [paper]
+  /// is the page's.
   ({FramePictures pictures, List<int> stacked}) picturesOf({
     required Object? Function() stamp,
     FxPluginRun? Function()? run,
     ProjectBackground Function()? paper,
+    List<String> rows = const ['a'],
   }) {
     final stacked = [0];
     final store = aStoreOfPictures();
@@ -100,21 +102,22 @@ void main() {
       stackOf: (picture) {
         stacked[0] += 1;
         return [
-          CompositeLeaf(
-            CanvasLayerImageRequest(
-              frameKey: keyOf('a'),
-              opacity: 1,
-              effects: [
-                if (run?.call() case final run?)
-                  ResolvedLayerEffect(
-                    kind: EffectKind.plugin,
-                    plugin: shiftingFxPluginDescription,
-                    values: const [],
-                    run: run,
-                  ),
-              ],
+          for (final row in rows)
+            CompositeLeaf(
+              CanvasLayerImageRequest(
+                frameKey: keyOf(row),
+                opacity: 1,
+                effects: [
+                  if (run?.call() case final run?)
+                    ResolvedLayerEffect(
+                      kind: EffectKind.plugin,
+                      plugin: shiftingFxPluginDescription,
+                      values: const [],
+                      run: run,
+                    ),
+                ],
+              ),
             ),
-          ),
         ];
       },
       pageOf: (picture) => (
@@ -323,6 +326,67 @@ void main() {
       final after = pictures.keyOf(at(cut, 0));
 
       expect(after, isNot(before), reason: 'a is no part of it');
+    });
+  });
+
+  // 🔬Card baking-ahead-allocates-the-ui-isolate-into-gc (11-19, S5_BA cut
+  // 352 copy · 37 rows): the walk weighed, read in and made each frame from
+  // a tree it stacked again, and the making signed it again once drawn.
+  testWidgets('the walk weighs, reads in and makes a frame from the one '
+      'tree its key was read from — and lays it under that key', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final cut = aCut();
+      final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+      pictures.keyOf(at(cut, 0));
+      final signed = pictures.keysSigned;
+
+      await pictures.bytesToMake(at(cut, 0));
+      await pictures.readIn(at(cut, 0));
+      final made = await pictures.make(at(cut, 0), shouldAbort: () => false);
+
+      expect(made, isTrue, reason: '⛔premise');
+      expect(stacked.single, 1);
+      expect(pictures.keysSigned, signed);
+      expect(
+        pictures.has(at(cut, 0)),
+        isTrue,
+        reason: '⛔CONTROL: laid under the key it is asked by',
+      );
+    });
+  });
+
+  // The drawing notes a cel recorded at another canvas size as drawing
+  // nothing, and moves no revision: only that note says the frame is laid
+  // without it.
+  testWidgets('🚨a frame whose making finds a cel drawing nothing is laid '
+      'under the key read once it is drawn — not the one read before', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      inkCelIn(
+        cels,
+        keyOf('b'),
+        canvasSize: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
+        at: CanvasPoint(x: 1, y: 1),
+        size: 2,
+        tipShape: BrushTipShape.square,
+        tileSize: tileSize,
+      );
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(
+        stamp: () => 'still',
+        rows: const ['a', 'b'],
+      );
+      final before = pictures.keyOf(at(cut, 0));
+      expect(before.signature.nodes, hasLength(2), reason: '⛔premise');
+
+      final made = await pictures.make(at(cut, 0), shouldAbort: () => false);
+
+      expect(made, isTrue, reason: '⛔premise');
+      expect(pictures.keyOf(at(cut, 0)).signature.nodes, hasLength(1));
+      expect(pictures.has(at(cut, 0)), isTrue);
     });
   });
 
