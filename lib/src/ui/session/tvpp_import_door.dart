@@ -177,25 +177,21 @@ class TvppImportDoor {
     );
   }
 
-  /// What the record in [window] is made of, walked over [before] — alone
-  /// where null — no pixel of it made ([TvppPicturesInOrder.walk]): null
-  /// where it will not read. Its own function for the same reason as
-  /// [_decodeOnWorker].
-  static Future<TvppTileSources?> _sourcesOnWorker(
+  /// What the record in [window] is made of on its own, no pixel of it made
+  /// ([TvppMakeup.of]): null where it will not read. Its own function for
+  /// the same reason as [_decodeOnWorker].
+  static Future<TvppMakeup?> _makeupOnWorker(
     Uint8List window, {
     required TvppSlot slot,
     required CanvasSize size,
-    TvppTileSources? before,
   }) {
     final windowSlot = _inTheWindow(slot);
     return onAWorker(() {
-      final pictures = TvppPicturesInOrder(before: before);
       try {
-        pictures.walk(recordBytes: window, slot: windowSlot, size: size);
+        return TvppMakeup.of(recordBytes: window, slot: windowSlot, size: size);
       } on TvppRasterDecodeException {
         return null;
       }
-      return pictures.last;
     });
   }
 
@@ -481,42 +477,40 @@ class _Decoding {
     ];
   }
 
-  /// [run]'s pictures, each over the one before: what each is made of
-  /// worked out one after another, its pixels dropped ([_walk]), and each
-  /// picture's pixels read over the one before's beside the others, landed
-  /// as its worker answers. The picture before the first stood alone, so
-  /// it is walked alone. Where there is none, or a picture will not read,
-  /// the run's cels after it land the error that says so.
+  /// [run]'s pictures, each over the one before: what each is made of on
+  /// its own worked out beside the others ([_makeAhead]), and over the one
+  /// before one after another here ([_over]); each picture's pixels read
+  /// over the one before's beside the others, landed as its worker answers.
+  /// The picture before the first stood alone, or there is none. Where
+  /// there is none, or a picture will not read, the run's cels after it
+  /// land the error that says so.
   ///
-  /// ⚡THE WALK IS THE ONLY STEP IN ORDER (bake card
-  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-19, the
-  /// user's file on the Surface, in a measurement window): read one after
-  /// another pixels and all, a step of the run was 63 ms — 62 of them the
-  /// worker's own decode, the window's isolate 4 — so the longer run, 312
-  /// pictures, was 19.6 s of the bake's 29.0 s. The walk stays off the
-  /// workers' line ([turns]), which is what it waits for otherwise, and
-  /// makes no pixel ([TvppPicturesInOrder.walk]).
-  /// ↩️It was tried twice that day and took no less: once while another
-  /// session drove its app on the same machine (64–68 s against 60 s), and
-  /// once in a quiet window with a walk that read every row and dropped it
-  /// — the decode done twice, 40.1 and 40.3 s against 37.0 and 33.2 s
-  /// taken in turn.
+  /// ⚡ONLY THE PICTURE BEFORE IS LAID IN ORDER ([TvppMakeup.over]; bake
+  /// card tvpp-bake-waits-on-the-isolate-that-hands-out-records).
+  /// ↩️2026-11-19 a step of the run read the picture before pixels and
+  /// all, 63 ms; then it walked it over the one before on a worker of its
+  /// own, no pixel made — and took no less: 63–69 ms a step, 46–50 of them
+  /// on the worker beside seven decoding, 12 waiting for the window
+  /// (2026-11-20, the user's file on the Surface, in a measurement window).
   ///
-  /// 🚨NO FURTHER AHEAD THAN THERE ARE TURNS: a picture waiting for its
-  /// worker holds what the one before is made of — a record's worth — and
-  /// no more records are held than there are turns (card F-608 ③).
+  /// 🚨NO FURTHER AHEAD THAN THERE ARE TURNS: a picture's makeup waiting to
+  /// be laid, and a picture waiting for its worker with what the one before
+  /// is made of, each hold a record's worth — no more of either than there
+  /// are turns (card F-608 ③).
   Future<void> inOrder(List<TvppSlot> run) async {
+    final made = <Future<TvppMakeup?>?>[];
     final pictures = <Future<void>>[];
     TvppTileSources? before;
-    var walked = run.first.before;
-    for (final slot in run) {
-      final (:index, :lay) = _afterTheOneBefore[slot]!;
-      if (walked != null && !_halted) {
-        before = await _walk(walked, lay, before);
+    for (final (i, slot) in run.indexed) {
+      _makeAhead(run, made, upTo: i + turns.atOnce);
+      final makeup = made[i];
+      if (makeup != null && !_halted) {
+        before = _over(await makeup, before);
       }
       if (_halted) {
         break;
       }
+      final (:index, :lay) = _afterTheOneBefore[slot]!;
       final over = before;
       pictures.add(
         turns.run(() async {
@@ -535,23 +529,53 @@ class _Decoding {
       if (pictures.length > turns.atOnce) {
         await pictures[pictures.length - 1 - turns.atOnce];
       }
-      walked = slot;
     }
-    await Future.wait(pictures);
+    await Future.wait([...pictures, ...made.nonNulls]);
   }
 
-  /// What [slot]'s picture is made of, walked over [before] — null where
-  /// it will not read.
-  Future<TvppTileSources?> _walk(
-    TvppSlot slot,
-    CelLay lay,
+  /// [made] grown to the makeups of the pictures before [run]'s first
+  /// [upTo] + 1, each worked out in its turn — none where a picture has
+  /// none before it.
+  void _makeAhead(
+    List<TvppSlot> run,
+    List<Future<TvppMakeup?>?> made, {
+    required int upTo,
+  }) {
+    while (made.length <= upTo && made.length < run.length) {
+      final slot = run[made.length];
+      final picture = slot.before;
+      final size = _afterTheOneBefore[slot]!.lay.picture;
+      made.add(
+        picture == null ? null : turns.run(() => _makeup(picture, size)),
+      );
+    }
+  }
+
+  /// What [slot]'s picture is made of on its own — null where it will not
+  /// read, or once a stop was asked for, when no more is read.
+  Future<TvppMakeup?> _makeup(TvppSlot slot, CanvasSize size) async {
+    if (_halted) {
+      return null;
+    }
+    return TvppImportDoor._makeupOnWorker(
+      await windowOf(slot),
+      slot: slot,
+      size: size,
+    );
+  }
+
+  /// What [makeup]'s picture is made of over [before] — null where it will
+  /// not read, nor show a picture before there is not.
+  static TvppTileSources? _over(
+    TvppMakeup? makeup,
     TvppTileSources? before,
-  ) async => TvppImportDoor._sourcesOnWorker(
-    await windowOf(slot),
-    slot: slot,
-    size: lay.picture,
-    before: before,
-  );
+  ) {
+    try {
+      return makeup?.over(before);
+    } on TvppNeedsThePictureBefore {
+      return null;
+    }
+  }
 
   Future<void> _land(int index, CelLay lay, Object decoded) async {
     if (_halted) {
