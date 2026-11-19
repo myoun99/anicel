@@ -70,10 +70,26 @@ void main() {
   }
 
   /// The colour group's tab [id], brought on screen first: a place pressed
-  /// lower down scrolls the dock, and the strip with it.
+  /// lower down scrolls the dock, and the strip with it. The rail is brought
+  /// to the GROUP's top, not to where the strip stands now: a group whose
+  /// top the window has passed is laid to the part it shows, its strip just
+  /// over the window, and is laid whole again once its top is in it
+  /// (a_group_the_rail_shows_a_part_of_scrolls_within_it_test).
   Future<void> showTab(WidgetTester tester, String id) async {
     final tab = find.byKey(ValueKey<String>('panel-tab-$id'));
-    await tester.ensureVisible(tab);
+    await tester.ensureVisible(
+      find.ancestor(
+        of: tab,
+        matching: find.byWidgetPredicate(
+          (widget) => switch (widget.key) {
+            ValueKey<String>(:final value) => value.startsWith(
+              'rail-group-body-',
+            ),
+            _ => false,
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(tab);
     await tester.pumpAndSettle();
