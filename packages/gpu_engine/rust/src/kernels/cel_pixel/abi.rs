@@ -141,8 +141,10 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_free(kernels: *mut CelKernels) {
 /// ↩️The box was read back into the app's bytes, and handed up again as
 /// the float's picture, at every lift — 🔬with the UI thread's GC the big
 /// buffers fed, a share of the 359–422 ms of the transform box's first
-/// press (S5_BA cut 352 · six cels, Surface, board
-/// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`).
+/// press (S5_BA cut 352 · 62 rows × 36 frames, main PC, board
+/// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`). 🔬Kept on the
+/// engine, that press went 353 → 298 ms on a Surface Pro 11 (medians of
+/// five, the same 62 rows); 28 → 26 ms with six rows.
 ///
 /// # Safety
 /// Every pointer is live, the pool, the mask and the kernels made on

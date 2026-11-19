@@ -141,8 +141,10 @@ abstract final class EngineStampPictures {
   /// ↩️The lift read its box back into bytes here and the float handed the
   /// same bytes up again as its picture — 🔬with the UI thread's GC the big
   /// buffers fed, a share of the 359–422 ms of the transform box's first
-  /// press (S5_BA cut 352 · six cels, Surface, 11-19, board
-  /// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`).
+  /// press (S5_BA cut 352 · 62 rows × 36 frames, main PC, 11-19, board
+  /// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`). 🔬Kept on the
+  /// engine, that press went 353 → 298 ms on a Surface Pro 11 (medians of
+  /// five, the same 62 rows); 28 → 26 ms with six rows.
   static BrushStampImage lifted(
     GpuStampPicture picture, {
     required String id,
