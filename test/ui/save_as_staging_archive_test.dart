@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart';
 
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/temp_dir.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// The Save As staging writer (실측 iPhone+Drive, 08-26): what the export
 /// picker places must already BE the project. A never-saved project used
@@ -202,7 +203,13 @@ void main() {
     // cooling is a free drop, and the newest cel is the one the store keeps
     // hot, so a second drawing takes that place. Still hot, the copy would
     // write it from RAM and be short of nothing.
+    //
+    // Its copy is here by now, as once the hand rests — two saves lie
+    // between its stroke and this —, and is what the tier is past its
+    // budget by: a cel the engine alone holds weighs nothing here
+    // (`BitmapTile.ownBytes`), and is cooled for no budget.
     final store = s.renderCaches.brushFrameStore;
+    theCopiesComeOfTheHotCelsOf(store);
     store.hotCelByteBudget = 0;
     s.selectFrameIndex(1);
     drawOnCurrentFrame(s);

@@ -13,6 +13,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/persistence/volatile_scratch_files.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨★★★**A FULL ROOM REFUSES, AND REFUSING IS ALREADY A LAW.** The undo
 /// stack answers a refusal by standing the spill down and shedding from
@@ -147,6 +148,12 @@ void main() {
           landingDabs: [_stampAt(x, colour)],
         ),
       );
+      // The copies of what it landed come before the next confirm, as
+      // once the hand rests: a tile the engine alone holds weighs
+      // nothing here (`BitmapTile.ownBytes`), and the stack is asked
+      // what it holds as an entry enters — five confirms with no rest
+      // between them would weigh nothing, and shed nothing.
+      theCopiesComeOf([coordinator.currentSurfaceOf(key)]);
     }
     expect(history.undoCount, _confirms.length, reason: 'fixture premise');
 

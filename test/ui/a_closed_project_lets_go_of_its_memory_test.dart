@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import '../helpers/collect_garbage.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️F-505 (유저 2026-10-29): 「프로젝트 2개연상태서 하나 무거운거, 하나
 /// 초기프로젝트면 무거운거 닫으면 언두기록도 안되니 초기프로젝트분만큼만 메모리
@@ -80,6 +81,11 @@ void main() {
             TimelineGridTileStore.instance.tileImageBytes > 0,
       );
       final store = heavy.renderCaches.brushFrameStore;
+      // The copies of what was drawn are here, as once the hand rests:
+      // the memory a closed tab left behind was these bytes (F-505),
+      // and a cel the engine alone holds weighs nothing here
+      // (`BitmapTile.ownBytes`).
+      theCopiesComeOfTheHotCelsOf(store);
       expect(store.hotBakedBytes, greaterThan(0), reason: 'CONTROL');
       expect(heavy.historyManager.canUndo, isTrue, reason: 'CONTROL');
       expect(heavy.historyManager.canRedo, isTrue, reason: 'CONTROL');
