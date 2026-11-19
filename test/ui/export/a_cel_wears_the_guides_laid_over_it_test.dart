@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_pose.dart';
@@ -258,7 +259,15 @@ void main() {
         reason: 'as the cel\'s picture lays them over its artwork',
       );
       final guides = await rows.last.draw();
-      expect(guides.pixels, baked!.image.rgba);
+      // One picture, compared as both premultiply it: the row is read off
+      // the engine straight, as every still is, and the bake by Flutter,
+      // each unpremultiplying with its own rounding — a level apart where
+      // a line's edge is faint (F-547 ⑦ moved the row onto the engine's
+      // read; ↩️both were Flutter's).
+      expect(
+        premultipliedRgbaCopy(guides.pixels),
+        premultipliedRgbaCopy(baked!.image.rgba),
+      );
     });
     await tester.pumpAndSettle();
   });
