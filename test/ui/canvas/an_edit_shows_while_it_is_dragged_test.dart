@@ -431,6 +431,92 @@ void main() {
     expect(shownBrightness(), 40, reason: 'and the release keeps it');
   });
 
+  testWidgets('🚨FX × the lane\'s colour wheel: every colour it passes shows '
+      'on the picture, and the window closing writes the one it rests on — '
+      'one undo (F-620-Q1)', (tester) async {
+    final session = await open(
+      tester,
+      layer: row,
+      standOn: transformGroupHeaderLane.laneId,
+      openGroups: const [],
+    );
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    await pumpFrames(tester);
+    final number = committedRow(session).effects
+        .singleWhere((effect) => effect.kind == EffectKind.celNumber)
+        .id;
+    int shownInk() {
+      int? ink;
+      void walk(List<CompositeNode<CanvasStackRow>> nodes) {
+        for (final node in nodes) {
+          if (node is CompositeCelNumber<CanvasStackRow>) {
+            ink = node.letters.color;
+          }
+          walk(node.children);
+        }
+      }
+
+      walk(session.editingCanvas.stack.nodes);
+      return ink!;
+    }
+
+    bool keyed() => committedRow(session).effects
+        .singleWhere((effect) => effect.id == number)
+        .colors['ink']!
+        .isNotEmpty;
+    final steps = session.historyManager.undoCount;
+    final before = shownInk();
+    expect(keyed(), isFalse, reason: 'the premise');
+
+    final swatch = find.byKey(
+      ValueKey<String>(
+        'timeline-lane-color-${row.value}-${effectLaneId(number, 'ink')}',
+      ),
+    );
+    // Under the effect's own lanes, past the view: rolled to.
+    await rollRowsUntilBuilt(
+      tester,
+      swatch,
+      inRowsOf: find.named(
+        'timeline-lane-group-toggle-${row.value}-${effectGroupLaneId(number)}',
+      ),
+    );
+    await tester.ensureVisible(swatch);
+    await tester.pumpAndSettle();
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+    final wheel = find.byKey(const ValueKey<String>('color-picker-wheel'));
+    final hand = await tester.startGesture(tester.getCenter(wheel));
+    final passed = <int>{};
+    for (var step = 0; step < 4; step += 1) {
+      await hand.moveBy(const Offset(12, 8));
+      await tester.pump();
+      passed.add(shownInk());
+    }
+    await hand.up();
+    await tester.pump();
+
+    expect(passed.length, greaterThan(1), reason: 'the PICTURE follows it');
+    expect(passed, isNot(contains(before)));
+    expect(keyed(), isFalse, reason: 'nothing is keyed while it is open');
+    expect(session.historyManager.undoCount, steps);
+
+    final rested = shownInk();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('color-picker-popup-dismiss-field')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(session.dragPreview.value, isNull);
+    expect(keyed(), isTrue, reason: 'the close writes it');
+    expect(shownInk(), rested, reason: 'the colour it rested on');
+    expect(
+      session.historyManager.undoCount,
+      steps + 1,
+      reason: '⛔ONE step — every colour the wheel passed was one each',
+    );
+  });
+
   testWidgets('CAMERA × the canvas: dragging the frame moves the camera '
       'lanes with it before the release', (tester) async {
     final session = await open(
