@@ -160,8 +160,9 @@ class TvpLayer {
   final TvpEdgeBehavior preBehavior;
   final TvpEdgeBehavior postBehavior;
 
-  /// TVPaint's blending mode name. `"Color"` is its NORMAL — the default
-  /// every layer of every measured export carries.
+  /// TVPaint's blending mode name, in its own English — the .tvpp
+  /// converter's table. `"Color"` is its NORMAL — the default nearly
+  /// every layer of every measured file carries.
   final String blendingMode;
 
   /// The colour group swatch, or null when the layer has none.

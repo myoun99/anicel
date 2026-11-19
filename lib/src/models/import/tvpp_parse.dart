@@ -140,7 +140,16 @@ class TvppLayer {
     this.visible = true,
     this.collapsed = false,
     this.locked = false,
+    this.blendingModeId = 0,
   });
+
+  /// LRHD[15]: the layer's blending mode, by TVPaint's own number — 0 is
+  /// Color, its normal. 🔬The whole word, read off the user's calibration
+  /// file (card F-621 ③, 11-19): one layer per mode of TVPaint 12's
+  /// picker, each named with the picker's label — no header word but
+  /// this one and the layer id told one layer from the next. What each
+  /// number is called is the converter's table (`tvpp_convert.dart`).
+  final int blendingModeId;
 
   /// LRHD[7] bit 4: the layer is LOCKED in TVPaint (memory
   /// `tvpp-format-notes`, beside the hidden bit [visible] reads). No row
@@ -593,6 +602,7 @@ TvppClip _parseClip(
         visible: header == null || field(7) & 1 == 0,
         collapsed: header != null && field(11) & 0xFFFF == 1,
         locked: field(7) & 0x10 != 0,
+        blendingModeId: field(15),
         slots: frozenList(slots),
         ctgSecondStream: frozenList(secondStream),
         instanceNames: frozenMap(instanceNames),

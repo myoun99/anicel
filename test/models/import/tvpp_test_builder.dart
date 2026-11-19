@@ -103,6 +103,7 @@ class TvppBuilder {
     bool visible = true,
     bool folded = true,
     bool locked = false,
+    int blendingModeId = 0,
     List<int>? ansiNameBytes,
   }) {
     final utf = [...utf8.encode(name), 0];
@@ -124,6 +125,7 @@ class TvppBuilder {
     v.setUint32(7 * 4, (visible ? 0 : 1) | (locked ? 0x10 : 0));
     v.setUint32(17 * 4, parentId);
     v.setUint32(18 * 4, layerId);
+    v.setUint32(15 * 4, blendingModeId);
     chunk(headerChunk, header);
   }
 

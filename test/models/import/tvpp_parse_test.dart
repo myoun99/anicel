@@ -279,6 +279,29 @@ mpoints-1-bezieraftery=0.000000
       ]);
     });
 
+    test('a layer\'s blending mode is LRHD[15], TVPaint\'s number for it '
+        '(card F-621 ③)', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 64, height: 32);
+      b.layerHead('Alpha Diff', layerId: 3, blendingModeId: 0x1e);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.layerHead('Multiply', layerId: 2, blendingModeId: 9);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.layerHead('Color', layerId: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.clipConfig();
+
+      final layers = parseTvppStructure(b.bytes).clips.single.layers;
+      expect(
+        [for (final layer in layers) (layer.name, layer.blendingModeId)],
+        [('Alpha Diff', 0x1e), ('Multiply', 9), ('Color', 0)],
+      );
+    });
+
     test('🎯a header chunk this parser does not know makes the layer '
         'UNKNOWN — kept in its place with its own images, and the layers '
         'after it read as ever (보드 tvpp-unknown-layer-kinds-come-in-'

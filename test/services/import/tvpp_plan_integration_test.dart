@@ -5,6 +5,7 @@ import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
@@ -289,5 +290,126 @@ void main() {
       ],
       unorderedEquals(['12.mp4', '13.wav']),
     );
+  });
+
+  group('a blending mode comes in by TVPaint\'s number (card F-621 ③)', () {
+    TvppLayer row(
+      String name,
+      int mode, {
+      TvppLayerKind kind = TvppLayerKind.raster,
+    }) =>
+        TvppLayer(
+          kind: kind,
+          name: name,
+          layerId: 7,
+          parentId: 0,
+          start: 0,
+          end: 0,
+          opacity: 255,
+          preBehavior: TvpEdgeBehavior.none,
+          postBehavior: TvpEdgeBehavior.none,
+          slots: [image()],
+          ctgSecondStream: kind == TvppLayerKind.ctg ? [image()] : const [],
+          instanceNames: const {},
+          blendingModeId: mode,
+        );
+
+    TvpImportPlan planOf(TvppLayer layer) => planTvpImport(
+          parsed: convertTvppClip(
+            TvppClip(
+              name: 'cut',
+              width: 320,
+              height: 180,
+              frameRate: 24,
+              pixelAspectRatio: 1,
+              layers: [layer],
+              imageMarks: const [],
+              cameraPoints: const [],
+              cameraDataText: '',
+            ),
+            clipIndex: 0,
+          ).result,
+          resolveFile: (key) => key,
+          mint: mint(),
+          unnamedMark: defaultUnnamedDrawingMark,
+        );
+
+    test('the twelve Anicel has come in as theirs; every other mode comes in '
+        'as normal and the notice names it — 🗣️「구현하지말고 표준으로 들여도 '
+        '문제없어. 메시지로 표시만 잘하면됨.」 (유저 2026-11-19)', () {
+      // 🔬The numbers of the user's calibration file: a layer per mode of
+      // TVPaint 12's picker (13 and 14 were in none of them).
+      const theirs = <int, LayerBlendMode>{
+        0: LayerBlendMode.normal,
+        7: LayerBlendMode.glowAdd,
+        9: LayerBlendMode.multiply,
+        10: LayerBlendMode.screen,
+        15: LayerBlendMode.difference,
+        17: LayerBlendMode.overlay,
+        18: LayerBlendMode.colorDodge,
+        19: LayerBlendMode.colorBurn,
+        20: LayerBlendMode.hardLight,
+        21: LayerBlendMode.softLight,
+        25: LayerBlendMode.darken,
+        26: LayerBlendMode.lighten,
+      };
+      const named = <int, String>{
+        1: 'Behind',
+        2: 'Erase',
+        3: 'Shade',
+        4: 'Light',
+        5: 'Colorize',
+        6: 'Tint',
+        8: 'Sub',
+        11: 'Replace',
+        12: 'Substitute',
+        13: '13',
+        16: 'Divide',
+        22: 'Grain Extract',
+        23: 'Grain Merge',
+        24: 'Subtract',
+        27: 'Value',
+        28: 'Saturate',
+        29: 'Overlay 2',
+        30: 'Alpha Diff',
+        31: '31',
+      };
+      for (final MapEntry(key: id, value: mode) in theirs.entries) {
+        final plan = planOf(row('A', id));
+        final a = plan.cut.layers.singleWhere((l) => l.name == 'A');
+        expect(a.blendMode, mode, reason: '$id');
+        expect(plan.warnings, isEmpty, reason: '$id');
+      }
+      for (final MapEntry(key: id, value: name) in named.entries) {
+        final plan = planOf(row('A', id));
+        expect(
+          plan.cut.layers.singleWhere((l) => l.name == 'A').blendMode,
+          LayerBlendMode.normal,
+          reason: '$id',
+        );
+        expect(
+          plan.warnings.single.english,
+          'A: blending mode "$name" has no Anicel equivalent — imported as '
+          'normal.',
+        );
+      }
+    });
+
+    test('a CTG layer\'s mode blends its folder — the one picture its two '
+        'streams make — and neither stream', () {
+      final plan = planOf(row('CTG', 9, kind: TvppLayerKind.ctg));
+      expect(
+        [
+          for (final layer in plan.cut.layers)
+            if (layer.name.startsWith('CTG')) (layer.kind, layer.blendMode),
+        ],
+        [
+          (LayerKind.animation, LayerBlendMode.normal),
+          (LayerKind.animation, LayerBlendMode.normal),
+          (LayerKind.folder, LayerBlendMode.multiply),
+        ],
+      );
+      expect(plan.warnings, isEmpty);
+    });
   });
 }
