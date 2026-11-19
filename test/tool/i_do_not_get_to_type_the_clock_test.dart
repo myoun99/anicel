@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/board_check.dart';
 import '../../tool/board_model.dart';
 import '../../tool/board_say.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★I DO NOT GET TO TYPE `ts`.
 ///
@@ -62,6 +65,99 @@ void main() {
         reason: ending,
       );
     }
+  });
+
+  // 🧪2026-11-19: a cause report on F-621 quoted the first decoder's PR by
+  // number, and the gate held 관제's and 공통's Stop on it — the line could
+  // not be mended and the only way out was an ack that left the whole card
+  // alone (board-say-takes-a-pr-number-cited-in-a-note).
+  test('⛔a PR quoted by number in my prose is refused', () {
+    final why = quotedPrRefusal({
+      'kind': 'item',
+      'id': 'W',
+      'note': '첫 디코더(#1259)부터 그렇게 알았다',
+    }, 1, const {});
+    expect(why, contains('#1259'));
+    expect(why, contains('sha'), reason: 'the fix is in the refusal');
+  });
+
+  group('🚨★★★board_say refuses exactly what the gate would name', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('pr-in-prose'));
+    tearDown(() => deleteTempQuietly(dir));
+
+    const head = '{"kind":"item","id":"W","at":"남은 것","rest":"할 것",'
+        '"title":"작업","ts":"2026-11-19T10:00:00"}';
+    const claimedBefore = '{"kind":"item","id":"W","pr":1300,"at":"구현",'
+        '"note":"고쳤다","ts":"2026-11-19T10:30:00"}';
+    // what → (the lines already on the card, the line said, refused?)
+    final cases = <String, (List<String>, Map<String, dynamic>, bool)>{
+      'a note': ([head], {'id': 'W', 'note': '#1259 로 고쳤다'}, true),
+      'a judgement': ([head], {'id': 'W', 'think': '#1259 때문인 듯'}, true),
+      'what is left': ([head], {'id': 'W', 'rest': '#1259 의 남은 것'}, true),
+      'a letter':
+          ([head], {'id': 'W', 'to': '관제', 'note': '#1259 를 보세요'}, true),
+      'a claimed PR': (
+        [head],
+        {'id': 'W', 'pr': 1259, 'note': '#1259 로 고쳤다'},
+        false,
+      ),
+      // ⚠️The PR rides the FIRST stage a line opens — here the user's words —
+      // but the card claims it all the same, and a card that claims a PR is
+      // not asked.
+      'a PR riding the user\'s words': (
+        [head],
+        {'id': 'W', 'pr': 1259, 'said': '고쳐 줘', 'note': '#1259 로 고쳤다'},
+        false,
+      ),
+      'a card that claimed its PR earlier': (
+        [head, claimedBefore],
+        {'id': 'W', 'note': '#1259 에서 들어온 것'},
+        false,
+      ),
+      'the user\'s words':
+          ([head], {'id': 'W', 'said': '#1259 이후로 느려졌어'}, false),
+      'a merge sha': ([head], {'id': 'W', 'note': '4f3a9c1d2 로 고쳤다'}, false),
+      'a three-digit tag': ([head], {'id': 'W', 'note': '#903 의 결정'}, false),
+    };
+    for (final MapEntry(key: what, value: (before, line, refused))
+        in cases.entries) {
+      test(what, () {
+        final said = File('${dir.path}/said.jsonl')
+          ..writeAsStringSync(before.map((l) => '$l\n').join());
+        final refusal = sayToRecords(
+          said,
+          [jsonEncode(line)],
+          DateTime.parse('2026-11-19T11:00:00'),
+        ).refusal;
+        final written = File('${dir.path}/written.jsonl')
+          ..writeAsStringSync([
+            ...before,
+            jsonEncode({...line, 'ts': '2026-11-19T11:00:00'}),
+          ].map((l) => '$l\n').join());
+        final gate = boardCheckComplaints(
+          written,
+          since: '2026-11-19T00:00:00',
+          linesSince: '2026-11-19T00:00:00',
+          proseSince: '2026-11-19T00:00:00',
+          now: DateTime.parse('2026-11-19T12:00:00'),
+        );
+        expect(refusal != null, refused, reason: 'board_say: $refusal');
+        expect(
+          gate.contains('PR을 본문에만 적은 카드'),
+          refused,
+          reason: 'gate: $gate',
+        );
+      });
+    }
+
+    test('⚠️a PR claimed later in the same batch counts', () {
+      final r = boardSayAppend([
+        jsonEncode({'id': 'W', 'note': '#1259 로 고쳤다'}),
+        jsonEncode({'id': 'W', 'pr': 1259, 'at': '구현', 'note': '착지'}),
+      ], DateTime.parse('2026-11-19T11:00:00'));
+      expect(r.refusal, isNull);
+    });
   });
 
   test('⛔a kind nobody handles is refused', () {

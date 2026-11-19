@@ -314,6 +314,47 @@ String? endedCardRefusal(
       '`"at":"정정"` 을 붙이세요.';
 }
 
+/// The cards that claim a PR — [prsQuotedInProse] asks nothing of those.
+Set<String> claimingCards(List<BoardCard> cards) => {
+      for (final c in cards)
+        if (c.prs.isNotEmpty) c.id,
+    };
+
+/// The card a raw line claims a PR for, or null.
+String? _claimedBy(String raw) {
+  try {
+    final json = jsonDecode(raw.trim());
+    return json is Map && json['pr'] != null ? '${json['id']}' : null;
+  } on Object {
+    return null;
+  }
+}
+
+/// Why this line may not name a PR in prose, or null if it may — the
+/// gate's 「PR을 본문에만 적은 카드」 asked before the line exists, of the card
+/// the line would make, by the same [prsQuotedInProse]. [claimed] are the
+/// cards that claim a PR already ([claimingCards]).
+String? quotedPrRefusal(
+  Map<String, dynamic> json,
+  int lineNo,
+  Set<String> claimed,
+) {
+  if (json['kind'] == 'meta' || claimed.contains('${json['id']}')) {
+    return null;
+  }
+  for (final card in cardsOfALine(json)) {
+    for (final entry in prsQuotedInProse(card)) {
+      final quoted = kPrInProse.firstMatch(entry.text)![0];
+      return '$lineNo번째 줄: 본문에 PR 을 번호(「$quoted」)로 적었습니다 — '
+          '`pr` 필드 없이 적힌 PR 번호는 게이트가 「PR을 본문에만 적은 '
+          '카드」로 모든 세션의 Stop 을 막고, 줄은 덧붙여서 고칠 수 없습니다. '
+          '이 카드가 낸 PR 이면 `pr` 필드에, 옛 PR 의 인용이면 머지 sha 로, '
+          'PR 이 아닌 번호면 `#` 없이 적으세요.';
+    }
+  }
+  return null;
+}
+
 /// The cards that stand in 기록.
 Set<String> recordCards(List<BoardCard> cards) => {
       for (final c in cards)
@@ -399,11 +440,18 @@ Map<String, String> lawCares(List<BoardCard> cards) => {
   Map<String, String> lawCare = const {},
   Map<String, Map<String, BoardLog>> letters = const {},
   Set<String> holders = const {},
+  Set<String> claimed = const {},
 }) {
   final records = <Map<String, dynamic>>[];
   final warnings = <String>[];
   // A batch that writes one law twice is measured against its own last line.
   final cares = {...lawCare};
+  // ⚠️A PR claimed anywhere in the batch counts — the gate reads the card
+  // after all of it is written, whichever line came first.
+  final claimedAfter = {
+    ...claimed,
+    for (final raw in lines) ?_claimedBy(raw),
+  };
   var lineNo = 0;
   for (final raw in lines) {
     lineNo++;
@@ -422,7 +470,8 @@ Map<String, String> lawCares(List<BoardCard> cards) => {
     final why = recordRefusal(json, lineNo) ??
         endedCardRefusal(json, lineNo, ended) ??
         recordCardRefusal(json, lineNo, inRecords) ??
-        readMarkRefusal(json, lineNo, letters);
+        readMarkRefusal(json, lineNo, letters) ??
+        quotedPrRefusal(json, lineNo, claimedAfter);
     if (why != null) {
       return (refusal: why, bytes: null, warnings: const <String>[]);
     }
@@ -483,6 +532,7 @@ BoardSaid sayToRecords(File records, List<String> lines, DateTime now) {
     lawCare: lawCares(cards),
     letters: lettersByStamp(cards),
     holders: cardHolders(cards),
+    claimed: claimingCards(cards),
   );
   final bytes = result.bytes;
   if (bytes == null) {
