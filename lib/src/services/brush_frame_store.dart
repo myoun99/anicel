@@ -1432,6 +1432,7 @@ class BrushFrameStore {
     required CanvasSize canvasSize,
   }) {
     key = _canonicalize(key);
+    coolWhereTheEngineLetGo(key);
     if (!_thawsAt(key, canvasSize) || _usedAsItsShell(key) != null) {
       return Future<void>.value();
     }
@@ -1442,6 +1443,38 @@ class BrushFrameStore {
   }
 
   final InFlight<BrushFrameKey, void> _thawing = InFlight();
+
+  /// 🚨A HOT SHELL THE ENGINE HOLDS NO MORE WHOLE IS HOT NO MORE: let go
+  /// as the file's own ([_coolTheFilesOwn]) before an ahead door answers
+  /// for it ([thawAhead], [lookAhead]) and where a screen asks whether
+  /// the cel is in hand (`LayerFrameImageCache.storedSurfaceIsInHand`),
+  /// which is then no: read in, it is thawed on a worker as any cel the
+  /// file keeps is.
+  ///
+  /// A full pool lets a shell's slots go as freely as any whose bytes are
+  /// here (`EngineTileLedger.shellOf`), a hot one's among them, and a
+  /// tile of it then reads its cel's kept bytes again — the whole cel
+  /// decoded on the thread that asks (card cel-thaw-holds-the-ui-thread,
+  /// 13 to 32 ms a cel). The looks never came there: a shell not whole
+  /// is let go before a look is handed it ([_shellAt]). A use that took
+  /// one keeps it hot for as long as it is, so the doors that go before
+  /// a read ask the same of it (🔢브러시/렌더링's, 2026-11-20, said on
+  /// the card cel-originals-are-held-twice-in-ram-and-on-the-gpu — no
+  /// rule of the user's; theirs is 「놓는다」, Q3).
+  ///
+  /// ⚠️Not asked where a cel is read with no door before it
+  /// ([bakedSurfaceOrNull]): every read would walk its tiles. A step of
+  /// a stroke is composed so, its frame asked nothing first — the slots
+  /// of a frame a canvas stands on are to be the engine's to keep while
+  /// it stands, which this does not do.
+  void coolWhereTheEngineLetGo(BrushFrameKey key) {
+    final hot = _bakedSurfaces[key];
+    if (hot != null &&
+        _fileCels.containsKey(key) &&
+        !_celShells.isWhole(hot)) {
+      _coolTheFilesOwn(key);
+    }
+  }
 
   /// Whether reading [key] at [canvasSize] thaws its kept bytes here
   /// ([currentSurfaceWithoutReplay]) — the work a thaw made ahead takes off
@@ -1469,6 +1502,7 @@ class BrushFrameStore {
     // cel is read hot once that lands, where both at once thawed it twice
     // and let one go (저장 2026-11-15 20:12). That thaw never throws.
     await _thawing.runOf(key);
+    coolWhereTheEngineLetGo(key);
     final shell = _shellAt(key, canvasSize);
     if (shell != null) {
       return shell;
@@ -2234,6 +2268,24 @@ class BrushFrameStore {
     }
   }
 
+  /// Lets go of the hot cel [key], one the saved file holds — clean, as
+  /// an edit ends the ref ([_letTheFileRefGo]) —, for nothing: the file
+  /// has its exact bytes. One a use took as its shell
+  /// ([_usedAsItsShell]) is the looks' shell again: what the engine
+  /// holds of it stays for the next of either.
+  void _coolTheFilesOwn(BrushFrameKey key) {
+    final cooled = _bakedSurfaces.remove(key);
+    _hotWeights.letGo(key);
+    _displayCaches.remove(key);
+    // ⛔Not one its bytes came to since ([bringBytesAhead]): a shell is
+    // kept outside every budget because it holds none.
+    if (cooled != null &&
+        _takenKeptInTheFile.containsKey(key) &&
+        cooled.keptTileBytes == 0) {
+      _shells[key] = (ref: _fileCels[key]!, shell: cooled);
+    }
+  }
+
   /// Cools LRU hot cels until the budget holds, one at a time: snapshot
   /// bytes on the main isolate, COMPRESS in a background isolate, then
   /// commit the swap ONLY if the cel's surface is still the identical
@@ -2266,21 +2318,7 @@ class BrushFrameStore {
         _bakedSurfaces.length > 1) {
       final key = _bakedSurfaces.keys.first;
       if (_fileCels.containsKey(key)) {
-        // Clean file-backed cel (edits kill the ref): the saved .anicel
-        // already holds its exact bytes — cooling is a free drop. One a
-        // use took as its shell ([_usedAsItsShell]) is the looks' shell
-        // again: what the engine holds of it stays for the next of
-        // either.
-        final cooled = _bakedSurfaces.remove(key);
-        _hotWeights.letGo(key);
-        _displayCaches.remove(key);
-        // ⛔Not one its bytes came to since ([bringBytesAhead]): a
-        // shell is kept outside every budget because it holds none.
-        if (cooled != null &&
-            _takenKeptInTheFile.containsKey(key) &&
-            cooled.keptTileBytes == 0) {
-          _shells[key] = (ref: _fileCels[key]!, shell: cooled);
-        }
+        _coolTheFilesOwn(key);
         continue;
       }
       final surface = _bakedSurfaces[key]!;

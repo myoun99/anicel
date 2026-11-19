@@ -1,4 +1,3 @@
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -15,10 +14,10 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cel_shells.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/shells_with_no_bytes.dart';
 
 /// 🚨Card `cel-originals-are-held-twice-in-ram-and-on-the-gpu` ② (유저
 /// 2026-11-19, Q1 「브러시가 맡고, 저장과 맞닿는 곳은 저장이 같이 정한다」 ·
@@ -66,12 +65,12 @@ void main() {
 
   Uint8List pixelsOf(int seed) => ink(seed).tiles[origin]!.pixels;
 
-  late _Engine engine;
+  late ShellsWithNoBytes engine;
   late BrushFrameStore store;
   late Map<BrushFrameKey, AnicelCelFileRef> refs;
 
   setUp(() {
-    engine = _Engine();
+    engine = ShellsWithNoBytes();
     store = BrushFrameStore(shells: engine);
     refs = keepInAFile(store, {key('f'): ink(4), key('g'): ink(5)});
   });
@@ -220,6 +219,99 @@ void main() {
         await store.lookAhead(key('f'), canvasSize: canvasSize),
         same(shell),
       );
+    });
+  });
+
+  group('🚨a hot shell the engine holds no more whole is hot no more', () {
+    /// The engine lets go of every slot it held: a tile of a shell
+    /// reads its cel's kept bytes again from here on.
+    void theEngineLetsGo() => engine
+      ..whole = false
+      ..slots = false;
+
+    test('a thaw ahead thaws it as it does any cel the file keeps — '
+        'its bytes here, no tile of the shell read', () async {
+      final shell = await aShellOf('f');
+      store.bakedSurfaceOrNull(key('f'));
+      theEngineLetsGo();
+
+      await store.thawAhead(key('f'), canvasSize: canvasSize);
+
+      final hot = store.hotBakedSurfaceOrNull(key('f'))!;
+      expect(hot, isNot(same(shell)));
+      expect(hot.tiles[origin]!.hasItsBytesHere, isTrue);
+      expect(hot.tiles[origin]!.pixels, pixelsOf(4));
+      expect(engine.reads, 0, reason: 'no tile of the shell was read');
+      expect(store.shells, isEmpty, reason: 'a shell not whole is let go');
+      expect(store.isCelFileBacked(key('f')), isTrue);
+    });
+
+    test('a look ahead reads it thawed, and the cel is hot no more', () async {
+      final shell = await aShellOf('f');
+      store.bakedSurfaceOrNull(key('f'));
+      theEngineLetsGo();
+
+      final looked = await store.lookAhead(
+        key('f'),
+        canvasSize: canvasSize,
+      );
+
+      expect(looked, isNot(same(shell)));
+      expect(looked!.tiles[origin]!.pixels, pixelsOf(4));
+      expect(engine.reads, 0, reason: 'no tile of the shell was read');
+      expect(store.hotBakedSurfaceOrNull(key('f')), isNull);
+      expect(store.isCelFileBacked(key('f')), isTrue);
+    });
+
+    test('one the engine holds whole stays hot through both', () async {
+      final shell = await aShellOf('f');
+      store.bakedSurfaceOrNull(key('f'));
+
+      await store.thawAhead(key('f'), canvasSize: canvasSize);
+      await store.lookAhead(key('f'), canvasSize: canvasSize);
+
+      expect(store.hotBakedSurfaceOrNull(key('f')), same(shell));
+    });
+
+    test('a cel hot with its bytes here is no shell: it stays, whatever '
+        'the engine let go of', () async {
+      final thawed = store.bakedSurfaceOrNull(key('f'))!;
+      expect(
+        thawed.tiles[origin]!.hasItsBytesHere,
+        isTrue,
+        reason: '⛔premise: thawed, no shell to take',
+      );
+      theEngineLetsGo();
+
+      await store.thawAhead(key('f'), canvasSize: canvasSize);
+      await store.lookAhead(key('f'), canvasSize: canvasSize);
+
+      expect(store.hotBakedSurfaceOrNull(key('f')), same(thawed));
+    });
+
+    test('a cel drawn on since is the file\'s no more, and stays', () async {
+      final tile = await aTileTaken('f');
+      // As a stroke on another tile leaves it: the tile the engine made
+      // is still of the cel.
+      store.storeBakedSurface(
+        key('f'),
+        BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: defaultCelTileSize,
+          tiles: {origin: tile},
+        ),
+      );
+      final drawn = store.hotBakedSurfaceOrNull(key('f'));
+      expect(
+        drawn!.tiles[origin],
+        same(tile),
+        reason: '⛔premise: a tile the engine made is of the cel still',
+      );
+      theEngineLetsGo();
+
+      await store.thawAhead(key('f'), canvasSize: canvasSize);
+
+      expect(store.hotBakedSurfaceOrNull(key('f')), same(drawn));
     });
   });
 
@@ -556,59 +648,3 @@ void main() {
 
 /// What makes a cel's file ref go, done to [store]'s cel [f].
 typedef _Way = void Function(BrushFrameStore store, BrushFrameKey f);
-
-/// A keeper whose shells hold no bytes here: each tile of one reads what the
-/// engine holds of it while [slots] says it does, else its cel's kept bytes
-/// again — and says whether the engine holds a whole shell by [whole].
-final class _Engine implements CelShells {
-  final made = <BitmapSurface>[];
-  bool whole = true;
-  bool slots = true;
-  int readsOfASlot = 0;
-  int readsOfTheKept = 0;
-
-  int get reads => readsOfASlot + readsOfTheKept;
-
-  @override
-  BitmapSurface? shellOf(
-    BitmapSurface surface, {
-    required BitmapSurface Function() readAgain,
-  }) {
-    final shell = surface.copyWith(
-      tiles: {
-        for (final MapEntry(key: at, value: tile) in surface.tiles.entries)
-          at: BitmapTile.onEngine(
-            size: tile.size,
-            on: _Held(this, tile.pixels, () => readAgain().tiles[at]!),
-            hasInk: tile.hasInk,
-          ),
-      },
-    );
-    made.add(shell);
-    return shell;
-  }
-
-  @override
-  bool isWhole(BitmapSurface shell) => whole;
-}
-
-/// What reads a tile of [_Engine]'s shells.
-final class _Held implements TilePixelsKeptBesides {
-  _Held(this._engine, this._onTheEngine, this._kept);
-
-  final _Engine _engine;
-  final Uint8List _onTheEngine;
-  final BitmapTile Function() _kept;
-
-  @override
-  void readInto(BitmapTile tile, Pointer<Uint8> into) {
-    final bytes = into.asTypedList(_onTheEngine.length);
-    if (_engine.slots) {
-      _engine.readsOfASlot += 1;
-      bytes.setAll(0, _onTheEngine);
-    } else {
-      _engine.readsOfTheKept += 1;
-      _kept().readPixels((_, view) => bytes.setAll(0, view));
-    }
-  }
-}

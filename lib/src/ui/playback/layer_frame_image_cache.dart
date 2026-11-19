@@ -65,12 +65,20 @@ class LayerFrameImageCache {
   /// of the frame as it stands (`FramePictures.frameAsItStands`), the body
   /// a step on a row above it is patched into the frame's picture by
   /// (저장's hand-over on the 23.976 `.mov` card, read in the code).
+  ///
+  /// 🚨A HOT SHELL THE ENGINE LET GO OF IS IN HAND NO MORE
+  /// (`BrushFrameStore.coolWhereTheEngineLetGo`, which has why): drawn as
+  /// it is, a tile of it would read its cel's kept bytes on this thread.
+  /// A cel made hot is never read in again by a frame that asks here
+  /// first (`FramePictures.readInStack`), so here is where it is asked.
   bool storedSurfaceIsInHand(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
-  }) =>
-      _previews(canvasSize).preparedFramePreviewOrNull(key) != null ||
-      frameStore.hasMovieCel(key, canvasSize);
+  }) {
+    frameStore.coolWhereTheEngineLetGo(key);
+    return _previews(canvasSize).preparedFramePreviewOrNull(key) != null ||
+        frameStore.hasMovieCel(key, canvasSize);
+  }
 
   BrushFrameDisplayCacheService _previews(CanvasSize canvasSize) =>
       BrushFrameDisplayCacheService(
