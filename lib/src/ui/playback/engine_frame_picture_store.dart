@@ -314,6 +314,33 @@ class EngineFramePictureStore<K extends Object> {
     return lay.done.future;
   }
 
+  /// Keeps [screen] as [key]'s picture — [key]'s frame laid on it already,
+  /// by a screen that drew the frame as it stands — and answers it: what a
+  /// [lay] of [key] would lay, laid once. A lay of [key] still waiting its
+  /// turn is answered with it. Null, keeping nothing, where [key] has a
+  /// picture or one is being laid.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, 2026-11-19): a value dragged in a cel number's
+  /// box composed the frame twice a value — on the screen that stands, and
+  /// again as the picture of its key.
+  EngineFramePicture? keepLaid(K key, EngineStackScreen screen) {
+    if (_entries.containsKey(key) ||
+        _lays.any((lay) => lay.key == key && lay.running)) {
+      return null;
+    }
+    final picture = EngineFramePicture._(screen);
+    _entries[key] = _Entry(picture)..lastUsed = ++_clock;
+    _laidOrLetGoTold.ask();
+    _lays.removeWhere((lay) {
+      if (lay.key != key) {
+        return false;
+      }
+      lay.done.complete(picture);
+      return true;
+    });
+    return picture;
+  }
+
   /// Composes [frame] into the picture of [from] where it changed —
   /// [rect], in world pixels — and moves it to [to]: from here on [to]
   /// answers with it, and [from] no longer. [from] may be [to] — a stroke's

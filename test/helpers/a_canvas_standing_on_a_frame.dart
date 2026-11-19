@@ -308,6 +308,11 @@ class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
     EngineChainHolds? holds,
   }) => Completer<EngineFramePicture?>().future;
 
+  /// Nor the frame a canvas stood: a picture kept is one come.
+  @override
+  EngineFramePicture? keepLaid(FramePictureKey key, EngineStackScreen screen) =>
+      null;
+
   static bool _stays() => false;
 }
 
@@ -331,6 +336,11 @@ class StoreWhoseLaysThrow extends EngineFramePictureStore<FramePictureKey> {
     laid.add(key);
     return Future.error(why);
   }
+
+  /// Nor the frame a canvas stood: its lay is asked, and throws.
+  @override
+  EngineFramePicture? keepLaid(FramePictureKey key, EngineStackScreen screen) =>
+      null;
 
   static bool _stays() => false;
 }

@@ -394,6 +394,14 @@ class _FramePictureViewState extends State<FramePictureView>
   /// ... and whether its live rows moved since.
   bool _standingMoved = false;
 
+  /// The compositions laid on [_standingOn], counted: the one that ends
+  /// says by it whether it was the last ([_keepWhatStood]).
+  int _stood = 0;
+
+  /// The frame [_look] stands on, kept as its key's picture once the paint
+  /// has laid it ([_keepWhatStood]) — the store not asked to lay it again.
+  ({FramePictureKey key, StackedFrame frame})? _keeping;
+
   /// Whether the live rows moved since all of the frame last went through
   /// its plugins ([_throughWhole]).
   bool _movedSinceThrough = true;
@@ -697,7 +705,7 @@ class _FramePictureViewState extends State<FramePictureView>
       return;
     }
     if (widget.laysWhatItMisses) {
-      _make(key);
+      _makeOrKeep(key);
     }
     if (_standsMeanwhile) {
       // Drawn as it stands until its picture is there.
@@ -769,6 +777,88 @@ class _FramePictureViewState extends State<FramePictureView>
     _asItStands = now.frame;
     _showing = key;
     _report(now.thrown, 'drawing a frame as its cels stand');
+  }
+
+  /// [_make]s [key]'s frame — or, where the frame drawn as it stands is the
+  /// picture the store would lay of it ([_standsAsItsPicture]), keeps what
+  /// the paint lays ([_keepWhatStood]): made once the frame is painted
+  /// where no paint laid it.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, 2026-11-19): ↩️a value dragged on the canvas
+  /// — a cel number's box, a lane's colour wheel — was composed twice a
+  /// value, the frame as it stands and again as its key's picture.
+  void _makeOrKeep(FramePictureKey key) {
+    final live = _live;
+    if (live == null || !_standsAsItsPicture(live)) {
+      _keeping = null;
+      _make(key);
+      return;
+    }
+    // The making of the key before, if any, is no one's now.
+    _making = null;
+    _keeping = (key: key, frame: live);
+    SchedulerBinding.instance.addPostFrameCallback(
+      (_) => _madeUnlessLaid(key, live),
+    );
+  }
+
+  /// Whether [live], drawn as it stands, is the picture the store would lay
+  /// of its frame ([FramePictures.makeShown]): every cel it draws in hand
+  /// ([FramePictures.frameAsItStands] leaves one out till it is read), its
+  /// live rows showing nothing no cel stores ([_showsUnstored] — what keeps
+  /// a picture under the frame's key, [_keptUnder]), its nodes held where
+  /// a canvas's picture holds them ([_screenStoodOn]), and nothing it
+  /// waits for ([_standsMeanwhile]).
+  bool _standsAsItsPicture(StackedFrame live) =>
+      widget.live != null &&
+      _standsMeanwhile &&
+      !_showsUnstored(live.tokens) &&
+      _pictures.allInHand(widget.nodes, widget.picture);
+
+  /// [key]'s frame made, where the paint laid nothing of [live] to keep —
+  /// a view standing bare ([_standsBare]), or one not painted.
+  void _madeUnlessLaid(FramePictureKey key, StackedFrame live) {
+    final keeping = _keeping;
+    if (!mounted ||
+        keeping == null ||
+        !identical(keeping.frame, live) ||
+        identical(_composedOn, live)) {
+      return;
+    }
+    _keeping = null;
+    _make(key);
+  }
+
+  /// [frame], laid on [screen] by the composition counted [laidBy] (null
+  /// where it threw), kept as the picture of the key [_look] stands on it
+  /// for ([_keeping]) — or made by the store, where it was not the last
+  /// laid there, its live rows moved since or show what no cel stores, or
+  /// the store has the key laid or on its way.
+  void _keepWhatStood(
+    EngineStackScreen screen,
+    StackedFrame frame, {
+    required int? laidBy,
+  }) {
+    final keeping = _keeping;
+    if (!mounted || keeping == null || !identical(keeping.frame, frame)) {
+      return;
+    }
+    _keeping = null;
+    final laidLast =
+        identical(_standingOn, screen) &&
+        laidBy == _stood &&
+        !_standingMoved;
+    final kept = laidLast && !_showsUnstored(frame.tokens)
+        ? _store.keepLaid(keeping.key, screen)
+        : null;
+    if (kept == null) {
+      _make(keeping.key);
+      return;
+    }
+    // The store's now: freed once it lets it go and no one shows it.
+    _standingOn = null;
+    _composedOn = null;
+    setState(_look);
   }
 
   /// Makes [key]'s frame now, as this view stacks it.
@@ -1249,9 +1339,10 @@ class _FramePictureViewState extends State<FramePictureView>
       );
       _composedOn = frame;
       _standingMoved = false;
+      final stood = ++_stood;
       unawaited(
         composed.then<void>(
-          (_) {},
+          (_) => _keepWhatStood(screen, frame, laidBy: stood),
           onError: (Object error, StackTrace stack) {
             // Composed again at the next paint, as one refused where it was
             // asked was: the screen keeps no canvas it failed on.
@@ -1259,6 +1350,7 @@ class _FramePictureViewState extends State<FramePictureView>
               _composedOn = null;
             }
             _report((error, stack), 'drawing a frame as it stands');
+            _keepWhatStood(screen, frame, laidBy: null);
           },
         ),
       );
