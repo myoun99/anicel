@@ -395,7 +395,8 @@ class _FramePictureViewState extends State<FramePictureView>
   bool _standingMoved = false;
 
   /// The compositions laid on [_standingOn], counted: the one that ends
-  /// says by it whether it was the last ([_keepWhatStood]).
+  /// says by it whether it was the last — what the screen holds then
+  /// ([_keepWhatStood]).
   int _stood = 0;
 
   /// The frame [_look] stands on, kept as its key's picture once the paint
@@ -789,7 +790,7 @@ class _FramePictureViewState extends State<FramePictureView>
   /// value, the frame as it stands and again as its key's picture.
   void _makeOrKeep(FramePictureKey key) {
     final live = _live;
-    if (live == null || !_standsAsItsPicture(live)) {
+    if (live == null || !_standsAsItsPicture) {
       _keeping = null;
       _make(key);
       return;
@@ -802,17 +803,16 @@ class _FramePictureViewState extends State<FramePictureView>
     );
   }
 
-  /// Whether [live], drawn as it stands, is the picture the store would lay
-  /// of its frame ([FramePictures.makeShown]): every cel it draws in hand
+  /// Whether the frame drawn as it stands is the picture the store would
+  /// lay of it ([FramePictures.makeShown]) — what its live rows show past
+  /// the cels aside, which a composition says as it is laid
+  /// ([_screenStoodOn]): every cel it draws in hand
   /// ([FramePictures.frameAsItStands] leaves one out till it is read), its
-  /// live rows showing nothing no cel stores ([_showsUnstored] — what keeps
-  /// a picture under the frame's key, [_keptUnder]), its nodes held where
-  /// a canvas's picture holds them ([_screenStoodOn]), and nothing it
-  /// waits for ([_standsMeanwhile]).
-  bool _standsAsItsPicture(StackedFrame live) =>
+  /// nodes held where a canvas's picture holds them, and nothing it waits
+  /// for ([_standsMeanwhile]).
+  bool get _standsAsItsPicture =>
       widget.live != null &&
       _standsMeanwhile &&
-      !_showsUnstored(live.tokens) &&
       _pictures.allInHand(widget.nodes, widget.picture);
 
   /// [key]'s frame made, where the paint laid nothing of [live] to keep —
@@ -829,11 +829,11 @@ class _FramePictureViewState extends State<FramePictureView>
     _make(key);
   }
 
-  /// [frame], laid on [screen] by the composition counted [laidBy] (null
-  /// where it threw), kept as the picture of the key [_look] stands on it
-  /// for ([_keeping]) — or made by the store, where it was not the last
-  /// laid there, its live rows moved since or show what no cel stores, or
-  /// the store has the key laid or on its way.
+  /// [frame], laid on [screen] by the composition counted [laidBy], kept as
+  /// the picture of the key [_look] stands on it for ([_keeping]) — or made
+  /// by the store, where that was not the last laid there, or laid what no
+  /// cel stores or threw (null), or the store has the key laid or on its
+  /// way.
   void _keepWhatStood(
     EngineStackScreen screen,
     StackedFrame frame, {
@@ -844,11 +844,7 @@ class _FramePictureViewState extends State<FramePictureView>
       return;
     }
     _keeping = null;
-    final laidLast =
-        identical(_standingOn, screen) &&
-        laidBy == _stood &&
-        !_standingMoved;
-    final kept = laidLast && !_showsUnstored(frame.tokens)
+    final kept = identical(_standingOn, screen) && laidBy == _stood
         ? _store.keepLaid(keeping.key, screen)
         : null;
     if (kept == null) {
@@ -1340,9 +1336,15 @@ class _FramePictureViewState extends State<FramePictureView>
       _composedOn = frame;
       _standingMoved = false;
       final stood = ++_stood;
+      // What no cel stores is no part of the frame's picture ([_keptUnder]).
+      final keepable = !_showsUnstored(frame.tokens);
       unawaited(
         composed.then<void>(
-          (_) => _keepWhatStood(screen, frame, laidBy: stood),
+          (_) => _keepWhatStood(
+            screen,
+            frame,
+            laidBy: keepable ? stood : null,
+          ),
           onError: (Object error, StackTrace stack) {
             // Composed again at the next paint, as one refused where it was
             // asked was: the screen keeps no canvas it failed on.

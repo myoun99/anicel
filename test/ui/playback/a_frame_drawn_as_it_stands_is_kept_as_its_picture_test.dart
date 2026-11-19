@@ -257,9 +257,44 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('🚨a step come on its way before the frame was painted is no '
-      'part of the key\'s picture: the store lays it as the cels store it',
-      (tester) async {
+  void aStepShown(ActiveStrokeOverlayModel overlay) =>
+      overlay.showResultTiles([
+        PromotedStrokeTile(
+          TileCoord(x: 0, y: 0),
+          tileOf(const [0xFF, 0x00, 0x00, 0xFF]),
+          1,
+        ),
+      ]);
+
+  testWidgets('🚨a value handed while a step is on its way: the frame stands '
+      'with the step, which is no part of the key\'s picture — the store '
+      'lays it as the cels store it', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final overlay = anOverlay();
+    final canvas = standing(overlay);
+    await theCelsRead(tester, canvas.run);
+    await handed(tester, canvas, treeOf());
+    aStepShown(overlay);
+    await lendBothClocks(tester, rounds: 2);
+    canvas.store.laid.clear();
+    final tree = treeOf(opacity: 0.5);
+
+    await tester.pumpWidget(shown(canvas.run, canvas.live, tree));
+    final key = canvas.run.pictures.keyOfStack(tree, frame);
+    expect(
+      await settleAsync(tester, () => canvas.store.laid.contains(key)),
+      isTrue,
+      reason: 'the frame as it stands holds the step: the store lays the '
+          'frame instead',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('🚨a step come before the GPU is through with the frame stood: '
+      'the screen holds the step by then — the store lays the key', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     final overlay = anOverlay();
@@ -269,26 +304,17 @@ void main() {
     canvas.store.laid.clear();
     final tree = treeOf(opacity: 0.5);
 
-    // Handed, and stood on, with nothing on its way ...
-    await tester.pumpWidget(
-      shown(canvas.run, canvas.live, tree),
-      phase: EnginePhase.layout,
-    );
-    // ... and a step shown before the paint lays the frame.
-    overlay.showResultTiles([
-      PromotedStrokeTile(
-        TileCoord(x: 0, y: 0),
-        tileOf(const [0xFF, 0x00, 0x00, 0xFF]),
-        1,
-      ),
-    ]);
+    // Stood on and laid with nothing on its way — the GPU not through with
+    // it while the test's clock runs ...
+    await tester.pumpWidget(shown(canvas.run, canvas.live, tree));
+    // ... and laid again with a step.
+    aStepShown(overlay);
     await tester.pump();
     final key = canvas.run.pictures.keyOfStack(tree, frame);
     expect(
       await settleAsync(tester, () => canvas.store.laid.contains(key)),
       isTrue,
-      reason: 'the frame as it stands holds the step: the store lays the '
-          'frame instead',
+      reason: 'the first composition is not what the screen holds',
     );
     await tester.pumpWidget(const SizedBox());
   });
