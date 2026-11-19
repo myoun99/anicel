@@ -2,12 +2,14 @@
 //! reads as it was — off the pool, and by a pass laid on where it lies —,
 //! its place goes with its last hold, one let go or handed out again
 //! before it is settled stays as it is, and the pages of folded tiles are
-//! made and filled as the books say.
+//! made and filled as the books say — a page's runs first, the books
+//! alone.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+use super::folded::Arena;
 use super::{MOST_NAMED, Pool};
 use crate::kernels::composite::tests::{Rig, rig};
 use crate::kernels::composite::{FOLDED, GRANULE_BYTES, TILE, TILE_BYTES, TileAt, TileSet};
@@ -110,6 +112,65 @@ fn laid(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
     read_buffer(engine, &copied.out)
 }
 
+/// Writes over the slots of the tiles named at `places`: what a slot holds
+/// once its tile lies folded is nobody's to read.
+fn scrubbed(pool: &Pool, places: &[TileAt]) {
+    let engine = rig().engine;
+    let scrub = vec![0xa5; TILE_BYTES as usize];
+    let written = engine.on_thread(|| {
+        for at in places {
+            let slot = at.as_it_is().expect("a slot");
+            engine.queue.write_buffer(&pool.pages()[usize::from(at.page)], slot, &scrub);
+        }
+        Some(())
+    });
+    written.expect("scrubbed");
+}
+
+// A page of folded tiles' runs, the books alone: a tile takes the first
+// run that holds it — one just as large whole, which is then no run, a
+// larger one from its beginning —, and a run let go is one with the free
+// runs on either side of it, in its place among them.
+#[test]
+fn a_run_is_taken_from_the_first_that_holds_it_and_let_go_is_one_with_those_beside_it() {
+    let mut arena = Arena::of(20);
+    let taken: Vec<Option<u16>> = [5, 1, 5, 4, 5].iter().map(|&run| arena.taken(run, 7)).collect();
+    assert_eq!(taken, [Some(0), Some(5), Some(6), Some(11), Some(15)]);
+    assert_eq!(arena.taken(1, 7), None);
+    assert_eq!(arena.held_bytes(), 20 * GRANULE_BYTES);
+    // A tile's stamp is where it begins, and nowhere once it is let go;
+    // nothing is let go where no tile begins.
+    assert_eq!((arena.stamps[5], arena.stamps[6], arena.stamps[7]), (7, 7, 0));
+    arena.let_go(7);
+    assert_eq!(arena.held_bytes(), 20 * GRANULE_BYTES);
+    arena.let_go(5);
+    assert_eq!((arena.stamps[5], arena.held_bytes()), (0, 19 * GRANULE_BYTES));
+    // A run just as large is taken whole, and is no run then.
+    assert_eq!(arena.taken(1, 8), Some(5));
+    assert_eq!(arena.taken(1, 8), None);
+    // One with the run before it: 11..15 and 15..20 let go, in that
+    // order, behind the run 0..5 let go between them.
+    arena.let_go(11);
+    arena.let_go(0);
+    arena.let_go(15);
+    assert_eq!(arena.taken(9, 8), Some(11));
+    // One with the run after it: 11..20 again free, 6..11 let go before
+    // it — and the first of two runs that hold a tile is the one taken,
+    // from its beginning, what is left of it the next.
+    arena.let_go(11);
+    arena.let_go(6);
+    assert_eq!(arena.taken(2, 8), Some(0));
+    assert_eq!(arena.taken(3, 8), Some(2));
+    assert_eq!(arena.taken(14, 8), Some(6));
+    // One with both: the tile at 5 let go last, between the two.
+    arena.let_go(6);
+    arena.let_go(2);
+    arena.let_go(0);
+    arena.let_go(5);
+    assert_eq!(arena.held_bytes(), 0);
+    assert_eq!(arena.taken(20, 8), Some(0));
+}
+
 // A tile folded keeps the name it was stored under: its slot's book says
 // where it lies, a read of the pool by that name hands its bytes as they
 // were — unfolded, beside one that stayed as it is —, a pass laid on where
@@ -157,6 +218,11 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     assert_eq!(pool.settle(engine), 0);
     assert_eq!(fold(&mut pool, &places), (1, Some(true)));
     assert_eq!(pool.settle(engine), 0);
+    // Whatever names a folded tile reads it where it lies: its slot's
+    // bytes written over — the lane to come gives them back —, a read by
+    // its name hands the tile still.
+    scrubbed(&pool, &places[..3]);
+    assert!(read(&pool, &places) == Some(tiles.concat()));
 }
 
 // A tile's folded place goes with its last hold: the run is free for the
@@ -244,8 +310,9 @@ fn a_fold_takes_the_held_tiles_named_as_they_are_each_once() {
 
 // A folded tile goes to the first page of folded tiles with a run that
 // holds it, and a page is made only where none has one — within the pool's
-// bytes: past them the tiles left stay as they are, and fold once a place
-// is free.
+// bytes: past them a tile no page has a run for stays as it is, one behind
+// it that a run holds does not, and the one left folds once a place is
+// free.
 #[test]
 fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_bytes() {
     let engine = rig().engine;
@@ -260,23 +327,89 @@ fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_b
     assert_eq!(lies, [folded_at(3, 0), folded_at(3, SIXTEEN), folded_at(4, 0)]);
     assert_eq!(pool.bytes(), 5 * TILE_BYTES);
     assert!(read(&pool, &places) == Some(tiles.concat()));
-    // A tile stored now takes a page of tiles of its own, no folded one's.
-    assert_eq!(stored(&mut pool, &[&tiles[0]]), [at(5, 0)]);
+    // A tile stored now takes a page of tiles of its own, no folded one's
+    // — and one of a single colour, folded, the run left on the first
+    // page of folded tiles, not the second's.
+    let small = tile(4, 1);
+    let more = stored(&mut pool, &[&tiles[0], &small]);
+    assert_eq!(more, [at(5, 0), at(6, 0)]);
+    assert_eq!(settled(&mut pool, &more[1..]), 1);
+    assert_eq!(pool.lies(more[1]), folded_at(3, 2 * SIXTEEN));
 
-    // Four pages' bytes: the three of tiles and one of folded tiles.
-    let mut pool = Pool::sized(1, MOST_NAMED, 4 * TILE_BYTES).expect("pool");
-    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
-    assert_eq!(settled(&mut pool, &places), 2);
-    assert_eq!(pool.lies(places[2]), places[2]);
-    assert_eq!(pool.bytes(), 4 * TILE_BYTES);
-    assert!(read(&pool, &places) == Some(tiles.concat()));
+    // Five pages' bytes: the four of tiles and one of folded tiles. The
+    // third tile finds no run and no page more; the one behind it, of a
+    // single colour, the run left.
+    let all = [&tiles[0], &tiles[1], &tiles[2], &small];
+    let mut pool = Pool::sized(1, MOST_NAMED, 5 * TILE_BYTES).expect("pool");
+    let places = stored(&mut pool, &all);
+    assert_eq!(settled(&mut pool, &places), 3);
+    let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
+    assert_eq!(lies, [folded_at(4, 0), folded_at(4, SIXTEEN), places[2], folded_at(4, 2 * SIXTEEN)]);
+    assert_eq!(pool.bytes(), 5 * TILE_BYTES);
+    let bytes = |tiles: &[&Vec<u8>]| tiles.iter().flat_map(|tile| tile.iter().copied()).collect();
+    assert!(read(&pool, &places) == Some(bytes(&all)));
     // Nothing is left of that fold: the tile is folded when it is asked
     // again, into the place one let go leaves.
     assert_eq!(pool.settle(engine), 0);
     pool.release(places[0]).expect("release");
     assert_eq!(settled(&mut pool, &places), 1);
-    assert_eq!(pool.lies(places[2]), folded_at(3, 0));
-    assert!(read(&pool, &places[1..]) == Some(tiles[1..].concat()));
+    assert_eq!(pool.lies(places[2]), folded_at(4, 0));
+    assert!(read(&pool, &places[1..]) == Some(bytes(&all[1..])));
+}
+
+// A page of folded tiles is made against the budget a page of tiles is:
+// none at a line of nothing — the tile stays as it is —, and one once the
+// budget gives it.
+#[test]
+fn a_page_of_folded_tiles_is_made_within_the_budget() {
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let a = tile(1, 2);
+    let places = stored(&mut pool, &[&a]);
+    pool.set_budget_instead(Some(0));
+    assert_eq!(settled(&mut pool, &places), 0);
+    assert_eq!(pool.lies(places[0]), places[0]);
+    assert_eq!(pool.bytes(), 4 * TILE_BYTES);
+    pool.set_budget_instead(Some(u64::MAX));
+    assert_eq!(settled(&mut pool, &places), 1);
+    assert_eq!(pool.lies(places[0]), folded_at(1, 0));
+    assert!(read(&pool, &places) == Some(a));
+}
+
+// A page of folded tiles is made where a page is: in the place of one
+// given back first, its stand-in's bytes the pool's no more — and what
+// names a tile there, its stamp and its bytes, is what named it.
+#[test]
+fn a_page_of_folded_tiles_takes_the_place_of_a_page_given_back() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let (a, b) = (tile(1, 1), tile(2, 2));
+    let places = stored(&mut pool, &[&a, &a, &b]);
+    assert_eq!(places, [at(0, 0), at(0, 1), at(1, 0)]);
+    pool.release(places[0]).expect("release");
+    pool.release(places[1]).expect("release");
+    pool.give_back(engine, 0);
+    assert_eq!(pool.bytes(), 3 * TILE_BYTES);
+    assert_eq!(settled(&mut pool, &places[2..]), 1);
+    assert_eq!(pool.lies(places[2]), folded_at(0, 0));
+    assert_eq!(pool.bytes(), 4 * TILE_BYTES);
+    let stamps = pool.stamps();
+    assert!(stamps.of(places[2]).is_some());
+    assert_eq!(stamps.of(folded_at(0, 0)), stamps.of(places[2]));
+    assert!(read(&pool, &places[2..]) == Some(b));
+    // The pages of tiles go on where they were: the slot left on the
+    // second, then a page after it.
+    assert_eq!(stored(&mut pool, &[&a, &a]), [at(1, 1), at(2, 0)]);
+}
+
+// A page of folded tiles is no more granules than a folded place's number
+// names — 32 MiB —, where a page of tiles is more.
+#[test]
+fn a_page_of_folded_tiles_is_no_more_granules_than_a_place_names() {
+    let mut pool = Pool::sized(1024, MOST_NAMED, u64::MAX).expect("pool");
+    let places = stored(&mut pool, &[&tile(1, 2)]);
+    assert_eq!(settled(&mut pool, &places), 1);
+    assert_eq!(pool.lies(places[0]), folded_at(1, 0));
+    assert_eq!(pool.bytes(), 1024 * TILE_BYTES + u64::from(FOLDED) * GRANULE_BYTES);
 }
 
 // A tile is held, let go and read by the slot that names it: where it lies
@@ -310,4 +443,7 @@ fn the_idle_bytes_are_the_free_slots_and_the_granules_no_tile_lies_in() {
     assert_eq!(pool.idle_bytes(), 6 * TILE_BYTES - folded);
     pool.release(places[1]).expect("release");
     assert_eq!(pool.idle_bytes(), 7 * TILE_BYTES - u64::from(ONE) * GRANULE_BYTES);
+    // The place let go is no tile's: no stamp says one lies there.
+    assert!(pool.stamps().of(folded_at(1, ONE)).is_none());
+    assert!(pool.stamps().of(folded_at(1, 0)).is_some());
 }
