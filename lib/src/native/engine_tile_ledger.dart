@@ -107,12 +107,19 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
   /// null —, a full pool letting go [roomBatch] slots at the least: a
-  /// page's worth where null.
-  EngineTileLedger(GpuEngine engine, {int? byteBudget, int? roomBatch})
-    : _engine = engine,
-      pool = GpuPool(engine, byteBudget ?? _unbounded),
-      _byteBudget = byteBudget,
-      _roomBatch = roomBatch ?? EngineTileLedger.roomBatch {
+  /// page's worth where null. Its tiles are folded by what [foldKernels]
+  /// answers — the fold's kernels on [engine] once they are compiled,
+  /// null till then — and by nothing where it is null ([foldABatch]).
+  EngineTileLedger(
+    GpuEngine engine, {
+    int? byteBudget,
+    int? roomBatch,
+    GpuFold? Function()? foldKernels,
+  }) : _engine = engine,
+       pool = GpuPool(engine, byteBudget ?? _unbounded),
+       _byteBudget = byteBudget,
+       _roomBatch = roomBatch ?? EngineTileLedger.roomBatch,
+       _foldKernels = foldKernels {
     pool.onUnwritten = _letGoUnwritten;
   }
 
@@ -126,7 +133,11 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
       throw TileLedgerAskedOnAWorker();
     }
     return _instance.of(
-      () => EngineTileLedger(appGpuEngine, byteBudget: _appByteBudget),
+      () => EngineTileLedger(
+        appGpuEngine,
+        byteBudget: _appByteBudget,
+        foldKernels: () => appGpuFoldKernels.compiled,
+      ),
     );
   }
 
@@ -538,6 +549,7 @@ final GpuEngine _engine;
       }
     }
     _copyHereOnceTheHandRests();
+    _foldOnceNothingComes();
     return [
       for (final (at, (:change, :tile)) in landed.indexed)
         (
@@ -1166,6 +1178,71 @@ final GpuEngine _engine;
     while (_atRest == null && await copyHereABatch()) {}
   }
 
+  /// The fold's kernels on this ledger's engine where they are compiled,
+  /// null till then; none for a ledger that folds nothing. The app's
+  /// ledger is handed the app's (`appGpuFoldKernels`), which the list a
+  /// launch runs compiles off this isolate.
+  final GpuFold? Function()? _foldKernels;
+
+  /// Folds the tiles of the pool next to fold — [foldBatch] of them, by
+  /// the fold's kernels where they are compiled ([_foldKernels]) —, this
+  /// isolate waiting for none of it ([GpuPool.fold]); whether any was
+  /// folded, so that there may be more — none by a fold that failed,
+  /// whose tiles the next rest's takes again.
+  ///
+  /// 🗣️F-610-Q5 (유저 2026-11-19, 채팅): 「압축은 일단 중복줄이면서 하는데
+  /// 결국은 3번대로 하자. 결과가 제일 좋으니까」. A tile folded keeps its
+  /// slot's name, so nothing here is told of it: its hold, its copy and
+  /// what lays it on a screen read it as they did. The pool says which
+  /// tiles are next — a page's before the next page's —, and each is
+  /// asked once.
+  ///
+  /// ⚠️THE SLOT OF A TILE THAT LIES FOLDED STILL HOLDS ITS BYTES, till the
+  /// lane that gives its page back: a fold takes memory and gives none
+  /// back yet, so no launch asks for it ([foldsAtRest]).
+  Future<bool> foldABatch() async {
+    final kernels = _foldKernels?.call();
+    // A ledger whose engine the app let go reads the next one's kernels,
+    // and its device is gone.
+    if (kernels == null || _engine.isGone) {
+      return false;
+    }
+    return await pool.fold(kernels, foldBatch) > 0;
+  }
+
+  /// The tiles a batch of the folds at rest takes ([foldABatch]): what
+  /// the engine's thread is held for at a time. 🔢브러시/렌더링's pick
+  /// (2026-11-19), to measure on the Surface.
+  static const int foldBatch = 64;
+
+  /// Whether the pool's tiles are folded once nothing has been stored or
+  /// landed for a rest ([rest]): a launch's word. ⏳No launch says it yet
+  /// ([foldABatch] has why); the pins and the measurements of the fold
+  /// say it themselves.
+  static bool foldsAtRest = false;
+
+  Timer? _foldRest;
+
+  /// Folds the pool's tiles once nothing has come for a rest: one more
+  /// store or landing puts the folds off. ⚠️A timer of its own beside
+  /// the copies' ([_copyHereOnceTheHandRests]): a store puts no copy
+  /// off — a frame played stores, and what a hand drew before it is
+  /// copied meanwhile.
+  void _foldOnceNothingComes() {
+    if (!foldsAtRest) {
+      return;
+    }
+    _foldRest?.cancel();
+    _foldRest = Timer(rest, () => unawaited(_foldAtRest()));
+  }
+
+  /// The batches of a rest, one behind another ([foldABatch]), till none
+  /// is left or a store puts them off ([_foldRest] armed again).
+  Future<void> _foldAtRest() async {
+    _foldRest = null;
+    while (_foldRest == null && await foldABatch()) {}
+  }
+
   bool _noHoldHas(Object? key) => !_holds.any((hold) => hold._has(key));
 
   /// Stores [tiles] in one store and gives each landed its slot; how many
@@ -1175,6 +1252,7 @@ final GpuEngine _engine;
     for (var at = 0; at < slots.length; at++) {
       _give(tiles[at], slots[at]);
     }
+    _foldOnceNothingComes();
     return slots.length;
   }
 

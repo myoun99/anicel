@@ -39,6 +39,8 @@ final class Cover extends Opaque {}
 
 final class Ink extends Opaque {}
 
+final class Fold extends Opaque {}
+
 final class CelPixels extends Opaque {}
 
 final class CelPassed extends Opaque {}
@@ -447,6 +449,30 @@ external int poolUnwritten(
   Pointer<Uint16> slots,
   int capacity,
 );
+
+@Native<
+  Size Function(
+    Pointer<Pool>,
+    Pointer<Engine>,
+    Pointer<Fold>,
+    Size,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_pool_fold')
+external int poolFold(
+  Pointer<Pool> pool,
+  Pointer<Engine> engine,
+  Pointer<Fold> fold,
+  int most,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<Size Function(Pointer<Pool>, Pointer<Engine>)>(
+  symbol: 'gpu_engine_pool_settle',
+)
+external int poolSettle(Pointer<Pool> pool, Pointer<Engine> engine);
 
 @Native<Bool Function(Pointer<Pool>, Uint16, Uint16)>(
   symbol: 'gpu_engine_pool_release',
@@ -1632,6 +1658,14 @@ external Pointer<Ink> inkNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<Ink>)>(symbol: 'gpu_engine_ink_free')
 external void inkFree(Pointer<Ink> ink);
+
+@Native<Pointer<Fold> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_fold_new',
+)
+external Pointer<Fold> foldNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Fold>)>(symbol: 'gpu_engine_fold_free')
+external void foldFree(Pointer<Fold> fold);
 
 @Native<
   IntPtr Function(

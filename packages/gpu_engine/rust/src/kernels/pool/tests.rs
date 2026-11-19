@@ -1565,3 +1565,136 @@ fn a_page_made_ahead_is_counted_apart_from_the_pages_taken() {
         gpu_engine_close(engine);
     }
 }
+
+// The pool folds its tiles at its caller's word (`gpu_engine_pool_fold`,
+// `gpu_engine_pool_settle`): those next to fold, each read behind the
+// store handed over before its fold — the engine's thread held as both
+// were —, their page made on the pages' thread before the fold is told
+// and taken by a settle that waits for no thread; a fold whose tile the
+// page made holds asks for none; and with no tile left nothing is handed
+// over, and what reads the tiles by their names reads what was stored.
+#[test]
+fn a_pool_folds_its_tiles_at_its_callers_word_and_its_thread_waits_for_no_page() {
+    use super::folded::MOST_FOLDED_PAGE_BYTES;
+    use super::folded_tests::{numbered, tile as coloured, told, told_within};
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read,
+        gpu_engine_pool_settle,
+    };
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_waits_here};
+    use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let (bytes, long) = (coloured(7, 2), Duration::from_secs(120));
+    // A thread held till its test lets it go — a minute at most, so a wait
+    // for it that should not be fails the test, and hangs nothing.
+    let held = || {
+        let (open, shut) = std::sync::mpsc::channel::<()>();
+        (open, move || shut.recv_timeout(Duration::from_secs(60)).ok())
+    };
+    // SAFETY: the engine is this test's own, live till its close; the
+    // store's copy has read `bytes` by the fold told behind it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let fold = gpu_engine_fold_new(engine);
+        assert!(!fold.is_null(), "{}", last_error());
+        let waits = gpu_engine_waits_here();
+        // The engine's thread held: the store's copy and the fold are
+        // handed over behind it, in that order, no tile written as the
+        // fold is asked.
+        let (go, wait) = held();
+        (*engine).posted(wait);
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 3), 3);
+        let first = numbered();
+        assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, first), 2);
+        // The pages' thread held: the fold, once run, is not told till the
+        // page it asks for is made.
+        let (open, wait) = held();
+        (*engine).pages_posted(move || wait().unwrap_or_default());
+        go.send(()).expect("the engine's thread waits");
+        assert_eq!(told_within(first, Duration::from_millis(500)), None, "told before its page was made");
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, 0));
+        open.send(()).expect("the pages' thread waits");
+        assert_eq!(told_within(first, long), Some(true));
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (1, MOST_FOLDED_PAGE_BYTES));
+        // A settle goes through with the pages' thread held: it takes the
+        // page made, and waits for none.
+        let (open, wait) = held();
+        (*engine).pages_posted(move || wait().unwrap_or_default());
+        let began = Instant::now();
+        assert_eq!(gpu_engine_pool_settle(pool, engine), 2);
+        assert!(began.elapsed() < Duration::from_secs(30), "the settle waited for the pages' thread");
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, 0));
+        // The third tile's run is on the page made: no page is asked for,
+        // and its fold is told with the pages' thread held still.
+        let second = numbered();
+        assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, second), 1);
+        assert_eq!(told_within(second, long), Some(true));
+        assert_eq!(gpu_engine_pool_settle(pool, engine), 1);
+        assert_eq!(((*pool).pages().len(), (*pool).ahead_bytes()), (2, 0));
+        open.send(()).expect("the pages' thread waits");
+        assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, numbered()), 0);
+        assert_eq!(gpu_engine_pool_settle(pool, engine), 0);
+        // No thread of the two waited for the GPU: not this one, nor the
+        // engine's under a fold — what a body handed over waits there
+        // is counted here once it has run, as every one has behind a
+        // job this thread waited for.
+        (*engine).on_thread(|| ());
+        assert_eq!(gpu_engine_waits_here(), waits, "a thread waited for the GPU under a fold");
+        let places = [at(0, 0), at(0, 1), at(0, 2)];
+        assert!(places.iter().all(|&at| (*pool).lies(at).slot & FOLDED != 0));
+        let words: Vec<u32> = places.iter().map(|at| at.word()).collect();
+        let mut read = vec![0; 3 * TILE_BYTES as usize];
+        assert!(gpu_engine_pool_read(pool, engine, words.as_ptr(), 3, read.as_mut_ptr()), "{}", last_error());
+        assert!(read == bytes.repeat(3), "a tile folded before its store's copy was written");
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_fold_free(fold);
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A fold the device refuses is told so and leaves its tiles as they are,
+// a fold's to take again once it is settled: none lies folded, and the
+// next fold is handed the same tiles.
+#[test]
+fn a_fold_the_device_refuses_leaves_its_tiles_a_fold_s_to_take_again() {
+    use super::folded_tests::{numbered, tile as coloured, told, told_within};
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_fold, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_settle,
+    };
+    use crate::device::{gpu_engine_close, gpu_engine_lose, gpu_engine_open_first};
+    use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let (bytes, long) = (coloured(7, 2), Duration::from_secs(120));
+    let places = [at(0, 0), at(0, 1)];
+    // SAFETY: the engine is this test's own, live till its close; the
+    // store's copy has read `bytes` by the done behind it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let fold = gpu_engine_fold_new(engine);
+        assert!(!fold.is_null(), "{}", last_error());
+        assert_eq!(stored_now(pool, engine, cel, &bytes, 2), 2);
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_lose(engine, false);
+        for _ in 0..2 {
+            let number = numbered();
+            assert_eq!(gpu_engine_pool_fold(pool, engine, fold, 2, told, number), 2);
+            assert_eq!(told_within(number, long), Some(false));
+            assert!((*pool).to_fold(usize::MAX).is_empty(), "in a fold's hand till it is settled");
+            assert_eq!(gpu_engine_pool_settle(pool, engine), 0);
+            assert_eq!((*pool).to_fold(usize::MAX), places);
+        }
+        assert!(places.iter().all(|&at| (*pool).lies(at) == at));
+        gpu_engine_fold_free(fold);
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}

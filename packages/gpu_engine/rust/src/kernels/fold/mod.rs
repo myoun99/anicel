@@ -20,17 +20,12 @@
 //! books gives each a place of that size, and its words are copied there
 //! ([`Folded::put`]).
 
-// ⏳What folds a tile at rest is a lane's to come — the engine's verbs and
-// the app's ledger that names the tiles: till then the pool's books
-// (`pool/folded.rs`) are called by the crate's tests alone.
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 mod cost;
 #[cfg(test)]
 mod tests;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::{GRANULE_BYTES, TILE_BYTES, TileAt};
 use crate::kernels::shared::{
@@ -112,6 +107,27 @@ impl Folded {
     }
 }
 
+/// Tells `then` the tiles a fold `submitted` folded — their words and
+/// the sizes the GPU has yet to write — once it has written them, on a
+/// thread of the engine's, the thread that asks waiting for none of it
+/// ([`Engine::map_then`]): none where the read of the sizes failed, and
+/// at once, here, where nothing was submitted.
+fn sized_then(
+    engine: &Engine,
+    submitted: Option<(wgpu::Buffer, wgpu::Buffer)>,
+    then: impl FnOnce(Option<Folded>) + Send + 'static,
+) {
+    let Some((words, sizes)) = submitted else {
+        return then(None);
+    };
+    let bytes = sizes.size();
+    engine.map_then(engine.staged(&sizes, bytes), move |mapped| {
+        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
+        let read = |sizes: wgpu::Buffer| Some(sizes.get_mapped_range(..).ok()?.chunks_exact(4).map(word).collect());
+        then(mapped.ok().and_then(read).map(|sizes| Folded { words, sizes }));
+    });
+}
+
 /// The fold and the unfold, compiled once for as many pages as the device
 /// lets them bind.
 pub(crate) struct Fold {
@@ -135,7 +151,29 @@ impl Fold {
     }
 
     /// The tiles at `places` — each a tile's place on the pool's `pool`
-    /// pages — folded. Waits for the GPU: the sizes are read here.
+    /// pages — folded, the body that asks waiting for no GPU: `then` is
+    /// told them on a thread of the engine's once the GPU has said their
+    /// sizes, or none where the fold failed ([`sized_then`]).
+    ///
+    /// ↩️It waited for the sizes where it was asked till the pool's folds
+    /// came (2026-11-19). Those are asked on the engine's thread, which
+    /// a wait holds — a stroke's dab stands behind it —, and a wait there
+    /// is counted on the thread that handed the fold over
+    /// ([`Engine::posted`]): the UI's, which the app holds at none.
+    pub(crate) fn folded_then(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        places: &[TileAt],
+        then: impl FnOnce(Option<Folded>) + Send + 'static,
+    ) {
+        let cut = tiles_a_pass(engine, MOST_FOLDED_BYTES, 0).map(|most| (self.pages.per_pass(), most));
+        sized_then(engine, cut.and_then(|cut| self.submitted_by(engine, pool, places, cut)), then);
+    }
+
+    /// [`Self::folded_then`], waited for here: what the fold's own tests
+    /// and its bench read.
+    #[cfg(test)]
     pub(crate) fn folded(
         &self,
         engine: &Engine,
@@ -148,13 +186,31 @@ impl Fold {
 
     /// `folded`, its passes binding `per_pass` pages and taking `most`
     /// tiles at most — a smaller device's passes, which the tests take.
+    #[cfg(test)]
     fn folded_by(
         &self,
         engine: &Engine,
         pool: &[wgpu::Buffer],
         places: &[TileAt],
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Folded> {
+        let (tell, told) = std::sync::mpsc::channel();
+        sized_then(engine, self.submitted_by(engine, pool, places, cut), move |folded| {
+            let _ = tell.send(folded);
+        });
+        told.recv().ok()?
+    }
+
+    /// The fold of the tiles at `places` submitted, its passes binding
+    /// `per_pass` pages and taking `most` tiles at most: the buffer the
+    /// GPU writes their words to, and the one it writes their sizes to.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        places: &[TileAt],
+        (per_pass, most): (usize, usize),
+    ) -> Option<(wgpu::Buffer, wgpu::Buffer)> {
         cut_by(&self.pages, (per_pass, most))?;
         if places.is_empty() {
             return fail("no tile to fold");
@@ -194,9 +250,7 @@ impl Fold {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let read = engine.read_buffer(&sizes)?;
-        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
-        Some(Folded { words, sizes: read.chunks_exact(4).map(word).collect() })
+        Some((words, sizes))
     }
 
     /// The tiles at `places` as they are — a tile's bytes each, in order,
@@ -257,4 +311,28 @@ impl Fold {
         encode_on(engine, encoder, &dispatches);
         Some(out)
     }
+}
+
+/// The fold and the unfold, compiled: what a pool is handed to fold its
+/// tiles by (`gpu_engine_pool_fold`). The engine keeps the kernels it is
+/// made of (`Kernels`, `device.rs`), so the read that first meets a tile
+/// lying folded compiles none. Null on failure; see the last error.
+///
+/// # Safety
+/// `engine` is live; the fold is freed before it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_fold_new(engine: *const Engine) -> *mut Fold {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.on_thread(|| {
+        Fold::new(engine).map_or(std::ptr::null_mut(), |fold| engine.hands(fold))
+    })
+}
+
+/// # Safety
+/// `fold` came from `gpu_engine_fold_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_fold_free(fold: *mut Fold) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go(fold) };
 }

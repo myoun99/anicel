@@ -501,6 +501,18 @@ final appGpuStampLandingKernels = AppKernels<GpuStampLanding>(
   (landing) => landing.free(),
 );
 
+/// The fold's kernels on [appGpuEngine] (F-610): what the app's ledger
+/// folds its pool's tiles by once a hand rests
+/// (`EngineTileLedger.foldABatch`). Compiled by the list a launch runs,
+/// off this isolate (`compileAppKernelsAhead`), and never where a fold is
+/// asked: the ledger folds nothing till they are there
+/// ([AppKernels.compiled]).
+final appGpuFoldKernels = AppKernels<GpuFold>(
+  GpuFold.new,
+  GpuFold.opening,
+  (fold) => fold.free(),
+);
+
 /// How [debugGpuAdapterChoice] opens the engine — read on this isolate:
 /// one [GpuEngine.opening] runs has its own, at the choice's default — its
 /// shaders' folder named first ([appShaderFolder]).

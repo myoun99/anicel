@@ -823,6 +823,50 @@ class GpuPool implements _OfAnEngine {
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
 
+  /// Hands the engine's thread a fold of the tiles next to fold — [most]
+  /// at most, by [kernels] — and gives them their places once it is told,
+  /// this isolate waiting for none of it
+  /// (rust/src/kernels/pool/folded.rs): a tile folded keeps the place
+  /// that names it, and reads as it was. How many it folded — none
+  /// where no tile of the pool's is left to fold as it stands, and none
+  /// where the fold failed: its tiles stay as they are, the next fold's
+  /// to take again.
+  ///
+  /// [kernels] are handed in compiled, so no fold compiles where it is
+  /// asked (`Pool::folds_unwaited` has why); let go meanwhile, they go
+  /// behind the fold on the engine's thread.
+  Future<int> fold(GpuFold kernels, int most) async {
+    final told = Completer<bool>();
+    final handed = _folds.handing(
+      told,
+      (number) => rust.poolFold(
+        _pool,
+        _engine._engine,
+        _engine._its(kernels)._fold,
+        most,
+        _folds.told,
+        number,
+      ),
+    );
+    if (handed == 0) {
+      return 0;
+    }
+    final folded = await told.future;
+    // Freed meanwhile, its books went with it — what was folded too. A
+    // fold that failed is settled as well: its tiles are the next's.
+    if (!_freed) {
+      rust.poolSettle(_pool, _engine._engine);
+    }
+    return folded ? handed : 0;
+  }
+
+  /// The folds on their way ([fold]), each told by its number once its
+  /// tiles are folded — or not, which leaves them as they are: the
+  /// settle gives a place to what there is.
+  static final _folds = _Told<Completer<bool>>(
+    (_, told, folded) => told.complete(folded),
+  );
+
   /// Reads [tiles], each held, back into [into] — [gpuTileBytes] each, in
   /// order: waits for the GPU (rust/src/kernels/pool/mod.rs `Pool::read`).
   void read(List<GpuTile> tiles, Pointer<Uint8> into) => using((arena) {
@@ -3640,6 +3684,35 @@ typedef GpuTileInk = ({
 /// TILE_INK_WORDS): its column and row, then its box's four edges — four 0s
 /// where it holds no ink.
 const _tileInkWords = 6;
+
+/// The fold and the unfold (rust/src/kernels/fold), compiled: what a pool
+/// folds its tiles by ([GpuPool.fold]) — and, kept by the engine, what a
+/// read of a tile that lies folded finds there.
+class GpuFold implements _OfAnEngine {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuFold(GpuEngine engine) =>
+      GpuFold._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuFold> opening(GpuEngine engine) async =>
+      GpuFold._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Fold> _compiled(Pointer<rust.Engine> on) {
+    final fold = rust.foldNew(on);
+    if (fold == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return fold;
+  }
+
+  GpuFold._(this._engine, this._fold);
+
+  @override
+  final GpuEngine _engine;
+  final Pointer<rust.Fold> _fold;
+
+  void free() => rust.foldFree(_fold);
+}
 
 /// The ink scan (rust/src/kernels/cel_pixel/ink.rs): where each of a cel's
 /// tiles on the pool holds ink, as the app's `TileInkBounds` says it.

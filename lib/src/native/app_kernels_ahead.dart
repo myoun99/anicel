@@ -37,9 +37,10 @@ import 'engine_strokes.dart';
 /// map or a mesh, the bucket's fill, a blur brush's stroke —, then the
 /// grids' (their rows draw themselves meanwhile), the effect chains' (a
 /// frame that names one waits, [FrameKernelsToCome]), the kernels a blur
-/// stroke goes by strips with (it goes a pass a dispatch meanwhile) and
-/// the export's (a file written meanwhile compiles what it asks, where
-/// it asks).
+/// stroke goes by strips with (it goes a pass a dispatch meanwhile), the
+/// export's (a file written meanwhile compiles what it asks, where it
+/// asks) and the fold's (the ledger folds no tile till they are there,
+/// [appGpuFoldKernels]).
 ///
 /// 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가
 /// 직접 하는 커널 컴파일 0, `ink_box` 포함」. 🔬Surface Pro 11, 11-11: the
@@ -96,6 +97,7 @@ Future<void> compileAppKernelsAhead() async {
   await tools.composite.compileChains();
   await EngineStrokes.warmBlurStrips();
   await appGpuExportKernels.warm();
+  await appGpuFoldKernels.warm();
 }
 
 /// Whether the app still gets ready what a hand needs of its engine: from

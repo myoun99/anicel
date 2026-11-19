@@ -21,6 +21,7 @@ use crate::kernels::cel_pixel::abi::{
     gpu_engine_ink_free, gpu_engine_ink_new,
 };
 use crate::kernels::cel_pixel::Passed;
+use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
 use crate::kernels::dab::abi::{
     gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
@@ -106,7 +107,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 39] {
+fn frees() -> [(&'static str, fn(&'static str)); 40] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
@@ -268,6 +269,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 39] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_ink_new(first_engine()) };
             gives_back(name, made, gpu_engine_ink_free)
+        }),
+        ("gpu_engine_fold_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_fold_new(first_engine()) };
+            gives_back(name, made, gpu_engine_fold_free)
         }),
         ("gpu_engine_faces_free", |name| {
             let face = file("BIZUDPGothic-Regular.ttf");

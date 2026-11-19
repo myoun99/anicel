@@ -3,15 +3,16 @@
 //! its place goes with its last hold, one let go or handed out again
 //! before it is settled stays as it is, and the pages of folded tiles are
 //! made and filled as the books say — a page's runs first, the books
-//! alone.
+//! alone —, and the tiles next to fold are the pool's to say.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::folded::Arena;
 use super::{MOST_NAMED, Pool};
 use crate::kernels::composite::tests::{Rig, rig};
+use crate::kernels::fold::Fold;
 use crate::kernels::composite::{FOLDED, GRANULE_BYTES, NO_TILE, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::testing::read_buffer;
 
@@ -47,35 +48,79 @@ static TOLD: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
 static TELLING: Condvar = Condvar::new();
 static NUMBERS: AtomicU64 = AtomicU64::new(1);
 
-extern "C" fn told(number: u64, folded: bool) {
+pub(crate) extern "C" fn told(number: u64, folded: bool) {
     TOLD.lock().unwrap().push((number, folded));
     TELLING.notify_all();
+}
+
+/// A number no other fold of the tests is told by.
+pub(crate) fn numbered() -> u64 {
+    NUMBERS.fetch_add(1, Ordering::Relaxed)
+}
+
+/// What the fold handed over under `number` told, waited for no longer
+/// than `within`: none where it has not told by then.
+pub(crate) fn told_within(number: u64, within: Duration) -> Option<bool> {
+    let deadline = Instant::now() + within;
+    let mut said = TOLD.lock().unwrap();
+    loop {
+        if let Some(mine) = said.iter().position(|&(told, _)| told == number) {
+            return Some(said.remove(mine).1);
+        }
+        let left = deadline.checked_duration_since(Instant::now())?;
+        said = TELLING.wait_timeout(said, left.min(Duration::from_secs(1))).unwrap().0;
+    }
+}
+
+/// The fold's kernels on the rig's engine, compiled once for every test
+/// and never let go.
+fn kernels() -> *const Fold {
+    static KERNELS: OnceLock<Fold> = OnceLock::new();
+    let engine = rig().engine;
+    KERNELS.get_or_init(|| engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels"))
+}
+
+/// Hands over a fold of the tiles named at `places`, told by `number`,
+/// waiting for none of it: how many it handed over.
+fn handed(pool: &mut Pool, places: &[TileAt], number: u64) -> usize {
+    // SAFETY: the kernels are never let go, and `told` is any thread's to
+    // call.
+    unsafe { pool.folds_unwaited(rig().engine, kernels(), places, (told, number)) }
 }
 
 /// Hands over a fold of the tiles named at `places` and waits till it is
 /// told: how many it handed over, and whether they folded — none where
 /// none was handed over.
 fn fold(pool: &mut Pool, places: &[TileAt]) -> (usize, Option<bool>) {
-    let number = NUMBERS.fetch_add(1, Ordering::Relaxed);
-    let handed = pool.folds_unwaited(rig().engine, places, (told, number));
+    let number = numbered();
+    let handed = handed(pool, places, number);
     if handed == 0 {
         return (0, None);
     }
-    let deadline = Instant::now() + Duration::from_secs(120);
-    let mut said = TOLD.lock().unwrap();
+    let told = told_within(number, Duration::from_secs(120));
+    assert!(told.is_some(), "the fold was never told");
+    (handed, told)
+}
+
+/// Folds and settles the pool's tiles as the verbs do — a fold of those
+/// next to fold, `most` at most, then its settle, till none is next: how
+/// many settled.
+fn folded_whole(pool: &mut Pool, most: usize) -> usize {
+    let mut settled = 0;
     loop {
-        if let Some(mine) = said.iter().position(|&(told, _)| told == number) {
-            return (handed, Some(said.remove(mine).1));
+        let next = pool.to_fold(most);
+        if next.is_empty() {
+            return settled;
         }
-        assert!(Instant::now() < deadline, "the fold was never told");
-        said = TELLING.wait_timeout(said, Duration::from_secs(1)).unwrap().0;
+        assert_eq!(fold(pool, &next), (next.len(), Some(true)));
+        settled += pool.settles_unwaited(rig().engine);
     }
 }
 
 /// Folds the tiles named at `places` and settles them: how many settled.
 pub(crate) fn settled(pool: &mut Pool, places: &[TileAt]) -> usize {
     assert_eq!(fold(pool, places).1, Some(true));
-    pool.settle(rig().engine)
+    pool.settles_unwaited(rig().engine)
 }
 
 /// `tiles` stored for a cel of `pool`, in fresh slots.
@@ -188,7 +233,7 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     // Folded, and no place given: every tile lies in its slot still.
     assert!(places.iter().all(|&at| pool.lies(at) == at));
     assert_eq!(pool.pages().len(), 1);
-    assert_eq!(pool.settle(engine), 3);
+    assert_eq!(pool.settles_unwaited(engine), 3);
     let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
     assert_eq!(lies, [folded_at(1, 0), folded_at(1, ONE), folded_at(1, ONE + TWO), at(0, 3)]);
     // The page of folded tiles is a page of the pool's, as large as one of
@@ -213,11 +258,12 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     // the pool's.
     assert_eq!(taken.of(at(7, 5)), at(7, 5));
     assert_eq!(pool.lies(at(7, 5)), at(7, 5));
-    // Settled once: nothing is left to settle, and a folded tile is not
-    // folded again — the one that stayed alone is handed over.
-    assert_eq!(pool.settle(engine), 0);
-    assert_eq!(fold(&mut pool, &places), (1, Some(true)));
-    assert_eq!(pool.settle(engine), 0);
+    // Settled once: nothing is left to settle, and nothing to fold — a
+    // folded tile is not folded again, nor the one that stayed, handed
+    // to a fold as it is.
+    assert_eq!(pool.settles_unwaited(engine), 0);
+    assert_eq!(fold(&mut pool, &places), (0, None));
+    assert!(pool.to_fold(usize::MAX).is_empty());
     // Whatever names a folded tile reads it where it lies: its slot's
     // bytes written over — the lane to come gives them back —, a read by
     // its name hands the tile still.
@@ -279,7 +325,7 @@ fn a_tile_let_go_or_handed_out_again_before_it_is_settled_stays_as_it_is() {
     pool.release(places[1]).expect("release");
     // The slot let go last is handed out first.
     assert_eq!(stored(&mut pool, &[&again]), [places[1]]);
-    assert_eq!(pool.settle(engine), 1);
+    assert_eq!(pool.settles_unwaited(engine), 1);
     let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
     assert_eq!(lies, [places[0], places[1], folded_at(1, 0)]);
     assert!(read(&pool, &places[1..]) == Some([&again[..], &c[..]].concat()));
@@ -290,9 +336,9 @@ fn a_tile_let_go_or_handed_out_again_before_it_is_settled_stays_as_it_is() {
 }
 
 // A fold is handed the tiles named that are held and lie as they are, each
-// once: a slot nobody holds, a name past the pool, a folded place and a
-// name said twice are passed over — and with none left, nothing is handed
-// over.
+// once: a slot nobody holds, a name past the pool, a folded place, a name
+// said twice and a tile a fold has in hand are passed over — and with none
+// left, nothing is handed over.
 #[test]
 fn a_fold_takes_the_held_tiles_named_as_they_are_each_once() {
     let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
@@ -302,17 +348,18 @@ fn a_fold_takes_the_held_tiles_named_as_they_are_each_once() {
     let lies = pool.lies(places[0]);
     let named = [places[1], at(0, 2), at(0, 9), at(5, 0), lies, places[0], places[1]];
     assert_eq!(fold(&mut pool, &named), (1, Some(true)));
-    assert_eq!(fold(&mut pool, &[at(0, 2), at(5, 0), lies, places[0]]), (0, None));
+    assert_eq!(fold(&mut pool, &[at(0, 2), at(5, 0), lies, places[0], places[1]]), (0, None));
     assert_eq!(fold(&mut pool, &[]), (0, None));
-    assert_eq!(pool.settle(rig().engine), 1);
+    assert_eq!(pool.settles_unwaited(rig().engine), 1);
     assert_eq!(pool.lies(places[1]), folded_at(1, ONE));
 }
 
 // A folded tile goes to the first page of folded tiles with a run that
-// holds it, and a page is made only where none has one — within the pool's
-// bytes: past them a tile no page has a run for stays as it is, one behind
-// it that a run holds does not, and the one left folds once a place is
-// free.
+// holds it, and a page is made only where none has one — one a fold,
+// within the pool's bytes: past them a tile no page has a run for stays as
+// it is, one behind it that a run holds does not, and the pool hands a
+// fold nothing till a folded place is let go — then the one left, which
+// takes it.
 #[test]
 fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_bytes() {
     let engine = rig().engine;
@@ -322,7 +369,10 @@ fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_b
     let mut pool = Pool::sized(1, MOST_NAMED, u64::MAX).expect("pool");
     let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
     assert_eq!(places, [at(0, 0), at(1, 0), at(2, 0)]);
-    assert_eq!(settled(&mut pool, &places), 3);
+    // Two a fold, what a page holds at the most each may take: the
+    // third's fold asks for the second page.
+    assert_eq!(pool.to_fold(usize::MAX), places[..2]);
+    assert_eq!(folded_whole(&mut pool, usize::MAX), 3);
     let lies: Vec<TileAt> = places.iter().map(|&at| pool.lies(at)).collect();
     assert_eq!(lies, [folded_at(3, 0), folded_at(3, SIXTEEN), folded_at(4, 0)]);
     assert_eq!(pool.bytes(), 5 * TILE_BYTES);
@@ -335,6 +385,7 @@ fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_b
     assert_eq!(more, [at(5, 0), at(6, 0)]);
     assert_eq!(settled(&mut pool, &more[1..]), 1);
     assert_eq!(pool.lies(more[1]), folded_at(3, 2 * SIXTEEN));
+    assert_eq!(pool.bytes(), 7 * TILE_BYTES, "no page where a run holds it");
 
     // Five pages' bytes: the four of tiles and one of folded tiles. The
     // third tile finds no run and no page more; the one behind it, of a
@@ -348,18 +399,21 @@ fn a_page_of_folded_tiles_is_made_where_none_has_room_and_none_past_the_pool_s_b
     assert_eq!(pool.bytes(), 5 * TILE_BYTES);
     let bytes = |tiles: &[&Vec<u8>]| tiles.iter().flat_map(|tile| tile.iter().copied()).collect();
     assert!(read(&pool, &places) == Some(bytes(&all)));
-    // Nothing is left of that fold: the tile is folded when it is asked
-    // again, into the place one let go leaves.
-    assert_eq!(pool.settle(engine), 0);
+    // Nothing is left of that fold, and the pool hands a fold nothing as
+    // it stands — the tile left would find no place again —, till a
+    // folded place is let go: then that tile is next, into the place.
+    assert_eq!(pool.settles_unwaited(engine), 0);
+    assert!(pool.to_fold(usize::MAX).is_empty());
     pool.release(places[0]).expect("release");
-    assert_eq!(settled(&mut pool, &places), 1);
+    assert_eq!(pool.to_fold(usize::MAX), places[2..3]);
+    assert_eq!(folded_whole(&mut pool, usize::MAX), 1);
     assert_eq!(pool.lies(places[2]), folded_at(4, 0));
     assert!(read(&pool, &places[1..]) == Some(bytes(&all[1..])));
 }
 
 // A page of folded tiles is made against the budget a page of tiles is:
-// none at a line of nothing — the tile stays as it is —, and one once the
-// budget gives it.
+// none at a line of nothing — the tile stays as it is, and the pool hands
+// a fold nothing within that budget —, and one once the budget gives it.
 #[test]
 fn a_page_of_folded_tiles_is_made_within_the_budget() {
     let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
@@ -369,8 +423,10 @@ fn a_page_of_folded_tiles_is_made_within_the_budget() {
     assert_eq!(settled(&mut pool, &places), 0);
     assert_eq!(pool.lies(places[0]), places[0]);
     assert_eq!(pool.bytes(), 4 * TILE_BYTES);
+    assert!(pool.to_fold(usize::MAX).is_empty());
     pool.set_budget_instead(Some(u64::MAX));
-    assert_eq!(settled(&mut pool, &places), 1);
+    assert_eq!(pool.to_fold(usize::MAX), places);
+    assert_eq!(folded_whole(&mut pool, usize::MAX), 1);
     assert_eq!(pool.lies(places[0]), folded_at(1, 0));
     assert!(read(&pool, &places) == Some(a));
 }
@@ -468,10 +524,10 @@ fn what_is_taken_of_where_the_tiles_lie_is_told_by_the_last_move() {
     pool.release(places[2]).expect("release");
     assert_eq!(fold(&mut pool, &places[..2]), (2, Some(true)));
     assert_eq!(pool.lying().as_of(), made);
-    assert_eq!(pool.settle(engine), 2);
+    assert_eq!(pool.settles_unwaited(engine), 2);
     let folded = pool.lying().as_of();
     assert_ne!(folded, made);
-    assert_eq!(pool.settle(engine), 0);
+    assert_eq!(pool.settles_unwaited(engine), 0);
     assert_eq!(pool.lying().as_of(), folded);
     pool.release(places[0]).expect("release");
     let let_go = pool.lying().as_of();
@@ -484,4 +540,98 @@ fn what_is_taken_of_where_the_tiles_lie_is_told_by_the_last_move() {
     assert_eq!(taken.pages.len(), 2);
     assert!(taken.stamps.of(places[1]).is_some());
     assert_eq!(taken.stamps.of(folded_at(1, ONE)), pool.stamps().of(places[1]));
+}
+
+// The tiles next to fold are the pool's held ones that lie as they are and
+// that no fold was handed as they are — a page's before the next page's, no
+// more than asked, and no more than a page of folded tiles holds at the
+// most each may take: one a fold has in hand, one folded and one that
+// stayed for what it folds to are none of them; a slot handed out again
+// is, and one let go is not.
+#[test]
+fn the_tiles_next_to_fold_are_the_held_ones_no_fold_was_handed() {
+    let engine = rig().engine;
+    // A page of two tiles: one of folded tiles holds four at the most
+    // each may take.
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let tiles = [tile(1, 1), tile(2, 64), tile(3, 2), tile(4, 1), tile(5, 2), tile(6, 1)];
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    assert_eq!(places, [at(0, 0), at(0, 1), at(1, 0), at(1, 1), at(2, 0), at(2, 1)]);
+    assert!(pool.to_fold(0).is_empty());
+    assert_eq!(pool.to_fold(1), places[..1]);
+    assert_eq!(pool.to_fold(usize::MAX), places[..4]);
+    // In a fold's hand, they are next no more, told or not.
+    let number = numbered();
+    assert_eq!(handed(&mut pool, &places[..4], number), 4);
+    assert_eq!(pool.to_fold(usize::MAX), places[4..]);
+    assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
+    assert_eq!(pool.to_fold(usize::MAX), places[4..]);
+    // Folded, nor the one that stayed as it is.
+    assert_eq!(pool.settles_unwaited(engine), 3);
+    assert_eq!(pool.lies(places[1]), places[1]);
+    assert_eq!(pool.to_fold(usize::MAX), places[4..]);
+    // Its slot handed out again holds another tile, which is — the first
+    // page's before the third's.
+    pool.release(places[1]).expect("release");
+    assert_eq!(stored(&mut pool, &[&tiles[0]]), [places[1]]);
+    assert_eq!(pool.to_fold(usize::MAX), [places[1], places[4], places[5]]);
+    pool.release(places[4]).expect("release");
+    assert_eq!(pool.to_fold(usize::MAX), [places[1], places[5]]);
+    assert_eq!(folded_whole(&mut pool, usize::MAX), 2);
+    assert!(pool.to_fold(usize::MAX).is_empty());
+    let held = [places[0], places[1], places[2], places[3], places[5]];
+    let stored = [&tiles[0], &tiles[0], &tiles[2], &tiles[3], &tiles[5]];
+    assert!(read(&pool, &held) == Some(stored.iter().flat_map(|tile| tile.iter().copied()).collect()));
+}
+
+// A tile a settle found no place for is a fold's to take again while the
+// pool may make a page of folded tiles — and no fold's while it may make
+// none, till it may again: then it is folded onto the page that comes.
+#[test]
+fn a_tile_left_for_want_of_a_place_is_next_again_while_a_page_may_come() {
+    // A page of one tile holds two folded tiles of sixteen colours:
+    // three named to one fold ask for one page, and the third finds no
+    // place on it.
+    let tiles = [tile(1, 16), tile(2, 16), tile(3, 16)];
+    let mut pool = Pool::sized(1, MOST_NAMED, u64::MAX).expect("pool");
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    assert_eq!(settled(&mut pool, &places), 2);
+    assert_eq!(pool.lies(places[2]), places[2]);
+    assert_eq!(pool.bytes(), 4 * TILE_BYTES, "one page a fold");
+    assert_eq!(pool.to_fold(usize::MAX), places[2..]);
+    pool.set_most_bytes(pool.bytes());
+    assert!(pool.to_fold(usize::MAX).is_empty(), "no page may come, and no place was let go");
+    pool.set_most_bytes(u64::MAX);
+    assert_eq!(pool.to_fold(usize::MAX), places[2..]);
+    assert_eq!(settled(&mut pool, &places[2..]), 1);
+    assert_eq!(pool.lies(places[2]), folded_at(4, 0));
+    assert!(read(&pool, &places) == Some(tiles.concat()));
+}
+
+// A page of folded tiles made ahead within other bounds than the pool has
+// as its fold is settled goes, as a page of tiles made ahead does
+// (`Pool::claimed`): the pool's bytes are what they were, none waits made,
+// and its tile is a fold's to take again — onto a page made within the
+// bounds the pool has then.
+#[test]
+fn a_page_of_folded_tiles_made_within_other_bounds_goes() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let a = tile(1, 2);
+    let places = stored(&mut pool, &[&a]);
+    // Whatever page of tiles the store asked for ahead is made by here.
+    engine.on_pages_thread(|| ());
+    let ahead = pool.ahead_bytes();
+    assert_eq!(fold(&mut pool, &places), (1, Some(true)));
+    assert_eq!(pool.ahead_bytes(), ahead + 4 * TILE_BYTES, "⛔premise: its page is made");
+    pool.set_budget_instead(Some(0));
+    assert_eq!(pool.settles_unwaited(engine), 0);
+    assert_eq!((pool.bytes(), pool.ahead_bytes()), (4 * TILE_BYTES, ahead));
+    assert_eq!(pool.lies(places[0]), places[0]);
+    pool.set_budget_instead(Some(u64::MAX));
+    assert_eq!(pool.to_fold(usize::MAX), places);
+    assert_eq!(settled(&mut pool, &places), 1);
+    assert_eq!((pool.bytes(), pool.ahead_bytes()), (8 * TILE_BYTES, ahead));
+    assert_eq!(pool.lies(places[0]), folded_at(1, 0));
+    assert!(read(&pool, &places) == Some(a));
 }
