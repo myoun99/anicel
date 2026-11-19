@@ -1,5 +1,6 @@
 import 'dart:ffi';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -252,5 +253,124 @@ void main() {
     )!;
 
     expect(EngineTileLedger(appGpuEngine).isWhole(shell), isFalse);
+  });
+
+  // ②(2) of card cel-originals-are-held-twice-in-ram-and-on-the-gpu
+  // (2026-11-20): a reader of a shell's tile is lent its bytes for its
+  // call (BitmapTile.readPixels) — the RAM its cel let go stays let go.
+
+  /// A tile of bytes of its own, told from another by its [mark].
+  BitmapTile aTileMarked(int mark) => BitmapTile.written(
+    size: gpuTileSide,
+    write: (pixels) => pixels
+      ..fillRange(0, pixels.length, 0)
+      ..[BitmapTile.bytesPerPixel - 1] = mark,
+  );
+
+  test('🚨a read of a shell\'s tile keeps nothing here — the next reader '
+      'reads its slot again', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tile = aTileMarked(1);
+    ledger.held((hold) => hold.slotsOf(a, [tile]));
+    await appGpuEngine.done();
+    final kept = ledger
+        .shellOf(aCelOf({left: tile}), readAgain: neverReadAgain)!
+        .tiles[left]!;
+    final came = BitmapTile.timesBytesCameHere;
+    final reads = ledger.debugTileReads;
+
+    expect(kept.pixels, tile.pixels);
+    expect(kept.pixels, tile.pixels);
+
+    expect(ledger.debugTileReads, reads + 2);
+    expect(kept.hasItsBytesHere, isFalse);
+    expect(kept.ownBytes, 0);
+    expect(BitmapTile.timesBytesCameHere, came, reason: 'no weight moved');
+  });
+
+  test('🚨a read of many asks the engine for a shell\'s tile with the '
+      'engine\'s own, in the one read — and the shell\'s keeps nothing',
+      () async {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    final ledger = EngineTileLedger(appGpuEngine);
+    final under = aTileMarked(1);
+    ledger.held((hold) => hold.slotsOf(a, [under]));
+    final kept = ledger
+        .shellOf(aCelOf({left: under}), readAgain: neverReadAgain)!
+        .tiles[left]!;
+    final alone = ledger.debugOnEngine(aTileMarked(2));
+    final here = aTileMarked(3);
+    await appGpuEngine.done();
+    final asked = <int>[];
+    EngineTileLedger.debugBeforeRead = (tiles) => asked.add(tiles.length);
+    final into = malloc<Uint8>(3 * gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+
+    ledger.read(a, [kept, alone, here], into);
+
+    expect(into.asTypedList(3 * gpuTileBytes), [
+      ...under.pixels,
+      ...aTileMarked(2).pixels,
+      ...here.pixels,
+    ]);
+    expect(asked, [2], reason: 'the shell\'s with the engine\'s own');
+    expect(kept.hasItsBytesHere, isFalse);
+    expect(kept.ownBytes, 0);
+  });
+
+  // A store's copy is the engine's thread's, later, of bytes the store
+  // holds a tile for (a_store_handed_over_holds_its_tiles_till_their_copy_
+  // reads_them_test.dart) — and a shell's tile holds none: what a read of
+  // it is lent goes back to the lists as the read returns, for the next
+  // tile made.
+  test('🚨a shell\'s tile whose slot went is stored again from its cel\'s '
+      'kept bytes and keeps none — bytes the store has till its copy read '
+      'them', () async {
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 2,
+    );
+    final first = aTileMarked(1);
+    final second = aTileMarked(2);
+    ledger.held((hold) => hold.slotsOf(a, [first, second]));
+    final cel = aCelOf({left: first, right: second});
+    var keepsItsBytes = true;
+    final shell = ledger.shellOf(
+      cel,
+      readAgain: () =>
+          keepsItsBytes ? cel : fail('its slot stands: nothing read again'),
+    )!;
+    // The rest of its page, so the next cel finds the pool full.
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = [for (var n = 2; n < slots; n++) aTileOfItsOwn()];
+    ledger.held((hold) => hold.slotsOf(a, rest));
+    ledger.held((hold) => hold.slotsOf(b, [aTileOfItsOwn()]));
+    final kept = shell.tiles[left]!;
+    expect(ledger.slotOf(kept), isNull, reason: '⛔premise');
+    await appGpuEngine.done();
+    final came = BitmapTile.timesBytesCameHere;
+
+    appGpuEngine.debugStandStill(const Duration(milliseconds: 300));
+    ledger.held((hold) => hold.slotsOf(a, [kept]));
+    // Blocks handed back go to the next tiles made.
+    final churned = [
+      for (var made = 0; made < 8; made++)
+        BitmapTile.written(
+          size: gpuTileSide,
+          write: (pixels) => pixels
+            ..fillRange(0, pixels.length, 0xEE)
+            ..[0] = made,
+        ),
+    ];
+
+    expect(ledger.slotOf(kept), isNotNull);
+    expect(kept.hasItsBytesHere, isFalse);
+    expect(kept.ownBytes, 0);
+    expect(BitmapTile.timesBytesCameHere, came, reason: 'no weight moved');
+    await appGpuEngine.done();
+    keepsItsBytes = false;
+    expect(kept.pixels, first.pixels, reason: 'its slot holds its bytes');
+    expect(churned, hasLength(8));
   });
 }

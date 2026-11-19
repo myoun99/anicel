@@ -508,9 +508,21 @@ final GpuEngine _engine;
 
   /// Where [tile]'s bytes are, for a store that holds [tile] while they are
   /// read ([GpuPool.store]) — the one way a pointer outlives the read it
-  /// comes from (BitmapTile.readPixels).
+  /// comes from (BitmapTile.readPixels). ⚠️Of a tile whose bytes are here
+  /// ([_storedFrom]): one kept besides is lent its bytes for the read
+  /// alone.
   static Pointer<Uint8> _bytesOf(BitmapTile tile) =>
       tile.readPixels((pointer, _) => pointer);
+
+  /// The tile [tile] is stored from: what holds, till the store's copy
+  /// has read them ([GpuPool.store]), the bytes [_bytesOf] points at —
+  /// itself where its bytes are here, else a tile of them made for the
+  /// store, and gone with it. A shell's tile whose slot a full pool let
+  /// go is stored again so: read from its cel's kept bytes
+  /// ([_ShellPixels]), it keeps none of them ([BitmapTile.readPixels]).
+  static BitmapTile _storedFrom(BitmapTile tile) => tile.hasItsBytesHere
+      ? tile
+      : BitmapTile.written(size: tile.size, write: tile.copyPixelsInto);
 
   /// The pages what lands takes: every stroke's and stamp's result, a few
   /// pages between them, whatever cels they land on.
@@ -648,6 +660,11 @@ final GpuEngine _engine;
   /// The engine's are read back, which waits for the GPU, on pages of
   /// [cel]'s; the rest give the bytes they hold.
   ///
+  /// A shell's tile is read as the engine's own while it has its slot, in
+  /// the one read with them; one whose slot went gives the bytes its cel
+  /// keeps ([_ShellPixels]) — and either way keeps none here
+  /// ([BitmapTile.readPixels]).
+  ///
   /// 🚨A TILE WHOSE BYTES ARE HERE GOES NOWHERE NEAR THE POOL. ↩️They were
   /// stored and read straight back while the CPU's tiles were the canonical
   /// ones (flip lane ⓓ, till ⓒ): a park, which runs when memory is tight,
@@ -658,9 +675,12 @@ final GpuEngine _engine;
   /// CPU's does.
   void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) {
     _refuseOtherGrids(tiles);
+    // Those whose bytes are not here and whose slot is: one of another
+    // ledger's, or a shell's whose slot went, reads through its own
+    // reader below, and is stored nowhere for it.
     final asked = [
       for (final tile in tiles)
-        if (tile.isOnlyOnEngine) tile,
+        if (!tile.hasItsBytesHere && _slotNow(tile) != null) tile,
     ];
     if (asked.isNotEmpty) {
       final read = held((hold) {
@@ -1274,7 +1294,11 @@ final GpuEngine _engine;
   /// Stores [tiles] in one store and gives each landed its slot; how many
   /// landed, the first of them.
   int _put(int cel, List<BitmapTile> tiles) {
-    final slots = pool.store(cel, tiles, _bytesOf);
+    final slots = pool.store(
+      cel,
+      [for (final tile in tiles) _storedFrom(tile)],
+      _bytesOf,
+    );
     for (var at = 0; at < slots.length; at++) {
       _give(tiles[at], slots[at]);
     }
