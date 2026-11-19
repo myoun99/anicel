@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -89,6 +90,21 @@ void main() {
             ) ??
             0,
   ];
+
+  test('a ground on one cel keeps the keys of the ladder that name it, in '
+      "the ladder's order, and no other — what a drag shows of the cel on "
+      'screen reads no other row', () {
+    final ground = PieceGround(
+      cels: [cels[0], cels[1], cels[2], cels[1]],
+      placementOf: (_) => null,
+    );
+    // cels[2] reads as cels[0]: a linked row is a window onto another's cel.
+    BrushFrameKey canonical(BrushFrameKey key) =>
+        key == cels[2] ? cels[0] : key;
+
+    expect(ground.on(cels[0], canonical).cels, [cels[0], cels[2]]);
+    expect(ground.on(cels[1], canonical).cels, [cels[1], cels[1]]);
+  });
 
   test('🚨a cel takes the drag as ONE landing — one derive, every stamp in '
       'it', () {
