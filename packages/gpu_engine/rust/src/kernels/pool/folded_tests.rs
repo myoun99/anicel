@@ -105,10 +105,11 @@ fn fold(pool: &mut Pool, places: &[TileAt]) -> (usize, Option<bool>) {
 
 /// Folds and settles the pool's tiles as the verbs do — a fold of those
 /// next to fold, `most` at most, then its settle, till none is next: how
-/// many settled.
+/// many settled. ⚠️Within as many rounds as no test's pool needs: one
+/// whose tiles stay next for ever fails its test, and hangs none.
 fn folded_whole(pool: &mut Pool, most: usize) -> usize {
     let mut settled = 0;
-    loop {
+    for _ in 0..64 {
         let next = pool.to_fold(most);
         if next.is_empty() {
             return settled;
@@ -116,6 +117,7 @@ fn folded_whole(pool: &mut Pool, most: usize) -> usize {
         assert_eq!(fold(pool, &next), (next.len(), Some(true)));
         settled += pool.settles_unwaited(rig().engine);
     }
+    panic!("the pool's tiles are next for ever: {:?}", pool.to_fold(most));
 }
 
 /// Folds the tiles named at `places` and settles them: how many settled.
