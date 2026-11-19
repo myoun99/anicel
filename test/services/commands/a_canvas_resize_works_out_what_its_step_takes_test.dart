@@ -109,6 +109,26 @@ void main() {
     expect(f.store.celsMovedHere, 0);
   });
 
+  test('a step by a move none was worked out for lets go of what was — the '
+      'move it was worked out for is not the one taken', () async {
+    final f = fixture();
+    await f.coordinator.placeCutCanvasAhead(
+      cutId: f.cut,
+      canvasSize: f.size,
+      contentOffset: (dx: 9.6, dy: 0),
+    );
+    expect(f.store.movedAheadOf(f.kept), isNotNull, reason: '⛔premise');
+
+    f.coordinator.placeCutCanvas(
+      cutId: f.cut,
+      canvasSize: f.size,
+      contentOffset: (dx: 0, dy: 9.6),
+    );
+
+    expect(f.store.celsMovedHere, 1, reason: '⛔premise: moved here');
+    expect(f.store.movedAheadOf(f.kept), isNull);
+  });
+
   // Linked cuts show ONE physical cel, kept under one of them: a resize of
   // the other moves it all the same, and so does what is worked out ahead.
   test('a resize of a 겸용 cut works out the cels it shares', () async {
