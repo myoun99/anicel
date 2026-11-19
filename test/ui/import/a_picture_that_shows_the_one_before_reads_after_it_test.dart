@@ -235,12 +235,12 @@ void main() {
     final (:file, :slots) = fileOf([
       [
         ...records,
-        for (var more = 0; more < 3; more += 1)
+        for (var more = 0; more < 5; more += 1)
           srawRecord(third, w, h, fromTheLast: {1: 1, 2: 2, 4: 4}),
       ],
     ]);
     final reads = <TvppSlot, int>{};
-    var landed = 0;
+    final landed = <int>[];
     final heldAt = Completer<void>();
     final held = Completer<void>();
     var handedBack = false;
@@ -249,36 +249,45 @@ void main() {
       atOnce: 2,
       windowOf: (slot) async {
         final read = reads[slot] = (reads[slot] ?? 0) + 1;
-        if (slot == slots[3] && read == 2) {
+        if (slot == slots[5] && read == 2) {
           heldAt.complete();
           await held.future;
         }
         return windowOf(file, slot);
       },
       landed: (index, lay, cel) async {
-        // The second lands — and the stop is heard — once the fourth's
-        // makeup, made ahead, is being read.
+        // The second lands — and the stop is heard — once the sixth's
+        // makeup, made ahead past the one the stream waits for next, is
+        // being read.
         if (index == 1) {
           await heldAt.future;
         }
-        landed += 1;
+        landed.add(index);
       },
-      stopped: () => landed >= 2,
+      stopped: () => landed.contains(1),
     ).then((_) => handedBack = true);
 
     await heldAt.future;
     await pumpEventQueue();
-    expect(landed, 2, reason: 'the first alone, the second in order');
+    expect(
+      landed,
+      [0, 2, 1],
+      reason: 'the first alone; the third drawn while the second waited',
+    );
     expect(
       handedBack,
       isFalse,
-      reason: "the fourth's makeup is still being read",
+      reason: "the sixth's makeup is still being read",
     );
 
     held.complete();
     await landing;
-    expect(landed, 2);
-    expect(reads[slots[4]], 1, reason: 'tried alone, and no more once heard');
+    expect(landed, [0, 2, 1]);
+    expect(
+      [reads[slots[6]], reads[slots[7]]],
+      [1, 1],
+      reason: 'tried alone, and not made once the stop was heard',
+    );
   });
 
   /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
