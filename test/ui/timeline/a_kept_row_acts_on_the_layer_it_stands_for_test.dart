@@ -123,9 +123,20 @@ void main() {
           },
           'select ${_two.draw}',
         ),
-        'the type button': (
-          (tester) => tapNamed(tester, '$rail-layer-type-button-${_two.draw}'),
-          'select ${_two.draw}',
+        // F-613: a picture row's type button opens the kinds it turns
+        // between; a row of another kind's still picks the row.
+        'the type button\'s kind list': (
+          (tester) => pick(
+            tester,
+            '$rail-layer-type-button-${_two.draw}',
+            '$rail-layer-kind-image-${_two.draw}',
+          ),
+          'kind ${_two.draw}',
+        ),
+        'a folder\'s type button': (
+          (tester) =>
+              tapNamed(tester, '$rail-layer-type-button-${_two.folder}'),
+          'select ${_two.folder}',
         ),
         // The row's drag is put on it by a wrapper of its own, kept apart
         // from the row ([KeptLayerControlsRows]).
@@ -694,6 +705,10 @@ Widget _panel(
         onToggleLayerOnionSkin: (id) => hear('onion', id),
         onToggleLayerClip: (id) => hear('fill', id),
         onLayerBlendModeSelected: (id, _) => hear('blend', id),
+        layerKindMenu: (
+          takes: (_, _) => true,
+          pick: (id, _) => hear('kind', id),
+        ),
         layerLinkPartnersOf: (id) =>
             id.value.startsWith('draw') ? const ['Elsewhere'] : const [],
         onOpenLayerLinks: (_, id, _) async => hear('links', id),

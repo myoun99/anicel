@@ -77,11 +77,11 @@ void main() {
     orientation: orientation,
   );
 
-  LayerKind kindOf(EditorSessionManager session, String id) => session
-      .activeCutOrNull!
-      .layers
-      .firstWhere((layer) => layer.id == LayerId(id))
-      .kind;
+  /// [id]'s kind, in whichever cut holds it.
+  LayerKind kindOf(EditorSessionManager session, String id) => [
+    for (final track in session.repository.requireProject().tracks)
+      for (final cut in track.cuts) ...cut.layers,
+  ].firstWhere((layer) => layer.id == LayerId(id)).kind;
 
   Future<void> openList(WidgetTester tester, String id) async {
     final button = find.named('timeline-layer-type-button-$id');
@@ -283,43 +283,50 @@ void main() {
     }
   });
 
-  testWidgets('the conte rail\'s conte row opens the same list, asked of '
-      'the conte it holds in hand', (tester) async {
-    final session = await pumpStoryboardHost(
-      tester,
-      conteTrackProject(),
-      surface: const Size(1600, 900),
-      pixelsPerFrame: 12,
-    );
-    const conte = 'cut-1-conte';
-    Finder conteItem(LayerKind kind) => find.byKey(
-      ValueKey<String>('storyboard-layer-kind-${kind.name}-$conte'),
-    );
-    // The row of the track's seat ([trackConteRowId]) wears the conte it
-    // holds in hand — its type button is named by the conte.
-    final head = find.named('storyboard-layer-type-button-$conte');
-    await tester.ensureVisible(head);
-    await tester.pumpAndSettle();
-    await tester.tap(head);
-    await tester.pumpAndSettle();
+  // cut-1 holds the track's conte and cut-2 none: stood in cut-2, the
+  // rail's conte row still holds cut-1's, and a pick is written THERE.
+  for (final standing in const ['cut-1', 'cut-2']) {
+    testWidgets('the conte rail\'s conte row opens the same list, asked of '
+        'the conte it holds in hand — stood in $standing', (tester) async {
+      final session = await pumpStoryboardHost(
+        tester,
+        conteTrackProject(),
+        surface: const Size(1600, 900),
+        pixelsPerFrame: 12,
+      );
+      session.selectCut(CutId(standing));
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, CutId(standing), reason: '⛔premise');
+      const conte = 'cut-1-conte';
+      Finder conteItem(LayerKind kind) => find.byKey(
+        ValueKey<String>('storyboard-layer-kind-${kind.name}-$conte'),
+      );
+      // The row of the track's seat ([trackConteRowId]) wears the conte it
+      // holds in hand — its type button is named by the conte.
+      final head = find.named('storyboard-layer-type-button-$conte');
+      await tester.ensureVisible(head);
+      await tester.pumpAndSettle();
+      await tester.tap(head);
+      await tester.pumpAndSettle();
 
-    PopupMenuItem<PanelFlyoutItem> at(LayerKind kind) =>
-        tester.widget(conteItem(kind));
-    expect(at(LayerKind.storyboard).value!.selected, isTrue);
-    expect(
-      at(LayerKind.animation).enabled,
-      isTrue,
-      reason: "the row is the track's seat, no layer — the list asks of the "
-          'conte it holds',
-    );
-    expect(
-      at(LayerKind.image).enabled,
-      isFalse,
-      reason: 'three panels are three cels',
-    );
+      PopupMenuItem<PanelFlyoutItem> at(LayerKind kind) =>
+          tester.widget(conteItem(kind));
+      expect(at(LayerKind.storyboard).value!.selected, isTrue);
+      expect(
+        at(LayerKind.animation).enabled,
+        isTrue,
+        reason: "the row is the track's seat, no layer — the list asks of the "
+            'conte it holds',
+      );
+      expect(
+        at(LayerKind.image).enabled,
+        isFalse,
+        reason: 'three panels are three cels',
+      );
 
-    await tester.tap(conteItem(LayerKind.animation));
-    await tester.pumpAndSettle();
-    expect(kindOf(session, conte), LayerKind.animation);
-  });
+      await tester.tap(conteItem(LayerKind.animation));
+      await tester.pumpAndSettle();
+      expect(kindOf(session, conte), LayerKind.animation);
+    });
+  }
 }
