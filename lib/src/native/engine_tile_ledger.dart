@@ -571,7 +571,7 @@ final GpuEngine _engine;
       }
     }
     _copyHereOnceTheHandRests();
-    _foldOnceNothingComes();
+    _foldOnceTheHandRests();
     return [
       for (final (at, (:change, :tile)) in landed.indexed)
         (
@@ -1253,25 +1253,66 @@ final GpuEngine _engine;
   /// (2026-11-19), to measure on the Surface.
   static const int foldBatch = 64;
 
-  /// Whether the pool's tiles are folded once nothing has been stored or
-  /// landed for a rest ([rest]): a launch's word, before its first frame
-  /// (`main`). False where no launch said so — the pins and the
-  /// measurements of the fold say it themselves.
+  /// Whether the pool's tiles are folded a rest ([rest]) after they
+  /// come, and after the hand's last landing ([_foldBeforeLong]): a
+  /// launch's word, before its first frame (`main`). False where no
+  /// launch said so — the pins and the measurements of the fold say it
+  /// themselves.
   static bool foldsAtRest = false;
 
+  /// The folds asked for, a rest from now ([rest]).
   Timer? _foldRest;
 
-  /// Folds the pool's tiles once nothing has come for a rest: one more
-  /// store or landing puts the folds off. ⚠️A timer of its own beside
-  /// the copies' ([_copyHereOnceTheHandRests]): a store puts no copy
-  /// off — a frame played stores, and what a hand drew before it is
-  /// copied meanwhile.
-  void _foldOnceNothingComes() {
+  /// The folds under way ([_foldAtRest]): let go of here, they stop
+  /// behind the batch they wait for.
+  Object? _folds;
+
+  /// The hand is at work: the folds wait a rest from this landing, and
+  /// those under way stop behind their batch — a stroke's dab stands
+  /// behind no more than the one.
+  void _foldOnceTheHandRests() {
     if (!foldsAtRest) {
       return;
     }
+    _folds = null;
     _foldRest?.cancel();
-    _foldRest = Timer(rest, () => unawaited(_foldAtRest()));
+    _foldRest = Timer(rest, _foldFromHere);
+  }
+
+  /// Asks for the folds a rest from now where none are asked for, and
+  /// puts none off — those under way neither: what a store does.
+  ///
+  /// 🚨A STORE PUTS NO FOLD OFF (🔢브러시/렌더링's, 2026-11-20, said on
+  /// F-610: no rule of the user's — theirs is F-610-Q5, 「할수있는거
+  /// 다하면서」). ↩️Till that day a store put the folds off as a landing
+  /// does, and they began once NOTHING had come for a rest: a band
+  /// being made stores at every frame, so the pool stood as its tiles
+  /// were stored for as long as the band filled — at its highest, which
+  /// the fold is there to lower. 🔬The main PC that day
+  /// (folds_at_rest_benchmark_test.dart, its `coming`): 2,048 tiles
+  /// stored eight a beat over 4.5 s, on pages of 256 — the pool stood
+  /// at the 128 MiB they take as stored till the last store, and at 48
+  /// at its most now, 32 at the last store (16 folded, either way).
+  /// The copies' law already ([_copyHereOnceTheHandRests]): a frame
+  /// played stores, and what a hand drew before it is copied
+  /// meanwhile. ⚠️A timer of its own beside theirs: a store asks for no
+  /// copy, and for these.
+  void _foldBeforeLong() {
+    if (foldsAtRest) {
+      _foldRest ??= Timer(rest, _foldFromHere);
+    }
+  }
+
+  /// The rest asked for is over: the folds begin — or, where some are
+  /// under way still, are asked for again behind them: what was stored
+  /// once their last batch was asked is no batch's of theirs.
+  void _foldFromHere() {
+    _foldRest = null;
+    if (_folds == null) {
+      unawaited(_foldAtRest());
+    } else {
+      _foldBeforeLong();
+    }
   }
 
   /// What the launch's list says once the fold's kernels are compiled
@@ -1280,13 +1321,16 @@ final GpuEngine _engine;
   /// is stored or landed after it — a project opened as the app
   /// launched, and only looked at — none would come to ask again. The
   /// rest is taken from here.
-  void theFoldKernelsCame() => _foldOnceNothingComes();
+  void theFoldKernelsCame() => _foldBeforeLong();
 
-  /// The batches of a rest, one behind another ([foldABatch]), till none
-  /// is left or a store puts them off ([_foldRest] armed again).
+  /// The batches of the folds, one behind another ([foldABatch]), till
+  /// none is left or the hand comes ([_foldOnceTheHandRests]).
   Future<void> _foldAtRest() async {
-    _foldRest = null;
-    while (_foldRest == null && await foldABatch()) {}
+    final mine = _folds = Object();
+    while (identical(_folds, mine) && await foldABatch()) {}
+    if (identical(_folds, mine)) {
+      _folds = null;
+    }
   }
 
   bool _noHoldHas(Object? key) => !_holds.any((hold) => hold._has(key));
@@ -1302,7 +1346,7 @@ final GpuEngine _engine;
     for (var at = 0; at < slots.length; at++) {
       _give(tiles[at], slots[at]);
     }
-    _foldOnceNothingComes();
+    _foldBeforeLong();
     return slots.length;
   }
 

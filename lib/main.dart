@@ -264,8 +264,8 @@ Future<void> main(List<String> handedAtLaunch) async {
   EngineTileLedger.copiesAtRest = true;
   // 🗣️F-610-Q5 (유저 2026-11-19, 채팅): 「압축은 일단 중복줄이면서 하는데
   // 결국은 3번대로 하자. 결과가 제일 좋으니까. 할수있는거 다하면서」 — the
-  // engine's tiles are folded whenever nothing has come for a rest, and
-  // the pages no tile lies on then go back.
+  // engine's tiles are folded a rest after they come, and after the
+  // hand's last landing; the pages no tile lies on then go back.
   EngineTileLedger.foldsAtRest = true;
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),

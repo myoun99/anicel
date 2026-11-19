@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,9 +15,12 @@ import '../helpers/tiles_on_the_engine.dart';
 /// 좋으니까」) by the fold's kernels once they are compiled, a batch at a
 /// time, the isolate that asks waiting for no GPU
 /// (`EngineTileLedger.foldABatch`): a tile folded keeps the slot that names
-/// it, so each reads as it was. A rest folds them where a launch said so
-/// (`EngineTileLedger.foldsAtRest`), whether the tiles were landed or
-/// stored.
+/// it, so each reads as it was. Where a launch said so
+/// (`EngineTileLedger.foldsAtRest`) they are folded a rest after they
+/// come, landed or stored: the hand's landings put the folds off, and a
+/// store puts none off (🔢브러시/렌더링 2026-11-20, F-610 — a band being
+/// made stores at every frame, and its pool stood unfolded till it was
+/// full).
 ///
 /// That its tiles were folded is read off the fold's own word and its
 /// pool's bytes, which fall as the pages no tile lies on are given back:
@@ -151,8 +155,8 @@ void main() {
     expect(await ledger.foldABatch(), isFalse);
   });
 
-  test('where a launch said so, the tiles landed are folded once nothing '
-      'has come for a rest — and the tiles stored', () async {
+  test('where a launch said so, the tiles landed are folded once the hand '
+      'has rested — and the tiles stored, a rest after', () async {
     EngineTileLedger.foldsAtRest = true;
     // Two pages of them: folded, they lie on one, and theirs go back.
     final tiles = [...aPageLanded(7), ...aPageLanded(7)];
@@ -191,6 +195,116 @@ void main() {
       landedOn(counting, List<BitmapTile?>.filled(tiles, null), 9),
     );
     expect(await pollUntil(() => counting.batches == 3), isTrue);
+  });
+
+
+  // WHEN the folds come — on a pumped clock, the batches a test's to
+  // answer ([_Answered]): the stores and the landings are the engine's
+  // own, and no fold of them is.
+  group('the folds are asked for a rest after what comes, and only the '
+      'hand puts them off', () {
+    final beat = EngineTileLedger.rest ~/ 5;
+    late _Answered answered;
+
+    setUp(() {
+      answered = _Answered(engine, debugTilesAPage: aPage);
+      EngineTileLedger.foldsAtRest = true;
+    });
+
+    void aStore() {
+      final tile = aTileOfItsOwn();
+      kept.add(tile);
+      answered.held(
+        (hold) => hold.slotsOf(EngineTileLedger.landedCel, [tile]),
+      );
+    }
+
+    void aLanding() => kept.addAll(landedOn(answered, [null], 7));
+
+    /// The batch asked for last is told [folded], and what waits for it
+    /// goes on.
+    Future<void> told(WidgetTester tester, {required bool folded}) async {
+      answered.asked.last.complete(folded);
+      await tester.pump();
+    }
+
+    /// Every batch still asked is told there is none left, and the rests
+    /// asked for pass: a test leaves no timer behind it.
+    Future<void> theRestsPass(WidgetTester tester) async {
+      EngineTileLedger.foldsAtRest = false;
+      for (final batch in answered.asked) {
+        if (!batch.isCompleted) {
+          batch.complete(false);
+        }
+      }
+      await tester.pump(EngineTileLedger.rest * 2);
+    }
+
+    testWidgets('🚨a store puts no fold off: the folds are asked for a rest '
+        'after the first store, whatever was stored since', (tester) async {
+      for (var store = 0; store < 4; store++) {
+        aStore();
+        await tester.pump(beat);
+      }
+      expect(answered.asked, isEmpty, reason: 'a rest is five beats');
+
+      aStore();
+      await tester.pump(beat);
+
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    testWidgets('a landing puts the folds off: they are asked for a rest '
+        'after the hand\'s last', (tester) async {
+      for (var landing = 0; landing < 6; landing++) {
+        aLanding();
+        await tester.pump(beat);
+      }
+      expect(answered.asked, isEmpty, reason: 'the hand landed a beat ago');
+
+      await tester.pump(beat * 4);
+
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    testWidgets('the folds under way go on through a store, and stop '
+        'behind their batch as the hand lands', (tester) async {
+      aStore();
+      await tester.pump(EngineTileLedger.rest);
+      expect(answered.asked, hasLength(1), reason: '⛔premise: under way');
+
+      aStore();
+      await told(tester, folded: true);
+      expect(answered.asked, hasLength(2), reason: 'a store stops none');
+
+      aLanding();
+      await told(tester, folded: true);
+      expect(answered.asked, hasLength(2), reason: 'the hand came');
+
+      await tester.pump(EngineTileLedger.rest);
+      expect(answered.asked, hasLength(3), reason: 'a rest after it');
+      await theRestsPass(tester);
+    });
+
+    testWidgets('what is stored once the folds under way asked their last '
+        'batch is folded behind them', (tester) async {
+      aStore();
+      await tester.pump(EngineTileLedger.rest);
+      expect(answered.asked, hasLength(1), reason: '⛔premise: under way');
+      // Stored as that batch is out, and its rest over before the batch
+      // is told: the folds under way never see it.
+      aStore();
+      await tester.pump(EngineTileLedger.rest);
+      expect(answered.asked, hasLength(1), reason: 'one loop at a time');
+
+      await told(tester, folded: false);
+      await tester.pump(EngineTileLedger.rest);
+
+      expect(answered.asked, hasLength(2));
+      await theRestsPass(tester);
+    });
   });
 
   test('a rest that came before the fold\'s kernels folds once the '
@@ -251,6 +365,21 @@ void main() {
     // As they were stored: the next fold's.
     expect(await counting.foldABatch(), isTrue);
   });
+}
+
+/// A ledger whose folds a test answers: each batch a rest asks for waits
+/// for its word, and folds nothing.
+class _Answered extends EngineTileLedger {
+  _Answered(super.engine, {super.debugTilesAPage});
+
+  final asked = <Completer<bool>>[];
+
+  @override
+  Future<bool> foldABatch() {
+    final batch = Completer<bool>();
+    asked.add(batch);
+    return batch.future;
+  }
 }
 
 /// A ledger that counts the batches its rests ask for.

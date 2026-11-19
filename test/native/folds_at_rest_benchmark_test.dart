@@ -29,6 +29,31 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 /// - `read`: the same tiles read back a batch at a time, as they lay
 ///   before the folds (`as it is`) and folded (`folded`): what a read by
 ///   name pays for the unfold.
+/// - `coming`: FOLDS tiles stored FOLDS_A_BEAT (8) a beat of 16 ms, as
+///   a band being made stores its cels', on pages of 256 tiles: the
+///   most the pool held as they came (`most`) beside what they take as
+///   stored, what it held at the last store, and once the rests after
+///   it were over (`after`).
+/// The tiles a page holds where stores keep coming: FOLDS (2,048) are
+/// eight pages of them.
+const _tilesAPage = 256;
+
+/// A tile of a line drawn across it, [seed]'s: two colours where the line
+/// goes through a block, none elsewhere.
+BitmapTile drawn(int seed) => BitmapTile.written(
+  size: gpuTileSide,
+  write: (pixels) {
+    for (var y = 0; y < gpuTileSide; y++) {
+      final x = (y * (3 + seed % 5) ~/ 4 + seed * 7) % gpuTileSide;
+      for (var wide = 0; wide < 3 && x + wide < gpuTileSide; wide++) {
+        final at = (y * gpuTileSide + x + wide) * 4;
+        pixels[at] = 20 + seed % 200;
+        pixels[at + 3] = wide == 1 ? 255 : 128;
+      }
+    }
+  },
+);
+
 void main() {
   test('folds at rest: what this isolate is held for', () async {
     // A page with a slot free is the pool's room, none of whose tiles is
@@ -41,22 +66,6 @@ void main() {
     addTearDown(kernels.free);
     final ledger = EngineTileLedger(engine, foldKernels: () => kernels);
     const batch = EngineTileLedger.foldBatch;
-
-    /// A tile of a line drawn across it, [seed]'s: two colours where the
-    /// line goes through a block, none elsewhere.
-    BitmapTile drawn(int seed) => BitmapTile.written(
-      size: gpuTileSide,
-      write: (pixels) {
-        for (var y = 0; y < gpuTileSide; y++) {
-          final x = (y * (3 + seed % 5) ~/ 4 + seed * 7) % gpuTileSide;
-          for (var wide = 0; wide < 3 && x + wide < gpuTileSide; wide++) {
-            final at = (y * gpuTileSide + x + wide) * 4;
-            pixels[at] = 20 + seed % 200;
-            pixels[at + 3] = wide == 1 ? 255 : 128;
-          }
-        }
-      },
-    );
 
     final tiles = [for (var seed = 0; seed < count; seed++) drawn(seed)];
     for (final some in tiles.slices(64)) {
@@ -145,5 +154,54 @@ void main() {
       'FOLDREST read batch=$batch n=${folded.length} '
       'as it is=${of(asItIs)} folded=${of(folded)}',
     );
+  });
+
+  test('folds at rest: the pool as stores keep coming', () async {
+    final count = int.parse(Platform.environment['FOLDS'] ?? '2048');
+    final aBeat = int.parse(Platform.environment['FOLDS_A_BEAT'] ?? '8');
+    final engine = GpuEngine.onFirstAdapter();
+    addTearDown(engine.close);
+    final kernels = GpuFold(engine);
+    addTearDown(kernels.free);
+    EngineTileLedger.foldsAtRest = true;
+    addTearDown(() => EngineTileLedger.foldsAtRest = false);
+    final ledger = EngineTileLedger(
+      engine,
+      foldKernels: () => kernels,
+      debugTilesAPage: _tilesAPage,
+    );
+    final tiles = [for (var seed = 0; seed < count; seed++) drawn(seed)];
+    const mb = 1024 * 1024;
+    String mib(int bytes) => (bytes / mb).toStringAsFixed(0);
+
+    var most = 0;
+    final coming = Stopwatch()..start();
+    for (final some in tiles.slices(aBeat)) {
+      ledger.held((hold) => hold.slotsOf(EngineTileLedger.landedCel, some));
+      if (ledger.pool.bytes > most) {
+        most = ledger.pool.bytes;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+    }
+    coming.stop();
+    final atTheLast = ledger.pool.bytes;
+    // The rests that follow the last store, till the pool stands a
+    // second.
+    var stood = ledger.pool.bytes;
+    var since = Stopwatch()..start();
+    while (since.elapsed < const Duration(seconds: 1)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (ledger.pool.bytes != stood) {
+        stood = ledger.pool.bytes;
+        since = Stopwatch()..start();
+      }
+    }
+    print(
+      'FOLDREST coming tiles=$count a-beat=$aBeat page=$_tilesAPage '
+      'in=${coming.elapsedMilliseconds}ms '
+      'as-stored=${mib(count * gpuTileBytes)}MiB most=${mib(most)}MiB '
+      'at-the-last-store=${mib(atTheLast)}MiB after=${mib(stood)}MiB',
+    );
+    expect(stood, lessThan(count * gpuTileBytes), reason: 'none folded');
   });
 }
