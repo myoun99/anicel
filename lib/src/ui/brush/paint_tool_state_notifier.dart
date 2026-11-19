@@ -14,7 +14,10 @@ import 'brush_tool_state.dart';
 /// settings through unchanged — they never stroke, and the shared color
 /// keeps working for fill/eyedropper.
 class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
-  PaintToolStateNotifier(super.value) {
+  PaintToolStateNotifier(
+    super.value, {
+    void Function(VoidCallback then)? landsFirst,
+  }) : _landsFirst = landsFirst {
     _rememberRailTile();
   }
 
@@ -89,6 +92,58 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   // refusal onto the edit (유저 확정 08-13, 피드백 ⑦ — see home_page). Nothing
   // installed the guard after that, so the seam, its branch and its notice
   // hook ran only in their own tests until they were removed (2026-09-16).
+
+  /// What lands before another tool comes to hand, and then runs the press
+  /// that brings it: the canvas selection's open session, through 확정's
+  /// door (`CanvasSelectionCommands.landPendingMoveThen`). Null where no
+  /// canvas holds one, and a press runs at once.
+  final void Function(VoidCallback then)? _landsFirst;
+
+  /// The press waiting for that landing — the LAST one pressed.
+  VoidCallback? _waiting;
+
+  /// A PRESS that brings [to] to hand — a rail button, a tile, a tool's or
+  /// a brush's key, a brush group's tab or row, a held key or button and
+  /// its letting go: [press] is what it writes, and it runs through here.
+  ///
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): with a range
+  /// moved in the box and not confirmed, a tool that takes the box away
+  /// lands it first — behind the wait window, as 확정 lands it — and comes
+  /// to hand once the window is down; the tool's entrances gathered into
+  /// this one door to it. ↩️A painting tool unmounted the box's layer,
+  /// which landed the range on the UI thread as it went (no window, no
+  /// share told), and a selecting tool came to hand first and landed it a
+  /// frame later.
+  ///
+  /// [to] in hand already presses at once: a transform mode's tile widens
+  /// the open box rather than landing it (`pressTool`).
+  ///
+  /// A press pressed while one waits takes its place — the last press is
+  /// the hand's: a held key let go before its tool came never held it
+  /// (`TemporaryTool`).
+  void bring(CanvasTool to, VoidCallback press) {
+    if (_waiting != null) {
+      _waiting = press;
+      return;
+    }
+    final land = _landsFirst;
+    if (land == null || to == value.tool) {
+      press();
+      return;
+    }
+    _waiting = press;
+    land(() {
+      final pressed = _waiting;
+      _waiting = null;
+      pressed?.call();
+    });
+  }
+
+  /// [bring] for a press that brings [tool] and nothing else — a held key
+  /// or button, the stamp a cut arms: the tool taken up on the state in
+  /// hand when it comes, as a switch of the tool alone.
+  void bringTool(CanvasTool tool) =>
+      bring(tool, () => value = value.copyWith(tool: tool));
 
   /// True while [holdBrush] is assigning — the one assignment the setter
   /// must not read as a pure switch.

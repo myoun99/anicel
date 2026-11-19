@@ -89,6 +89,29 @@ class CanvasPlaybackController extends ChangeNotifier
   /// its way waits for it where it was put (playback-waits-for-its-sound).
   void Function(int startGlobalFrame)? onStartsAt;
 
+  /// What lands before a run takes the canvas, and then starts it: the
+  /// selection's open session, through 확정's door — the shell's
+  /// (`CanvasSelectionCommands.landPendingMoveThen`). Null where nothing
+  /// does.
+  void Function(VoidCallback start)? landsBeforeARun;
+
+  /// [start] — a press that starts a run — once what the canvas holds open
+  /// has landed ([landsBeforeARun]); at once where nothing waits to.
+  ///
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): with a range
+  /// moved in the box and not confirmed, a run lands it first — behind the
+  /// wait window, as 확정 lands it — and starts once the window is down.
+  /// ↩️The run took the canvas's editing away, and the box's layer landed
+  /// the range on the UI thread as it went: no window, no share told.
+  void startOnceTheCanvasLands(VoidCallback start) {
+    final land = landsBeforeARun;
+    if (land == null) {
+      start();
+      return;
+    }
+    land(start);
+  }
+
   /// The audio-master clock, set by the owner when a device transport
   /// carries playback. Read EVERY tick: non-null readings drive the
   /// picture from samples handed to the audio device ("the picture

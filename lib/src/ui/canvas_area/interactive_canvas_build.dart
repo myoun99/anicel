@@ -20,7 +20,7 @@ class _InteractiveCanvasBuild {
   TemporaryTool get _temporaryTool => TemporaryTool(
     memory: _state._toolHold,
     current: () => _state.widget.brushToolState.value,
-    change: _state.widget.onBrushToolStateChanged,
+    bring: _state.widget.bringTool,
   );
 
   late final bool _isPlaybackActive;

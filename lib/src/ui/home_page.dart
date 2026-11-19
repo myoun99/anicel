@@ -311,9 +311,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The active canvas tool, hoisted here so the tool shortcuts and the
   /// workspace's tool/brush panels drive one notifier. Paint tools keep
   /// per-tool settings memory (R11-④: the brush and the eraser each
-  /// remember their own preset/settings).
-  final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
+  /// remember their own preset/settings). A press brings a tool once the
+  /// canvas has landed what its box holds (F-615-Q2).
+  late final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
+    landsFirst: _canvasSelectionCommands.landPendingMoveThen,
   );
 
   /// The transform tool's options, hoisted beside [_brushTool] for the same
@@ -514,7 +516,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     temporaryTool: TemporaryTool(
       memory: _toolHold,
       current: () => _brushTool.value,
-      change: (next) => _brushTool.value = next,
+      bring: _brushTool.bringTool,
     ),
     strokeLive: _session.brushInputActive,
   );
@@ -582,6 +584,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       first: widget.initialProject ?? newUntitledProject(),
       openSession: _openSession,
       letGo: _letGo,
+      landsFirst: _canvasSelectionCommands.landPendingMoveThen,
     )..addListener(_followProjectOnScreen);
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
@@ -2052,7 +2055,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return true;
     }
     if (!identical(session, _session)) {
-      _projects.activate(session);
+      await _projects.activate(session);
       // The question waits for the frame that shows its project.
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) {
@@ -2209,6 +2212,9 @@ final class _ProjectHooks {
         shell._canvasSelectionCommands.transformActive ||
         shell._canvasTextCommands.holdsAnything;
     history.addListener(shell._recordRecentColor);
+    // F-615-Q2: a run takes the canvas once what its box holds has landed.
+    session.playbackRig.playback.landsBeforeARun =
+        shell._canvasSelectionCommands.landPendingMoveThen;
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.

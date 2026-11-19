@@ -1,5 +1,7 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
@@ -19,7 +21,10 @@ import '../helpers/fake_playback_transport.dart';
 void main() {
   late List<EditorSessionManager> letGo;
 
-  OpenProjects make({Project? first}) {
+  OpenProjects make({
+    Project? first,
+    void Function(VoidCallback show)? landsFirst,
+  }) {
     letGo = [];
     final projects = OpenProjects(
       first: first ?? createDefaultProject(),
@@ -28,6 +33,7 @@ void main() {
         letGo.add(session);
         session.dispose();
       },
+      landsFirst: landsFirst,
     );
     addTearDown(projects.dispose);
     return projects;
@@ -81,38 +87,71 @@ void main() {
   });
 
   test('activating shows that tab; the shown one or a stranger is a no-op',
-      () {
+      () async {
     final projects = make();
     final first = projects.active;
     projects.open(createDefaultProject());
     var notified = 0;
     projects.addListener(() => notified += 1);
-    projects.activate(first);
+    await projects.activate(first);
     expect(identical(projects.active, first), isTrue);
     expect(notified, 1);
-    projects.activate(first);
+    await projects.activate(first);
     final stranger = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(stranger.dispose);
-    projects.activate(stranger);
+    await projects.activate(stranger);
     expect(notified, 1, reason: 'nothing changed, nothing said');
     expect(identical(projects.active, first), isTrue);
   });
 
   test('closing the SHOWN tab shows the one that took its place — or, at '
-      'the end of the row, the one before it', () {
+      'the end of the row, the one before it', () async {
     final projects = make();
     final a = projects.active;
     final b = projects.open(createDefaultProject());
     final c = projects.open(createDefaultProject());
-    projects.activate(b);
+    await projects.activate(b);
     projects.close(b, fresh: createDefaultProject);
     expect(projects.sessions, [a, c]);
     expect(identical(projects.active, c), isTrue, reason: 'took its place');
     projects.close(c, fresh: createDefaultProject);
     expect(identical(projects.active, a), isTrue, reason: 'end of the row');
     expect(letGo, [b, c], reason: 'each closed session is let go');
+  });
+
+  test('🗣️F-615-Q2: a tab shows once the canvas has landed what its box '
+      'holds — opened, activated or adopted; a close shows what takes its '
+      'place at once', () async {
+    final waiting = <VoidCallback>[];
+    final projects = make(landsFirst: waiting.add);
+    final first = projects.active;
+
+    final second = projects.open(createDefaultProject());
+    expect(identical(projects.active, first), isTrue, reason: 'not yet');
+    waiting.removeAt(0)();
+    expect(identical(projects.active, second), isTrue);
+
+    var shown = false;
+    unawaited(projects.activate(first).then((_) => shown = true));
+    expect((identical(projects.active, second), shown), (true, false));
+    waiting.removeAt(0)();
+    await pumpEventQueue();
+    expect((identical(projects.active, first), shown), (true, true));
+
+    final adopted = projects.prepare(createDefaultProject());
+    projects.adopt(adopted);
+    expect(identical(projects.active, first), isTrue, reason: 'not yet');
+    waiting.removeAt(0)();
+    expect(identical(projects.active, adopted), isTrue);
+
+    projects.close(adopted, fresh: createDefaultProject);
+    projects.close(first, fresh: createDefaultProject);
+    projects.close(second, fresh: createDefaultProject);
+    expect(waiting, isEmpty, reason: 'a tab going away waits for nothing');
+    expect(projects.sessions, hasLength(1));
+    expect(letGo, [adopted, first, second]);
   });
 
   test('closing a tab BEHIND keeps the shown one shown', () {
@@ -237,7 +276,7 @@ void main() {
   });
 
   test('the tab on screen takes the whole cache allowance; the ones behind '
-      'share a quarter between them', () {
+      'share a quarter between them', () async {
     final projects = make();
     final a = projects.active;
     expect(a.cacheShare, 1);
@@ -246,7 +285,7 @@ void main() {
     expect(c.cacheShare, 1);
     expect(a.cacheShare, OpenProjects.backgroundCacheShare / 2);
     expect(b.cacheShare, OpenProjects.backgroundCacheShare / 2);
-    projects.activate(a);
+    await projects.activate(a);
     expect(a.cacheShare, 1);
     expect(c.cacheShare, OpenProjects.backgroundCacheShare / 2);
     projects.close(b, fresh: createDefaultProject);
@@ -254,19 +293,20 @@ void main() {
   });
 
   test('a tab behind the one on screen caches with its SHARE: its own '
-      'caches\' budgets shrink with it, and come back when it is shown', () {
+      'caches\' budgets shrink with it, and come back when it is shown',
+      () async {
     final projects = make();
     final a = projects.active;
     int playback() => a.playbackRig.playbackCache.playbackCacheByteBudget;
     final whole = playback();
     projects.open(createDefaultProject());
     expect(playback(), lessThan(whole), reason: 'behind: a share');
-    projects.activate(a);
+    await projects.activate(a);
     expect(playback(), whole, reason: 'on screen: the whole allowance');
   });
 
   test('a tab going behind stops every transport it has — and one closed '
-      'while shown stops too', () {
+      'while shown stops too', () async {
     final projects = make();
     final a = projects.active;
     final playing = FakePlaybackTransport()..play();
@@ -274,7 +314,7 @@ void main() {
     projects.open(createDefaultProject());
     expect(playing.isPlaying, isFalse, reason: 'it went behind');
 
-    projects.activate(a);
+    await projects.activate(a);
     final again = FakePlaybackTransport()..play();
     a.playbackRig.transports.add(again);
     final other = projects.sessions.last;
@@ -282,7 +322,7 @@ void main() {
     other.playbackRig.transports.add(behind);
     projects.close(a, fresh: createDefaultProject);
     expect(again.isPlaying, isFalse, reason: 'closed while on screen');
-    projects.activate(other);
+    await projects.activate(other);
     expect(behind.isPlaying, isTrue, reason: 'coming forward starts nothing');
   });
 

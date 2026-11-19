@@ -232,6 +232,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
+    this.bringTool,
     this.canvasViewCommands,
     this.navigationRegionKey,
     this.canvasSelectionCommands,
@@ -267,6 +268,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// Write-back to the workspace-owned tool state: eyedropper picks land
   /// the sampled color (and return to the painting tool) through here.
   final ValueChanged<BrushToolState>? onBrushToolStateChanged;
+
+  /// Where a held button or the pen's tail brings its tool — as a press
+  /// brings one (`TemporaryTool.bring`); null where there is none.
+  final void Function(CanvasTool tool)? bringTool;
 
   /// The app-level rotate/flip shortcut channel (P8), forwarded to the
   /// canvas panel which binds the actual viewport handlers.

@@ -105,27 +105,36 @@ final class TransformModePress extends SubToolPress {
 /// ↩️A tile that RAN rode here too — 전체 잘라내기 (I-28), with the session's
 /// cut handed in beside the notifiers. Since I-163 it is a tile like the
 /// stamp ([CanvasTool.cutWhole]), and its 「실행」 runs in the tool settings.
+///
+/// The tool comes to hand through the notifier's one door for a press
+/// ([PaintToolStateNotifier.bring]): once what the box holds has landed.
 void pressTool(
   ToolPress press, {
   required PaintToolStateNotifier tool,
   required ValueNotifier<TransformToolOptions> transform,
 }) {
-  switch (press) {
-    case RailToolPress(:final group):
-      tool.value = tool.value.copyWith(tool: tool.railEntry(group));
-    case ToolTilePress(tool: final armed):
-      tool.value = tool.value.copyWith(tool: armed);
-    case ShapeTilePress(:final verb, :final shape):
-      tool.value = tool.value.withShapeKind(shape, forTool: verb);
-    case TransformModePress(:final mode):
+  final next = switch (press) {
+    RailToolPress(:final group) => tool.value.copyWith(
+      tool: tool.railEntry(group),
+    ),
+    ToolTilePress(tool: final armed) => tool.value.copyWith(tool: armed),
+    ShapeTilePress(:final verb, :final shape) => tool.value.withShapeKind(
+      shape,
+      forTool: verb,
+    ),
+    TransformModePress() => tool.value.copyWith(tool: CanvasTool.move),
+  };
+  tool.bring(next.tool, () {
+    if (press case TransformModePress(:final mode)) {
       // The mode FIRST, so a box the tool write opens opens in it. ⚠️A mode
       // is a SETTING: switching one mid-session widens or narrows the OPEN
       // box instead of confirming it — and with the tool already in hand
       // the tool write is an equal value, which the notifier does not
       // announce, so nothing on the way past confirms anything.
       transform.value = transform.value.copyWith(mode: mode);
-      tool.value = tool.value.copyWith(tool: CanvasTool.move);
-  }
+    }
+    tool.value = next;
+  });
 }
 
 /// A shape tile's name: its verb's template around the shape's name —

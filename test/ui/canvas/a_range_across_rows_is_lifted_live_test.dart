@@ -1,9 +1,14 @@
+import 'dart:async' show unawaited;
+import 'dart:io' show Directory;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -13,17 +18,28 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/services/playback/playback_scope.dart';
+import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/brush/brush_press.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/playback/playback_transport_controls.dart'
+    show playOrStop;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
-import '../../helpers/wait_window.dart' show windowBehind;
+import '../../helpers/wait_window.dart' show watchTheBar, windowBehind;
+import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/until_the_brushes_land.dart';
 
 /// F-329 — A FRAME RANGE ACROSS ROWS IS LIFTED, EVERY ROW, WHILE THE BOX IS
 /// OPEN.
@@ -100,13 +116,44 @@ void main() {
     );
   }
 
-  /// Stood on A at frame 0, with a range over both rows' two frames.
-  Future<EditorSessionManager> pump(WidgetTester tester) async {
+  /// Stood on A at frame 0, with a range over both rows' two frames — and
+  /// the brushes as they ship in the library, with [brushes].
+  Future<EditorSessionManager> pump(
+    WidgetTester tester, {
+    bool brushes = false,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1700, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // Real file IO only inside runAsync: a library on a missing file yields
+    // the brushes as they ship.
+    final directory = brushes
+        ? (await tester.runAsync(
+            () => Directory.systemTemp.createTemp('brushes'),
+          ))!
+        : null;
+    if (directory != null) {
+      deleteAfterSessionEnds(directory);
+    }
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: twoRows())),
+      MaterialApp(
+        home: HomePage(
+          initialProject: twoRows(),
+          presetFileService: directory == null
+              ? null
+              : BrushPresetFileService(
+                  filePath: '${directory.path}/brush_presets.json',
+                ),
+          tipLibraryService: directory == null
+              ? null
+              : BrushTipLibraryService(
+                  directoryPath: '${directory.path}/tips',
+                ),
+        ),
+      ),
     );
+    if (brushes) {
+      await untilTheBrushesLand(tester);
+    }
     await tester.pumpAndSettle();
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -284,5 +331,221 @@ void main() {
       (true, false),
       reason: 'A grew from the middle of both rows, not from its own',
     );
+  });
+
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): what takes the
+  /// box away — another tool, a run, another tab — lands the range first,
+  /// behind 확정's window, and comes once the window is down.
+  group('🗣️F-615-Q2: a switch lands the range before it switches', () {
+    /// The box opened over the range and moved right by 20, not confirmed.
+    Future<CanvasSelectionCommands> moveTheBox(WidgetTester tester) async {
+      final commands = await openTheBox(tester);
+      commands.editTransformValues((now) => now.copyWith(tx: 20));
+      await tester.pumpAndSettle();
+      return commands;
+    }
+
+    void expectEveryCelMoved(EditorSessionManager session) {
+      for (final cel in ['0', '1']) {
+        expect(
+          (inked(session, a, cel, 25, 25), inked(session, a, cel, 75, 25)),
+          (false, true),
+          reason: 'A\'s cel $cel moved right by 20',
+        );
+        expect(
+          (inked(session, b, cel, 75, 75), inked(session, b, cel, 125, 75)),
+          (false, true),
+          reason: 'B\'s cel $cel moved right by 20 with it',
+        );
+      }
+    }
+
+    testWidgets('the brush\'s key: the window first, and the brush once it '
+        'is down', (tester) async {
+      final session = await pump(tester);
+      await moveTheBox(tester);
+      final tools = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .brushTool!;
+      final before = tools.value.tool;
+      expect(before, isNot(CanvasTool.brush), reason: '⛔premise');
+
+      final inHand = <CanvasTool>[];
+      watchTheBar(tester, onShare: (_) => inHand.add(tools.value.tool));
+      final window = await windowBehind(
+        tester,
+        () => tester.sendKeyEvent(LogicalKeyboardKey.keyB),
+      );
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(inHand, isNotEmpty);
+      expect(
+        inHand,
+        everyElement(before),
+        reason: 'the tool stays while the window stands',
+      );
+      await tester.pumpAndSettle();
+      expect(tools.value.tool, CanvasTool.brush);
+      expectEveryCelMoved(session);
+    });
+
+    testWidgets('a run: the window first, and the run once it is down', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      await moveTheBox(tester);
+      final playback = session.playbackRig.playback;
+
+      final running = <bool>[];
+      watchTheBar(tester, onShare: (_) => running.add(playback.isActive));
+      final window = await windowBehind(
+        tester,
+        () async => playOrStop(playback, scope: PlaybackScope.activeCut),
+      );
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(running, isNotEmpty);
+      expect(
+        running,
+        everyElement(isFalse),
+        reason: 'nothing plays while the window stands',
+      );
+      expect(playback.isActive, isTrue);
+      playback.stop();
+      await tester.pumpAndSettle();
+      expectEveryCelMoved(session);
+    });
+
+    /// The window takes the pointers that were down under it (the
+    /// navigator cancels them), so a held button's hold ends with it: the
+    /// press landed the range and held nothing — as a press on the canvas
+    /// over a range lands and no more (F-615-Q1, 「누름은 착지만」).
+    testWidgets('a held button\'s tool: the window first — and the window '
+        'takes the pointer, so the tool in hand stays', (tester) async {
+      final session = await pump(tester);
+      await moveTheBox(tester);
+      final tools = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .brushTool!;
+      final before = tools.value.tool;
+
+      final inHand = <CanvasTool>[];
+      watchTheBar(tester, onShare: (_) => inHand.add(tools.value.tool));
+      late TestGesture right;
+      final window = await windowBehind(tester, () async {
+        right = await tester.startGesture(
+          tester.getTopLeft(find.byType(CanvasSelectionLayer).first) +
+              const Offset(8, 8),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+      });
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(inHand, isNotEmpty);
+      expect(inHand, everyElement(before));
+      await tester.pumpAndSettle();
+      expect(tools.value.tool, before);
+
+      await right.up();
+      await tester.pumpAndSettle();
+      expect(tools.value.tool, before);
+      expectEveryCelMoved(session);
+    });
+
+    testWidgets('a brush group\'s press: the window first, and its tool once '
+        'it is down', (tester) async {
+      final session = await pump(tester);
+      await moveTheBox(tester);
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final tools = workspace.brushTool!;
+      final before = tools.value.tool;
+
+      final inHand = <CanvasTool>[];
+      watchTheBar(tester, onShare: (_) => inHand.add(tools.value.tool));
+      final window = await windowBehind(
+        tester,
+        () async => workspace.brushKeys!.press(
+          const BrushGroupPress(CanvasTool.eraser, BrushGroupId('none')),
+        ),
+      );
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(inHand, isNotEmpty);
+      expect(inHand, everyElement(before));
+      await tester.pumpAndSettle();
+      expect(tools.value.tool, CanvasTool.eraser);
+      expectEveryCelMoved(session);
+    });
+
+    testWidgets('a brush\'s press: the window first, and the brush in hand '
+        'once it is down', (tester) async {
+      final session = await pump(tester, brushes: true);
+      final shipped = tester
+          .widget<BrushPresetPanel>(find.byType(BrushPresetPanel).first)
+          .presets
+          .last;
+      await moveTheBox(tester);
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final tools = workspace.brushTool!;
+      final before = tools.value.tool;
+
+      final inHand = <CanvasTool>[];
+      watchTheBar(tester, onShare: (_) => inHand.add(tools.value.tool));
+      final window = await windowBehind(
+        tester,
+        () async => workspace.brushKeys!.press(
+          BrushPresetPress(
+            CanvasTool.brush,
+            shipped.id,
+            group: shipped.groupId,
+          ),
+        ),
+      );
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(inHand, isNotEmpty);
+      expect(inHand, everyElement(before));
+      await tester.pumpAndSettle();
+      expect((tools.value.tool, tools.value.presetId), (
+        CanvasTool.brush,
+        shipped.id,
+      ));
+      expectEveryCelMoved(session);
+    });
+
+    testWidgets('another tab: the window first, and the tab once it is '
+        'down', (tester) async {
+      final session = await pump(tester);
+      final projects = tester
+          .widget<EditorTopStrip>(find.byType(EditorTopStrip).first)
+          .projects;
+      final other = projects.open(createDefaultProject());
+      await tester.pumpAndSettle();
+      await projects.activate(session);
+      await tester.pumpAndSettle();
+      await moveTheBox(tester);
+
+      final shown = <bool>[];
+      watchTheBar(
+        tester,
+        onShare: (_) => shown.add(identical(projects.active, session)),
+      );
+      final window = await windowBehind(
+        tester,
+        () async => unawaited(projects.activate(other)),
+      );
+      expect(window?.title, editorActionLabel(EditorActionIds.confirm));
+      expect(shown, isNotEmpty);
+      expect(
+        shown,
+        everyElement(isTrue),
+        reason: 'the tab stays while the window stands',
+      );
+      expect(identical(projects.active, other), isTrue);
+
+      await projects.activate(session);
+      await tester.pumpAndSettle();
+      expectEveryCelMoved(session);
+    });
   });
 }

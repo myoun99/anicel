@@ -90,12 +90,11 @@ class _WorkspaceBrushPresets {
       return;
     }
     _armedCutPieceId = piece.image.id;
-    if (_state._brushTool.value.tool == CanvasTool.cutStamp) {
+    final tools = _state._brushTool;
+    if (tools.value.tool == CanvasTool.cutStamp) {
       return;
     }
-    _state._brushTool.value = _state._brushTool.value.copyWith(
-      tool: CanvasTool.cutStamp,
-    );
+    tools.bringTool(CanvasTool.cutStamp);
   }
 
   /// Promotes the held piece into the brush tip library.
