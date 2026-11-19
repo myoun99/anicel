@@ -93,8 +93,9 @@ void main() {
     await pumpFrames(tester);
   }
 
-  testWidgets('strokes drawn one after another on a cel, and the builds '
-      'that show them, read no tile back from the engine', (tester) async {
+  testWidgets('strokes drawn one after another on a cel, the steps back '
+      'and forth over them, and the builds that show each, read no '
+      'tile back from the engine', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: aRowOfOneCel())),
     );
@@ -124,5 +125,22 @@ void main() {
       reason: '⛔premise: their tiles are the engine\'s',
     );
     expect(ledger.debugTileReads, readBack);
+
+    // Steps back and forth over them, and a stroke over those: the
+    // builds that show a step swap surfaces as a commit's does.
+    session.undo();
+    await pumpFrames(tester);
+    session.undo();
+    await pumpFrames(tester);
+    session.redo();
+    await pumpFrames(tester);
+    await strokeAt(tester, const Offset(-24, 6));
+
+    expect(
+      session.historyManager.undoCount,
+      undos + 4,
+      reason: '⛔premise: two back, one forth, one more',
+    );
+    expect(ledger.debugTileReads, readBack, reason: 'over the steps');
   });
 }
