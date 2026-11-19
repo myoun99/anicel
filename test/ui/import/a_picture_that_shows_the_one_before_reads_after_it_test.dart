@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -131,27 +132,36 @@ void main() {
     }
   }
 
-  test('🚨every cel of a stream whose pictures show the one before lands '
-      'as the picture it shows — beside a stream that stands alone', () async {
-    final (:file, :slots) = fileOf([
-      records,
-      [srawRecord(alone, w, h)],
-    ]);
-    final decoded = <int, Object>{};
-    await TvppImportDoor.decodeEach(
-      [for (final slot in slots) (plan, cut, bake, slot)],
-      atOnce: 4,
-      windowOf: (slot) => windowOf(file, slot),
-      landed: (index, lay, cel) async => decoded[index] = cel,
-      stopped: () => false,
-    );
+  // 🔬Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
+  // (2026-11-20): what a picture is made of crossed from a worker isolate
+  // to this one, and 498 cels of the user's file failed — with this test
+  // green, its workers run here.
+  for (final (workers, here) in [('run here', true), ('isolates', false)]) {
+    test('🚨every cel of a stream whose pictures show the one before lands '
+        'as the picture it shows — beside a stream that stands alone '
+        '(workers: $workers)', () async {
+      debugWorkersRunHere = here;
+      addTearDown(() => debugWorkersRunHere = true);
+      final (:file, :slots) = fileOf([
+        records,
+        [srawRecord(alone, w, h)],
+      ]);
+      final decoded = <int, Object>{};
+      await TvppImportDoor.decodeEach(
+        [for (final slot in slots) (plan, cut, bake, slot)],
+        atOnce: 4,
+        windowOf: (slot) => windowOf(file, slot),
+        landed: (index, lay, cel) async => decoded[index] = cel,
+        stopped: () => false,
+      );
 
-    expect(decoded.keys, unorderedEquals([0, 1, 2, 3]));
-    expectCel(decoded[0], first, 'the first');
-    expectCel(decoded[1], second, 'the second');
-    expectCel(decoded[2], third, 'the third, through the second');
-    expectCel(decoded[3], alone, 'the other stream');
-  });
+      expect(decoded.keys, unorderedEquals([0, 1, 2, 3]));
+      expectCel(decoded[0], first, 'the first');
+      expectCel(decoded[1], second, 'the second');
+      expectCel(decoded[2], third, 'the third, through the second');
+      expectCel(decoded[3], alone, 'the other stream');
+    });
+  }
 
   test('a stream whose first picture shows a picture before lands that it '
       'could not be read', () async {

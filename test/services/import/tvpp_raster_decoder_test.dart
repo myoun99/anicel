@@ -1,4 +1,5 @@
 import 'dart:io' show ZLibEncoder;
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -605,6 +606,28 @@ void main() {
       slot: slot,
       size: const CanvasSize(width: w, height: h),
     );
+
+    /// 🔬Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
+    /// (2026-11-20): made on the workers and laid here, 498 cels of the
+    /// user's file failed to read in the first measurement — and every test
+    /// was green, their workers run here.
+    test('🚨made on a worker isolate and laid over the picture before on '
+        'another, a picture still shows the tiles it points at', () async {
+      final (:file, :slots) = layerOf(records);
+      final first = makeupOf(file, slots[0]).over(null);
+      final slot = slots[1];
+      final made = await Isolate.run(
+        () => TvppMakeup.of(
+          recordBytes: file,
+          slot: slot,
+          size: const CanvasSize(width: w, height: h),
+        ),
+      );
+      expect(
+        read(TvppPicturesInOrder(before: made.over(first)), file, slots[2]),
+        expectedRgba(third),
+      );
+    });
 
     /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
     /// (2026-11-20): what a picture is made of is worked out on its own,

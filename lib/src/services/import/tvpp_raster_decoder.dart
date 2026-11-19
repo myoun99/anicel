@@ -237,9 +237,9 @@ final class _PointedAt extends TvppTileSources {
 
   @override
   _Root? _rootAt(int tile) => (
-    bytes: _pointed,
+    bytes: Uint8List(0),
     start: tile,
-    length: 0,
+    length: _pointing,
     width: _TileGrid.tile,
     height: _TileGrid.tile,
   );
@@ -248,11 +248,18 @@ final class _PointedAt extends TvppTileSources {
   _Kept _keptAt(int tile) => (width: _TileGrid.tile, height: _TileGrid.tile);
 }
 
-/// The bytes of a root that points at the picture before ([_PointedAt]).
-final _pointed = Uint8List(0);
+/// The length of a root that points at the picture before ([_PointedAt]) —
+/// a length no root's bytes have.
+///
+/// 🚨NOT BY WHICH BYTES IT HOLDS: a makeup is made on a worker and laid over
+/// the picture before here, and an object the worker made is another one
+/// here. Told by an empty list of its own, the first measurement of the
+/// bake card (tvpp-bake-waits-on-the-isolate-that-hands-out-records,
+/// 2026-11-20, the user's file on the Surface) failed 498 cels — with
+/// every test green, their workers run here.
+const _pointing = -1;
 
-bool _pointsBefore(_Root? root) =>
-    root != null && identical(root.bytes, _pointed);
+bool _pointsBefore(_Root? root) => root != null && root.length == _pointing;
 
 /// A picture made of [roots], [kept] of each: every root its tiles show
 /// copied out once into bytes of its own — the picture before's with them,
