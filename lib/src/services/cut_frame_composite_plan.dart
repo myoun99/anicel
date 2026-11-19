@@ -1,7 +1,8 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../core/collection_equality.dart' show listEquals, listsMatch;
 import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
@@ -1866,61 +1867,49 @@ List<Object?> _rowReads(Cut cut, Layer layer) => [
 
 /// Whether [a] and [b] are what a row was resolved from both times: its
 /// rows the very same, all else equal.
-bool _readAlike(List<Object?> a, List<Object?> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var at = 0; at < a.length; at += 1) {
-    final (was, now) = (a[at], b[at]);
-    if (!(identical(was, now) || (was is! Layer && was == now))) {
-      return false;
-    }
-  }
-  return true;
-}
+bool _readAlike(List<Object?> a, List<Object?> b) => listsMatch(
+  a,
+  b,
+  (was, now) => identical(was, now) || (was is! Layer && was == now),
+);
 
 /// Whether [a] and [b], a row's own nodes ([_rowNodes]), lay alike.
 bool _laidAlike(
   List<CompositeNode<CutFrameCompositeRow>> a,
   List<CompositeNode<CutFrameCompositeRow>> b,
-) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var at = 0; at < a.length; at += 1) {
-    final alike = switch ((a[at], b[at])) {
-      (
-        CompositeLeaf(payload: final CutFrameCompositeEntry was),
-        CompositeLeaf(payload: final CutFrameCompositeEntry now),
-      ) =>
-        identical(was.layer, now.layer) &&
-            // By its value: a movie's cel is the held cel copied anew at
-            // each asking ([resolveExposedFrameAt]).
-            was.frame == now.frame &&
-            was.opacity == now.opacity &&
-            was.blendMode == now.blendMode &&
-            was.placement == now.placement &&
-            listEquals(was.effects, now.effects),
-      (
-        CompositeCelNumber(on: final wasOn, letters: final wasLetters),
-        CompositeCelNumber(on: final nowOn, letters: final nowLetters),
-      ) =>
-        wasLetters == nowLetters && _laidAlike([wasOn], [nowOn]),
-      (final CompositeGroup<CutFrameCompositeRow> was,
-          final CompositeGroup<CutFrameCompositeRow> now) =>
-        was.opacity == now.opacity &&
-            was.blendMode == now.blendMode &&
-            was.tint == now.tint &&
-            listEquals(was.effects, now.effects) &&
-            _laidAlike(was.children, now.children),
-      _ => false,
-    };
-    if (!alike) {
-      return false;
-    }
-  }
-  return true;
-}
+) => listsMatch(
+  a,
+  b,
+  (wasNode, nowNode) => switch ((wasNode, nowNode)) {
+    (
+      CompositeLeaf(payload: final CutFrameCompositeEntry was),
+      CompositeLeaf(payload: final CutFrameCompositeEntry now),
+    ) =>
+      identical(was.layer, now.layer) &&
+          // By its value: a movie's cel is the held cel copied anew at each
+          // asking ([resolveExposedFrameAt]).
+          was.frame == now.frame &&
+          was.opacity == now.opacity &&
+          was.blendMode == now.blendMode &&
+          was.placement == now.placement &&
+          listEquals(was.effects, now.effects),
+    (
+      CompositeCelNumber(on: final wasOn, letters: final wasLetters),
+      CompositeCelNumber(on: final nowOn, letters: final nowLetters),
+    ) =>
+      wasLetters == nowLetters && _laidAlike([wasOn], [nowOn]),
+    (
+      final CompositeGroup<CutFrameCompositeRow> was,
+      final CompositeGroup<CutFrameCompositeRow> now,
+    ) =>
+      was.opacity == now.opacity &&
+          was.blendMode == now.blendMode &&
+          was.tint == now.tint &&
+          listEquals(was.effects, now.effects) &&
+          _laidAlike(was.children, now.children),
+    _ => false,
+  },
+);
 
 /// How many trees have been laid ([resolveCutFrameCompositeTree]) — the
 /// work [filmTreeOf] keeps, read by the tests that pin it.
