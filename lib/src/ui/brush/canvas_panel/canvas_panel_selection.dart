@@ -380,20 +380,23 @@ class _CanvasPanelSelection {
     // thing to move.
     WidgetsBinding.instance.scheduleFrame();
     await WidgetsBinding.instance.endOfFrame;
+    if (run != _ahead.run) {
+      return;
+    }
     final liftId = 'ahead-${DateTime.now().microsecondsSinceEpoch}';
     final canvasSize = coordinator.sessionStore.canvasSize;
     for (final (index, under) in over.indexed) {
-      if (run != _ahead.run) {
-        return;
-      }
       await coordinator.frameStore.thawAhead(
         under.key,
         canvasSize: canvasSize,
       );
-      await _ahead.aTurn();
-      if (run != _ahead.run || !_state.mounted) {
+      // Let go of while the worker thawed: a run gone takes no turn, so the
+      // one it gave way to keeps its own to withdraw. Past the turn nothing
+      // is checked — letting go withdraws it, the panel's dispose included.
+      if (run != _ahead.run) {
         return;
       }
+      await _ahead.aTurn();
       final options = _maskOptions;
       final surface = coordinator.currentSurfaceOf(under.key);
       _ahead.cuts[under.key] = (
