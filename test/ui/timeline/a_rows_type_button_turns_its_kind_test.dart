@@ -16,6 +16,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/conte_track_fixture.dart';
@@ -49,8 +50,9 @@ void main() {
 
   Future<EditorSessionManager> open(
     WidgetTester tester,
-    List<Layer> layers,
-  ) => pumpTimelineHost(
+    List<Layer> layers, {
+    TimelineOrientation orientation = TimelineOrientation.horizontal,
+  }) => pumpTimelineHost(
     tester,
     Project(
       id: const ProjectId('p'),
@@ -72,6 +74,7 @@ void main() {
         ),
       ],
     ),
+    orientation: orientation,
   );
 
   LayerKind kindOf(EditorSessionManager session, String id) => session
@@ -242,6 +245,29 @@ void main() {
       [for (final id in const ['a', 'b', 'c']) kindOf(session, id)],
       [LayerKind.animation, LayerKind.animation, LayerKind.image],
     );
+  });
+
+  testWidgets('the x-sheet\'s column head opens the same list and picks the '
+      'same way', (tester) async {
+    final session = await open(
+      tester,
+      [
+        row('a', cels: ['a1']),
+      ],
+      orientation: TimelineOrientation.vertical,
+    );
+    final head = find.named('xsheet-layer-type-button-a');
+    await tester.ensureVisible(head);
+    await tester.pumpAndSettle();
+    await tester.tap(head);
+    await tester.pumpAndSettle();
+    final image = find.byKey(
+      const ValueKey<String>('xsheet-layer-kind-image-a'),
+    );
+    expect(image, findsOneWidget);
+    await tester.tap(image);
+    await tester.pumpAndSettle();
+    expect(kindOf(session, 'a'), LayerKind.image);
   });
 
   testWidgets('a row of another kind keeps the press it had: it opens no '
