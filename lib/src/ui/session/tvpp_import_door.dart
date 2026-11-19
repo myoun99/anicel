@@ -14,11 +14,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/on_a_worker.dart';
+import '../../core/progress_share.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
 import '../../models/import/tvpp_convert.dart';
 import '../../models/import/tvpp_parse.dart';
 import '../../models/project.dart';
@@ -36,7 +38,7 @@ import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel;
 import '../../services/persistence/folder_grant.dart'
-    show FolderPicker, MaterializeCancelled, WaitReport;
+    show FolderPicker, MadeReport, MaterializeCancelled, WaitReport;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import 'media_pool.dart';
@@ -417,11 +419,7 @@ class TvppImportDoor {
       // The staged copy outlives the decode now, because the decode
       // reads FROM it. It was deleted the moment the bytes were in hand
       // back when the whole file was held in memory.
-      if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
-      }
+      unawaited(FolderPicker.letGoOfStagedCopy(source));
     }
   }
 
@@ -599,8 +597,20 @@ class TvppProjectRead {
 /// Reads the TVPaint project at [tvppPath] and converts it into the project
 /// it opens as — or null when it is not readable as one ([TvppProjectRead]).
 ///
-/// [onRead] is told how much of the file is in as it is read
-/// ([FolderPicker.readOpenedFile]).
+/// [onRead] is told how far the read is, as its 0–1: how much of the file is
+/// in for the first half ([FolderPicker.readOpenedFileInto]), and how many
+/// of its clips are made for the second — 🗣️the percent follows the work
+/// (F-615), and making a 1.5 GB project's twelve clips is as long as
+/// reading it in (1.6 s against 1.5 s, 서피스 11-19).
+///
+/// The bytes come in under the wait for the file: a file still in the
+/// cloud comes down INSIDE this read, so this read is what the wait's line
+/// has to watch (F-608 ①). They come in on a worker, and the structure is
+/// made of them there ([_structureOf]) — ⛔so the whole-file bytes never
+/// stand on this isolate, and are gone with the worker the moment the
+/// structure is out of them. Everything after reads the file by OFFSET: a
+/// slot knows where its record is, so the long half of an import (decoding
+/// every cel) never needs the file resident.
 Future<TvppProjectRead?> readTvppProject({
   required String tvppPath,
   WaitReport? onWaiting,
@@ -613,31 +623,23 @@ Future<TvppProjectRead?> readTvppProject({
   // chasing a format problem when the real one was access (실측
   // 08-26: Drive on iPhone). Same materializer as the .anicel open;
   // the staged copy is read-and-discard here.
-  final (:source, :parsed) = await _readTvppStructure(
+  final read = await FolderPicker.readOpenedFileInto(
     tvppPath,
+    then: _structureOf,
     onWaiting: onWaiting,
     isCancelled: isCancelled,
-    onRead: onRead,
+    onRead: (fraction) => onRead?.call(runShare(fraction, from: 0, to: 0.5)),
+    onMade: (fraction) => onRead?.call(runShare(fraction, from: 0.5, to: 1)),
   );
-  if (parsed == null) {
+  final source = (path: read.path, staged: read.staged);
+  final structure = read.made;
+  if (structure == null) {
+    unawaited(FolderPicker.letGoOfStagedCopy(source));
     return null;
   }
-  final warnings = [...parsed.warnings];
-  if (source.staged) {
-    // The last resort fired. Said out loud on purpose (유저 2026-08-27:
-    // 「최후 수단이 발동됐다는 걸 표시해줬으면」): the wait is supposed to
-    // make this road unreachable, so a build that still takes it should
-    // be visible rather than quietly slower — and if it never appears
-    // in the field, the road comes out.
-    warnings.add(
-      const ImportWarning(
-        'stagedCopy',
-        'Opened through a temporary copy because the file could not be '
-        'read in place — please report seeing this.',
-      ),
-    );
-  }
-  final plans = _planTvppClips(parsed, warnings: warnings);
+  final parsed = structure.parsed;
+  final warnings = _readWarnings(parsed, staged: source.staged);
+  final plans = _planTvppClips(structure.clips, warnings: warnings);
   // ⛔EQUIVALENT to the parser's own refusal today: a structure with no
   // clip header does not parse at all, so `plans` is empty only when
   // `parsed.clips` is — and mutating this away leaves the suite green
@@ -657,6 +659,26 @@ Future<TvppProjectRead?> readTvppProject({
     },
   );
 }
+
+/// What the read of [parsed] has to say: the parser's warnings, and — when
+/// the file was read out of a [staged] copy — that it was.
+List<ImportWarning> _readWarnings(
+  TvppParseResult parsed, {
+  required bool staged,
+}) => [
+  ...parsed.warnings,
+  // The last resort fired. Said out loud on purpose (유저 2026-08-27:
+  // 「최후 수단이 발동됐다는 걸 표시해줬으면」): the wait is supposed to
+  // make this road unreachable, so a build that still takes it should
+  // be visible rather than quietly slower — and if it never appears
+  // in the field, the road comes out.
+  if (staged)
+    const ImportWarning(
+      'stagedCopy',
+      'Opened through a temporary copy because the file could not be '
+      'read in place — please report seeing this.',
+    ),
+];
 
 /// The project the .tvpp at [tvppPath] becomes — every clip of [parsed] a
 /// cut, as [plans] made them, under the file's own name.
@@ -706,59 +728,59 @@ Project _projectOf(
   );
 }
 
-/// The structure of the .tvpp at [tvppPath] — null when it is not one — and
-/// where its bytes stand for the bake.
-///
-/// The bytes come in under the wait for the file
-/// ([FolderPicker.readOpenedFile]): a file still in the cloud comes down
-/// INSIDE this read, so this read is what the wait's line has to watch
-/// (F-608 ①).
-///
-/// ⛔SCOPED, so the whole-file bytes are collectable the moment the
-/// structure is out of them. Everything after this reads the file by
-/// OFFSET — a slot knows where its record is, so the long half of an
-/// import (decoding every cel) never needs the file resident. Before
-/// this the bytes stayed reachable for the entire import, which on a
-/// 200MB project is 200MB held for minutes next to everything the
-/// decode is building.
-Future<({({String path, bool staged}) source, TvppParseResult? parsed})>
-_readTvppStructure(
-  String tvppPath, {
-  WaitReport? onWaiting,
-  bool Function()? isCancelled,
-  void Function(double fraction)? onRead,
-}) async {
-  final read = await FolderPicker.readOpenedFile(
-    tvppPath,
-    onWaiting: onWaiting,
-    onRead: onRead,
-    isCancelled: isCancelled,
-  );
-  final source = (path: read.path, staged: read.staged);
+/// What the worker that read a .tvpp makes of its bytes ([_structureOf]).
+typedef _TvppStructure = ({
+  TvppParseResult parsed,
+  List<(TvppClipConversion, CutCamera)> clips,
+});
+
+/// The structure of a .tvpp's [bytes] — null when they are not one — with
+/// each clip converted and its camera fitted: everything of an open that
+/// names no drawing. Runs on the worker that read them
+/// ([FolderPicker.readOpenedFileInto]); the plans, which name drawings
+/// from the run's one count, are made back on the run's isolate
+/// ([planTvpImport]'s camera).
+_TvppStructure? _structureOf(Uint8List bytes, MadeReport report) {
+  final TvppParseResult parsed;
   try {
-    return (source: source, parsed: parseTvppStructure(read.bytes));
+    parsed = parseTvppStructure(bytes);
   } on TvppParseException {
-    if (source.staged) {
-      unawaited(
-        File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-      );
-    }
-    return (source: source, parsed: null);
+    return null;
   }
+  final clips = <(TvppClipConversion, CutCamera)>[];
+  for (var c = 0; c < parsed.clips.length; c++) {
+    clips.add(_convertedWithItsCamera(parsed.clips[c], c));
+    report(c + 1, parsed.clips.length);
+  }
+  return (parsed: parsed, clips: clips);
+}
+
+(TvppClipConversion, CutCamera) _convertedWithItsCamera(
+  TvppClip clip,
+  int clipIndex,
+) {
+  final conversion = convertTvppClip(clip, clipIndex: clipIndex);
+  return (
+    conversion,
+    planTvpCamera(
+      camera: conversion.result.camera,
+      frameCount: conversion.result.frameCount,
+    ),
+  );
 }
 
 /// One import plan per clip, with the slots its bakes will read from.
 /// Every plan's warnings join [warnings] as they are made.
 List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
-  TvppParseResult parsed, {
+  List<(TvppClipConversion, CutCamera)> clips, {
   required List<ImportWarning> warnings,
 }) {
   final mint = ImportIdMint.forANewProject();
   final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
-  for (var c = 0; c < parsed.clips.length; c++) {
-    final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
+  for (final (conversion, camera) in clips) {
     final plan = planTvpImport(
       parsed: conversion.result,
+      camera: camera,
       // Block files are synthetic slot keys, resolved against
       // [conversion.slotsByFile] at bake time — not paths.
       resolveFile: (key) => key,

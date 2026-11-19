@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
@@ -19,6 +20,12 @@ import '../../models/import/tvpp_test_builder.dart';
 /// folder rows with members linked, and image marks land as the blocks'
 /// inbetween dots.
 void main() {
+  /// The clip's camera fitted as the door fits it, on the worker.
+  CutCamera cameraOf(TvpImportClip parsed) => planTvpCamera(
+        camera: parsed.camera,
+        frameCount: parsed.frameCount,
+      );
+
   ImportIdMint mint() {
     var layers = 0;
     var frames = 0;
@@ -130,6 +137,7 @@ void main() {
     final conversion = convertTvppClip(clip, clipIndex: 0);
     final plan = planTvpImport(
       parsed: conversion.result,
+      camera: cameraOf(conversion.result),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -161,6 +169,7 @@ void main() {
     for (final pick in InbetweenMark.values) {
       final picked = planTvpImport(
         parsed: conversion.result,
+        camera: cameraOf(conversion.result),
         resolveFile: (key) => key,
         mint: mint(),
         unnamedMark: pick,
@@ -213,6 +222,7 @@ void main() {
     );
     final plan = planTvpImport(
       parsed: parsed,
+      camera: cameraOf(parsed),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -275,8 +285,10 @@ void main() {
         ),
       ],
     );
+    final converted = convertTvppClip(clip, clipIndex: 0).result;
     final plan = planTvpImport(
-      parsed: convertTvppClip(clip, clipIndex: 0).result,
+      parsed: converted,
+      camera: cameraOf(converted),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,

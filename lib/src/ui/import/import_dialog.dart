@@ -1489,9 +1489,7 @@ class _ImportDialogState extends State<ImportDialog> {
         isCancelled: _wait.isCancelled,
       );
       if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
+        unawaited(FolderPicker.letGoOfStagedCopy(source));
         return null;
       }
       return source.path;

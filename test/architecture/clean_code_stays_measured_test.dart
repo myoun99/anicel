@@ -1145,7 +1145,19 @@ void main() {
   /// names that one added and nothing gone. ⛔Not bundled to fit: the
   /// sizes are how large a surface writes the marks, and a cross it does
   /// not write is not a size — an arm of none would answer two questions.
-  const wideSignatures = 455;
+  ///
+  /// ⚠️455 → 456 on 2026-11-19, one named as the rule above asks (card
+  /// F-621 ⑤ — 유저 「50%되고나면 앱이 멈추고 5초쯤지나면 다시진행되」):
+  /// `FolderPicker.readOpenedFileInto` (six) reads an opened file in on a
+  /// worker and makes what its door needs of the bytes there — the path,
+  /// what is made of them, the wait's two ends every opened file's read
+  /// takes (`readOpenedFile`'s), and the two stretches of the window's bar
+  /// it tells: the bytes in, and the making. 🔬`clean_code_diff` against
+  /// master (`3b7c14714`) names that one added and nothing gone. ⛔Not
+  /// bundled to fit: the bar's two stretches are the door's to place (the
+  /// .tvpp door gives each half), and one callback told which stretch it
+  /// is in would be one name answering two questions.
+  const wideSignatures = 456;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1573,7 +1585,13 @@ void main() {
   /// ceiling) named that one added and nothing gone. ⛔Not split to fit: it
   /// is one table — of a tool's fields, each clamped where it is taken, as
   /// `BrushToolState.clamped` is (416 → 417 above).
-  const longBodies = 394;
+  ///
+  /// ⚠️394 → 393 on 2026-11-19, one gone and nothing added (card F-621
+  /// ⑤): `TvppImportDoor.bakeEveryCel` went under when the six doors that
+  /// each deleted a staged copy by hand took the one
+  /// `FolderPicker.letGoOfStagedCopy`. 🔬`clean_code_diff` against master
+  /// (`3b7c14714`) names it gone.
+  const longBodies = 393;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

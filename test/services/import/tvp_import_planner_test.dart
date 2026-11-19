@@ -99,6 +99,10 @@ void main() {
 
   TvpImportPlan plan(TvpImportClip parsed) => planTvpImport(
         parsed: parsed,
+        camera: planTvpCamera(
+          camera: parsed.camera,
+          frameCount: parsed.frameCount,
+        ),
         resolveFile: (relative) => relative,
         mint: mint(),
         unnamedMark: defaultUnnamedDrawingMark,
@@ -299,8 +303,8 @@ void main() {
         sizeX: sizeX,
         sizeY: sizeY,
       );
-      return planTvpImport(
-        parsed: clip(
+      return plan(
+        clip(
           width: 2339,
           height: 1653,
           frameCount: 2,
@@ -311,9 +315,6 @@ void main() {
             positions: [pose],
           ),
         ),
-        resolveFile: (relative) => relative,
-        mint: mint(),
-        unnamedMark: defaultUnnamedDrawingMark,
       ).cut.camera;
     }
 

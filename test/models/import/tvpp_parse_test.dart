@@ -436,5 +436,57 @@ mpoints-1-bezieraftery=0.000000
         expect(result.warnings.single.values['n'], '1');
       });
     });
+
+    // ⚡Card F-621 ⑤: a clip's head is looked for from where the clip
+    // before it ended — its chunks walked, not its bytes searched.
+    test('🎯bytes that read as a clip head INSIDE a chunk are no clip — a '
+        'head lies only between the chains', () {
+      final b = TvppBuilder();
+      b.clipProperties('only');
+      b.clipHeader(width: 32, height: 18);
+      b.layerHead('A', end: 1, count: 2);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      // A DLOC as pixels can spell one: 8 bytes, a size, a zero.
+      b.chunk('ZZZZ', [
+        ...'DLOC'.codeUnits,
+        ...[0, 0, 0, 8, 0, 16, 0, 8, 0, 0, 0, 0],
+      ]);
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      b.clipConfig();
+
+      final result = parseTvppStructure(b.bytes);
+      expect(result.clips.single.layers.single.slots, hasLength(2));
+    });
+
+    test('🎯a chain that runs straight into the next clip\'s DLOC ends there '
+        '— and the next clip is its own', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 32, height: 18);
+      b.layerHead('A', end: 0, count: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      b.clipConfig(timestamp: false);
+      b.clipHeader(width: 16, height: 8);
+      b.layerHead('B', end: 0, count: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(16 * 8, 0), 16, 8));
+      b.clipConfig();
+
+      final result = parseTvppStructure(b.bytes);
+      expect(
+        [
+          for (final clip in result.clips)
+            (
+              clip.width,
+              clip.height,
+              [for (final l in clip.layers) l.name].join(','),
+            ),
+        ],
+        [(32, 18, 'A'), (16, 8, 'B')],
+      );
+      expect(result.warnings, isEmpty);
+    });
   });
 }

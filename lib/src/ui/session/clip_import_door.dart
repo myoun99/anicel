@@ -116,11 +116,7 @@ Future<ClipProjectRead?> readClipProject({
     ..createSync(recursive: true);
   final document = await _readStructure(source.path, scratch.path, onRead);
   if (document == null) {
-    if (source.staged) {
-      unawaited(
-        File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-      );
-    }
+    unawaited(FolderPicker.letGoOfStagedCopy(source));
     return null;
   }
   final name = ProviderDocuments.nameOf(
@@ -449,11 +445,7 @@ final class ClipImportDoor {
       MaterializeCancelled.throwIf(isCancelled);
     } finally {
       await reader.close();
-      if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
-      }
+      unawaited(FolderPicker.letGoOfStagedCopy(source));
     }
   }
 

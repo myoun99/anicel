@@ -453,32 +453,26 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
   // DLOC..TLNT runs straight into the first LNAM — byte-identical layout
   // across every measured version). Everything between the previous clip's end and DLOC
   // is project/preview data plus the clip's UTF-16 property block.
-  final clipStarts = <int>[];
-  var scan = 0;
+  //
+  // ⚡A clip's head is looked for from where the clip before it ENDED — its
+  // chunks walked, not its bytes searched (card F-621 ⑤). ↩️Every DLOC was
+  // searched for byte by byte across the whole file first, and each clip's
+  // name again across the whole clip before it: a 1.5 GB project's pixels
+  // read twice, 4.2 s of the 5.7 s the open stood still at 50% (서피스
+  // 11-19) — for heads that lie only in the gaps between the chains.
+  final clips = <TvppClip>[];
+  var from = 0;
   while (true) {
-    final at = indexOfBytes(bytes, 'DLOC'.codeUnits, scan);
-    if (at < 0) {
+    final start = _nextClipHead(bytes, from);
+    if (start < 0) {
       break;
     }
-    // A real DLOC is 8 bytes: u16 W, u16 H, u32 0 — cheap validation that
-    // also skips the string appearing inside pixel data.
-    if (_u32(bytes, at + 4) == 8 && _u32(bytes, at + 12) == 0) {
-      clipStarts.add(at);
-      scan = at + 8;
-    } else {
-      scan = at + 4;
-    }
+    final (clip, end) = _parseClip(bytes, start, from, clips.length, warnings);
+    clips.add(clip);
+    from = end;
   }
-  if (clipStarts.isEmpty) {
+  if (clips.isEmpty) {
     throw const TvppParseException('DLOC 청크가 없다 — TVPaint 프로젝트가 아니다.');
-  }
-
-  final clips = <TvppClip>[];
-  for (var c = 0; c < clipStarts.length; c++) {
-    final start = clipStarts[c];
-    final end = c + 1 < clipStarts.length ? clipStarts[c + 1] : bytes.length;
-    final nameFrom = c == 0 ? 0 : clipStarts[c - 1];
-    clips.add(_parseClip(bytes, start, end, nameFrom, c, warnings));
   }
   return TvppParseResult(
     clips: clips,
@@ -486,6 +480,20 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
     projectCameraWidth: _projectProperty(bytes, 'Camera.Width'),
     projectCameraHeight: _projectProperty(bytes, 'Camera.Height'),
   );
+}
+
+/// Where the next clip's DLOC chunk is, at or after [from] — -1 when none.
+/// A real DLOC is 8 bytes: u16 W, u16 H, u32 0 — cheap validation that
+/// also skips the string appearing inside other data.
+int _nextClipHead(Uint8List bytes, int from) {
+  var scan = from;
+  while (true) {
+    final at = indexOfBytes(bytes, 'DLOC'.codeUnits, scan);
+    if (at < 0 || (_u32(bytes, at + 4) == 8 && _u32(bytes, at + 12) == 0)) {
+      return at;
+    }
+    scan = at + 4;
+  }
 }
 
 /// Reads an integer project property from the file-head UTF-16BE block:
@@ -552,14 +560,17 @@ String _clipName(Uint8List bytes, int from, int until, int clipIndex) {
 /// rather than documented (`tvpp-format-notes.md`). Cutting it into
 /// "phases" would hide the order the bytes actually arrive in, which is
 /// the one thing a reader of this function needs.
-TvppClip _parseClip(
+///
+/// Answers where the walk stopped as well — where the next clip's head is
+/// looked for from, and the start of the gap its name is read out of.
+(TvppClip, int) _parseClip(
   Uint8List bytes,
   int start,
-  int end,
   int nameFrom,
   int clipIndex,
   List<ImportWarning> warnings,
 ) {
+  final end = bytes.length;
   var width = 0;
   var height = 0;
   var frameRate = 24.0;
@@ -659,7 +670,9 @@ TvppClip _parseClip(
     final chunk = String.fromCharCodes(bytes, p, p + 4);
     final length = _u32(bytes, p + 4);
     final payload = p + 8;
-    if (payload + length > end) {
+    // A DLOC past the clip's own is the next clip's head: its chain ran
+    // straight into the next, and what follows is that clip's.
+    if (payload + length > end || (chunk == 'DLOC' && p != start)) {
       break;
     }
 
@@ -791,7 +804,7 @@ TvppClip _parseClip(
   }
   flushLayer();
 
-  return TvppClip(
+  final clip = TvppClip(
     name: _clipName(bytes, nameFrom, start, clipIndex),
     width: width,
     height: height,
@@ -803,6 +816,7 @@ TvppClip _parseClip(
     cameraDataText: cameraDataText,
     audioTracks: audioTracks,
   );
+  return (clip, p);
 }
 
 /// `[audio+N]` sections of the clip config: one per sound track.

@@ -65,8 +65,15 @@ class TvpImportPlan {
 /// 🪦A `fit` (default 1:1) rode on every planned bake here, and the door
 /// never read it: a clip's cels are decoded tile for tile at the clip's
 /// own size (`bakeCelTiles`), on a cut made at that size.
+///
+/// [camera] is [parsed]'s camera as [planTvpCamera] fits it, fitted by the
+/// caller: ⚡the fit is nearly all of a plan's time (1.0 s of ER's 1.1 s,
+/// 서피스 11-19), and it is pure, so the door fits it on the worker that
+/// read the file (card F-621 ⑤) — while this plan, which names drawings
+/// from the run's one count (`mintFrameId`), stays on the run's isolate.
 TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
+  required CutCamera camera,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
   required InbetweenMark unnamedMark,
@@ -245,11 +252,6 @@ TvpImportPlan planTvpImport({
       ),
     );
   }
-
-  final camera = planTvpCamera(
-    camera: parsed.camera,
-    frameCount: duration,
-  );
 
   final defaultCut = createDefaultCut(
     cutId: cutId,
