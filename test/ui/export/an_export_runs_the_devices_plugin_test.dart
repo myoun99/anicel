@@ -22,6 +22,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
+import 'package:anicel/src/services/media/still_file_writing.dart'
+    show StillPixels;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -138,13 +140,15 @@ void main() {
 
   /// Each road out, drawing the session's cut.
   final roads =
-      <String, Future<ui.Image> Function(EditorSessionManager s, Cut cut)>{
-        'a frame of the film': (s, cut) => pictureOfFilmFrame(
-          _rendererOf(s)
-              .videoRun([
-                ExportFrameTask(cut: cut, frameIndex: 0),
-              ], ExportSizeMode.canvas)
-              .frame(0),
+      <String, Future<StillPixels> Function(EditorSessionManager s, Cut cut)>{
+        'a frame of the film': (s, cut) async => _pixelsOf(
+          await pictureOfFilmFrame(
+            _rendererOf(s)
+                .videoRun([
+                  ExportFrameTask(cut: cut, frameIndex: 0),
+                ], ExportSizeMode.canvas)
+                .frame(0),
+          ),
         ),
         'its rows kept apart': (s, cut) => _rendererOf(s, apart: true)
             .frameRows(
@@ -154,11 +158,13 @@ void main() {
             .whereType<ExportLayerRow>()
             .singleWhere((row) => row.name == 'cel')
             .draw(),
-        'a cel': (s, cut) async => (await _rendererOf(s).renderCelGroup(
-          celOf(cut),
-          ExportSizeMode.canvas,
-          guideColor: noGuidesLaid,
-        ))!,
+        'a cel': (s, cut) async => _pixelsOf(
+          (await _rendererOf(s).renderCelGroup(
+            celOf(cut),
+            ExportSizeMode.canvas,
+            guideColor: noGuidesLaid,
+          ))!,
+        ),
         'its row of the cel\'s file': (s, cut) => _rendererOf(s)
             .celGroupRows(
               celOf(cut),
@@ -172,7 +178,7 @@ void main() {
   /// Where the red is, by column, on its row in what [draw] makes of the
   /// cut ([sessionOn]).
   Future<List<int>> redIn(
-    Future<ui.Image> Function(EditorSessionManager s, Cut cut) draw,
+    Future<StillPixels> Function(EditorSessionManager s, Cut cut) draw,
     InstalledFxPlugins plugins, {
     required List<LayerEffect> effects,
     List<LayerEffect>? folder,
@@ -308,12 +314,12 @@ void main() {
           ExportFrameTask(cut: cut, frameIndex: 1),
         ]);
         expect(
-          await redOf(await pictureOfFilmFrame(run.frame(0))),
+          redOf(await _pixelsOf(await pictureOfFilmFrame(run.frame(0)))),
           [11],
           reason: 'frame 0: its plugin moved the red one to the right',
         );
         expect(
-          await redOf(await pictureOfFilmFrame(run.frame(1))),
+          redOf(await _pixelsOf(await pictureOfFilmFrame(run.frame(1)))),
           [12],
           reason: 'frame 1: two — its own result, the same cel under it',
         );
@@ -364,13 +370,26 @@ void main() {
   });
 }
 
-/// Where the red is, by column, on the red pixel's row (5) of [image] —
-/// let go of here.
-Future<List<int>> redOf(ui.Image image) async {
-  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-  final columns = image.width;
+/// [image]'s pixels, straight, as a layered file's row hands its own over
+/// ([ExportLayerRow]) — [image] let go of here.
+Future<StillPixels> _pixelsOf(ui.Image image) async {
+  final data = await image.toByteData(
+    format: ui.ImageByteFormat.rawStraightRgba,
+  );
+  final (width, height) = (image.width, image.height);
   image.dispose();
-  final bytes = data!.buffer.asUint8List();
+  return (
+    pixels: data!.buffer.asUint8List(),
+    width: width,
+    height: height,
+    channels: 4,
+  );
+}
+
+/// Where the red is, by column, on the red pixel's row (5) of [picture].
+List<int> redOf(StillPixels picture) {
+  final columns = picture.width;
+  final bytes = picture.pixels;
   bool isRed(int x) {
     final at = (5 * columns + x) * 4;
     return bytes[at] == 255 && bytes[at + 1] == 0 && bytes[at + 3] == 255;

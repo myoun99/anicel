@@ -2987,9 +2987,7 @@ class ExportDialogState extends State<ExportDialog> {
           (layers) => render(index, layers),
         ),
       );
-      if (!await document.add([folder])) {
-        return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
-      }
+      await document.add([folder]);
       if (_cancelRequested) {
         return AppText.strings.exCancelled;
       }

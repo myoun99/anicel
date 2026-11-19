@@ -2,7 +2,6 @@
 library;
 
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -177,10 +176,7 @@ void main() {
         )
         .whereType<ExportLayerRow>()
         .singleWhere((row) => row.name == 'checker');
-    final image = await layered.draw();
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    return data!.buffer.asUint8List();
+    return (await layered.draw()).pixels;
   }
 
   for (final inAFolder in [false, true]) {

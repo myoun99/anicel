@@ -238,13 +238,8 @@ void main() {
         (1.0, LayerBlendMode.normal),
         reason: 'as the cel\'s picture lays it over its artwork',
       );
-      final image = await rows.last.draw();
-      final marks = (await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      ))!;
-      final width = image.width;
-      image.dispose();
-      int alphaAt(int x, int y) => marks.getUint8((y * width + x) * 4 + 3);
+      final marks = await rows.last.draw();
+      int alphaAt(int x, int y) => marks.pixels[(y * marks.width + x) * 4 + 3];
       expect(alphaAt(203, 200), greaterThan(0), reason: 'the first cross');
       expect(alphaAt(0, 0), 0, reason: 'not the artwork, nor the ground');
     });

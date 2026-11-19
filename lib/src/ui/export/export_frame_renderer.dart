@@ -34,6 +34,7 @@ import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/media/still_file_writing.dart' show StillPixels;
 import '../../services/playback/playback_frame_mapping.dart'
     show
         TrackStackContribution,
@@ -80,6 +81,7 @@ import 'export_cel_group_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
 import 'held_pictures.dart';
+import 'still_frame_bytes.dart' show straightOf;
 import 'still_image_encoders.dart'
     show ExportLayerFolder, ExportLayerNode, ExportLayerRow;
 import '../text/app_strings.dart';
@@ -828,7 +830,7 @@ class ExportFrameRenderer {
       name: AppText.notation.exOnScreen,
       draw: () async {
         await _hydrate(cut, task.frameIndex);
-        return pictureOfShot(_shot(
+        return _pixelsOfShot(_shot(
           cut,
           task.frameIndex,
           [...names, ..._ghostsAlone(task)],
@@ -864,13 +866,13 @@ class ExportFrameRenderer {
     // A picture of the file: what [laid] hands over, by itself on [ground],
     // through the view and cut at the canvas's edge as the frame is
     // ([_shot]).
-    Future<ui.Image> drawn(
+    Future<StillPixels> drawn(
       ui.Color ground, {
       List<CompositeNode<CanvasStackRow>> Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      return pictureOfShot(_shot(
+      return _pixelsOfShot(_shot(
         task.cut,
         frameIndex,
         laid?.call() ?? const [],
@@ -1952,11 +1954,11 @@ class ExportFrameRenderer {
       return const [];
     }
     final frameIndex = celGroupFirstExposure(task);
-    Future<ui.Image> drawn(
+    Future<StillPixels> drawn(
       ui.Color ground, {
       List<CompositeNode<CanvasStackRow>> nodes = const [],
       CameraOverlayPass? over,
-    }) => pictureOfShot(_shot(
+    }) => _pixelsOfShot(_shot(
       task.cut,
       frameIndex,
       nodes,
@@ -2534,3 +2536,20 @@ Future<void> _layCutInFrame(
         export.lay(into, veils);
       }
     });
+
+/// The frame [shot] makes on the engine read off it straight, as every
+/// still is ([straightOf]) — a row of a layered file ([ExportLayerRow]) —
+/// and the frame let go.
+Future<StillPixels> _pixelsOfShot(Future<GpuShown> shot) async {
+  final laid = await shot;
+  try {
+    return (
+      pixels: straightOf(laid),
+      width: laid.width,
+      height: laid.height,
+      channels: 4,
+    );
+  } finally {
+    laid.free();
+  }
+}

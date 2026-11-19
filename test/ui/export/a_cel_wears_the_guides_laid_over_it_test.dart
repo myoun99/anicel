@@ -257,12 +257,8 @@ void main() {
         (1.0, LayerBlendMode.normal),
         reason: 'as the cel\'s picture lays them over its artwork',
       );
-      final image = await rows.last.draw();
-      final guides = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      image.dispose();
-      expect(guides!.buffer.asUint8List(), baked!.image.rgba);
+      final guides = await rows.last.draw();
+      expect(guides.pixels, baked!.image.rgba);
     });
     await tester.pumpAndSettle();
   });

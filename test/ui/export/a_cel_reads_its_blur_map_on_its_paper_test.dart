@@ -156,21 +156,20 @@ void main() {
       celName: '1',
       fileName: 'checker1.png',
     );
-    final image = apart
-        ? await renderer
-              .celGroupRows(
-                task,
-                ExportSizeMode.canvas,
-                guideColor: noGuidesLaid,
-              )
-              .single
-              .draw()
-        : await renderer.renderCelGroup(
-            task,
-            ExportSizeMode.canvas,
-            guideColor: noGuidesLaid,
-          );
-    final data = await image!.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (apart) {
+      final row = renderer
+          .celGroupRows(task, ExportSizeMode.canvas, guideColor: noGuidesLaid)
+          .single;
+      return (await row.draw()).pixels;
+    }
+    final image = await renderer.renderCelGroup(
+      task,
+      ExportSizeMode.canvas,
+      guideColor: noGuidesLaid,
+    );
+    final data = await image!.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
     image.dispose();
     return data!.buffer.asUint8List();
   }
