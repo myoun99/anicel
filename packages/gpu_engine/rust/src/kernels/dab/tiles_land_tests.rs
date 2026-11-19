@@ -165,7 +165,7 @@ fn a_picture_and_the_tile_under_it_that_lie_folded_land_as_they_did() {
     let as_stored = read(&pool, before[0].1.unwrap());
     assert!(as_stored != read(&pool, places[0]) && as_stored != read(&pool, places[1]));
     assert_eq!(settled(&mut pool, &places), 2);
-    scrubbed(&pool, &places);
+    scrubbed(rig().engine, &pool, &places);
     let after = landed_over(&mut pool, picture, &[(0, 0)], &under, HALF, std::ptr::null());
     assert_eq!(after[0].0, 1);
     assert!(read(&pool, after[0].1.unwrap()) == as_stored);

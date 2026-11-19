@@ -1160,7 +1160,7 @@ fn a_plan_is_laid_on_where_each_of_its_tiles_lies() {
     let as_stored = ran(&pool, plan, extent).expect("run");
     // The third, a pixel a colour, folds to more than a folded tile takes.
     assert_eq!(settled(&mut pool, &at), 2);
-    scrubbed(&pool, &at[..2]);
+    scrubbed(rig().engine, &pool, &at[..2]);
     assert!(ran(&pool, plan, extent).as_ref() == Some(&as_stored), "run over the C ABI");
     // Laid once for the books as they stand: a frame lays its plan at each
     // run, show and compose.

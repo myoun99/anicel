@@ -139,6 +139,17 @@ void main() {
     expect(await pollUntil(() => other.pool.bytes > before), isTrue);
   });
 
+  test('a rest folds batch behind batch, till one finds none left', () async {
+    final counting = _Counting(engine, foldKernels: () => kernels);
+    EngineTileLedger.foldsAtRest = true;
+    // A batch and one tile more: a batch of them, one of the last, and
+    // the one that finds none.
+    landedOn(counting, [
+      for (var more = 0; more <= EngineTileLedger.foldBatch; more++) null,
+    ], 9);
+    expect(await pollUntil(() => counting.batches == 3), isTrue);
+  });
+
   test('where no launch said so, a rest folds nothing', () async {
     landed([null], 8);
     final bytes = ledger.pool.bytes;
@@ -146,4 +157,17 @@ void main() {
     await engine.done();
     expect(ledger.pool.bytes, bytes);
   });
+}
+
+/// A ledger that counts the batches its rests ask for.
+class _Counting extends EngineTileLedger {
+  _Counting(super.engine, {super.foldKernels});
+
+  int batches = 0;
+
+  @override
+  Future<bool> foldABatch() {
+    batches++;
+    return super.foldABatch();
+  }
 }

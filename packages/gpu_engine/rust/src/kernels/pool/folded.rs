@@ -463,10 +463,7 @@ impl Pool {
             let handed = Sent((engine.clone(), self.buffers.clone(), folded, writes));
             engine.posted(move || {
                 let (engine, pages, folded, writes) = handed.taken();
-                match writes.is_empty() {
-                    true => Some(()),
-                    false => folded.put(&engine, &pages, &writes),
-                }
+                folded.put(&engine, &pages, &writes)
             });
         }
         self.left_for_room = left.then_some(self.folded_let_gos);

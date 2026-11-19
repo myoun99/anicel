@@ -687,3 +687,62 @@ fn a_mixing_step_told_nothing_of_its_ground_is_refused() {
         close(own);
     }
 }
+
+// The cel's tile a mixing step or a rub is told of is read where it lies
+// (`told_of`): folded since it was stored, its slot scrubbed — nobody's
+// to read —, each reads what it read of the tile as it was.
+// 🗣️관제 2026-11-19 (F-610), of these two doors, which a scan of the source
+// alone pinned till here: 「D4 실기에서 그 둘의 동작 핀을 꼭 더할 것」.
+#[test]
+fn a_mixing_step_and_a_rub_read_a_tile_that_lies_folded_as_it_was() {
+    use crate::kernels::composite::TileAt;
+    use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
+    use crate::kernels::pool::folded_tests::{numbered, scrubbed, told as fold_told, told_within};
+    use crate::kernels::pool::{gpu_engine_pool_fold, gpu_engine_pool_settle};
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    let step = [loaded([64.0, 64.0], 10.0, BLUE)];
+    // SAFETY: the engine is this test's own, live till its close; the
+    // blurs and the fold's kernels are let go of before it.
+    unsafe {
+        let own = open();
+        let blurs = blurs(&own);
+        let (under, ink) = (stored(&own, UNDER), stored(&own, INK));
+        // What two mixing steps lift of the cel under them, and what a rub
+        // blurs in of the tile beside its own.
+        let lifted = |own: &Own| {
+            gpu_engine_stroke_clear(own.stroke, own.engine);
+            pile_steps(own, &step, 0, under, true);
+            pile_steps(own, &step, 1, under, true);
+            mixed(own, 2).unwrap_or_else(|| panic!("{}", last_error()))
+        };
+        let rubbed = |own: &Own| {
+            gpu_engine_stroke_clear(own.stroke, own.engine);
+            rub(own, blurs, [124, 10, 128, 20], ink, true);
+            let (landed, at) = land_blur(own, blurs, None);
+            assert_eq!(landed, 1, "{}", last_error());
+            read(own, at)
+        };
+        let as_they_were = (lifted(&own), rubbed(&own));
+        let green = |argb: u32| argb.to_be_bytes()[2];
+        assert!(green(as_they_were.0[1]) > 0, "LIVENESS: a step lifts the cel's green");
+        assert_ne!(pixel(&as_they_were.1, 127, 15)[3], 0, "LIVENESS: the ink blurs in");
+
+        let fold = gpu_engine_fold_new(own.engine);
+        assert!(!fold.is_null(), "{}", last_error());
+        let number = numbered();
+        let handed = gpu_engine_pool_fold(own.pool, own.engine, fold, usize::MAX, fold_told, number);
+        assert!(handed >= 2, "the two stored, and what the rub landed");
+        assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
+        gpu_engine_pool_settle(own.pool, own.engine);
+        let names = [under, ink].map(|word| TileAt::of_word(word).expect("a tile's name"));
+        assert!(names.iter().all(|&at| (*own.pool).lies(at).folded().is_some()), "⛔premise: both lie folded");
+        scrubbed(&*own.engine, &*own.pool, &names);
+
+        let folded = (lifted(&own), rubbed(&own));
+        assert!(folded.0 == as_they_were.0, "a mixing step read its tile's name, not where it lies");
+        assert!(folded.1 == as_they_were.1, "a rub read its tile's name, not where it lies");
+        gpu_engine_fold_free(fold);
+        gpu_engine_blurs_free(blurs);
+        close(own);
+    }
+}

@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use super::folded::Arena;
 use super::{MOST_NAMED, Pool};
 use crate::kernels::composite::tests::{Rig, rig};
+use crate::device::Engine;
 use crate::kernels::fold::Fold;
 use crate::kernels::composite::{FOLDED, GRANULE_BYTES, NO_TILE, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::testing::read_buffer;
@@ -157,10 +158,10 @@ fn laid(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
     read_buffer(engine, &copied.out)
 }
 
-/// Writes over the slots of the tiles named at `places`: what a slot holds
-/// once its tile lies folded is nobody's to read.
-pub(crate) fn scrubbed(pool: &Pool, places: &[TileAt]) {
-    let engine = rig().engine;
+/// Writes over the slots of the tiles named at `places`, on `engine` —
+/// the pool's —: what a slot holds once its tile lies folded is nobody's
+/// to read.
+pub(crate) fn scrubbed(engine: &Engine, pool: &Pool, places: &[TileAt]) {
     let scrub = vec![0xa5; TILE_BYTES as usize];
     let written = engine.on_thread(|| {
         for at in places {
@@ -267,7 +268,7 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     // Whatever names a folded tile reads it where it lies: its slot's
     // bytes written over — the lane to come gives them back —, a read by
     // its name hands the tile still.
-    scrubbed(&pool, &places[..3]);
+    scrubbed(rig().engine, &pool, &places[..3]);
     assert!(read(&pool, &places) == Some(tiles.concat()));
 }
 
@@ -632,6 +633,64 @@ fn a_page_of_folded_tiles_made_within_other_bounds_goes() {
     assert_eq!(pool.to_fold(usize::MAX), places);
     assert_eq!(settled(&mut pool, &places), 1);
     assert_eq!((pool.bytes(), pool.ahead_bytes()), (8 * TILE_BYTES, ahead));
+    assert_eq!(pool.lies(places[0]), folded_at(1, 0));
+    assert!(read(&pool, &places) == Some(a));
+}
+
+// The page a fold's tiles need is asked for unless every tile of it finds
+// a run of its own on the pages made: one that holds the run left is no
+// word on another, and a run holds no two tiles for being wide enough
+// for each.
+#[test]
+fn a_fold_asks_for_a_page_unless_every_tile_of_it_finds_a_run_of_its_own() {
+    // A page of 64 granules, two tiles of sixteen colours on it: a run of
+    // 14 is left. Pages 0 and 1 hold the tiles, page 2 their folds.
+    let begun = || {
+        let mut pool = Pool::sized(1, MOST_NAMED, u64::MAX).expect("pool");
+        let two = [tile(1, 16), tile(2, 16)];
+        let places = stored(&mut pool, &two.iter().collect::<Vec<_>>());
+        assert_eq!(settled(&mut pool, &places), 2);
+        pool
+    };
+    let lies = |pool: &Pool, places: &[TileAt]| places.iter().map(|&at| pool.lies(at)).collect::<Vec<_>>();
+    // One of a single colour holds the run left, one of sixteen none.
+    let mut pool = begun();
+    let tiles = [tile(3, 1), tile(4, 16)];
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    assert_eq!(settled(&mut pool, &places), 2);
+    assert_eq!(lies(&pool, &places), [folded_at(2, 2 * SIXTEEN), folded_at(5, 0)]);
+    // Three of two colours, 5 granules each: the run holds two of them.
+    let mut pool = begun();
+    let tiles = [tile(3, 2), tile(4, 2), tile(5, 2)];
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    assert_eq!(settled(&mut pool, &places), 3);
+    let run = 2 * SIXTEEN;
+    assert_eq!(lies(&pool, &places), [folded_at(2, run), folded_at(2, run + TWO), folded_at(6, 0)]);
+    assert!(read(&pool, &places) == Some(tiles.concat()));
+}
+
+// A page of folded tiles made ahead is not taken past the pool's own
+// bytes, where those were cut since its fold was handed over: it goes,
+// its tile stays as it is, and the pool hands a fold nothing till it may
+// make a page again.
+#[test]
+fn a_page_of_folded_tiles_made_ahead_is_not_taken_past_the_pool_s_bytes() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(4, MOST_NAMED, u64::MAX).expect("pool");
+    let a = tile(1, 2);
+    let places = stored(&mut pool, &[&a]);
+    engine.on_pages_thread(|| ());
+    let ahead = pool.ahead_bytes();
+    assert_eq!(fold(&mut pool, &places), (1, Some(true)));
+    assert_eq!(pool.ahead_bytes(), ahead + 4 * TILE_BYTES, "⛔premise: its page is made");
+    pool.set_most_bytes(pool.bytes());
+    assert_eq!(pool.settles_unwaited(engine), 0);
+    assert_eq!((pool.bytes(), pool.ahead_bytes()), (4 * TILE_BYTES, ahead));
+    assert_eq!(pool.lies(places[0]), places[0]);
+    assert!(pool.to_fold(usize::MAX).is_empty(), "no page may come");
+    pool.set_most_bytes(u64::MAX);
+    assert_eq!(pool.to_fold(usize::MAX), places);
+    assert_eq!(settled(&mut pool, &places), 1);
     assert_eq!(pool.lies(places[0]), folded_at(1, 0));
     assert!(read(&pool, &places) == Some(a));
 }
