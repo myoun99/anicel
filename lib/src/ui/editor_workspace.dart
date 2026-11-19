@@ -107,6 +107,7 @@ import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'layout/scroll_stood_in_layout.dart';
+import 'layout/scroll_window_part.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;

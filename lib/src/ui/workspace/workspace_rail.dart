@@ -676,6 +676,10 @@ class _WorkspaceRail {
       content += height + _EditorWorkspaceState._railGroupGap;
     }
     content -= _EditorWorkspaceState._railGroupGap;
+    final controller = _state._railScrollControllers[room.right]!;
+    final strip = DeviceGrid.of(
+      context,
+    ).position(EditorPanelTabs.stripHeight);
 
     // Each room.open group is its OWN floating object: the app's corner,
     // clipped so the corner is real rather than painted, and a gap of
@@ -685,7 +689,7 @@ class _WorkspaceRail {
     // resize. The clip is what makes them read as the panel's own edge
     // lighting up rather than as a bar parked beside it — a 5px band
     // cannot carry a 14px corner by itself (유저, R2 #11).
-    Widget group(int i) {
+    Widget group(int i, double top) {
       final railId = room.open[i];
       return SuperellipseClip(
         shape: AppShapes.container(AppShapes.floatingPanelRadius),
@@ -702,7 +706,13 @@ class _WorkspaceRail {
                   left: room.right,
                   right: !room.right,
                   bottom: true,
-                  child: room.hosts[railId] ?? const SizedBox.shrink(),
+                  child: ScrollWindowPart(
+                    controller: controller,
+                    top: top,
+                    head: strip,
+                    floor: _state._verticalDockMinimumExtent(railId),
+                    child: room.hosts[railId] ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
             ),
@@ -726,7 +736,6 @@ class _WorkspaceRail {
     // the residue landing where it must rather than accumulating.
     final children = <Widget>[];
     final run = DeviceGrid.of(context).run();
-    final controller = _state._railScrollControllers[room.right]!;
     final window = (
       offset: singleScrollPixelsOf(controller) ?? 0,
       viewport: railExtent,
@@ -765,7 +774,7 @@ class _WorkspaceRail {
           right: 0,
           top: top,
           height: height,
-          child: group(i),
+          child: group(i, top),
         ),
       );
       run.take(_EditorWorkspaceState._railGroupGap);
@@ -871,10 +880,14 @@ class _WorkspaceRail {
                   axisDirection: AxisDirection.down,
                   child: Align(
                     alignment: Alignment.topCenter,
-                    child: ScrollStoodInLayout(
+                    child: ScrollWindowSettle(
                       controller: controller,
-                      stand: stand,
-                      child: column,
+                      viewport: railExtent,
+                      child: ScrollStoodInLayout(
+                        controller: controller,
+                        stand: stand,
+                        child: column,
+                      ),
                     ),
                   ),
                 ),
