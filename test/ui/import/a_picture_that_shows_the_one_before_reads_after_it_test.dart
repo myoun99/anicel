@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -190,8 +191,57 @@ void main() {
     expect(landed, 2, reason: 'the first alone, the second in order');
     expect(
       read,
-      4 + 2,
-      reason: 'each tried alone, then the first again and the second',
+      4 + 3,
+      reason: 'each tried alone, then the first walked, the second read — '
+          'and walked beside it, for the third',
     );
+  });
+
+  /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
+  /// (2026-11-19): the walk is quicker than a picture's pixels, and each
+  /// picture waiting for its worker holds what the one before is made of.
+  test('🚨a stream read in order walks no further ahead than there are '
+      'turns', () async {
+    final (:file, :slots) = fileOf([
+      [
+        ...records,
+        for (var more = 0; more < 4; more += 1)
+          srawRecord(third, w, h, fromTheLast: {1: 1, 2: 2, 4: 4}),
+      ],
+    ]);
+    var read = 0;
+    final heldAt = Completer<void>();
+    final held = Completer<void>();
+    final landing = TvppImportDoor.decodeEach(
+      [for (final slot in slots) (plan, cut, bake, slot)],
+      atOnce: 1,
+      windowOf: (slot) {
+        read += 1;
+        return windowOf(file, slot);
+      },
+      landed: (index, lay, cel) async {
+        if (index == 1 && !heldAt.isCompleted) {
+          heldAt.complete();
+          await held.future;
+        }
+      },
+      stopped: () => false,
+    );
+
+    // Every worker runs here and every record is in memory: once the
+    // second's landing is held, what the walk still does is microtasks,
+    // which one turn of the event queue drains.
+    await heldAt.future;
+    await pumpEventQueue();
+    expect(
+      read,
+      slots.length + 3,
+      reason: 'each tried alone, then the first walked, the second read, '
+          'the second walked, and no more till the second has landed',
+    );
+
+    held.complete();
+    await landing;
+    expect(read, slots.length + (slots.length - 1) * 2);
   });
 }

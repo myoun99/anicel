@@ -103,19 +103,40 @@ class TvppPicturesInOrder {
     required CanvasSize size,
     required RowSink row,
   }) {
-    if (slot.kind == TvppSlotKind.hold) {
-      return;
-    }
     final rgba = Uint8List(size.width * 4);
-    _last = _recordRows(_recordOf(recordBytes, slot), size, last, (
-      y,
-      words,
-      from,
-    ) {
+    _walk(recordBytes, slot, size, (y, words, from) {
       if (_straightRow(words, from, rgba)) {
         row(y, rgba);
       }
     });
+  }
+
+  /// [slot]'s picture gone over as [read] goes over it — refused where
+  /// [read] would refuse it — with no row of it made: what it is made of
+  /// alone, for the picture after it ([last]).
+  ///
+  /// ⚡THE STEP A LAYER'S PICTURES TAKE IN ORDER (bake card
+  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-19):
+  /// the picture after needs this picture's makeup, not its pixels, so
+  /// only this walks one after another and the pixels are read beside it.
+  /// A run's PackBits are counted, not written ([_PackBits.take] with no
+  /// words), so a record that would not read is refused here as well.
+  void walk({
+    required Uint8List recordBytes,
+    required TvppSlot slot,
+    required CanvasSize size,
+  }) => _walk(recordBytes, slot, size, null);
+
+  void _walk(
+    Uint8List recordBytes,
+    TvppSlot slot,
+    CanvasSize size,
+    _WordRows? rows,
+  ) {
+    if (slot.kind == TvppSlotKind.hold) {
+      return;
+    }
+    _last = _recordRows(_recordOf(recordBytes, slot), size, last, rows);
   }
 }
 
@@ -394,8 +415,8 @@ typedef _WordRows = void Function(int y, Uint32List words, int from);
 
 /// [record]'s rows, handed to [rows] from the top — but rows of tiles it
 /// left empty, which hold no ink — read over [before], what the picture
-/// before is made of. Answers what the record's picture is made of, for the
-/// picture after it to ask.
+/// before is made of — none made where [rows] is null. Answers what the
+/// record's picture is made of, for the picture after it to ask.
 ///
 /// 🔬Not only a tiled picture is a picture before: both layers of the
 /// user's file that read in order open on a whole-canvas record (`DBOD`),
@@ -404,7 +425,7 @@ _MadeOf _recordRows(
   Uint8List record,
   CanvasSize size,
   TvppTileSources? before,
-  _WordRows rows,
+  _WordRows? rows,
 ) {
   if (record.length < 8) {
     throw const TvppRasterDecodeException('The record is too short.');
@@ -428,18 +449,21 @@ _MadeOf _recordRows(
   throw TvppRasterDecodeException('Unknown raster magic «$magic».');
 }
 
-/// A `DBOD`'s rows, the whole canvas's, read one at a time.
+/// A `DBOD`'s rows, the whole canvas's, read one at a time — counted only,
+/// where no [rows] are wanted.
 void _wholeCanvasRows(
   Uint8List record,
   int width,
   int height,
-  _WordRows rows,
+  _WordRows? rows,
 ) {
   final pb = _PackBits(record, 8);
-  final words = Uint32List(width);
+  final words = rows == null ? null : Uint32List(width);
   for (var y = 0; y < height; y++) {
     pb.take(width, words, _itself);
-    rows(y, words, 0);
+    if (words != null) {
+      rows!(y, words, 0);
+    }
   }
 }
 
@@ -621,7 +645,9 @@ Uint32List _readRows(_PackBits pb, Uint32List img, int width) {
 
 /// One tiled raster being read: the 64×64 grid the picture is cut into,
 /// the PackBits cursor walking the record, and the grid's row of tiles
-/// under way — its [band] — handed on to [rowsOut] as the walk leaves it.
+/// under way — its [band] — handed on to [rowsOut] as the walk leaves it;
+/// no band at all where there is no [rowsOut], only what the picture is
+/// made of ([TvppPicturesInOrder.walk]).
 ///
 /// ⛔The record's shape is measured, not documented — see
 /// `tvpp-format-notes.md`. Nothing here may change what bytes are read
@@ -641,7 +667,7 @@ class _TileGrid {
     required this.before,
   }) : cols = (width + tile - 1) ~/ tile,
        rows = (height + tile - 1) ~/ tile,
-       band = Uint32List(width * tile),
+       band = Uint32List(rowsOut == null ? 0 : width * tile),
        pb = _PackBits(record, 24);
 
   static const tile = 64;
@@ -649,7 +675,7 @@ class _TileGrid {
   final Uint8List record;
   final int width;
   final int height;
-  final _WordRows rowsOut;
+  final _WordRows? rowsOut;
   final int cols;
   final int rows;
   final _PackBits pb;
@@ -718,11 +744,11 @@ class _TileGrid {
     final tc = t % cols;
     final tw = _tileWidth(tc);
     final th = _tileHeight(t ~/ cols);
-    _enterBandOf(t);
+    final out = _bandFor(t);
     final from = pb.at;
     for (var y = 0; y < th; y++) {
       final at = y * width + tc * tile;
-      pb.take(tw, band, (nth) => at + nth);
+      pb.take(tw, out, (nth) => at + nth);
     }
     if (pb.at - from != declaredSize) {
       throw TvppRasterDecodeException(
@@ -737,7 +763,6 @@ class _TileGrid {
       height: th,
     );
     _kept[t] = (width: tw, height: th);
-    _written.add(t);
   }
 
   /// Copies an already-decoded tile onto another — how the format says
@@ -781,15 +806,28 @@ class _TileGrid {
       width: math.min(kept.width, _tileWidth(dc)),
       height: math.min(kept.height, _tileHeight(dst ~/ cols)),
     );
-    _enterBandOf(dst);
+    _roots[dst] = root;
+    _kept[dst] = shown;
+    final out = _bandFor(dst);
+    if (out == null) {
+      return;
+    }
     final pixels = _readAgain(root);
     for (var y = 0; y < shown.height; y++) {
       final at = y * width + dc * tile;
-      band.setRange(at, at + shown.width, pixels, y * root.width);
+      out.setRange(at, at + shown.width, pixels, y * root.width);
     }
-    _roots[dst] = root;
-    _kept[dst] = shown;
-    _written.add(dst);
+  }
+
+  /// [band], moved on to tile [t]'s row of the grid, with [t] to be cleared
+  /// in it once it is handed on — none where no rows are wanted ([rowsOut]).
+  Uint32List? _bandFor(int t) {
+    if (rowsOut == null) {
+      return null;
+    }
+    _enterBandOf(t);
+    _written.add(t);
+    return band;
   }
 
   /// [root]'s pixels, read again from its bytes — rows of its own width, in
@@ -849,9 +887,11 @@ class _TileGrid {
   }
 
   /// [band]'s rows handed on, and the band cleared where it was written —
-  /// a band no tile was written in hands on nothing.
+  /// a band no tile was written in hands on nothing — nor does a walk that
+  /// wants no rows, which writes none ([_bandFor]).
   void handOn() {
-    if (_written.isEmpty) {
+    final rowsOut = this.rowsOut;
+    if (rowsOut == null || _written.isEmpty) {
       return;
     }
     final bandHeight = _tileHeight(_bandRow);
@@ -944,7 +984,7 @@ _TileGrid _tiledRows(
   Uint8List record,
   CanvasSize size,
   TvppTileSources? before,
-  _WordRows rows,
+  _WordRows? rows,
 ) {
   final grid = _TileGrid(
     record,

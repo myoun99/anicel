@@ -600,6 +600,64 @@ void main() {
       expect(read(third0, file, slots[2]), expectedRgba(third));
     });
 
+    void walk(TvppPicturesInOrder pictures, Uint8List file, TvppSlot slot) =>
+        pictures.walk(
+          recordBytes: file,
+          slot: slot,
+          size: const CanvasSize(width: w, height: h),
+        );
+
+    /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
+    /// (2026-11-19): a layer's pictures walk one after another, their
+    /// pixels read beside the walk.
+    test('🚨walked with no pixel made, a picture is the same picture before '
+        'as read — through a tile it showed of the one before it, and from '
+        'a whole canvas', () {
+      final (:file, :slots) = layerOf(records);
+      final walking = TvppPicturesInOrder();
+      walk(walking, file, slots[0]);
+      walk(walking, file, slots[1]);
+      expect(read(walking, file, slots[2]), expectedRgba(third));
+
+      final whole = layerOf([
+        dbodRecord(first, w, h),
+        srawRecord(
+          picture({1: 0, 2: 1, 4: 2}),
+          w,
+          h,
+          fromTheLast: {1: 1, 2: 2, 4: 4},
+        ),
+      ]);
+      final fromTheCanvas = TvppPicturesInOrder();
+      walk(fromTheCanvas, whole.file, whole.slots[0]);
+      expect(
+        read(fromTheCanvas, whole.file, whole.slots[1]),
+        expectedRgba(first),
+      );
+    });
+
+    test('🚨a walk refuses what a read refuses — a picture that needs the '
+        'one before on its own, a tile not the size it says', () {
+      final (:file, :slots) = layerOf(records);
+      expect(
+        () => walk(TvppPicturesInOrder(), file, slots[1]),
+        throwsA(isA<TvppNeedsThePictureBefore>()),
+      );
+      final drifted = layerOf([
+        srawRecord(first, w, h, corruptFirstTileSize: true),
+      ]);
+      expect(
+        () => walk(TvppPicturesInOrder(), drifted.file, drifted.slots.single),
+        throwsA(
+          isA<TvppRasterDecodeException>().having(
+            (error) => error.message,
+            'message',
+            contains('size mismatch'),
+          ),
+        ),
+      );
+    });
+
     test('a tile shows a shorter one of the picture before no further down '
         'than it reaches', () {
       // Tile 1 (64 tall) shows the first's tile 4 (6 tall) — and so does
