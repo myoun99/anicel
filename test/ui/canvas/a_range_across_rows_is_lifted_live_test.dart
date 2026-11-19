@@ -21,6 +21,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
@@ -545,6 +547,91 @@ void main() {
       }
 
       expect(debugSelectionLiftsBuilt, cut + 1, reason: 'A, cut again');
+    });
+
+    testWidgets('a float laid ahead, moved by halves, stands on whole pixels '
+        '— where it lands, as one laid at the press does', (tester) async {
+      await pump(tester);
+      final commands = await restTheBox(tester);
+      final laid = debugFloatSurfacesMade;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+      expect(
+        debugFloatSurfacesMade,
+        laid,
+        reason: '⛔premise: the floats were laid ahead',
+      );
+
+      commands.editTransformValues((now) => now.copyWith(tx: 40.5, ty: 25.5));
+      await tester.pumpAndSettle();
+      final live = tester
+          .widget<FramePictureView>(find.byType(FramePictureView).first)
+          .live!;
+      final floats = [
+        ?live.floatOverlay?.value,
+        for (final lifted in live.liftedRows.values) ?lifted.float?.value,
+      ];
+      expect(floats, hasLength(2), reason: '⛔premise: both cels float');
+      for (final float in floats) {
+        final offset = (float.surfaceOffset.x, float.surfaceOffset.y);
+        expect(
+          offset,
+          (offset.$1.roundToDouble(), offset.$2.roundToDouble()),
+          reason: 'no pixel stands at a half',
+        );
+      }
+    });
+
+    testWidgets('a posed row cut ahead lands as its picture shows — its '
+        'float laid on the canvas, not in the row\'s artwork', (tester) async {
+      final session = await pump(tester);
+      session.laneVerbs.updateLayerTransformTrack(
+        b,
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>.empty().withKey(0, 90),
+        ),
+      );
+      await tester.pump();
+      final coordinator = session.pixelEditing.coordinator!;
+      final key = session.brushFrameKeyForCut(
+        session.requireActiveCut,
+        b,
+        FrameId('${b.value}-0'),
+      );
+      final before = bitmapSurfaceContentBounds(
+        coordinator.currentSurfaceOf(key),
+      )!;
+      final commands = await restTheBox(tester);
+      final cut = debugSelectionLiftsBuilt;
+      final laid = debugFloatSurfacesMade;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+      expect(
+        (debugSelectionLiftsBuilt, debugFloatSurfacesMade),
+        (cut, laid),
+        reason: '⛔premise: the press lifted what the box at rest cut and laid',
+      );
+
+      commands.editTransformValues((now) => now.copyWith(tx: 10));
+      await tester.pumpAndSettle();
+      await windowBehind(tester, () async => commands.applyTransform());
+      await tester.pumpAndSettle();
+      final landed = bitmapSurfaceContentBounds(
+        coordinator.currentSurfaceOf(key),
+      )!;
+
+      expect(landed, isNot(before), reason: '⛔CONTROL: the move landed');
+      expect(
+        (
+          landed.rightExclusive - landed.left,
+          landed.bottomExclusive - landed.top,
+        ),
+        (
+          before.rightExclusive - before.left,
+          before.bottomExclusive - before.top,
+        ),
+        reason: 'B\'s block as it stood, moved — not turned again',
+      );
     });
 
     testWidgets('a memory warning takes back what the box at rest cut', (
