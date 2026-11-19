@@ -126,7 +126,8 @@ Future<void> _buildUnderTheTurn(
               '${folder.toFilePath()}, under its turn, '
               'with Rust from $homes',
     );
-    await withTargetAimed(input.outputDirectory, folder, () async {
+    await withTargetAimed(input.outputDirectory, folder, linked: windows,
+        () async {
       final started = DateTime.now();
       final built = BuildOutputBuilder();
       await RustBuilder(

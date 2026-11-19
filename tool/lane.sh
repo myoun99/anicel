@@ -301,6 +301,11 @@ lane_path() { echo "$LANES/lane-${1//\//-}"; }
 # written here — the users' folders differ from machine to machine, and a
 # dependency's name can grow. A machine whose folder is not there yet has
 # built nothing to measure, and opens as before. Only Windows has the 259.
+# ⚠️TWO READERS, NOT THREE: packages/gpu_engine/hook/target_link.dart
+# (`deepestLinkInput`) counts the same files where a build stands, for what
+# builds deeper than a lane's app — the probe in packages/gpu_engine/example
+# (card the-link-fit-check-measures-the-app-depth-only) — change both or
+# neither.
 fits_the_link() {
   local p="$1" hook deepest reach
   case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *) return 0 ;; esac
