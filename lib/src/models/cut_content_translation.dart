@@ -377,12 +377,34 @@ LayerEffect _carriedEffect(
 
 /// [pose] — a picture's on the canvas — carried by [walk]: its centre by
 /// the content map, its size by the scale on each axis, as the picture is.
-TransformPose _carriedPose(TransformPose pose, ResizeWalk walk) =>
+TransformPose carriedPose(TransformPose pose, ResizeWalk walk) =>
     pose.copyWith(
       center: _carried(pose.center, walk),
       scaleX: pose.scaleX * walk.sx,
       scaleY: pose.scaleY * walk.sy,
     );
+
+/// How far a reference's file moves on its row's cels through [walk], from
+/// where it is [laid]: its centre carried by the content map, in whole
+/// pixels. The file stays laid 1:1 — copied, never resampled — and the
+/// scale is its fx's (🗣️F-374-Q1: 「굳이 다시 그릴필요도없고 그래봣자 더
+/// 선명해지지도않음」), so a fit moves its pixels as a resize by an anchor
+/// does. The model's [MediaReference.laid] and the cels' pixels both move by
+/// this one answer.
+({int dx, int dy}) laidShiftOf(TransformPose laid, ResizeWalk walk) {
+  final to = _carried(laid.center, walk);
+  return (
+    dx: (to.x - laid.center.x).round(),
+    dy: (to.y - laid.center.y).round(),
+  );
+}
+
+TransformPose _laidCarried(TransformPose laid, ResizeWalk walk) {
+  final (:dx, :dy) = laidShiftOf(laid, walk);
+  return laid.copyWith(
+    center: CanvasPoint(x: laid.center.x + dx, y: laid.center.y + dy),
+  );
+}
 
 /// A layer's canvas-coordinate model data goes with its picture:
 ///
@@ -450,9 +472,10 @@ Layer carryLayerForResize(
       anchorPoint: _carriedPointTrack(track.anchorPoint, walk),
     ),
     // Its keys and where its file is laid stand on the same canvas (F-374),
-    // so they go with it — the cel's pixels go with the drawings.
+    // so they go with it — the file's pixels on its cels 1:1, by whole
+    // pixels ([laidShiftOf]), and the scale in its pose and fx.
     mediaReference: reference?.copyWith(
-      pose: _carriedPose(reference.pose, walk),
+      pose: carriedPose(reference.pose, walk),
       fx: reference.fx.copyWith(
         position: _carriedPointTrack(reference.fx.position, walk),
         scale: walk.sx == 1 && walk.sy == 1
@@ -463,7 +486,7 @@ Layer carryLayerForResize(
                     CanvasPoint(x: scale.x * walk.sx, y: scale.y * walk.sy),
               ),
       ),
-      laid: _carriedPose(reference.laid, walk),
+      laid: _laidCarried(reference.laid, walk),
     ),
   );
 }

@@ -11,6 +11,7 @@ import '../../models/cut_metadata.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
+import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_info.dart';
@@ -132,11 +133,13 @@ class CutVerbs {
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+    MediaFitMode fit = MediaFitMode.born,
   }) => _onAddressedCanvases(
     (cutId) => _project.cutCommandCoordinator.resizeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
+      fit: fit,
     ),
   );
 
@@ -146,6 +149,7 @@ class CutVerbs {
   Future<void> resizeActiveCutCanvasAhead(
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) => _aheadOfAddressedCanvases(
     report,
@@ -153,21 +157,25 @@ class CutVerbs {
       cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
+      fit: fit,
       report: report,
     ),
   );
 
   /// The addressed cuts' canvases at [canvasSize], each picture moved by
   /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79) —
-  /// as ONE undo step ([resizeActiveCutCanvas]).
+  /// or fitted to it by [fit] (I-180-Q6 a), as ONE undo step
+  /// ([resizeActiveCutCanvas]).
   void placeActiveCutCanvas(
     CanvasSize canvasSize, {
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
   }) => _onAddressedCanvases(
     (cutId) => _project.cutCommandCoordinator.placeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: contentOffset,
+      fit: fit,
     ),
   );
 
@@ -177,6 +185,7 @@ class CutVerbs {
   Future<void> placeActiveCutCanvasAhead(
     CanvasSize canvasSize, {
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) => _aheadOfAddressedCanvases(
     report,
@@ -184,6 +193,7 @@ class CutVerbs {
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: contentOffset,
+      fit: fit,
       report: report,
     ),
   );

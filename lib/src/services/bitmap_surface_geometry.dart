@@ -9,10 +9,13 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
+import '../models/cut_content_translation.dart'
+    show ResizeWalk, carriedPose, resizeWalk;
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/engine_tile_ledger.dart';
+import 'guide_geometry.dart' show GuideTransform;
 
 /// Raster geometry ops for baked surfaces (R19 bake-only): canvas resize
 /// and anchored-content translation operate on PIXELS now — the raster
@@ -478,29 +481,30 @@ BitmapSurface celTextPlateSurface(
   tiles: plate,
 );
 
-/// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them:
-/// each where the picture now is. A photo stands on the picture's grid
-/// (I-97), so it moves by the very offset the drawing does — and nothing is
-/// clamped, as nothing is for a text (the tool law above).
-///
-/// ⚠️The reference row's resize moves its pose by the same arithmetic
-/// (`carryLayerForResize`): two spellings of 「a reference moves with
-/// the content」, left two by the rule of three until a third appears.
+/// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them
+/// ([celPhotosCarried]).
 List<CelPhoto> _photosMoved(
   BitmapSurface surface, {
   required int dx,
   required int dy,
-}) => [
-  for (final photo in surface.photos)
+}) => celPhotosCarried(
+  surface.photos,
+  resizeWalk(dx: dx.toDouble(), dy: dy.toDouble(), centreDx: 0, centreDy: 0),
+);
+
+/// [photos] as a resize carries the picture they stand on, by [walk]: each
+/// where the picture now is, and as large. A photo stands on the picture's
+/// grid (I-97), so it goes by the very map the drawing does — and nothing
+/// is clamped, as nothing is for a text (the tool law above).
+///
+/// ↩️It moved its centre by the offset alone, a spelling of 「a reference
+/// goes with the content」 beside the reference row's (`carryLayerForResize`)
+/// — two, left two by the rule of three until a fit's photos (I-180) made
+/// the third: all three are [carriedPose] now.
+List<CelPhoto> celPhotosCarried(List<CelPhoto> photos, ResizeWalk walk) => [
+  for (final photo in photos)
     photo.withReference(
-      photo.reference.copyWith(
-        pose: photo.reference.pose.copyWith(
-          center: CanvasPoint(
-            x: photo.reference.pose.center.x + dx,
-            y: photo.reference.pose.center.y + dy,
-          ),
-        ),
-      ),
+      photo.reference.copyWith(pose: carriedPose(photo.reference.pose, walk)),
     ),
 ];
 
@@ -565,6 +569,25 @@ Map<TileCoord, BitmapTile> celTextPlateMoved(
 /// A resize's move of a cut's pictures: onto [canvasSize], by ([dx], [dy])
 /// whole pixels — what [translateBitmapSurface] makes of each.
 typedef CelMove = ({CanvasSize canvasSize, int dx, int dy});
+
+/// A resize's fit of a cel's picture (I-180): onto [canvasSize], each
+/// canvas pixel of the cel carried where [move] takes it — a scale and an
+/// offset, laid anew as a picture is laid (`celFitted`).
+typedef CelFit = ({CanvasSize canvasSize, GuideTransform move});
+
+/// [fit] as the whole-pixel move it is ([CelMove]) — a translation by whole
+/// pixels — or null where it scales or moves by part of a pixel: the one a
+/// resize by an anchor makes, which copies its pixels where a fit lays them.
+CelMove? wholePixelMoveOf(CelFit fit) {
+  final GuideTransform(:a, :b, :c, :d, :tx, :ty) = fit.move;
+  if (a != 1 || b != 0 || c != 0 || d != 1) {
+    return null;
+  }
+  if (tx != tx.roundToDouble() || ty != ty.roundToDouble()) {
+    return null;
+  }
+  return (canvasSize: fit.canvasSize, dx: tx.toInt(), dy: ty.toInt());
+}
 
 /// [surface] as [move] leaves it ([translateBitmapSurface]) — on the UI
 /// thread where a resize takes it, and on a worker ahead of it.

@@ -14,6 +14,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut_content_translation.dart' show resizeWalk;
 import '../../models/dirty_region.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/media_reference.dart';
@@ -25,6 +26,7 @@ import '../../native/app_gpu_engine.dart' show appGpuComposite;
 import '../../native/engine_row_pose.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/tile_blocks.dart';
+import '../bitmap_surface_geometry.dart' show CelFit, celPhotosCarried;
 import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
@@ -540,6 +542,27 @@ Future<BitmapSurface> celLaidAnew(
     ),
     whole: laid != null,
     canvas: canvas,
+  );
+}
+
+/// [cel] as a canvas resize's [fit] leaves it (I-180): its drawing laid
+/// anew where the fit carries it ([celLaidAnew]) — by the sampler the
+/// canvas shows it with, as an import's picture is laid (🗣️I-180-Q1 a) —
+/// and its photos carried by the same map ([celPhotosCarried]).
+///
+/// 🔜A cel that carries texts waits on I-180-Q7 (laid anew with the
+/// drawing, or set again from numbers that grew with it).
+Future<BitmapSurface> celFitted(BitmapSurface cel, CelFit fit) async {
+  if (cel.texts.isNotEmpty) {
+    throw UnsupportedError('a fit of a cel with texts waits on I-180-Q7');
+  }
+  final GuideTransform(:a, :d, :tx, :ty) = fit.move;
+  final laid = await celLaidAnew(cel, fit.move, canvas: fit.canvasSize);
+  return laid.copyWith(
+    photos: celPhotosCarried(
+      cel.photos,
+      resizeWalk(sx: a, sy: d, dx: tx, dy: ty, centreDx: tx, centreDy: ty),
+    ),
   );
 }
 

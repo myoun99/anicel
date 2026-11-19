@@ -5,6 +5,7 @@ import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
+import '../import/fit_flyout_button.dart';
 import '../session/canvas_adjust.dart';
 import '../text/pixel_size_label.dart';
 import 'canvas_target_pill.dart';
@@ -14,7 +15,7 @@ import 'row_transform_box.dart';
 /// A canvas being resized ON the canvas (I-79): its edges in the box every
 /// box on the canvas wears ([RowTransformBox], each handle moving its own
 /// edges — [RowBoxEdges]), and under it the canvas's pill with the size the
-/// edges make, 확정 and 취소 ([CanvasTargetPill]).
+/// edges make, the fit (I-180-Q6 a), 확정 and 취소 ([CanvasTargetPill]).
 ///
 /// 🗣️I-79-Q1 (유저 2026-10-08): the pill stands at the bottom middle of
 /// what it adjusts — the canvas here, as it stands under the transform box.
@@ -57,8 +58,7 @@ class CanvasAdjustLayer extends StatelessWidget {
         return const SizedBox.shrink();
       }
       final edges = shown.edges;
-      CanvasEdgesDraft to(Rect edges) =>
-          CanvasEdgesDraft(cut: shown.cut, edges: edges);
+      CanvasEdgesDraft to(Rect edges) => shown.withEdges(edges);
       final corners = [
         CanvasPoint(x: edges.left, y: edges.top),
         CanvasPoint(x: edges.right, y: edges.top),
@@ -103,6 +103,11 @@ class CanvasAdjustLayer extends StatelessWidget {
                     key: const ValueKey<String>('canvas-adjust-size'),
                     style: const TextStyle(fontSize: 12),
                   ),
+                ),
+                FitFlyoutButton(
+                  keyPrefix: 'canvas-adjust-fit',
+                  fit: shown.fit,
+                  onPicked: (fit) => adjust.move(shown.fittedBy(fit)),
                 ),
                 ...targetPillVerbs(
                   'canvas-adjust',

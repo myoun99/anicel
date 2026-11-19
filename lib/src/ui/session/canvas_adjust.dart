@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
+import '../../models/media_asset.dart' show MediaFitMode;
 
 /// What is being adjusted ON the canvas — a cut's canvas by its edges
 /// (I-79) or the project camera's frame by its size (I-80). ONE at a time:
@@ -23,7 +24,11 @@ sealed class AdjustDraft {
 /// in the canvas's own coordinates — the canvas as it is spans (0, 0) to its
 /// size, and an edge pulled out lies past it.
 final class CanvasEdgesDraft extends AdjustDraft {
-  const CanvasEdgesDraft({required this.cut, required this.edges});
+  const CanvasEdgesDraft({
+    required this.cut,
+    required this.edges,
+    this.fit = MediaFitMode.born,
+  });
 
   /// [cut]'s canvas of [size], its edges where the canvas's are.
   CanvasEdgesDraft.of(CutId cut, CanvasSize size)
@@ -36,6 +41,20 @@ final class CanvasEdgesDraft extends AdjustDraft {
   /// The cut whose canvas is being adjusted.
   final CutId cut;
   final Rect edges;
+
+  /// How the picture goes onto the canvas the edges make — as the canvas
+  /// size window says it (🗣️I-180-Q6 a: 「알약에도 같은 맞춤 칸」): born
+  /// moves it where an edge is pulled out ([contentOffset]); a fit stands it
+  /// in the middle, fitted.
+  final MediaFitMode fit;
+
+  /// This draft with its edges at [edges], the fit it has kept.
+  CanvasEdgesDraft withEdges(Rect edges) =>
+      CanvasEdgesDraft(cut: cut, edges: edges, fit: fit);
+
+  /// This draft fitting by [fit].
+  CanvasEdgesDraft fittedBy(MediaFitMode fit) =>
+      CanvasEdgesDraft(cut: cut, edges: edges, fit: fit);
 
   /// The size the edges make, in whole pixels.
   CanvasSize get size =>

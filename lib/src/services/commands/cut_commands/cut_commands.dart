@@ -215,12 +215,14 @@ class _CutCommands {
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    MediaFitMode fit = MediaFitMode.born,
   }) {
     _requirePositive(canvasSize);
     placeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: _anchored(cutId, canvasSize, anchor),
+      fit: fit,
     );
   }
 
@@ -230,11 +232,13 @@ class _CutCommands {
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) => placeCutCanvasAhead(
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: _anchored(cutId, canvasSize, anchor),
+    fit: fit,
     report: report,
   );
 
@@ -257,15 +261,27 @@ class _CutCommands {
     required CutId cutId,
     required CanvasSize canvasSize,
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
   }) {
     _requirePositive(canvasSize);
+    final offset = _offsetUnder(fit, contentOffset);
     _coordinator._executeIfChanged(
       subject: _coordinator._requireCut(cutId),
-      value: _placing(canvasSize, contentOffset),
+      value: _placing(canvasSize, offset),
       read: _placed,
-      command: (_) => _resize(cutId, canvasSize, contentOffset),
+      command: (_) => _resize(cutId, canvasSize, offset, fit),
     );
   }
+
+  /// [contentOffset] as a [fit] reads it: a fit stands the picture in the
+  /// middle of the new canvas whatever the anchor or the edges dragged say
+  /// (🗣️I-180-Q5 a 「늘 가운데」 · Q6 a 「끈 만큼의 옮기기는 원본 크기일
+  /// 때만」), so it moves by none — and a fit to the canvas it is on changes
+  /// nothing, as a resize to it by an anchor does not.
+  static ({double dx, double dy}) _offsetUnder(
+    MediaFitMode fit,
+    ({double dx, double dy}) contentOffset,
+  ) => fit == MediaFitMode.born ? contentOffset : (dx: 0.0, dy: 0.0);
 
   /// What [placeCutCanvas] will make of the cut's pictures, worked out ahead
   /// — the very work its redo has ahead of it
@@ -276,13 +292,15 @@ class _CutCommands {
     required CutId cutId,
     required CanvasSize canvasSize,
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) async {
-    final placing = _placing(canvasSize, contentOffset);
+    final offset = _offsetUnder(fit, contentOffset);
+    final placing = _placing(canvasSize, offset);
     if (_placed(_coordinator._requireCut(cutId)) == placing) {
       return;
     }
-    final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
+    final ahead = _resize(cutId, canvasSize, offset, fit).workAhead(
       undo: false,
     );
     await ahead?.call(report ?? (_) {});
@@ -293,11 +311,13 @@ class _CutCommands {
     CutId cutId,
     CanvasSize canvasSize,
     ({double dx, double dy}) contentOffset,
+    MediaFitMode fit,
   ) => ResizeCutCanvasCommand(
     repository: _coordinator.repository,
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: contentOffset,
+    fit: fit,
     brushFrameStore: _coordinator.brushFrameStore,
   );
 

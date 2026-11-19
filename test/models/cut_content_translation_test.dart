@@ -727,7 +727,46 @@ void main() {
       expect(moved.pose.center, CanvasPoint(x: 200, y: 60));
       expect((moved.pose.scaleX, moved.pose.scaleY), (1.0, 0.25));
       expect(moved.laid.center, CanvasPoint(x: 200, y: 60));
+      expect(
+        (moved.laid.scaleX, moved.laid.scaleY),
+        (0.5, 0.25),
+        reason: 'the file stays laid 1:1 — the scale is its pose\'s (F-374)',
+      );
       expect(moved.fx.scale.keyAt(4)!.value, CanvasPoint(x: 1, y: 0.5));
+    });
+
+    test('a reference\'s file moves on its cels by whole pixels, where its '
+        'pose goes exactly', () {
+      final pose = TransformPose(center: CanvasPoint(x: 100, y: 60));
+      final row = Layer(
+        id: const LayerId('ref'),
+        name: 'R',
+        frames: const [],
+        timeline: const {},
+        mediaReference: MediaReference(
+          assetPath: 'a.png',
+          pose: pose,
+          pictureSize: const CanvasSize(width: 400, height: 300),
+        ),
+      );
+      final walk = resizeWalk(
+        sx: 2,
+        sy: 2,
+        dx: 10.4,
+        dy: -3.6,
+        centreDx: 10.4,
+        centreDy: -3.6,
+      );
+      final moved = carryLayerForResize(
+        row,
+        from: _canvas,
+        walk: walk,
+      ).mediaReference!;
+      expect(moved.pose.center, CanvasPoint(x: 210.4, y: 116.4));
+      expect((moved.pose.scaleX, moved.pose.scaleY), (2.0, 2.0));
+      expect(moved.laid.center, CanvasPoint(x: 210, y: 116));
+      expect((moved.laid.scaleX, moved.laid.scaleY), (1.0, 1.0));
+      expect(laidShiftOf(pose, walk), (dx: 110, dy: 56));
     });
 
     test('an effect\'s point is carried, and its pixel values and the size '

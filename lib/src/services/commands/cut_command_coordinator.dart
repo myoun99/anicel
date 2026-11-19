@@ -216,40 +216,48 @@ class CutCommandCoordinator {
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    MediaFitMode fit = MediaFitMode.born,
   }) => _cuts.resizeCutCanvas(
     cutId: cutId,
     canvasSize: canvasSize,
     anchor: anchor,
+    fit: fit,
   );
   Future<void> resizeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) => _cuts.resizeCutCanvasAhead(
     cutId: cutId,
     canvasSize: canvasSize,
     anchor: anchor,
+    fit: fit,
     report: report,
   );
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
   }) => _cuts.placeCutCanvas(
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: contentOffset,
+    fit: fit,
   );
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
     required ({double dx, double dy}) contentOffset,
+    MediaFitMode fit = MediaFitMode.born,
     void Function(double done)? report,
   }) => _cuts.placeCutCanvasAhead(
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: contentOffset,
+    fit: fit,
     report: report,
   );
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);

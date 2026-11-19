@@ -1706,6 +1706,7 @@ class BrushFrameStore {
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
     _movedAhead.clear();
+    _fittedAhead.clear();
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
@@ -2359,10 +2360,68 @@ class BrushFrameStore {
       return;
     }
     final move = (canvasSize: canvasSize, dx: dx.round(), dy: dy.round());
+    _remakeCelsOf(cutId, (key, surface) => _moved(key, surface, move));
+  }
+
+  /// I-180: adopts each cel of [cutId] as [fitOf] fits it — the resize
+  /// command's raster half for a fit, as [adoptCutCanvasSize] is for an
+  /// anchor. A fit that moves by whole pixels alone is that move
+  /// ([wholePixelMoveOf] — a reference's file, laid 1:1); every other was
+  /// laid AHEAD ([fitCutCelsAhead]), and is taken here.
+  ///
+  /// 🚨A fit's pixels are laid on the engine, which answers later, and this
+  /// step is synchronous — so a fit not laid ahead from this very picture
+  /// THROWS, before any cel of the cut is touched: the command stands it
+  /// behind the wait window, which lays it first (the first run and every
+  /// redo, [WorksAheadCommand]). ⛔A fallback that lays it some other way
+  /// here would be a second lay of the same picture.
+  void adoptCutCanvasFit({
+    required CutId cutId,
+    required CelFit Function(BrushFrameKey key) fitOf,
+  }) {
+    requireFittedAhead([cutId], fitOf);
+    _remakeCelsOf(cutId, (key, surface) {
+      if (wholePixelMoveOf(fitOf(key)) case final move?) {
+        return _moved(key, surface, move);
+      }
+      return _fittedAhead.remove(key)!.fitted;
+    });
+  }
+
+  /// Throws unless every cel of [cutIds] that [fitOf] does not move by whole
+  /// pixels was fitted ahead ([fitCutCelsAhead]) by that fit, from the
+  /// picture it is — what [adoptCutCanvasFit] takes, asked before a step
+  /// writes anything.
+  void requireFittedAhead(
+    Iterable<CutId> cutIds,
+    CelFit Function(BrushFrameKey key) fitOf,
+  ) {
+    for (final key in [for (final cutId in cutIds) ...celKeysOfCut(cutId)]) {
+      final fit = fitOf(key);
+      if (wholePixelMoveOf(fit) != null) {
+        continue;
+      }
+      final answer = _fittedAhead[key];
+      // Equal, not only the same: a cel let cool since and read again is
+      // the picture its fit was laid from.
+      if (answer == null ||
+          answer.fit != fit ||
+          answer.from != bakedSurfaceOrNull(key)) {
+        throw StateError('$key was not fitted ahead from the picture it is');
+      }
+    }
+  }
+
+  /// Each cel of [cutId] made anew by [remake] and kept hot in its place —
+  /// the one walk a resize's raster half takes, by an anchor or a fit.
+  void _remakeCelsOf(
+    CutId cutId,
+    BitmapSurface Function(BrushFrameKey key, BitmapSurface surface) remake,
+  ) {
     var edited = false;
     for (final key in celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
-      _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
+      _storeHot(key, remake(key, bakedSurfaceOrNull(key)!));
       _fileCels.remove(key);
       _markDirty(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
@@ -2531,6 +2590,72 @@ class BrushFrameStore {
   /// time, and each is held till the step comes. ↩️One move was held, the
   /// next replacing it: of a range, the step took only the last cut's.
   final Map<CelMove, Map<BrushFrameKey, _MovedCel>> _movedAhead = {};
+
+  /// What [adoptCutCanvasFit] will make of [cutIds]' cels: each as [fitOf]
+  /// fits it, laid by [lay] (`celFitted`, which lays on the engine and lives
+  /// where the store's own lays cannot be imported from) while a wait window
+  /// is up, which hears through [report] how much is done, from 0 to 1. A
+  /// fit by whole pixels alone is worked out as a move is
+  /// ([moveCutCelsAhead]).
+  ///
+  /// Each cel is thawed first, as [thawAhead] thaws it, and laid from the
+  /// picture it is; a lay that fails throws, so the step it was for is not
+  /// taken ([adoptCutCanvasFit] throws without one).
+  Future<void> fitCutCelsAhead(
+    Iterable<CutId> cutIds,
+    CelFit Function(BrushFrameKey key) fitOf, {
+    required Future<BitmapSurface> Function(BitmapSurface cel, CelFit fit)
+    lay,
+    void Function(double done)? report,
+  }) async {
+    final keys = [for (final cutId in cutIds) ...celKeysOfCut(cutId)];
+    for (final key in keys) {
+      _fittedAhead.remove(key);
+      for (final held in _movedAhead.values) {
+        held.remove(key);
+      }
+    }
+    var done = 0;
+    await Future.wait([
+      for (final key in keys)
+        _fitAhead(key, fitOf(key), lay).whenComplete(() {
+          done += 1;
+          report?.call(done / keys.length);
+        }),
+    ]);
+  }
+
+  Future<void> _fitAhead(
+    BrushFrameKey key,
+    CelFit fit,
+    Future<BitmapSurface> Function(BitmapSurface cel, CelFit fit) lay,
+  ) async {
+    if (wholePixelMoveOf(fit) case final move?) {
+      return _moveOnAWorker(
+        key,
+        move,
+        _movedAhead.putIfAbsent(move, () => {}),
+      );
+    }
+    if (!_bakedSurfaces.containsKey(key)) {
+      await _thawing.join(
+        key,
+        () => _thawOnAWorker(key, () => _kept(key)?.ref, _layThawed),
+      );
+    }
+    final from = bakedSurfaceOrNull(key);
+    if (from == null) {
+      return;
+    }
+    final fitted = await celThawTurns.run(() => lay(from, fit));
+    _fittedAhead[key] = (from: from, fit: fit, fitted: _behind(fitted));
+  }
+
+  /// What [fitCutCelsAhead] laid, each until its step takes it or the
+  /// store is laid in anew — with the fit it was laid by and the picture it
+  /// was laid [from].
+  final Map<BrushFrameKey, ({BitmapSurface from, CelFit fit, BitmapSurface fitted})>
+  _fittedAhead = {};
 
   /// [key] as [moveCutCelsAhead] worked out its move, while it is held.
   @visibleForTesting
