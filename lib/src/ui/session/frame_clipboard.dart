@@ -1704,15 +1704,24 @@ class FrameClipboard implements BringsMedia {
     _splice(runs: splices, description: 'Unlink frames', riders: riders);
     final cut = _project.activeCutOrNull;
     if (cut != null) {
-      for (final (layerId, minted) in mintedByLayer) {
-        copyBakedPictures(
-          project: _project,
-          store: _renderCaches.brushFrameStore,
-          minted: minted,
-          from: (cut: cut, row: layerId),
-          to: (cut: cut, row: layerId),
-        );
-      }
+      // 🔬F-615: the pictures the minted cels are given, after the
+      // splice's step, are ONE edit of the cels as a step is
+      // (`RepositoryStepScope` ⑤). Each copy announced its crossing alone,
+      // to every listener of the cels' content: S5_BA cut 352, a band over
+      // 61 linked rows — 274 copies, their announcements 1.6 s of a 1.8 s
+      // step.
+      final store = _renderCaches.brushFrameStore;
+      store.asOneEdit(() {
+        for (final (layerId, minted) in mintedByLayer) {
+          copyBakedPictures(
+            project: _project,
+            store: store,
+            minted: minted,
+            from: (cut: cut, row: layerId),
+            to: (cut: cut, row: layerId),
+          );
+        }
+      });
     }
     _changes.notifyChanged();
   }
