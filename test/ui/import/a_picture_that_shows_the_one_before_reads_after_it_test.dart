@@ -197,6 +197,42 @@ void main() {
     );
   });
 
+  test('🚨a stopped stream does not hand the bake back while what a picture '
+      'is made of is still being read — the bake closes the file then',
+      () async {
+    final (:file, :slots) = fileOf([
+      [...records, srawRecord(third, w, h, fromTheLast: {1: 1, 2: 2, 4: 4})],
+    ]);
+    final reads = <TvppSlot, int>{};
+    var landed = 0;
+    final heldAt = Completer<void>();
+    final held = Completer<void>();
+    var handedBack = false;
+    final landing = TvppImportDoor.decodeEach(
+      [for (final slot in slots) (plan, cut, bake, slot)],
+      atOnce: 2,
+      windowOf: (slot) async {
+        final read = reads[slot] = (reads[slot] ?? 0) + 1;
+        if (slot == slots[2] && read == 2) {
+          heldAt.complete();
+          await held.future;
+        }
+        return windowOf(file, slot);
+      },
+      landed: (index, lay, cel) async => landed += 1,
+      stopped: () => landed >= 2,
+    ).then((_) => handedBack = true);
+
+    await heldAt.future;
+    await pumpEventQueue();
+    expect(landed, 2, reason: 'the first alone, the second in order');
+    expect(handedBack, isFalse, reason: "the third's makeup is being read");
+
+    held.complete();
+    await landing;
+    expect(landed, 2);
+  });
+
   /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
   /// (2026-11-20): what each picture is made of is worked out beside the
   /// others, and each one waiting to be laid over the picture before holds

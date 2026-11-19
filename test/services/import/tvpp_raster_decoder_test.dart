@@ -676,6 +676,34 @@ void main() {
       );
     });
 
+    test('🚨a tall tile of the picture before shown on a short one is no '
+        'taller there for the picture after', () {
+      // The second shows the first's tile 1 (64 tall) on tile 4 (6 tall);
+      // the third shows the second's tile 4 on tile 1 — 6 rows of it.
+      final second = List<int>.filled(w * h, 0);
+      fill(second, 4, 0);
+      final third = List<int>.filled(w * h, 0);
+      fill(third, 1, 0, rows: 6);
+      final (:file, :slots) = layerOf([
+        records[0],
+        srawRecord(second, w, h, fromTheLast: {4: 1}),
+        srawRecord(third, w, h, fromTheLast: {1: 4}),
+      ]);
+      final reading = TvppPicturesInOrder();
+      read(reading, file, slots[0]);
+      expect(read(reading, file, slots[1]), expectedRgba(second));
+      expect(read(reading, file, slots[2]), expectedRgba(third));
+
+      final made = makeupOf(
+        file,
+        slots[1],
+      ).over(makeupOf(file, slots[0]).over(null));
+      expect(
+        read(TvppPicturesInOrder(before: made), file, slots[2]),
+        expectedRgba(third),
+      );
+    });
+
     test('a hold is made of the picture before — and of none, where there '
         'is none', () {
       final b = TvppBuilder()
