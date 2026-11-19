@@ -233,6 +233,37 @@ void _foldTests() {
       expect(before.undoCount, 0);
     });
 
+    test('a run a redo broke into is left as it was', () {
+      final history = HistoryManager();
+      history.execute(_FakeCommand());
+      history.undo();
+      final mark = history.gestures.mark;
+      history.redo();
+      history.execute(_FakeCommand());
+      history.execute(_FakeCommand());
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 3, reason: 'nothing folded');
+    });
+
+    test('a run marked once the deep end had already trimmed folds its own '
+        'and no more', () {
+      final history = HistoryManager(maxEntries: 4);
+      final earlier = [for (var i = 0; i < 6; i += 1) _FakeCommand()];
+      earlier.forEach(history.execute);
+      final mark = history.gestures.mark;
+      final run = [_FakeCommand(), _FakeCommand()];
+      run.forEach(history.execute);
+
+      history.gestures.foldSince(mark, 'Sweep');
+
+      expect(history.undoCount, 3, reason: 'two before, and the run');
+      history.undo();
+      expect([for (final command in run) command.undoCount], [1, 1]);
+      expect(earlier.last.undoCount, 0);
+    });
+
     test('a run longer than the stack is deep folds what is left of it', () {
       final history = HistoryManager(maxEntries: 4);
       history.execute(_FakeCommand());
