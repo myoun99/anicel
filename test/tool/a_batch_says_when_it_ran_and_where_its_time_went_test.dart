@@ -129,8 +129,13 @@ void main() {
         every: const Duration(days: 1),
       );
       final spent = watch.stop();
-      // Its own: 1 + 60 + 30 (the tester born after the first look).
-      expect(spent.ours, const Duration(seconds: 91));
+      // Its own: 1 + 60 + 30 (the tester born after the first look), by
+      // name.
+      expect(spent.ours, [
+        ('flutter_tester.exe', const Duration(seconds: 90)),
+        ('flutter.bat', const Duration(seconds: 1)),
+      ]);
+      expect(cpuOf(spent.ours), const Duration(seconds: 91));
       expect(spent.others, [
         ('rustc.exe', const Duration(seconds: 90)),
         ('flutter_tester.exe', const Duration(seconds: 42)),
@@ -173,7 +178,9 @@ void main() {
         read: () => looks[i++ < 1 ? 0 : 1],
         every: const Duration(days: 1),
       ).stop();
-      expect(spent.ours, const Duration(seconds: 5));
+      expect(spent.ours, [
+        ('flutter_tester.exe', const Duration(seconds: 5)),
+      ]);
       expect(spent.others, isEmpty);
     });
 
@@ -181,7 +188,11 @@ void main() {
       expect(
         cpuSaid(
           (
-            ours: const Duration(minutes: 41, seconds: 20),
+            ours: [
+              ('flutter_tester.exe', const Duration(minutes: 30, seconds: 5)),
+              ('dartaotruntime.exe', const Duration(minutes: 8, seconds: 15)),
+              ('dart.exe', const Duration(minutes: 3)),
+            ],
             others: [
               ('flutter_tester.exe', const Duration(minutes: 20, seconds: 1)),
               ('dart.exe', const Duration(minutes: 9, seconds: 30)),
@@ -190,12 +201,13 @@ void main() {
           const Duration(minutes: 2, seconds: 47),
           20,
         ),
-        "CPU of the machine's 55:40: its own 41:20, beside it 29:31 "
+        "CPU of the machine's 55:40: its own 41:20 (flutter_tester.exe "
+        '30:05 · dartaotruntime.exe 8:15 · dart.exe 3:00), beside it 29:31 '
         '(flutter_tester.exe 20:01 · dart.exe 9:30)',
       );
       expect(
         cpuSaid(
-          (ours: Duration.zero, others: const []),
+          (ours: const [], others: const []),
           const Duration(seconds: 3),
           20,
         ),

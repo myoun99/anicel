@@ -1370,16 +1370,19 @@ Duration? ownClockIn(String text) {
 final _ownClock = RegExp(r'^(\d+):(\d\d) [+~-]\d', multiLine: true);
 
 /// What a batch of [wall] spent of the CPU, beside what the rest of the
-/// machine of [processors] spent then ([CpuWatch]) — the five that spent
-/// most by name.
+/// machine of [processors] spent then ([CpuWatch]) — each side with the
+/// five that spent most by name.
 String cpuSaid(CpuSpent spent, Duration wall, int processors) {
-  final others = spent.others.fold(Duration.zero, (sum, o) => sum + o.$2);
-  final named = [
-    for (final (name, used) in spent.others.take(5)) '$name ${spanOf(used)}',
-  ];
+  String side(List<(String, Duration)> named) {
+    final most = [
+      for (final (name, used) in named.take(5)) '$name ${spanOf(used)}',
+    ];
+    return '${spanOf(cpuOf(named))}'
+        '${most.isEmpty ? '' : ' (${most.join(' · ')})'}';
+  }
+
   return 'CPU of the machine\'s ${spanOf(wall * processors)}: its own '
-      '${spanOf(spent.ours)}, beside it ${spanOf(others)}'
-      '${named.isEmpty ? '' : ' (${named.join(' · ')})'}';
+      '${side(spent.ours)}, beside it ${side(spent.others)}';
 }
 
 class _BatchResult {

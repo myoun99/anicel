@@ -185,9 +185,22 @@ List<ProcessRow> treeIn(Iterable<ProcessRow> table, int root) {
   return tree;
 }
 
-/// What [CpuWatch] saw spent: the watched tree's own, and the rest's by
-/// name, most first.
-typedef CpuSpent = ({Duration ours, List<(String, Duration)> others});
+/// What [CpuWatch] saw spent: the watched tree's own and the rest's, each
+/// by name, most first.
+///
+/// 🔍ITS OWN BY NAME TOO (the-wide-check-takes-five-hours, 2026-11-20): the
+/// wide check of 11-20 spent ten CPU-seconds a file in its heavy batches
+/// and its light ones alike — a cost of the file, not of its tests — and
+/// one sum could not say whether the compiler, the tool or the testers
+/// spent it, which is what decides the next cut.
+typedef CpuSpent = ({
+  List<(String, Duration)> ours,
+  List<(String, Duration)> others,
+});
+
+/// All of [named] together.
+Duration cpuOf(List<(String, Duration)> named) =>
+    named.fold(Duration.zero, (sum, one) => sum + one.$2);
 
 /// What the machine's processes spend of the CPU while a test batch runs,
 /// by name, the batch's own tree ([treeIn] of its root) apart.
@@ -235,29 +248,24 @@ class CpuWatch {
     _looked = true;
   }
 
-  /// Stops looking, and says what was spent: the batch's own, and the
-  /// rest's by name, most first.
+  /// Stops looking, and says what was spent: the batch's own and the
+  /// rest's, each by name, most first.
   CpuSpent stop() {
     _clock.cancel();
     look();
-    var ours = 0;
+    final ours = <String, int>{};
     final others = <String, int>{};
     for (final MapEntry(:key, value: seen) in _seen.entries) {
       final spent = seen.cpu - _from[key]!;
       if (spent <= 0) continue;
-      if (seen.ours) {
-        ours += spent;
-      } else {
-        others[seen.name] = (others[seen.name] ?? 0) + spent;
-      }
+      final side = seen.ours ? ours : others;
+      side[seen.name] = (side[seen.name] ?? 0) + spent;
     }
-    Duration of(int ticks) => Duration(microseconds: ticks ~/ 10);
-    return (
-      ours: of(ours),
-      others: [
-        for (final MapEntry(:key, :value) in others.entries) (key, of(value)),
-      ]..sort((a, b) => b.$2.compareTo(a.$2)),
-    );
+    List<(String, Duration)> named(Map<String, int> side) => [
+      for (final MapEntry(:key, :value) in side.entries)
+        (key, Duration(microseconds: value ~/ 10)),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    return (ours: named(ours), others: named(others));
   }
 }
 
