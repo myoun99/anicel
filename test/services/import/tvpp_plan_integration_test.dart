@@ -11,6 +11,8 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_import_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../models/import/tvpp_test_builder.dart';
+
 /// The .tvpp pipeline end to end WITHOUT pixels: parse-model conversion
 /// feeding the SAME planner the JSON export uses — folders arrive as
 /// folder rows with members linked, and image marks land as the blocks'
@@ -40,6 +42,30 @@ void main() {
         chunkLength: 0,
         compressed: true,
       );
+
+  test('🗣️two instances named in 한글 are two names on the cels — the '
+      'second is no 「-1」 of the first (F-621 ④)', () {
+    // The user's file: the same number of letters, so read as blanks the
+    // two were one name, and the second cel became its 「-1」.
+    final b = TvppBuilder()
+      ..clipProperties('c')
+      ..clipHeader(width: 32, height: 18)
+      ..layerHead('SE', end: 1, count: 2)
+      ..layerExt(const {0: '에리,안녕', 1: '안녕,에리'});
+    for (var k = 0; k < 2; k++) {
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+    }
+    b.clipConfig();
+    final clip = parseTvppStructure(b.bytes).clips.single;
+    final plan = planTvpImport(
+      parsed: convertTvppClip(clip, clipIndex: 0).result,
+      resolveFile: (key) => key,
+      mint: mint(),
+      unnamedMark: defaultUnnamedDrawingMark,
+    );
+    final se = plan.cut.layers.singleWhere((l) => l.name == 'SE');
+    expect([for (final cel in se.frames) cel.name], ['에리,안녕', '안녕,에리']);
+  });
 
   test('folders become folder rows and marks become inbetween dots', () {
     final clip = TvppClip(

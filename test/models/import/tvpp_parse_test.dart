@@ -337,6 +337,30 @@ mpoints-1-bezieraftery=0.000000
       expect(layer.slots[2].v10WholeCanvas, isFalse);
     });
 
+    // 🗣️F-621 ④ (유저 2026-11-19): 「이름은 영문숫자든뭐든 상관없이 그대로
+    // 들여오는게 맞지않나」 — the user's file named a layer's instances in
+    // 한글 with a comma inside, and they came in as blanks.
+    test('the names come in as written, whatever their letters — a clip, '
+        'its layers and their instances', () {
+      final b = TvppBuilder()
+        ..clipProperties('컷 십이')
+        ..clipHeader(width: 32, height: 18)
+        ..layerHead('효과음 SE', end: 2, count: 3)
+        ..layerExt(const {0: '에리,안녕', 1: 'ありがとう', 2: 'A-1'});
+      for (var k = 0; k < 3; k++) {
+        b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      }
+      b.clipConfig();
+      final clip = parseTvppStructure(b.bytes).clips.single;
+      expect(clip.name, '컷 십이');
+      expect(clip.layers.single.name, '효과음 SE');
+      expect(clip.layers.single.instanceNames, const {
+        0: '에리,안녕',
+        1: 'ありがとう',
+        2: 'A-1',
+      });
+    });
+
     test('rejects bytes with no clip header', () {
       expect(
         () => parseTvppStructure(TvppBuilder().bytes),

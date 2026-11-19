@@ -414,7 +414,7 @@ int _findLast(Uint8List bytes, List<int> needle, int from, int until) {
 
 /// UTF-8, stopping at the first NUL: LNAM/LNAW carry the name twice in
 /// the same encoding (measured — the "wide" chunk is not UTF-16), padded
-/// to the chunk length.
+/// to the chunk length — and LEXT its instances' names the same way.
 String _nameFrom(Uint8List bytes, int at, int length) {
   var end = at;
   final limit = at + length;
@@ -710,7 +710,13 @@ TvppClip _parseClip(
         // Zero-length separator between a CTG layer's two image streams.
         inSecondStream = true;
       case 'LEXT':
-        final text = _printable(bytes, payload, length);
+        // 🗣️THE NAMES AS WRITTEN, WHATEVER THEIR LETTERS (F-621 ④, 유저
+        // 2026-11-19: 「이름은 영문숫자든뭐든 상관없이 그대로 들여오는게
+        // 맞지않나」). 🔬Every LEXT of the user's three files is UTF-8 with
+        // no NUL in it. ↩️It was read printable ASCII only, every other
+        // byte a space: a layer of 한글 or かな names came in as blanks, and
+        // blanks of one length are one name — the second became 「-1」.
+        final text = _nameFrom(bytes, payload, length);
         instanceNames = _imagesNameTable(text);
       case 'ZCHK':
         // v12: [SRAW u32 rawLen-8]['czmp' u32][blocks], then per block
@@ -817,19 +823,6 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
     );
   }
   return frozenList(tracks);
-}
-
-String _printable(Uint8List bytes, int at, int length) {
-  final sb = StringBuffer();
-  for (var i = at; i < at + length; i++) {
-    final c = bytes[i];
-    if ((c >= 0x20 && c < 0x7f) || c == 0x0a) {
-      sb.writeCharCode(c);
-    } else {
-      sb.write(' ');
-    }
-  }
-  return sb.toString();
 }
 
 /// LEXT carries INI text (`[images auid]`, `[images name]`). Only the
