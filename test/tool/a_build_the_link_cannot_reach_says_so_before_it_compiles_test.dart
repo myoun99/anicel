@@ -113,6 +113,17 @@ void main() {
     expect(built, isTrue);
   });
 
+  test('the hook measures every build for Windows — the builds link.exe '
+      'links', () {
+    final hook = File('packages/gpu_engine/hook/build.dart')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n');
+    expect(hook, contains('final windows = input.config.buildCodeAssets &&\n'
+        '        input.config.code.targetOS == OS.windows;'));
+    expect(hook, contains('await withTargetAimed(input.outputDirectory, '
+        'folder, linked: windows,'));
+  });
+
   test('⚠️two readers, not three — lane.sh\'s `fits_the_link` and the hook '
       'name each other', () {
     final lanes = File('tool/lane.sh')
