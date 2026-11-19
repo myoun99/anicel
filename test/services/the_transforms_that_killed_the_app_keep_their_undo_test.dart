@@ -7,6 +7,7 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨★★★**THE CRASH THIS WHOLE ROUND IS ABOUT** (유저 2026-08-27:
 /// 「세번째, 네번째 변형쯤에서 말없이 앱 종료됨」 — iPhone, repeated
@@ -81,6 +82,11 @@ void main() {
       commands.add(command);
       history.execute(command);
       pictures.add(coordinator.currentSurfaceOf(key));
+      // The copies of what it landed come before the next confirm, as
+      // once the hand rests: a tile the engine alone holds weighs
+      // nothing here (`BitmapTile.ownBytes`), and the history is asked
+      // what it holds as an entry enters.
+      theCopiesComeOf([pictures.last]);
     }
 
     // 🚨★★★**THE BILL FELL TO ZERO WHETHER OR NOT THE PICTURE WAS

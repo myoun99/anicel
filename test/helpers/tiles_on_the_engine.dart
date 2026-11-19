@@ -3,6 +3,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 
 /// [tile]'s pixels as the engine alone holds them, as a landing leaves a
 /// tile: what a read has to ask the GPU for. Its ink is known, as the
@@ -12,6 +13,30 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 BitmapTile tileOnEngine(BitmapTile tile) =>
     EngineTileLedger.instance.debugOnEngine(tile)
       ..rememberInkBounds(tile.inkBounds);
+
+/// The bytes of every tile [surfaces] keep come here, as their copies do
+/// once the hand rests (`EngineTileLedger.copyHereABatch`) — what a test
+/// that weighs tiles asks first: a tile the engine alone holds weighs
+/// nothing here (`BitmapTile.ownBytes`), and a test's ledger asks for no
+/// copy by itself (`EngineTileLedger.copiesAtRest`).
+void theCopiesComeOf(Iterable<BitmapSurface> surfaces) {
+  for (final surface in surfaces) {
+    _theirBytesCome(surface.keptTiles.values);
+  }
+}
+
+/// [theCopiesComeOf] every cel [store] holds hot.
+void theCopiesComeOfTheHotCelsOf(BrushFrameStore store) {
+  final tiles = Set<Object>.identity();
+  store.addHotTilesTo(tiles);
+  _theirBytesCome(tiles.cast<BitmapTile>());
+}
+
+void _theirBytesCome(Iterable<BitmapTile> tiles) {
+  for (final tile in tiles) {
+    tile.readPixels((_, _) {});
+  }
+}
 
 /// [surface], every tile of it the engine's alone ([tileOnEngine]).
 BitmapSurface surfaceOnEngine(BitmapSurface surface) =>

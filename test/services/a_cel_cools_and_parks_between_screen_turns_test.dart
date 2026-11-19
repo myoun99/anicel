@@ -121,7 +121,12 @@ void main() {
     final store = BrushFrameStore()..hotCelByteBudget = 0;
     final cel = twoBatches();
     store.storeBakedSurface(key('cools'), cel);
-    store.storeBakedSurface(key('stays'), celOf(1));
+    // What stays holds its bytes here, and is what the tier is past its
+    // budget by: a cel the engine alone holds weighs nothing here
+    // (`BitmapTile.ownBytes`).
+    final stays = celOf(1);
+    theCopiesComeOf([stays]);
+    store.storeBakedSurface(key('stays'), stays);
     await store.drainCooling();
     stopWatching();
 
