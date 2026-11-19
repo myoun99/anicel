@@ -65,8 +65,10 @@ void main() {
     }
     b.clipConfig();
     final clip = parseTvppStructure(b.bytes).clips.single;
+    final parsed = convertTvppClip(clip, clipIndex: 0).result;
     final plan = planTvpImport(
-      parsed: convertTvppClip(clip, clipIndex: 0).result,
+      parsed: parsed,
+      camera: cameraOf(parsed),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -326,25 +328,29 @@ void main() {
           blendingModeId: mode,
         );
 
-    TvpImportPlan planOf(TvppLayer layer) => planTvpImport(
-          parsed: convertTvppClip(
-            TvppClip(
-              name: 'cut',
-              width: 320,
-              height: 180,
-              frameRate: 24,
-              pixelAspectRatio: 1,
-              layers: [layer],
-              imageMarks: const [],
-              cameraPoints: const [],
-              cameraDataText: '',
-            ),
-            clipIndex: 0,
-          ).result,
-          resolveFile: (key) => key,
-          mint: mint(),
-          unnamedMark: defaultUnnamedDrawingMark,
-        );
+    TvpImportPlan planOf(TvppLayer layer) {
+      final parsed = convertTvppClip(
+        TvppClip(
+          name: 'cut',
+          width: 320,
+          height: 180,
+          frameRate: 24,
+          pixelAspectRatio: 1,
+          layers: [layer],
+          imageMarks: const [],
+          cameraPoints: const [],
+          cameraDataText: '',
+        ),
+        clipIndex: 0,
+      ).result;
+      return planTvpImport(
+        parsed: parsed,
+        camera: cameraOf(parsed),
+        resolveFile: (key) => key,
+        mint: mint(),
+        unnamedMark: defaultUnnamedDrawingMark,
+      );
+    }
 
     test('the twelve Anicel has come in as theirs; every other mode comes in '
         'as normal and the notice names it — 🗣️「구현하지말고 표준으로 들여도 '
