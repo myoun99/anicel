@@ -555,10 +555,9 @@ void main() {
     });
 
     test('a canvas resize moving the cut\'s content', () {
-      final moved = translateCutGuides(
+      final moved = carryCutGuides(
         CutGuides(guides: [perspectiveGuide()]),
-        10,
-        20,
+        resizeWalk(dx: 10, dy: 20, centreDx: 0, centreDy: 0),
       );
       expect(shapeOf(moved).vanishingPoints[0].lineDensity, 24);
     });

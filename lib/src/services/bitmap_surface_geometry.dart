@@ -484,7 +484,7 @@ BitmapSurface celTextPlateSurface(
 /// clamped, as nothing is for a text (the tool law above).
 ///
 /// ⚠️The reference row's resize moves its pose by the same arithmetic
-/// (`translateLayerForResize`): two spellings of 「a reference moves with
+/// (`carryLayerForResize`): two spellings of 「a reference moves with
 /// the content」, left two by the rule of three until a third appears.
 List<CelPhoto> _photosMoved(
   BitmapSurface surface, {

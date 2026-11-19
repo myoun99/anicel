@@ -2,6 +2,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut_content_translation.dart' show resizeWalk;
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
@@ -205,10 +206,12 @@ class ResizeCutCanvasCommand
       repository.resizeCutCanvasContent(
         cutId: target,
         canvasSize: canvasSize,
-        dx: _contentDx,
-        dy: _contentDy,
-        centreDx: _centreDx,
-        centreDy: _centreDy,
+        walk: resizeWalk(
+          dx: _contentDx,
+          dy: _contentDy,
+          centreDx: _centreDx,
+          centreDy: _centreDy,
+        ),
       );
       // One-pass raster adoption (D5): crop/extend AND anchor offset in
       // a single blit against the NEW canvas, completed HERE for the
