@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart'
+    show BuildContext, Builder, MaterialApp, SizedBox;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/app_clipboard.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
@@ -27,6 +30,7 @@ import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/pill_row_clipboard.dart';
 import '../../helpers/reference_to.dart';
+import '../../helpers/wait_window.dart' show settleBehindTheWaitWindow;
 
 /// 🚨I-7 (유저 2026-09-26): 「탭사이에 복사나 붙여넣기 뭐든 가능. 앱 전체에
 /// 하나. 레이어 id가 다른거?라던가 id늘리게한다던가 알아서 조심하고.」
@@ -411,6 +415,36 @@ void main() {
       final b = open();
       pasteWithThePill(b);
       expect(b.repository.requireProject().mediaAssetByPath(path), isNull);
+    });
+
+    testWidgets('the pill\'s paste PRESS holds a carried medium behind its '
+        'window first, though it lays one row — and the paste lands with '
+        'it (F-551: whatever it lands on)', (tester) async {
+      late String path;
+      await tester.runAsync(() async => path = (await aCarriedStill()).path);
+      final b = open();
+      late BuildContext waitIn;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              waitIn = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(b.layerClipboard.pasteMustHoldMedia, isTrue, reason: '⛔전제');
+
+      TimelineToolbarPanelContext(b, waitIn: waitIn).pasteIndependentPress!();
+      await tester.pump();
+      expect(find.byType(AppProgressDialog), findsOneWidget);
+      await settleBehindTheWaitWindow(
+        tester,
+        () => find.byType(AppProgressDialog).evaluate().isEmpty,
+      );
+
+      expect(carryIn(b, path), isNotNull, reason: 'held, then recorded');
     });
 
     test('at home nothing is brought — the pool already holds it', () async {
