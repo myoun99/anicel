@@ -19,7 +19,7 @@ use crate::kernels::composite::{
     FOLDED, GRANULE_BYTES, NO_EDGE, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet,
     WHOLE,
 };
-use crate::kernels::shared::{ResampleMap, ResampleMode, plane, words_buffer};
+use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, plane, words_buffer};
 use crate::kernels::write::{Change, Write};
 use crate::testing::read_buffer;
 
@@ -271,8 +271,8 @@ fn a_tile_folded_is_read_word_for_word_as_it_was() {
 
 // A folded tile takes its table and what its blocks' colours say: nothing
 // more for a block of one colour, a palette's colours under 1, 2, 4 or 8
-// bits a pixel, or the block's 64 words — and a place of a power of two of
-// granules.
+// bits a pixel, or the block's 64 words — and as many granules as hold
+// them.
 #[test]
 fn a_tile_folds_to_its_table_and_its_blocks_least_forms() {
     let (_, folded, _) = folded(&tiles());
@@ -284,19 +284,19 @@ fn a_tile_folds_to_its_table_and_its_blocks_least_forms() {
     );
     assert_eq!(tile_words(every_count), 7312);
     let granules: Vec<Option<u16>> = (0..folded.sizes.len()).map(|at| folded.granules(at)).collect();
-    assert_eq!(granules, [Some(1), Some(1), Some(4), Some(2), Some(32), Some(32)]);
+    assert_eq!(granules, [Some(1), Some(1), Some(4), Some(2), Some(29), Some(32)]);
 }
 
-// The granules a folded tile takes: as many as hold its words, in a place
-// of a power of two of them, and none past half a tile as it is.
+// The granules a folded tile takes: as many as hold its words, and none
+// past half a tile as it is.
 #[test]
-fn a_folded_tile_takes_a_power_of_two_of_granules_up_to_half_a_tile() {
+fn a_folded_tile_takes_the_granules_that_hold_it_up_to_half_a_tile() {
     let sizes = vec![256, 257, 512, 513, 1280, 4097, 8192, 8193, 16640];
     let folded = Folded { words: plane(rig().engine, "none", 4), sizes };
     let granules: Vec<Option<u16>> = (0..folded.sizes.len()).map(|at| folded.granules(at)).collect();
     assert_eq!(
         granules,
-        [Some(1), Some(2), Some(2), Some(4), Some(8), Some(32), Some(32), None, None]
+        [Some(1), Some(2), Some(2), Some(3), Some(5), Some(17), Some(32), None, None]
     );
     assert_eq!(MOST_FOLDED_BYTES, 32 * GRANULE_BYTES);
 }
@@ -381,6 +381,29 @@ fn a_fold_cut_into_smaller_passes_folds_the_same() {
     assert!(fold.folded_by(engine, &stored.pages, &all, (1, 0)).is_none());
 }
 
+// A read of the pool hands a tile as it is, whatever it is stored as: the
+// unfold writes a folded tile's every word as it was, and one as it is as
+// it is — the two side by side, in the order asked.
+#[test]
+fn a_tile_unfolded_is_its_words_as_they_were() {
+    let engine = rig().engine;
+    let fold = &kernels().fold;
+    let tiles = tiles();
+    let (stored, _, places) = folded(&tiles);
+    let asked =
+        [places[4], stored.as_they_are[3], places[2], places[5], stored.as_they_are[1], places[0]];
+    let encoder = || engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let mut unfolding = encoder();
+    let out = fold.unfolded(engine, &mut unfolding, &stored.pages, &asked).expect("unfold");
+    engine.queue.submit([unfolding.finish()]);
+    let words: Vec<u32> =
+        [4, 3, 2, 5, 1, 0].iter().flat_map(|&tile: &usize| tiles[tile].iter().copied()).collect();
+    assert!(read_buffer(engine, &out) == le_bytes(&words));
+    assert!(fold.unfolded(engine, &mut encoder(), &stored.pages, &[]).is_none());
+    let past = TileAt { page: 2, slot: 0 };
+    assert!(fold.unfolded(engine, &mut encoder(), &stored.pages, &[past]).is_none());
+}
+
 // A fold reads its tile as any pass does, so a folded tile folds again to
 // the words it has.
 #[test]
@@ -409,10 +432,10 @@ fn what_is_no_tile_s_place_is_refused() {
     assert!(put(tiles.len(), places[4]).is_none(), "no such tile folded");
     assert!(put(4, stored.as_they_are[4]).is_none(), "a place as it is");
     assert!(put(4, TileAt { page: 2, slot: FOLDED }).is_none(), "no such page");
-    // Its 32 granules, the last of them past the page's.
+    // Its 29 granules, the last of them past the page's.
     let granules = (stored.pages[1].size() / GRANULE_BYTES) as u16;
-    assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 32) }).is_some());
-    assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 31) }).is_none(), "past its page");
+    assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 29) }).is_some());
+    assert!(put(4, TileAt { page: 1, slot: FOLDED | (granules - 28) }).is_none(), "past its page");
     let unwritable = [stored.pages[0].clone(), plane(engine, "no page", stored.pages[1].size())];
     assert!(folded.put(engine, &unwritable, &[(4, places[4])]).is_none(), "no copy's destination");
     // The write path puts a tile as it is, and to no folded place.

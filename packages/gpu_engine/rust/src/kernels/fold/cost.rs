@@ -72,7 +72,7 @@ impl Kind {
 /// under them all, after runs nobody times ([`WARM`]).
 fn timed<const N: usize>(mut runs: [&mut dyn FnMut(); N]) -> [f64; N] {
     let engine = rig().engine;
-    let mut once = |run: &mut dyn FnMut()| {
+    let once = |run: &mut dyn FnMut()| {
         let started = Instant::now();
         run();
         engine.wait().expect("wait for the GPU");
@@ -80,7 +80,9 @@ fn timed<const N: usize>(mut runs: [&mut dyn FnMut(); N]) -> [f64; N] {
     };
     let warming = Instant::now();
     while warming.elapsed() < WARM {
-        runs.iter_mut().for_each(|run| drop(once(run)));
+        runs.iter_mut().for_each(|run| {
+            once(run);
+        });
     }
     let mut times = [(); N].map(|()| Vec::with_capacity(TIMES));
     for _ in 0..TIMES {
