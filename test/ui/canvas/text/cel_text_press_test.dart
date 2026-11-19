@@ -776,7 +776,7 @@ void main() {
 
       expect(tool.session!.shown.content.anchor, CanvasPoint(x: 8, y: 8));
       expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 8, y: 8));
-      expect(history.undoCount, 0);
+      expect((history.undoCount, history.gestures.heldSteps), (0, 0));
     });
 
     test('a press off the stage is nobody\'s: it lets go of the text', () {
@@ -847,7 +847,11 @@ void main() {
       expect(tool.hold, CelTextHold.box);
       expect(tool.session!.content, says('ab'));
       expect(textOf(scene, 4).content, says('ab'));
-      expect(history.undoCount, 0, reason: 'the cross is the hold\'s');
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (0, 0),
+        reason: 'the cross is the hold\'s',
+      );
     });
 
     test('however little the hand goes, the cross goes that far: there is '
@@ -895,7 +899,8 @@ void main() {
       expect(tool.crossOffCentre.dx, closeTo(4, 1e-9));
       expect(tool.crossOffCentre.dy, closeTo(-3, 1e-9));
       expect(tool.session!.content, turned);
-      expect((tool.host as _Host).history.undoCount, 0);
+      final history = (tool.host as _Host).history;
+      expect((history.undoCount, history.gestures.heldSteps), (0, 0));
     });
 
     test('🚨a TURN goes round the cross where it was carried: the cross '
@@ -928,7 +933,12 @@ void main() {
       expect(crossOf(tool).dx, closeTo(16, 1e-9));
       expect(crossOf(tool).dy, closeTo(21, 1e-9));
       expect(tool.crossOffCentre, const Offset(0, 8));
-      expect((tool.host as _Host).history.undoCount, 1);
+      final history = (tool.host as _Host).history;
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (0, 1),
+        reason: 'one step, held while the text is',
+      );
     });
 
     test('🚨a CORNER sizes the text about the middle of its BOX, wherever '

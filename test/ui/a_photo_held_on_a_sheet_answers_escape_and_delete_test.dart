@@ -127,7 +127,11 @@ void main() {
       hold.land(at, pose);
     }
     await tester.pump();
-    expect(history.undoCount, steps + 3, reason: '⛔전제: a step a grab');
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 3),
+      reason: '⛔전제: a step a grab, held while the photo is',
+    );
 
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     expect(poseOf(), sized, reason: 'the last grab taken back');

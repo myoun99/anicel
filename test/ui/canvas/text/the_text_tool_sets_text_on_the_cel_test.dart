@@ -179,7 +179,11 @@ void main() {
 
       final moved = celOf(tester).texts.single;
       expect(moved.content.anchor, CanvasPoint(x: c.dx + 100, y: c.dy + 81));
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
       final x = c.dx.toInt();
       final y = c.dy.toInt();
       expect(shownPixel(celOf(tester), x + 110, y + 91), black);

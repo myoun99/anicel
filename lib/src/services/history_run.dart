@@ -72,7 +72,7 @@ final class HistoryRun {
   }
 
   /// Whether undo has a step of the run to take back ([takeBack]).
-  bool get canTakeBack => (_line?.written ?? 0) > 0 && _writes.isNotEmpty;
+  bool get canTakeBack => (_line?.written ?? 0) > 0;
 
   /// Takes the run's last step back — undone, and no redo's: a step the
   /// hand took back inside its hold is not one it made

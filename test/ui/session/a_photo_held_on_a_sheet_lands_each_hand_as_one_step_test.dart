@@ -90,7 +90,11 @@ void main() {
 
     expect(poseOf(photos(), 2), moved);
     expect(poseOf(photos(), 1), photoOf(1).reference.pose, reason: 'alone');
-    expect(history.undoCount, 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (0, 1),
+      reason: 'one step, held while the photo is',
+    );
     final now = photos();
     expect(identical(hold.shownOn(key, now), now), isTrue);
     expect(hold.held, second, reason: 'still held');

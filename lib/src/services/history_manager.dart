@@ -722,6 +722,11 @@ class HistoryGestures {
   /// The steps a line holds, not up yet.
   List<Command> get _held => _holding?._steps ?? const [];
 
+  /// How many steps a line holds, not up yet — what a test counts a hold's
+  /// grabs by, as [HistoryManager.undoCount] counts what is up.
+  @visibleForTesting
+  int get heldSteps => _held.length;
+
   /// Runs [body] as ONE entry — a gesture that writes many rows in ONE
   /// event (the legend's twirl-all), so it needs no line: the synchronous
   /// run [HistoryManager.runAsOneStep] groups before anything is filed.

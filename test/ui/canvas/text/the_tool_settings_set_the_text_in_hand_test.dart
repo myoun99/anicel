@@ -147,7 +147,11 @@ void main() {
     await pressRing(tester, 'bold');
 
     expect(stylesOnCel(tester).single.bold, isTrue);
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the text is',
+    );
     expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
 
     history.undo();
@@ -554,7 +558,11 @@ void main() {
       await press(tester, 'writing-columns');
 
       expect(celOf(tester).texts.single.content.vertical, isTrue);
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
       // Its block's top left corner is where it was: the letters run down
       // from there, and no longer along the line.
@@ -761,7 +769,11 @@ void main() {
         offsetMoreOrLessEquals(Offset(500, before.dy)),
       );
       expect(reading('x', 500), findsOneWidget);
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
 
       await press(tester, 'x-step-up');
@@ -770,7 +782,7 @@ void main() {
         landedCentre(tester),
         offsetMoreOrLessEquals(Offset(501, before.dy)),
       );
-      expect(history.undoCount, steps + 2);
+      expect((history.undoCount, history.gestures.heldSteps), (steps, 2));
 
       // 🗣️F-377: undo takes the box's steps back one at a time while the
       // text is held — by the rail's ↶, a door undo is asked through as
@@ -787,7 +799,7 @@ void main() {
 
       expect(landedCentre(tester), offsetMoreOrLessEquals(before));
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
-      expect(history.undoCount, steps);
+      expect((history.undoCount, history.gestures.heldSteps), (steps, 0));
     });
 
     testWidgets('🚨a scrub on X carries the text a whole pixel at a time and '
@@ -814,13 +826,21 @@ void main() {
       expect(carried.dx, greaterThan(0), reason: '⛔전제: it was carried');
       expect(carried.dx, moreOrLessEquals(carried.dx.roundToDouble()));
       expect(carried.dy, moreOrLessEquals(0));
-      expect(history.undoCount, steps, reason: 'nothing landed as it went');
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 0),
+        reason: 'nothing landed as it went',
+      );
 
       await scrub.up();
       await pumpFrames(tester);
 
       expect(landedCentre(tester), offsetMoreOrLessEquals(before + carried));
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
 
       history.undo();
       await pumpFrames(tester);
@@ -874,7 +894,11 @@ void main() {
       await press(tester, 'centre-down');
 
       expect(landedCentre(tester), offsetMoreOrLessEquals(middle));
-      expect(history.undoCount, steps + 2);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 2),
+        reason: 'a step each, held while the text is',
+      );
     });
   });
 

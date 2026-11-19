@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/history_run.dart';
+import 'package:anicel/src/services/history_step_scope.dart';
 
 void main() {
   _pressureTests();
@@ -304,7 +305,68 @@ void _lineTests() {
       line.close();
       expect(history.undoCount, 0, reason: 'what was let go stays gone');
     });
+
+    // F-343: what a step made that its own undo does not take back is the
+    // step scope's, handed back by that step's undo.
+    test('what each step of a line made is its entry\'s once it is up — '
+        'the one undo hands all of it back', () {
+      final history = HistoryManager();
+      final scope = _Scope();
+      history.scope = scope;
+      final line = history.gestures.open('Sweep');
+      history
+        ..execute(_FakeCommand())
+        ..execute(_FakeCommand());
+      line.close();
+
+      history.undo();
+
+      expect(scope.handedBack, [
+        [1, 2],
+      ]);
+    });
+
+    test('a step a line takes back hands back what it made', () {
+      final history = HistoryManager();
+      final scope = _Scope();
+      history.scope = scope;
+      final line = history.gestures.open('Sweep');
+      history
+        ..execute(_FakeCommand())
+        ..execute(_FakeCommand());
+
+      line.takeBack(1);
+
+      expect(scope.handedBack, [
+        [2],
+      ]);
+      line.close();
+      history.undo();
+      expect(scope.handedBack.last, [1], reason: 'and the one left, up');
+    });
   });
+}
+
+/// A step scope that says each step it runs made the next number, and
+/// keeps what each undo handed back.
+class _Scope implements HistoryStepScope {
+  int _made = 0;
+  final List<List<Object>> handedBack = [];
+
+  @override
+  Object? execute(void Function() write) {
+    write();
+    return _made += 1;
+  }
+
+  @override
+  void undo(void Function() write, List<Object> made) {
+    write();
+    handedBack.add(made);
+  }
+
+  @override
+  Object? redo(void Function() write) => execute(write);
 }
 
 void _runTests() {
@@ -445,6 +507,51 @@ void _runTests() {
       expect(history.undoCount, 3);
       history.undo();
       expect([asked.undoCount, elsewhere.undoCount], [0, 0]);
+    });
+
+    test('⛔a step filed since the run began and undone is not there to '
+        'adopt — what stands on top is older than the run', () {
+      final history = HistoryManager();
+      final earlier = _FakeCommand();
+      history.execute(earlier);
+      final run = HistoryRun(history.gestures, 'Hold')..begin();
+      history
+        ..execute(_FakeCommand())
+        ..undo();
+
+      run.adopt();
+      expect(run.canTakeBack, isFalse, reason: 'nothing of the run\'s');
+      run.end();
+
+      expect(history.undoCount, 1, reason: 'the step before the run');
+      history.undo();
+      expect(earlier.undoCount, 1, reason: 'its own entry still');
+    });
+
+    test('a hold begun again puts up what the last one held: two holds, '
+        'two entries', () {
+      final history = HistoryManager();
+      final run = HistoryRun(history.gestures, 'Hold')..begin();
+      final first = _FakeCommand();
+      run.write(() => history.execute(first));
+
+      run.begin();
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (1, 0),
+        reason: 'the first up as the hold begins again',
+      );
+      final second = _FakeCommand();
+      run.write(() => history.execute(second));
+
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (1, 1),
+        reason: 'the first up, the second held',
+      );
+      run.takeBack();
+      expect([first.undoCount, second.undoCount], [0, 1]);
+      expect(run.canTakeBack, isFalse, reason: 'the first is not this one');
     });
   });
 }

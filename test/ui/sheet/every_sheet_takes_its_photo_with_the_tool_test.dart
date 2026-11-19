@@ -157,7 +157,11 @@ void main() {
 
     final (_, landed) = thePhoto(session);
     expect(landed.x, greaterThan(stood.x), reason: 'dragged by the press');
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the photo is',
+    );
   }
 
   underTheTools('the timesheet: a press of the tool on a page\'s photo takes '
