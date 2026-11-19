@@ -146,11 +146,25 @@ void main() {
     ]);
     final steps = session.historyManager.undoCount;
 
+    await pick(tester, 'a', LayerKind.animation);
+    expect(
+      session.historyManager.undoCount,
+      steps,
+      reason: 'the kind it is: nothing to do, no step to undo',
+    );
+
     await pick(tester, 'a', LayerKind.image);
     expect(kindOf(session, 'a'), LayerKind.image);
     expect(session.historyManager.undoCount, steps + 1);
 
-    await pick(tester, 'a', LayerKind.storyboard);
+    await openList(tester, 'a');
+    expect(
+      item(tester, 'a', LayerKind.image).value!.selected,
+      isTrue,
+      reason: 'the list reads the row as it is now',
+    );
+    await tester.tap(itemFinder('a', LayerKind.storyboard));
+    await tester.pumpAndSettle();
     expect(kindOf(session, 'a'), LayerKind.storyboard);
 
     session.undo();

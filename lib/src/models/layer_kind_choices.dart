@@ -33,10 +33,7 @@ bool canTurnInto(Layer layer, LayerKind kind, {required Cut cut}) {
     return true;
   }
   return switch (kind) {
-    LayerKind.storyboard => cutAcceptsAnotherStoryboardLayer(
-      cut,
-      exceptLayerId: layer.id,
-    ),
+    LayerKind.storyboard => cutAcceptsAnotherStoryboardLayer(cut),
     LayerKind.image => CutFolderEdits.holds(
       LayerKind.image,
       laneBlockStarts(layer.timeline).length,
