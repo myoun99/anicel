@@ -75,11 +75,36 @@ import 'canvas_viewport_offset.dart';
 ///
 /// [landsOn] is the cel it lands on, for the row that shows it
 /// ([SelectionFloatPaint.shownOn]) — null where nothing shows it in a row.
+///
+/// [surface] is [stampDab] laid on a surface of its own ahead of the lift
+/// ([floatSurfaceOf]) — by a box at rest; null: the layer lays it when it
+/// floats.
 typedef LiftedFloat = ({
   BrushDab stampDab,
   SelectionFloatOverlay? showsOn,
   FloatLandsOn? landsOn,
+  BitmapSurface? surface,
 });
+
+/// [dab] laid on a surface of its own on [pasteboard] — the floating copy
+/// of a lift's pixels the box draws, made at the lift or ahead of it
+/// (🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1, 「상자가
+/// 뜰 때 미리 들기」: by a box at rest, as its cuts are).
+BitmapSurface floatSurfaceOf(BrushDab dab, PasteboardWall pasteboard) {
+  debugFloatSurfacesMade += 1;
+  return materializeBrushDabSequenceOnBitmapSurface(
+    surface: BitmapSurface(
+      canvasSize: pasteboard.canvas,
+      pasteboardReach: pasteboard.reach,
+    ),
+    sequence: BrushDabSequence([dab]),
+  ).surface;
+}
+
+/// How many floats' surfaces [floatSurfaceOf] laid — a test's count of
+/// what a press lays that a box at rest laid already.
+@visibleForTesting
+int debugFloatSurfacesMade = 0;
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -2470,12 +2495,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the one box ([_floatWarpOf]).
   _Float _floatOf(LiftedFloat lifted) {
     late final _Float float;
-    return float = _Float(
+    float = _Float(
       stamp: lifted.stampDab,
       showsOn: lifted.showsOn,
       landsOn: lifted.landsOn,
       preview: FloatResamplePreview(this, () => _floatWarpOf(float)),
     );
+    // Laid ahead: kept as [_buildFloatSurface] keeps one it laid itself.
+    if (lifted.surface case final surface?) {
+      float
+        ..surface = surface
+        ..surfaceCentre = lifted.stampDab.center
+        ..surfaceStamp = lifted.stampDab.stamp;
+    }
+    return float;
   }
 
   /// What [float] shows right now, in canvas space — see
@@ -3652,13 +3685,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     float
       ..surfaceCentre = pending.center
       ..surfaceStamp = pending.stamp;
-    return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(
-        canvasSize: widget.pasteboard.canvas,
-        pasteboardReach: widget.pasteboard.reach,
-      ),
-      sequence: BrushDabSequence([pending]),
-    ).surface;
+    return floatSurfaceOf(pending, widget.pasteboard);
   }
 
   /// Every float's surface, built or kept ([_buildFloatSurface]).

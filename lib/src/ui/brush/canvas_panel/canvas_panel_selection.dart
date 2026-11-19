@@ -239,8 +239,10 @@ class _CanvasPanelSelection {
         ),
       );
       final showsOn = ownSlot ?? _state._activeRowFloatSlot;
+      final (:stampDab, :surface) = _floatAtThePress(cut, under);
       floats.add((
-        stampDab: stampOnCanvas(lift.stampDab, under.placement),
+        stampDab: stampDab,
+        surface: surface,
         showsOn: showsOn,
         // Landed in a row only where a row shows it.
         landsOn: showsOn == null
@@ -330,6 +332,29 @@ class _CanvasPanelSelection {
     return _cut(coordinator, under, region, surface, options, liftId);
   }
 
+  /// [cut]'s float as the press lifts it: its stamp on the canvas, where
+  /// [under]'s row stands ([stampOnCanvas]), and the surface the box draws
+  /// it from — what the box at rest laid of that very cut; else no
+  /// surface, and the layer lays it as it floats.
+  ///
+  /// ⛔No wall of its own to check: a cel stands behind the wall (I-109),
+  /// and a wall moved stores every cel it holds anew
+  /// ([BrushFrameStore.adoptPasteboardReach]) — a picture the cut was not
+  /// made from, so a cut of its own, and a float rides its cut.
+  ({BrushDab stampDab, BitmapSurface? surface}) _floatAtThePress(
+    _Cut cut,
+    _Underfoot under,
+  ) {
+    final ahead = _ahead.floats[under.key];
+    if (ahead != null && identical(ahead.of, cut)) {
+      return (stampDab: ahead.stampDab, surface: ahead.surface);
+    }
+    return (
+      stampDab: stampOnCanvas(cut.lift.stampDab, under.placement),
+      surface: null,
+    );
+  }
+
   /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1 (유저
   /// 2026-11-19, 「상자가 뜰 때 미리 들기」): the cels a box at rest frames
   /// through [region] are cut AHEAD, one at a time — each thawed on a
@@ -398,22 +423,42 @@ class _CanvasPanelSelection {
       await _ahead.aTurn();
       final options = _maskOptions;
       final surface = coordinator.currentSurfaceOf(under.key);
+      final cut = _cut(
+        coordinator,
+        under,
+        region,
+        surface,
+        options,
+        '$liftId-$index',
+      );
       _ahead.cuts[under.key] = (
         region: region,
         placement: under.placement,
         options: options,
         from: surface,
-        cut: _cut(
-          coordinator,
-          under,
-          region,
-          surface,
-          options,
-          '$liftId-$index',
-        ),
+        cut: cut,
       );
       _ahead.declareTo(coordinator);
+      if (cut != null) {
+        await _ahead.aTurn();
+        _ahead.floats[under.key] = _floatAheadOf(cut, under);
+      }
     }
+  }
+
+  /// [cut]'s float laid ahead of the press, as [_floatAtThePress] would
+  /// lay it — the other half of what the press did on the UI thread.
+  ///
+  /// ↩️The layer laid every float's surface as the box opened: 42–55 ms of
+  /// the press's 67–82 over six cels of S5_BA cut 352 (메인 PC · 테스트 VM,
+  /// 2026-11-20), the cuts ahead already taken.
+  _FloatAhead _floatAheadOf(_Cut cut, _Underfoot under) {
+    final stampDab = stampOnCanvas(cut.lift.stampDab, under.placement);
+    return (
+      of: cut,
+      stampDab: stampDab,
+      surface: floatSurfaceOf(stampDab, _state._stagePasteboard),
+    );
   }
 
   final _CutsAhead _ahead = _CutsAhead();
@@ -467,6 +512,11 @@ typedef _CutAhead = ({
   _Cut? cut,
 });
 
+/// A float laid ahead of the press ([_CanvasPanelSelection._floatAheadOf]):
+/// [of] the cut it was laid of — the only press it may be handed to is one
+/// that lifts that cut.
+typedef _FloatAhead = ({_Cut of, BrushDab stampDab, BitmapSurface surface});
+
 /// What a box at rest has cut ahead of the press that opens it
 /// ([_CanvasPanelSelection.boxAtRest]) — an object of its own so that what
 /// the store is handed to weigh and reclaim it holds the cuts and the
@@ -482,30 +532,42 @@ final class _CutsAhead {
 
   final Map<BrushFrameKey, _CutAhead> cuts = {};
 
+  /// The floats laid of [cuts], a cel's once its cut is taken.
+  final Map<BrushFrameKey, _FloatAhead> floats = {};
+
   /// Takes the cuts off the store's books; null while they are on none.
   VoidCallback? _undeclare;
 
   /// Puts the cuts on [coordinator]'s store as a view it may reclaim —
   /// their holes are bytes the cels do not share, held as an open
-  /// session's are.
+  /// session's are, and their floats' surfaces are bytes of their own.
   void declareTo(BrushFrameEditingCoordinator coordinator) {
     if (_undeclare != null) {
       return;
     }
     final store = coordinator.frameStore;
     final cuts = this.cuts;
+    final floats = this.floats;
     store.holdReclaimableView(
       this,
-      bytes: () => cuts.entries.fold(
-        0,
-        (bytes, entry) =>
-            bytes +
-            (entry.value.cut?.holed.bytesNotSharedWith(
-                  coordinator.currentSurfaceOf(entry.key),
-                ) ??
-                0),
-      ),
-      reclaim: cuts.clear,
+      bytes: () =>
+          cuts.entries.fold(
+            0,
+            (bytes, entry) =>
+                bytes +
+                (entry.value.cut?.holed.bytesNotSharedWith(
+                      coordinator.currentSurfaceOf(entry.key),
+                    ) ??
+                    0),
+          ) +
+          floats.values.fold(
+            0,
+            (bytes, float) => bytes + float.surface.keptTileBytes,
+          ),
+      reclaim: () {
+        cuts.clear();
+        floats.clear();
+      },
     );
     _undeclare = () => store.releaseReclaimableView(this);
   }
@@ -525,6 +587,7 @@ final class _CutsAhead {
     region = null;
     over = const [];
     cuts.clear();
+    floats.clear();
     _withdrawTurn?.call();
     _withdrawTurn = null;
     _undeclare?.call();

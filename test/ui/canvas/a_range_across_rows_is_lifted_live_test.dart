@@ -14,6 +14,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -353,8 +354,9 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pumpAndSettle();
-      // A cut a turn: the turns run on, with no frame asked for.
-      for (var turn = 0; turn < 4; turn += 1) {
+      // A cut a turn and its float another: the turns run on, with no frame
+      // asked for.
+      for (var turn = 0; turn < 6; turn += 1) {
         await tester.pump(Duration.zero);
       }
       return tester
@@ -389,6 +391,47 @@ void main() {
       );
     });
 
+    testWidgets('the press lays no float the box at rest laid', (tester) async {
+      await pump(tester);
+      final before = debugFloatSurfacesMade;
+      final commands = await restTheBox(tester);
+      expect(
+        debugFloatSurfacesMade - before,
+        2,
+        reason: '⛔premise: the box at rest laid its two floats',
+      );
+
+      final laid = debugFloatSurfacesMade;
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(debugFloatSurfacesMade, laid, reason: 'nothing laid again');
+    });
+
+    testWidgets('a wall moved since the floats were laid cuts and lays them '
+        'again at the press', (tester) async {
+      final session = await pump(tester);
+      final commands = await restTheBox(tester);
+      session.projectSettings.setPasteboardSize(PasteboardSize.two);
+      await tester.pumpAndSettle();
+      final cut = debugSelectionLiftsBuilt;
+      final laid = debugFloatSurfacesMade;
+
+      commands.beginTransform();
+      await tester.pumpAndSettle();
+
+      expect(commands.transformActive, isTrue);
+      expect(
+        debugSelectionLiftsBuilt,
+        cut + 2,
+        reason:
+            'a wall moved stores every cel anew — what lets a float laid '
+            'ahead check its cut and no wall of its own',
+      );
+      expect(debugFloatSurfacesMade, laid + 2, reason: 'both, on the new wall');
+    });
+
     testWidgets('a cel whose picture changed since it was cut is cut again at '
         'the press — and it alone', (tester) async {
       final session = await pump(tester);
@@ -405,11 +448,17 @@ void main() {
       );
 
       final cut = debugSelectionLiftsBuilt;
+      final laid = debugFloatSurfacesMade;
       commands.beginTransform();
       await tester.pumpAndSettle();
 
       expect(commands.transformActive, isTrue);
       expect(debugSelectionLiftsBuilt, cut + 1, reason: 'B, not A');
+      expect(
+        debugFloatSurfacesMade,
+        laid + 1,
+        reason: 'B\'s float of its new cut, not of the one before',
+      );
     });
 
     testWidgets('a row posed since its cel was cut is cut again at the press '

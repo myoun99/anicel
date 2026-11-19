@@ -87,7 +87,14 @@ void main() {
                 ),
                 onLiftRequested: (region) => (
                   liftToken: 7,
-                  floats: [(stampDab: picture, showsOn: slot, landsOn: null)],
+                  floats: [
+                    (
+                      stampDab: picture,
+                      showsOn: slot,
+                      landsOn: null,
+                      surface: null,
+                    ),
+                  ],
                 ),
                 onLiftConfirmed: (token, stamps, carry) => carries.add(carry),
                 onLiftReverted: (_) {},
