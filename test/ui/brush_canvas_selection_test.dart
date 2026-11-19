@@ -12,6 +12,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
@@ -2038,6 +2039,69 @@ void main() {
         inkAt(env.coordinator, 30, 30),
         0,
         reason: '⛔left behind is a landing worked out over the old picture',
+      );
+    });
+
+    // Linked rows are windows onto one bank, so a range can name one cel
+    // under two row keys — and the two rows may be placed differently. The
+    // cel lands once, through the first row that lands it.
+    testWidgets('a cel two rows name lands once, through the first of them',
+        (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final linked = BrushFrameKey(
+        projectId: BrushCanvasFixture.projectId,
+        trackId: BrushCanvasFixture.trackId,
+        cutId: BrushCanvasFixture.cutId,
+        layerId: const LayerId('linked-row'),
+        frameId: keys[1].frameId,
+      );
+      // The linked row shows the cel twice its size: a move of (10,5) on
+      // the canvas is (5,2.5) in the cel through it.
+      final doubled = (
+        pose: TransformPose(
+          center: CanvasPoint(x: 0, y: 0),
+          scaleX: 2,
+          scaleY: 2,
+        ),
+        anchorPoint: CanvasPoint(x: 0, y: 0),
+      );
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => [keys[0], keys[1], linked],
+        cellPlacementOf: (key) => key == linked ? doubled : null,
+      );
+      env.coordinator.frameStore.setLinkResolver(
+        (key) => key == linked ? keys[1] : key,
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      env.coordinator.selectFrame(keys[1]);
+      expect(
+        inkAt(env.coordinator, 55, 50),
+        isNonZero,
+        reason: 'moved (10,5) — through its own, unplaced row',
+      );
+      expect(
+        inkAt(env.coordinator, 50, 47),
+        0,
+        reason: '⛔(5,2.5) is the linked row landing it over the first',
       );
     });
   });
