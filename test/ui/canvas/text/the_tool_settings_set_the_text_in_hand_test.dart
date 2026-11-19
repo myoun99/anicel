@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/a_move_lands.dart';
 import '../../../helpers/boolean_dot_probe.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/frame_census.dart';
@@ -672,7 +673,12 @@ void main() {
           tester.widget<PanelFlyoutButton>(row('selected-text'));
       expect(field().enabled, isTrue, reason: '⛔fixture');
 
+      // Each move lands with its picture (the-standing-canvas-composes-a-
+      // frame-twice-before-its-picture-Q1 = B): till then the session, and
+      // the list with it, stands on the frame shown — the blank second
+      // cel, whose picture is there, waits for the first's.
       sessionOf(tester).selectFrameIndex(1);
+      await theMoveLands(tester, sessionOf(tester));
       await pumpFrames(tester);
 
       expect(
@@ -683,6 +689,7 @@ void main() {
       expect(field().enabled, isFalse);
 
       sessionOf(tester).selectFrameIndex(0);
+      await theMoveLands(tester, sessionOf(tester));
       await pumpFrames(tester);
 
       expect(field().enabled, isTrue);
