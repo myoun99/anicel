@@ -637,11 +637,25 @@ void main() {
     });
 
     test('🚨a walk refuses what a read refuses — a picture that needs the '
-        'one before on its own, a tile not the size it says', () {
+        'one before on its own, a tile not the size it says, a whole '
+        'canvas that ends before its rows do', () {
       final (:file, :slots) = layerOf(records);
       expect(
         () => walk(TvppPicturesInOrder(), file, slots[1]),
         throwsA(isA<TvppNeedsThePictureBefore>()),
+      );
+      final whole = dbodRecord(first, w, h);
+      final short = layerOf([
+        Uint8List.sublistView(whole, 0, whole.length - 8),
+      ]);
+      expect(
+        () => read(TvppPicturesInOrder(), short.file, short.slots.single),
+        throwsA(isA<TvppRasterDecodeException>()),
+        reason: 'the read refuses it',
+      );
+      expect(
+        () => walk(TvppPicturesInOrder(), short.file, short.slots.single),
+        throwsA(isA<TvppRasterDecodeException>()),
       );
       final drifted = layerOf([
         srawRecord(first, w, h, corruptFirstTileSize: true),
