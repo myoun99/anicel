@@ -212,6 +212,27 @@ fn moved_whole(encoder: &mut wgpu::CommandEncoder, pages: &[wgpu::Buffer], moves
     }
 }
 
+/// Submits a settle's copies in one: the words of the tiles folded, to
+/// the places `writes` says, and the tiles whole `moves` names. The
+/// tiles whole are copied whatever the put of the folded ones says,
+/// which encodes nothing where it fails: the books say each lies in its
+/// place already. What the put said.
+pub(super) fn copies_submitted(
+    engine: &Engine,
+    pages: &[wgpu::Buffer],
+    folded: &Folded,
+    writes: &[(usize, TileAt)],
+    moves: &[(TileAt, TileAt)],
+) -> Option<()> {
+    let mut encoder = engine
+        .device()
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let put = folded.put(&mut encoder, pages, writes);
+    moved_whole(&mut encoder, pages, moves);
+    engine.queue.submit([encoder.finish()]);
+    put
+}
+
 /// Where each tile a pool holds lies, as it stood when this was taken
 /// ([`Pool::lying`]) — with the pages, where what names tiles by their
 /// slots is laid on them: a tile folded since lies where it lay then, its
@@ -607,16 +628,7 @@ impl Pool {
             let handed = Sent((engine.clone(), self.buffers.clone(), folded, writes, moves));
             engine.posted(move || {
                 let (engine, pages, folded, writes, moves) = handed.taken();
-                let mut encoder = engine
-                    .device()
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                // The tiles whole are copied whatever the put of the folded
-                // ones says, which encodes nothing where it fails: the
-                // books say each lies in its place already.
-                let put = folded.put(&mut encoder, &pages, &writes);
-                moved_whole(&mut encoder, &pages, &moves);
-                engine.queue.submit([encoder.finish()]);
-                put
+                copies_submitted(&engine, &pages, &folded, &writes, &moves)
             });
         }
         self.left_for_room = left.then_some(self.folded_let_gos);

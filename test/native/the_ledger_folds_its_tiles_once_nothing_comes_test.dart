@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -169,6 +171,13 @@ void main() {
     EngineTileLedger.foldsAtRest = true;
     landedOn(counting, List<BitmapTile?>.filled(tiles, null), 9);
     expect(await pollUntil(() => counting.batches == 3), isTrue);
+  });
+
+  test('a launch says so before its first frame', () {
+    final launch = File('lib/main.dart').readAsStringSync();
+    final said = launch.indexOf('EngineTileLedger.foldsAtRest = true;');
+    expect(said, isNonNegative);
+    expect(said, lessThan(launch.indexOf('runApp(')));
   });
 
   test('where no launch said so, a rest asks for no batch', () async {

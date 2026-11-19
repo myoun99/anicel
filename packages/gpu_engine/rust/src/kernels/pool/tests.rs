@@ -1806,3 +1806,30 @@ fn a_pool_is_made_of_pages_no_larger_than_asked() {
     }
     assert!(last_error().contains("a page of 0 tiles"), "{}", last_error());
 }
+
+// What a pool lets go of its pages goes on the pages' thread, its caller
+// waiting for none of it: held, that thread has dropped nothing by the
+// time the caller goes on, and it is the one that drops it.
+#[test]
+fn what_a_pool_lets_go_is_dropped_on_the_pages_thread_and_waited_for_by_none() {
+    use super::let_go_on_the_pages_thread;
+    struct Told(std::sync::Arc<Mutex<Option<ThreadId>>>);
+    impl Drop for Told {
+        fn drop(&mut self) {
+            *self.0.lock().expect("told") = Some(std::thread::current().id());
+        }
+    }
+    let turn = crate::testing::a_device_of_its_own();
+    let engine = turn.engine();
+    let dropped = std::sync::Arc::new(Mutex::new(None));
+    let (open, shut) = std::sync::mpsc::channel::<()>();
+    engine.pages_posted(move || shut.recv_timeout(Duration::from_secs(60)).unwrap_or_default());
+    let began = Instant::now();
+    let_go_on_the_pages_thread(&engine, Some(Told(dropped.clone())));
+    let_go_on_the_pages_thread(&engine, None::<Told>);
+    assert!(began.elapsed() < Duration::from_secs(30), "its caller waited for the pages' thread");
+    assert_eq!(*dropped.lock().expect("told"), None, "dropped where it was let go");
+    open.send(()).expect("the pages' thread waits");
+    let pages = engine.on_pages_thread(|| std::thread::current().id());
+    assert_eq!(*dropped.lock().expect("told"), Some(pages));
+}

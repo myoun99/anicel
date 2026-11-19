@@ -971,3 +971,26 @@ fn a_rest_gives_back_no_page_that_names_no_tile() {
     let pages: Vec<u16> = (0..4).map(|_| pool.fresh(engine, cel).expect("a slot").page).collect();
     assert_eq!(pages, [0, 0, 1, 1]);
 }
+
+// A settle's tiles whole are copied whatever the put of its folded tiles
+// says: a put that fails — a write that names no folded place, here —
+// encodes nothing and says so, and the tile whole lies in its place behind
+// the one submit.
+#[test]
+fn a_settle_s_tiles_whole_are_copied_though_its_put_fails() {
+    use super::folded::copies_submitted;
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let tiles = [tile(1, 2), tile(2, 2), tile(3, 2)];
+    // Two on the first page and the third on the second, whose other slot
+    // is free.
+    let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
+    assert_eq!(places, [at(0, 0), at(0, 1), at(1, 0)], "premise");
+    // SAFETY: the kernels are never let go.
+    let fold = unsafe { &*kernels() };
+    let folded = fold.folded(engine, pool.pages(), &places[..1]).expect("folded");
+    let (writes, moves) = ([(0, at(0, 0))], [(places[1], at(1, 1))]);
+    let put = engine.on_thread(|| copies_submitted(engine, pool.pages(), &folded, &writes, &moves));
+    assert_eq!(put, None, "a write to no folded place");
+    assert!(laid_on(pool.pages(), &[at(1, 1)]) == tiles[1], "the tile whole lies where it was moved");
+}

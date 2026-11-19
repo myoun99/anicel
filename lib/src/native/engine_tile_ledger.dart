@@ -1204,9 +1204,17 @@ final GpuEngine _engine;
   /// tiles are next — a page's before the next page's —, and each is
   /// asked once.
   ///
-  /// ⚠️THE SLOT OF A TILE THAT LIES FOLDED STILL HOLDS ITS BYTES, till the
-  /// lane that gives its page back: a fold takes memory and gives none
-  /// back yet, so no launch asks for it ([foldsAtRest]).
+  /// THE MEMORY COMES BACK AS A PAGE EMPTIES: a page of tiles whose every
+  /// tile lies folded is given back by the pool, its slots their names
+  /// still; and the page with the most slots free is folded never — the
+  /// pool's room, where the next tile goes
+  /// (rust/src/kernels/pool/folded.rs has both, and why). 🔬The main PC
+  /// (2026-11-19, F-610): the user's line art, its cels' 14,509 tiles,
+  /// took 1,024 MiB of pool as they were and 256 MiB folded, in 224
+  /// batches and 0.5–1.0 s; S5 cut 352 with every eye on, 896 MiB and
+  /// 352 MiB. The band made again of the tiles folded took as long as
+  /// of the tiles as they were, within what that measurement tells
+  /// apart (a frame's 32 ms, beside other runs).
   Future<bool> foldABatch() async {
     final kernels = _foldKernels?.call();
     // A ledger whose engine the app let go reads the next one's kernels,
@@ -1223,9 +1231,9 @@ final GpuEngine _engine;
   static const int foldBatch = 64;
 
   /// Whether the pool's tiles are folded once nothing has been stored or
-  /// landed for a rest ([rest]): a launch's word. ⏳No launch says it yet
-  /// ([foldABatch] has why); the pins and the measurements of the fold
-  /// say it themselves.
+  /// landed for a rest ([rest]): a launch's word, before its first frame
+  /// (`main`). False where no launch said so — the pins and the
+  /// measurements of the fold say it themselves.
   static bool foldsAtRest = false;
 
   Timer? _foldRest;

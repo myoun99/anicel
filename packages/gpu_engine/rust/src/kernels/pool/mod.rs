@@ -1199,8 +1199,12 @@ impl Pool {
 
 /// Lets `page` go on the pages' thread ([`Engine::pages_posted`]), its
 /// caller waiting for none of it: a buffer let go is the driver's.
-/// Nothing where there is none.
-fn let_go_on_the_pages_thread(engine: &Engine, page: Option<wgpu::Buffer>) {
+/// Nothing where there is none. A page's buffer, wherever the crate
+/// calls it — of whatever it is handed, so that a test hands it what
+/// tells where it was dropped; and that a page's buffer leaves a pool
+/// by no other door is read off the source
+/// (`shared/a_page_is_let_go_on_its_thread.rs`).
+fn let_go_on_the_pages_thread<T: 'static>(engine: &Engine, page: Option<T>) {
     if let Some(page) = page {
         let handed = Sent(page);
         engine.pages_posted(move || drop(handed.taken()));
