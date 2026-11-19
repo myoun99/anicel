@@ -205,22 +205,20 @@ class TvppTileSources {
   final List<_Root?> _roots;
   final List<_Kept> _kept;
 
-  /// Where tile [tile]'s rows are read from — none past the grid.
-  _Root? _rootAt(int tile) => tile < _roots.length ? _roots[tile] : null;
+  /// Where tile [tile]'s rows are read from. The picture after is on the
+  /// same grid, and a tile it points at is one of its own grid's
+  /// ([_TileGrid.readSizedTiles]).
+  _Root? _rootAt(int tile) => _roots[tile];
 
-  /// How much of its root tile [tile] shows — asked only where it has one.
+  /// How much of its root tile [tile] shows.
   _Kept _keptAt(int tile) => _kept[tile];
 
   /// Tile [tile] shown on a tile that keeps no more of it than [room]:
-  /// its root, and as much of it as both cover — nothing where it has none.
+  /// its root, and as much of it as both cover.
   (_Root?, _Kept) _shownOn(int tile, _Kept room) {
-    final root = _rootAt(tile);
-    if (root == null) {
-      return (null, (width: 0, height: 0));
-    }
     final kept = _keptAt(tile);
     return (
-      root,
+      _rootAt(tile),
       (
         width: math.min(kept.width, room.width),
         height: math.min(kept.height, room.height),
@@ -923,10 +921,7 @@ class _TileGrid {
     if (before == null) {
       throw const TvppNeedsThePictureBefore();
     }
-    final root = before._rootAt(src);
-    if (root != null) {
-      _show(dst, root, before._keptAt(src));
-    }
+    _show(dst, before._rootAt(src), before._keptAt(src));
   }
 
   /// Tile [dst] shows [root], as much of it as [kept] says and the tile

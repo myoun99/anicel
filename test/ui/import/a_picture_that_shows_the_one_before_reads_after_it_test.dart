@@ -201,7 +201,11 @@ void main() {
       'is made of is still being read — the bake closes the file then',
       () async {
     final (:file, :slots) = fileOf([
-      [...records, srawRecord(third, w, h, fromTheLast: {1: 1, 2: 2, 4: 4})],
+      [
+        ...records,
+        for (var more = 0; more < 3; more += 1)
+          srawRecord(third, w, h, fromTheLast: {1: 1, 2: 2, 4: 4}),
+      ],
     ]);
     final reads = <TvppSlot, int>{};
     var landed = 0;
@@ -213,24 +217,36 @@ void main() {
       atOnce: 2,
       windowOf: (slot) async {
         final read = reads[slot] = (reads[slot] ?? 0) + 1;
-        if (slot == slots[2] && read == 2) {
+        if (slot == slots[3] && read == 2) {
           heldAt.complete();
           await held.future;
         }
         return windowOf(file, slot);
       },
-      landed: (index, lay, cel) async => landed += 1,
+      landed: (index, lay, cel) async {
+        // The second lands — and the stop is heard — once the fourth's
+        // makeup, made ahead, is being read.
+        if (index == 1) {
+          await heldAt.future;
+        }
+        landed += 1;
+      },
       stopped: () => landed >= 2,
     ).then((_) => handedBack = true);
 
     await heldAt.future;
     await pumpEventQueue();
     expect(landed, 2, reason: 'the first alone, the second in order');
-    expect(handedBack, isFalse, reason: "the third's makeup is being read");
+    expect(
+      handedBack,
+      isFalse,
+      reason: "the fourth's makeup is still being read",
+    );
 
     held.complete();
     await landing;
     expect(landed, 2);
+    expect(reads[slots[4]], 1, reason: 'tried alone, and no more once heard');
   });
 
   /// Bake card tvpp-bake-waits-on-the-isolate-that-hands-out-records
