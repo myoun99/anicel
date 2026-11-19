@@ -20,6 +20,7 @@ import '../models/tile_coord.dart';
 import '../native/drawing_engines.dart';
 import 'bitmap_surface_geometry.dart';
 import 'cel_shells.dart';
+import 'hot_cel_weights.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -794,7 +795,7 @@ class BrushFrameStore {
   /// again each turn — where the shared one fixes an entry's cost as it
   /// goes in. A third cache of this shape is when to share one.
   void _fitMovieCels() {
-    while (_hotBytes + _movieCelBytes > hotCelByteBudget &&
+    while (_hotWeights.bytes + _movieCelBytes > hotCelByteBudget &&
         _movieCels.length > 1) {
       _releaseMovieCel(_movieCels.keys.first);
     }
@@ -820,8 +821,9 @@ class BrushFrameStore {
     _movieCelBytes = 0;
   }
 
-  /// What [surface] holds in RAM — ONE measure for the hot drawings and the
-  /// movie pictures, because the two are paid from one budget. The plates of
+  /// What [surface] holds in RAM — ONE measure for the hot drawings
+  /// ([HotCelWeights], which asks the same of each) and the movie
+  /// pictures, because the two are paid from one budget. The plates of
   /// the texts a picture carries are tiles like its own, and counted; a tile
   /// of one colour holds no block of its own, and weighs nothing
   /// (`BitmapTile.ownBytes`).
@@ -900,8 +902,17 @@ class BrushFrameStore {
   final String _scratchNamespace = ScratchCelFiles.newNamespace();
   final Map<BrushFrameKey, AnicelCelFileRef> _coldCels = {};
   final Map<BrushFrameKey, AnicelCelFileRef> _fileCels = {};
-  final Map<BrushFrameKey, int> _hotByteEstimates = {};
-  int _hotBytes = 0;
+
+  /// What each hot cel weighs, and all of them ([HotCelWeights]): weighed
+  /// where a cel enters [_bakedSurfaces], let go where it leaves.
+  ///
+  /// ⚠️The cooling is asked where a cel is stored or thawed
+  /// ([_scheduleCooling]) and by nothing else: bytes that come to a hot
+  /// cel's tiles with no store — the copies of what just landed, once the
+  /// hand rests — may stand past the budget till the next of those. A
+  /// stroke's own are seldom past it: the tiles it lands on leave the cel
+  /// as its tiles enter.
+  final HotCelWeights _hotWeights = HotCelWeights();
   int _coldBytes = 0;
 
   /// Cels edited since the last successful save (donations, removals,
@@ -1072,7 +1083,7 @@ class BrushFrameStore {
       _reclaimableViews.values.fold(0, (sum, view) => sum + view.bytes());
 
   /// Bytes currently resident in the hot tier (diagnostics/tests).
-  int get hotBakedBytes => _hotBytes;
+  int get hotBakedBytes => _hotWeights.bytes;
 
   /// Bytes PARKED in the run's 이사대기 room (diagnostics/tests) — no
   /// longer resident, which is the whole point of the tier moving there.
@@ -1529,18 +1540,12 @@ class BrushFrameStore {
     // that was unmounted may be back, and standing down for ever would
     // turn one bad minute into a session with no cold tier at all.
     _coolingStoodDown = false;
-    final previous = _hotByteEstimates.remove(key);
-    if (previous != null) {
-      _hotBytes -= previous;
-    }
     // Behind this store's wall, whatever it came from ([pasteboardReach]).
     final kept = _behind(surface);
-    final estimate = _residentBytes(kept);
     _shells.remove(key);
     _bakedSurfaces.remove(key);
     _bakedSurfaces[key] = kept;
-    _hotByteEstimates[key] = estimate;
-    _hotBytes += estimate;
+    _hotWeights.weigh(key, kept);
     // A drawing that grew takes its room back from the movie pictures.
     _fitMovieCels();
   }
@@ -1549,10 +1554,7 @@ class BrushFrameStore {
     _bakedSurfaces.remove(key);
     _dropCold(key);
     _fileCels.remove(key);
-    final estimate = _hotByteEstimates.remove(key);
-    if (estimate != null) {
-      _hotBytes -= estimate;
-    }
+    _hotWeights.letGo(key);
     _markDirty(key);
     _noteCelContent(key);
   }
@@ -1698,8 +1700,7 @@ class BrushFrameStore {
     _shells.clear();
     _coldCels.clear();
     _fileCels.clear();
-    _hotByteEstimates.clear();
-    _hotBytes = 0;
+    _hotWeights.clear();
     _coldBytes = 0;
     _dirtySinceSave.clear();
     _dropCutAhead(_cutAhead);
@@ -1964,7 +1965,7 @@ class BrushFrameStore {
     // exceeds the budget.
     due: () =>
         !_coolingStoodDown &&
-        _hotBytes > hotCelByteBudget &&
+        _hotWeights.bytes > hotCelByteBudget &&
         _bakedSurfaces.length > 1,
     pass: _coolAPass,
   );
@@ -2038,13 +2039,14 @@ class BrushFrameStore {
   /// down — a cache that lets go the moment it is over its limit cannot
   /// keep that order. A third cache of this shape is when to share one.
   Future<void> _coolLoop() async {
-    while (_hotBytes > hotCelByteBudget && _bakedSurfaces.length > 1) {
+    while (_hotWeights.bytes > hotCelByteBudget &&
+        _bakedSurfaces.length > 1) {
       final key = _bakedSurfaces.keys.first;
       if (_fileCels.containsKey(key)) {
         // Clean file-backed cel (edits kill the ref): the saved .anicel
         // already holds its exact bytes — cooling is a free drop.
         _bakedSurfaces.remove(key);
-        _hotBytes -= _hotByteEstimates.remove(key)!;
+        _hotWeights.letGo(key);
         _displayCaches.remove(key);
         continue;
       }
@@ -2081,7 +2083,7 @@ class BrushFrameStore {
           return;
         }
         _bakedSurfaces.remove(key);
-        _hotBytes -= _hotByteEstimates.remove(key)!;
+        _hotWeights.letGo(key);
         // Drop the derived alias too, or the surface stays resident.
         _displayCaches.remove(key);
       }
@@ -2237,10 +2239,7 @@ class BrushFrameStore {
     BrushFrameKey key,
     ({AnicelCelFileRef ref, bool parked}) kept,
   ) {
-    final estimate = _hotByteEstimates.remove(key);
-    if (estimate != null) {
-      _hotBytes -= estimate;
-    }
+    _hotWeights.letGo(key);
     _bakedSurfaces.remove(key);
     if (kept.parked) {
       _fileCels.remove(key);
@@ -2305,7 +2304,7 @@ class BrushFrameStore {
       final baked = _bakedSurfaces.remove(from);
       if (baked != null) {
         _bakedSurfaces[to] = baked;
-        _hotByteEstimates[to] = _hotByteEstimates.remove(from)!;
+        _hotWeights.move(from, to);
       }
       final cold = _coldCels.remove(from);
       if (cold != null) {

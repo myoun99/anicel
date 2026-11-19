@@ -283,7 +283,8 @@ final class _ColourBlock implements _PixelsHere, Finalizable {
 /// cel's tiles, and whatever reads a colour behind no alpha, find what
 /// they found.
 /// ⚠️A tile the engine made ([BitmapTile.onEngine]) is never one: its
-/// bytes come here after it was made, and after it was weighed.
+/// bytes come here after it was made — and its is the one weight that
+/// moves, as they come ([ownBytes]).
 ///
 /// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
@@ -428,6 +429,7 @@ class BitmapTile implements Finalizable {
     final block = TileBlocks.alloc(bytes.length);
     block.asTypedList(bytes.length).setAll(0, bytes);
     _hold(block);
+    _timesBytesCameHere += 1;
   }
 
   /// Throws for a [size] no tile takes — what every constructor asks first.
@@ -440,15 +442,40 @@ class BitmapTile implements Finalizable {
   /// budget that lies about what it holds, so there is one place now.
   static int bytesFor(int size) => size * size * bytesPerPixel;
 
-  /// What this tile holds that no other does: a tile's bytes, and nothing
-  /// where its pixels are its colour's block — the one answer for whoever
-  /// weighs tiles (the hot cels, an undo entry, the memory census).
+  /// What this tile holds HERE that no other does: a tile's bytes where it
+  /// holds a block of its own, and nothing where its pixels are its
+  /// colour's block, or lie on the engine and none of them here
+  /// ([BitmapTile.onEngine]) — the one answer for whoever weighs tiles
+  /// (the hot cels, an undo entry, the memory census).
   ///
   /// A colour's block itself is in nobody's sum: one tile's bytes for each
   /// colour alive.
-  /// ⚠️A tile the engine made weighs a tile's bytes wherever they lie, as
-  /// it did before this was asked.
-  int get ownBytes => _here is _ColourBlock ? 0 : bytesFor(size);
+  ///
+  /// 🚨THE BYTES HELD HERE, NOT THE TILE'S WHEREVER THEY LIE (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu ②, 저장's draft
+  /// 2026-11-19: 「「여기 든 바이트」로 센다」). ↩️Till then a tile the engine
+  /// made weighed a tile's bytes from the start, as one made here does: a
+  /// shell's tile, which holds none (`EngineTileLedger.shellOf`), weighed
+  /// in what the looks hold beside their store and in the census as RAM
+  /// its cel had let go, and a tile just landed read as RAM while the
+  /// device alone held it.
+  /// So this is the one weight that MOVES — once, up, as the bytes come
+  /// ([_readBack], [keepBytesHere]) — and a sum kept of weights is
+  /// weighed again where that happened ([timesBytesCameHere],
+  /// `HotCelWeights`).
+  int get ownBytes => _here is _OwnBlock ? bytesFor(size) : 0;
+
+  /// Whether this tile may yet weigh more than it does ([ownBytes]): one
+  /// the engine made, none of whose bytes are here.
+  bool get mayWeighMore => _onEngine != null && _here == null;
+
+  /// How many times a tile made without its bytes has come to hold them
+  /// — one the engine made, read here ([_readBack]) or handed its copy
+  /// ([keepBytesHere]): every time any tile's weight moved ([ownBytes]).
+  /// A sum kept of weights is good while this stands where it stood as
+  /// the sum was made.
+  static int get timesBytesCameHere => _timesBytesCameHere;
+  static int _timesBytesCameHere = 0;
 
   /// What a store of this tile's pixels elsewhere is found by: the tile
   /// itself, or — where its pixels are its colour's block — that block,
@@ -486,12 +513,15 @@ class BitmapTile implements Finalizable {
     final read = _here!;
     try {
       _onEngine!.readInto(this, read.block);
-      return read;
     } catch (_) {
       // The block stays with the tile's finalizer; a garbage view must not.
       _here = null;
       rethrow;
     }
+    // Said once the bytes are its: a read refused left it weighing what
+    // it did.
+    _timesBytesCameHere += 1;
+    return read;
   }
 
   /// A defensive COPY of the pixel bytes (cold paths: codec, json,

@@ -302,9 +302,12 @@ final GpuEngine _engine;
   /// A shell's slots go as freely as any whose bytes are here
   /// ([TilePixelsKeptBesides]): a tile whose slot went reads the cel's kept
   /// bytes again ([readAgain]) — once for every tile a turn reads so
-  /// ([_KeptCel]) — as the cel's next thaw would. ⚠️A shell's tile weighs a
-  /// tile's bytes ([BitmapTile.ownBytes]), as any the engine made does: the
-  /// looks weigh what the engine keeps for them, as before.
+  /// ([_KeptCel]) — as the cel's next thaw would. A shell's tile weighs
+  /// nothing here ([BitmapTile.ownBytes]), as any the engine made does
+  /// till its bytes come: what the looks hold of a shell is the
+  /// engine's, in the pool's count and no row of RAM. ↩️It weighed a
+  /// tile's bytes till 2026-11-19, a tile the engine made weighing them
+  /// wherever they lay.
   @override
   BitmapSurface? shellOf(
     BitmapSurface surface, {
