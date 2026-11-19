@@ -136,11 +136,14 @@ final class EngineChainHolds {
   /// nothing.
   ///
   /// Where the plan laid whole the frame the canvas [standing] stands on to
-  /// draw, that canvas stands on what the plan named and on nothing else:
-  /// once every run named so far is weighed ([onceWeighed]), a hold no
-  /// canvas stands on is let go of — one whose run was still to
-  /// come once that run is done (브러시/렌더링 2026-11-20 ①), and none named
-  /// meanwhile, a step's or the next laying's. ⛔A step names no canvas:
+  /// draw, that canvas stands on what the plan named and on nothing else: a
+  /// weighed hold no canvas stands on is let go of once the plan's own run
+  /// is weighed, and again once every run named so far is ([onceWeighed]) —
+  /// one whose run was still to come, once that run is done (브러시/렌더링
+  /// 2026-11-20 ①); none named meanwhile, a step's or the next laying's.
+  /// 🔬Let go of only once every run was weighed, a blur value dragged on
+  /// S5_BA cut 352 still held 2.7 GB as it was let go of: the runs of a
+  /// drag never all end (Surface, 2026-11-20). ⛔A step names no canvas:
   /// patched in where it changed, it would let go of the folders it did not
   /// reach and the frame draw them again (8954628b5, 2026-11-04). ⛔Nor
   /// does a frame made ahead: its holds are kept for the next one
@@ -157,21 +160,26 @@ final class EngineChainHolds {
       for (final key in _naming) (key: key, hold: _asked[key]!..runs += 1),
     ];
     _runsToCome += 1;
-    if (standing != null) {
-      _laidWhole(standing, {..._naming});
-    }
+    final laid = standing == null ? null : _laidWhole(standing, named);
     _naming.clear();
     if (done == null) {
-      _weigh(named);
+      _weigh(named, laid);
       return;
     }
     // Why it failed is its asker's to hear ([GpuScreen.compose]).
     unawaited(
-      done.then((_) => _weigh(named), onError: (Object _) => _weigh(named)),
+      done.then(
+        (_) => _weigh(named, laid),
+        onError: (Object _) => _weigh(named, laid),
+      ),
     );
   }
 
-  void _weigh(List<({Object key, _Hold hold})> named) {
+  /// Weighs what a run [named], then what was [laid] whole by it lets go.
+  void _weigh(
+    List<({Object key, _Hold hold})> named,
+    void Function()? laid,
+  ) {
     final held = _held;
     for (final (:key, :hold) in named) {
       hold.runs -= 1;
@@ -186,6 +194,7 @@ final class EngineChainHolds {
         _holds.keep(key, hold);
       }
     }
+    laid?.call();
     _runsToCome -= 1;
     if (_runsToCome == 0) {
       final waiting = [..._onceWeighed];
@@ -196,24 +205,37 @@ final class EngineChainHolds {
     }
   }
 
-  /// [canvas] laid whole naming [own]: once every run named so far is
-  /// weighed, it stands on those, on none else it stood on, and a hold no
-  /// canvas stands on is let go of — but one named meanwhile ([idOf]).
-  void _laidWhole(Object canvas, Set<Object> own) {
+  /// [canvas] laid whole naming [named]: it stands on those, and on none
+  /// else it stood on — a weighed hold no canvas stands on let go of, but
+  /// one named meanwhile ([idOf]) — once the run is weighed (what this
+  /// gives) and once every run named so far is.
+  void Function() _laidWhole(
+    Object canvas,
+    List<({Object key, _Hold hold})> named,
+  ) {
+    final own = <Object>{};
+    for (final (:key, :hold) in named) {
+      own.add(key);
+      hold.standers.add(canvas);
+    }
     final meanwhile = <Object>{};
     _namedSince.add(meanwhile);
+    void standOnOwnAlone() {
+      for (final key in [..._holds.keys]) {
+        if (own.contains(key) || meanwhile.contains(key)) {
+          continue;
+        }
+        final hold = _holds.peek(key)!;
+        hold.standers.remove(canvas);
+        _letGoUnstood(key, hold);
+      }
+    }
+
     onceWeighed(() {
       _namedSince.remove(meanwhile);
-      for (final key in [..._holds.keys]) {
-        final hold = _holds.peek(key)!;
-        if (own.contains(key)) {
-          hold.standers.add(canvas);
-        } else if (!meanwhile.contains(key)) {
-          hold.standers.remove(canvas);
-          _letGoUnstood(key, hold);
-        }
-      }
+      standOnOwnAlone();
     });
+    return standOnOwnAlone;
   }
 
   /// [canvas] stands on none of these any more — gone with its screen: a

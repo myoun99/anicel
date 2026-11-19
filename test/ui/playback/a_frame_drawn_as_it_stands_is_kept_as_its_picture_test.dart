@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -30,6 +33,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/an_effect_sampled.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
@@ -93,18 +97,33 @@ void main() {
   );
 
   /// The tree a canvas stands: [drawn] as stored at [opacity] — the value
-  /// a hand drags — and the row a pen is on over [empty].
+  /// a hand drags — in a folder of its own where it is [blurred], and the
+  /// row a pen is on over [empty].
   List<CompositeNode<CanvasStackRow>> treeOf({
     double opacity = 1,
     BrushFrameKey? drawn,
-  }) => [
-    CompositeLeaf<CanvasStackRow>(
+    bool blurred = false,
+  }) {
+    final row = CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: drawn ?? inked, opacity: opacity),
-    ),
-    CompositeLeaf<CanvasStackRow>(
-      CanvasActiveLayerRow(opacity: 1, frameKey: empty),
-    ),
-  ];
+    );
+    return [
+      if (blurred)
+        CompositeGroup<CanvasStackRow>(
+          children: [row],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: [
+            fx(EffectKind.blur, {'blurriness': 3}),
+          ],
+        )
+      else
+        row,
+      CompositeLeaf<CanvasStackRow>(
+        CanvasActiveLayerRow(opacity: 1, frameKey: empty),
+      ),
+    ];
+  }
 
   BitmapSurface aCelOf(List<int> colour) => BitmapSurface(
     canvasSize: canvasSize,
@@ -232,6 +251,41 @@ void main() {
     }
 
     expect(canvas.store.laid, [first], reason: 'each value kept as it stood');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🔬A blur value dragged 60 steps on S5_BA cut 352 held 3.6 GB of the
+  // values passed over (card a-blur-value-drag-grows-memory-by-gigabytes,
+  // Surface, 2026-11-20): each value drawn as it stands is laid whole for
+  // the canvas, which stands on that alone (`EngineChainHolds.settleOnce`).
+  testWidgets('🚨a value dragged on a blurred folder: the canvas holds the '
+      'folder as it stands at the value now alone', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final canvas = standing(anOverlay());
+    await theCelsRead(tester, canvas.run);
+    final holds = canvas.run.pictures.heldNodes;
+    Future<int> heldOnceWeighed() async {
+      final weighed = Completer<void>();
+      holds.onceWeighed(weighed.complete);
+      await tester.runAsync(() => weighed.future);
+      return holds.heldBytes;
+    }
+
+    await handed(tester, canvas, treeOf(blurred: true));
+    final one = await heldOnceWeighed();
+    expect(one, greaterThan(0), reason: '⛔premise: the folder is held');
+
+    for (final opacity in [0.75, 0.5, 0.25]) {
+      await handed(tester, canvas, treeOf(opacity: opacity, blurred: true));
+    }
+
+    expect(
+      canvas.store.laid,
+      hasLength(1),
+      reason: '⛔premise: each value drawn as it stands',
+    );
+    expect(await heldOnceWeighed(), one, reason: 'the values passed over');
     await tester.pumpWidget(const SizedBox());
   });
 

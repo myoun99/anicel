@@ -552,6 +552,28 @@ void main() {
       expect(holds.idOf('others'), others, reason: 'the conte\'s');
       holds.settleOnce(null);
     });
+
+    // 🔬The runs of a value dragged never all end: let go of only then, a
+    // blur dragged on S5_BA cut 352 still held 2.7 GB (2026-11-20).
+    test('🚨one stood on before is let go of once the laying\'s own run is '
+        'weighed, the next laying\'s still to come', () async {
+      final holds = holdsIn(1 << 30);
+      final before = holds.idOf('before');
+      holds.settleOnce(null, standing: theCanvas);
+      holds.idOf('now');
+      final now = Completer<void>();
+      holds.settleOnce(now.future, standing: theCanvas);
+      holds.idOf('next');
+      final next = Completer<void>();
+      holds.settleOnce(next.future, standing: theCanvas);
+
+      now.complete();
+      await pumpEventQueue();
+      expect(holds.idOf('before'), isNot(before));
+      holds.settleOnce(null);
+      next.complete();
+      await pumpEventQueue();
+    });
   });
 
   // The engine tells a kept picture's tile by the number of a chain laid on
