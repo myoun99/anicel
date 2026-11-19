@@ -1542,7 +1542,16 @@ void main() {
   /// place the trunk's count stood under the ceiling; what the pool is
   /// handed is `_handedToThePool` now. 🔬`clean_code_diff` against master
   /// (`efb502eea`) names it gone.
-  const longBodies = 393;
+  ///
+  /// ⚠️393 → 394 on 2026-11-19, one named as the rule above asks (card
+  /// a-stamp-drag-undoes-a-stamp-at-a-time — 🗣️유저 「스탬프 도구설정에
+  /// 간격설정도 두도록」): `BrushToolState`'s constructor crossed sixty
+  /// carrying the stamp's spacing (`cutStampSpacing`) beside its opacity.
+  /// 🔬`clean_code_diff` against master (`589a75366`, at 393 — on its
+  /// ceiling) named that one added and nothing gone. ⛔Not split to fit: it
+  /// is one table — of a tool's fields, each clamped where it is taken, as
+  /// `BrushToolState.clamped` is (416 → 417 above).
+  const longBodies = 394;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
