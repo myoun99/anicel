@@ -10,7 +10,8 @@
 //   bash tool/run.sh test_queue --usage [hours]         how much stood free
 //   bash tool/run.sh test_queue --window <minutes> <who…>
 //                    a measurement window: nothing new starts till it closes
-//                    (`--window close`, or its deadline — measure_window.dart)
+//                    (`--window close <who…>`, or its deadline —
+//                    measure_window.dart)
 //
 // `affected_tests` takes its turn here by itself — a session that runs it
 // waits for nothing else first.
@@ -1295,7 +1296,7 @@ Future<void> main(List<String> args) async {
   if (args.isEmpty) {
     stderr.writeln(
       'usage: bash tool/run.sh test_queue <command…> | --list | '
-      '--usage [hours] | --window [<minutes> <who…> | close]',
+      '--usage [hours] | --window [<minutes> <who…> | close [<who…>]]',
     );
     exitCode = 2;
     return;
