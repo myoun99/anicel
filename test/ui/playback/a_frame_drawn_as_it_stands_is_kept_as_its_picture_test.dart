@@ -319,6 +319,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('🚨a screen let go of before the GPU is through with the frame '
+      'stood on it is kept as no picture — the store lays the key', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final canvas = standing(anOverlay());
+    await theCelsRead(tester, canvas.run);
+    await handed(tester, canvas, treeOf());
+    canvas.store.laid.clear();
+    final tree = treeOf(opacity: 0.5);
+    final key = canvas.run.pictures.keyOfStack(tree, frame);
+
+    // Stood on, the GPU not through with it while the test's clock runs ...
+    await tester.pumpWidget(shown(canvas.run, canvas.live, tree));
+    // ... when the engine's tools go, and the screen with them.
+    canvas.store.letGoWithItsTools();
+    // Its composition comes with no frame painted since: nothing stood anew.
+    await tester.runAsync(() async {
+      for (var beat = 0; beat < 500; beat += 1) {
+        if (canvas.store.laid.contains(key) || canvas.store.holds(key)) {
+          return;
+        }
+        turnThePumpedClock(tester);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
+
+    expect(
+      canvas.store.laid,
+      contains(key),
+      reason: 'the screen the frame stood on went with the tools',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('the store keeps no screen under a key it has a picture of, or '
       'lays one of: one picture a key', (tester) async {
     final (:run, :store, live: _) = standing(anOverlay());
