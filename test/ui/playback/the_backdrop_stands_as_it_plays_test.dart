@@ -13,7 +13,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart'
 import 'package:anicel/src/models/project.dart' show defaultProjectBackdropArgb;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart'
-    show CanvasStageColors;
+    show CanvasFloorInsets, CanvasStageColors;
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -97,12 +97,17 @@ void main() {
               pasteboardNone: project.pasteboardNone,
               pasteboardSize: project.pasteboardSize,
               pasteboardInUse: project.pasteboardInUse,
-              child: EditorCanvasArea(
-                session: session,
-                brushToolState: brushTool,
-                cameraViewEnabled: camera,
-                cameraDimOpacity: dim,
-                canvasViewCommands: view,
+              // On the floor, as the editor lays it: the view keys come
+              // from there.
+              child: CanvasFloorInsets(
+                insets: EdgeInsets.zero,
+                viewCommands: view,
+                child: EditorCanvasArea(
+                  session: session,
+                  brushToolState: brushTool,
+                  cameraViewEnabled: camera,
+                  cameraDimOpacity: dim,
+                ),
               ),
             ),
           ),
