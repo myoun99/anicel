@@ -279,20 +279,75 @@ class BrushFrameEditingCoordinator {
     if (dabs.isEmpty) {
       throw ArgumentError.value(dabs, 'dabs', 'must not be empty');
     }
-    final target = key ?? _activeFrameKey;
-    final result = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-      sessionState: _sessionFor(target),
-      sequence: BrushDabSequence(dabs, 1),
-      layerId: target.layerId,
-      frameId: target.frameId,
-      cacheInvalidationSink: _NoopCacheInvalidationSink(),
+    return _derivedWith(
+      [dabs],
       blendMode: blendMode,
+      key: key ?? _activeFrameKey,
       selection: selection,
     );
-    if (result.affectedEntry == null) {
-      return null;
+  }
+
+  /// [stamps] laid on [key]'s picture one after another, EACH BY ITSELF —
+  /// what each lands on is what the one before it left — written nowhere,
+  /// as [deriveSurfaceWith] derives: a lift's landing, a stamp drag's.
+  ///
+  /// A blend that lays a run of stamps dab by dab ([BrushBlendMode
+  /// .blendsTheWholeStroke] false: colour, erase) takes the run in ONE
+  /// commit; one that would blend the run as ONE layer takes a commit a
+  /// stamp, so the run lands as its stamps landed one at a time.
+  ///
+  /// 🧪Measured 2026-11-19 (a-drag-lands-its-stamps-as-one): three
+  /// overlapping stamps at half alpha laid 뒤에 그리기 in one commit parted
+  /// from the same three laid one at a time where they overlap — the run
+  /// piled up first and went under the cel once.
+  BitmapSurface? deriveSurfaceWithEach(
+    List<BrushDab> stamps, {
+    BrushBlendMode blendMode = BrushBlendMode.color,
+    BrushFrameKey? key,
+    SelectionClip? selection,
+  }) {
+    if (stamps.isEmpty) {
+      throw ArgumentError.value(stamps, 'stamps', 'must not be empty');
     }
-    return result.sessionState.canvasState.currentSurface;
+    return _derivedWith(
+      blendMode.blendsTheWholeStroke
+          ? [
+              for (final stamp in stamps) [stamp],
+            ]
+          : [stamps],
+      blendMode: blendMode,
+      key: key ?? _activeFrameKey,
+      selection: selection,
+    );
+  }
+
+  /// [runs] committed one after another on [key]'s picture, each over what
+  /// the one before it left — null when none of them changes anything.
+  BitmapSurface? _derivedWith(
+    List<List<BrushDab>> runs, {
+    required BrushBlendMode blendMode,
+    required BrushFrameKey key,
+    required SelectionClip? selection,
+  }) {
+    var session = _sessionFor(key);
+    var changed = false;
+    for (final run in runs) {
+      final result =
+          commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+            sessionState: session,
+            sequence: BrushDabSequence(run, 1),
+            layerId: key.layerId,
+            frameId: key.frameId,
+            cacheInvalidationSink: _NoopCacheInvalidationSink(),
+            blendMode: blendMode,
+            selection: selection,
+          );
+      if (result.affectedEntry != null) {
+        session = result.sessionState;
+        changed = true;
+      }
+    }
+    return changed ? session.canvasState.currentSurface : null;
   }
 
   /// Commits a finished stroke into the active cel's surface and returns

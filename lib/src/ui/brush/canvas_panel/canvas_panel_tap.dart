@@ -520,7 +520,7 @@ class _CanvasPanelTap {
           CanvasTouchContacts.aFingerHoldsAStrokesShift(_pressPointer));
 }
 
-/// THE STAMP'S TRAIL — a press of the stamp lands the held piece, and the
+/// THE STAMP'S TRAIL — a press of the stamp lays the held piece, and the
 /// drag it begins lays a row of them along the hand, each the stamp's
 /// spacing on from the last ([BrushToolState.cutStampSpacing]) — and the
 /// whole drag is ONE undo, as a stroke is.
@@ -533,12 +533,21 @@ class _CanvasPanelTap {
 /// press is read; the row's own artwork is where the spacing is measured.
 ///
 /// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「한 끌기 =
-/// 한 되돌리기(획처럼)」 — each stamp lands as it is laid, so the cel shows
-/// it, and what the press and the drag landed is folded into one step when
-/// the hand lifts ([HistoryGestures.foldSince], the rail swipe's fold).
+/// 한 되돌리기(획처럼)」 — and recorded as a stroke is (관제 2026-11-19, the
+/// brush's law: one landing per cel, every stamp of the drag in it). While
+/// the hand moves, the cel you stand on shows what each move laid, written
+/// raw and recorded nowhere ([_show]); the lift puts back the picture the
+/// press found there ([_StampDrag.pressed]) and lands the whole trail
+/// through the piece door, so the step's undo is that picture. The other
+/// cels of a range take the trail at the lift.
+///
 /// ↩️Each stamp was a step of its own — twelve stamps, twelve undos — from
 /// the trail's first cut (1900500eb) through the piece door (7bd94c5c1);
-/// nobody had asked for it.
+/// nobody had asked for it. ↩️Then each stamp still landed as a step, and
+/// the lift folded them ([HistoryGestures.foldSince], fd4191ec2): measured
+/// 2026-11-19 on the Surface over eight cels, a 5% spacing laid 480 stamps
+/// in a 1.7 s drag that took 6 s, pushed all that came before it out of the
+/// history's 200 steps and was left 480 undos; 1% froze for 22 s.
 ///
 /// Carved out of [_CanvasPanelTap] (11-17) when the drag's one door to the
 /// window ([CanvasDragInFlight]) took that class past six hundred lines.
@@ -549,9 +558,7 @@ class _StampTrail {
 
   _BrushCanvasPanelState get _state => _tap._state;
 
-  /// The drag: the path's lock, where its last stamp landed on the standing
-  /// row's own artwork, and where the history stood before its press
-  /// stamped. Null between drags.
+  /// The drag in flight ([_StampDrag]). Null between drags.
   _StampDrag? get _drag => _held;
 
   /// ⛔The one door [_drag] is written by: a stamp's drag in flight is
@@ -564,9 +571,9 @@ class _StampTrail {
 
   _StampDrag? _held;
 
-  /// A press of the stamp at [point]: [piece] lands there, and the drag it
-  /// may begin is armed. Pressed under the hold that kept a line, it lands
-  /// on that line (I-121), as a stroke's press does — [shift] held now.
+  /// A press of the stamp at [point]: [piece] is laid there, and the drag
+  /// it may begin is armed. Pressed under the hold that kept a line, it is
+  /// laid on that line (I-121), as a stroke's press is — [shift] held now.
   void press(CutPiece? piece, CanvasPoint point, {required bool shift}) {
     final line = _state._shiftLine..heldNow(shift);
     final pressed = line.onTheLine(point);
@@ -574,23 +581,32 @@ class _StampTrail {
     // row shows the press (a-marquee-on-a-posed-row) — the piece is the
     // row's pure pixels, so it lands in the row's own coordinates.
     final onTheRow = _state._selectionSeat.pointOnTheRow(pressed);
-    if (piece == null || onTheRow == null) {
+    final coordinator = _state.widget.coordinator;
+    if (piece == null || onTheRow == null || coordinator == null) {
       return;
     }
-    final since = _state.widget.historyManager?.gestures.mark;
-    _stampAt(piece, pressed);
+    final standing = coordinator.frameStore.canonicalKeyOf(
+      coordinator.activeFrameKey,
+    );
     // A press is also the start of a possible drag, and the drag
-    // measures its spacing from the stamp that just landed.
-    _drag = (
+    // measures its spacing from the stamp the press lays.
+    final drag = _StampDrag(
       lock: StrokeLock(
         guides: _state.widget.guides ?? CutGuides.empty,
         start: pressed,
         zoom: _state._viewportState._viewport.zoom,
         line: line,
       ),
+      piece: piece,
+      opacity: _state._brush.cutStampOpacity,
+      stamp: _state._stampLaying([]),
+      ground: _state._pieceGround(coordinator),
+      standing: standing,
+      pressed: coordinator.currentSurfaceOf(standing),
       lastCenter: onTheRow,
-      since: since,
     );
+    _drag = drag;
+    _lay(drag, [pressed]);
   }
 
   /// The hand at [point], [shift] held now: what the lock lays from the
@@ -602,90 +618,164 @@ class _StampTrail {
     }
   }
 
-  /// The hand has lifted: what the drag's lock still holds is stamped
-  /// ([StrokeLock.finish]), the drag's stamps become one step, and the drag
-  /// is over.
+  /// The hand has lifted: what the drag's lock still holds is laid
+  /// ([StrokeLock.finish]), the trail lands as one step, and the drag is
+  /// over.
   void end() {
     final drag = _drag;
     if (drag != null) {
       _along(drag.lock.finish());
-      _foldTheTrail(drag.since);
     }
-    _drag = null;
+    _land(rebuild: true);
   }
 
-  /// The drag is over with nothing more stamped: a cancel, or the canvas
-  /// going away under it. What it stamped is one step all the same.
-  void drop() {
-    final since = _drag?.since;
-    _drag = null;
-    _foldTheTrail(since);
-  }
+  /// The drag is over with nothing more laid — a cancel. What it laid
+  /// lands all the same, one step.
+  void drop() => _land(rebuild: true);
 
-  /// The press's stamp and the drag's after it, one step
-  /// ([HistoryGestures.foldSince] — which leaves them as they are where
-  /// anything else was written meanwhile).
-  void _foldTheTrail(HistoryMark? since) {
-    final history = _state.widget.historyManager;
-    if (history != null && since != null) {
-      history.gestures.foldSince(since, 'Stamp');
+  /// The canvas going away under a drag: what it laid lands, one step,
+  /// without a rebuild of the panel on its way out.
+  void leave() => _land(rebuild: false);
+
+  /// The trail, landed as ONE step through the piece door
+  /// ([_BrushCanvasPanelState._landStamp]) on the ground its press read —
+  /// one landing per cel, every stamp in it — and the drag over.
+  void _land({required bool rebuild}) {
+    final drag = _drag;
+    _drag = null;
+    final coordinator = _state.widget.coordinator;
+    if (drag == null || coordinator == null || drag.stamp.laid.isEmpty) {
+      return;
     }
-  }
-
-  /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
-  /// which every row the stamp lands on takes on its own artwork, where
-  /// that row shows it ([_BrushCanvasPanelState._landStamp]).
-  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
-    _state._landStamp(
-      _tap.pieceCentredOn(
-        piece,
-        onCanvas,
-        opacity: _state._brush.cutStampOpacity,
-      ),
-    ).step();
+    // The picture the press found, back on the cel you stand on: the step
+    // lands every stamp over it, and its undo is that picture. ⚠️Anything
+    // else written on that cel since the press goes back with it — the
+    // window's held keys wait a drag out ([CanvasDragInFlight]).
+    final now = coordinator.currentSurfaceOf(drag.standing);
+    if (!identical(now, drag.pressed)) {
+      coordinator.restoreSurfaceSnapshot(
+        drag.standing,
+        drag.pressed,
+        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+      );
+    }
+    _state
+        ._landStamp(drag.stamp, ground: drag.ground, rebuild: rebuild)
+        .step();
   }
 
   /// The drag's stamps along [points], on the canvas, each the stamp's
   /// spacing on from the last.
   ///
   /// The remainder of the travel is deliberately NOT carried: the next
-  /// move continues from the last stamp that actually landed, so a slow
-  /// drag and a fast one lay the same number of stamps over the same
-  /// distance.
+  /// move continues from the last stamp that was laid, so a slow drag and
+  /// a fast one lay the same number of stamps over the same distance.
   void _along(List<CanvasPoint> points) {
-    final piece = _state.widget.cutPieceSlot?.piece;
+    final drag = _drag;
+    if (drag == null) {
+      return;
+    }
+    final centres = <CanvasPoint>[];
     for (final point in points) {
-      final drag = _drag;
       // The trail is laid on the row's own artwork, as the press was, so the
       // spacing is a share of the piece's own size in its own pixels.
       final to = _state._selectionSeat.pointOnTheRow(point);
-      if (piece == null || drag == null || to == null) {
-        return;
+      if (to == null) {
+        break;
       }
-      final centers = cutStampCentersAlong(
-        piece: piece,
+      final along = cutStampCentersAlong(
+        piece: drag.piece,
         from: drag.lastCenter,
         to: to,
         spacing: _state._brush.cutStampSpacing,
       );
-      for (final center in centers) {
+      for (final centre in along) {
         // Back on the canvas, where the other rows of a range read it from.
-        _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
+        centres.add(_state._selectionSeat.pointOnTheCanvas(centre));
       }
-      if (centers.isNotEmpty) {
-        _drag = (
-          lock: drag.lock,
-          lastCenter: centers.last,
-          since: drag.since,
-        );
+      if (along.isNotEmpty) {
+        drag.lastCenter = along.last;
       }
+    }
+    _lay(drag, centres);
+  }
+
+  /// The held piece laid at each of [centres] — points on the CANVAS, which
+  /// every row the trail lands on takes on its own artwork, where that row
+  /// shows it ([_CanvasPanelTap.pieceCentredOn]): kept for the lift, and
+  /// shown on the cel you stand on now.
+  void _lay(_StampDrag drag, List<CanvasPoint> centres) {
+    if (centres.isEmpty) {
+      return;
+    }
+    final laid = [
+      for (final centre in centres)
+        _tap.pieceCentredOn(drag.piece, centre, opacity: drag.opacity),
+    ];
+    drag.stamp.laid.addAll(laid);
+    _show(drag, laid);
+  }
+
+  /// What one move [laid], written on the cel you stand on as the lift will
+  /// land it there — the same door, asked for that cel alone
+  /// ([pieceLandings]) — and raw: the lift's step is what records it.
+  void _show(_StampDrag drag, List<PieceOnTheRow> laid) {
+    final coordinator = _state.widget.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    final shown = pieceLandings(
+      coordinator: coordinator,
+      ground: drag.ground,
+      stamp: PieceStamp.along(
+        laid: laid,
+        blend: drag.stamp.blend,
+        description: drag.stamp.description,
+      ),
+      only: drag.standing,
+      cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+    )[drag.standing];
+    if (shown != null) {
+      _state._rebuild(shown.landing.execute);
     }
   }
 }
 
-/// A stamp's drag in flight ([_StampTrail._drag]).
-typedef _StampDrag = ({
-  StrokeLock lock,
-  CanvasPoint lastCenter,
-  HistoryMark? since,
-});
+/// A stamp's drag in flight ([_StampTrail._drag]): all of it read at the
+/// press — the piece, its opacity and blend, the ground it lands on, the
+/// cel you stand on and the picture that cel held — so that what the lift
+/// lands is what the hand was shown.
+class _StampDrag {
+  _StampDrag({
+    required this.lock,
+    required this.piece,
+    required this.opacity,
+    required this.stamp,
+    required this.ground,
+    required this.standing,
+    required this.pressed,
+    required this.lastCenter,
+  });
+
+  /// The path's lock (I-121).
+  final StrokeLock lock;
+
+  final CutPiece piece;
+
+  final double opacity;
+
+  /// Every stamp laid so far, press first ([PieceStamp.laid]).
+  final PieceStamp stamp;
+
+  final PieceGround ground;
+
+  /// The cel you stand on, as the door keys it.
+  final BrushFrameKey standing;
+
+  /// The picture [standing] held at the press — what the lift puts back
+  /// before it lands the trail ([_StampTrail._land]).
+  final BitmapSurface pressed;
+
+  /// Where the last stamp was laid, on the standing row's own artwork.
+  CanvasPoint lastCenter;
+}

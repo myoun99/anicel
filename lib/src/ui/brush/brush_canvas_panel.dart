@@ -1733,9 +1733,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
     }
-    // A stamp's drag in flight as the canvas goes ends with it: nothing
-    // waits for it any more ([_StampTrail]).
-    _tap._trail.drop();
+    // A stamp's drag in flight as the canvas goes lands what it laid, and
+    // ends with it: nothing waits for it any more ([_StampTrail]).
+    _tap._trail.leave();
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     _stopAskingTheGhost();
@@ -2961,7 +2961,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ),
       pieces: () sync* {
         if (answer() case final answer?) {
-          yield answer.dab;
+          yield* answer.dabs;
         }
       },
       blend: blend,
@@ -3291,7 +3291,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        _landStamp((_) => dab),
+        _landStamp(_stampLaying([(_) => dab])),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
         ),
@@ -3302,9 +3302,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// Lands the held piece with the stamp tool's own blend — [onTheRow] is
-  /// the piece as a row standing at a placement takes it
-  /// ([PieceStamp.onTheRow]).
+  /// The held piece laid as [laid] lays it ([PieceStamp.laid]), in the
+  /// stamp's own blend — as its opacity is ([pasteCutPieceAtOrigin]) and as
+  /// its ghost shows it. ↩️It read the tool in hand — the same number only
+  /// while the stamp's own tile was the one pressing.
+  PieceStamp _stampLaying(List<PieceOnTheRow> laid) => PieceStamp.along(
+    laid: laid,
+    blend: _brush.cutStampBlendMode,
+    description: 'Stamp',
+  );
+
+  /// Lands [stamp] on [ground] — the ground a press reads now, unless the
+  /// press that began a drag read it already ([_StampTrail]).
   ///
   /// 🚨★★★**ALL THREE STAMP ROADS, THROUGH THE PIECE DOOR** ([pieceLandings])
   /// — a press on the canvas, a drag's trail and 원래 위치에 붙여넣기 land
@@ -3329,25 +3338,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// them, and each cel's landing worked out ahead of it for the door that
   /// stands it behind the window (`BrushLiftMoveHistoryCommand.workAhead`,
   /// 🗣️F-615) — a press on the canvas takes its step at once.
+  ///
+  /// [rebuild] false takes the step without rebuilding the panel: a drag
+  /// that lands as the canvas goes away ([_StampTrail.leave]).
   PressedStep _landStamp(
-    BrushDab? Function(LayerPlacement? placement) onTheRow,
-  ) {
+    PieceStamp stamp, {
+    PieceGround? ground,
+    bool rebuild = true,
+  }) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
       return (ahead: null, step: () {});
     }
-    // The stamp's own, as its opacity is ([pasteCutPieceAtOrigin]) and as
-    // its ghost shows it. ↩️It read the tool in hand — the same number only
-    // while the stamp's own tile was the one pressing.
-    final blend = _brush.cutStampBlendMode;
     final landed = pieceLandings(
       coordinator: coordinator,
-      ground: _pieceGround(coordinator),
-      stamp: PieceStamp(
-        onTheRow: onTheRow,
-        blend: blend,
-        description: 'Stamp',
-      ),
+      ground: ground ?? _pieceGround(coordinator),
+      stamp: stamp,
       cacheInvalidationSink: widget.cacheInvalidationSink,
     );
     if (landed.isEmpty) {
@@ -3365,7 +3371,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final record = landed[standing] ?? landed.values.first;
     final landings = [for (final cel in landed.values) cel.landing];
     final history = widget.historyManager;
-    final step = history == null ? null : oneStepOf('Stamp', landings);
+    final step = history == null
+        ? null
+        : oneStepOf(stamp.description, landings);
     return (
       ahead: switch (step) {
         final WorksAheadCommand works => works.workAhead(undo: false),
@@ -3377,21 +3385,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         }
         widget.lastStroke?.hold(
           BrushStrokeCommitData(
-            sourceDabs: [record.dab],
-            blendMode: blend,
+            sourceDabs: record.dabs,
+            blendMode: stamp.blend,
             selection: record.within,
           ),
         );
-        _takeTheStamp(step, landings);
+        _takeTheStamp(step, landings, rebuild: rebuild);
       },
     );
   }
 
   /// The stamp's [step] taken, as one undo — or, in a headless host with no
   /// history to take it (focused tests), its [landings] landed raw.
-  void _takeTheStamp(Command? step, List<Command> landings) {
+  ///
+  /// [rebuild] false while the panel is being disposed: a rebuild asked of
+  /// a State on its way out throws ([_landStamp]).
+  void _takeTheStamp(
+    Command? step,
+    List<Command> landings, {
+    required bool rebuild,
+  }) {
     final history = widget.historyManager;
-    setState(() {
+    void take() {
       if (history == null || step == null) {
         for (final landing in landings) {
           landing.execute();
@@ -3399,7 +3414,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         return;
       }
       history.execute(step);
-    });
+    }
+
+    if (!rebuild) {
+      take();
+      return;
+    }
+    setState(take);
     // ⛔The ghost is not asked again here: the rebuild above asks, as an
     // undo's does ([_askTheGhostAgain]) — one road for every write under
     // it. ↩️It was asked here, a count of stamps landed in its shape: an

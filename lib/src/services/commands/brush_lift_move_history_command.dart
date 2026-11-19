@@ -242,9 +242,15 @@ class BrushLiftMoveHistoryCommand
 
   /// [_landingDabs] on [frameKey]'s picture as it is now, written nowhere —
   /// null when they change nothing.
+  ///
+  /// Each BY ITSELF ([BrushFrameEditingCoordinator.deriveSurfaceWithEach]):
+  /// a landing is a program — cut the hole, then lay the piece — or a stamp
+  /// drag's trail, and either means what it says only stamp by stamp, in
+  /// whatever blend it lands (a-stamp-drag-undoes-a-stamp-at-a-time,
+  /// 2026-11-19: one landing for a whole drag, as each stamp had landed).
   BitmapSurface? _derive() {
     derivesHere += 1;
-    return coordinator.deriveSurfaceWith(
+    return coordinator.deriveSurfaceWithEach(
       _landingDabs!,
       blendMode: blendMode,
       key: frameKey,

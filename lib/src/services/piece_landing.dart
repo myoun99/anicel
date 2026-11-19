@@ -43,22 +43,34 @@ class PieceGround {
   final SelectionMaskOptions options;
 }
 
+/// The picture as a row standing at [placement] takes it, in that row's own
+/// artwork — a paste hands every row the same dab, a stamp pressed on the
+/// canvas restates its press on each. Null where the row cannot take it.
+///
+/// ⚠️Hand back the SAME dab wherever the answer is the same: the door cuts
+/// one dab through one outline once, however many cels take it.
+typedef PieceOnTheRow = BrushDab? Function(LayerPlacement? placement);
+
 /// WHAT lands: the picture, how it composites, and what the step is called.
 class PieceStamp {
-  const PieceStamp({
-    required this.onTheRow,
+  PieceStamp({
+    required PieceOnTheRow onTheRow,
+    required this.blend,
+    required this.description,
+  }) : laid = [onTheRow];
+
+  /// The picture laid as many times as a drag laid it, in the order it was
+  /// laid ([laid]).
+  const PieceStamp.along({
+    required this.laid,
     required this.blend,
     required this.description,
   });
 
-  /// The picture as a row standing at [placement] takes it, in that row's
-  /// own artwork — a paste hands every row the same dab, a stamp pressed on
-  /// the canvas restates its press on each. Null where the row cannot take
-  /// it.
-  ///
-  /// ⚠️Hand back the SAME dab wherever the answer is the same: the door
-  /// cuts one dab through one outline once, however many cels take it.
-  final BrushDab? Function(LayerPlacement? placement) onTheRow;
+  /// Every time the picture is laid, first to last — once for a paste and a
+  /// press, once a stamp for a drag. A cel takes all of them as ONE landing,
+  /// as a stroke's dabs are one (a-stamp-drag-undoes-a-stamp-at-a-time).
+  final List<PieceOnTheRow> laid;
 
   /// The ORDER it lands in: `color` over what the cel holds, `behind` under
   /// it (위/아래 = 합성순서, 유저 08-10) — or any other mode a stamp wears;
@@ -68,20 +80,20 @@ class PieceStamp {
   final String description;
 }
 
-/// One cel's share of a landing: the dab as it lands there, the selection
-/// it lands through there, if there is one, and the step that lands it.
+/// One cel's share of a landing: the dabs as they land there, the selection
+/// they land through there, if there is one, and the step that lands them.
 typedef PieceLanding = ({
-  BrushDab dab,
+  List<BrushDab> dabs,
   SelectionClip? within,
   Command landing,
 });
 
 /// One cel's answer from the door, before anything lands: the key that
-/// answered for the cel, the dab as it lands there and the selection it
-/// lands through there ([pieceDabs]).
+/// answered for the cel, the dabs as they land there and the selection they
+/// land through there ([pieceDabs]).
 typedef PieceDab = ({
   BrushFrameKey key,
-  BrushDab dab,
+  List<BrushDab> dabs,
   SelectionClip? within,
 });
 
@@ -120,26 +132,29 @@ typedef PieceDab = ({
 ///
 /// Keyed by the physical cel, in the ladder's order. Empty when nothing
 /// lands — no cel named, or the selection leaves nothing of the piece.
+/// [only] lands on the one physical cel it names ([pieceDabs]).
 Map<BrushFrameKey, PieceLanding> pieceLandings({
   required BrushFrameEditingCoordinator coordinator,
   required PieceGround ground,
   required PieceStamp stamp,
+  BrushFrameKey? only,
   CacheInvalidationSink? cacheInvalidationSink,
 }) {
   final answers = pieceDabs(
     coordinator: coordinator,
     ground: ground,
     stamp: stamp,
+    only: only,
   );
   return {
     for (final MapEntry(key: cel, value: answer) in answers.entries)
       cel: (
-        dab: answer.dab,
+        dabs: answer.dabs,
         within: answer.within,
         landing: BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
           frameKey: answer.key,
-          landingDabs: [answer.dab],
+          landingDabs: answer.dabs,
           landingSelection: answer.within,
           blendMode: stamp.blend,
           description: stamp.description,
@@ -191,20 +206,27 @@ Map<BrushFrameKey, PieceDab> pieceDabs({
       continue;
     }
     final placement = ground.placementOf(key);
-    final whole = stamp.onTheRow(placement);
-    final inside = whole == null
-        ? null
-        : through.cut(whole, row: key.layerId, placement: placement);
-    if (inside == null) {
+    final dabs = <BrushDab>[];
+    SelectionClip? within;
+    for (final onTheRow in stamp.laid) {
+      final whole = onTheRow(placement);
+      final inside = whole == null
+          ? null
+          : through.cut(whole, row: key.layerId, placement: placement);
+      if (inside == null) {
+        continue;
+      }
+      // 🚨ERASE rides a flag on the DAB ([BrushDab.underBlend] says why);
+      // every road a piece lands by passes this line.
+      dabs.add(inside.dab.underBlend(stamp.blend));
+      // A row's selection is the row's ([_SelectionOnTheRows]), whichever
+      // of the laid pictures reads it.
+      within ??= inside.within;
+    }
+    if (dabs.isEmpty) {
       continue;
     }
-    // 🚨ERASE rides a flag on the DAB ([BrushDab.underBlend] says why);
-    // every road a piece lands by passes this line.
-    answered[cel] = (
-      key: key,
-      dab: inside.dab.underBlend(stamp.blend),
-      within: inside.within,
-    );
+    answered[cel] = (key: key, dabs: dabs, within: within);
   }
   return answered;
 }
