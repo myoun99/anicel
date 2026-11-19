@@ -137,4 +137,55 @@ void main() {
     );
     expect(heard, 1);
   });
+
+  test('🚨a band of two drawings pasted over a linked row is heard ONCE — '
+      'the pictures it carries are one edit of the cels', () {
+    final s = _session();
+    final store = s.renderCaches.brushFrameStore;
+    final cut = s.requireActiveCut;
+    for (final cel in ['a1', 'a2']) {
+      store.storeBakedSurface(
+        s.brushFrameKeyForCut(cut, _a, FrameId(cel)),
+        _ink(),
+      );
+    }
+    s.selectLayer(_a);
+    final before = {for (final row in s.requireActiveCut.layers) row.id};
+    linkDuplicateActiveRow(s);
+    final linked = s.requireActiveCut.layers
+        .where((row) => !before.contains(row.id))
+        .single;
+    void band(LayerId row) {
+      s.standOnRow(LayerRowAddress(row), frameIndex: 0);
+      s.updateFrameRangeSelectionDrag(
+        layerId: row,
+        anchorIndex: 0,
+        headIndex: 3,
+        spanRows: [LayerRowAddress(row)],
+      );
+    }
+
+    band(_a);
+    s.clipboard.copyAt(s.clipboard.timelinePlace);
+    band(linked.id);
+
+    var heard = 0;
+    void hear() => heard += 1;
+    store.celContentRevision.addListener(hear);
+    addTearDown(() => store.celContentRevision.removeListener(hear));
+    s.clipboard.pasteIndependentAt(s.clipboard.timelinePlace);
+
+    final now = s.requireActiveCut;
+    final row = now.layers.firstWhere((one) => one.id == linked.id);
+    final shown = {
+      for (final exposure in row.timeline.values) exposure.frameId!,
+    };
+    expect(shown, hasLength(2), reason: '⛔전제: two drawings laid');
+    expect(
+      shown.intersection({const FrameId('a1'), const FrameId('a2')}),
+      isEmpty,
+      reason: '⛔전제: cels of its own',
+    );
+    expect(heard, 1);
+  });
 }

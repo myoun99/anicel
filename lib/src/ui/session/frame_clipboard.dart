@@ -1348,19 +1348,25 @@ class FrameClipboard implements BringsMedia {
       }
     });
     final cut = _project.activeCutOrNull;
-    for (final (targetId, minted, pictures) in mintedByLayer) {
-      if (cut == null) {
-        break; // Gap state: no cut, so no key to store a picture under.
+    // 🔬F-615: ONE edit of the cels, as 링크 독립's copies are
+    // ([unlinkRuns]) — S5_BA cut 352, a band of 341 drawings pasted over
+    // 61 linked rows stood 2.6 s on the UI thread.
+    final store = _renderCaches.brushFrameStore;
+    store.asOneEdit(() {
+      for (final (targetId, minted, pictures) in mintedByLayer) {
+        if (cut == null) {
+          break; // Gap state: no cut, so no key to store a picture under.
+        }
+        carryBakedPictures(
+          project: _project,
+          store: store,
+          cut: cut,
+          to: targetId,
+          minted: minted,
+          pictureOf: (source) => pictures[source],
+        );
       }
-      carryBakedPictures(
-        project: _project,
-        store: _renderCaches.brushFrameStore,
-        cut: cut,
-        to: targetId,
-        minted: minted,
-        pictureOf: (source) => pictures[source],
-      );
-    }
+    });
     for (final (copies, handwriting) in handwritten) {
       if (cut == null) {
         break;
