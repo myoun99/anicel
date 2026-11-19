@@ -192,11 +192,12 @@ BlockRunLeadEdgeLayout planBlockRunThinning({
   final starts = slotStartsOf(slots);
   final newStarts = List<int>.of(starts);
   final lengths = [for (final slot in slots) slot.length];
-  for (var kept = 0; pull > 0 && kept < selected.length; kept += pull + 1) {
+  for (
+    var kept = 0;
+    pull > 0 && kept + 1 < selected.length;
+    kept += pull + 1
+  ) {
     final last = selected[math.min(kept + pull, selected.length - 1)];
-    if (last == selected[kept]) {
-      break;
-    }
     final target = selected[kept + 1];
     _sweepBack(
       slots,
