@@ -225,6 +225,56 @@ void main() {
         const Offset(60, 0),
       );
     });
+
+    testWidgets('a child kept off stage that changes, and changes again, is '
+        'laid out to the box it was last shown in', (tester) async {
+      final width = ValueNotifier<double>(10);
+      addTearDown(width.dispose);
+      Widget changing(String key) => key == 'a'
+          ? sized(key)
+          : ValueListenableBuilder<double>(
+              valueListenable: width,
+              builder: (context, value, _) => SizedBox(
+                key: const ValueKey<String>('child-b'),
+                width: value,
+              ),
+            );
+      await tester.pumpWidget(stack('b', changing));
+      await tester.pumpWidget(stack('a', changing));
+
+      for (final value in [20.0, 30.0]) {
+        width.value = value;
+        await tester.pump();
+      }
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey<String>('child-b'), skipOffstage: false),
+        ),
+        const Size(30, 0),
+      );
+    });
+
+    testWidgets('a child kept off stage cannot take the focus', (
+      tester,
+    ) async {
+      final nodes = {'a': FocusNode(), 'b': FocusNode()};
+      addTearDown(() {
+        for (final node in nodes.values) {
+          node.dispose();
+        }
+      });
+      Widget focusable(String key) =>
+          Focus(focusNode: nodes[key], child: const SizedBox.expand());
+      await tester.pumpWidget(stack('b', focusable));
+      await tester.pumpWidget(stack('a', focusable));
+
+      nodes['b']!.requestFocus();
+      await tester.pump();
+      expect(nodes['b']!.hasFocus, isFalse);
+      nodes['a']!.requestFocus();
+      await tester.pump();
+      expect(nodes['a']!.hasFocus, isTrue, reason: 'premise: the shown can');
+    });
   });
 }
 

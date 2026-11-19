@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../timeline/timeline_edge_auto_pan.dart' show ScrollWindow;
 import 'device_grid.dart';
 import 'device_grid_scroll_controller.dart';
 
@@ -11,10 +12,10 @@ import 'device_grid_scroll_controller.dart';
 /// top, [extent] tall.
 typedef ShownPart = ({double top, double extent});
 
-/// What a box [slotTop] down a scrolled column and [slotExtent] tall lays
-/// its child as, with the scroll's window over `windowTop..windowBottom` of
-/// that column: the whole box, or — when the window shows only some of its
-/// body — a child whose body is the part the window shows.
+/// What a box at [slot] of a scrolled column — `top` down it, `extent`
+/// tall — lays its child as, with the scroll's [window] over the column:
+/// the whole box, or — when the window shows only some of its body — a
+/// child whose body is the part the window shows.
 ///
 /// The child's first [head] is its own chrome, not its body (a panel's tab
 /// strip): it keeps its place above the body, in the window or out of it,
@@ -22,25 +23,26 @@ typedef ShownPart = ({double top, double extent});
 /// [floor] — the least it lays out in at all; past it, it keeps the floor
 /// and the window cuts the rest.
 ShownPart shownPartOf({
-  required double slotTop,
-  required double slotExtent,
+  required ({double top, double extent}) slot,
+  required ScrollWindow window,
   required double head,
   required double floor,
-  required double windowTop,
-  required double windowBottom,
 }) {
-  final whole = (top: 0.0, extent: slotExtent);
-  final bodyTop = math.max(slotTop + head, windowTop);
-  final bodyBottom = math.min(slotTop + slotExtent, windowBottom);
+  final whole = (top: 0.0, extent: slot.extent);
+  final bodyTop = math.max(slot.top + head, window.offset);
+  final bodyBottom = math.min(
+    slot.top + slot.extent,
+    window.offset + window.viewport,
+  );
   if (bodyBottom <= bodyTop) {
     return whole;
   }
   final extent = math.max(head + bodyBottom - bodyTop, floor);
-  if (extent >= slotExtent) {
+  if (extent >= slot.extent) {
     return whole;
   }
   return (
-    top: math.min(bodyTop - head - slotTop, slotExtent - extent),
+    top: math.min(bodyTop - head - slot.top, slot.extent - extent),
     extent: extent,
   );
 }
@@ -143,7 +145,7 @@ class ScrollWindowPart extends SingleChildRenderObjectWidget {
 /// the one fact that says which scrollable a part stands in.
 class _Book {
   final Set<_RenderScrollWindowPart> parts = {};
-  ({double top, double bottom})? window;
+  ScrollWindow? window;
 }
 
 final Expando<_Book> _books = Expando<_Book>('scroll window parts');
@@ -224,7 +226,7 @@ class _RenderScrollWindowSettle extends RenderProxyBox {
     final top = pixels == null
         ? null
         : pixels - deviceGridScrollCorrection(pixels, _grid);
-    book.window = top == null ? null : (top: top, bottom: top + _viewport);
+    book.window = top == null ? null : (offset: top, viewport: _viewport);
     return [
       for (final part in book.parts)
         if (part.isStale) part,
@@ -273,12 +275,10 @@ class _RenderScrollWindowPart extends RenderShiftedBox {
       return (top: 0.0, extent: extent);
     }
     return shownPartOf(
-      slotTop: _top,
-      slotExtent: extent,
+      slot: (top: _top, extent: extent),
+      window: window,
       head: _head,
       floor: _floor,
-      windowTop: window.top,
-      windowBottom: window.bottom,
     );
   }
 

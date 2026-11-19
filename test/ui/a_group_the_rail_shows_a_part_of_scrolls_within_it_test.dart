@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
@@ -175,5 +176,43 @@ void main() {
 
     expect(rail(tester).pixels, 0, reason: 'premise: pulled back in layout');
     expect(tester.getRect(library()), whole);
+  });
+
+  testWidgets('a group is never laid shorter than its panels lay out in — '
+      'the colours, cut from above, keep their floor and their bottom', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 907));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    const colours = EditorWorkspace.rightGroupId;
+    await tester.tap(railGroupButton(colours));
+    await tester.pumpAndSettle();
+    final railRight = find.byKey(const ValueKey<String>('rail-scroll-right'));
+    final position = tester
+        .widget<SingleChildScrollView>(railRight)
+        .controller!
+        .position;
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pump();
+
+    final window = tester.getRect(railRight);
+    final group = tester.getRect(groupBody(colours));
+    final host = tester.getRect(
+      find.descendant(
+        of: groupBody(colours),
+        matching: find.byType(EditorDockHost),
+      ),
+    );
+    expect(group.top, lessThan(window.top), reason: 'premise: cut from above');
+    expect(host.bottom, group.bottom);
+    expect(
+      host.height,
+      greaterThan(EditorPanelTabs.stripHeight + group.bottom - window.top),
+      reason: 'the colour wheel cannot be laid out in the part shown',
+    );
   });
 }

@@ -10,12 +10,10 @@ void main() {
     required double windowTop,
     double floor = 30,
   }) => shownPartOf(
-    slotTop: slotTop,
-    slotExtent: 320,
+    slot: (top: slotTop, extent: 320),
+    window: (offset: windowTop, viewport: 400),
     head: 30,
     floor: floor,
-    windowTop: windowTop,
-    windowBottom: windowTop + 400,
   );
 
   test('a box the window shows all of is laid whole', () {
