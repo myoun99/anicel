@@ -14,7 +14,10 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart'
+    show StandingDemand;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 
 import '../../helpers/draw_on_current_frame.dart' show inkCel;
 
@@ -210,6 +213,26 @@ void main() {
 
     expect(heard, 0, reason: 'nothing was put off');
     expect(budget.playbackReadyRuns(0, 24), before);
+  });
+
+  test('the frame a hand notes is the one the warmer stands on — the '
+      'playhead\'s — or its cut\'s first where it stands on none of it', () {
+    StandingDemand around(int frame) => StandingDemand(
+      cutId: const CutId('open'),
+      frameCount: 24,
+      around: frame,
+      resolveCut: (id) => id == const CutId('open') ? cutOf('open') : null,
+    );
+
+    expect(
+      PlaybackCacheBudget.frameStoodOn(around(12), const CutId('open')),
+      12,
+    );
+    expect(
+      PlaybackCacheBudget.frameStoodOn(around(12), const CutId('other')),
+      0,
+    );
+    expect(PlaybackCacheBudget.frameStoodOn(null, const CutId('open')), 0);
   });
 
   test('a press a project closed under lets go of its warmer after, and '

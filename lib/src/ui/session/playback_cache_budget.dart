@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
@@ -348,12 +349,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
     if (cut == null) {
       return null;
     }
-    final frameIndex =
-        _run.demand?.picturesAt(0)
-            ?.where((shown) => shown.cut.id == cut.id)
-            .firstOrNull
-            ?.frameIndex ??
-        0;
+    final frameIndex = frameStoodOn(_run.demand, cut.id);
     return (
       frameIndex: frameIndex,
       key: _run.pictures.keyOf(_asTheBarAsks(cut, frameIndex)),
@@ -374,6 +370,18 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         _run.pictures.keyOf(_asTheBarAsks(cut, stood.frameIndex)) !=
             stood.key;
   }
+
+  /// The frame of [cutId] the warmer stands on — what [demand] shows first
+  /// ([FrameDemand.picturesAt] 0, the playhead's) — or its first where it
+  /// shows none of it.
+  @visibleForTesting
+  static int frameStoodOn(FrameDemand? demand, CutId cutId) =>
+      demand
+          ?.picturesAt(0)
+          ?.where((shown) => shown.cut.id == cutId)
+          .firstOrNull
+          ?.frameIndex ??
+      0;
 
   /// [cut]'s frame [frameIndex] as the timeline's bar asks for it: on its
   /// paper, no ghosts ([playbackReadyRuns]).
