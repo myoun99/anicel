@@ -221,11 +221,20 @@ void main() {
     final hand = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .brushTool!;
-    final cases = {
-      CanvasTool.brush: ToolSettingsPreview.slotKey,
-      CanvasTool.cutWhole: ToolSettingsSection.keyFor('cut-grab'),
+    // What stands first in each, and how far under the panel's top.
+    final cases = <CanvasTool, (Finder, double)>{
+      CanvasTool.brush: (find.byKey(ToolSettingsPreview.slotKey), 0),
+      CanvasTool.cutWhole: (
+        find
+            .descendant(
+              of: find.byKey(ToolSettingsSection.keyFor('cut-grab')),
+              matching: find.byType(Column),
+            )
+            .first,
+        ToolSettingsSection.inset.top,
+      ),
     };
-    for (final MapEntry(key: tool, value: top) in cases.entries) {
+    for (final MapEntry(key: tool, value: (first, under)) in cases.entries) {
       hand.value = hand.value.copyWith(tool: tool);
       await tester.pumpAndSettle();
       final panel = tester.getRect(find.byType(ToolSettingsPanel));
@@ -239,7 +248,11 @@ void main() {
         lessThanOrEqualTo(tester.getRect(leftRail).bottom),
         reason: '$tool: laid to the part shown',
       );
-      expect(tester.getRect(find.byKey(top)).top, panel.top, reason: '$tool');
+      expect(
+        tester.getRect(first).top,
+        panel.top + under,
+        reason: '$tool',
+      );
     }
   });
 }
