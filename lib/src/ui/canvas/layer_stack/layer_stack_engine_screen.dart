@@ -63,21 +63,20 @@ final class EngineStackScreen {
   }
 
   /// Lays [frame] as [compose] does the first time, onto a screen nothing
-  /// is laid on yet, but over the world pixels [fresh] alone: the rest is
-  /// [film]'s kept frame, copied tile by tile as it is — a frame over the
+  /// is laid on yet, but [over] the world pixels fresh alone: the rest is
+  /// the film's kept frame, copied tile by tile as it is — a frame over the
   /// frame its ghosts lie on, which the tiles they do not reach show as it
   /// does. Over a film nothing is laid on, all of it; onto a screen laid
   /// on already, refused with the engine's reason. Ends as [compose] does,
   /// for the canvas [standing] stands for where it is the frame's picture
   /// laid anew, not a step patched into a copy.
   Future<void> composeOver(
-    EngineStackScreen film,
     StackedFrame frame, {
-    required Rect fresh,
+    required ({EngineStackScreen film, Rect fresh}) over,
     EngineChainHolds? holds,
     Object? standing,
   }) {
-    final under = film._screen;
+    final under = over.film._screen;
     if (under == null) {
       return compose(frame, holds: holds, standing: standing);
     }
@@ -86,7 +85,7 @@ final class EngineStackScreen {
       holds,
       standing,
       (screen, pool, plan, _) =>
-          screen.composeOver(under, pool, plan, _edgesOf(fresh)),
+          screen.composeOver(under, pool, plan, _edgesOf(over.fresh)),
     );
   }
 

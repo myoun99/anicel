@@ -110,13 +110,7 @@ class EngineFramePicture extends ChangeNotifier {
     StackedFrame frame, {
     ui.Rect? changed,
     EngineChainHolds? holds,
-    Object? standing,
-  }) => _screen.compose(
-    frame,
-    changed: changed,
-    holds: holds,
-    standing: standing,
-  );
+  }) => _screen.compose(frame, changed: changed, holds: holds);
 
   void _written() => notifyListeners();
 
@@ -126,14 +120,31 @@ class EngineFramePicture extends ChangeNotifier {
     StackedFrame frame, {
     required ui.Rect fresh,
     EngineChainHolds? holds,
-    Object? standing,
   }) => _screen.composeOver(
-    film._screen,
     frame,
-    fresh: fresh,
+    over: (film: film._screen, fresh: fresh),
     holds: holds,
-    standing: standing,
   );
+
+  /// Laid as [lay] asks, before it is handed to anyone: over [film] where
+  /// it is laid over one that is there, and for the canvas it stands for,
+  /// if any ([EngineStackScreen.composeOver]).
+  Future<void> _laidAs(_Lay<Object> lay, EngineFramePicture? film) {
+    final fresh = lay.over?.fresh;
+    if (fresh != null && film != null) {
+      return _screen.composeOver(
+        lay.frame,
+        over: (film: film._screen, fresh: fresh),
+        holds: lay.holds,
+        standing: lay.standing,
+      );
+    }
+    return _screen.compose(
+      lay.frame,
+      holds: lay.holds,
+      standing: lay.standing,
+    );
+  }
 
   void _letGo() {
     _gone = true;
@@ -756,20 +767,9 @@ class EngineFramePictureStore<K extends Object> {
 
   Future<void> _composedAs(_Lay<K> lay, EngineFramePicture picture) {
     final over = lay.over;
-    final film = over == null ? null : _entries[over.film]?.picture;
-    if (over != null && film != null) {
-      return picture._composedOver(
-        film,
-        lay.frame,
-        fresh: over.fresh,
-        holds: lay.holds,
-        standing: lay.standing,
-      );
-    }
-    return picture._composed(
-      lay.frame,
-      holds: lay.holds,
-      standing: lay.standing,
+    return picture._laidAs(
+      lay,
+      over == null ? null : _entries[over.film]?.picture,
     );
   }
 }

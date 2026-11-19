@@ -343,9 +343,8 @@ void main() {
     final frame = cel(7);
 
     await screen.composeOver(
-      film,
       frameOf(frame),
-      fresh: rectOf((10, 10, 20, 20)),
+      over: (film: film, fresh: rectOf((10, 10, 20, 20))),
     );
 
     final (mine, theirs) = (ranOver(frame), ranOver(under));
@@ -368,12 +367,12 @@ void main() {
     final frame = cel(7);
     final fresh = rectOf((10, 10, 20, 20));
 
-    await screen.composeOver(film, frameOf(frame), fresh: fresh);
+    await screen.composeOver(frameOf(frame), over: (film: film, fresh: fresh));
 
     showsThrough(screen, ranOver(frame), views.take(1));
     await film.compose(frameOf(cel(5)));
     await expectLater(
-      screen.composeOver(film, frameOf(frame), fresh: fresh),
+      screen.composeOver(frameOf(frame), over: (film: film, fresh: fresh)),
       throwsA(
         isA<StateError>().having(
           (error) => error.message,
