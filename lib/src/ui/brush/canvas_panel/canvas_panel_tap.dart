@@ -544,7 +544,7 @@ class _CanvasPanelTap {
 /// ↩️Each stamp was a step of its own — twelve stamps, twelve undos — from
 /// the trail's first cut (1900500eb) through the piece door (7bd94c5c1);
 /// nobody had asked for it. ↩️Then each stamp still landed as a step, and
-/// the lift folded them ([HistoryGestures.foldSince], fd4191ec2): measured
+/// the lift folded them (`foldSince`, fd4191ec2 — gone since): measured
 /// 2026-11-19 on the Surface over eight cels, a 5% spacing laid 480 stamps
 /// in a 1.7 s drag that took 6 s, pushed all that came before it out of the
 /// history's 200 steps and was left 480 undos; 1% froze for 22 s.

@@ -2528,10 +2528,12 @@ class EditorSessionManager extends ChangeNotifier
   /// settled where it left the user — a press is a new action — and work
   /// still in hand (a pending move) lands as an entry made HERE, which is
   /// what the press is for: asked first, the walk would carry the user away
-  /// from it.
+  /// from it. A gesture's line still being written goes up the same way
+  /// ([HistoryGestures.putUp]).
   void _settleAndAdopt() {
     historyManager.places.settle();
     historyManager.onBeforeUndoRedo?.call();
+    historyManager.gestures.putUp();
   }
 
   // --- Layer state / commands --------------------------------------------

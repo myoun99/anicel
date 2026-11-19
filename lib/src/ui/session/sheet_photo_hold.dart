@@ -38,7 +38,7 @@ class SheetPhotoHold extends ChangeNotifier {
   /// ([letGo]) — F-377 (유저 2026-10-17: 「변형 상태는 모두 기본적으로 그걸
   /// 따르도록」). ↩️Each grab stayed a step of its own: a photo moved,
   /// sized and turned took three undos once let go.
-  late final HistoryRun _grabs = HistoryRun(_history.gestures);
+  late final HistoryRun _grabs = HistoryRun(_history.gestures, _transformed);
 
   /// Where a grab has its photo — the GRAB's, and gone with the grab alone
   /// ([land], [dropShowing]). A photo let go of mid-grab (Escape, another
@@ -72,7 +72,7 @@ class SheetPhotoHold extends ChangeNotifier {
     if (_held == photo) {
       return;
     }
-    _grabs.end(_transformed);
+    _grabs.end();
     _held = photo;
     _grabs.begin();
     notifyListeners();
@@ -121,7 +121,7 @@ class SheetPhotoHold extends ChangeNotifier {
     }
     // What the hand did to it before is one step, and taking it off
     // another.
-    _grabs.end(_transformed);
+    _grabs.end();
     _edits.edit(
       held.key,
       description: 'Delete photo',
@@ -136,7 +136,7 @@ class SheetPhotoHold extends ChangeNotifier {
     if (_held == null) {
       return;
     }
-    _grabs.end(_transformed);
+    _grabs.end();
     _held = null;
     notifyListeners();
   }

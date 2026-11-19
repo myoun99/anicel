@@ -39,14 +39,14 @@ Future<void> rasterizeReferenceRows(
     return;
   }
   // The bakes write a row at a time across the wait window's events, so
-  // the press folds what it wrote once it is over, as Import's does (F-405)
-  // — a batch that stopped part-way is still one press.
-  final history = session.historyManager.gestures;
-  final pressed = history.mark;
+  // the press writes them into ONE line and puts it up once it is over, as
+  // Import's does (F-405) — a batch that stopped part-way is still one
+  // press.
+  final line = session.historyManager.gestures.open('Rasterize layers');
   try {
     await _letGo(context, session, cutId, targets);
   } finally {
-    history.foldSince(pressed, 'Rasterize layers');
+    line.close();
   }
 }
 

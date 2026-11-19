@@ -987,8 +987,10 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// The windows whose view has the stroke in flight.
   final Set<String> _stroking = <String>{};
 
-  /// The history as it stood before the stroke's first landing.
-  HistoryMark? _strokeStart;
+  /// The stroke's ONE line, from its first window going down to its last
+  /// coming up — what every window it crossed lands into
+  /// ([HistoryGestures.open]).
+  HistoryLine? _stroke;
 
   /// Each window's view's hand for a shape (F-420), counted: a view built
   /// anew comes up before the one it replaces goes down, and the one going
@@ -1031,6 +1033,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     for (final line in _shiftLines.values) {
       line.letGo();
     }
+    // ⛔A stroke's line closes on every way out: left open, it would take
+    // every step written after it.
+    _stroke?.close();
     super.dispose();
   }
 
@@ -1113,14 +1118,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     }
     final down = _stroking.isNotEmpty;
     if (down && !wasDown) {
-      _strokeStart = widget.history.mark;
+      _stroke = widget.history.open(BrushStrokeHistoryCommand.label);
     }
     if (!down && wasDown) {
-      final start = _strokeStart;
-      _strokeStart = null;
-      if (start != null) {
-        widget.history.foldSince(start, BrushStrokeHistoryCommand.label);
-      }
+      _stroke?.close();
+      _stroke = null;
     }
     widget.strokeActive.value = down;
   }

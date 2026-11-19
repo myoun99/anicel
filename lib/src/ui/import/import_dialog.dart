@@ -1512,27 +1512,30 @@ class _ImportDialogState extends State<ImportDialog> {
     // 한번언두인데 임포트한거 한번에 언두하도록」): what one press of Import
     // writes is ONE undo step — every file it registers or places, and the
     // project rate it took for a movie when it asked. The doors write a
-    // file at a time across many events, so the press folds them once it
-    // is over, as a sweep across rows does ([HistoryGestures.foldSince]).
-    final history = widget.session.historyManager.gestures;
-    final pressed = history.mark;
-    if (!await _answerMovieRates() || !mounted) {
-      return;
-    }
-    setState(() {
-      _running = true;
-      _status = _Sentence(AppText.strings.imStatusImporting);
-    });
-    // Before anything registers: the session has to be holding the tokens
-    // by the time a save writes them down, and this is the only moment
-    // they exist outside the picker. Harmless when the list is empty,
-    // which is every desktop import and every drop.
-    widget.session.mediaGrants.rememberMediaGrants(_pickedGrants);
+    // file at a time across many events, so the press writes them into ONE
+    // line and puts it up once it is over, as a sweep across rows does
+    // ([HistoryGestures.open]) — however the run ended: a batch that
+    // stopped part-way is still one press.
+    final line = widget.session.historyManager.gestures.open('Import');
     final tally = _ImportTally();
-    final finished = await _importBehindTheWaitWindow(tally);
-    // What landed is folded however the run ended — a batch that stopped
-    // part-way is still one press.
-    history.foldSince(pressed, 'Import');
+    final bool finished;
+    try {
+      if (!await _answerMovieRates() || !mounted) {
+        return;
+      }
+      setState(() {
+        _running = true;
+        _status = _Sentence(AppText.strings.imStatusImporting);
+      });
+      // Before anything registers: the session has to be holding the
+      // tokens by the time a save writes them down, and this is the only
+      // moment they exist outside the picker. Harmless when the list is
+      // empty, which is every desktop import and every drop.
+      widget.session.mediaGrants.rememberMediaGrants(_pickedGrants);
+      finished = await _importBehindTheWaitWindow(tally);
+    } finally {
+      line.close();
+    }
     if (!finished || !mounted) {
       return; // the dialog went away part-way through the batch
     }

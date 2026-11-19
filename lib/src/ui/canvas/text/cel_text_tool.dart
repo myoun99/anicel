@@ -93,7 +93,7 @@ class _Holding {
     this.cel, {
     required HistoryGestures? gestures,
     this.celMade,
-  }) : boxSteps = gestures == null ? null : HistoryRun(gestures);
+  }) : boxSteps = gestures == null ? null : HistoryRun(gestures, 'Set text');
 
   final CelTextSession session;
   final CelTextCel cel;
@@ -119,7 +119,7 @@ class _Holding {
   _StepOf? owed;
 
   /// The box lets go: what it landed is ONE step.
-  void closeBoxSteps() => boxSteps?.end('Set text');
+  void closeBoxSteps() => boxSteps?.end();
 
   /// For a text begun by the press that MADE its cel: the run that press
   /// began ([CelTextTool.beginRun]), which the text's first landing joins
@@ -338,7 +338,9 @@ class CelTextTool extends ChangeNotifier {
   /// is no history.
   HistoryRun? beginRun() {
     final gestures = host.gestures;
-    return gestures == null ? null : (HistoryRun(gestures)..begin());
+    return gestures == null
+        ? null
+        : (HistoryRun(gestures, 'Set text on a new frame')..begin());
   }
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as

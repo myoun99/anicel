@@ -89,14 +89,15 @@ List<RailSwipeRow<TRow>> railRowsAlong<TRow>({
 ///
 /// 🚨ONE SWEEP IS ONE UNDO (swipe-is-one-undo, 유저 08-28: 「일괄로 버튼
 /// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」 — the
-/// 「일괄조작」 of I-1 is this swipe). A sweep marks the history before its
-/// first write and folds everything after it into one step when it lets
-/// go ([HistoryGestures.foldSince]). Measured before: three rows swept, three
+/// 「일괄조작」 of I-1 is this swipe). A press opens ONE line before its
+/// button writes, the sweep after it writes into the same line, and the
+/// line goes up as one entry when the sweep lets go
+/// ([HistoryGestures.open]). Measured before: three rows swept, three
 /// steps, and one Ctrl+Z took back one row.
 ///
 /// It also takes back what a sweep painted when the cursor draws back over
-/// it (F-182) — exactly, by retracting the row's own step
-/// ([HistoryGestures.retractSince]).
+/// it (F-182) — exactly, by taking the row's own steps back out of the
+/// line ([HistoryLine.takeBack]).
 ///
 /// Absent — a rail mounted on its own — a sweep writes row by row, and a
 /// row it draws back from is pressed again.
@@ -257,16 +258,22 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// The column the press the drag holds landed on.
   int _pressedColumn = -1;
 
-  /// The history as it stood just before a column's button fired on this
-  /// press ([PressFireWatch]) — the button writes its step before the
-  /// sweep can hear the down.
-  HistoryMark? _pressMark;
+  /// The press's line, opened just before a column's button fired on it
+  /// ([PressFireWatch]) — the button writes its step before the sweep can
+  /// hear the down, and the sweep writes after it ([RailSweepHistory]).
+  HistoryLine? _line;
 
-  /// Where the sweep under way folds from ([RailSweepHistory]).
-  HistoryMark? _sweepMark;
+  void _openLine() {
+    _closeLine();
+    _line = RailSweepHistory.maybeOf(
+      context,
+    )?.history.open('Sweep a rail column');
+  }
 
-  void _markPress() =>
-      _pressMark = RailSweepHistory.maybeOf(context)?.history.mark;
+  void _closeLine() {
+    _line?.close();
+    _line = null;
+  }
 
   /// The row the press came down on, as the rail stood then — one end of
   /// the stretch the sweep holds; the cursor is the other.
@@ -310,14 +317,13 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
         holds: holds,
       );
     }
-    final history = RailSweepHistory.maybeOf(context)?.history;
-    final before = history?.mark.pushed ?? 0;
+    final before = _line?.written ?? 0;
     column.toggle(row.row);
     return (
       id: row.id,
       row: row.row,
       pressed: true,
-      steps: (history?.mark.pushed ?? 0) - before,
+      steps: (_line?.written ?? 0) - before,
       holds: holds,
     );
   }
@@ -335,11 +341,9 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
       return;
     }
     final scope = RailSweepHistory.maybeOf(context);
-    final mark = _sweepMark;
-    if (stroke.steps > 0 && scope != null && mark != null) {
-      for (var step = 0; step < stroke.steps; step += 1) {
-        scope.history.retractSince(mark);
-      }
+    final line = _line;
+    if (stroke.steps > 0 && scope != null && line != null) {
+      line.takeBack(stroke.steps);
       scope.changed();
       return;
     }
@@ -507,9 +511,8 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     _held
       ..clear()
       ..add(row.id);
+    // The button's own step is the sweep's first: it is in the line already.
     _stretchStart = row.start;
-    // The button's own step is the sweep's first.
-    _sweepMark = _pressMark;
   }
 
   /// The pressed row as the rail holds it now. Past the fold of a row that
@@ -520,13 +523,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
       .firstOrNull;
 
   void _end() {
-    final mark = _sweepMark;
-    if (mark != null) {
-      RailSweepHistory.maybeOf(
-        context,
-      )?.history.foldSince(mark, 'Sweep a rail column');
-    }
-    _sweepMark = null;
+    _closeLine();
     _column = null;
     _targetValue = null;
     _strokes.clear();
@@ -548,18 +545,26 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
 
   @override
   void dispose() {
+    _closeLine();
     _drag.dispose();
     super.dispose();
+  }
+
+  /// A press that latched no sweep lets its line go up as it lifts; a sweep
+  /// lets it go as it ends ([_end]). ⛔On every way out: a line left open
+  /// takes every step written after it.
+  void _pressLifted(PointerEvent event) {
+    if (_column == null) {
+      _closeLine();
+    }
   }
 
   @override
   Widget build(BuildContext context) => Listener(
     onPointerDown: _offer,
-    // ⛔Cleared on the way out: a stale mark would fold from a press that is
-    // long gone.
-    onPointerUp: (event) => _pressMark = null,
-    onPointerCancel: (event) => _pressMark = null,
-    child: PressFireWatch(beforeFire: _markPress, child: widget.child),
+    onPointerUp: _pressLifted,
+    onPointerCancel: _pressLifted,
+    child: PressFireWatch(beforeFire: _openLine, child: widget.child),
   );
 }
 
