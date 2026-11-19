@@ -632,6 +632,11 @@ enum AppStrings {
   /// the work — the app is not slow, the file is not here yet.
   String get openWaitingCloudTemplate => _s('openWaitingCloudTemplate');
 
+  /// '{sec}' is whole seconds waited. The file is here, as far as the
+  /// device can tell, and the app is reading it in — said rather than the
+  /// cloud, which would be a guess (F-621-Q2).
+  String get openWaitingReadingTemplate => _s('openWaitingReadingTemplate');
+
   /// '{sec}' is whole seconds waited. Said once the wait is long enough
   /// to be worth a decision; the window's cancel is the decision.
   String get openWaitingStalledTemplate => _s('openWaitingStalledTemplate');
@@ -2703,6 +2708,7 @@ enum AppStrings {
     'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
+    'openWaitingReadingTemplate': 'Reading the file · {sec}s',
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
     'bakeProgressRunning': 'Rasterizing…',
@@ -4265,6 +4271,7 @@ enum AppStrings {
     'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
+    'openWaitingReadingTemplate': 'ファイルを読み込み中 · {sec}秒',
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
     'bakeProgressRunning': 'ラスタライズ中…',
@@ -6243,6 +6250,7 @@ enum AppStrings {
     'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
+    'openWaitingReadingTemplate': '파일을 읽는 중 · {sec}초',
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
     'bakeProgressRunning': '래스터라이즈 중…',
@@ -10079,6 +10087,7 @@ enum AppStrings {
     'mediaRelinkScanning': 'Lecture du dossier…',
     'openProgressRunning': 'Ouverture…',
     'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
+    'openWaitingReadingTemplate': 'Lecture du fichier · {sec} s',
     'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
     'uiScaleLabel': "Taille de l'interface",
@@ -11963,6 +11972,7 @@ enum AppStrings {
     'mediaRelinkScanning': '正在读取该文件夹…',
     'openProgressRunning': '正在打开…',
     'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
+    'openWaitingReadingTemplate': '正在读取文件 · {sec} 秒',
     'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',
     'uiScaleLabel': '界面大小',

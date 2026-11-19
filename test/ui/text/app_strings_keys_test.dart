@@ -246,6 +246,7 @@ void main() {
     'saveStepHandingBack': (s) => s.saveStepHandingBack,
     'openProgressRunning': (s) => s.openProgressRunning,
     'openWaitingCloudTemplate': (s) => s.openWaitingCloudTemplate,
+    'openWaitingReadingTemplate': (s) => s.openWaitingReadingTemplate,
     'openWaitingStalledTemplate': (s) => s.openWaitingStalledTemplate,
     'resizeProgressRunning': (s) => s.resizeProgressRunning,
     'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,

@@ -109,7 +109,7 @@ void main() {
       FolderPicker.materializeOpenedFile(
         path,
         within: const Duration(milliseconds: 4200),
-        onWaiting: (waited, _) => seen.add(waited),
+        onWaiting: (waited, _, {required fromTheCloud}) => seen.add(waited),
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -139,7 +139,7 @@ void main() {
         path,
         within: const Duration(milliseconds: 300),
         step: const Duration(milliseconds: 100),
-        onWaiting: (_, _) => told += 1,
+        onWaiting: (_, _, {required fromTheCloud}) => told += 1,
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -180,7 +180,8 @@ void main() {
       FolderPicker.materializeOpenedFile(
         path,
         within: const Duration(seconds: 30),
-        onWaiting: (waited, quiet) => told.add((waited: waited, quiet: quiet)),
+        onWaiting: (waited, quiet, {required fromTheCloud}) =>
+            told.add((waited: waited, quiet: quiet)),
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -216,7 +217,8 @@ void main() {
       FolderPicker.materializeOpenedFile(
         path,
         within: const Duration(seconds: 30),
-        onWaiting: (waited, quiet) => told.add((waited: waited, quiet: quiet)),
+        onWaiting: (waited, quiet, {required fromTheCloud}) =>
+            told.add((waited: waited, quiet: quiet)),
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -228,7 +230,7 @@ void main() {
       quiet: const Duration(seconds: 25),
     ));
     expect(
-      cloudWaitLine(told.last.waited, told.last.quiet),
+      cloudWaitLine(told.last.waited, told.last.quiet, fromTheCloud: true),
       AppText.strings.openWaitingStalledTemplate.replaceAll('{sec}', '25'),
     );
   });

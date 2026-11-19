@@ -282,9 +282,15 @@ typedef WaitClock = ({
 });
 
 /// What a wait tells the window it keeps, on every beat: how long it has
-/// gone on, and how long since a byte of the file last arrived — the two
+/// gone on, how long since a byte of the file last arrived, and whether
+/// the device says the file is still coming from where it is kept — the
 /// things `cloudWaitLine` says.
-typedef WaitReport = void Function(Duration waited, Duration quiet);
+typedef WaitReport =
+    void Function(
+      Duration waited,
+      Duration quiet, {
+      required bool fromTheCloud,
+    });
 
 /// How a file's bytes being made into something tell how far it is: [done]
 /// steps of [of] ([FolderPicker.readOpenedFileInto]).
@@ -1052,6 +1058,7 @@ abstract final class FolderPicker {
     // nothing to undo — only nothing left to wait for. Past the backstop the
     // pick is probed all the same.
     if (hasFileCoordinator) {
+      wait.fromTheCloud = true;
       await wait.outlast(readInPlaceCoordinated(path));
     }
     if (await arrivalOf(path) == FileArrival.whole) {
@@ -1060,6 +1067,7 @@ abstract final class FolderPicker {
     if (await File(path).exists()) {
       // Ask the platform to fetch it, then wait for the PICK to be ALL here
       // — no copy anywhere in this wait.
+      wait.fromTheCloud = true;
       await requestFileDownload(path);
       while (await wait.tick()) {
         final arrival = await arrivalOf(path);
@@ -1196,6 +1204,8 @@ abstract final class FolderPicker {
       isCancelled: isCancelled,
     );
     final source = await _materialize(path, wait);
+    // The device holds it no longer: what is waited for now is the read.
+    wait.fromTheCloud = false;
     final allIn = Completer<void>();
     var gaveUp = false;
     final made = onAWorkerAsking<(int, int, bool), bool, T>(
@@ -1564,6 +1574,15 @@ final class _Wait {
   Duration _pause;
   Duration _lastArrival = Duration.zero;
 
+  /// Whether the device says the file is not here yet — an iPad's provider
+  /// holding the coordinated read, or a placeholder asked to come down —
+  /// rather than bytes coming in that the app can see (F-621-Q2, 유저
+  /// 2026-11-19: 「투명하게만 하면되」).
+  /// ⚠️A document poured in (Android, PICK-7) is bytes coming in: the app
+  /// cannot tell its provider's network from its cache, so the cloud would
+  /// be a guess there.
+  bool fromTheCloud = false;
+
   static const Duration _maxStep = Duration(seconds: 2);
 
   /// How often a waiting window is told the time. ⛔It does NOT back off
@@ -1601,7 +1620,11 @@ final class _Wait {
       }
       slept += slice;
       final waited = _clock.elapsed();
-      onWaiting?.call(waited, waited - _lastArrival);
+      onWaiting?.call(
+        waited,
+        waited - _lastArrival,
+        fromTheCloud: fromTheCloud,
+      );
       if (slept >= _pause) {
         // Doubling, capped: the common case lands within a second or two.
         _pause = _pause * 2;

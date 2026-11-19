@@ -345,7 +345,7 @@ void main() {
 
     final read = readTvppProject(
       tvppPath: path,
-      onWaiting: (_, _) {
+      onWaiting: (_, _, {required fromTheCloud}) {
         if (!told.isCompleted) {
           told.complete();
         }
